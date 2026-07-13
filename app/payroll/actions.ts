@@ -10,6 +10,7 @@ import {
   BatchNotUnlockableError,
   PayrollPermissionDeniedError,
   PreProcessBlockedError,
+  ResetReasonRequiredError,
   StepUpRequiredError,
   UnlockReasonRequiredError,
   closeBatch,
@@ -288,9 +289,11 @@ export async function resetAction(formData: FormData) {
     const msg =
       e instanceof PayrollPermissionDeniedError
         ? t('resetAdminOnly')
-        : e instanceof BatchNotResettableError
-          ? t('resetOnlyProcessed')
-          : (e as Error).message;
+        : e instanceof ResetReasonRequiredError
+          ? t('resetReasonRequired')
+          : e instanceof BatchNotResettableError
+            ? t('resetOnlyProcessed')
+            : (e as Error).message;
     redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(`/payroll/${batchId}`);

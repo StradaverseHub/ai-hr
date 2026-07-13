@@ -267,15 +267,16 @@ describe('Payroll Reset — resetProcessedBatch (DB)', () => {
     await hire('Guard Reset');
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
 
-    // Draft: nothing to reset.
-    await expect(resetProcessedBatch(a, { batchId })).rejects.toBeInstanceOf(BatchNotResettableError);
+    // Draft: nothing to reset. (Reason supplied so the status guard — not the mandatory-reason guard,
+    // d1ed1e99 — is what fires here.)
+    await expect(resetProcessedBatch(a, { batchId, reason: 'x' })).rejects.toBeInstanceOf(BatchNotResettableError);
     expect((await batchRow(batchId)).status).toBe('draft');
 
     await generatePayslips(a, { batchId }); // → processed
     await closeBatch(a, { batchId }); // → closed
 
     // Closed: permanently immutable — the app guard refuses…
-    await expect(resetProcessedBatch(a, { batchId })).rejects.toBeInstanceOf(BatchNotResettableError);
+    await expect(resetProcessedBatch(a, { batchId, reason: 'x' })).rejects.toBeInstanceOf(BatchNotResettableError);
     expect((await batchRow(batchId)).status).toBe('closed');
     const slips = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
     expect(slips.length).toBeGreaterThanOrEqual(1); // payslips untouched
@@ -315,7 +316,7 @@ describe('Payroll Reset — resetProcessedBatch (DB)', () => {
 
     // 9bc442bc: denial now comes from the granular payroll-permission gate ("You do not have the
     // 'payroll.rollback' payroll permission.") — same admin-only semantics, new message.
-    await expect(resetProcessedBatch(partner, { batchId })).rejects.toThrow(/'payroll\.rollback' payroll permission/);
+    await expect(resetProcessedBatch(partner, { batchId, reason: 'x' })).rejects.toThrow(/'payroll\.rollback' payroll permission/);
     expect((await batchRow(batchId)).status).toBe('processed');
     expect(await eventTypesFor(base.tenantId, batchId)).not.toContain('payroll-batch.reset');
   });

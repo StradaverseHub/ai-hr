@@ -94,6 +94,17 @@ export class BatchNotResettableError extends Error {
     this.name = 'BatchNotResettableError';
   }
 }
+/**
+ * A blank / whitespace-only reason was supplied to resetProcessedBatch (feedback d1ed1e99). Reverting a
+ * processed run to draft zeroizes payslips/totals + unwinds loans/claims — a sensitive, audited action, so
+ * the reason is MANDATORY, letting the history log always explain WHY a run was reset. Thrown BEFORE any
+ * deletion / status change so nothing is mutated. Mirrors UnlockReasonRequiredError. */
+export class ResetReasonRequiredError extends Error {
+  constructor() {
+    super('A reason is required to revert a processed payroll to draft.');
+    this.name = 'ResetReasonRequiredError';
+  }
+}
 
 /** Pre-processing validation (feedback f1564110, Phase 1): one or more in-scope, period-active
  *  employees have NO current compensation row. Before this check they were SILENTLY dropped from the
@@ -3448,6 +3459,11 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
   if (process.env.PAYROLL_RESET_ENABLED !== 'true') {
     throw new Error('Payroll reset is not enabled.');
   }
+  // Mandatory reason (feedback d1ed1e99): reverting a processed run to draft is a sensitive, audited
+  // action (zeroizes payslips/totals + unwinds loans/claims) — reject a blank/whitespace-only reason
+  // BEFORE any deletion or status change so nothing is mutated. Mirrors unlockClosedBatch.
+  const reason = (p.reason ?? '').trim();
+  if (!reason) throw new ResetReasonRequiredError();
   const toC = (v: unknown) => Math.round(Number(v) * 100);
   const fromC = (c: number) => (c / 100).toFixed(2);
   return withTenant(ctx, async (tx) => {
@@ -3614,7 +3630,7 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
       toStatus: 'draft',
       actorType: resetActor.type,
       actorId: resetActor.id ?? null,
-      reason: p.reason ?? null,
+      reason,
       before: { status: 'processed', totals: batch.totals, employeeCount: batch.employeeCount },
       after: {
         status: 'draft',
@@ -3643,7 +3659,7 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
         payPeriodId: batch.payPeriodId,
         runType: batch.runType,
         runSeq: batch.runSeq,
-        reason: p.reason ?? null,
+        reason,
         payslipsCleared: clearedSlips.length,
         loanInstalmentsReversed: appliedReps.length,
         loansReopened,

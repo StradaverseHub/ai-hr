@@ -179,7 +179,7 @@ export default async function BatchPage({
                   title={t('resetTitle')}
                   description={t('resetDescription')}
                   confirmLabel={t('resetConfirm')}
-                  reasonField={{ name: 'reason', label: t('resetReasonLabel'), placeholder: t('resetReasonPlaceholder') }}
+                  reasonField={{ name: 'reason', label: t('resetReasonLabel'), placeholder: t('resetReasonPlaceholder'), required: true }}
                 >
                   {t('resetPayroll')}
                 </ConfirmSubmit>
