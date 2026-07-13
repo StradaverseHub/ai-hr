@@ -364,3 +364,72 @@ export function previewEntitlement(
   const floorApplied = policyDays == null || floor > policyDays;
   return { floorDays, policyDays, days, scope, floorApplied };
 }
+
+// ── Benefit Scheme & Leave Entitlement resolution (feedback b83c6a3b) — RSC-SAFE, pure ───────────────
+// A friendlier configuration LAYER over the grade-scoped engine above. A benefit scheme names a
+// (company × employment_type × grade_group) target and carries per-leave-type service-band day tables
+// (scheme_leave_entitlement.serviceBands, the SAME ServiceBand shape resolved by `bandDaysFor`). An
+// employee resolves to ONE scheme — a manual override on their employment, else an auto-match — and that
+// scheme's entitlement days SUPERSEDE the grade leave_policy days. The EA-1955 floor still applies on top
+// (max(floor, schemeDays)) exactly as it does for policy days, so a scheme can never drop below statute.
+
+/** A benefit scheme's auto-match identity (the columns the resolver needs). `status` gates usability. */
+export type BenefitSchemeRow = {
+  id: string;
+  companyId: string;
+  employmentType: string;
+  gradeGroupId: string | null;
+  status: string; // 'active' | 'inactive'
+};
+
+/** The employee attributes that pick a scheme: their company, CURRENT-assignment employment type, the
+ *  grade group their grade belongs to (null = ungrouped), and any manual override scheme id. */
+export type SchemeMatchSubject = {
+  companyId: string;
+  employmentType: string | null;
+  gradeGroupId: string | null;
+  overrideSchemeId: string | null;
+};
+
+/**
+ * Resolve the effective benefit-scheme id for an employee. Precedence:
+ *   1. Manual override — when `overrideSchemeId` points at an ACTIVE scheme, it wins outright (HR's
+ *      explicit assignment on the employee record).
+ *   2. Auto-match — the ACTIVE scheme whose (companyId, employmentType, gradeGroupId) all equal the
+ *      employee's. The DB keeps at most one active scheme per that triple (partial-unique index), but the
+ *      resolver is defensive: if several match it picks the lowest id (deterministic), never throws.
+ *   3. Otherwise null — the employee falls back to the grade-scoped leave_policy (back-compat).
+ * An override pointing at an INACTIVE / unknown scheme is ignored (falls through to auto-match), so
+ * deactivating a scheme cleanly reverts its overridden employees to auto-match.
+ */
+export function resolveEffectiveSchemeId(
+  schemes: BenefitSchemeRow[],
+  subject: SchemeMatchSubject,
+): string | null {
+  if (subject.overrideSchemeId) {
+    const ov = schemes.find((s) => s.id === subject.overrideSchemeId && s.status === 'active');
+    if (ov) return ov.id;
+  }
+  const matches = schemes.filter(
+    (s) =>
+      s.status === 'active' &&
+      s.companyId === subject.companyId &&
+      s.employmentType === subject.employmentType &&
+      s.gradeGroupId === subject.gradeGroupId,
+  );
+  if (matches.length === 0) return null;
+  return matches.slice().sort((a, b) => a.id.localeCompare(b.id))[0].id;
+}
+
+/**
+ * The scheme entitlement days for a service length: the matching service band's `days`, else null.
+ * REUSES `bandFor` (defensive — never throws on malformed JSONB inside cron sweeps) by wrapping the
+ * scheme's stored `serviceBands` in an AccrualConfig. Returns null when the bands are absent / malformed
+ * / non-matching, which the caller reads as "this scheme has no usable entitlement for this type — fall
+ * back to the grade policy". A well-formed contiguous band set (from 0, open-ended last) always matches,
+ * so a configured scheme returns its band days (possibly 0, an explicit "no days" — still supersedes).
+ */
+export function schemeBandDays(serviceBands: unknown, serviceYears: number): number | null {
+  const band = bandFor({ serviceBands: serviceBands as ServiceBand[] } as AccrualConfig, serviceYears);
+  return band ? band.days : null;
+}

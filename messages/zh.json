@@ -3538,7 +3538,9 @@
           "hidden": "隐藏"
         },
         "help": "选择此假期类型在员工休假标签页上的显示位置：顶部的主卡片、下方的次级分组，或对员工完全隐藏。隐藏使用上方相同的可见性开关。在您选择之前，每种类型都使用合理的默认值。"
-      }
+      },
+      "benefitSchemeTitle": "福利方案",
+      "benefitSchemeHelp": "先将职级分组，再定义具名福利方案（公司 × 雇佣类型 × 职级组）及其休假额度。员工会自动匹配到方案；方案额度优先于职级政策，法定最低标准仍然适用。"
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -4116,6 +4118,7 @@
       "cancel": "取消",
       "back": "返回假期组"
     },
+<<<<<<< HEAD
     "attendanceRule": {
       "moduleTitle": "迟到、早退与加班设置",
       "moduleDescription": "可重复使用的考勤计算规则库。为班次分配规则，或让班次回退到标准规则。",
@@ -4172,6 +4175,54 @@
       "statutoryCapNote": "法定加班倍率（1.5×、2×、3×）仍为法律最低标准，在公司加班费率中设置。这些规则在此基础上调整并对加班取整。",
       "save": "保存",
       "cancel": "取消"
+=======
+    "benefitScheme": {
+      "groupsTitle": "职级组",
+      "groupsHelp": "将多个职级分组，使一个方案可一次覆盖它们（例如\"职级12–15\"）。一个职级只属于一个组。",
+      "noGroups": "尚无职级组。",
+      "archived": "已归档",
+      "memberCount": "{count} 个职级",
+      "groupNameLabel": "组名称",
+      "membersLabel": "此组中的职级",
+      "noGrades": "未定义职级。",
+      "save": "保存",
+      "delete": "删除",
+      "groupNamePlaceholder": "例如 职级12–15",
+      "addGroup": "添加组",
+      "schemesTitle": "福利方案",
+      "schemesHelp": "每个方案针对公司、雇佣类型和职级组。员工会自动匹配到其组合对应的有效方案。",
+      "colCompany": "公司",
+      "colEmpType": "雇佣类型",
+      "colGradeGroup": "职级组",
+      "colName": "方案名称",
+      "colStatus": "状态",
+      "noSchemes": "尚无福利方案。",
+      "anyGroup": "任意／未分组",
+      "statusActive": "有效",
+      "statusInactive": "停用",
+      "edit": "编辑",
+      "addScheme": "添加方案",
+      "selectPlaceholder": "选择…",
+      "schemeNamePlaceholder": "例如 正式 - 职级 H",
+      "empType_full_time": "正式",
+      "empType_part_time": "兼职",
+      "empType_contract": "合同",
+      "empType_intern": "实习",
+      "entTitle": "休假额度",
+      "entHelp": "为每个方案，按服务年限层级设置每种休假类型的天数。可添加新的休假类型而无需更改结构。",
+      "entNeedsScheme": "请先创建福利方案，再配置其休假额度。",
+      "selectScheme": "方案",
+      "colLeaveType": "休假类型",
+      "tierUnder": "不足 N1 年",
+      "tierMid": "N1–N2 年",
+      "tierOver": "N2 年及以上",
+      "noEntitlements": "此方案未配置额度。",
+      "addEntitlement": "添加／更新休假额度",
+      "threshold1": "层级1 至（年）",
+      "threshold2": "层级2 至（年）",
+      "thresholdError": "层级边界必须为整数，且第二个大于第一个。",
+      "saveEntitlement": "保存额度"
+>>>>>>> r37-benefit
     }
   },
   "topbar": {
