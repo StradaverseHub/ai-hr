@@ -69,7 +69,11 @@ describe('Statutory (Malaysia) layout: every statutory input stays mounted (full
     // Information card. Item 8b5334db — icNumber/taxNumber/taxCategory/numChildren/isResident moved OUT too:
     // IC to its own Profile-tab form (setIcAction) and the tax fields to the dedicated Identification & Tax card
     // (setTaxAction). setStatutoryAction now passes those stored values through unchanged so they can't be wiped.
-    'name="eisEligible"',
+    // Item a7271737 — the Subject-to-SOCSO and Subject-to-EIS checkboxes were consolidated INTO the
+    // SOCSO/EIS category selects (the single per-scheme control); setStatutoryAction derives the legacy
+    // subject_to_socso / eis_eligible booleans from these on save, so it's the selects that must stay mounted.
+    'name="socsoCategory"',
+    'name="eisCategory"',
     'name="epfCitizenship"',
     'name="tp3Year"',
     'name="tp3NetRemuneration"',
