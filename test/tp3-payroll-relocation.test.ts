@@ -196,29 +196,29 @@ describe('TP3 relocation — action behaviour (a6a47698)', () => {
     await setStatutoryProfileMY(a, {
       personId: e.personId,
       icNumber: '900101015011',
+      taxNumber: 'TX-KEEP',
+      taxCategory: 2,
       tp3Year: 2026,
       tp3NetRemuneration: 8000,
       tp3EpfClaimed: 880,
       tp3PcbPaid: 300,
     });
 
-    // A Bank & Statutory save exactly as the relocated form now submits it: NO tp3* keys at all.
+    // A Bank & Statutory (EPF/SOCSO) save exactly as the relocated form now submits it: NO tp3* keys and NO tax
+    // keys either (item 8b5334db moved IC to Profile and the tax fields to the dedicated Identification & Tax
+    // card). setStatutoryAction reads the stored IC + tax values and passes them through unchanged.
     const form = fd({
       employmentId: e.employmentId,
       personId: e.personId,
-      icNumber: '900101015011',
-      taxNumber: 'TX-NEW',
-      taxCategory: '2',
-      numChildren: '1',
-      isResident: 'on',
       epfCitizenship: 'citizen',
     });
     await expect(setStatutoryAction(form)).rejects.toThrow('NEXT_REDIRECT');
     expect(LAST_REDIRECT).toContain('toast=Saved');
 
     const row = await getStatutoryProfileMY(a, e.personId);
-    // The statutory edit landed…
-    expect(row?.taxNumber).toBe('TX-NEW');
+    // The pre-existing IC + tax values survived the EPF/SOCSO save (pass-through, item 8b5334db)…
+    expect(row?.icNumber).toBe('900101015011');
+    expect(row?.taxNumber).toBe('TX-KEEP');
     expect(row?.taxCategory).toBe(2);
     // …and the Payroll-owned TP3 opening balance survived untouched (the wipe regression).
     expect(row?.tp3Year).toBe(2026);

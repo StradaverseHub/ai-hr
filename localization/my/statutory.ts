@@ -507,6 +507,162 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput) {
   });
 }
 
+// ── Item 8b5334db — Identification & Tax card ──────────────────────────────────────────────────────────
+/** Tax residency status. resident ⇒ full computerised MTD; non_resident ⇒ flat 30% (spec §D.a); rep
+ *  (Returning Expert Programme) + knowledge_worker (specific-region incentive, e.g. Iskandar) ⇒ flat 15%.
+ *  Source: Income Tax (Exemption) orders / TalentCorp REP; both incentive schemes tax employment income at a
+ *  flat 15%. The exact rate/eligibility is a government-incentive matter to confirm before go-live. */
+export const TAX_RESIDENCIES = ['resident', 'non_resident', 'rep', 'knowledge_worker'] as const;
+export type TaxResidency = (typeof TAX_RESIDENCIES)[number];
+export const isTaxResidency = (v: string): v is TaxResidency => (TAX_RESIDENCIES as readonly string[]).includes(v);
+
+/** How num_children is maintained. 'manual' = HR keys it; 'auto' = derived-from-family suggestion that HR
+ *  confirms into num_children (never silent). Payroll always reads num_children regardless of mode. */
+export const CHILD_RELIEF_MODES = ['manual', 'auto'] as const;
+export type ChildReliefMode = (typeof CHILD_RELIEF_MODES)[number];
+export const isChildReliefMode = (v: string): v is ChildReliefMode => (CHILD_RELIEF_MODES as readonly string[]).includes(v);
+
+/** A tax partial-save was attempted before an IC exists (the statutory row is seeded by the IC field on the
+ *  Profile tab, item 8b5334db). Distinct message so the admin knows where to set it. */
+export class NoIcYetError extends Error {
+  constructor() {
+    super('Save the IC number on the Profile tab first, then set the tax details.');
+    this.name = 'NoIcYetError';
+  }
+}
+
+/**
+ * Item 8b5334db — save ONLY the icNumber column on employee_statutory_my. IC was relocated from the Bank &
+ * Statutory card to the Profile tab (following the R34 TP3 split precedent), so it needs its own partial setter.
+ * IC is the SEED of the statutory row (it is the notNull identity), so unlike setTp3/setBank this UPSERTS: it
+ * creates the row when the person has none yet. Validates the IC (12 digits) and appends `employee.ic.updated`.
+ * Persisting to the SAME column keeps setStatutoryAction's IC-derived SOCSO/EIS + EPF-number defaults working.
+ */
+export async function setIcProfileMY(ctx: SessionContext, p: { personId: string; icNumber: string }) {
+  if (!isValidIC(p.icNumber)) throw new InvalidICError();
+  const ic = normalizeIC(p.icNumber);
+  return withTenant(ctx, async (tx) => {
+    const [existing] = await tx
+      .select({ id: employeeStatutoryMy.id, icNumber: employeeStatutoryMy.icNumber })
+      .from(employeeStatutoryMy)
+      .where(eq(employeeStatutoryMy.personId, p.personId))
+      .limit(1);
+    let id: string;
+    if (existing) {
+      await tx
+        .update(employeeStatutoryMy)
+        .set({ icNumber: ic, updatedAt: sql`now()` })
+        .where(eq(employeeStatutoryMy.id, existing.id));
+      id = existing.id;
+    } else {
+      const [row] = await tx
+        .insert(employeeStatutoryMy)
+        .values({ tenantId: ctx.tenantId, personId: p.personId, icNumber: ic })
+        .returning({ id: employeeStatutoryMy.id });
+      id = row.id;
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employee-statutory',
+      aggregateId: id,
+      eventType: 'employee.ic.updated',
+      actor: actorOf(ctx),
+      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+      // IC is a government identity number (like the SOCSO/bank routing identifiers already recorded on the
+      // sibling statutory events); before/after so an auditor can reconstruct a correction from the log alone.
+      payload: { personId: p.personId, before: { icNumber: existing?.icNumber ?? null }, after: { icNumber: ic } },
+    });
+    return { id };
+  });
+}
+
+/** Just the tax columns of the Identification & Tax card (item 8b5334db). Used by the dedicated card, which
+ *  saves independently of the full statutory row (like setTp3/setBank). */
+export type TaxInput = {
+  personId: string;
+  taxNumber?: string | null;
+  taxCategory?: number;
+  taxResidency?: TaxResidency | string | null;
+  numChildren?: number;
+  childReliefMode?: ChildReliefMode | string | null;
+  employerBearsTax?: boolean;
+};
+
+/**
+ * Partial update of ONLY the tax columns on employee_statutory_my (taxNumber, taxCategory, taxResidency +
+ * synced isResident, numChildren, childReliefMode, employerBearsTax), leaving the rest of the row (IC, EPF,
+ * SOCSO/EIS, bank, TP3, zakat) untouched — the Identification & Tax card was split out of the single full-row
+ * statutory form (item 8b5334db), exactly like setTp3/setBank. Requires an existing statutory row (the IC seeds
+ * it on the Profile tab) — throws NoIcYetError otherwise. isResident is kept in sync as the legacy source of
+ * truth (resident ⇒ true, any incentive status ⇒ false). Appends `employee.tax.updated` (before/after).
+ */
+export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
+  const residency: TaxResidency =
+    p.taxResidency != null && isTaxResidency(String(p.taxResidency)) ? (String(p.taxResidency) as TaxResidency) : 'resident';
+  const mode: ChildReliefMode =
+    p.childReliefMode != null && isChildReliefMode(String(p.childReliefMode)) ? (String(p.childReliefMode) as ChildReliefMode) : 'manual';
+  const taxCategory = [1, 2, 3].includes(Number(p.taxCategory)) ? Number(p.taxCategory) : 1;
+  const numChildren = Math.max(0, Math.floor(Number(p.numChildren) || 0));
+  const values = {
+    taxNumber: (p.taxNumber ?? '').trim() || null,
+    taxCategory,
+    numChildren,
+    childReliefMode: mode,
+    taxResidency: residency,
+    // Keep the legacy boolean in sync so any caller still reading is_resident sees the right full-MTD vs
+    // flat-rate intent (only 'resident' is a full-MTD resident; the three incentive statuses are not).
+    isResident: residency === 'resident',
+    employerBearsTax: p.employerBearsTax ?? false,
+  };
+  return withTenant(ctx, async (tx) => {
+    const [existing] = await tx
+      .select({
+        id: employeeStatutoryMy.id,
+        taxNumber: employeeStatutoryMy.taxNumber,
+        taxCategory: employeeStatutoryMy.taxCategory,
+        numChildren: employeeStatutoryMy.numChildren,
+        childReliefMode: employeeStatutoryMy.childReliefMode,
+        taxResidency: employeeStatutoryMy.taxResidency,
+        isResident: employeeStatutoryMy.isResident,
+        employerBearsTax: employeeStatutoryMy.employerBearsTax,
+      })
+      .from(employeeStatutoryMy)
+      .where(eq(employeeStatutoryMy.personId, p.personId))
+      .limit(1);
+    if (!existing) throw new NoIcYetError();
+    await tx
+      .update(employeeStatutoryMy)
+      .set({ ...values, updatedAt: sql`now()` })
+      .where(eq(employeeStatutoryMy.id, existing.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employee-statutory',
+      aggregateId: existing.id,
+      eventType: 'employee.tax.updated',
+      actor: actorOf(ctx),
+      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+      // before/after of only the tax columns so a compliance auditor can reconstruct residency / relief /
+      // employer-bears changes (the inputs that drive PCB) from the event log alone. These are config settings,
+      // not per-payslip cleartext pay, so recording them is consistent with the other statutory setters.
+      payload: {
+        personId: p.personId,
+        before: existing
+          ? {
+              taxNumber: existing.taxNumber,
+              taxCategory: existing.taxCategory,
+              numChildren: existing.numChildren,
+              childReliefMode: existing.childReliefMode,
+              taxResidency: existing.taxResidency,
+              employerBearsTax: existing.employerBearsTax,
+            }
+          : null,
+        after: values,
+      },
+    });
+    return { id: existing.id };
+  });
+}
+
 export function getStatutoryProfileMY(ctx: SessionContext, personId: string) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx

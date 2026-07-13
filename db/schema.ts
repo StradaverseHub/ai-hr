@@ -1568,8 +1568,20 @@ export const employeeStatutoryMy = pgTable(
     // PCB (MTD) inputs. taxCategory: 1=single, 2=married/spouse not working, 3=married/spouse working.
     taxCategory: integer('tax_category').notNull().default(1),
     numChildren: integer('num_children').notNull().default(0),
+    // Item 8b5334db — how num_children is maintained. 'manual' = HR keys it (today's behaviour); 'auto' derives
+    // the eligible child count from the Family register and surfaces it for HR CONFIRMATION into num_children
+    // (never silent — respects the employee_dependent benefits-vs-tax firewall). Payroll always reads num_children.
+    childReliefMode: text('child_relief_mode').notNull().default('manual'),
     // Non-residents pay flat 30% MTD (LHDN spec §D.a) — no reliefs, no accumulator method.
     isResident: boolean('is_resident').notNull().default(true),
+    // Item 8b5334db — richer tax residency than the boolean above (which stays in sync as the legacy source of
+    // truth). resident ⇒ full computerised MTD; non_resident ⇒ flat 30%; rep (Returning Expert Programme) +
+    // knowledge_worker (specific-region incentive, e.g. Iskandar) ⇒ flat 15%. Backfilled from is_resident.
+    taxResidency: text('tax_residency').notNull().default('resident'),
+    // Item 8b5334db — employer bears the employee's PCB: the tax is still computed + reported in full, but its
+    // amount is funded from employer cost instead of deducted from the employee's net (same plumbing as
+    // employer_bears_socso/eis). Default false ⇒ byte-identical. LHDN tax-on-tax gross-up is a follow-up.
+    employerBearsTax: boolean('employer_bears_tax').notNull().default(false),
     // "Subject to EIS" (item 5a461b99 reuses this existing flag — no duplicate column).
     eisEligible: boolean('eis_eligible').notNull().default(true),
     // SOCSO & EIS statutory controls (item 5a461b99). subject_to_* gate whether a scheme is contributed at

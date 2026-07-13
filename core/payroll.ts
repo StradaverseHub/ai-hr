@@ -1911,6 +1911,10 @@ export async function generatePayslips(
         taxCategory: employeeStatutoryMy.taxCategory,
         numChildren: employeeStatutoryMy.numChildren,
         isResident: employeeStatutoryMy.isResident,
+        // Item 8b5334db — tax residency drives the PCB method (resident MTD / non-resident flat 30% / REP +
+        // Knowledge Worker flat 15%); employer_bears_tax funds the employee's PCB from employer cost.
+        taxResidency: employeeStatutoryMy.taxResidency,
+        employerBearsTax: employeeStatutoryMy.employerBearsTax,
         eisEligible: employeeStatutoryMy.eisEligible,
         // SOCSO & EIS statutory controls (item 5a461b99) — subject_to_* gate the scheme; employer_bears_*
         // fund the employee's share from employer cost without deducting it from net.
@@ -2873,6 +2877,16 @@ export async function generatePayslips(
         subjectToSocso: e.subjectToSocso ?? true,
         subjectToSkbbk: e.subjectToSkbbk ?? true,
         resident: e.isResident ?? true,
+        // Item 8b5334db — resolve the flat PCB rate from tax residency (falling back to isResident for a legacy
+        // row with no residency set). resident ⇒ null (full MTD); non_resident ⇒ 0.30 (identical to the old
+        // resident:false path); rep / knowledge_worker ⇒ 0.15 (Returning Expert Programme / Knowledge Worker in a
+        // specific region — flat incentive rate, no reliefs). Byte-identical for every existing resident/non-res row.
+        flatTaxRate: (() => {
+          const r = e.taxResidency ?? (e.isResident === false ? 'non_resident' : 'resident');
+          if (r === 'non_resident') return 0.3;
+          if (r === 'rep' || r === 'knowledge_worker') return 0.15;
+          return null;
+        })(),
         // EPF rule selection (#95): age + citizenship pick Part A / Part E senior / non-citizen 2%/2%.
         epfAge: age,
         epfCitizenship: e.epfCitizenship ?? 'citizen',
@@ -2974,7 +2988,15 @@ export async function generatePayslips(
       const employerBorneSocso = bearsSocso ? round2(st.socsoEmployee) : 0;
       const employerBorneEis = bearsEis ? round2(st.eisEmployee) : 0;
       const employerBorneSkbbk = bearsSkbbk ? round2(st.socsoSkbbk) : 0;
-      const employerBorneTotal = round2(employerBorneSocso + employerBorneEis + employerBorneSkbbk);
+      // Item 8b5334db — "Employer bears tax": the PCB is still computed + reported in full (st.pcb untouched, so
+      // CP39/PCB reports + the amount remitted to LHDN are unchanged), but the employee's take-home is NOT reduced
+      // by it — the employer funds it. Same funding plumbing as the SOCSO/EIS employer-bears flags: subtract from
+      // statutory deductions, add to employer cost. Off by default ⇒ 0 ⇒ byte-identical. NOTE (documented
+      // follow-up): under LHDN, tax the employer pays on an employee's behalf is itself a taxable benefit, so a
+      // fully-correct treatment grosses up (tax-on-tax). This implements the funding/plumbing; gross-up is deferred.
+      const bearsTax = e.employerBearsTax ?? false;
+      const employerBorneTax = bearsTax ? round2(st.pcb) : 0;
+      const employerBorneTotal = round2(employerBorneSocso + employerBorneEis + employerBorneSkbbk + employerBorneTax);
 
       // Payslip amounts. An additional run pays ONLY its additional remuneration — the normal wage,
       // allowance and OT were paid by the regular run — so basic/allowance/OT are 0 and gross = the bonus.
@@ -3123,13 +3145,16 @@ export async function generatePayslips(
           // Item 5a461b99 — snapshot the "Employer bears" decision + the amounts the employer absorbed for
           // provenance, ONLY when at least one flag is set (absent ⇒ byte-identical to today). The reported
           // socso/eis/skbbk figures above are unchanged; this records that their EMPLOYEE share was not deducted.
-          ...(bearsSocso || bearsEis || bearsSkbbk
+          ...(bearsSocso || bearsEis || bearsSkbbk || bearsTax
             ? {
-                employerBears: { socso: bearsSocso, eis: bearsEis, skbbk: bearsSkbbk },
+                // Item 8b5334db — `tax` extends the employer-bears snapshot (absent ⇒ byte-identical to the
+                // SOCSO/EIS-only snapshot). Records that the employee's PCB share was funded by the employer.
+                employerBears: { socso: bearsSocso, eis: bearsEis, skbbk: bearsSkbbk, tax: bearsTax },
                 employerBorne: {
                   socso: employerBorneSocso,
                   eis: employerBorneEis,
                   skbbk: employerBorneSkbbk,
+                  tax: employerBorneTax,
                   total: employerBorneTotal,
                 },
               }

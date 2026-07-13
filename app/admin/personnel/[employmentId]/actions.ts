@@ -661,7 +661,14 @@ export async function setStatutoryAction(formData: FormData) {
     // the current election and pass it through unchanged. Without this, every Personnel statutory
     // save would silently wipe an existing election (resolveZakatElection treats absent as inactive).
     const current = await pack.statutory.get(s, personId);
-    const icNumber = String(formData.get('icNumber'));
+    // Item 8b5334db — IC + the tax fields (taxNumber/taxCategory/numChildren/residency) were split out of this
+    // full-row statutory form onto the Profile tab (IC → setIcAction) and the dedicated Identification & Tax card
+    // (tax → setTaxAction). This form no longer carries those inputs, but setStatutoryProfileMY is a FULL overwrite
+    // of the columns it writes — so read the stored values and pass them through unchanged (same pass-through trap
+    // the bank/TP3/zakat fields already guard against). The three NEW columns (taxResidency/childReliefMode/
+    // employerBearsTax) are NOT in setStatutoryProfileMY's write set, so they are untouched here regardless.
+    if (!current) throw new Error('Save the IC number on the Profile tab first, then the EPF / SOCSO details.');
+    const icNumber = current.icNumber;
     await pack.statutory.set(s, {
       personId,
       icNumber,
@@ -674,9 +681,11 @@ export async function setStatutoryAction(formData: FormData) {
         icNumber,
         nationality: (formData.get('nationality') as string) || null,
       }),
-      taxNumber: (formData.get('taxNumber') as string) || undefined,
-      taxCategory: Number(formData.get('taxCategory')) || 1,
-      numChildren: Number(formData.get('numChildren')) || 0,
+      // Tax fields now owned by the Identification & Tax card (setTaxAction) — pass the stored values through so
+      // an EPF/SOCSO save never wipes them (this setter is a full overwrite of the columns it writes).
+      taxNumber: current.taxNumber ?? undefined,
+      taxCategory: current.taxCategory ?? 1,
+      numChildren: current.numChildren ?? 0,
       // Item 5a461b99 — SOCSO & EIS statutory controls. eisEligible doubles as "Subject to EIS".
       eisEligible: formData.get('eisEligible') === 'on',
       subjectToSocso: formData.get('subjectToSocso') === 'on',
@@ -785,6 +794,58 @@ export async function setBankAction(formData: FormData) {
       customHolderName: (formData.get('customHolderName') as string) || null,
       enableCustomHolderId: formData.get('enableCustomHolderId') === 'on',
       customHolderId: (formData.get('customHolderId') as string) || null,
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Item 8b5334db — save ONLY the icNumber column. IC was relocated from the Bank & Statutory card to the Profile
+ * tab (R34 TP3-split precedent), so it needs its own partial-update action. Unlike setBank/setTp3, the IC setter
+ * SEEDS the statutory row (IC is the notNull identity) — setIcProfileMY upserts. requireAdmin gates it; the pack
+ * setter validates the IC and appends `employee.ic.updated`.
+ */
+export async function setIcAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const personId = String(formData.get('personId'));
+  const pack = packFor('MY');
+  try {
+    if (!pack) throw new Error('No localization pack for MY');
+    await pack.statutory.setIc(s, { personId, icNumber: String(formData.get('icNumber') ?? '') });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Item 8b5334db — save ONLY the tax columns of the Identification & Tax card (taxNumber, taxCategory,
+ * taxResidency, numChildren, childReliefMode, employerBearsTax). The card was split out of the single full-row
+ * statutory form (like the Bank card), so it needs a dedicated partial-update action that leaves the rest of the
+ * statutory row untouched. requireAdmin gates it; the pack setter validates the enums, keeps isResident in sync,
+ * and appends `employee.tax.updated`. childReliefMode 'auto' still persists a CONFIRMED numChildren (the client
+ * surfaces the family-derived suggestion for the admin to accept) — this action never silently derives tax.
+ */
+export async function setTaxAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const personId = String(formData.get('personId'));
+  const pack = packFor('MY');
+  try {
+    if (!pack) throw new Error('No localization pack for MY');
+    await pack.statutory.setTax(s, {
+      personId,
+      taxNumber: (formData.get('taxNumber') as string) || null,
+      taxCategory: Number(formData.get('taxCategory')) || 1,
+      taxResidency: (formData.get('taxResidency') as string) || 'resident',
+      numChildren: Number(formData.get('numChildren')) || 0,
+      childReliefMode: (formData.get('childReliefMode') as string) || 'manual',
+      employerBearsTax: formData.get('employerBearsTax') === 'on',
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));

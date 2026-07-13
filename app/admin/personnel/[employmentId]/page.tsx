@@ -22,6 +22,7 @@ import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
+import { IdentityTaxCard } from '@/components/identity-tax-card';
 import {
   addDelegationAction,
   addReportingLineAction,
@@ -40,6 +41,8 @@ import {
   setStatutoryAction,
   setTp3Action,
   setBankAction,
+  setIcAction,
+  setTaxAction,
   terminateAction,
   transferAction,
 } from './actions';
@@ -48,7 +51,7 @@ import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
-import { listDependents, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, type DependentRow } from '@/core/dependents';
+import { listDependents, eligibleChildReliefCount, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
 import { listAssignablePolicies } from '@/core/payroll-policy';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
@@ -395,6 +398,25 @@ export default async function EmployeePage({
           <p className="text-xs text-muted-foreground sm:col-span-4">{t('maritalPcbNote')}</p>
           <div className="sm:col-span-4 flex justify-end">
             <button className={btnPrimary}>{t('saveComplianceFields')}</button>
+          </div>
+        </form>
+
+        {/* Item 8b5334db — IC Number relocated here from the Bank & Statutory tax section (personal identification
+            belongs on the Profile). Its OWN small form + partial save (setIcAction) writing only the icNumber
+            column, so it seeds/updates the same statutory row the SOCSO/EIS + EPF-number defaults read on render.
+            Following the R34 TP3 split precedent. */}
+        <form
+          action={setIcAction}
+          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
+        >
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="personId" value={emp.personId} />
+          <Field label={t('icNumber')}>
+            <input name="icNumber" required defaultValue={statutory?.icNumber ?? ''} placeholder="900101011234" className={inputCls} />
+          </Field>
+          <p className="text-xs text-muted-foreground sm:col-span-3 sm:self-center">{t('icNumberHint')}</p>
+          <div className="sm:col-span-4 flex justify-end">
+            <button className={btnPrimary}>{t('saveIc')}</button>
           </div>
         </form>
       </Card>
@@ -1234,41 +1256,11 @@ export default async function EmployeePage({
         <input type="hidden" name="employmentId" value={emp.employmentId} />
         <input type="hidden" name="personId" value={emp.personId} />
 
-        {/* Group 1 — Identification & tax */}
-        <fieldset className="flex flex-col gap-3">
-          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t('statutoryGroupIdentity')}
-          </legend>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label={t('icNumber')}>
-              <input name="icNumber" required defaultValue={statutory?.icNumber ?? ''} placeholder="900101011234" className={inputCls} />
-            </Field>
-            <Field label={t('taxNumber')}>
-              <input name="taxNumber" defaultValue={statutory?.taxNumber ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('pcbCategory')}>
-              <select name="taxCategory" defaultValue={String(statutory?.taxCategory ?? 1)} className={inputCls}>
-                <option value="1">{t('pcbCategory1')}</option>
-                <option value="2">{t('pcbCategory2')}</option>
-                <option value="3">{t('pcbCategory3')}</option>
-              </select>
-            </Field>
-            <Field label={t('childrenPcbRelief')}>
-              <input
-                name="numChildren"
-                type="number"
-                min="0"
-                step="1"
-                defaultValue={statutory?.numChildren ?? 0}
-                className={inputCls}
-              />
-            </Field>
-            <label className="flex items-center gap-2 self-end pb-2 text-sm" title={t('taxResidentHint')}>
-              <input type="checkbox" name="isResident" defaultChecked={statutory ? statutory.isResident : true} className="size-4 rounded" />
-              {t('taxResident')}
-            </label>
-          </div>
-        </fieldset>
+        {/* Item 8b5334db — Group 1 (Identification & tax) was split out of this full-row statutory form: the IC
+            moved to its own form on the Profile tab (setIcAction), and the tax fields (Tax Number, Tax Category,
+            Income Tax Resident, Children/PCB relief, Employer-bears-tax) moved to the dedicated Identification &
+            Tax card above (setTaxAction). This form no longer carries any of those inputs; setStatutoryAction
+            reads the stored IC + tax values and passes them through so its full-row overwrite can't wipe them. */}
 
         {/* Group 2 — EPF. Presented as its own visually-distinct information card (rounded border +
             heading + subtle surface) so the EPF election stands apart from the flat identity/SOCSO/bank
@@ -1400,6 +1392,30 @@ export default async function EmployeePage({
         customHolderName: statutory?.customHolderName ?? null,
         enableCustomHolderId: statutory?.enableCustomHolderId ?? false,
         customHolderId: statutory?.customHolderId ?? null,
+      }}
+    />
+  ) : null;
+
+  // ── IDENTIFICATION & TAX (Bank & Statutory tab) ─────────────────────────────
+  // Item 8b5334db — the tax fields were split out of the full-row statutory form into their OWN dedicated card
+  // with a partial save (setTaxAction, only the tax columns). IC is gone (relocated to Profile). The card adds
+  // Income Tax Resident (resident / non-resident / REP / Knowledge Worker → drives the PCB method), a manual/auto
+  // Children (PCB relief) control (auto surfaces a family-derived suggestion for HR to confirm — never silent),
+  // and an Employer-bears-tax switch. It's a client island rendered as JSX only, so the RSC boundary is respected.
+  // The eligible-child suggestion is derived here (server-side, read-only) from the already-loaded Family records.
+  const identityTaxCard = admin ? (
+    <IdentityTaxCard
+      action={setTaxAction}
+      employmentId={emp.employmentId}
+      personId={emp.personId}
+      derivedChildCount={eligibleChildReliefCount(dependents)}
+      defaults={{
+        taxNumber: statutory?.taxNumber ?? null,
+        taxCategory: statutory?.taxCategory ?? 1,
+        taxResidency: statutory?.taxResidency ?? 'resident',
+        numChildren: statutory?.numChildren ?? 0,
+        childReliefMode: statutory?.childReliefMode ?? 'manual',
+        employerBearsTax: statutory?.employerBearsTax ?? false,
       }}
     />
   ) : null;
@@ -2007,6 +2023,9 @@ export default async function EmployeePage({
     bankStatutory: (
       <>
         {bankCard}
+        {/* Item 8b5334db — dedicated Identification & Tax card (tax fields split out of the statutory card, its
+            own partial save setTaxAction). Sits between Bank and the EPF/SOCSO statutory registration card. */}
+        {identityTaxCard}
         {statutoryCard}
       </>
     ),

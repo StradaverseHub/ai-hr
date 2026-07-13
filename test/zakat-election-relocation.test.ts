@@ -186,6 +186,8 @@ describe('Zakat election relocation — Payroll > Transactions > Zakat owns the 
     await setStatutoryProfileMY(a, {
       personId: e.personId,
       icNumber: '900101015003',
+      taxNumber: 'TX-9',
+      taxCategory: 2,
       zakatActive: true,
       zakatState: 'Selangor',
       zakatMethod: 'fixed',
@@ -193,22 +195,20 @@ describe('Zakat election relocation — Payroll > Transactions > Zakat owns the 
       zakatEffectiveFrom: '2026-03-01',
     });
 
-    // A Personnel statutory save, exactly as the relocated form now submits it: NO zakat* keys at all.
+    // A Personnel statutory (EPF/SOCSO) save, exactly as the relocated form now submits it: NO zakat* keys, and
+    // NO IC/tax keys either (item 8b5334db moved IC to Profile and the tax fields to the Identification & Tax
+    // card). setStatutoryAction reads the stored IC + tax values and passes them through unchanged.
     const fd = new FormData();
     fd.set('employmentId', e.employmentId);
     fd.set('personId', e.personId);
-    fd.set('icNumber', '900101015003');
-    fd.set('taxNumber', 'TX-9');
-    fd.set('taxCategory', '2');
-    fd.set('numChildren', '1');
     fd.set('eisEligible', 'on');
-    fd.set('isResident', 'on');
     fd.set('epfCitizenship', 'citizen');
     await expect(setStatutoryAction(fd)).rejects.toThrow('NEXT_REDIRECT');
     expect(LAST_REDIRECT).toContain('toast=Saved');
 
     const row = await getStatutoryProfileMY(a, e.personId);
-    // The statutory edit landed…
+    // The pre-existing IC + tax values survived the EPF/SOCSO save (pass-through, item 8b5334db)…
+    expect(row?.icNumber).toBe('900101015003');
     expect(row?.taxNumber).toBe('TX-9');
     expect(row?.taxCategory).toBe(2);
     // …and the Payroll-owned election survived untouched (the wipe regression this test pins down).

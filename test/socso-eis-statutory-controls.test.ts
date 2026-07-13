@@ -153,7 +153,8 @@ describe('Item 5a461b99 — kernel employer-bears + subject-to wiring', () => {
 
     // Provenance snapshot present on the bears slip, absent on the baseline slip (byte-identical default).
     const eb = psBears.statutory as Record<string, unknown>;
-    expect(eb.employerBears).toEqual({ socso: true, eis: true, skbbk: true });
+    // Item 8b5334db extended the snapshot with a `tax` leg (employer-bears-tax); false here (not set).
+    expect(eb.employerBears).toEqual({ socso: true, eis: true, skbbk: true, tax: false });
     expect((eb.employerBorne as { total: number }).total).toBeCloseTo(borne, 2);
     expect((psBase.statutory as Record<string, unknown>).employerBears).toBeUndefined();
   });

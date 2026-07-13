@@ -1401,6 +1401,13 @@
       "when": 1781862198000,
       "tag": "0199_bank_custom_holder",
       "breakpoints": true
+    },
+    {
+      "idx": 200,
+      "version": "7",
+      "when": 1781862199000,
+      "tag": "0200_identity_tax_controls",
+      "breakpoints": true
     }
   ]
 }

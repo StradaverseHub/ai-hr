@@ -62,10 +62,16 @@ describe('Personnel — Bank & Statutory tab (40ef71a0)', () => {
     // partial setBankAction), no longer inside the statutory form. bankCard is wired with setBankAction.
     expect(PAGE.includes('const bankCard = admin ?')).toBe(true);
     expect(PAGE.includes('action={setBankAction}')).toBe(true);
-    // Malaysia statutory inputs that must remain mounted inside the statutory form.
-    for (const field of ['epfNumber', 'socsoNumber', 'taxNumber', 'icNumber']) {
+    // Malaysia statutory inputs that must remain mounted inside the statutory form. Item 8b5334db — taxNumber
+    // moved to the dedicated Identification & Tax card (setTaxAction) and icNumber to its own Profile-tab form
+    // (setIcAction); both still exist on the page (icNumber here, taxNumber in identity-tax-card.tsx). epfNumber
+    // + socsoNumber stay in the statutory form.
+    for (const field of ['epfNumber', 'socsoNumber']) {
       expect(PAGE.includes(`name="${field}"`), `missing statutory input ${field}`).toBe(true);
     }
+    // IC relocated to Profile (still on the page) and taxNumber to the Identification & Tax card component.
+    expect(PAGE.includes('name="icNumber"')).toBe(true);
+    expect(PAGE.includes('action={setTaxAction}')).toBe(true);
   });
 
   it('has the tabs.bankStatutory label in all six locales (no raw key at runtime)', () => {

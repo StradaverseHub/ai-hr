@@ -61,7 +61,7 @@ export function computeMonthlyRuns(p: {
   /** Prior-MONTH PCB accumulators (∑(Y−K), K, X, Z) — same seed the one-batch path uses. */
   priorAcc?: PcbAccumulators;
   rules?: StatutoryRuleset;
-  opts?: { socsoCategory?: 1 | 2; eisEligible?: boolean; resident?: boolean; epfElection?: EpfElection };
+  opts?: { socsoCategory?: 1 | 2; eisEligible?: boolean; resident?: boolean; flatTaxRate?: number | null; epfElection?: EpfElection };
   /** Ordered by run_seq. runs[0] should be the regular run (ADR-0024 §6). */
   runs: MonthRunInput[];
 }): { runs: MonthRunResult[]; monthly: MonthlyFigures } {

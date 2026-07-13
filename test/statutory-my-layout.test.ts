@@ -18,16 +18,19 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const page = read('app/admin/personnel/[employmentId]/page.tsx');
+const identityTaxCard = read('components/identity-tax-card.tsx');
 
 describe('Statutory (Malaysia) layout: lives in the Bank & Statutory tab', () => {
-  it('renders {statutoryCard} + {bankCard} in the bankStatutory tab panel', () => {
-    // R24 40ef71a0 relocated statutory into its own Bank & Statutory tab. Item ef720d3a then split the bank
-    // fields into their own dedicated Bank Information card (bankCard) rendered alongside it on the same tab.
+  it('renders {bankCard} + {identityTaxCard} + {statutoryCard} in the bankStatutory tab panel', () => {
+    // R24 40ef71a0 relocated statutory into its own Bank & Statutory tab. Item ef720d3a split the bank fields
+    // into a dedicated Bank Information card. Item 8b5334db then split the tax fields into a dedicated
+    // Identification & Tax card (identityTaxCard) rendered alongside on the same tab.
     const start = page.indexOf('bankStatutory: (');
     expect(start).toBeGreaterThan(-1);
     const end = page.indexOf('),', start);
     const panel = page.slice(start, end);
     expect(panel.includes('{bankCard}')).toBe(true);
+    expect(panel.includes('{identityTaxCard}')).toBe(true);
     expect(panel.includes('{statutoryCard}')).toBe(true);
   });
 
@@ -60,18 +63,13 @@ describe('Statutory (Malaysia) layout: every statutory input stays mounted (full
   const requiredInputs = [
     'name="employmentId"',
     'name="personId"',
-    'name="icNumber"',
     'name="epfNumber"',
     'name="socsoNumber"',
-    'name="taxNumber"',
-    'name="taxCategory"',
-    'name="numChildren"',
     // Item ef720d3a — bankName/bankAccountNo moved OUT of this full-overwrite form into the dedicated Bank
-    // Information card (components/bank-info-card.tsx, its own partial setBankAction). setStatutoryAction now
-    // passes the stored bank values through unchanged, so they can't be wiped. The card's inputs are guarded
-    // by test/bank-custom-holder.test.ts instead of appearing here.
+    // Information card. Item 8b5334db — icNumber/taxNumber/taxCategory/numChildren/isResident moved OUT too:
+    // IC to its own Profile-tab form (setIcAction) and the tax fields to the dedicated Identification & Tax card
+    // (setTaxAction). setStatutoryAction now passes those stored values through unchanged so they can't be wiped.
     'name="eisEligible"',
-    'name="isResident"',
     'name="epfCitizenship"',
     'name="tp3Year"',
     'name="tp3NetRemuneration"',
@@ -86,12 +84,30 @@ describe('Statutory (Malaysia) layout: every statutory input stays mounted (full
   }
 });
 
+describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, tax fields in the dedicated card', () => {
+  it('IC has its own Profile-tab form (setIcAction) with the icNumber input', () => {
+    expect(page.includes('action={setIcAction}')).toBe(true);
+    expect(page.includes('name="icNumber"')).toBe(true);
+  });
+
+  it('the Identification & Tax card carries the tax inputs (setTaxAction)', () => {
+    expect(page.includes('action={setTaxAction}') || identityTaxCard.includes('action={action}')).toBe(true);
+    for (const input of ['name="taxNumber"', 'name="taxCategory"', 'name="taxResidency"', 'name="numChildren"', 'name="childReliefMode"', 'name="employerBearsTax"']) {
+      expect(identityTaxCard.includes(input), `${input} should exist in identity-tax-card.tsx`).toBe(true);
+    }
+  });
+
+  it('exposes the four Income Tax Resident options incl. the new REP / Knowledge Worker statuses', () => {
+    for (const v of ['value="resident"', 'value="non_resident"', 'value="rep"', 'value="knowledge_worker"']) {
+      expect(identityTaxCard.includes(v), `${v} should exist in the residency select`).toBe(true);
+    }
+  });
+});
+
 describe('Statutory (Malaysia) layout: grouped section headers exist', () => {
-  // Item 5a461b99 relocated the SOCSO & EIS group into its own bordered card headed by
-  // `socsoEisCardTitle` (was the `statutoryGroupSocsoEis` legend); identity + bank remain plain legends.
-  // Item ef720d3a — the statutoryGroupBank legend moved out with the bank fields (now the bankCardTitle
-  // header on the dedicated Bank Information card). The statutory form keeps identity + SOCSO/EIS headers.
-  for (const key of ['statutoryGroupIdentity', 'socsoEisCardTitle']) {
+  // Item 5a461b99 put SOCSO & EIS in its own bordered card (socsoEisCardTitle). Item 8b5334db — the identity/tax
+  // group left the statutory form for its own card, so only the SOCSO/EIS header remains on this form.
+  for (const key of ['socsoEisCardTitle']) {
     it(`uses the ${key} group label`, () => {
       expect(page.includes(`t('${key}')`)).toBe(true);
     });

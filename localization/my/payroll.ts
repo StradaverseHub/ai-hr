@@ -517,6 +517,11 @@ export function statutory(
     subjectToSocso?: boolean;
     subjectToSkbbk?: boolean;
     resident?: boolean;
+    /** Item 8b5334db — an explicit flat PCB rate for the incentive tax-residency statuses, overriding the
+     *  resident/non-resident branch selection. null/undefined ⇒ resolve from `resident` (back-compat). 0.30 ⇒
+     *  non-resident (identical to resident:false); 0.15 ⇒ REP / Knowledge Worker (specific region). A flat rate
+     *  means the same "flat % of taxable remuneration, no reliefs, no accumulators" shape as the non-resident MTD. */
+    flatTaxRate?: number | null;
     epfElection?: EpfElection;
     /** Employee age + citizenship select the EPF rule (Part A / Part E senior / non-citizen 2%/2%). */
     epfAge?: number | null;
@@ -549,10 +554,16 @@ export function statutory(
   // EPF relief split: the employee share on the bonus (Kₜ) — 0 for seniors (Part E) and the flat
   // non-citizen rate; for citizens < 60 it is the effective (incl. i-Topup) employee rate on the bonus.
   const epfOnBonus = eC.employeeOnBonus;
-  if (opts?.resident === false) {
-    // Non-resident MTD (spec §D.a): flat 30% of taxable remuneration, no reliefs/accumulators.
-    const pcbAll = rm10Floor(ceil5sen(trunc2((cashWage + additional) * 0.3)));
-    const pcbBonusOnly = rm10Floor(ceil5sen(trunc2(additional * 0.3)));
+  // Item 8b5334db — resolve the flat PCB rate: an explicit flatTaxRate wins (REP/Knowledge Worker = 0.15,
+  // non_resident = 0.30); otherwise fall back to the legacy resident=false ⇒ 0.30 branch. A resident (null
+  // rate, resident !== false) takes the full computerised-MTD path below. This keeps every existing caller
+  // byte-identical: resident:false with no flatTaxRate still yields exactly 0.30.
+  const flatRate = opts?.flatTaxRate != null ? opts.flatTaxRate : opts?.resident === false ? 0.3 : null;
+  if (flatRate != null) {
+    // Flat-rate MTD (spec §D.a for non-residents; the REP/Knowledge-Worker incentive schemes use the same
+    // shape at 15%): flat % of taxable remuneration, no reliefs / accumulators.
+    const pcbAll = rm10Floor(ceil5sen(trunc2((cashWage + additional) * flatRate)));
+    const pcbBonusOnly = rm10Floor(ceil5sen(trunc2(additional * flatRate)));
     return {
       epfEmployee: e.employee,
       epfEmployer: e.employer,
@@ -563,10 +574,10 @@ export function statutory(
       eisEmployer: i.employer,
       pcb: pcbAll,
       pcbBonus: Math.min(pcbBonusOnly, pcbAll),
-      // 1.2.4 Zakat — undefined for flat-30% non-residents (zakat-via-salary % is undefined here): the
+      // 1.2.4 Zakat — undefined for flat-rate payees (zakat-via-salary % is undefined here): the
       // percent_of_pcb election yields 0 for them by construction.
       pcbNormalPreZakat: 0,
-      pcbMeta: { nonResident: true as const, rate: 0.3 },
+      pcbMeta: { nonResident: flatRate === 0.3, flatRate, rate: flatRate },
       version: rules.version,
     };
   }

@@ -93,6 +93,37 @@ function isRelationship(v: string): v is DependentRelationship {
   return (DEPENDENT_RELATIONSHIPS as readonly string[]).includes(v);
 }
 
+/**
+ * Item 8b5334db — derive the number of children ELIGIBLE for PCB child relief from the Family register, so the
+ * Identification & Tax card's "Auto" mode can SURFACE a suggested count for HR to confirm. This is a pure,
+ * read-only helper (no 'use client', no DB, no side-effects): it does NOT write num_children and it does NOT
+ * feed payroll — it only produces a suggestion the admin explicitly confirms into num_children, preserving the
+ * benefits-vs-tax firewall (this module never silently drives tax; see the file header).
+ *
+ * LHDN child-relief eligibility (simplified, per the Income Tax Act s.48): an unmarried child is eligible if
+ * they are (a) under 18, OR (b) 18+ and in full-time education (isStudent). Deceased children are excluded.
+ * Only `relationship === 'child'` rows are considered. `asOf` defaults to today (age is computed against it).
+ */
+export function eligibleChildReliefCount(
+  rows: Pick<DependentRow, 'relationship' | 'dateOfBirth' | 'isStudent' | 'isDeceased' | 'archivedAt'>[],
+  asOf: Date = new Date(),
+): number {
+  const asOfMs = asOf.getTime();
+  return rows.filter((r) => {
+    if (r.relationship !== 'child') return false;
+    if (r.isDeceased) return false;
+    if (r.archivedAt) return false;
+    // Full-time student ⇒ eligible regardless of exact age (covers the 18+ in-education case).
+    if (r.isStudent) return true;
+    // Otherwise eligible only when under 18. No DOB ⇒ cannot confirm age ⇒ not auto-counted (HR keys it).
+    if (!r.dateOfBirth) return false;
+    const dob = Date.parse(`${r.dateOfBirth}T00:00:00Z`);
+    if (Number.isNaN(dob)) return false;
+    const age = (asOfMs - dob) / (365.25 * 24 * 60 * 60 * 1000);
+    return age < 18;
+  }).length;
+}
+
 function normGender(v: string | null | undefined): string | null {
   if (v == null || v.trim() === '') return null;
   if (!(DEPENDENT_GENDERS as readonly string[]).includes(v)) {
