@@ -749,6 +749,8 @@
       "photoRemove": "Remove photo",
       "photoRemoveConfirm": "Remove this employee's profile photo?",
       "photoHint": "PNG or JPG, up to 2 MB.",
+      "photoEdit": "Edit photo",
+      "photoReplaceConfirm": "Replace this employee's profile photo?",
       "headerStatus": "Status",
       "headerDepartment": "Department",
       "headerPosition": "Position",

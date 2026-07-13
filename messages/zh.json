@@ -749,6 +749,8 @@
       "photoRemove": "移除照片",
       "photoRemoveConfirm": "移除该员工的头像照片？",
       "photoHint": "PNG 或 JPG，最大 2 MB。",
+      "photoEdit": "编辑照片",
+      "photoReplaceConfirm": "要替换这名员工的头像吗？",
       "headerStatus": "状态",
       "headerDepartment": "部门",
       "headerPosition": "职位",

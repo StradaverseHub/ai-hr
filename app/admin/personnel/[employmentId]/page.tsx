@@ -64,6 +64,7 @@ import { getStatutoryProfileMY, defaultSocsoEisNumber } from '@/localization/my/
 import { MY_STATES } from '@/localization/my/holidays';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
+import { PhotoEditMenu } from '@/components/photo-edit-menu';
 import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
 import { encashmentSnapshotForEmployment } from '@/core/leave-encashment';
 import { unfreezeEncashmentAction, adjustEncashmentAction } from './encashment-actions';
@@ -2050,8 +2051,13 @@ export default async function EmployeePage({
               <Avatar name={emp.name} className="size-24 text-2xl" />
             )}
             {admin && (
-              <div className="flex flex-col items-center gap-1.5">
-                <form action={setPersonPhotoAction} className="flex flex-col items-center gap-1">
+              // dc23d3b6 — photo controls are now hidden behind a pencil/Edit trigger (PhotoEditMenu, a
+              // 'use client' island). The page still BUILDS both forms here (server actions bound as
+              // before) and passes them in as children; the island only toggles their visibility, so the
+              // RSC boundary is respected. Replacing an EXISTING photo now prompts via ConfirmSubmit;
+              // first-time Upload (no photo) submits directly. Removing already confirmed — unchanged.
+              <PhotoEditMenu label={t('photoEdit')} hint={t('photoHint')}>
+                <form action={setPersonPhotoAction} className="flex w-full flex-col items-stretch gap-1.5">
                   <input type="hidden" name="employmentId" value={emp.employmentId} />
                   <input type="hidden" name="personId" value={emp.personId} />
                   <input
@@ -2059,14 +2065,25 @@ export default async function EmployeePage({
                     name="photo"
                     accept="image/png,image/jpeg"
                     required
-                    className="w-40 text-xs text-muted-foreground file:mr-2 file:rounded-md file:border-0 file:bg-accent file:px-2 file:py-1 file:text-xs file:text-foreground"
+                    className="w-full text-xs text-muted-foreground file:mr-2 file:rounded-md file:border-0 file:bg-accent file:px-2 file:py-1 file:text-xs file:text-foreground"
                   />
-                  <button className={`${btnPrimary} h-7 px-2 text-xs`}>
-                    {photoExists ? t('photoReplace') : t('photoUpload')}
-                  </button>
+                  {photoExists ? (
+                    <ConfirmSubmit
+                      title={t('photoReplace')}
+                      description={t('photoReplaceConfirm')}
+                      confirmLabel={t('photoReplace')}
+                      variant="default"
+                      size="sm"
+                      className="w-full"
+                    >
+                      {t('photoReplace')}
+                    </ConfirmSubmit>
+                  ) : (
+                    <button className={`${btnPrimary} h-7 px-2 text-xs`}>{t('photoUpload')}</button>
+                  )}
                 </form>
                 {photoExists && (
-                  <form action={removePersonPhotoAction}>
+                  <form action={removePersonPhotoAction} className="w-full">
                     <input type="hidden" name="employmentId" value={emp.employmentId} />
                     <input type="hidden" name="personId" value={emp.personId} />
                     <ConfirmSubmit
@@ -2074,13 +2091,13 @@ export default async function EmployeePage({
                       description={t('photoRemoveConfirm')}
                       confirmLabel={t('photoRemove')}
                       size="sm"
+                      className="w-full"
                     >
                       {t('photoRemove')}
                     </ConfirmSubmit>
                   </form>
                 )}
-                <p className="text-center text-[11px] text-muted-foreground">{t('photoHint')}</p>
-              </div>
+              </PhotoEditMenu>
             )}
           </div>
           <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-3 text-sm">

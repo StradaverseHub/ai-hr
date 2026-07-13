@@ -749,6 +749,8 @@
       "photoRemove": "Xóa ảnh",
       "photoRemoveConfirm": "Xóa ảnh hồ sơ của nhân viên này?",
       "photoHint": "PNG hoặc JPG, tối đa 2 MB.",
+      "photoEdit": "Sửa ảnh",
+      "photoReplaceConfirm": "Thay ảnh hồ sơ của nhân viên này?",
       "headerStatus": "Trạng thái",
       "headerDepartment": "Phòng ban",
       "headerPosition": "Chức vụ",

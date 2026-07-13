@@ -749,6 +749,8 @@
       "photoRemove": "படத்தை அகற்று",
       "photoRemoveConfirm": "இந்த ஊழியரின் சுயவிவரப் படத்தை அகற்றவா?",
       "photoHint": "PNG அல்லது JPG, 2 MB வரை.",
+      "photoEdit": "படத்தைத் திருத்து",
+      "photoReplaceConfirm": "இந்த ஊழியரின் சுயவிவரப் படத்தை மாற்றவா?",
       "headerStatus": "நிலை",
       "headerDepartment": "துறை",
       "headerPosition": "பதவி",

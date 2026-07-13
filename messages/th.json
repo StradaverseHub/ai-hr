@@ -749,6 +749,8 @@
       "photoRemove": "ลบรูปภาพ",
       "photoRemoveConfirm": "ลบรูปโปรไฟล์ของพนักงานคนนี้หรือไม่?",
       "photoHint": "PNG หรือ JPG ขนาดไม่เกิน 2 MB",
+      "photoEdit": "แก้ไขรูปภาพ",
+      "photoReplaceConfirm": "แทนที่รูปโปรไฟล์ของพนักงานคนนี้หรือไม่?",
       "headerStatus": "สถานะ",
       "headerDepartment": "แผนก",
       "headerPosition": "ตำแหน่ง",

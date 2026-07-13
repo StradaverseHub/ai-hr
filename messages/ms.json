@@ -749,6 +749,8 @@
       "photoRemove": "Buang foto",
       "photoRemoveConfirm": "Buang foto profil pekerja ini?",
       "photoHint": "PNG atau JPG, sehingga 2 MB.",
+      "photoEdit": "Edit foto",
+      "photoReplaceConfirm": "Ganti foto profil pekerja ini?",
       "headerStatus": "Status",
       "headerDepartment": "Jabatan",
       "headerPosition": "Jawatan",
