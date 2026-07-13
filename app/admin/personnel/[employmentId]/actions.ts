@@ -700,6 +700,9 @@ export async function setStatutoryAction(formData: FormData) {
       employerBearsSocso: formData.get('employerBearsSocso') === 'on',
       employerBearsEis: formData.get('employerBearsEis') === 'on',
       employerBearsSkbbk: formData.get('employerBearsSkbbk') === 'on',
+      // Item 0d9bb2da — "Employer bears EPF Contribution" on the EPF card. This full-row setter always sends
+      // the checkbox state so the flag round-trips correctly.
+      employerBearsEpf: formData.get('employerBearsEpf') === 'on',
       isResident: formData.get('isResident') === 'on',
       epfCitizenship: (() => {
         const c = String(formData.get('epfCitizenship') ?? 'citizen');

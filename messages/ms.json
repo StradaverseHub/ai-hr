@@ -356,6 +356,8 @@
       "employerBearsSocso": "Majikan menanggung SOCSO",
       "employerBearsEis": "Majikan menanggung EIS",
       "employerBearsSkbbk": "Majikan menanggung SKBBK",
+      "employerBearsEpf": "Majikan menanggung Caruman EPF",
+      "employerBearsEpfHint": "Apabila ditanda, caruman EPF pekerja masih dikira dan dilaporkan sepenuhnya, tetapi majikan yang membiayainya dan bukan ditolak daripada gaji bersih.",
       "taxResident": "Pemastautin cukai",
       "taxResidentHint": "Bukan pemastautin bayar MTD rata 30% (tiada pelepasan)",
       "tp3SectionTitle": "Pekerjaan sebelumnya tahun ini (TP3 / baki pembukaan)",

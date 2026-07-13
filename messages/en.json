@@ -356,6 +356,8 @@
       "employerBearsSocso": "Employer bears SOCSO",
       "employerBearsEis": "Employer bears EIS",
       "employerBearsSkbbk": "Employer bears SKBBK",
+      "employerBearsEpf": "Employer bears EPF Contribution",
+      "employerBearsEpfHint": "When ticked, the employee's EPF contribution is still computed and reported in full, but the employer funds it instead of deducting it from net pay.",
       "taxResident": "Tax resident",
       "taxResidentHint": "Non-residents pay flat 30% MTD (no reliefs)",
       "tp3SectionTitle": "Previous employment this year (TP3 / opening balances)",

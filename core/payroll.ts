@@ -1942,6 +1942,9 @@ export async function generatePayslips(
         employerBearsSocso: employeeStatutoryMy.employerBearsSocso,
         employerBearsEis: employeeStatutoryMy.employerBearsEis,
         employerBearsSkbbk: employeeStatutoryMy.employerBearsSkbbk,
+        // Item 0d9bb2da — employer bears the employee's EPF share (EPF still computed + reported in full;
+        // only the funding of the employee leg moves to employer cost). Off by default ⇒ byte-identical.
+        employerBearsEpf: employeeStatutoryMy.employerBearsEpf,
         epfCitizenship: employeeStatutoryMy.epfCitizenship,
         epfMode: employeeStatutoryMy.epfMode,
         epfEmployeeRate: employeeStatutoryMy.epfEmployeeRate,
@@ -3040,7 +3043,18 @@ export async function generatePayslips(
       // fully-correct treatment grosses up (tax-on-tax). This implements the funding/plumbing; gross-up is deferred.
       const bearsTax = e.employerBearsTax ?? false;
       const employerBorneTax = bearsTax ? round2(st.pcb) : 0;
-      const employerBorneTotal = round2(employerBorneSocso + employerBorneEis + employerBorneSkbbk + employerBorneTax);
+      // Item 0d9bb2da — "Employer bears EPF": the EPF employee + employer contributions are still computed +
+      // reported in full (st.epfEmployee / st.epfEmployer untouched, so the KWSP file + EPF report + the amount
+      // remitted to KWSP are unchanged), but the employee's EPF share is NOT deducted from take-home — the
+      // employer funds it. Same funding plumbing as the SOCSO/EIS/tax employer-bears flags: subtract from
+      // statutory deductions, add to employer cost. Off by default ⇒ 0 ⇒ byte-identical. NOTE (documented
+      // follow-up, same as the tax control): under LHDN, EPF the employer pays on an employee's behalf is a
+      // taxable perquisite; a fully-correct treatment grosses it up. This implements funding/plumbing only.
+      const bearsEpf = e.employerBearsEpf ?? false;
+      const employerBorneEpf = bearsEpf ? round2(st.epfEmployee) : 0;
+      const employerBorneTotal = round2(
+        employerBorneSocso + employerBorneEis + employerBorneSkbbk + employerBorneTax + employerBorneEpf,
+      );
 
       // Payslip amounts. An additional run pays ONLY its additional remuneration — the normal wage,
       // allowance and OT were paid by the regular run — so basic/allowance/OT are 0 and gross = the bonus.
@@ -3189,16 +3203,19 @@ export async function generatePayslips(
           // Item 5a461b99 — snapshot the "Employer bears" decision + the amounts the employer absorbed for
           // provenance, ONLY when at least one flag is set (absent ⇒ byte-identical to today). The reported
           // socso/eis/skbbk figures above are unchanged; this records that their EMPLOYEE share was not deducted.
-          ...(bearsSocso || bearsEis || bearsSkbbk || bearsTax
+          ...(bearsSocso || bearsEis || bearsSkbbk || bearsTax || bearsEpf
             ? {
                 // Item 8b5334db — `tax` extends the employer-bears snapshot (absent ⇒ byte-identical to the
                 // SOCSO/EIS-only snapshot). Records that the employee's PCB share was funded by the employer.
-                employerBears: { socso: bearsSocso, eis: bearsEis, skbbk: bearsSkbbk, tax: bearsTax },
+                // Item 0d9bb2da — `epf` extends it again (records the employee's EPF share funded by the
+                // employer). The whole block stays absent when EVERY flag is off ⇒ byte-identical default.
+                employerBears: { socso: bearsSocso, eis: bearsEis, skbbk: bearsSkbbk, tax: bearsTax, epf: bearsEpf },
                 employerBorne: {
                   socso: employerBorneSocso,
                   eis: employerBorneEis,
                   skbbk: employerBorneSkbbk,
                   tax: employerBorneTax,
+                  epf: employerBorneEpf,
                   total: employerBorneTotal,
                 },
               }

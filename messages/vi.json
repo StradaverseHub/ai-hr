@@ -356,6 +356,8 @@
       "employerBearsSocso": "Chủ lao động chịu SOCSO",
       "employerBearsEis": "Chủ lao động chịu EIS",
       "employerBearsSkbbk": "Chủ lao động chịu SKBBK",
+      "employerBearsEpf": "Chủ lao động chịu đóng góp EPF",
+      "employerBearsEpfHint": "Khi được đánh dấu, khoản đóng góp EPF của nhân viên vẫn được tính và báo cáo đầy đủ, nhưng chủ lao động tài trợ thay vì khấu trừ từ lương ròng.",
       "taxResident": "Cư trú thuế",
       "taxResidentHint": "Người không cư trú nộp MTD cố định 30% (không giảm trừ)",
       "tp3SectionTitle": "Việc làm trước đó trong năm (TP3 / số dư đầu kỳ)",

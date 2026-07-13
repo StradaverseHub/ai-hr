@@ -1290,6 +1290,18 @@ export default async function EmployeePage({
               employerRate={statutory?.epfEmployerRate ? Number(statutory.epfEmployerRate) * 100 : null}
             />
           </div>
+          {/* Item 0d9bb2da — "Employer bears EPF Contribution". Mirrors the employer-bears SOCSO/EIS/tax
+              controls: when ticked, the EPF employee + employer legs are still computed + reported in full,
+              but the employee's EPF share is funded from employer cost instead of being deducted from net. */}
+          <label className="flex items-center gap-2 text-sm" title={t('employerBearsEpfHint')}>
+            <input
+              type="checkbox"
+              name="employerBearsEpf"
+              defaultChecked={statutory ? statutory.employerBearsEpf : false}
+              className="size-4 rounded"
+            />
+            {t('employerBearsEpf')}
+          </label>
         </fieldset>
 
         {/* Group 3 — dedicated SOCSO & EIS information card (item 5a461b99): the shared SOCSO & EIS

@@ -1601,6 +1601,11 @@ export const employeeStatutoryMy = pgTable(
     employerBearsSocso: boolean('employer_bears_socso').notNull().default(false),
     employerBearsEis: boolean('employer_bears_eis').notNull().default(false),
     employerBearsSkbbk: boolean('employer_bears_skbbk').notNull().default(false),
+    // Item 0d9bb2da — employer bears the employee's EPF contribution: the EPF employee + employer legs are
+    // still computed + reported in full (KWSP file + EPF report unchanged), but the employee's EPF share is
+    // funded from employer cost instead of deducted from net (same plumbing as employer_bears_socso/eis/tax).
+    // Default false ⇒ byte-identical. LHDN perquisite gross-up (employer-paid EPF as a benefit) is a follow-up.
+    employerBearsEpf: boolean('employer_bears_epf').notNull().default(false),
     // EPF citizenship status — drives the Third Schedule rule (Part A / Part E / non-citizen 2%/2%).
     epfCitizenship: epfCitizenshipEnum('epf_citizenship').notNull().default('citizen'),
     // EPF contribution mode (Wave 2B). For 'voluntary_excess' the elected per-side rates (decimals,

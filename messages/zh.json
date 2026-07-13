@@ -356,6 +356,8 @@
       "employerBearsSocso": "雇主承担 SOCSO",
       "employerBearsEis": "雇主承担 EIS",
       "employerBearsSkbbk": "雇主承担 SKBBK",
+      "employerBearsEpf": "雇主承担 EPF 缴款",
+      "employerBearsEpfHint": "勾选后，员工的 EPF 缴款仍会完整计算并申报，但改由雇主承担，而不从净工资中扣除。",
       "taxResident": "税务居民",
       "taxResidentHint": "非居民按 30% 统一 MTD 缴税（无减免）",
       "tp3SectionTitle": "本年度此前任职（TP3 / 期初余额）",
