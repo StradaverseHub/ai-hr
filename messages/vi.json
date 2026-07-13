@@ -2085,7 +2085,7 @@
       "subtitle": "Đợt bảng lương",
       "paymentSummary": "Tóm tắt thanh toán",
       "paymentSummaryTitle": "Tải xuống tệp CSV gồm nhân viên, ngân hàng, tài khoản và lương thực lãnh để tải lên ngân hàng thủ công.",
-      "generatePayslips": "Tạo phiếu lương",
+      "generatePayslips": "Xử lý bảng lương",
       "closeBatch": "Đóng đợt",
       "disclaimer": "<strong>Số liệu nháp.</strong> Các khoản theo luật được tính từ các quy tắc Malaysia đã xác minh có hiệu lực tại thời điểm cuối kỳ. Hãy kiểm tra mọi phiếu lương trước khi đóng — sau khi đóng, đợt sẽ không thể thay đổi. Các tệp ngân hàng (<mono>CP39 / KWSP / PERKESO</mono>) được tạo riêng.",
       "leaversTitle": "Nhân viên nghỉ việc trong kỳ này",

@@ -2085,7 +2085,7 @@
       "subtitle": "Kelompok gaji",
       "paymentSummary": "Ringkasan pembayaran",
       "paymentSummaryTitle": "Muat turun CSV pekerja, bank, akaun dan gaji bersih untuk muat naik bank secara manual.",
-      "generatePayslips": "Jana slip gaji",
+      "generatePayslips": "Proses Gaji",
       "closeBatch": "Tutup kelompok",
       "disclaimer": "<strong>Angka draf.</strong> Amaun berkanun dikira daripada peraturan Malaysia yang disahkan dan berkuat kuasa pada akhir tempoh. Semak setiap slip gaji sebelum menutup — setelah ditutup, kelompok ini tidak boleh diubah. Fail bank (<mono>CP39 / KWSP / PERKESO</mono>) dijana secara berasingan.",
       "leaversTitle": "Pekerja berhenti tempoh ini",

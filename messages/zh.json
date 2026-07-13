@@ -2085,7 +2085,7 @@
       "subtitle": "薪资批次",
       "paymentSummary": "付款汇总",
       "paymentSummaryTitle": "下载包含员工、银行、账号和实发工资的 CSV，用于手动银行上传。",
-      "generatePayslips": "生成工资单",
+      "generatePayslips": "处理薪资",
       "closeBatch": "关闭批次",
       "disclaimer": "<strong>草稿数据。</strong>法定金额依据期末生效的已核实马来西亚规则计算。关闭前请核对每一份工资单 — 一旦关闭，批次即不可更改。银行文件（<mono>CP39 / KWSP / PERKESO</mono>）将单独生成。",
       "leaversTitle": "本周期离职人员",

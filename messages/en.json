@@ -1854,7 +1854,7 @@
       "subtitle": "Payroll batch",
       "paymentSummary": "Payment summary",
       "paymentSummaryTitle": "Download a CSV of employee, bank, account and net pay for manual bank upload.",
-      "generatePayslips": "Generate payslips",
+      "generatePayslips": "Process Payroll",
       "closeBatch": "Close batch",
       "disclaimer": "<strong>Draft figures.</strong> Statutory amounts are computed from the verified Malaysian rules in effect at period end. Review every payslip before closing — once closed, the batch is immutable. Bank files (<mono>CP39 / KWSP / PERKESO</mono>) are generated separately.",
       "leaversTitle": "Leavers this period",
