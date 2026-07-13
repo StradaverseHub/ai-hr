@@ -1884,13 +1884,16 @@ export default async function EmployeePage({
     bankStatutory: statutoryCard,
     // Payroll tab keeps pay components, CP38, encashment, policy assignment and compensation. The
     // statutory/bank card previously pinned to the top (feedback 7524eda1) now lives on Bank & Statutory.
+    // compensationCard (Basic Salary / salary history) is pinned FIRST (feedback 326f0b5e): Basic Salary
+    // is the most-referenced payroll attribute, so it opens at the top with no scrolling. Pure JSX order
+    // change — every card's definition and behaviour is unchanged.
     payroll: (
       <>
+        {compensationCard}
         {payComponentsCard}
         {cp38Card}
         {encashmentCard}
         {payrollPolicyCard}
-        {compensationCard}
       </>
     ),
     // Leave Information (feedback d085c6fc): the Leave Balance card — including its entitlement
