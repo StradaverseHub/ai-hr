@@ -700,10 +700,15 @@ export async function setStatutoryAction(formData: FormData) {
       ),
       bankName: (formData.get('bankName') as string) || undefined,
       bankAccountNo: (formData.get('bankAccountNo') as string) || undefined,
-      tp3Year: Number(formData.get('tp3Year')) || null,
-      tp3NetRemuneration: formData.get('tp3NetRemuneration') ? Number(formData.get('tp3NetRemuneration')) : null,
-      tp3EpfClaimed: formData.get('tp3EpfClaimed') ? Number(formData.get('tp3EpfClaimed')) : null,
-      tp3PcbPaid: formData.get('tp3PcbPaid') ? Number(formData.get('tp3PcbPaid')) : null,
+      // TP3 opening balances RELOCATED to the Payroll tab (item a6a47698) with their own partial save
+      // (setTp3Action). This form no longer carries the four TP3 columns, but the setter is a FULL
+      // overwrite of the statutory row — so read the stored values and pass them through unchanged.
+      // Without this, every Personnel statutory save would silently wipe the opening balances the TP3
+      // card wrote (exactly the trap the zakat pass-through below already guards against).
+      tp3Year: current?.tp3Year ?? null,
+      tp3NetRemuneration: current?.tp3NetRemuneration != null ? Number(current.tp3NetRemuneration) : null,
+      tp3EpfClaimed: current?.tp3EpfClaimed != null ? Number(current.tp3EpfClaimed) : null,
+      tp3PcbPaid: current?.tp3PcbPaid != null ? Number(current.tp3PcbPaid) : null,
       // tp3ZakatPaid is never on this form (it comes from payroll-history import) — pass the stored
       // value through so a statutory save doesn't silently null an imported zakat opening balance.
       tp3ZakatPaid: current?.tp3ZakatPaid != null ? Number(current.tp3ZakatPaid) : null,
@@ -717,6 +722,33 @@ export async function setStatutoryAction(formData: FormData) {
       zakatFixed: current?.zakatFixed != null ? Number(current.zakatFixed) : null,
       zakatEffectiveFrom: current?.zakatEffectiveFrom ?? null,
       zakatEffectiveTo: current?.zakatEffectiveTo ?? null,
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Item a6a47698 — save ONLY the four TP3 opening-balance columns. TP3 was relocated from the Bank &
+ * Statutory card (a single full-row overwrite form) onto the Payroll tab as its own card, so it needs a
+ * dedicated partial-update action that leaves the rest of the statutory row untouched. requireAdmin gates
+ * it exactly like setStatutoryAction; the pack setter appends the DomainEvent.
+ */
+export async function setTp3Action(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const personId = String(formData.get('personId'));
+  const pack = packFor('MY');
+  try {
+    if (!pack) throw new Error('No localization pack for MY');
+    await pack.statutory.setTp3(s, {
+      personId,
+      tp3Year: Number(formData.get('tp3Year')) || null,
+      tp3NetRemuneration: formData.get('tp3NetRemuneration') ? Number(formData.get('tp3NetRemuneration')) : null,
+      tp3EpfClaimed: formData.get('tp3EpfClaimed') ? Number(formData.get('tp3EpfClaimed')) : null,
+      tp3PcbPaid: formData.get('tp3PcbPaid') ? Number(formData.get('tp3PcbPaid')) : null,
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));

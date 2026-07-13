@@ -37,6 +37,7 @@ import {
   setPersonPhotoAction,
   removePersonPhotoAction,
   setStatutoryAction,
+  setTp3Action,
   terminateAction,
   transferAction,
 } from './actions';
@@ -1373,45 +1374,98 @@ export default async function EmployeePage({
           </div>
         </fieldset>
 
-        {/* Group 5 — Previous employment / TP3 (opening balances) */}
-        <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
-          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t('tp3SectionTitle')}
-          </legend>
-          <p className="text-xs text-muted-foreground">{t('tp3SectionDescription')}</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label={t('appliesToYear')}>
-              <input name="tp3Year" type="number" min="2020" max="2100" defaultValue={statutory?.tp3Year ?? ''} placeholder="2026" className={inputCls} />
-            </Field>
-            <Field label={t('tp3NetRemuneration')}>
-              <input name="tp3NetRemuneration" type="number" min="0" step="0.01" defaultValue={statutory?.tp3NetRemuneration ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('tp3EpfClaimed')}>
-              <input name="tp3EpfClaimed" type="number" min="0" step="0.01" defaultValue={statutory?.tp3EpfClaimed ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('tp3PcbPaid')}>
-              <input name="tp3PcbPaid" type="number" min="0" step="0.01" defaultValue={statutory?.tp3PcbPaid ?? ''} className={inputCls} />
-            </Field>
-          </div>
-        </fieldset>
-
-        {/* Zakat election RELOCATED to Payroll > Transactions > Zakat (feedback 58755260 — Module
-            Separation Rule): Personnel no longer edits it. The pointer below keeps admins oriented;
-            setStatutoryAction passes the current election through unchanged so this form can't wipe it. */}
-        <p className="border-t border-border pt-4 text-xs text-muted-foreground">
-          {t('zakatMoved')}{' '}
-          <Link
-            href="/payroll/transactions/zakat"
-            className="font-medium text-primary underline-offset-2 hover:underline"
-          >
-            {t('zakatMovedLink')}
-          </Link>
-        </p>
-
+        {/* Item a6a47698 — the TP3 / opening-balances fieldset (formerly Group 5) and the Zakat pointer
+            have moved to the Payroll tab (tp3Card + zakatSummaryCard). They are payroll matters, not
+            banking/statutory-registration matters. TP3 now saves through its own setTp3Action (partial
+            update of only the four TP3 columns); this statutory form no longer carries them, and its
+            full-row overwrite setStatutoryAction passes the stored TP3 + zakat values through unchanged
+            so relocating the UI can never wipe them. */}
         <div className="flex items-end justify-end">
           <button className={btnPrimary}>{t('saveStatutory')}</button>
         </div>
       </form>
+    </Card>
+  ) : null;
+
+  // ── TP3 / OPENING BALANCES (Payroll tab) ────────────────────────────────────
+  // Item a6a47698 — relocated off the Bank & Statutory card onto the Payroll tab. It is a payroll matter
+  // (it seeds the PCB accumulators), not a banking/statutory-registration matter. Because the statutory
+  // card is a single full-row-overwrite form, TP3 could not simply move into it — it gets its OWN small
+  // form + setTp3Action, a partial update of only the four TP3 columns. All fields + saved data preserved.
+  const tp3Card = admin ? (
+    <Card id="section-tp3">
+      <SectionHeader title={t('tp3SectionTitle')} />
+      <form action={setTp3Action} className="flex flex-col gap-3 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <input type="hidden" name="personId" value={emp.personId} />
+        <p className="text-xs text-muted-foreground">{t('tp3SectionDescription')}</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label={t('appliesToYear')}>
+            <input name="tp3Year" type="number" min="2020" max="2100" defaultValue={statutory?.tp3Year ?? ''} placeholder="2026" className={inputCls} />
+          </Field>
+          <Field label={t('tp3NetRemuneration')}>
+            <input name="tp3NetRemuneration" type="number" min="0" step="0.01" defaultValue={statutory?.tp3NetRemuneration ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('tp3EpfClaimed')}>
+            <input name="tp3EpfClaimed" type="number" min="0" step="0.01" defaultValue={statutory?.tp3EpfClaimed ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('tp3PcbPaid')}>
+            <input name="tp3PcbPaid" type="number" min="0" step="0.01" defaultValue={statutory?.tp3PcbPaid ?? ''} className={inputCls} />
+          </Field>
+        </div>
+        <div className="flex items-end justify-end">
+          <button className={btnPrimary}>{t('tp3Save')}</button>
+        </div>
+      </form>
+    </Card>
+  ) : null;
+
+  // ── ZAKAT SUMMARY (Payroll tab, read-only) ──────────────────────────────────
+  // Item a6a47698 — the zakat pointer paragraph moved off Bank & Statutory onto the Payroll tab as a
+  // read-only summary of the current election (owned by Payroll → Transactions → Zakat since 58755260).
+  // Editing stays SOLELY at that route — single source of truth, no second write path here.
+  const zakatSummaryCard = admin ? (
+    <Card id="section-zakat-summary">
+      <SectionHeader title={t('zakatSummaryTitle')} />
+      <div className="flex flex-col gap-4 p-4">
+        <p className="text-xs text-muted-foreground">{t('zakatSummaryDescription')}</p>
+        {statutory?.zakatActive ? (
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('zakatSummaryStatus')}</dt>
+              <dd><Badge variant="success">{t('zakatSummaryActive')}</Badge></dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('zakatSummaryState')}</dt>
+              <dd className="font-medium text-foreground">{statutory.zakatState ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('zakatSummaryMethod')}</dt>
+              <dd className="font-medium text-foreground">
+                {statutory.zakatMethod === 'fixed' ? t('zakatSummaryMethodFixed') : t('zakatSummaryMethodPercent')}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('zakatSummaryRate')}</dt>
+              <dd className="font-medium tabular-nums text-foreground">
+                {statutory.zakatMethod === 'fixed'
+                  ? `RM ${Number(statutory.zakatFixed ?? 0).toFixed(2)}`
+                  : `${(Number(statutory.zakatPercent ?? 0) * 100).toFixed(2)}%`}
+              </dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t('zakatSummaryInactive')}</p>
+        )}
+        <div>
+          <Link
+            href="/payroll/transactions/zakat"
+            className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+          >
+            {t('zakatSummaryManageLink')}
+          </Link>
+        </div>
+      </div>
     </Card>
   ) : null;
 
@@ -1936,12 +1990,17 @@ export default async function EmployeePage({
     // compensationCard (Basic Salary / salary history) is pinned FIRST (feedback 326f0b5e): Basic Salary
     // is the most-referenced payroll attribute, so it opens at the top with no scrolling. Pure JSX order
     // change — every card's definition and behaviour is unchanged.
+    // Item a6a47698 — TP3 / opening balances and the Zakat summary relocated here from Bank & Statutory so
+    // all payroll-related employee information is centralized on this tab. tp3Card has its own partial save
+    // (setTp3Action); zakatSummaryCard is read-only and links to Payroll → Transactions → Zakat to edit.
     payroll: (
       <>
         {compensationCard}
         {payComponentsCard}
         {cp38Card}
         {encashmentCard}
+        {tp3Card}
+        {zakatSummaryCard}
         {payrollPolicyCard}
       </>
     ),

@@ -334,6 +334,82 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
   });
 }
 
+/** A TP3 partial-save was attempted for a person with no Malaysian statutory row yet. */
+export class NoStatutoryProfileError extends Error {
+  constructor() {
+    super('No Malaysian statutory profile yet — save the IC number on Bank & Statutory first.');
+    this.name = 'NoStatutoryProfileError';
+  }
+}
+
+/** Just the four TP3 opening-balance columns (ADR-0014). Used by the dedicated Payroll-tab TP3 card. */
+export type Tp3Input = {
+  personId: string;
+  tp3Year?: number | null;
+  tp3NetRemuneration?: number | null;
+  tp3EpfClaimed?: number | null;
+  tp3PcbPaid?: number | null;
+};
+
+/**
+ * Partial update of ONLY the four TP3 opening-balance columns on employee_statutory_my, leaving the
+ * rest of the statutory row (IC, EPF, SOCSO/EIS, bank, zakat election, tp3ZakatPaid) untouched. This is
+ * the counterpart to setStatutoryProfileMY's full-row overwrite: item a6a47698 relocated the TP3 fields
+ * onto the Payroll tab with their own save, so they can no longer ride the statutory form. Requires an
+ * existing statutory row (TP3 has no meaning without an IC on file) — throws NoStatutoryProfileError
+ * otherwise. Appends an `employee.tp3.updated` DomainEvent (before/after) per substrate discipline.
+ */
+export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input) {
+  const money = (v: number | null | undefined) =>
+    v == null || Number.isNaN(Number(v)) ? null : Number(v).toFixed(2);
+  const values = {
+    tp3Year: p.tp3Year ?? null,
+    tp3NetRemuneration: money(p.tp3NetRemuneration),
+    tp3EpfClaimed: money(p.tp3EpfClaimed),
+    tp3PcbPaid: money(p.tp3PcbPaid),
+  };
+  return withTenant(ctx, async (tx) => {
+    const [existing] = await tx
+      .select({
+        id: employeeStatutoryMy.id,
+        tp3Year: employeeStatutoryMy.tp3Year,
+        tp3NetRemuneration: employeeStatutoryMy.tp3NetRemuneration,
+        tp3EpfClaimed: employeeStatutoryMy.tp3EpfClaimed,
+        tp3PcbPaid: employeeStatutoryMy.tp3PcbPaid,
+      })
+      .from(employeeStatutoryMy)
+      .where(eq(employeeStatutoryMy.personId, p.personId))
+      .limit(1);
+    if (!existing) throw new NoStatutoryProfileError();
+    await tx
+      .update(employeeStatutoryMy)
+      .set({ ...values, updatedAt: sql`now()` })
+      .where(eq(employeeStatutoryMy.id, existing.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employee-statutory',
+      aggregateId: existing.id,
+      eventType: 'employee.tp3.updated',
+      actor: actorOf(ctx),
+      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+      // before/after of only the four TP3 columns so a compliance auditor can reconstruct the opening
+      // balances that seeded the PCB accumulators, from the event log alone. tp3* are YTD figures, not
+      // per-payslip cleartext pay — recording them on the event is fine under ADR-0030.
+      payload: {
+        personId: p.personId,
+        before: {
+          tp3Year: existing.tp3Year,
+          tp3NetRemuneration: existing.tp3NetRemuneration,
+          tp3EpfClaimed: existing.tp3EpfClaimed,
+          tp3PcbPaid: existing.tp3PcbPaid,
+        },
+        after: values,
+      },
+    });
+    return { id: existing.id };
+  });
+}
+
 export function getStatutoryProfileMY(ctx: SessionContext, personId: string) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx

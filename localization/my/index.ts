@@ -2,7 +2,7 @@
  * Malaysia localization pack (ADR-0008). Slice 1 ships the statutory profile; leave rules,
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
-import { getStatutoryProfileMY, isValidIC, setStatutoryProfileMY } from './statutory';
+import { getStatutoryProfileMY, isValidIC, setStatutoryProfileMY, setTp3ProfileMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026 } from './holidays';
 import { eis, epf, hrdfLevy, overtimePay, pcbMonth, socso, statutory } from './payroll';
@@ -31,6 +31,9 @@ export const myPack = {
   statutory: {
     set: setStatutoryProfileMY,
     get: getStatutoryProfileMY,
+    // Partial save of only the four TP3 opening-balance columns (item a6a47698 — TP3 relocated to the
+    // Payroll tab with its own save; the full statutory overwrite no longer carries these).
+    setTp3: setTp3ProfileMY,
     validateIC: isValidIC,
   },
   companyStatutory: {

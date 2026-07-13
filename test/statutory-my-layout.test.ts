@@ -79,7 +79,9 @@ describe('Statutory (Malaysia) layout: every statutory input stays mounted (full
 });
 
 describe('Statutory (Malaysia) layout: grouped section headers exist', () => {
-  for (const key of ['statutoryGroupIdentity', 'statutoryGroupSocsoEis', 'statutoryGroupBank']) {
+  // Item 5a461b99 relocated the SOCSO & EIS group into its own bordered card headed by
+  // `socsoEisCardTitle` (was the `statutoryGroupSocsoEis` legend); identity + bank remain plain legends.
+  for (const key of ['statutoryGroupIdentity', 'socsoEisCardTitle', 'statutoryGroupBank']) {
     it(`uses the ${key} group label`, () => {
       expect(page.includes(`t('${key}')`)).toBe(true);
     });
