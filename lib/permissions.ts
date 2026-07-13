@@ -239,7 +239,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/attendance-policy',
     labelKey: 'nav.attendancePolicyConfig',
     guard: 'requireAdmin',
-    routes: ['/admin/attendance-policy'],
+    routes: ['/admin/attendance-policy', '/admin/attendance-policy/rules/new', '/admin/attendance-policy/rules/[ruleId]'],
   },
   {
     screenKey: 'attendanceAllowance',

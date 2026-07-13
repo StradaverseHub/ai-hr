@@ -2041,6 +2041,90 @@ export const attendancePolicy = pgTable(
   (t) => [uniqueIndex('attendance_policy_company_uq').on(t.companyId)],
 );
 
+// ── 88e94371 · "Lateness, Early Out & Overtime Settings" — named-rule library ─────────────────────────
+// A reusable, per-company library of attendance CALCULATION rules (renamed/expanded from the single
+// Attendance Policy). Each rule bundles a Lateness section, an Early Out section, and an Overtime table
+// (attendance_rule_ot_row). A shift picks ONE rule (shift.rule_id); a shift with no rule falls back to the
+// company's `is_default` "Standard" rule (seeded per company by migration 0203 from the existing
+// attendance_policy so today's grace behaviour carries over unchanged). The Standard rule is un-deletable.
+//
+// SCOPE (88e94371): the grace-period fields ARE wired into the time engine (core/attendance.ts scheduleFor
+// — as a fallback under any explicit per-shift grace) and the OT rows drive OT-minute ROUNDING + early-OT
+// inclusion (applyOtRuleRows). The lateness/early-out `afterMinutes`/`deductMinutes` capture the reporter's
+// wage-deduction intent (stored + surfaced) but are NOT yet applied to pay — there is no deduction output on
+// the attendance engine today; that + per-band custom OT PAY multipliers (statutory 1.5×/2×/3× stay the
+// compliance cap) are a documented deferred GAP. The tenant-global statutory OT multipliers are untouched.
+export const attendanceRule = pgTable(
+  'attendance_rule',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    name: text('name').notNull(),
+    description: text('description'),
+    // The company's un-deletable "Standard" rule. Exactly one per company (partial unique index). A shift
+    // with no rule_id resolves to this rule.
+    isDefault: boolean('is_default').notNull().default(false),
+    // 'active' | 'inactive' — a CHECK lives in migration 0203. Inactive rules stay assigned but are hidden
+    // from the new-shift picker (surfaced with a badge in the list).
+    status: text('status').notNull().default('active'),
+    // ── Lateness section ──
+    // Grace minutes after the scheduled start before lateness is evaluated (the engine's late threshold =
+    // shift start + this, unless a per-shift late-grace overrides). afterMinutes/deductMinutes/includeGrace
+    // capture the deduction rule (stored; pay application deferred — see the table comment).
+    lateGracePeriodMinutes: integer('late_grace_period_minutes').notNull().default(0),
+    lateAfterMinutes: integer('late_after_minutes').notNull().default(0),
+    lateDeductMinutes: integer('late_deduct_minutes').notNull().default(0),
+    includeGraceInLateness: boolean('include_grace_in_lateness').notNull().default(false),
+    // ── Early Out section (same shape) ──
+    earlyGracePeriodMinutes: integer('early_grace_period_minutes').notNull().default(0),
+    earlyAfterMinutes: integer('early_after_minutes').notNull().default(0),
+    earlyDeductMinutes: integer('early_deduct_minutes').notNull().default(0),
+    includeGraceInEarlyOut: boolean('include_grace_in_early_out').notNull().default(false),
+    // ── Overtime section ──
+    // "Apply this overtime policy to approved OVERTIME worked before the scheduled start." Honoured by the
+    // pure resolver applyOtRuleRows (unit-tested); the engine currently feeds 0 pre-shift OT minutes (early-OT
+    // punch attribution is a deferred follow-up — documented GAP).
+    applyToEarlyOt: boolean('apply_to_early_ot').notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    // Exactly one default ("Standard") rule per company.
+    uniqueIndex('attendance_rule_default_uq').on(t.companyId).where(sql`is_default`),
+    // Case-insensitive unique rule name within a company.
+    uniqueIndex('attendance_rule_company_name_uq').on(t.companyId, sql`lower(${t.name})`),
+    index('attendance_rule_company_idx').on(t.companyId),
+  ],
+);
+
+// One overtime time-band row of an attendance_rule (the reporter's "+ Add Row" OT table). fromMinutes..
+// toMinutes bound the OT duration (minutes past normal); ratePattern 'flat' (any numeric multiplier) or
+// 'variable' (a standardized multiplier). `rounding` + `roundToMinutes` round the matched OT minutes.
+export type AttendanceOtRatePattern = 'flat' | 'variable';
+export const attendanceRuleOtRow = pgTable(
+  'attendance_rule_ot_row',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    ruleId: uuid('rule_id')
+      .notNull()
+      .references(() => attendanceRule.id, { onDelete: 'cascade' }),
+    fromMinutes: integer('from_minutes').notNull().default(0),
+    // 0 (or ≤ fromMinutes) ⇒ open-ended upper bound.
+    toMinutes: integer('to_minutes').notNull().default(0),
+    ratePattern: text('rate_pattern').notNull().default('flat').$type<AttendanceOtRatePattern>(),
+    rate: numeric('rate', { precision: 6, scale: 2 }).notNull().default('1.50'),
+    rounding: boolean('rounding').notNull().default(false),
+    roundToMinutes: integer('round_to_minutes'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('attendance_rule_ot_row_rule_idx').on(t.ruleId, t.sortOrder)],
+);
+
 // Attendance correction requests (ADR-0011 Phase B): an employee proposes corrected punch
 // times for a day; an admin or their manager approves, which amends the attendance row
 // (re-derived through the time engine). Mirrors the leave request→decide workflow.
@@ -2213,6 +2297,11 @@ export const shift = pgTable(
     // minimum block / daily cap); statutory multipliers stay company-level. NULL ⇒ legacy behaviour. See the
     // ShiftOtRule type above.
     otRule: jsonb('ot_rule').$type<ShiftOtRule | null>(),
+    // 88e94371 — the shift's chosen attendance-calculation rule ("Lateness, Early Out & Overtime Settings").
+    // NULL ⇒ the shift falls back to the employee's-company default ("Standard") rule at resolve time
+    // (core/attendance.ts). Replaces the old per-shift "OT Rules" UI field with a rule-library dropdown;
+    // shift.ot_rule stays as a higher-precedence per-shift OT-shape override (legacy, byte-identical).
+    ruleId: uuid('rule_id').references((): AnyPgColumn => attendanceRule.id),
     differential: jsonb('differential').$type<ShiftDifferential | null>(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),

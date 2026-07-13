@@ -58,6 +58,9 @@ const ALL_TABLES = [
   // f018ce8d — general employee document store: truncate between test files so a leaked bytea row
   // doesn't survive into a later file's count/RLS assertions.
   'employee_document',
+  // 88e94371 — attendance-rule library: a leaked rule (or its OT rows) would trip the per-company default /
+  // name unique indexes across test files. CASCADE from company already clears them, but list explicitly.
+  'attendance_rule', 'attendance_rule_ot_row',
 ];
 
 export async function migrateTestDb() {

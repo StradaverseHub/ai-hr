@@ -1429,6 +1429,13 @@
       "when": 1781862202000,
       "tag": "0203_employer_bears_epf",
       "breakpoints": true
+    },
+    {
+      "idx": 204,
+      "version": "7",
+      "when": 1781862203000,
+      "tag": "0204_attendance_rule_library",
+      "breakpoints": true
     }
   ]
 }

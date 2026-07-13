@@ -12,6 +12,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
+import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './attendance-rule';
 import { holidayDatesFor } from './holidays';
 import { approvedLeaveDates } from './leave';
 import { maybeAutoAccrueOnApprovalTx } from './toil';
@@ -223,9 +224,10 @@ type Policy = typeof DEFAULTS;
  * resolver `holidayDatesFor` (ADR-0055), so attendance classifies the same calendar leave does and the
  * country/state inputs that used to be carried on the Policy are gone.
  */
-async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
+async function policyFor(tx: Tx, employmentId: string): Promise<Policy & { companyId: string | null }> {
   const [row] = await tx
     .select({
+      companyId: employment.companyId,
       lateAfter: attendancePolicy.lateAfter,
       halfDayBefore: attendancePolicy.halfDayBefore,
       workStart: attendancePolicy.workStart,
@@ -239,6 +241,7 @@ async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
     .where(eq(employment.id, employmentId))
     .limit(1);
   return {
+    companyId: row?.companyId ?? null,
     lateAfter: row?.lateAfter ?? DEFAULTS.lateAfter,
     halfDayBefore: row?.halfDayBefore ?? DEFAULTS.halfDayBefore,
     workStart: row?.workStart ?? DEFAULTS.workStart,
@@ -303,6 +306,11 @@ type ResolvedSchedule = {
   // WORKDAY OT accrual only (deriveAttendance); statutory rest/holiday premium is untouched. Null on the
   // policy branch and whenever the shift carries no rule ⇒ byte-identical legacy OT.
   otRule: ShiftOtRule | null;
+  // 88e94371 — the resolved attendance rule ("Lateness, Early Out & Overtime Settings"): the shift's rule_id
+  // when set, else the employee's-company Standard rule, else null (⇒ legacy behaviour). Its OT rows drive
+  // OT-minute rounding + early-OT inclusion in deriveAttendance; its grace periods feed the late/early
+  // thresholds below (as a fallback UNDER any explicit per-shift grace, so existing shifts stay identical).
+  rule: ResolvedAttendanceRule | null;
   crossesMidnight: boolean;
   // ec4cbf63: 'default-shift' / 'default-shift-rest' = resolved from employment.default_shift_id (no roster
   // row for the date). Diagnostic only — nothing downstream branches on source for pay except the hourly
@@ -322,6 +330,14 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   // resolveHolidaySet), so attendance OT day-type classification can never disagree with leave. A
   // business-group override REPLACES nat+state; no company/state rows ⇒ national-only = today's behaviour.
   const isHoliday = (await holidayDatesFor(tx, { employmentId, startDate: date, endDate: date })).has(date);
+  // 88e94371 — the employee's-company Standard ("Lateness, Early Out & Overtime Settings") rule. Used by the
+  // policy/rest branches AND as the fallback when a resolved shift carries no explicit rule_id. Null when the
+  // company has no rule yet ⇒ byte-identical legacy behaviour.
+  const companyRule = await resolveRuleTx(tx, { ruleId: null, companyId: pol.companyId });
+  // The effective late/early grace for a shift branch: an explicit per-shift grace wins (R17, unchanged); else
+  // the rule's grace-period section; else the policy-derived grace / midpoint heuristic (null ⇒ legacy).
+  const ruleFor = (ruleId: string | null): Promise<ResolvedAttendanceRule | null> =>
+    ruleId ? resolveRuleTx(tx, { ruleId, companyId: pol.companyId }) : Promise.resolve(companyRule);
   const [ra] = await tx
     .select({
       isRestDay: rosterAssignment.isRestDay,
@@ -333,6 +349,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       lateGrace: shift.lateGraceMinutes,
       earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
       otRule: shift.otRule,
+      ruleId: shift.ruleId,
     })
     .from(rosterAssignment)
     .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
@@ -347,6 +364,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     breakMinutes: pol.breakMinutes,
     normalMinutesOverride: null,
     otRule: null,
+    rule: companyRule,
     crossesMidnight: false,
     source: 'policy',
   });
@@ -355,20 +373,26 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   // from the calendar (holiday) so OT is classified at the right premium.
   if (ra && !ra.isRestDay && ra.start && ra.end) {
     const sched = netScheduledMinutes(ra.start, ra.end, ra.crosses!, ra.brk!);
+    const rule = await ruleFor(ra.ruleId);
+    // 88e94371 — grace precedence: explicit per-shift grace (R17) → rule grace section → policy-derived grace
+    // / midpoint. The Standard rule's late grace is seeded to equal the policy grace, so a shift with no
+    // explicit grace + the Standard rule stays byte-identical to before.
+    const lateGrace = ra.lateGrace ?? rule?.lateGracePeriodMinutes ?? grace;
+    // Early grace only OVERRIDES the midpoint heuristic when explicitly set (>0); the Standard/converted rule
+    // carries early grace 0 (= "unset"), so it keeps the legacy midpoint — no silent half-day reclassification.
+    const earlyGrace = ra.earlyLeaveGrace ?? (rule && rule.earlyGracePeriodMinutes > 0 ? rule.earlyGracePeriodMinutes : null);
     return {
       dayType: isHoliday ? 'holiday' : 'workday',
-      // R17 3e8350db — a per-shift late grace (minutes) overrides the policy-derived grace; NULL keeps the
-      // legacy addGrace(start, policy grace). A per-shift early-leave grace makes the half-day threshold
-      // shift-end − grace; NULL keeps the midpoint heuristic. Both null ⇒ byte-identical to before.
-      lateAfter: ra.lateGrace != null ? addGrace(ra.start, ra.lateGrace) : addGrace(ra.start, grace),
+      lateAfter: addGrace(ra.start, lateGrace),
       halfDayBefore:
-        ra.earlyLeaveGrace != null
-          ? subGrace(ra.end, ra.earlyLeaveGrace)
+        earlyGrace != null
+          ? subGrace(ra.end, earlyGrace)
           : fmtTime((toMinutes(ra.start) + Math.floor(shiftSpan(ra.start, ra.end, ra.crosses!) / 2)) % MINS_PER_DAY),
       scheduledMinutes: sched,
       breakMinutes: ra.brk!,
       normalMinutesOverride: ra.override ?? null,
       otRule: ra.otRule ?? null,
+      rule,
       crossesMidnight: ra.crosses!,
       source: 'roster-shift',
     };
@@ -396,6 +420,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       lateGrace: shift.lateGraceMinutes,
       earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
       otRule: shift.otRule,
+      ruleId: shift.ruleId,
     })
     .from(employment)
     .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
@@ -404,20 +429,24 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   if (ds) {
     if (ds.pattern?.includes(isoWeekday(date))) {
       // Working day of the default shift — mirror the roster-shift branch byte-for-byte, incl. the
-      // holiday day-type overlay (the default shift's hours still define the schedule on a holiday) and
-      // the R17 per-shift grace override.
+      // holiday day-type overlay (the default shift's hours still define the schedule on a holiday), the
+      // R17 per-shift grace override, and the 88e94371 rule grace fallback.
       const sched = netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk);
+      const rule = await ruleFor(ds.ruleId);
+      const lateGrace = ds.lateGrace ?? rule?.lateGracePeriodMinutes ?? grace;
+      const earlyGrace = ds.earlyLeaveGrace ?? (rule && rule.earlyGracePeriodMinutes > 0 ? rule.earlyGracePeriodMinutes : null);
       return {
         dayType: isHoliday ? 'holiday' : 'workday',
-        lateAfter: ds.lateGrace != null ? addGrace(ds.start, ds.lateGrace) : addGrace(ds.start, grace),
+        lateAfter: addGrace(ds.start, lateGrace),
         halfDayBefore:
-          ds.earlyLeaveGrace != null
-            ? subGrace(ds.end, ds.earlyLeaveGrace)
+          earlyGrace != null
+            ? subGrace(ds.end, earlyGrace)
             : fmtTime((toMinutes(ds.start) + Math.floor(shiftSpan(ds.start, ds.end, ds.crosses) / 2)) % MINS_PER_DAY),
         scheduledMinutes: sched,
         breakMinutes: ds.brk,
         normalMinutesOverride: ds.override ?? null,
         otRule: ds.otRule ?? null,
+        rule,
         crossesMidnight: ds.crosses,
         source: 'default-shift',
       };
@@ -473,6 +502,14 @@ function deriveAttendance(
       if (s.otRule.minMinutes != null && otMinutes < s.otRule.minMinutes) otMinutes = 0;
       if (s.otRule.dailyCapMinutes != null) otMinutes = Math.min(otMinutes, s.otRule.dailyCapMinutes);
     }
+  }
+  // 88e94371 — apply the resolved rule's Overtime table: round the workday OT minutes to the matching band's
+  // Round-To value and fold in pre-shift ("early") OT when the rule opts in. The engine does not yet attribute
+  // pre-shift punch minutes as a separate figure, so earlyOtMinutes is 0 here (documented GAP); a rule with no
+  // OT rows / rounding leaves otMinutes unchanged (byte-identical). Statutory 1.5×/2×/3× multipliers stay the
+  // pay-side compliance cap and are untouched. Only workday OT is shaped (rest/holiday premium is statutory).
+  if (s.dayType === 'workday' && otMinutes != null && s.rule) {
+    otMinutes = applyOtRuleRows(otMinutes, 0, s.rule);
   }
   return { status, workedMinutes, otMinutes };
 }

@@ -1,13 +1,16 @@
 import { getTranslations } from 'next-intl/server';
+import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listAttendancePolicies } from '@/core/attendance';
+import { ensureStandardRule, listAttendanceRules } from '@/core/attendance-rule';
 import { packFor } from '@/localization/registry';
 import { MY_HRDF } from '@/localization/my/statutory-tables';
-import { Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Badge, Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
 import { StatutoryComponentForm } from '@/components/statutory-component-form';
 import { setAttendancePolicyAction } from '../actions';
+import { deleteAttendanceRuleAction } from './rule-actions';
 
 const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
 const DAY_KEY: Record<number, string> = { 1: 'dayMon', 2: 'dayTue', 3: 'dayWed', 4: 'dayThu', 5: 'dayFri', 6: 'daySat', 7: 'daySun' };
@@ -38,6 +41,14 @@ export default async function AttendancePolicyPage({
   const visible = companies.filter((c) => scopeIds.includes(c.id));
   const policies = await listAttendancePolicies(s, visible.map((c) => c.id));
   const byCompany = new Map(policies.map((p) => [p.companyId, p]));
+
+  // 88e94371 — the attendance-rule library. Ensure every visible company has its un-deletable Standard rule
+  // (idempotent), then list all rules for the rule table. This is the runtime complement of migration 0203.
+  const tr = await getTranslations('admin.attendanceRule');
+  const multiCompany = visible.length > 1;
+  const companyName = new Map(visible.map((c) => [c.id, c.name]));
+  await Promise.all(visible.map((c) => ensureStandardRule(s, c.id)));
+  const rules = await listAttendanceRules(s, visible.map((c) => c.id));
 
   // Overtime rates (feedback e776d17d) — the SAME resolved MY ruleset the statutory page reads, edited
   // through the SAME 'ot' slice / setStatutoryComponentAction write path. Tenant-global, renders once.
@@ -74,8 +85,73 @@ export default async function AttendancePolicyPage({
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <PageHeader title={t('policyPageTitle')} description={t('policyPageDescription')} />
+      <PageHeader
+        title={tr('moduleTitle')}
+        description={tr('moduleDescription')}
+        actions={
+          <Link href="/admin/attendance-policy/rules/new" className={btnPrimary}>
+            {tr('addNew')}
+          </Link>
+        }
+      />
       <ErrorBanner message={error} />
+
+      {/* ── 88e94371 · Rule library: the reporter's "simple list of available attendance calculation rules" ── */}
+      <Card className="overflow-hidden">
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold text-foreground">{tr('libraryTitle')}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">{tr('libraryIntro')}</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th className="px-4 py-2 font-medium">{tr('colName')}</th>
+                <th className="px-4 py-2 font-medium">{tr('colDescription')}</th>
+                {multiCompany && <th className="px-4 py-2 font-medium">{tr('colCompany')}</th>}
+                <th className="px-4 py-2 font-medium">{tr('colDefault')}</th>
+                <th className="px-4 py-2 font-medium">{tr('colStatus')}</th>
+                <th className="px-4 py-2 text-right font-medium">{tr('colAction')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rules.map((r) => (
+                <tr key={r.id} className="border-b border-border/60">
+                  <td className="px-4 py-2 font-medium text-foreground">{r.name}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{r.description ?? '—'}</td>
+                  {multiCompany && <td className="px-4 py-2 text-muted-foreground">{companyName.get(r.companyId) ?? '—'}</td>}
+                  <td className="px-4 py-2">{r.isDefault ? <Badge>{tr('defaultBadge')}</Badge> : <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-4 py-2">
+                    <span className={r.status === 'active' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>
+                      {r.status === 'active' ? tr('statusActive') : tr('statusInactive')}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center justify-end gap-2">
+                      <Link href={`/admin/attendance-policy/rules/${r.id}`} className="text-primary hover:underline">
+                        {tr('edit')}
+                      </Link>
+                      {!r.isDefault && (
+                        <form action={deleteAttendanceRuleAction}>
+                          <input type="hidden" name="ruleId" value={r.id} />
+                          <button className="text-destructive hover:underline">{tr('delete')}</button>
+                        </form>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* ── Company work schedule & statutory overtime rates. RETAINED (reporter-approved: convert, not
+          remove): these drive the fallback schedule + statutory OT compliance and are NOT rule config. ──── */}
+      <div className="border-t border-border pt-2">
+        <h2 className="text-sm font-semibold text-foreground">{tr('scheduleSectionTitle')}</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">{tr('scheduleSectionIntro')}</p>
+      </div>
 
       {/* ── Overtime rates (relocated from Payroll > Statutory Configuration — feedback e776d17d) ──────── */}
       {otRuleset && otComponentDefaults && (
