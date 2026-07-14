@@ -24,6 +24,15 @@ import {
 } from './actions';
 import { ReviewDecideForm } from './review-decide-form';
 import { LeaveDateBreakdown } from './leave-date-breakdown';
+import { ApprovalsSortControl } from './sort-control';
+import { parseApprovalSort, sortApprovalRows, type ApprovalSort } from '@/lib/approvals-sort';
+import {
+  BulkSelectionProvider,
+  BulkSelectAllToggle,
+  BulkSectionSelectAll,
+  BulkRowCheckbox,
+} from './bulk-selection';
+import type { BulkRow, BulkCategory } from '@/lib/approvals-bulk';
 
 function DecideButtons({
   action,
@@ -105,13 +114,16 @@ function LeaveDecideButtons({
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; sort?: string }>;
 }) {
   const { s, scopeIds } = await scopedSession();
   const admin = isAdmin(s);
   const manager = (s.roles ?? []).includes('manager');
   if (!admin && !manager) redirect('/');
-  const { error } = await searchParams;
+  const { error, sort: sortParam } = await searchParams;
+  // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
+  // selection. Default (latest-first) matches every loader's existing desc(createdAt).
+  const sort = parseApprovalSort(sortParam);
   const t = await getTranslations('approvals');
   const tLeave = await getTranslations('leave'); // Emergency Leave (0106) — group label for EL child rows
   const decideLabels = {
@@ -125,6 +137,14 @@ export default async function ApprovalsPage({
     reject: t('reject'),
     rejectReason: t('rejectReasonPlaceholder'),
   };
+  // Approvals sort (09cda965): the four option labels for the top-right Sort dropdown.
+  const sortLabels = {
+    sortBy: t('sortBy'),
+    latest: t('sortLatest'),
+    oldest: t('sortOldest'),
+    name_asc: t('sortNameAsc'),
+    name_desc: t('sortNameDesc'),
+  } satisfies { sortBy: string } & Record<ApprovalSort, string>;
 
   const [leave, leaveCancellations, corrections, travel, profileChanges, claims, resignations] = await Promise.all([
     listLeaveRequests(s, scopeIds),
@@ -196,12 +216,58 @@ export default async function ApprovalsPage({
     resignations.length;
   const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
 
+  // Approvals sort (09cda965): order EACH per-type section's already-loaded rows in the render layer
+  // (no loader ORDER BY rewrite). Sort is stable + keyed on request id, so counts/permissions/visible
+  // rows are unchanged and a re-sort preserves the (bulk-approval) selection keyed by id. Each section
+  // names its own createdAt / display-name fields.
+  const sortedLeave = sortApprovalRows(pendingLeave, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.appliedOn });
+  const sortedCancellations = sortApprovalRows(pendingCancellations, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
+  const sortedClaims = sortApprovalRows(claims, sort, { id: (r) => r.id, name: (r) => r.claimantName, createdAt: (r) => r.createdAt });
+  const sortedCorrections = sortApprovalRows(corrections, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
+  const sortedTravel = sortApprovalRows(pendingTravel, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
+  const sortedProfileChanges = sortApprovalRows(profileChanges, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
+  const sortedResignations = sortApprovalRows(resignations, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
+  const sortedManagerReviews = sortApprovalRows(managerReviews, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
+  const sortedHrReviews = sortApprovalRows(hrReviews, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
+
+  // Bulk approval (fb99474b): which pending rows are BULK-selectable. Exactly the rows that today show a
+  // single one-click approve/reject — i.e. NOT the viewer's own request, NOT a leave step gated to an
+  // admin the viewer isn't, and NOT a per-date leave request (that one needs the per-date modal). Reviews,
+  // profile changes and resignations are out of v1 scope (richer per-item decide flows) — no checkbox. Every
+  // id here is re-checked server-side through assertCanDecide, so this is the UI filter, not the guard.
+  const leaveBulkActionable = (r: (typeof sortedLeave)[number]) =>
+    !mine(r.personId) &&
+    !(r.currentStepKind && r.currentStepKind !== 'direct_manager' && !admin) &&
+    (breakdowns.get(r.id)?.length ?? 0) === 0;
+  const bulkRows: BulkRow[] = [
+    ...sortedLeave.filter(leaveBulkActionable).map((r) => ({ id: r.id, type: 'leave' as const, category: 'leave' as const })),
+    ...sortedCancellations.map((c) => ({ id: c.id, type: 'leaveCancellation' as const, category: 'leaveCancellation' as const })),
+    ...sortedClaims.filter((c) => !mine(c.personId)).map((c) => ({ id: c.id, type: 'claim' as const, category: 'claim' as const })),
+    ...sortedCorrections
+      .filter((c) => !mine(c.personId))
+      .map((c) => ({
+        id: c.id,
+        type: 'attendance' as const,
+        category: (c.requestedOtMinutes != null ? 'overtime' : 'attendance') as BulkCategory,
+      })),
+    ...sortedTravel.map((tr) => ({ id: tr.id, type: 'travel' as const, category: 'travel' as const })),
+  ];
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <BulkSelectionProvider rows={bulkRows} sort={sortParam ?? ''}>
+    <div className={`mx-auto max-w-5xl space-y-6${bulkRows.length > 0 ? ' pb-24' : ''}`}>
       <div data-tour="approvals-intro">
         <PageHeader
           title={t('title')}
           description={total === 0 ? t('emptyDescription') : t('pendingDescription', { total })}
+          // Header actions row (09cda965): Sort dropdown sits top-right. The bulk-approval item (fb99474b)
+          // drops its global "Select all" toggle INTO this same flex row, to the LEFT of the sort control.
+          actions={
+            <div className="flex items-center gap-3" data-approvals-header-actions>
+              <BulkSelectAllToggle />
+              <ApprovalsSortControl value={sort} labels={sortLabels} />
+            </div>
+          }
         />
       </div>
       <ErrorBanner message={error} />
@@ -222,6 +288,9 @@ export default async function ApprovalsPage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="w-8 px-4 py-2">
+                  <BulkSectionSelectAll type="leave" />
+                </th>
                 <th className="px-4 py-2 font-medium">{t('code')}</th>
                 <th className="px-4 py-2 font-medium">{t('employee')}</th>
                 <th className="px-4 py-2 font-medium">{t('type')}</th>
@@ -233,8 +302,9 @@ export default async function ApprovalsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {pendingLeave.map((r) => (
+              {sortedLeave.map((r) => (
                 <tr key={r.id}>
+                  <td className="px-4 py-2.5">{leaveBulkActionable(r) && <BulkRowCheckbox id={r.id} type="leave" />}</td>
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={r.employeeCode} />
                   </td>
@@ -360,6 +430,9 @@ export default async function ApprovalsPage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="w-8 px-4 py-2">
+                  <BulkSectionSelectAll type="leaveCancellation" />
+                </th>
                 <th className="px-4 py-2 font-medium">{t('code')}</th>
                 <th className="px-4 py-2 font-medium">{t('employee')}</th>
                 <th className="px-4 py-2 font-medium">{t('type')}</th>
@@ -371,8 +444,11 @@ export default async function ApprovalsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {pendingCancellations.map((c) => (
+              {sortedCancellations.map((c) => (
                 <tr key={c.id}>
+                  <td className="px-4 py-2.5">
+                    <BulkRowCheckbox id={c.id} type="leaveCancellation" />
+                  </td>
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={c.employeeCode} />
                   </td>
@@ -416,6 +492,9 @@ export default async function ApprovalsPage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="w-8 px-4 py-2">
+                  <BulkSectionSelectAll type="claim" />
+                </th>
                 <th className="px-4 py-2 font-medium">{t('code')}</th>
                 <th className="px-4 py-2 font-medium">{t('employee')}</th>
                 <th className="px-4 py-2 font-medium">{t('type')}</th>
@@ -425,8 +504,9 @@ export default async function ApprovalsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {claims.map((c) => (
+              {sortedClaims.map((c) => (
                 <tr key={c.id}>
+                  <td className="px-4 py-2.5">{!mine(c.personId) && <BulkRowCheckbox id={c.id} type="claim" />}</td>
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={c.employeeCode} />
                   </td>
@@ -459,6 +539,9 @@ export default async function ApprovalsPage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="w-8 px-4 py-2">
+                  <BulkSectionSelectAll type="attendance" />
+                </th>
                 <th className="px-4 py-2 font-medium">{t('code')}</th>
                 <th className="px-4 py-2 font-medium">{t('employee')}</th>
                 <th className="px-4 py-2 font-medium">{t('date')}</th>
@@ -468,8 +551,9 @@ export default async function ApprovalsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {corrections.map((c) => (
+              {sortedCorrections.map((c) => (
                 <tr key={c.id}>
+                  <td className="px-4 py-2.5">{!mine(c.personId) && <BulkRowCheckbox id={c.id} type="attendance" />}</td>
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={c.employeeCode} />
                   </td>
@@ -508,6 +592,9 @@ export default async function ApprovalsPage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="w-8 px-4 py-2">
+                  <BulkSectionSelectAll type="travel" />
+                </th>
                 <th className="px-4 py-2 font-medium">{t('employee')}</th>
                 <th className="px-4 py-2 font-medium">{t('dates')}</th>
                 <th className="px-4 py-2 font-medium">{t('reason')}</th>
@@ -515,8 +602,11 @@ export default async function ApprovalsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {pendingTravel.map((tr) => (
+              {sortedTravel.map((tr) => (
                 <tr key={tr.id}>
+                  <td className="px-4 py-2.5">
+                    <BulkRowCheckbox id={tr.id} type="travel" />
+                  </td>
                   <td className="px-4 py-2.5 font-medium">
                     {/* Employee ID left-of-name (feedback 38668d9b) */}
                     <EmployeeCode code={tr.employeeCode} className="mr-1.5" />
@@ -548,7 +638,7 @@ export default async function ApprovalsPage({
             <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingChanges')}</p>
           ) : (
             <ul className="divide-y divide-border">
-              {profileChanges.map((r) => (
+              {sortedProfileChanges.map((r) => (
                 <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                   <div className="min-w-0">
                     <div className="text-sm font-medium">
@@ -592,7 +682,7 @@ export default async function ApprovalsPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {resignations.map((r) => (
+                {sortedResignations.map((r) => (
                   <tr key={r.id}>
                     <td className="px-4 py-2.5">
                       <EmployeeCode code={r.employeeCode} />
@@ -651,7 +741,7 @@ export default async function ApprovalsPage({
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{tReview('noManagerReviews')}</p>
         ) : (
           <ul className="divide-y divide-border">
-            {managerReviews.map((r) => (
+            {sortedManagerReviews.map((r) => (
               <li key={r.id} className="px-4 py-3">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="flex items-center">
@@ -694,7 +784,7 @@ export default async function ApprovalsPage({
             <p className="px-4 py-5 text-center text-sm text-muted-foreground">{tReview('noHrReviews')}</p>
           ) : (
             <ul className="divide-y divide-border">
-              {hrReviews.map((r) => (
+              {sortedHrReviews.map((r) => (
                 <li key={r.id} className="px-4 py-3">
                   <div className="mb-1 flex items-center justify-between">
                     <span className="flex items-center">
@@ -724,5 +814,6 @@ export default async function ApprovalsPage({
         </Card>
       )}
     </div>
+    </BulkSelectionProvider>
   );
 }
