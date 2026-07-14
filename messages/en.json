@@ -3612,13 +3612,16 @@
       "holidayTypeLabel": "Holiday type",
       "holidayType": {
         "public": "Public holiday",
-        "company": "Company holiday",
+        "company": "Replacement holiday",
         "optional": "Optional"
       },
       "descriptionLabel": "Description",
       "descriptionPlaceholder": "Optional",
       "activeLabel": "Active",
-      "inactiveBadge": "Inactive"
+      "inactiveBadge": "Inactive",
+      "nationalStateColumn": "National / State",
+      "statusLabel": "Status",
+      "actionLabel": "Action"
     },
     "users": {
       "title": "Users & roles",

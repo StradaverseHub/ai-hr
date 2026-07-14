@@ -3612,13 +3612,16 @@
       "holidayTypeLabel": "Jenis cuti",
       "holidayType": {
         "public": "Cuti umum",
-        "company": "Cuti syarikat",
+        "company": "Cuti ganti",
         "optional": "Pilihan"
       },
       "descriptionLabel": "Keterangan",
       "descriptionPlaceholder": "Pilihan",
       "activeLabel": "Aktif",
-      "inactiveBadge": "Tidak aktif"
+      "inactiveBadge": "Tidak aktif",
+      "nationalStateColumn": "Kebangsaan / Negeri",
+      "statusLabel": "Status",
+      "actionLabel": "Tindakan"
     },
     "users": {
       "title": "Pengguna & peranan",

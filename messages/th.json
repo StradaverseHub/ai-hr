@@ -3612,13 +3612,16 @@
       "holidayTypeLabel": "ประเภทวันหยุด",
       "holidayType": {
         "public": "วันหยุดราชการ",
-        "company": "วันหยุดบริษัท",
+        "company": "วันหยุดชดเชย",
         "optional": "ตัวเลือก"
       },
       "descriptionLabel": "คำอธิบาย",
       "descriptionPlaceholder": "ไม่บังคับ",
       "activeLabel": "ใช้งาน",
-      "inactiveBadge": "ไม่ใช้งาน"
+      "inactiveBadge": "ไม่ใช้งาน",
+      "nationalStateColumn": "ระดับชาติ / รัฐ",
+      "statusLabel": "สถานะ",
+      "actionLabel": "การดำเนินการ"
     },
     "users": {
       "title": "ผู้ใช้และบทบาท",

@@ -735,14 +735,14 @@ export async function createHolidayAction(formData: FormData) {
   // 66b8f5a8 — the simplified Holiday-master form no longer collects Scope / State / Business-group /
   // Holiday-group. Every holiday added here is a plain national-country master record; the scope columns
   // stay in the DB (backward compatible) but default to null. The form now collects the master fields.
+  // 3e831868 — Holiday Code + Description are no longer collected in the UI; the nullable columns stay in
+  // the DB (backward compatible) and simply default to null on new rows.
   try {
     await createHoliday(s, {
       country: String(formData.get('country') ?? 'MY'),
       holidayDate: String(formData.get('holidayDate') ?? ''),
       name: String(formData.get('name') ?? ''),
-      holidayCode: String(formData.get('holidayCode') ?? '') || null,
       holidayType: String(formData.get('holidayType') ?? 'public'),
-      description: String(formData.get('description') ?? '') || null,
       active: formData.get('active') === 'on',
       // ADR-0063: a provisional date for a not-yet-gazetted holiday (still counts as a holiday).
       tentative: formData.get('tentative') === 'on',
@@ -753,8 +753,10 @@ export async function createHolidayAction(formData: FormData) {
   ok(path);
 }
 
-/** ADR-0063 + 66b8f5a8: edit a holiday's date + name + tentative flag + the master fields (code/type/
- *  description/active). Scope (state/company/holiday-group) stays fixed on existing rows. */
+/** ADR-0063 + 66b8f5a8 + 3e831868: edit a holiday's date + name + type + active + tentative flag. Scope
+ *  (state/company/holiday-group) stays fixed on existing rows. Holiday Code + Description are no longer
+ *  edited from the UI — omitting them here makes the service PRESERVE their stored values (updateHoliday
+ *  treats undefined as "leave unchanged"), so the removed columns keep their data. */
 export async function updateHolidayAction(formData: FormData) {
   const s = await getSession();
   const path = holidaysPath(formData);
@@ -763,9 +765,7 @@ export async function updateHolidayAction(formData: FormData) {
       id: String(formData.get('id')),
       holidayDate: String(formData.get('holidayDate') ?? ''),
       name: String(formData.get('name') ?? ''),
-      holidayCode: String(formData.get('holidayCode') ?? '') || null,
       holidayType: String(formData.get('holidayType') ?? 'public'),
-      description: String(formData.get('description') ?? '') || null,
       active: formData.get('active') === 'on',
       tentative: formData.get('tentative') === 'on',
     });
