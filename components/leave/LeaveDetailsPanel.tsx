@@ -21,7 +21,6 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
-import { Badge } from '@/components/ui';
 import { leaveVisual } from '@/lib/leave-visual';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
 import {
@@ -32,13 +31,6 @@ import {
   type PanelSummary,
   type UpcomingLeaveItem,
 } from './entitlement-panel-config';
-
-const ENTRY_KEYS: Record<string, string> = {
-  accrual: 'accrual',
-  debit: 'debit',
-  adjustment: 'adjustment',
-  in_lieu_accrual: 'inLieuAccrual',
-};
 
 const PLACEHOLDER = '—';
 
@@ -144,38 +136,9 @@ export function LeaveDetailsPanel({
     );
   };
 
-  const renderTransactions = () => {
-    if (data.transactions.length === 0) {
-      return <p className="text-xs text-muted-foreground">{t('noTransactions')}</p>;
-    }
-    // Balance Change = the signed day delta; running balance is client-derived (oldest → newest).
-    return (
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-muted-foreground">
-              <th className="py-1 font-medium">{t('colDate')}</th>
-              <th className="py-1 font-medium">{t('colEntry')}</th>
-              <th className="py-1 text-right font-medium">{t('colBalanceChange')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {data.transactions.map((tx, i) => (
-              <tr key={`${tx.effectiveOn}-${i}`}>
-                <td className="py-1 tabular-nums text-muted-foreground">{tx.effectiveOn}</td>
-                <td className="py-1">
-                  <Badge>{t(`entryType.${ENTRY_KEYS[tx.entryType] ?? 'adjustment'}`)}</Badge>
-                </td>
-                <td className="py-1 text-right tabular-nums text-foreground">
-                  {tx.days >= 0 ? `+${tx.days.toFixed(2)}` : tx.days.toFixed(2)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  };
+  // Transaction History renderer REMOVED (feedback 1dd4d827): the 'transactions' section descriptor was dropped
+  // from entitlement-panel-config.ts, so the panel no longer surfaces the leave ledger here. Ledger data on
+  // `data.transactions` is untouched and still powers the /leave Leave History table.
 
   const sections = [...ENTITLEMENT_PANEL_SECTIONS].sort((a, b) => a.order - b.order);
 
@@ -249,7 +212,6 @@ export function LeaveDetailsPanel({
               if (!show(section.essKey)) return null;
               let body: React.ReactNode = null;
               if (section.kind === 'upcoming') body = renderUpcoming();
-              else if (section.kind === 'transactions') body = renderTransactions();
               else body = renderFields(section);
               if (body == null) return null; // a fields section with everything gated/omitted
               return (

@@ -133,8 +133,10 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
   },
   // §5 Upcoming Leave (approved + future, this type)
   { key: 'upcoming', labelKey: 'section.upcoming', order: 5, kind: 'upcoming', essKey: 'upcomingApprovedLeave' },
-  // §6 Transaction History
-  { key: 'transactions', labelKey: 'section.transactions', order: 6, kind: 'transactions', essKey: 'transactionHistory' },
+  // §6 Transaction History — REMOVED (feedback 1dd4d827): universally hidden from the breakdown side-sheet to
+  // keep the panel focused on balance/entitlement. Ledger data is untouched and stays visible in the /leave
+  // Leave History table. The removal is deliberately universal, not the per-leave-type `transactionHistory` ESS
+  // toggle — the descriptor entry is dropped so no leave type can re-surface it here.
   // §7 Entitlement Calculation Breakdown — the existing calculation details from the current engine, verbatim.
   {
     key: 'calcBreakdown',
