@@ -7,11 +7,16 @@ import { HolidayTabs } from '@/components/holiday-tabs';
 import { createHolidayAction, deleteHolidayAction, updateHolidayAction } from '../actions';
 
 /**
- * Holiday tab (66b8f5a8) — the centralized Holiday MASTER. One tab of the two-tab Holiday module
- * (Holiday · Holiday Group). The Add-Holiday form is simplified: it no longer collects Scope, State,
- * Business Group or Holiday Group (those columns stay in the DB — backward compatible — but default to
- * null); instead it collects the master fields (code, type, description, active). Existing scoped rows keep
- * their scope and show it as a read-only badge.
+ * Holiday tab (66b8f5a8, simplified 3e831868) — the centralized Holiday MASTER. One tab of the two-tab
+ * Holiday module (Holiday · Holiday Group).
+ *
+ * 3e831868 (Holiday Master Simplification): the master keeps only the fields attendance/leave actually
+ * use. Holiday Code + Description are REMOVED from the form and list (the nullable columns stay in the DB
+ * for backward compatibility — the resolver never read them). The list is a compact single-row table
+ * (Holiday Date · Name · National/State · Type · Status · Action) so HR sees far more holidays per screen.
+ * Each row is an inline edit form associated by the `form=` attribute (the <form> element lives outside the
+ * <table> so table markup stays valid HTML). Holiday Type value 'company' is relabelled "Replacement
+ * holiday" in i18n only — the stored value + CHECK constraint are unchanged.
  */
 export default async function HolidaysPage({
   searchParams,
@@ -28,16 +33,9 @@ export default async function HolidaysPage({
   const year = yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : undefined;
 
   const holidays = await listHolidays(s, { country, year });
-  const byYear = new Map<number, typeof holidays>();
-  for (const h of holidays) {
-    const y = Number(h.holidayDate.slice(0, 4));
-    const arr = byYear.get(y);
-    if (arr) arr.push(h);
-    else byYear.set(y, [h]);
-  }
-  const groups = [...byYear.entries()].sort((a, b) => b[0] - a[0]);
 
   // STATIC holiday-type key map (never t(`holidayType.${x}`) — the i18n coverage test requires literal keys).
+  // 3e831868: 'company' now renders "Replacement holiday" (i18n-only relabel; stored value stays 'company').
   const HOLIDAY_TYPES = ['public', 'company', 'optional'] as const;
   const typeLabel: Record<(typeof HOLIDAY_TYPES)[number], string> = {
     public: t('holidayType.public'),
@@ -58,7 +56,7 @@ export default async function HolidaysPage({
     v && (HOLIDAY_TYPES as readonly string[]).includes(v) ? (v as (typeof HOLIDAY_TYPES)[number]) : 'public';
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <HolidayTabs active="holidays" />
       <ErrorBanner message={error} />
@@ -93,124 +91,158 @@ export default async function HolidaysPage({
         </form>
       </Card>
 
-      {/* Master list */}
+      {/* Master list — compact single-row table (3e831868). Add-holiday button top-right. */}
       <Card className="overflow-hidden">
-        <SectionHeader title={t('listTitle')} count={holidays.length} />
+        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+          <div className="text-sm font-medium">
+            {t('listTitle')}
+            <span className="ml-2 text-muted-foreground">({holidays.length})</span>
+          </div>
+          <a href="#add-holiday" className={btnPrimary}>
+            {t('addHoliday')}
+          </a>
+        </div>
+
         {holidays.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
-          groups.map(([y, items]) => (
-            <div key={y}>
-              <div className="bg-muted/40 px-4 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {y}
-              </div>
-              <div className="divide-y divide-border">
-                {items.map((h) => (
-                  // 66b8f5a8: inline edit of the master fields. Scope (state/company/holiday-group) is
-                  // IMMUTABLE here and shown read-only as a badge for legacy rows.
-                  <form
-                    key={h.id}
-                    action={updateHolidayAction}
-                    className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-[auto_1fr_auto_auto]"
-                  >
-                    <input type="hidden" name="id" value={h.id} />
-                    {filterFields}
-                    <Field label={t('dateLabel')}>
-                      <input
-                        name="holidayDate"
-                        type="date"
-                        required
-                        defaultValue={h.holidayDate}
-                        className={`${inputCls} font-mono tabular-nums`}
-                      />
-                    </Field>
-                    <Field label={t('nameLabel')}>
-                      <div className="flex items-center gap-2">
-                        <input name="name" required defaultValue={h.name} className={inputCls} />
-                        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          {h.country}
-                        </span>
-                        {(h.state || h.companyId || h.holidayGroupId) && (
-                          // Legacy scope badge (read-only) — new holidays are national-country master rows.
+          <>
+            {/* Detached inline-edit forms — one per holiday. Kept OUTSIDE the <table> (valid HTML); the row's
+                inputs/buttons attach via the `form=` attribute. Save posts updateHolidayAction, Delete posts
+                deleteHolidayAction. holidayCode/description are intentionally NOT posted here, so the service
+                preserves their stored values (backward compatible) while the UI no longer edits them. */}
+            {holidays.map((h) => (
+              <form key={`f-${h.id}`} id={`hf-${h.id}`} action={updateHolidayAction} className="hidden">
+                <input type="hidden" name="id" value={h.id} />
+                {filterFields}
+              </form>
+            ))}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">{t('dateLabel')}</th>
+                    <th className="px-4 py-2 font-medium">{t('nameLabel')}</th>
+                    <th className="px-4 py-2 font-medium">{t('nationalStateColumn')}</th>
+                    <th className="px-4 py-2 font-medium">{t('holidayTypeLabel')}</th>
+                    <th className="px-4 py-2 font-medium">{t('statusLabel')}</th>
+                    <th className="px-4 py-2 text-right font-medium">{t('actionLabel')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {holidays.map((h) => (
+                    <tr key={h.id} className="align-middle">
+                      <td className="px-4 py-1.5">
+                        <input
+                          form={`hf-${h.id}`}
+                          name="holidayDate"
+                          type="date"
+                          required
+                          defaultValue={h.holidayDate}
+                          className={`${inputCls} w-40 font-mono tabular-nums`}
+                        />
+                      </td>
+                      <td className="px-4 py-1.5">
+                        <div className="flex items-center gap-2">
+                          <input form={`hf-${h.id}`} name="name" required defaultValue={h.name} className={inputCls} />
                           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                            {h.companyId
-                              ? t('scopeBadge', { label: t('scope.group'), name: h.companyName ?? '' })
-                              : h.holidayGroupId
-                                ? t('scopeBadge', { label: t('scope.holidayGroup'), name: h.holidayGroupName ?? '' })
-                                : t('scopeBadge', { label: t('scope.state'), name: h.state ?? '' })}
+                            {h.country}
                           </span>
-                        )}
-                        {!h.active && (
-                          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                            {t('inactiveBadge')}
-                          </span>
-                        )}
-                        {h.tentative && (
-                          <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
-                            {t('tentativeBadge')}
-                          </span>
-                        )}
-                      </div>
-                    </Field>
-                    <Field label={t('holidayCodeLabel')}>
-                      <input
-                        name="holidayCode"
-                        defaultValue={h.holidayCode ?? ''}
-                        placeholder={t('holidayCodePlaceholder')}
-                        className={`${inputCls} w-24`}
-                      />
-                    </Field>
-                    <Field label={t('holidayTypeLabel')}>
-                      <select name="holidayType" defaultValue={typeOf(h.holidayType)} className={inputCls}>
-                        {HOLIDAY_TYPES.map((ty) => (
-                          <option key={ty} value={ty}>
-                            {typeLabel[ty]}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label={t('descriptionLabel')}>
-                      <input
-                        name="description"
-                        defaultValue={h.description ?? ''}
-                        placeholder={t('descriptionPlaceholder')}
-                        className={inputCls}
-                      />
-                    </Field>
-                    <label className="flex items-center gap-1.5 pb-2 text-xs text-muted-foreground">
-                      <input type="checkbox" name="active" defaultChecked={h.active} className="size-3.5" />
-                      {t('activeLabel')}
-                    </label>
-                    <label className="flex items-center gap-1.5 pb-2 text-xs text-muted-foreground">
-                      <input type="checkbox" name="tentative" defaultChecked={h.tentative} className="size-3.5" />
-                      {t('tentativeLabel')}
-                    </label>
-                    <div className="flex items-center gap-2 pb-1 sm:col-span-2">
-                      <button className={btnPrimary}>{t('save')}</button>
-                      <button
-                        formAction={deleteHolidayAction}
-                        title={t('remove')}
-                        className="text-sm text-muted-foreground transition-colors hover:text-red-500"
-                      >
-                        {t('remove')}
-                      </button>
-                    </div>
-                  </form>
-                ))}
-              </div>
+                          {(h.companyId || h.holidayGroupId) && (
+                            // Legacy scope badge (read-only) — company / holiday-group scoped rows.
+                            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                              {h.companyId
+                                ? t('scopeBadge', { label: t('scope.group'), name: h.companyName ?? '' })
+                                : t('scopeBadge', { label: t('scope.holidayGroup'), name: h.holidayGroupName ?? '' })}
+                            </span>
+                          )}
+                          {h.tentative && (
+                            <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                              {t('tentativeBadge')}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-1.5 text-muted-foreground">
+                        {h.state ? h.state : t('national')}
+                      </td>
+                      <td className="px-4 py-1.5">
+                        <select
+                          form={`hf-${h.id}`}
+                          name="holidayType"
+                          defaultValue={typeOf(h.holidayType)}
+                          className={`${inputCls} w-44`}
+                        >
+                          {HOLIDAY_TYPES.map((ty) => (
+                            <option key={ty} value={ty}>
+                              {typeLabel[ty]}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-1.5">
+                        <div className="flex flex-col gap-1">
+                          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <input
+                              form={`hf-${h.id}`}
+                              type="checkbox"
+                              name="active"
+                              defaultChecked={h.active}
+                              className="size-3.5"
+                            />
+                            {t('activeLabel')}
+                          </label>
+                          {/* ADR-0063: preserve the tentative (not-yet-gazetted) flag as an inline toggle. */}
+                          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <input
+                              form={`hf-${h.id}`}
+                              type="checkbox"
+                              name="tentative"
+                              defaultChecked={h.tentative}
+                              className="size-3.5"
+                            />
+                            {t('tentativeLabel')}
+                          </label>
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-1.5 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <button form={`hf-${h.id}`} className={btnPrimary}>
+                            {t('save')}
+                          </button>
+                          <button
+                            form={`hf-${h.id}`}
+                            formAction={deleteHolidayAction}
+                            title={t('remove')}
+                            className="text-sm text-muted-foreground transition-colors hover:text-red-500"
+                          >
+                            {t('remove')}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))
+          </>
         )}
       </Card>
 
-      {/* Add — simplified: master fields only (no Scope / State / Business Group / Holiday Group). */}
-      <Card>
-        <SectionHeader title={t('addTitle')} />
-        <form action={createHolidayAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
+      {/* Add — simplified master fields only: Name, Date, Type, Country, Status. No code / description. */}
+      <Card id="add-holiday">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+          <div className="text-sm font-medium">{t('addTitle')}</div>
+          <button form="add-holiday-form" className={btnPrimary}>
+            {t('addHoliday')}
+          </button>
+        </div>
+        <form
+          id="add-holiday-form"
+          action={createHolidayAction}
+          className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-2 md:grid-cols-4"
+        >
           {filterFields}
-          <Field label={t('holidayCodeLabel')}>
-            <input name="holidayCode" placeholder={t('holidayCodePlaceholder')} className={inputCls} />
-          </Field>
           <Field label={t('nameLabel')}>
             <input name="name" required placeholder={t('namePlaceholder')} className={inputCls} />
           </Field>
@@ -236,9 +268,6 @@ export default async function HolidaysPage({
               ))}
             </select>
           </Field>
-          <Field label={t('descriptionLabel')}>
-            <input name="description" placeholder={t('descriptionPlaceholder')} className={inputCls} />
-          </Field>
           <label className="flex items-center gap-2 self-end pb-2.5 text-sm text-muted-foreground">
             <input type="checkbox" name="active" defaultChecked className="size-4" />
             {t('activeLabel')}
@@ -248,9 +277,6 @@ export default async function HolidaysPage({
             <input type="checkbox" name="tentative" className="size-4" />
             {t('tentativeCreateLabel')}
           </label>
-          <div className="sm:col-span-3">
-            <button className={btnPrimary}>{t('addHoliday')}</button>
-          </div>
         </form>
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">{t('addHint')}</p>
       </Card>

@@ -1863,6 +1863,7 @@
       "deleteDraftTitle": "Padam Proses Gaji",
       "deleteDraftBody": "Anda pasti mahu memadam proses gaji ini? Tindakan ini tidak boleh dibuat asal.",
       "deleteDraftNotDraft": "Hanya proses gaji berstatus draf boleh dipadam.",
+      "deleteDraftFailed": "Proses gaji draf tidak dapat dipadam. Sila cuba lagi, atau hubungi pentadbir anda jika masalah berterusan.",
       "toastDeleted": "Draf proses gaji telah dipadam"
     },
     "reports": {
@@ -3612,13 +3613,16 @@
       "holidayTypeLabel": "Jenis cuti",
       "holidayType": {
         "public": "Cuti umum",
-        "company": "Cuti syarikat",
+        "company": "Cuti ganti",
         "optional": "Pilihan"
       },
       "descriptionLabel": "Keterangan",
       "descriptionPlaceholder": "Pilihan",
       "activeLabel": "Aktif",
-      "inactiveBadge": "Tidak aktif"
+      "inactiveBadge": "Tidak aktif",
+      "nationalStateColumn": "Kebangsaan / Negeri",
+      "statusLabel": "Status",
+      "actionLabel": "Tindakan"
     },
     "users": {
       "title": "Pengguna & peranan",
@@ -4066,7 +4070,19 @@
         "state": "Negeri",
         "country": "Negara",
         "relationship": "Hubungan"
-      }
+      },
+      "col": {
+        "code": "Kod",
+        "label": "Label",
+        "description": "Penerangan",
+        "criteria": "Kriteria",
+        "status": "Status",
+        "action": "Tindakan"
+      },
+      "criteriaNa": "T/A",
+      "statusActive": "Aktif",
+      "statusInactive": "Tidak Aktif",
+      "descriptionPlaceholder": "Penerangan (pilihan)"
     },
     "holidayTabs": {
       "holidays": "Cuti",

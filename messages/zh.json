@@ -1863,6 +1863,7 @@
       "deleteDraftTitle": "删除薪资流程",
       "deleteDraftBody": "确定要删除此薪资流程吗？此操作无法撤销。",
       "deleteDraftNotDraft": "只能删除草稿状态的薪资流程。",
+      "deleteDraftFailed": "无法删除草稿薪资流程。请重试，如果问题持续存在，请联系管理员。",
       "toastDeleted": "薪资流程草稿已删除"
     },
     "reports": {
@@ -3612,13 +3613,16 @@
       "holidayTypeLabel": "假期类型",
       "holidayType": {
         "public": "公共假期",
-        "company": "公司假期",
+        "company": "替代假期",
         "optional": "可选假期"
       },
       "descriptionLabel": "描述",
       "descriptionPlaceholder": "可选",
       "activeLabel": "启用",
-      "inactiveBadge": "停用"
+      "inactiveBadge": "停用",
+      "nationalStateColumn": "全国 / 州属",
+      "statusLabel": "状态",
+      "actionLabel": "操作"
     },
     "users": {
       "title": "用户与角色",
@@ -4066,7 +4070,19 @@
         "state": "州",
         "country": "国家",
         "relationship": "关系"
-      }
+      },
+      "col": {
+        "code": "代码",
+        "label": "标签",
+        "description": "说明",
+        "criteria": "条件",
+        "status": "状态",
+        "action": "操作"
+      },
+      "criteriaNa": "不适用",
+      "statusActive": "启用",
+      "statusInactive": "停用",
+      "descriptionPlaceholder": "可选说明"
     },
     "holidayTabs": {
       "holidays": "假期",

@@ -29,6 +29,7 @@ export async function createProfileOptionAction(formData: FormData) {
       category: String(formData.get('category') ?? ''),
       value: String(formData.get('value') ?? ''),
       label: String(formData.get('label') ?? '') || null,
+      description: String(formData.get('description') ?? '') || null,
       sortOrder: numOrNull(formData.get('sortOrder')),
     });
   } catch (e) {
@@ -44,6 +45,7 @@ export async function updateProfileOptionAction(formData: FormData) {
     await updateProfileOption(s, {
       id: String(formData.get('id')),
       label: String(formData.get('label') ?? ''),
+      description: String(formData.get('description') ?? ''),
       sortOrder: numOrNull(formData.get('sortOrder')),
     });
   } catch (e) {

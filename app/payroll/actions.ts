@@ -264,9 +264,16 @@ export async function deleteDraftBatchAction(formData: FormData) {
   try {
     await deleteDraftBatch(s, { batchId });
   } catch (e) {
-    // BatchNotDraftError's raw message is generation-phrased — map it to the delete-specific copy.
-    const msg = e instanceof BatchNotDraftError ? t('deleteDraftNotDraft') : (e as Error).message;
-    redirect(`/payroll?error=${encodeURIComponent(msg)}`);
+    // (deleteDraftBatch never calls redirect(), so no Next redirect-signal can surface here.)
+    // BatchNotDraftError's raw message is generation-phrased — map it to the delete-specific copy. ANY
+    // other failure (e.g. a DB/foreign-key error like the reported "Failed query: delete from
+    // payroll_batch …" leak, feedback ec3873a6) must surface a friendly, localised message — NEVER the
+    // raw query text. Log the technical detail server-side for troubleshooting.
+    if (e instanceof BatchNotDraftError) {
+      redirect(`/payroll?error=${encodeURIComponent(t('deleteDraftNotDraft'))}`);
+    }
+    console.error('[deleteDraftBatchAction] delete failed', { batchId, error: e });
+    redirect(`/payroll?error=${encodeURIComponent(t('deleteDraftFailed'))}`);
   }
   revalidatePath('/payroll');
   redirect(`/payroll?toast=${encodeURIComponent(t('toastDeleted'))}`);

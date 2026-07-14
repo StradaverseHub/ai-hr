@@ -1863,6 +1863,7 @@
       "deleteDraftTitle": "ลบกระบวนการจ่ายเงินเดือน",
       "deleteDraftBody": "คุณแน่ใจหรือไม่ว่าต้องการลบกระบวนการจ่ายเงินเดือนนี้? การดำเนินการนี้ไม่สามารถย้อนกลับได้",
       "deleteDraftNotDraft": "ลบได้เฉพาะกระบวนการจ่ายเงินเดือนที่มีสถานะร่างเท่านั้น",
+      "deleteDraftFailed": "ไม่สามารถลบกระบวนการจ่ายเงินเดือนฉบับร่างได้ กรุณาลองใหม่อีกครั้ง หรือติดต่อผู้ดูแลระบบหากยังพบปัญหา",
       "toastDeleted": "ลบร่างกระบวนการจ่ายเงินเดือนแล้ว"
     },
     "reports": {
@@ -3612,13 +3613,16 @@
       "holidayTypeLabel": "ประเภทวันหยุด",
       "holidayType": {
         "public": "วันหยุดราชการ",
-        "company": "วันหยุดบริษัท",
+        "company": "วันหยุดชดเชย",
         "optional": "ตัวเลือก"
       },
       "descriptionLabel": "คำอธิบาย",
       "descriptionPlaceholder": "ไม่บังคับ",
       "activeLabel": "ใช้งาน",
-      "inactiveBadge": "ไม่ใช้งาน"
+      "inactiveBadge": "ไม่ใช้งาน",
+      "nationalStateColumn": "ระดับชาติ / รัฐ",
+      "statusLabel": "สถานะ",
+      "actionLabel": "การดำเนินการ"
     },
     "users": {
       "title": "ผู้ใช้และบทบาท",
@@ -4066,7 +4070,19 @@
         "state": "รัฐ",
         "country": "ประเทศ",
         "relationship": "ความสัมพันธ์"
-      }
+      },
+      "col": {
+        "code": "รหัส",
+        "label": "ป้ายกำกับ",
+        "description": "คำอธิบาย",
+        "criteria": "เกณฑ์",
+        "status": "สถานะ",
+        "action": "การดำเนินการ"
+      },
+      "criteriaNa": "ไม่มี",
+      "statusActive": "ใช้งาน",
+      "statusInactive": "ไม่ใช้งาน",
+      "descriptionPlaceholder": "คำอธิบาย (ไม่บังคับ)"
     },
     "holidayTabs": {
       "holidays": "วันหยุด",
