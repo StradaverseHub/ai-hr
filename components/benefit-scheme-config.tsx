@@ -93,6 +93,15 @@ export function BenefitSchemeConfig({
   const [selectedSchemeId, setSelectedSchemeId] = useState<string>(schemes[0]?.id ?? '');
   const selectedEnts = entitlements.filter((e) => e.benefitSchemeId === selectedSchemeId);
 
+  // The three service-band column headers interpolate the scheme's ACTUAL configured thresholds
+  // (feedback 0aa304a1) rather than the old literal "N1"/"N2" placeholders. Thresholds live per
+  // entitlement in serviceBands (n1 = bands[0].toYears, n2 = bands[1].toYears; the top band's
+  // toYears is null → open-ended "{n2} years and over"). Since the headers are shared across all
+  // rows of the selected scheme but each row's stored bands MAY differ, we derive the header pair
+  // from the first entitlement of the selected scheme (tiersFromBands is defensive: any odd/empty
+  // shape falls back to the 2/5 default). Presentation only — no entitlement value changes.
+  const headerTiers = selectedEnts.length > 0 ? tiersFromBands(selectedEnts[0].serviceBands) : { n1: 2, n2: 5 };
+
   return (
     <div className="space-y-8" data-tour="benefit-scheme">
       {/* ── Grade Groups ─────────────────────────────────────────────── */}
@@ -272,9 +281,9 @@ export function BenefitSchemeConfig({
                 <thead>
                   <tr className="border-b border-border text-left text-xs text-muted-foreground">
                     <th className="px-3 py-2 font-medium">{t('colLeaveType')}</th>
-                    <th className="px-3 py-2 font-medium">{t('tierUnder')}</th>
-                    <th className="px-3 py-2 font-medium">{t('tierMid')}</th>
-                    <th className="px-3 py-2 font-medium">{t('tierOver')}</th>
+                    <th className="px-3 py-2 font-medium">{t('tierUnder', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
+                    <th className="px-3 py-2 font-medium">{t('tierMid', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
+                    <th className="px-3 py-2 font-medium">{t('tierOver', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
                     <th className="px-3 py-2" />
                   </tr>
                 </thead>
@@ -417,13 +426,13 @@ function EntitlementForm({
         <Field label={t('threshold2')}>
           <input type="number" min={2} step={1} value={n2} onChange={(e) => setN2(Number(e.target.value))} className={`${inputCls} w-20`} />
         </Field>
-        <Field label={t('tierUnder')}>
+        <Field label={t('tierUnder', { n1, n2 })}>
           <input type="number" min={0} step="0.5" value={d0} onChange={(e) => setD0(e.target.value)} className={`${inputCls} w-20`} />
         </Field>
-        <Field label={t('tierMid')}>
+        <Field label={t('tierMid', { n1, n2 })}>
           <input type="number" min={0} step="0.5" value={d1} onChange={(e) => setD1(e.target.value)} className={`${inputCls} w-20`} />
         </Field>
-        <Field label={t('tierOver')}>
+        <Field label={t('tierOver', { n1, n2 })}>
           <input type="number" min={0} step="0.5" value={d2} onChange={(e) => setD2(e.target.value)} className={`${inputCls} w-20`} />
         </Field>
       </div>
