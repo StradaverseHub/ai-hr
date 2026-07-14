@@ -196,7 +196,17 @@
     "approvalRequests": "Permohonan kelulusan",
     "awaitingYourAction": "Menunggu tindakan anda",
     "upcomingReminders": "Peringatan akan datang",
-    "reviewsAndHolidays": "Penilaian & cuti akan datang"
+    "reviewsAndHolidays": "Penilaian & cuti akan datang",
+    "customizeDashboard": "Suaikan Papan Pemuka",
+    "customizeHint": "Seret bahagian untuk menyusun semula, kemudian simpan susun atur anda.",
+    "saveChanges": "Simpan Perubahan",
+    "cancel": "Batal",
+    "resetToDefault": "Set Semula kepada Lalai",
+    "block_cards": "Kad Ringkasan",
+    "block_plannedAbsences": "Ketidakhadiran Terancang",
+    "block_recentlyJoined": "Baru Menyertai",
+    "block_upcomingEvents": "Acara Akan Datang",
+    "block_recentActivity": "Aktiviti Terkini"
   },
   "people": {
     "list": {

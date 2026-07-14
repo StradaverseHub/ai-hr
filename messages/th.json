@@ -196,7 +196,17 @@
     "approvalRequests": "คำขออนุมัติ",
     "awaitingYourAction": "รอการดำเนินการของคุณ",
     "upcomingReminders": "การแจ้งเตือนที่จะมาถึง",
-    "reviewsAndHolidays": "การประเมินและวันหยุดที่จะมาถึง"
+    "reviewsAndHolidays": "การประเมินและวันหยุดที่จะมาถึง",
+    "customizeDashboard": "ปรับแต่งแดชบอร์ด",
+    "customizeHint": "ลากส่วนต่าง ๆ เพื่อจัดลำดับใหม่ แล้วบันทึกเลย์เอาต์ของคุณ",
+    "saveChanges": "บันทึกการเปลี่ยนแปลง",
+    "cancel": "ยกเลิก",
+    "resetToDefault": "รีเซ็ตเป็นค่าเริ่มต้น",
+    "block_cards": "การ์ดสรุป",
+    "block_plannedAbsences": "การลาที่วางแผนไว้",
+    "block_recentlyJoined": "เข้าร่วมล่าสุด",
+    "block_upcomingEvents": "กิจกรรมที่กำลังจะมาถึง",
+    "block_recentActivity": "กิจกรรมล่าสุด"
   },
   "people": {
     "list": {

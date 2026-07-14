@@ -348,6 +348,10 @@ export const appUser = pgTable(
     // First-login product tour (ADR-0018): NULL = not yet completed/dismissed. Written only through
     // the SECURITY DEFINER app.onboarding_* seam so a user can touch only their own flag.
     onboardedAt: timestamp('onboarded_at', { withTimezone: true }),
+    // Per-user employee dashboard layout (feedback 7d9d145d): JSON array of block ids giving the
+    // employee's preferred vertical section order; NULL = system default. Written only through the
+    // SECURITY DEFINER app.dashboard_layout_* seam so a user can touch only their own row.
+    dashboardLayout: jsonb('dashboard_layout'),
     createdAt: createdAt(),
   },
   (t) => [index('app_user_tenant_idx').on(t.tenantId)],

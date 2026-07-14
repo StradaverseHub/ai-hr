@@ -196,7 +196,17 @@
     "approvalRequests": "审批申请",
     "awaitingYourAction": "等待您处理",
     "upcomingReminders": "即将到来的提醒",
-    "reviewsAndHolidays": "即将到来的评估与假期"
+    "reviewsAndHolidays": "即将到来的评估与假期",
+    "customizeDashboard": "自定义仪表板",
+    "customizeHint": "拖动各版块重新排序，然后保存布局。",
+    "saveChanges": "保存更改",
+    "cancel": "取消",
+    "resetToDefault": "恢复默认",
+    "block_cards": "摘要卡片",
+    "block_plannedAbsences": "计划缺勤",
+    "block_recentlyJoined": "最近加入",
+    "block_upcomingEvents": "即将到来的活动",
+    "block_recentActivity": "最近活动"
   },
   "people": {
     "list": {

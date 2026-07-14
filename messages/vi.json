@@ -196,7 +196,17 @@
     "approvalRequests": "Yêu cầu phê duyệt",
     "awaitingYourAction": "Đang chờ bạn xử lý",
     "upcomingReminders": "Nhắc nhở sắp tới",
-    "reviewsAndHolidays": "Đánh giá & ngày lễ sắp tới"
+    "reviewsAndHolidays": "Đánh giá & ngày lễ sắp tới",
+    "customizeDashboard": "Tùy chỉnh bảng điều khiển",
+    "customizeHint": "Kéo các phần để sắp xếp lại, sau đó lưu bố cục của bạn.",
+    "saveChanges": "Lưu thay đổi",
+    "cancel": "Hủy",
+    "resetToDefault": "Đặt lại mặc định",
+    "block_cards": "Thẻ tóm tắt",
+    "block_plannedAbsences": "Vắng mặt theo kế hoạch",
+    "block_recentlyJoined": "Mới tham gia",
+    "block_upcomingEvents": "Sự kiện sắp tới",
+    "block_recentActivity": "Hoạt động gần đây"
   },
   "people": {
     "list": {

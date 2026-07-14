@@ -196,7 +196,17 @@
     "approvalRequests": "Approval requests",
     "awaitingYourAction": "Awaiting your action",
     "upcomingReminders": "Upcoming reminders",
-    "reviewsAndHolidays": "Reviews & holidays ahead"
+    "reviewsAndHolidays": "Reviews & holidays ahead",
+    "customizeDashboard": "Customize Dashboard",
+    "customizeHint": "Drag the sections to reorder them, then save your layout.",
+    "saveChanges": "Save Changes",
+    "cancel": "Cancel",
+    "resetToDefault": "Reset to Default",
+    "block_cards": "Summary Cards",
+    "block_plannedAbsences": "Planned Absences",
+    "block_recentlyJoined": "Recently Joined",
+    "block_upcomingEvents": "Upcoming Events",
+    "block_recentActivity": "Recent Activity"
   },
   "people": {
     "list": {

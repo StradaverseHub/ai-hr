@@ -196,7 +196,17 @@
     "approvalRequests": "ஒப்புதல் கோரிக்கைகள்",
     "awaitingYourAction": "உங்கள் நடவடிக்கைக்காகக் காத்திருக்கிறது",
     "upcomingReminders": "வரவிருக்கும் நினைவூட்டல்கள்",
-    "reviewsAndHolidays": "வரவிருக்கும் மதிப்பாய்வுகள் & விடுமுறைகள்"
+    "reviewsAndHolidays": "வரவிருக்கும் மதிப்பாய்வுகள் & விடுமுறைகள்",
+    "customizeDashboard": "டாஷ்போர்டைத் தனிப்பயனாக்கு",
+    "customizeHint": "பிரிவுகளை இழுத்து மறுவரிசைப்படுத்தி, பின்னர் உங்கள் தளவமைப்பைச் சேமிக்கவும்.",
+    "saveChanges": "மாற்றங்களைச் சேமி",
+    "cancel": "ரத்து",
+    "resetToDefault": "இயல்புநிலைக்கு மீட்டமை",
+    "block_cards": "சுருக்க அட்டைகள்",
+    "block_plannedAbsences": "திட்டமிட்ட விடுப்புகள்",
+    "block_recentlyJoined": "சமீபத்தில் சேர்ந்தவர்கள்",
+    "block_upcomingEvents": "வரவிருக்கும் நிகழ்வுகள்",
+    "block_recentActivity": "சமீபத்திய செயல்பாடு"
   },
   "people": {
     "list": {
