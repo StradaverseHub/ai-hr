@@ -4066,7 +4066,19 @@
         "state": "州",
         "country": "国家",
         "relationship": "关系"
-      }
+      },
+      "col": {
+        "code": "代码",
+        "label": "标签",
+        "description": "说明",
+        "criteria": "条件",
+        "status": "状态",
+        "action": "操作"
+      },
+      "criteriaNa": "不适用",
+      "statusActive": "启用",
+      "statusInactive": "停用",
+      "descriptionPlaceholder": "可选说明"
     },
     "holidayTabs": {
       "holidays": "假期",

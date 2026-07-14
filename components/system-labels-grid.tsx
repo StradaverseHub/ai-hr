@@ -99,14 +99,26 @@ export type GridActions = {
 // for backend/type parity, but no tab renders it here.
 const KINDS: GridKind[] = ['department', 'position', 'cost_center'];
 
-// Editable text columns per kind (field key + whether required). Business-unit link + criteria/status
-// columns are rendered specially, not from this list. 797e3523: every kind carries an optional `label`
-// short-code column.
-const TEXT_COLS: Record<GridKind, { field: keyof GridRecord; required?: boolean }[]> = {
-  department: [{ field: 'name', required: true }, { field: 'label' }, { field: 'description' }],
-  position: [{ field: 'title', required: true }, { field: 'label' }, { field: 'jobFamily' }, { field: 'description' }],
-  cost_center: [{ field: 'code', required: true }, { field: 'name', required: true }, { field: 'label' }, { field: 'description' }],
-  business_unit: [{ field: 'code', required: true }, { field: 'name', required: true }, { field: 'label' }, { field: 'description' }],
+// dafd475a — STANDARDIZED System Labels columns. Every kind renders the SAME three text columns in the
+// SAME order — Code, Label, Description — so the master-data surface reads consistently regardless of which
+// category is selected (the reporter's core ask). `headerKey` drives the i18n header (col.code / col.label /
+// col.description) INDEPENDENTLY of the underlying `field`, which is what lets each kind bind "Code" to its
+// own existing unique identifier WITHOUT adding a new column or changing uniqueness:
+//   - department → Code binds to `name`  (departments key on name; no separate code exists)
+//   - position   → Code binds to `title` (positions key on title; no separate code exists)
+//   - cost_center / business_unit → Code binds to the real `code`; "Description" binds to the required
+//     `name` (a cost centre's full descriptive name — exactly what "Description" means here).
+// Business-unit link (department only) + Criteria(scope)/Status/Action are rendered specially (not from
+// this list) and follow the three text columns, keeping the standard order intact. Secondary optional
+// fields no longer surfaced here (position.jobFamily, cost_center's free-text `description`) are PRESERVED
+// on save — the row re-sends its loaded value unchanged — so nothing is lost; they are simply not edited on
+// this standardized grid. Uniqueness, scope, active/inactive and the edit/delete actions are UNCHANGED.
+type StdCol = { headerKey: 'code' | 'label' | 'description'; field: keyof GridRecord; required?: boolean };
+const TEXT_COLS: Record<GridKind, StdCol[]> = {
+  department: [{ headerKey: 'code', field: 'name', required: true }, { headerKey: 'label', field: 'label' }, { headerKey: 'description', field: 'description' }],
+  position: [{ headerKey: 'code', field: 'title', required: true }, { headerKey: 'label', field: 'label' }, { headerKey: 'description', field: 'description' }],
+  cost_center: [{ headerKey: 'code', field: 'code', required: true }, { headerKey: 'label', field: 'label' }, { headerKey: 'description', field: 'name', required: true }],
+  business_unit: [{ headerKey: 'code', field: 'code', required: true }, { headerKey: 'label', field: 'label' }, { headerKey: 'description', field: 'name', required: true }],
 };
 
 function emptyDraft(key: string, companyId: string, isGlobal: boolean): RowState {
@@ -608,7 +620,7 @@ export function SystemLabelsGrid({
                 <th className="w-8 px-2 py-1.5"></th>
                 {TEXT_COLS[kind].map((c) => (
                   <th key={String(c.field)} className={headerCls} onClick={() => toggleSort(c.field)}>
-                    {t(`col.${String(c.field)}`)}
+                    {t(`col.${c.headerKey}`)}
                     {c.required ? ' *' : ''}
                     {sortField === c.field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                   </th>

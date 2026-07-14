@@ -4141,6 +4141,9 @@ export const profileOption = pgTable(
     category: text('category').notNull(),
     value: text('value').notNull(), // canonical value stored on the person column
     label: text('label').notNull(), // display text (defaults to value)
+    // dafd475a — optional full descriptive text, surfaced as the standard "Description" column on the
+    // System Labels → Profile Options table. Additive + nullable (migration 0206).
+    description: text('description'),
     sortOrder: integer('sort_order').notNull().default(0),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: createdAt(),

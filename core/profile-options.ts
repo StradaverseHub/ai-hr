@@ -88,6 +88,8 @@ export type ProfileOptionRow = {
   category: ProfileOptionCategory;
   value: string;
   label: string;
+  // dafd475a — optional full descriptive text (standard "Description" column). Null when unset.
+  description: string | null;
   sortOrder: number;
   isActive: boolean;
 };
@@ -123,6 +125,7 @@ export function listProfileOptions(
       category: r.category as ProfileOptionCategory,
       value: r.value,
       label: r.label,
+      description: r.description ?? null,
       sortOrder: r.sortOrder,
       isActive: r.isActive,
     }));
@@ -152,6 +155,7 @@ export async function listAllProfileOptions(
           category: r.category,
           value: r.value,
           label: r.label,
+          description: r.description ?? null,
           sortOrder: r.sortOrder,
           isActive: r.isActive,
         });
@@ -197,12 +201,14 @@ export function seedProfileOptions(ctx: SessionContext): Promise<{ total: number
 
 export async function createProfileOption(
   ctx: SessionContext,
-  p: { category: string; value: string; label?: string | null; sortOrder?: number | null },
+  p: { category: string; value: string; label?: string | null; description?: string | null; sortOrder?: number | null },
 ): Promise<{ id: string }> {
   if (!isProfileOptionCategory(p.category)) throw new Error('Unknown option category');
   const value = p.value.trim();
   if (!value) throw new Error('Value is required');
   const label = (p.label ?? '').trim() || value;
+  // dafd475a — optional Description; empty ⇒ null (mirrors the org-label description handling).
+  const description = (p.description ?? '').trim() || null;
   const sortOrder = Number.isFinite(p.sortOrder as number) ? Number(p.sortOrder) : 0;
   return withTenant(ctx, async (tx) => {
     const [dupe] = await tx
@@ -213,7 +219,7 @@ export async function createProfileOption(
     if (dupe) throw new Error(`"${value}" already exists in this list`);
     const [row] = await tx
       .insert(profileOption)
-      .values({ tenantId: ctx.tenantId, category: p.category, value, label, sortOrder })
+      .values({ tenantId: ctx.tenantId, category: p.category, value, label, description, sortOrder })
       .returning({ id: profileOption.id });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -221,24 +227,30 @@ export async function createProfileOption(
       aggregateId: row.id,
       eventType: 'profile-option.created',
       actor: actorOf(ctx),
-      payload: { category: p.category, value, label, sortOrder },
+      payload: { category: p.category, value, label, description, sortOrder },
     });
     return { id: row.id };
   });
 }
 
-/** Edit the display label + sort order. `value` is IMMUTABLE — it is the contract with stored person data. */
+/**
+ * Edit the display label + optional description + sort order. `value` is IMMUTABLE — it is the contract
+ * with stored person data. `description` is tri-state: undefined ⇒ leave untouched; a string (incl. '') ⇒
+ * set/clear it (blank ⇒ null).
+ */
 export async function updateProfileOption(
   ctx: SessionContext,
-  p: { id: string; label: string; sortOrder?: number | null },
+  p: { id: string; label: string; description?: string | null; sortOrder?: number | null },
 ): Promise<void> {
   const label = p.label.trim();
   if (!label) throw new Error('Label is required');
   const sortOrder = Number.isFinite(p.sortOrder as number) ? Number(p.sortOrder) : 0;
+  const set: { label: string; sortOrder: number; description?: string | null } = { label, sortOrder };
+  if (p.description !== undefined) set.description = (p.description ?? '').trim() || null;
   await withTenant(ctx, async (tx) => {
     const [row] = await tx
       .update(profileOption)
-      .set({ label, sortOrder })
+      .set(set)
       .where(eq(profileOption.id, p.id))
       .returning({ id: profileOption.id });
     if (!row) return;
@@ -248,7 +260,7 @@ export async function updateProfileOption(
       aggregateId: p.id,
       eventType: 'profile-option.updated',
       actor: actorOf(ctx),
-      payload: { label, sortOrder },
+      payload: { label, sortOrder, ...(p.description !== undefined ? { description: set.description } : {}) },
     });
   });
 }

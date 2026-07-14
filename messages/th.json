@@ -4066,7 +4066,19 @@
         "state": "รัฐ",
         "country": "ประเทศ",
         "relationship": "ความสัมพันธ์"
-      }
+      },
+      "col": {
+        "code": "รหัส",
+        "label": "ป้ายกำกับ",
+        "description": "คำอธิบาย",
+        "criteria": "เกณฑ์",
+        "status": "สถานะ",
+        "action": "การดำเนินการ"
+      },
+      "criteriaNa": "ไม่มี",
+      "statusActive": "ใช้งาน",
+      "statusInactive": "ไม่ใช้งาน",
+      "descriptionPlaceholder": "คำอธิบาย (ไม่บังคับ)"
     },
     "holidayTabs": {
       "holidays": "วันหยุด",

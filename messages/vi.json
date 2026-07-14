@@ -4066,7 +4066,19 @@
         "state": "Bang",
         "country": "Quốc gia",
         "relationship": "Mối quan hệ"
-      }
+      },
+      "col": {
+        "code": "Mã",
+        "label": "Nhãn",
+        "description": "Mô tả",
+        "criteria": "Tiêu chí",
+        "status": "Trạng thái",
+        "action": "Thao tác"
+      },
+      "criteriaNa": "Không áp dụng",
+      "statusActive": "Đang hoạt động",
+      "statusInactive": "Không hoạt động",
+      "descriptionPlaceholder": "Mô tả (tùy chọn)"
     },
     "holidayTabs": {
       "holidays": "Ngày lễ",
