@@ -1,38 +1,26 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { attendanceForDate } from '@/core/attendance';
+import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { listCompanies, listDepartments } from '@/core/read';
-import { Avatar, Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Avatar, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
 import { checkInAction, checkOutAction } from '../actions';
 
-const STATUS: Record<string, string> = {
-  present: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-  late: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-  half_day: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
-  absent: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
-};
-const CONTEXT_CLS: Record<string, string> = {
-  on_leave: 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
-  holiday: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300',
-  rest_day: 'bg-muted text-muted-foreground',
-};
-
-function Pill({ label, cls }: { label: string; cls: string }) {
-  return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${cls}`}>{label}</span>
-  );
-}
-
 const fmtMin = (m: number | null | undefined) =>
   m == null ? '—' : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
-const fmtOt = (m: number | null | undefined) => (!m ? '—' : fmtMin(m));
+/** OT columns render as decimal hours (2 dp), matching the request's example (0.50 / 1.00). */
+const fmtHours2 = (m: number) => (m / 60).toFixed(2);
 
 /**
- * Attendance > Records — Daily Attendance tab (314ea061). Daily verification for all employees: the
- * per-employee day table (check-in / check-out / worked hours / OT / status / location + inline check-in-out
- * actions) with a Company / Department / Date filter panel above it. Default: all companies in scope, all
- * departments, today's date; users can change the date to review historical attendance.
+ * Attendance > Records — Daily Attendance tab. Enhanced verification table (feedback bbada39c): employee
+ * code + name split into two columns, the assigned Shift Code, scheduled-vs-actual hours, the day's
+ * overtime split into the four Malaysian rate buckets (OT 1.0 / 1.5 / 2.0 / 3.0 — DERIVED at read time from
+ * the single stored otMinutes + frozen dayType, so they sum back to worked hours), a single always-present
+ * Status (Absent in red only) and an operational Flag (Late / Under / Odd). The check-in / check-out
+ * controls (the Approved/Lock action area) and the Company / Department / Date filters are unchanged.
+ *
+ * Read-only: no DomainEvent — this view persists nothing new (the substrate skip is deliberate).
  */
 export default async function DailyAttendancePage({
   searchParams,
@@ -42,18 +30,22 @@ export default async function DailyAttendancePage({
   const t = await getTranslations('attendance');
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
-  const contextLabels: Record<string, string> = {
-    on_leave: t('contextOnLeave'),
-    holiday: t('contextHoliday'),
-    rest_day: t('contextRestDay'),
-  };
-  const statusLabels: Record<string, string> = {
+  // v1 Status labels. present/absent reuse the existing keys (capitalised in render); the finer leave
+  // sub-codes (AL/ML/EL/RL) + Travel/Training remain a documented follow-up — the loader collapses all
+  // approved leave to a single On-Leave context.
+  const statusText: Record<AttendanceStatus, string> = {
     present: t('statusPresent'),
-    late: t('statusLate'),
-    half_day: t('statusHalfDay'),
     absent: t('statusAbsent'),
+    rest: t('statusRest'),
+    off: t('statusOff'),
+    ph: t('statusPh'),
+    on_leave: t('statusOnLeave'),
   };
-  const statusLabel = (status: string) => statusLabels[status] ?? status.replace(/_/g, ' ');
+  const flagText: Record<Exclude<AttendanceFlag, null>, string> = {
+    late: t('flagLate'),
+    under: t('flagUnder'),
+    odd: t('flagOdd'),
+  };
   const todayIso = new Date().toISOString().slice(0, 10);
   const date = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : todayIso;
 
@@ -76,7 +68,7 @@ export default async function DailyAttendancePage({
 
       <Card className="overflow-hidden" data-tour="attendance-day">
         <SectionHeader title={date === todayIso ? t('today') : date} count={rows.length} />
-        {/* Filter panel — plain GET form (server-driven, no-JS): Company · Department · Date. */}
+        {/* Filter panel — plain GET form (server-driven, no-JS): Company · Department · Date. Unchanged. */}
         <form method="GET" className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {t('filters.company')}
@@ -110,100 +102,95 @@ export default async function DailyAttendancePage({
             {t('filters.apply')}
           </Button>
         </form>
+        {/* Wide table — the extra columns scroll horizontally on narrow screens. */}
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[64rem] text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
-                <th className="px-4 py-2 font-medium">{t('colCheckIn')}</th>
-                <th className="px-4 py-2 font-medium">{t('colCheckOut')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('colHours')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('colOvertime')}</th>
-                <th className="px-4 py-2 font-medium" data-tour="attendance-status">{t('colStatus')}</th>
-                <th className="px-4 py-2 font-medium">{t('colLocation')}</th>
-                <th className="px-4 py-2 text-right font-medium" data-tour="attendance-action">{t('colAction')}</th>
+                <th className="px-3 py-2 font-medium">{t('colEmployeeCode')}</th>
+                <th className="px-3 py-2 font-medium">{t('colEmployeeName')}</th>
+                <th className="px-3 py-2 font-medium">{t('colShiftCode')}</th>
+                <th className="px-3 py-2 font-medium">{t('colCheckIn')}</th>
+                <th className="px-3 py-2 font-medium">{t('colCheckOut')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('colShiftHours')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('colActualHours')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('colOt10')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('colOt15')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('colOt20')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('colOt30')}</th>
+                <th className="px-3 py-2 font-medium" data-tour="attendance-status">{t('colStatus')}</th>
+                <th className="px-3 py-2 font-medium">{t('colFlag')}</th>
+                <th className="px-3 py-2 text-right font-medium" data-tour="attendance-action">{t('colAction')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {rows.map((r) => (
-                <tr key={r.employmentId}>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={r.name} className="size-7 text-[10px]" />
-                      {/* Employee ID left-of-name (feedback 38668d9b) */}
-                      <EmployeeName code={r.employeeCode} name={r.name} className="font-medium" />
-                    </div>
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                    {r.checkInAt?.slice(0, 5) ?? '—'}
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                    {r.checkOutAt?.slice(0, 5) ?? '—'}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
-                    {fmtMin(r.workedMinutes)}
-                  </td>
-                  <td
-                    className="px-4 py-2.5 text-right tabular-nums text-muted-foreground"
-                    title={r.dayType && r.dayType !== 'workday' ? t('otClass', { dayType: r.dayType.replace('_', ' ') }) : undefined}
-                  >
-                    {fmtOt(r.otMinutes)}
-                    {(r.otMinutes ?? 0) > 0 && r.dayType !== 'workday' && (
-                      <span className="ml-1 text-[10px] uppercase text-amber-600 dark:text-amber-400">
-                        {r.dayType === 'holiday' ? t('otCodePh') : t('otCodeRd')}
+              {rows.map((r) => {
+                const ot = otByRate(r);
+                const status = statusOf(r);
+                const flag = flagOf(r);
+                return (
+                  <tr key={r.employmentId}>
+                    <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.employeeCode ?? '—'}</td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar name={r.name} className="size-7 text-[10px]" />
+                        <span className="font-medium">{r.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{r.shiftCode ?? '—'}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.checkInAt?.slice(0, 5) ?? '—'}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.checkOutAt?.slice(0, 5) ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.scheduledMinutes)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.workedMinutes)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot10) : '—'}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot15) : '—'}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot20) : '—'}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot30) : '—'}</td>
+                    <td className="px-3 py-2.5">
+                      {/* Only Absent in red; every other status uses the standard text colour. */}
+                      <span className={`capitalize ${status === 'absent' ? 'font-medium text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
+                        {statusText[status]}
                       </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {r.attendanceId && r.status ? (
-                      <Pill label={statusLabel(r.status)} cls={STATUS[r.status] ?? STATUS.absent} />
-                    ) : r.context ? (
-                      <Pill label={contextLabels[r.context] ?? r.context} cls={CONTEXT_CLS[r.context] ?? ''} />
-                    ) : (
-                      <Pill label={t('statusAbsent')} cls={STATUS.absent} />
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                    {/* ADR-0070: prefer the matched site name, else raw coordinates, else nothing captured. */}
-                    {(() => {
-                      const locName = r.checkOutLocationName ?? r.checkInLocationName;
-                      const lat = r.checkOutLat ?? r.checkInLat;
-                      const lng = r.checkOutLng ?? r.checkInLng;
-                      if (locName) return locName;
-                      if (lat != null && lng != null) return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-                      return '—';
-                    })()}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex justify-end">
-                      {!r.attendanceId ? (
-                        <form action={checkInAction} className="flex items-center gap-2">
-                          <input type="hidden" name="employmentId" value={r.employmentId} />
-                          <input type="hidden" name="date" value={date} />
-                          <input name="time" type="time" defaultValue="09:00" className={`${inputCls} h-8 w-28`} />
-                          <Button type="submit" size="sm">
-                            {t('checkIn')}
-                          </Button>
-                        </form>
-                      ) : !r.checkOutAt ? (
-                        <form action={checkOutAction} className="flex items-center gap-2">
-                          <input type="hidden" name="employmentId" value={r.employmentId} />
-                          <input type="hidden" name="date" value={date} />
-                          <input name="time" type="time" defaultValue="18:00" className={`${inputCls} h-8 w-28`} />
-                          <Button type="submit" size="sm" variant="secondary">
-                            {t('checkOut')}
-                          </Button>
-                        </form>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {flag ? (
+                        <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{flagText[flag]}</span>
                       ) : (
-                        <span className="text-xs text-muted-foreground">{t('done')}</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {/* Approved/Lock action area — unchanged check-in / check-out controls. */}
+                      <div className="flex justify-end">
+                        {!r.attendanceId ? (
+                          <form action={checkInAction} className="flex items-center gap-2">
+                            <input type="hidden" name="employmentId" value={r.employmentId} />
+                            <input type="hidden" name="date" value={date} />
+                            <input name="time" type="time" defaultValue="09:00" className={`${inputCls} h-8 w-28`} />
+                            <Button type="submit" size="sm">
+                              {t('checkIn')}
+                            </Button>
+                          </form>
+                        ) : !r.checkOutAt ? (
+                          <form action={checkOutAction} className="flex items-center gap-2">
+                            <input type="hidden" name="employmentId" value={r.employmentId} />
+                            <input type="hidden" name="date" value={date} />
+                            <input name="time" type="time" defaultValue="18:00" className={`${inputCls} h-8 w-28`} />
+                            <Button type="submit" size="sm" variant="secondary">
+                              {t('checkOut')}
+                            </Button>
+                          </form>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">{t('done')}</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={14} className="px-4 py-8 text-center text-muted-foreground">
                     {t('noEmployees')}
                   </td>
                 </tr>

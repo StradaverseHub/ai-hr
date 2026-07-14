@@ -1,41 +1,30 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { attendanceForEmploymentRange } from '@/core/attendance';
+import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { listEmployees } from '@/core/read';
 import { Card, ErrorBanner, PageHeader, SectionHeader, inputCls, Button } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
 
-const STATUS: Record<string, string> = {
-  present: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-  late: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-  half_day: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
-  absent: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
-};
-const CONTEXT_CLS: Record<string, string> = {
-  on_leave: 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
-  holiday: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300',
-  rest_day: 'bg-muted text-muted-foreground',
-};
-
-function Pill({ label, cls }: { label: string; cls: string }) {
-  return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${cls}`}>{label}</span>
-  );
-}
-
 const fmtMin = (m: number | null | undefined) =>
   m == null ? '—' : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
-const fmtOt = (m: number | null | undefined) => (!m ? '—' : fmtMin(m));
+/** OT columns render as decimal hours (2 dp), matching the request's example (0.50 / 1.00). */
+const fmtHours2 = (m: number) => (m / 60).toFixed(2);
 
 const firstOfMonth = (iso: string) => `${iso.slice(0, 7)}-01`;
 const dayName = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
 
 /**
- * Attendance > Records — Individual Attendance tab (314ea061). A single-employee attendance enquiry: pick
- * an employee, choose a date range (default: first-of-month → today), and see one row per calendar day —
- * check-in / check-out / hours / OT and the exception (leave / holiday / rest day / absent) that explains a
- * no-attendance day. No employee is selected until the user picks one.
+ * Attendance > Records — Individual Attendance tab. Enhanced per-employee, per-day verification table
+ * (feedback bbada39c): the assigned Shift Code, scheduled-vs-actual hours, the day's overtime split into the
+ * four Malaysian rate buckets (OT 1.0 / 1.5 / 2.0 / 3.0 — DERIVED at read time), a single always-present
+ * Status (Absent in red only) and an operational Flag (Late / Under / Odd). The Employee / Date From /
+ * Date To filters are unchanged.
+ *
+ * Read-only: no DomainEvent — this enquiry persists nothing (the substrate skip is deliberate). The
+ * Approved/Lock capability is the separate attendance-correction workflow surfaced on the Overview
+ * worklist; it is not a per-row control on this read-only enquiry (documented product decision).
  */
 export default async function IndividualAttendancePage({
   searchParams,
@@ -45,18 +34,19 @@ export default async function IndividualAttendancePage({
   const t = await getTranslations('attendance');
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
-  const statusLabels: Record<string, string> = {
+  const statusText: Record<AttendanceStatus, string> = {
     present: t('statusPresent'),
-    late: t('statusLate'),
-    half_day: t('statusHalfDay'),
     absent: t('statusAbsent'),
+    rest: t('statusRest'),
+    off: t('statusOff'),
+    ph: t('statusPh'),
+    on_leave: t('statusOnLeave'),
   };
-  const contextLabels: Record<string, string> = {
-    on_leave: t('contextOnLeave'),
-    holiday: t('contextHoliday'),
-    rest_day: t('contextRestDay'),
+  const flagText: Record<Exclude<AttendanceFlag, null>, string> = {
+    late: t('flagLate'),
+    under: t('flagUnder'),
+    odd: t('flagOdd'),
   };
-  const statusLabel = (status: string) => statusLabels[status] ?? status.replace(/_/g, ' ');
   const todayIso = new Date().toISOString().slice(0, 10);
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
   const from = sp.from && dateRe.test(sp.from) ? sp.from : firstOfMonth(todayIso);
@@ -78,7 +68,7 @@ export default async function IndividualAttendancePage({
           title={selected ? selected.name : t('individualTitle')}
           count={selectedEmp ? rows.length : undefined}
         />
-        {/* Filter panel — plain GET form: Select Employee · Date From · Date To. */}
+        {/* Filter panel — plain GET form: Select Employee · Date From · Date To. Unchanged. */}
         <form method="GET" className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {t('filters.selectEmployee')}
@@ -107,48 +97,63 @@ export default async function IndividualAttendancePage({
         {!selectedEmp ? (
           <p className="px-4 py-10 text-center text-sm text-muted-foreground">{t('filters.pickEmployeePrompt')}</p>
         ) : (
+          /* Wide table — the extra columns scroll horizontally on narrow screens. */
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[60rem] text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-2 font-medium">{t('colDate')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colDay')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colCheckIn')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colCheckOut')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('colHours')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('colOvertime')}</th>
-                  <th className="px-4 py-2 font-medium">{t('colException')}</th>
+                  <th className="px-3 py-2 font-medium">{t('colDate')}</th>
+                  <th className="px-3 py-2 font-medium">{t('colDay')}</th>
+                  <th className="px-3 py-2 font-medium">{t('colShiftCode')}</th>
+                  <th className="px-3 py-2 font-medium">{t('colCheckIn')}</th>
+                  <th className="px-3 py-2 font-medium">{t('colCheckOut')}</th>
+                  <th className="px-3 py-2 text-right font-medium">{t('colShiftHours')}</th>
+                  <th className="px-3 py-2 text-right font-medium">{t('colActualHours')}</th>
+                  <th className="px-3 py-2 text-right font-medium">{t('colOt10')}</th>
+                  <th className="px-3 py-2 text-right font-medium">{t('colOt15')}</th>
+                  <th className="px-3 py-2 text-right font-medium">{t('colOt20')}</th>
+                  <th className="px-3 py-2 text-right font-medium">{t('colOt30')}</th>
+                  <th className="px-3 py-2 font-medium">{t('colStatus')}</th>
+                  <th className="px-3 py-2 font-medium">{t('colFlag')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {rows.map((r) => (
-                  <tr key={r.date}>
-                    <td className="px-4 py-2.5 tabular-nums">{r.date}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{dayName(r.date)}</td>
-                    <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                      {r.checkInAt?.slice(0, 5) ?? '—'}
-                    </td>
-                    <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                      {r.checkOutAt?.slice(0, 5) ?? '—'}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
-                      {fmtMin(r.workedMinutes)}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{fmtOt(r.otMinutes)}</td>
-                    <td className="px-4 py-2.5">
-                      {r.attendanceId && r.status ? (
-                        <Pill label={statusLabel(r.status)} cls={STATUS[r.status] ?? STATUS.absent} />
-                      ) : r.context ? (
-                        <Pill label={contextLabels[r.context] ?? r.context} cls={CONTEXT_CLS[r.context] ?? ''} />
-                      ) : (
-                        <Pill label={t('statusAbsent')} cls={STATUS.absent} />
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((r) => {
+                  const ot = otByRate(r);
+                  const status = statusOf(r);
+                  const flag = flagOf(r);
+                  return (
+                    <tr key={r.date}>
+                      <td className="px-3 py-2.5 tabular-nums">{r.date}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{dayName(r.date)}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{r.shiftCode ?? '—'}</td>
+                      <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.checkInAt?.slice(0, 5) ?? '—'}</td>
+                      <td className="px-3 py-2.5 tabular-nums text-muted-foreground">{r.checkOutAt?.slice(0, 5) ?? '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.scheduledMinutes)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{fmtMin(r.workedMinutes)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot10) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot15) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot20) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.attendanceId ? fmtHours2(ot.ot30) : '—'}</td>
+                      <td className="px-3 py-2.5">
+                        {/* Only Absent in red; every other status uses the standard text colour. */}
+                        <span className={`capitalize ${status === 'absent' ? 'font-medium text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
+                          {statusText[status]}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {flag ? (
+                          <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{flagText[flag]}</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={13} className="px-4 py-8 text-center text-muted-foreground">
                       {t('noRecords')}
                     </td>
                   </tr>

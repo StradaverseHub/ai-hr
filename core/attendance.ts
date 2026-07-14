@@ -812,6 +812,74 @@ export async function checkOut(
 
 export type DayContext = 'on_leave' | 'holiday' | 'rest_day' | null;
 
+// ─── Attendance Records Table Enhancement (feedback bbada39c) — shift-display resolution ──────────────
+//
+// The Records tables need, per row, the assigned Shift CODE, the scheduled minutes and the shift start/end
+// — none of which is stored on the attendance row. scheduleFor() resolves all of this but DISCARDS the
+// shift identity and is per-(employee,date) (an N+1 in the daily loader). So we resolve the DISPLAY subset
+// with the SAME precedence (rostered shift > rostered rest > default shift working-day > default-shift rest
+// > company policy), fed from BATCHED queries (one roster query, one default-shift query for the whole
+// page) — read-only, no behaviour change to pay derivation.
+
+/** The per-row shift-display fields surfaced by both Records loaders (all derived, none stored). */
+export type ShiftDisplay = {
+  /** Assigned Shift Code for the date (fixed default shift or rostered shift); null on a policy/rest day. */
+  shiftCode: string | null;
+  /** Net scheduled work minutes for the resolved shift/policy working day; null on a no-work (rest/off) day. */
+  scheduledMinutes: number | null;
+  /** Shift start / end as HH:MM; null when no shift resolves (policy / rest day). */
+  shiftStart: string | null;
+  shiftEnd: string | null;
+  /** True when the day is an EXPLICIT rostered rest day (→ Status "Rest" vs the "OFF" policy non-working day). */
+  isRosterRest: boolean;
+};
+
+const NO_SHIFT: ShiftDisplay = { shiftCode: null, scheduledMinutes: null, shiftStart: null, shiftEnd: null, isRosterRest: false };
+
+type RosterDisplayRow = { isRestDay: boolean; code: string | null; start: string | null; end: string | null; brk: number | null; crosses: boolean | null };
+type DefaultShiftRow = { code: string | null; start: string; end: string; brk: number; crosses: boolean; pattern: number[] | null };
+
+/**
+ * Resolve the shift-DISPLAY subset for one (employee, date) from already-batched inputs, mirroring
+ * scheduleFor()'s precedence exactly so the table can't disagree with the engine:
+ *   rostered shift → rostered rest → default shift (pattern working day) → default-shift rest → policy.
+ * `policyScheduled` is the company policy's net scheduled minutes when the date is a policy WORKING day,
+ * else null (the caller decides working-vs-rest from the same workDays list the context uses).
+ */
+function resolveShiftDisplay(
+  date: string,
+  roster: RosterDisplayRow | undefined,
+  def: DefaultShiftRow | undefined,
+  policyScheduled: number | null,
+): ShiftDisplay {
+  if (roster) {
+    if (!roster.isRestDay && roster.start && roster.end) {
+      return {
+        shiftCode: roster.code,
+        scheduledMinutes: netScheduledMinutes(roster.start, roster.end, roster.crosses!, roster.brk!),
+        shiftStart: roster.start.slice(0, 5),
+        shiftEnd: roster.end.slice(0, 5),
+        isRosterRest: false,
+      };
+    }
+    return { ...NO_SHIFT, isRosterRest: true }; // an explicit rostered rest day
+  }
+  if (def) {
+    if (def.pattern?.includes(isoWeekday(date))) {
+      return {
+        shiftCode: def.code,
+        scheduledMinutes: netScheduledMinutes(def.start, def.end, def.crosses, def.brk),
+        shiftStart: def.start.slice(0, 5),
+        shiftEnd: def.end.slice(0, 5),
+        isRosterRest: false,
+      };
+    }
+    return NO_SHIFT; // default shift's own rest day (pattern excludes) → OFF, not an explicit rostered rest
+  }
+  // Company-policy branch: a working day carries the policy schedule; a non-working day is OFF (no shift).
+  return { ...NO_SHIFT, scheduledMinutes: policyScheduled };
+}
+
 /**
  * Every active employee with their attendance row for `date` (null = no row), plus the
  * context that explains a missing row: approved leave > public holiday > rest day.
@@ -889,6 +957,10 @@ export function attendanceForDate(
           companyId: attendancePolicy.companyId,
           workingDays: attendancePolicy.workingDays,
           halfWorkingDays: attendancePolicy.halfWorkingDays,
+          // bbada39c — policy net scheduled minutes for the "Shift Hours" column on a policy (no-shift) day.
+          workStart: attendancePolicy.workStart,
+          workEnd: attendancePolicy.workEnd,
+          breakMinutes: attendancePolicy.breakMinutes,
         })
         .from(attendancePolicy),
     ]);
@@ -898,7 +970,46 @@ export function attendanceForDate(
     const daysByCompany = new Map(
       policies.map((p) => [p.companyId, unionWorkingDays(p.workingDays, p.halfWorkingDays)]),
     );
+    // bbada39c — company → policy net scheduled minutes (span − break), used only when no shift resolves.
+    const policySchedByCompany = new Map(
+      policies.map((p) => [p.companyId, scheduledMinutes({ ...DEFAULTS, workStart: p.workStart, workEnd: p.workEnd, breakMinutes: p.breakMinutes })]),
+    );
     const dow = isoWeekday(date);
+
+    // bbada39c — BATCHED shift-display resolution (avoid an N+1): one roster query + one default-shift query
+    // for the whole page, then resolveShiftDisplay() applies scheduleFor's precedence per row.
+    const rosterByEmp = new Map<string, RosterDisplayRow>();
+    for (const rr of await tx
+      .select({
+        employmentId: rosterAssignment.employmentId,
+        isRestDay: rosterAssignment.isRestDay,
+        code: shift.code,
+        start: shift.startTime,
+        end: shift.endTime,
+        brk: shift.breakMinutes,
+        crosses: shift.crossesMidnight,
+      })
+      .from(rosterAssignment)
+      .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
+      .where(and(inArray(rosterAssignment.employmentId, empIds.length ? empIds : ['']), eq(rosterAssignment.shiftDate, date)))) {
+      rosterByEmp.set(rr.employmentId, rr);
+    }
+    const defaultShiftByEmp = new Map<string, DefaultShiftRow>();
+    for (const dr of await tx
+      .select({
+        employmentId: employment.id,
+        code: shift.code,
+        start: shift.startTime,
+        end: shift.endTime,
+        brk: shift.breakMinutes,
+        crosses: shift.crossesMidnight,
+        pattern: shift.weeklyPattern,
+      })
+      .from(employment)
+      .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
+      .where(inArray(employment.id, empIds.length ? empIds : ['']))) {
+      defaultShiftByEmp.set(dr.employmentId, dr);
+    }
 
     // ADR-0055: resolve each absent employee's holiday calendar through the unified resolver (business-group
     // → state → national), the SAME calendar leave + checkIn use — so a group/state holiday explains a
@@ -912,14 +1023,17 @@ export function attendanceForDate(
     }
 
     return rows.map(({ companyId, ...r }) => {
+      const isWorkingDay = (daysByCompany.get(companyId) ?? DEFAULTS.workingDays).includes(dow);
       let context: DayContext = null;
       if (!r.attendanceId) {
         if (leaveSet.has(r.employmentId)) context = 'on_leave';
         else if (holidayEmp.has(r.employmentId)) context = 'holiday';
-        else if (!(daysByCompany.get(companyId) ?? DEFAULTS.workingDays).includes(dow))
-          context = 'rest_day';
+        else if (!isWorkingDay) context = 'rest_day';
       }
-      return { ...r, context };
+      // bbada39c — shift-display subset (code / scheduled minutes / start-end / rostered-rest) for the row.
+      const policyScheduled = isWorkingDay ? (policySchedByCompany.get(companyId) ?? scheduledMinutes(DEFAULTS)) : null;
+      const shiftDisplay = resolveShiftDisplay(date, rosterByEmp.get(r.employmentId), defaultShiftByEmp.get(r.employmentId), policyScheduled);
+      return { ...r, context, ...shiftDisplay };
     });
   });
 }
@@ -935,7 +1049,11 @@ export type AttendanceRangeRow = {
   otMinutes: number | null;
   /** Explains a no-row day, same precedence as attendanceForDate: leave > holiday > rest day. */
   context: DayContext;
-};
+  // bbada39c — the individual row now carries the employee identity (the page used to read it from the
+  // dropdown) plus the shift-display subset, so the Records table can render code / shift / hours per day.
+  employeeCode: string | null;
+  name: string;
+} & ShiftDisplay;
 
 /**
  * One row per calendar day in [from, to] for a SINGLE employment (Attendance>Records Individual tab,
@@ -951,8 +1069,16 @@ export function attendanceForEmploymentRange(
   return withTenant(ctx, async (tx) => {
     if (from > to) return [];
     const [emp] = await tx
-      .select({ companyId: employment.companyId })
+      .select({
+        companyId: employment.companyId,
+        // bbada39c — surface the identity onto every row (the page previously sourced it from the dropdown).
+        employeeCode: employment.employeeCode,
+        name: person.fullName,
+        // The employee's fixed DEFAULT shift, resolved once for the whole range.
+        defShiftId: employment.defaultShiftId,
+      })
       .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
       .where(eq(employment.id, employmentId))
       .limit(1);
     if (!emp) return []; // RLS-fenced: not visible to this session, or no such employment.
@@ -981,6 +1107,9 @@ export function attendanceForEmploymentRange(
         .select({
           workingDays: attendancePolicy.workingDays,
           halfWorkingDays: attendancePolicy.halfWorkingDays,
+          workStart: attendancePolicy.workStart,
+          workEnd: attendancePolicy.workEnd,
+          breakMinutes: attendancePolicy.breakMinutes,
         })
         .from(attendancePolicy)
         .where(eq(attendancePolicy.companyId, emp.companyId))
@@ -995,18 +1124,60 @@ export function attendanceForEmploymentRange(
     const workDays = policyRows[0]
       ? unionWorkingDays(policyRows[0].workingDays, policyRows[0].halfWorkingDays)
       : DEFAULTS.workingDays;
+    // bbada39c — policy net scheduled minutes for the "Shift Hours" column on a policy (no-shift) working day.
+    const policyScheduledMin = policyRows[0]
+      ? scheduledMinutes({ ...DEFAULTS, workStart: policyRows[0].workStart, workEnd: policyRows[0].workEnd, breakMinutes: policyRows[0].breakMinutes })
+      : scheduledMinutes(DEFAULTS);
+
+    // bbada39c — BATCHED shift-display inputs for the range: all roster rows in [from,to] joined to their
+    // shift, plus the one fixed default shift, resolved per date by resolveShiftDisplay (scheduleFor order).
+    const rosterByDate = new Map<string, RosterDisplayRow>();
+    for (const rr of await tx
+      .select({
+        shiftDate: rosterAssignment.shiftDate,
+        isRestDay: rosterAssignment.isRestDay,
+        code: shift.code,
+        start: shift.startTime,
+        end: shift.endTime,
+        brk: shift.breakMinutes,
+        crosses: shift.crossesMidnight,
+      })
+      .from(rosterAssignment)
+      .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
+      .where(and(eq(rosterAssignment.employmentId, employmentId), gte(rosterAssignment.shiftDate, from), lte(rosterAssignment.shiftDate, to)))) {
+      rosterByDate.set(rr.shiftDate, rr);
+    }
+    let defShift: DefaultShiftRow | undefined;
+    if (emp.defShiftId) {
+      const [dr] = await tx
+        .select({
+          code: shift.code,
+          start: shift.startTime,
+          end: shift.endTime,
+          brk: shift.breakMinutes,
+          crosses: shift.crossesMidnight,
+          pattern: shift.weeklyPattern,
+        })
+        .from(shift)
+        .where(eq(shift.id, emp.defShiftId))
+        .limit(1);
+      defShift = dr;
+    }
 
     const out: AttendanceRangeRow[] = [];
     let d = from;
     // Guard against a pathological range; a first-of-month → today window is ≤ 31 days.
     for (let i = 0; i < 400 && d <= to; i++) {
       const row = byDate.get(d);
+      const isWorkingDay = workDays.includes(isoWeekday(d));
       let context: DayContext = null;
       if (!row) {
         if (leaveSet.has(d)) context = 'on_leave';
         else if (holidays.has(d)) context = 'holiday';
-        else if (!workDays.includes(isoWeekday(d))) context = 'rest_day';
+        else if (!isWorkingDay) context = 'rest_day';
       }
+      // bbada39c — per-date shift display (code / scheduled minutes / start-end / rostered-rest).
+      const shiftDisplay = resolveShiftDisplay(d, rosterByDate.get(d), defShift, isWorkingDay ? policyScheduledMin : null);
       out.push({
         date: d,
         attendanceId: row?.attendanceId ?? null,
@@ -1017,6 +1188,9 @@ export function attendanceForEmploymentRange(
         workedMinutes: row?.workedMinutes ?? null,
         otMinutes: row?.otMinutes ?? null,
         context,
+        employeeCode: emp.employeeCode,
+        name: emp.name,
+        ...shiftDisplay,
       });
       const next = new Date(`${d}T00:00:00Z`);
       next.setUTCDate(next.getUTCDate() + 1);
