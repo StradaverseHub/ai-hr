@@ -33,6 +33,10 @@ import {
   upcomingRemindersCount,
 } from '@/lib/dashboard-cards';
 import { ACTOR_DOT, aggregateHref, aggregateLabel, humanizeEvent, relativeTime } from '@/lib/audit-format';
+import { getDashboardLayout } from '@/core/dashboard-prefs';
+import { DashboardCustomizer } from '@/components/dashboard-customizer';
+import { saveDashboardLayoutAction, resetDashboardLayoutAction } from '@/app/dashboard-layout-actions';
+import type { DashboardBlockId } from '@/lib/dashboard-layout';
 
 const rm = (n: unknown) =>
   n == null
@@ -167,39 +171,40 @@ export default async function DashboardPage({
   // All reads are self-scoped via RLS.
   let empBalances: { leaveTypeId: string; leaveType: string; available: number }[] = [];
   let empTaskCount = 0;
+  // Customizable dashboard layout (feedback 7d9d145d): the employee's saved vertical block order, or
+  // null when they use the system default. Employee role ONLY — manager/admin dashboards are untouched.
+  let savedLayout: DashboardBlockId[] | null = null;
   if (role === 'employee' && me) {
-    const [balances, feedbackRequests] = await Promise.all([
+    const [balances, feedbackRequests, layout] = await Promise.all([
       leaveBalances(s, me.employmentId, locale),
       myFeedbackRequests(s), // pending 360 peer-feedback the employee must submit
+      getDashboardLayout(s), // own-row read via the SECURITY DEFINER seam
     ]);
     empBalances = balances.map((b) => ({ leaveTypeId: b.leaveTypeId, leaveType: b.leaveType, available: b.available }));
     empTaskCount = pendingTasksCount([feedbackRequests.length]);
+    savedLayout = layout;
   }
 
-  // Manager card data: team away today, onboarding this week, the same approvals count as the bell, and
-  // the Upcoming Reminders digest (review deadlines assigned to this manager + company holidays soon).
+  // Manager card data: team away today, the same approvals count as the bell, and the Upcoming Reminders
+  // digest (review deadlines assigned to this manager + company holidays soon).
   let mgrAwayCount = 0;
-  let mgrOnboarding = 0;
   let mgrApprovals = 0;
   let mgrReminders = 0;
   if (role === 'manager') {
-    const since7 = new Date(todayMs - 6 * 86_400_000).toISOString().slice(0, 10);
     // teamAwayToday must be computed over a window that always covers today. The strip's window shifts
     // with ?abs=, so when it's overridden, fetch the default (today-2 … +11) window just for the count.
     const defaultFrom = new Date(todayMs - 2 * 86_400_000).toISOString().slice(0, 10);
     const defaultTo = new Date(todayMs + (ABS_DAYS - 3) * 86_400_000).toISOString().slice(0, 10);
-    const [awayRows, weekHires, approvals, reviewDeadlines] = await Promise.all([
+    const [awayRows, approvals, reviewDeadlines] = await Promise.all([
       absParam
         ? plannedAbsences(s, scopeIds, { from: defaultFrom, to: defaultTo }, todayInKualaLumpur())
         : Promise.resolve(absences),
-      recentHires(s, scopeIds, { since: since7, limit: 50 }),
       pendingApprovalsCount(s, scopeIds),
       // Performance / probation review deadlines assigned to this manager (the reporter's "review
       // deadlines" reminder). Same queue the bell counts — surfaced here as an upcoming reminder too.
       me ? pendingManagerReviewsFor(s, me.employmentId) : Promise.resolve([]),
     ]);
     mgrAwayCount = teamAwayToday(awayRows, todayIso, s.personId ?? null);
-    mgrOnboarding = weekHires.length;
     mgrApprovals = approvals;
     // Reminder window: holidays in the next 30 days + the manager's open review deadlines. (No training
     // module yet, so training reminders contribute 0 — the helper absorbs them when one ships.)
@@ -256,8 +261,6 @@ export default async function DashboardPage({
         return <StatCard key={id} label={t('pendingTasks')} value={empTaskCount} hint={t('requireYourAttention')} href="/me" />;
       case 'teamAwayToday':
         return <StatCard key={id} label={t('teamAwayToday')} value={mgrAwayCount} hint={t('onApprovedLeaveToday')} href="#planned-absences" />;
-      case 'onboardingWeek':
-        return <StatCard key={id} label={t('onboardingThisWeek')} value={mgrOnboarding} hint={t('startedLast7Days')} href="/personnel" />;
       case 'approvalRequests':
         return <StatCard key={id} label={t('approvalRequests')} value={mgrApprovals} hint={t('awaitingYourAction')} href="/approvals" />;
       case 'upcomingReminders':
@@ -265,99 +268,186 @@ export default async function DashboardPage({
     }
   };
 
-  return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader
-        title={t('title')}
-        description={
-          scopeIds.length >= companies.length
-            ? t('overviewAll')
-            : t('overviewScoped', { count: scopeIds.length, total: companies.length })
-        }
+  // Feedback 7d9d145d — the reorderable employee-dashboard sections, each pre-rendered here on the
+  // server and stacked in the employee's saved order by the <DashboardCustomizer> client island (v1 =
+  // vertical reorder of existing sections; the island only chooses ORDER, it reads no data). The exact
+  // same nodes render inline for manager/admin below, so those dashboards are byte-for-byte untouched.
+  const cardsGrid = (
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{ROLE_CARDS[role].map(renderCard)}</div>
+  );
+
+  const plannedAbsencesBlock = (
+    <div id="planned-absences" className="scroll-mt-4">
+      <PlannedAbsences
+        rows={absences}
+        from={absFrom}
+        days={ABS_DAYS}
+        todayIso={todayIso}
+        controls={<TimelineNav from={absFrom} isDefault={!absParam} />}
+        // Partial Leave Cancellation from the calendar (ADR-0065): the viewer gates "own leave only"; the action
+        // is the SAME one the Leave page posts (redirects to /leave?toast=cancellationRequested + revalidates /).
+        viewerPersonId={s.personId}
+        cancelAction={requestLeaveCancellationAction}
+        // HR Admin Leave Cancellation on behalf (feedback 22e68ff0): admins get an immediate cancel
+        // affordance on other employees' pills; same action the Leave page posts.
+        viewerIsAdmin={isAdmin(s)}
+        adminCancelAction={adminCancelLeaveAction}
+        // Edit/cancel-by-status (item c9a19e34): the viewer self-withdraws their own PENDING leave directly
+        // from the calendar; the SAME action the Leave page posts (re-asserts subject-only + pending).
+        selfCancelAction={cancelOwnLeaveAction}
       />
+    </div>
+  );
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{ROLE_CARDS[role].map(renderCard)}</div>
+  const recentlyJoinedCard = (
+    <Card className="p-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">{t('onboarding')}</h2>
+          <p className="text-xs text-muted-foreground">{t('recentlyJoined')}</p>
+        </div>
+        <Link href="/personnel" className="text-xs text-muted-foreground hover:text-foreground">
+          {t('viewAll')}
+        </Link>
+      </div>
+      {hires.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">{t('noHires', { days: 60 })}</p>
+      ) : (
+        <ul className="mt-4 space-y-3">
+          {hires.map((h) => (
+            <li key={h.employmentId} className="flex items-center gap-3">
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                {initials(h.name)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{h.name}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {h.role ?? h.department ?? '—'} · {joinedAgo(h.hiredOn, todayMs, t)}
+                </div>
+              </div>
+              <StatusBadge status={h.status} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
 
-      <div id="planned-absences" className="scroll-mt-4">
-        <PlannedAbsences
-          rows={absences}
-          from={absFrom}
-          days={ABS_DAYS}
-          todayIso={todayIso}
-          controls={<TimelineNav from={absFrom} isDefault={!absParam} />}
-          // Partial Leave Cancellation from the calendar (ADR-0065): the viewer gates "own leave only"; the action
-          // is the SAME one the Leave page posts (redirects to /leave?toast=cancellationRequested + revalidates /).
-          viewerPersonId={s.personId}
-          cancelAction={requestLeaveCancellationAction}
-          // HR Admin Leave Cancellation on behalf (feedback 22e68ff0): admins get an immediate cancel
-          // affordance on other employees' pills; same action the Leave page posts.
-          viewerIsAdmin={isAdmin(s)}
-          adminCancelAction={adminCancelLeaveAction}
-          // Edit/cancel-by-status (item c9a19e34): the viewer self-withdraws their own PENDING leave directly
-          // from the calendar; the SAME action the Leave page posts (re-asserts subject-only + pending).
-          selfCancelAction={cancelOwnLeaveAction}
+  const upcomingEventsCard = (
+    <Card id="upcoming-events" className="scroll-mt-4 p-5">
+      <h2 className="text-sm font-semibold">{t('upcomingEvents')}</h2>
+      <p className="text-xs text-muted-foreground">{t('publicHolidays')}</p>
+      {events.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">{t('nothingScheduled')}</p>
+      ) : (
+        <ul className="mt-4 space-y-3">
+          {events.map((e) => (
+            <li key={e.date} className="flex items-center gap-3">
+              <span className="flex size-10 shrink-0 flex-col items-center justify-center rounded-xl border border-border bg-muted/50 leading-none">
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {monthAbbr(e.date)}
+                </span>
+                <span className="text-sm font-semibold tabular-nums">{dayOf(e.date)}</span>
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{e.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  {weekdayOf(e.date)} · {daysAway(e.date, todayMs, t)}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+
+  const recentActivityCard = (
+    <Card className="p-5">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold">{t('recentActivity')}</h2>
+        {isAdmin(s) && (
+          <Link href="/admin/audit" className="text-xs text-primary hover:underline">
+            {t('viewAll')}
+          </Link>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">{t('recentActivitySubtitle')}</p>
+      {activity.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">{t('noActivity')}</p>
+      ) : (
+        <ul className="mt-4 space-y-3">
+          {activity.map((a, i) => {
+            const href = aggregateHref(a.aggregateType, a.aggregateId);
+            const who = a.actorName ?? a.actorType;
+            return (
+              <li key={i} className="flex items-start gap-3 text-sm">
+                <span className={`mt-1.5 size-2 shrink-0 rounded-full ${ACTOR_DOT[a.actorType] ?? 'bg-muted-foreground'}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{humanizeEvent(a.eventType)}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {href ? (
+                      <Link href={href} className="text-primary/90 hover:underline">
+                        {aggregateLabel(a.aggregateType)}
+                      </Link>
+                    ) : (
+                      aggregateLabel(a.aggregateType)
+                    )}{' '}
+                    · {who} · {relativeTime(a.occurredAt, nowMs)}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
+  );
+
+  const pageHeader = (
+    <PageHeader
+      title={t('title')}
+      description={
+        scopeIds.length >= companies.length
+          ? t('overviewAll')
+          : t('overviewScoped', { count: scopeIds.length, total: companies.length })
+      }
+    />
+  );
+
+  // Employee dashboard: the sections above become one reorderable, per-user-ordered block list.
+  // Manager/admin dashboards fall through to the fixed layout below — deliberately untouched.
+  if (role === 'employee') {
+    return (
+      <div className="mx-auto max-w-6xl space-y-6">
+        {pageHeader}
+        <DashboardCustomizer
+          savedOrder={savedLayout}
+          saveAction={saveDashboardLayoutAction}
+          resetAction={resetDashboardLayoutAction}
+          blocks={{
+            cards: cardsGrid,
+            plannedAbsences: plannedAbsencesBlock,
+            recentlyJoined: recentlyJoinedCard,
+            upcomingEvents: upcomingEventsCard,
+            recentActivity: recentActivityCard,
+          }}
         />
       </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-6">
+      {pageHeader}
+
+      {cardsGrid}
+
+      {plannedAbsencesBlock}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card className="p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold">{t('onboarding')}</h2>
-              <p className="text-xs text-muted-foreground">{t('recentlyJoined')}</p>
-            </div>
-            <Link href="/personnel" className="text-xs text-muted-foreground hover:text-foreground">
-              {t('viewAll')}
-            </Link>
-          </div>
-          {hires.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">{t('noHires', { days: 60 })}</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {hires.map((h) => (
-                <li key={h.employmentId} className="flex items-center gap-3">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                    {initials(h.name)}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{h.name}</div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {h.role ?? h.department ?? '—'} · {joinedAgo(h.hiredOn, todayMs, t)}
-                    </div>
-                  </div>
-                  <StatusBadge status={h.status} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card id="upcoming-events" className="scroll-mt-4 p-5">
-          <h2 className="text-sm font-semibold">{t('upcomingEvents')}</h2>
-          <p className="text-xs text-muted-foreground">{t('publicHolidays')}</p>
-          {events.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">{t('nothingScheduled')}</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {events.map((e) => (
-                <li key={e.date} className="flex items-center gap-3">
-                  <span className="flex size-10 shrink-0 flex-col items-center justify-center rounded-xl border border-border bg-muted/50 leading-none">
-                    <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {monthAbbr(e.date)}
-                    </span>
-                    <span className="text-sm font-semibold tabular-nums">{dayOf(e.date)}</span>
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{e.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {weekdayOf(e.date)} · {daysAway(e.date, todayMs, t)}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+        {recentlyJoinedCard}
+        {upcomingEventsCard}
       </div>
 
       {/* R17: company-wide headcount breakdown is HR-only (data was admin-gated in the read anyway). */}
@@ -394,8 +484,8 @@ export default async function DashboardPage({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {/* R17: attendance breakdown for HR + managers (team attendance); an employee's single own
-              record already lives on /me's clock card, so it's hidden for the employee role. */}
-          {role !== 'employee' && (
+              record already lives on /me's clock card. The employee role returns early above (its
+              dashboard is the reorderable block list), so this branch is always manager/hr_admin. */}
           <Card className="p-5">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold">{t('attendance')}</h2>
@@ -429,7 +519,6 @@ export default async function DashboardPage({
               </>
             )}
           </Card>
-          )}
 
           {/* R17: latest-payroll-run detail is HR-only — kills the misleading employee-facing
               "No payroll runs yet · Create one →" prompt they can't act on. */}
@@ -460,45 +549,7 @@ export default async function DashboardPage({
           )}
         </div>
 
-        <Card className="p-5">
-          <div className="flex items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold">{t('recentActivity')}</h2>
-            {isAdmin(s) && (
-              <Link href="/admin/audit" className="text-xs text-primary hover:underline">
-                {t('viewAll')}
-              </Link>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">{t('recentActivitySubtitle')}</p>
-          {activity.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">{t('noActivity')}</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {activity.map((a, i) => {
-                const href = aggregateHref(a.aggregateType, a.aggregateId);
-                const who = a.actorName ?? a.actorType;
-                return (
-                  <li key={i} className="flex items-start gap-3 text-sm">
-                    <span className={`mt-1.5 size-2 shrink-0 rounded-full ${ACTOR_DOT[a.actorType] ?? 'bg-muted-foreground'}`} />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{humanizeEvent(a.eventType)}</div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {href ? (
-                          <Link href={href} className="text-primary/90 hover:underline">
-                            {aggregateLabel(a.aggregateType)}
-                          </Link>
-                        ) : (
-                          aggregateLabel(a.aggregateType)
-                        )}{' '}
-                        · {who} · {relativeTime(a.occurredAt, nowMs)}
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Card>
+        {recentActivityCard}
       </div>
     </div>
   );

@@ -18,7 +18,6 @@ export type DashboardCardId =
   | 'pendingTasks'
   // manager
   | 'teamAwayToday'
-  | 'onboardingWeek'
   | 'approvalRequests'
   | 'upcomingReminders'
   // hr_admin
@@ -30,14 +29,14 @@ export type DashboardCardId =
 /**
  * Ordered card set per resolved role — matches the reporter's three sets exactly.
  * - Employee: Leave Balance · Upcoming Holidays · Pending Tasks (self-service action items).
- * - Manager: Team Away Today · Onboarding This Week · Approval Requests · Upcoming Reminders.
+ * - Manager: Team Away Today · Approval Requests · Upcoming Reminders.
  * - HR admin: the unchanged high-level company overview.
  * `nextHoliday` is the employee's "Upcoming Holidays" card; the manager surfaces holidays inside
  * `upcomingReminders` instead (the reporter's 4th manager card = reminders, not a bare next-holiday).
  */
 export const ROLE_CARDS: Record<DashboardRole, DashboardCardId[]> = {
   employee: ['leaveBalance', 'nextHoliday', 'pendingTasks'],
-  manager: ['teamAwayToday', 'onboardingWeek', 'approvalRequests', 'upcomingReminders'],
+  manager: ['teamAwayToday', 'approvalRequests', 'upcomingReminders'],
   hr_admin: ['headcount', 'pendingLeave', 'companies', 'latestPayroll'],
 };
 
@@ -54,7 +53,6 @@ export const CARD_META: Record<DashboardCardId, { labelKey: string; href: string
   // items land here as those task types ship). NOT the inverse "requests awaiting a decision" surface.
   pendingTasks: { labelKey: 'pendingTasks', href: '/me' },
   teamAwayToday: { labelKey: 'teamAwayToday', href: '#planned-absences' },
-  onboardingWeek: { labelKey: 'onboardingThisWeek', href: '/personnel' },
   approvalRequests: { labelKey: 'approvalRequests', href: '/approvals' },
   // Upcoming Reminders scrolls to the on-page holidays digest; review deadlines it also counts are
   // actioned from the Approval Requests card (same /approvals inbox).

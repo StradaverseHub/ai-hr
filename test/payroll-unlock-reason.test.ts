@@ -1,34 +1,32 @@
 /**
- * Unlock closed payroll — MANDATORY reason (feedback 2108c01f).
+ * Unlock closed payroll — single confirm, MANDATORY reason (feedback 2108c01f; simplified in 62e85140).
  *
- * The unlock feature (unlockClosedBatch) already reverses the 0011 closed-immutability freeze:
- * super_admin-only (payroll.unlock) + a step-up OTP, Closed → Processed, audited in
- * payroll_status_history + a payroll-batch.unlocked event. This item makes the REASON mandatory so
- * the audit log always explains WHY a finalised run was reopened — the guard is a typed
- * UnlockReasonRequiredError thrown BEFORE any status flip and BEFORE the OTP is consumed.
+ * The unlock feature (unlockClosedBatch) reverses the 0011 closed-immutability freeze: super_admin-only
+ * (payroll.unlock), Closed → Processed, the parent pay_period reopened, audited in payroll_status_history
+ * + a payroll-batch.unlocked event. Feedback 62e85140 REMOVED the step-up (OTP) confirmation-code step —
+ * the on-screen gate is now a single confirm dialog — so the service signature is just
+ * unlockClosedBatch(ctx, { batchId, reason? }) with no `code`. The REASON stays mandatory (a typed
+ * UnlockReasonRequiredError thrown BEFORE any status flip) so the audit log always explains WHY a
+ * finalised run was reopened, and the permission gate is unchanged.
  *
  * Tests:
  *   a. A blank / whitespace-only (and an undefined) reason is rejected with UnlockReasonRequiredError
- *      before anything mutates — the batch stays closed, no history row and no event are written, and
- *      the step-up challenge is NOT consumed (the reason guard fires before the OTP check).
- *   b. A non-blank reason succeeds: Closed → Processed, a payroll_status_history 'unlock' row is
- *      written (from/to/actor/trimmed-reason), and the payroll-batch.unlocked event carries the reason.
- *
- * Scope note: a single-run month cascades its pay_period to 'closed' on closeBatch. Reopening it is
- * guarded independently (migration 0067's pay_period_immutable_when_closed); migration 0202 adds the
- * app.unlock_pay_period escape hatch so unlockClosedBatch reopens the period itself. Test (b) exercises
- * the mandatory-reason + status-flip + real period-reopen + audit path in
- * isolation.
+ *      before anything mutates — the batch stays closed, no history row and no event are written.
+ *   b. A non-blank reason succeeds (no code): Closed → Processed, the parent pay_period is reopened, a
+ *      payroll_status_history 'unlock' row is written (from/to/actor/trimmed-reason), and both the
+ *      payroll-batch.unlocked and pay-period.reopened events carry the reason.
+ *   c. A caller WITHOUT the payroll.unlock permission (a plain hr_admin, not super_admin) is blocked
+ *      with PayrollPermissionDeniedError — the batch stays closed and nothing is audited.
  */
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import {
+  PayrollPermissionDeniedError,
   UnlockReasonRequiredError,
   closeBatch,
   createBatch,
   generatePayslips,
-  requestUnlockChallenge,
   unlockClosedBatch,
 } from '../core/payroll';
 import { setCompensation } from '../core/comp';
@@ -51,8 +49,8 @@ const nextIc = () => `9104040${String(10000 + icSeq++).slice(-5)}`;
 
 let base: Base;
 
-/** payroll.unlock defaults to super_admin only — the unlock steps run as a super_admin (same user id so
- *  the step-up challenge issued here can be consumed here, and the audited actor stays base.adminUserId). */
+/** payroll.unlock defaults to super_admin only — the unlock runs as a super_admin (same user id so the
+ *  audited actor stays base.adminUserId). */
 const superCtx = () => ({ ...adminCtx(base), roles: ['hr_admin', 'super_admin'] });
 
 async function hire(name: string, basic = 5000) {
@@ -80,12 +78,6 @@ const unlockHistoryRows = async (batchId: string) =>
     .from(schema.payrollStatusHistory)
     .where(and(eq(schema.payrollStatusHistory.batchId, batchId), eq(schema.payrollStatusHistory.action, 'unlock')));
 
-const unconsumedChallenges = async (batchId: string) =>
-  owner.db
-    .select()
-    .from(schema.payrollStepUpChallenge)
-    .where(and(eq(schema.payrollStepUpChallenge.batchId, batchId), isNull(schema.payrollStepUpChallenge.consumedAt)));
-
 /** Drive a batch all the way to CLOSED (single run ⇒ the pay_period cascades closed too). */
 async function closedBatch(period: string) {
   const a = adminCtx(base);
@@ -108,7 +100,7 @@ async function periodStatusOf(batchId: string): Promise<string> {
   return p!.status;
 }
 
-describe('Unlock closed payroll — mandatory reason (unlockClosedBatch)', () => {
+describe('Unlock closed payroll — single confirm, mandatory reason (unlockClosedBatch)', () => {
   beforeAll(async () => {
     await migrateTestDb();
   });
@@ -122,35 +114,31 @@ describe('Unlock closed payroll — mandatory reason (unlockClosedBatch)', () =>
     await closeAll();
   });
 
-  it('a. a blank / undefined reason is rejected before the flip; batch stays closed, nothing audited, OTP not consumed', async () => {
+  it('a. a blank / undefined reason is rejected before the flip; batch stays closed, nothing audited', async () => {
     const batchId = await closedBatch('2026-05');
     const su = superCtx();
-    const { code } = await requestUnlockChallenge(su, { batchId });
 
-    // Whitespace-only reason → typed error, thrown BEFORE the status flip and BEFORE the OTP is consumed.
-    await expect(unlockClosedBatch(su, { batchId, reason: '   ', code })).rejects.toBeInstanceOf(UnlockReasonRequiredError);
+    // Whitespace-only reason → typed error, thrown BEFORE the status flip.
+    await expect(unlockClosedBatch(su, { batchId, reason: '   ' })).rejects.toBeInstanceOf(UnlockReasonRequiredError);
     // An undefined reason is likewise rejected.
-    await expect(unlockClosedBatch(su, { batchId, code } as { batchId: string; code: string })).rejects.toBeInstanceOf(
+    await expect(unlockClosedBatch(su, { batchId } as { batchId: string })).rejects.toBeInstanceOf(
       UnlockReasonRequiredError,
     );
 
-    // Nothing changed: still closed, no unlock history, no unlocked event…
+    // Nothing changed: still closed, no unlock history, no unlocked event.
     expect((await batchRow(batchId)).status).toBe('closed');
     expect(await unlockHistoryRows(batchId)).toHaveLength(0);
     expect(await eventTypesFor(base.tenantId, batchId)).not.toContain('payroll-batch.unlocked');
-    // …and the step-up challenge is still live (the reason guard fires before verifyStepUp consumes it).
-    expect(await unconsumedChallenges(batchId)).toHaveLength(1);
   });
 
-  it('b. a non-blank reason succeeds: Closed → Processed, history row + event carry the trimmed reason', async () => {
+  it('b. a non-blank reason succeeds (no code): Closed → Processed, period reopened, history row + events carry the trimmed reason', async () => {
     const batchId = await closedBatch('2026-06');
     const su = superCtx();
-    const { code } = await requestUnlockChallenge(su, { batchId });
 
-    // The single-run month cascaded its pay_period closed; the real unlock reopens it through the
-    // app.unlock_pay_period escape hatch (migration 0202) — no out-of-band trigger suspension needed.
+    // The single-run month cascaded its pay_period closed; the unlock reopens it through the
+    // app.unlock_pay_period escape hatch (migration 0202) — no OTP, just a mandatory reason.
     expect(await periodStatusOf(batchId)).toBe('closed');
-    await unlockClosedBatch(su, { batchId, reason: '  fix keyed OT  ', code });
+    await unlockClosedBatch(su, { batchId, reason: '  fix keyed OT  ' });
 
     // Status flipped, and the parent period was reopened by the unlock itself.
     expect((await batchRow(batchId)).status).toBe('processed');
@@ -174,5 +162,19 @@ describe('Unlock closed payroll — mandatory reason (unlockClosedBatch)', () =>
     // against the period aggregate — proof the reopen happened through the guarded path, not a bypass.
     const { payPeriodId } = await batchRow(batchId);
     expect(await eventTypesFor(base.tenantId, payPeriodId)).toContain('pay-period.reopened');
+  });
+
+  it('c. a caller without payroll.unlock is blocked; batch stays closed, nothing audited', async () => {
+    const batchId = await closedBatch('2026-07');
+    // A plain hr_admin (no super_admin) lacks the default-super_admin payroll.unlock grant.
+    const notPermitted = { ...adminCtx(base), roles: ['hr_admin'] };
+
+    await expect(unlockClosedBatch(notPermitted, { batchId, reason: 'nope' })).rejects.toBeInstanceOf(
+      PayrollPermissionDeniedError,
+    );
+
+    expect((await batchRow(batchId)).status).toBe('closed');
+    expect(await unlockHistoryRows(batchId)).toHaveLength(0);
+    expect(await eventTypesFor(base.tenantId, batchId)).not.toContain('payroll-batch.unlocked');
   });
 });

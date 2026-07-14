@@ -2,8 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { decideLeave, decideLeaveDate, decideLeaveDates, decideLeaveCancellation } from '@/core/leave';
+import { parseBulkItems, runBulkDecide, type BulkDecideItem } from '@/lib/approvals-bulk';
 import { localizeLeaveError } from '@/app/me/actions';
 import { decideAttendanceCorrection } from '@/core/attendance';
 import { decideTravelRequest } from '@/core/travel-request';
@@ -199,6 +201,80 @@ export async function decideReviewAction(formData: FormData) {
     fail(e);
   }
   done('Decision recorded');
+}
+
+// Bulk approve/reject (feedback fb99474b). Accepts a JSON `items` list of {type,id} the approver selected
+// across the per-type sections, a single `decision`, and (for reject) one `rejectReason` applied to all.
+// Each item is dispatched to the SAME core decide* service the row-level action uses — INSIDE the normal
+// path — so assertCanDecide + the per-record DomainEvent fire once per request (audit unchanged; bulk never
+// approves anything a one-by-one click couldn't). Each item runs in its own try/catch AND its own service
+// transaction (every decide* opens its own withTenant), so one failure/permission-skip never aborts the
+// rest. We collect approved vs skipped and report both. v1 scope: leave, leave cancellations, claims,
+// attendance/OT, travel — reviews / profile changes / resignations are excluded (richer per-item flows).
+async function dispatchBulkItem(
+  s: Awaited<ReturnType<typeof getSession>>,
+  item: BulkDecideItem,
+  decision: 'approved' | 'rejected',
+  rejectReason: string | undefined,
+  deciderEmploymentId: string | undefined,
+): Promise<void> {
+  switch (item.type) {
+    case 'leave':
+      // decideLeave enforces the mandatory reject reason itself (MissingRejectReasonError).
+      await decideLeave(s, { leaveRequestId: item.id, decision, rejectReason, deciderEmploymentId });
+      return;
+    case 'leaveCancellation':
+      await decideLeaveCancellation(s, { cancellationRequestId: item.id, decision, deciderEmploymentId });
+      return;
+    case 'claim':
+      await decideClaim(s, {
+        claimRequestId: item.id,
+        decision: decision === 'approved' ? 'approve' : 'reject',
+        deciderEmploymentId: deciderEmploymentId ?? null,
+      });
+      return;
+    case 'attendance':
+      await decideAttendanceCorrection(s, { correctionId: item.id, decision, deciderEmploymentId });
+      return;
+    case 'travel':
+      await decideTravelRequest(s, { travelRequestId: item.id, decision, deciderEmploymentId });
+      return;
+  }
+}
+
+export async function bulkDecideAction(formData: FormData) {
+  const s = await getSession();
+  const decision = String(formData.get('decision')) === 'rejected' ? 'rejected' : 'approved';
+  const rejectReason = String(formData.get('rejectReason') || '').trim() || undefined;
+  const sort = String(formData.get('sort') || '');
+  const items = parseBulkItems(String(formData.get('items') || '[]'));
+
+  const t = await getTranslations('approvals');
+  if (items.length === 0) redirect(`${back}${sort ? `?sort=${encodeURIComponent(sort)}` : ''}`);
+
+  const me = await myEmployment(s);
+  const deciderEmploymentId = me?.employmentId ?? undefined;
+
+  // Each item runs in its own try/catch (runBulkDecide) + its own service transaction (every decide* opens
+  // withTenant), so a permission denial (assertCanDecide), an already-decided row, or any per-item failure is
+  // a SKIP — never fatal to the batch. The dominant skip reason is approval authority, hence the toast wording.
+  const { approved, skipped } = await runBulkDecide(items, (item) =>
+    dispatchBulkItem(s, item, decision, rejectReason, deciderEmploymentId),
+  );
+
+  revalidatePath(back);
+  const summary =
+    decision === 'rejected'
+      ? skipped > 0
+        ? t('bulkRejectedPartial', { done: approved, skipped })
+        : t('bulkRejectedAll', { done: approved })
+      : skipped > 0
+        ? t('bulkApprovedPartial', { done: approved, skipped })
+        : t('bulkApprovedAll', { done: approved });
+  const qs = new URLSearchParams();
+  if (sort) qs.set('sort', sort);
+  qs.set('toast', summary);
+  redirect(`${back}?${qs.toString()}`);
 }
 
 export async function approveClaimAction(formData: FormData) {

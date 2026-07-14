@@ -31,7 +31,7 @@ describe('resolveDashboardRole', () => {
 describe('ROLE_CARDS', () => {
   it('has the exact card set + order per role (matches the reporter\'s three sets)', () => {
     expect(ROLE_CARDS.employee).toEqual(['leaveBalance', 'nextHoliday', 'pendingTasks']);
-    expect(ROLE_CARDS.manager).toEqual(['teamAwayToday', 'onboardingWeek', 'approvalRequests', 'upcomingReminders']);
+    expect(ROLE_CARDS.manager).toEqual(['teamAwayToday', 'approvalRequests', 'upcomingReminders']);
     expect(ROLE_CARDS.hr_admin).toEqual(['headcount', 'pendingLeave', 'companies', 'latestPayroll']);
   });
 

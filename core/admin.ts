@@ -2816,6 +2816,12 @@ export async function updateLeaveType(
     // reset). Applies to FUTURE leave only (paid is read at request/payroll time); historical requests and the
     // ledger are unaffected.
     paid?: boolean;
+    // Duplicate Leave Application Restriction (feedback d5e51c34): the same-date double-booking policy for this
+    // leave type. OWN tri-state (undefined = duplicate_application_policy column untouched), mirroring
+    // perDateApproval — its own "Duplicate leave applications" sub-form posts `duplicatePolicy=1` so an
+    // unrelated save never resets it. Validated against the closed { allow, restrict_same, restrict_any } set
+    // (the DB CHECK is defence-in-depth). Enforced at requestLeave/editLeaveRequest; 'allow' = today's behaviour.
+    duplicateApplicationPolicy?: 'allow' | 'restrict_same' | 'restrict_any';
     /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
     reason?: string | null;
   },
@@ -2856,6 +2862,19 @@ export async function updateLeaveType(
   // untouched. Fixes the bug where paid/unpaid was immutable after creation.
   const touchPaid = p.paid !== undefined;
   const paidSet = touchPaid ? { paid: p.paid } : {};
+  // Duplicate Leave Application Restriction (d5e51c34): OWN tri-state, mirroring touchPartial — the "Duplicate
+  // leave applications" sub-form posts `duplicatePolicy=1`, any other save omits it so the column stays
+  // untouched. Validate against the closed 3-value set (the DB CHECK is defence-in-depth).
+  const touchDuplicatePolicy = p.duplicateApplicationPolicy !== undefined;
+  if (
+    touchDuplicatePolicy &&
+    !['allow', 'restrict_same', 'restrict_any'].includes(p.duplicateApplicationPolicy!)
+  ) {
+    throw new Error('Duplicate-application policy must be allow, restrict_same, or restrict_any.');
+  }
+  const duplicatePolicySet = touchDuplicatePolicy
+    ? { duplicateApplicationPolicy: p.duplicateApplicationPolicy }
+    : {};
   // Custom validation messages (custom-messages migration): OWN tri-state, mirroring touchBackdating. The
   // fixed allow-list of rule keys — currently only the one rule that exists (backdating). A future rule
   // adds its config-field name here and to the LeaveType schema comment.
@@ -3080,6 +3099,8 @@ export async function updateLeaveType(
         icon: leaveType.icon,
         // Leave Unit Configuration (e4980382): selected for the before/after audit diff.
         leaveUnit: leaveType.leaveUnit,
+        // Duplicate Leave Application Restriction (d5e51c34): selected for the before/after audit diff.
+        duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
@@ -3151,6 +3172,7 @@ export async function updateLeaveType(
         ...visualSet,
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
         ...paidSet,
+        ...duplicatePolicySet,
         ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
         ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
         ...dayTypeInclusionSet,
@@ -3187,6 +3209,7 @@ export async function updateLeaveType(
             : {}),
           ...(touchPayroll ? { sendToPayroll: before?.sendToPayroll ?? null } : {}),
           ...(touchPaid ? { paid: before?.paid ?? null } : {}),
+          ...(touchDuplicatePolicy ? { duplicateApplicationPolicy: before?.duplicateApplicationPolicy ?? null } : {}),
           ...(touchBackdating ? { backdatingLimitDays: before?.backdatingLimitDays ?? null } : {}),
           ...(touchMinAdvance ? { minAdvanceDays: before?.minAdvanceDays ?? null } : {}),
           ...(touchExpiry ? { expiryValue: before?.expiryValue ?? null, expiryUnit: before?.expiryUnit ?? null } : {}),
@@ -3218,6 +3241,9 @@ export async function updateLeaveType(
             : {}),
           ...(touchPayroll ? { sendToPayroll: p.sendToPayroll ?? before?.sendToPayroll ?? null } : {}),
           ...(touchPaid ? { paid: p.paid ?? before?.paid ?? null } : {}),
+          ...(touchDuplicatePolicy
+            ? { duplicateApplicationPolicy: p.duplicateApplicationPolicy ?? before?.duplicateApplicationPolicy ?? null }
+            : {}),
           ...(touchBackdating
             ? { backdatingLimitDays: p.backdatingLimitDays !== undefined ? p.backdatingLimitDays : (before?.backdatingLimitDays ?? null) }
             : {}),

@@ -41,10 +41,11 @@ const DATA: PanelData = {
   upcoming: [{ startDate: '2026-06-01', endDate: '2026-06-03', days: 3, durationType: 'full_day' }],
 };
 
-describe('entitlement-panel-config: the seven sections in order', () => {
-  it('declares exactly the reporter’s 7 sections with strictly ascending order 1..7', () => {
+describe('entitlement-panel-config: sections in order (feedback 1dd4d827 removed §6 Transaction History)', () => {
+  it('no longer declares the §6 transactions section — the remaining 6 sections keep ascending order', () => {
     const orders = ENTITLEMENT_PANEL_SECTIONS.map((s) => s.order);
-    expect(orders).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    // §6 (order 6, Transaction History) is removed; §7 keeps its declared order value so the stack collapses.
+    expect(orders).toEqual([1, 2, 3, 4, 5, 7]);
     const keys = ENTITLEMENT_PANEL_SECTIONS.map((s) => s.key);
     expect(keys).toEqual([
       'summary',
@@ -52,19 +53,20 @@ describe('entitlement-panel-config: the seven sections in order', () => {
       'utilization',
       'adjustments',
       'upcoming',
-      'transactions',
       'calcBreakdown',
     ]);
+    // Universal removal: no leave type / ESS config can re-surface it — the descriptor entry is gone entirely.
+    expect(keys).not.toContain('transactions');
+    expect(ENTITLEMENT_PANEL_SECTIONS.some((s) => s.kind === 'transactions')).toBe(false);
   });
 
-  it('maps the §5 upcoming and §6 transactions sections to their special render kinds', () => {
+  it('maps the §5 upcoming section to its special render kind (transactions kind no longer used)', () => {
     const byKey = Object.fromEntries(ENTITLEMENT_PANEL_SECTIONS.map((s) => [s.key, s]));
     expect(byKey.upcoming.kind).toBe('upcoming');
-    expect(byKey.transactions.kind).toBe('transactions');
-    // Every section carries an ess-view gating key (the closed allow-list from core/ess-view.ts).
+    // Every remaining section carries an ess-view gating key (the closed allow-list from core/ess-view.ts).
     expect(byKey.upcoming.essKey).toBe('upcomingApprovedLeave');
-    expect(byKey.transactions.essKey).toBe('transactionHistory');
     expect(byKey.calcBreakdown.essKey).toBe('entitlementCalcBreakdown');
+    expect(byKey.transactions).toBeUndefined();
   });
 
   it('a future breakdown line is one descriptor entry (fields carry key + labelKey, no JSX)', () => {
@@ -141,7 +143,6 @@ describe('Leave Details panel i18n: every descriptor label resolves in all 6 loc
     'close',
     'noUpcoming',
     'daysCount',
-    'colBalanceChange',
     'noExpiry',
     'viewBreakdown',
   ];
@@ -190,6 +191,14 @@ describe('Leave Details panel: the inline expand became a Radix right side-sheet
   it('substrate: documents the read-only no-event skip', () => {
     expect(panel.includes('substrate: read-only, no event')).toBe(true);
     expect(adapter.includes('substrate: read-only, no event')).toBe(true);
+  });
+
+  it('feedback 1dd4d827: no longer renders a Transaction History table (renderer + dispatch removed)', () => {
+    // Presentation-only removal — the ledger renderer and its dispatch branch are gone from the panel.
+    expect(panel.includes('renderTransactions')).toBe(false);
+    expect(panel).not.toMatch(/kind === 'transactions'/);
+    // Ledger data on the breakdown type is untouched — the panel simply stops rendering it here.
+    // (data.transactions still powers the /leave Leave History table.)
   });
 
   it('EntitlementBreakdown adapter delegates to LeaveDetailsPanel + re-adds otherAdjustments', () => {
