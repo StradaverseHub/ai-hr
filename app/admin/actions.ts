@@ -1199,6 +1199,19 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // "block not shown at all" ⇒ leave column.
   const touchPartial = fd.get('partialApproval') === '1';
   const partialFields = touchPartial ? { perDateApproval: fd.get('perDateApproval') === 'on' } : {};
+  // Duplicate Leave Application Restriction (d5e51c34): its own sub-form posts `duplicatePolicy=1` (marker)
+  // plus a `duplicatePolicyValue` radio (allow | restrict_same | restrict_any). Any other sub-form save omits
+  // the marker ⇒ duplicate_application_policy stays untouched (same tri-state guard as partialApproval). An
+  // unrecognised value falls back to 'allow' (the safe, behaviour-preserving default); the service re-validates.
+  const touchDuplicatePolicy = fd.get('duplicatePolicy') === '1';
+  const duplicatePolicyRaw = String(fd.get('duplicatePolicyValue') || '');
+  const duplicatePolicyFields = touchDuplicatePolicy
+    ? {
+        duplicateApplicationPolicy: (['allow', 'restrict_same', 'restrict_any'].includes(duplicatePolicyRaw)
+          ? duplicatePolicyRaw
+          : 'allow') as 'allow' | 'restrict_same' | 'restrict_any',
+      }
+    : {};
   // Employee Leave View Configuration (65dec703 / dup 1fedb473): the ESS-view checklist posts `essView=1`
   // (marker) plus one checkbox per component (`essView_<key>`). An unchecked box does not post, so we build
   // the COMPLETE map from the closed key list (checked ⇒ true/visible, absent ⇒ false/hidden) and replace
@@ -1307,6 +1320,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...minAdvanceFields,
       ...expiryFields,
       ...partialFields,
+      ...duplicatePolicyFields,
       ...essViewFields,
       ...dayTypeInclusionFields,
       ...visualFields,

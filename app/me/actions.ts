@@ -26,6 +26,7 @@ import {
   UnpaidConsentRequiredError,
   HourlyLeaveTimeRangeError,
   LeaveNoDaysInRangeError,
+  DuplicateLeaveApplicationError,
   LeaveApplyNotAllowedError,
   MissingRejectReasonError,
   LeaveCancellationNotAllowedError,
@@ -280,6 +281,9 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   // that lands on a non-working day (fires for HR admins on the on-behalf path too). Localized so the reason
   // reads clearly instead of raw English via the fallback below.
   if (e instanceof LeaveNoDaysInRangeError) return t('noLeaveDaysInRange');
+  // Duplicate Leave Application Restriction (d5e51c34): the leave type's duplicate_application_policy blocked
+  // this same-date double-booking. Localized so all 6 locales see the reporter's requested message.
+  if (e instanceof DuplicateLeaveApplicationError) return t('duplicateApplication');
   // Leave Type Employee Visibility (7b11f1c1): HR has closed this leave type to employee applications
   // (employee_can_apply=false). Localized so the /me apply form shows a clear "contact HR" message.
   if (e instanceof LeaveApplyNotAllowedError) return t('applyNotAllowed', { typeName: name });

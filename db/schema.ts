@@ -955,6 +955,16 @@ export const leaveType = pgTable('leave_type', {
   // behaviour (see migration 0191). Resolved onto leaveBalances rows in core/read.ts; the /me cards-and-
   // groups renderer (planned 6d78f373) consumes the resolved value.
   essPlacement: text('ess_placement'),
+  // Duplicate Leave Application Restriction (feedback d5e51c34): per-type policy controlling whether an
+  // employee may submit MORE THAN ONE leave application overlapping the same date when a pending/approved
+  // one already exists. Enforced in requestLeave + editLeaveRequest AFTER the existing narrow AM/PM same-slot
+  // clash guard, extending the comparison from same-slot to same-DATE range overlap:
+  //   'allow'         — current behaviour: no extra check (DEFAULT; every existing row backfills to this).
+  //   'restrict_same' — block a 2nd pending/approved application of the SAME leave type on an overlapping date.
+  //   'restrict_any'  — block ANY new pending/approved leave (any type) on an overlapping date.
+  // NULLABLE DEFAULT 'allow' (a DB CHECK backs the closed 3-value set); the service treats null as 'allow'.
+  // Never read for entitlement / accrual / eligibility / payroll — purely a submission-time double-booking gate.
+  duplicateApplicationPolicy: text('duplicate_application_policy').default('allow'),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

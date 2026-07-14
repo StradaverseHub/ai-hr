@@ -544,6 +544,7 @@ export function LeaveTypePanel({
   essPlacement,
   counting,
   perDateApproval,
+  duplicateApplicationPolicy,
   policies,
   grades,
   companies,
@@ -627,6 +628,10 @@ export function LeaveTypePanel({
    *  threaded so the sub-form's checkbox round-trips its saved value. Backend at app/admin/actions.ts +
    *  core/admin.ts touchPartial persists it as a tri-state (untouched when the marker is absent). */
   perDateApproval: boolean;
+  /** Duplicate Leave Application Restriction (d5e51c34): the same-date double-booking policy for this type
+   *  ('allow' | 'restrict_same' | 'restrict_any'), threaded so the radio round-trips its saved value. null ⇒
+   *  'allow' (today's behaviour). Enforced at requestLeave/editLeaveRequest; persisted via touchDuplicatePolicy. */
+  duplicateApplicationPolicy: string | null;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
@@ -1232,6 +1237,52 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
+          </div>
+
+          {/* Duplicate Leave Application Restriction (d5e51c34). Its own self-contained <form> + `duplicatePolicy=1`
+              tri-state marker so an unrelated save never resets it. A 3-option radio controls whether an employee
+              may submit more than one leave application overlapping the same date. Default 'allow' = today's
+              behaviour; the two restrict modes enforce at submit + edit (core/leave.ts). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('duplicatePolicySectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the duplicate_application_policy column (tri-state guard) */}
+              <input type="hidden" name="duplicatePolicy" value="1" />
+              {(() => {
+                const current = ['allow', 'restrict_same', 'restrict_any'].includes(duplicateApplicationPolicy ?? '')
+                  ? (duplicateApplicationPolicy as string)
+                  : 'allow';
+                return (
+                  <div className="space-y-1.5">
+                    {(['allow', 'restrict_same', 'restrict_any'] as const).map((opt) => (
+                      <label key={opt} className="flex items-start gap-2 text-xs text-foreground">
+                        <input
+                          type="radio"
+                          name="duplicatePolicyValue"
+                          value={opt}
+                          defaultChecked={current === opt}
+                          className="mt-0.5 size-3.5 border-border"
+                        />
+                        <span>
+                          {opt === 'allow'
+                            ? t('duplicatePolicyAllow')
+                            : opt === 'restrict_same'
+                              ? t('duplicatePolicyRestrictSame')
+                              : t('duplicatePolicyRestrictAny')}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                );
+              })()}
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('duplicatePolicyHelp')}</p>
           </div>
 
           {/* Configurable backdated-leave restriction (0133). Its own sub-form (own tri-state) posts

@@ -980,7 +980,8 @@
       "advanceNoticeRequired": "{typeName} phải được nộp ít nhất {days} ngày trước ngày bắt đầu nghỉ phép.",
       "editNotAllowed": "Không thể chỉnh sửa đơn nghỉ này nữa.",
       "leaveYearNotOpen": "Năm nghỉ phép {year} chưa mở để nộp đơn. Vui lòng liên hệ bộ phận nhân sự.",
-      "applyNotAllowed": "Nhân viên không thể đăng ký {typeName}. Vui lòng liên hệ bộ phận Nhân sự."
+      "applyNotAllowed": "Nhân viên không thể đăng ký {typeName}. Vui lòng liên hệ bộ phận Nhân sự.",
+      "duplicateApplication": "Đã tồn tại một đơn xin nghỉ phép cho ngày đã chọn. Không được phép nộp nhiều đơn xin nghỉ phép trong cùng một ngày."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -3551,7 +3552,12 @@
         "help": "Chọn nơi loại nghỉ phép này xuất hiện trên tab Nghỉ phép của nhân viên: thẻ Chính ở trên cùng, nằm trong nhóm Phụ bên dưới, hoặc Ẩn hoàn toàn khỏi nhân viên. Ẩn sử dụng cùng công tắc hiển thị ở trên. Cho đến khi bạn chọn, mỗi loại sử dụng giá trị mặc định hợp lý."
       },
       "benefitSchemeTitle": "Chương trình phúc lợi",
-      "benefitSchemeHelp": "Nhóm các bậc lương, sau đó xác định các chương trình phúc lợi có tên (Công ty × Loại hình lao động × Nhóm bậc) và quyền nghỉ phép của chúng. Nhân viên được tự động khớp với một chương trình; quyền lợi của chương trình thay thế chính sách theo bậc, và mức tối thiểu theo luật vẫn được áp dụng."
+      "benefitSchemeHelp": "Nhóm các bậc lương, sau đó xác định các chương trình phúc lợi có tên (Công ty × Loại hình lao động × Nhóm bậc) và quyền nghỉ phép của chúng. Nhân viên được tự động khớp với một chương trình; quyền lợi của chương trình thay thế chính sách theo bậc, và mức tối thiểu theo luật vẫn được áp dụng.",
+      "duplicatePolicySectionTitle": "Đơn xin nghỉ trùng lặp",
+      "duplicatePolicyAllow": "Cho phép nhiều đơn xin nghỉ trong cùng một ngày",
+      "duplicatePolicyRestrictSame": "Chỉ hạn chế cùng một loại nghỉ phép",
+      "duplicatePolicyRestrictAny": "Hạn chế mọi loại nghỉ phép trong cùng một ngày",
+      "duplicatePolicyHelp": "Kiểm soát việc nhân viên có thể nộp nhiều hơn một đơn xin nghỉ phép cho cùng một ngày hay không. Mặc định cho phép; hai tùy chọn hạn chế sẽ chặn việc đặt trùng trong cùng một ngày khi nộp và chỉnh sửa."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -4238,9 +4244,9 @@
       "entNeedsScheme": "Tạo chương trình phúc lợi trước, rồi cấu hình quyền nghỉ phép của nó.",
       "selectScheme": "Chương trình",
       "colLeaveType": "Loại nghỉ phép",
-      "tierUnder": "Dưới N1 năm",
-      "tierMid": "N1–N2 năm",
-      "tierOver": "Từ N2 năm trở lên",
+      "tierUnder": "Dưới {n1} năm",
+      "tierMid": "Từ {n1} đến dưới {n2} năm",
+      "tierOver": "Từ {n2} năm trở lên",
       "noEntitlements": "Chưa cấu hình quyền lợi cho chương trình này.",
       "addEntitlement": "Thêm / cập nhật quyền nghỉ phép",
       "threshold1": "Bậc 1 đến (năm)",

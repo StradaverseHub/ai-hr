@@ -423,6 +423,9 @@ export function listLeaveTypes(
         // checkbox renders unchecked on every reload). counting is already selected above — the panel needs it
         // to grey out the toggle for calendar-counted types where the feature can never fire.
         perDateApproval: leaveType.perDateApproval,
+        // Duplicate Leave Application Restriction (d5e51c34): feeds the admin panel's duplicate-policy radio
+        // (MUST be projected or the radio renders at its default on every reload). null ⇒ 'allow' default.
+        duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
         // Custom validation messages (custom-messages migration): feeds the admin panel's "Custom system
         // message" textarea (MUST be projected or the textarea renders empty on every reload).
         customMessages: leaveType.customMessages,
