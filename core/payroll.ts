@@ -2,7 +2,7 @@
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
-import { createHash, randomInt } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -3754,13 +3754,6 @@ export class PayrollPermissionDeniedError extends Error {
     this.name = 'PayrollPermissionDeniedError';
   }
 }
-/** Step-up (OTP) confirmation is required / failed for a high-risk payroll action. */
-export class StepUpRequiredError extends Error {
-  constructor(msg = 'A valid confirmation code is required.') {
-    super(msg);
-    this.name = 'StepUpRequiredError';
-  }
-}
 /** Unlock target is not a closed run (nothing to unlock). */
 export class BatchNotUnlockableError extends Error {
   constructor() {
@@ -3820,78 +3813,16 @@ async function assertPayrollPermission(tx: Tx, ctx: SessionContext, key: Payroll
   if (!(await resolvePayrollPermission(tx, ctx, key, companyId))) throw new PayrollPermissionDeniedError(key);
 }
 
-const stepUpHash = (code: string, userId: string | undefined, batchId: string) =>
-  createHash('sha256').update(`${code}:${userId ?? ''}:${batchId}`).digest('hex');
+// Note (feedback 62e85140): the step-up (OTP) confirmation-code flow that used to gate Unlock has been
+// removed — the UI now uses a single confirm dialog instead. The `payroll_step_up_challenge` table
+// (db/schema.ts, migration 0173) is intentionally LEFT IN PLACE (no destructive migration) and is now
+// UNUSED by the unlock path; deleteDraftBatch still cascades its rows on a draft teardown.
 
 /**
- * Issue a one-time step-up (OTP) code for the high-risk Unlock action (reporter req.: confirmation step,
- * password re-entry or OTP). The code is hashed at rest, single-use, TTL 10 min, and returned to the
- * caller so the demo can surface it (a production build would deliver it out-of-band). Requires the
- * payroll.unlock permission — you cannot mint an unlock challenge you could never complete.
- */
-export async function requestUnlockChallenge(ctx: SessionContext, p: { batchId: string }) {
-  return withTenant(ctx, async (tx) => {
-    const [batch] = await tx
-      .select({ status: payrollBatch.status, companyId: payrollBatch.companyId })
-      .from(payrollBatch)
-      .where(eq(payrollBatch.id, p.batchId))
-      .limit(1);
-    if (!batch) throw new Error('batch not found');
-    await assertPayrollPermission(tx, ctx, 'payroll.unlock', batch.companyId);
-    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    // Invalidate any earlier unconsumed challenge for this user+batch so only the newest code works.
-    await tx
-      .update(payrollStepUpChallenge)
-      .set({ consumedAt: new Date() })
-      .where(
-        and(
-          eq(payrollStepUpChallenge.batchId, p.batchId),
-          eq(payrollStepUpChallenge.userId, ctx.userId ?? ''),
-          eq(payrollStepUpChallenge.purpose, 'unlock'),
-          isNull(payrollStepUpChallenge.consumedAt),
-        ),
-      );
-    await tx.insert(payrollStepUpChallenge).values({
-      tenantId: ctx.tenantId,
-      userId: ctx.userId ?? '',
-      batchId: p.batchId,
-      purpose: 'unlock',
-      codeHash: stepUpHash(code, ctx.userId, p.batchId),
-      expiresAt,
-    });
-    return { code, expiresAt };
-  });
-}
-
-/** Verify + consume a step-up code within the caller's tx. Returns true iff a valid code was consumed. */
-async function verifyStepUp(tx: Tx, ctx: SessionContext, batchId: string, code: string): Promise<boolean> {
-  if (!code) return false;
-  const [challenge] = await tx
-    .select({ id: payrollStepUpChallenge.id, codeHash: payrollStepUpChallenge.codeHash, expiresAt: payrollStepUpChallenge.expiresAt })
-    .from(payrollStepUpChallenge)
-    .where(
-      and(
-        eq(payrollStepUpChallenge.batchId, batchId),
-        eq(payrollStepUpChallenge.userId, ctx.userId ?? ''),
-        eq(payrollStepUpChallenge.purpose, 'unlock'),
-        isNull(payrollStepUpChallenge.consumedAt),
-      ),
-    )
-    .orderBy(desc(payrollStepUpChallenge.createdAt))
-    .limit(1);
-  if (!challenge) return false;
-  if (new Date(challenge.expiresAt).getTime() < Date.now()) return false;
-  if (challenge.codeHash !== stepUpHash(code, ctx.userId, batchId)) return false;
-  await tx.update(payrollStepUpChallenge).set({ consumedAt: new Date() }).where(eq(payrollStepUpChallenge.id, challenge.id));
-  return true;
-}
-
-/**
- * Unlock a CLOSED payroll run back to PROCESSED (feedback 9bc442bc, reporter ask #2). This is the
- * controlled, auditable reversal of the 0011 closed-immutability freeze:
+ * Unlock a CLOSED payroll run back to PROCESSED (feedback 9bc442bc, reporter ask #2; simplified in
+ * 62e85140). This is the controlled, auditable reversal of the 0011 closed-immutability freeze:
  *   • gated on the granular payroll.unlock permission (super_admin by default, per-company configurable);
- *   • a step-up OTP (requestUnlockChallenge) must be confirmed — the reporter's password-re-entry/OTP ask;
+ *   • a mandatory reason is captured for the audit log (the on-screen step is a single confirm dialog);
  *   • WARNS when the run's payment summary was already exported and/or statutory returns were already
  *     recorded for the month (EPF/SOCSO/EIS/LHDN), so the operator knows an amended filing may be needed;
  *   • flips status via a transaction-local escape hatch the 0011 trigger honours ONLY for this batch id;
@@ -3900,7 +3831,7 @@ async function verifyStepUp(tx: Tx, ctx: SessionContext, batchId: string, code: 
  * Gated behind PAYROLL_UNLOCK_ENABLED so an environment can keep Closed permanently frozen if it prefers
  * the same-month adjustment-run correction path instead.
  */
-export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: string; reason?: string; code: string }) {
+export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: string; reason?: string }) {
   if (process.env.PAYROLL_UNLOCK_ENABLED !== 'true') {
     throw new Error('Payroll unlock is not enabled.');
   }
@@ -3920,9 +3851,6 @@ export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: strin
     if (!batch) throw new Error('batch not found');
     await assertPayrollPermission(tx, ctx, 'payroll.unlock', batch.companyId);
     if (batch.status !== 'closed') throw new BatchNotUnlockableError();
-    if (!(await verifyStepUp(tx, ctx, p.batchId, p.code))) {
-      throw new StepUpRequiredError('The confirmation code is invalid or expired — request a new one.');
-    }
 
     // Warning flags (reporter req.: warn if payment disbursed or statutory submission filed).
     const [{ n: paymentExports } = { n: 0 }] = await tx

@@ -10,7 +10,7 @@ import { listAllowancePolicies, auditEvents } from '@/core/read';
 import { humanizeEvent } from '@/lib/audit-format';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, requestUnlockOtpAction, resetAction, transferAllowancesAction, unlockAction } from '../actions';
+import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, resetAction, transferAllowancesAction, unlockAction } from '../actions';
 import { ComponentImport } from './component-import';
 import { OtInputRow } from './ot-input-row';
 import { ReprocessPanel } from './reprocess-panel';
@@ -23,12 +23,12 @@ export default async function BatchPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; from?: string; hw?: string; otp?: string }>;
+  searchParams: Promise<{ error?: string; from?: string; hw?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
   const { batchId } = await params;
-  const { error, from, hw, otp } = await searchParams;
+  const { error, from, hw } = await searchParams;
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
   const { batch, slips } = data;
@@ -199,10 +199,11 @@ export default async function BatchPage({
         </div>
       )}
 
-      {/* Unlock a CLOSED run (feedback 9bc442bc, reporter ask #2): a controlled, audited reversal of the
-          closed-immutability freeze. Requires a step-up confirmation code (OTP) + a reason; the service
-          warns if payment was disbursed or statutory returns were filed. Gated by PAYROLL_UNLOCK_ENABLED
-          and the granular payroll.unlock permission (re-asserted server-side). */}
+      {/* Unlock a CLOSED run (feedback 9bc442bc, reporter ask #2; simplified in 62e85140): a controlled,
+          audited reversal of the closed-immutability freeze. A single confirm dialog (no OTP) collects the
+          mandatory reason before flipping Closed→Processed; the service warns if payment was disbursed or
+          statutory returns were filed. Gated by PAYROLL_UNLOCK_ENABLED and the granular payroll.unlock
+          permission (re-asserted server-side). */}
       {batch.status === 'closed' && unlockOn && (
         <Card className="overflow-hidden border-amber-300 dark:border-amber-500/40">
           <SectionHeader title={t('unlockTitle')} />
@@ -211,49 +212,25 @@ export default async function BatchPage({
               🔓 {t('unlockLockedNote')}
             </div>
             <p className="text-xs text-muted-foreground">{t('unlockDescription')}</p>
-            {!otp ? (
-              <form action={requestUnlockOtpAction}>
-                <input type="hidden" name="batchId" value={batch.id} />
-                <Button type="submit" size="sm" variant="secondary">
-                  {t('unlockRequestOtp')}
-                </Button>
-              </form>
-            ) : (
-              <div className="space-y-3">
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
-                  {t('unlockOtpIssued', { code: otp })}
-                </div>
-                <form action={unlockAction} className="space-y-3">
-                  <input type="hidden" name="batchId" value={batch.id} />
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-foreground">{t('unlockCodeLabel')}</span>
-                    <input
-                      name="code"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      required
-                      placeholder={t('unlockCodePlaceholder')}
-                      className={inputCls}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-foreground">{t('unlockReasonLabel')}</span>
-                    <textarea
-                      name="reason"
-                      rows={2}
-                      required
-                      placeholder={t('unlockReasonPlaceholder')}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring dark:bg-input/30"
-                    />
-                  </label>
-                  <div className="flex justify-end">
-                    <Button type="submit" size="sm">
-                      {t('unlockConfirm')}
-                    </Button>
-                  </div>
-                </form>
-              </div>
-            )}
+            {/* Single confirm-dialog-gated form: the reason is collected inside the dialog (required) and
+                mirrored into a hidden input in this form; Confirm requestSubmit()s it to unlockAction. */}
+            <form action={unlockAction} className="flex justify-end">
+              <input type="hidden" name="batchId" value={batch.id} />
+              <ConfirmSubmit
+                size="sm"
+                title={t('unlockConfirmTitle')}
+                description={t('unlockConfirmBody')}
+                confirmLabel={t('unlockConfirmYes')}
+                reasonField={{
+                  name: 'reason',
+                  label: t('unlockReasonLabel'),
+                  placeholder: t('unlockReasonPlaceholder'),
+                  required: true,
+                }}
+              >
+                {t('unlockConfirm')}
+              </ConfirmSubmit>
+            </form>
           </div>
         </Card>
       )}

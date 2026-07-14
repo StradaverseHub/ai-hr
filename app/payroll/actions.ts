@@ -11,7 +11,6 @@ import {
   PayrollPermissionDeniedError,
   PreProcessBlockedError,
   ResetReasonRequiredError,
-  StepUpRequiredError,
   UnlockReasonRequiredError,
   closeBatch,
   deleteDraftBatch,
@@ -22,7 +21,6 @@ import {
   prefillShiftDifferentialFromRoster,
   prefillTp1FromSelfRelief,
   reprocessSelectedEmployees,
-  requestUnlockChallenge,
   resetProcessedBatch,
   setPayrollInput,
   unlockClosedBatch,
@@ -355,41 +353,20 @@ export async function reprocessSelectedAction(formData: FormData) {
 }
 
 /**
- * Step-up (OTP) request for the high-risk Unlock action (feedback 9bc442bc, reporter ask #2). Issues a
- * single-use confirmation code the admin must re-enter to unlock a closed run. In this demo the code is
- * surfaced back on the page (a production build delivers it out-of-band). payroll.unlock permission +
- * issuance live in requestUnlockChallenge (the service).
- */
-export async function requestUnlockOtpAction(formData: FormData) {
-  const s = await getSession();
-  const batchId = String(formData.get('batchId'));
-  const t = await getTranslations('payroll.batch');
-  let code = '';
-  try {
-    ({ code } = await requestUnlockChallenge(s, { batchId }));
-  } catch (e) {
-    const msg = e instanceof PayrollPermissionDeniedError ? t('unlockPermissionDenied') : (e as Error).message;
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
-  }
-  revalidatePath(`/payroll/${batchId}`);
-  redirect(`/payroll/${batchId}?otp=${encodeURIComponent(code)}`);
-}
-
-/**
- * Unlock a CLOSED run back to Processed (feedback 9bc442bc, reporter ask #2). Requires the step-up code
- * + a reason. Warnings (payment disbursed / statutory filed) are computed + audited in the service; the
- * success toast surfaces them so the operator sees them immediately. All authority (payroll.unlock,
- * closed-only, OTP verification, escape-hatch flip, period reopen, audit) lives in unlockClosedBatch.
+ * Unlock a CLOSED run back to Processed (feedback 9bc442bc, reporter ask #2; simplified in 62e85140).
+ * The on-screen confirmation is now a single confirm dialog (no OTP), so this action only reads the
+ * batch id + the mandatory reason. Warnings (payment disbursed / statutory filed) are computed + audited
+ * in the service; the success toast surfaces them so the operator sees them immediately. All authority
+ * (payroll.unlock, closed-only, escape-hatch flip, period reopen, audit) lives in unlockClosedBatch.
  */
 export async function unlockAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
   const reason = String(formData.get('reason') ?? '').trim();
-  const code = String(formData.get('code') ?? '').trim();
   const t = await getTranslations('payroll.batch');
   let warned = false;
   try {
-    const r = await unlockClosedBatch(s, { batchId, reason: reason || undefined, code });
+    const r = await unlockClosedBatch(s, { batchId, reason: reason || undefined });
     warned = r.warnings.paymentDisbursed || r.warnings.statutoryFiled;
   } catch (e) {
     const msg =
@@ -397,11 +374,9 @@ export async function unlockAction(formData: FormData) {
         ? t('unlockPermissionDenied')
         : e instanceof UnlockReasonRequiredError
           ? t('unlockReasonRequired')
-          : e instanceof StepUpRequiredError
-            ? t('unlockOtpInvalid')
-            : e instanceof BatchNotUnlockableError
-              ? t('unlockNotClosed')
-              : (e as Error).message;
+          : e instanceof BatchNotUnlockableError
+            ? t('unlockNotClosed')
+            : (e as Error).message;
     redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(`/payroll/${batchId}`);
