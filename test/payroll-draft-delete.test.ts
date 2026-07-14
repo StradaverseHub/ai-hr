@@ -35,6 +35,7 @@ import {
   createBatch,
   deleteDraftBatch,
   generatePayslips,
+  resetProcessedBatch,
   setPayrollInput,
 } from '../core/payroll';
 import { createLoan, prefillLoansForBatch } from '../core/loans';
@@ -224,6 +225,95 @@ describe('Payroll draft delete — deleteDraftBatch (DB)', () => {
     // Reporter's objective: the mistaken draft can be re-created cleanly for the SAME company+period.
     const recreated = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     expect(recreated.batchId).toBeTruthy();
+  });
+
+  it('f. a batch reverted Processed→Draft (with rollback status-history + unlock/reprocess children) still deletes cleanly (feedback ec3873a6)', async () => {
+    // The reported bug: a draft created by reverting a PROCESSED run carries payroll_status_history
+    // ('rollback') rows that FK-reference the batch with NO onDelete cascade, so the final
+    // tx.delete(payroll_batch) threw a foreign-key violation and leaked the raw SQL. teardownDraftChildren
+    // must now clear EVERY batch-keyed audit/control child so the hard delete completes.
+    process.env.PAYROLL_RESET_ENABLED = 'true';
+    try {
+      const a = adminCtx(base);
+      const e1 = await hire('Revert Delete', 4200);
+      const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-07' });
+      await generatePayslips(a, { batchId }); // → 'processed'
+
+      // Revert to draft — this writes the 'rollback' payroll_status_history row that caused the FK leak.
+      await resetProcessedBatch(a, { batchId, reason: 'correcting a keyed figure' });
+      expect((await batchRows(batchId))[0].status).toBe('draft');
+
+      const statusHistBefore = await owner.db
+        .select()
+        .from(schema.payrollStatusHistory)
+        .where(eq(schema.payrollStatusHistory.batchId, batchId));
+      expect(statusHistBefore.length).toBeGreaterThanOrEqual(1); // the rollback snapshot — reproduces the bug
+
+      // Also plant the OTHER batch-keyed children an unlock-then-reprocess path can leave, so the teardown
+      // is proven to clear all four FK tables (result-history, reprocess-job, step-up challenge), not just
+      // status-history. Owner client bypasses RLS for the fixture insert.
+      await owner.db.insert(schema.payrollEmployeeResultHistory).values({
+        tenantId: base.tenantId,
+        batchId,
+        employmentId: e1.employmentId,
+        action: 'reprocess',
+        actorType: 'user',
+        actorId: null,
+      });
+      await owner.db.insert(schema.payrollReprocessJob).values({
+        tenantId: base.tenantId,
+        batchId,
+        idempotencyKey: `idem_${randomUUID()}`,
+        status: 'completed',
+        employmentIds: [e1.employmentId],
+      });
+      await owner.db.insert(schema.payrollStepUpChallenge).values({
+        tenantId: base.tenantId,
+        userId: randomUUID(),
+        batchId,
+        purpose: 'unlock',
+        codeHash: 'x'.repeat(16),
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+
+      // The delete now succeeds where it previously threw the FK "Failed query" error.
+      const res = await deleteDraftBatch(a, { batchId });
+      expect(res.id).toBe(batchId);
+
+      // Batch gone, and EVERY batch-keyed child cleared (no orphan pointing at the deleted batch).
+      expect(await batchRows(batchId)).toHaveLength(0);
+      expect(
+        await owner.db.select().from(schema.payrollStatusHistory).where(eq(schema.payrollStatusHistory.batchId, batchId)),
+      ).toHaveLength(0);
+      expect(
+        await owner.db
+          .select()
+          .from(schema.payrollEmployeeResultHistory)
+          .where(eq(schema.payrollEmployeeResultHistory.batchId, batchId)),
+      ).toHaveLength(0);
+      expect(
+        await owner.db.select().from(schema.payrollReprocessJob).where(eq(schema.payrollReprocessJob.batchId, batchId)),
+      ).toHaveLength(0);
+      expect(
+        await owner.db.select().from(schema.payrollStepUpChallenge).where(eq(schema.payrollStepUpChallenge.batchId, batchId)),
+      ).toHaveLength(0);
+
+      // The deletion is audited (durable trail survives the hard delete) with the child counts.
+      const payload = (await latestEventPayload(base.tenantId, batchId, 'payroll-batch.deleted')) as {
+        deletedChildCounts: {
+          statusHistory: number;
+          resultHistory: number;
+          reprocessJobs: number;
+          stepUpChallenges: number;
+        };
+      };
+      expect(payload.deletedChildCounts.statusHistory).toBeGreaterThanOrEqual(1);
+      expect(payload.deletedChildCounts.resultHistory).toBe(1);
+      expect(payload.deletedChildCounts.reprocessJobs).toBe(1);
+      expect(payload.deletedChildCounts.stepUpChallenges).toBe(1);
+    } finally {
+      delete process.env.PAYROLL_RESET_ENABLED; // don't leak the gate into the shared worker
+    }
   });
 
   it('c. draft-only guard: processed and closed batches throw BatchNotDraftError and mutate nothing', async () => {

@@ -1863,6 +1863,7 @@
       "deleteDraftTitle": "删除薪资流程",
       "deleteDraftBody": "确定要删除此薪资流程吗？此操作无法撤销。",
       "deleteDraftNotDraft": "只能删除草稿状态的薪资流程。",
+      "deleteDraftFailed": "无法删除草稿薪资流程。请重试，如果问题持续存在，请联系管理员。",
       "toastDeleted": "薪资流程草稿已删除"
     },
     "reports": {

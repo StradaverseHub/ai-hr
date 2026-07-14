@@ -1863,6 +1863,7 @@
       "deleteDraftTitle": "Padam Proses Gaji",
       "deleteDraftBody": "Anda pasti mahu memadam proses gaji ini? Tindakan ini tidak boleh dibuat asal.",
       "deleteDraftNotDraft": "Hanya proses gaji berstatus draf boleh dipadam.",
+      "deleteDraftFailed": "Proses gaji draf tidak dapat dipadam. Sila cuba lagi, atau hubungi pentadbir anda jika masalah berterusan.",
       "toastDeleted": "Draf proses gaji telah dipadam"
     },
     "reports": {

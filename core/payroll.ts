@@ -903,6 +903,39 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
     .where(eq(payrollBatchComponent.batchId, batchId))
     .returning({ id: payrollBatchComponent.id });
   const payslips = await tx.delete(payslip).where(eq(payslip.batchId, batchId)).returning({ id: payslip.id });
+
+  // ── Batch-keyed audit / control rows (feedback ec3873a6) ──────────────────────────────────────────
+  // A hard draft delete must clear EVERY child that FK-references payroll_batch.id, else the final
+  // tx.delete(payrollBatch) hits a foreign-key violation and the raw SQL leaks to the UI. A FRESH draft
+  // carries none of these, but a draft that was reverted from Processed (resetProcessedBatch) — or that
+  // was unlocked/reprocessed on its way there — leaves rows keyed to the batch:
+  //   • payroll_status_history   — the 'rollback' (and any 'unlock'/'reprocess') snapshot rows the reset
+  //     writes; NO onDelete cascade, so THIS was the reported bug (batch deff8c3c stuck on 2 rollback rows).
+  //   • payroll_employee_result_history — per-employee before/after snapshots written by a reprocess.
+  //   • payroll_reprocess_job    — the reprocess job queue rows keyed to the batch.
+  //   • payroll_step_up_challenge — the step-up (2FA) unlock challenge rows an unlock-before-reset leaves.
+  // A hard delete leaves NO trace of the batch, so its audit/control history goes with it — the durable
+  // record of the deletion itself is the payroll-batch.deleted DomainEvent the caller appends (which
+  // carries these counts). NOT enumerated here because they can never point at a DRAFT: loan_repayment
+  // .applied_batch_id (reset NULLs it; only processing sets it) and payslip/input/component/individual-txn/
+  // claim (handled above). Prefer this explicit draft-only teardown over ON DELETE CASCADE on the FKs —
+  // it stays controlled and needs no migration.
+  const statusHistory = await tx
+    .delete(payrollStatusHistory)
+    .where(eq(payrollStatusHistory.batchId, batchId))
+    .returning({ id: payrollStatusHistory.id });
+  const resultHistory = await tx
+    .delete(payrollEmployeeResultHistory)
+    .where(eq(payrollEmployeeResultHistory.batchId, batchId))
+    .returning({ id: payrollEmployeeResultHistory.id });
+  const reprocessJobs = await tx
+    .delete(payrollReprocessJob)
+    .where(eq(payrollReprocessJob.batchId, batchId))
+    .returning({ id: payrollReprocessJob.id });
+  const stepUpChallenges = await tx
+    .delete(payrollStepUpChallenge)
+    .where(eq(payrollStepUpChallenge.batchId, batchId))
+    .returning({ id: payrollStepUpChallenge.id });
   // Note: the child-row deletes above are covered by the batch-level teardown/deleted event the caller
   // appends (their per-row history lives on their own aggregates' earlier events); only the two rows with
   // cross-aggregate state (loan reservation, claim link) get per-row events here.
@@ -932,6 +965,10 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
       inputs: inputs.length,
       components: components.length,
       payslips: payslips.length,
+      statusHistory: statusHistory.length,
+      resultHistory: resultHistory.length,
+      reprocessJobs: reprocessJobs.length,
+      stepUpChallenges: stepUpChallenges.length,
     },
   };
 }

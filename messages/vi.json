@@ -1863,6 +1863,7 @@
       "deleteDraftTitle": "Xóa quy trình tính lương",
       "deleteDraftBody": "Bạn có chắc chắn muốn xóa quy trình tính lương này không? Hành động này không thể hoàn tác.",
       "deleteDraftNotDraft": "Chỉ có thể xóa quy trình tính lương ở trạng thái nháp.",
+      "deleteDraftFailed": "Không thể xóa quy trình tính lương nháp. Vui lòng thử lại, hoặc liên hệ quản trị viên nếu sự cố vẫn tiếp diễn.",
       "toastDeleted": "Đã xóa bản nháp quy trình tính lương"
     },
     "reports": {
