@@ -483,6 +483,20 @@ export class LeaveNoDaysInRangeError extends Error {
   }
 }
 
+// Duplicate Leave Application Restriction (feedback d5e51c34): the leave type's duplicate_application_policy
+// ('restrict_same' | 'restrict_any') blocked this submission/edit because a pending/approved application
+// already overlaps the requested date range. Fires for BOTH ordinary employees and HR admins (double-booking
+// is a data-integrity rule, not a permission the admin overrides). Typed so the action layer re-localizes it
+// into the viewer's language via localizeLeaveError; the message text matches the reporter's requested copy.
+export class DuplicateLeaveApplicationError extends Error {
+  constructor() {
+    super(
+      'A leave application already exists for the selected date. Multiple leave applications on the same date are not allowed.',
+    );
+    this.name = 'DuplicateLeaveApplicationError';
+  }
+}
+
 // ADR-0066 festive / one-off grant: invalid input (bad days/date/leave-type) or an authority violation
 // (a company-scoped admin attempting a group-wide grant, or a grant for a company they don't administer).
 export class AdHocLeaveGrantError extends Error {
@@ -1153,6 +1167,9 @@ export async function requestLeave(
         // Leave Type Employee Visibility (7b11f1c1): the can-apply switch. false ⇒ an ordinary employee may
         // not apply for this type (rejected below); NULL ⇒ can apply (today's behaviour). isAdmin bypasses.
         employeeCanApply: leaveType.employeeCanApply,
+        // Duplicate Leave Application Restriction (d5e51c34): the same-date double-booking policy, enforced
+        // below AFTER the AM/PM slot-clash guard. null ⇒ 'allow' (no extra check).
+        duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
@@ -1356,6 +1373,32 @@ export async function requestLeave(
         if (conflicts) throw new Error('This date already has a conflicting leave request');
       }
     }
+
+    // Duplicate Leave Application Restriction (d5e51c34): AFTER the narrow AM/PM same-slot clash above, apply
+    // the leave type's same-DATE double-booking policy. Runs for ALL durations (full-day included), unlike the
+    // slot clash which only lives in the non-full-day branch. Extends the comparison from same-slot to same-
+    // DATE range overlap: a pending/approved application whose [startDate, endDate] intersects the requested
+    // [startDate, endDate]. 'restrict_same' scopes the check to the SAME leave type; 'restrict_any' matches any
+    // type. 'allow'/null ⇒ no extra check (today's behaviour). Fires for admins too — double-booking is a data
+    // rule, not a permission (unlike backdating/advance-notice, which isAdmin bypasses).
+    const dupPolicy = lt?.duplicateApplicationPolicy ?? 'allow';
+    if (dupPolicy === 'restrict_same' || dupPolicy === 'restrict_any') {
+      const overlap = await tx
+        .select({ id: leaveRequest.id })
+        .from(leaveRequest)
+        .where(
+          and(
+            eq(leaveRequest.employmentId, p.employmentId),
+            inArray(leaveRequest.status, ['pending', 'approved']),
+            lte(leaveRequest.startDate, p.endDate),
+            gte(leaveRequest.endDate, p.startDate),
+            ...(dupPolicy === 'restrict_same' ? [eq(leaveRequest.leaveTypeId, p.leaveTypeId)] : []),
+          ),
+        )
+        .limit(1);
+      if (overlap.length > 0) throw new DuplicateLeaveApplicationError();
+    }
+
     if (days <= 0) throw new LeaveNoDaysInRangeError();
 
     // ADR-0069: a friendly UX pre-check — the DB trigger (guard_frozen_leave_balance) is the real
@@ -3336,6 +3379,9 @@ export async function editLeaveRequest(
         backdatingLimitDays: leaveType.backdatingLimitDays,
         minAdvanceDays: leaveType.minAdvanceDays,
         customMessages: leaveType.customMessages,
+        // Duplicate Leave Application Restriction (d5e51c34): same-date double-booking policy — enforced below
+        // after the AM/PM slot-clash guard, EXCLUDING this very request. null ⇒ 'allow'.
+        duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
@@ -3439,6 +3485,30 @@ export async function editLeaveRequest(
         if (conflicts) throw new Error('This date already has a conflicting leave request');
       }
     }
+
+    // Duplicate Leave Application Restriction (d5e51c34): mirror of the requestLeave guard, EXCLUDING this very
+    // request (an edit must not clash with itself). Runs for ALL durations. Range-overlap (not same-slot) of a
+    // pending/approved application; 'restrict_same' scopes to the SAME type, 'restrict_any' matches any type.
+    // 'allow'/null ⇒ no extra check. Fires for admins too (data-integrity rule, not a permission).
+    const dupPolicy = lt.duplicateApplicationPolicy ?? 'allow';
+    if (dupPolicy === 'restrict_same' || dupPolicy === 'restrict_any') {
+      const overlap = await tx
+        .select({ id: leaveRequest.id })
+        .from(leaveRequest)
+        .where(
+          and(
+            eq(leaveRequest.employmentId, req.employmentId),
+            inArray(leaveRequest.status, ['pending', 'approved']),
+            lte(leaveRequest.startDate, p.endDate),
+            gte(leaveRequest.endDate, p.startDate),
+            sql`${leaveRequest.id} <> ${req.id}`,
+            ...(dupPolicy === 'restrict_same' ? [eq(leaveRequest.leaveTypeId, p.leaveTypeId)] : []),
+          ),
+        )
+        .limit(1);
+      if (overlap.length > 0) throw new DuplicateLeaveApplicationError();
+    }
+
     if (days <= 0) throw new LeaveNoDaysInRangeError();
 
     // Document + remark gates (identical to requestLeave). hasDocument = an attachment already exists on this

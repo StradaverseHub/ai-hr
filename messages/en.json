@@ -970,7 +970,8 @@
       "advanceNoticeRequired": "{typeName} must be submitted at least {days} day(s) before the leave start date.",
       "leaveYearNotOpen": "Leave year {year} is not open for applications yet. Please contact HR.",
       "editNotAllowed": "This leave can no longer be edited.",
-      "applyNotAllowed": "Employees cannot apply for {typeName}. Please contact HR."
+      "applyNotAllowed": "Employees cannot apply for {typeName}. Please contact HR.",
+      "duplicateApplication": "A leave application already exists for the selected date. Multiple leave applications on the same date are not allowed."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
@@ -3541,7 +3542,12 @@
         "help": "Choose where this leave type appears on the employee’s Leave tab: a Primary card at the top, tucked into a Secondary group below, or Hidden from the employee entirely. Hidden uses the same visibility switch above. Until you choose, each type uses a sensible default."
       },
       "benefitSchemeTitle": "Benefit Schemes",
-      "benefitSchemeHelp": "Group grades, then define named benefit schemes (Company × Employment Type × Grade Group) and their leave entitlements. Employees are auto-matched to a scheme; its entitlements supersede the grade policy, and the statutory minimum still applies."
+      "benefitSchemeHelp": "Group grades, then define named benefit schemes (Company × Employment Type × Grade Group) and their leave entitlements. Employees are auto-matched to a scheme; its entitlements supersede the grade policy, and the statutory minimum still applies.",
+      "duplicatePolicySectionTitle": "Duplicate leave applications",
+      "duplicatePolicyAllow": "Allow multiple leave applications on the same date",
+      "duplicatePolicyRestrictSame": "Restrict the same leave type only",
+      "duplicatePolicyRestrictAny": "Restrict any leave type on the same date",
+      "duplicatePolicyHelp": "Controls whether an employee can submit more than one leave application covering the same date. Default allows it; the two restrict options block a same-date double-booking at submission and edit."
     },
     "holidays": {
       "pageTitle": "Public holidays",

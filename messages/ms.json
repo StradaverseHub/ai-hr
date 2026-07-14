@@ -970,7 +970,8 @@
       "advanceNoticeRequired": "{typeName} mesti dihantar sekurang-kurangnya {days} hari sebelum tarikh mula cuti.",
       "editNotAllowed": "Cuti ini tidak boleh lagi disunting.",
       "leaveYearNotOpen": "Tahun cuti {year} belum dibuka untuk permohonan. Sila hubungi HR.",
-      "applyNotAllowed": "Pekerja tidak boleh memohon {typeName}. Sila hubungi HR."
+      "applyNotAllowed": "Pekerja tidak boleh memohon {typeName}. Sila hubungi HR.",
+      "duplicateApplication": "Permohonan cuti telah wujud untuk tarikh yang dipilih. Berbilang permohonan cuti pada tarikh yang sama tidak dibenarkan."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -3541,7 +3542,12 @@
         "help": "Pilih di mana jenis cuti ini dipaparkan pada tab Cuti pekerja: kad Utama di atas, dimasukkan ke dalam kumpulan Sekunder di bawah, atau Tersembunyi sepenuhnya daripada pekerja. Tersembunyi menggunakan suis keterlihatan yang sama di atas. Sehingga anda memilih, setiap jenis menggunakan tetapan lalai yang munasabah."
       },
       "benefitSchemeTitle": "Skim Faedah",
-      "benefitSchemeHelp": "Kumpulkan gred, kemudian tentukan skim faedah bernama (Syarikat × Jenis Pekerjaan × Kumpulan Gred) dan kelayakan cuti mereka. Pekerja dipadankan secara automatik kepada skim; kelayakannya mengatasi polisi gred, dan minimum statutori masih terpakai."
+      "benefitSchemeHelp": "Kumpulkan gred, kemudian tentukan skim faedah bernama (Syarikat × Jenis Pekerjaan × Kumpulan Gred) dan kelayakan cuti mereka. Pekerja dipadankan secara automatik kepada skim; kelayakannya mengatasi polisi gred, dan minimum statutori masih terpakai.",
+      "duplicatePolicySectionTitle": "Permohonan cuti berganda",
+      "duplicatePolicyAllow": "Benarkan berbilang permohonan cuti pada tarikh yang sama",
+      "duplicatePolicyRestrictSame": "Hadkan jenis cuti yang sama sahaja",
+      "duplicatePolicyRestrictAny": "Hadkan sebarang jenis cuti pada tarikh yang sama",
+      "duplicatePolicyHelp": "Mengawal sama ada pekerja boleh menghantar lebih daripada satu permohonan cuti yang meliputi tarikh yang sama. Lalai membenarkannya; dua pilihan had menyekat tempahan berganda pada tarikh yang sama semasa penghantaran dan penyuntingan."
     },
     "holidays": {
       "pageTitle": "Cuti umum",

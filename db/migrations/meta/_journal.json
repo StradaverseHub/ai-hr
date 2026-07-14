@@ -1450,6 +1450,13 @@
       "when": 1781862205000,
       "tag": "0206_profile_option_description",
       "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1781862206000,
+      "tag": "0207_leave_type_duplicate_application_policy",
+      "breakpoints": true
     }
   ]
 }
