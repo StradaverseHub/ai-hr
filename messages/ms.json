@@ -4070,7 +4070,19 @@
         "state": "Negeri",
         "country": "Negara",
         "relationship": "Hubungan"
-      }
+      },
+      "col": {
+        "code": "Kod",
+        "label": "Label",
+        "description": "Penerangan",
+        "criteria": "Kriteria",
+        "status": "Status",
+        "action": "Tindakan"
+      },
+      "criteriaNa": "T/A",
+      "statusActive": "Aktif",
+      "statusInactive": "Tidak Aktif",
+      "descriptionPlaceholder": "Penerangan (pilihan)"
     },
     "holidayTabs": {
       "holidays": "Cuti",

@@ -4070,7 +4070,19 @@
         "state": "State",
         "country": "Country",
         "relationship": "Relationship"
-      }
+      },
+      "col": {
+        "code": "Code",
+        "label": "Label",
+        "description": "Description",
+        "criteria": "Criteria",
+        "status": "Status",
+        "action": "Actions"
+      },
+      "criteriaNa": "N/A",
+      "statusActive": "Active",
+      "statusInactive": "Inactive",
+      "descriptionPlaceholder": "Optional description"
     },
     "holidayTabs": {
       "holidays": "Holiday",

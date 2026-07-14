@@ -4070,7 +4070,19 @@
         "state": "மாநிலம்",
         "country": "நாடு",
         "relationship": "உறவு"
-      }
+      },
+      "col": {
+        "code": "குறியீடு",
+        "label": "லேபிள்",
+        "description": "விளக்கம்",
+        "criteria": "அளவுகோல்",
+        "status": "நிலை",
+        "action": "செயல்கள்"
+      },
+      "criteriaNa": "பொருந்தாது",
+      "statusActive": "செயலில்",
+      "statusInactive": "செயலற்றது",
+      "descriptionPlaceholder": "விருப்ப விளக்கம்"
     },
     "holidayTabs": {
       "holidays": "விடுமுறை",
