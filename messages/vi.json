@@ -3613,13 +3613,16 @@
       "holidayTypeLabel": "Loại ngày lễ",
       "holidayType": {
         "public": "Ngày lễ công",
-        "company": "Ngày lễ công ty",
+        "company": "Ngày lễ thay thế",
         "optional": "Tùy chọn"
       },
       "descriptionLabel": "Mô tả",
       "descriptionPlaceholder": "Tùy chọn",
       "activeLabel": "Đang hoạt động",
-      "inactiveBadge": "Ngừng hoạt động"
+      "inactiveBadge": "Ngừng hoạt động",
+      "nationalStateColumn": "Toàn quốc / Bang",
+      "statusLabel": "Trạng thái",
+      "actionLabel": "Hành động"
     },
     "users": {
       "title": "Người dùng & vai trò",

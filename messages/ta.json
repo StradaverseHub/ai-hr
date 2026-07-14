@@ -3613,13 +3613,16 @@
       "holidayTypeLabel": "விடுமுறை வகை",
       "holidayType": {
         "public": "பொது விடுமுறை",
-        "company": "நிறுவன விடுமுறை",
+        "company": "மாற்று விடுமுறை",
         "optional": "விருப்பம்"
       },
       "descriptionLabel": "விளக்கம்",
       "descriptionPlaceholder": "விருப்பம்",
       "activeLabel": "செயலில்",
-      "inactiveBadge": "செயலற்றது"
+      "inactiveBadge": "செயலற்றது",
+      "nationalStateColumn": "தேசிய / மாநிலம்",
+      "statusLabel": "நிலை",
+      "actionLabel": "செயல்"
     },
     "users": {
       "title": "பயனர்கள் & பாத்திரங்கள்",

@@ -3613,13 +3613,16 @@
       "holidayTypeLabel": "假期类型",
       "holidayType": {
         "public": "公共假期",
-        "company": "公司假期",
+        "company": "替代假期",
         "optional": "可选假期"
       },
       "descriptionLabel": "描述",
       "descriptionPlaceholder": "可选",
       "activeLabel": "启用",
-      "inactiveBadge": "停用"
+      "inactiveBadge": "停用",
+      "nationalStateColumn": "全国 / 州属",
+      "statusLabel": "状态",
+      "actionLabel": "操作"
     },
     "users": {
       "title": "用户与角色",
