@@ -1538,6 +1538,11 @@
   },
   "approvals": {
     "title": "Phê duyệt",
+    "sortBy": "Sắp xếp theo",
+    "sortLatest": "Mới nhất trước",
+    "sortOldest": "Cũ nhất trước",
+    "sortNameAsc": "Tên (A–Z)",
+    "sortNameDesc": "Tên (Z–A)",
     "emptyDescription": "Không có gì đang chờ bạn",
     "pendingDescription": "{total, plural, one {# mục đang chờ quyết định} other {# mục đang chờ quyết định}}",
     "leaveRequests": "Yêu cầu nghỉ phép",

@@ -1538,6 +1538,11 @@
   },
   "approvals": {
     "title": "การอนุมัติ",
+    "sortBy": "เรียงตาม",
+    "sortLatest": "ล่าสุดก่อน",
+    "sortOldest": "เก่าสุดก่อน",
+    "sortNameAsc": "ชื่อ (A–Z)",
+    "sortNameDesc": "ชื่อ (Z–A)",
     "emptyDescription": "ไม่มีรายการรอคุณ",
     "pendingDescription": "{total, plural, one {# รายการรอการตัดสินใจ} other {# รายการรอการตัดสินใจ}}",
     "leaveRequests": "คำขอลา",

@@ -1538,6 +1538,11 @@
   },
   "approvals": {
     "title": "ஒப்புதல்கள்",
+    "sortBy": "வரிசைப்படுத்து",
+    "sortLatest": "சமீபத்தியது முதலில்",
+    "sortOldest": "பழையது முதலில்",
+    "sortNameAsc": "பெயர் (A–Z)",
+    "sortNameDesc": "பெயர் (Z–A)",
     "emptyDescription": "உங்களிடம் காத்திருக்கும் எதுவும் இல்லை",
     "pendingDescription": "{total, plural, one {# உருப்படி முடிவுக்காக காத்திருக்கிறது} other {# உருப்படிகள் முடிவுக்காக காத்திருக்கின்றன}}",
     "leaveRequests": "விடுப்புக் கோரிக்கைகள்",

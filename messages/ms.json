@@ -1538,6 +1538,11 @@
   },
   "approvals": {
     "title": "Kelulusan",
+    "sortBy": "Isih mengikut",
+    "sortLatest": "Terkini dahulu",
+    "sortOldest": "Terlama dahulu",
+    "sortNameAsc": "Nama (A–Z)",
+    "sortNameDesc": "Nama (Z–A)",
     "emptyDescription": "Tiada yang menunggu anda",
     "pendingDescription": "{total, plural, one {# perkara menunggu keputusan} other {# perkara menunggu keputusan}}",
     "leaveRequests": "Permohonan cuti",

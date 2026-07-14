@@ -1538,6 +1538,11 @@
   },
   "approvals": {
     "title": "审批",
+    "sortBy": "排序方式",
+    "sortLatest": "最新优先",
+    "sortOldest": "最早优先",
+    "sortNameAsc": "姓名 (A–Z)",
+    "sortNameDesc": "姓名 (Z–A)",
     "emptyDescription": "没有等待您处理的事项",
     "pendingDescription": "{total, plural, one {# 项待决策} other {# 项待决策}}",
     "leaveRequests": "休假申请",
