@@ -903,6 +903,7 @@
     "requestsEmpty": "无申请。",
     "requestsEmptyFiltered": "无{status}申请。",
     "requestLeaveToggle": "+ 申请休假",
+    "requestLeave": "申请休假",
     "fieldEmployee": "员工",
     "fieldLeaveType": "休假类型",
     "fieldStartDate": "开始日期",

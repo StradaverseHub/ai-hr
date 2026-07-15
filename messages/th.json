@@ -903,6 +903,7 @@
     "requestsEmpty": "ไม่มีคำขอ",
     "requestsEmptyFiltered": "ไม่มีคำขอ{status}",
     "requestLeaveToggle": "+ ขอลา",
+    "requestLeave": "ขอลา",
     "fieldEmployee": "พนักงาน",
     "fieldLeaveType": "ประเภทการลา",
     "fieldStartDate": "วันที่เริ่ม",
