@@ -4378,7 +4378,10 @@
       "threshold1": "层级1 至（年）",
       "threshold2": "层级2 至（年）",
       "thresholdError": "层级边界必须为整数，且第二个大于第一个。",
-      "saveEntitlement": "保存额度"
+      "saveEntitlement": "保存额度",
+      "tierUnderFixed": "少于2年",
+      "tierMidFixed": "2–5年",
+      "tierOverFixed": "超过5年"
     }
   },
   "topbar": {

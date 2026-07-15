@@ -4378,7 +4378,10 @@
       "threshold1": "Peringkat 1 hingga (tahun)",
       "threshold2": "Peringkat 2 hingga (tahun)",
       "thresholdError": "Sempadan peringkat mesti nombor bulat dengan yang kedua lebih besar daripada yang pertama.",
-      "saveEntitlement": "Simpan kelayakan"
+      "saveEntitlement": "Simpan kelayakan",
+      "tierUnderFixed": "Bawah 2 Tahun",
+      "tierMidFixed": "2–5 Tahun",
+      "tierOverFixed": "Lebih 5 Tahun"
     }
   },
   "topbar": {

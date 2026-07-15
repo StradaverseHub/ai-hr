@@ -392,26 +392,26 @@ function EntitlementForm({
   leaveTypes: LeaveType[];
   t: ReturnType<typeof useTranslations>;
 }) {
-  // Three-tier day entry: < n1 years, n1–n2 years, ≥ n2 years → serialised into contiguous ServiceBands.
-  const [n1, setN1] = useState(2);
-  const [n2, setN2] = useState(5);
+  // Fixed three-band day entry (R44 6421c888): service bands are hardcoded at 0–2 / 2–5 / 5+ years — HR
+  // types the days directly into each predefined range, no tier-cutoff inputs. The 0/2/5 shape satisfies
+  // validateBands and is the SAME contiguous ServiceBand[] the resolver reads. Legacy rows stored with other
+  // cutoffs keep their own values + calculate correctly (read-side table derives each row's own labels).
   const [d0, setD0] = useState('');
   const [d1, setD1] = useState('');
   const [d2, setD2] = useState('');
 
   const bands: ServiceBand[] = [
-    { fromYears: 0, toYears: n1, days: Number(d0) || 0 },
-    { fromYears: n1, toYears: n2, days: Number(d1) || 0 },
-    { fromYears: n2, toYears: null, days: Number(d2) || 0 },
+    { fromYears: 0, toYears: 2, days: Number(d0) || 0 },
+    { fromYears: 2, toYears: 5, days: Number(d1) || 0 },
+    { fromYears: 5, toYears: null, days: Number(d2) || 0 },
   ];
-  const valid = Number.isInteger(n1) && Number.isInteger(n2) && n1 >= 1 && n2 > n1;
 
   return (
     <form action={action} className="space-y-3 rounded-lg border border-dashed border-border p-3">
       <input type="hidden" name="benefitSchemeId" value={schemeId} />
       <input type="hidden" name="serviceBands" value={JSON.stringify(bands)} />
       <p className="text-xs font-medium text-muted-foreground">{t('addEntitlement')}</p>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
         <Field label={t('colLeaveType')}>
           <select name="leaveTypeId" required defaultValue="" className={inputCls}>
             <option value="" disabled>{t('selectPlaceholder')}</option>
@@ -420,24 +420,17 @@ function EntitlementForm({
             ))}
           </select>
         </Field>
-        <Field label={t('threshold1')}>
-          <input type="number" min={1} step={1} value={n1} onChange={(e) => setN1(Number(e.target.value))} className={`${inputCls} w-20`} />
-        </Field>
-        <Field label={t('threshold2')}>
-          <input type="number" min={2} step={1} value={n2} onChange={(e) => setN2(Number(e.target.value))} className={`${inputCls} w-20`} />
-        </Field>
-        <Field label={t('tierUnder', { n1, n2 })}>
+        <Field label={t('tierUnderFixed')}>
           <input type="number" min={0} step="0.5" value={d0} onChange={(e) => setD0(e.target.value)} className={`${inputCls} w-20`} />
         </Field>
-        <Field label={t('tierMid', { n1, n2 })}>
+        <Field label={t('tierMidFixed')}>
           <input type="number" min={0} step="0.5" value={d1} onChange={(e) => setD1(e.target.value)} className={`${inputCls} w-20`} />
         </Field>
-        <Field label={t('tierOver', { n1, n2 })}>
+        <Field label={t('tierOverFixed')}>
           <input type="number" min={0} step="0.5" value={d2} onChange={(e) => setD2(e.target.value)} className={`${inputCls} w-20`} />
         </Field>
       </div>
-      {!valid && <p className="text-xs text-destructive">{t('thresholdError')}</p>}
-      <Button type="submit" size="sm" disabled={!valid}>{t('saveEntitlement')}</Button>
+      <Button type="submit" size="sm">{t('saveEntitlement')}</Button>
     </form>
   );
 }

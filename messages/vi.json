@@ -4378,7 +4378,10 @@
       "threshold1": "Bậc 1 đến (năm)",
       "threshold2": "Bậc 2 đến (năm)",
       "thresholdError": "Ranh giới bậc phải là số nguyên với giá trị thứ hai lớn hơn giá trị thứ nhất.",
-      "saveEntitlement": "Lưu quyền lợi"
+      "saveEntitlement": "Lưu quyền lợi",
+      "tierUnderFixed": "Dưới 2 năm",
+      "tierMidFixed": "2–5 năm",
+      "tierOverFixed": "Trên 5 năm"
     }
   },
   "topbar": {

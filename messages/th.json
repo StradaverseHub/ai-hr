@@ -4378,7 +4378,10 @@
       "threshold1": "ระดับ 1 ถึง (ปี)",
       "threshold2": "ระดับ 2 ถึง (ปี)",
       "thresholdError": "ขอบเขตระดับต้องเป็นจำนวนเต็ม โดยค่าที่สองมากกว่าค่าแรก",
-      "saveEntitlement": "บันทึกสิทธิ์"
+      "saveEntitlement": "บันทึกสิทธิ์",
+      "tierUnderFixed": "ต่ำกว่า 2 ปี",
+      "tierMidFixed": "2–5 ปี",
+      "tierOverFixed": "มากกว่า 5 ปี"
     }
   },
   "topbar": {

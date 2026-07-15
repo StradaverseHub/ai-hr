@@ -4378,7 +4378,10 @@
       "threshold1": "Tier 1 to (years)",
       "threshold2": "Tier 2 to (years)",
       "thresholdError": "Tier boundaries must be whole numbers with the second greater than the first.",
-      "saveEntitlement": "Save entitlement"
+      "saveEntitlement": "Save entitlement",
+      "tierUnderFixed": "Under 2 Years",
+      "tierMidFixed": "2–5 Years",
+      "tierOverFixed": "More Than 5 Years"
     }
   },
   "topbar": {
