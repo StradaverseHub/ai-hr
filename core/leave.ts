@@ -99,6 +99,8 @@ import {
   payslip,
   person,
   reportingLine,
+  schemeLeaveCombinedLimit,
+  schemeLeaveCombinedLimitMember,
 } from '../db/schema';
 
 /** ADR-0069: the set of "employmentId|leaveTypeId" keys with an ACTIVE frozen encashment snapshot, for the
@@ -140,6 +142,21 @@ export class InsufficientLeaveBalanceOnSubmitError extends Error {
   constructor() {
     super('Insufficient leave balance for this application');
     this.name = 'InsufficientLeaveBalanceOnSubmitError';
+  }
+}
+
+// Combined Leave Type Limit (R44 4c48fd1f, Stage 2): the requested leave type belongs to a benefit-scheme
+// combined-limit pool (e.g. "Compassionate + Marriage + Paternity = 5 days/year") and this application would
+// push the employee's per-cycle usage ACROSS ALL pooled types over the shared total. Carries the pool name +
+// total for a readable, re-localizable error. Fires for admins too — it's a data cap, like the balance gate.
+export class CombinedLeaveLimitExceededError extends Error {
+  readonly poolName: string;
+  readonly totalLimitDays: number;
+  constructor(poolName: string, totalLimitDays: number) {
+    super(`Combined leave limit "${poolName}" (${totalLimitDays} days) would be exceeded`);
+    this.name = 'CombinedLeaveLimitExceededError';
+    this.poolName = poolName;
+    this.totalLimitDays = totalLimitDays;
   }
 }
 
@@ -800,6 +817,118 @@ export async function availableLeaveBalance(
   return round2(bal - Number(row?.pending ?? 0));
 }
 
+// ── Combined Leave Type Limit enforcement (R44 4c48fd1f, Stage 2) ───────────────────────────────────
+/** Resolve ONE employment's effective benefit scheme id (override → auto-match → none), reusing the pure
+ *  resolver. Read-only. Returns null when no active scheme matches (⇒ no combined-limit pools apply). */
+async function resolveSchemeIdForEmployment(tx: Tx, employmentId: string): Promise<string | null> {
+  const [emp] = await tx
+    .select({ companyId: employment.companyId, gradeId: employment.gradeId, overrideSchemeId: employment.benefitSchemeId })
+    .from(employment)
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  if (!emp) return null;
+  const schemes = await tx
+    .select({
+      id: benefitScheme.id,
+      companyId: benefitScheme.companyId,
+      employmentType: benefitScheme.employmentType,
+      gradeGroupId: benefitScheme.gradeGroupId,
+      status: benefitScheme.status,
+    })
+    .from(benefitScheme);
+  if (schemes.length === 0) return null;
+  const [assign] = await tx
+    .select({ employmentType: assignment.employmentType })
+    .from(assignment)
+    .where(and(eq(assignment.employmentId, employmentId), isNull(assignment.validTo), isNull(assignment.supersededAt)))
+    .limit(1);
+  let gradeGroupId: string | null = null;
+  if (emp.gradeId) {
+    const [gm] = await tx
+      .select({ gradeGroupId: gradeGroupMember.gradeGroupId })
+      .from(gradeGroupMember)
+      .where(eq(gradeGroupMember.gradeId, emp.gradeId))
+      .limit(1);
+    gradeGroupId = gm?.gradeGroupId ?? null;
+  }
+  return resolveEffectiveSchemeId(
+    schemes.map((s) => ({
+      id: s.id,
+      companyId: s.companyId,
+      employmentType: s.employmentType,
+      gradeGroupId: s.gradeGroupId,
+      status: s.status,
+    })),
+    {
+      companyId: emp.companyId,
+      employmentType: assign?.employmentType ?? null,
+      gradeGroupId,
+      overrideSchemeId: emp.overrideSchemeId ?? null,
+    },
+  );
+}
+
+/** Combined-limit guard: if the requested leave type belongs to a pool in the employee's effective scheme,
+ *  sum the employee's per-cycle usage ACROSS ALL pooled types (pending + approved, minus the request being
+ *  re-evaluated) and reject when adding `requestedDays` would breach the pool's shared total. The cycle is
+ *  the calendar leave year of `startDate` (mirrors the tenant's calendar-year leave_year_config keying). A
+ *  no-op when the employee has no scheme, or the type is in no pool — so tenants without pools are unchanged. */
+async function enforceCombinedLeaveLimit(
+  tx: Tx,
+  p: { employmentId: string; leaveTypeId: string; startDate: string; requestedDays: number; excludeRequestId?: string },
+): Promise<void> {
+  if (p.requestedDays <= 0) return;
+  const schemeId = await resolveSchemeIdForEmployment(tx, p.employmentId);
+  if (!schemeId) return;
+  // The pool (if any) this leave type belongs to within the effective scheme.
+  const [pool] = await tx
+    .select({
+      id: schemeLeaveCombinedLimit.id,
+      name: schemeLeaveCombinedLimit.name,
+      totalLimitDays: schemeLeaveCombinedLimit.totalLimitDays,
+    })
+    .from(schemeLeaveCombinedLimitMember)
+    .innerJoin(schemeLeaveCombinedLimit, eq(schemeLeaveCombinedLimit.id, schemeLeaveCombinedLimitMember.combinedLimitId))
+    .where(
+      and(
+        eq(schemeLeaveCombinedLimitMember.benefitSchemeId, schemeId),
+        eq(schemeLeaveCombinedLimitMember.leaveTypeId, p.leaveTypeId),
+      ),
+    )
+    .limit(1);
+  if (!pool) return;
+  const total = Number(pool.totalLimitDays);
+  // All member leave types of the pool.
+  const members = await tx
+    .select({ leaveTypeId: schemeLeaveCombinedLimitMember.leaveTypeId })
+    .from(schemeLeaveCombinedLimitMember)
+    .where(eq(schemeLeaveCombinedLimitMember.combinedLimitId, pool.id));
+  const memberTypeIds = members.map((m) => m.leaveTypeId);
+  if (memberTypeIds.length === 0) return;
+  // Per-cycle usage across all member types = pending + approved requests whose start falls in the same
+  // calendar year, minus the request being re-evaluated (avoids double-counting on the approval path).
+  const year = p.startDate.slice(0, 4);
+  const windowStart = `${year}-01-01`;
+  const windowEnd = `${year}-12-31`;
+  const [used] = await tx
+    .select({ total: sql<string>`coalesce(sum(${leaveRequest.days}), 0)` })
+    .from(leaveRequest)
+    .where(
+      and(
+        eq(leaveRequest.employmentId, p.employmentId),
+        inArray(leaveRequest.leaveTypeId, memberTypeIds),
+        inArray(leaveRequest.status, ['pending', 'approved']),
+        gte(leaveRequest.startDate, windowStart),
+        lte(leaveRequest.startDate, windowEnd),
+        ...(p.excludeRequestId ? [sql`${leaveRequest.id} <> ${p.excludeRequestId}`] : []),
+      ),
+    );
+  const usedDays = Number(used?.total ?? 0);
+  if (round2(usedDays + p.requestedDays) > total) {
+    throw new CombinedLeaveLimitExceededError(pool.name, total);
+  }
+}
+
 // ── Emergency Leave (0106) ─────────────────────────────────────────────────────────────────────────
 // EL is an APPLICATION TYPE ONLY (no balance, no ledger). On submission requestLeave decomposes it into
 // up to two ordinary child requests over the same dates: an ANNUAL request for the AL-covered portion and
@@ -1454,6 +1583,16 @@ export async function requestLeave(
       const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
       if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
     }
+
+    // Combined Leave Type Limit (R44 4c48fd1f, Stage 2): reject when this application would push the
+    // employee's per-cycle usage across a shared pool (scheme combined-limit) over its total. No-op when the
+    // employee has no effective scheme or the type is in no pool, so tenants without pools are unaffected.
+    await enforceCombinedLeaveLimit(tx, {
+      employmentId: p.employmentId,
+      leaveTypeId: p.leaveTypeId,
+      startDate: p.startDate,
+      requestedDays: days,
+    });
 
     // ADR-0069: a friendly UX pre-check — the DB trigger (guard_frozen_leave_balance) is the real
     // enforcement at approval time, but failing fast here gives the employee a readable error immediately
@@ -2313,6 +2452,16 @@ async function finalizeLeaveApproval(
   const balance = await leaveBalance(tx, req.employmentId, req.leaveTypeId);
   const need = daysOverride ?? Number(req.days);
   if (balance - need < 0) throw new InsufficientLeaveBalanceError();
+  // Combined Leave Type Limit (R44 4c48fd1f, Stage 2): re-check the shared pool at approval time (a second
+  // approver / stale pending set could otherwise breach it). Exclude THIS request from the usage sum and add
+  // its `need` back, so the pending row it represents is counted exactly once.
+  await enforceCombinedLeaveLimit(tx, {
+    employmentId: req.employmentId,
+    leaveTypeId: req.leaveTypeId,
+    startDate: req.startDate,
+    requestedDays: need,
+    excludeRequestId: req.id,
+  });
   await tx.insert(leaveLedger).values({
     tenantId: ctx.tenantId,
     employmentId: req.employmentId,

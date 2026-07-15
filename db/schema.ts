@@ -1208,6 +1208,50 @@ export const schemeLeaveEntitlement = pgTable(
   ],
 );
 
+// scheme_leave_combined_limit (R44 4c48fd1f) = a shared per-cycle cap pooling SEVERAL leave types under one
+// total (e.g. "Compassionate + Marriage + Paternity combined = 5 days a year"). Config layer: a named pool
+// with a total day cap, its member leave types held in scheme_leave_combined_limit_member. Enforced at apply
+// / approval time by summing per-cycle usage across ALL member types. ON DELETE CASCADE from the scheme.
+export const schemeLeaveCombinedLimit = pgTable(
+  'scheme_leave_combined_limit',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    benefitSchemeId: uuid('benefit_scheme_id')
+      .notNull()
+      .references(() => benefitScheme.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    totalLimitDays: numeric('total_limit_days', { precision: 6, scale: 2 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('scheme_leave_combined_limit_scheme_idx').on(t.benefitSchemeId)],
+);
+
+// scheme_leave_combined_limit_member = one leave type belonging to a combined-limit pool. benefit_scheme_id is
+// denormalised so a UNIQUE (tenant, scheme, leave_type) can enforce "a leave type joins at most one pool per
+// scheme". ON DELETE CASCADE from the pool.
+export const schemeLeaveCombinedLimitMember = pgTable(
+  'scheme_leave_combined_limit_member',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    combinedLimitId: uuid('combined_limit_id')
+      .notNull()
+      .references(() => schemeLeaveCombinedLimit.id, { onDelete: 'cascade' }),
+    benefitSchemeId: uuid('benefit_scheme_id')
+      .notNull()
+      .references(() => benefitScheme.id, { onDelete: 'cascade' }),
+    leaveTypeId: uuid('leave_type_id')
+      .notNull()
+      .references(() => leaveType.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('scheme_leave_combined_limit_member_uq').on(t.tenantId, t.benefitSchemeId, t.leaveTypeId),
+    index('scheme_leave_combined_limit_member_pool_idx').on(t.combinedLimitId),
+  ],
+);
+
 // leave_ledger = append-only entries; accrual (+), debit (−) on approval, adjustment (±).
 export const leaveLedger = pgTable(
   'leave_ledger',
