@@ -206,6 +206,8 @@
     "mandatoryCardMessage": "This dashboard card is mandatory and cannot be removed.",
     "mandatoryCardHint": "Mandatory — set by HR, cannot be removed.",
     "shortcutBadge": "Shortcut",
+    "pinnedBadge": "Pinned",
+    "pinnedRowHint": "These cards are pinned to a fixed row and always stay on your dashboard.",
     "emptyDashboardHint": "No cards selected. Use Add Card to choose what to show.",
     "saveChanges": "Save Changes",
     "cancel": "Cancel",

@@ -206,6 +206,8 @@
     "mandatoryCardMessage": "Thẻ bảng điều khiển này là bắt buộc và không thể xóa.",
     "mandatoryCardHint": "Bắt buộc — do HR đặt, không thể xóa.",
     "shortcutBadge": "Lối tắt",
+    "pinnedBadge": "Đã ghim",
+    "pinnedRowHint": "Các thẻ này được ghim vào một hàng cố định và luôn hiển thị trên bảng điều khiển của bạn.",
     "emptyDashboardHint": "Chưa chọn thẻ nào. Dùng Thêm thẻ để chọn nội dung hiển thị.",
     "saveChanges": "Lưu thay đổi",
     "cancel": "Hủy",

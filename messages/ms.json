@@ -206,6 +206,8 @@
     "mandatoryCardMessage": "Kad papan pemuka ini adalah wajib dan tidak boleh dialih keluar.",
     "mandatoryCardHint": "Wajib — ditetapkan oleh HR, tidak boleh dialih keluar.",
     "shortcutBadge": "Pintasan",
+    "pinnedBadge": "Disematkan",
+    "pinnedRowHint": "Kad ini disematkan pada baris tetap dan sentiasa kekal di papan pemuka anda.",
     "emptyDashboardHint": "Tiada kad dipilih. Gunakan Tambah Kad untuk memilih apa yang hendak dipaparkan.",
     "saveChanges": "Simpan Perubahan",
     "cancel": "Batal",
