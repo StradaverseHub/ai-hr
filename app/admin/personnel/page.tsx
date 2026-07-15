@@ -13,6 +13,7 @@ import { listPositions, listCostCenters, listBusinessUnits } from '@/core/admin'
 import { computeProvisionalEndOn, resolveProbationMonths } from '@/core/org';
 import { getPayrollConfig } from '@/core/payroll-config';
 import { listProfileChangeRequests } from '@/core/profile';
+import { deriveEmploymentStatus } from '@/core/employment-status';
 import { Avatar, Button, Card, EmployeeCode, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import {
@@ -62,6 +63,9 @@ export default async function PeoplePage({
   await requireAdmin(); // Admin-only management surface (ADR: People→Personnel split). Non-admins redirect home.
   const t = await getTranslations('people.list');
   const tCommon = await getTranslations('common');
+  const tStatus = await getTranslations('people.employeeStatus');
+  // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
+  // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
   const { s: session, scopeIds } = await scopedSession();
   const today = new Date().toISOString().slice(0, 10);
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
@@ -493,7 +497,10 @@ export default async function PeoplePage({
                 <td className="px-4 py-3 text-muted-foreground">{e.department ?? '—'}</td>
                 <td className="px-4 py-3 text-muted-foreground">{e.company}</td>
                 <td className="px-4 py-3">
-                  <StatusBadge status={e.terminatedOn ? 'terminated' : e.status} />
+                  {(() => {
+                    const st = deriveEmploymentStatus(e, today);
+                    return <StatusBadge status={st} label={tStatus(st)} />;
+                  })()}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{e.hiredOn}</td>
               </tr>
