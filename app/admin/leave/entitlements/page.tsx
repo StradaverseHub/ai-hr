@@ -223,6 +223,7 @@ export default async function LeaveEntitlementsPage({
               color={lt.color ?? null}
               icon={lt.icon ?? null}
               leaveUnit={lt.leaveUnit ?? 'day'}
+              probationEligibility={lt.probationEligibility ?? null}
               visibleToEmployee={lt.visibleToEmployee ?? null}
               employeeCanApply={lt.employeeCanApply ?? null}
               essPlacement={lt.essPlacement ?? null}

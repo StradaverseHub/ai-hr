@@ -460,6 +460,9 @@ export function listLeaveTypes(
         // Leave Unit Configuration (e4980382): feeds the admin panel's "Leave Unit" select + the create-form
         // default (MUST be projected or the select renders at its default on every reload). 'day' | 'hour'.
         leaveUnit: leaveType.leaveUnit,
+        // Probation eligibility (d6bdbd55): feeds the admin panel's Probation select in the eligibility editor
+        // (MUST be projected or the select renders at its default on every reload). null ⇒ no restriction.
+        probationEligibility: leaveType.probationEligibility,
         // Leave Type Employee Visibility (7b11f1c1): feeds the admin panel's two visibility checkboxes (MUST be
         // projected or the checkboxes render at their default on every reload). null ⇒ visible / can-apply.
         visibleToEmployee: leaveType.visibleToEmployee,

@@ -889,6 +889,12 @@ export const leaveType = pgTable('leave_type', {
   // open to all. Enforced at requestLeave; mirrors only what the Act restricts (e.g. maternity is female-
   // only by EA s.37), so it never blocks a statutory entitlement.
   eligibility: jsonb('eligibility'),
+  // Probation eligibility (d6bdbd55, migration 0225): a per-type probation gate alongside the jsonb
+  // eligibility above. NULL = no restriction (every existing row); 'confirmed_only' = only employees past
+  // probation may apply; 'probation_only' = only employees still on probation may apply. Merged into the
+  // LeaveEligibility object at the enforcement chokepoints (assertEligible) so it rides the same gate as
+  // gender/marital/min-service. A DB CHECK constrains it to the closed 2-value set (defence-in-depth).
+  probationEligibility: text('probation_eligibility'),
   // Wave 2 (ADR-0038 2A-2): require a supporting document (e.g. an MC for sick leave). When true,
   // requestLeave rejects a request that has no attachment. Default false = no document needed.
   requiresDocument: boolean('requires_document').notNull().default(false),
