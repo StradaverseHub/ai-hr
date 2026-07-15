@@ -831,7 +831,14 @@
       "identityTaxSave": "Lưu thông tin thuế",
       "icNumberHint": "Số MyKad 12 chữ số. Dùng làm mặc định cho số SOCSO/EIS và EPF.",
       "icDobInvalidDate": "Sáu chữ số đầu của số IC không phải là ngày hợp lệ, nên ngày sinh chưa được điền. Vui lòng nhập thủ công.",
-      "saveIc": "Lưu số CMND"
+      "saveIc": "Lưu số CMND",
+      "passportNumber": "Số hộ chiếu",
+      "passportNumberPlaceholder": "ví dụ A12345678",
+      "passportIssueDate": "Ngày cấp hộ chiếu",
+      "passportExpiryDate": "Ngày hết hạn hộ chiếu",
+      "passportRemark": "Ghi chú hộ chiếu",
+      "passportHint": "Dành cho nhân viên không phải người Malaysia. Số hộ chiếu, ngày cấp và ngày hết hạn là bắt buộc; ghi chú là tùy chọn.",
+      "savePassport": "Lưu thông tin hộ chiếu"
     },
     "import": {
       "title": "Nhập nhân viên",

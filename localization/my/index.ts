@@ -2,7 +2,7 @@
  * Malaysia localization pack (ADR-0008). Slice 1 ships the statutory profile; leave rules,
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
-import { getStatutoryProfileMY, isValidIC, setBankProfileMY, setIcProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY } from './statutory';
+import { getStatutoryProfileMY, isValidIC, setBankProfileMY, setIcProfileMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026 } from './holidays';
 import { eis, epf, hrdfLevy, overtimePay, pcbMonth, socso, statutory } from './payroll';
@@ -40,6 +40,9 @@ export const myPack = {
     // Partial saves for the Identification & Tax card (item 8b5334db): IC relocated to the Profile tab (its own
     // seed setter), and the tax columns split into their own card with a dedicated partial save.
     setIc: setIcProfileMY,
+    // Item e3ce0d4d — non-Malaysian identity: save the passport identification block (skips MyKad IC validation).
+    // The counterpart to setIc; the identity form on the Profile tab picks one based on the selected nationality.
+    setPassport: setPassportProfileMY,
     setTax: setTaxProfileMY,
     validateIC: isValidIC,
   },

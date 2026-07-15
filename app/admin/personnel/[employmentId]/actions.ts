@@ -715,7 +715,10 @@ export async function setStatutoryAction(formData: FormData) {
     // the bank/TP3/zakat fields already guard against). The three NEW columns (taxResidency/childReliefMode/
     // employerBearsTax) are NOT in setStatutoryProfileMY's write set, so they are untouched here regardless.
     if (!current) throw new Error('Save the IC number on the Profile tab first, then the EPF / SOCSO details.');
-    const icNumber = current.icNumber;
+    // Item e3ce0d4d — icNumber is now nullable (non-Malaysian rows are passport-identified). This full-row
+    // EPF/SOCSO overwrite still requires a Malaysian IC; coerce a null to '' so setStatutoryProfileMY's IC
+    // validation surfaces the "save the IC first" error rather than a type break.
+    const icNumber = current.icNumber ?? '';
     await pack.statutory.set(s, {
       personId,
       icNumber,
@@ -889,6 +892,34 @@ export async function setIcAction(formData: FormData) {
     } catch {
       // non-fatal — IC persisted; DOB autofill is a convenience.
     }
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Item e3ce0d4d — save ONLY the passport identification columns for a NON-Malaysian employee. The counterpart
+ * to setIcAction: the Profile-tab identity form shows the IC field for Malaysians and these passport fields for
+ * everyone else (client-side, driven by the selected nationality). Like setIcAction the pack setter SEEDS the
+ * statutory row (UPSERT) — but with NO IC (ic_number stays null) and SKIPS MyKad validation. It requires the
+ * passport number + issue date + expiry date (remark optional) and appends `employee.passport.updated`.
+ */
+export async function setPassportAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const personId = String(formData.get('personId'));
+  const pack = packFor('MY');
+  try {
+    if (!pack) throw new Error('No localization pack for MY');
+    await pack.statutory.setPassport(s, {
+      personId,
+      passportNumber: (formData.get('passportNumber') as string) || null,
+      passportIssueDate: (formData.get('passportIssueDate') as string) || null,
+      passportExpiryDate: (formData.get('passportExpiryDate') as string) || null,
+      passportRemark: (formData.get('passportRemark') as string) || null,
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));

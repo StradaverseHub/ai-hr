@@ -831,7 +831,14 @@
       "identityTaxSave": "Save tax information",
       "icNumberHint": "12-digit MyKad number. Used to default the SOCSO/EIS and EPF numbers.",
       "icDobInvalidDate": "The IC number's first six digits aren't a valid date, so the date of birth wasn't filled in. Enter it manually.",
-      "saveIc": "Save IC number"
+      "saveIc": "Save IC number",
+      "passportNumber": "Passport number",
+      "passportNumberPlaceholder": "e.g. A12345678",
+      "passportIssueDate": "Passport issue date",
+      "passportExpiryDate": "Passport expiry date",
+      "passportRemark": "Passport remark",
+      "passportHint": "For non-Malaysian employees. Passport number, issue date and expiry date are required; the remark is optional.",
+      "savePassport": "Save passport information"
     },
     "import": {
       "title": "Import employees",

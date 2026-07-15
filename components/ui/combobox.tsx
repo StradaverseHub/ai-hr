@@ -29,6 +29,7 @@ export function Combobox({
   noResultsLabel,
   legacySuffix,
   className,
+  onValueChange,
 }: {
   name: string;
   value: string | null | undefined;
@@ -38,6 +39,10 @@ export function Combobox({
   noResultsLabel: string;
   legacySuffix: string;
   className?: string;
+  // Item e3ce0d4d — fires whenever the selection changes (in addition to the hidden <input> the form posts).
+  // Lets a client parent react live to the choice (e.g. flip IC ⇄ passport identification by nationality)
+  // without waiting for a form submit. Optional → existing form-only usages are unaffected.
+  onValueChange?: (value: string) => void;
 }) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -102,6 +107,7 @@ export function Combobox({
   const commit = (v: string) => {
     setSelected(v);
     setOpen(false);
+    onValueChange?.(v);
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {

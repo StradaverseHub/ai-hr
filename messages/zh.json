@@ -831,7 +831,14 @@
       "identityTaxSave": "保存税务信息",
       "icNumberHint": "12 位身份证（MyKad）号码。用于默认 SOCSO/EIS 和 EPF 号码。",
       "icDobInvalidDate": "身份证号码的前六位不是有效日期，因此未自动填入出生日期。请手动输入。",
-      "saveIc": "保存身份证号码"
+      "saveIc": "保存身份证号码",
+      "passportNumber": "护照号码",
+      "passportNumberPlaceholder": "例如 A12345678",
+      "passportIssueDate": "护照签发日期",
+      "passportExpiryDate": "护照到期日期",
+      "passportRemark": "护照备注",
+      "passportHint": "适用于非马来西亚籍员工。护照号码、签发日期和到期日期为必填项；备注为选填。",
+      "savePassport": "保存护照信息"
     },
     "import": {
       "title": "导入员工",

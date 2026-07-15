@@ -1738,7 +1738,15 @@ export const employeeStatutoryMy = pgTable(
     personId: uuid('person_id')
       .notNull()
       .references(() => person.id),
-    icNumber: text('ic_number').notNull(),
+    // Item e3ce0d4d — NULLABLE (relaxed from NOT NULL by migration 0212): a Malaysian employee is identified
+    // by their MyKad IC, a non-Malaysian by their passport (below), so a non-Malaysian identity row carries no IC.
+    icNumber: text('ic_number'),
+    // Item e3ce0d4d — passport identification (non-Malaysian employees). All nullable/additive: Malaysian rows
+    // leave these blank and keep their IC. Foundation for future passport-expiry reminders / work-permit tracking.
+    passportNumber: text('passport_number'),
+    passportIssueDate: date('passport_issue_date'),
+    passportExpiryDate: date('passport_expiry_date'),
+    passportRemark: text('passport_remark'),
     epfNumber: text('epf_number'),
     socsoNumber: text('socso_number'),
     taxNumber: text('tax_number'),
@@ -1828,7 +1836,9 @@ export const employeeStatutoryMy = pgTable(
   },
   (t) => [
     uniqueIndex('employee_statutory_my_person_uq').on(t.personId),
-    uniqueIndex('employee_statutory_my_ic_uq').on(t.tenantId, t.icNumber),
+    // Item e3ce0d4d — PARTIAL: real ICs stay unique per tenant, but multiple non-Malaysian rows carrying a
+    // null IC (identified by passport instead) don't collide.
+    uniqueIndex('employee_statutory_my_ic_uq').on(t.tenantId, t.icNumber).where(sql`ic_number is not null`),
   ],
 );
 

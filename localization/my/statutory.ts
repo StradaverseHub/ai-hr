@@ -136,14 +136,13 @@ export const isValidIC = (ic: string): boolean => /^\d{12}$/.test(normalizeIC(ic
 export { dobFromIC } from './ic-dob';
 
 /**
- * Item 5a461b99 — a person is "Malaysian" for the SOCSO & EIS Number default when their nationality
- * catalog value reads Malaysian/Malaysia (case-insensitive; the catalog is free-text/dropdown, so match
- * loosely). Pure helper (no 'use client') so both the RSC detail page and the server action can call it.
+ * Item 5a461b99 / e3ce0d4d — "is this person Malaysian?" (Malaysian/Malaysia/MY/MYS, case-insensitive). The
+ * single source of truth lives in the leaf `./ic-dob` module (zero db deps) so the 'use client' identity
+ * wrapper can import it WITHOUT pulling `db` into the client bundle; re-exported here for the server callers
+ * (defaultSocsoEisNumber below, the RSC page) that already import from statutory.ts.
  */
-export const isMalaysianNationality = (nationality?: string | null): boolean => {
-  const n = (nationality ?? '').trim().toLowerCase();
-  return n === 'malaysian' || n === 'malaysia' || n === 'my' || n === 'mys';
-};
+import { isMalaysianNationality } from './ic-dob';
+export { isMalaysianNationality };
 
 /**
  * The SOCSO & EIS Number to persist. For a Malaysian employee with a blank number, default it to the
@@ -628,6 +627,99 @@ export async function setIcProfileMY(ctx: SessionContext, p: { personId: string;
       // IC is a government identity number (like the SOCSO/bank routing identifiers already recorded on the
       // sibling statutory events); before/after so an auditor can reconstruct a correction from the log alone.
       payload: { personId: p.personId, before: { icNumber: existing?.icNumber ?? null }, after: { icNumber: ic } },
+    });
+    return { id };
+  });
+}
+
+/** Item e3ce0d4d — a non-Malaysian identity save was missing a mandatory passport field (number / issue /
+ *  expiry). The three are required for non-Malaysian employees; the remark is optional. Distinct message. */
+export class PassportRequiredError extends Error {
+  constructor() {
+    super('Passport number, issue date and expiry date are required for a non-Malaysian employee.');
+    this.name = 'PassportRequiredError';
+  }
+}
+
+export type PassportInput = {
+  personId: string;
+  passportNumber?: string | null;
+  passportIssueDate?: string | null;
+  passportExpiryDate?: string | null;
+  passportRemark?: string | null;
+};
+
+/**
+ * Item e3ce0d4d — save ONLY the passport identification columns on employee_statutory_my for a NON-Malaysian
+ * employee. The counterpart to setIcProfileMY: a non-Malaysian has no MyKad, so identity is the passport
+ * instead. Like the IC setter this UPSERTS (seeds the statutory row when the person has none), but SKIPS the
+ * MyKad IC validation entirely and leaves ic_number null/untouched. Number + issue date + expiry date are
+ * mandatory (PassportRequiredError otherwise); remark is optional. Appends `employee.passport.updated`
+ * (before/after) — passport is a government identity document, mirroring the IC event's audit posture.
+ */
+export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput) {
+  const number = (p.passportNumber ?? '').trim();
+  const issue = (p.passportIssueDate ?? '').trim() || null;
+  const expiry = (p.passportExpiryDate ?? '').trim() || null;
+  const remark = (p.passportRemark ?? '').trim() || null;
+  // Non-Malaysian primary identification: number + issue + expiry are all mandatory (the request's validation
+  // rules). Remark is optional. No MyKad IC validation runs on this path.
+  if (!number || !issue || !expiry) throw new PassportRequiredError();
+  const values = {
+    passportNumber: number,
+    passportIssueDate: issue,
+    passportExpiryDate: expiry,
+    passportRemark: remark,
+  };
+  return withTenant(ctx, async (tx) => {
+    const [existing] = await tx
+      .select({
+        id: employeeStatutoryMy.id,
+        passportNumber: employeeStatutoryMy.passportNumber,
+        passportIssueDate: employeeStatutoryMy.passportIssueDate,
+        passportExpiryDate: employeeStatutoryMy.passportExpiryDate,
+        passportRemark: employeeStatutoryMy.passportRemark,
+      })
+      .from(employeeStatutoryMy)
+      .where(eq(employeeStatutoryMy.personId, p.personId))
+      .limit(1);
+    let id: string;
+    if (existing) {
+      await tx
+        .update(employeeStatutoryMy)
+        .set({ ...values, updatedAt: sql`now()` })
+        .where(eq(employeeStatutoryMy.id, existing.id));
+      id = existing.id;
+    } else {
+      // Seed the row with the passport identity and NO IC (ic_number stays null — the partial ic_uq lets many
+      // non-Malaysian rows coexist with a null IC).
+      const [row] = await tx
+        .insert(employeeStatutoryMy)
+        .values({ tenantId: ctx.tenantId, personId: p.personId, ...values })
+        .returning({ id: employeeStatutoryMy.id });
+      id = row.id;
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employee-statutory',
+      aggregateId: id,
+      eventType: 'employee.passport.updated',
+      actor: actorOf(ctx),
+      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+      // Passport is a government identity document — before/after so an auditor can reconstruct a correction
+      // from the log alone, exactly like the sibling employee.ic.updated event.
+      payload: {
+        personId: p.personId,
+        before: existing
+          ? {
+              passportNumber: existing.passportNumber,
+              passportIssueDate: existing.passportIssueDate,
+              passportExpiryDate: existing.passportExpiryDate,
+              passportRemark: existing.passportRemark,
+            }
+          : null,
+        after: values,
+      },
     });
     return { id };
   });

@@ -20,7 +20,7 @@ import { hasPersonPhoto } from '@/core/person-photo';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { Combobox } from '@/components/ui/combobox';
+import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
@@ -44,6 +44,7 @@ import {
   setTp3Action,
   setBankAction,
   setIcAction,
+  setPassportAction,
   setTaxAction,
   terminateAction,
   transferAction,
@@ -72,7 +73,6 @@ import { MY_STATES } from '@/localization/my/holidays';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { PhotoEditMenu } from '@/components/photo-edit-menu';
-import { IcDobAutofill } from '@/components/ic-dob-autofill';
 import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
 import { encashmentSnapshotForEmployment } from '@/core/leave-encashment';
 import { unfreezeEncashmentAction, adjustEncashmentAction } from './encashment-actions';
@@ -278,6 +278,10 @@ export default async function EmployeePage({
   // the cards that don't visibly own it, so saving one section never wipes another's data.
   const profilePanel = admin ? (
     <>
+      {/* Item e3ce0d4d — IdentityProvider lifts the live Nationality selection so the identity block below can
+          switch between IC (Malaysian) and Passport (non-Malaysian) fields instantly. The Card shell + all the
+          server-action forms stay Server Components; only the nationality picker + identity block are client. */}
+      <IdentityProvider initialNationality={emp.nationality}>
       <Card id="section-personal-details">
         <SectionHeader title={t('personalDetails')} />
         <form action={setPersonAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
@@ -328,8 +332,10 @@ export default async function EmployeePage({
           </Field>
           <Field label={t('nationality')}>
             {/* 59047802 — searchable combobox over the full ISO 3166-1 nationality set; emits the same
-                single `nationality` value (via a hidden input) so setPersonAction is unchanged. */}
-            <Combobox
+                single `nationality` value (via a hidden input) so setPersonAction is unchanged. e3ce0d4d —
+                wrapped as NationalityField so a change also pushes the live value into IdentityProvider,
+                driving the IC ⇄ Passport switch in the identity block below without a page reload. */}
+            <NationalityField
               name="nationality"
               value={emp.nationality}
               options={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
@@ -411,36 +417,24 @@ export default async function EmployeePage({
           </div>
         </form>
 
-        {/* Item 8b5334db — IC Number relocated here from the Bank & Statutory tax section (personal identification
-            belongs on the Profile). Its OWN small form + partial save (setIcAction) writing only the icNumber
-            column, so it seeds/updates the same statutory row the SOCSO/EIS + EPF-number defaults read on render.
-            Following the R34 TP3 split precedent. */}
-        <form
-          action={setIcAction}
-          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
-        >
-          <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <input type="hidden" name="personId" value={emp.personId} />
-          <Field label={t('icNumber')}>
-            {/* Item 354a500d — IcDobAutofill (a 'use client' island rendered by this RSC — never CALLED here,
-                so the RSC boundary is respected) derives the DOB from a valid MyKad IC and fills the empty
-                DOB input above (id=profile-dob-input) client-side; the server mirrors this on save. */}
-            <IcDobAutofill
-              name="icNumber"
-              required
-              defaultValue={statutory?.icNumber ?? ''}
-              placeholder="900101011234"
-              className={inputCls}
-              dobInputId="profile-dob-input"
-              invalidDateNote={t('icDobInvalidDate')}
-            />
-          </Field>
-          <p className="text-xs text-muted-foreground sm:col-span-3 sm:self-center">{t('icNumberHint')}</p>
-          <div className="sm:col-span-4 flex justify-end">
-            <button className={btnPrimary}>{t('saveIc')}</button>
-          </div>
-        </form>
+        {/* Item e3ce0d4d — nationality-conditional identification. IdentityFields (client) reads the live
+            nationality from IdentityProvider and renders the IC form (Malaysian: IcDobAutofill, IC mandatory,
+            DOB autofill preserved — item 354a500d/8b5334db) OR the passport form (non-Malaysian: number/issue/
+            expiry mandatory, remark optional; setPassportAction skips MyKad validation). Both server actions are
+            passed in as props (RSC→client pattern); only the relevant card shows so its required fields apply. */}
+        <IdentityFields
+          employmentId={emp.employmentId}
+          personId={emp.personId}
+          icDefault={statutory?.icNumber ?? ''}
+          passportNumber={statutory?.passportNumber ?? ''}
+          passportIssueDate={statutory?.passportIssueDate ?? ''}
+          passportExpiryDate={statutory?.passportExpiryDate ?? ''}
+          passportRemark={statutory?.passportRemark ?? ''}
+          setIcAction={setIcAction}
+          setPassportAction={setPassportAction}
+        />
       </Card>
+      </IdentityProvider>
 
       <Card id="section-contact-address">
         <SectionHeader title={t('contactAddressTitle')} />
