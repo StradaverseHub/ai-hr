@@ -1163,6 +1163,9 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         companyId: employment.companyId,
         company: company.legalName,
         hiredOn: employment.hiredOn,
+        // "Join Date" (feedback 24c4d02e) — current-company effective join; null = not captured (service
+        // length then falls back to hiredOn).
+        joinDate: employment.joinDate,
         terminatedOn: employment.terminatedOn,
         workState: employment.workState,
         holidayGroupId: employment.holidayGroupId,
@@ -1235,6 +1238,20 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         resignationDate: employment.resignationDate,
         shortNoticeMonths: employment.shortNoticeMonths,
         shortNoticeDays: employment.shortNoticeDays,
+        // Enhance Employment Dates (955c7de4, migration 0213): redesigned value+unit periods + lifecycle
+        // dates. finalConfirmationDate is derived server-side (= extended ?? normal) on save.
+        probationValue: employment.probationValue,
+        probationUnit: employment.probationUnit,
+        extendedProbationValue: employment.extendedProbationValue,
+        extendedProbationUnit: employment.extendedProbationUnit,
+        noticeBeforeConfirmationValue: employment.noticeBeforeConfirmationValue,
+        noticeBeforeConfirmationUnit: employment.noticeBeforeConfirmationUnit,
+        noticeAfterConfirmationValue: employment.noticeAfterConfirmationValue,
+        noticeAfterConfirmationUnit: employment.noticeAfterConfirmationUnit,
+        extendedConfirmationDate: employment.extendedConfirmationDate,
+        finalConfirmationDate: employment.finalConfirmationDate,
+        tenderResignationDate: employment.tenderResignationDate,
+        lastWorkingDate: employment.lastWorkingDate,
         orgBranch: employment.orgBranch,
         orgDivision: employment.orgDivision,
         orgRegion: employment.orgRegion,

@@ -3792,6 +3792,25 @@ export const serviceYearsAt = (hiredOn: string, asOf: string): number => {
 };
 
 /**
+ * Length of service between `hiredOn` and `asOf` broken into whole years + residual whole months — the
+ * "XX Years XX Months" reference figure shown on the Employment tab (feedback 24c4d02e). Pure + UTC-correct
+ * calendar math, consistent with serviceYearsAt (its `.years` equals serviceYearsAt for the same inputs). A
+ * future `asOf` before `hiredOn` clamps to { years: 0, months: 0 }. Display-only; drives no entitlement.
+ */
+export const serviceYearsMonthsAt = (
+  hiredOn: string,
+  asOf: string,
+): { years: number; months: number } => {
+  const h = new Date(`${hiredOn}T00:00:00Z`);
+  const a = new Date(`${asOf}T00:00:00Z`);
+  let months =
+    (a.getUTCFullYear() - h.getUTCFullYear()) * 12 + (a.getUTCMonth() - h.getUTCMonth());
+  if (a.getUTCDate() < h.getUTCDate()) months -= 1;
+  months = Math.max(0, months);
+  return { years: Math.floor(months / 12), months: months % 12 };
+};
+
+/**
  * Open a leave year: for every active employment hired before 1 Jan of `year`, post the
  * new year's accrual per standing type at the employee's CURRENT service band — so the
  * 2y/5y band upgrades happen here — resolved as max(statutory floor, company policy).

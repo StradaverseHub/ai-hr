@@ -50,6 +50,7 @@ import {
   terminateAction,
   transferAction,
 } from './actions';
+import { serviceYearsMonthsAt } from '@/core/leave';
 import { compensationHistoryDetailed, type CompensationHistoryRow } from '@/core/comp';
 import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
@@ -1680,6 +1681,18 @@ export default async function EmployeePage({
   // forms in one Card is intentional — HTML forms can't nest, so the assignment editor is its own <form>.
   const EMPLOYMENT_TYPE_OPTIONS: readonly string[] = ['full_time', 'part_time', 'contract', 'intern'];
   const ASSIGNMENT_STATUS_OPTIONS: readonly string[] = ['active', 'on_leave', 'probation', 'offboarding', 'terminated'];
+  // 955c7de4 — period unit dropdown options for the redesigned Employment Dates card.
+  const PERIOD_UNIT_OPTIONS: readonly string[] = ['month', 'week', 'day'];
+  // Length-of-service reference figures (feedback 24c4d02e). Group service reads the Group Join Date (hiredOn);
+  // current-company service reads the Join Date, falling back to the group date until a transfer sets it. Both
+  // are read-only "XX Years XX Months" against today — display-only, they drive no entitlement.
+  const fmtService = (from: string | null | undefined): string | null => {
+    if (!from) return null;
+    const s = serviceYearsMonthsAt(from, today);
+    return t('employmentInfo.serviceLength', { years: s.years, months: s.months });
+  };
+  const groupServiceLabel = fmtService(emp.hiredOn);
+  const currentServiceLabel = fmtService(emp.joinDate ?? emp.hiredOn);
   const employmentInfoCard = admin ? (
     <Card id="section-employment-info">
       <SectionHeader title={t('employmentInfo.title')} />
@@ -1752,41 +1765,114 @@ export default async function EmployeePage({
       <form action={setEmploymentInfoAction} className="space-y-6 p-4">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
 
-        {/* ── Employment Dates ── */}
-        <fieldset className="space-y-3">
+        {/* ── Employment Dates (redesigned 955c7de4) ── explicit period UNITS + full lifecycle dates, grouped
+            into Joining / Probation / Notice / Resignation sub-sections. Each period is a value + unit dropdown
+            (Month/Week/Day); the bare unlabelled month+day pairs are gone. Legacy month values are shown as a
+            fallback default so existing data stays visible and migrates to value+unit on the next save. */}
+        <fieldset className="space-y-5">
           <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {t('employmentInfo.datesGroup')}
           </legend>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label={t('employmentInfo.hireDate')}>
+
+          {/* Joining (preserved from 24c4d02e): Group Join Date (hiredOn, relabelled) + current-company Join
+              Date, each with a read-only Length of Service figure. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t('employmentInfo.groupJoinDate')}>
               <input name="hiredOn" type="date" defaultValue={emp.hiredOn ?? ''} className={inputCls} />
+              <p className="text-xs text-muted-foreground">
+                {t('employmentInfo.groupService')}: {groupServiceLabel ?? '—'}
+              </p>
             </Field>
-            <Field label={t('employmentInfo.confirmationDate')}>
-              <input name="confirmationDate" type="date" defaultValue={emp.confirmationDate ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('employmentInfo.resignationDate')}>
-              <input name="resignationDate" type="date" defaultValue={emp.resignationDate ?? ''} className={inputCls} />
+            <Field label={t('employmentInfo.joinDate')}>
+              <input name="joinDate" type="date" defaultValue={emp.joinDate ?? ''} className={inputCls} />
+              <p className="text-xs text-muted-foreground">
+                {t('employmentInfo.currentCompanyService')}: {currentServiceLabel ?? '—'}
+              </p>
             </Field>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label={t('employmentInfo.probationPeriod')}>
-              <div className="flex gap-2">
-                <input name="probationMonths" type="number" min={0} step={1} placeholder={t('employmentInfo.months')} defaultValue={emp.probationMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.months')} />
-                <input name="probationDays" type="number" min={0} step={1} placeholder={t('employmentInfo.days')} defaultValue={emp.probationDays ?? ''} className={inputCls} aria-label={t('employmentInfo.days')} />
-              </div>
-            </Field>
-            <Field label={t('employmentInfo.resignationNoticePeriod')}>
-              <div className="flex gap-2">
-                <input name="resignationNoticeMonths" type="number" min={0} step={1} placeholder={t('employmentInfo.months')} defaultValue={emp.resignationNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.months')} />
-                <input name="resignationNoticeDays" type="number" min={0} step={1} placeholder={t('employmentInfo.days')} defaultValue={emp.resignationNoticeDays ?? ''} className={inputCls} aria-label={t('employmentInfo.days')} />
-              </div>
-            </Field>
-            <Field label={t('employmentInfo.shortNoticePeriod')}>
-              <div className="flex gap-2">
-                <input name="shortNoticeMonths" type="number" min={0} step={1} placeholder={t('employmentInfo.months')} defaultValue={emp.shortNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.months')} />
-                <input name="shortNoticeDays" type="number" min={0} step={1} placeholder={t('employmentInfo.days')} defaultValue={emp.shortNoticeDays ?? ''} className={inputCls} aria-label={t('employmentInfo.days')} />
-              </div>
-            </Field>
+
+          {/* Probation Information */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.probationGroup')}</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label={t('employmentInfo.probationPeriod')}>
+                <div className="flex gap-2">
+                  <input name="probationValue" type="number" min={0} step={1} placeholder={t('employmentInfo.value')} defaultValue={emp.probationValue ?? emp.probationMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.value')} />
+                  <select name="probationUnit" defaultValue={emp.probationUnit ?? 'month'} className={inputCls} aria-label={t('employmentInfo.unit')}>
+                    {PERIOD_UNIT_OPTIONS.map((u) => (
+                      <option key={u} value={u}>{t(`employmentInfo.unit_${u}` as 'employmentInfo.unit_month')}</option>
+                    ))}
+                  </select>
+                </div>
+              </Field>
+              <Field label={t('employmentInfo.extendedProbationPeriod')}>
+                <div className="flex gap-2">
+                  <input name="extendedProbationValue" type="number" min={0} step={1} placeholder={t('employmentInfo.value')} defaultValue={emp.extendedProbationValue ?? ''} className={inputCls} aria-label={t('employmentInfo.value')} />
+                  <select name="extendedProbationUnit" defaultValue={emp.extendedProbationUnit ?? 'month'} className={inputCls} aria-label={t('employmentInfo.unit')}>
+                    {PERIOD_UNIT_OPTIONS.map((u) => (
+                      <option key={u} value={u}>{t(`employmentInfo.unit_${u}` as 'employmentInfo.unit_month')}</option>
+                    ))}
+                  </select>
+                </div>
+              </Field>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label={t('employmentInfo.confirmationDate')}>
+                <input name="confirmationDate" type="date" defaultValue={emp.confirmationDate ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('employmentInfo.extendedConfirmationDate')}>
+                <input name="extendedConfirmationDate" type="date" defaultValue={emp.extendedConfirmationDate ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('employmentInfo.finalConfirmationDate')}>
+                {/* Derived (= extended ?? normal), recomputed + audited on save; read-only, not submitted. */}
+                <input type="date" disabled value={emp.finalConfirmationDate ?? emp.extendedConfirmationDate ?? emp.confirmationDate ?? ''} className={inputCls} aria-label={t('employmentInfo.finalConfirmationDate')} />
+                <p className="text-xs text-muted-foreground">{t('employmentInfo.finalConfirmationNote')}</p>
+              </Field>
+            </div>
+          </div>
+
+          {/* Notice Period Information */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.noticeGroup')}</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label={t('employmentInfo.noticeBeforeConfirmation')}>
+                <div className="flex gap-2">
+                  <input name="noticeBeforeConfirmationValue" type="number" min={0} step={1} placeholder={t('employmentInfo.value')} defaultValue={emp.noticeBeforeConfirmationValue ?? emp.resignationNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.value')} />
+                  <select name="noticeBeforeConfirmationUnit" defaultValue={emp.noticeBeforeConfirmationUnit ?? 'month'} className={inputCls} aria-label={t('employmentInfo.unit')}>
+                    {PERIOD_UNIT_OPTIONS.map((u) => (
+                      <option key={u} value={u}>{t(`employmentInfo.unit_${u}` as 'employmentInfo.unit_month')}</option>
+                    ))}
+                  </select>
+                </div>
+              </Field>
+              <Field label={t('employmentInfo.noticeAfterConfirmation')}>
+                <div className="flex gap-2">
+                  <input name="noticeAfterConfirmationValue" type="number" min={0} step={1} placeholder={t('employmentInfo.value')} defaultValue={emp.noticeAfterConfirmationValue ?? emp.shortNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.value')} />
+                  <select name="noticeAfterConfirmationUnit" defaultValue={emp.noticeAfterConfirmationUnit ?? 'month'} className={inputCls} aria-label={t('employmentInfo.unit')}>
+                    {PERIOD_UNIT_OPTIONS.map((u) => (
+                      <option key={u} value={u}>{t(`employmentInfo.unit_${u}` as 'employmentInfo.unit_month')}</option>
+                    ))}
+                  </select>
+                </div>
+              </Field>
+            </div>
+          </div>
+
+          {/* Resignation Information */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.resignationGroup')}</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label={t('employmentInfo.tenderResignationDate')}>
+                <input name="tenderResignationDate" type="date" defaultValue={emp.tenderResignationDate ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('employmentInfo.resignationDate')}>
+                <input name="resignationDate" type="date" defaultValue={emp.resignationDate ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('employmentInfo.lastWorkingDate')}>
+                <input name="lastWorkingDate" type="date" defaultValue={emp.lastWorkingDate ?? ''} className={inputCls} />
+              </Field>
+            </div>
+            <p className="text-xs text-muted-foreground">{t('employmentInfo.lifecycleDeferredNote')}</p>
           </div>
         </fieldset>
 

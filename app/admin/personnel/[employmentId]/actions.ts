@@ -601,6 +601,7 @@ export async function setEmploymentInfoAction(formData: FormData) {
     await setEmploymentInfo(s, {
       employmentId,
       hiredOn: str('hiredOn') ?? undefined, // hiredOn is NOT NULL — a blank submit must not clear it.
+      joinDate: str('joinDate'), // nullable current-company Join Date; blank clears it.
       probationMonths: str('probationMonths') as string | null,
       probationDays: str('probationDays') as string | null,
       confirmationDate: str('confirmationDate'),
@@ -609,6 +610,19 @@ export async function setEmploymentInfoAction(formData: FormData) {
       resignationDate: str('resignationDate'),
       shortNoticeMonths: str('shortNoticeMonths') as string | null,
       shortNoticeDays: str('shortNoticeDays') as string | null,
+      // 955c7de4 — redesigned value+unit periods + new lifecycle dates. finalConfirmationDate is derived
+      // server-side, never submitted.
+      probationValue: str('probationValue') as string | null,
+      probationUnit: str('probationUnit'),
+      extendedProbationValue: str('extendedProbationValue') as string | null,
+      extendedProbationUnit: str('extendedProbationUnit'),
+      noticeBeforeConfirmationValue: str('noticeBeforeConfirmationValue') as string | null,
+      noticeBeforeConfirmationUnit: str('noticeBeforeConfirmationUnit'),
+      noticeAfterConfirmationValue: str('noticeAfterConfirmationValue') as string | null,
+      noticeAfterConfirmationUnit: str('noticeAfterConfirmationUnit'),
+      extendedConfirmationDate: str('extendedConfirmationDate'),
+      tenderResignationDate: str('tenderResignationDate'),
+      lastWorkingDate: str('lastWorkingDate'),
       orgBranch: str('orgBranch'),
       orgDivision: str('orgDivision'),
       orgRegion: str('orgRegion'),
