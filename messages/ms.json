@@ -4381,7 +4381,10 @@
       "saveEntitlement": "Simpan kelayakan",
       "tierUnderFixed": "Bawah 2 Tahun",
       "tierMidFixed": "2–5 Tahun",
-      "tierOverFixed": "Lebih 5 Tahun"
+      "tierOverFixed": "Lebih 5 Tahun",
+      "entSortLabel": "Isih",
+      "entSortAsc": "Jenis cuti A–Z",
+      "entSortDesc": "Jenis cuti Z–A"
     }
   },
   "topbar": {

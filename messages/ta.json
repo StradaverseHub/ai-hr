@@ -4381,7 +4381,10 @@
       "saveEntitlement": "உரிமையைச் சேமி",
       "tierUnderFixed": "2 ஆண்டுகளுக்கு கீழ்",
       "tierMidFixed": "2–5 ஆண்டுகள்",
-      "tierOverFixed": "5 ஆண்டுகளுக்கு மேல்"
+      "tierOverFixed": "5 ஆண்டுகளுக்கு மேல்",
+      "entSortLabel": "வரிசைப்படுத்து",
+      "entSortAsc": "விடுப்பு வகை A–Z",
+      "entSortDesc": "விடுப்பு வகை Z–A"
     }
   },
   "topbar": {

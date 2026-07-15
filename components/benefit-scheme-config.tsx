@@ -93,6 +93,16 @@ export function BenefitSchemeConfig({
   const [selectedSchemeId, setSelectedSchemeId] = useState<string>(schemes[0]?.id ?? '');
   const selectedEnts = entitlements.filter((e) => e.benefitSchemeId === selectedSchemeId);
 
+  // R44 8d422204: client-side A–Z / Z–A sort of the entitlements table by leave-type name. Display-order
+  // only — re-sorts automatically on add/update/delete via re-render. Default ascending.
+  const [entSort, setEntSort] = useState<'asc' | 'desc'>('asc');
+  const sortedEnts = useMemo(() => {
+    const copy = [...selectedEnts];
+    copy.sort((a, b) => (a.leaveTypeName ?? '').localeCompare(b.leaveTypeName ?? ''));
+    if (entSort === 'desc') copy.reverse();
+    return copy;
+  }, [selectedEnts, entSort]);
+
   // The three service-band column headers interpolate the scheme's ACTUAL configured thresholds
   // (feedback 0aa304a1) rather than the old literal "N1"/"N2" placeholders. Thresholds live per
   // entitlement in serviceBands (n1 = bands[0].toYears, n2 = bands[1].toYears; the top band's
@@ -265,17 +275,29 @@ export function BenefitSchemeConfig({
           <p className="text-sm text-muted-foreground">{t('entNeedsScheme')}</p>
         ) : (
           <>
-            <Field label={t('selectScheme')}>
-              <select
-                value={selectedSchemeId}
-                onChange={(e) => setSelectedSchemeId(e.target.value)}
-                className={`${inputCls} w-72`}
-              >
-                {schemes.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </Field>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <Field label={t('selectScheme')}>
+                <select
+                  value={selectedSchemeId}
+                  onChange={(e) => setSelectedSchemeId(e.target.value)}
+                  className={`${inputCls} w-72`}
+                >
+                  {schemes.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('entSortLabel')}>
+                <select
+                  value={entSort}
+                  onChange={(e) => setEntSort(e.target.value as 'asc' | 'desc')}
+                  className={`${inputCls} w-48`}
+                >
+                  <option value="asc">{t('entSortAsc')}</option>
+                  <option value="desc">{t('entSortDesc')}</option>
+                </select>
+              </Field>
+            </div>
             <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full min-w-[560px] text-sm">
                 <thead>
@@ -293,7 +315,7 @@ export function BenefitSchemeConfig({
                       <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">{t('noEntitlements')}</td>
                     </tr>
                   )}
-                  {selectedEnts.map((e) => {
+                  {sortedEnts.map((e) => {
                     const ti = tiersFromBands(e.serviceBands);
                     return (
                       <tr key={e.id} className="border-b border-border last:border-0">

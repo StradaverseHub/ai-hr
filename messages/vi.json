@@ -4381,7 +4381,10 @@
       "saveEntitlement": "Lưu quyền lợi",
       "tierUnderFixed": "Dưới 2 năm",
       "tierMidFixed": "2–5 năm",
-      "tierOverFixed": "Trên 5 năm"
+      "tierOverFixed": "Trên 5 năm",
+      "entSortLabel": "Sắp xếp",
+      "entSortAsc": "Loại nghỉ A–Z",
+      "entSortDesc": "Loại nghỉ Z–A"
     }
   },
   "topbar": {

@@ -4381,7 +4381,10 @@
       "saveEntitlement": "保存额度",
       "tierUnderFixed": "少于2年",
       "tierMidFixed": "2–5年",
-      "tierOverFixed": "超过5年"
+      "tierOverFixed": "超过5年",
+      "entSortLabel": "排序",
+      "entSortAsc": "假期类型 A–Z",
+      "entSortDesc": "假期类型 Z–A"
     }
   },
   "topbar": {

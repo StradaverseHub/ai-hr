@@ -4381,7 +4381,10 @@
       "saveEntitlement": "บันทึกสิทธิ์",
       "tierUnderFixed": "ต่ำกว่า 2 ปี",
       "tierMidFixed": "2–5 ปี",
-      "tierOverFixed": "มากกว่า 5 ปี"
+      "tierOverFixed": "มากกว่า 5 ปี",
+      "entSortLabel": "เรียงลำดับ",
+      "entSortAsc": "ประเภทการลา A–Z",
+      "entSortDesc": "ประเภทการลา Z–A"
     }
   },
   "topbar": {
