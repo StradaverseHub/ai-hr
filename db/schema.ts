@@ -710,6 +710,28 @@ export const employment = pgTable(
     resignationDate: date('resignation_date'),
     shortNoticeMonths: integer('short_notice_months'),
     shortNoticeDays: integer('short_notice_days'),
+    // Enhance Employment Dates Management (955c7de4, migration 0213). The Employment Dates card was redesigned
+    // to show an explicit UNIT per period and to capture the full lifecycle. Each period is now a value + unit
+    // pair (unit ∈ 'month'|'week'|'day', validated in core/org.ts::setEmploymentInfo). All NULLABLE + additive.
+    // The legacy probation/notice month+day columns above are KEPT untouched (they still drive the offer-letter
+    // probation-end calc); the read layer falls back legacy→new for display continuity. Wiring these into
+    // payroll final-pay / attendance cutoff / auto career-movement is a documented v1 follow-up.
+    probationValue: integer('probation_value'),
+    probationUnit: text('probation_unit').$type<'month' | 'week' | 'day'>(),
+    extendedProbationValue: integer('extended_probation_value'),
+    extendedProbationUnit: text('extended_probation_unit').$type<'month' | 'week' | 'day'>(),
+    noticeBeforeConfirmationValue: integer('notice_before_confirmation_value'),
+    noticeBeforeConfirmationUnit: text('notice_before_confirmation_unit').$type<'month' | 'week' | 'day'>(),
+    noticeAfterConfirmationValue: integer('notice_after_confirmation_value'),
+    noticeAfterConfirmationUnit: text('notice_after_confirmation_unit').$type<'month' | 'week' | 'day'>(),
+    // Confirmation extended after a probation extension. finalConfirmationDate is DERIVED (= extended ?? normal)
+    // and recomputed + audited on every setEmploymentInfo save so it is always consistent.
+    extendedConfirmationDate: date('extended_confirmation_date'),
+    finalConfirmationDate: date('final_confirmation_date'),
+    // Resignation lifecycle: the date the employee TENDERS the resignation vs the effective resignation date
+    // (resignationDate above) vs their final physical working day. Capture-only in v1.
+    tenderResignationDate: date('tender_resignation_date'),
+    lastWorkingDate: date('last_working_date'),
     // Organisation dimensions beyond the effective-dated department/position (which live on `assignment`).
     // Free-text in v1 — a follow-up CR introduces master tables + validated dropdowns. Nullable text.
     orgBranch: text('org_branch'),
