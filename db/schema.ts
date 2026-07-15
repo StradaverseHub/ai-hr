@@ -1648,6 +1648,42 @@ export const employeeIdConfig = pgTable(
   ],
 );
 
+// HR-Admin Dashboard Card Master (feedback 1586d2f5) — a tenant-scoped catalog of the dashboard cards HR
+// can maintain: which exist, their type/status, whether employees may add them, whether they show by
+// default, whether they are mandatory (non-removable), and their display order. MASTER only; the employee
+// dashboard customizer (feedback 578a2fcf) reads from it. card_key is a STABLE id binding a row to the
+// concrete renderer (the R39 block/card set — see lib/dashboard-layout.ts + lib/dashboard-cards.ts). RLS:
+// readable tenant-wide, writable admin-only (tenant-level config, no company scope). Additive + backward
+// compatible: with no rows the current hardcoded dashboard is unchanged.
+export const dashboardCardConfig = pgTable(
+  'dashboard_card_config',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // Stable renderer binding (e.g. 'leaveBalance', 'plannedAbsences'). Unique within a tenant.
+    cardKey: text('card_key').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    cardType: text('card_type').notNull().default('information'), // 'information' | 'action' | 'shortcut'
+    status: text('status').notNull().default('active'), // 'active' | 'inactive'
+    // Can an employee ADD this card during dashboard customization (578a2fcf)?
+    employeeSelectable: boolean('employee_selectable').notNull().default(true),
+    // Does the card appear by default on a fresh employee dashboard?
+    defaultDisplay: boolean('default_display').notNull().default(false),
+    // Mandatory: the employee may not REMOVE it (implies default_display, enforced in the service).
+    mandatory: boolean('mandatory').notNull().default(false),
+    displayOrder: integer('display_order').notNull().default(0),
+    // Optional click-through target (for shortcut/action cards).
+    href: text('href'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('dashboard_card_config_tenant_key_uq').on(t.tenantId, t.cardKey),
+    index('dashboard_card_config_tenant_status_idx').on(t.tenantId, t.status),
+  ],
+);
+
 // ─────────────────────── Audit substrate (ADR-0006) ───────────────────────
 // Append-only. No UPDATE/DELETE (enforced in the RLS/constraints migration).
 

@@ -136,7 +136,8 @@
     "reportClaim": "报销",
     "reportPerformance": "绩效",
     "profileOptions": "档案选项",
-    "delegations": "委托"
+    "delegations": "委托",
+    "dashboardCardConfig": "仪表板卡片"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -6099,5 +6100,61 @@
     "showHistory": "显示历史",
     "hideHistory": "隐藏历史",
     "selfHint": "您外出期间将自己的审批职责交给他人。"
+  },
+  "dashboardCardConfig": {
+    "title": "仪表板卡片设置",
+    "description": "维护员工可用的仪表板卡片——类型、可用性、默认显示、顺序。",
+    "catalogTitle": "仪表板卡片",
+    "createNew": "新建卡片",
+    "empty": "尚无仪表板卡片。创建一个以在员工仪表板上提供。",
+    "colName": "卡片",
+    "colType": "类型",
+    "colStatus": "状态",
+    "colSelectable": "可选择",
+    "colDefault": "默认",
+    "colMandatory": "必需",
+    "colOrder": "顺序",
+    "yes": "是",
+    "no": "否",
+    "type": {
+      "information": "信息",
+      "action": "操作",
+      "shortcut": "快捷方式"
+    },
+    "status": {
+      "active": "启用",
+      "inactive": "停用"
+    },
+    "edit": "编辑",
+    "activate": "启用",
+    "deactivate": "停用",
+    "delete": "删除",
+    "deleteTitle": "删除仪表板卡片？",
+    "deleteDescription": "卡片“{name}”将从目录中移除。",
+    "createTitle": "新建仪表板卡片",
+    "editTitle": "编辑仪表板卡片",
+    "fieldKey": "卡片键",
+    "fieldKeyHint": "将卡片绑定到其渲染器的稳定标识符。字母、数字和下划线。以后无法更改。",
+    "fieldName": "卡片名称",
+    "fieldDescription": "描述",
+    "fieldType": "卡片类型",
+    "fieldStatus": "状态",
+    "fieldOrder": "显示顺序",
+    "fieldHref": "链接（可选）",
+    "fieldHrefHint": "点击卡片时跳转到的位置（用于操作/快捷方式卡片）。",
+    "fieldSelectable": "员工在自定义时可添加",
+    "fieldDefault": "在员工仪表板上默认显示",
+    "fieldMandatory": "必需——员工无法移除",
+    "mandatoryHint": "必需卡片始终默认显示。",
+    "save": "保存",
+    "cancel": "取消",
+    "toasts": {
+      "saved": "仪表板卡片已保存",
+      "statusChanged": "状态已更新",
+      "deleted": "仪表板卡片已删除"
+    },
+    "errors": {
+      "duplicateKey": "已存在使用此键的仪表板卡片"
+    }
   }
 }

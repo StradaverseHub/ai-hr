@@ -136,7 +136,8 @@
     "reportClaim": "Claim",
     "reportPerformance": "Performance",
     "profileOptions": "Profile Options",
-    "delegations": "Delegations"
+    "delegations": "Delegations",
+    "dashboardCardConfig": "Dashboard cards"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -6099,5 +6100,61 @@
     "showHistory": "Show history",
     "hideHistory": "Hide history",
     "selfHint": "You are handing over your own approval duties while you are away."
+  },
+  "dashboardCardConfig": {
+    "title": "Dashboard Card Setup",
+    "description": "Maintain the dashboard cards available to employees — type, availability, default display, order.",
+    "catalogTitle": "Dashboard cards",
+    "createNew": "New card",
+    "empty": "No dashboard cards yet. Create one to make it available on the employee dashboard.",
+    "colName": "Card",
+    "colType": "Type",
+    "colStatus": "Status",
+    "colSelectable": "Selectable",
+    "colDefault": "Default",
+    "colMandatory": "Mandatory",
+    "colOrder": "Order",
+    "yes": "Yes",
+    "no": "No",
+    "type": {
+      "information": "Information",
+      "action": "Action",
+      "shortcut": "Shortcut"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "edit": "Edit",
+    "activate": "Activate",
+    "deactivate": "Deactivate",
+    "delete": "Delete",
+    "deleteTitle": "Delete dashboard card?",
+    "deleteDescription": "The \"{name}\" card will be removed from the catalog.",
+    "createTitle": "New dashboard card",
+    "editTitle": "Edit dashboard card",
+    "fieldKey": "Card key",
+    "fieldKeyHint": "A stable identifier binding the card to its renderer. Letters, numbers and underscores. Cannot be changed later.",
+    "fieldName": "Card name",
+    "fieldDescription": "Description",
+    "fieldType": "Card type",
+    "fieldStatus": "Status",
+    "fieldOrder": "Display order",
+    "fieldHref": "Link (optional)",
+    "fieldHrefHint": "Where the card links to when clicked (for action/shortcut cards).",
+    "fieldSelectable": "Available for employees to add during customization",
+    "fieldDefault": "Show by default on the employee dashboard",
+    "fieldMandatory": "Mandatory — employees cannot remove it",
+    "mandatoryHint": "A mandatory card is always shown by default.",
+    "save": "Save",
+    "cancel": "Cancel",
+    "toasts": {
+      "saved": "Dashboard card saved",
+      "statusChanged": "Status updated",
+      "deleted": "Dashboard card deleted"
+    },
+    "errors": {
+      "duplicateKey": "A dashboard card with this key already exists"
+    }
   }
 }

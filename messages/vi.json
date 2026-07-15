@@ -136,7 +136,8 @@
     "reportClaim": "Yêu cầu chi",
     "reportPerformance": "Hiệu suất",
     "profileOptions": "Tùy chọn hồ sơ",
-    "delegations": "Ủy quyền"
+    "delegations": "Ủy quyền",
+    "dashboardCardConfig": "Thẻ bảng điều khiển"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -6099,5 +6100,61 @@
     "showHistory": "Hiện lịch sử",
     "hideHistory": "Ẩn lịch sử",
     "selfHint": "Bạn đang bàn giao nhiệm vụ phê duyệt của mình khi vắng mặt."
+  },
+  "dashboardCardConfig": {
+    "title": "Thiết lập thẻ bảng điều khiển",
+    "description": "Quản lý các thẻ bảng điều khiển có sẵn cho nhân viên — loại, khả dụng, hiển thị mặc định, thứ tự.",
+    "catalogTitle": "Thẻ bảng điều khiển",
+    "createNew": "Thẻ mới",
+    "empty": "Chưa có thẻ bảng điều khiển. Tạo một thẻ để hiển thị trên bảng điều khiển của nhân viên.",
+    "colName": "Thẻ",
+    "colType": "Loại",
+    "colStatus": "Trạng thái",
+    "colSelectable": "Có thể chọn",
+    "colDefault": "Mặc định",
+    "colMandatory": "Bắt buộc",
+    "colOrder": "Thứ tự",
+    "yes": "Có",
+    "no": "Không",
+    "type": {
+      "information": "Thông tin",
+      "action": "Hành động",
+      "shortcut": "Lối tắt"
+    },
+    "status": {
+      "active": "Hoạt động",
+      "inactive": "Không hoạt động"
+    },
+    "edit": "Sửa",
+    "activate": "Kích hoạt",
+    "deactivate": "Vô hiệu hóa",
+    "delete": "Xóa",
+    "deleteTitle": "Xóa thẻ bảng điều khiển?",
+    "deleteDescription": "Thẻ \"{name}\" sẽ bị xóa khỏi danh mục.",
+    "createTitle": "Thẻ bảng điều khiển mới",
+    "editTitle": "Sửa thẻ bảng điều khiển",
+    "fieldKey": "Khóa thẻ",
+    "fieldKeyHint": "Mã định danh ổn định liên kết thẻ với bộ hiển thị. Chữ cái, số và dấu gạch dưới. Không thể thay đổi sau này.",
+    "fieldName": "Tên thẻ",
+    "fieldDescription": "Mô tả",
+    "fieldType": "Loại thẻ",
+    "fieldStatus": "Trạng thái",
+    "fieldOrder": "Thứ tự hiển thị",
+    "fieldHref": "Liên kết (tùy chọn)",
+    "fieldHrefHint": "Nơi thẻ liên kết đến khi nhấp (cho thẻ hành động/lối tắt).",
+    "fieldSelectable": "Có sẵn cho nhân viên thêm khi tùy chỉnh",
+    "fieldDefault": "Hiển thị mặc định trên bảng điều khiển của nhân viên",
+    "fieldMandatory": "Bắt buộc — nhân viên không thể xóa",
+    "mandatoryHint": "Thẻ bắt buộc luôn được hiển thị mặc định.",
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "toasts": {
+      "saved": "Đã lưu thẻ bảng điều khiển",
+      "statusChanged": "Đã cập nhật trạng thái",
+      "deleted": "Đã xóa thẻ bảng điều khiển"
+    },
+    "errors": {
+      "duplicateKey": "Đã tồn tại thẻ bảng điều khiển với khóa này"
+    }
   }
 }

@@ -136,7 +136,8 @@
     "reportClaim": "Tuntutan",
     "reportPerformance": "Prestasi",
     "profileOptions": "Pilihan Profil",
-    "delegations": "Perwakilan"
+    "delegations": "Perwakilan",
+    "dashboardCardConfig": "Kad papan pemuka"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -6099,5 +6100,61 @@
     "showHistory": "Tunjuk sejarah",
     "hideHistory": "Sembunyi sejarah",
     "selfHint": "Anda menyerahkan tugas kelulusan anda sendiri semasa anda tiada."
+  },
+  "dashboardCardConfig": {
+    "title": "Persediaan Kad Papan Pemuka",
+    "description": "Selenggara kad papan pemuka yang tersedia untuk pekerja — jenis, ketersediaan, paparan lalai, susunan.",
+    "catalogTitle": "Kad papan pemuka",
+    "createNew": "Kad baharu",
+    "empty": "Tiada kad papan pemuka lagi. Cipta satu untuk menjadikannya tersedia pada papan pemuka pekerja.",
+    "colName": "Kad",
+    "colType": "Jenis",
+    "colStatus": "Status",
+    "colSelectable": "Boleh dipilih",
+    "colDefault": "Lalai",
+    "colMandatory": "Wajib",
+    "colOrder": "Susunan",
+    "yes": "Ya",
+    "no": "Tidak",
+    "type": {
+      "information": "Maklumat",
+      "action": "Tindakan",
+      "shortcut": "Pintasan"
+    },
+    "status": {
+      "active": "Aktif",
+      "inactive": "Tidak aktif"
+    },
+    "edit": "Edit",
+    "activate": "Aktifkan",
+    "deactivate": "Nyahaktif",
+    "delete": "Padam",
+    "deleteTitle": "Padam kad papan pemuka?",
+    "deleteDescription": "Kad \"{name}\" akan dialih keluar daripada katalog.",
+    "createTitle": "Kad papan pemuka baharu",
+    "editTitle": "Edit kad papan pemuka",
+    "fieldKey": "Kunci kad",
+    "fieldKeyHint": "Pengecam stabil yang mengikat kad kepada pemaparnya. Huruf, nombor dan garis bawah. Tidak boleh diubah kemudian.",
+    "fieldName": "Nama kad",
+    "fieldDescription": "Penerangan",
+    "fieldType": "Jenis kad",
+    "fieldStatus": "Status",
+    "fieldOrder": "Susunan paparan",
+    "fieldHref": "Pautan (pilihan)",
+    "fieldHrefHint": "Ke mana kad memaut apabila diklik (untuk kad tindakan/pintasan).",
+    "fieldSelectable": "Tersedia untuk pekerja tambah semasa penyesuaian",
+    "fieldDefault": "Papar secara lalai pada papan pemuka pekerja",
+    "fieldMandatory": "Wajib — pekerja tidak boleh mengalih keluarnya",
+    "mandatoryHint": "Kad wajib sentiasa dipaparkan secara lalai.",
+    "save": "Simpan",
+    "cancel": "Batal",
+    "toasts": {
+      "saved": "Kad papan pemuka disimpan",
+      "statusChanged": "Status dikemas kini",
+      "deleted": "Kad papan pemuka dipadam"
+    },
+    "errors": {
+      "duplicateKey": "Kad papan pemuka dengan kunci ini sudah wujud"
+    }
   }
 }
