@@ -104,7 +104,7 @@ describe('59047802 — full ISO 3166-1 nationality catalog', () => {
     expect(after.nationality).toBe('Freedonian');
   });
 
-  it('0209 top-up: idempotently fills missing standard values, preserving admin rows + legacy defaults', async () => {
+  it('0210 top-up: idempotently fills missing standard values, preserving admin rows + legacy defaults', async () => {
     // Simulate a tenant that ran the ORIGINAL 0180 (only the 8 legacy nationalities) plus one admin custom.
     const oldEight = ['Malaysian', 'Singaporean', 'Indonesian', 'Indian', 'Bangladeshi', 'Nepalese', 'Filipino', 'Other'];
     await owner.db.insert(schema.profileOption).values([
@@ -112,7 +112,7 @@ describe('59047802 — full ISO 3166-1 nationality catalog', () => {
       { tenantId: base.tenantId, category: 'nationality', value: 'Martian', label: 'Martian (custom)', sortOrder: 99 },
     ]);
 
-    const migration = readFileSync('db/migrations/0209_nationality_full_iso_seed.sql', 'utf8');
+    const migration = readFileSync('db/migrations/0210_nationality_full_iso_seed.sql', 'utf8');
     await owner.db.execute(sql.raw(migration));
     await owner.db.execute(sql.raw(migration)); // idempotent re-run
 
