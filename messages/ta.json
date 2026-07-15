@@ -903,6 +903,7 @@
     "requestsEmpty": "கோரிக்கைகள் இல்லை.",
     "requestsEmptyFiltered": "{status} கோரிக்கைகள் இல்லை.",
     "requestLeaveToggle": "+ விடுப்பு கோரு",
+    "requestLeave": "விடுப்பு கோரு",
     "fieldEmployee": "பணியாளர்",
     "fieldLeaveType": "விடுப்பு வகை",
     "fieldStartDate": "தொடக்கத் தேதி",

@@ -903,6 +903,7 @@
     "requestsEmpty": "Tiada permohonan.",
     "requestsEmptyFiltered": "Tiada permohonan {status}.",
     "requestLeaveToggle": "+ Mohon cuti",
+    "requestLeave": "Mohon cuti",
     "fieldEmployee": "Pekerja",
     "fieldLeaveType": "Jenis cuti",
     "fieldStartDate": "Tarikh mula",

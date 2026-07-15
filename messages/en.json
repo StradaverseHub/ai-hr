@@ -903,6 +903,7 @@
     "requestsEmpty": "No requests.",
     "requestsEmptyFiltered": "No {status} requests.",
     "requestLeaveToggle": "+ Request leave",
+    "requestLeave": "Request leave",
     "fieldEmployee": "Employee",
     "fieldLeaveType": "Leave type",
     "fieldStartDate": "Start date",
