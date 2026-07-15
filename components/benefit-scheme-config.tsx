@@ -400,6 +400,13 @@ function EntitlementForm({
   const [d1, setD1] = useState('');
   const [d2, setD2] = useState('');
 
+  // R44 3d2ac99f: always present the Leave Type options alphabetically (A–Z by name) for predictable
+  // scanning. Active-only filtering already happens upstream (activeTypeOptions); this is display-order only.
+  const sortedLeaveTypes = useMemo(
+    () => [...leaveTypes].sort((a, b) => a.name.localeCompare(b.name)),
+    [leaveTypes],
+  );
+
   const bands: ServiceBand[] = [
     { fromYears: 0, toYears: 2, days: Number(d0) || 0 },
     { fromYears: 2, toYears: 5, days: Number(d1) || 0 },
@@ -415,7 +422,7 @@ function EntitlementForm({
         <Field label={t('colLeaveType')}>
           <select name="leaveTypeId" required defaultValue="" className={inputCls}>
             <option value="" disabled>{t('selectPlaceholder')}</option>
-            {leaveTypes.map((lt) => (
+            {sortedLeaveTypes.map((lt) => (
               <option key={lt.id} value={lt.id}>{lt.name}</option>
             ))}
           </select>
