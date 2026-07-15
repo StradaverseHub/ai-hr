@@ -914,6 +914,25 @@ export function LeaveTypePanel({
                   className={`${inputCls} w-full`}
                 />
               </Field>
+              {/* Reposition Leave Unit beside Reason (bd063176 · option b — merge): the Day/Hour unit, formerly
+                  its own always-on sub-form below, now rides the identity/rename form so it sits on the same grid
+                  row as Reason (Reason left, Leave Unit right on lg) and saves in one action. The `leaveUnit=1`
+                  marker makes updateLeaveTypeAction touch leave_unit (tri-state); the select defaults to the
+                  stored value so an unchanged rename re-posts it as a no-op. Semantic shift (flagged): leave unit
+                  is now editable in edit mode with Reason, not always-on. */}
+              <input type="hidden" name="leaveUnit" value="1" />
+              <Field label={t('leaveUnitLabel')}>
+                <select
+                  name="leaveUnitValue"
+                  defaultValue={leaveUnit === 'hour' ? 'hour' : 'day'}
+                  aria-label={t('leaveUnitLabel')}
+                  title={t('leaveUnitHelp')}
+                  className={`${inputCls} w-full`}
+                >
+                  <option value="day">{t('leaveUnitDay')}</option>
+                  <option value="hour">{t('leaveUnitHour')}</option>
+                </select>
+              </Field>
               {/* Edit Paid/Unpaid on rename (feedback 75953777): the Paid/Unpaid flag lives on the rename form
                   so a mis-set type can be corrected without recreating it. The `identity=1` marker above means an
                   unchecked box is a real "unpaid" choice, not "untouched". Applies to future leave only.
@@ -1010,30 +1029,9 @@ export function LeaveTypePanel({
               {floorLabel ? t('daysValue', { days: floorLabel }) : t('none')}
             </span>
           </div>
-          {/* Leave Unit Configuration (e4980382). Its own self-contained sub-form (own tri-state) posts
-              `leaveUnit=1` — a Day/Hour select declaring whether this leave type is managed in whole days or
-              in hours. Coarse labelling/reporting only: it does NOT change entitlement, accrual, workflow, or
-              payroll behaviour. Default Day; existing types read Day (backward compatible). */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('leaveUnitSectionTitle')}</span>
-            <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the leave_unit column (tri-state guard) */}
-              <input type="hidden" name="leaveUnit" value="1" />
-              <Field label={t('leaveUnitLabel')}>
-                <select name="leaveUnitValue" defaultValue={leaveUnit === 'hour' ? 'hour' : 'day'} className={`${inputCls} w-32`}>
-                  <option value="day">{t('leaveUnitDay')}</option>
-                  <option value="hour">{t('leaveUnitHour')}</option>
-                </select>
-              </Field>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('leaveUnitHelp')}</p>
-          </div>
+          {/* Leave Unit Configuration (e4980382) — the Day/Hour unit moved into the identity/rename form above
+              (bd063176) so it sits beside Reason and saves in one action; the standalone always-on sub-form
+              that lived here was removed. */}
             </CardContent>
             )}
           </Card>
