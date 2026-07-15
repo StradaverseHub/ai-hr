@@ -542,6 +542,7 @@ export function LeaveTypePanel({
   color,
   icon,
   leaveUnit,
+  probationEligibility,
   visibleToEmployee,
   employeeCanApply,
   essPlacement,
@@ -615,6 +616,9 @@ export function LeaveTypePanel({
   /** Leave Unit Configuration (e4980382): whether this type is managed in Days or Hours ('day' | 'hour'),
    *  threaded so the "Leave Unit" select round-trips its saved value. Coarse labelling/reporting only. */
   leaveUnit: string;
+  /** Probation eligibility (d6bdbd55): the stored probation gate ('confirmed_only' | 'probation_only' | null),
+   *  threaded so the eligibility editor's Probation select round-trips its saved value. null ⇒ no restriction. */
+  probationEligibility: string | null;
   /** Leave Type Employee Visibility (7b11f1c1): whether this type is shown to employees on the /me Leave tab
    *  and whether they may apply for it. Threaded so the two checkboxes round-trip their saved value. null ⇒
    *  the default (visible / can-apply). The service rejects can-apply=false on a statutory code. */
@@ -759,7 +763,12 @@ export function LeaveTypePanel({
   const eligibilitySummary = () => {
     const genders = asEligList(eligibility?.gender);
     const maritals = asEligList(eligibility?.maritalStatus);
-    if (!eligibility || (genders.length === 0 && maritals.length === 0 && !eligibility.minServiceMonths)) {
+    // Probation (d6bdbd55) is a separate prop, not inside `eligibility` — fold it into the same "open to all"
+    // vs restricted decision so a probation-only rule doesn't read as unrestricted.
+    if (
+      (!eligibility || (genders.length === 0 && maritals.length === 0 && !eligibility.minServiceMonths)) &&
+      !probationEligibility
+    ) {
       return t('eligibilityOpenToAll');
     }
     const parts: string[] = [];
@@ -767,11 +776,13 @@ export function LeaveTypePanel({
     const genderText = orJoin(genders.map(genderLabel));
     const who = [maritalText, genderText].filter(Boolean).join(' ');
     if (who) parts.push(t('eligibilitySummaryOnly', { who }));
-    if (eligibility.minServiceMonths) {
+    if (eligibility?.minServiceMonths) {
       // Min-service unit (#f88f0a63): render "≥ N months/days service". Absent unit ⇒ months (legacy compat).
       const unit = eligibility.minServiceUnit === 'days' ? t('expiryUnitDays') : t('expiryUnitMonths');
       parts.push(t('eligibilitySummaryService', { n: eligibility.minServiceMonths, unit }));
     }
+    if (probationEligibility === 'confirmed_only') parts.push(t('eligibilitySummaryConfirmedOnly'));
+    else if (probationEligibility === 'probation_only') parts.push(t('eligibilitySummaryProbationOnly'));
     return parts.join(' · ');
   };
 
@@ -1120,6 +1131,20 @@ export function LeaveTypePanel({
                       <option value="days">{t('expiryUnitDays')}</option>
                     </select>
                   </div>
+                </Field>
+                {/* Probation eligibility (d6bdbd55): restrict this type by the employee's probation status.
+                    Rides the same eligibility=1 marker; blank ⇒ no restriction. Stored in its own column. */}
+                <Field label={t('eligibilityProbationLabel')}>
+                  <select
+                    name="probation"
+                    defaultValue={probationEligibility ?? ''}
+                    aria-label={t('eligibilityProbationLabel')}
+                    className={`${inputCls} w-56`}
+                  >
+                    <option value="">{t('eligibilityProbationNone')}</option>
+                    <option value="confirmed_only">{t('eligibilityProbationConfirmedOnly')}</option>
+                    <option value="probation_only">{t('eligibilityProbationProbationOnly')}</option>
+                  </select>
                 </Field>
                 <p className="w-full text-xs text-muted-foreground">{t('eligibilityMultiHint')}</p>
                 <Button type="submit" size="sm">

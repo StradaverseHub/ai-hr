@@ -25,6 +25,8 @@ import {
   type DayTypeInclusion,
   type LeaveDurationType,
   type LeaveEligibility,
+  type ProbationEligibility,
+  PROBATION_ELIGIBILITY_VALUES,
   type ServiceBand,
 } from './leave';
 import { MY_STATES } from '../localization/my/holidays';
@@ -2739,6 +2741,10 @@ export async function updateLeaveType(
     // null (never store ""); an explicit null clears it.
     description?: string | null;
     eligibility?: LeaveEligibility | null;
+    // Probation eligibility (d6bdbd55): OWN tri-state (undefined = probation_eligibility column untouched),
+    // posted alongside the eligibility sub-form. null ⇒ clear (no restriction); 'confirmed_only' /
+    // 'probation_only' set the rule. Validated against the closed set (the DB CHECK is defence-in-depth).
+    probationEligibility?: ProbationEligibility | null;
     durations?: LeaveDurationType[] | null;
     // Supporting-document config (claims-style flat signature; each is tri-state — undefined = leave column).
     requiresDocument?: boolean;
@@ -2930,6 +2936,14 @@ export async function updateLeaveType(
     throw new Error('Leave unit must be day or hour.');
   }
   const leaveUnitSet = touchLeaveUnit ? { leaveUnit: p.leaveUnit } : {};
+  // Probation eligibility (d6bdbd55): OWN tri-state, mirroring touchLeaveUnit — posted with the eligibility
+  // sub-form. undefined ⇒ column untouched; null ⇒ clear; else must be in the closed { confirmed_only,
+  // probation_only } set (the DB CHECK is defence-in-depth).
+  const touchProbation = p.probationEligibility !== undefined;
+  if (touchProbation && p.probationEligibility != null && !PROBATION_ELIGIBILITY_VALUES.includes(p.probationEligibility)) {
+    throw new Error('Probation eligibility must be confirmed_only or probation_only.');
+  }
+  const probationSet = touchProbation ? { probationEligibility: p.probationEligibility ?? null } : {};
   // Leave Type Employee Visibility (7b11f1c1): two INDEPENDENT OWN tri-states, mirroring touchLeaveUnit — the
   // visibility sub-form posts `visibility=1`, any other save omits both so the columns stay untouched. The
   // statutory-code guard on employeeCanApply=false runs inside the transaction below (it needs the type code).
@@ -3110,6 +3124,8 @@ export async function updateLeaveType(
         // description audit diff (MUST be here or before?.description is always undefined).
         description: leaveType.description,
         eligibility: leaveType.eligibility,
+        // Probation eligibility (d6bdbd55): selected for the before/after audit diff.
+        probationEligibility: leaveType.probationEligibility,
         durations: leaveType.durations,
         requiresDocument: leaveType.requiresDocument,
         mandatoryAfterDays: leaveType.mandatoryAfterDays,
@@ -3238,6 +3254,7 @@ export async function updateLeaveType(
         // non-locked type). All downstream relations key on leave_type_id, so nothing detaches.
         ...codeSet,
         ...(touchEligibility ? { eligibility: nextEligibility } : {}),
+        ...probationSet,
         ...(touchDurations ? { durations: nextDurations } : {}),
         ...docSet,
         ...backdatingSet,
@@ -3309,6 +3326,7 @@ export async function updateLeaveType(
           ...(touchDayTypeInclusion ? { dayTypeInclusion: before?.dayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: before?.color ?? null, icon: before?.icon ?? null } : {}),
           ...(touchLeaveUnit ? { leaveUnit: before?.leaveUnit ?? null } : {}),
+          ...(touchProbation ? { probationEligibility: before?.probationEligibility ?? null } : {}),
           ...(touchVisibleToEmployee ? { visibleToEmployee: before?.visibleToEmployee ?? null } : {}),
           ...(touchEmployeeCanApply ? { employeeCanApply: before?.employeeCanApply ?? null } : {}),
           // Leave grouping visibility (b653ac1b): record both the stored column and the shared flag it drives.
@@ -3352,6 +3370,7 @@ export async function updateLeaveType(
           ...(touchDayTypeInclusion ? { dayTypeInclusion: nextDayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: nextColor ?? null, icon: nextIcon ?? null } : {}),
           ...(touchLeaveUnit ? { leaveUnit: p.leaveUnit ?? before?.leaveUnit ?? null } : {}),
+          ...(touchProbation ? { probationEligibility: p.probationEligibility ?? null } : {}),
           ...(touchVisibleToEmployee ? { visibleToEmployee: p.visibleToEmployee ?? null } : {}),
           ...(touchEmployeeCanApply ? { employeeCanApply: p.employeeCanApply ?? null } : {}),
           // Leave grouping visibility (b653ac1b): the resolved next values (Hidden ⇒ column null + flag false).

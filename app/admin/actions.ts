@@ -1138,6 +1138,16 @@ export async function updateLeaveTypeAction(fd: FormData) {
         minServiceUnit: unitRaw === '' ? undefined : (unitRaw as 'months' | 'days'),
       }
     : undefined;
+  // Probation eligibility (d6bdbd55): the eligibility sub-form also posts a `probation` select ('' | confirmed_only
+  // | probation_only). It rides the SAME `eligibility=1` marker, so an unrelated save leaves the column untouched
+  // (undefined). Blank ⇒ null (clears the restriction); a concrete value sets it. The service re-validates against
+  // the closed set. Stored in leave_type.probation_eligibility (its own column), not the eligibility jsonb.
+  const probationRaw = String(fd.get('probation') ?? '').trim();
+  const probationEligibility = touchEligibility
+    ? probationRaw === ''
+      ? null
+      : (probationRaw as 'confirmed_only' | 'probation_only')
+    : undefined;
   // ADR-0048: the durations form posts `durations=1` (marker) plus a `duration` checkbox per allowed slot,
   // so a name/eligibility edit that doesn't carry that marker leaves the allow-list untouched (same tri-state).
   const touchDurations = fd.get('durations') === '1';
@@ -1329,6 +1339,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       name: String(fd.get('name') ?? '').trim(),
       ...identityFields,
       eligibility,
+      probationEligibility,
       durations,
       ...docFields,
       ...payrollFields,

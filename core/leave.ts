@@ -323,7 +323,17 @@ export type LeaveEligibility = {
   // written before this field existed keeps its exact old meaning without a migration/backfill. Only carried
   // when a positive minServiceMonths survives cleaning (a lone unit is never stored).
   minServiceUnit?: 'months' | 'days';
+  // Probation eligibility (d6bdbd55): whether the type is restricted by the employee's probation status.
+  // 'confirmed_only' ⇒ only employees past probation may apply; 'probation_only' ⇒ only employees still on
+  // probation may apply; ABSENT/undefined ⇒ no restriction. Stored in leave_type.probation_eligibility (its
+  // own column, migration 0225) and merged into this object at the enforcement chokepoints so it rides the
+  // same assertEligible / isLeaveEligible gate as the other rules.
+  probation?: 'confirmed_only' | 'probation_only';
 };
+
+/** The closed set of probation eligibility values (mirrors the DB CHECK on leave_type.probation_eligibility). */
+export const PROBATION_ELIGIBILITY_VALUES = ['confirmed_only', 'probation_only'] as const;
+export type ProbationEligibility = (typeof PROBATION_ELIGIBILITY_VALUES)[number];
 
 /** Elapsed service in a rule's chosen unit, from an employee's hire date to `asOf`. unit==='days' counts
  *  whole elapsed days (daysBetween); anything else — including an absent unit on a legacy row — counts whole
@@ -584,9 +594,21 @@ function monthsBetween(start: string, asOf: string): number {
   return Math.max(0, months);
 }
 
+/** Confirmation date an employee's probation status is derived from: finalConfirmationDate (canonical — it
+ *  already folds in any probation extension) falling back to confirmationDate, else null. `asOf < date` ⇒ on
+ *  probation; `asOf >= date` or a null date ⇒ NOT on probation (a legacy row with no confirmation date is
+ *  treated as confirmed rather than blocked from a confirmed_only type). */
+type ProbationEmp = { confirmationDate?: string | null; finalConfirmationDate?: string | null };
+function onProbationAsOf(emp: ProbationEmp | undefined, asOf: string): boolean {
+  const confDate = emp?.finalConfirmationDate ?? emp?.confirmationDate ?? null;
+  return confDate != null && asOf < confDate;
+}
+
 function assertEligible(
   elig: LeaveEligibility,
-  emp: { gender: string | null; marital: string | null; hiredOn: string } | undefined,
+  emp:
+    | { gender: string | null; marital: string | null; hiredOn: string; confirmationDate?: string | null; finalConfirmationDate?: string | null }
+    | undefined,
   asOf: string,
 ): void {
   // Multi-select (#badc5966): qualify if the employee's attribute matches ANY selected value (OR within a
@@ -603,6 +625,17 @@ function assertEligible(
     // Unit-aware message (#f88f0a63): 'days' rules read as "N days", months (incl. absent unit) as "N months".
     const unitWord = elig.minServiceUnit === 'days' ? 'days' : 'months';
     throw new LeaveIneligibleError(`This leave type requires at least ${elig.minServiceMonths} ${unitWord} of service.`);
+  }
+  // Probation gate (d6bdbd55): confirmed_only blocks employees still on probation; probation_only blocks
+  // employees who are already confirmed. A null confirmation date ⇒ not-on-probation (see onProbationAsOf).
+  if (elig.probation) {
+    const onProbation = onProbationAsOf(emp, asOf);
+    if (elig.probation === 'confirmed_only' && onProbation) {
+      throw new LeaveIneligibleError('This leave type is available to confirmed employees only (after probation).');
+    }
+    if (elig.probation === 'probation_only' && !onProbation) {
+      throw new LeaveIneligibleError('This leave type is available to employees on probation only.');
+    }
   }
 }
 
@@ -751,7 +784,9 @@ export function maternityAllowanceEligibility(
  *  show an employee only the leave types they could actually take (2F-1 / R18). */
 export function isLeaveEligible(
   elig: LeaveEligibility | null | undefined,
-  emp: { gender: string | null; marital: string | null; hiredOn: string } | undefined,
+  emp:
+    | { gender: string | null; marital: string | null; hiredOn: string; confirmationDate?: string | null; finalConfirmationDate?: string | null }
+    | undefined,
   asOf: string,
 ): boolean {
   if (!elig) return true;
@@ -761,6 +796,12 @@ export function isLeaveEligible(
   if (maritals.length > 0 && !maritals.includes(emp?.marital ?? '')) return false;
   if (elig.minServiceMonths && (!emp || servedFor(elig.minServiceUnit, emp.hiredOn, asOf) < elig.minServiceMonths))
     return false;
+  // Probation gate (d6bdbd55) — mirrors assertEligible so reads hide a type the employee can't take.
+  if (elig.probation) {
+    const onProbation = onProbationAsOf(emp, asOf);
+    if (elig.probation === 'confirmed_only' && onProbation) return false;
+    if (elig.probation === 'probation_only' && !onProbation) return false;
+  }
   return true;
 }
 
@@ -1189,6 +1230,9 @@ export async function requestLeave(
         name: leaveType.name,
         counting: leaveType.counting,
         eligibility: leaveType.eligibility,
+        // Probation eligibility (d6bdbd55): merged into the eligibility object below so the probation gate
+        // rides the same assertEligible check as gender/marital/min-service.
+        probationEligibility: leaveType.probationEligibility,
         // Day Type Inclusion (feedback ef6d7146): the re-inclusion vector — threaded into the working_days
         // counting below so the deducted `days` honours which day types this type counts.
         dayTypeInclusion: leaveType.dayTypeInclusion,
@@ -1226,11 +1270,21 @@ export async function requestLeave(
     // Doc-config: the mandatory-document gate moved BELOW day-counting (it now depends on `days` vs
     // mandatoryAfterDays). The eligibility gate stays here — it does not depend on `days`.
 
-    // Eligibility gate (2A-1, #25) — fail fast before anything is created.
-    const elig = (lt?.eligibility ?? null) as LeaveEligibility | null;
-    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths)) {
+    // Eligibility gate (2A-1, #25) — fail fast before anything is created. Probation (d6bdbd55) is stored in
+    // its own column; merge it into the eligibility object so the one gate covers every rule.
+    const baseElig = (lt?.eligibility ?? null) as LeaveEligibility | null;
+    const probation = (lt?.probationEligibility ?? null) as ProbationEligibility | null;
+    const elig: LeaveEligibility | null =
+      baseElig || probation ? { ...(baseElig ?? {}), ...(probation ? { probation } : {}) } : null;
+    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths || elig.probation)) {
       const [emp] = await tx
-        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn })
+        .select({
+          gender: person.gender,
+          marital: person.maritalStatus,
+          hiredOn: employment.hiredOn,
+          confirmationDate: employment.confirmationDate,
+          finalConfirmationDate: employment.finalConfirmationDate,
+        })
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))
         .where(eq(employment.id, p.employmentId))
@@ -3438,6 +3492,8 @@ export async function editLeaveRequest(
         name: leaveType.name,
         counting: leaveType.counting,
         eligibility: leaveType.eligibility,
+        // Probation eligibility (d6bdbd55): merged into the eligibility object below (same as requestLeave).
+        probationEligibility: leaveType.probationEligibility,
         dayTypeInclusion: leaveType.dayTypeInclusion,
         requiresDocument: leaveType.requiresDocument,
         mandatoryAfterDays: leaveType.mandatoryAfterDays,
@@ -3463,10 +3519,19 @@ export async function editLeaveRequest(
     }
 
     // ── Re-validate the NEW details (fail fast, same gates + errors as requestLeave) ─────────────────────
-    const elig = (lt.eligibility ?? null) as LeaveEligibility | null;
-    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths)) {
+    const baseElig = (lt.eligibility ?? null) as LeaveEligibility | null;
+    const probation = (lt.probationEligibility ?? null) as ProbationEligibility | null;
+    const elig: LeaveEligibility | null =
+      baseElig || probation ? { ...(baseElig ?? {}), ...(probation ? { probation } : {}) } : null;
+    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths || elig.probation)) {
       const [emp] = await tx
-        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn })
+        .select({
+          gender: person.gender,
+          marital: person.maritalStatus,
+          hiredOn: employment.hiredOn,
+          confirmationDate: employment.confirmationDate,
+          finalConfirmationDate: employment.finalConfirmationDate,
+        })
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))
         .where(eq(employment.id, req.employmentId))

@@ -34,6 +34,21 @@ async function leaveType(code: string, eligibility: unknown) {
     .returning({ id: schema.leaveType.id });
   return row.id;
 }
+// Probation eligibility (d6bdbd55): a type gated by probation status (its own column, not the eligibility jsonb).
+async function probationType(code: string, probation: 'confirmed_only' | 'probation_only') {
+  const [row] = await owner.db
+    .insert(schema.leaveType)
+    .values({ allowNegativeBalance: true, tenantId: b.tenantId, code, name: code, paid: true, counting: 'calendar_days', probationEligibility: probation })
+    .returning({ id: schema.leaveType.id });
+  return row.id;
+}
+// Set BOTH confirmation columns so onProbationAsOf (finalConfirmationDate ?? confirmationDate) is deterministic.
+async function setConfirmation(employmentId: string, date: string | null) {
+  await owner.db
+    .update(schema.employment)
+    .set({ confirmationDate: date, finalConfirmationDate: date })
+    .where(eq(schema.employment.id, employmentId));
+}
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -71,5 +86,31 @@ describe('ADR-0038 2A-1 — leave eligibility', () => {
     const open = await leaveType('OPEN', null);
     const anyone = await hire('male', 'single', '2026-06-01');
     await expect(req(anyone.employmentId, open)).resolves.toMatchObject({ days: 1 });
+  });
+
+  // Probation eligibility (d6bdbd55) — asOf is the 2026-07-01 start date (see `req`).
+  it('confirmed_only blocks a probationer; probation_only blocks a confirmed employee', async () => {
+    const confirmedOnly = await probationType('CONFONLY', 'confirmed_only');
+    const probationOnly = await probationType('PROBONLY', 'probation_only');
+    const confirmed = await hire('male', 'single', '2024-01-01');
+    await setConfirmation(confirmed.employmentId, '2024-04-01'); // confirmed well before the request date
+    const probationer = await hire('male', 'single', '2026-06-01');
+    await setConfirmation(probationer.employmentId, '2026-09-01'); // still on probation on 2026-07-01
+
+    await expect(req(confirmed.employmentId, confirmedOnly)).resolves.toMatchObject({ days: 1 });
+    await expect(req(probationer.employmentId, confirmedOnly)).rejects.toBeInstanceOf(LeaveIneligibleError);
+
+    await expect(req(probationer.employmentId, probationOnly)).resolves.toMatchObject({ days: 1 });
+    await expect(req(confirmed.employmentId, probationOnly)).rejects.toBeInstanceOf(LeaveIneligibleError);
+  });
+
+  it('a null confirmation date counts as not-on-probation (confirmed)', async () => {
+    const confirmedOnly = await probationType('CONFONLY2', 'confirmed_only');
+    const probationOnly = await probationType('PROBONLY2', 'probation_only');
+    const noConf = await hire('male', 'single', '2024-01-01');
+    await setConfirmation(noConf.employmentId, null);
+
+    await expect(req(noConf.employmentId, confirmedOnly)).resolves.toMatchObject({ days: 1 });
+    await expect(req(noConf.employmentId, probationOnly)).rejects.toBeInstanceOf(LeaveIneligibleError);
   });
 });
