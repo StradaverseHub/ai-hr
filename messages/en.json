@@ -4387,7 +4387,9 @@
       "entSortDesc": "Leave type Z–A",
       "duplicateError": "This leave type is already configured for this scheme.",
       "requiredError": "Please fill in all required fields.",
-      "requiredAria": "required"
+      "requiredAria": "required",
+      "editSchemeTitle": "Edit benefit scheme",
+      "cancel": "Cancel"
     }
   },
   "topbar": {

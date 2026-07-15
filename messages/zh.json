@@ -4387,7 +4387,9 @@
       "entSortDesc": "假期类型 Z–A",
       "duplicateError": "此假期类型已在本方案中配置。",
       "requiredError": "请填写所有必填字段。",
-      "requiredAria": "必填"
+      "requiredAria": "必填",
+      "editSchemeTitle": "编辑福利方案",
+      "cancel": "取消"
     }
   },
   "topbar": {

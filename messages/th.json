@@ -4387,7 +4387,9 @@
       "entSortDesc": "ประเภทการลา Z–A",
       "duplicateError": "ประเภทการลานี้ถูกกำหนดไว้สำหรับแผนนี้แล้ว",
       "requiredError": "กรุณากรอกข้อมูลในช่องที่จำเป็นทั้งหมด",
-      "requiredAria": "จำเป็น"
+      "requiredAria": "จำเป็น",
+      "editSchemeTitle": "แก้ไขแผนสวัสดิการ",
+      "cancel": "ยกเลิก"
     }
   },
   "topbar": {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
@@ -229,23 +230,15 @@ export function BenefitSchemeConfig({
                     </Badge>
                   </td>
                   <td className="px-3 py-2">
-                    <details>
-                      <summary className="cursor-pointer text-xs text-primary">{t('edit')}</summary>
-                      <div className="mt-2 space-y-2">
-                        <SchemeForm
-                          action={actions.updateScheme}
-                          companies={companies}
-                          groups={activeGroups}
-                          empTypeLabel={empTypeLabel}
-                          t={t}
-                          scheme={s}
-                        />
-                        <form action={actions.deleteScheme}>
-                          <input type="hidden" name="id" value={s.id} />
-                          <Button type="submit" variant="ghost" size="sm">{t('delete')}</Button>
-                        </form>
-                      </div>
-                    </details>
+                    <SchemeEditDialog
+                      scheme={s}
+                      companies={companies}
+                      groups={activeGroups}
+                      empTypeLabel={empTypeLabel}
+                      updateScheme={actions.updateScheme}
+                      deleteScheme={actions.deleteScheme}
+                      t={t}
+                    />
                   </td>
                 </tr>
               ))}
@@ -401,6 +394,69 @@ function SchemeForm({
       </Field>
       <Button type="submit" size="sm">{scheme ? t('save') : t('addScheme')}</Button>
     </form>
+  );
+}
+
+/**
+ * SchemeEditDialog (R44 4a97f681) — the scheme Edit form now opens in a centred Radix Dialog modal instead of
+ * the cramped right-side <details> disclosure, giving the fields room to breathe. Presentation only: it hosts
+ * the SAME SchemeForm + updateScheme server action and the delete form. On Save it closes immediately and the
+ * action's revalidate refreshes the list (staying on the page). Cancel / overlay / Esc close without saving.
+ */
+function SchemeEditDialog({
+  scheme,
+  companies,
+  groups,
+  empTypeLabel,
+  updateScheme,
+  deleteScheme,
+  t,
+}: {
+  scheme: Scheme;
+  companies: Company[];
+  groups: GradeGroup[];
+  empTypeLabel: (v: string) => string;
+  updateScheme: (fd: FormData) => void | Promise<void>;
+  deleteScheme: (fd: FormData) => void | Promise<void>;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <button type="button" className="cursor-pointer text-xs text-primary hover:underline">
+          {t('edit')}
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-5 text-popover-foreground shadow-lg">
+          <Dialog.Title className="text-base font-semibold">{t('editSchemeTitle')}</Dialog.Title>
+          <div className="mt-4 space-y-3">
+            <SchemeForm
+              action={(fd) => {
+                setOpen(false);
+                return updateScheme(fd);
+              }}
+              companies={companies}
+              groups={groups}
+              empTypeLabel={empTypeLabel}
+              t={t}
+              scheme={scheme}
+            />
+            <div className="flex items-center justify-between border-t border-border pt-3">
+              <form action={deleteScheme}>
+                <input type="hidden" name="id" value={scheme.id} />
+                <Button type="submit" variant="ghost" size="sm">{t('delete')}</Button>
+              </form>
+              <Dialog.Close asChild>
+                <Button type="button" size="sm" variant="outline">{t('cancel')}</Button>
+              </Dialog.Close>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

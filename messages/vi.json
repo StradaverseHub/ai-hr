@@ -4387,7 +4387,9 @@
       "entSortDesc": "Loại nghỉ Z–A",
       "duplicateError": "Loại nghỉ này đã được cấu hình cho chương trình này.",
       "requiredError": "Vui lòng điền vào tất cả các trường bắt buộc.",
-      "requiredAria": "bắt buộc"
+      "requiredAria": "bắt buộc",
+      "editSchemeTitle": "Chỉnh sửa chương trình phúc lợi",
+      "cancel": "Hủy"
     }
   },
   "topbar": {
