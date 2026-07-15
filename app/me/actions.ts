@@ -27,6 +27,7 @@ import {
   HourlyLeaveTimeRangeError,
   LeaveNoDaysInRangeError,
   DuplicateLeaveApplicationError,
+  InsufficientLeaveBalanceOnSubmitError,
   LeaveApplyNotAllowedError,
   MissingRejectReasonError,
   LeaveCancellationNotAllowedError,
@@ -284,6 +285,10 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   // Duplicate Leave Application Restriction (d5e51c34): the leave type's duplicate_application_policy blocked
   // this same-date double-booking. Localized so all 6 locales see the reporter's requested message.
   if (e instanceof DuplicateLeaveApplicationError) return t('duplicateApplication');
+  // Configurable Negative Leave Balance Validation (0ef0defd): the leave type's allow_negative_balance=false
+  // blocked a submit/edit whose days exceed the available balance. Localized so all 6 locales see the
+  // reporter's requested message ("Insufficient leave balance. Your available leave balance is lower…").
+  if (e instanceof InsufficientLeaveBalanceOnSubmitError) return t('insufficientBalance');
   // Leave Type Employee Visibility (7b11f1c1): HR has closed this leave type to employee applications
   // (employee_can_apply=false). Localized so the /me apply form shows a clear "contact HR" message.
   if (e instanceof LeaveApplyNotAllowedError) return t('applyNotAllowed', { typeName: name });

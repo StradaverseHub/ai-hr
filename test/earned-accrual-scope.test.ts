@@ -67,7 +67,7 @@ const mkCompany = async (legalName: string) => {
 const mkType = async (code: string, name: string) => {
   const [lt] = await owner.db
     .insert(schema.leaveType)
-    .values({ tenantId: b.tenantId, code, name, paid: true })
+    .values({ allowNegativeBalance: true, tenantId: b.tenantId, code, name, paid: true })
     .returning({ id: schema.leaveType.id });
   return lt.id;
 };

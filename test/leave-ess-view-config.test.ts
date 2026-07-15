@@ -57,6 +57,7 @@ async function leaveType(code: string, essViewConfig?: Record<string, boolean> |
   const [row] = await owner.db
     .insert(schema.leaveType)
     .values({
+      allowNegativeBalance: true, // 0ef0defd: test type opts out of the submit-time balance gate (test not about balance)
       tenantId: b.tenantId,
       code,
       name: code,
@@ -135,7 +136,7 @@ describe('updateLeaveType — essViewConfig tri-state, validation & audit', () =
   it('an essView-only save leaves a sibling column (backdatingLimitDays) untouched', async () => {
     const [row] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: b.tenantId, code: uniqCode(), name: 'X', paid: true, counting: 'calendar_days', backdatingLimitDays: 7 })
+      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: uniqCode(), name: 'X', paid: true, counting: 'calendar_days', backdatingLimitDays: 7 })
       .returning({ id: schema.leaveType.id });
     await updateLeaveType(adminCtx(b), { id: row.id, name: 'X', essViewConfig: { taken: false } });
     const t = (await listLeaveTypes(adminCtx(b), { includeArchived: true })).find((x) => x.id === row.id);

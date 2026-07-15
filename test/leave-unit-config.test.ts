@@ -114,7 +114,7 @@ describe('Leave Unit Configuration', () => {
     // NOT NULL DEFAULT 'day' column is added.
     const [row] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: b.tenantId, code: mkCode(), name: 'Legacy', paid: true })
+      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: mkCode(), name: 'Legacy', paid: true })
       .returning({ id: schema.leaveType.id });
     expect(await storedUnit(row.id)).toBe('day');
   });

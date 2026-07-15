@@ -545,6 +545,7 @@ export function LeaveTypePanel({
   counting,
   perDateApproval,
   duplicateApplicationPolicy,
+  allowNegativeBalance,
   policies,
   grades,
   companies,
@@ -632,6 +633,10 @@ export function LeaveTypePanel({
    *  ('allow' | 'restrict_same' | 'restrict_any'), threaded so the radio round-trips its saved value. null ⇒
    *  'allow' (today's behaviour). Enforced at requestLeave/editLeaveRequest; persisted via touchDuplicatePolicy. */
   duplicateApplicationPolicy: string | null;
+  /** Configurable Negative Leave Balance Validation (0ef0defd): whether employees may submit/edit a leave
+   *  application of this type that exceeds their available balance. false ⇒ block over-application (the
+   *  default). Threaded so the Yes/No sub-form round-trips its saved value; persisted via touchNegativeBalance. */
+  allowNegativeBalance: boolean;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
@@ -1283,6 +1288,41 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('duplicatePolicyHelp')}</p>
+          </div>
+
+          {/* Configurable Negative Leave Balance Validation (0ef0defd). Its own self-contained <form> +
+              `negativeBalance=1` tri-state marker so an unrelated save never resets it. A Yes/No radio controls
+              whether an employee may submit (or edit) a leave application whose days exceed their available
+              balance. Default 'No' = block over-application at submit + edit (core/leave.ts); 'Yes' permits
+              going negative (the approval-time guard still applies). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('negativeBalanceSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the allow_negative_balance column (tri-state guard) */}
+              <input type="hidden" name="negativeBalance" value="1" />
+              <span className="text-xs font-medium text-foreground">{t('negativeBalanceLabel')}</span>
+              <div className="space-y-1.5">
+                {(['no', 'yes'] as const).map((opt) => (
+                  <label key={opt} className="flex items-start gap-2 text-xs text-foreground">
+                    <input
+                      type="radio"
+                      name="allowNegativeBalanceValue"
+                      value={opt}
+                      defaultChecked={opt === (allowNegativeBalance ? 'yes' : 'no')}
+                      className="mt-0.5 size-3.5 border-border"
+                    />
+                    <span>{opt === 'yes' ? t('negativeBalanceYes') : t('negativeBalanceNo')}</span>
+                  </label>
+                ))}
+              </div>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('negativeBalanceHelp')}</p>
           </div>
 
           {/* Configurable backdated-leave restriction (0133). Its own sub-form (own tri-state) posts

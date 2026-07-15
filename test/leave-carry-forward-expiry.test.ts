@@ -38,7 +38,7 @@ const balance = (employmentId: string) => ledgerBalance(employmentId, b.annualLe
 const addType = async (code: string, name: string) => {
   const [t] = await owner.db
     .insert(schema.leaveType)
-    .values({ tenantId: b.tenantId, code, name, paid: true })
+    .values({ allowNegativeBalance: true, tenantId: b.tenantId, code, name, paid: true })
     .returning({ id: schema.leaveType.id });
   return t.id;
 };

@@ -45,7 +45,7 @@ beforeEach(async () => {
   b = await seedBase();
   const [lt] = await owner.db
     .insert(schema.leaveType)
-    .values({ tenantId: b.tenantId, code: 'WD', name: 'Working-day leave', paid: true, counting: 'working_days' })
+    .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'WD', name: 'Working-day leave', paid: true, counting: 'working_days' })
     .returning({ id: schema.leaveType.id });
   wdTypeId = lt.id;
   await owner.db.insert(schema.holiday).values([

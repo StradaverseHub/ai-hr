@@ -981,7 +981,8 @@
       "leaveYearNotOpen": "Leave year {year} is not open for applications yet. Please contact HR.",
       "editNotAllowed": "This leave can no longer be edited.",
       "applyNotAllowed": "Employees cannot apply for {typeName}. Please contact HR.",
-      "duplicateApplication": "A leave application already exists for the selected date. Multiple leave applications on the same date are not allowed."
+      "duplicateApplication": "A leave application already exists for the selected date. Multiple leave applications on the same date are not allowed.",
+      "insufficientBalance": "Insufficient leave balance. Your available leave balance is lower than the requested leave duration."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
@@ -3601,7 +3602,12 @@
       "duplicatePolicyAllow": "Allow multiple leave applications on the same date",
       "duplicatePolicyRestrictSame": "Restrict the same leave type only",
       "duplicatePolicyRestrictAny": "Restrict any leave type on the same date",
-      "duplicatePolicyHelp": "Controls whether an employee can submit more than one leave application covering the same date. Default allows it; the two restrict options block a same-date double-booking at submission and edit."
+      "duplicatePolicyHelp": "Controls whether an employee can submit more than one leave application covering the same date. Default allows it; the two restrict options block a same-date double-booking at submission and edit.",
+      "negativeBalanceSectionTitle": "Negative leave balance",
+      "negativeBalanceLabel": "Allow Negative Balance",
+      "negativeBalanceYes": "Yes — employees may apply even if the balance goes negative",
+      "negativeBalanceNo": "No — block applications that exceed the available balance",
+      "negativeBalanceHelp": "Controls whether an employee can submit or edit a leave application of this type that exceeds their available balance. 'No' blocks over-application at submission and edit (counting leave already pending); 'Yes' allows the balance to go negative."
     },
     "holidays": {
       "pageTitle": "Public holidays",

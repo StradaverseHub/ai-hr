@@ -50,6 +50,7 @@ async function leaveType(code: string, opts: { paid: boolean; sendToPayroll?: bo
   const [row] = await owner.db
     .insert(schema.leaveType)
     .values({
+      allowNegativeBalance: true, // 0ef0defd: test type opts out of the submit-time balance gate (test not about balance)
       tenantId: b.tenantId,
       code,
       name: code,
@@ -227,6 +228,7 @@ describe('Unpaid Leave Payroll Impact — migration backfill invariant', () => {
     // Mix of paid/unpaid types in a fresh tenant; the seed defaults unpaid → send_to_payroll true, the
     // migration backfills any pre-existing paid=false rows. Insert one unpaid via the pack-style default.
     await owner.db.insert(schema.leaveType).values({
+      allowNegativeBalance: true, // 0ef0defd: test type opts out of the submit-time balance gate (test not about balance)
       tenantId: b.tenantId,
       code: 'UNPAID_SEED',
       name: 'Unpaid (seed default)',

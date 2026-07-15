@@ -245,7 +245,7 @@ describe('Partial Leave Cancellation — happy path', () => {
     // Use an UNPAID type so the payroll unpaid-days check is meaningful.
     const [upl] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: b.tenantId, code: 'UNPAID', name: 'Unpaid', paid: false, counting: 'working_days' })
+      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'UNPAID', name: 'Unpaid', paid: false, counting: 'working_days' })
       .returning({ id: schema.leaveType.id });
     await grantAnnual('20.00', upl.id);
     const res = await requestLeave(subjectCtx, {
@@ -368,7 +368,7 @@ describe('Partial Leave Cancellation — gates', () => {
   it('cannot cancel a REPLACEMENT (time-off-in-lieu) leave', async () => {
     const [repl] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: b.tenantId, code: 'REPLACEMENT', name: 'Replacement', paid: true, counting: 'working_days' })
+      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'REPLACEMENT', name: 'Replacement', paid: true, counting: 'working_days' })
       .returning({ id: schema.leaveType.id });
     await grantAnnual('10.00', repl.id);
     const res = await requestLeave(subjectCtx, {

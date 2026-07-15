@@ -2822,6 +2822,13 @@ export async function updateLeaveType(
     // unrelated save never resets it. Validated against the closed { allow, restrict_same, restrict_any } set
     // (the DB CHECK is defence-in-depth). Enforced at requestLeave/editLeaveRequest; 'allow' = today's behaviour.
     duplicateApplicationPolicy?: 'allow' | 'restrict_same' | 'restrict_any';
+    // Configurable Negative Leave Balance Validation (feedback 0ef0defd): whether employees may SUBMIT/EDIT a
+    // leave application of this type that exceeds their available balance. OWN tri-state (undefined =
+    // allow_negative_balance column untouched), mirroring duplicateApplicationPolicy — its own "Allow Negative
+    // Balance" sub-form posts `negativeBalance=1` so an unrelated save never resets it. false = block over-
+    // application at submission (the approved default); true = permit going negative. Enforced at
+    // requestLeave/editLeaveRequest.
+    allowNegativeBalance?: boolean;
     /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
     reason?: string | null;
   },
@@ -2875,6 +2882,12 @@ export async function updateLeaveType(
   const duplicatePolicySet = touchDuplicatePolicy
     ? { duplicateApplicationPolicy: p.duplicateApplicationPolicy }
     : {};
+  // Configurable Negative Leave Balance Validation (0ef0defd): OWN tri-state, mirroring touchDuplicatePolicy —
+  // the "Allow Negative Balance" sub-form posts `negativeBalance=1`, any other save omits it so
+  // allow_negative_balance stays untouched (no silent reset). Plain boolean column (NOT NULL); the sub-form
+  // always forwards a concrete boolean when its marker is present.
+  const touchNegativeBalance = p.allowNegativeBalance !== undefined;
+  const negativeBalanceSet = touchNegativeBalance ? { allowNegativeBalance: p.allowNegativeBalance } : {};
   // Custom validation messages (custom-messages migration): OWN tri-state, mirroring touchBackdating. The
   // fixed allow-list of rule keys — currently only the one rule that exists (backdating). A future rule
   // adds its config-field name here and to the LeaveType schema comment.
@@ -3101,6 +3114,8 @@ export async function updateLeaveType(
         leaveUnit: leaveType.leaveUnit,
         // Duplicate Leave Application Restriction (d5e51c34): selected for the before/after audit diff.
         duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
+        // Configurable Negative Leave Balance Validation (0ef0defd): selected for the before/after audit diff.
+        allowNegativeBalance: leaveType.allowNegativeBalance,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
@@ -3173,6 +3188,7 @@ export async function updateLeaveType(
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
         ...paidSet,
         ...duplicatePolicySet,
+        ...negativeBalanceSet,
         ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
         ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
         ...dayTypeInclusionSet,
@@ -3210,6 +3226,7 @@ export async function updateLeaveType(
           ...(touchPayroll ? { sendToPayroll: before?.sendToPayroll ?? null } : {}),
           ...(touchPaid ? { paid: before?.paid ?? null } : {}),
           ...(touchDuplicatePolicy ? { duplicateApplicationPolicy: before?.duplicateApplicationPolicy ?? null } : {}),
+          ...(touchNegativeBalance ? { allowNegativeBalance: before?.allowNegativeBalance ?? null } : {}),
           ...(touchBackdating ? { backdatingLimitDays: before?.backdatingLimitDays ?? null } : {}),
           ...(touchMinAdvance ? { minAdvanceDays: before?.minAdvanceDays ?? null } : {}),
           ...(touchExpiry ? { expiryValue: before?.expiryValue ?? null, expiryUnit: before?.expiryUnit ?? null } : {}),
@@ -3243,6 +3260,9 @@ export async function updateLeaveType(
           ...(touchPaid ? { paid: p.paid ?? before?.paid ?? null } : {}),
           ...(touchDuplicatePolicy
             ? { duplicateApplicationPolicy: p.duplicateApplicationPolicy ?? before?.duplicateApplicationPolicy ?? null }
+            : {}),
+          ...(touchNegativeBalance
+            ? { allowNegativeBalance: p.allowNegativeBalance ?? before?.allowNegativeBalance ?? null }
             : {}),
           ...(touchBackdating
             ? { backdatingLimitDays: p.backdatingLimitDays !== undefined ? p.backdatingLimitDays : (before?.backdatingLimitDays ?? null) }

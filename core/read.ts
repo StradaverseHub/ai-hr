@@ -426,6 +426,9 @@ export function listLeaveTypes(
         // Duplicate Leave Application Restriction (d5e51c34): feeds the admin panel's duplicate-policy radio
         // (MUST be projected or the radio renders at its default on every reload). null ⇒ 'allow' default.
         duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
+        // Configurable Negative Leave Balance Validation (0ef0defd): feeds the admin panel's "Allow Negative
+        // Balance" Yes/No radio (MUST be projected or the radio renders at its default on every reload).
+        allowNegativeBalance: leaveType.allowNegativeBalance,
         // Custom validation messages (custom-messages migration): feeds the admin panel's "Custom system
         // message" textarea (MUST be projected or the textarea renders empty on every reload).
         customMessages: leaveType.customMessages,

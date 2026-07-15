@@ -40,7 +40,7 @@ beforeEach(async () => {
   b = await seedBase();
   const [sick] = await owner.db
     .insert(schema.leaveType)
-    .values({ tenantId: b.tenantId, code: 'SICK', name: 'Sick Leave', paid: true })
+    .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'SICK', name: 'Sick Leave', paid: true })
     .returning({ id: schema.leaveType.id });
   sickLeaveTypeId = sick.id;
 });

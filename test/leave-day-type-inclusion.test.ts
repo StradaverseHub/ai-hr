@@ -94,6 +94,7 @@ async function workingDaysType(dayTypeInclusion: Record<string, boolean> | null 
   const [row] = await owner.db
     .insert(schema.leaveType)
     .values({
+      allowNegativeBalance: true, // 0ef0defd: test type opts out of the submit-time balance gate (test not about balance)
       tenantId: b.tenantId,
       code: `WD_${randomUUID().slice(0, 6).toUpperCase()}`,
       name: 'Working Days Leave',

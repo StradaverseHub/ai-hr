@@ -1212,6 +1212,14 @@ export async function updateLeaveTypeAction(fd: FormData) {
           : 'allow') as 'allow' | 'restrict_same' | 'restrict_any',
       }
     : {};
+  // Configurable Negative Leave Balance Validation (0ef0defd): its own sub-form posts `negativeBalance=1`
+  // (marker) plus a Yes/No radio `allowNegativeBalanceValue` (yes ⇒ permit going negative; no ⇒ block over-
+  // application). Any other sub-form save omits the marker ⇒ allow_negative_balance stays untouched (same
+  // tri-state guard as duplicatePolicy). Forwarded as a concrete boolean; the service persists it.
+  const touchNegativeBalance = fd.get('negativeBalance') === '1';
+  const negativeBalanceFields = touchNegativeBalance
+    ? { allowNegativeBalance: fd.get('allowNegativeBalanceValue') === 'yes' }
+    : {};
   // Employee Leave View Configuration (65dec703 / dup 1fedb473): the ESS-view checklist posts `essView=1`
   // (marker) plus one checkbox per component (`essView_<key>`). An unchecked box does not post, so we build
   // the COMPLETE map from the closed key list (checked ⇒ true/visible, absent ⇒ false/hidden) and replace
@@ -1321,6 +1329,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...expiryFields,
       ...partialFields,
       ...duplicatePolicyFields,
+      ...negativeBalanceFields,
       ...essViewFields,
       ...dayTypeInclusionFields,
       ...visualFields,

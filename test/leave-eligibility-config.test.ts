@@ -50,7 +50,7 @@ async function hire(gender: string | null, marital: string | null, hiredOn = '20
 async function leaveType(code: string, eligibility: unknown) {
   const [row] = await owner.db
     .insert(schema.leaveType)
-    .values({ tenantId: b.tenantId, code, name: code, paid: true, counting: 'calendar_days', eligibility })
+    .values({ allowNegativeBalance: true, tenantId: b.tenantId, code, name: code, paid: true, counting: 'calendar_days', eligibility })
     .returning({ id: schema.leaveType.id, eligibility: schema.leaveType.eligibility });
   return row.id;
 }
@@ -227,7 +227,7 @@ describe('#25 — listEligibleLeaveTypesFor (read/visibility path)', () => {
     // a doc-required open type to prove the projection keeps requiresDocument
     const [sick] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: b.tenantId, code: 'SICK2', name: 'Sick', paid: true, counting: 'calendar_days', requiresDocument: true })
+      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'SICK2', name: 'Sick', paid: true, counting: 'calendar_days', requiresDocument: true })
       .returning({ id: schema.leaveType.id });
     const female = await hire('female', 'married');
     const types = await listEligibleLeaveTypesFor(adminCtx(b), female.employmentId);

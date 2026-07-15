@@ -981,7 +981,8 @@
       "editNotAllowed": "Không thể chỉnh sửa đơn nghỉ này nữa.",
       "leaveYearNotOpen": "Năm nghỉ phép {year} chưa mở để nộp đơn. Vui lòng liên hệ bộ phận nhân sự.",
       "applyNotAllowed": "Nhân viên không thể đăng ký {typeName}. Vui lòng liên hệ bộ phận Nhân sự.",
-      "duplicateApplication": "Đã tồn tại một đơn xin nghỉ phép cho ngày đã chọn. Không được phép nộp nhiều đơn xin nghỉ phép trong cùng một ngày."
+      "duplicateApplication": "Đã tồn tại một đơn xin nghỉ phép cho ngày đã chọn. Không được phép nộp nhiều đơn xin nghỉ phép trong cùng một ngày.",
+      "insufficientBalance": "Số dư phép không đủ. Số dư phép khả dụng của bạn thấp hơn thời lượng nghỉ phép được yêu cầu."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -3601,7 +3602,12 @@
       "duplicatePolicyAllow": "Cho phép nhiều đơn xin nghỉ trong cùng một ngày",
       "duplicatePolicyRestrictSame": "Chỉ hạn chế cùng một loại nghỉ phép",
       "duplicatePolicyRestrictAny": "Hạn chế mọi loại nghỉ phép trong cùng một ngày",
-      "duplicatePolicyHelp": "Kiểm soát việc nhân viên có thể nộp nhiều hơn một đơn xin nghỉ phép cho cùng một ngày hay không. Mặc định cho phép; hai tùy chọn hạn chế sẽ chặn việc đặt trùng trong cùng một ngày khi nộp và chỉnh sửa."
+      "duplicatePolicyHelp": "Kiểm soát việc nhân viên có thể nộp nhiều hơn một đơn xin nghỉ phép cho cùng một ngày hay không. Mặc định cho phép; hai tùy chọn hạn chế sẽ chặn việc đặt trùng trong cùng một ngày khi nộp và chỉnh sửa.",
+      "negativeBalanceSectionTitle": "Số dư phép âm",
+      "negativeBalanceLabel": "Cho phép số dư âm",
+      "negativeBalanceYes": "Có — nhân viên có thể nộp đơn ngay cả khi số dư âm",
+      "negativeBalanceNo": "Không — chặn đơn vượt quá số dư khả dụng",
+      "negativeBalanceHelp": "Kiểm soát việc nhân viên có thể nộp hoặc chỉnh sửa đơn xin nghỉ phép loại này vượt quá số dư khả dụng hay không. 'Không' chặn việc xin vượt mức khi nộp và chỉnh sửa (tính cả phép đang chờ duyệt); 'Có' cho phép số dư xuống âm."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

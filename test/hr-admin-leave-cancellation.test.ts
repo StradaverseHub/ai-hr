@@ -309,7 +309,7 @@ describe('adminCancelLeave — REPLACEMENT (TOIL)', () => {
   async function replacementType() {
     const [lt] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: b.tenantId, code: 'REPLACEMENT', name: 'Replacement Leave', paid: true })
+      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'REPLACEMENT', name: 'Replacement Leave', paid: true })
       .returning({ id: schema.leaveType.id });
     return lt.id;
   }

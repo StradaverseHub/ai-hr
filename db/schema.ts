@@ -965,6 +965,17 @@ export const leaveType = pgTable('leave_type', {
   // NULLABLE DEFAULT 'allow' (a DB CHECK backs the closed 3-value set); the service treats null as 'allow'.
   // Never read for entitlement / accrual / eligibility / payroll — purely a submission-time double-booking gate.
   duplicateApplicationPolicy: text('duplicate_application_policy').default('allow'),
+  // Configurable Negative Leave Balance Validation (feedback 0ef0defd): whether an employee may SUBMIT (or
+  // edit) a leave application of this type whose days exceed their available balance. Until this flag, the
+  // only balance guard sat at APPROVAL (finalizeLeaveApproval → InsufficientLeaveBalanceError); nothing checked
+  // at submission. When false (the DEFAULT, approved product decision), requestLeave + editLeaveRequest reject
+  // an application that would take the balance negative — "available balance" = the leave_ledger sum (approved
+  // only) MINUS the sum of this employee's other PENDING requests of the same type (reserved days), so
+  // stacked pending applications can't collectively overshoot. When true, the submit-time check is skipped
+  // (employees may go negative; the approval-time guard is unaffected). NOT NULL DEFAULT false ⇒ every existing
+  // row gains the block immediately (no backfill needed). Enforced only at requestLeave/editLeaveRequest —
+  // never read for entitlement / accrual / eligibility / payroll.
+  allowNegativeBalance: boolean('allow_negative_balance').notNull().default(false),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

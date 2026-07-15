@@ -276,7 +276,7 @@ describe('2.1.1 default-equals-legacy golden matrix + non-default measurably cha
       if (!lt) {
         [lt] = await owner.db
           .insert(schema.leaveType)
-          .values({ tenantId: b.tenantId, code: 'UNPAID_PPC', name: 'Unpaid PPC', paid: false, counting: 'calendar_days' })
+          .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'UNPAID_PPC', name: 'Unpaid PPC', paid: false, counting: 'calendar_days' })
           .returning();
       }
       await owner.db.insert(schema.leaveRequest).values({

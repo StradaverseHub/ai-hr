@@ -981,7 +981,8 @@
       "editNotAllowed": "此请假已无法编辑。",
       "leaveYearNotOpen": "假期年度 {year} 尚未开放申请。请联系人力资源部。",
       "applyNotAllowed": "员工无法申请 {typeName}。请联系人力资源部。",
-      "duplicateApplication": "所选日期已存在一份请假申请。不允许在同一日期提交多份请假申请。"
+      "duplicateApplication": "所选日期已存在一份请假申请。不允许在同一日期提交多份请假申请。",
+      "insufficientBalance": "假期余额不足。您的可用假期余额低于所申请的假期时长。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -3601,7 +3602,12 @@
       "duplicatePolicyAllow": "允许在同一日期提交多份请假申请",
       "duplicatePolicyRestrictSame": "仅限制相同的请假类型",
       "duplicatePolicyRestrictAny": "限制同一日期的任何请假类型",
-      "duplicatePolicyHelp": "控制员工是否可以为同一日期提交多份请假申请。默认允许；两个限制选项会在提交和编辑时阻止同一日期的重复申请。"
+      "duplicatePolicyHelp": "控制员工是否可以为同一日期提交多份请假申请。默认允许；两个限制选项会在提交和编辑时阻止同一日期的重复申请。",
+      "negativeBalanceSectionTitle": "负假期余额",
+      "negativeBalanceLabel": "允许负余额",
+      "negativeBalanceYes": "是 — 即使余额变为负数，员工仍可申请",
+      "negativeBalanceNo": "否 — 阻止超过可用余额的申请",
+      "negativeBalanceHelp": "控制员工是否可以提交或编辑超过其可用余额的此类假期申请。“否”将在提交和编辑时阻止超额申请（计入尚待批准的假期）；“是”则允许余额变为负数。"
     },
     "holidays": {
       "pageTitle": "公共假期",

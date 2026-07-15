@@ -1464,6 +1464,13 @@
       "when": 1781862207000,
       "tag": "0208_leave_type_duplicate_application_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 209,
+      "version": "7",
+      "when": 1781862208000,
+      "tag": "0209_leave_type_allow_negative_balance",
+      "breakpoints": true
     }
   ]
 }
