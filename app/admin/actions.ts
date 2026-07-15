@@ -88,6 +88,9 @@ import {
   deleteBenefitScheme,
   upsertSchemeEntitlement,
   deleteSchemeEntitlement,
+  createSchemeCombinedLimit,
+  updateSchemeCombinedLimit,
+  deleteSchemeCombinedLimit,
 } from '@/core/benefit-scheme';
 import { inviteUser, revokeInvitation } from '@/core/auth';
 import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
@@ -1724,6 +1727,47 @@ export async function deleteSchemeEntitlementAction(fd: FormData) {
   const s = await requireAdmin();
   try {
     await deleteSchemeEntitlement(s, { id: String(fd.get('id') ?? '') });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+// Combined Leave Type Limit (R44 4c48fd1f) — CRUD for the shared per-cycle caps pooling several leave types.
+export async function createSchemeCombinedLimitAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await createSchemeCombinedLimit(s, {
+      benefitSchemeId: String(fd.get('benefitSchemeId') ?? ''),
+      name: String(fd.get('name') ?? ''),
+      totalLimitDays: Number(fd.get('totalLimitDays') ?? ''),
+      leaveTypeIds: fd.getAll('leaveTypeIds').map((v) => String(v)).filter(Boolean),
+    });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+export async function updateSchemeCombinedLimitAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await updateSchemeCombinedLimit(s, {
+      id: String(fd.get('id') ?? ''),
+      name: String(fd.get('name') ?? ''),
+      totalLimitDays: Number(fd.get('totalLimitDays') ?? ''),
+      leaveTypeIds: fd.getAll('leaveTypeIds').map((v) => String(v)).filter(Boolean),
+    });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+export async function deleteSchemeCombinedLimitAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await deleteSchemeCombinedLimit(s, { id: String(fd.get('id') ?? '') });
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }

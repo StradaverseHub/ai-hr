@@ -1032,7 +1032,8 @@
       "leaveYearNotOpen": "Tahun cuti {year} belum dibuka untuk permohonan. Sila hubungi HR.",
       "applyNotAllowed": "Pekerja tidak boleh memohon {typeName}. Sila hubungi HR.",
       "duplicateApplication": "Permohonan cuti telah wujud untuk tarikh yang dipilih. Berbilang permohonan cuti pada tarikh yang sama tidak dibenarkan.",
-      "insufficientBalance": "Baki cuti tidak mencukupi. Baki cuti anda yang tersedia adalah lebih rendah daripada tempoh cuti yang dipohon."
+      "insufficientBalance": "Baki cuti tidak mencukupi. Baki cuti anda yang tersedia adalah lebih rendah daripada tempoh cuti yang dipohon.",
+      "combinedLimitExceeded": "Had cuti gabungan \"{poolName}\" ({days} hari setahun) akan melebihi merentasi jenis cuti kongsinya."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -4393,7 +4394,18 @@
       "gradeGroupSearchPlaceholder": "Cari kumpulan gred…",
       "gradeGroupNoResults": "Tiada kumpulan gred dijumpai.",
       "legacyValueSuffix": "(lama)",
-      "schemeCount": "{count} skim"
+      "schemeCount": "{count} skim",
+      "combinedTitle": "Had Cuti Gabungan",
+      "combinedHelp": "Hadkan beberapa jenis cuti di bawah satu jumlah kongsi setiap kitaran (cth. Ihsan + Perkahwinan + Paterniti = 5 hari setahun).",
+      "combinedNameLabel": "Nama had",
+      "combinedNamePlaceholder": "cth. Kumpulan ihsan",
+      "combinedTotalLabel": "Jumlah hari / tahun",
+      "combinedTypesLabel": "Jenis cuti dalam kumpulan ini",
+      "combinedAdd": "Tambah had gabungan",
+      "combinedNone": "Tiada had gabungan dikonfigurasikan untuk skim ini.",
+      "combinedColName": "Nama",
+      "combinedColTotal": "Jumlah hari",
+      "combinedColTypes": "Jenis cuti"
     }
   },
   "topbar": {

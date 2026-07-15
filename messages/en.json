@@ -1032,7 +1032,8 @@
       "editNotAllowed": "This leave can no longer be edited.",
       "applyNotAllowed": "Employees cannot apply for {typeName}. Please contact HR.",
       "duplicateApplication": "A leave application already exists for the selected date. Multiple leave applications on the same date are not allowed.",
-      "insufficientBalance": "Insufficient leave balance. Your available leave balance is lower than the requested leave duration."
+      "insufficientBalance": "Insufficient leave balance. Your available leave balance is lower than the requested leave duration.",
+      "combinedLimitExceeded": "Combined leave limit \"{poolName}\" ({days} days a year) would be exceeded across its shared leave types."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
@@ -4393,7 +4394,18 @@
       "gradeGroupSearchPlaceholder": "Search grade groups…",
       "gradeGroupNoResults": "No grade groups found.",
       "legacyValueSuffix": "(legacy)",
-      "schemeCount": "{count} schemes"
+      "schemeCount": "{count} schemes",
+      "combinedTitle": "Combined Leave Limits",
+      "combinedHelp": "Cap several leave types under one shared per-cycle total (e.g. Compassionate + Marriage + Paternity = 5 days a year).",
+      "combinedNameLabel": "Limit name",
+      "combinedNamePlaceholder": "e.g. Compassionate pool",
+      "combinedTotalLabel": "Total days / year",
+      "combinedTypesLabel": "Leave types in this pool",
+      "combinedAdd": "Add combined limit",
+      "combinedNone": "No combined limits configured for this scheme.",
+      "combinedColName": "Name",
+      "combinedColTotal": "Total days",
+      "combinedColTypes": "Leave types"
     }
   },
   "topbar": {

@@ -40,6 +40,13 @@ type Entitlement = {
   leaveTypeName: string | null;
   serviceBands: ServiceBand[];
 };
+type CombinedLimit = {
+  id: string;
+  benefitSchemeId: string;
+  name: string;
+  totalLimitDays: number;
+  leaveTypeIds: string[];
+};
 
 type Actions = {
   createGradeGroup: (fd: FormData) => void | Promise<void>;
@@ -50,6 +57,9 @@ type Actions = {
   deleteScheme: (fd: FormData) => void | Promise<void>;
   upsertEntitlement: (fd: FormData) => void | Promise<void>;
   deleteEntitlement: (fd: FormData) => void | Promise<void>;
+  createCombinedLimit: (fd: FormData) => void | Promise<void>;
+  updateCombinedLimit: (fd: FormData) => void | Promise<void>;
+  deleteCombinedLimit: (fd: FormData) => void | Promise<void>;
 };
 
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as const;
@@ -76,6 +86,7 @@ export function BenefitSchemeConfig({
   gradeGroups,
   schemes,
   entitlements,
+  combinedLimits,
   actions,
 }: {
   companies: Company[];
@@ -84,6 +95,7 @@ export function BenefitSchemeConfig({
   gradeGroups: GradeGroup[];
   schemes: Scheme[];
   entitlements: Entitlement[];
+  combinedLimits: CombinedLimit[];
   actions: Actions;
 }) {
   const t = useTranslations('admin.benefitScheme');
@@ -361,10 +373,161 @@ export function BenefitSchemeConfig({
               existingLeaveTypeIds={selectedEnts.map((e) => e.leaveTypeId)}
               t={t}
             />
+
+            {/* R44 4c48fd1f — Combined Leave Limits: shared per-cycle caps pooling several leave types. */}
+            <CombinedLimitsSection
+              schemeId={selectedSchemeId}
+              leaveTypes={leaveTypes}
+              limits={combinedLimits.filter((cl) => cl.benefitSchemeId === selectedSchemeId)}
+              createAction={actions.createCombinedLimit}
+              updateAction={actions.updateCombinedLimit}
+              deleteAction={actions.deleteCombinedLimit}
+              t={t}
+            />
           </>
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * CombinedLimitsSection (R44 4c48fd1f, Stage 1) — per-scheme pools that cap several leave types under one
+ * shared per-cycle total. Lists existing pools (name / total / member type names) with edit + delete, and an
+ * add form. Members are chosen from the scheme-eligible leave types; the server enforces "a type joins at
+ * most one pool per scheme" (unique index) + a friendly error on conflict.
+ */
+function CombinedLimitsSection({
+  schemeId,
+  leaveTypes,
+  limits,
+  createAction,
+  updateAction,
+  deleteAction,
+  t,
+}: {
+  schemeId: string;
+  leaveTypes: LeaveType[];
+  limits: CombinedLimit[];
+  createAction: (fd: FormData) => void | Promise<void>;
+  updateAction: (fd: FormData) => void | Promise<void>;
+  deleteAction: (fd: FormData) => void | Promise<void>;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const typeName = useMemo(() => new Map(leaveTypes.map((lt) => [lt.id, lt.name])), [leaveTypes]);
+  const sortedLeaveTypes = useMemo(
+    () => [...leaveTypes].sort((a, b) => a.name.localeCompare(b.name)),
+    [leaveTypes],
+  );
+  return (
+    <div className="space-y-3 pt-2">
+      <div>
+        <h4 className="text-sm font-semibold text-foreground">{t('combinedTitle')}</h4>
+        <p className="text-xs text-muted-foreground">{t('combinedHelp')}</p>
+      </div>
+      <ul className="divide-y divide-border rounded-lg border border-border">
+        {limits.length === 0 && (
+          <li className="px-3 py-4 text-center text-sm text-muted-foreground">{t('combinedNone')}</li>
+        )}
+        {limits.map((cl) => (
+          <li key={cl.id} className="px-3 py-2.5">
+            <details>
+              <summary className="flex cursor-pointer items-center justify-between gap-2">
+                <span className="text-sm font-medium text-foreground">{cl.name}</span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {cl.totalLimitDays} · {cl.leaveTypeIds.map((id) => typeName.get(id) ?? '—').join(', ')}
+                </span>
+              </summary>
+              <div className="mt-3 space-y-3">
+                <CombinedLimitForm
+                  action={updateAction}
+                  schemeId={schemeId}
+                  leaveTypes={sortedLeaveTypes}
+                  limit={cl}
+                  t={t}
+                />
+                <form action={deleteAction}>
+                  <input type="hidden" name="id" value={cl.id} />
+                  <Button type="submit" variant="ghost" size="sm">{t('delete')}</Button>
+                </form>
+              </div>
+            </details>
+          </li>
+        ))}
+      </ul>
+      <CombinedLimitForm
+        action={createAction}
+        schemeId={schemeId}
+        leaveTypes={sortedLeaveTypes}
+        limit={null}
+        t={t}
+      />
+    </div>
+  );
+}
+
+function CombinedLimitForm({
+  action,
+  schemeId,
+  leaveTypes,
+  limit,
+  t,
+}: {
+  action: (fd: FormData) => void | Promise<void>;
+  schemeId: string;
+  leaveTypes: LeaveType[];
+  limit: CombinedLimit | null;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  return (
+    <form action={action} className="space-y-3 rounded-lg border border-dashed border-border p-3">
+      {limit ? (
+        <input type="hidden" name="id" value={limit.id} />
+      ) : (
+        <input type="hidden" name="benefitSchemeId" value={schemeId} />
+      )}
+      {!limit && <p className="text-xs font-medium text-muted-foreground">{t('combinedAdd')}</p>}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:items-end">
+        <Field label={t('combinedNameLabel')}>
+          <input
+            name="name"
+            required
+            defaultValue={limit?.name ?? ''}
+            placeholder={t('combinedNamePlaceholder')}
+            className={inputCls}
+          />
+        </Field>
+        <Field label={t('combinedTotalLabel')}>
+          <input
+            name="totalLimitDays"
+            type="number"
+            min={0.5}
+            step="0.5"
+            required
+            defaultValue={limit ? String(limit.totalLimitDays) : ''}
+            className={`${inputCls} w-24`}
+          />
+        </Field>
+      </div>
+      <div>
+        <span className="text-xs font-medium text-muted-foreground">{t('combinedTypesLabel')}</span>
+        <div className="mt-1.5 flex flex-wrap gap-2">
+          {leaveTypes.map((lt) => (
+            <label key={lt.id} className="flex items-center gap-1.5 rounded border border-border px-2 py-1 text-xs">
+              <input
+                type="checkbox"
+                name="leaveTypeIds"
+                value={lt.id}
+                defaultChecked={limit?.leaveTypeIds.includes(lt.id) ?? false}
+                className="size-3.5 rounded"
+              />
+              {lt.name}
+            </label>
+          ))}
+        </div>
+      </div>
+      <Button type="submit" size="sm">{limit ? t('save') : t('combinedAdd')}</Button>
+    </form>
   );
 }
 

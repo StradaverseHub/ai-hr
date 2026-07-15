@@ -28,6 +28,7 @@ import {
   LeaveNoDaysInRangeError,
   DuplicateLeaveApplicationError,
   InsufficientLeaveBalanceOnSubmitError,
+  CombinedLeaveLimitExceededError,
   LeaveApplyNotAllowedError,
   MissingRejectReasonError,
   LeaveCancellationNotAllowedError,
@@ -289,6 +290,10 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   // blocked a submit/edit whose days exceed the available balance. Localized so all 6 locales see the
   // reporter's requested message ("Insufficient leave balance. Your available leave balance is lower…").
   if (e instanceof InsufficientLeaveBalanceOnSubmitError) return t('insufficientBalance');
+  // Combined Leave Type Limit (R44 4c48fd1f, Stage 2): the shared scheme pool cap would be breached across
+  // its member leave types. Localized so all 6 locales show which pool + total was exceeded.
+  if (e instanceof CombinedLeaveLimitExceededError)
+    return t('combinedLimitExceeded', { poolName: e.poolName, days: e.totalLimitDays });
   // Leave Type Employee Visibility (7b11f1c1): HR has closed this leave type to employee applications
   // (employee_can_apply=false). Localized so the /me apply form shows a clear "contact HR" message.
   if (e instanceof LeaveApplyNotAllowedError) return t('applyNotAllowed', { typeName: name });
