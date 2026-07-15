@@ -794,6 +794,8 @@
       "headerJoinDate": "วันที่เริ่มงาน",
       "optionNotSet": "ไม่ได้ตั้งค่า",
       "optionLegacySuffix": "(ค่าที่มีอยู่)",
+      "nationalitySearchPlaceholder": "ค้นหาสัญชาติ…",
+      "nationalityNoResults": "ไม่พบสัญชาติ",
       "bankCardTitle": "ข้อมูลธนาคาร",
       "bankGroupEmployee": "ข้อมูลธนาคารของพนักงาน",
       "bankSelectPlaceholder": "เลือกธนาคาร",

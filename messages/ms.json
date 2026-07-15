@@ -794,6 +794,8 @@
       "headerJoinDate": "Tarikh menyertai",
       "optionNotSet": "Tidak ditetapkan",
       "optionLegacySuffix": "(nilai sedia ada)",
+      "nationalitySearchPlaceholder": "Cari kewarganegaraan…",
+      "nationalityNoResults": "Tiada kewarganegaraan ditemui",
       "bankCardTitle": "Maklumat Bank",
       "bankGroupEmployee": "Maklumat bank pekerja",
       "bankSelectPlaceholder": "Pilih bank",

@@ -20,6 +20,7 @@ import { hasPersonPhoto } from '@/core/person-photo';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { Combobox } from '@/components/ui/combobox';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
@@ -326,11 +327,15 @@ export default async function EmployeePage({
             />
           </Field>
           <Field label={t('nationality')}>
-            <ProfileOptionSelect
+            {/* 59047802 — searchable combobox over the full ISO 3166-1 nationality set; emits the same
+                single `nationality` value (via a hidden input) so setPersonAction is unchanged. */}
+            <Combobox
               name="nationality"
               value={emp.nationality}
-              options={profileOptions.nationality}
+              options={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
               placeholder={t('optionNotSet')}
+              searchPlaceholder={t('nationalitySearchPlaceholder')}
+              noResultsLabel={t('nationalityNoResults')}
               legacySuffix={t('optionLegacySuffix')}
             />
           </Field>

@@ -794,6 +794,8 @@
       "headerJoinDate": "入职日期",
       "optionNotSet": "未设置",
       "optionLegacySuffix": "（现有值）",
+      "nationalitySearchPlaceholder": "搜索国籍…",
+      "nationalityNoResults": "未找到国籍",
       "bankCardTitle": "银行信息",
       "bankGroupEmployee": "员工银行信息",
       "bankSelectPlaceholder": "选择银行",

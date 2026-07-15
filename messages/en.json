@@ -794,6 +794,8 @@
       "headerJoinDate": "Join date",
       "optionNotSet": "Not set",
       "optionLegacySuffix": "(existing value)",
+      "nationalitySearchPlaceholder": "Search nationality…",
+      "nationalityNoResults": "No nationality found",
       "bankCardTitle": "Bank Information",
       "bankGroupEmployee": "Employee bank information",
       "bankSelectPlaceholder": "Select a bank",

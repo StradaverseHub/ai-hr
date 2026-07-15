@@ -794,6 +794,8 @@
       "headerJoinDate": "Ngày vào làm",
       "optionNotSet": "Chưa đặt",
       "optionLegacySuffix": "(giá trị hiện có)",
+      "nationalitySearchPlaceholder": "Tìm quốc tịch…",
+      "nationalityNoResults": "Không tìm thấy quốc tịch",
       "bankCardTitle": "Thông tin ngân hàng",
       "bankGroupEmployee": "Thông tin ngân hàng của nhân viên",
       "bankSelectPlaceholder": "Chọn ngân hàng",

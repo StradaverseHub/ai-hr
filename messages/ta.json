@@ -794,6 +794,8 @@
       "headerJoinDate": "சேர்ந்த தேதி",
       "optionNotSet": "அமைக்கப்படவில்லை",
       "optionLegacySuffix": "(தற்போதைய மதிப்பு)",
+      "nationalitySearchPlaceholder": "தேசியத்தைத் தேடுங்கள்…",
+      "nationalityNoResults": "தேசியம் ஏதுவும் கிடைக்கவில்லை",
       "bankCardTitle": "வங்கித் தகவல்",
       "bankGroupEmployee": "ஊழியர் வங்கித் தகவல்",
       "bankSelectPlaceholder": "ஒரு வங்கியைத் தேர்ந்தெடுக்கவும்",
