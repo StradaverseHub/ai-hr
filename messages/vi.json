@@ -3633,7 +3633,14 @@
       "eligibilitySelectAll": "Chọn tất cả",
       "eligibilityClearAll": "Xóa tất cả",
       "eligibilityAllSelected": "Đã chọn tất cả",
-      "eligibilityNSelected": "Đã chọn {count}"
+      "eligibilityNSelected": "Đã chọn {count}",
+      "categoryGeneral": "Cài đặt chung",
+      "categoryEligibilityEntitlement": "Chính sách đủ điều kiện & định mức",
+      "categoryEssPolicy": "Chính sách tự phục vụ nhân viên",
+      "categoryApproval": "Quy tắc phê duyệt",
+      "categoryDisplay": "Hiển thị thông tin nghỉ phép",
+      "categoryCalculation": "Quy tắc tính toán nghỉ phép",
+      "categoryCustom": "Cài đặt tùy chỉnh"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

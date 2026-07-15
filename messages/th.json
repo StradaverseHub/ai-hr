@@ -3633,7 +3633,14 @@
       "eligibilitySelectAll": "เลือกทั้งหมด",
       "eligibilityClearAll": "ล้างทั้งหมด",
       "eligibilityAllSelected": "เลือกทั้งหมดแล้ว",
-      "eligibilityNSelected": "เลือกแล้ว {count} รายการ"
+      "eligibilityNSelected": "เลือกแล้ว {count} รายการ",
+      "categoryGeneral": "การตั้งค่าทั่วไป",
+      "categoryEligibilityEntitlement": "นโยบายสิทธิ์และการมีสิทธิ์",
+      "categoryEssPolicy": "นโยบายบริการตนเองของพนักงาน",
+      "categoryApproval": "กฎการอนุมัติ",
+      "categoryDisplay": "การแสดงข้อมูลการลา",
+      "categoryCalculation": "กฎการคำนวณการลา",
+      "categoryCustom": "การตั้งค่าที่กำหนดเอง"
     },
     "holidays": {
       "pageTitle": "วันหยุดราชการ",

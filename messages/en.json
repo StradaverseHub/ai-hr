@@ -3633,7 +3633,14 @@
       "eligibilitySelectAll": "Select all",
       "eligibilityClearAll": "Clear all",
       "eligibilityAllSelected": "All selected",
-      "eligibilityNSelected": "{count} selected"
+      "eligibilityNSelected": "{count} selected",
+      "categoryGeneral": "General Setting",
+      "categoryEligibilityEntitlement": "Eligibility & Entitlement Policy",
+      "categoryEssPolicy": "Employee Self Service Policy",
+      "categoryApproval": "Approval Rules",
+      "categoryDisplay": "Leave Information Display",
+      "categoryCalculation": "Leave Calculation Rules",
+      "categoryCustom": "Custom Settings"
     },
     "holidays": {
       "pageTitle": "Public holidays",

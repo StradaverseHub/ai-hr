@@ -15,6 +15,7 @@ import {
   type LeaveIconKey,
 } from '@/lib/leave-visual';
 import { Button, Field, inputCls } from './ui';
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { ChipMultiSelect } from './ui/chip-multi-select';
 
@@ -818,6 +819,11 @@ export function LeaveTypePanel({
 
       {expanded && (
         <div className="space-y-3 border-t border-border/60 bg-muted/20 px-4 py-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('categoryGeneral')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
           {/* type-level controls */}
           {editingName ? (
             <form
@@ -964,7 +970,6 @@ export function LeaveTypePanel({
               )}
             </div>
           )}
-
           {/* statutory floor (read-only) */}
           <div className="flex items-center justify-between gap-3 rounded-lg bg-background px-3 py-2 text-xs">
             <span className="text-muted-foreground">{t('statutoryMinimum')}</span>
@@ -972,11 +977,37 @@ export function LeaveTypePanel({
               {floorLabel ? t('daysValue', { days: floorLabel }) : t('none')}
             </span>
           </div>
-
-          {/* Feedback 9d8cf621: the per-type config sections sit SIDE-BY-SIDE (two-across on lg) instead of
-              one long stacked column. Each section keeps its own self-contained <form> + tri-state marker, so
-              this is pure layout — no form is split and no marker/hidden-name is dropped. */}
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {/* Leave Unit Configuration (e4980382). Its own self-contained sub-form (own tri-state) posts
+              `leaveUnit=1` — a Day/Hour select declaring whether this leave type is managed in whole days or
+              in hours. Coarse labelling/reporting only: it does NOT change entitlement, accrual, workflow, or
+              payroll behaviour. Default Day; existing types read Day (backward compatible). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('leaveUnitSectionTitle')}</span>
+            <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the leave_unit column (tri-state guard) */}
+              <input type="hidden" name="leaveUnit" value="1" />
+              <Field label={t('leaveUnitLabel')}>
+                <select name="leaveUnitValue" defaultValue={leaveUnit === 'hour' ? 'hour' : 'day'} className={`${inputCls} w-32`}>
+                  <option value="day">{t('leaveUnitDay')}</option>
+                  <option value="hour">{t('leaveUnitHour')}</option>
+                </select>
+              </Field>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('leaveUnitHelp')}</p>
+          </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
           {/* #25 visibility — eligibility rules (who can see + apply) */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
@@ -1068,615 +1099,6 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('eligibilityHelp')}</p>
             <p className="text-xs text-muted-foreground">{t('eligibilityUndisclosedNote')}</p>
           </div>
-
-          {/* Day Type Inclusion (feedback ef6d7146) — five independent toggles deciding which day types are
-              counted when calculating a leave's duration. Lives inside Eligibility Rules (reporter's request),
-              its own self-contained <form> + `dayTypeInclusion=1` tri-state marker so an unrelated save never
-              resets it. Simple toggle list — no matrix — matching the reporter's UX ask. */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-muted-foreground">{t('dayTypeInclusion.sectionTitle')}</span>
-              {!editingDayTypes && (
-                <Button type="button" size="sm" variant="ghost" onClick={() => setEditingDayTypes(true)}>
-                  {t('eligibilityEdit')}
-                </Button>
-              )}
-            </div>
-            {editingDayTypes ? (
-              <form
-                action={updateTypeAction}
-                className="space-y-2 rounded-lg bg-background p-3"
-                onSubmit={() => setEditingDayTypes(false)}
-              >
-                <input type="hidden" name="id" value={id} />
-                {/* preserve the name — this form does not edit it */}
-                <input type="hidden" name="name" value={name} />
-                {/* marker: tells the action to touch the day_type_inclusion column (tri-state guard) */}
-                <input type="hidden" name="dayTypeInclusion" value="1" />
-                <div className="flex flex-col gap-1.5">
-                  {DAY_TYPE_INCLUSION_OPTIONS.map((k) => (
-                    <label key={k} className="flex items-center gap-2 text-sm text-foreground">
-                      <input
-                        type="checkbox"
-                        name={`dayType_${k}`}
-                        defaultChecked={dayTypeInclusion?.[k] === true}
-                        className="size-4 accent-primary"
-                      />
-                      {dayTypeLabel(k)}
-                    </label>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <Button type="submit" size="sm">
-                    {t('save')}
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setEditingDayTypes(false)}>
-                    {t('cancel')}
-                  </Button>
-                </div>
-              </form>
-            ) : (
-              <div className="rounded-lg bg-background px-3 py-2 text-xs text-foreground">
-                {dayTypeInclusionSummary()}
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.help')}</p>
-            <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.statutoryNote')}</p>
-          </div>
-
-          {/* ADR-0048 — allowed leave durations (full day is always available) */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('allowedDurationsLabel')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the durations column (tri-state guard) */}
-              <input type="hidden" name="durations" value="1" />
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <input type="checkbox" checked disabled className="size-3.5 rounded border-border" />
-                {t('duration_full_day')}
-              </label>
-              {DURATION_OPTIONS.map((d) => (
-                <label key={d} className="flex items-center gap-2 text-xs text-foreground">
-                  <input
-                    type="checkbox"
-                    name="duration"
-                    value={d}
-                    defaultChecked={durations?.includes(d) ?? false}
-                    className="size-3.5 rounded border-border"
-                  />
-                  {t(`duration_${d}`)}
-                </label>
-              ))}
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('allowedDurationsHelp')}</p>
-          </div>
-
-          {/* Supporting-document configuration */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('documentSectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the document columns (tri-state guard) */}
-              <input type="hidden" name="document" value="1" />
-              <label className="flex items-center gap-2 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  name="requiresDocument"
-                  defaultChecked={requiresDocument}
-                  className="size-3.5 rounded border-border"
-                />
-                {t('requireAttachmentLabel')}
-              </label>
-              <Field label={t('mandatoryAfterDaysLabel')}>
-                <input
-                  name="mandatoryAfterDays"
-                  type="number"
-                  min="0"
-                  step="1"
-                  defaultValue={mandatoryAfterDays ?? ''}
-                  className={`${inputCls} w-24`}
-                />
-              </Field>
-              <div className="space-y-1">
-                <span className="text-xs text-muted-foreground">{t('allowedFileTypesLabel')}</span>
-                <div className="flex flex-wrap gap-3">
-                  {DOC_MIME_OPTIONS.map((o) => (
-                    <label key={o.mime} className="flex items-center gap-1.5 text-xs text-foreground">
-                      <input
-                        type="checkbox"
-                        name="allowedMimeType"
-                        value={o.mime}
-                        defaultChecked={allowedMimeTypes?.includes(o.mime) ?? false}
-                        className="size-3.5 rounded border-border"
-                      />
-                      {t(o.label)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <Field label={t('maxFileSizeLabel')}>
-                <input
-                  name="maxFileSizeMb"
-                  type="number"
-                  min="1"
-                  max="10"
-                  step="1"
-                  defaultValue={Math.round(maxDocBytes / (1024 * 1024))}
-                  className={`${inputCls} w-24`}
-                />
-              </Field>
-              <label className="flex items-center gap-2 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  name="employeeRemarkRequired"
-                  defaultChecked={employeeRemarkRequired}
-                  className="size-3.5 rounded border-border"
-                />
-                {t('employeeRemarkRequiredLabel')}
-              </label>
-              <label className="flex items-center gap-2 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  name="hrRemarkRequired"
-                  defaultChecked={hrRemarkRequired}
-                  className="size-3.5 rounded border-border"
-                />
-                {t('hrRemarkRequiredLabel')}
-              </label>
-              <Button type="submit" size="sm">
-                {t('saveDocumentRule')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('documentSectionHelp')}</p>
-          </div>
-
-          {/* Feedback 9d8cf621: the "Payroll impact" controls moved to the Payroll Related tab (per-type list
-              there). Both were self-contained sub-forms, so moving/removing them here never touches any other
-              column on save. */}
-
-          {/* Partial Leave Approval (ADR-0068 · re-added ac6c2025). Its own sub-form (own tri-state) posts
-              `partialApproval=1`, so a rename / eligibility / durations / document / payroll / backdating edit
-              that omits the marker leaves per_date_approval untouched. This is the HR-facing enable switch for
-              the per-date approval modal that is already live on the approvals inbox — previously removable only
-              via seed data after feedback 9d8cf621 dropped this toggle. Backend wiring (app/admin/actions.ts
-              touchPartial + core/admin.ts) was left intact; this restores the surface that drives it.
-              The feature only fires for FULL-DAY, WORKING-DAYS-counted, non-REPLACEMENT types in a company whose
-              leave approval chain is single-step; when the type can never satisfy that, we still let the admin
-              set the flag but show a greyed note explaining it won't apply (rather than silently no-op). */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('partialApprovalSectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the per_date_approval column (tri-state guard) */}
-              <input type="hidden" name="partialApproval" value="1" />
-              <label className="flex items-center gap-2 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  name="perDateApproval"
-                  defaultChecked={perDateApproval}
-                  className="size-3.5 rounded border-border"
-                />
-                {t('perDateApprovalLabel')}
-              </label>
-              {/* Greyed note: the type is structurally ineligible (REPLACEMENT or calendar-counted), so the
-                  flag has no effect even when set. Mirrors ADR-0068 §4C's gate rather than silently ignoring. */}
-              {(code === 'REPLACEMENT' || counting !== 'working_days') && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  {code === 'REPLACEMENT'
-                    ? t('perDateApprovalNoteReplacement')
-                    : t('perDateApprovalNoteCounting')}
-                </p>
-              )}
-              {/* Discoverability note (item 4): the load-bearing explanation of the multi-step interaction. */}
-              <p className="text-xs text-muted-foreground">{t('perDateApprovalMultiStepNote')}</p>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
-          </div>
-
-          {/* Duplicate Leave Application Restriction (d5e51c34). Its own self-contained <form> + `duplicatePolicy=1`
-              tri-state marker so an unrelated save never resets it. A 3-option radio controls whether an employee
-              may submit more than one leave application overlapping the same date. Default 'allow' = today's
-              behaviour; the two restrict modes enforce at submit + edit (core/leave.ts). */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('duplicatePolicySectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the duplicate_application_policy column (tri-state guard) */}
-              <input type="hidden" name="duplicatePolicy" value="1" />
-              {(() => {
-                const current = ['allow', 'restrict_same', 'restrict_any'].includes(duplicateApplicationPolicy ?? '')
-                  ? (duplicateApplicationPolicy as string)
-                  : 'allow';
-                return (
-                  <div className="space-y-1.5">
-                    {(['allow', 'restrict_same', 'restrict_any'] as const).map((opt) => (
-                      <label key={opt} className="flex items-start gap-2 text-xs text-foreground">
-                        <input
-                          type="radio"
-                          name="duplicatePolicyValue"
-                          value={opt}
-                          defaultChecked={current === opt}
-                          className="mt-0.5 size-3.5 border-border"
-                        />
-                        <span>
-                          {opt === 'allow'
-                            ? t('duplicatePolicyAllow')
-                            : opt === 'restrict_same'
-                              ? t('duplicatePolicyRestrictSame')
-                              : t('duplicatePolicyRestrictAny')}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                );
-              })()}
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('duplicatePolicyHelp')}</p>
-          </div>
-
-          {/* Configurable Negative Leave Balance Validation (0ef0defd). Its own self-contained <form> +
-              `negativeBalance=1` tri-state marker so an unrelated save never resets it. A Yes/No radio controls
-              whether an employee may submit (or edit) a leave application whose days exceed their available
-              balance. Default 'No' = block over-application at submit + edit (core/leave.ts); 'Yes' permits
-              going negative (the approval-time guard still applies). */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('negativeBalanceSectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the allow_negative_balance column (tri-state guard) */}
-              <input type="hidden" name="negativeBalance" value="1" />
-              <span className="text-xs font-medium text-foreground">{t('negativeBalanceLabel')}</span>
-              <div className="space-y-1.5">
-                {(['no', 'yes'] as const).map((opt) => (
-                  <label key={opt} className="flex items-start gap-2 text-xs text-foreground">
-                    <input
-                      type="radio"
-                      name="allowNegativeBalanceValue"
-                      value={opt}
-                      defaultChecked={opt === (allowNegativeBalance ? 'yes' : 'no')}
-                      className="mt-0.5 size-3.5 border-border"
-                    />
-                    <span>{opt === 'yes' ? t('negativeBalanceYes') : t('negativeBalanceNo')}</span>
-                  </label>
-                ))}
-              </div>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('negativeBalanceHelp')}</p>
-          </div>
-
-          {/* Configurable backdated-leave restriction (0133). Its own sub-form (own tri-state) posts
-              `backdating=1`. Hidden for Emergency Leave — EL is inherently retroactive and is never guarded,
-              so showing the field would let HR set a value that is silently ignored (the EL config-trap). */}
-          {code !== 'EMERGENCY' && (
-            <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">{t('backdatingSectionTitle')}</span>
-              <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-                <input type="hidden" name="id" value={id} />
-                {/* preserve the name — this form does not edit it */}
-                <input type="hidden" name="name" value={name} />
-                {/* marker: tells the action to touch the backdating_limit_days column (tri-state guard) */}
-                <input type="hidden" name="backdating" value="1" />
-                <Field label={t('backdatingLimitDaysLabel')}>
-                  <input
-                    name="backdatingLimitDays"
-                    type="number"
-                    min="0"
-                    step="1"
-                    defaultValue={backdatingLimitDays ?? ''}
-                    className={`${inputCls} w-24`}
-                  />
-                </Field>
-                {/* Custom validation messages (custom-messages migration): optional HR-authored override for
-                    the backdating block message. Lives in the SAME form as the limit so it saves atomically
-                    with `backdating=1`. Blank = keep the built-in localized default. */}
-                <Field label={t('customMessageLabel')}>
-                  <textarea
-                    name="customMessageBackdating"
-                    maxLength={500}
-                    rows={2}
-                    defaultValue={customMessages?.backdatingLimitDays ?? ''}
-                    placeholder={t('customMessagePlaceholder')}
-                    className={inputCls}
-                  />
-                </Field>
-                <p className="text-xs text-muted-foreground">{t('customMessageHelp')}</p>
-                <Button type="submit" size="sm">
-                  {t('save')}
-                </Button>
-              </form>
-              <p className="text-xs text-muted-foreground">{t('backdatingSectionHelp')}</p>
-            </div>
-          )}
-
-          {/* Minimum advance-notice rule (0159 / feedback 0b0fb6c3). Its own sub-form (own tri-state) posts
-              `minAdvance=1`, mirroring the backdating block above. Hidden for Emergency Leave — EL exists
-              precisely for short-notice absence and is never guarded (it decomposes before the gate), so
-              showing the field would let HR set a value that is silently ignored (the EL config-trap). */}
-          {code !== 'EMERGENCY' && (
-            <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">{t('advanceNoticeSectionTitle')}</span>
-              <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-                <input type="hidden" name="id" value={id} />
-                {/* preserve the name — this form does not edit it */}
-                <input type="hidden" name="name" value={name} />
-                {/* marker: tells the action to touch the min_advance_days column (tri-state guard) */}
-                <input type="hidden" name="minAdvance" value="1" />
-                <Field label={t('minAdvanceDaysLabel')}>
-                  <input
-                    name="minAdvanceDays"
-                    type="number"
-                    min="0"
-                    step="1"
-                    defaultValue={minAdvanceDays ?? ''}
-                    className={`${inputCls} w-24`}
-                  />
-                </Field>
-                {/* Custom validation messages (0147): optional HR-authored override for the advance-notice
-                    block message. Lives in the SAME form as the rule so it saves atomically with
-                    `minAdvance=1`. Blank = keep the built-in localized default. */}
-                <Field label={t('customMessageLabel')}>
-                  <textarea
-                    name="customMessageMinAdvance"
-                    maxLength={500}
-                    rows={2}
-                    defaultValue={customMessages?.minAdvanceDays ?? ''}
-                    placeholder={t('customMessagePlaceholder')}
-                    className={inputCls}
-                  />
-                </Field>
-                <p className="text-xs text-muted-foreground">{t('advanceCustomMessageHelp')}</p>
-                <Button type="submit" size="sm">
-                  {t('save')}
-                </Button>
-              </form>
-              <p className="text-xs text-muted-foreground">{t('advanceNoticeSectionHelp')}</p>
-            </div>
-          )}
-
-          {/* Leave Type Expiry Field (fec49317). Its own sub-form (own tri-state) posts `expiry=1`.
-              Hidden for Annual — Annual already has per-policy carry-forward expiry (a second age-based
-              forfeit would double-count) — and for Emergency Leave, which carries no balance. Both inputs
-              blank ⇒ clears the expiry; a number + unit configures age-from-earning expiry. */}
-          {!isAnnual && code !== 'EMERGENCY' && (
-            <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">{t('expirySectionTitle')}</span>
-              <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
-                <input type="hidden" name="id" value={id} />
-                {/* preserve the name — this form does not edit it */}
-                <input type="hidden" name="name" value={name} />
-                {/* marker: tells the action to touch the expiry_value / expiry_unit columns (tri-state guard) */}
-                <input type="hidden" name="expiry" value="1" />
-                <Field label={t('expiryValueLabel')}>
-                  <input
-                    name="expiryValue"
-                    type="number"
-                    min="1"
-                    step="1"
-                    defaultValue={expiryValue ?? ''}
-                    placeholder={t('expiryValuePlaceholder')}
-                    className={`${inputCls} w-24`}
-                  />
-                </Field>
-                <Field label={t('expiryUnitLabel')}>
-                  <select name="expiryUnit" defaultValue={expiryUnit ?? 'months'} className={`${inputCls} w-32`}>
-                    <option value="months">{t('expiryUnitMonths')}</option>
-                    <option value="days">{t('expiryUnitDays')}</option>
-                  </select>
-                </Field>
-                <Button type="submit" size="sm">
-                  {t('save')}
-                </Button>
-              </form>
-              <p className="text-xs text-muted-foreground">{t('expirySectionHelp')}</p>
-            </div>
-          )}
-
-          {/* Feedback 9d8cf621 — custom apply-time message. Own sub-form + tri-state marker `applyNotice=1`.
-              An "Enable custom message" checkbox reveals the textarea; unchecked ⇒ textarea hidden and an empty
-              value posts ⇒ the applyNotice key clears (message disabled). Shown to employees on the apply form. */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('applyNoticeSectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the applyNotice custom-message key (tri-state guard) */}
-              <input type="hidden" name="applyNotice" value="1" />
-              <label className="flex items-center gap-2 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  name="enableApplyNotice"
-                  checked={applyNoticeEnabled}
-                  onChange={(e) => setApplyNoticeEnabled(e.target.checked)}
-                  className="size-3.5 rounded border-border"
-                />
-                {t('applyNoticeEnableLabel')}
-              </label>
-              {applyNoticeEnabled && (
-                <textarea
-                  name="customMessageApplyNotice"
-                  maxLength={500}
-                  rows={3}
-                  defaultValue={customMessages?.applyNotice ?? ''}
-                  placeholder={t('applyNoticePlaceholder')}
-                  className={inputCls}
-                />
-              )}
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('applyNoticeHelp')}</p>
-          </div>
-
-          {/* Employee Leave View Configuration (65dec703 / dup 1fedb473). Its own self-contained sub-form
-              (own tri-state) posts `essView=1` — a checklist of the breakdown components an employee sees in
-              My Profile → Leave for THIS leave type. An unchecked box does not post; the action rebuilds the
-              full { key: boolean } map from the closed key list, so unticked ⇒ hidden in ESS. Gating applies
-              to /me only — admin/HR always see everything. null/missing ⇒ visible (backward compatible). */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('essView.sectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the ess_view_config column (tri-state guard) */}
-              <input type="hidden" name="essView" value="1" />
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {ESS_VIEW_COMPONENT_KEYS.map((key) => (
-                  <label key={key} className="flex items-center gap-2 text-xs text-foreground">
-                    <input
-                      type="checkbox"
-                      name={`essView_${key}`}
-                      defaultChecked={essViewConfig?.[key] !== false}
-                      className="size-3.5 rounded border-border"
-                    />
-                    {t(`essView.${key}`)}
-                  </label>
-                ))}
-              </div>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('essView.help')}</p>
-          </div>
-
-          {/* Leave Type Employee Visibility (7b11f1c1). Its own self-contained sub-form (own tri-state) posts
-              `visibility=1` — two checkboxes controlling whether an employee sees this leave type on their
-              self-service Leave tab, and whether they may apply for it. Both switches are independent: a
-              visible-but-not-can-apply type still shows (and its balance) but is dropped from the apply menu
-              and rejected server-side in requestLeave. A statutory-entitlement code (ANNUAL / SICK /
-              HOSPITALIZATION / MATERNITY / PATERNITY) cannot have applications blocked — the checkbox is
-              disabled + forced on there, and the service rejects it too. null/default ⇒ visible + can-apply
-              (backward compatible). */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('visibility.sectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the two visibility columns (tri-state guard) */}
-              <input type="hidden" name="visibility" value="1" />
-              <label className="flex items-center gap-2 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  name="visibleToEmployee"
-                  defaultChecked={visibleToEmployee !== false}
-                  className="size-3.5 rounded border-border"
-                />
-                {t('visibility.visibleToEmployee')}
-              </label>
-              <label className="flex items-center gap-2 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  name="employeeCanApply"
-                  defaultChecked={isStatutoryApply ? true : employeeCanApply !== false}
-                  disabled={isStatutoryApply}
-                  className="size-3.5 rounded border-border disabled:opacity-60"
-                />
-                {t('visibility.employeeCanApply')}
-              </label>
-              {isStatutoryApply ? (
-                <p className="text-xs text-amber-600 dark:text-amber-500">{t('visibility.statutoryLocked')}</p>
-              ) : null}
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('visibility.help')}</p>
-          </div>
-
-          {/* Leave grouping visibility (b653ac1b). Its own self-contained sub-form (own tri-state) posts
-              `placement=1` — a single Primary / Secondary / Hidden select deciding WHERE this leave type sits
-              on the employee's My Profile → Leave tab: a Primary card at the top, tucked into a Secondary
-              group, or Hidden entirely. HIDDEN REUSES THE SINGLE VISIBILITY SWITCH (7b11f1c1): choosing Hidden
-              sets visible_to_employee=false — there is no second hidden control. The current selection is
-              resolved from the stored value, the visibility flag, and the code-keyed default so an unconfigured
-              type shows its sensible starting point. Presentation only — no balances/entitlement change. */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('placement.sectionTitle')}</span>
-            <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch ess_placement + the shared visibility flag (tri-state guard) */}
-              <input type="hidden" name="placement" value="1" />
-              <Field label={t('placement.label')}>
-                <select
-                  name="placementValue"
-                  defaultValue={resolvePlacement(code, essPlacement, visibleToEmployee)}
-                  className={`${inputCls} w-40`}
-                >
-                  {ESS_PLACEMENTS.map((pl) => (
-                    <option key={pl} value={pl}>
-                      {t(`placement.option.${pl}`)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('placement.help')}</p>
-          </div>
-
-          {/* Leave Unit Configuration (e4980382). Its own self-contained sub-form (own tri-state) posts
-              `leaveUnit=1` — a Day/Hour select declaring whether this leave type is managed in whole days or
-              in hours. Coarse labelling/reporting only: it does NOT change entitlement, accrual, workflow, or
-              payroll behaviour. Default Day; existing types read Day (backward compatible). */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('leaveUnitSectionTitle')}</span>
-            <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the leave_unit column (tri-state guard) */}
-              <input type="hidden" name="leaveUnit" value="1" />
-              <Field label={t('leaveUnitLabel')}>
-                <select name="leaveUnitValue" defaultValue={leaveUnit === 'hour' ? 'hour' : 'day'} className={`${inputCls} w-32`}>
-                  <option value="day">{t('leaveUnitDay')}</option>
-                  <option value="hour">{t('leaveUnitHour')}</option>
-                </select>
-              </Field>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('leaveUnitHelp')}</p>
-          </div>
-
-          {/* Leave Type Visual Configuration Enhancement (639fdf77). Its own self-contained sub-form (own
-              tri-state) posts `visual=1` — a searchable icon picker + a 7-token colour swatch, purely
-              cosmetic (icon + colour beside the leave type on the employee My Profile → Leave tab). Nothing
-              existing moves; both null ⇒ default styling (backward compatible). */}
-          <LeaveVisualForm t={t} id={id} name={name} color={color} icon={icon} action={updateTypeAction} />
-          </div>
-          {/* end side-by-side grid (feedback 9d8cf621) */}
-
           {/* entitlement timeline */}
           <div className="space-y-1.5">
             <div className="text-xs font-medium text-muted-foreground">{t('companyEntitlements')}</div>
@@ -1884,7 +1306,6 @@ export function LeaveTypePanel({
               ),
             )}
           </div>
-
           {/* add a dated entitlement */}
           {adding ? (
             <form
@@ -2094,6 +1515,609 @@ export function LeaveTypePanel({
               {t('addEntitlement')}
             </Button>
           )}
+          {/* Leave Type Expiry Field (fec49317). Its own sub-form (own tri-state) posts `expiry=1`.
+              Hidden for Annual — Annual already has per-policy carry-forward expiry (a second age-based
+              forfeit would double-count) — and for Emergency Leave, which carries no balance. Both inputs
+              blank ⇒ clears the expiry; a number + unit configures age-from-earning expiry. */}
+          {!isAnnual && code !== 'EMERGENCY' && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">{t('expirySectionTitle')}</span>
+              <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
+                <input type="hidden" name="id" value={id} />
+                {/* preserve the name — this form does not edit it */}
+                <input type="hidden" name="name" value={name} />
+                {/* marker: tells the action to touch the expiry_value / expiry_unit columns (tri-state guard) */}
+                <input type="hidden" name="expiry" value="1" />
+                <Field label={t('expiryValueLabel')}>
+                  <input
+                    name="expiryValue"
+                    type="number"
+                    min="1"
+                    step="1"
+                    defaultValue={expiryValue ?? ''}
+                    placeholder={t('expiryValuePlaceholder')}
+                    className={`${inputCls} w-24`}
+                  />
+                </Field>
+                <Field label={t('expiryUnitLabel')}>
+                  <select name="expiryUnit" defaultValue={expiryUnit ?? 'months'} className={`${inputCls} w-32`}>
+                    <option value="months">{t('expiryUnitMonths')}</option>
+                    <option value="days">{t('expiryUnitDays')}</option>
+                  </select>
+                </Field>
+                <Button type="submit" size="sm">
+                  {t('save')}
+                </Button>
+              </form>
+              <p className="text-xs text-muted-foreground">{t('expirySectionHelp')}</p>
+            </div>
+          )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('categoryEssPolicy')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+          {/* Feedback 9d8cf621: the "Payroll impact" controls moved to the Payroll Related tab (per-type list
+              there). Both were self-contained sub-forms, so moving/removing them here never touches any other
+              column on save. */}
+          {/* ADR-0048 — allowed leave durations (full day is always available) */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('allowedDurationsLabel')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the durations column (tri-state guard) */}
+              <input type="hidden" name="durations" value="1" />
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked disabled className="size-3.5 rounded border-border" />
+                {t('duration_full_day')}
+              </label>
+              {DURATION_OPTIONS.map((d) => (
+                <label key={d} className="flex items-center gap-2 text-xs text-foreground">
+                  <input
+                    type="checkbox"
+                    name="duration"
+                    value={d}
+                    defaultChecked={durations?.includes(d) ?? false}
+                    className="size-3.5 rounded border-border"
+                  />
+                  {t(`duration_${d}`)}
+                </label>
+              ))}
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('allowedDurationsHelp')}</p>
+          </div>
+          {/* Supporting-document configuration */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('documentSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the document columns (tri-state guard) */}
+              <input type="hidden" name="document" value="1" />
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="requiresDocument"
+                  defaultChecked={requiresDocument}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('requireAttachmentLabel')}
+              </label>
+              <Field label={t('mandatoryAfterDaysLabel')}>
+                <input
+                  name="mandatoryAfterDays"
+                  type="number"
+                  min="0"
+                  step="1"
+                  defaultValue={mandatoryAfterDays ?? ''}
+                  className={`${inputCls} w-24`}
+                />
+              </Field>
+              <div className="space-y-1">
+                <span className="text-xs text-muted-foreground">{t('allowedFileTypesLabel')}</span>
+                <div className="flex flex-wrap gap-3">
+                  {DOC_MIME_OPTIONS.map((o) => (
+                    <label key={o.mime} className="flex items-center gap-1.5 text-xs text-foreground">
+                      <input
+                        type="checkbox"
+                        name="allowedMimeType"
+                        value={o.mime}
+                        defaultChecked={allowedMimeTypes?.includes(o.mime) ?? false}
+                        className="size-3.5 rounded border-border"
+                      />
+                      {t(o.label)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <Field label={t('maxFileSizeLabel')}>
+                <input
+                  name="maxFileSizeMb"
+                  type="number"
+                  min="1"
+                  max="10"
+                  step="1"
+                  defaultValue={Math.round(maxDocBytes / (1024 * 1024))}
+                  className={`${inputCls} w-24`}
+                />
+              </Field>
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="employeeRemarkRequired"
+                  defaultChecked={employeeRemarkRequired}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('employeeRemarkRequiredLabel')}
+              </label>
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="hrRemarkRequired"
+                  defaultChecked={hrRemarkRequired}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('hrRemarkRequiredLabel')}
+              </label>
+              <Button type="submit" size="sm">
+                {t('saveDocumentRule')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('documentSectionHelp')}</p>
+          </div>
+          {/* Configurable Negative Leave Balance Validation (0ef0defd). Its own self-contained <form> +
+              `negativeBalance=1` tri-state marker so an unrelated save never resets it. A Yes/No radio controls
+              whether an employee may submit (or edit) a leave application whose days exceed their available
+              balance. Default 'No' = block over-application at submit + edit (core/leave.ts); 'Yes' permits
+              going negative (the approval-time guard still applies). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('negativeBalanceSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the allow_negative_balance column (tri-state guard) */}
+              <input type="hidden" name="negativeBalance" value="1" />
+              <span className="text-xs font-medium text-foreground">{t('negativeBalanceLabel')}</span>
+              <div className="space-y-1.5">
+                {(['no', 'yes'] as const).map((opt) => (
+                  <label key={opt} className="flex items-start gap-2 text-xs text-foreground">
+                    <input
+                      type="radio"
+                      name="allowNegativeBalanceValue"
+                      value={opt}
+                      defaultChecked={opt === (allowNegativeBalance ? 'yes' : 'no')}
+                      className="mt-0.5 size-3.5 border-border"
+                    />
+                    <span>{opt === 'yes' ? t('negativeBalanceYes') : t('negativeBalanceNo')}</span>
+                  </label>
+                ))}
+              </div>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('negativeBalanceHelp')}</p>
+          </div>
+          {/* Configurable backdated-leave restriction (0133). Its own sub-form (own tri-state) posts
+              `backdating=1`. Hidden for Emergency Leave — EL is inherently retroactive and is never guarded,
+              so showing the field would let HR set a value that is silently ignored (the EL config-trap). */}
+          {code !== 'EMERGENCY' && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">{t('backdatingSectionTitle')}</span>
+              <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+                <input type="hidden" name="id" value={id} />
+                {/* preserve the name — this form does not edit it */}
+                <input type="hidden" name="name" value={name} />
+                {/* marker: tells the action to touch the backdating_limit_days column (tri-state guard) */}
+                <input type="hidden" name="backdating" value="1" />
+                <Field label={t('backdatingLimitDaysLabel')}>
+                  <input
+                    name="backdatingLimitDays"
+                    type="number"
+                    min="0"
+                    step="1"
+                    defaultValue={backdatingLimitDays ?? ''}
+                    className={`${inputCls} w-24`}
+                  />
+                </Field>
+                {/* Custom validation messages (custom-messages migration): optional HR-authored override for
+                    the backdating block message. Lives in the SAME form as the limit so it saves atomically
+                    with `backdating=1`. Blank = keep the built-in localized default. */}
+                <Field label={t('customMessageLabel')}>
+                  <textarea
+                    name="customMessageBackdating"
+                    maxLength={500}
+                    rows={2}
+                    defaultValue={customMessages?.backdatingLimitDays ?? ''}
+                    placeholder={t('customMessagePlaceholder')}
+                    className={inputCls}
+                  />
+                </Field>
+                <p className="text-xs text-muted-foreground">{t('customMessageHelp')}</p>
+                <Button type="submit" size="sm">
+                  {t('save')}
+                </Button>
+              </form>
+              <p className="text-xs text-muted-foreground">{t('backdatingSectionHelp')}</p>
+            </div>
+          )}
+          {/* Minimum advance-notice rule (0159 / feedback 0b0fb6c3). Its own sub-form (own tri-state) posts
+              `minAdvance=1`, mirroring the backdating block above. Hidden for Emergency Leave — EL exists
+              precisely for short-notice absence and is never guarded (it decomposes before the gate), so
+              showing the field would let HR set a value that is silently ignored (the EL config-trap). */}
+          {code !== 'EMERGENCY' && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">{t('advanceNoticeSectionTitle')}</span>
+              <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+                <input type="hidden" name="id" value={id} />
+                {/* preserve the name — this form does not edit it */}
+                <input type="hidden" name="name" value={name} />
+                {/* marker: tells the action to touch the min_advance_days column (tri-state guard) */}
+                <input type="hidden" name="minAdvance" value="1" />
+                <Field label={t('minAdvanceDaysLabel')}>
+                  <input
+                    name="minAdvanceDays"
+                    type="number"
+                    min="0"
+                    step="1"
+                    defaultValue={minAdvanceDays ?? ''}
+                    className={`${inputCls} w-24`}
+                  />
+                </Field>
+                {/* Custom validation messages (0147): optional HR-authored override for the advance-notice
+                    block message. Lives in the SAME form as the rule so it saves atomically with
+                    `minAdvance=1`. Blank = keep the built-in localized default. */}
+                <Field label={t('customMessageLabel')}>
+                  <textarea
+                    name="customMessageMinAdvance"
+                    maxLength={500}
+                    rows={2}
+                    defaultValue={customMessages?.minAdvanceDays ?? ''}
+                    placeholder={t('customMessagePlaceholder')}
+                    className={inputCls}
+                  />
+                </Field>
+                <p className="text-xs text-muted-foreground">{t('advanceCustomMessageHelp')}</p>
+                <Button type="submit" size="sm">
+                  {t('save')}
+                </Button>
+              </form>
+              <p className="text-xs text-muted-foreground">{t('advanceNoticeSectionHelp')}</p>
+            </div>
+          )}
+          {/* Duplicate Leave Application Restriction (d5e51c34). Its own self-contained <form> + `duplicatePolicy=1`
+              tri-state marker so an unrelated save never resets it. A 3-option radio controls whether an employee
+              may submit more than one leave application overlapping the same date. Default 'allow' = today's
+              behaviour; the two restrict modes enforce at submit + edit (core/leave.ts). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('duplicatePolicySectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the duplicate_application_policy column (tri-state guard) */}
+              <input type="hidden" name="duplicatePolicy" value="1" />
+              {(() => {
+                const current = ['allow', 'restrict_same', 'restrict_any'].includes(duplicateApplicationPolicy ?? '')
+                  ? (duplicateApplicationPolicy as string)
+                  : 'allow';
+                return (
+                  <div className="space-y-1.5">
+                    {(['allow', 'restrict_same', 'restrict_any'] as const).map((opt) => (
+                      <label key={opt} className="flex items-start gap-2 text-xs text-foreground">
+                        <input
+                          type="radio"
+                          name="duplicatePolicyValue"
+                          value={opt}
+                          defaultChecked={current === opt}
+                          className="mt-0.5 size-3.5 border-border"
+                        />
+                        <span>
+                          {opt === 'allow'
+                            ? t('duplicatePolicyAllow')
+                            : opt === 'restrict_same'
+                              ? t('duplicatePolicyRestrictSame')
+                              : t('duplicatePolicyRestrictAny')}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                );
+              })()}
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('duplicatePolicyHelp')}</p>
+          </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('categoryApproval')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+          {/* Partial Leave Approval (ADR-0068 · re-added ac6c2025). Its own sub-form (own tri-state) posts
+              `partialApproval=1`, so a rename / eligibility / durations / document / payroll / backdating edit
+              that omits the marker leaves per_date_approval untouched. This is the HR-facing enable switch for
+              the per-date approval modal that is already live on the approvals inbox — previously removable only
+              via seed data after feedback 9d8cf621 dropped this toggle. Backend wiring (app/admin/actions.ts
+              touchPartial + core/admin.ts) was left intact; this restores the surface that drives it.
+              The feature only fires for FULL-DAY, WORKING-DAYS-counted, non-REPLACEMENT types in a company whose
+              leave approval chain is single-step; when the type can never satisfy that, we still let the admin
+              set the flag but show a greyed note explaining it won't apply (rather than silently no-op). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('partialApprovalSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the per_date_approval column (tri-state guard) */}
+              <input type="hidden" name="partialApproval" value="1" />
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="perDateApproval"
+                  defaultChecked={perDateApproval}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('perDateApprovalLabel')}
+              </label>
+              {/* Greyed note: the type is structurally ineligible (REPLACEMENT or calendar-counted), so the
+                  flag has no effect even when set. Mirrors ADR-0068 §4C's gate rather than silently ignoring. */}
+              {(code === 'REPLACEMENT' || counting !== 'working_days') && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  {code === 'REPLACEMENT'
+                    ? t('perDateApprovalNoteReplacement')
+                    : t('perDateApprovalNoteCounting')}
+                </p>
+              )}
+              {/* Discoverability note (item 4): the load-bearing explanation of the multi-step interaction. */}
+              <p className="text-xs text-muted-foreground">{t('perDateApprovalMultiStepNote')}</p>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
+          </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('categoryDisplay')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+          {/* Employee Leave View Configuration (65dec703 / dup 1fedb473). Its own self-contained sub-form
+              (own tri-state) posts `essView=1` — a checklist of the breakdown components an employee sees in
+              My Profile → Leave for THIS leave type. An unchecked box does not post; the action rebuilds the
+              full { key: boolean } map from the closed key list, so unticked ⇒ hidden in ESS. Gating applies
+              to /me only — admin/HR always see everything. null/missing ⇒ visible (backward compatible). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('essView.sectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the ess_view_config column (tri-state guard) */}
+              <input type="hidden" name="essView" value="1" />
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {ESS_VIEW_COMPONENT_KEYS.map((key) => (
+                  <label key={key} className="flex items-center gap-2 text-xs text-foreground">
+                    <input
+                      type="checkbox"
+                      name={`essView_${key}`}
+                      defaultChecked={essViewConfig?.[key] !== false}
+                      className="size-3.5 rounded border-border"
+                    />
+                    {t(`essView.${key}`)}
+                  </label>
+                ))}
+              </div>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('essView.help')}</p>
+          </div>
+          {/* Leave Type Employee Visibility (7b11f1c1). Its own self-contained sub-form (own tri-state) posts
+              `visibility=1` — two checkboxes controlling whether an employee sees this leave type on their
+              self-service Leave tab, and whether they may apply for it. Both switches are independent: a
+              visible-but-not-can-apply type still shows (and its balance) but is dropped from the apply menu
+              and rejected server-side in requestLeave. A statutory-entitlement code (ANNUAL / SICK /
+              HOSPITALIZATION / MATERNITY / PATERNITY) cannot have applications blocked — the checkbox is
+              disabled + forced on there, and the service rejects it too. null/default ⇒ visible + can-apply
+              (backward compatible). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('visibility.sectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the two visibility columns (tri-state guard) */}
+              <input type="hidden" name="visibility" value="1" />
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="visibleToEmployee"
+                  defaultChecked={visibleToEmployee !== false}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('visibility.visibleToEmployee')}
+              </label>
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="employeeCanApply"
+                  defaultChecked={isStatutoryApply ? true : employeeCanApply !== false}
+                  disabled={isStatutoryApply}
+                  className="size-3.5 rounded border-border disabled:opacity-60"
+                />
+                {t('visibility.employeeCanApply')}
+              </label>
+              {isStatutoryApply ? (
+                <p className="text-xs text-amber-600 dark:text-amber-500">{t('visibility.statutoryLocked')}</p>
+              ) : null}
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('visibility.help')}</p>
+          </div>
+          {/* Leave grouping visibility (b653ac1b). Its own self-contained sub-form (own tri-state) posts
+              `placement=1` — a single Primary / Secondary / Hidden select deciding WHERE this leave type sits
+              on the employee's My Profile → Leave tab: a Primary card at the top, tucked into a Secondary
+              group, or Hidden entirely. HIDDEN REUSES THE SINGLE VISIBILITY SWITCH (7b11f1c1): choosing Hidden
+              sets visible_to_employee=false — there is no second hidden control. The current selection is
+              resolved from the stored value, the visibility flag, and the code-keyed default so an unconfigured
+              type shows its sensible starting point. Presentation only — no balances/entitlement change. */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('placement.sectionTitle')}</span>
+            <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch ess_placement + the shared visibility flag (tri-state guard) */}
+              <input type="hidden" name="placement" value="1" />
+              <Field label={t('placement.label')}>
+                <select
+                  name="placementValue"
+                  defaultValue={resolvePlacement(code, essPlacement, visibleToEmployee)}
+                  className={`${inputCls} w-40`}
+                >
+                  {ESS_PLACEMENTS.map((pl) => (
+                    <option key={pl} value={pl}>
+                      {t(`placement.option.${pl}`)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('placement.help')}</p>
+          </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('categoryCalculation')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+          {/* Day Type Inclusion (feedback ef6d7146) — five independent toggles deciding which day types are
+              counted when calculating a leave's duration. Lives inside Eligibility Rules (reporter's request),
+              its own self-contained <form> + `dayTypeInclusion=1` tri-state marker so an unrelated save never
+              resets it. Simple toggle list — no matrix — matching the reporter's UX ask. */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-muted-foreground">{t('dayTypeInclusion.sectionTitle')}</span>
+              {!editingDayTypes && (
+                <Button type="button" size="sm" variant="ghost" onClick={() => setEditingDayTypes(true)}>
+                  {t('eligibilityEdit')}
+                </Button>
+              )}
+            </div>
+            {editingDayTypes ? (
+              <form
+                action={updateTypeAction}
+                className="space-y-2 rounded-lg bg-background p-3"
+                onSubmit={() => setEditingDayTypes(false)}
+              >
+                <input type="hidden" name="id" value={id} />
+                {/* preserve the name — this form does not edit it */}
+                <input type="hidden" name="name" value={name} />
+                {/* marker: tells the action to touch the day_type_inclusion column (tri-state guard) */}
+                <input type="hidden" name="dayTypeInclusion" value="1" />
+                <div className="flex flex-col gap-1.5">
+                  {DAY_TYPE_INCLUSION_OPTIONS.map((k) => (
+                    <label key={k} className="flex items-center gap-2 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        name={`dayType_${k}`}
+                        defaultChecked={dayTypeInclusion?.[k] === true}
+                        className="size-4 accent-primary"
+                      />
+                      {dayTypeLabel(k)}
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Button type="submit" size="sm">
+                    {t('save')}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setEditingDayTypes(false)}>
+                    {t('cancel')}
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="rounded-lg bg-background px-3 py-2 text-xs text-foreground">
+                {dayTypeInclusionSummary()}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.help')}</p>
+            <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.statutoryNote')}</p>
+          </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('categoryCustom')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+          {/* Feedback 9d8cf621 — custom apply-time message. Own sub-form + tri-state marker `applyNotice=1`.
+              An "Enable custom message" checkbox reveals the textarea; unchecked ⇒ textarea hidden and an empty
+              value posts ⇒ the applyNotice key clears (message disabled). Shown to employees on the apply form. */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('applyNoticeSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the applyNotice custom-message key (tri-state guard) */}
+              <input type="hidden" name="applyNotice" value="1" />
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="enableApplyNotice"
+                  checked={applyNoticeEnabled}
+                  onChange={(e) => setApplyNoticeEnabled(e.target.checked)}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('applyNoticeEnableLabel')}
+              </label>
+              {applyNoticeEnabled && (
+                <textarea
+                  name="customMessageApplyNotice"
+                  maxLength={500}
+                  rows={3}
+                  defaultValue={customMessages?.applyNotice ?? ''}
+                  placeholder={t('applyNoticePlaceholder')}
+                  className={inputCls}
+                />
+              )}
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('applyNoticeHelp')}</p>
+          </div>
+          {/* Leave Type Visual Configuration Enhancement (639fdf77). Its own self-contained sub-form (own
+              tri-state) posts `visual=1` — a searchable icon picker + a 7-token colour swatch, purely
+              cosmetic (icon + colour beside the leave type on the employee My Profile → Leave tab). Nothing
+              existing moves; both null ⇒ default styling (backward compatible). */}
+          <LeaveVisualForm t={t} id={id} name={name} color={color} icon={icon} action={updateTypeAction} />
+            </CardContent>
+          </Card>
         </div>
       )}
     </li>
