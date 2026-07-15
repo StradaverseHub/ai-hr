@@ -4385,7 +4385,9 @@
       "entSortLabel": "Sort",
       "entSortAsc": "Leave type A–Z",
       "entSortDesc": "Leave type Z–A",
-      "duplicateError": "This leave type is already configured for this scheme."
+      "duplicateError": "This leave type is already configured for this scheme.",
+      "requiredError": "Please fill in all required fields.",
+      "requiredAria": "required"
     }
   },
   "topbar": {

@@ -20,16 +20,30 @@ export function Field({
   label,
   children,
   className,
+  required,
+  requiredAriaLabel,
 }: {
   label: string;
   children: ReactNode;
   /** Optional extra classes on the wrapping label (e.g. grid `col-span-full` / `justify-self-end`).
       Backward compatible — existing callers omit it and keep the original layout. */
   className?: string;
+  /** Render a red asterisk after the label to mark a mandatory field. Backward compatible — omitted callers
+      render exactly as before. */
+  required?: boolean;
+  /** Accessible label for the asterisk (localised "required"). Only used when `required`. */
+  requiredAriaLabel?: string;
 }) {
   return (
     <label className={cn('flex flex-col gap-1.5', className)}>
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground">
+        {label}
+        {required && (
+          <span className="ml-0.5 text-destructive" aria-label={requiredAriaLabel}>
+            *
+          </span>
+        )}
+      </span>
       {children}
     </label>
   );

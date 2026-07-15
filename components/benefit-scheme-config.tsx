@@ -428,9 +428,14 @@ function EntitlementForm({
 
   // R44 fdc3f521: block adding a leave type already configured in this scheme (silent-overwrite guard). On a
   // duplicate the field shakes + an inline error shows, WITHOUT clearing the other entered values. shakeKey
-  // remounts the field wrapper so the shake animation replays on repeated attempts.
+  // remounts the field wrappers so the shake animation replays on repeated attempts.
   const [dupError, setDupError] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
+
+  // R44 a831b4ca: mandatory-field validation. On submit we collect ALL empty required fields at once and
+  // highlight every one together (shake), rather than one at a time. Field keys: 'leaveType','d0','d1','d2'.
+  const [missing, setMissing] = useState<Set<string>>(new Set());
+  const [requiredError, setRequiredError] = useState(false);
 
   // R44 3d2ac99f: always present the Leave Type options alphabetically (A–Z by name) for predictable
   // scanning. Active-only filtering already happens upstream (activeTypeOptions); this is display-order only.
@@ -448,11 +453,29 @@ function EntitlementForm({
   // Client action wrapper: validate before delegating to the server action. Blocking simply returns without
   // calling `action`, so the entered values survive (all fields are controlled state).
   const handleAction = (fd: FormData) => {
-    if (leaveTypeId && existingLeaveTypeIds.includes(leaveTypeId)) {
-      setDupError(true);
+    // 1) Mandatory fields — collect ALL empties at once so every missing one is highlighted together.
+    const empty = new Set<string>();
+    if (!leaveTypeId) empty.add('leaveType');
+    if (d0 === '') empty.add('d0');
+    if (d1 === '') empty.add('d1');
+    if (d2 === '') empty.add('d2');
+    if (empty.size > 0) {
+      setMissing(empty);
+      setRequiredError(true);
+      setDupError(false);
       setShakeKey((k) => k + 1);
       return;
     }
+    // 2) Duplicate leave type in this scheme.
+    if (leaveTypeId && existingLeaveTypeIds.includes(leaveTypeId)) {
+      setDupError(true);
+      setRequiredError(false);
+      setMissing(new Set());
+      setShakeKey((k) => k + 1);
+      return;
+    }
+    setMissing(new Set());
+    setRequiredError(false);
     setDupError(false);
     return action(fd);
   };
@@ -463,8 +486,8 @@ function EntitlementForm({
       <input type="hidden" name="serviceBands" value={JSON.stringify(bands)} />
       <p className="text-xs font-medium text-muted-foreground">{t('addEntitlement')}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
-        <div key={`lt-${shakeKey}`} className={dupError ? 'animate-shake' : ''}>
-          <Field label={t('colLeaveType')}>
+        <div key={`lt-${shakeKey}`} className={dupError || missing.has('leaveType') ? 'animate-shake' : ''}>
+          <Field label={t('colLeaveType')} required requiredAriaLabel={t('requiredAria')}>
             <select
               name="leaveTypeId"
               required
@@ -472,6 +495,12 @@ function EntitlementForm({
               onChange={(e) => {
                 setLeaveTypeId(e.target.value);
                 setDupError(false);
+                setMissing((m) => {
+                  if (!m.has('leaveType')) return m;
+                  const n = new Set(m);
+                  n.delete('leaveType');
+                  return n;
+                });
               }}
               className={inputCls}
             >
@@ -482,16 +511,23 @@ function EntitlementForm({
             </select>
           </Field>
         </div>
-        <Field label={t('tierUnderFixed')}>
-          <input type="number" min={0} step="0.5" value={d0} onChange={(e) => setD0(e.target.value)} className={`${inputCls} w-20`} />
-        </Field>
-        <Field label={t('tierMidFixed')}>
-          <input type="number" min={0} step="0.5" value={d1} onChange={(e) => setD1(e.target.value)} className={`${inputCls} w-20`} />
-        </Field>
-        <Field label={t('tierOverFixed')}>
-          <input type="number" min={0} step="0.5" value={d2} onChange={(e) => setD2(e.target.value)} className={`${inputCls} w-20`} />
-        </Field>
+        <div key={`d0-${shakeKey}`} className={missing.has('d0') ? 'animate-shake' : ''}>
+          <Field label={t('tierUnderFixed')} required requiredAriaLabel={t('requiredAria')}>
+            <input type="number" min={0} step="0.5" value={d0} onChange={(e) => setD0(e.target.value)} className={`${inputCls} w-20`} />
+          </Field>
+        </div>
+        <div key={`d1-${shakeKey}`} className={missing.has('d1') ? 'animate-shake' : ''}>
+          <Field label={t('tierMidFixed')} required requiredAriaLabel={t('requiredAria')}>
+            <input type="number" min={0} step="0.5" value={d1} onChange={(e) => setD1(e.target.value)} className={`${inputCls} w-20`} />
+          </Field>
+        </div>
+        <div key={`d2-${shakeKey}`} className={missing.has('d2') ? 'animate-shake' : ''}>
+          <Field label={t('tierOverFixed')} required requiredAriaLabel={t('requiredAria')}>
+            <input type="number" min={0} step="0.5" value={d2} onChange={(e) => setD2(e.target.value)} className={`${inputCls} w-20`} />
+          </Field>
+        </div>
       </div>
+      {requiredError && <p className="text-xs text-destructive">{t('requiredError')}</p>}
       {dupError && <p className="text-xs text-destructive">{t('duplicateError')}</p>}
       <Button type="submit" size="sm">{t('saveEntitlement')}</Button>
     </form>

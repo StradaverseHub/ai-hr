@@ -4385,7 +4385,9 @@
       "entSortLabel": "Isih",
       "entSortAsc": "Jenis cuti A–Z",
       "entSortDesc": "Jenis cuti Z–A",
-      "duplicateError": "Jenis cuti ini telah dikonfigurasikan untuk skim ini."
+      "duplicateError": "Jenis cuti ini telah dikonfigurasikan untuk skim ini.",
+      "requiredError": "Sila isi semua medan yang diperlukan.",
+      "requiredAria": "diperlukan"
     }
   },
   "topbar": {
