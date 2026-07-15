@@ -83,7 +83,7 @@ async function grantLedger(employmentId: string, leaveTypeId: string, days: stri
 async function insertType(opts: { code: string; paid: boolean; counting: 'calendar_days' | 'working_days' }) {
   const [row] = await owner.db
     .insert(schema.leaveType)
-    .values({ tenantId: b.tenantId, code: opts.code, name: opts.code, paid: opts.paid, counting: opts.counting })
+    .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: opts.code, name: opts.code, paid: opts.paid, counting: opts.counting })
     .returning({ id: schema.leaveType.id });
   return row.id;
 }

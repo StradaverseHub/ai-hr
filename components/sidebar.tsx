@@ -15,6 +15,7 @@ import {
   FileBarChart,
   FileUp,
   HandCoins,
+  Hash,
   Hourglass,
   Sparkles,
   LayoutDashboard,
@@ -141,6 +142,8 @@ const GROUPS: Group[] = [
     items: [
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users },
+      // Employee ID Auto Running Number Setup (feedback 3d0031e6): configurable auto-numbered employee codes.
+      { href: '/admin/settings/employee-id', labelKey: 'employeeIdConfig', icon: Hash },
       // fbdeee87: Profile Options was folded into the System Labels surface as a tab, so the two adjacent
       // admin entries collapse into this single "System Labels" entry (profile options now live at
       // /admin/settings/system-labels/profile-options).

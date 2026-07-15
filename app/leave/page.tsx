@@ -18,19 +18,19 @@ import {
 import { listBusinessUnits } from '@/core/admin';
 import { listLocations } from '@/core/location';
 import { todayInKualaLumpur } from '@/core/leave';
-import { Avatar, Button, Card, Field, PageHeader, inputCls } from '@/components/ui';
+import { Avatar, Button, Card, PageHeader, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { styleFor } from '@/components/planned-absences';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
 import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
 import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
+import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
 import { LeaveBalanceTable } from '@/components/leave/leave-balance-table';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 // deriveBalanceRow lives in a SERVER-SAFE module (no 'use client'), so this RSC can call it at render
 // time — importing it from the client table would trip the RSC boundary guard (b7d84266). R37 e5a158d3.
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
-import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { durationLabel } from '@/lib/leave-duration';
 import {
   requestLeaveAction,
@@ -156,6 +156,22 @@ export default async function LeavePage({
     myEmployment(session),
   ]);
   const active = employees.filter((e) => !e.terminatedOn);
+
+  // Request Leave (feedback 48e69709): the apply form moved from a collapsed Card at the page bottom into a
+  // modal launched from a "+" primary button in the PageHeader. These are the exact props the form used to
+  // compute inline — mapped here in the RSC (t() runs server-side) and handed to the client dialog.
+  const requestLeaveTypeOptions = leaveTypes.map((lt) => ({
+    id: lt.id,
+    // Supporting-document config: suffix a "· document required" badge so the applicant knows a file is
+    // expected before submitting (mirrors /me). NOT leave.documentRequired — that key is a full error
+    // sentence; this badge has its own leave.documentRequiredBadge key.
+    label: lt.requiresDocument ? `${lt.name} · ${t('documentRequiredBadge')}` : lt.name,
+    durations: lt.durations ?? null,
+    code: lt.code,
+    // Feedback 9d8cf621: HR-authored apply-time notice for this leave type (shown under the select).
+    applyNotice: (lt.customMessages as Record<string, string> | null)?.applyNotice ?? null,
+  }));
+  const requestLeaveEmployeeOptions = active.map((e) => ({ id: e.employmentId, name: e.name }));
 
   // ── Detailed leave-balance table (relocated from /me · R37 e5a158d3) ─────────────────────────────────
   // The self-service balance view is the same dense Workday-style table the /me Leave tab used to carry:
@@ -436,8 +452,9 @@ export default async function LeavePage({
           title={t('title')}
           description={t('description')}
           actions={
-            admin ? (
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {admin && (
+                <>
                 {/* Global search bar (reporter: at the top of the page). GET form; hidden inputs carry the
                     other active filters + sort so searching never drops them. */}
                 <form method="get" action="/leave" className="flex items-center gap-1.5">
@@ -467,8 +484,18 @@ export default async function LeavePage({
                     {t('filters.exportExcel')}
                   </Link>
                 </div>
-              </div>
-            ) : undefined
+                </>
+              )}
+              {/* Request Leave (feedback 48e69709): primary "+" trigger for EVERY viewer (employees too, not
+                  just admins) — opens the apply form in a modal. Replaces the old bottom inline Card. */}
+              <RequestLeaveDialog
+                types={requestLeaveTypeOptions}
+                startDefault={today}
+                employeeOptions={requestLeaveEmployeeOptions}
+                submitAction={requestLeaveAction}
+                previewAction={previewLeaveDeductionAction}
+              />
+            </div>
           }
         />
       </div>
@@ -815,43 +842,6 @@ export default async function LeavePage({
             )}
           </div>
         )}
-      </Card>
-
-      <Card data-tour="leave-request">
-        <details>
-          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">
-            {t('requestLeaveToggle')}
-          </summary>
-          <form
-            action={requestLeaveAction}
-            encType="multipart/form-data"
-            className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2"
-          >
-            <LeaveDurationFields
-              types={leaveTypes.map((lt) => ({
-                id: lt.id,
-                // Supporting-document config: suffix a "· document required" badge so the applicant knows
-                // a file is expected before submitting (mirrors /me). NOT leave.documentRequired — that key
-                // is a full error sentence; this badge has its own leave.documentRequiredBadge key.
-                label: lt.requiresDocument ? `${lt.name} · ${t('documentRequiredBadge')}` : lt.name,
-                durations: lt.durations ?? null,
-                code: lt.code,
-                // Feedback 9d8cf621: HR-authored apply-time notice for this leave type (shown under the select).
-                applyNotice: (lt.customMessages as Record<string, string> | null)?.applyNotice ?? null,
-              }))}
-              startDefault={today}
-              showDocumentFields
-              employeeOptions={active.map((e) => ({ id: e.employmentId, name: e.name }))}
-              action={previewLeaveDeductionAction}
-            />
-            <Field label={t('fieldReason')}>
-              <input name="reason" className={inputCls} placeholder={t('reasonPlaceholder')} />
-            </Field>
-            <div className="flex items-end">
-              <Button type="submit">{t('submitRequest')}</Button>
-            </div>
-          </form>
-        </details>
       </Card>
     </div>
   );

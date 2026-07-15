@@ -20,6 +20,7 @@ import { hasPersonPhoto } from '@/core/person-photo';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { Combobox } from '@/components/ui/combobox';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
@@ -71,6 +72,7 @@ import { MY_STATES } from '@/localization/my/holidays';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { PhotoEditMenu } from '@/components/photo-edit-menu';
+import { IcDobAutofill } from '@/components/ic-dob-autofill';
 import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
 import { encashmentSnapshotForEmployment } from '@/core/leave-encashment';
 import { unfreezeEncashmentAction, adjustEncashmentAction } from './encashment-actions';
@@ -325,11 +327,15 @@ export default async function EmployeePage({
             />
           </Field>
           <Field label={t('nationality')}>
-            <ProfileOptionSelect
+            {/* 59047802 — searchable combobox over the full ISO 3166-1 nationality set; emits the same
+                single `nationality` value (via a hidden input) so setPersonAction is unchanged. */}
+            <Combobox
               name="nationality"
               value={emp.nationality}
-              options={profileOptions.nationality}
+              options={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
               placeholder={t('optionNotSet')}
+              searchPlaceholder={t('nationalitySearchPlaceholder')}
+              noResultsLabel={t('nationalityNoResults')}
               legacySuffix={t('optionLegacySuffix')}
             />
           </Field>
@@ -378,7 +384,7 @@ export default async function EmployeePage({
         >
           <input type="hidden" name="employmentId" value={emp.employmentId} />
           <Field label={t('birthDate')}>
-            <input name="dateOfBirth" type="date" defaultValue={emp.dateOfBirth ?? ''} className={inputCls} />
+            <input id="profile-dob-input" name="dateOfBirth" type="date" defaultValue={emp.dateOfBirth ?? ''} className={inputCls} />
           </Field>
           <Field label={t('gender')}>
             <select name="gender" defaultValue={emp.gender ?? ''} className={inputCls}>
@@ -416,7 +422,18 @@ export default async function EmployeePage({
           <input type="hidden" name="employmentId" value={emp.employmentId} />
           <input type="hidden" name="personId" value={emp.personId} />
           <Field label={t('icNumber')}>
-            <input name="icNumber" required defaultValue={statutory?.icNumber ?? ''} placeholder="900101011234" className={inputCls} />
+            {/* Item 354a500d — IcDobAutofill (a 'use client' island rendered by this RSC — never CALLED here,
+                so the RSC boundary is respected) derives the DOB from a valid MyKad IC and fills the empty
+                DOB input above (id=profile-dob-input) client-side; the server mirrors this on save. */}
+            <IcDobAutofill
+              name="icNumber"
+              required
+              defaultValue={statutory?.icNumber ?? ''}
+              placeholder="900101011234"
+              className={inputCls}
+              dobInputId="profile-dob-input"
+              invalidDateNote={t('icDobInvalidDate')}
+            />
           </Field>
           <p className="text-xs text-muted-foreground sm:col-span-3 sm:self-center">{t('icNumberHint')}</p>
           <div className="sm:col-span-4 flex justify-end">

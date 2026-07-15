@@ -92,8 +92,9 @@ export default async function BatchPage({
   // Selective reprocessing (feedback 9bc442bc, reporter ask #3) needs same-month adjustment runs.
   const multiCycleOn = process.env.MULTI_CYCLE_PAYROLL_ENABLED === 'true';
   // Unlock Closed run (feedback 9bc442bc, reporter ask #2) — gated so an environment can keep Closed
-  // permanently frozen. Step-up OTP + reason + warnings live in the service; the page is requireAdmin-gated
-  // and unlockClosedBatch re-asserts the granular payroll.unlock permission (super_admin by default).
+  // permanently frozen. Single-confirm + mandatory reason + warnings live in the service; the page is
+  // requireAdmin-gated and unlockClosedBatch re-asserts the granular payroll.unlock permission
+  // (hr_admin + super_admin by default, per-company configurable — feedback 62e85140).
   const unlockOn = process.env.PAYROLL_UNLOCK_ENABLED === 'true';
   // Per-run History (reporter ask #4 "fully traceable") — this batch's lifecycle events (created /
   // processed / reset / run-added / selective-reprocess / closed / payment-summary.exported). Read-only.

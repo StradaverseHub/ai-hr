@@ -61,6 +61,9 @@ const ALL_TABLES = [
   // 88e94371 — attendance-rule library: a leaked rule (or its OT rows) would trip the per-company default /
   // name unique indexes across test files. CASCADE from company already clears them, but list explicitly.
   'attendance_rule', 'attendance_rule_ot_row',
+  // 3d0031e6 — Employee ID Auto Running Number Setup: a leaked active config would trip the partial
+  // one-active-per-scope unique indexes (or make a later hire auto-generate unexpectedly) across test files.
+  'employee_id_config',
 ];
 
 export async function migrateTestDb() {
@@ -123,7 +126,14 @@ export async function seedBase(): Promise<Base> {
     .returning({ id: schema.costCenter.id });
   const [lt] = await owner.db
     .insert(schema.leaveType)
-    .values({ tenantId, code: 'ANNUAL', name: 'Annual Leave', paid: true })
+    // Configurable Negative Leave Balance Validation (0ef0defd): the PRODUCTION default for the new
+    // allow_negative_balance column is false (block over-application at submission). The shared test fixture,
+    // however, has always submitted leave against this ANNUAL type WITHOUT seeding a ledger balance — dozens of
+    // balance-agnostic tests (backdating, documents, eligibility, approvals, …) rely on that. So the fixture
+    // opts ANNUAL OUT of the submit-time balance gate (true) to preserve those tests unchanged; tests that
+    // specifically exercise the balance gate create their own type and set the flag explicitly. The
+    // approval-time guard (finalizeLeaveApproval) is unaffected by this flag and still fires as before.
+    .values({ tenantId, code: 'ANNUAL', name: 'Annual Leave', paid: true, allowNegativeBalance: true })
     .returning({ id: schema.leaveType.id });
   // No default leave_policy here: policies now genuinely override the statutory floor
   // (max(floor, policy) at grant), so the base tenant stays floor-only and tests that

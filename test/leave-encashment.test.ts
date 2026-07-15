@@ -228,7 +228,7 @@ describe('ADR-0069 — pending AL + freeze enforcement', () => {
     // A non-ANNUAL type still works normally.
     const [sick] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: b.tenantId, code: 'SICK', name: 'Sick Leave', paid: true, counting: 'calendar_days' })
+      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'SICK', name: 'Sick Leave', paid: true, counting: 'calendar_days' })
       .returning({ id: schema.leaveType.id });
     await owner.db.insert(schema.leaveLedger).values({
       tenantId: b.tenantId, employmentId: emp, leaveTypeId: sick.id, entryType: 'accrual', days: '5', effectiveOn: '2026-01-01',

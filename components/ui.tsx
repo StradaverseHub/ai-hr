@@ -16,9 +16,19 @@ export const btnPrimary =
 export const btnGhost =
   'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-input px-3 py-1.5 text-sm font-medium transition duration-150 ease-snappy hover:bg-accent hover:text-accent-foreground active:scale-[0.98]';
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  /** Optional extra classes on the wrapping label (e.g. grid `col-span-full` / `justify-self-end`).
+      Backward compatible — existing callers omit it and keep the original layout. */
+  className?: string;
+}) {
   return (
-    <label className="flex flex-col gap-1.5">
+    <label className={cn('flex flex-col gap-1.5', className)}>
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
       {children}
     </label>

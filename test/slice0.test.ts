@@ -377,7 +377,7 @@ describe('Slice 2 — MY leave rules', () => {
     const { employmentId } = await hire(a, base, 'Wd');
     const [lt] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: base.tenantId, code: 'WD', name: 'Working-day Leave', paid: true, counting: 'working_days' })
+      .values({ allowNegativeBalance: true, tenantId: base.tenantId, code: 'WD', name: 'Working-day Leave', paid: true, counting: 'working_days' })
       .returning({ id: schema.leaveType.id });
     await owner.db
       .insert(schema.holiday)
@@ -524,7 +524,7 @@ describe('Slice 4 — payroll', () => {
     // An approved UNPAID-leave request: 2 days starting in the period.
     const [ult] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: base.tenantId, code: 'UNPAID', name: 'Unpaid Leave', paid: false })
+      .values({ allowNegativeBalance: true, tenantId: base.tenantId, code: 'UNPAID', name: 'Unpaid Leave', paid: false })
       .returning({ id: schema.leaveType.id });
     await owner.db.insert(schema.leaveRequest).values({
       tenantId: base.tenantId,

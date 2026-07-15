@@ -52,7 +52,7 @@ async function hire(hiredOn: string) {
 async function leaveType(code: string, eligibility: unknown) {
   const [row] = await owner.db
     .insert(schema.leaveType)
-    .values({ tenantId: b.tenantId, code, name: code, paid: true, counting: 'calendar_days', eligibility })
+    .values({ allowNegativeBalance: true, tenantId: b.tenantId, code, name: code, paid: true, counting: 'calendar_days', eligibility })
     .returning({ id: schema.leaveType.id });
   return row.id;
 }

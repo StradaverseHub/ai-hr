@@ -130,6 +130,11 @@ function resolveEpfElection(p: {
 export const normalizeIC = (ic: string): string => ic.replace(/\D/g, '');
 export const isValidIC = (ic: string): boolean => /^\d{12}$/.test(normalizeIC(ic));
 
+// Item 354a500d — Date-of-Birth-from-IC derivation. The impl lives in the leaf module `./ic-dob` (zero server
+// deps) so the 'use client' autofill wrapper can import it too; re-exported here so server callers find it
+// beside normalizeIC/isValidIC. Returns ISO yyyy-mm-dd or null (bad/short IC or an unreal YYMMDD date).
+export { dobFromIC } from './ic-dob';
+
 /**
  * Item 5a461b99 — a person is "Malaysian" for the SOCSO & EIS Number default when their nationality
  * catalog value reads Malaysian/Malaysia (case-insensitive; the catalog is free-text/dropdown, so match

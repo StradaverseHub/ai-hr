@@ -1,0 +1,18 @@
+-- Configurable Negative Leave Balance Validation (feedback 0ef0defd).
+--
+-- Adds a per-leave-type flag controlling whether an employee may SUBMIT (or edit) a leave application whose
+-- days exceed their available balance. Until now the only balance guard lived at APPROVAL
+-- (finalizeLeaveApproval → InsufficientLeaveBalanceError); nothing checked at submission time. This flag adds
+-- an earlier check at requestLeave / editLeaveRequest:
+--
+--   allow_negative_balance = false (DEFAULT) — block a submit/edit that would take the balance negative,
+--     counting leave already approved (ledger) MINUS leave still pending (reserved). This is the approved
+--     default: safer, more common expectation, immediate feedback to the employee.
+--   allow_negative_balance = true            — permit going below zero at submission (no submit-time check);
+--     the existing approval-time guard still applies as before.
+--
+-- Additive + NOT NULL DEFAULT false: the DEFAULT backfills every existing row to false, so every existing
+-- leave type immediately gains the submit-time block (the approved product decision). IF NOT EXISTS makes a
+-- re-run on a partially-migrated DB safe. No RLS change: leave_type already has tenant-read + admin-write
+-- policies, which this column inherits (same as the 0192 visibility / 0208 duplicate-policy migrations).
+ALTER TABLE leave_type ADD COLUMN IF NOT EXISTS allow_negative_balance boolean NOT NULL DEFAULT false;

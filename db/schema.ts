@@ -965,6 +965,17 @@ export const leaveType = pgTable('leave_type', {
   // NULLABLE DEFAULT 'allow' (a DB CHECK backs the closed 3-value set); the service treats null as 'allow'.
   // Never read for entitlement / accrual / eligibility / payroll — purely a submission-time double-booking gate.
   duplicateApplicationPolicy: text('duplicate_application_policy').default('allow'),
+  // Configurable Negative Leave Balance Validation (feedback 0ef0defd): whether an employee may SUBMIT (or
+  // edit) a leave application of this type whose days exceed their available balance. Until this flag, the
+  // only balance guard sat at APPROVAL (finalizeLeaveApproval → InsufficientLeaveBalanceError); nothing checked
+  // at submission. When false (the DEFAULT, approved product decision), requestLeave + editLeaveRequest reject
+  // an application that would take the balance negative — "available balance" = the leave_ledger sum (approved
+  // only) MINUS the sum of this employee's other PENDING requests of the same type (reserved days), so
+  // stacked pending applications can't collectively overshoot. When true, the submit-time check is skipped
+  // (employees may go negative; the approval-time guard is unaffected). NOT NULL DEFAULT false ⇒ every existing
+  // row gains the block immediately (no backfill needed). Enforced only at requestLeave/editLeaveRequest —
+  // never read for entitlement / accrual / eligibility / payroll.
+  allowNegativeBalance: boolean('allow_negative_balance').notNull().default(false),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
@@ -1589,6 +1600,51 @@ export const payrollPolicy = pgTable(
   (t) => [
     uniqueIndex('payroll_policy_company_name_uq').on(t.companyId, t.name),
     index('payroll_policy_company_status_idx').on(t.companyId, t.status),
+  ],
+);
+
+// Employee ID Auto Running Number Setup (feedback 3d0031e6) — a configurable auto-numbering rule for the
+// employee_code assigned at hire. Modeled on payroll_policy. company_id is NULLABLE: NULL = GLOBAL scope
+// (one Employee-ID sequence shared across every company in the tenant); a set company_id = a COMPANY-SPECIFIC
+// sequence. The two partial unique indexes enforce ONE ACTIVE config per scope (one global, one per company).
+// generateEmployeeCode() (core/employee-id-config.ts) resolves the applicable ACTIVE config — company-specific
+// first, else global — and atomically advances current_running_number (row-locked UPDATE ... RETURNING), then
+// formats prefix + zero-padded number. The tenant-wide employment_employee_code_uq index is the collision net.
+// RLS: readable tenant-wide (so the generator resolves under the hiring session), writable only by an admin
+// (see 0209_employee_id_config.sql). Additive + backward compatible: with NO active config the legacy EMP-####
+// counter (core/comp.ts nextEmployeeCode) still runs, so seeds/tests are byte-identical.
+export const employeeIdConfig = pgTable(
+  'employee_id_config',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // NULL = GLOBAL scope (shared across all companies). Set = company-specific sequence. ON DELETE no action
+    // (a config is a tenant/company-level setting, deleted explicitly via the admin screen, never cascaded).
+    companyId: uuid('company_id').references(() => company.id),
+    // The house prefix (e.g. EMP, STAFF, KL). Uppercased + shape-validated (^[A-Z0-9-]+$) in the service.
+    prefix: text('prefix').notNull(),
+    // First number to ISSUE (e.g. 1 → "0001"). current_running_number tracks the LAST issued number.
+    startNumber: integer('start_number').notNull().default(1),
+    // Zero-pad width (e.g. 4 → "0001"). prefix.length + number_length must be ≤ 9 (employee_code cap).
+    numberLength: integer('number_length').notNull().default(4),
+    increment: integer('increment').notNull().default(1),
+    // Last issued running number (0 = none issued yet → the first hire gets start_number).
+    currentRunningNumber: integer('current_running_number').notNull().default(0),
+    status: text('status').notNull().default('active'), // 'active' | 'inactive'
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    // ONE ACTIVE per scope. Global: at most one active company-NULL config per tenant. Company: at most one
+    // active config per (tenant, company). Partial so inactive rows never collide (an admin can keep archived
+    // configs around). Postgres treats NULLs as distinct, so the company index excludes NULL company rows.
+    uniqueIndex('employee_id_config_global_active_uq')
+      .on(t.tenantId)
+      .where(sql`company_id is null and status = 'active'`),
+    uniqueIndex('employee_id_config_company_active_uq')
+      .on(t.tenantId, t.companyId)
+      .where(sql`company_id is not null and status = 'active'`),
+    index('employee_id_config_tenant_status_idx').on(t.tenantId, t.status),
   ],
 );
 

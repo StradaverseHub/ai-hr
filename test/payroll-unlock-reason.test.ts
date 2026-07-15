@@ -1,8 +1,9 @@
 /**
  * Unlock closed payroll — single confirm, MANDATORY reason (feedback 2108c01f; simplified in 62e85140).
  *
- * The unlock feature (unlockClosedBatch) reverses the 0011 closed-immutability freeze: super_admin-only
- * (payroll.unlock), Closed → Processed, the parent pay_period reopened, audited in payroll_status_history
+ * The unlock feature (unlockClosedBatch) reverses the 0011 closed-immutability freeze: admin-only
+ * (payroll.unlock defaults to hr_admin + super_admin), Closed → Processed, the parent pay_period
+ * reopened, audited in payroll_status_history
  * + a payroll-batch.unlocked event. Feedback 62e85140 REMOVED the step-up (OTP) confirmation-code step —
  * the on-screen gate is now a single confirm dialog — so the service signature is just
  * unlockClosedBatch(ctx, { batchId, reason? }) with no `code`. The REASON stays mandatory (a typed
@@ -15,8 +16,9 @@
  *   b. A non-blank reason succeeds (no code): Closed → Processed, the parent pay_period is reopened, a
  *      payroll_status_history 'unlock' row is written (from/to/actor/trimmed-reason), and both the
  *      payroll-batch.unlocked and pay-period.reopened events carry the reason.
- *   c. A caller WITHOUT the payroll.unlock permission (a plain hr_admin, not super_admin) is blocked
- *      with PayrollPermissionDeniedError — the batch stays closed and nothing is audited.
+ *   c. A caller WITHOUT the payroll.unlock permission (a payroll_partner — payroll-capable, so it can
+ *      read the closed batch and reach the gate, but NOT hr_admin/super_admin) is blocked with
+ *      PayrollPermissionDeniedError — the batch stays closed and nothing is audited.
  */
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -49,8 +51,8 @@ const nextIc = () => `9104040${String(10000 + icSeq++).slice(-5)}`;
 
 let base: Base;
 
-/** payroll.unlock defaults to super_admin only — the unlock runs as a super_admin (same user id so the
- *  audited actor stays base.adminUserId). */
+/** payroll.unlock defaults to hr_admin + super_admin — a plain hr_admin now suffices. The unlock runs
+ *  with both admin roles (same user id so the audited actor stays base.adminUserId). */
 const superCtx = () => ({ ...adminCtx(base), roles: ['hr_admin', 'super_admin'] });
 
 async function hire(name: string, basic = 5000) {
@@ -166,8 +168,13 @@ describe('Unlock closed payroll — single confirm, mandatory reason (unlockClos
 
   it('c. a caller without payroll.unlock is blocked; batch stays closed, nothing audited', async () => {
     const batchId = await closedBatch('2026-07');
-    // A plain hr_admin (no super_admin) lacks the default-super_admin payroll.unlock grant.
-    const notPermitted = { ...adminCtx(base), roles: ['hr_admin'] };
+    // payroll.unlock now defaults to hr_admin + super_admin — but NOT to every payroll-capable role.
+    // payroll_partner can see the closed batch (its payroll_batch RLS read is can_admin_payroll_for, which
+    // the partner satisfies) so it genuinely REACHES the permission gate — and is still denied unlock,
+    // proving the default only widened to the two admin roles, not to specialist/ordinary roles. (A plain
+    // manager/employee can't even read the batch under RLS, so it never reaches — and can't exercise —
+    // the payroll.unlock gate.)
+    const notPermitted = { ...adminCtx(base), roles: ['payroll_partner'] };
 
     await expect(unlockClosedBatch(notPermitted, { batchId, reason: 'nope' })).rejects.toBeInstanceOf(
       PayrollPermissionDeniedError,

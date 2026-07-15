@@ -3821,7 +3821,7 @@ async function assertPayrollPermission(tx: Tx, ctx: SessionContext, key: Payroll
 /**
  * Unlock a CLOSED payroll run back to PROCESSED (feedback 9bc442bc, reporter ask #2; simplified in
  * 62e85140). This is the controlled, auditable reversal of the 0011 closed-immutability freeze:
- *   • gated on the granular payroll.unlock permission (super_admin by default, per-company configurable);
+ *   • gated on the granular payroll.unlock permission (hr_admin + super_admin by default, per-company configurable);
  *   • a mandatory reason is captured for the audit log (the on-screen step is a single confirm dialog);
  *   • WARNS when the run's payment summary was already exported and/or statutory returns were already
  *     recorded for the month (EPF/SOCSO/EIS/LHDN), so the operator knows an amended filing may be needed;

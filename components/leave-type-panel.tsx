@@ -16,6 +16,7 @@ import {
 } from '@/lib/leave-visual';
 import { Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
+import { ChipMultiSelect } from './ui/chip-multi-select';
 
 export type EntitlementPolicy = {
   id: string;
@@ -545,6 +546,7 @@ export function LeaveTypePanel({
   counting,
   perDateApproval,
   duplicateApplicationPolicy,
+  allowNegativeBalance,
   policies,
   grades,
   companies,
@@ -632,6 +634,10 @@ export function LeaveTypePanel({
    *  ('allow' | 'restrict_same' | 'restrict_any'), threaded so the radio round-trips its saved value. null ⇒
    *  'allow' (today's behaviour). Enforced at requestLeave/editLeaveRequest; persisted via touchDuplicatePolicy. */
   duplicateApplicationPolicy: string | null;
+  /** Configurable Negative Leave Balance Validation (0ef0defd): whether employees may submit/edit a leave
+   *  application of this type that exceeds their available balance. false ⇒ block over-application (the
+   *  default). Threaded so the Yes/No sub-form round-trips its saved value; persisted via touchNegativeBalance. */
+  allowNegativeBalance: boolean;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
@@ -652,6 +658,12 @@ export function LeaveTypePanel({
   // s.37/s.60FA). Mirrors STATUTORY_APPLY_CODES in core/leave.ts; kept as a local literal so this client
   // component never pulls server-only code. The service enforces the same rule as the authority.
   const isStatutoryApply = ['ANNUAL', 'SICK', 'HOSPITALIZATION', 'MATERNITY', 'PATERNITY'].includes(code);
+  // Edit Leave Type Code (a7194511): the Code field is editable ONLY for custom (non-statutory) types. The
+  // statutory codes above — plus EMERGENCY — are the semantic keys the leave/payroll engine matches on for
+  // EA-1955 statutory entitlement, carry-forward and encashment; renaming one would silently switch those
+  // rules off, so they stay LOCKED (read-only). Mirrors the service guard (STATUTORY_APPLY_CODES +
+  // EMERGENCY_LEAVE_CODE in core/leave.ts) as a local literal so this client component never imports server code.
+  const codeLocked = isStatutoryApply || code === 'EMERGENCY';
   const [expanded, setExpanded] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [editingEligibility, setEditingEligibility] = useState(false);
@@ -808,46 +820,67 @@ export function LeaveTypePanel({
         <div className="space-y-3 border-t border-border/60 bg-muted/20 px-4 py-3">
           {/* type-level controls */}
           {editingName ? (
-            <form action={updateTypeAction} className="flex flex-wrap items-end gap-2">
+            <form
+              action={updateTypeAction}
+              /* 6ef6e355 — responsive grid re-layout. Was a single `flex flex-wrap items-end gap-2` row where the
+                 Paid checkbox sat wedged between text inputs and Description was a fixed oversized box. Now a
+                 breakpoint-aware grid: 1 col (mobile) → 2 (sm) → 4 (lg). Compact fields pack the top row, Paid is
+                 pushed to the far-right cell, Description spans the full width and flows fluid, and Save/Cancel get
+                 their own aligned full-width row. Cells wrap cleanly instead of compressing. Pure presentation —
+                 no field, name attr, marker, server action or substrate changed. */
+              className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-4"
+            >
               <input type="hidden" name="id" value={id} />
               {/* Leave Type master page (feedback 097de541): marker tells the action to touch the description
                   column (tri-state guard) — this form edits Name + Description together. */}
               <input type="hidden" name="identity" value="1" />
-              {/* Edit Leave Code (feedback 37a49524): the Leave Code was only shown as small grey text on the
-                  collapsed row and vanished once you opened the edit form. Surface it here as an explicitly
-                  read-only field so users can view the assigned code while editing. It is immutable by design —
-                  the code (e.g. ANNUAL) is the permanent semantic key the leave/payroll engine matches on for
-                  EA-1955 statutory rules, carry-forward and encashment; renaming it would silently switch those
-                  rules off. No `name` attr ⇒ nothing new is posted, so the server action/substrate are untouched. */}
+              {/* Edit Leave Code (feedback 37a49524 → a7194511): the Leave Code is surfaced inside the edit form
+                  so it can be viewed AND — for CUSTOM (non-statutory) types — renamed. Statutory codes (ANNUAL /
+                  SICK / HOSPITALIZATION / MATERNITY / PATERNITY) and EMERGENCY stay LOCKED (read-only, no `name`
+                  attr ⇒ nothing posted, server/substrate untouched): the code is the permanent semantic key the
+                  leave/payroll engine matches on for EA-1955 rules, carry-forward and encashment; renaming one
+                  would silently switch those rules off. A custom code posts `name="code"`; the server normalizes,
+                  shape-validates, checks uniqueness and re-guards statutory both ways before persisting. */}
               <Field label={t('codeLabel')}>
-                <input
-                  value={code}
-                  readOnly
-                  aria-label={t('codeLabel')}
-                  title={t('codeReadOnlyHint')}
-                  className={`${inputCls} w-40 cursor-not-allowed opacity-70`}
-                />
+                {codeLocked ? (
+                  <input
+                    value={code}
+                    readOnly
+                    aria-label={t('codeLabel')}
+                    title={t('codeReadOnlyHint')}
+                    className={`${inputCls} w-full cursor-not-allowed opacity-70`}
+                  />
+                ) : (
+                  <input
+                    name="code"
+                    defaultValue={code}
+                    aria-label={t('codeLabel')}
+                    title={t('codeEditableHint')}
+                    className={`${inputCls} w-full`}
+                  />
+                )}
               </Field>
               <Field label={t('nameLabel')}>
-                <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-52`} />
+                <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-full`} />
               </Field>
-              <Field label={t('descriptionLabel')}>
-                {/* Multiline (fbcadc71): textarea so Enter inserts a newline instead of submitting the rename form;
-                    h-auto/min-h/resize-y overrides inputCls's fixed h-9 so it shows ~3 lines, grows via the drag
-                    handle, and scrolls on overflow. defaultValue round-trips stored newlines faithfully. */}
-                <textarea
-                  name="description"
-                  defaultValue={description ?? ''}
-                  aria-label={t('descriptionLabel')}
-                  placeholder={t('descriptionPlaceholder')}
-                  rows={3}
-                  className={`${inputCls} h-auto min-h-[4.5rem] w-64 resize-y`}
+              {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. Placed ahead of
+                  Paid so the compact fields pack the first grid row and Paid lands in the last (right-most) cell. */}
+              <Field label={t('reasonLabel')}>
+                <input
+                  name="reason"
+                  type="text"
+                  maxLength={500}
+                  aria-label={t('reasonLabel')}
+                  placeholder={t('reasonPlaceholder')}
+                  className={`${inputCls} w-full`}
                 />
               </Field>
               {/* Edit Paid/Unpaid on rename (feedback 75953777): the Paid/Unpaid flag lives on the rename form
                   so a mis-set type can be corrected without recreating it. The `identity=1` marker above means an
-                  unchecked box is a real "unpaid" choice, not "untouched". Applies to future leave only. */}
-              <Field label={t('paidLabel')}>
+                  unchecked box is a real "unpaid" choice, not "untouched". Applies to future leave only.
+                  6ef6e355: pushed to the right edge of its cell (`justify-self-end`) so it no longer sits squeezed
+                  between text inputs. */}
+              <Field label={t('paidLabel')} className="justify-self-end">
                 <div className="flex h-9 items-center">
                   <input
                     type="checkbox"
@@ -858,23 +891,39 @@ export function LeaveTypePanel({
                   />
                 </div>
               </Field>
-              {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
-              <Field label={t('reasonLabel')}>
-                <input
-                  name="reason"
-                  type="text"
-                  maxLength={500}
-                  aria-label={t('reasonLabel')}
-                  placeholder={t('reasonPlaceholder')}
-                  className={`${inputCls} w-64`}
+              <Field label={t('descriptionLabel')} className="col-span-full">
+                {/* Multiline (fbcadc71): textarea so Enter inserts a newline instead of submitting the rename form;
+                    h-auto/min-h/resize-y overrides inputCls's fixed h-9 so it shows ~3 lines, grows via the drag
+                    handle, and scrolls on overflow. defaultValue round-trips stored newlines faithfully.
+                    6ef6e355: spans the full grid row and goes fluid (w-full) so it resizes with available width
+                    instead of sitting at a fixed oversized size; keeps vertical resize handle. */}
+                <textarea
+                  name="description"
+                  defaultValue={description ?? ''}
+                  aria-label={t('descriptionLabel')}
+                  placeholder={t('descriptionPlaceholder')}
+                  rows={3}
+                  className={`${inputCls} h-auto min-h-[4.5rem] w-full resize-y`}
                 />
               </Field>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setEditingName(false)}>
-                {t('cancel')}
-              </Button>
+              {/* Edit Leave Type Code (a7194511): Save opens a confirmation (reusing ConfirmSubmit) with
+                  Save changes / Cancel; the outer button Discards the edit (exits without saving). Together
+                  they give the reporter's "Save Changes / Discard Changes / Cancel" choice. On a successful
+                  save the action redirects back to this panel with a success toast (stays on page). */}
+              <div className="col-span-full flex items-center gap-2">
+                <ConfirmSubmit
+                  size="sm"
+                  variant="default"
+                  title={t('saveConfirmTitle')}
+                  description={t('saveConfirmDescription')}
+                  confirmLabel={t('saveConfirmConfirm')}
+                >
+                  {t('save')}
+                </ConfirmSubmit>
+                <Button type="button" size="sm" variant="outline" onClick={() => setEditingName(false)}>
+                  {t('discardChanges')}
+                </Button>
+              </div>
             </form>
           ) : (
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -949,40 +998,37 @@ export function LeaveTypePanel({
                 <input type="hidden" name="name" value={name} />
                 {/* marker: tells the action to touch the eligibility column (tri-state guard) */}
                 <input type="hidden" name="eligibility" value="1" />
-                {/* Multi-select (#badc5966): a checkbox group per field posting repeated name="gender" /
-                    name="maritalStatus". An employee qualifies if their attribute matches ANY ticked value.
-                    Leave every box unticked ⇒ no restriction on that field (open to all). */}
+                {/* Multi-select (#badc5966 → 2cc30077): compact ChipMultiSelect pickers per field, posting
+                    repeated name="gender" / name="maritalStatus" (one hidden input per value — identical
+                    FormData shape to the old checkbox group, so updateLeaveTypeAction's getAll() is unchanged).
+                    An employee qualifies if their attribute matches ANY selected value; select nothing ⇒ no
+                    restriction on that field (open to all). Select-all / clear-all + a collapsed "All selected"
+                    / "{n} selected" summary keep the editor tidy as the option lists grow. */}
                 <Field label={t('eligibilityGenderLabel')}>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {ELIGIBILITY_GENDER_OPTIONS.map((g) => (
-                      <label key={g} className="flex items-center gap-1.5 text-sm text-foreground">
-                        <input
-                          type="checkbox"
-                          name="gender"
-                          value={g}
-                          defaultChecked={asEligList(eligibility?.gender).includes(g)}
-                          className="size-4 accent-primary"
-                        />
-                        {g === 'male' ? t('eligibilityGenderMale') : t('eligibilityGenderFemale')}
-                      </label>
-                    ))}
-                  </div>
+                  <ChipMultiSelect
+                    name="gender"
+                    options={ELIGIBILITY_GENDER_OPTIONS.map((g) => ({ value: g, label: genderLabel(g) ?? g }))}
+                    defaultSelected={asEligList(eligibility?.gender)}
+                    addPlaceholder={t('eligibilityChipAddPlaceholder')}
+                    removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
+                    selectAllLabel={t('eligibilitySelectAll')}
+                    clearAllLabel={t('eligibilityClearAll')}
+                    allSelectedLabel={t('eligibilityAllSelected')}
+                    countLabelFor={(n) => t('eligibilityNSelected', { count: n })}
+                  />
                 </Field>
                 <Field label={t('eligibilityMaritalLabel')}>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {ELIGIBILITY_MARITAL_OPTIONS.map((m) => (
-                      <label key={m} className="flex items-center gap-1.5 text-sm text-foreground">
-                        <input
-                          type="checkbox"
-                          name="maritalStatus"
-                          value={m}
-                          defaultChecked={asEligList(eligibility?.maritalStatus).includes(m)}
-                          className="size-4 accent-primary"
-                        />
-                        {maritalLabel(m)}
-                      </label>
-                    ))}
-                  </div>
+                  <ChipMultiSelect
+                    name="maritalStatus"
+                    options={ELIGIBILITY_MARITAL_OPTIONS.map((m) => ({ value: m, label: maritalLabel(m) ?? m }))}
+                    defaultSelected={asEligList(eligibility?.maritalStatus)}
+                    addPlaceholder={t('eligibilityChipAddPlaceholder')}
+                    removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
+                    selectAllLabel={t('eligibilitySelectAll')}
+                    clearAllLabel={t('eligibilityClearAll')}
+                    allSelectedLabel={t('eligibilityAllSelected')}
+                    countLabelFor={(n) => t('eligibilityNSelected', { count: n })}
+                  />
                 </Field>
                 <Field label={t('eligibilityMinServiceLabel')}>
                   {/* Min-service unit (#f88f0a63): duration input + a unit select (Months / Days) beside it,
@@ -1283,6 +1329,41 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('duplicatePolicyHelp')}</p>
+          </div>
+
+          {/* Configurable Negative Leave Balance Validation (0ef0defd). Its own self-contained <form> +
+              `negativeBalance=1` tri-state marker so an unrelated save never resets it. A Yes/No radio controls
+              whether an employee may submit (or edit) a leave application whose days exceed their available
+              balance. Default 'No' = block over-application at submit + edit (core/leave.ts); 'Yes' permits
+              going negative (the approval-time guard still applies). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('negativeBalanceSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the allow_negative_balance column (tri-state guard) */}
+              <input type="hidden" name="negativeBalance" value="1" />
+              <span className="text-xs font-medium text-foreground">{t('negativeBalanceLabel')}</span>
+              <div className="space-y-1.5">
+                {(['no', 'yes'] as const).map((opt) => (
+                  <label key={opt} className="flex items-start gap-2 text-xs text-foreground">
+                    <input
+                      type="radio"
+                      name="allowNegativeBalanceValue"
+                      value={opt}
+                      defaultChecked={opt === (allowNegativeBalance ? 'yes' : 'no')}
+                      className="mt-0.5 size-3.5 border-border"
+                    />
+                    <span>{opt === 'yes' ? t('negativeBalanceYes') : t('negativeBalanceNo')}</span>
+                  </label>
+                ))}
+              </div>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('negativeBalanceHelp')}</p>
           </div>
 
           {/* Configurable backdated-leave restriction (0133). Its own sub-form (own tri-state) posts

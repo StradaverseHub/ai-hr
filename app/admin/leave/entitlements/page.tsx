@@ -218,6 +218,7 @@ export default async function LeaveEntitlementsPage({
               counting={lt.counting ?? 'working_days'}
               perDateApproval={lt.perDateApproval ?? false}
               duplicateApplicationPolicy={lt.duplicateApplicationPolicy ?? null}
+              allowNegativeBalance={lt.allowNegativeBalance ?? false}
               policies={polByType.get(lt.id) ?? []}
               grades={gradeOptions}
               companies={companyOptions}

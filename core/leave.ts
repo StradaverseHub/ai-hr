@@ -130,6 +130,18 @@ export class InsufficientLeaveBalanceError extends Error {
   }
 }
 
+// Configurable Negative Leave Balance Validation (0ef0defd): the SUBMIT/EDIT-time balance guard — thrown by
+// requestLeave + editLeaveRequest when the leave type has allow_negative_balance=false and the requested days
+// exceed the employee's available balance (ledger sum MINUS other pending requests of the same type). Distinct
+// from InsufficientLeaveBalanceError (the pre-existing APPROVAL-time guard) so the two surfaces localize to
+// their own messages; this one maps to the reporter's requested wording (leave.errors.insufficientBalance).
+export class InsufficientLeaveBalanceOnSubmitError extends Error {
+  constructor() {
+    super('Insufficient leave balance for this application');
+    this.name = 'InsufficientLeaveBalanceOnSubmitError';
+  }
+}
+
 // Leave Year Configuration (9aa894a4): a non-HR employee tried to apply for a FUTURE leave year that has not
 // yet been opened for applications — either there is no managed leave_year_config row for that year, its
 // status is not 'open', or today is before its employeeApplicationStartDate. Carries `year` so the action
@@ -760,6 +772,33 @@ export async function leaveBalance(tx: Tx, employmentId: string, leaveTypeId: st
   return Number(row?.bal ?? 0);
 }
 
+// Configurable Negative Leave Balance Validation (0ef0defd): the "available" balance for the SUBMIT/EDIT-time
+// guard = leaveBalance (approved ledger only) MINUS the sum of this employee's OTHER PENDING requests of the
+// same leave type (days already reserved but not yet approved, so they post no ledger entry). Subtracting the
+// pending reservation stops an employee stacking several pending applications that individually pass but
+// collectively overshoot. `excludeRequestId` drops the request being edited from its own pending sum (the edit
+// path re-checks the NEW days against everything else). Rounded to 2dp to match the rest of the leave math.
+export async function availableLeaveBalance(
+  tx: Tx,
+  employmentId: string,
+  leaveTypeId: string,
+  excludeRequestId?: string,
+): Promise<number> {
+  const bal = await leaveBalance(tx, employmentId, leaveTypeId);
+  const [row] = await tx
+    .select({ pending: sql<string>`coalesce(sum(${leaveRequest.days}), 0)` })
+    .from(leaveRequest)
+    .where(
+      and(
+        eq(leaveRequest.employmentId, employmentId),
+        eq(leaveRequest.leaveTypeId, leaveTypeId),
+        eq(leaveRequest.status, 'pending'),
+        ...(excludeRequestId ? [sql`${leaveRequest.id} <> ${excludeRequestId}`] : []),
+      ),
+    );
+  return round2(bal - Number(row?.pending ?? 0));
+}
+
 // ── Emergency Leave (0106) ─────────────────────────────────────────────────────────────────────────
 // EL is an APPLICATION TYPE ONLY (no balance, no ledger). On submission requestLeave decomposes it into
 // up to two ordinary child requests over the same dates: an ANNUAL request for the AL-covered portion and
@@ -1170,6 +1209,9 @@ export async function requestLeave(
         // Duplicate Leave Application Restriction (d5e51c34): the same-date double-booking policy, enforced
         // below AFTER the AM/PM slot-clash guard. null ⇒ 'allow' (no extra check).
         duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
+        // Configurable Negative Leave Balance Validation (0ef0defd): false ⇒ reject a submit that would take
+        // the balance negative (enforced below, after `days` is known); true ⇒ skip the submit-time check.
+        allowNegativeBalance: leaveType.allowNegativeBalance,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
@@ -1400,6 +1442,17 @@ export async function requestLeave(
     }
 
     if (days <= 0) throw new LeaveNoDaysInRangeError();
+
+    // Configurable Negative Leave Balance Validation (0ef0defd): submit-time balance guard. When the leave type
+    // has allow_negative_balance=false (the default), reject an application whose days exceed the employee's
+    // AVAILABLE balance — the approved-ledger balance MINUS days already reserved by other pending requests of
+    // the same type (availableLeaveBalance). allow_negative_balance=true skips this (employees may go negative;
+    // the pre-existing approval-time guard is unaffected). Fires for admins too — this is a data rule about the
+    // balance, mirroring the duplicate-application gate above. round2 matches the leave math (leavePreview).
+    if (lt?.allowNegativeBalance === false) {
+      const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
+      if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
+    }
 
     // ADR-0069: a friendly UX pre-check — the DB trigger (guard_frozen_leave_balance) is the real
     // enforcement at approval time, but failing fast here gives the employee a readable error immediately
@@ -3382,6 +3435,9 @@ export async function editLeaveRequest(
         // Duplicate Leave Application Restriction (d5e51c34): same-date double-booking policy — enforced below
         // after the AM/PM slot-clash guard, EXCLUDING this very request. null ⇒ 'allow'.
         duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
+        // Configurable Negative Leave Balance Validation (0ef0defd): submit/edit-time balance guard flag —
+        // enforced below (excluding this very request from its own pending reservation). false ⇒ block.
+        allowNegativeBalance: leaveType.allowNegativeBalance,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
@@ -3510,6 +3566,15 @@ export async function editLeaveRequest(
     }
 
     if (days <= 0) throw new LeaveNoDaysInRangeError();
+
+    // Configurable Negative Leave Balance Validation (0ef0defd): submit/edit-time balance guard, mirroring the
+    // requestLeave check. availableLeaveBalance EXCLUDES this very request (req.id) from its own pending
+    // reservation, so the NEW days are re-checked against everything else. allow_negative_balance=false ⇒ block
+    // an edit that would take the balance negative; =true ⇒ skip. round2 matches the leave math.
+    if (lt.allowNegativeBalance === false) {
+      const available = await availableLeaveBalance(tx, req.employmentId, p.leaveTypeId, req.id);
+      if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
+    }
 
     // Document + remark gates (identical to requestLeave). hasDocument = an attachment already exists on this
     // request (edit does not re-upload; changing to a doc-required type with no attachment is refused).

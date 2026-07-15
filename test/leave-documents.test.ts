@@ -26,7 +26,7 @@ async function hire() {
 async function leaveType(code: string, requiresDocument: boolean) {
   const [row] = await owner.db
     .insert(schema.leaveType)
-    .values({ tenantId: b.tenantId, code, name: code, paid: true, counting: 'calendar_days', requiresDocument })
+    .values({ allowNegativeBalance: true, tenantId: b.tenantId, code, name: code, paid: true, counting: 'calendar_days', requiresDocument })
     .returning({ id: schema.leaveType.id });
   return row.id;
 }

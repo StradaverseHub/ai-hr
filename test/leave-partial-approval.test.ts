@@ -447,7 +447,7 @@ describe('Partial Leave Approval — span-consumer correctness (the central fix)
   it('unpaid-leave payroll: an unpaid per-date type returns 2, not 3', async () => {
     const [unpaid] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: b.tenantId, code: 'UNPAIDWD', name: 'Unpaid (working days)', paid: false, counting: 'working_days', perDateApproval: true })
+      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'UNPAIDWD', name: 'Unpaid (working days)', paid: false, counting: 'working_days', perDateApproval: true })
       .returning({ id: schema.leaveType.id });
     await grant(unpaid.id, '20.00');
     const res = await requestLeave(adminCtx(b), { employmentId: subject.employmentId, leaveTypeId: unpaid.id, startDate: D10, endDate: D12 });
@@ -531,7 +531,7 @@ describe('Partial Leave Approval — no-regression for un-split shapes', () => {
   it('calendar-counted type with the flag on is NOT decomposed', async () => {
     const [cal] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: b.tenantId, code: 'UNPAIDCAL', name: 'Unpaid (calendar)', paid: false, counting: 'calendar_days', perDateApproval: true })
+      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'UNPAIDCAL', name: 'Unpaid (calendar)', paid: false, counting: 'calendar_days', perDateApproval: true })
       .returning({ id: schema.leaveType.id });
     const res = await requestLeave(adminCtx(b), { employmentId: subject.employmentId, leaveTypeId: cal.id, startDate: D10, endDate: D12 });
     expect(await dateRows(res.leaveRequestId)).toHaveLength(0);
@@ -549,7 +549,7 @@ describe('Partial Leave Approval — REPLACEMENT + multi-step guards', () => {
   it('11: a REPLACEMENT type with per_date_approval creates NO date rows and uses decideLeave', async () => {
     const [repl] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: b.tenantId, code: 'REPLACEMENT', name: 'Replacement (TOIL)', paid: true, counting: 'working_days', perDateApproval: true })
+      .values({ allowNegativeBalance: true, tenantId: b.tenantId, code: 'REPLACEMENT', name: 'Replacement (TOIL)', paid: true, counting: 'working_days', perDateApproval: true })
       .returning({ id: schema.leaveType.id });
     await grant(repl.id, '20.00');
     const res = await requestLeave(adminCtx(b), { employmentId: subject.employmentId, leaveTypeId: repl.id, startDate: D10, endDate: D12 });
