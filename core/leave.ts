@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
+import { scopeOf } from '../lib/delegation-scope';
 import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
 import { resolveApprovalChain } from './leave-approval-policy';
 import { consumeReplacementLeaveTx } from './toil';
@@ -2201,7 +2202,8 @@ async function assertCanDecideLeaveStep(
 
   switch (kind) {
     case 'direct_manager':
-      return assertCanDecide(tx, ctx, subjectEmploymentId, label);
+      // The direct-manager chain step is a leave APPLICATION decision — a scoped delegation must cover it.
+      return assertCanDecide(tx, ctx, subjectEmploymentId, label, scopeOf('leave.application'));
     // HR-tier / generic-admin gates. hr_manager and custom_role are cleared by HR/admins today; a distinct
     // ranked hr_manager role and a per-step bound custom role are documented follow-ups (ADR-0071 §i).
     case 'hr_admin':
@@ -2481,7 +2483,7 @@ export async function decideLeave(
     }
 
     // Single-step (no chain) — original behavior.
-    await assertCanDecide(tx, ctx, req.employmentId, 'leave request');
+    await assertCanDecide(tx, ctx, req.employmentId, 'leave request', scopeOf('leave.application'));
     if (p.decision === 'approved') await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId);
     // Partial Leave Approval (0131): stamp the mandatory reject reason onto the rejected event payload.
     else await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { rejectReason });
@@ -2582,7 +2584,7 @@ export async function decideLeaveDate(
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
     // Single-step authority (§4C): per-date rows only exist for single-step companies, so the whole-request
     // assertCanDecide (manager/admin, no self-approval) is the correct gate — no chain-step logic here.
-    await assertCanDecide(tx, ctx, req.employmentId, 'leave request');
+    await assertCanDecide(tx, ctx, req.employmentId, 'leave request', scopeOf('leave.application'));
 
     const [row] = await tx
       .select()
@@ -2695,7 +2697,7 @@ export async function decideLeaveDates(
     if (!req) throw new Error('leave request not found (or not visible)');
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
     // Single-step authority (§4C): per-date rows only exist for single-step companies.
-    await assertCanDecide(tx, ctx, req.employmentId, 'leave request');
+    await assertCanDecide(tx, ctx, req.employmentId, 'leave request', scopeOf('leave.application'));
 
     for (const d of decisions) {
       const [row] = await tx
@@ -3002,7 +3004,7 @@ export async function decideLeaveCancellation(
     if (cr.status !== 'pending') throw new Error(`cancellation request is already ${cr.status}`);
 
     // Self-approval ban + manager/admin authorization — service-layer (RLS is symmetric, §6(2)).
-    await assertCanDecide(tx, ctx, cr.employmentId, 'leave cancellation');
+    await assertCanDecide(tx, ctx, cr.employmentId, 'leave cancellation', scopeOf('leave.cancellation'));
 
     if (p.decision === 'rejected') {
       await tx

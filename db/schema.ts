@@ -831,6 +831,9 @@ export const reportingLine = pgTable(
     lineType: reportingLineTypeEnum('line_type').notNull(),
     validFrom: date('valid_from').notNull(),
     validTo: date('valid_to'),
+    // R44 delegation (Phase 2): free-text reason for a `delegate` edge (why the hand-over). Nullable —
+    // legacy rows + all structural line types keep NULL; the UI requires it only for new delegations.
+    reason: text('reason'),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     createdAt: createdAt(),
@@ -839,6 +842,25 @@ export const reportingLine = pgTable(
     index('reporting_line_sub_idx').on(t.subordinateEmploymentId),
     index('reporting_line_mgr_idx').on(t.managerEmploymentId),
   ],
+);
+
+// R44 delegation (Phase 2): per-module / per-task scope for a `delegate` edge. ZERO scope rows for a
+// delegation = "all approvals" (back-compat with every existing whole-scope row). A row with taskType NULL
+// scopes the WHOLE module; a row with a taskType scopes just that approval task. Enforcement lives in
+// app.can_decide_via_delegation (module,taskType overload) + core/approvals.ts assertCanDecide.
+export const reportingLineScope = pgTable(
+  'reporting_line_scope',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    reportingLineId: uuid('reporting_line_id')
+      .notNull()
+      .references(() => reportingLine.id, { onDelete: 'cascade' }),
+    module: text('module').notNull(), // bounded context: 'leave' | 'attendance' | 'claims'
+    taskType: text('task_type'), // null = whole module; else a specific approval task
+    createdAt: createdAt(),
+  },
+  (t) => [index('reporting_line_scope_line_idx').on(t.reportingLineId)],
 );
 
 // ──────────────────────────── Leave ────────────────────────────
