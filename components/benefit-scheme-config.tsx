@@ -92,6 +92,20 @@ export function BenefitSchemeConfig({
   const activeGroups = gradeGroups.filter((g) => !g.archived);
   const empTypeLabel = (v: string) => t(`empType_${v}` as `empType_${(typeof EMPLOYMENT_TYPES)[number]}`);
 
+  // R44 02a7082b: group the flat scheme list by company into collapsible per-company sections (companies
+  // ordered A–Z; schemes already asc(name) from the loader). Presentation only — no data change.
+  const schemesByCompany = useMemo(() => {
+    const map = new Map<string, Scheme[]>();
+    for (const s of schemes) {
+      const arr = map.get(s.companyId);
+      if (arr) arr.push(s);
+      else map.set(s.companyId, [s]);
+    }
+    return [...map.entries()]
+      .map(([companyId, list]) => ({ companyId, name: companyName.get(companyId) ?? '—', schemes: list }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [schemes, companyName]);
+
   const [selectedSchemeId, setSelectedSchemeId] = useState<string>(schemes[0]?.id ?? '');
   const selectedEnts = entitlements.filter((e) => e.benefitSchemeId === selectedSchemeId);
 
@@ -201,51 +215,62 @@ export function BenefitSchemeConfig({
           <h3 className="text-sm font-semibold text-foreground">{t('schemesTitle')}</h3>
           <p className="text-xs text-muted-foreground">{t('schemesHelp')}</p>
         </div>
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-3 py-2 font-medium">{t('colCompany')}</th>
-                <th className="px-3 py-2 font-medium">{t('colEmpType')}</th>
-                <th className="px-3 py-2 font-medium">{t('colGradeGroup')}</th>
-                <th className="px-3 py-2 font-medium">{t('colName')}</th>
-                <th className="px-3 py-2 font-medium">{t('colStatus')}</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {schemes.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-3 py-4 text-center text-muted-foreground">{t('noSchemes')}</td>
-                </tr>
-              )}
-              {schemes.map((s) => (
-                <tr key={s.id} className="border-b border-border last:border-0 align-top">
-                  <td className="px-3 py-2">{companyName.get(s.companyId) ?? '—'}</td>
-                  <td className="px-3 py-2">{empTypeLabel(s.employmentType)}</td>
-                  <td className="px-3 py-2">{s.gradeGroupId ? (groupName.get(s.gradeGroupId) ?? '—') : t('anyGroup')}</td>
-                  <td className="px-3 py-2 font-medium">{s.name}</td>
-                  <td className="px-3 py-2">
-                    <Badge variant={s.status === 'active' ? 'success' : 'default'}>
-                      {t(s.status === 'active' ? 'statusActive' : 'statusInactive')}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2">
-                    <SchemeEditDialog
-                      scheme={s}
-                      companies={companies}
-                      groups={activeGroups}
-                      empTypeLabel={empTypeLabel}
-                      updateScheme={actions.updateScheme}
-                      deleteScheme={actions.deleteScheme}
-                      t={t}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {schemes.length === 0 ? (
+          <p className="rounded-lg border border-border px-3 py-4 text-center text-sm text-muted-foreground">
+            {t('noSchemes')}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {schemesByCompany.map((group) => (
+              <details key={group.companyId} open className="overflow-hidden rounded-lg border border-border">
+                <summary className="flex cursor-pointer items-center justify-between gap-2 bg-muted/40 px-3 py-2">
+                  <span className="text-sm font-semibold text-foreground">{group.name}</span>
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {t('schemeCount', { count: group.schemes.length })}
+                  </span>
+                </summary>
+                <div className="overflow-x-auto border-t border-border">
+                  <table className="w-full min-w-[640px] text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                        <th className="px-3 py-2 font-medium">{t('colEmpType')}</th>
+                        <th className="px-3 py-2 font-medium">{t('colGradeGroup')}</th>
+                        <th className="px-3 py-2 font-medium">{t('colName')}</th>
+                        <th className="px-3 py-2 font-medium">{t('colStatus')}</th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.schemes.map((s) => (
+                        <tr key={s.id} className="border-b border-border last:border-0 align-top">
+                          <td className="px-3 py-2">{empTypeLabel(s.employmentType)}</td>
+                          <td className="px-3 py-2">{s.gradeGroupId ? (groupName.get(s.gradeGroupId) ?? '—') : t('anyGroup')}</td>
+                          <td className="px-3 py-2 font-medium">{s.name}</td>
+                          <td className="px-3 py-2">
+                            <Badge variant={s.status === 'active' ? 'success' : 'default'}>
+                              {t(s.status === 'active' ? 'statusActive' : 'statusInactive')}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2">
+                            <SchemeEditDialog
+                              scheme={s}
+                              companies={companies}
+                              groups={activeGroups}
+                              empTypeLabel={empTypeLabel}
+                              updateScheme={actions.updateScheme}
+                              deleteScheme={actions.deleteScheme}
+                              t={t}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
         <div className="rounded-lg border border-dashed border-border p-3">
           <p className="mb-2 text-xs font-medium text-muted-foreground">{t('addScheme')}</p>
           <SchemeForm

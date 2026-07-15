@@ -4392,7 +4392,8 @@
       "cancel": "Batal",
       "gradeGroupSearchPlaceholder": "Cari kumpulan gred…",
       "gradeGroupNoResults": "Tiada kumpulan gred dijumpai.",
-      "legacyValueSuffix": "(lama)"
+      "legacyValueSuffix": "(lama)",
+      "schemeCount": "{count} skim"
     }
   },
   "topbar": {

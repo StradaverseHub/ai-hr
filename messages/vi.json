@@ -4392,7 +4392,8 @@
       "cancel": "Hủy",
       "gradeGroupSearchPlaceholder": "Tìm nhóm ngạch…",
       "gradeGroupNoResults": "Không tìm thấy nhóm ngạch.",
-      "legacyValueSuffix": "(cũ)"
+      "legacyValueSuffix": "(cũ)",
+      "schemeCount": "{count} chương trình"
     }
   },
   "topbar": {

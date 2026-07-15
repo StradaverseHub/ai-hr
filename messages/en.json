@@ -4392,7 +4392,8 @@
       "cancel": "Cancel",
       "gradeGroupSearchPlaceholder": "Search grade groups…",
       "gradeGroupNoResults": "No grade groups found.",
-      "legacyValueSuffix": "(legacy)"
+      "legacyValueSuffix": "(legacy)",
+      "schemeCount": "{count} schemes"
     }
   },
   "topbar": {

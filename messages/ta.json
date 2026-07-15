@@ -4392,7 +4392,8 @@
       "cancel": "ரத்துசெய்",
       "gradeGroupSearchPlaceholder": "தர குழுக்களைத் தேடு…",
       "gradeGroupNoResults": "தர குழுக்கள் எதுவும் இல்லை.",
-      "legacyValueSuffix": "(பழையது)"
+      "legacyValueSuffix": "(பழையது)",
+      "schemeCount": "{count} திட்டங்கள்"
     }
   },
   "topbar": {

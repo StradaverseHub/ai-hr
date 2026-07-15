@@ -4392,7 +4392,8 @@
       "cancel": "取消",
       "gradeGroupSearchPlaceholder": "搜索职级组…",
       "gradeGroupNoResults": "未找到职级组。",
-      "legacyValueSuffix": "（旧值）"
+      "legacyValueSuffix": "（旧值）",
+      "schemeCount": "{count} 个方案"
     }
   },
   "topbar": {
