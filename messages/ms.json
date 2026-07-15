@@ -3623,7 +3623,14 @@
       "eligibilitySelectAll": "Pilih semua",
       "eligibilityClearAll": "Kosongkan semua",
       "eligibilityAllSelected": "Semua dipilih",
-      "eligibilityNSelected": "{count} dipilih"
+      "eligibilityNSelected": "{count} dipilih",
+      "categoryGeneral": "Tetapan Umum",
+      "categoryEligibilityEntitlement": "Polisi Kelayakan & Hak",
+      "categoryEssPolicy": "Polisi Layan Diri Pekerja",
+      "categoryApproval": "Peraturan Kelulusan",
+      "categoryDisplay": "Paparan Maklumat Cuti",
+      "categoryCalculation": "Peraturan Pengiraan Cuti",
+      "categoryCustom": "Tetapan Tersuai"
     },
     "holidays": {
       "pageTitle": "Cuti umum",
