@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import { editDelegation, endReportingLine, hasDownline, setReportingLine } from '@/core/org';
-import { delegationsScoped, myEmployments } from '@/core/read';
+import { delegationsScoped, employmentPickerList, myEmployments } from '@/core/read';
 import { todayInKualaLumpur } from '@/core/leave';
 
 /**
@@ -39,6 +39,35 @@ async function myEmploymentIds(): Promise<string[]> {
 }
 
 // ── Self-service ─────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * R44 delegation (Phase 1) — data loader for the global command-bar quick-delegation modal. Returns
+ * whether the caller may self-delegate (has a downline on any of their own employments) plus the stand-in
+ * picker (all active employments EXCLUDING the caller's own — no self-delegation). Read-only, no event.
+ * Lazily invoked from the client command bar so the app shell doesn't pay this cost on every page render.
+ */
+export async function loadSelfDelegationContextAction(): Promise<{
+  canSelfDelegate: boolean;
+  options: { employmentId: string; name: string; employeeCode: string | null }[];
+}> {
+  const s = await getSession();
+  const today = todayInKualaLumpur();
+  const mine = await myEmployments(s);
+  const myIds = new Set(mine.map((m) => m.employmentId));
+  let canSelfDelegate = false;
+  for (const m of mine) {
+    if (await hasDownline(s, m.employmentId, today)) {
+      canSelfDelegate = true;
+      break;
+    }
+  }
+  if (!canSelfDelegate) return { canSelfDelegate: false, options: [] };
+  const picker = await employmentPickerList(s);
+  const options = picker
+    .filter((p) => !myIds.has(p.employmentId))
+    .map((p) => ({ employmentId: p.employmentId, name: p.name, employeeCode: p.employeeCode }));
+  return { canSelfDelegate: true, options };
+}
 
 export async function createSelfDelegationAction(formData: FormData) {
   const s = await getSession();

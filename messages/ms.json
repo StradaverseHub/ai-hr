@@ -6156,6 +6156,16 @@
       "performance_comp_partner": "Rakan Prestasi/Pampasan"
     }
   },
+  "commandBar": {
+    "open": "Cari",
+    "placeholder": "Cari tindakan…",
+    "noResults": "Tiada padanan.",
+    "back": "Kembali",
+    "loading": "Memuatkan…",
+    "openFull": "Buka halaman penuh",
+    "delegationTitle": "Perwakilan Kelulusan",
+    "delegationSubtitle": "Wakilkan tugas kelulusan anda kepada pengguna lain"
+  },
   "delegations": {
     "title": "Pengurusan Perwakilan",
     "subtitle": "Serahkan tugas kelulusan kepada pengganti buat sementara semasa pelulus tiada.",
