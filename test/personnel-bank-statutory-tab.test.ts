@@ -69,8 +69,13 @@ describe('Personnel — Bank & Statutory tab (40ef71a0)', () => {
     for (const field of ['epfNumber', 'socsoNumber']) {
       expect(PAGE.includes(`name="${field}"`), `missing statutory input ${field}`).toBe(true);
     }
-    // IC relocated to Profile (still on the page) and taxNumber to the Identification & Tax card component.
-    expect(PAGE.includes('name="icNumber"')).toBe(true);
+    // Item e3ce0d4d — the IC input moved into the nationality-conditional IdentityFields client
+    // component; the Profile tab wires it via setIcAction={setIcAction}. taxNumber remains on the
+    // Identification & Tax card component (setTaxAction still bound on the page).
+    expect(PAGE.includes('setIcAction={setIcAction}')).toBe(true);
+    const IDENTITY = fs.readFileSync(path.resolve(__dirname, '../components/personnel-identity.tsx'), 'utf8');
+    expect(IDENTITY.includes('name="icNumber"')).toBe(true);
+    expect(IDENTITY.includes('action={setIcAction}')).toBe(true);
     expect(PAGE.includes('action={setTaxAction}')).toBe(true);
   });
 
