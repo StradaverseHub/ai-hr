@@ -4389,7 +4389,10 @@
       "requiredError": "Sila isi semua medan yang diperlukan.",
       "requiredAria": "diperlukan",
       "editSchemeTitle": "Sunting skim faedah",
-      "cancel": "Batal"
+      "cancel": "Batal",
+      "gradeGroupSearchPlaceholder": "Cari kumpulan gred…",
+      "gradeGroupNoResults": "Tiada kumpulan gred dijumpai.",
+      "legacyValueSuffix": "(lama)"
     }
   },
   "topbar": {

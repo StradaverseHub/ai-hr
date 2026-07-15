@@ -4389,7 +4389,10 @@
       "requiredError": "กรุณากรอกข้อมูลในช่องที่จำเป็นทั้งหมด",
       "requiredAria": "จำเป็น",
       "editSchemeTitle": "แก้ไขแผนสวัสดิการ",
-      "cancel": "ยกเลิก"
+      "cancel": "ยกเลิก",
+      "gradeGroupSearchPlaceholder": "ค้นหากลุ่มระดับ…",
+      "gradeGroupNoResults": "ไม่พบกลุ่มระดับ",
+      "legacyValueSuffix": "(เดิม)"
     }
   },
   "topbar": {

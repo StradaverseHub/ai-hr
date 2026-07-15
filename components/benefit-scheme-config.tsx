@@ -5,6 +5,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
+import { Combobox } from '@/components/ui/combobox';
 
 /**
  * Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b) — the client subsection rendered
@@ -375,13 +376,19 @@ function SchemeForm({
           ))}
         </select>
       </Field>
+      {/* R44 d28dffe7: searchable single-select combobox (type-ahead) replaces the plain grade-group dropdown.
+          Same name/value FormData contract (hidden input carries gradeGroupId), so updateScheme is unchanged.
+          Empty selection = "Any / ungrouped" (the placeholder row). Options already asc(name) from the loader. */}
       <Field label={t('colGradeGroup')}>
-        <select name="gradeGroupId" defaultValue={scheme?.gradeGroupId ?? ''} className={inputCls}>
-          <option value="">{t('anyGroup')}</option>
-          {groups.map((g) => (
-            <option key={g.id} value={g.id}>{g.name}</option>
-          ))}
-        </select>
+        <Combobox
+          name="gradeGroupId"
+          value={scheme?.gradeGroupId ?? ''}
+          options={groups.map((g) => ({ value: g.id, label: g.name }))}
+          placeholder={t('anyGroup')}
+          searchPlaceholder={t('gradeGroupSearchPlaceholder')}
+          noResultsLabel={t('gradeGroupNoResults')}
+          legacySuffix={t('legacyValueSuffix')}
+        />
       </Field>
       <Field label={t('colName')}>
         <input name="name" defaultValue={scheme?.name ?? ''} required placeholder={t('schemeNamePlaceholder')} className={inputCls} />

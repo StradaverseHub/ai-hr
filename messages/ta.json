@@ -4389,7 +4389,10 @@
       "requiredError": "தேவையான அனைத்து புலங்களையும் நிரப்பவும்.",
       "requiredAria": "தேவை",
       "editSchemeTitle": "சலுகை திட்டத்தைத் திருத்து",
-      "cancel": "ரத்துசெய்"
+      "cancel": "ரத்துசெய்",
+      "gradeGroupSearchPlaceholder": "தர குழுக்களைத் தேடு…",
+      "gradeGroupNoResults": "தர குழுக்கள் எதுவும் இல்லை.",
+      "legacyValueSuffix": "(பழையது)"
     }
   },
   "topbar": {

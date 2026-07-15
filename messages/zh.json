@@ -4389,7 +4389,10 @@
       "requiredError": "请填写所有必填字段。",
       "requiredAria": "必填",
       "editSchemeTitle": "编辑福利方案",
-      "cancel": "取消"
+      "cancel": "取消",
+      "gradeGroupSearchPlaceholder": "搜索职级组…",
+      "gradeGroupNoResults": "未找到职级组。",
+      "legacyValueSuffix": "（旧值）"
     }
   },
   "topbar": {

@@ -4389,7 +4389,10 @@
       "requiredError": "Please fill in all required fields.",
       "requiredAria": "required",
       "editSchemeTitle": "Edit benefit scheme",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "gradeGroupSearchPlaceholder": "Search grade groups…",
+      "gradeGroupNoResults": "No grade groups found.",
+      "legacyValueSuffix": "(legacy)"
     }
   },
   "topbar": {

@@ -4389,7 +4389,10 @@
       "requiredError": "Vui lòng điền vào tất cả các trường bắt buộc.",
       "requiredAria": "bắt buộc",
       "editSchemeTitle": "Chỉnh sửa chương trình phúc lợi",
-      "cancel": "Hủy"
+      "cancel": "Hủy",
+      "gradeGroupSearchPlaceholder": "Tìm nhóm ngạch…",
+      "gradeGroupNoResults": "Không tìm thấy nhóm ngạch.",
+      "legacyValueSuffix": "(cũ)"
     }
   },
   "topbar": {
