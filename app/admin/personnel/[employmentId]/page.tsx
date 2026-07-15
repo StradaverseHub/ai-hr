@@ -38,6 +38,8 @@ import {
   setEmploymentComponentAction,
   setEmploymentInfoAction,
   setLocationAction,
+  setEmploymentHolidayCalendarAction,
+  setEmploymentGradeAction,
   setPersonAction,
   setPersonPhotoAction,
   removePersonPhotoAction,
@@ -347,37 +349,10 @@ export default async function EmployeePage({
               legacySuffix={t('optionLegacySuffix')}
             />
           </Field>
-          <Field label={t('holidayCalendar')}>
-            <select name="holidayCalendar" defaultValue={holidayCalendarValue} className={inputCls}>
-              <option value="">{t('holidayCalendarDefault')}</option>
-              {holidayGroups.length > 0 && (
-                <optgroup label={t('holidayCalendarGroupOptgroup')}>
-                  {holidayGroups.map((g) => (
-                    <option key={g.id} value={`group:${g.id}`}>
-                      {g.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              <optgroup label={t('holidayCalendarStateOptgroup')}>
-                {MY_STATES.map((st) => (
-                  <option key={st} value={`state:${st}`}>
-                    {st}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-          </Field>
-          <Field label={t('grade')}>
-            <select name="gradeId" defaultValue={emp.gradeId ?? ''} className={inputCls}>
-              <option value="">{t('gradeNone')}</option>
-              {grades.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {/* Item 52a30630 — Holiday Calendar RELOCATED to the Attendance tab (holidayCalendarCard →
+              setEmploymentHolidayCalendarAction) and Grade RELOCATED to the Leave tab (gradeCard →
+              setEmploymentGradeAction). HTML forms can't span tab panels, so both selects physically moved
+              into their own forms in the target panels; setPersonAction no longer writes either column. */}
           <div className="sm:col-span-4 flex justify-end">
             <button className={btnPrimary}>{t('saveDetails')}</button>
           </div>
@@ -1139,6 +1114,33 @@ export default async function EmployeePage({
             <button className={btnPrimary}>{tc('save')}</button>
           </form>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{tc('hint')}</p>
+    </Card>
+  ) : null;
+
+  // Item 52a30630 — Grade RELOCATED here from Profile > Personal Details onto the Leave tab (grade drives
+  // grade-scoped leave entitlement). Its own dedicated form + thin server action (setEmploymentGradeAction)
+  // so a Personal Details save can no longer wipe the seniority grade. Same select/options (grades) and
+  // default (emp.gradeId) as before — pure relocation. Grade also stays editable on the Employment Info card
+  // (setEmploymentAssignmentAction), unchanged.
+  const gradeCard = admin ? (
+    <Card id="section-grade">
+      <SectionHeader title={t('gradeCardTitle')} />
+      <form action={setEmploymentGradeAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <Field label={t('grade')}>
+          <select name="gradeId" defaultValue={emp.gradeId ?? ''} className={inputCls}>
+            <option value="">{t('gradeNone')}</option>
+            {grades.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <div className="sm:col-span-3 flex justify-end">
+          <button className={btnPrimary}>{t('saveDetails')}</button>
+        </div>
+      </form>
     </Card>
   ) : null;
 
@@ -2078,6 +2080,43 @@ export default async function EmployeePage({
     </Card>
   );
 
+  // Item 52a30630 — Holiday Calendar RELOCATED here from Profile > Personal Details. Its own dedicated form
+  // + thin server action (setEmploymentHolidayCalendarAction) so the unified state/group selector can no
+  // longer be wiped by a Personal Details save (which no longer touches these columns). Same select markup,
+  // options (holidayGroups + MY_STATES) and default (holidayCalendarValue) as before — pure relocation.
+  const holidayCalendarCard = admin ? (
+    <Card id="section-holiday-calendar">
+      <SectionHeader title={t('holidayCalendarCardTitle')} />
+      <form action={setEmploymentHolidayCalendarAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <Field label={t('holidayCalendar')}>
+          <select name="holidayCalendar" defaultValue={holidayCalendarValue} className={inputCls}>
+            <option value="">{t('holidayCalendarDefault')}</option>
+            {holidayGroups.length > 0 && (
+              <optgroup label={t('holidayCalendarGroupOptgroup')}>
+                {holidayGroups.map((g) => (
+                  <option key={g.id} value={`group:${g.id}`}>
+                    {g.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label={t('holidayCalendarStateOptgroup')}>
+              {MY_STATES.map((st) => (
+                <option key={st} value={`state:${st}`}>
+                  {st}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+        </Field>
+        <div className="sm:col-span-3 flex justify-end">
+          <button className={btnPrimary}>{t('saveDetails')}</button>
+        </div>
+      </form>
+    </Card>
+  ) : null;
+
   const locationCard = admin ? (
     <Card id="section-location">
       <SectionHeader title={t('locationTitle')} />
@@ -2238,6 +2277,8 @@ export default async function EmployeePage({
     // Order mirrors an attendance setup flow: Work Location → Shift Arrangement → Clocking & Geofencing.
     attendance: (
       <>
+        {/* Item 52a30630 — Holiday Calendar relocated from Profile onto this tab, pinned first. */}
+        {holidayCalendarCard}
         {locationCard}
         {defaultShiftCard}
         {clockingCard}
@@ -2282,7 +2323,13 @@ export default async function EmployeePage({
     // Leave Information (feedback d085c6fc): the Leave Balance card — including its entitlement
     // breakdown drill-down — relocated out of Payroll into a dedicated leave-management tab. Same
     // card, same data (loaded once for the page), just a different tab; no leave/payroll logic moved.
-    leave: leaveBalanceCard,
+    leave: (
+      <>
+        {/* Item 52a30630 — Grade relocated from Profile onto this tab, pinned above the balance card. */}
+        {gradeCard}
+        {leaveBalanceCard}
+      </>
+    ),
     documents: documentsPanel,
     others: (
       <>

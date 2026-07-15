@@ -873,7 +873,9 @@
       "passportExpiryDate": "Passport expiry date",
       "passportRemark": "Passport remark",
       "passportHint": "For non-Malaysian employees. Passport number, issue date and expiry date are required; the remark is optional.",
-      "savePassport": "Save passport information"
+      "savePassport": "Save passport information",
+      "holidayCalendarCardTitle": "Holiday Calendar",
+      "gradeCardTitle": "Grade"
     },
     "import": {
       "title": "Import employees",

@@ -873,7 +873,9 @@
       "passportExpiryDate": "护照到期日期",
       "passportRemark": "护照备注",
       "passportHint": "适用于非马来西亚籍员工。护照号码、签发日期和到期日期为必填项；备注为选填。",
-      "savePassport": "保存护照信息"
+      "savePassport": "保存护照信息",
+      "holidayCalendarCardTitle": "假期日历",
+      "gradeCardTitle": "职级"
     },
     "import": {
       "title": "导入员工",

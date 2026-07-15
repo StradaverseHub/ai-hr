@@ -873,7 +873,9 @@
       "passportExpiryDate": "Ngày hết hạn hộ chiếu",
       "passportRemark": "Ghi chú hộ chiếu",
       "passportHint": "Dành cho nhân viên không phải người Malaysia. Số hộ chiếu, ngày cấp và ngày hết hạn là bắt buộc; ghi chú là tùy chọn.",
-      "savePassport": "Lưu thông tin hộ chiếu"
+      "savePassport": "Lưu thông tin hộ chiếu",
+      "holidayCalendarCardTitle": "Lịch nghỉ lễ",
+      "gradeCardTitle": "Cấp bậc"
     },
     "import": {
       "title": "Nhập nhân viên",

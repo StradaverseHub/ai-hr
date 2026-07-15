@@ -469,13 +469,50 @@ export async function setPersonAction(formData: FormData) {
       employmentId,
       employeeCode: String(formData.get('employeeCode') ?? ''),
     });
-    // Holiday calendar (state OR HR-defined group) — the SINGLE unified input that replaces the standalone
-    // work-state field, so the two assignment columns can never disagree.
+    // Item 52a30630 — Holiday Calendar RELOCATED to the Attendance tab (setEmploymentHolidayCalendarAction)
+    // and Grade RELOCATED to the Leave tab (setEmploymentGradeAction). Their selects no longer live on this
+    // Personal Details form, so the previously-unconditional writes here are DELETED: keeping them would read
+    // the now-absent fields as null/'' and WIPE both employment columns on every Personal Details save. The
+    // two target-tab forms own those writes now.
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Item 52a30630 — save ONLY the Holiday Calendar for an employment. The unified Holiday Calendar selector
+ * was RELOCATED off the Profile > Personal Details form onto the Attendance tab (HTML forms can't span the
+ * tab panels), so it needs its own thin partial-save action. Mirrors the write that previously lived inline
+ * in setPersonAction: parse the unified value (state OR HR-defined group) and hand it to the audited service
+ * (setEmploymentHolidayCalendar appends the DomainEvent). requireAdmin gates it like the profile actions.
+ */
+export async function setEmploymentHolidayCalendarAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
     await setEmploymentHolidayCalendar(s, {
       employmentId,
       selection: parseHolidayCalendar(formData.get('holidayCalendar')),
     });
-    // 2E (ADR-0041): seniority grade — same form, drives grade-scoped leave entitlements.
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Item 52a30630 — save ONLY the seniority Grade for an employment (ADR-0041; drives grade-scoped leave
+ * entitlements). The Grade selector was RELOCATED off the Profile > Personal Details form onto the Leave tab,
+ * so it needs its own thin partial-save action wrapping the audited service (setEmploymentGrade owns
+ * employment.gradeId and no-ops when unchanged). requireAdmin gates it like the profile actions.
+ */
+export async function setEmploymentGradeAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
     await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));

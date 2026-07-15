@@ -873,7 +873,9 @@
       "passportExpiryDate": "Tarikh luput pasport",
       "passportRemark": "Catatan pasport",
       "passportHint": "Untuk pekerja bukan warganegara Malaysia. Nombor pasport, tarikh keluaran dan tarikh luput diperlukan; catatan adalah pilihan.",
-      "savePassport": "Simpan maklumat pasport"
+      "savePassport": "Simpan maklumat pasport",
+      "holidayCalendarCardTitle": "Kalendar Cuti",
+      "gradeCardTitle": "Gred"
     },
     "import": {
       "title": "Import pekerja",
