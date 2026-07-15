@@ -658,6 +658,12 @@ export function LeaveTypePanel({
   // s.37/s.60FA). Mirrors STATUTORY_APPLY_CODES in core/leave.ts; kept as a local literal so this client
   // component never pulls server-only code. The service enforces the same rule as the authority.
   const isStatutoryApply = ['ANNUAL', 'SICK', 'HOSPITALIZATION', 'MATERNITY', 'PATERNITY'].includes(code);
+  // Edit Leave Type Code (a7194511): the Code field is editable ONLY for custom (non-statutory) types. The
+  // statutory codes above — plus EMERGENCY — are the semantic keys the leave/payroll engine matches on for
+  // EA-1955 statutory entitlement, carry-forward and encashment; renaming one would silently switch those
+  // rules off, so they stay LOCKED (read-only). Mirrors the service guard (STATUTORY_APPLY_CODES +
+  // EMERGENCY_LEAVE_CODE in core/leave.ts) as a local literal so this client component never imports server code.
+  const codeLocked = isStatutoryApply || code === 'EMERGENCY';
   const [expanded, setExpanded] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [editingEligibility, setEditingEligibility] = useState(false);
@@ -828,20 +834,31 @@ export function LeaveTypePanel({
               {/* Leave Type master page (feedback 097de541): marker tells the action to touch the description
                   column (tri-state guard) — this form edits Name + Description together. */}
               <input type="hidden" name="identity" value="1" />
-              {/* Edit Leave Code (feedback 37a49524): the Leave Code was only shown as small grey text on the
-                  collapsed row and vanished once you opened the edit form. Surface it here as an explicitly
-                  read-only field so users can view the assigned code while editing. It is immutable by design —
-                  the code (e.g. ANNUAL) is the permanent semantic key the leave/payroll engine matches on for
-                  EA-1955 statutory rules, carry-forward and encashment; renaming it would silently switch those
-                  rules off. No `name` attr ⇒ nothing new is posted, so the server action/substrate are untouched. */}
+              {/* Edit Leave Code (feedback 37a49524 → a7194511): the Leave Code is surfaced inside the edit form
+                  so it can be viewed AND — for CUSTOM (non-statutory) types — renamed. Statutory codes (ANNUAL /
+                  SICK / HOSPITALIZATION / MATERNITY / PATERNITY) and EMERGENCY stay LOCKED (read-only, no `name`
+                  attr ⇒ nothing posted, server/substrate untouched): the code is the permanent semantic key the
+                  leave/payroll engine matches on for EA-1955 rules, carry-forward and encashment; renaming one
+                  would silently switch those rules off. A custom code posts `name="code"`; the server normalizes,
+                  shape-validates, checks uniqueness and re-guards statutory both ways before persisting. */}
               <Field label={t('codeLabel')}>
-                <input
-                  value={code}
-                  readOnly
-                  aria-label={t('codeLabel')}
-                  title={t('codeReadOnlyHint')}
-                  className={`${inputCls} w-full cursor-not-allowed opacity-70`}
-                />
+                {codeLocked ? (
+                  <input
+                    value={code}
+                    readOnly
+                    aria-label={t('codeLabel')}
+                    title={t('codeReadOnlyHint')}
+                    className={`${inputCls} w-full cursor-not-allowed opacity-70`}
+                  />
+                ) : (
+                  <input
+                    name="code"
+                    defaultValue={code}
+                    aria-label={t('codeLabel')}
+                    title={t('codeEditableHint')}
+                    className={`${inputCls} w-full`}
+                  />
+                )}
               </Field>
               <Field label={t('nameLabel')}>
                 <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-full`} />
@@ -889,12 +906,22 @@ export function LeaveTypePanel({
                   className={`${inputCls} h-auto min-h-[4.5rem] w-full resize-y`}
                 />
               </Field>
+              {/* Edit Leave Type Code (a7194511): Save opens a confirmation (reusing ConfirmSubmit) with
+                  Save changes / Cancel; the outer button Discards the edit (exits without saving). Together
+                  they give the reporter's "Save Changes / Discard Changes / Cancel" choice. On a successful
+                  save the action redirects back to this panel with a success toast (stays on page). */}
               <div className="col-span-full flex items-center gap-2">
-                <Button type="submit" size="sm">
+                <ConfirmSubmit
+                  size="sm"
+                  variant="default"
+                  title={t('saveConfirmTitle')}
+                  description={t('saveConfirmDescription')}
+                  confirmLabel={t('saveConfirmConfirm')}
+                >
                   {t('save')}
-                </Button>
+                </ConfirmSubmit>
                 <Button type="button" size="sm" variant="outline" onClick={() => setEditingName(false)}>
-                  {t('cancel')}
+                  {t('discardChanges')}
                 </Button>
               </div>
             </form>

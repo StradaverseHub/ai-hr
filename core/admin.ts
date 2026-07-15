@@ -18,6 +18,9 @@ import {
   reprojectEntitlementForPolicy,
   todayInKualaLumpur,
   STATUTORY_APPLY_CODES,
+  // Edit Leave Type Code (a7194511): EMERGENCY joins the statutory codes as a LOCKED code — its literal
+  // is the semantic key the leave engine splits emergency leave on, so it must never be renamed.
+  EMERGENCY_LEAVE_CODE,
   type AccrualConfig,
   type DayTypeInclusion,
   type LeaveDurationType,
@@ -2720,6 +2723,16 @@ export async function updateLeaveType(
   p: {
     id: string;
     name: string;
+    // Edit Leave Type Code (feedback a7194511): OPTIONAL new code, forwarded ONLY by the identity/rename
+    // sub-form and ONLY for NON-statutory types (the UI keeps the field readOnly + name-less for statutory
+    // codes, so nothing is posted for them). undefined ⇒ code column untouched (tri-state). When present and
+    // different from the current code the service (a) refuses if the CURRENT code is statutory/EMERGENCY —
+    // those are locked because the code is the semantic key EA-1955 matching, carry-forward and encashment
+    // resolve on; (b) normalizes + shape-validates; (c) rejects a duplicate (case-insensitive, active,
+    // non-self); (d) refuses renaming TO a statutory/EMERGENCY code; (e) persists it + records before/after
+    // in the leave-type.updated event. All FK relations key on leave_type_id, so a code rename never orphans
+    // ledger rows, requests, policies or history.
+    newCode?: string;
     // Leave Type master page (feedback 097de541): optional description edited from the identity sub-form.
     // OWN tri-state (undefined = column untouched), exactly like backdatingLimitDays — the identity form posts
     // a hidden `identity=1` marker so an unrelated sub-form save never touches this column. Empty string ⇒
@@ -2835,6 +2848,18 @@ export async function updateLeaveType(
 ) {
   const name = cleanName(p.name, 'Leave-type name');
   const reason = normalizeReason(p.reason);
+  // Edit Leave Type Code (a7194511): normalize the optional new code exactly like createLeaveType (uppercase,
+  // spaces → underscores) so the canonical semantic key never drifts, then shape-validate. The statutory-code
+  // guard + uniqueness check run inside the transaction below (they need the CURRENT stored code). undefined ⇒
+  // code column untouched.
+  const touchCode = p.newCode !== undefined;
+  let normalizedNewCode: string | undefined;
+  if (touchCode) {
+    normalizedNewCode = cleanName(p.newCode!, 'Leave-type code').toUpperCase().replace(/ /g, '_');
+    if (!/^[A-Z][A-Z0-9_]{1,31}$/.test(normalizedNewCode)) {
+      throw new Error('Leave-type code must be letters, digits or underscores (e.g. ANNUAL)');
+    }
+  }
   const touchEligibility = p.eligibility !== undefined;
   const nextEligibility = touchEligibility ? cleanEligibility(p.eligibility) : undefined;
   const touchDurations = p.durations !== undefined;
@@ -3138,6 +3163,39 @@ export async function updateLeaveType(
         .limit(1);
       if (dupe) throw new DuplicateError(`A leave type named “${name}” already exists.`);
     }
+    // Edit Leave Type Code (a7194511): only act when the code actually changes (codes are canonical uppercase,
+    // so this is an exact compare after normalization). Statutory codes (ANNUAL / SICK / HOSPITALIZATION /
+    // MATERNITY / PATERNITY per EA-1955 + EMERGENCY) are LOCKED both ways: the CURRENT code cannot be renamed
+    // (renaming would silently switch its legal entitlement / carry-forward / encashment matching off), and a
+    // custom code cannot be renamed INTO a statutory code (which would silently start applying statutory rules
+    // to a bespoke type). The uniqueness guard mirrors the rename-name guard above — active (non-archived),
+    // non-self, case-insensitive on code — mapped to the reporter's exact message. The DB partial unique index
+    // + CHECK from migration 0031 remain the backstop (the .set() below maps a 23505 to the same message).
+    const LOCKED_CODES = new Set<string>([...STATUTORY_APPLY_CODES, EMERGENCY_LEAVE_CODE]);
+    let codeSet: { code?: string } = {};
+    let codeChanged = false;
+    if (touchCode && before && normalizedNewCode !== before.code) {
+      if (LOCKED_CODES.has(before.code)) {
+        throw new Error('statutory leave type code cannot be changed');
+      }
+      if (LOCKED_CODES.has(normalizedNewCode!)) {
+        throw new Error('statutory leave type code cannot be changed');
+      }
+      const [dupeCode] = await tx
+        .select({ id: leaveType.id })
+        .from(leaveType)
+        .where(
+          and(
+            isNull(leaveType.archivedAt),
+            sql`${leaveType.id} <> ${p.id}`,
+            sql`lower(${leaveType.code}) = lower(${normalizedNewCode})`,
+          ),
+        )
+        .limit(1);
+      if (dupeCode) throw new DuplicateError('Leave Type Code already exists. Please enter a unique code.');
+      codeSet = { code: normalizedNewCode };
+      codeChanged = true;
+    }
     // Leave Type Employee Visibility (7b11f1c1) — STATUTORY SAFETY. Refuse to close off employee applications
     // on a leave type that carries a Malaysian statutory entitlement (ANNUAL / SICK / HOSPITALIZATION per EA
     // 1955 s.60E/s.60F, MATERNITY per s.37, PATERNITY per s.60FA): an employee must always be able to exercise
@@ -3176,6 +3234,9 @@ export async function updateLeaveType(
       .update(leaveType)
       .set({
         name,
+        // Edit Leave Type Code (a7194511): the validated new code (only present when it actually changed for a
+        // non-locked type). All downstream relations key on leave_type_id, so nothing detaches.
+        ...codeSet,
         ...(touchEligibility ? { eligibility: nextEligibility } : {}),
         ...(touchDurations ? { durations: nextDurations } : {}),
         ...docSet,
@@ -3201,7 +3262,17 @@ export async function updateLeaveType(
         ...placementColSet,
         ...placementVisibilitySet,
       })
-      .where(eq(leaveType.id, p.id));
+      .where(eq(leaveType.id, p.id))
+      // Edit Leave Type Code (a7194511): DB backstop — the migration 0031 partial unique index on
+      // (tenant_id, lower(code)) WHERE archived_at IS NULL is the last line of defence against a duplicate code
+      // slipping past the pre-flight check (e.g. a concurrent rename). Map its 23505 to the same friendly
+      // message. The only unique index this write can violate is the code index, so the mapping is unambiguous.
+      .catch((e) => {
+        if (isUniqueViolation(e)) {
+          throw new DuplicateError('Leave Type Code already exists. Please enter a unique code.');
+        }
+        throw e;
+      });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-type',
@@ -3211,6 +3282,8 @@ export async function updateLeaveType(
       payload: {
         before: {
           name: before?.name ?? null,
+          // Edit Leave Type Code (a7194511): record the code diff only when it actually changed.
+          ...(codeChanged ? { code: before?.code ?? null } : {}),
           eligibility: before?.eligibility ?? null,
           durations: before?.durations ?? null,
           ...(touchDoc
@@ -3244,6 +3317,8 @@ export async function updateLeaveType(
         },
         after: {
           name,
+          // Edit Leave Type Code (a7194511): the persisted new code (only present when it changed).
+          ...(codeChanged ? { code: normalizedNewCode } : {}),
           eligibility: touchEligibility ? nextEligibility : (before?.eligibility ?? null),
           durations: touchDurations ? nextDurations : (before?.durations ?? null),
           ...(touchDoc

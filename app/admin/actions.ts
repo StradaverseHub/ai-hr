@@ -1106,10 +1106,17 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // Paid/Unpaid checkbox. The `identity=1` marker guarantees the form was submitted, so an unchecked box is a
   // genuine "unpaid" choice (checkbox absent ⇒ 'on' missing ⇒ false), not "untouched". Any OTHER sub-form
   // omits the marker and thus leaves `paid` undefined ⇒ the column stays untouched (tri-state). No new marker.
+  // Edit Leave Type Code (feedback a7194511): the identity/rename form now also carries the Code input — but
+  // ONLY for NON-statutory types. Statutory (and EMERGENCY) codes keep the field readOnly with NO `name` attr,
+  // so `fd.get('code')` is null for them ⇒ newCode stays undefined ⇒ the code column is untouched (tri-state).
+  // A non-statutory type always posts its code (even unchanged); the service no-ops when it equals the current
+  // code and otherwise normalizes / shape-validates / uniqueness-checks / statutory-guards before persisting.
+  const rawCode = fd.get('code');
   const identityFields = touchIdentity
     ? {
         description: String(fd.get('description') ?? '').trim() === '' ? null : String(fd.get('description')).trim(),
         paid: fd.get('paid') === 'on',
+        ...(rawCode !== null ? { newCode: String(rawCode) } : {}),
       }
     : {};
   // #25 visibility: the eligibility form posts `eligibility=1` (a marker hidden input) so a name-only
@@ -1315,9 +1322,10 @@ export async function updateLeaveTypeAction(fd: FormData) {
           },
         }
       : {};
+  const leaveTypeId = String(fd.get('id'));
   try {
     await updateLeaveType(s, {
-      id: String(fd.get('id')),
+      id: leaveTypeId,
       name: String(fd.get('name') ?? '').trim(),
       ...identityFields,
       eligibility,
@@ -1341,7 +1349,20 @@ export async function updateLeaveTypeAction(fd: FormData) {
       reason: String(fd.get('reason') || '') || null,
     });
   } catch (e) {
+    // Edit Leave Type Code (a7194511): the identity/rename form lives on the Entitlements tab (the per-type
+    // config panel), so a failed save — e.g. the duplicate-code / statutory-lock validation — returns there so
+    // HR sees the error banner + toast without being bounced off the page. (No #type anchor here: fail() appends
+    // ?error=, and a fragment before the query string would swallow it.) Other sub-forms keep the LEAVE target.
+    if (touchIdentity) fail(ENTITLEMENTS, e);
     fail(LEAVE, e);
+  }
+  // Edit Leave Type Code (a7194511): on a successful identity/rename save, stay on the Entitlements config
+  // panel and surface a success toast (requirement: "display a success message and remain on the current page
+  // without redirecting to another screen"). Preserve the #type-<id> anchor so the edited row stays in view.
+  if (touchIdentity) {
+    const t = await getTranslations('admin.leave');
+    revalidatePath(ENTITLEMENTS);
+    redirect(`${ENTITLEMENTS}?toast=${encodeURIComponent(t('codeSavedToast'))}#type-${leaveTypeId}`);
   }
   ok(LEAVE);
 }

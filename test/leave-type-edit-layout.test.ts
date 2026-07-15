@@ -98,12 +98,13 @@ describe('Leave Type edit form layout (6ef6e355) — responsive grid', () => {
     expect(paidBlock).toMatch(/defaultChecked=\{paid\}/);
   });
 
-  it('keeps Save/Cancel together in their own full-width cell', () => {
-    // The actions live in a col-span-full flex wrapper containing both buttons.
+  it('keeps Save/Discard together in their own full-width cell', () => {
+    // The actions live in a col-span-full flex wrapper containing both buttons. editablecode/a7194511
+    // relabelled the outer Cancel button to Discard changes (the Save confirmation dialog now owns Cancel).
     const saveIdx = form.indexOf("t('save')");
-    const cancelIdx = form.indexOf("t('cancel')");
+    const discardIdx = form.indexOf("t('discardChanges')");
     expect(saveIdx).toBeGreaterThan(-1);
-    expect(cancelIdx).toBeGreaterThan(saveIdx);
+    expect(discardIdx).toBeGreaterThan(saveIdx);
     // Their shared wrapper <div ...> just before Save has col-span-full.
     const wrapStart = form.lastIndexOf('<div', saveIdx);
     const wrapTag = form.slice(wrapStart, form.indexOf('>', wrapStart));
@@ -111,11 +112,14 @@ describe('Leave Type edit form layout (6ef6e355) — responsive grid', () => {
     expect(wrapTag).toMatch(/flex/);
   });
 
-  it('preserves prior chain work: Code stays surfaced read-only and posts nothing new', () => {
-    // editcode/37a49524 invariant — Code field present, read-only, no name attr.
+  it('preserves prior chain work: Code stays surfaced (read-only for statutory, editable for custom)', () => {
+    // editcode/37a49524 invariant — a statutory Code field is present, read-only, no name attr…
     expect(form).toMatch(/value=\{code\}/);
     const codeBlock = form.slice(form.indexOf('value={code}') - 60, form.indexOf('/>', form.indexOf('value={code}')) + 2);
     expect(codeBlock).toMatch(/readOnly/);
     expect(codeBlock).not.toMatch(/\sname=/);
+    // …and editablecode/a7194511 adds the editable branch (defaultValue + name="code") for custom types.
+    expect(form).toMatch(/name="code"/);
+    expect(form).toMatch(/defaultValue=\{code\}/);
   });
 });
