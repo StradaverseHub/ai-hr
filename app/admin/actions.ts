@@ -1353,18 +1353,21 @@ export async function updateLeaveTypeAction(fd: FormData) {
     // config panel), so a failed save — e.g. the duplicate-code / statutory-lock validation — returns there so
     // HR sees the error banner + toast without being bounced off the page. (No #type anchor here: fail() appends
     // ?error=, and a fragment before the query string would swallow it.) Other sub-forms keep the LEAVE target.
-    if (touchIdentity) fail(ENTITLEMENTS, e);
-    fail(LEAVE, e);
+    // Stay-on-page keystone (b9dac2d1): the per-type config panel lives on the Entitlements tab, so EVERY
+    // sub-form save — not just identity/rename — must return there on failure with the error banner + toast,
+    // rather than bouncing HR to /admin/leave. (No #type anchor here: fail() appends ?error=, and a fragment
+    // before the query string would swallow it.)
+    fail(ENTITLEMENTS, e);
   }
-  // Edit Leave Type Code (a7194511): on a successful identity/rename save, stay on the Entitlements config
-  // panel and surface a success toast (requirement: "display a success message and remain on the current page
-  // without redirecting to another screen"). Preserve the #type-<id> anchor so the edited row stays in view.
-  if (touchIdentity) {
-    const t = await getTranslations('admin.leave');
-    revalidatePath(ENTITLEMENTS);
-    redirect(`${ENTITLEMENTS}?toast=${encodeURIComponent(t('codeSavedToast'))}#type-${leaveTypeId}`);
-  }
-  ok(LEAVE);
+  // Stay-on-page keystone (b9dac2d1): on ANY successful sub-form save, stay on the Entitlements config panel,
+  // surface a success toast, and preserve the #type-<id> anchor so the edited row re-expands and stays in view
+  // (requirement: "display a success message and remain on the current page without redirecting"). The
+  // identity/rename save keeps its own leave-type-specific toast; all other sub-forms get the generic "saved".
+  const t = await getTranslations('admin.leave');
+  revalidatePath(ENTITLEMENTS);
+  redirect(
+    `${ENTITLEMENTS}?toast=${encodeURIComponent(t(touchIdentity ? 'codeSavedToast' : 'savedToast'))}#type-${leaveTypeId}`,
+  );
 }
 export async function archiveLeaveTypeAction(fd: FormData) {
   const s = await getSession();

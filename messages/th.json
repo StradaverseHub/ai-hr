@@ -3196,6 +3196,7 @@
       "saveConfirmConfirm": "บันทึกการเปลี่ยนแปลง",
       "discardChanges": "ละทิ้งการเปลี่ยนแปลง",
       "codeSavedToast": "บันทึกประเภทการลาแล้ว",
+      "savedToast": "บันทึกการเปลี่ยนแปลงแล้ว",
       "codePlaceholder": "SICK",
       "nameLabel": "ชื่อ",
       "namePlaceholder": "ลาป่วย",

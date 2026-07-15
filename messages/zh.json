@@ -3196,6 +3196,7 @@
       "saveConfirmConfirm": "保存更改",
       "discardChanges": "放弃更改",
       "codeSavedToast": "请假类型已保存。",
+      "savedToast": "更改已保存。",
       "codePlaceholder": "SICK",
       "nameLabel": "名称",
       "namePlaceholder": "病假",

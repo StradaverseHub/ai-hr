@@ -3196,6 +3196,7 @@
       "saveConfirmConfirm": "Save changes",
       "discardChanges": "Discard changes",
       "codeSavedToast": "Leave type saved.",
+      "savedToast": "Changes saved.",
       "codePlaceholder": "SICK",
       "nameLabel": "Name",
       "namePlaceholder": "Sick Leave",
