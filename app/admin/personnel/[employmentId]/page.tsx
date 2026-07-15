@@ -24,6 +24,7 @@ import { IdentityFields, IdentityProvider, NationalityField } from '@/components
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
+import { SameAsPermanentAddress } from '@/components/same-as-permanent-address';
 import {
   addDelegationAction,
   addReportingLineAction,
@@ -452,39 +453,93 @@ export default async function EmployeePage({
           <Field label={t('personalEmail')}>
             <input name="personalEmail" type="email" defaultValue={emp.personalEmail ?? ''} className={inputCls} />
           </Field>
-          <Field label={t('addressLine1')}>
-            <input name="addressLine1" defaultValue={emp.addressLine1 ?? ''} className={`${inputCls} sm:col-span-4`} />
-          </Field>
-          <Field label={t('addressLine2')}>
-            <input name="addressLine2" defaultValue={emp.addressLine2 ?? ''} className={`${inputCls} sm:col-span-4`} />
-          </Field>
-          <Field label={t('addressLine3')}>
-            <input name="addressLine3" defaultValue={emp.addressLine3 ?? ''} className={`${inputCls} sm:col-span-4`} />
-          </Field>
-          <Field label={t('postcode')}>
-            <input name="postcode" defaultValue={emp.postcode ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('city')}>
-            <input name="city" defaultValue={emp.city ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('stateLabel')}>
-            <ProfileOptionSelect
-              name="state"
-              value={emp.state}
-              options={profileOptions.state}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
-          </Field>
-          <Field label={t('country')}>
-            <ProfileOptionSelect
-              name="country"
-              value={emp.country}
-              options={profileOptions.country}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
-          </Field>
+
+          {/* 3a25f5ee — Contact & Address split into two independent address blocks. Permanent = where the
+              employee lives (today's single address backfilled here in migration 0213); Correspondence =
+              official mailing / IC-registered address. Each is the same 7 fields; state/country validate
+              against the shared profile_option catalog. Field ids (perm- and corr- prefixed) let the "Same
+              as Permanent Address" client island copy Permanent to Correspondence (fields stay editable). */}
+          <div className="sm:col-span-4 mt-1 grid grid-cols-1 gap-3 sm:grid-cols-4 rounded-lg border border-border/60 p-3">
+            <p className="sm:col-span-4 text-sm font-medium text-foreground">{t('permanentAddressTitle')}</p>
+            <Field label={t('addressLine1')}>
+              <input id="perm-addressLine1" name="permanentAddressLine1" defaultValue={emp.permanentAddressLine1 ?? ''} className={`${inputCls} sm:col-span-4`} />
+            </Field>
+            <Field label={t('addressLine2')}>
+              <input id="perm-addressLine2" name="permanentAddressLine2" defaultValue={emp.permanentAddressLine2 ?? ''} className={`${inputCls} sm:col-span-4`} />
+            </Field>
+            <Field label={t('addressLine3')}>
+              <input id="perm-addressLine3" name="permanentAddressLine3" defaultValue={emp.permanentAddressLine3 ?? ''} className={`${inputCls} sm:col-span-4`} />
+            </Field>
+            <Field label={t('postcode')}>
+              <input id="perm-postcode" name="permanentPostcode" defaultValue={emp.permanentPostcode ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('city')}>
+              <input id="perm-city" name="permanentCity" defaultValue={emp.permanentCity ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('stateLabel')}>
+              <ProfileOptionSelect
+                id="perm-state"
+                name="permanentState"
+                value={emp.permanentState}
+                options={profileOptions.state}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('country')}>
+              <ProfileOptionSelect
+                id="perm-country"
+                name="permanentCountry"
+                value={emp.permanentCountry}
+                options={profileOptions.country}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+          </div>
+
+          <div className="sm:col-span-4">
+            <SameAsPermanentAddress label={t('sameAsPermanent')} viaInputName="addressCopyVia" />
+          </div>
+
+          <div className="sm:col-span-4 grid grid-cols-1 gap-3 sm:grid-cols-4 rounded-lg border border-border/60 p-3">
+            <p className="sm:col-span-4 text-sm font-medium text-foreground">{t('correspondenceAddressTitle')}</p>
+            <Field label={t('addressLine1')}>
+              <input id="corr-addressLine1" name="correspondenceAddressLine1" defaultValue={emp.correspondenceAddressLine1 ?? ''} className={`${inputCls} sm:col-span-4`} />
+            </Field>
+            <Field label={t('addressLine2')}>
+              <input id="corr-addressLine2" name="correspondenceAddressLine2" defaultValue={emp.correspondenceAddressLine2 ?? ''} className={`${inputCls} sm:col-span-4`} />
+            </Field>
+            <Field label={t('addressLine3')}>
+              <input id="corr-addressLine3" name="correspondenceAddressLine3" defaultValue={emp.correspondenceAddressLine3 ?? ''} className={`${inputCls} sm:col-span-4`} />
+            </Field>
+            <Field label={t('postcode')}>
+              <input id="corr-postcode" name="correspondencePostcode" defaultValue={emp.correspondencePostcode ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('city')}>
+              <input id="corr-city" name="correspondenceCity" defaultValue={emp.correspondenceCity ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('stateLabel')}>
+              <ProfileOptionSelect
+                id="corr-state"
+                name="correspondenceState"
+                value={emp.correspondenceState}
+                options={profileOptions.state}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('country')}>
+              <ProfileOptionSelect
+                id="corr-country"
+                name="correspondenceCountry"
+                value={emp.correspondenceCountry}
+                options={profileOptions.country}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+          </div>
           <div className="sm:col-span-4 flex justify-end">
             <button className={btnPrimary}>{t('saveContact')}</button>
           </div>

@@ -1492,6 +1492,13 @@
       "when": 1781862211000,
       "tag": "0212_employee_passport_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 213,
+      "version": "7",
+      "when": 1781862212000,
+      "tag": "0213_person_permanent_correspondence_address",
+      "breakpoints": true
     }
   ]
 }

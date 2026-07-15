@@ -488,10 +488,17 @@ export async function setPersonAction(formData: FormData) {
  * b4682879 Contact & Address — instant-write of the structured home address + personal email + phone via
  * the same one writer (updatePerson). fullName is carried through as a hidden field (updatePerson keeps
  * name/email notNull), so saving contact info never wipes the identity.
+ *
+ * 3a25f5ee — the single structured address is now TWO independent blocks: Permanent + Correspondence (7
+ * fields each). The legacy addressLine1..country columns are no longer written here (retained for rollback,
+ * left unchanged since updatePerson only touches fields present on the payload). `addressCopyVia` is an
+ * optional provenance marker set by the "Same as Permanent Address" client island — recorded on the audit
+ * event as HOW the save happened, never any address VALUE (PDPA).
  */
 export async function setContactAddressAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  const via = String(formData.get('addressCopyVia') ?? '') === 'copy-permanent' ? 'copy-permanent' : undefined;
   try {
     await updatePerson(s, {
       personId: String(formData.get('personId')),
@@ -499,13 +506,21 @@ export async function setContactAddressAction(formData: FormData) {
       primaryEmail: String(formData.get('primaryEmail') ?? ''),
       phone: orNull(formData.get('phone')),
       personalEmail: orNull(formData.get('personalEmail')),
-      addressLine1: orNull(formData.get('addressLine1')),
-      addressLine2: orNull(formData.get('addressLine2')),
-      addressLine3: orNull(formData.get('addressLine3')),
-      postcode: orNull(formData.get('postcode')),
-      city: orNull(formData.get('city')),
-      state: orNull(formData.get('state')),
-      country: orNull(formData.get('country')),
+      via,
+      permanentAddressLine1: orNull(formData.get('permanentAddressLine1')),
+      permanentAddressLine2: orNull(formData.get('permanentAddressLine2')),
+      permanentAddressLine3: orNull(formData.get('permanentAddressLine3')),
+      permanentPostcode: orNull(formData.get('permanentPostcode')),
+      permanentCity: orNull(formData.get('permanentCity')),
+      permanentState: orNull(formData.get('permanentState')),
+      permanentCountry: orNull(formData.get('permanentCountry')),
+      correspondenceAddressLine1: orNull(formData.get('correspondenceAddressLine1')),
+      correspondenceAddressLine2: orNull(formData.get('correspondenceAddressLine2')),
+      correspondenceAddressLine3: orNull(formData.get('correspondenceAddressLine3')),
+      correspondencePostcode: orNull(formData.get('correspondencePostcode')),
+      correspondenceCity: orNull(formData.get('correspondenceCity')),
+      correspondenceState: orNull(formData.get('correspondenceState')),
+      correspondenceCountry: orNull(formData.get('correspondenceCountry')),
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));

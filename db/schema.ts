@@ -448,6 +448,24 @@ export const person = pgTable(
     city: text('city'),
     state: text('state'),
     country: text('country'),
+    // ── 3a25f5ee Contact & Address split — Permanent + Correspondence addresses (migration 0213) ──
+    // All NULLABLE, additive. The legacy addressLine1..country above is RETAINED for rollback/PDPA history
+    // and was backfilled into the PERMANENT block (product decision: today's single address = Permanent).
+    // The Contact & Address form now writes ONLY these permanent_* / correspondence_* columns.
+    permanentAddressLine1: text('permanent_address_line1'),
+    permanentAddressLine2: text('permanent_address_line2'),
+    permanentAddressLine3: text('permanent_address_line3'),
+    permanentPostcode: text('permanent_postcode'),
+    permanentCity: text('permanent_city'),
+    permanentState: text('permanent_state'),
+    permanentCountry: text('permanent_country'),
+    correspondenceAddressLine1: text('correspondence_address_line1'),
+    correspondenceAddressLine2: text('correspondence_address_line2'),
+    correspondenceAddressLine3: text('correspondence_address_line3'),
+    correspondencePostcode: text('correspondence_postcode'),
+    correspondenceCity: text('correspondence_city'),
+    correspondenceState: text('correspondence_state'),
+    correspondenceCountry: text('correspondence_country'),
     // Extended emergency contact (name + phone above; relationship free text, second phone, address).
     emergencyContactRelationship: text('emergency_contact_relationship'),
     emergencyContactPhone2: text('emergency_contact_phone2'),
