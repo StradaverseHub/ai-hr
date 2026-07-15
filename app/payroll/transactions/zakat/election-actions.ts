@@ -44,8 +44,9 @@ export async function saveZakatElectionAction(formData: FormData) {
     await setStatutoryProfileMY(s, {
       personId,
       // Read-modify-write pass-through: every non-zakat field is preserved verbatim so an
-      // election-only save can never clobber IC/EPF/SOCSO/tax/TP3/bank data.
-      icNumber: current.icNumber,
+      // election-only save can never clobber IC/EPF/SOCSO/tax/TP3/bank data. Item e3ce0d4d — icNumber is now
+      // nullable (non-Malaysian passport identity); coerce to '' for the full-row setter's IC validation.
+      icNumber: current.icNumber ?? '',
       epfNumber: current.epfNumber ?? undefined,
       socsoNumber: current.socsoNumber ?? undefined,
       taxNumber: current.taxNumber ?? undefined,

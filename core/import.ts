@@ -102,7 +102,9 @@ async function analyze(
     const codes = await tx.select({ code: employment.employeeCode }).from(employment);
     return {
       existingEmails: new Set(ppl.map((r) => r.email.toLowerCase())),
-      existingIcs: new Set(ics.map((r) => normalizeIC(r.ic))),
+      // Item e3ce0d4d — icNumber is now nullable (non-Malaysian passport rows); skip null ICs so a blank never
+      // enters the collision set (mirrors the employeeCode filter below).
+      existingIcs: new Set(ics.filter((r) => r.ic).map((r) => normalizeIC(r.ic as string))),
       existingCodes: new Set(codes.filter((r) => r.code).map((r) => normalizeEmployeeCode(r.code))),
     };
   });

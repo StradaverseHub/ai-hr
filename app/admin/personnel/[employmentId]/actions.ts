@@ -488,10 +488,17 @@ export async function setPersonAction(formData: FormData) {
  * b4682879 Contact & Address — instant-write of the structured home address + personal email + phone via
  * the same one writer (updatePerson). fullName is carried through as a hidden field (updatePerson keeps
  * name/email notNull), so saving contact info never wipes the identity.
+ *
+ * 3a25f5ee — the single structured address is now TWO independent blocks: Permanent + Correspondence (7
+ * fields each). The legacy addressLine1..country columns are no longer written here (retained for rollback,
+ * left unchanged since updatePerson only touches fields present on the payload). `addressCopyVia` is an
+ * optional provenance marker set by the "Same as Permanent Address" client island — recorded on the audit
+ * event as HOW the save happened, never any address VALUE (PDPA).
  */
 export async function setContactAddressAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  const via = String(formData.get('addressCopyVia') ?? '') === 'copy-permanent' ? 'copy-permanent' : undefined;
   try {
     await updatePerson(s, {
       personId: String(formData.get('personId')),
@@ -499,13 +506,21 @@ export async function setContactAddressAction(formData: FormData) {
       primaryEmail: String(formData.get('primaryEmail') ?? ''),
       phone: orNull(formData.get('phone')),
       personalEmail: orNull(formData.get('personalEmail')),
-      addressLine1: orNull(formData.get('addressLine1')),
-      addressLine2: orNull(formData.get('addressLine2')),
-      addressLine3: orNull(formData.get('addressLine3')),
-      postcode: orNull(formData.get('postcode')),
-      city: orNull(formData.get('city')),
-      state: orNull(formData.get('state')),
-      country: orNull(formData.get('country')),
+      via,
+      permanentAddressLine1: orNull(formData.get('permanentAddressLine1')),
+      permanentAddressLine2: orNull(formData.get('permanentAddressLine2')),
+      permanentAddressLine3: orNull(formData.get('permanentAddressLine3')),
+      permanentPostcode: orNull(formData.get('permanentPostcode')),
+      permanentCity: orNull(formData.get('permanentCity')),
+      permanentState: orNull(formData.get('permanentState')),
+      permanentCountry: orNull(formData.get('permanentCountry')),
+      correspondenceAddressLine1: orNull(formData.get('correspondenceAddressLine1')),
+      correspondenceAddressLine2: orNull(formData.get('correspondenceAddressLine2')),
+      correspondenceAddressLine3: orNull(formData.get('correspondenceAddressLine3')),
+      correspondencePostcode: orNull(formData.get('correspondencePostcode')),
+      correspondenceCity: orNull(formData.get('correspondenceCity')),
+      correspondenceState: orNull(formData.get('correspondenceState')),
+      correspondenceCountry: orNull(formData.get('correspondenceCountry')),
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
@@ -586,6 +601,7 @@ export async function setEmploymentInfoAction(formData: FormData) {
     await setEmploymentInfo(s, {
       employmentId,
       hiredOn: str('hiredOn') ?? undefined, // hiredOn is NOT NULL — a blank submit must not clear it.
+      joinDate: str('joinDate'), // nullable current-company Join Date; blank clears it.
       probationMonths: str('probationMonths') as string | null,
       probationDays: str('probationDays') as string | null,
       confirmationDate: str('confirmationDate'),
@@ -594,6 +610,19 @@ export async function setEmploymentInfoAction(formData: FormData) {
       resignationDate: str('resignationDate'),
       shortNoticeMonths: str('shortNoticeMonths') as string | null,
       shortNoticeDays: str('shortNoticeDays') as string | null,
+      // 955c7de4 — redesigned value+unit periods + new lifecycle dates. finalConfirmationDate is derived
+      // server-side, never submitted.
+      probationValue: str('probationValue') as string | null,
+      probationUnit: str('probationUnit'),
+      extendedProbationValue: str('extendedProbationValue') as string | null,
+      extendedProbationUnit: str('extendedProbationUnit'),
+      noticeBeforeConfirmationValue: str('noticeBeforeConfirmationValue') as string | null,
+      noticeBeforeConfirmationUnit: str('noticeBeforeConfirmationUnit'),
+      noticeAfterConfirmationValue: str('noticeAfterConfirmationValue') as string | null,
+      noticeAfterConfirmationUnit: str('noticeAfterConfirmationUnit'),
+      extendedConfirmationDate: str('extendedConfirmationDate'),
+      tenderResignationDate: str('tenderResignationDate'),
+      lastWorkingDate: str('lastWorkingDate'),
       orgBranch: str('orgBranch'),
       orgDivision: str('orgDivision'),
       orgRegion: str('orgRegion'),
@@ -715,7 +744,10 @@ export async function setStatutoryAction(formData: FormData) {
     // the bank/TP3/zakat fields already guard against). The three NEW columns (taxResidency/childReliefMode/
     // employerBearsTax) are NOT in setStatutoryProfileMY's write set, so they are untouched here regardless.
     if (!current) throw new Error('Save the IC number on the Profile tab first, then the EPF / SOCSO details.');
-    const icNumber = current.icNumber;
+    // Item e3ce0d4d — icNumber is now nullable (non-Malaysian rows are passport-identified). This full-row
+    // EPF/SOCSO overwrite still requires a Malaysian IC; coerce a null to '' so setStatutoryProfileMY's IC
+    // validation surfaces the "save the IC first" error rather than a type break.
+    const icNumber = current.icNumber ?? '';
     await pack.statutory.set(s, {
       personId,
       icNumber,
@@ -889,6 +921,34 @@ export async function setIcAction(formData: FormData) {
     } catch {
       // non-fatal — IC persisted; DOB autofill is a convenience.
     }
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Item e3ce0d4d — save ONLY the passport identification columns for a NON-Malaysian employee. The counterpart
+ * to setIcAction: the Profile-tab identity form shows the IC field for Malaysians and these passport fields for
+ * everyone else (client-side, driven by the selected nationality). Like setIcAction the pack setter SEEDS the
+ * statutory row (UPSERT) — but with NO IC (ic_number stays null) and SKIPS MyKad validation. It requires the
+ * passport number + issue date + expiry date (remark optional) and appends `employee.passport.updated`.
+ */
+export async function setPassportAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const personId = String(formData.get('personId'));
+  const pack = packFor('MY');
+  try {
+    if (!pack) throw new Error('No localization pack for MY');
+    await pack.statutory.setPassport(s, {
+      personId,
+      passportNumber: (formData.get('passportNumber') as string) || null,
+      passportIssueDate: (formData.get('passportIssueDate') as string) || null,
+      passportExpiryDate: (formData.get('passportExpiryDate') as string) || null,
+      passportRemark: (formData.get('passportRemark') as string) || null,
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));

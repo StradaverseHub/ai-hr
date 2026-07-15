@@ -880,6 +880,22 @@ export type PersonProfileFields = {
   city?: string | null;
   state?: string | null;
   country?: string | null;
+  // 3a25f5ee — Permanent + Correspondence structured addresses (migration 0213). Independent of the legacy
+  // single address above (retained for rollback). Each is 7 fields; state/country are catalog-backed.
+  permanentAddressLine1?: string | null;
+  permanentAddressLine2?: string | null;
+  permanentAddressLine3?: string | null;
+  permanentPostcode?: string | null;
+  permanentCity?: string | null;
+  permanentState?: string | null;
+  permanentCountry?: string | null;
+  correspondenceAddressLine1?: string | null;
+  correspondenceAddressLine2?: string | null;
+  correspondenceAddressLine3?: string | null;
+  correspondencePostcode?: string | null;
+  correspondenceCity?: string | null;
+  correspondenceState?: string | null;
+  correspondenceCountry?: string | null;
   emergencyContactName?: string | null;
   emergencyContactRelationship?: string | null;
   emergencyContactPhone?: string | null;
@@ -890,6 +906,11 @@ export type PersonProfileFields = {
 const PROFILE_FIELD_KEYS: (keyof PersonProfileFields)[] = [
   'firstName', 'lastName', 'preferredName', 'religion', 'race', 'nationality', 'personalEmail',
   'addressLine1', 'addressLine2', 'addressLine3', 'postcode', 'city', 'state', 'country',
+  // 3a25f5ee — Permanent + Correspondence address fields (audited by NAME only, PDPA — values never logged).
+  'permanentAddressLine1', 'permanentAddressLine2', 'permanentAddressLine3', 'permanentPostcode',
+  'permanentCity', 'permanentState', 'permanentCountry',
+  'correspondenceAddressLine1', 'correspondenceAddressLine2', 'correspondenceAddressLine3',
+  'correspondencePostcode', 'correspondenceCity', 'correspondenceState', 'correspondenceCountry',
   'emergencyContactName', 'emergencyContactRelationship', 'emergencyContactPhone',
   'emergencyContactPhone2', 'emergencyContactAddress',
 ];
@@ -906,6 +927,11 @@ const CATALOG_BACKED_COLUMNS: Partial<Record<keyof PersonProfileFields, ProfileO
   nationality: 'nationality',
   state: 'state',
   country: 'country',
+  // 3a25f5ee — the two new address blocks' state/country are validated against the same catalog.
+  permanentState: 'state',
+  permanentCountry: 'country',
+  correspondenceState: 'state',
+  correspondenceCountry: 'country',
   emergencyContactRelationship: 'relationship',
 };
 
@@ -919,7 +945,7 @@ const CATALOG_BACKED_COLUMNS: Partial<Record<keyof PersonProfileFields, ProfileO
  */
 export async function updatePerson(
   ctx: SessionContext,
-  p: { personId: string; fullName: string; primaryEmail: string; phone?: string | null } & PersonProfileFields,
+  p: { personId: string; fullName: string; primaryEmail: string; phone?: string | null; via?: string } & PersonProfileFields,
 ) {
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
@@ -934,6 +960,11 @@ export async function updatePerson(
         nationality: person.nationality,
         state: person.state,
         country: person.country,
+        // 3a25f5ee — legacy values of the two new address blocks' catalog columns, same tolerance rule.
+        permanentState: person.permanentState,
+        permanentCountry: person.permanentCountry,
+        correspondenceState: person.correspondenceState,
+        correspondenceCountry: person.correspondenceCountry,
         emergencyContactRelationship: person.emergencyContactRelationship,
       })
       .from(person)
@@ -976,7 +1007,14 @@ export async function updatePerson(
       actor: actorOf(ctx),
       subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
       // before/after only for the non-PII core trio; profile fields recorded by name (values are PII).
-      payload: profileFields.length > 0 ? { before, after, fields: profileFields } : { before, after },
+      // 3a25f5ee — `via` is an optional provenance marker (e.g. 'copy-permanent' when HR used the "Same as
+      // Permanent Address" convenience). It records HOW the save happened, never any address VALUE (PDPA).
+      payload: {
+        before,
+        after,
+        ...(profileFields.length > 0 ? { fields: profileFields } : {}),
+        ...(p.via ? { via: p.via } : {}),
+      },
     });
     return { id: p.personId };
   });
@@ -1288,6 +1326,8 @@ export async function setEmploymentAssignment(
 export type EmploymentInfoInput = {
   employmentId: string;
   hiredOn?: string;
+  // "Join Date" (feedback 24c4d02e) — the current-company effective join date. Nullable; '' / null clears it.
+  joinDate?: string | null;
   // Period components accept strings (raw HTML number-input values) or numbers; parsed + validated below.
   probationMonths?: number | string | null;
   probationDays?: number | string | null;
@@ -1297,6 +1337,20 @@ export type EmploymentInfoInput = {
   resignationDate?: string | null;
   shortNoticeMonths?: number | string | null;
   shortNoticeDays?: number | string | null;
+  // Enhance Employment Dates (955c7de4) — value + unit ('month'|'week'|'day') per period, plus lifecycle
+  // dates. All optional; undefined = untouched, ''/null = clear. finalConfirmationDate is DERIVED on save
+  // (= extendedConfirmationDate ?? confirmationDate) and never accepted from the caller.
+  probationValue?: number | string | null;
+  probationUnit?: string | null;
+  extendedProbationValue?: number | string | null;
+  extendedProbationUnit?: string | null;
+  noticeBeforeConfirmationValue?: number | string | null;
+  noticeBeforeConfirmationUnit?: string | null;
+  noticeAfterConfirmationValue?: number | string | null;
+  noticeAfterConfirmationUnit?: string | null;
+  extendedConfirmationDate?: string | null;
+  tenderResignationDate?: string | null;
+  lastWorkingDate?: string | null;
   orgBranch?: string | null;
   orgDivision?: string | null;
   orgRegion?: string | null;
@@ -1325,9 +1379,32 @@ const EMPLOYMENT_INFO_PERIOD_FIELDS = [
   'resignationNoticeDays',
   'shortNoticeMonths',
   'shortNoticeDays',
+  // 955c7de4 — new value component of the redesigned value+unit periods (non-negative integers).
+  'probationValue',
+  'extendedProbationValue',
+  'noticeBeforeConfirmationValue',
+  'noticeAfterConfirmationValue',
 ] as const;
 
-const EMPLOYMENT_INFO_DATE_FIELDS = ['confirmationDate', 'resignationDate'] as const;
+// 955c7de4 — the unit half of each redesigned period. Validated against EMPLOYMENT_PERIOD_UNITS below.
+const EMPLOYMENT_INFO_UNIT_FIELDS = [
+  'probationUnit',
+  'extendedProbationUnit',
+  'noticeBeforeConfirmationUnit',
+  'noticeAfterConfirmationUnit',
+] as const;
+
+export const EMPLOYMENT_PERIOD_UNITS = ['month', 'week', 'day'] as const;
+
+const EMPLOYMENT_INFO_DATE_FIELDS = [
+  'joinDate',
+  'confirmationDate',
+  'resignationDate',
+  // 955c7de4 — new lifecycle dates. finalConfirmationDate is DERIVED (not in this list; computed on save).
+  'extendedConfirmationDate',
+  'tenderResignationDate',
+  'lastWorkingDate',
+] as const;
 
 export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoInput) {
   const roles = ctx.roles ?? [];
@@ -1362,6 +1439,19 @@ export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoIn
     if (!Number.isInteger(n) || n < 0) throw new Error('Period months/days must be whole numbers of 0 or more.');
     set[f] = n;
   }
+  for (const f of EMPLOYMENT_INFO_UNIT_FIELDS) {
+    const raw = p[f];
+    if (raw === undefined) continue;
+    if (raw == null || raw === '') {
+      set[f] = null;
+      continue;
+    }
+    const v = String(raw).trim().toLowerCase();
+    if (!(EMPLOYMENT_PERIOD_UNITS as readonly string[]).includes(v)) {
+      throw new Error('Period unit must be Month, Week or Day.');
+    }
+    set[f] = v;
+  }
   for (const f of EMPLOYMENT_INFO_TEXT_FIELDS) {
     const raw = p[f];
     if (raw === undefined) continue;
@@ -1375,6 +1465,7 @@ export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoIn
     const [before] = await tx
       .select({
         hiredOn: employment.hiredOn,
+        joinDate: employment.joinDate,
         probationMonths: employment.probationMonths,
         probationDays: employment.probationDays,
         confirmationDate: employment.confirmationDate,
@@ -1383,6 +1474,18 @@ export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoIn
         resignationDate: employment.resignationDate,
         shortNoticeMonths: employment.shortNoticeMonths,
         shortNoticeDays: employment.shortNoticeDays,
+        probationValue: employment.probationValue,
+        probationUnit: employment.probationUnit,
+        extendedProbationValue: employment.extendedProbationValue,
+        extendedProbationUnit: employment.extendedProbationUnit,
+        noticeBeforeConfirmationValue: employment.noticeBeforeConfirmationValue,
+        noticeBeforeConfirmationUnit: employment.noticeBeforeConfirmationUnit,
+        noticeAfterConfirmationValue: employment.noticeAfterConfirmationValue,
+        noticeAfterConfirmationUnit: employment.noticeAfterConfirmationUnit,
+        extendedConfirmationDate: employment.extendedConfirmationDate,
+        finalConfirmationDate: employment.finalConfirmationDate,
+        tenderResignationDate: employment.tenderResignationDate,
+        lastWorkingDate: employment.lastWorkingDate,
         orgBranch: employment.orgBranch,
         orgDivision: employment.orgDivision,
         orgRegion: employment.orgRegion,
@@ -1400,13 +1503,59 @@ export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoIn
     // Date-relationship checks resolve against the RESULTING values (incoming override → existing), so a save
     // that changes only the confirmation date is still validated against the stored hire date, and vice-versa.
     const hire = (set.hiredOn as string | undefined) ?? before.hiredOn;
+    const join = 'joinDate' in set ? (set.joinDate as string | null) : before.joinDate;
     const confirmation = 'confirmationDate' in set ? (set.confirmationDate as string | null) : before.confirmationDate;
     const resignation = 'resignationDate' in set ? (set.resignationDate as string | null) : before.resignationDate;
+    // The current-company Join Date can never precede the Group Join Date (you cannot join a company inside the
+    // group before joining the group). Resolves against the RESULTING values so a save of either date is checked.
+    if (join && hire && join < hire) {
+      throw new Error('Join date cannot be earlier than the group join date.');
+    }
     if (confirmation && hire && confirmation < hire) {
       throw new Error('Confirmation date cannot be earlier than the hire date.');
     }
     if (resignation && hire && resignation < hire) {
       throw new Error('Resignation date cannot be earlier than the hire date.');
+    }
+
+    // 955c7de4 — lifecycle date-ordering, all resolved against the RESULTING values (incoming override →
+    // existing), so a save of any single date is still validated against the stored siblings.
+    const extendedConfirmation =
+      'extendedConfirmationDate' in set
+        ? (set.extendedConfirmationDate as string | null)
+        : before.extendedConfirmationDate;
+    const tender =
+      'tenderResignationDate' in set ? (set.tenderResignationDate as string | null) : before.tenderResignationDate;
+    const lastWorking = 'lastWorkingDate' in set ? (set.lastWorkingDate as string | null) : before.lastWorkingDate;
+
+    // An extended confirmation (after a probation extension) can never precede the normal confirmation date.
+    if (extendedConfirmation && confirmation && extendedConfirmation < confirmation) {
+      throw new Error('Extended confirmation date cannot be earlier than the confirmation date.');
+    }
+    // Resignation lifecycle ordering: tender ≤ resignation ≤ last working (only pairs that are both present).
+    if (tender && resignation && tender > resignation) {
+      throw new Error('Tender resignation date cannot be later than the resignation date.');
+    }
+    if (resignation && lastWorking && resignation > lastWorking) {
+      throw new Error('Resignation date cannot be later than the last working date.');
+    }
+    if (tender && lastWorking && tender > lastWorking) {
+      throw new Error('Tender resignation date cannot be later than the last working date.');
+    }
+    // Tender/last-working, like the other lifecycle dates, cannot precede the group join date.
+    if (tender && hire && tender < hire) {
+      throw new Error('Tender resignation date cannot be earlier than the hire date.');
+    }
+    if (lastWorking && hire && lastWorking < hire) {
+      throw new Error('Last working date cannot be earlier than the hire date.');
+    }
+
+    // finalConfirmationDate is DERIVED, never accepted from the caller: = extendedConfirmation ?? confirmation.
+    // Recompute from the resulting values on every save and persist only when it actually changes, so the
+    // before/after diff stays meaningful and the column is always consistent with its inputs.
+    const derivedFinal = (extendedConfirmation ?? confirmation) ?? null;
+    if (derivedFinal !== (before.finalConfirmationDate ?? null)) {
+      set.finalConfirmationDate = derivedFinal;
     }
 
     await tx.update(employment).set(set).where(eq(employment.id, p.employmentId));

@@ -448,6 +448,24 @@ export const person = pgTable(
     city: text('city'),
     state: text('state'),
     country: text('country'),
+    // ── 3a25f5ee Contact & Address split — Permanent + Correspondence addresses (migration 0213) ──
+    // All NULLABLE, additive. The legacy addressLine1..country above is RETAINED for rollback/PDPA history
+    // and was backfilled into the PERMANENT block (product decision: today's single address = Permanent).
+    // The Contact & Address form now writes ONLY these permanent_* / correspondence_* columns.
+    permanentAddressLine1: text('permanent_address_line1'),
+    permanentAddressLine2: text('permanent_address_line2'),
+    permanentAddressLine3: text('permanent_address_line3'),
+    permanentPostcode: text('permanent_postcode'),
+    permanentCity: text('permanent_city'),
+    permanentState: text('permanent_state'),
+    permanentCountry: text('permanent_country'),
+    correspondenceAddressLine1: text('correspondence_address_line1'),
+    correspondenceAddressLine2: text('correspondence_address_line2'),
+    correspondenceAddressLine3: text('correspondence_address_line3'),
+    correspondencePostcode: text('correspondence_postcode'),
+    correspondenceCity: text('correspondence_city'),
+    correspondenceState: text('correspondence_state'),
+    correspondenceCountry: text('correspondence_country'),
     // Extended emergency contact (name + phone above; relationship free text, second phone, address).
     emergencyContactRelationship: text('emergency_contact_relationship'),
     emergencyContactPhone2: text('emergency_contact_phone2'),
@@ -617,7 +635,16 @@ export const employment = pgTable(
       .notNull()
       .references(() => company.id),
     employeeCode: text('employee_code'),
+    // "Group Join Date" (UI label) — the employee's FIRST day anywhere in the group. NOT NULL and the durable
+    // anchor for every downstream calculation (leave entitlement service bands, payroll proration, EA forms,
+    // imports). Deliberately NOT renamed from hired_on (~50 readers + the import contract depend on the name);
+    // the Employment tab relabels it "Group Join Date" (feedback 24c4d02e).
     hiredOn: date('hired_on').notNull(),
+    // "Join Date" (feedback 24c4d02e, migration 0212) — the effective joining date for the CURRENT company /
+    // legal entity / assignment. Nullable: null = not captured yet, in which case current-company service
+    // length falls back to hired_on (the group date). Changes on internal/company transfers (auto-sync is a
+    // documented v1 follow-up); hired_on stays fixed. Leave entitlement bands stay on hired_on (group seniority).
+    joinDate: date('join_date'),
     // Wave 2 (ADR-0041 2E): the employee's seniority grade — drives grade-scoped leave entitlements.
     // Null = ungraded (falls to the company-default leave policy).
     gradeId: uuid('grade_id').references(() => jobGrade.id),
@@ -701,6 +728,28 @@ export const employment = pgTable(
     resignationDate: date('resignation_date'),
     shortNoticeMonths: integer('short_notice_months'),
     shortNoticeDays: integer('short_notice_days'),
+    // Enhance Employment Dates Management (955c7de4, migration 0213). The Employment Dates card was redesigned
+    // to show an explicit UNIT per period and to capture the full lifecycle. Each period is now a value + unit
+    // pair (unit ∈ 'month'|'week'|'day', validated in core/org.ts::setEmploymentInfo). All NULLABLE + additive.
+    // The legacy probation/notice month+day columns above are KEPT untouched (they still drive the offer-letter
+    // probation-end calc); the read layer falls back legacy→new for display continuity. Wiring these into
+    // payroll final-pay / attendance cutoff / auto career-movement is a documented v1 follow-up.
+    probationValue: integer('probation_value'),
+    probationUnit: text('probation_unit').$type<'month' | 'week' | 'day'>(),
+    extendedProbationValue: integer('extended_probation_value'),
+    extendedProbationUnit: text('extended_probation_unit').$type<'month' | 'week' | 'day'>(),
+    noticeBeforeConfirmationValue: integer('notice_before_confirmation_value'),
+    noticeBeforeConfirmationUnit: text('notice_before_confirmation_unit').$type<'month' | 'week' | 'day'>(),
+    noticeAfterConfirmationValue: integer('notice_after_confirmation_value'),
+    noticeAfterConfirmationUnit: text('notice_after_confirmation_unit').$type<'month' | 'week' | 'day'>(),
+    // Confirmation extended after a probation extension. finalConfirmationDate is DERIVED (= extended ?? normal)
+    // and recomputed + audited on every setEmploymentInfo save so it is always consistent.
+    extendedConfirmationDate: date('extended_confirmation_date'),
+    finalConfirmationDate: date('final_confirmation_date'),
+    // Resignation lifecycle: the date the employee TENDERS the resignation vs the effective resignation date
+    // (resignationDate above) vs their final physical working day. Capture-only in v1.
+    tenderResignationDate: date('tender_resignation_date'),
+    lastWorkingDate: date('last_working_date'),
     // Organisation dimensions beyond the effective-dated department/position (which live on `assignment`).
     // Free-text in v1 — a follow-up CR introduces master tables + validated dropdowns. Nullable text.
     orgBranch: text('org_branch'),
@@ -1350,6 +1399,11 @@ export const leaveApprovalPolicy = pgTable(
     departmentId: uuid('department_id').references(() => department.id),
     positionId: uuid('position_id').references(() => position.id),
     gradeId: uuid('grade_id').references(() => jobGrade.id),
+    // R41 72800eda — a rule may scope by GRADE GROUP (the benefit-scheme grade bands, grade_group) instead of
+    // (or as well as) an individual job grade. Nullable/wildcard like every other dimension; resolved at
+    // submit time by mapping the requester's grade → its group via grade_group_member. Restrict FK so a
+    // referenced group can never be silently deleted out from under a live rule.
+    gradeGroupId: uuid('grade_group_id').references(() => gradeGroup.id),
     employmentType: employmentTypeEnum('employment_type'),
     minDays: integer('min_days'),
     maxDays: integer('max_days'),
@@ -1369,7 +1423,7 @@ export const leaveApprovalPolicy = pgTable(
     uniqueIndex('leave_approval_policy_wildcard_uq')
       .on(t.companyId, sql`coalesce(${t.leaveTypeId}, '00000000-0000-0000-0000-000000000000'::uuid)`)
       .where(
-        sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null and employment_type is null and min_days is null and max_days is null`,
+        sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null and grade_group_id is null and employment_type is null and min_days is null and max_days is null`,
       ),
   ],
 );
@@ -1648,6 +1702,42 @@ export const employeeIdConfig = pgTable(
   ],
 );
 
+// HR-Admin Dashboard Card Master (feedback 1586d2f5) — a tenant-scoped catalog of the dashboard cards HR
+// can maintain: which exist, their type/status, whether employees may add them, whether they show by
+// default, whether they are mandatory (non-removable), and their display order. MASTER only; the employee
+// dashboard customizer (feedback 578a2fcf) reads from it. card_key is a STABLE id binding a row to the
+// concrete renderer (the R39 block/card set — see lib/dashboard-layout.ts + lib/dashboard-cards.ts). RLS:
+// readable tenant-wide, writable admin-only (tenant-level config, no company scope). Additive + backward
+// compatible: with no rows the current hardcoded dashboard is unchanged.
+export const dashboardCardConfig = pgTable(
+  'dashboard_card_config',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // Stable renderer binding (e.g. 'leaveBalance', 'plannedAbsences'). Unique within a tenant.
+    cardKey: text('card_key').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    cardType: text('card_type').notNull().default('information'), // 'information' | 'action' | 'shortcut'
+    status: text('status').notNull().default('active'), // 'active' | 'inactive'
+    // Can an employee ADD this card during dashboard customization (578a2fcf)?
+    employeeSelectable: boolean('employee_selectable').notNull().default(true),
+    // Does the card appear by default on a fresh employee dashboard?
+    defaultDisplay: boolean('default_display').notNull().default(false),
+    // Mandatory: the employee may not REMOVE it (implies default_display, enforced in the service).
+    mandatory: boolean('mandatory').notNull().default(false),
+    displayOrder: integer('display_order').notNull().default(0),
+    // Optional click-through target (for shortcut/action cards).
+    href: text('href'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('dashboard_card_config_tenant_key_uq').on(t.tenantId, t.cardKey),
+    index('dashboard_card_config_tenant_status_idx').on(t.tenantId, t.status),
+  ],
+);
+
 // ─────────────────────── Audit substrate (ADR-0006) ───────────────────────
 // Append-only. No UPDATE/DELETE (enforced in the RLS/constraints migration).
 
@@ -1738,7 +1828,15 @@ export const employeeStatutoryMy = pgTable(
     personId: uuid('person_id')
       .notNull()
       .references(() => person.id),
-    icNumber: text('ic_number').notNull(),
+    // Item e3ce0d4d — NULLABLE (relaxed from NOT NULL by migration 0212): a Malaysian employee is identified
+    // by their MyKad IC, a non-Malaysian by their passport (below), so a non-Malaysian identity row carries no IC.
+    icNumber: text('ic_number'),
+    // Item e3ce0d4d — passport identification (non-Malaysian employees). All nullable/additive: Malaysian rows
+    // leave these blank and keep their IC. Foundation for future passport-expiry reminders / work-permit tracking.
+    passportNumber: text('passport_number'),
+    passportIssueDate: date('passport_issue_date'),
+    passportExpiryDate: date('passport_expiry_date'),
+    passportRemark: text('passport_remark'),
     epfNumber: text('epf_number'),
     socsoNumber: text('socso_number'),
     taxNumber: text('tax_number'),
@@ -1828,7 +1926,9 @@ export const employeeStatutoryMy = pgTable(
   },
   (t) => [
     uniqueIndex('employee_statutory_my_person_uq').on(t.personId),
-    uniqueIndex('employee_statutory_my_ic_uq').on(t.tenantId, t.icNumber),
+    // Item e3ce0d4d — PARTIAL: real ICs stay unique per tenant, but multiple non-Malaysian rows carrying a
+    // null IC (identified by passport instead) don't collide.
+    uniqueIndex('employee_statutory_my_ic_uq').on(t.tenantId, t.icNumber).where(sql`ic_number is not null`),
   ],
 );
 

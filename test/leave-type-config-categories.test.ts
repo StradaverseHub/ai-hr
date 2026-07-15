@@ -1,0 +1,134 @@
+/**
+ * Reorganize Leave Type Configuration Sections into Logical Categories (feedback d842ea46).
+ *
+ * The leave-type config panel (components/leave-type-panel.tsx) previously rendered every sub-form in one
+ * flat expanded region — a single two-column grid holding most sub-forms in DOM order, plus the entitlement
+ * timeline / add-entitlement blocks full-width below. This item regroups them into SEVEN titled category
+ * <Card>s so HR can find the right settings area at a glance.
+ *
+ * PURE PRESENTATION: every sub-form's markup / tri-state marker / server action is byte-identical — only the
+ * JSX nesting + order changed. This guards, statically (the suite has no DOM runner for this component — the
+ * repo convention for this UI-only file; see leave-type-edit-layout.test.ts):
+ *   1. The 7 category cards render, in order, each titled by its admin.leave.category* key.
+ *   2. Every sub-form's tri-state marker survived AND landed in its assigned category (no form dropped, none
+ *      misfiled) — so nothing stopped posting its marker.
+ *   3. The old two-column grid wrapper is gone.
+ *   4. The 7 new category titles exist in all six locales.
+ */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
+
+const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
+
+const CATEGORY_KEYS = [
+  'categoryGeneral',
+  'categoryEligibilityEntitlement',
+  'categoryEssPolicy',
+  'categoryApproval',
+  'categoryDisplay',
+  'categoryCalculation',
+  'categoryCustom',
+] as const;
+
+/** The category → the markers/anchors that must live inside that category's card, in the reorg's grouping. */
+const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
+  categoryGeneral: ['name="identity"', "t('statutoryMinimum')", 'name="leaveUnit"'],
+  categoryEligibilityEntitlement: [
+    'name="eligibility"',
+    "t('companyEntitlements')",
+    "t('addEntitlement')",
+    'name="expiry"',
+  ],
+  categoryEssPolicy: [
+    'name="durations"',
+    'name="document"',
+    'name="negativeBalance"',
+    'name="backdating"',
+    'name="minAdvance"',
+    'name="duplicatePolicy"',
+  ],
+  categoryApproval: ['name="partialApproval"'],
+  categoryDisplay: ['name="essView"', 'name="visibility"', 'name="placement"'],
+  categoryCalculation: ['name="dayTypeInclusion"'],
+  categoryCustom: ['name="applyNotice"', '<LeaveVisualForm'],
+};
+
+/** Split the file into the 7 card segments, keyed by category, using the <CardTitle>{t('categoryX')}</CardTitle>
+ *  markers as boundaries (each segment runs from its title to the next title, last to EOF). */
+function cardSegments(): Record<string, string> {
+  const idxs = CATEGORY_KEYS.map((k) => {
+    const anchor = `<CardTitle>{t('${k}')}</CardTitle>`;
+    const at = panelSrc.indexOf(anchor);
+    expect(at, `CardTitle for ${k} present`).toBeGreaterThan(-1);
+    return { k, at };
+  });
+  // Titles appear in declared order.
+  for (let i = 1; i < idxs.length; i++) {
+    expect(idxs[i].at, `${idxs[i].k} after ${idxs[i - 1].k}`).toBeGreaterThan(idxs[i - 1].at);
+  }
+  const out: Record<string, string> = {};
+  for (let i = 0; i < idxs.length; i++) {
+    const start = idxs[i].at;
+    const end = i + 1 < idxs.length ? idxs[i + 1].at : panelSrc.length;
+    out[idxs[i].k] = panelSrc.slice(start, end);
+  }
+  return out;
+}
+
+describe('d842ea46 · leave-type config regrouped into 7 category cards', () => {
+  it('imports the shared Card primitives', () => {
+    expect(panelSrc).toMatch(
+      /import \{ Card, CardHeader, CardTitle, CardContent \} from '\.\/ui\/card'/,
+    );
+  });
+
+  it('renders exactly the 7 category CardTitles, in order', () => {
+    const seq = CATEGORY_KEYS.map((k) => `<CardTitle>{t('${k}')}</CardTitle>`);
+    let cursor = -1;
+    for (const s of seq) {
+      const at = panelSrc.indexOf(s, cursor + 1);
+      expect(at, `${s} present after previous`).toBeGreaterThan(cursor);
+      cursor = at;
+    }
+    // No stray 8th category card.
+    const titleCount = (panelSrc.match(/<CardTitle>/g) ?? []).length;
+    expect(titleCount).toBe(CATEGORY_KEYS.length);
+  });
+
+  it('places every sub-form marker/anchor inside its assigned category card', () => {
+    const segs = cardSegments();
+    for (const key of CATEGORY_KEYS) {
+      for (const needle of CATEGORY_CONTENT[key]) {
+        expect(segs[key].includes(needle), `${needle} should live in ${key} card`).toBe(true);
+      }
+    }
+  });
+
+  it('keeps every tri-state marker globally (no sub-form dropped)', () => {
+    for (const markers of Object.values(CATEGORY_CONTENT)) {
+      for (const needle of markers) {
+        expect(panelSrc.includes(needle), `${needle} still present`).toBe(true);
+      }
+    }
+  });
+
+  it('drops the old two-column grid wrapper', () => {
+    expect(panelSrc).not.toMatch(/grid grid-cols-1 gap-3 lg:grid-cols-2/);
+  });
+
+  it('has all 7 category titles in every locale', () => {
+    for (const loc of LOCALES) {
+      const msgs = JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'));
+      const leave = msgs?.admin?.leave ?? {};
+      for (const key of CATEGORY_KEYS) {
+        expect(typeof leave[key], `${loc}.admin.leave.${key}`).toBe('string');
+        expect((leave[key] as string).length, `${loc}.admin.leave.${key} non-empty`).toBeGreaterThan(0);
+      }
+    }
+  });
+});

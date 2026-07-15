@@ -1,0 +1,19 @@
+-- Redesign Employment Joining Date Structure (feedback 24c4d02e).
+--
+-- The Employment tab has a single "Hire Date" = employment.hired_on (NOT NULL), which is the employee's
+-- FIRST day anywhere in the group and drives every downstream calculation (leave entitlement service bands,
+-- payroll proration, EA forms, imports, ~50 readers). For multi-company groups / internal transfers that one
+-- date can't distinguish the original GROUP joining date from the effective JOIN date at the CURRENT company.
+--
+-- Rather than physically rename hired_on (unsafe — breaks the import contract, the NOT NULL guarantee and
+-- every reader), we KEEP hired_on as the durable "Group Join Date" (relabelled in the UI only) and ADD a
+-- separate, nullable current-company Join Date. Group service length reads hired_on; current-company service
+-- length reads join_date (falling back to hired_on until a transfer sets it). Leave entitlement bands stay on
+-- hired_on (approved product decision — group seniority). Transfer-driven auto-sync of join_date is out of
+-- scope for v1 (documented follow-up).
+--
+-- Additive + nullable: an existing employment with join_date NULL behaves exactly as before (its current-
+-- company service length simply defaults to the group figure). IF NOT EXISTS makes a re-run on a partially-
+-- migrated DB safe. No RLS change: employment already has tenant-scoped policies which this scalar column
+-- inherits (same as the 0181 employment-information additive columns).
+ALTER TABLE employment ADD COLUMN IF NOT EXISTS join_date date;

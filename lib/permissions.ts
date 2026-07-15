@@ -330,6 +330,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/admin/settings/employee-id'],
   },
   {
+    // HR-Admin Dashboard Card Master (feedback 1586d2f5) — the tenant-scoped catalog of dashboard cards HR
+    // maintains (foundation for the employee dashboard customizer 578a2fcf). scopedAdmin like its siblings.
+    screenKey: 'dashboardCardConfig',
+    href: '/admin/settings/dashboard',
+    labelKey: 'nav.dashboardCardConfig',
+    guard: 'scopedAdmin',
+    routes: ['/admin/settings/dashboard'],
+  },
+  {
     screenKey: 'payComponents',
     href: '/admin/pay-components',
     labelKey: 'admin.users.screen.payComponents',

@@ -54,6 +54,9 @@ export type ApprovalMatchAttrs = {
   departmentId?: string | null;
   positionId?: string | null;
   gradeId?: string | null;
+  // R41 72800eda — the grade GROUP the requester's grade belongs to (grade_group_member), resolved at submit
+  // time. A grade-group-scoped rule matches on this; individual gradeId scoping is independent and unchanged.
+  gradeGroupId?: string | null;
   employmentType?: EmploymentType | null;
   /** The request's leave-day count (fractional day-equivalent for hourly/partial requests — ADR-0071 1(h)). */
   days?: number | null;
@@ -67,6 +70,7 @@ type RuleRow = {
   departmentId: string | null;
   positionId: string | null;
   gradeId: string | null;
+  gradeGroupId: string | null;
   employmentType: EmploymentType | null;
   minDays: number | null;
   maxDays: number | null;
@@ -87,6 +91,7 @@ function ruleMatches(rule: RuleRow, leaveTypeId: string | null, a: ApprovalMatch
   if (rule.departmentId !== null && rule.departmentId !== (a.departmentId ?? null)) return false;
   if (rule.positionId !== null && rule.positionId !== (a.positionId ?? null)) return false;
   if (rule.gradeId !== null && rule.gradeId !== (a.gradeId ?? null)) return false;
+  if (rule.gradeGroupId !== null && rule.gradeGroupId !== (a.gradeGroupId ?? null)) return false;
   if (rule.employmentType !== null && rule.employmentType !== (a.employmentType ?? null)) return false;
   const days = a.days ?? null;
   if (rule.minDays !== null) {
@@ -107,6 +112,7 @@ function specificity(rule: RuleRow): number {
   if (rule.departmentId !== null) n++;
   if (rule.positionId !== null) n++;
   if (rule.gradeId !== null) n++;
+  if (rule.gradeGroupId !== null) n++;
   if (rule.employmentType !== null) n++;
   if (rule.minDays !== null || rule.maxDays !== null) n++;
   return n;
@@ -148,6 +154,7 @@ export async function resolveApprovalChain(
       departmentId: leaveApprovalPolicy.departmentId,
       positionId: leaveApprovalPolicy.positionId,
       gradeId: leaveApprovalPolicy.gradeId,
+      gradeGroupId: leaveApprovalPolicy.gradeGroupId,
       employmentType: leaveApprovalPolicy.employmentType,
       minDays: leaveApprovalPolicy.minDays,
       maxDays: leaveApprovalPolicy.maxDays,
@@ -226,7 +233,7 @@ export async function getLeaveApprovalPolicy(
 
 /** SQL predicate isolating the "company default" rule: the fully-wildcard row (no scoping dimension set). */
 function defaultRuleFilter() {
-  return sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null and employment_type is null and min_days is null and max_days is null`;
+  return sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null and grade_group_id is null and employment_type is null and min_days is null and max_days is null`;
 }
 
 /** 4ec5a940 — normalise an OPTIONAL "why the change was made" note for the audit event payload. Kept local
@@ -310,6 +317,7 @@ export type LeaveApprovalRule = {
   departmentId: string | null;
   positionId: string | null;
   gradeId: string | null;
+  gradeGroupId: string | null;
   employmentType: EmploymentType | null;
   minDays: number | null;
   maxDays: number | null;
@@ -328,10 +336,14 @@ export type LeaveApprovalRuleInput = {
   departmentId?: string | null;
   positionId?: string | null;
   gradeId?: string | null;
+  gradeGroupId?: string | null;
   employmentType?: EmploymentType | null;
   minDays?: number | null;
   maxDays?: number | null;
   levels: string[];
+  // R41 72800eda — "Default Workflow": when set, the rule draws its ordered chain from a reusable template
+  // (its own `levels` is cleared to []); when null it is a "Custom Workflow" carrying its own `levels`.
+  templateId?: string | null;
 };
 
 function normDay(v: number | null | undefined): number | null {
@@ -340,10 +352,16 @@ function normDay(v: number | null | undefined): number | null {
   return v;
 }
 
-/** Validate + normalize a rule's inputs, throwing on an unusable rule (empty chain, min>max). */
+/** Validate + normalize a rule's inputs, throwing on an unusable rule (empty chain, min>max). A rule is
+ *  either "Default Workflow" (templateId set → the template is the chain, its own `levels` cleared to []) or
+ *  "Custom Workflow" (templateId null → its own non-empty `levels`); one of the two must be present. */
 function cleanRuleInput(p: LeaveApprovalRuleInput) {
-  const levels = sanitizeLevels(p.levels);
-  if (levels.length === 0) throw new Error('A rule needs at least one approval level');
+  const templateId = p.templateId?.trim() ? p.templateId.trim() : null;
+  // R41 72800eda — a template-driven ("Default") rule clears its own levels; a custom rule keeps them.
+  const levels = templateId ? [] : sanitizeLevels(p.levels);
+  if (!templateId && levels.length === 0) {
+    throw new Error('A rule needs at least one approval level, or a template to draw its chain from');
+  }
   const minDays = normDay(p.minDays);
   const maxDays = normDay(p.maxDays);
   if (minDays !== null && maxDays !== null && minDays > maxDays) {
@@ -357,10 +375,12 @@ function cleanRuleInput(p: LeaveApprovalRuleInput) {
     departmentId: p.departmentId ?? null,
     positionId: p.positionId ?? null,
     gradeId: p.gradeId ?? null,
+    gradeGroupId: p.gradeGroupId ?? null,
     employmentType: p.employmentType ?? null,
     minDays,
     maxDays,
     levels,
+    templateId,
   };
 }
 
@@ -385,6 +405,7 @@ async function assertNoDuplicateRule(
         eqOrNull(leaveApprovalPolicy.departmentId, c.departmentId),
         eqOrNull(leaveApprovalPolicy.positionId, c.positionId),
         eqOrNull(leaveApprovalPolicy.gradeId, c.gradeId),
+        eqOrNull(leaveApprovalPolicy.gradeGroupId, c.gradeGroupId),
         c.employmentType == null
           ? isNull(leaveApprovalPolicy.employmentType)
           : eq(leaveApprovalPolicy.employmentType, c.employmentType),
@@ -417,11 +438,13 @@ export async function createLeaveApprovalRule(ctx: SessionContext, p: LeaveAppro
         departmentId: c.departmentId,
         positionId: c.positionId,
         gradeId: c.gradeId,
+        gradeGroupId: c.gradeGroupId,
         employmentType: c.employmentType,
         minDays: c.minDays,
         maxDays: c.maxDays,
         active: true,
         levels: c.levels,
+        templateId: c.templateId,
       })
       .returning({ id: leaveApprovalPolicy.id });
     await appendEvent(tx, {
@@ -458,10 +481,12 @@ export async function updateLeaveApprovalRule(
         departmentId: leaveApprovalPolicy.departmentId,
         positionId: leaveApprovalPolicy.positionId,
         gradeId: leaveApprovalPolicy.gradeId,
+        gradeGroupId: leaveApprovalPolicy.gradeGroupId,
         employmentType: leaveApprovalPolicy.employmentType,
         minDays: leaveApprovalPolicy.minDays,
         maxDays: leaveApprovalPolicy.maxDays,
         levels: leaveApprovalPolicy.levels,
+        templateId: leaveApprovalPolicy.templateId,
       })
       .from(leaveApprovalPolicy)
       .where(and(eq(leaveApprovalPolicy.id, ruleId), eq(leaveApprovalPolicy.companyId, p.companyId)))
@@ -475,10 +500,12 @@ export async function updateLeaveApprovalRule(
         departmentId: c.departmentId,
         positionId: c.positionId,
         gradeId: c.gradeId,
+        gradeGroupId: c.gradeGroupId,
         employmentType: c.employmentType,
         minDays: c.minDays,
         maxDays: c.maxDays,
         levels: c.levels,
+        templateId: c.templateId,
         updatedAt: sql`now()`,
       })
       .where(and(eq(leaveApprovalPolicy.id, ruleId), eq(leaveApprovalPolicy.companyId, p.companyId)));
@@ -498,10 +525,12 @@ export async function updateLeaveApprovalRule(
               departmentId: prev.departmentId,
               positionId: prev.positionId,
               gradeId: prev.gradeId,
+              gradeGroupId: prev.gradeGroupId,
               employmentType: prev.employmentType,
               minDays: prev.minDays,
               maxDays: prev.maxDays,
               levels: sanitizeLevels(prev.levels),
+              templateId: prev.templateId,
             }
           : null,
         after: { ...c },
@@ -547,6 +576,7 @@ export async function listLeaveApprovalRules(
         departmentId: leaveApprovalPolicy.departmentId,
         positionId: leaveApprovalPolicy.positionId,
         gradeId: leaveApprovalPolicy.gradeId,
+        gradeGroupId: leaveApprovalPolicy.gradeGroupId,
         employmentType: leaveApprovalPolicy.employmentType,
         minDays: leaveApprovalPolicy.minDays,
         maxDays: leaveApprovalPolicy.maxDays,
@@ -568,6 +598,7 @@ export async function listLeaveApprovalRules(
         departmentId: r.departmentId,
         positionId: r.positionId,
         gradeId: r.gradeId,
+        gradeGroupId: r.gradeGroupId,
         employmentType: r.employmentType,
         minDays: r.minDays,
         maxDays: r.maxDays,

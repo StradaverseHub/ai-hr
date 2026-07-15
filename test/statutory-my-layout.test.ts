@@ -90,8 +90,12 @@ describe('Statutory (Malaysia) layout: every statutory input stays mounted (full
 
 describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, tax fields in the dedicated card', () => {
   it('IC has its own Profile-tab form (setIcAction) with the icNumber input', () => {
-    expect(page.includes('action={setIcAction}')).toBe(true);
-    expect(page.includes('name="icNumber"')).toBe(true);
+    // Item e3ce0d4d — the IC form lives in the nationality-conditional IdentityFields client
+    // component; the Profile tab wires it via setIcAction={setIcAction}.
+    expect(page.includes('setIcAction={setIcAction}')).toBe(true);
+    const identity = read('components/personnel-identity.tsx');
+    expect(identity.includes('action={setIcAction}')).toBe(true);
+    expect(identity.includes('name="icNumber"')).toBe(true);
   });
 
   it('the Identification & Tax card carries the tax inputs (setTaxAction)', () => {

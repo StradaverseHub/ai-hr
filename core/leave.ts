@@ -2017,9 +2017,23 @@ async function generateApprovalSteps(
     .where(eq(employment.id, employmentId))
     .limit(1);
 
+  // R41 72800eda: map the requester's individual grade → its GRADE GROUP (grade_group_member) so a
+  // grade-group-scoped approval rule can match. A grade belongs to at most one group (unique index); an
+  // ungrouped/ungraded requester resolves to null and simply never matches a group-scoped rule.
+  let gradeGroupId: string | null = null;
+  if (attr?.gradeId) {
+    const [gm] = await tx
+      .select({ gradeGroupId: gradeGroupMember.gradeGroupId })
+      .from(gradeGroupMember)
+      .where(eq(gradeGroupMember.gradeId, attr.gradeId))
+      .limit(1);
+    gradeGroupId = gm?.gradeGroupId ?? null;
+  }
+
   // 2B-2 / ADR-0071: the chain is data — resolve the most-specific matching rule for this request.
   const chain = await resolveApprovalChain(tx, co.companyId, leaveTypeId, {
     gradeId: attr?.gradeId ?? null,
+    gradeGroupId,
     departmentId: attr?.departmentId ?? null,
     positionId: attr?.positionId ?? null,
     employmentType: attr?.employmentType ?? null,
@@ -3789,6 +3803,25 @@ export const serviceYearsAt = (hiredOn: string, asOf: string): number => {
     y -= 1;
   }
   return Math.max(0, y);
+};
+
+/**
+ * Length of service between `hiredOn` and `asOf` broken into whole years + residual whole months — the
+ * "XX Years XX Months" reference figure shown on the Employment tab (feedback 24c4d02e). Pure + UTC-correct
+ * calendar math, consistent with serviceYearsAt (its `.years` equals serviceYearsAt for the same inputs). A
+ * future `asOf` before `hiredOn` clamps to { years: 0, months: 0 }. Display-only; drives no entitlement.
+ */
+export const serviceYearsMonthsAt = (
+  hiredOn: string,
+  asOf: string,
+): { years: number; months: number } => {
+  const h = new Date(`${hiredOn}T00:00:00Z`);
+  const a = new Date(`${asOf}T00:00:00Z`);
+  let months =
+    (a.getUTCFullYear() - h.getUTCFullYear()) * 12 + (a.getUTCMonth() - h.getUTCMonth());
+  if (a.getUTCDate() < h.getUTCDate()) months -= 1;
+  months = Math.max(0, months);
+  return { years: Math.floor(months / 12), months: months % 12 };
 };
 
 /**

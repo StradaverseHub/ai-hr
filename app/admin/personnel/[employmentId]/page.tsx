@@ -20,10 +20,11 @@ import { hasPersonPhoto } from '@/core/person-photo';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { Combobox } from '@/components/ui/combobox';
+import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
+import { SameAsPermanentAddress } from '@/components/same-as-permanent-address';
 import {
   addDelegationAction,
   addReportingLineAction,
@@ -44,10 +45,12 @@ import {
   setTp3Action,
   setBankAction,
   setIcAction,
+  setPassportAction,
   setTaxAction,
   terminateAction,
   transferAction,
 } from './actions';
+import { serviceYearsMonthsAt } from '@/core/leave';
 import { compensationHistoryDetailed, type CompensationHistoryRow } from '@/core/comp';
 import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
@@ -72,7 +75,6 @@ import { MY_STATES } from '@/localization/my/holidays';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { PhotoEditMenu } from '@/components/photo-edit-menu';
-import { IcDobAutofill } from '@/components/ic-dob-autofill';
 import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
 import { encashmentSnapshotForEmployment } from '@/core/leave-encashment';
 import { unfreezeEncashmentAction, adjustEncashmentAction } from './encashment-actions';
@@ -278,6 +280,10 @@ export default async function EmployeePage({
   // the cards that don't visibly own it, so saving one section never wipes another's data.
   const profilePanel = admin ? (
     <>
+      {/* Item e3ce0d4d — IdentityProvider lifts the live Nationality selection so the identity block below can
+          switch between IC (Malaysian) and Passport (non-Malaysian) fields instantly. The Card shell + all the
+          server-action forms stay Server Components; only the nationality picker + identity block are client. */}
+      <IdentityProvider initialNationality={emp.nationality}>
       <Card id="section-personal-details">
         <SectionHeader title={t('personalDetails')} />
         <form action={setPersonAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
@@ -328,8 +334,10 @@ export default async function EmployeePage({
           </Field>
           <Field label={t('nationality')}>
             {/* 59047802 — searchable combobox over the full ISO 3166-1 nationality set; emits the same
-                single `nationality` value (via a hidden input) so setPersonAction is unchanged. */}
-            <Combobox
+                single `nationality` value (via a hidden input) so setPersonAction is unchanged. e3ce0d4d —
+                wrapped as NationalityField so a change also pushes the live value into IdentityProvider,
+                driving the IC ⇄ Passport switch in the identity block below without a page reload. */}
+            <NationalityField
               name="nationality"
               value={emp.nationality}
               options={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
@@ -411,36 +419,24 @@ export default async function EmployeePage({
           </div>
         </form>
 
-        {/* Item 8b5334db — IC Number relocated here from the Bank & Statutory tax section (personal identification
-            belongs on the Profile). Its OWN small form + partial save (setIcAction) writing only the icNumber
-            column, so it seeds/updates the same statutory row the SOCSO/EIS + EPF-number defaults read on render.
-            Following the R34 TP3 split precedent. */}
-        <form
-          action={setIcAction}
-          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
-        >
-          <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <input type="hidden" name="personId" value={emp.personId} />
-          <Field label={t('icNumber')}>
-            {/* Item 354a500d — IcDobAutofill (a 'use client' island rendered by this RSC — never CALLED here,
-                so the RSC boundary is respected) derives the DOB from a valid MyKad IC and fills the empty
-                DOB input above (id=profile-dob-input) client-side; the server mirrors this on save. */}
-            <IcDobAutofill
-              name="icNumber"
-              required
-              defaultValue={statutory?.icNumber ?? ''}
-              placeholder="900101011234"
-              className={inputCls}
-              dobInputId="profile-dob-input"
-              invalidDateNote={t('icDobInvalidDate')}
-            />
-          </Field>
-          <p className="text-xs text-muted-foreground sm:col-span-3 sm:self-center">{t('icNumberHint')}</p>
-          <div className="sm:col-span-4 flex justify-end">
-            <button className={btnPrimary}>{t('saveIc')}</button>
-          </div>
-        </form>
+        {/* Item e3ce0d4d — nationality-conditional identification. IdentityFields (client) reads the live
+            nationality from IdentityProvider and renders the IC form (Malaysian: IcDobAutofill, IC mandatory,
+            DOB autofill preserved — item 354a500d/8b5334db) OR the passport form (non-Malaysian: number/issue/
+            expiry mandatory, remark optional; setPassportAction skips MyKad validation). Both server actions are
+            passed in as props (RSC→client pattern); only the relevant card shows so its required fields apply. */}
+        <IdentityFields
+          employmentId={emp.employmentId}
+          personId={emp.personId}
+          icDefault={statutory?.icNumber ?? ''}
+          passportNumber={statutory?.passportNumber ?? ''}
+          passportIssueDate={statutory?.passportIssueDate ?? ''}
+          passportExpiryDate={statutory?.passportExpiryDate ?? ''}
+          passportRemark={statutory?.passportRemark ?? ''}
+          setIcAction={setIcAction}
+          setPassportAction={setPassportAction}
+        />
       </Card>
+      </IdentityProvider>
 
       <Card id="section-contact-address">
         <SectionHeader title={t('contactAddressTitle')} />
@@ -458,39 +454,93 @@ export default async function EmployeePage({
           <Field label={t('personalEmail')}>
             <input name="personalEmail" type="email" defaultValue={emp.personalEmail ?? ''} className={inputCls} />
           </Field>
-          <Field label={t('addressLine1')}>
-            <input name="addressLine1" defaultValue={emp.addressLine1 ?? ''} className={`${inputCls} sm:col-span-4`} />
-          </Field>
-          <Field label={t('addressLine2')}>
-            <input name="addressLine2" defaultValue={emp.addressLine2 ?? ''} className={`${inputCls} sm:col-span-4`} />
-          </Field>
-          <Field label={t('addressLine3')}>
-            <input name="addressLine3" defaultValue={emp.addressLine3 ?? ''} className={`${inputCls} sm:col-span-4`} />
-          </Field>
-          <Field label={t('postcode')}>
-            <input name="postcode" defaultValue={emp.postcode ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('city')}>
-            <input name="city" defaultValue={emp.city ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('stateLabel')}>
-            <ProfileOptionSelect
-              name="state"
-              value={emp.state}
-              options={profileOptions.state}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
-          </Field>
-          <Field label={t('country')}>
-            <ProfileOptionSelect
-              name="country"
-              value={emp.country}
-              options={profileOptions.country}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
-          </Field>
+
+          {/* 3a25f5ee — Contact & Address split into two independent address blocks. Permanent = where the
+              employee lives (today's single address backfilled here in migration 0213); Correspondence =
+              official mailing / IC-registered address. Each is the same 7 fields; state/country validate
+              against the shared profile_option catalog. Field ids (perm- and corr- prefixed) let the "Same
+              as Permanent Address" client island copy Permanent to Correspondence (fields stay editable). */}
+          <div className="sm:col-span-4 mt-1 grid grid-cols-1 gap-3 sm:grid-cols-4 rounded-lg border border-border/60 p-3">
+            <p className="sm:col-span-4 text-sm font-medium text-foreground">{t('permanentAddressTitle')}</p>
+            <Field label={t('addressLine1')}>
+              <input id="perm-addressLine1" name="permanentAddressLine1" defaultValue={emp.permanentAddressLine1 ?? ''} className={`${inputCls} sm:col-span-4`} />
+            </Field>
+            <Field label={t('addressLine2')}>
+              <input id="perm-addressLine2" name="permanentAddressLine2" defaultValue={emp.permanentAddressLine2 ?? ''} className={`${inputCls} sm:col-span-4`} />
+            </Field>
+            <Field label={t('addressLine3')}>
+              <input id="perm-addressLine3" name="permanentAddressLine3" defaultValue={emp.permanentAddressLine3 ?? ''} className={`${inputCls} sm:col-span-4`} />
+            </Field>
+            <Field label={t('postcode')}>
+              <input id="perm-postcode" name="permanentPostcode" defaultValue={emp.permanentPostcode ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('city')}>
+              <input id="perm-city" name="permanentCity" defaultValue={emp.permanentCity ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('stateLabel')}>
+              <ProfileOptionSelect
+                id="perm-state"
+                name="permanentState"
+                value={emp.permanentState}
+                options={profileOptions.state}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('country')}>
+              <ProfileOptionSelect
+                id="perm-country"
+                name="permanentCountry"
+                value={emp.permanentCountry}
+                options={profileOptions.country}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+          </div>
+
+          <div className="sm:col-span-4">
+            <SameAsPermanentAddress label={t('sameAsPermanent')} viaInputName="addressCopyVia" />
+          </div>
+
+          <div className="sm:col-span-4 grid grid-cols-1 gap-3 sm:grid-cols-4 rounded-lg border border-border/60 p-3">
+            <p className="sm:col-span-4 text-sm font-medium text-foreground">{t('correspondenceAddressTitle')}</p>
+            <Field label={t('addressLine1')}>
+              <input id="corr-addressLine1" name="correspondenceAddressLine1" defaultValue={emp.correspondenceAddressLine1 ?? ''} className={`${inputCls} sm:col-span-4`} />
+            </Field>
+            <Field label={t('addressLine2')}>
+              <input id="corr-addressLine2" name="correspondenceAddressLine2" defaultValue={emp.correspondenceAddressLine2 ?? ''} className={`${inputCls} sm:col-span-4`} />
+            </Field>
+            <Field label={t('addressLine3')}>
+              <input id="corr-addressLine3" name="correspondenceAddressLine3" defaultValue={emp.correspondenceAddressLine3 ?? ''} className={`${inputCls} sm:col-span-4`} />
+            </Field>
+            <Field label={t('postcode')}>
+              <input id="corr-postcode" name="correspondencePostcode" defaultValue={emp.correspondencePostcode ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('city')}>
+              <input id="corr-city" name="correspondenceCity" defaultValue={emp.correspondenceCity ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('stateLabel')}>
+              <ProfileOptionSelect
+                id="corr-state"
+                name="correspondenceState"
+                value={emp.correspondenceState}
+                options={profileOptions.state}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('country')}>
+              <ProfileOptionSelect
+                id="corr-country"
+                name="correspondenceCountry"
+                value={emp.correspondenceCountry}
+                options={profileOptions.country}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+          </div>
           <div className="sm:col-span-4 flex justify-end">
             <button className={btnPrimary}>{t('saveContact')}</button>
           </div>
@@ -1631,6 +1681,18 @@ export default async function EmployeePage({
   // forms in one Card is intentional — HTML forms can't nest, so the assignment editor is its own <form>.
   const EMPLOYMENT_TYPE_OPTIONS: readonly string[] = ['full_time', 'part_time', 'contract', 'intern'];
   const ASSIGNMENT_STATUS_OPTIONS: readonly string[] = ['active', 'on_leave', 'probation', 'offboarding', 'terminated'];
+  // 955c7de4 — period unit dropdown options for the redesigned Employment Dates card.
+  const PERIOD_UNIT_OPTIONS: readonly string[] = ['month', 'week', 'day'];
+  // Length-of-service reference figures (feedback 24c4d02e). Group service reads the Group Join Date (hiredOn);
+  // current-company service reads the Join Date, falling back to the group date until a transfer sets it. Both
+  // are read-only "XX Years XX Months" against today — display-only, they drive no entitlement.
+  const fmtService = (from: string | null | undefined): string | null => {
+    if (!from) return null;
+    const s = serviceYearsMonthsAt(from, today);
+    return t('employmentInfo.serviceLength', { years: s.years, months: s.months });
+  };
+  const groupServiceLabel = fmtService(emp.hiredOn);
+  const currentServiceLabel = fmtService(emp.joinDate ?? emp.hiredOn);
   const employmentInfoCard = admin ? (
     <Card id="section-employment-info">
       <SectionHeader title={t('employmentInfo.title')} />
@@ -1703,41 +1765,114 @@ export default async function EmployeePage({
       <form action={setEmploymentInfoAction} className="space-y-6 p-4">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
 
-        {/* ── Employment Dates ── */}
-        <fieldset className="space-y-3">
+        {/* ── Employment Dates (redesigned 955c7de4) ── explicit period UNITS + full lifecycle dates, grouped
+            into Joining / Probation / Notice / Resignation sub-sections. Each period is a value + unit dropdown
+            (Month/Week/Day); the bare unlabelled month+day pairs are gone. Legacy month values are shown as a
+            fallback default so existing data stays visible and migrates to value+unit on the next save. */}
+        <fieldset className="space-y-5">
           <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {t('employmentInfo.datesGroup')}
           </legend>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label={t('employmentInfo.hireDate')}>
+
+          {/* Joining (preserved from 24c4d02e): Group Join Date (hiredOn, relabelled) + current-company Join
+              Date, each with a read-only Length of Service figure. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t('employmentInfo.groupJoinDate')}>
               <input name="hiredOn" type="date" defaultValue={emp.hiredOn ?? ''} className={inputCls} />
+              <p className="text-xs text-muted-foreground">
+                {t('employmentInfo.groupService')}: {groupServiceLabel ?? '—'}
+              </p>
             </Field>
-            <Field label={t('employmentInfo.confirmationDate')}>
-              <input name="confirmationDate" type="date" defaultValue={emp.confirmationDate ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('employmentInfo.resignationDate')}>
-              <input name="resignationDate" type="date" defaultValue={emp.resignationDate ?? ''} className={inputCls} />
+            <Field label={t('employmentInfo.joinDate')}>
+              <input name="joinDate" type="date" defaultValue={emp.joinDate ?? ''} className={inputCls} />
+              <p className="text-xs text-muted-foreground">
+                {t('employmentInfo.currentCompanyService')}: {currentServiceLabel ?? '—'}
+              </p>
             </Field>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label={t('employmentInfo.probationPeriod')}>
-              <div className="flex gap-2">
-                <input name="probationMonths" type="number" min={0} step={1} placeholder={t('employmentInfo.months')} defaultValue={emp.probationMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.months')} />
-                <input name="probationDays" type="number" min={0} step={1} placeholder={t('employmentInfo.days')} defaultValue={emp.probationDays ?? ''} className={inputCls} aria-label={t('employmentInfo.days')} />
-              </div>
-            </Field>
-            <Field label={t('employmentInfo.resignationNoticePeriod')}>
-              <div className="flex gap-2">
-                <input name="resignationNoticeMonths" type="number" min={0} step={1} placeholder={t('employmentInfo.months')} defaultValue={emp.resignationNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.months')} />
-                <input name="resignationNoticeDays" type="number" min={0} step={1} placeholder={t('employmentInfo.days')} defaultValue={emp.resignationNoticeDays ?? ''} className={inputCls} aria-label={t('employmentInfo.days')} />
-              </div>
-            </Field>
-            <Field label={t('employmentInfo.shortNoticePeriod')}>
-              <div className="flex gap-2">
-                <input name="shortNoticeMonths" type="number" min={0} step={1} placeholder={t('employmentInfo.months')} defaultValue={emp.shortNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.months')} />
-                <input name="shortNoticeDays" type="number" min={0} step={1} placeholder={t('employmentInfo.days')} defaultValue={emp.shortNoticeDays ?? ''} className={inputCls} aria-label={t('employmentInfo.days')} />
-              </div>
-            </Field>
+
+          {/* Probation Information */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.probationGroup')}</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label={t('employmentInfo.probationPeriod')}>
+                <div className="flex gap-2">
+                  <input name="probationValue" type="number" min={0} step={1} placeholder={t('employmentInfo.value')} defaultValue={emp.probationValue ?? emp.probationMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.value')} />
+                  <select name="probationUnit" defaultValue={emp.probationUnit ?? 'month'} className={inputCls} aria-label={t('employmentInfo.unit')}>
+                    {PERIOD_UNIT_OPTIONS.map((u) => (
+                      <option key={u} value={u}>{t(`employmentInfo.unit_${u}` as 'employmentInfo.unit_month')}</option>
+                    ))}
+                  </select>
+                </div>
+              </Field>
+              <Field label={t('employmentInfo.extendedProbationPeriod')}>
+                <div className="flex gap-2">
+                  <input name="extendedProbationValue" type="number" min={0} step={1} placeholder={t('employmentInfo.value')} defaultValue={emp.extendedProbationValue ?? ''} className={inputCls} aria-label={t('employmentInfo.value')} />
+                  <select name="extendedProbationUnit" defaultValue={emp.extendedProbationUnit ?? 'month'} className={inputCls} aria-label={t('employmentInfo.unit')}>
+                    {PERIOD_UNIT_OPTIONS.map((u) => (
+                      <option key={u} value={u}>{t(`employmentInfo.unit_${u}` as 'employmentInfo.unit_month')}</option>
+                    ))}
+                  </select>
+                </div>
+              </Field>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label={t('employmentInfo.confirmationDate')}>
+                <input name="confirmationDate" type="date" defaultValue={emp.confirmationDate ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('employmentInfo.extendedConfirmationDate')}>
+                <input name="extendedConfirmationDate" type="date" defaultValue={emp.extendedConfirmationDate ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('employmentInfo.finalConfirmationDate')}>
+                {/* Derived (= extended ?? normal), recomputed + audited on save; read-only, not submitted. */}
+                <input type="date" disabled value={emp.finalConfirmationDate ?? emp.extendedConfirmationDate ?? emp.confirmationDate ?? ''} className={inputCls} aria-label={t('employmentInfo.finalConfirmationDate')} />
+                <p className="text-xs text-muted-foreground">{t('employmentInfo.finalConfirmationNote')}</p>
+              </Field>
+            </div>
+          </div>
+
+          {/* Notice Period Information */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.noticeGroup')}</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label={t('employmentInfo.noticeBeforeConfirmation')}>
+                <div className="flex gap-2">
+                  <input name="noticeBeforeConfirmationValue" type="number" min={0} step={1} placeholder={t('employmentInfo.value')} defaultValue={emp.noticeBeforeConfirmationValue ?? emp.resignationNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.value')} />
+                  <select name="noticeBeforeConfirmationUnit" defaultValue={emp.noticeBeforeConfirmationUnit ?? 'month'} className={inputCls} aria-label={t('employmentInfo.unit')}>
+                    {PERIOD_UNIT_OPTIONS.map((u) => (
+                      <option key={u} value={u}>{t(`employmentInfo.unit_${u}` as 'employmentInfo.unit_month')}</option>
+                    ))}
+                  </select>
+                </div>
+              </Field>
+              <Field label={t('employmentInfo.noticeAfterConfirmation')}>
+                <div className="flex gap-2">
+                  <input name="noticeAfterConfirmationValue" type="number" min={0} step={1} placeholder={t('employmentInfo.value')} defaultValue={emp.noticeAfterConfirmationValue ?? emp.shortNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.value')} />
+                  <select name="noticeAfterConfirmationUnit" defaultValue={emp.noticeAfterConfirmationUnit ?? 'month'} className={inputCls} aria-label={t('employmentInfo.unit')}>
+                    {PERIOD_UNIT_OPTIONS.map((u) => (
+                      <option key={u} value={u}>{t(`employmentInfo.unit_${u}` as 'employmentInfo.unit_month')}</option>
+                    ))}
+                  </select>
+                </div>
+              </Field>
+            </div>
+          </div>
+
+          {/* Resignation Information */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.resignationGroup')}</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label={t('employmentInfo.tenderResignationDate')}>
+                <input name="tenderResignationDate" type="date" defaultValue={emp.tenderResignationDate ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('employmentInfo.resignationDate')}>
+                <input name="resignationDate" type="date" defaultValue={emp.resignationDate ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('employmentInfo.lastWorkingDate')}>
+                <input name="lastWorkingDate" type="date" defaultValue={emp.lastWorkingDate ?? ''} className={inputCls} />
+              </Field>
+            </div>
+            <p className="text-xs text-muted-foreground">{t('employmentInfo.lifecycleDeferredNote')}</p>
           </div>
         </fieldset>
 

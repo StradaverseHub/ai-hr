@@ -1485,6 +1485,55 @@
       "when": 1781862210000,
       "tag": "0211_employee_id_config",
       "breakpoints": true
+    },
+    {
+      "idx": 212,
+      "version": "7",
+      "when": 1781862211000,
+      "tag": "0212_dashboard_card_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 213,
+      "version": "7",
+      "when": 1781862212000,
+      "tag": "0213_dashboard_layout_shape_and_shortcuts",
+      "breakpoints": true
+    },
+    {
+      "idx": 214,
+      "version": "7",
+      "when": 1781862213000,
+      "tag": "0214_employee_passport_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 215,
+      "version": "7",
+      "when": 1781862214000,
+      "tag": "0215_person_permanent_correspondence_address",
+      "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "when": 1781862215000,
+      "tag": "0216_employment_join_date",
+      "breakpoints": true
+    },
+    {
+      "idx": 217,
+      "version": "7",
+      "when": 1781862216000,
+      "tag": "0217_employment_dates_units",
+      "breakpoints": true
+    },
+    {
+      "idx": 218,
+      "version": "7",
+      "when": 1781862217000,
+      "tag": "0218_leave_approval_policy_grade_group",
+      "breakpoints": true
     }
   ]
 }
