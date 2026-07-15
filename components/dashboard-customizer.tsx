@@ -43,6 +43,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 import { ArrowUpRight, GripVertical, Pin, Plus, X } from 'lucide-react';
 import { Button, Card } from '@/components/ui';
 import { MAX_FIRST_ROW, partitionDashboardRows, type DashboardLayout } from '@/lib/dashboard-layout';
@@ -188,6 +189,9 @@ export function DashboardCustomizer({
   const [customizing, setCustomizing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [shakeKey, setShakeKey] = useState<string | null>(null);
+  // The card whose × was clicked and is awaiting the remove-confirm dialog (feedback removeconfirm). null =
+  // no pending removal. This guards ONLY the individual remove; it is unrelated to the Save-confirm dialog.
+  const [pendingRemoveKey, setPendingRemoveKey] = useState<string | null>(null);
   const shakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -236,15 +240,30 @@ export function DashboardCustomizer({
     shakeTimer.current = setTimeout(() => setShakeKey(null), 600);
   };
 
-  const removeCard = (id: string) => {
+  // × click: mandatory cards shake + refuse (no dialog); optional cards open the remove-confirm dialog
+  // instead of removing immediately, so an accidental click during rearranging can't drop a card.
+  const requestRemove = (id: string) => {
     const card = byKey.get(id);
     if (card?.mandatory) {
       // Mandatory cards can't be removed → shake + message, card stays.
       triggerShake(id);
       return;
     }
-    setVisible((cur) => cur.filter((k) => k !== id));
+    setPendingRemoveKey(id);
   };
+
+  // Confirm in the dialog → actually drop the card from the working set (still not persisted until Save).
+  const confirmRemove = () => {
+    const id = pendingRemoveKey;
+    if (!id) return;
+    setVisible((cur) => cur.filter((k) => k !== id));
+    setPendingRemoveKey(null);
+    toast.success(t('removeConfirmToast', { card: labelFor(id) }));
+  };
+
+  // Cancel/close → leave `visible` untouched (a plain no-op close; NOT the Save-confirm cancel that reverts
+  // the whole customize session).
+  const cancelRemove = () => setPendingRemoveKey(null);
 
   const addCard = (id: string) => {
     setVisible((cur) => (cur.includes(id) ? cur : [...cur, id]));
@@ -393,7 +412,7 @@ export function DashboardCustomizer({
                     mandatory={byKey.get(key)?.mandatory ?? false}
                     shaking={shakeKey === key}
                     mandatoryMessage={t('mandatoryCardMessage')}
-                    onRemove={removeCard}
+                    onRemove={requestRemove}
                   >
                     {nodeFor(key)}
                   </SortableCard>
@@ -440,6 +459,39 @@ export function DashboardCustomizer({
           )}
         </div>
       )}
+
+      {/* Remove-confirm (feedback removeconfirm): guards the individual card × so an accidental click while
+          rearranging can't drop a card. Controlled by pendingRemoveKey; Cancel is a no-op close. */}
+      <AlertDialog.Root
+        open={pendingRemoveKey !== null}
+        onOpenChange={(open) => {
+          if (!open) cancelRemove();
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
+            <AlertDialog.Title className="text-base font-semibold">
+              {t('removeConfirmTitle')}
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
+              {t('removeConfirmBody', { card: pendingRemoveKey ? labelFor(pendingRemoveKey) : '' })}
+            </AlertDialog.Description>
+            <div className="mt-5 flex justify-end gap-2">
+              <AlertDialog.Cancel asChild>
+                <Button type="button" variant="outline" size="sm" onClick={cancelRemove}>
+                  {t('removeConfirmCancel')}
+                </Button>
+              </AlertDialog.Cancel>
+              <AlertDialog.Action asChild>
+                <Button type="button" variant="destructive" size="sm" onClick={confirmRemove}>
+                  {t('removeConfirmConfirm')}
+                </Button>
+              </AlertDialog.Action>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
     </div>
   );
 }
