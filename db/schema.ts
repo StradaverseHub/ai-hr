@@ -761,6 +761,14 @@ export const employment = pgTable(
     orgBase: text('org_base'),
     // Employee category (e.g. Management / Executive / Non-executive). Free-text in v1. Nullable.
     employmentCategory: text('employment_category'),
+    // Employee Status redesign (R43 c26c3ce5, migration 0240). Employee Status is now SYSTEM-DERIVED read-time
+    // from the lifecycle dates (see core/employment-status.ts::deriveEmploymentStatus) — it is no longer a
+    // manual field. Blacklist is the ONE genuine stored override: an event-driven (not date-driven) exception
+    // status set by authorised HR via setEmploymentBlacklist. `blacklistedAt` non-null ⇒ the deriver returns
+    // 'blacklisted' (highest priority). Nullable; null = not blacklisted (every existing row). `blacklistReason`
+    // is an optional free-text note captured with the action.
+    blacklistedAt: date('blacklisted_at'),
+    blacklistReason: text('blacklist_reason'),
     createdAt: createdAt(),
   },
   (t) => [
