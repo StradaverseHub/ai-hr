@@ -617,7 +617,16 @@ export const employment = pgTable(
       .notNull()
       .references(() => company.id),
     employeeCode: text('employee_code'),
+    // "Group Join Date" (UI label) — the employee's FIRST day anywhere in the group. NOT NULL and the durable
+    // anchor for every downstream calculation (leave entitlement service bands, payroll proration, EA forms,
+    // imports). Deliberately NOT renamed from hired_on (~50 readers + the import contract depend on the name);
+    // the Employment tab relabels it "Group Join Date" (feedback 24c4d02e).
     hiredOn: date('hired_on').notNull(),
+    // "Join Date" (feedback 24c4d02e, migration 0212) — the effective joining date for the CURRENT company /
+    // legal entity / assignment. Nullable: null = not captured yet, in which case current-company service
+    // length falls back to hired_on (the group date). Changes on internal/company transfers (auto-sync is a
+    // documented v1 follow-up); hired_on stays fixed. Leave entitlement bands stay on hired_on (group seniority).
+    joinDate: date('join_date'),
     // Wave 2 (ADR-0041 2E): the employee's seniority grade — drives grade-scoped leave entitlements.
     // Null = ungraded (falls to the company-default leave policy).
     gradeId: uuid('grade_id').references(() => jobGrade.id),

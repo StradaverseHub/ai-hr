@@ -586,6 +586,7 @@ export async function setEmploymentInfoAction(formData: FormData) {
     await setEmploymentInfo(s, {
       employmentId,
       hiredOn: str('hiredOn') ?? undefined, // hiredOn is NOT NULL — a blank submit must not clear it.
+      joinDate: str('joinDate'), // nullable current-company Join Date; blank clears it.
       probationMonths: str('probationMonths') as string | null,
       probationDays: str('probationDays') as string | null,
       confirmationDate: str('confirmationDate'),

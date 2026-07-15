@@ -1288,6 +1288,8 @@ export async function setEmploymentAssignment(
 export type EmploymentInfoInput = {
   employmentId: string;
   hiredOn?: string;
+  // "Join Date" (feedback 24c4d02e) — the current-company effective join date. Nullable; '' / null clears it.
+  joinDate?: string | null;
   // Period components accept strings (raw HTML number-input values) or numbers; parsed + validated below.
   probationMonths?: number | string | null;
   probationDays?: number | string | null;
@@ -1327,7 +1329,7 @@ const EMPLOYMENT_INFO_PERIOD_FIELDS = [
   'shortNoticeDays',
 ] as const;
 
-const EMPLOYMENT_INFO_DATE_FIELDS = ['confirmationDate', 'resignationDate'] as const;
+const EMPLOYMENT_INFO_DATE_FIELDS = ['joinDate', 'confirmationDate', 'resignationDate'] as const;
 
 export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoInput) {
   const roles = ctx.roles ?? [];
@@ -1375,6 +1377,7 @@ export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoIn
     const [before] = await tx
       .select({
         hiredOn: employment.hiredOn,
+        joinDate: employment.joinDate,
         probationMonths: employment.probationMonths,
         probationDays: employment.probationDays,
         confirmationDate: employment.confirmationDate,
@@ -1400,8 +1403,14 @@ export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoIn
     // Date-relationship checks resolve against the RESULTING values (incoming override → existing), so a save
     // that changes only the confirmation date is still validated against the stored hire date, and vice-versa.
     const hire = (set.hiredOn as string | undefined) ?? before.hiredOn;
+    const join = 'joinDate' in set ? (set.joinDate as string | null) : before.joinDate;
     const confirmation = 'confirmationDate' in set ? (set.confirmationDate as string | null) : before.confirmationDate;
     const resignation = 'resignationDate' in set ? (set.resignationDate as string | null) : before.resignationDate;
+    // The current-company Join Date can never precede the Group Join Date (you cannot join a company inside the
+    // group before joining the group). Resolves against the RESULTING values so a save of either date is checked.
+    if (join && hire && join < hire) {
+      throw new Error('Join date cannot be earlier than the group join date.');
+    }
     if (confirmation && hire && confirmation < hire) {
       throw new Error('Confirmation date cannot be earlier than the hire date.');
     }

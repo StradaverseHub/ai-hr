@@ -48,6 +48,7 @@ import {
   terminateAction,
   transferAction,
 } from './actions';
+import { serviceYearsMonthsAt } from '@/core/leave';
 import { compensationHistoryDetailed, type CompensationHistoryRow } from '@/core/comp';
 import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
@@ -1631,6 +1632,16 @@ export default async function EmployeePage({
   // forms in one Card is intentional — HTML forms can't nest, so the assignment editor is its own <form>.
   const EMPLOYMENT_TYPE_OPTIONS: readonly string[] = ['full_time', 'part_time', 'contract', 'intern'];
   const ASSIGNMENT_STATUS_OPTIONS: readonly string[] = ['active', 'on_leave', 'probation', 'offboarding', 'terminated'];
+  // Length-of-service reference figures (feedback 24c4d02e). Group service reads the Group Join Date (hiredOn);
+  // current-company service reads the Join Date, falling back to the group date until a transfer sets it. Both
+  // are read-only "XX Years XX Months" against today — display-only, they drive no entitlement.
+  const fmtService = (from: string | null | undefined): string | null => {
+    if (!from) return null;
+    const s = serviceYearsMonthsAt(from, today);
+    return t('employmentInfo.serviceLength', { years: s.years, months: s.months });
+  };
+  const groupServiceLabel = fmtService(emp.hiredOn);
+  const currentServiceLabel = fmtService(emp.joinDate ?? emp.hiredOn);
   const employmentInfoCard = admin ? (
     <Card id="section-employment-info">
       <SectionHeader title={t('employmentInfo.title')} />
@@ -1708,10 +1719,24 @@ export default async function EmployeePage({
           <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {t('employmentInfo.datesGroup')}
           </legend>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label={t('employmentInfo.hireDate')}>
+          {/* Group Join Date (hiredOn, relabelled) + current-company Join Date, each with a read-only Length of
+              Service figure (feedback 24c4d02e). Group Join Date stays the durable group anchor; Join Date is the
+              additional current-company effective date. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t('employmentInfo.groupJoinDate')}>
               <input name="hiredOn" type="date" defaultValue={emp.hiredOn ?? ''} className={inputCls} />
+              <p className="text-xs text-muted-foreground">
+                {t('employmentInfo.groupService')}: {groupServiceLabel ?? '—'}
+              </p>
             </Field>
+            <Field label={t('employmentInfo.joinDate')}>
+              <input name="joinDate" type="date" defaultValue={emp.joinDate ?? ''} className={inputCls} />
+              <p className="text-xs text-muted-foreground">
+                {t('employmentInfo.currentCompanyService')}: {currentServiceLabel ?? '—'}
+              </p>
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={t('employmentInfo.confirmationDate')}>
               <input name="confirmationDate" type="date" defaultValue={emp.confirmationDate ?? ''} className={inputCls} />
             </Field>

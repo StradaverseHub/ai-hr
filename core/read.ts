@@ -1163,6 +1163,9 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         companyId: employment.companyId,
         company: company.legalName,
         hiredOn: employment.hiredOn,
+        // "Join Date" (feedback 24c4d02e) — current-company effective join; null = not captured (service
+        // length then falls back to hiredOn).
+        joinDate: employment.joinDate,
         terminatedOn: employment.terminatedOn,
         workState: employment.workState,
         holidayGroupId: employment.holidayGroupId,
