@@ -20,10 +20,16 @@ import {
   setDashboardLayout,
 } from '../core/dashboard-prefs';
 import {
+  BUILTIN_DASHBOARD_CARDS,
   DEFAULT_ORDER,
   isDefaultOrder,
   normalizeDashboardOrder,
 } from '../lib/dashboard-layout';
+
+/** The tenant has no dashboard_card_config rows in this suite (created after the 0212 seed), so drive the
+ *  persistence tests off the built-in default catalog — the same fallback the live page uses. */
+const CARDS = BUILTIN_DASHBOARD_CARDS;
+const ALL_KEYS = CARDS.map((c) => c.cardKey);
 import { closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -84,50 +90,65 @@ describe('dashboard-layout pure helpers', () => {
 });
 
 describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
-  it('returns null (→ default) when nothing is saved', async () => {
+  it('returns the HR default when nothing is saved (default-display + mandatory cards)', async () => {
     const ctx = await newEmployeeCtx();
-    expect(await getDashboardLayout(ctx)).toBeNull();
+    const layout = await getDashboardLayout(ctx, CARDS);
+    // Built-in catalog: all cards default-display → all shown, in display order.
+    expect(new Set(layout.selected)).toEqual(new Set(ALL_KEYS));
+    expect(layout.order).toEqual(ALL_KEYS);
   });
 
-  it('saves an order that persists and reloads on the next read', async () => {
+  it('saves a { selected, order } layout that persists and reloads on the next read', async () => {
     const ctx = await newEmployeeCtx();
-    const order = ['recentActivity', 'cards', 'upcomingEvents', 'plannedAbsences', 'recentlyJoined'];
-    await setDashboardLayout(ctx, order);
-    expect(await getDashboardLayout(ctx)).toEqual(order);
+    const selected = ['recentActivity', 'leaveBalance', 'upcomingEvents'];
+    await setDashboardLayout(ctx, { selected, order: selected }, CARDS);
+    const saved = await getDashboardLayout(ctx, CARDS);
+    // selected preserved (order-preserving); order covers every available card exactly once.
+    expect(saved.selected).toEqual(selected);
+    expect(new Set(saved.order)).toEqual(new Set(ALL_KEYS));
+    expect(saved.order.slice(0, 3)).toEqual(selected);
   });
 
-  it('normalizes a partial saved order on the way in', async () => {
+  it('reads a LEGACY order-only array as "everything shown, in that order" (backward compatible)', async () => {
     const ctx = await newEmployeeCtx();
-    await setDashboardLayout(ctx, ['upcomingEvents']);
-    const saved = await getDashboardLayout(ctx);
-    expect(saved?.[0]).toBe('upcomingEvents');
-    expect(new Set(saved)).toEqual(new Set(DEFAULT_ORDER));
+    // Write a legacy order-only array straight through the seam (pre-578a2fcf shape, with the "cards" block).
+    await withRawSeam(ctx, ['recentActivity', 'cards', 'plannedAbsences']);
+    const saved = await getDashboardLayout(ctx, CARDS);
+    expect(new Set(saved.selected)).toEqual(new Set(ALL_KEYS)); // legacy showed everything
+    // The legacy "cards" block flattened into its three summary cardKeys, in place.
+    expect(saved.order.slice(0, 5)).toEqual([
+      'recentActivity',
+      'leaveBalance',
+      'nextHoliday',
+      'pendingTasks',
+      'plannedAbsences',
+    ]);
   });
 
-  it('Reset to Default clears the saved layout back to null', async () => {
+  it('Reset to Default clears the saved layout back to the HR default', async () => {
     const ctx = await newEmployeeCtx();
-    await setDashboardLayout(ctx, ['recentActivity', 'cards']);
-    expect(await getDashboardLayout(ctx)).not.toBeNull();
+    await setDashboardLayout(ctx, { selected: ['recentActivity'], order: ['recentActivity'] }, CARDS);
+    expect((await getDashboardLayout(ctx, CARDS)).selected).toEqual(['recentActivity']);
     await resetDashboardLayout(ctx);
-    expect(await getDashboardLayout(ctx)).toBeNull();
+    expect(new Set((await getDashboardLayout(ctx, CARDS)).selected)).toEqual(new Set(ALL_KEYS));
   });
 
   it("one employee's layout does not affect another's", async () => {
     const a = await newEmployeeCtx();
     const c = await newEmployeeCtx();
-    const orderA = ['recentActivity', 'cards', 'plannedAbsences', 'recentlyJoined', 'upcomingEvents'];
-    await setDashboardLayout(a, orderA);
-    // B has saved nothing → still default; and saving B must not disturb A.
-    expect(await getDashboardLayout(c)).toBeNull();
-    const orderC = ['upcomingEvents', 'recentlyJoined', 'plannedAbsences', 'cards', 'recentActivity'];
-    await setDashboardLayout(c, orderC);
-    expect(await getDashboardLayout(a)).toEqual(orderA);
-    expect(await getDashboardLayout(c)).toEqual(orderC);
+    const selA = ['recentActivity', 'leaveBalance'];
+    await setDashboardLayout(a, { selected: selA, order: selA }, CARDS);
+    // C has saved nothing → still HR default; and saving C must not disturb A.
+    expect(new Set((await getDashboardLayout(c, CARDS)).selected)).toEqual(new Set(ALL_KEYS));
+    const selC = ['upcomingEvents', 'recentlyJoined'];
+    await setDashboardLayout(c, { selected: selC, order: selC }, CARDS);
+    expect((await getDashboardLayout(a, CARDS)).selected).toEqual(selA);
+    expect((await getDashboardLayout(c, CARDS)).selected).toEqual(selC);
   });
 
   it('appends NO domain event (deliberate substrate carve-out for a cosmetic UI pref)', async () => {
     const ctx = await newEmployeeCtx();
-    await setDashboardLayout(ctx, ['recentActivity', 'cards']);
+    await setDashboardLayout(ctx, { selected: ['recentActivity'], order: ['recentActivity'] }, CARDS);
     await resetDashboardLayout(ctx);
     const rows = (await owner.db.execute(
       sql`select count(*)::int as n from domain_event
@@ -136,3 +157,12 @@ describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
     expect(rows[0]?.n ?? 0).toBe(0);
   });
 });
+
+/** Write a raw value straight through the SECURITY DEFINER seam (bypassing normalisation) to simulate a
+ *  legacy stored layout. Uses the app-role db under the caller's session GUCs. */
+async function withRawSeam(ctx: SessionContext, raw: unknown): Promise<void> {
+  const { withTenant } = await import('../db/client');
+  await withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.dashboard_layout_set(${JSON.stringify(raw)}::jsonb)`);
+  });
+}

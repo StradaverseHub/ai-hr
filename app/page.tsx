@@ -34,9 +34,10 @@ import {
 } from '@/lib/dashboard-cards';
 import { ACTOR_DOT, aggregateHref, aggregateLabel, humanizeEvent, relativeTime } from '@/lib/audit-format';
 import { getDashboardLayout } from '@/core/dashboard-prefs';
-import { DashboardCustomizer } from '@/components/dashboard-customizer';
+import { listEmployeeDashboardCards, type EmployeeDashboardCard } from '@/core/dashboard-card-config';
+import { DashboardCustomizer, type CustomizerCard } from '@/components/dashboard-customizer';
 import { saveDashboardLayoutAction, resetDashboardLayoutAction } from '@/app/dashboard-layout-actions';
-import type { DashboardBlockId } from '@/lib/dashboard-layout';
+import { BUILTIN_DASHBOARD_CARDS, type DashboardLayout } from '@/lib/dashboard-layout';
 
 const rm = (n: unknown) =>
   n == null
@@ -171,14 +172,31 @@ export default async function DashboardPage({
   // All reads are self-scoped via RLS.
   let empBalances: { leaveTypeId: string; leaveType: string; available: number }[] = [];
   let empTaskCount = 0;
-  // Customizable dashboard layout (feedback 7d9d145d): the employee's saved vertical block order, or
-  // null when they use the system default. Employee role ONLY — manager/admin dashboards are untouched.
-  let savedLayout: DashboardBlockId[] | null = null;
+  // Customizable dashboard layout (feedback 7d9d145d → add/remove/shortcut 578a2fcf): the employee's saved
+  // { selected, order } of cardKeys, normalised against the HR card master (feedback 1586d2f5). Employee
+  // role ONLY — manager/admin dashboards are untouched.
+  let savedLayout: DashboardLayout | null = null;
+  let employeeCards: EmployeeDashboardCard[] = [];
   if (role === 'employee' && me) {
+    // The tenant's active dashboard-card catalog drives which cards the employee may show / add; fall back
+    // to the built-in set when a tenant has no config rows so the dashboard never renders blank.
+    const configured = await listEmployeeDashboardCards(s);
+    employeeCards = configured.length
+      ? configured
+      : BUILTIN_DASHBOARD_CARDS.map((c) => ({
+          cardKey: c.cardKey,
+          name: c.name,
+          cardType: c.cardType,
+          href: c.href,
+          employeeSelectable: c.employeeSelectable,
+          defaultDisplay: c.defaultDisplay,
+          mandatory: c.mandatory,
+          displayOrder: c.displayOrder,
+        }));
     const [balances, feedbackRequests, layout] = await Promise.all([
       leaveBalances(s, me.employmentId, locale),
       myFeedbackRequests(s), // pending 360 peer-feedback the employee must submit
-      getDashboardLayout(s), // own-row read via the SECURITY DEFINER seam
+      getDashboardLayout(s, employeeCards), // own-row read via the SECURITY DEFINER seam, normalised to config
     ]);
     empBalances = balances.map((b) => ({ leaveTypeId: b.leaveTypeId, leaveType: b.leaveType, available: b.available }));
     empTaskCount = pendingTasksCount([feedbackRequests.length]);
@@ -415,23 +433,41 @@ export default async function DashboardPage({
     />
   );
 
-  // Employee dashboard: the sections above become one reorderable, per-user-ordered block list.
+  // Employee dashboard: the fixed block set flattens into individually add/remove/reorderable cards
+  // (feedback 578a2fcf) driven by the HR card master. The three summary cards (leaveBalance / nextHoliday
+  // / pendingTasks) render via renderCard; the four section blocks render their existing nodes; any
+  // HR-configured shortcut/action card with no bespoke node renders as a clickable link inside the island.
   // Manager/admin dashboards fall through to the fixed layout below — deliberately untouched.
   if (role === 'employee') {
+    // Pre-render the bespoke information-card nodes keyed by cardKey. Shortcut/action cards without a node
+    // here are rendered generically by the customizer from their configured href.
+    const cardNodes: Record<string, ReactNode> = {
+      leaveBalance: renderCard('leaveBalance'),
+      nextHoliday: renderCard('nextHoliday'),
+      pendingTasks: renderCard('pendingTasks'),
+      plannedAbsences: plannedAbsencesBlock,
+      recentlyJoined: recentlyJoinedCard,
+      upcomingEvents: upcomingEventsCard,
+      recentActivity: recentActivityCard,
+    };
+    const customizerCards: CustomizerCard[] = employeeCards.map((c) => ({
+      key: c.cardKey,
+      label: c.name,
+      cardType: c.cardType,
+      href: c.href,
+      mandatory: c.mandatory,
+      defaultDisplay: c.defaultDisplay,
+      employeeSelectable: c.employeeSelectable,
+    }));
     return (
       <div className="mx-auto max-w-6xl space-y-6">
         {pageHeader}
         <DashboardCustomizer
-          savedOrder={savedLayout}
+          cards={customizerCards}
+          blocks={cardNodes}
+          layout={savedLayout ?? { selected: [], order: [] }}
           saveAction={saveDashboardLayoutAction}
           resetAction={resetDashboardLayoutAction}
-          blocks={{
-            cards: cardsGrid,
-            plannedAbsences: plannedAbsencesBlock,
-            recentlyJoined: recentlyJoinedCard,
-            upcomingEvents: upcomingEventsCard,
-            recentActivity: recentActivityCard,
-          }}
         />
       </div>
     );

@@ -56,8 +56,9 @@ describe('dashboard save-confirm dialog (31b46dcc)', () => {
   it('save() still keeps startTransition + saveAction + setBaseline + setCustomizing intact', () => {
     const save = customizer.slice(customizer.indexOf('const save ='), customizer.indexOf('const reset ='));
     expect(save).toMatch(/startTransition/);
-    expect(save).toMatch(/await saveAction\(order\)/);
-    expect(save).toMatch(/setBaseline\(order\)/);
+    // 578a2fcf: the save payload widened from an order array to { selected, order }.
+    expect(save).toMatch(/await saveAction\(\{ selected: next, order: next \}\)/);
+    expect(save).toMatch(/setBaseline\(next\)/);
     expect(save).toMatch(/setCustomizing\(false\)/);
   });
 

@@ -1,19 +1,27 @@
 'use client';
 
 /**
- * Employee dashboard customize island (feedback 7d9d145d).
+ * Employee dashboard customize island (feedback 7d9d145d → add/remove/shortcut in 578a2fcf).
  *
- * v1 = VERTICAL reordering of the EXISTING employee dashboard sections. The server pre-renders each
- * reorderable section into `blocks[id]` (plain server JSX) and passes them in; this client island only
- * decides the ORDER they stack in — it reads no data of its own, so the server/RSC boundary is clean
- * (the page RENDERS this component; it never calls a function out of a 'use client' module).
+ * The server pre-renders each information card into `blocks[cardKey]` (plain server JSX) and passes the
+ * HR-configured card catalog in `cards`; this client island decides WHICH cards are shown and in what
+ * ORDER — it reads no data of its own, so the server/RSC boundary stays clean (the page RENDERS this
+ * component; it never calls a function out of a 'use client' module).
  *
- * Normal mode: render the blocks in the caller's saved order and show a "Customize Dashboard" button.
- * Customize mode: a @dnd-kit sortable list (drag by keyboard or pointer) whose live render IS the
- * preview, plus Save Changes (persist), Cancel (revert to last-saved) and Reset to Default (clear).
+ * Normal mode: render the employee's selected cards in their saved order + a "Customize Dashboard" button.
+ * Customize mode: a @dnd-kit sortable list whose live render IS the preview, plus
+ *   • Add Card — a menu of employee-selectable cards not currently shown.
+ *   • Remove (×) on each optional card; mandatory cards refuse removal with a shake + the message
+ *     "This dashboard card is mandatory and cannot be removed."
+ *   • Save Changes — gated behind the confirmation dialog (feedback 31b46dcc); Cancel reverts; Reset to
+ *     Default clears the saved layout back to the HR default.
+ *
+ * Action / Shortcut cards (cardType 'action' | 'shortcut') that have no bespoke server node render as a
+ * clickable ShortcutCard linking straight to their configured destination (leave / claims / payslip / ...).
  */
 
-import { type ReactNode, useState, useTransition } from 'react';
+import { type ReactNode, useMemo, useRef, useState, useTransition } from 'react';
+import Link from 'next/link';
 import {
   DndContext,
   type DragEndEvent,
@@ -33,21 +41,56 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { useTranslations } from 'next-intl';
-import { GripVertical } from 'lucide-react';
-import { Button } from '@/components/ui';
-import { DEFAULT_ORDER, type DashboardBlockId } from '@/lib/dashboard-layout';
+import { ArrowUpRight, GripVertical, Plus, X } from 'lucide-react';
+import { Button, Card } from '@/components/ui';
+import type { DashboardLayout } from '@/lib/dashboard-layout';
 
-/** Draggable wrapper around one dashboard block (only mounted in customize mode). */
-function SortableBlock({
+/** One HR-configured card the employee may show / add / reorder. */
+export type CustomizerCard = {
+  key: string;
+  label: string;
+  cardType: 'information' | 'action' | 'shortcut';
+  href: string | null;
+  mandatory: boolean;
+  defaultDisplay: boolean;
+  employeeSelectable: boolean;
+};
+
+/** A shortcut/action card with no bespoke server node — a clickable jump to its configured destination. */
+function ShortcutCard({ label, href, badge }: { label: string; href: string; badge: string }) {
+  return (
+    <Link href={href} className="block">
+      <Card className="flex items-center justify-between gap-3 p-5 transition-colors hover:border-foreground/20">
+        <div className="min-w-0">
+          <div className="text-[10px] font-medium uppercase tracking-wide text-primary/80">{badge}</div>
+          <div className="mt-1 truncate text-lg font-semibold tracking-tight">{label}</div>
+        </div>
+        <ArrowUpRight className="size-5 shrink-0 text-muted-foreground" />
+      </Card>
+    </Link>
+  );
+}
+
+/** Draggable wrapper around one dashboard card (only mounted in customize mode). */
+function SortableCard({
   id,
   label,
+  mandatory,
+  shaking,
+  mandatoryMessage,
+  onRemove,
   children,
 }: {
-  id: DashboardBlockId;
+  id: string;
   label: string;
+  mandatory: boolean;
+  shaking: boolean;
+  mandatoryMessage: string;
+  onRemove: (id: string) => void;
   children: ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const t = useTranslations('dashboard');
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -57,9 +100,10 @@ function SortableBlock({
     <div
       ref={setNodeRef}
       style={style}
+      data-card-key={id}
       className={`relative rounded-2xl border-2 border-dashed border-primary/30 p-2 ${
         isDragging ? 'opacity-80 shadow-lg' : ''
-      }`}
+      } ${shaking ? 'animate-shake border-destructive/60' : ''}`}
     >
       <div className="mb-2 flex items-center gap-2">
         <button
@@ -72,31 +116,60 @@ function SortableBlock({
           <GripVertical className="size-4" />
         </button>
         <span className="text-xs font-medium text-muted-foreground">{label}</span>
+        <button
+          type="button"
+          onClick={() => onRemove(id)}
+          aria-label={t('removeCardAria', { card: label })}
+          className="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus:outline-none focus:ring-2 focus:ring-destructive/40"
+        >
+          <X className="size-4" />
+        </button>
       </div>
-      {/* The block preview is inert while reordering so drags don't trigger inner links/controls. */}
+      {/* The card preview is inert while customizing so drags don't trigger inner links/controls. */}
       <div className="pointer-events-none select-none">{children}</div>
+      {shaking && (
+        <p role="alert" className="mt-2 px-1 text-xs font-medium text-destructive">
+          {mandatoryMessage}
+        </p>
+      )}
+      {mandatory && !shaking && (
+        <p className="mt-2 px-1 text-[11px] text-muted-foreground">{t('mandatoryCardHint')}</p>
+      )}
     </div>
   );
 }
 
 export function DashboardCustomizer({
+  cards,
   blocks,
-  savedOrder,
+  layout,
   saveAction,
   resetAction,
 }: {
-  blocks: Record<DashboardBlockId, ReactNode>;
-  /** The caller's saved, already-normalised order, or null when they use the system default. */
-  savedOrder: DashboardBlockId[] | null;
-  saveAction: (order: string[]) => Promise<void>;
+  /** Every ACTIVE HR-configured card, in display order (the add menu + labels come from here). */
+  cards: CustomizerCard[];
+  /** Pre-rendered server node per cardKey for information cards that have one. */
+  blocks: Record<string, ReactNode>;
+  /** The caller's saved, already-normalised layout ({ selected, order }). */
+  layout: DashboardLayout;
+  saveAction: (layout: { selected: string[]; order: string[] }) => Promise<void>;
   resetAction: () => Promise<void>;
 }) {
   const t = useTranslations('dashboard');
-  const baselineFromProps = savedOrder ?? [...DEFAULT_ORDER];
-  // `baseline` = last saved order (Cancel reverts here); `order` = the working/preview order.
-  const [baseline, setBaseline] = useState<DashboardBlockId[]>(baselineFromProps);
-  const [order, setOrder] = useState<DashboardBlockId[]>(baselineFromProps);
+  const byKey = useMemo(() => new Map(cards.map((c) => [c.key, c])), [cards]);
+  // The HR default (Reset target): every mandatory or default-display card, in display order.
+  const defaultVisible = useMemo(
+    () => cards.filter((c) => c.mandatory || c.defaultDisplay).map((c) => c.key),
+    [cards],
+  );
+
+  // `baseline` = last saved visible set (Cancel reverts here); `visible` = the working/preview set.
+  const [baseline, setBaseline] = useState<string[]>(layout.selected);
+  const [visible, setVisible] = useState<string[]>(layout.selected);
   const [customizing, setCustomizing] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [shakeKey, setShakeKey] = useState<string | null>(null);
+  const shakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pending, startTransition] = useTransition();
 
   const sensors = useSensors(
@@ -104,42 +177,78 @@ export function DashboardCustomizer({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  const addable = cards.filter((c) => c.employeeSelectable && !visible.includes(c.key));
+
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
-    setOrder((cur) => {
-      const from = cur.indexOf(active.id as DashboardBlockId);
-      const to = cur.indexOf(over.id as DashboardBlockId);
+    setVisible((cur) => {
+      const from = cur.indexOf(active.id as string);
+      const to = cur.indexOf(over.id as string);
       if (from < 0 || to < 0) return cur;
       return arrayMove(cur, from, to);
     });
   };
 
+  const triggerShake = (id: string) => {
+    setShakeKey(id);
+    if (shakeTimer.current) clearTimeout(shakeTimer.current);
+    shakeTimer.current = setTimeout(() => setShakeKey(null), 600);
+  };
+
+  const removeCard = (id: string) => {
+    const card = byKey.get(id);
+    if (card?.mandatory) {
+      // Mandatory cards can't be removed → shake + message, card stays.
+      triggerShake(id);
+      return;
+    }
+    setVisible((cur) => cur.filter((k) => k !== id));
+  };
+
+  const addCard = (id: string) => {
+    setVisible((cur) => (cur.includes(id) ? cur : [...cur, id]));
+    setAddOpen(false);
+  };
+
   const enterCustomize = () => {
-    setOrder(baseline);
+    setVisible(baseline);
     setCustomizing(true);
   };
   const cancel = () => {
-    setOrder(baseline);
+    setVisible(baseline);
+    setShakeKey(null);
+    setAddOpen(false);
     setCustomizing(false);
   };
   const save = () => {
+    const next = visible;
     startTransition(async () => {
-      await saveAction(order);
-      setBaseline(order);
+      await saveAction({ selected: next, order: next });
+      setBaseline(next);
       setCustomizing(false);
+      setAddOpen(false);
     });
   };
   const reset = () => {
     startTransition(async () => {
       await resetAction();
-      setOrder([...DEFAULT_ORDER]);
-      setBaseline([...DEFAULT_ORDER]);
+      setVisible(defaultVisible);
+      setBaseline(defaultVisible);
       setCustomizing(false);
+      setAddOpen(false);
     });
   };
 
-  const blockLabel = (id: DashboardBlockId) => t(`block_${id}`);
+  /** Resolve the render node for a card: bespoke server block, else a generic shortcut link, else null. */
+  const nodeFor = (key: string): ReactNode => {
+    if (blocks[key] !== undefined) return blocks[key];
+    const card = byKey.get(key);
+    if (card && card.href) return <ShortcutCard label={card.label} href={card.href} badge={t('shortcutBadge')} />;
+    return null;
+  };
+
+  const labelFor = (key: string) => byKey.get(key)?.label ?? key;
 
   return (
     <div className="space-y-6">
@@ -148,16 +257,50 @@ export function DashboardCustomizer({
           <>
             <p className="text-sm text-muted-foreground">{t('customizeHint')}</p>
             <div className="flex flex-wrap items-center gap-2">
+              {/* Add Card — employee-selectable cards not currently shown. */}
+              <div className="relative">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAddOpen((o) => !o)}
+                  disabled={pending || addable.length === 0}
+                  aria-haspopup="menu"
+                  aria-expanded={addOpen}
+                >
+                  <Plus className="mr-1 size-4" />
+                  {t('addCard')}
+                </Button>
+                {addOpen && addable.length > 0 && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 z-30 mt-1 max-h-72 w-64 overflow-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+                  >
+                    {addable.map((c) => (
+                      <button
+                        key={c.key}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => addCard(c.key)}
+                        className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
+                      >
+                        <span className="truncate">{c.label}</span>
+                        {(c.cardType === 'shortcut' || c.cardType === 'action') && (
+                          <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-primary/80">
+                            {t('shortcutBadge')}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <Button variant="ghost" size="sm" onClick={reset} disabled={pending}>
                 {t('resetToDefault')}
               </Button>
               <Button variant="outline" size="sm" onClick={cancel} disabled={pending}>
                 {t('cancel')}
               </Button>
-              {/* Save is gated behind a confirmation dialog (feedback 31b46dcc): the actual save()
-                  only runs from AlertDialog.Action; AlertDialog.Cancel discards via the existing
-                  cancel() (revert to baseline + exit customize). This confirm is reused by the rest
-                  of the dashboard-customization chain (add/remove blocks). */}
+              {/* Save is gated behind a confirmation dialog (feedback 31b46dcc). */}
               <AlertDialog.Root>
                 <AlertDialog.Trigger asChild>
                   <Button size="sm" disabled={pending}>
@@ -198,20 +341,33 @@ export function DashboardCustomizer({
 
       {customizing ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={order} strategy={verticalListSortingStrategy}>
+          <SortableContext items={visible} strategy={verticalListSortingStrategy}>
             <div className="space-y-4">
-              {order.map((id) => (
-                <SortableBlock key={id} id={id} label={blockLabel(id)}>
-                  {blocks[id]}
-                </SortableBlock>
+              {visible.map((key) => (
+                <SortableCard
+                  key={key}
+                  id={key}
+                  label={labelFor(key)}
+                  mandatory={byKey.get(key)?.mandatory ?? false}
+                  shaking={shakeKey === key}
+                  mandatoryMessage={t('mandatoryCardMessage')}
+                  onRemove={removeCard}
+                >
+                  {nodeFor(key)}
+                </SortableCard>
               ))}
+              {visible.length === 0 && (
+                <p className="rounded-2xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                  {t('emptyDashboardHint')}
+                </p>
+              )}
             </div>
           </SortableContext>
         </DndContext>
       ) : (
         <div className="space-y-6">
-          {order.map((id) => (
-            <div key={id}>{blocks[id]}</div>
+          {visible.map((key) => (
+            <div key={key}>{nodeFor(key)}</div>
           ))}
         </div>
       )}

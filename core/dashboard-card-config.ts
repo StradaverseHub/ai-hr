@@ -308,3 +308,37 @@ export async function getCard(ctx: SessionContext, id: string): Promise<Dashboar
   const rows = await listCards(ctx);
   return rows.find((r) => r.id === id) ?? null;
 }
+
+/**
+ * The ACTIVE dashboard cards the employee customizer (feedback 578a2fcf) renders against: the flattened,
+ * HR-configured catalog an employee may show / add / reorder. Read-only projection of listCards filtered
+ * to status='active'. When a tenant has NO rows yet (provisioned after the 1586d2f5 seed migration), the
+ * customizer falls back to lib/dashboard-layout BUILTIN_DASHBOARD_CARDS, so the dashboard never renders
+ * blank. Read-only → no DomainEvent (substrate skip, per CLAUDE.md "When NOT to append": read operation).
+ */
+export type EmployeeDashboardCard = {
+  cardKey: string;
+  name: string;
+  cardType: DashboardCardType;
+  href: string | null;
+  employeeSelectable: boolean;
+  defaultDisplay: boolean;
+  mandatory: boolean;
+  displayOrder: number;
+};
+
+export async function listEmployeeDashboardCards(ctx: SessionContext): Promise<EmployeeDashboardCard[]> {
+  const rows = await listCards(ctx);
+  return rows
+    .filter((r) => r.status === 'active')
+    .map((r) => ({
+      cardKey: r.cardKey,
+      name: r.name,
+      cardType: r.cardType,
+      href: r.href,
+      employeeSelectable: r.employeeSelectable,
+      defaultDisplay: r.defaultDisplay,
+      mandatory: r.mandatory,
+      displayOrder: r.displayOrder,
+    }));
+}

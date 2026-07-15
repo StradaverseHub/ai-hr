@@ -1492,6 +1492,13 @@
       "when": 1781862211000,
       "tag": "0212_dashboard_card_config",
       "breakpoints": true
+    },
+    {
+      "idx": 213,
+      "version": "7",
+      "when": 1781862212000,
+      "tag": "0213_dashboard_layout_shape_and_shortcuts",
+      "breakpoints": true
     }
   ]
 }
