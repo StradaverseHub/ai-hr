@@ -814,7 +814,16 @@ export function LeaveTypePanel({
         <div className="space-y-3 border-t border-border/60 bg-muted/20 px-4 py-3">
           {/* type-level controls */}
           {editingName ? (
-            <form action={updateTypeAction} className="flex flex-wrap items-end gap-2">
+            <form
+              action={updateTypeAction}
+              /* 6ef6e355 — responsive grid re-layout. Was a single `flex flex-wrap items-end gap-2` row where the
+                 Paid checkbox sat wedged between text inputs and Description was a fixed oversized box. Now a
+                 breakpoint-aware grid: 1 col (mobile) → 2 (sm) → 4 (lg). Compact fields pack the top row, Paid is
+                 pushed to the far-right cell, Description spans the full width and flows fluid, and Save/Cancel get
+                 their own aligned full-width row. Cells wrap cleanly instead of compressing. Pure presentation —
+                 no field, name attr, marker, server action or substrate changed. */
+              className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-4"
+            >
               <input type="hidden" name="id" value={id} />
               {/* Leave Type master page (feedback 097de541): marker tells the action to touch the description
                   column (tri-state guard) — this form edits Name + Description together. */}
@@ -831,29 +840,30 @@ export function LeaveTypePanel({
                   readOnly
                   aria-label={t('codeLabel')}
                   title={t('codeReadOnlyHint')}
-                  className={`${inputCls} w-40 cursor-not-allowed opacity-70`}
+                  className={`${inputCls} w-full cursor-not-allowed opacity-70`}
                 />
               </Field>
               <Field label={t('nameLabel')}>
-                <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-52`} />
+                <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-full`} />
               </Field>
-              <Field label={t('descriptionLabel')}>
-                {/* Multiline (fbcadc71): textarea so Enter inserts a newline instead of submitting the rename form;
-                    h-auto/min-h/resize-y overrides inputCls's fixed h-9 so it shows ~3 lines, grows via the drag
-                    handle, and scrolls on overflow. defaultValue round-trips stored newlines faithfully. */}
-                <textarea
-                  name="description"
-                  defaultValue={description ?? ''}
-                  aria-label={t('descriptionLabel')}
-                  placeholder={t('descriptionPlaceholder')}
-                  rows={3}
-                  className={`${inputCls} h-auto min-h-[4.5rem] w-64 resize-y`}
+              {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. Placed ahead of
+                  Paid so the compact fields pack the first grid row and Paid lands in the last (right-most) cell. */}
+              <Field label={t('reasonLabel')}>
+                <input
+                  name="reason"
+                  type="text"
+                  maxLength={500}
+                  aria-label={t('reasonLabel')}
+                  placeholder={t('reasonPlaceholder')}
+                  className={`${inputCls} w-full`}
                 />
               </Field>
               {/* Edit Paid/Unpaid on rename (feedback 75953777): the Paid/Unpaid flag lives on the rename form
                   so a mis-set type can be corrected without recreating it. The `identity=1` marker above means an
-                  unchecked box is a real "unpaid" choice, not "untouched". Applies to future leave only. */}
-              <Field label={t('paidLabel')}>
+                  unchecked box is a real "unpaid" choice, not "untouched". Applies to future leave only.
+                  6ef6e355: pushed to the right edge of its cell (`justify-self-end`) so it no longer sits squeezed
+                  between text inputs. */}
+              <Field label={t('paidLabel')} className="justify-self-end">
                 <div className="flex h-9 items-center">
                   <input
                     type="checkbox"
@@ -864,23 +874,29 @@ export function LeaveTypePanel({
                   />
                 </div>
               </Field>
-              {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
-              <Field label={t('reasonLabel')}>
-                <input
-                  name="reason"
-                  type="text"
-                  maxLength={500}
-                  aria-label={t('reasonLabel')}
-                  placeholder={t('reasonPlaceholder')}
-                  className={`${inputCls} w-64`}
+              <Field label={t('descriptionLabel')} className="col-span-full">
+                {/* Multiline (fbcadc71): textarea so Enter inserts a newline instead of submitting the rename form;
+                    h-auto/min-h/resize-y overrides inputCls's fixed h-9 so it shows ~3 lines, grows via the drag
+                    handle, and scrolls on overflow. defaultValue round-trips stored newlines faithfully.
+                    6ef6e355: spans the full grid row and goes fluid (w-full) so it resizes with available width
+                    instead of sitting at a fixed oversized size; keeps vertical resize handle. */}
+                <textarea
+                  name="description"
+                  defaultValue={description ?? ''}
+                  aria-label={t('descriptionLabel')}
+                  placeholder={t('descriptionPlaceholder')}
+                  rows={3}
+                  className={`${inputCls} h-auto min-h-[4.5rem] w-full resize-y`}
                 />
               </Field>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setEditingName(false)}>
-                {t('cancel')}
-              </Button>
+              <div className="col-span-full flex items-center gap-2">
+                <Button type="submit" size="sm">
+                  {t('save')}
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setEditingName(false)}>
+                  {t('cancel')}
+                </Button>
+              </div>
             </form>
           ) : (
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
