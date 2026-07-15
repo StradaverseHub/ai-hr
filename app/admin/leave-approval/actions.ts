@@ -55,6 +55,9 @@ export async function saveLeaveApprovalRuleAction(formData: FormData) {
     departmentId: str(formData.get('departmentId')),
     positionId: str(formData.get('positionId')),
     gradeId: str(formData.get('gradeId')),
+    // R41 72800eda — grade-GROUP scoping + Default(template)/Custom(levels) workflow type.
+    gradeGroupId: str(formData.get('gradeGroupId')),
+    templateId: str(formData.get('templateId')),
     employmentType: employmentTypeOrNull(formData.get('employmentType')),
     minDays: numOrNull(formData.get('minDays')),
     maxDays: numOrNull(formData.get('maxDays')),

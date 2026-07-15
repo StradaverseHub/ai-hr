@@ -2017,9 +2017,23 @@ async function generateApprovalSteps(
     .where(eq(employment.id, employmentId))
     .limit(1);
 
+  // R41 72800eda: map the requester's individual grade → its GRADE GROUP (grade_group_member) so a
+  // grade-group-scoped approval rule can match. A grade belongs to at most one group (unique index); an
+  // ungrouped/ungraded requester resolves to null and simply never matches a group-scoped rule.
+  let gradeGroupId: string | null = null;
+  if (attr?.gradeId) {
+    const [gm] = await tx
+      .select({ gradeGroupId: gradeGroupMember.gradeGroupId })
+      .from(gradeGroupMember)
+      .where(eq(gradeGroupMember.gradeId, attr.gradeId))
+      .limit(1);
+    gradeGroupId = gm?.gradeGroupId ?? null;
+  }
+
   // 2B-2 / ADR-0071: the chain is data — resolve the most-specific matching rule for this request.
   const chain = await resolveApprovalChain(tx, co.companyId, leaveTypeId, {
     gradeId: attr?.gradeId ?? null,
+    gradeGroupId,
     departmentId: attr?.departmentId ?? null,
     positionId: attr?.positionId ?? null,
     employmentType: attr?.employmentType ?? null,

@@ -1399,6 +1399,11 @@ export const leaveApprovalPolicy = pgTable(
     departmentId: uuid('department_id').references(() => department.id),
     positionId: uuid('position_id').references(() => position.id),
     gradeId: uuid('grade_id').references(() => jobGrade.id),
+    // R41 72800eda — a rule may scope by GRADE GROUP (the benefit-scheme grade bands, grade_group) instead of
+    // (or as well as) an individual job grade. Nullable/wildcard like every other dimension; resolved at
+    // submit time by mapping the requester's grade → its group via grade_group_member. Restrict FK so a
+    // referenced group can never be silently deleted out from under a live rule.
+    gradeGroupId: uuid('grade_group_id').references(() => gradeGroup.id),
     employmentType: employmentTypeEnum('employment_type'),
     minDays: integer('min_days'),
     maxDays: integer('max_days'),
@@ -1418,7 +1423,7 @@ export const leaveApprovalPolicy = pgTable(
     uniqueIndex('leave_approval_policy_wildcard_uq')
       .on(t.companyId, sql`coalesce(${t.leaveTypeId}, '00000000-0000-0000-0000-000000000000'::uuid)`)
       .where(
-        sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null and employment_type is null and min_days is null and max_days is null`,
+        sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null and grade_group_id is null and employment_type is null and min_days is null and max_days is null`,
       ),
   ],
 );

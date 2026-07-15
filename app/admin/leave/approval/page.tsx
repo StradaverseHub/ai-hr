@@ -4,11 +4,12 @@ import { listCompanies, listDepartments, listJobGrades, listLeaveTypes } from '@
 import { listBusinessUnits, listPositions } from '@/core/admin';
 import { getLeaveApprovalPolicy, listLeaveApprovalRules } from '@/core/leave-approval-policy';
 import { listApprovalTemplates, listTemplateAssignments } from '@/core/leave-approval-template';
+import { listGradeGroups } from '@/core/benefit-scheme';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveApprovalEditor } from '../../leave-approval/editor';
-import { RuleBuilder, type RuleBuilderLabels } from '../../leave-approval/rule-builder';
 import { ApprovalTemplateManager, type TemplateManagerLabels } from '../../leave-approval/template-manager';
+import { WorkflowMatrix, type WorkflowMatrixLabels } from '../../leave-approval/workflow-matrix';
 import {
   archiveLeaveApprovalRuleAction,
   assignApprovalTemplateAction,
@@ -46,12 +47,13 @@ export default async function LeaveApprovalTabPage({
   const companies = all.filter((c) => scopeIds.includes(c.id));
   const companyIds = companies.map((c) => c.id);
 
-  const [leaveTypesAll, departmentsAll, positionsAll, businessUnitsAll, gradesAll] = await Promise.all([
+  const [leaveTypesAll, departmentsAll, positionsAll, businessUnitsAll, gradesAll, gradeGroupsAll] = await Promise.all([
     listLeaveTypes(s),
     companyIds.length ? listDepartments(s, { companyIds }) : Promise.resolve([]),
     companyIds.length ? listPositions(s, { companyIds }) : Promise.resolve([]),
     companyIds.length ? listBusinessUnits(s, { companyIds }) : Promise.resolve([]),
     listJobGrades(s),
+    listGradeGroups(s),
   ]);
 
   const rows = await Promise.all(
@@ -146,24 +148,7 @@ export default async function LeaveApprovalTabPage({
     remove: t('remove'),
     dragToReorder: t('dragToReorder'),
   };
-  const ruleLabels: RuleBuilderLabels = {
-    rulesTitle: t('rulesTitle'),
-    addRule: t('addRule'),
-    editRule: t('editRule'),
-    archiveRule: t('archiveRule'),
-    archiveConfirm: t('archiveConfirm'),
-    company: t('company'),
-    ruleName: t('ruleName'),
-    ruleNamePlaceholder: t('ruleNamePlaceholder'),
-    leaveType: t('leaveType'),
-    businessUnit: t('businessUnit'),
-    department: t('department'),
-    position: t('position'),
-    jobGrade: t('jobGrade'),
-    employmentType: t('employmentType'),
-    minDays: t('minDays'),
-    maxDays: t('maxDays'),
-    anyScope: t('anyScope'),
+  const stepLabels = {
     chain: t('chain'),
     empty: t('empty'),
     manager: t('manager'),
@@ -178,16 +163,65 @@ export default async function LeaveApprovalTabPage({
     moveDown: t('moveDown'),
     remove: t('remove'),
     dragToReorder: t('dragToReorder'),
+  };
+  const workflowLabels: WorkflowMatrixLabels = {
+    workflowsTitle: t('workflowsTitle'),
+    workflowsHint: t('workflowsHint'),
+    addWorkflow: t('addWorkflow'),
+    colCompany: t('company'),
+    colLeaveType: t('leaveType'),
+    colGradeGroup: t('gradeGroup'),
+    colWorkflowType: t('workflowType'),
+    colConditions: t('conditions'),
+    view: t('viewWorkflow'),
+    edit: t('editRule'),
+    delete: t('archiveRule'),
+    deleteConfirm: t('archiveConfirm'),
+    noWorkflows: t('noWorkflows'),
+    anyScope: t('anyScope'),
+    editTitle: t('editWorkflowTitle'),
+    addTitle: t('addWorkflowTitle'),
+    basicInfo: t('basicInfo'),
+    sectionWorkflowType: t('workflowType'),
+    sectionConditions: t('conditions'),
+    workflowTypeDefault: t('workflowTypeDefault'),
+    workflowTypeCustom: t('workflowTypeCustom'),
+    workflowTypeDefaultHint: t('workflowTypeDefaultHint'),
+    workflowTypeCustomHint: t('workflowTypeCustomHint'),
+    selectTemplate: t('selectTemplate'),
+    noActiveTemplates: t('noActiveTemplates'),
+    addCondition: t('addCondition'),
+    conditionField: t('conditionField'),
+    conditionOperator: t('conditionOperator'),
+    conditionValue: t('conditionValue'),
+    leaveDuration: t('leaveDuration'),
+    opGreaterThan: t('opGreaterThan'),
+    opLessThan: t('opLessThan'),
+    opBetween: t('opBetween'),
+    valueDays: t('valueDays'),
+    advancedScope: t('advancedScope'),
+    company: t('company'),
+    ruleName: t('ruleName'),
+    ruleNamePlaceholder: t('ruleNamePlaceholder'),
+    leaveType: t('leaveType'),
+    gradeGroup: t('gradeGroup'),
+    businessUnit: t('businessUnit'),
+    department: t('department'),
+    position: t('position'),
+    jobGrade: t('jobGrade'),
+    employmentType: t('employmentType'),
     save: t('save'),
     cancel: t('cancel'),
-    noRules: t('noRules'),
-    steps: t('steps'),
+    saveConfirmTitle: t('saveConfirmTitle'),
+    saveConfirmBody: t('saveConfirmBody'),
+    saveConfirm: t('saveConfirm'),
+    workflowTypeDefaultBadge: t('workflowTypeDefaultBadge'),
+    workflowTypeCustomBadge: t('workflowTypeCustomBadge'),
     fullTime: t('employmentType_full_time'),
     partTime: t('employmentType_part_time'),
     contract: t('employmentType_contract'),
     intern: t('employmentType_intern'),
-    reason: t('reason'),
-    reasonPlaceholder: t('reasonPlaceholder'),
+    step: stepLabels,
   };
 
   return (
@@ -225,36 +259,53 @@ export default async function LeaveApprovalTabPage({
             }}
             labels={templateLabels}
           />
-          {rows.map(({ company, pol, rules }) => (
-          <Card key={company.id}>
-            <SectionHeader title={company.name} />
-            <LeaveApprovalEditor
-              companyId={company.id}
-              action={saveLeaveApprovalPolicyAction}
-              initialEnabled={pol.enabled}
-              initialLevels={pol.levels}
-              labels={labels}
-            />
-            <RuleBuilder
-              companyId={company.id}
-              companies={companies.map((c) => ({ id: c.id, label: c.name }))}
-              rules={rules.filter((r) => !isCompanyDefault(r) && r.templateId == null)}
-              leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
-              businessUnits={businessUnitsAll
-                .filter((x) => x.companyId === company.id)
-                .map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` }))}
-              departments={departmentsAll
-                .filter((x) => x.companyId === company.id)
-                .map((x) => ({ id: x.id, label: x.name }))}
-              positions={positionsAll
-                .filter((x) => x.companyId === company.id)
-                .map((x) => ({ id: x.id, label: x.title }))}
-              grades={gradesAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` }))}
-              saveAction={saveLeaveApprovalRuleAction}
-              archiveAction={archiveLeaveApprovalRuleAction}
-              labels={ruleLabels}
-            />
-          </Card>
+
+          {/* R41 72800eda — the configured workflows summary table + View/Edit popup (across all companies). */}
+          <WorkflowMatrix
+            rows={rows.flatMap(({ rules }) =>
+              rules
+                .filter((r) => !isCompanyDefault(r))
+                .map((r) => ({
+                  id: r.id,
+                  companyId: r.companyId,
+                  ruleName: r.ruleName,
+                  leaveTypeId: r.leaveTypeId,
+                  gradeGroupId: r.gradeGroupId,
+                  businessUnitId: r.businessUnitId,
+                  departmentId: r.departmentId,
+                  positionId: r.positionId,
+                  gradeId: r.gradeId,
+                  employmentType: r.employmentType,
+                  minDays: r.minDays,
+                  maxDays: r.maxDays,
+                  levels: r.levels,
+                  templateId: r.templateId,
+                })),
+            )}
+            companies={companies.map((c) => ({ id: c.id, label: c.name }))}
+            leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
+            gradeGroups={gradeGroupsAll.filter((g) => !g.archived).map((g) => ({ id: g.id, label: g.name }))}
+            grades={gradesAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` }))}
+            businessUnits={businessUnitsAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}`, companyId: x.companyId }))}
+            departments={departmentsAll.map((x) => ({ id: x.id, label: x.name, companyId: x.companyId }))}
+            positions={positionsAll.map((x) => ({ id: x.id, label: x.title, companyId: x.companyId }))}
+            templates={templates.filter((t2) => t2.active).map((t2) => ({ id: t2.id, label: t2.name }))}
+            actions={{ save: saveLeaveApprovalRuleAction, archive: archiveLeaveApprovalRuleAction }}
+            labels={workflowLabels}
+          />
+
+          {/* Company defaults: the base chain + multi-step-approval on/off gate for each company. */}
+          {rows.map(({ company, pol }) => (
+            <Card key={company.id}>
+              <SectionHeader title={company.name} />
+              <LeaveApprovalEditor
+                companyId={company.id}
+                action={saveLeaveApprovalPolicyAction}
+                initialEnabled={pol.enabled}
+                initialLevels={pol.levels}
+                labels={labels}
+              />
+            </Card>
           ))}
         </>
       )}
@@ -270,6 +321,7 @@ function isCompanyDefault(r: {
   departmentId: string | null;
   positionId: string | null;
   gradeId: string | null;
+  gradeGroupId: string | null;
   employmentType: string | null;
   minDays: number | null;
   maxDays: number | null;
@@ -280,6 +332,7 @@ function isCompanyDefault(r: {
     r.departmentId == null &&
     r.positionId == null &&
     r.gradeId == null &&
+    r.gradeGroupId == null &&
     r.employmentType == null &&
     r.minDays == null &&
     r.maxDays == null
