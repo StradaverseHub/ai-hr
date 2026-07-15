@@ -4384,7 +4384,8 @@
       "tierOverFixed": "5 ஆண்டுகளுக்கு மேல்",
       "entSortLabel": "வரிசைப்படுத்து",
       "entSortAsc": "விடுப்பு வகை A–Z",
-      "entSortDesc": "விடுப்பு வகை Z–A"
+      "entSortDesc": "விடுப்பு வகை Z–A",
+      "duplicateError": "இந்த விடுப்பு வகை ஏற்கனவே இந்தத் திட்டத்திற்கு அமைக்கப்பட்டுள்ளது."
     }
   },
   "topbar": {

@@ -4384,7 +4384,8 @@
       "tierOverFixed": "Lebih 5 Tahun",
       "entSortLabel": "Isih",
       "entSortAsc": "Jenis cuti A–Z",
-      "entSortDesc": "Jenis cuti Z–A"
+      "entSortDesc": "Jenis cuti Z–A",
+      "duplicateError": "Jenis cuti ini telah dikonfigurasikan untuk skim ini."
     }
   },
   "topbar": {

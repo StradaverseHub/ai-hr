@@ -4384,7 +4384,8 @@
       "tierOverFixed": "Trên 5 năm",
       "entSortLabel": "Sắp xếp",
       "entSortAsc": "Loại nghỉ A–Z",
-      "entSortDesc": "Loại nghỉ Z–A"
+      "entSortDesc": "Loại nghỉ Z–A",
+      "duplicateError": "Loại nghỉ này đã được cấu hình cho chương trình này."
     }
   },
   "topbar": {

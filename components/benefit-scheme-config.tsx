@@ -339,6 +339,7 @@ export function BenefitSchemeConfig({
               action={actions.upsertEntitlement}
               schemeId={selectedSchemeId}
               leaveTypes={leaveTypes}
+              existingLeaveTypeIds={selectedEnts.map((e) => e.leaveTypeId)}
               t={t}
             />
           </>
@@ -407,20 +408,29 @@ function EntitlementForm({
   action,
   schemeId,
   leaveTypes,
+  existingLeaveTypeIds,
   t,
 }: {
   action: (fd: FormData) => void | Promise<void>;
   schemeId: string;
   leaveTypes: LeaveType[];
+  existingLeaveTypeIds: string[];
   t: ReturnType<typeof useTranslations>;
 }) {
   // Fixed three-band day entry (R44 6421c888): service bands are hardcoded at 0–2 / 2–5 / 5+ years — HR
   // types the days directly into each predefined range, no tier-cutoff inputs. The 0/2/5 shape satisfies
   // validateBands and is the SAME contiguous ServiceBand[] the resolver reads. Legacy rows stored with other
   // cutoffs keep their own values + calculate correctly (read-side table derives each row's own labels).
+  const [leaveTypeId, setLeaveTypeId] = useState('');
   const [d0, setD0] = useState('');
   const [d1, setD1] = useState('');
   const [d2, setD2] = useState('');
+
+  // R44 fdc3f521: block adding a leave type already configured in this scheme (silent-overwrite guard). On a
+  // duplicate the field shakes + an inline error shows, WITHOUT clearing the other entered values. shakeKey
+  // remounts the field wrapper so the shake animation replays on repeated attempts.
+  const [dupError, setDupError] = useState(false);
+  const [shakeKey, setShakeKey] = useState(0);
 
   // R44 3d2ac99f: always present the Leave Type options alphabetically (A–Z by name) for predictable
   // scanning. Active-only filtering already happens upstream (activeTypeOptions); this is display-order only.
@@ -435,20 +445,43 @@ function EntitlementForm({
     { fromYears: 5, toYears: null, days: Number(d2) || 0 },
   ];
 
+  // Client action wrapper: validate before delegating to the server action. Blocking simply returns without
+  // calling `action`, so the entered values survive (all fields are controlled state).
+  const handleAction = (fd: FormData) => {
+    if (leaveTypeId && existingLeaveTypeIds.includes(leaveTypeId)) {
+      setDupError(true);
+      setShakeKey((k) => k + 1);
+      return;
+    }
+    setDupError(false);
+    return action(fd);
+  };
+
   return (
-    <form action={action} className="space-y-3 rounded-lg border border-dashed border-border p-3">
+    <form action={handleAction} className="space-y-3 rounded-lg border border-dashed border-border p-3">
       <input type="hidden" name="benefitSchemeId" value={schemeId} />
       <input type="hidden" name="serviceBands" value={JSON.stringify(bands)} />
       <p className="text-xs font-medium text-muted-foreground">{t('addEntitlement')}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
-        <Field label={t('colLeaveType')}>
-          <select name="leaveTypeId" required defaultValue="" className={inputCls}>
-            <option value="" disabled>{t('selectPlaceholder')}</option>
-            {sortedLeaveTypes.map((lt) => (
-              <option key={lt.id} value={lt.id}>{lt.name}</option>
-            ))}
-          </select>
-        </Field>
+        <div key={`lt-${shakeKey}`} className={dupError ? 'animate-shake' : ''}>
+          <Field label={t('colLeaveType')}>
+            <select
+              name="leaveTypeId"
+              required
+              value={leaveTypeId}
+              onChange={(e) => {
+                setLeaveTypeId(e.target.value);
+                setDupError(false);
+              }}
+              className={inputCls}
+            >
+              <option value="" disabled>{t('selectPlaceholder')}</option>
+              {sortedLeaveTypes.map((lt) => (
+                <option key={lt.id} value={lt.id}>{lt.name}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
         <Field label={t('tierUnderFixed')}>
           <input type="number" min={0} step="0.5" value={d0} onChange={(e) => setD0(e.target.value)} className={`${inputCls} w-20`} />
         </Field>
@@ -459,6 +492,7 @@ function EntitlementForm({
           <input type="number" min={0} step="0.5" value={d2} onChange={(e) => setD2(e.target.value)} className={`${inputCls} w-20`} />
         </Field>
       </div>
+      {dupError && <p className="text-xs text-destructive">{t('duplicateError')}</p>}
       <Button type="submit" size="sm">{t('saveEntitlement')}</Button>
     </form>
   );

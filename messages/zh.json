@@ -4384,7 +4384,8 @@
       "tierOverFixed": "超过5年",
       "entSortLabel": "排序",
       "entSortAsc": "假期类型 A–Z",
-      "entSortDesc": "假期类型 Z–A"
+      "entSortDesc": "假期类型 Z–A",
+      "duplicateError": "此假期类型已在本方案中配置。"
     }
   },
   "topbar": {

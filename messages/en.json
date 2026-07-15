@@ -4384,7 +4384,8 @@
       "tierOverFixed": "More Than 5 Years",
       "entSortLabel": "Sort",
       "entSortAsc": "Leave type A–Z",
-      "entSortDesc": "Leave type Z–A"
+      "entSortDesc": "Leave type Z–A",
+      "duplicateError": "This leave type is already configured for this scheme."
     }
   },
   "topbar": {
