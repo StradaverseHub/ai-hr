@@ -31,6 +31,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { useTranslations } from 'next-intl';
 import { GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui';
@@ -153,9 +154,37 @@ export function DashboardCustomizer({
               <Button variant="outline" size="sm" onClick={cancel} disabled={pending}>
                 {t('cancel')}
               </Button>
-              <Button size="sm" onClick={save} disabled={pending}>
-                {t('saveChanges')}
-              </Button>
+              {/* Save is gated behind a confirmation dialog (feedback 31b46dcc): the actual save()
+                  only runs from AlertDialog.Action; AlertDialog.Cancel discards via the existing
+                  cancel() (revert to baseline + exit customize). This confirm is reused by the rest
+                  of the dashboard-customization chain (add/remove blocks). */}
+              <AlertDialog.Root>
+                <AlertDialog.Trigger asChild>
+                  <Button size="sm" disabled={pending}>
+                    {t('saveChanges')}
+                  </Button>
+                </AlertDialog.Trigger>
+                <AlertDialog.Portal>
+                  <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+                  <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
+                    <AlertDialog.Title className="text-base font-semibold">
+                      {t('saveConfirmTitle')}
+                    </AlertDialog.Title>
+                    <div className="mt-5 flex justify-end gap-2">
+                      <AlertDialog.Cancel asChild>
+                        <Button type="button" variant="outline" size="sm" onClick={cancel}>
+                          {t('saveConfirmDiscard')}
+                        </Button>
+                      </AlertDialog.Cancel>
+                      <AlertDialog.Action asChild>
+                        <Button type="button" size="sm" onClick={save}>
+                          {t('saveConfirmConfirm')}
+                        </Button>
+                      </AlertDialog.Action>
+                    </div>
+                  </AlertDialog.Content>
+                </AlertDialog.Portal>
+              </AlertDialog.Root>
             </div>
           </>
         ) : (
