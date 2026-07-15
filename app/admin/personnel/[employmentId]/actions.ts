@@ -22,7 +22,7 @@ import { setPersonComplianceFields } from '@/core/profile';
 import { removePersonPhoto, setPersonPhoto } from '@/core/person-photo';
 import { packFor } from '@/localization/registry';
 import { mapEpfUiMode } from '@/lib/epf-mode-map';
-import { defaultSocsoEisNumber } from '@/localization/my/statutory';
+import { defaultSocsoEisNumber, dobFromIC } from '@/localization/my/statutory';
 
 // Tab retention (feedback bd2f0bb2): the client tab shell (components/personnel-tabs.tsx) injects a hidden
 // `tab` field into every submitting form. Each action appends `&tab=<key>` to its post-save redirect so the
@@ -870,11 +870,25 @@ export async function setIcAction(formData: FormData) {
   const employmentId = String(formData.get('employmentId'));
   const personId = String(formData.get('personId'));
   const pack = packFor('MY');
+  const icRaw = String(formData.get('icNumber') ?? '');
   try {
     if (!pack) throw new Error('No localization pack for MY');
-    await pack.statutory.setIc(s, { personId, icNumber: String(formData.get('icNumber') ?? '') });
+    await pack.statutory.setIc(s, { personId, icNumber: icRaw });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  // Item 354a500d — server-side safety net for the IC → Date-of-Birth autofill. When the entered IC yields a
+  // valid derived DOB, persist it through the audited setPersonComplianceFields path (fires person.updated) so
+  // the derivation holds even if the client wrapper didn't run (JS off / API import). `dobOnlyIfEmpty` guarantees
+  // we NEVER overwrite an existing DOB — it fills only when the person has none. Best-effort: the IC is already
+  // saved, so a failure here (e.g. DOB already set → no-op) must not fail the IC save.
+  const derivedDob = dobFromIC(icRaw);
+  if (derivedDob) {
+    try {
+      await setPersonComplianceFields(s, { employmentId, dateOfBirth: derivedDob, dobOnlyIfEmpty: true });
+    } catch {
+      // non-fatal — IC persisted; DOB autofill is a convenience.
+    }
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));

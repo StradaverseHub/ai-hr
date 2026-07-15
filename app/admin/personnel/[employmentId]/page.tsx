@@ -71,6 +71,7 @@ import { MY_STATES } from '@/localization/my/holidays';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { PhotoEditMenu } from '@/components/photo-edit-menu';
+import { IcDobAutofill } from '@/components/ic-dob-autofill';
 import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
 import { encashmentSnapshotForEmployment } from '@/core/leave-encashment';
 import { unfreezeEncashmentAction, adjustEncashmentAction } from './encashment-actions';
@@ -378,7 +379,7 @@ export default async function EmployeePage({
         >
           <input type="hidden" name="employmentId" value={emp.employmentId} />
           <Field label={t('birthDate')}>
-            <input name="dateOfBirth" type="date" defaultValue={emp.dateOfBirth ?? ''} className={inputCls} />
+            <input id="profile-dob-input" name="dateOfBirth" type="date" defaultValue={emp.dateOfBirth ?? ''} className={inputCls} />
           </Field>
           <Field label={t('gender')}>
             <select name="gender" defaultValue={emp.gender ?? ''} className={inputCls}>
@@ -416,7 +417,18 @@ export default async function EmployeePage({
           <input type="hidden" name="employmentId" value={emp.employmentId} />
           <input type="hidden" name="personId" value={emp.personId} />
           <Field label={t('icNumber')}>
-            <input name="icNumber" required defaultValue={statutory?.icNumber ?? ''} placeholder="900101011234" className={inputCls} />
+            {/* Item 354a500d — IcDobAutofill (a 'use client' island rendered by this RSC — never CALLED here,
+                so the RSC boundary is respected) derives the DOB from a valid MyKad IC and fills the empty
+                DOB input above (id=profile-dob-input) client-side; the server mirrors this on save. */}
+            <IcDobAutofill
+              name="icNumber"
+              required
+              defaultValue={statutory?.icNumber ?? ''}
+              placeholder="900101011234"
+              className={inputCls}
+              dobInputId="profile-dob-input"
+              invalidDateNote={t('icDobInvalidDate')}
+            />
           </Field>
           <p className="text-xs text-muted-foreground sm:col-span-3 sm:self-center">{t('icNumberHint')}</p>
           <div className="sm:col-span-4 flex justify-end">
