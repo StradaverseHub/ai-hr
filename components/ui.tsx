@@ -88,18 +88,29 @@ export function PageHeader({
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  active: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-  on_leave: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
+  // Derived Employee Status buckets (R43 c26c3ce5) + legacy stored assignment statuses still shown in the
+  // assignment-history table (offboarding/terminated). `on_leave` was retired from the Employee Status picker;
+  // any historical on_leave row falls through to the neutral default below (still renders, just un-tinted).
   probation: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
+  active: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
+  active_serving_notice: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
+  resigned: 'bg-muted text-muted-foreground',
+  blacklisted: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
   offboarding: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400',
   terminated: 'bg-muted text-muted-foreground',
 };
 
-export function StatusBadge({ status }: { status: string | null }) {
+/**
+ * Status pill. `status` drives the colour (and the humanised fallback text); pass a translated `label` — as
+ * the Employee Status call-sites do, `t('people.employeeStatus.<bucket>')` — so the visible text is localised
+ * while the colour still keys off the raw bucket. Without a label it humanises the raw status (used by the
+ * historical assignment table, whose stored values are display-only).
+ */
+export function StatusBadge({ status, label }: { status: string | null; label?: string }) {
   const cls = (status && STATUS_STYLES[status]) || 'bg-muted text-muted-foreground';
   return (
     <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize', cls)}>
-      {status ? status.replace(/_/g, ' ') : '—'}
+      {label ?? (status ? status.replace(/_/g, ' ') : '—')}
     </span>
   );
 }

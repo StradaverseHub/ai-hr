@@ -227,6 +227,13 @@
     "block_recentActivity": "Aktiviti Terkini"
   },
   "people": {
+    "employeeStatus": {
+      "probation": "Percubaan",
+      "active": "Aktif",
+      "active_serving_notice": "Aktif — Menjalani Notis",
+      "resigned": "Berhenti",
+      "blacklisted": "Disenaraihitamkan"
+    },
     "list": {
       "title": "Kakitangan",
       "employeeCount": "{count, plural, one {# pekerja} other {# pekerja}}",
@@ -683,7 +690,7 @@
         "save": "Simpan maklumat pekerjaan",
         "assignmentGroup": "Penetapan Organisasi",
         "saveAssignment": "Simpan penetapan organisasi",
-        "assignmentNote": "Perubahan pada Jabatan, Jawatan, Jenis Pekerjaan dan Status Pekerja direkodkan dengan tarikh berkuat kuasa dan disimpan dalam sejarah penetapan, supaya rekod lampau kekal tepat. Gred Pekerjaan disimpan dalam rekod pekerja.",
+        "assignmentNote": "Perubahan pada Jabatan, Jawatan dan Jenis Pekerjaan direkodkan dengan tarikh berkuat kuasa dan disimpan dalam sejarah tugasan, supaya rekod lampau kekal tepat. Gred Kerja disimpan pada rekod pekerja.",
         "positionNone": "Tiada",
         "invalidValue": "Nilai yang dipilih tidak sah.",
         "employmentType_full_time": "Sepenuh masa",
@@ -712,7 +719,15 @@
         "tenderResignationDate": "Tarikh Serah Peletakan Jawatan",
         "lastWorkingDate": "Tarikh Bekerja Terakhir",
         "lifecycleDeferredNote": "Tarikh peletakan jawatan dan hari bekerja terakhir direkodkan di sini. Menghubungkannya dengan gaji akhir dan potongan kehadiran dirancang sebagai susulan.",
-        "businessUnit": "Unit Perniagaan"
+        "businessUnit": "Unit Perniagaan",
+        "employeeStatusDerivedNote": "Status Pekerja dikira secara automatik daripada tarikh pekerjaan dan dipaparkan sebagai lencana baca sahaja — tiada langkah manual.",
+        "blacklistTitle": "Senarai Hitam",
+        "blacklistReasonLabel": "Sebab (pilihan)",
+        "blacklistReasonPlaceholder": "Sebab menyenaraihitamkan",
+        "blacklistAction": "Senaraihitamkan pekerja",
+        "blacklistClearAction": "Keluarkan daripada senarai hitam",
+        "blacklistNote": "Menyenaraihitamkan ialah tindakan HR yang disengajakan dan mengatasi Status Pekerja automatik.",
+        "blacklistActiveNote": "Pekerja ini sedang disenaraihitamkan."
       },
       "documents": {
         "title": "Dokumen",

@@ -103,6 +103,8 @@ export type EmployeeListRow = {
   name: string;
   email: string;
   employeeCode: string | null;
+  // Legacy stored assignment.status — kept for callers that still read it (analytics/perf); the People list
+  // now shows the DERIVED status (deriveEmploymentStatus) computed from the lifecycle dates below.
   status: string | null;
   department: string | null;
   departmentId: string | null;
@@ -111,6 +113,12 @@ export type EmployeeListRow = {
   companyId: string;
   hiredOn: string;
   terminatedOn: string | null;
+  // Employee Status redesign (R43 c26c3ce5) — lifecycle inputs so the list badge can derive status per row.
+  confirmationDate: string | null;
+  finalConfirmationDate: string | null;
+  resignationDate: string | null;
+  lastWorkingDate: string | null;
+  blacklistedAt: string | null;
 };
 
 /** Paginated + searchable employee list for the People page. Returns the page rows plus the
@@ -168,6 +176,12 @@ export function listEmployeesPage(
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
+        // R43 c26c3ce5 — lifecycle inputs for the derived status badge.
+        confirmationDate: employment.confirmationDate,
+        finalConfirmationDate: employment.finalConfirmationDate,
+        resignationDate: employment.resignationDate,
+        lastWorkingDate: employment.lastWorkingDate,
+        blacklistedAt: employment.blacklistedAt,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -1260,6 +1274,11 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         orgTeam: employment.orgTeam,
         orgBase: employment.orgBase,
         employmentCategory: employment.employmentCategory,
+        // Employee Status redesign (R43 c26c3ce5) — the Blacklist override read by deriveEmploymentStatus
+        // (null = not blacklisted). The derived buckets themselves need no column (they are pure functions of
+        // the lifecycle dates already projected above + today).
+        blacklistedAt: employment.blacklistedAt,
+        blacklistReason: employment.blacklistReason,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))

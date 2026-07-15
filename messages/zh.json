@@ -227,6 +227,13 @@
     "block_recentActivity": "最近活动"
   },
   "people": {
+    "employeeStatus": {
+      "probation": "试用期",
+      "active": "在职",
+      "active_serving_notice": "在职 — 通知期内",
+      "resigned": "已离职",
+      "blacklisted": "已列入黑名单"
+    },
     "list": {
       "title": "员工",
       "employeeCount": "{count, plural, one {# 名员工} other {# 名员工}}",
@@ -683,7 +690,7 @@
         "save": "保存雇佣信息",
         "assignmentGroup": "组织分配",
         "saveAssignment": "保存组织分配",
-        "assignmentNote": "对部门、职位、雇佣类型和员工状态的更改会记录生效日期并保存在分配历史中，以确保历史记录准确。职级将保存到员工档案中。",
+        "assignmentNote": "对部门、职位和雇佣类型的更改会记录生效日期并保存在任职历史中，以保持过往记录的准确性。职级会保存到员工档案。",
         "positionNone": "无",
         "invalidValue": "所选的值无效。",
         "employmentType_full_time": "全职",
@@ -712,7 +719,15 @@
         "tenderResignationDate": "提交辞职日期",
         "lastWorkingDate": "最后工作日",
         "lifecycleDeferredNote": "离职日期和最后工作日在此记录。将其接入最终薪资与考勤截止将作为后续计划。",
-        "businessUnit": "业务单位"
+        "businessUnit": "业务单位",
+        "employeeStatusDerivedNote": "员工状态根据雇佣日期自动推算，并以只读徽章显示——无需手动操作。",
+        "blacklistTitle": "黑名单",
+        "blacklistReasonLabel": "原因（可选）",
+        "blacklistReasonPlaceholder": "列入黑名单的原因",
+        "blacklistAction": "将员工列入黑名单",
+        "blacklistClearAction": "从黑名单移除",
+        "blacklistNote": "列入黑名单是刻意的人力资源操作，会覆盖自动的员工状态。",
+        "blacklistActiveNote": "该员工目前已列入黑名单。"
       },
       "documents": {
         "title": "文档",

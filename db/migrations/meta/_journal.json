@@ -1541,6 +1541,13 @@
       "when": 1781862218000,
       "tag": "0219_assignment_business_unit",
       "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1781862219000,
+      "tag": "0240_employment_blacklist",
+      "breakpoints": true
     }
   ]
 }

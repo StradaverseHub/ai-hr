@@ -227,6 +227,13 @@
     "block_recentActivity": "Recent Activity"
   },
   "people": {
+    "employeeStatus": {
+      "probation": "Probation",
+      "active": "Active",
+      "active_serving_notice": "Active — Serving Notice",
+      "resigned": "Resigned",
+      "blacklisted": "Blacklisted"
+    },
     "list": {
       "title": "Personnel",
       "employeeCount": "{count, plural, one {# employee} other {# employees}}",
@@ -683,7 +690,15 @@
         "save": "Save employment information",
         "assignmentGroup": "Organisation Assignment",
         "saveAssignment": "Save organisation assignment",
-        "assignmentNote": "Changes to Department, Position, Employment Type and Employee Status are recorded with an effective date and kept in the assignment history, so past records stay accurate. Job Grade is saved to the employee record.",
+        "assignmentNote": "Changes to Department, Position and Employment Type are recorded with an effective date and kept in the assignment history, so past records stay accurate. Job Grade is saved to the employee record.",
+        "employeeStatusDerivedNote": "Employee Status is worked out automatically from the employment dates and shown as a read-only badge — no manual step.",
+        "blacklistTitle": "Blacklist",
+        "blacklistReasonLabel": "Reason (optional)",
+        "blacklistReasonPlaceholder": "Reason for blacklisting",
+        "blacklistAction": "Blacklist employee",
+        "blacklistClearAction": "Remove from blacklist",
+        "blacklistNote": "Blacklisting is a deliberate HR action and overrides the automatic Employee Status.",
+        "blacklistActiveNote": "This employee is currently blacklisted.",
         "positionNone": "None",
         "invalidValue": "Invalid value selected.",
         "employmentType_full_time": "Full-time",

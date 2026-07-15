@@ -15,7 +15,7 @@ import {
   listJobGrades,
   reportingLinesFor,
 } from '@/core/read';
-import { Avatar, Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
+import { Avatar, Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { hasPersonPhoto } from '@/core/person-photo';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { AuditTable } from '@/components/audit-table';
@@ -35,6 +35,7 @@ import {
   setContactAddressAction,
   setEmergencyContactAction,
   setEmploymentAssignmentAction,
+  setEmploymentBlacklistAction,
   setEmploymentComponentAction,
   setEmploymentInfoAction,
   setLocationAction,
@@ -53,6 +54,7 @@ import {
   transferAction,
 } from './actions';
 import { serviceYearsMonthsAt } from '@/core/leave';
+import { deriveEmploymentStatus } from '@/core/employment-status';
 import { compensationHistoryDetailed, type CompensationHistoryRow } from '@/core/comp';
 import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
@@ -124,6 +126,7 @@ export default async function EmployeePage({
   const t = await getTranslations('people.detail');
   const tp = await getTranslations('payrollPolicy');
   const tc = await getTranslations('people.detail.clocking');
+  const tStatus = await getTranslations('people.employeeStatus');
   const admin = isAdmin(s);
   const { employmentId } = await params;
   const { error, from, cp38Error, asOf: spAsOf, encashmentError, tab } = await searchParams;
@@ -137,6 +140,11 @@ export default async function EmployeePage({
   const emp = await employeeDetail(s, employmentId);
   if (!emp) notFound();
   const today = new Date().toISOString().slice(0, 10);
+  // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
+  // lifecycle dates (+ the manual Blacklist override) — never a stored manual field. Computed once here and
+  // rendered as a read-only badge everywhere the current status is shown.
+  const derivedStatus = deriveEmploymentStatus(emp, today);
+  const derivedStatusLabel = tStatus(derivedStatus);
   // b4682879 — does this employee have a profile photo the viewer may see? (existence only; never the blob).
   const photoExists = await hasPersonPhoto(s, emp.personId);
 
@@ -1699,7 +1707,6 @@ export default async function EmployeePage({
   // Company stays read-only (moving companies is a distinct lifecycle event, not an inline edit). Two sibling
   // forms in one Card is intentional — HTML forms can't nest, so the assignment editor is its own <form>.
   const EMPLOYMENT_TYPE_OPTIONS: readonly string[] = ['full_time', 'part_time', 'contract', 'intern'];
-  const ASSIGNMENT_STATUS_OPTIONS: readonly string[] = ['active', 'on_leave', 'probation', 'offboarding', 'terminated'];
   // 955c7de4 — period unit dropdown options for the redesigned Employment Dates card.
   const PERIOD_UNIT_OPTIONS: readonly string[] = ['month', 'week', 'day'];
   // Length-of-service reference figures (feedback 24c4d02e). Group service reads the Group Join Date (hiredOn);
@@ -1774,14 +1781,14 @@ export default async function EmployeePage({
               ))}
             </select>
           </Field>
+          {/* R43 c26c3ce5 — Employee Status is now system-derived + read-only (a badge), not an editable
+              dropdown, so it can never drift out of sync with the employment dates. Blacklisting (the one
+              manual override) has its own audited control below. */}
           <Field label={t('employmentInfo.employeeStatus')}>
-            <select name="status" defaultValue={current?.status ?? ''} className={inputCls}>
-              {ASSIGNMENT_STATUS_OPTIONS.map((v) => (
-                <option key={v} value={v}>
-                  {t(`employmentInfo.status_${v}` as 'employmentInfo.status_active')}
-                </option>
-              ))}
-            </select>
+            <div className="flex h-9 items-center">
+              <StatusBadge status={derivedStatus} label={derivedStatusLabel} />
+            </div>
+            <p className="text-xs text-muted-foreground">{t('employmentInfo.employeeStatusDerivedNote')}</p>
           </Field>
           <Field label={t('effectiveDate')}>
             <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
@@ -1791,6 +1798,44 @@ export default async function EmployeePage({
         <div className="flex justify-end">
           <button className={btnPrimary}>{t('employmentInfo.saveAssignment')}</button>
         </div>
+      </form>
+
+      {/* R43 c26c3ce5 — Blacklist: the one manual, audited exception status that overrides the derived
+          Employee Status. Its own <form> (HTML forms can't nest) → setEmploymentBlacklistAction. */}
+      <form action={setEmploymentBlacklistAction} className="space-y-3 border-b border-border p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t('employmentInfo.blacklistTitle')}
+        </div>
+        {emp.blacklistedAt ? (
+          <>
+            <input type="hidden" name="blacklisted" value="false" />
+            <p className="text-sm text-rose-700 dark:text-rose-400">
+              {t('employmentInfo.blacklistActiveNote')}
+              {emp.blacklistReason ? ` — ${emp.blacklistReason}` : ''}
+            </p>
+            <div className="flex justify-end">
+              <button className={btnGhost}>{t('employmentInfo.blacklistClearAction')}</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <input type="hidden" name="blacklisted" value="true" />
+            <p className="text-xs text-muted-foreground">{t('employmentInfo.blacklistNote')}</p>
+            <Field label={t('employmentInfo.blacklistReasonLabel')}>
+              <input
+                name="reason"
+                className={inputCls}
+                placeholder={t('employmentInfo.blacklistReasonPlaceholder')}
+              />
+            </Field>
+            <div className="flex justify-end">
+              <button className={`${btnGhost} border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-400 dark:hover:bg-rose-500/10`}>
+                {t('employmentInfo.blacklistAction')}
+              </button>
+            </div>
+          </>
+        )}
       </form>
 
       <form action={setEmploymentInfoAction} className="space-y-6 p-4">
@@ -2434,7 +2479,7 @@ export default async function EmployeePage({
           company: emp.company,
           hiredOn: emp.hiredOn,
         })}
-        actions={<StatusBadge status={emp.terminatedOn ? 'terminated' : (current?.status ?? null)} />}
+        actions={<StatusBadge status={derivedStatus} label={derivedStatusLabel} />}
       />
 
       {/* b4682879 — modern profile header: photo (or initials fallback) + key employment info. Admin-only
@@ -2511,7 +2556,7 @@ export default async function EmployeePage({
             <div>
               <dt className="text-xs text-muted-foreground">{t('headerStatus')}</dt>
               <dd>
-                <StatusBadge status={emp.terminatedOn ? 'terminated' : (current?.status ?? null)} />
+                <StatusBadge status={derivedStatus} label={derivedStatusLabel} />
               </dd>
             </div>
             <div>

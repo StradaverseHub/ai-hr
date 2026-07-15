@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentGrade, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type AssignmentStatusValue, type EmploymentTypeValue, type HolidayCalendarSelection } from '@/core/org';
+import { endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentBlacklist, setEmploymentGrade, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation, updateCompensation } from '@/core/comp';
 import { assignEmployeeShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
@@ -677,7 +677,6 @@ export async function setEmploymentInfoAction(formData: FormData) {
 }
 
 const EMPLOYMENT_TYPES: readonly EmploymentTypeValue[] = ['full_time', 'part_time', 'contract', 'intern'];
-const ASSIGNMENT_STATUSES: readonly AssignmentStatusValue[] = ['active', 'on_leave', 'probation', 'offboarding', 'terminated'];
 
 /**
  * Employment tab org-info edit (feedback 594323a6) — the single Save for the five organisation fields HR
@@ -692,22 +691,21 @@ export async function setEmploymentAssignmentAction(formData: FormData) {
   const employmentId = String(formData.get('employmentId'));
   const t = await getTranslations('people.detail');
   const rawType = String(formData.get('employmentType') ?? '').trim();
-  const rawStatus = String(formData.get('status') ?? '').trim();
   const employmentType = EMPLOYMENT_TYPES.includes(rawType as EmploymentTypeValue)
     ? (rawType as EmploymentTypeValue)
     : undefined;
-  const status = ASSIGNMENT_STATUSES.includes(rawStatus as AssignmentStatusValue)
-    ? (rawStatus as AssignmentStatusValue)
-    : undefined;
   // A present-but-unrecognised enum value is a tampered/stale submit — reject rather than silently ignore.
-  if ((rawType && !employmentType) || (rawStatus && !status)) {
+  if (rawType && !employmentType) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(t('employmentInfo.invalidValue'))}`));
   }
   const effectiveDate = String(formData.get('effectiveDate') ?? '').trim();
   try {
     // Job Grade lives on `employment` — its own audited writer (no-ops when unchanged).
     await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null });
-    // Department / Position / Employment Type / Employee Status — effective-dated assignment change.
+    // Department / Position / Employment Type — effective-dated assignment change. Employee Status is NO
+    // LONGER written here (R43 c26c3ce5): it is system-derived from the lifecycle dates. `status` is left
+    // undefined so setEmploymentAssignment carries the existing stored value forward (kept for history +
+    // the analytics/performance readers that still key off it), never mutated from this form.
     await setEmploymentAssignment(s, {
       employmentId,
       effectiveDate,
@@ -716,8 +714,26 @@ export async function setEmploymentAssignmentAction(formData: FormData) {
       // 1001ff61 — Business Unit on the assignment (blank = clear). Company scope + liveness validated in core.
       businessUnitId: (formData.get('businessUnitId') as string) || null,
       employmentType,
-      status,
     });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Employee Status redesign (R43 c26c3ce5) — set/clear the Blacklist override (the one manual, audited
+ * exception status on top of the otherwise date-derived Employee Status). Admin-gated (requireAdmin + the
+ * service re-checks the role); routes to setEmploymentBlacklist which emits the audit event.
+ */
+export async function setEmploymentBlacklistAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const blacklisted = String(formData.get('blacklisted') ?? '') === 'true';
+  const reason = blacklisted ? (String(formData.get('reason') ?? '').trim() || null) : null;
+  try {
+    await setEmploymentBlacklist(s, { employmentId, blacklisted, reason });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
