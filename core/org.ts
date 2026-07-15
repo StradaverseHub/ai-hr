@@ -1632,6 +1632,60 @@ export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoIn
 }
 
 /**
+ * Employee Status redesign (R43 c26c3ce5) — set/clear the Blacklist override. Employee Status is otherwise
+ * SYSTEM-DERIVED read-time from the lifecycle dates (core/employment-status.ts); Blacklist is the ONE stored,
+ * event-driven exception status, set by authorised HR. Admin-gated (defence-in-depth over the employment RLS
+ * admin-write policy). Idempotent: setting an already-blacklisted employment (or clearing an already-clear
+ * one) is a no-op with no event. Emits `employment.blacklisted` / `employment.blacklist.cleared` with a
+ * before/after diff so every transition is audited (substrate discipline).
+ */
+export async function setEmploymentBlacklist(
+  ctx: SessionContext,
+  p: { employmentId: string; blacklisted: boolean; reason?: string | null },
+) {
+  const roles = ctx.roles ?? [];
+  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
+    throw new Error('Only an admin can change the blacklist status.');
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const reason = p.reason == null ? null : String(p.reason).trim() || null;
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ blacklistedAt: employment.blacklistedAt, blacklistReason: employment.blacklistReason })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!before) throw new Error('Employment not found');
+
+    const alreadyBlacklisted = before.blacklistedAt != null;
+    // No-op guards: nothing to do when the on/off state (and, when staying on, the reason) is unchanged.
+    if (!p.blacklisted && !alreadyBlacklisted) return { id: p.employmentId, blacklisted: false as const, changed: false as const };
+    if (p.blacklisted && alreadyBlacklisted && reason === (before.blacklistReason ?? null)) {
+      return { id: p.employmentId, blacklisted: true as const, changed: false as const };
+    }
+
+    const set = p.blacklisted
+      ? { blacklistedAt: before.blacklistedAt ?? today, blacklistReason: reason }
+      : { blacklistedAt: null, blacklistReason: null };
+    await tx.update(employment).set(set).where(eq(employment.id, p.employmentId));
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: p.blacklisted ? 'employment.blacklisted' : 'employment.blacklist.cleared',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: {
+        before: { blacklistedAt: before.blacklistedAt, reason: before.blacklistReason },
+        after: { blacklistedAt: set.blacklistedAt, reason: set.blacklistReason },
+      },
+    });
+    return { id: p.employmentId, blacklisted: p.blacklisted, changed: true as const };
+  });
+}
+
+/**
  * ADR-0029 scope-out — designate the single "paymaster" employment through which a person's taxable
  * remuneration runs for PCB when they hold concurrent employments across the group. The paymaster must be
  * one of the person's own ACTIVE employments. Pass `null` to clear. App-validated soft reference (no DB FK).
