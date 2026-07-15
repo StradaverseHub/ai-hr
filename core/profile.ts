@@ -312,7 +312,16 @@ export async function decideProfileChange(
  */
 export async function setPersonComplianceFields(
   ctx: SessionContext,
-  p: { employmentId: string; gender?: string | null; maritalStatus?: string | null; dateOfBirth?: string | null },
+  p: {
+    employmentId: string;
+    gender?: string | null;
+    maritalStatus?: string | null;
+    dateOfBirth?: string | null;
+    // Item 354a500d — when true, the dateOfBirth in this call is a derived (IC-autofill) value that must ONLY
+    // be written when the person has no DOB yet; an existing DOB is never overwritten server-side. Checked
+    // atomically against the live row inside the tx (below).
+    dobOnlyIfEmpty?: boolean;
+  },
 ) {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
@@ -349,8 +358,17 @@ export async function setPersonComplianceFields(
       .limit(1);
     if (!before) throw new Error('Person not found.');
 
-    await tx.update(person).set(personSet).where(eq(person.id, personId));
-    const after = { ...before, ...personSet };
+    // Item 354a500d — for the IC-autofill path (dobOnlyIfEmpty), honour "never overwrite an existing DOB"
+    // atomically against the live row: drop the derived dateOfBirth when the person already has one. If that
+    // leaves nothing to write (DOB already set), return quietly — this is a no-op, not an error.
+    const writeSet: Record<string, string | null> = { ...personSet };
+    if (p.dobOnlyIfEmpty && 'dateOfBirth' in writeSet && (before.dateOfBirth ?? '') !== '') {
+      delete writeSet.dateOfBirth;
+    }
+    if (Object.keys(writeSet).length === 0) return { id: personId };
+
+    await tx.update(person).set(writeSet).where(eq(person.id, personId));
+    const after = { ...before, ...writeSet };
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'person',
@@ -360,7 +378,7 @@ export async function setPersonComplianceFields(
       subjectEmploymentId: p.employmentId,
       // Provenance: `via:'admin-set'` distinguishes this HR-direct write from the self path's
       // `via:'profile-change'` and from a plain name/email edit (updatePerson).
-      payload: { via: 'admin-set', fields: Object.keys(personSet), before, after },
+      payload: { via: 'admin-set', fields: Object.keys(writeSet), before, after },
     });
     return { id: personId };
   });

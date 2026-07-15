@@ -794,6 +794,8 @@
       "headerJoinDate": "Ngày vào làm",
       "optionNotSet": "Chưa đặt",
       "optionLegacySuffix": "(giá trị hiện có)",
+      "nationalitySearchPlaceholder": "Tìm quốc tịch…",
+      "nationalityNoResults": "Không tìm thấy quốc tịch",
       "bankCardTitle": "Thông tin ngân hàng",
       "bankGroupEmployee": "Thông tin ngân hàng của nhân viên",
       "bankSelectPlaceholder": "Chọn ngân hàng",
@@ -827,6 +829,7 @@
       "employerBearsTaxHint": "Khi được chọn, thuế của nhân viên (PCB) vẫn được tính và báo cáo đầy đủ, nhưng người sử dụng lao động chịu thay vì khấu trừ vào lương ròng. Việc quy đổi thuế trên thuế sẽ được xử lý sau.",
       "identityTaxSave": "Lưu thông tin thuế",
       "icNumberHint": "Số MyKad 12 chữ số. Dùng làm mặc định cho số SOCSO/EIS và EPF.",
+      "icDobInvalidDate": "Sáu chữ số đầu của số IC không phải là ngày hợp lệ, nên ngày sinh chưa được điền. Vui lòng nhập thủ công.",
       "saveIc": "Lưu số CMND"
     },
     "import": {

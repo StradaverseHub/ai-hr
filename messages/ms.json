@@ -794,6 +794,8 @@
       "headerJoinDate": "Tarikh menyertai",
       "optionNotSet": "Tidak ditetapkan",
       "optionLegacySuffix": "(nilai sedia ada)",
+      "nationalitySearchPlaceholder": "Cari kewarganegaraan…",
+      "nationalityNoResults": "Tiada kewarganegaraan ditemui",
       "bankCardTitle": "Maklumat Bank",
       "bankGroupEmployee": "Maklumat bank pekerja",
       "bankSelectPlaceholder": "Pilih bank",
@@ -827,6 +829,7 @@
       "employerBearsTaxHint": "Apabila ditanda, cukai pekerja (PCB) masih dikira dan dilaporkan sepenuhnya, tetapi majikan membiayainya dan tidak menolaknya daripada gaji bersih. Penyelarasan cukai-atas-cukai ialah susulan.",
       "identityTaxSave": "Simpan maklumat cukai",
       "icNumberHint": "Nombor MyKad 12 digit. Digunakan sebagai lalai bagi nombor SOCSO/EIS dan EPF.",
+      "icDobInvalidDate": "Enam digit pertama nombor IC bukan tarikh yang sah, jadi tarikh lahir tidak diisi. Sila masukkan secara manual.",
       "saveIc": "Simpan nombor IC"
     },
     "import": {

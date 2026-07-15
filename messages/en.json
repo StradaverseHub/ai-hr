@@ -794,6 +794,8 @@
       "headerJoinDate": "Join date",
       "optionNotSet": "Not set",
       "optionLegacySuffix": "(existing value)",
+      "nationalitySearchPlaceholder": "Search nationality…",
+      "nationalityNoResults": "No nationality found",
       "bankCardTitle": "Bank Information",
       "bankGroupEmployee": "Employee bank information",
       "bankSelectPlaceholder": "Select a bank",
@@ -827,6 +829,7 @@
       "employerBearsTaxHint": "When ticked, the employee's tax (PCB) is still computed and reported in full, but the employer funds it instead of deducting it from net pay. Tax-on-tax gross-up is a follow-up.",
       "identityTaxSave": "Save tax information",
       "icNumberHint": "12-digit MyKad number. Used to default the SOCSO/EIS and EPF numbers.",
+      "icDobInvalidDate": "The IC number's first six digits aren't a valid date, so the date of birth wasn't filled in. Enter it manually.",
       "saveIc": "Save IC number"
     },
     "import": {

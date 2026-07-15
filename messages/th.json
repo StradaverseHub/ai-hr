@@ -794,6 +794,8 @@
       "headerJoinDate": "วันที่เริ่มงาน",
       "optionNotSet": "ไม่ได้ตั้งค่า",
       "optionLegacySuffix": "(ค่าที่มีอยู่)",
+      "nationalitySearchPlaceholder": "ค้นหาสัญชาติ…",
+      "nationalityNoResults": "ไม่พบสัญชาติ",
       "bankCardTitle": "ข้อมูลธนาคาร",
       "bankGroupEmployee": "ข้อมูลธนาคารของพนักงาน",
       "bankSelectPlaceholder": "เลือกธนาคาร",
@@ -827,6 +829,7 @@
       "employerBearsTaxHint": "เมื่อเลือก ภาษีของพนักงาน (PCB) ยังคงคำนวณและรายงานเต็มจำนวน แต่นายจ้างเป็นผู้รับภาระแทนการหักจากเงินสุทธิ การปรับภาษีบนภาษีจะดำเนินการในภายหลัง",
       "identityTaxSave": "บันทึกข้อมูลภาษี",
       "icNumberHint": "หมายเลข MyKad 12 หลัก ใช้เป็นค่าเริ่มต้นของหมายเลข SOCSO/EIS และ EPF",
+      "icDobInvalidDate": "หกหลักแรกของหมายเลข IC ไม่ใช่วันที่ที่ถูกต้อง จึงไม่ได้กรอกวันเกิด กรุณากรอกด้วยตนเอง",
       "saveIc": "บันทึกหมายเลขบัตรประชาชน"
     },
     "import": {

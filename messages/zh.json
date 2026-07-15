@@ -794,6 +794,8 @@
       "headerJoinDate": "入职日期",
       "optionNotSet": "未设置",
       "optionLegacySuffix": "（现有值）",
+      "nationalitySearchPlaceholder": "搜索国籍…",
+      "nationalityNoResults": "未找到国籍",
       "bankCardTitle": "银行信息",
       "bankGroupEmployee": "员工银行信息",
       "bankSelectPlaceholder": "选择银行",
@@ -827,6 +829,7 @@
       "employerBearsTaxHint": "勾选后，员工的税款（PCB）仍会全额计算和申报，但由雇主承担，而不从净薪中扣除。税上税的补税为后续处理。",
       "identityTaxSave": "保存税务信息",
       "icNumberHint": "12 位身份证（MyKad）号码。用于默认 SOCSO/EIS 和 EPF 号码。",
+      "icDobInvalidDate": "身份证号码的前六位不是有效日期，因此未自动填入出生日期。请手动输入。",
       "saveIc": "保存身份证号码"
     },
     "import": {
