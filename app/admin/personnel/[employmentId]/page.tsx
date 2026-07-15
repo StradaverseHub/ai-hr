@@ -65,7 +65,7 @@ import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { listShiftsForTenant } from '@/core/roster';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
 import { setDefaultShiftAction } from './actions';
-import { listHolidayGroups, listPositions } from '@/core/admin';
+import { listHolidayGroups, listPositions, listBusinessUnits } from '@/core/admin';
 import { listLocations } from '@/core/location';
 import { listClockingLocations, listEmployeeClockingLocations } from '@/core/clocking-location';
 import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actions';
@@ -168,6 +168,9 @@ export default async function EmployeePage({
   // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
   // THIS employee's company (the assignment's position must belong to the same company). Admin-only.
   const positions = admin ? await listPositions(s, { companyIds: [emp.companyId] }) : [];
+  // 1001ff61 — Business Units for THIS employee's company (admin-only) — the Organisation Assignment BU picker
+  // options. Sourced company-scoped (origin ∪ shared ∪ global), mirroring the Position/Location pickers.
+  const businessUnits = admin ? await listBusinessUnits(s, { companyIds: [emp.companyId] }) : [];
   // ADR-0054: locations for THIS employee's company (admin-only) — the "Set location" picker options.
   const locations = admin ? await listLocations(s, [emp.companyId]) : [];
   // Current selection of the unified field: a group wins, else a single state, else company default.
@@ -209,9 +212,23 @@ export default async function EmployeePage({
   // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
   const profileOptions = admin
     ? await listAllProfileOptions(s, { activeOnly: true })
-    : ({ religion: [], race: [], nationality: [], state: [], country: [], relationship: [] } as Awaited<
-        ReturnType<typeof listAllProfileOptions>
-      >);
+    : ({
+        religion: [],
+        race: [],
+        nationality: [],
+        state: [],
+        country: [],
+        relationship: [],
+        // 1001ff61 — org/job catalog categories (non-admin viewers never render these forms).
+        division: [],
+        branch: [],
+        region: [],
+        line: [],
+        section: [],
+        team: [],
+        base: [],
+        category: [],
+      } as Awaited<ReturnType<typeof listAllProfileOptions>>);
 
   // Family/Dependents (phase 1): render relationship/gender as STATIC literal i18n keys (a switch, not a
   // dynamic template) so test/i18n-coverage.test.ts (check C) catches a missing Tamil/Thai label instead of
@@ -1706,6 +1723,18 @@ export default async function EmployeePage({
           <Field label={t('employmentInfo.company')}>
             <input value={emp.company} disabled className={inputCls} aria-readonly="true" />
           </Field>
+          {/* 1001ff61 — Business Unit, positioned immediately after Company per the requested Organisation
+              hierarchy (Company → Business Unit → Division → Department → …). Company-scoped options. */}
+          <Field label={t('employmentInfo.businessUnit')}>
+            <select name="businessUnitId" defaultValue={current?.businessUnitId ?? ''} className={inputCls}>
+              <option value="">{t('employmentInfo.positionNone')}</option>
+              {businessUnits.map((bu) => (
+                <option key={bu.id} value={bu.id}>
+                  {bu.name}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label={t('employmentInfo.department')}>
             <select name="departmentId" defaultValue={current?.departmentId ?? ''} className={inputCls}>
               <option value="">{t('employmentInfo.positionNone')}</option>
@@ -1883,27 +1912,73 @@ export default async function EmployeePage({
           <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {t('employmentInfo.orgGroup')}
           </legend>
+          {/* 1001ff61 — the org fields are now System-Labels dropdowns (profile_option categories) instead of
+              free text, preventing duplicate/misspelled values. Division is rendered FIRST per the requested
+              Organisation hierarchy. Legacy free-text values stay valid (ProfileOptionSelect renders any
+              off-catalog stored value pre-selected). An empty catalog imposes no constraint yet. */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <Field label={t('employmentInfo.branch')}>
-              <input name="orgBranch" defaultValue={emp.orgBranch ?? ''} className={inputCls} />
-            </Field>
             <Field label={t('employmentInfo.division')}>
-              <input name="orgDivision" defaultValue={emp.orgDivision ?? ''} className={inputCls} />
+              <ProfileOptionSelect
+                name="orgDivision"
+                value={emp.orgDivision}
+                options={profileOptions.division}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.branch')}>
+              <ProfileOptionSelect
+                name="orgBranch"
+                value={emp.orgBranch}
+                options={profileOptions.branch}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
             </Field>
             <Field label={t('employmentInfo.region')}>
-              <input name="orgRegion" defaultValue={emp.orgRegion ?? ''} className={inputCls} />
+              <ProfileOptionSelect
+                name="orgRegion"
+                value={emp.orgRegion}
+                options={profileOptions.region}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
             </Field>
             <Field label={t('employmentInfo.line')}>
-              <input name="orgLine" defaultValue={emp.orgLine ?? ''} className={inputCls} />
+              <ProfileOptionSelect
+                name="orgLine"
+                value={emp.orgLine}
+                options={profileOptions.line}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
             </Field>
             <Field label={t('employmentInfo.section')}>
-              <input name="orgSection" defaultValue={emp.orgSection ?? ''} className={inputCls} />
+              <ProfileOptionSelect
+                name="orgSection"
+                value={emp.orgSection}
+                options={profileOptions.section}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
             </Field>
             <Field label={t('employmentInfo.team')}>
-              <input name="orgTeam" defaultValue={emp.orgTeam ?? ''} className={inputCls} />
+              <ProfileOptionSelect
+                name="orgTeam"
+                value={emp.orgTeam}
+                options={profileOptions.team}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
             </Field>
             <Field label={t('employmentInfo.base')}>
-              <input name="orgBase" defaultValue={emp.orgBase ?? ''} className={inputCls} />
+              <ProfileOptionSelect
+                name="orgBase"
+                value={emp.orgBase}
+                options={profileOptions.base}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
             </Field>
           </div>
         </fieldset>
@@ -1915,7 +1990,14 @@ export default async function EmployeePage({
           </legend>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
             <Field label={t('employmentInfo.category')}>
-              <input name="employmentCategory" defaultValue={emp.employmentCategory ?? ''} className={inputCls} />
+              {/* 1001ff61 — Category is now a System-Labels dropdown (profile_option category `category`). */}
+              <ProfileOptionSelect
+                name="employmentCategory"
+                value={emp.employmentCategory}
+                options={profileOptions.category}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
             </Field>
           </div>
         </fieldset>

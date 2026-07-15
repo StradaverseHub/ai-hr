@@ -20,7 +20,7 @@
 import { and, asc, eq, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { person, profileOption } from '../db/schema';
+import { employment, person, profileOption } from '../db/schema';
 import { MY_STATES } from '../localization/my/holidays';
 import { DEPENDENT_RELATIONSHIPS } from './dependents';
 
@@ -31,8 +31,36 @@ export const PROFILE_OPTION_CATEGORIES = [
   'state',
   'country',
   'relationship',
+  // Personnel Organisation Assignment standardisation (1001ff61) — the eight flat organisation/job fields
+  // stored as free text on `employment` (org_division / org_branch / org_region / org_line / org_section /
+  // org_team / org_base + employment_category) are now backed by the profile_option catalog, giving each a
+  // centrally-managed dropdown in System Labels > Profile Options WITHOUT new tables. Same flat tenant-wide
+  // list + legacy-value tolerance as religion/race. These govern EMPLOYMENT columns (see
+  // CATEGORY_EMPLOYMENT_COLUMN), not person columns.
+  'division',
+  'branch',
+  'region',
+  'line',
+  'section',
+  'team',
+  'base',
+  'category',
 ] as const;
 export type ProfileOptionCategory = (typeof PROFILE_OPTION_CATEGORIES)[number];
+
+// 1001ff61 — the subset of categories whose values live on EMPLOYMENT columns (org assignment), as opposed
+// to the person-profile categories above. Drives the employment-side active-value validation in
+// core/org.ts::setEmploymentInfo and the employment leg of the delete in-use guard.
+export const EMPLOYMENT_PROFILE_CATEGORIES = [
+  'division',
+  'branch',
+  'region',
+  'line',
+  'section',
+  'team',
+  'base',
+  'category',
+] as const satisfies readonly ProfileOptionCategory[];
 
 export function isProfileOptionCategory(v: string): v is ProfileOptionCategory {
   return (PROFILE_OPTION_CATEGORIES as readonly string[]).includes(v);
@@ -45,13 +73,30 @@ export function isProfileOptionCategory(v: string): v is ProfileOptionCategory {
  * the legacy single address plus the new Permanent and Correspondence blocks, so an in-use catalog value in
  * any address block is protected from deletion.
  */
-export const CATEGORY_PERSON_COLUMN: Record<ProfileOptionCategory, (keyof typeof person.$inferSelect)[]> = {
+export const CATEGORY_PERSON_COLUMN: Partial<Record<ProfileOptionCategory, (keyof typeof person.$inferSelect)[]>> = {
   religion: ['religion'],
   race: ['race'],
   nationality: ['nationality'],
   state: ['state', 'permanentState', 'correspondenceState'],
   country: ['country', 'permanentCountry', 'correspondenceCountry'],
   relationship: ['emergencyContactRelationship'],
+};
+
+/**
+ * 1001ff61 — the EMPLOYMENT column(s) each org/job category governs, mirroring CATEGORY_PERSON_COLUMN for the
+ * person side. Used by the delete in-use guard (a value still stored on ANY listed employment column cannot
+ * be deleted — deactivate instead) so the new org dropdowns keep the same referential-integrity protection
+ * the person categories have.
+ */
+export const CATEGORY_EMPLOYMENT_COLUMN: Partial<Record<ProfileOptionCategory, (keyof typeof employment.$inferSelect)[]>> = {
+  division: ['orgDivision'],
+  branch: ['orgBranch'],
+  region: ['orgRegion'],
+  line: ['orgLine'],
+  section: ['orgSection'],
+  team: ['orgTeam'],
+  base: ['orgBase'],
+  category: ['employmentCategory'],
 };
 
 const cap = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
@@ -103,6 +148,19 @@ const CATEGORY_DEFAULTS: Record<ProfileOptionCategory, string[]> = {
   state: [...MY_STATES],
   country: ['Malaysia', 'Singapore', 'Indonesia', 'Thailand', 'Brunei', 'India', 'Other'],
   relationship: RELATIONSHIP_VALUES,
+  // 1001ff61 — the org/job catalogs ship EMPTY: their values are organisation-specific master data HR
+  // curates itself in System Labels, and until they do the dropdowns fall back to free-text tolerance (an
+  // empty catalog imposes no constraint — see assertProfileValueAllowed). Keeping these empty also leaves
+  // DEFAULT_PROFILE_OPTIONS (and its byte-identical 0180 seed block) unchanged, so no seed migration is
+  // needed and existing free-text values on employment stay valid.
+  division: [],
+  branch: [],
+  region: [],
+  line: [],
+  section: [],
+  team: [],
+  base: [],
+  category: [],
 };
 
 /**
@@ -333,13 +391,26 @@ export async function deleteProfileOption(ctx: SessionContext, id: string): Prom
     if (!opt) return;
     if (!isProfileOptionCategory(opt.category)) throw new Error('Unknown option category');
     // 3a25f5ee — a category may govern several person columns (state/country each span the legacy + permanent
-    // + correspondence address blocks). The value is in use if ANY governed column references it.
-    const cols = CATEGORY_PERSON_COLUMN[opt.category];
-    const [used] = await tx
-      .select({ n: sql<number>`count(*)::int` })
-      .from(person)
-      .where(or(...cols.map((c) => eq(person[c] as never, opt.value))));
-    if (Number(used?.n ?? 0) > 0) {
+    // + correspondence address blocks). 1001ff61 — the org/job categories govern EMPLOYMENT columns instead.
+    // The value is in use if ANY governed column (on either table) references it.
+    const personCols = CATEGORY_PERSON_COLUMN[opt.category] ?? [];
+    const empCols = CATEGORY_EMPLOYMENT_COLUMN[opt.category] ?? [];
+    let usedCount = 0;
+    if (personCols.length > 0) {
+      const [u] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(person)
+        .where(or(...personCols.map((c) => eq(person[c] as never, opt.value))));
+      usedCount += Number(u?.n ?? 0);
+    }
+    if (empCols.length > 0) {
+      const [u] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(employment)
+        .where(or(...empCols.map((c) => eq(employment[c] as never, opt.value))));
+      usedCount += Number(u?.n ?? 0);
+    }
+    if (usedCount > 0) {
       throw new ProfileOptionInUseError('This value is in use by an employee and cannot be deleted — deactivate it instead.');
     }
     await tx.delete(profileOption).where(eq(profileOption.id, id));

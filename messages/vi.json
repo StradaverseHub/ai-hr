@@ -704,7 +704,8 @@
         "noticeAfterConfirmation": "Báo trước sau khi xác nhận",
         "tenderResignationDate": "Ngày nộp đơn nghỉ việc",
         "lastWorkingDate": "Ngày làm việc cuối cùng",
-        "lifecycleDeferredNote": "Ngày nghỉ việc và ngày làm việc cuối cùng được ghi nhận ở đây. Việc kết nối với lương cuối kỳ và mốc chấm công được lên kế hoạch tiếp theo."
+        "lifecycleDeferredNote": "Ngày nghỉ việc và ngày làm việc cuối cùng được ghi nhận ở đây. Việc kết nối với lương cuối kỳ và mốc chấm công được lên kế hoạch tiếp theo.",
+        "businessUnit": "Đơn vị kinh doanh"
       },
       "documents": {
         "title": "Tài liệu",
@@ -4202,7 +4203,15 @@
         "nationality": "Quốc tịch",
         "state": "Bang",
         "country": "Quốc gia",
-        "relationship": "Mối quan hệ"
+        "relationship": "Mối quan hệ",
+        "division": "Ban",
+        "branch": "Chi nhánh",
+        "region": "Khu vực",
+        "line": "Tuyến",
+        "section": "Tổ",
+        "team": "Nhóm",
+        "base": "Cơ sở",
+        "category": "Loại"
       },
       "col": {
         "code": "Mã",

@@ -713,6 +713,8 @@ export async function setEmploymentAssignmentAction(formData: FormData) {
       effectiveDate,
       departmentId: (formData.get('departmentId') as string) || undefined,
       positionId: (formData.get('positionId') as string) || null,
+      // 1001ff61 — Business Unit on the assignment (blank = clear). Company scope + liveness validated in core.
+      businessUnitId: (formData.get('businessUnitId') as string) || null,
       employmentType,
       status,
     });

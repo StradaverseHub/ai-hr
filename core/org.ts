@@ -17,6 +17,7 @@ import {
   person,
   employment,
   assignment,
+  businessUnit,
   company,
   costCenter,
   department,
@@ -1229,6 +1230,9 @@ export async function setEmploymentAssignment(
     effectiveDate: string;
     departmentId?: string;
     positionId?: string | null;
+    // 1001ff61 — Business Unit on the assignment. undefined = carry forward; null = clear; a value must be a
+    // live BU in THIS employee's company (validated below).
+    businessUnitId?: string | null;
     employmentType?: EmploymentTypeValue;
     status?: AssignmentStatusValue;
   },
@@ -1253,12 +1257,34 @@ export async function setEmploymentAssignment(
 
     const nextDepartmentId = p.departmentId ?? cur.departmentId;
     const nextPositionId = p.positionId === undefined ? cur.positionId : p.positionId || null;
+    const nextBusinessUnitId =
+      p.businessUnitId === undefined ? cur.businessUnitId : p.businessUnitId || null;
     const nextEmploymentType = p.employmentType ?? cur.employmentType;
     const nextStatus = p.status ?? cur.status;
+
+    // 1001ff61 — referential integrity + company scope for a newly-selected BU: it must exist, be un-archived,
+    // and belong to this employment's company. (An unchanged/cleared BU skips the check.) Defence-in-depth
+    // over the nullable FK, matching the "prevent invalid dropdown selections" requirement.
+    if (nextBusinessUnitId && nextBusinessUnitId !== cur.businessUnitId) {
+      const [emp] = await tx
+        .select({ companyId: employment.companyId })
+        .from(employment)
+        .where(eq(employment.id, p.employmentId))
+        .limit(1);
+      const [bu] = await tx
+        .select({ id: businessUnit.id, companyId: businessUnit.companyId, archivedAt: businessUnit.archivedAt })
+        .from(businessUnit)
+        .where(eq(businessUnit.id, nextBusinessUnitId))
+        .limit(1);
+      if (!bu || bu.archivedAt || !emp || bu.companyId !== emp.companyId) {
+        throw new Error('Selected Business Unit is not a valid option for this employee.');
+      }
+    }
 
     const unchanged =
       nextDepartmentId === cur.departmentId &&
       nextPositionId === cur.positionId &&
+      nextBusinessUnitId === cur.businessUnitId &&
       nextEmploymentType === cur.employmentType &&
       nextStatus === cur.status;
     if (unchanged) return { assignmentId: cur.id, changed: false as const };
@@ -1272,6 +1298,7 @@ export async function setEmploymentAssignment(
         employmentId: p.employmentId,
         departmentId: nextDepartmentId,
         positionId: nextPositionId,
+        businessUnitId: nextBusinessUnitId,
         costCenterId: cur.costCenterId,
         locationId: cur.locationId,
         employmentType: nextEmploymentType,
@@ -1294,12 +1321,14 @@ export async function setEmploymentAssignment(
         before: {
           departmentId: cur.departmentId,
           positionId: cur.positionId,
+          businessUnitId: cur.businessUnitId,
           employmentType: cur.employmentType,
           status: cur.status,
         },
         after: {
           departmentId: nextDepartmentId,
           positionId: nextPositionId,
+          businessUnitId: nextBusinessUnitId,
           employmentType: nextEmploymentType,
           status: nextStatus,
         },
@@ -1371,6 +1400,20 @@ const EMPLOYMENT_INFO_TEXT_FIELDS = [
   'orgBase',
   'employmentCategory',
 ] as const;
+
+// 1001ff61 — each org/job text field is now backed by a profile_option catalog category. On save the new
+// value must be an ACTIVE catalog option for that category (with the same legacy-value tolerance +
+// empty-catalog free-text fallback as the person-profile dropdowns — see assertProfileValueAllowed).
+const EMPLOYMENT_INFO_FIELD_CATEGORY: Partial<Record<(typeof EMPLOYMENT_INFO_TEXT_FIELDS)[number], ProfileOptionCategory>> = {
+  orgDivision: 'division',
+  orgBranch: 'branch',
+  orgRegion: 'region',
+  orgLine: 'line',
+  orgSection: 'section',
+  orgTeam: 'team',
+  orgBase: 'base',
+  employmentCategory: 'category',
+};
 
 const EMPLOYMENT_INFO_PERIOD_FIELDS = [
   'probationMonths',
@@ -1499,6 +1542,21 @@ export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoIn
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!before) throw new Error('Employment not found');
+
+    // 1001ff61 — the org/job fields are now catalog-backed dropdowns. Reject a value that is not an ACTIVE
+    // profile_option for its category (empty-catalog tenants keep free-text; the unchanged legacy value is
+    // always tolerated). Runs in this tx so it shares the RLS session; a violation aborts before the write.
+    for (const f of EMPLOYMENT_INFO_TEXT_FIELDS) {
+      if (!(f in set)) continue;
+      const category = EMPLOYMENT_INFO_FIELD_CATEGORY[f];
+      if (!category) continue;
+      await assertProfileValueAllowed(
+        tx,
+        category,
+        set[f] as string | null,
+        (before as Record<string, string | null>)[f],
+      );
+    }
 
     // Date-relationship checks resolve against the RESULTING values (incoming override → existing), so a save
     // that changes only the confirmation date is still validated against the stored hire date, and vice-versa.

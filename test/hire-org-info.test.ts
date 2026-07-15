@@ -350,7 +350,7 @@ describe('department ↔ business unit link (ADR-0068)', () => {
     expect(deps.find((d) => d.id === dep.id)?.businessUnitId ?? null).toBeNull();
   });
 
-  it('hiring under a BU-linked department succeeds; the dept BU is recoverable (BU is not stored on the assignment)', async () => {
+  it('hiring under a BU-linked department succeeds; the hire does NOT auto-populate the assignment BU', async () => {
     const a = adminCtx(b);
     const { id: bu } = await createBusinessUnit(a, { companyId: b.companyId, code: 'SLS', name: 'Sales' });
     const dep = await createDepartment(a, { companyId: b.companyId, name: 'Sales Dept', businessUnitId: bu });
@@ -362,12 +362,14 @@ describe('department ↔ business unit link (ADR-0068)', () => {
       hiredOn: '2026-01-01',
     });
     expect(hire.employmentId).toBeTruthy();
-    // BU lives ONLY on the department, not the assignment.
+    // 1001ff61 — the assignment now carries an OPTIONAL business_unit_id, but the hire flow leaves it NULL:
+    // the department's BU link is independent, and the assignment BU is set explicitly via
+    // setEmploymentAssignment (not auto-derived from the department at hire time).
     const [asg] = await owner.db
       .select()
       .from(schema.assignment)
       .where(eq(schema.assignment.employmentId, hire.employmentId));
-    expect('businessUnitId' in asg).toBe(false);
+    expect(asg.businessUnitId).toBeNull();
     const deps = await listBusinessUnits(a, { companyIds: [b.companyId] });
     expect(deps.find((x) => x.id === bu)?.inUse).toBe(true); // the department now references it
   });

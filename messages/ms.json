@@ -704,7 +704,8 @@
         "noticeAfterConfirmation": "Notis Selepas Pengesahan",
         "tenderResignationDate": "Tarikh Serah Peletakan Jawatan",
         "lastWorkingDate": "Tarikh Bekerja Terakhir",
-        "lifecycleDeferredNote": "Tarikh peletakan jawatan dan hari bekerja terakhir direkodkan di sini. Menghubungkannya dengan gaji akhir dan potongan kehadiran dirancang sebagai susulan."
+        "lifecycleDeferredNote": "Tarikh peletakan jawatan dan hari bekerja terakhir direkodkan di sini. Menghubungkannya dengan gaji akhir dan potongan kehadiran dirancang sebagai susulan.",
+        "businessUnit": "Unit Perniagaan"
       },
       "documents": {
         "title": "Dokumen",
@@ -4202,7 +4203,15 @@
         "nationality": "Kewarganegaraan",
         "state": "Negeri",
         "country": "Negara",
-        "relationship": "Hubungan"
+        "relationship": "Hubungan",
+        "division": "Bahagian",
+        "branch": "Cawangan",
+        "region": "Wilayah",
+        "line": "Barisan",
+        "section": "Seksyen",
+        "team": "Pasukan",
+        "base": "Pangkalan",
+        "category": "Kategori"
       },
       "col": {
         "code": "Kod",
