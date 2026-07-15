@@ -3361,7 +3361,7 @@
       "eligibilitySummaryOnly": "{who} only",
       "eligibilitySummaryService": "≥ {n} {unit} service",
       "eligibilitySummaryOr": "or",
-      "eligibilityMultiHint": "Tick one or more; leave every box unticked to allow everyone.",
+      "eligibilityMultiHint": "Select one or more; leave empty to allow everyone.",
       "allowedDurationsLabel": "Allowed durations",
       "allowedDurationsHelp": "Choose which durations employees may pick for this leave type. Full day is always available.",
       "duration_full_day": "Full day",
@@ -3607,7 +3607,12 @@
       "negativeBalanceLabel": "Allow Negative Balance",
       "negativeBalanceYes": "Yes — employees may apply even if the balance goes negative",
       "negativeBalanceNo": "No — block applications that exceed the available balance",
-      "negativeBalanceHelp": "Controls whether an employee can submit or edit a leave application of this type that exceeds their available balance. 'No' blocks over-application at submission and edit (counting leave already pending); 'Yes' allows the balance to go negative."
+      "negativeBalanceHelp": "Controls whether an employee can submit or edit a leave application of this type that exceeds their available balance. 'No' blocks over-application at submission and edit (counting leave already pending); 'Yes' allows the balance to go negative.",
+      "eligibilityChipAddPlaceholder": "Add…",
+      "eligibilitySelectAll": "Select all",
+      "eligibilityClearAll": "Clear all",
+      "eligibilityAllSelected": "All selected",
+      "eligibilityNSelected": "{count} selected"
     },
     "holidays": {
       "pageTitle": "Public holidays",

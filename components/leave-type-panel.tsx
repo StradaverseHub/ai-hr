@@ -16,6 +16,7 @@ import {
 } from '@/lib/leave-visual';
 import { Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
+import { ChipMultiSelect } from './ui/chip-multi-select';
 
 export type EntitlementPolicy = {
   id: string;
@@ -954,40 +955,37 @@ export function LeaveTypePanel({
                 <input type="hidden" name="name" value={name} />
                 {/* marker: tells the action to touch the eligibility column (tri-state guard) */}
                 <input type="hidden" name="eligibility" value="1" />
-                {/* Multi-select (#badc5966): a checkbox group per field posting repeated name="gender" /
-                    name="maritalStatus". An employee qualifies if their attribute matches ANY ticked value.
-                    Leave every box unticked ⇒ no restriction on that field (open to all). */}
+                {/* Multi-select (#badc5966 → 2cc30077): compact ChipMultiSelect pickers per field, posting
+                    repeated name="gender" / name="maritalStatus" (one hidden input per value — identical
+                    FormData shape to the old checkbox group, so updateLeaveTypeAction's getAll() is unchanged).
+                    An employee qualifies if their attribute matches ANY selected value; select nothing ⇒ no
+                    restriction on that field (open to all). Select-all / clear-all + a collapsed "All selected"
+                    / "{n} selected" summary keep the editor tidy as the option lists grow. */}
                 <Field label={t('eligibilityGenderLabel')}>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {ELIGIBILITY_GENDER_OPTIONS.map((g) => (
-                      <label key={g} className="flex items-center gap-1.5 text-sm text-foreground">
-                        <input
-                          type="checkbox"
-                          name="gender"
-                          value={g}
-                          defaultChecked={asEligList(eligibility?.gender).includes(g)}
-                          className="size-4 accent-primary"
-                        />
-                        {g === 'male' ? t('eligibilityGenderMale') : t('eligibilityGenderFemale')}
-                      </label>
-                    ))}
-                  </div>
+                  <ChipMultiSelect
+                    name="gender"
+                    options={ELIGIBILITY_GENDER_OPTIONS.map((g) => ({ value: g, label: genderLabel(g) ?? g }))}
+                    defaultSelected={asEligList(eligibility?.gender)}
+                    addPlaceholder={t('eligibilityChipAddPlaceholder')}
+                    removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
+                    selectAllLabel={t('eligibilitySelectAll')}
+                    clearAllLabel={t('eligibilityClearAll')}
+                    allSelectedLabel={t('eligibilityAllSelected')}
+                    countLabelFor={(n) => t('eligibilityNSelected', { count: n })}
+                  />
                 </Field>
                 <Field label={t('eligibilityMaritalLabel')}>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {ELIGIBILITY_MARITAL_OPTIONS.map((m) => (
-                      <label key={m} className="flex items-center gap-1.5 text-sm text-foreground">
-                        <input
-                          type="checkbox"
-                          name="maritalStatus"
-                          value={m}
-                          defaultChecked={asEligList(eligibility?.maritalStatus).includes(m)}
-                          className="size-4 accent-primary"
-                        />
-                        {maritalLabel(m)}
-                      </label>
-                    ))}
-                  </div>
+                  <ChipMultiSelect
+                    name="maritalStatus"
+                    options={ELIGIBILITY_MARITAL_OPTIONS.map((m) => ({ value: m, label: maritalLabel(m) ?? m }))}
+                    defaultSelected={asEligList(eligibility?.maritalStatus)}
+                    addPlaceholder={t('eligibilityChipAddPlaceholder')}
+                    removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
+                    selectAllLabel={t('eligibilitySelectAll')}
+                    clearAllLabel={t('eligibilityClearAll')}
+                    allSelectedLabel={t('eligibilityAllSelected')}
+                    countLabelFor={(n) => t('eligibilityNSelected', { count: n })}
+                  />
                 </Field>
                 <Field label={t('eligibilityMinServiceLabel')}>
                   {/* Min-service unit (#f88f0a63): duration input + a unit select (Months / Days) beside it,

@@ -3342,7 +3342,7 @@
       "eligibilitySummaryOnly": "Chỉ {who}",
       "eligibilitySummaryService": "≥ {n} {unit} thâm niên",
       "eligibilitySummaryOr": "hoặc",
-      "eligibilityMultiHint": "Chọn một hoặc nhiều; để trống tất cả ô để cho phép tất cả mọi người.",
+      "eligibilityMultiHint": "Chọn một hoặc nhiều; để trống để cho phép tất cả mọi người.",
       "allowedDurationsLabel": "Thời lượng được phép",
       "allowedDurationsHelp": "Chọn thời lượng nhân viên có thể chọn cho loại nghỉ này. Cả ngày luôn khả dụng.",
       "duration_full_day": "Cả ngày",
@@ -3607,7 +3607,12 @@
       "negativeBalanceLabel": "Cho phép số dư âm",
       "negativeBalanceYes": "Có — nhân viên có thể nộp đơn ngay cả khi số dư âm",
       "negativeBalanceNo": "Không — chặn đơn vượt quá số dư khả dụng",
-      "negativeBalanceHelp": "Kiểm soát việc nhân viên có thể nộp hoặc chỉnh sửa đơn xin nghỉ phép loại này vượt quá số dư khả dụng hay không. 'Không' chặn việc xin vượt mức khi nộp và chỉnh sửa (tính cả phép đang chờ duyệt); 'Có' cho phép số dư xuống âm."
+      "negativeBalanceHelp": "Kiểm soát việc nhân viên có thể nộp hoặc chỉnh sửa đơn xin nghỉ phép loại này vượt quá số dư khả dụng hay không. 'Không' chặn việc xin vượt mức khi nộp và chỉnh sửa (tính cả phép đang chờ duyệt); 'Có' cho phép số dư xuống âm.",
+      "eligibilityChipAddPlaceholder": "Thêm…",
+      "eligibilitySelectAll": "Chọn tất cả",
+      "eligibilityClearAll": "Xóa tất cả",
+      "eligibilityAllSelected": "Đã chọn tất cả",
+      "eligibilityNSelected": "Đã chọn {count}"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

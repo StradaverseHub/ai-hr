@@ -3342,7 +3342,7 @@
       "eligibilitySummaryOnly": "仅限{who}",
       "eligibilitySummaryService": "服务满 {n} {unit}",
       "eligibilitySummaryOr": "或",
-      "eligibilityMultiHint": "勾选一项或多项；全部不勾选则对所有人开放。",
+      "eligibilityMultiHint": "选择一项或多项；留空则对所有人开放。",
       "allowedDurationsLabel": "允许的时长",
       "allowedDurationsHelp": "选择员工可为此假期类型选择的时长。全天始终可用。",
       "duration_full_day": "全天",
@@ -3607,7 +3607,12 @@
       "negativeBalanceLabel": "允许负余额",
       "negativeBalanceYes": "是 — 即使余额变为负数，员工仍可申请",
       "negativeBalanceNo": "否 — 阻止超过可用余额的申请",
-      "negativeBalanceHelp": "控制员工是否可以提交或编辑超过其可用余额的此类假期申请。“否”将在提交和编辑时阻止超额申请（计入尚待批准的假期）；“是”则允许余额变为负数。"
+      "negativeBalanceHelp": "控制员工是否可以提交或编辑超过其可用余额的此类假期申请。“否”将在提交和编辑时阻止超额申请（计入尚待批准的假期）；“是”则允许余额变为负数。",
+      "eligibilityChipAddPlaceholder": "添加…",
+      "eligibilitySelectAll": "全选",
+      "eligibilityClearAll": "清除全部",
+      "eligibilityAllSelected": "已全选",
+      "eligibilityNSelected": "已选 {count} 项"
     },
     "holidays": {
       "pageTitle": "公共假期",

@@ -3342,7 +3342,7 @@
       "eligibilitySummaryOnly": "{who} sahaja",
       "eligibilitySummaryService": "≥ {n} {unit} perkhidmatan",
       "eligibilitySummaryOr": "atau",
-      "eligibilityMultiHint": "Tandakan satu atau lebih; biarkan semua kotak tidak bertanda untuk membenarkan semua orang.",
+      "eligibilityMultiHint": "Pilih satu atau lebih; biarkan kosong untuk membenarkan semua orang.",
       "allowedDurationsLabel": "Tempoh dibenarkan",
       "allowedDurationsHelp": "Pilih tempoh yang boleh dipilih pekerja untuk jenis cuti ini. Sehari penuh sentiasa tersedia.",
       "duration_full_day": "Sehari penuh",
@@ -3607,7 +3607,12 @@
       "negativeBalanceLabel": "Benarkan Baki Negatif",
       "negativeBalanceYes": "Ya — pekerja boleh memohon walaupun baki menjadi negatif",
       "negativeBalanceNo": "Tidak — halang permohonan yang melebihi baki tersedia",
-      "negativeBalanceHelp": "Mengawal sama ada pekerja boleh menghantar atau menyunting permohonan cuti jenis ini yang melebihi baki cuti tersedia. 'Tidak' menghalang permohonan melebihi had semasa penghantaran dan suntingan (mengira cuti yang masih menunggu kelulusan); 'Ya' membenarkan baki menjadi negatif."
+      "negativeBalanceHelp": "Mengawal sama ada pekerja boleh menghantar atau menyunting permohonan cuti jenis ini yang melebihi baki cuti tersedia. 'Tidak' menghalang permohonan melebihi had semasa penghantaran dan suntingan (mengira cuti yang masih menunggu kelulusan); 'Ya' membenarkan baki menjadi negatif.",
+      "eligibilityChipAddPlaceholder": "Tambah…",
+      "eligibilitySelectAll": "Pilih semua",
+      "eligibilityClearAll": "Kosongkan semua",
+      "eligibilityAllSelected": "Semua dipilih",
+      "eligibilityNSelected": "{count} dipilih"
     },
     "holidays": {
       "pageTitle": "Cuti umum",
