@@ -704,7 +704,8 @@
         "noticeAfterConfirmation": "确认后通知期",
         "tenderResignationDate": "提交辞职日期",
         "lastWorkingDate": "最后工作日",
-        "lifecycleDeferredNote": "离职日期和最后工作日在此记录。将其接入最终薪资与考勤截止将作为后续计划。"
+        "lifecycleDeferredNote": "离职日期和最后工作日在此记录。将其接入最终薪资与考勤截止将作为后续计划。",
+        "businessUnit": "业务单位"
       },
       "documents": {
         "title": "文档",
@@ -873,7 +874,9 @@
       "passportExpiryDate": "护照到期日期",
       "passportRemark": "护照备注",
       "passportHint": "适用于非马来西亚籍员工。护照号码、签发日期和到期日期为必填项；备注为选填。",
-      "savePassport": "保存护照信息"
+      "savePassport": "保存护照信息",
+      "holidayCalendarCardTitle": "假期日历",
+      "gradeCardTitle": "职级"
     },
     "import": {
       "title": "导入员工",
@@ -4200,7 +4203,15 @@
         "nationality": "国籍",
         "state": "州",
         "country": "国家",
-        "relationship": "关系"
+        "relationship": "关系",
+        "division": "事业部",
+        "branch": "分行",
+        "region": "区域",
+        "line": "生产线",
+        "section": "科室",
+        "team": "团队",
+        "base": "基地",
+        "category": "类别"
       },
       "col": {
         "code": "代码",

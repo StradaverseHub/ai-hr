@@ -1338,6 +1338,8 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
         departmentId: assignment.departmentId,
         position: position.title,
         positionId: assignment.positionId,
+        // 1001ff61 — Business Unit on the assignment (nullable). Drives the Form A BU dropdown's default.
+        businessUnitId: assignment.businessUnitId,
         status: assignment.status,
         employmentType: assignment.employmentType,
         validFrom: assignment.validFrom,

@@ -704,7 +704,8 @@
         "noticeAfterConfirmation": "Notice After Confirmation",
         "tenderResignationDate": "Tender Resignation Date",
         "lastWorkingDate": "Last Working Date",
-        "lifecycleDeferredNote": "Resignation and last working dates are captured here for records. Wiring them into payroll final pay and attendance cut-off is planned as a follow-up."
+        "lifecycleDeferredNote": "Resignation and last working dates are captured here for records. Wiring them into payroll final pay and attendance cut-off is planned as a follow-up.",
+        "businessUnit": "Business Unit"
       },
       "documents": {
         "title": "Documents",
@@ -873,7 +874,9 @@
       "passportExpiryDate": "Passport expiry date",
       "passportRemark": "Passport remark",
       "passportHint": "For non-Malaysian employees. Passport number, issue date and expiry date are required; the remark is optional.",
-      "savePassport": "Save passport information"
+      "savePassport": "Save passport information",
+      "holidayCalendarCardTitle": "Holiday Calendar",
+      "gradeCardTitle": "Grade"
     },
     "import": {
       "title": "Import employees",
@@ -4200,7 +4203,15 @@
         "nationality": "Nationality",
         "state": "State",
         "country": "Country",
-        "relationship": "Relationship"
+        "relationship": "Relationship",
+        "division": "Division",
+        "branch": "Branch",
+        "region": "Region",
+        "line": "Line",
+        "section": "Section",
+        "team": "Team",
+        "base": "Base",
+        "category": "Category"
       },
       "col": {
         "code": "Code",

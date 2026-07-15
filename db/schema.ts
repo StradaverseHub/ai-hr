@@ -795,6 +795,10 @@ export const assignment = pgTable(
     departmentId: uuid('department_id')
       .notNull()
       .references(() => department.id),
+    // Personnel Organisation Assignment enhancement (1001ff61, migration 0219): the employee's Business Unit
+    // on this dated assignment version. Nullable — an assignment with no BU behaves exactly as before. Sourced
+    // from the company-scoped business_unit master (the same catalog department.business_unit_id points at).
+    businessUnitId: uuid('business_unit_id').references(() => businessUnit.id),
     costCenterId: uuid('cost_center_id').references(() => costCenter.id),
     // Location master data (ADR-0054): the physical site this employee works at on this assignment
     // version. Nullable — the entire employee↔location link, reusing assignment's CLOSE+INSERT history

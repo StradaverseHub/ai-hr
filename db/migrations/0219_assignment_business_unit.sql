@@ -1,0 +1,14 @@
+-- Personnel Organisation Assignment enhancement (feedback 1001ff61) — Business Unit on the assignment.
+--
+-- Business Unit already exists as a company-scoped master (business_unit table, migration 0136) and a
+-- department already links to a BU (department.business_unit_id). The Employment tab's Organisation
+-- Assignment (the effective-dated `assignment` record) captured Department/Position/Type/Status but NOT the
+-- Business Unit. This adds a nullable Business Unit dimension onto each dated assignment version so HR can
+-- record — and audit — the employee's BU alongside the rest of the assignment.
+--
+-- Additive + nullable + backward compatible: an existing assignment row with business_unit_id NULL behaves
+-- exactly as before. The FK is nullable no-action (the BU master owns its own archive lifecycle; a BU that is
+-- referenced by a live assignment is simply not removed). No RLS change — `assignment` already carries
+-- tenant-scoped read + admin-write policies which this scalar column inherits (same as every other assignment
+-- dimension). IF NOT EXISTS makes a re-run on a partially-migrated DB safe.
+ALTER TABLE assignment ADD COLUMN IF NOT EXISTS business_unit_id uuid REFERENCES business_unit(id);

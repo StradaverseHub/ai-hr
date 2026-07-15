@@ -93,11 +93,12 @@ export type GridActions = {
   setCompanyShared: (companyId: string, enabled: boolean) => Promise<{ ok: true } | { ok: false; message: string }>;
 };
 
-// 797e3523: the visible category rail. Business Unit is intentionally NOT listed — it was removed from the
-// System Labels surface per the reporter (existing BU records + department→BU links are untouched in the DB;
-// the backend `business_unit` kind still exists and is consumed elsewhere). GridKind keeps 'business_unit'
-// for backend/type parity, but no tab renders it here.
-const KINDS: GridKind[] = ['department', 'position', 'cost_center'];
+// 797e3523: the visible category rail. 1001ff61 — Business Unit is RE-EXPOSED here: the Organisation
+// Assignment now carries a Business Unit (assignment.business_unit_id), so HR needs the BU catalog's
+// maintenance screen back to create/edit/activate the allowed values. The backend `business_unit` kind was
+// always present (LABEL_KINDS + full CRUD/scope wiring); this simply renders its tab again. TEXT_COLS +
+// buByCompany already handle it.
+const KINDS: GridKind[] = ['department', 'position', 'cost_center', 'business_unit'];
 
 // dafd475a — STANDARDIZED System Labels columns. Every kind renders the SAME three text columns in the
 // SAME order — Code, Label, Description — so the master-data surface reads consistently regardless of which
