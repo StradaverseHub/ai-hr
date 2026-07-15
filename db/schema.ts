@@ -448,6 +448,24 @@ export const person = pgTable(
     city: text('city'),
     state: text('state'),
     country: text('country'),
+    // ── 3a25f5ee Contact & Address split — Permanent + Correspondence addresses (migration 0213) ──
+    // All NULLABLE, additive. The legacy addressLine1..country above is RETAINED for rollback/PDPA history
+    // and was backfilled into the PERMANENT block (product decision: today's single address = Permanent).
+    // The Contact & Address form now writes ONLY these permanent_* / correspondence_* columns.
+    permanentAddressLine1: text('permanent_address_line1'),
+    permanentAddressLine2: text('permanent_address_line2'),
+    permanentAddressLine3: text('permanent_address_line3'),
+    permanentPostcode: text('permanent_postcode'),
+    permanentCity: text('permanent_city'),
+    permanentState: text('permanent_state'),
+    permanentCountry: text('permanent_country'),
+    correspondenceAddressLine1: text('correspondence_address_line1'),
+    correspondenceAddressLine2: text('correspondence_address_line2'),
+    correspondenceAddressLine3: text('correspondence_address_line3'),
+    correspondencePostcode: text('correspondence_postcode'),
+    correspondenceCity: text('correspondence_city'),
+    correspondenceState: text('correspondence_state'),
+    correspondenceCountry: text('correspondence_country'),
     // Extended emergency contact (name + phone above; relationship free text, second phone, address).
     emergencyContactRelationship: text('emergency_contact_relationship'),
     emergencyContactPhone2: text('emergency_contact_phone2'),
@@ -1774,7 +1792,15 @@ export const employeeStatutoryMy = pgTable(
     personId: uuid('person_id')
       .notNull()
       .references(() => person.id),
-    icNumber: text('ic_number').notNull(),
+    // Item e3ce0d4d — NULLABLE (relaxed from NOT NULL by migration 0212): a Malaysian employee is identified
+    // by their MyKad IC, a non-Malaysian by their passport (below), so a non-Malaysian identity row carries no IC.
+    icNumber: text('ic_number'),
+    // Item e3ce0d4d — passport identification (non-Malaysian employees). All nullable/additive: Malaysian rows
+    // leave these blank and keep their IC. Foundation for future passport-expiry reminders / work-permit tracking.
+    passportNumber: text('passport_number'),
+    passportIssueDate: date('passport_issue_date'),
+    passportExpiryDate: date('passport_expiry_date'),
+    passportRemark: text('passport_remark'),
     epfNumber: text('epf_number'),
     socsoNumber: text('socso_number'),
     taxNumber: text('tax_number'),
@@ -1864,7 +1890,9 @@ export const employeeStatutoryMy = pgTable(
   },
   (t) => [
     uniqueIndex('employee_statutory_my_person_uq').on(t.personId),
-    uniqueIndex('employee_statutory_my_ic_uq').on(t.tenantId, t.icNumber),
+    // Item e3ce0d4d — PARTIAL: real ICs stay unique per tenant, but multiple non-Malaysian rows carrying a
+    // null IC (identified by passport instead) don't collide.
+    uniqueIndex('employee_statutory_my_ic_uq').on(t.tenantId, t.icNumber).where(sql`ic_number is not null`),
   ],
 );
 

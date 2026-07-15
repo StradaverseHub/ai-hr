@@ -17,6 +17,18 @@
 const digitsOnly = (ic: string): string => ic.replace(/\D/g, '');
 
 /**
+ * Item e3ce0d4d — a person is "Malaysian" for the nationality-conditional identification switch when their
+ * nationality catalog value reads Malaysian/Malaysia (case-insensitive; the catalog is free-text/dropdown so
+ * match loosely). This is a CLIENT-SAFE copy of statutory.ts's helper: it lives in this leaf module (zero db /
+ * next-intl / 'use client' deps) so the client identity wrapper can import & call it WITHOUT pulling `db` into
+ * the client bundle. statutory.ts re-exports THIS one so there is a single source of truth for both trust classes.
+ */
+export const isMalaysianNationality = (nationality?: string | null): boolean => {
+  const n = (nationality ?? '').trim().toLowerCase();
+  return n === 'malaysian' || n === 'malaysia' || n === 'my' || n === 'mys';
+};
+
+/**
  * Format Y/M/D as yyyy-mm-dd, or null when it is not a REAL calendar date. The Date.UTC round-trip guards
  * month 13, day 00, 31 April, 29 Feb in a non-leap year, etc. — JS would otherwise silently roll them over.
  */

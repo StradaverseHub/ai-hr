@@ -775,6 +775,9 @@
       "birthDate": "Tarikh lahir",
       "workEmail": "E-mel kerja",
       "contactAddressTitle": "Hubungan & alamat",
+      "permanentAddressTitle": "Alamat tetap",
+      "correspondenceAddressTitle": "Alamat surat-menyurat",
+      "sameAsPermanent": "Sama seperti alamat tetap",
       "personalEmail": "E-mel peribadi",
       "addressLine1": "Alamat baris 1",
       "addressLine2": "Alamat baris 2",
@@ -841,7 +844,14 @@
       "identityTaxSave": "Simpan maklumat cukai",
       "icNumberHint": "Nombor MyKad 12 digit. Digunakan sebagai lalai bagi nombor SOCSO/EIS dan EPF.",
       "icDobInvalidDate": "Enam digit pertama nombor IC bukan tarikh yang sah, jadi tarikh lahir tidak diisi. Sila masukkan secara manual.",
-      "saveIc": "Simpan nombor IC"
+      "saveIc": "Simpan nombor IC",
+      "passportNumber": "Nombor pasport",
+      "passportNumberPlaceholder": "cth. A12345678",
+      "passportIssueDate": "Tarikh keluaran pasport",
+      "passportExpiryDate": "Tarikh luput pasport",
+      "passportRemark": "Catatan pasport",
+      "passportHint": "Untuk pekerja bukan warganegara Malaysia. Nombor pasport, tarikh keluaran dan tarikh luput diperlukan; catatan adalah pilihan.",
+      "savePassport": "Simpan maklumat pasport"
     },
     "import": {
       "title": "Import pekerja",

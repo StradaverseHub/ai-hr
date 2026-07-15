@@ -880,6 +880,22 @@ export type PersonProfileFields = {
   city?: string | null;
   state?: string | null;
   country?: string | null;
+  // 3a25f5ee — Permanent + Correspondence structured addresses (migration 0213). Independent of the legacy
+  // single address above (retained for rollback). Each is 7 fields; state/country are catalog-backed.
+  permanentAddressLine1?: string | null;
+  permanentAddressLine2?: string | null;
+  permanentAddressLine3?: string | null;
+  permanentPostcode?: string | null;
+  permanentCity?: string | null;
+  permanentState?: string | null;
+  permanentCountry?: string | null;
+  correspondenceAddressLine1?: string | null;
+  correspondenceAddressLine2?: string | null;
+  correspondenceAddressLine3?: string | null;
+  correspondencePostcode?: string | null;
+  correspondenceCity?: string | null;
+  correspondenceState?: string | null;
+  correspondenceCountry?: string | null;
   emergencyContactName?: string | null;
   emergencyContactRelationship?: string | null;
   emergencyContactPhone?: string | null;
@@ -890,6 +906,11 @@ export type PersonProfileFields = {
 const PROFILE_FIELD_KEYS: (keyof PersonProfileFields)[] = [
   'firstName', 'lastName', 'preferredName', 'religion', 'race', 'nationality', 'personalEmail',
   'addressLine1', 'addressLine2', 'addressLine3', 'postcode', 'city', 'state', 'country',
+  // 3a25f5ee — Permanent + Correspondence address fields (audited by NAME only, PDPA — values never logged).
+  'permanentAddressLine1', 'permanentAddressLine2', 'permanentAddressLine3', 'permanentPostcode',
+  'permanentCity', 'permanentState', 'permanentCountry',
+  'correspondenceAddressLine1', 'correspondenceAddressLine2', 'correspondenceAddressLine3',
+  'correspondencePostcode', 'correspondenceCity', 'correspondenceState', 'correspondenceCountry',
   'emergencyContactName', 'emergencyContactRelationship', 'emergencyContactPhone',
   'emergencyContactPhone2', 'emergencyContactAddress',
 ];
@@ -906,6 +927,11 @@ const CATALOG_BACKED_COLUMNS: Partial<Record<keyof PersonProfileFields, ProfileO
   nationality: 'nationality',
   state: 'state',
   country: 'country',
+  // 3a25f5ee — the two new address blocks' state/country are validated against the same catalog.
+  permanentState: 'state',
+  permanentCountry: 'country',
+  correspondenceState: 'state',
+  correspondenceCountry: 'country',
   emergencyContactRelationship: 'relationship',
 };
 
@@ -919,7 +945,7 @@ const CATALOG_BACKED_COLUMNS: Partial<Record<keyof PersonProfileFields, ProfileO
  */
 export async function updatePerson(
   ctx: SessionContext,
-  p: { personId: string; fullName: string; primaryEmail: string; phone?: string | null } & PersonProfileFields,
+  p: { personId: string; fullName: string; primaryEmail: string; phone?: string | null; via?: string } & PersonProfileFields,
 ) {
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
@@ -934,6 +960,11 @@ export async function updatePerson(
         nationality: person.nationality,
         state: person.state,
         country: person.country,
+        // 3a25f5ee — legacy values of the two new address blocks' catalog columns, same tolerance rule.
+        permanentState: person.permanentState,
+        permanentCountry: person.permanentCountry,
+        correspondenceState: person.correspondenceState,
+        correspondenceCountry: person.correspondenceCountry,
         emergencyContactRelationship: person.emergencyContactRelationship,
       })
       .from(person)
@@ -976,7 +1007,14 @@ export async function updatePerson(
       actor: actorOf(ctx),
       subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
       // before/after only for the non-PII core trio; profile fields recorded by name (values are PII).
-      payload: profileFields.length > 0 ? { before, after, fields: profileFields } : { before, after },
+      // 3a25f5ee — `via` is an optional provenance marker (e.g. 'copy-permanent' when HR used the "Same as
+      // Permanent Address" convenience). It records HOW the save happened, never any address VALUE (PDPA).
+      payload: {
+        before,
+        after,
+        ...(profileFields.length > 0 ? { fields: profileFields } : {}),
+        ...(p.via ? { via: p.via } : {}),
+      },
     });
     return { id: p.personId };
   });

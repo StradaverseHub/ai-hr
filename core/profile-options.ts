@@ -17,7 +17,7 @@
  * check (mirrors core/claims.ts catalog CRUD). These are tenant-level catalog events with no single employee
  * subject → subjectEmploymentId stays undefined (admin-only reads, fail-closed).
  */
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { person, profileOption } from '../db/schema';
@@ -39,17 +39,19 @@ export function isProfileOptionCategory(v: string): v is ProfileOptionCategory {
 }
 
 /**
- * The person column each category governs — used by the legacy-value validator (permit the unchanged
- * stored value) and the delete in-use guard (a value still referenced by a person cannot be deleted).
- * `relationship` maps to the emergency-contact relationship field (product decision (c)).
+ * The person column(s) each category governs — used by the delete in-use guard (a value still referenced by
+ * ANY of the listed columns on a person cannot be deleted). `relationship` maps to the emergency-contact
+ * relationship field (product decision (c)). 3a25f5ee — `state` and `country` now govern THREE columns each:
+ * the legacy single address plus the new Permanent and Correspondence blocks, so an in-use catalog value in
+ * any address block is protected from deletion.
  */
-export const CATEGORY_PERSON_COLUMN: Record<ProfileOptionCategory, keyof typeof person.$inferSelect> = {
-  religion: 'religion',
-  race: 'race',
-  nationality: 'nationality',
-  state: 'state',
-  country: 'country',
-  relationship: 'emergencyContactRelationship',
+export const CATEGORY_PERSON_COLUMN: Record<ProfileOptionCategory, (keyof typeof person.$inferSelect)[]> = {
+  religion: ['religion'],
+  race: ['race'],
+  nationality: ['nationality'],
+  state: ['state', 'permanentState', 'correspondenceState'],
+  country: ['country', 'permanentCountry', 'correspondenceCountry'],
+  relationship: ['emergencyContactRelationship'],
 };
 
 const cap = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
@@ -330,11 +332,13 @@ export async function deleteProfileOption(ctx: SessionContext, id: string): Prom
       .limit(1);
     if (!opt) return;
     if (!isProfileOptionCategory(opt.category)) throw new Error('Unknown option category');
-    const col = CATEGORY_PERSON_COLUMN[opt.category];
+    // 3a25f5ee — a category may govern several person columns (state/country each span the legacy + permanent
+    // + correspondence address blocks). The value is in use if ANY governed column references it.
+    const cols = CATEGORY_PERSON_COLUMN[opt.category];
     const [used] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(person)
-      .where(eq(person[col] as never, opt.value));
+      .where(or(...cols.map((c) => eq(person[c] as never, opt.value))));
     if (Number(used?.n ?? 0) > 0) {
       throw new ProfileOptionInUseError('This value is in use by an employee and cannot be deleted — deactivate it instead.');
     }

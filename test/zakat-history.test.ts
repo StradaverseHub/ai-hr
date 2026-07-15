@@ -63,7 +63,7 @@ async function setFixedZakat(a: SessionContext, personId: string, amount: number
     .where(eq(schema.employeeStatutoryMy.personId, personId));
   await setStatutoryProfileMY(a, {
     personId,
-    icNumber: cur.icNumber,
+    icNumber: cur.icNumber ?? '',
     zakatActive: true,
     zakatMethod: 'fixed',
     zakatFixed: amount,
@@ -105,7 +105,7 @@ describe('zakat transaction history (d435673e) — read-only lists + export even
       .select()
       .from(schema.employeeStatutoryMy)
       .where(eq(schema.employeeStatutoryMy.personId, off.personId));
-    await setStatutoryProfileMY(a, { personId: off.personId, icNumber: offCur.icNumber, zakatActive: false });
+    await setStatutoryProfileMY(a, { personId: off.personId, icNumber: offCur.icNumber ?? '', zakatActive: false });
     // Legacy edge: an inactive row that STILL carries a method (predates the kernel's null-on-off rule, or
     // was written outside the app) remains visible via the `method IS NOT NULL OR active` safety net.
     await owner.db

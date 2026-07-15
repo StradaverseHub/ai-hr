@@ -18,6 +18,7 @@ export function ProfileOptionSelect({
   placeholder,
   legacySuffix,
   className,
+  id,
 }: {
   name: string;
   value: string | null | undefined;
@@ -25,12 +26,15 @@ export function ProfileOptionSelect({
   placeholder: string;
   legacySuffix: string;
   className?: string;
+  // 3a25f5ee — optional DOM id so client islands (e.g. "Same as Permanent Address") can coordinate the
+  // rendered <select> by id, matching the ic-dob-autofill pattern.
+  id?: string;
 }) {
   const current = value ?? '';
   const known = options.some((o) => o.value === current);
   const showLegacy = current !== '' && !known;
   return (
-    <select name={name} defaultValue={current} className={className ?? inputCls}>
+    <select id={id} name={name} defaultValue={current} className={className ?? inputCls}>
       <option value="">{placeholder}</option>
       {showLegacy && (
         <option value={current}>
