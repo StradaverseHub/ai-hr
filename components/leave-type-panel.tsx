@@ -5,7 +5,8 @@ import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { ESS_VIEW_COMPONENT_KEYS } from '@/core/ess-view';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
-import { Search } from 'lucide-react';
+import { Search, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import {
   LEAVE_COLORS,
   LEAVE_COLOR_TOKENS,
@@ -706,6 +707,34 @@ export function LeaveTypePanel({
     return () => window.removeEventListener('hashchange', openIfTargeted);
   }, [id]);
 
+  // Collapsible category panels (f623d50a): each of the 7 category cards inside the expanded row is an
+  // independent accordion. Open/closed state is per-card client state, keyed by the leave-type id so two open
+  // rows don't share it. It is persisted to localStorage so it SURVIVES the stay-on-save redirect (b9dac2d1
+  // keystone re-mounts the panel on the entitlements tab) — the section HR was editing stays open after Save.
+  // Default = all collapsed for the compact view; hydrate from storage in an effect (client-only ⇒ no SSR
+  // hydration mismatch; a brief closed→restored flash is acceptable).
+  const [openCards, setOpenCards] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(`leaveTypeCards:${id}`);
+      if (raw) setOpenCards(JSON.parse(raw) as Record<string, boolean>);
+    } catch {
+      /* storage unavailable / malformed ⇒ keep all collapsed */
+    }
+  }, [id]);
+  const toggleCard = (key: string) =>
+    setOpenCards((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        window.localStorage.setItem(`leaveTypeCards:${id}`, JSON.stringify(next));
+      } catch {
+        /* storage write blocked ⇒ runtime toggle still works, just not persisted */
+      }
+      return next;
+    });
+  const cardHeaderBtn =
+    'flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/40';
+
   // #25 visibility: a composable human summary of the eligibility rule (avoids a key-per-permutation
   // matrix across 6 locales). e.g. "Female only · ≥ 12 months service", or "Open to all employees".
   const genderLabel = (g: string) =>
@@ -820,10 +849,14 @@ export function LeaveTypePanel({
       {expanded && (
         <div className="space-y-3 border-t border-border/60 bg-muted/20 px-4 py-3">
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryGeneral')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('general')} aria-expanded={!!openCards.general} aria-controls={`cat-general-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryGeneral')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.general && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.general && (
+            <CardContent id={`cat-general-${id}`} className="space-y-3">
           {/* type-level controls */}
           {editingName ? (
             <form
@@ -1002,12 +1035,17 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('leaveUnitHelp')}</p>
           </div>
             </CardContent>
+            )}
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('eligibility')} aria-expanded={!!openCards.eligibility} aria-controls={`cat-eligibility-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.eligibility && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.eligibility && (
+            <CardContent id={`cat-eligibility-${id}`} className="space-y-3">
           {/* #25 visibility — eligibility rules (who can see + apply) */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
@@ -1553,12 +1591,17 @@ export function LeaveTypePanel({
             </div>
           )}
             </CardContent>
+            )}
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryEssPolicy')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('ess')} aria-expanded={!!openCards.ess} aria-controls={`cat-ess-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryEssPolicy')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.ess && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.ess && (
+            <CardContent id={`cat-ess-${id}`} className="space-y-3">
           {/* Feedback 9d8cf621: the "Payroll impact" controls moved to the Payroll Related tab (per-type list
               there). Both were self-contained sub-forms, so moving/removing them here never touches any other
               column on save. */}
@@ -1840,12 +1883,17 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('duplicatePolicyHelp')}</p>
           </div>
             </CardContent>
+            )}
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryApproval')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('approval')} aria-expanded={!!openCards.approval} aria-controls={`cat-approval-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryApproval')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.approval && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.approval && (
+            <CardContent id={`cat-approval-${id}`} className="space-y-3">
           {/* Partial Leave Approval (ADR-0068 · re-added ac6c2025). Its own sub-form (own tri-state) posts
               `partialApproval=1`, so a rename / eligibility / durations / document / payroll / backdating edit
               that omits the marker leaves per_date_approval untouched. This is the HR-facing enable switch for
@@ -1890,12 +1938,17 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
           </div>
             </CardContent>
+            )}
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryDisplay')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('display')} aria-expanded={!!openCards.display} aria-controls={`cat-display-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryDisplay')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.display && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.display && (
+            <CardContent id={`cat-display-${id}`} className="space-y-3">
           {/* Employee Leave View Configuration (65dec703 / dup 1fedb473). Its own self-contained sub-form
               (own tri-state) posts `essView=1` — a checklist of the breakdown components an employee sees in
               My Profile → Leave for THIS leave type. An unchecked box does not post; the action rebuilds the
@@ -2007,12 +2060,17 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('placement.help')}</p>
           </div>
             </CardContent>
+            )}
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryCalculation')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('calculation')} aria-expanded={!!openCards.calculation} aria-controls={`cat-calculation-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryCalculation')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.calculation && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.calculation && (
+            <CardContent id={`cat-calculation-${id}`} className="space-y-3">
           {/* Day Type Inclusion (feedback ef6d7146) — five independent toggles deciding which day types are
               counted when calculating a leave's duration. Lives inside Eligibility Rules (reporter's request),
               its own self-contained <form> + `dayTypeInclusion=1` tri-state marker so an unrelated save never
@@ -2068,12 +2126,17 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.statutoryNote')}</p>
           </div>
             </CardContent>
+            )}
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryCustom')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('custom')} aria-expanded={!!openCards.custom} aria-controls={`cat-custom-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryCustom')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.custom && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.custom && (
+            <CardContent id={`cat-custom-${id}`} className="space-y-3">
           {/* Feedback 9d8cf621 — custom apply-time message. Own sub-form + tri-state marker `applyNotice=1`.
               An "Enable custom message" checkbox reveals the textarea; unchecked ⇒ textarea hidden and an empty
               value posts ⇒ the applyNotice key clears (message disabled). Shown to employees on the apply form. */}
@@ -2117,6 +2180,7 @@ export function LeaveTypePanel({
               existing moves; both null ⇒ default styling (backward compatible). */}
           <LeaveVisualForm t={t} id={id} name={name} color={color} icon={icon} action={updateTypeAction} />
             </CardContent>
+            )}
           </Card>
         </div>
       )}
