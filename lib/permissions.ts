@@ -320,6 +320,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/admin/payroll-policy'],
   },
   {
+    // Employee ID Auto Running Number Setup (feedback 3d0031e6) — the personnel-admin config for auto-numbered
+    // employee codes. scopedAdmin like its siblings (a company admin manages their own company's sequence;
+    // a group admin owns the global one).
+    screenKey: 'employeeIdConfig',
+    href: '/admin/settings/employee-id',
+    labelKey: 'nav.employeeIdConfig',
+    guard: 'scopedAdmin',
+    routes: ['/admin/settings/employee-id'],
+  },
+  {
     screenKey: 'payComponents',
     href: '/admin/pay-components',
     labelKey: 'admin.users.screen.payComponents',

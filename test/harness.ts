@@ -61,6 +61,9 @@ const ALL_TABLES = [
   // 88e94371 — attendance-rule library: a leaked rule (or its OT rows) would trip the per-company default /
   // name unique indexes across test files. CASCADE from company already clears them, but list explicitly.
   'attendance_rule', 'attendance_rule_ot_row',
+  // 3d0031e6 — Employee ID Auto Running Number Setup: a leaked active config would trip the partial
+  // one-active-per-scope unique indexes (or make a later hire auto-generate unexpectedly) across test files.
+  'employee_id_config',
 ];
 
 export async function migrateTestDb() {

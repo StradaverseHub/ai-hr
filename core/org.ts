@@ -7,6 +7,7 @@ import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { nextEmployeeCode } from './comp';
+import { generateEmployeeCode } from './employee-id-config';
 import { requireEmployeeCode } from '../lib/employee-code';
 import { applyMaxBalance, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
@@ -161,7 +162,12 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       employeeCode = requireEmployeeCode(p.employeeCode);
       await assertEmployeeCodeUnique(tx, ctx.tenantId, employeeCode);
     } else {
-      employeeCode = await nextEmployeeCode(tx, ctx.tenantId);
+      // Employee ID Auto Running Number Setup (feedback 3d0031e6): when an ACTIVE config resolves for this
+      // hire's company (company-specific first, else the tenant-wide GLOBAL config), generate the code from it
+      // and advance its running number. With NO active config the legacy EMP-#### counter still runs, keeping
+      // the demo seed + test corpus byte-identical. employment_employee_code_uq is the ultimate collision net.
+      const generated = await generateEmployeeCode(tx, ctx.tenantId, p.companyId);
+      employeeCode = generated ?? (await nextEmployeeCode(tx, ctx.tenantId));
     }
     const [emp] = await tx
       .insert(employment)
