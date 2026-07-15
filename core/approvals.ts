@@ -17,6 +17,11 @@ export async function assertCanDecide(
   ctx: SessionContext,
   subjectEmploymentId: string,
   label: string,
+  // R44 delegation (Phase 2): the module/task this decision belongs to. When supplied, a SCOPED delegation
+  // only authorises the delegate if it covers this (module, taskType) — a whole-scope (no scope rows)
+  // delegation still covers everything. When OMITTED (legacy callers: travel, profile, performance, …) the
+  // 1-arg helper runs → whole-scope behaviour, unchanged.
+  scope?: { module: string; taskType: string },
 ): Promise<void> {
   const [subject] = await tx
     .select({ personId: employment.personId })
@@ -63,7 +68,11 @@ export async function assertCanDecide(
   // be wrongly filtered — the definer helper resolves it without leaking visibility. The self-ban above
   // already blocked a delegate who is the subject.
   if (ctx.personId) {
-    const res = await tx.execute(sql`SELECT app.can_decide_via_delegation(${subjectEmploymentId}) AS ok`);
+    const res = scope
+      ? await tx.execute(
+          sql`SELECT app.can_decide_via_delegation(${subjectEmploymentId}, ${scope.module}, ${scope.taskType}) AS ok`,
+        )
+      : await tx.execute(sql`SELECT app.can_decide_via_delegation(${subjectEmploymentId}) AS ok`);
     const ok = (res as unknown as { ok: boolean }[])[0]?.ok;
     if (ok) return;
   }

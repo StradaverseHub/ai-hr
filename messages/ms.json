@@ -206,6 +206,8 @@
     "mandatoryCardMessage": "Kad papan pemuka ini adalah wajib dan tidak boleh dialih keluar.",
     "mandatoryCardHint": "Wajib — ditetapkan oleh HR, tidak boleh dialih keluar.",
     "shortcutBadge": "Pintasan",
+    "pinnedBadge": "Disematkan",
+    "pinnedRowHint": "Kad ini disematkan pada baris tetap dan sentiasa kekal di papan pemuka anda.",
     "emptyDashboardHint": "Tiada kad dipilih. Gunakan Tambah Kad untuk memilih apa yang hendak dipaparkan.",
     "saveChanges": "Simpan Perubahan",
     "cancel": "Batal",
@@ -213,6 +215,11 @@
     "saveConfirmTitle": "Adakah anda pasti mahu menyimpan perubahan papan pemuka?",
     "saveConfirmConfirm": "Sahkan Simpan",
     "saveConfirmDiscard": "Buang Perubahan",
+    "removeConfirmTitle": "Alih keluar kad ini?",
+    "removeConfirmBody": "Alih keluar {card} daripada papan pemuka anda? Anda boleh menambahnya semula kemudian.",
+    "removeConfirmConfirm": "Alih keluar",
+    "removeConfirmCancel": "Batal",
+    "removeConfirmToast": "{card} dialih keluar daripada papan pemuka anda.",
     "block_cards": "Kad Ringkasan",
     "block_plannedAbsences": "Ketidakhadiran Terancang",
     "block_recentlyJoined": "Baru Menyertai",
@@ -220,6 +227,13 @@
     "block_recentActivity": "Aktiviti Terkini"
   },
   "people": {
+    "employeeStatus": {
+      "probation": "Percubaan",
+      "active": "Aktif",
+      "active_serving_notice": "Aktif — Menjalani Notis",
+      "resigned": "Berhenti",
+      "blacklisted": "Disenaraihitamkan"
+    },
     "list": {
       "title": "Kakitangan",
       "employeeCount": "{count, plural, one {# pekerja} other {# pekerja}}",
@@ -676,7 +690,7 @@
         "save": "Simpan maklumat pekerjaan",
         "assignmentGroup": "Penetapan Organisasi",
         "saveAssignment": "Simpan penetapan organisasi",
-        "assignmentNote": "Perubahan pada Jabatan, Jawatan, Jenis Pekerjaan dan Status Pekerja direkodkan dengan tarikh berkuat kuasa dan disimpan dalam sejarah penetapan, supaya rekod lampau kekal tepat. Gred Pekerjaan disimpan dalam rekod pekerja.",
+        "assignmentNote": "Perubahan pada Jabatan, Jawatan dan Jenis Pekerjaan direkodkan dengan tarikh berkuat kuasa dan disimpan dalam sejarah tugasan, supaya rekod lampau kekal tepat. Gred Kerja disimpan pada rekod pekerja.",
         "positionNone": "Tiada",
         "invalidValue": "Nilai yang dipilih tidak sah.",
         "employmentType_full_time": "Sepenuh masa",
@@ -705,7 +719,15 @@
         "tenderResignationDate": "Tarikh Serah Peletakan Jawatan",
         "lastWorkingDate": "Tarikh Bekerja Terakhir",
         "lifecycleDeferredNote": "Tarikh peletakan jawatan dan hari bekerja terakhir direkodkan di sini. Menghubungkannya dengan gaji akhir dan potongan kehadiran dirancang sebagai susulan.",
-        "businessUnit": "Unit Perniagaan"
+        "businessUnit": "Unit Perniagaan",
+        "employeeStatusDerivedNote": "Status Pekerja dikira secara automatik daripada tarikh pekerjaan dan dipaparkan sebagai lencana baca sahaja — tiada langkah manual.",
+        "blacklistTitle": "Senarai Hitam",
+        "blacklistReasonLabel": "Sebab (pilihan)",
+        "blacklistReasonPlaceholder": "Sebab menyenaraihitamkan",
+        "blacklistAction": "Senaraihitamkan pekerja",
+        "blacklistClearAction": "Keluarkan daripada senarai hitam",
+        "blacklistNote": "Menyenaraihitamkan ialah tindakan HR yang disengajakan dan mengatasi Status Pekerja automatik.",
+        "blacklistActiveNote": "Pekerja ini sedang disenaraihitamkan."
       },
       "documents": {
         "title": "Dokumen",
@@ -1032,7 +1054,8 @@
       "leaveYearNotOpen": "Tahun cuti {year} belum dibuka untuk permohonan. Sila hubungi HR.",
       "applyNotAllowed": "Pekerja tidak boleh memohon {typeName}. Sila hubungi HR.",
       "duplicateApplication": "Permohonan cuti telah wujud untuk tarikh yang dipilih. Berbilang permohonan cuti pada tarikh yang sama tidak dibenarkan.",
-      "insufficientBalance": "Baki cuti tidak mencukupi. Baki cuti anda yang tersedia adalah lebih rendah daripada tempoh cuti yang dipohon."
+      "insufficientBalance": "Baki cuti tidak mencukupi. Baki cuti anda yang tersedia adalah lebih rendah daripada tempoh cuti yang dipohon.",
+      "combinedLimitExceeded": "Had cuti gabungan \"{poolName}\" ({days} hari setahun) akan melebihi merentasi jenis cuti kongsinya."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -3196,6 +3219,7 @@
       "saveConfirmConfirm": "Simpan perubahan",
       "discardChanges": "Buang perubahan",
       "codeSavedToast": "Jenis cuti disimpan.",
+      "savedToast": "Perubahan disimpan.",
       "codePlaceholder": "SICK",
       "nameLabel": "Nama",
       "namePlaceholder": "Cuti Sakit",
@@ -3399,6 +3423,12 @@
       "eligibilitySummaryService": "≥ {n} {unit} perkhidmatan",
       "eligibilitySummaryOr": "atau",
       "eligibilityMultiHint": "Pilih satu atau lebih; biarkan kosong untuk membenarkan semua orang.",
+      "eligibilityProbationLabel": "Status percubaan",
+      "eligibilityProbationNone": "Tiada sekatan",
+      "eligibilityProbationConfirmedOnly": "Pekerja disahkan sahaja",
+      "eligibilityProbationProbationOnly": "Pekerja dalam percubaan sahaja",
+      "eligibilitySummaryConfirmedOnly": "Disahkan sahaja",
+      "eligibilitySummaryProbationOnly": "Dalam percubaan sahaja",
       "allowedDurationsLabel": "Tempoh dibenarkan",
       "allowedDurationsHelp": "Pilih tempoh yang boleh dipilih pekerja untuk jenis cuti ini. Sehari penuh sentiasa tersedia.",
       "duration_full_day": "Sehari penuh",
@@ -4378,7 +4408,42 @@
       "threshold1": "Peringkat 1 hingga (tahun)",
       "threshold2": "Peringkat 2 hingga (tahun)",
       "thresholdError": "Sempadan peringkat mesti nombor bulat dengan yang kedua lebih besar daripada yang pertama.",
-      "saveEntitlement": "Simpan kelayakan"
+      "saveEntitlement": "Simpan kelayakan",
+      "tierUnderFixed": "Bawah 2 Tahun",
+      "tierMidFixed": "2–5 Tahun",
+      "tierOverFixed": "Lebih 5 Tahun",
+      "entSortLabel": "Isih",
+      "entSortAsc": "Jenis cuti A–Z",
+      "entSortDesc": "Jenis cuti Z–A",
+      "duplicateError": "Jenis cuti ini telah dikonfigurasikan untuk skim ini.",
+      "requiredError": "Sila isi semua medan yang diperlukan.",
+      "requiredAria": "diperlukan",
+      "editSchemeTitle": "Sunting skim faedah",
+      "cancel": "Batal",
+      "gradeGroupSearchPlaceholder": "Cari kumpulan gred…",
+      "gradeGroupNoResults": "Tiada kumpulan gred dijumpai.",
+      "legacyValueSuffix": "(lama)",
+      "schemeCount": "{count} skim",
+      "combinedTitle": "Had Cuti Gabungan",
+      "combinedHelp": "Hadkan beberapa jenis cuti di bawah satu jumlah kongsi setiap kitaran (cth. Ihsan + Perkahwinan + Paterniti = 5 hari setahun).",
+      "combinedNameLabel": "Nama had",
+      "combinedNamePlaceholder": "cth. Kumpulan ihsan",
+      "combinedTotalLabel": "Jumlah hari / tahun",
+      "combinedTypesLabel": "Jenis cuti dalam kumpulan ini",
+      "combinedAdd": "Tambah had gabungan",
+      "combinedNone": "Tiada had gabungan dikonfigurasikan untuk skim ini.",
+      "combinedColName": "Nama",
+      "combinedColTotal": "Jumlah hari",
+      "combinedColTypes": "Jenis cuti",
+      "copyButton": "Salin kelayakan dari skim lain…",
+      "copyTitle": "Salin kelayakan dari skim lain",
+      "copySourceLabel": "Skim sumber",
+      "copySourcePlaceholder": "Pilih skim…",
+      "copyPreviewCopy": "Akan disalin",
+      "copyPreviewSkip": "Dilangkau — telah dikonfigurasikan",
+      "copyConfirm": "Salin kelayakan",
+      "copyEmpty": "Pilih skim sumber untuk pratonton apa yang akan disalin.",
+      "copyNoneToCopy": "Tiada apa untuk disalin — sasaran telah mempunyai setiap jenis cuti dari sumber ini."
     }
   },
   "topbar": {
@@ -6156,6 +6221,16 @@
       "performance_comp_partner": "Rakan Prestasi/Pampasan"
     }
   },
+  "commandBar": {
+    "open": "Cari",
+    "placeholder": "Cari tindakan…",
+    "noResults": "Tiada padanan.",
+    "back": "Kembali",
+    "loading": "Memuatkan…",
+    "openFull": "Buka halaman penuh",
+    "delegationTitle": "Perwakilan Kelulusan",
+    "delegationSubtitle": "Wakilkan tugas kelulusan anda kepada pengguna lain"
+  },
   "delegations": {
     "title": "Pengurusan Perwakilan",
     "subtitle": "Serahkan tugas kelulusan kepada pengganti buat sementara semasa pelulus tiada.",
@@ -6186,7 +6261,23 @@
     "noDownline": "Anda tiada bawahan langsung, jadi tiada kelulusan untuk diwakilkan.",
     "showHistory": "Tunjuk sejarah",
     "hideHistory": "Sembunyi sejarah",
-    "selfHint": "Anda menyerahkan tugas kelulusan anda sendiri semasa anda tiada."
+    "selfHint": "Anda menyerahkan tugas kelulusan anda sendiri semasa anda tiada.",
+    "scopeTitle": "Apakah yang diliputi oleh perwakilan ini?",
+    "scopeHint": "Pilih modul dan tugas untuk diserahkan. Biarkan semua tidak bertanda untuk meliputi semua kelulusan.",
+    "wholeModule": "Semua kelulusan {module}",
+    "reason": "Sebab perwakilan",
+    "reasonPlaceholder": "Mengapa anda mewakilkan (cth. cuti tahunan, cuti sakit)?",
+    "moduleLabel": {
+      "leave": "Cuti",
+      "attendance": "Kehadiran",
+      "claims": "Tuntutan"
+    },
+    "taskLabel": {
+      "leaveApplication": "Kelulusan Permohonan Cuti",
+      "leaveCancellation": "Kelulusan Pembatalan Cuti",
+      "attendanceCorrection": "Kelulusan Pembetulan Kehadiran",
+      "claimsClaim": "Kelulusan Tuntutan"
+    }
   },
   "dashboardCardConfig": {
     "title": "Persediaan Kad Papan Pemuka",

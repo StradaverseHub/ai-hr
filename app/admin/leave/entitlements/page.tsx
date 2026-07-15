@@ -4,7 +4,12 @@ import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
 import { listAdHocLeaveGrants, listLeavePolicies } from '@/core/admin';
 import { listLeaveYearConfigs } from '@/core/leave';
-import { listGradeGroups, listBenefitSchemes, listSchemeEntitlements } from '@/core/benefit-scheme';
+import {
+  listGradeGroups,
+  listBenefitSchemes,
+  listSchemeEntitlements,
+  listSchemeCombinedLimits,
+} from '@/core/benefit-scheme';
 import { BenefitSchemeConfig } from '@/components/benefit-scheme-config';
 import type { ServiceBand } from '@/core/leave-compute';
 import { entitlement } from '@/localization/my/leave';
@@ -38,6 +43,10 @@ import {
   deleteBenefitSchemeAction,
   upsertSchemeEntitlementAction,
   deleteSchemeEntitlementAction,
+  copySchemeEntitlementsAction,
+  createSchemeCombinedLimitAction,
+  updateSchemeCombinedLimitAction,
+  deleteSchemeCombinedLimitAction,
 } from '../../actions';
 import { GradeCatalog } from '@/components/grade-catalog';
 
@@ -62,7 +71,7 @@ export default async function LeaveEntitlementsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies, grades, adHocGrants, leaveYearConfigs, gradeGroups, benefitSchemes, schemeEntitlements] =
+  const [types, policies, companies, grades, adHocGrants, leaveYearConfigs, gradeGroups, benefitSchemes, schemeEntitlements, schemeCombinedLimits] =
     await Promise.all([
       listLeaveTypes(s, { includeArchived: true }),
       listLeavePolicies(s),
@@ -77,6 +86,8 @@ export default async function LeaveEntitlementsPage({
       listGradeGroups(s),
       listBenefitSchemes(s),
       listSchemeEntitlements(s),
+      // Combined Leave Type Limit (R44 4c48fd1f): the per-scheme shared-cap pools.
+      listSchemeCombinedLimits(s),
     ]);
   const gradeOptions = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
   // ADR-0066: companies for the per-policy scope select. companyOptions stays the FULL list — policy writes
@@ -212,6 +223,7 @@ export default async function LeaveEntitlementsPage({
               color={lt.color ?? null}
               icon={lt.icon ?? null}
               leaveUnit={lt.leaveUnit ?? 'day'}
+              probationEligibility={lt.probationEligibility ?? null}
               visibleToEmployee={lt.visibleToEmployee ?? null}
               employeeCanApply={lt.employeeCanApply ?? null}
               essPlacement={lt.essPlacement ?? null}
@@ -569,6 +581,13 @@ export default async function LeaveEntitlementsPage({
               leaveTypeName: e.leaveTypeName,
               serviceBands: e.serviceBands,
             }))}
+            combinedLimits={schemeCombinedLimits.map((cl) => ({
+              id: cl.id,
+              benefitSchemeId: cl.benefitSchemeId,
+              name: cl.name,
+              totalLimitDays: cl.totalLimitDays,
+              leaveTypeIds: cl.leaveTypeIds,
+            }))}
             actions={{
               createGradeGroup: createGradeGroupAction,
               updateGradeGroup: updateGradeGroupAction,
@@ -578,6 +597,10 @@ export default async function LeaveEntitlementsPage({
               deleteScheme: deleteBenefitSchemeAction,
               upsertEntitlement: upsertSchemeEntitlementAction,
               deleteEntitlement: deleteSchemeEntitlementAction,
+              copyEntitlements: copySchemeEntitlementsAction,
+              createCombinedLimit: createSchemeCombinedLimitAction,
+              updateCombinedLimit: updateSchemeCombinedLimitAction,
+              deleteCombinedLimit: deleteSchemeCombinedLimitAction,
             }}
           />
         </div>

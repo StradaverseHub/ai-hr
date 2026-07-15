@@ -46,6 +46,7 @@ import {
   person,
   position,
   reportingLine,
+  reportingLineScope,
   toilAccrual,
 } from '../db/schema';
 import { daysInMonth } from './payroll';
@@ -103,6 +104,8 @@ export type EmployeeListRow = {
   name: string;
   email: string;
   employeeCode: string | null;
+  // Legacy stored assignment.status — kept for callers that still read it (analytics/perf); the People list
+  // now shows the DERIVED status (deriveEmploymentStatus) computed from the lifecycle dates below.
   status: string | null;
   department: string | null;
   departmentId: string | null;
@@ -111,6 +114,12 @@ export type EmployeeListRow = {
   companyId: string;
   hiredOn: string;
   terminatedOn: string | null;
+  // Employee Status redesign (R43 c26c3ce5) — lifecycle inputs so the list badge can derive status per row.
+  confirmationDate: string | null;
+  finalConfirmationDate: string | null;
+  resignationDate: string | null;
+  lastWorkingDate: string | null;
+  blacklistedAt: string | null;
 };
 
 /** Paginated + searchable employee list for the People page. Returns the page rows plus the
@@ -168,6 +177,12 @@ export function listEmployeesPage(
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
+        // R43 c26c3ce5 — lifecycle inputs for the derived status badge.
+        confirmationDate: employment.confirmationDate,
+        finalConfirmationDate: employment.finalConfirmationDate,
+        resignationDate: employment.resignationDate,
+        lastWorkingDate: employment.lastWorkingDate,
+        blacklistedAt: employment.blacklistedAt,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -445,6 +460,9 @@ export function listLeaveTypes(
         // Leave Unit Configuration (e4980382): feeds the admin panel's "Leave Unit" select + the create-form
         // default (MUST be projected or the select renders at its default on every reload). 'day' | 'hour'.
         leaveUnit: leaveType.leaveUnit,
+        // Probation eligibility (d6bdbd55): feeds the admin panel's Probation select in the eligibility editor
+        // (MUST be projected or the select renders at its default on every reload). null ⇒ no restriction.
+        probationEligibility: leaveType.probationEligibility,
         // Leave Type Employee Visibility (7b11f1c1): feeds the admin panel's two visibility checkboxes (MUST be
         // projected or the checkboxes render at their default on every reload). null ⇒ visible / can-apply.
         visibleToEmployee: leaveType.visibleToEmployee,
@@ -1260,6 +1278,11 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         orgTeam: employment.orgTeam,
         orgBase: employment.orgBase,
         employmentCategory: employment.employmentCategory,
+        // Employee Status redesign (R43 c26c3ce5) — the Blacklist override read by deriveEmploymentStatus
+        // (null = not blacklisted). The derived buckets themselves need no column (they are pure functions of
+        // the lifecycle dates already projected above + today).
+        blacklistedAt: employment.blacklistedAt,
+        blacklistReason: employment.blacklistReason,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -2091,6 +2114,10 @@ export type DelegationScopedRow = {
   validFrom: string;
   validTo: string | null;
   ended: boolean;
+  // R44 delegation (Phase 2): the reason + the per-module/task scope. `scopes` empty = whole-scope (all
+  // approvals). Both are attached post-query (attachDelegationScopeInfo) for admin + self-service alike.
+  reason: string | null;
+  scopes: { module: string; taskType: string | null }[];
 };
 
 type DelegationRawRow = {
@@ -2104,7 +2131,8 @@ type DelegationRawRow = {
   supersededAt: Date | string | null;
 };
 
-/** Shape a raw delegation row (either source) into the page row, deriving `ended` from asOf. */
+/** Shape a raw delegation row (either source) into the page row, deriving `ended` from asOf. `reason` /
+ *  `scopes` start empty and are filled by attachDelegationScopeInfo (one batched query for all rows). */
 function shapeDelegationRow(r: DelegationRawRow, asOf: string): DelegationScopedRow {
   return {
     id: r.id,
@@ -2115,7 +2143,38 @@ function shapeDelegationRow(r: DelegationRawRow, asOf: string): DelegationScoped
     validFrom: r.validFrom,
     validTo: r.validTo,
     ended: r.supersededAt != null || (r.validTo != null && r.validTo <= asOf),
+    reason: null,
+    scopes: [],
   };
+}
+
+/**
+ * R44 delegation (Phase 2) — batch-attach reason + scope rows to a set of delegation rows, in the caller's
+ * tx. reporting_line + reporting_line_scope are tenant-readable (RLS USING is tenant-only), so this works
+ * for both the admin path and a self-service user. A delegation with no scope rows keeps scopes: [].
+ */
+async function attachDelegationScopeInfo(tx: Tx, rows: DelegationScopedRow[]): Promise<DelegationScopedRow[]> {
+  if (rows.length === 0) return rows;
+  const ids = rows.map((r) => r.id);
+  const [reasons, scopeRows] = await Promise.all([
+    tx.select({ id: reportingLine.id, reason: reportingLine.reason }).from(reportingLine).where(inArray(reportingLine.id, ids)),
+    tx
+      .select({
+        rid: reportingLineScope.reportingLineId,
+        module: reportingLineScope.module,
+        taskType: reportingLineScope.taskType,
+      })
+      .from(reportingLineScope)
+      .where(inArray(reportingLineScope.reportingLineId, ids)),
+  ]);
+  const reasonById = new Map(reasons.map((r) => [r.id, r.reason]));
+  const scopesById = new Map<string, { module: string; taskType: string | null }[]>();
+  for (const s of scopeRows) {
+    const list = scopesById.get(s.rid) ?? [];
+    list.push({ module: s.module, taskType: s.taskType });
+    scopesById.set(s.rid, list);
+  }
+  return rows.map((r) => ({ ...r, reason: reasonById.get(r.id) ?? null, scopes: scopesById.get(r.id) ?? [] }));
 }
 
 /**
@@ -2153,7 +2212,7 @@ export function delegationsScoped(
       }[];
       const notEnded = (r: (typeof raws)[number]) =>
         r.superseded_at == null && (r.valid_to == null || r.valid_to > opts.asOf);
-      return raws
+      const selfRows = raws
         .filter((r) => opts.history || notEnded(r))
         .map((r) =>
           shapeDelegationRow(
@@ -2171,6 +2230,7 @@ export function delegationsScoped(
           ),
         )
         .sort((a, b) => (a.validFrom < b.validFrom ? 1 : a.validFrom > b.validFrom ? -1 : 0));
+      return attachDelegationScopeInfo(tx, selfRows);
     }
     const delegatorEmp = alias(employment, 'deleg_delegator_emp');
     const delegatorPerson = alias(person, 'deleg_delegator_person');
@@ -2199,7 +2259,7 @@ export function delegationsScoped(
       .innerJoin(delegatePerson, eq(delegatePerson.id, delegateEmp.personId))
       .where(and(eq(reportingLine.lineType, 'delegate'), opts.history ? undefined : notEnded))
       .orderBy(desc(reportingLine.validFrom));
-    return rows.map((r) => shapeDelegationRow(r, opts.asOf));
+    return attachDelegationScopeInfo(tx, rows.map((r) => shapeDelegationRow(r, opts.asOf)));
   });
 }
 

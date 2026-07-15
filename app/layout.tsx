@@ -28,6 +28,7 @@ import { getOnboardingStatus } from '@/core/onboarding';
 import { pendingApprovalsCount } from '@/core/approvals-inbox';
 import { NotificationBell } from '@/components/notification-bell';
 import { NotificationCenter } from '@/components/notification-center';
+import { CommandBar } from '@/components/command-bar';
 import { dispatchNotifications, listNotifications, unreadNotificationCount } from '@/core/notifications';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 
@@ -137,6 +138,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   )}
                 </div>
                 <div className="flex items-center gap-2.5">
+                  <CommandBar />
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
                   <div className="h-5 w-px bg-border" />
                   {notifEnabled ? (

@@ -206,6 +206,8 @@
     "mandatoryCardMessage": "此仪表板卡片为必备项，无法移除。",
     "mandatoryCardHint": "必备项 — 由人力资源设置，无法移除。",
     "shortcutBadge": "快捷方式",
+    "pinnedBadge": "已固定",
+    "pinnedRowHint": "这些卡片固定在固定行中，始终显示在您的仪表板上。",
     "emptyDashboardHint": "未选择任何卡片。使用“添加卡片”选择要显示的内容。",
     "saveChanges": "保存更改",
     "cancel": "取消",
@@ -213,6 +215,11 @@
     "saveConfirmTitle": "确定要保存仪表板更改吗？",
     "saveConfirmConfirm": "确认保存",
     "saveConfirmDiscard": "放弃更改",
+    "removeConfirmTitle": "移除此卡片？",
+    "removeConfirmBody": "从您的仪表板移除 {card}？您稍后可以重新添加。",
+    "removeConfirmConfirm": "移除",
+    "removeConfirmCancel": "取消",
+    "removeConfirmToast": "已从您的仪表板移除 {card}。",
     "block_cards": "摘要卡片",
     "block_plannedAbsences": "计划缺勤",
     "block_recentlyJoined": "最近加入",
@@ -220,6 +227,13 @@
     "block_recentActivity": "最近活动"
   },
   "people": {
+    "employeeStatus": {
+      "probation": "试用期",
+      "active": "在职",
+      "active_serving_notice": "在职 — 通知期内",
+      "resigned": "已离职",
+      "blacklisted": "已列入黑名单"
+    },
     "list": {
       "title": "员工",
       "employeeCount": "{count, plural, one {# 名员工} other {# 名员工}}",
@@ -676,7 +690,7 @@
         "save": "保存雇佣信息",
         "assignmentGroup": "组织分配",
         "saveAssignment": "保存组织分配",
-        "assignmentNote": "对部门、职位、雇佣类型和员工状态的更改会记录生效日期并保存在分配历史中，以确保历史记录准确。职级将保存到员工档案中。",
+        "assignmentNote": "对部门、职位和雇佣类型的更改会记录生效日期并保存在任职历史中，以保持过往记录的准确性。职级会保存到员工档案。",
         "positionNone": "无",
         "invalidValue": "所选的值无效。",
         "employmentType_full_time": "全职",
@@ -705,7 +719,15 @@
         "tenderResignationDate": "提交辞职日期",
         "lastWorkingDate": "最后工作日",
         "lifecycleDeferredNote": "离职日期和最后工作日在此记录。将其接入最终薪资与考勤截止将作为后续计划。",
-        "businessUnit": "业务单位"
+        "businessUnit": "业务单位",
+        "employeeStatusDerivedNote": "员工状态根据雇佣日期自动推算，并以只读徽章显示——无需手动操作。",
+        "blacklistTitle": "黑名单",
+        "blacklistReasonLabel": "原因（可选）",
+        "blacklistReasonPlaceholder": "列入黑名单的原因",
+        "blacklistAction": "将员工列入黑名单",
+        "blacklistClearAction": "从黑名单移除",
+        "blacklistNote": "列入黑名单是刻意的人力资源操作，会覆盖自动的员工状态。",
+        "blacklistActiveNote": "该员工目前已列入黑名单。"
       },
       "documents": {
         "title": "文档",
@@ -1032,7 +1054,8 @@
       "leaveYearNotOpen": "假期年度 {year} 尚未开放申请。请联系人力资源部。",
       "applyNotAllowed": "员工无法申请 {typeName}。请联系人力资源部。",
       "duplicateApplication": "所选日期已存在一份请假申请。不允许在同一日期提交多份请假申请。",
-      "insufficientBalance": "假期余额不足。您的可用假期余额低于所申请的假期时长。"
+      "insufficientBalance": "假期余额不足。您的可用假期余额低于所申请的假期时长。",
+      "combinedLimitExceeded": "合并假期上限「{poolName}」（每年{days}天）将在其共享假期类型中被超出。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -3196,6 +3219,7 @@
       "saveConfirmConfirm": "保存更改",
       "discardChanges": "放弃更改",
       "codeSavedToast": "请假类型已保存。",
+      "savedToast": "更改已保存。",
       "codePlaceholder": "SICK",
       "nameLabel": "名称",
       "namePlaceholder": "病假",
@@ -3399,6 +3423,12 @@
       "eligibilitySummaryService": "服务满 {n} {unit}",
       "eligibilitySummaryOr": "或",
       "eligibilityMultiHint": "选择一项或多项；留空则对所有人开放。",
+      "eligibilityProbationLabel": "试用期状态",
+      "eligibilityProbationNone": "无限制",
+      "eligibilityProbationConfirmedOnly": "仅限已转正员工",
+      "eligibilityProbationProbationOnly": "仅限试用期员工",
+      "eligibilitySummaryConfirmedOnly": "仅限已转正",
+      "eligibilitySummaryProbationOnly": "仅限试用期",
       "allowedDurationsLabel": "允许的时长",
       "allowedDurationsHelp": "选择员工可为此假期类型选择的时长。全天始终可用。",
       "duration_full_day": "全天",
@@ -4378,7 +4408,42 @@
       "threshold1": "层级1 至（年）",
       "threshold2": "层级2 至（年）",
       "thresholdError": "层级边界必须为整数，且第二个大于第一个。",
-      "saveEntitlement": "保存额度"
+      "saveEntitlement": "保存额度",
+      "tierUnderFixed": "少于2年",
+      "tierMidFixed": "2–5年",
+      "tierOverFixed": "超过5年",
+      "entSortLabel": "排序",
+      "entSortAsc": "假期类型 A–Z",
+      "entSortDesc": "假期类型 Z–A",
+      "duplicateError": "此假期类型已在本方案中配置。",
+      "requiredError": "请填写所有必填字段。",
+      "requiredAria": "必填",
+      "editSchemeTitle": "编辑福利方案",
+      "cancel": "取消",
+      "gradeGroupSearchPlaceholder": "搜索职级组…",
+      "gradeGroupNoResults": "未找到职级组。",
+      "legacyValueSuffix": "（旧值）",
+      "schemeCount": "{count} 个方案",
+      "combinedTitle": "合并假期上限",
+      "combinedHelp": "将多种假期类型合并于一个共享的每周期总额下（例如：恩恤假 + 婚假 + 陪产假 = 每年5天）。",
+      "combinedNameLabel": "上限名称",
+      "combinedNamePlaceholder": "例如：恩恤假池",
+      "combinedTotalLabel": "每年总天数",
+      "combinedTypesLabel": "此池中的假期类型",
+      "combinedAdd": "添加合并上限",
+      "combinedNone": "此方案未配置合并上限。",
+      "combinedColName": "名称",
+      "combinedColTotal": "总天数",
+      "combinedColTypes": "假期类型",
+      "copyButton": "从其他方案复制权益…",
+      "copyTitle": "从其他方案复制权益",
+      "copySourceLabel": "源方案",
+      "copySourcePlaceholder": "选择方案…",
+      "copyPreviewCopy": "将被复制",
+      "copyPreviewSkip": "已跳过 — 已配置",
+      "copyConfirm": "复制权益",
+      "copyEmpty": "选择源方案以预览将复制的内容。",
+      "copyNoneToCopy": "无内容可复制 — 目标已包含此源的所有假期类型。"
     }
   },
   "topbar": {
@@ -6156,6 +6221,16 @@
       "performance_comp_partner": "绩效/薪酬合作伙伴"
     }
   },
+  "commandBar": {
+    "open": "搜索",
+    "placeholder": "搜索操作…",
+    "noResults": "无匹配结果。",
+    "back": "返回",
+    "loading": "加载中…",
+    "openFull": "打开完整页面",
+    "delegationTitle": "审批委托",
+    "delegationSubtitle": "将您的审批任务委托给其他用户"
+  },
   "delegations": {
     "title": "委托管理",
     "subtitle": "在审批人外出期间临时将审批职责交给代理人。",
@@ -6186,7 +6261,23 @@
     "noDownline": "您没有直属下属，因此没有可委托的审批。",
     "showHistory": "显示历史",
     "hideHistory": "隐藏历史",
-    "selfHint": "您外出期间将自己的审批职责交给他人。"
+    "selfHint": "您外出期间将自己的审批职责交给他人。",
+    "scopeTitle": "此委托涵盖哪些内容？",
+    "scopeHint": "选择要移交的模块和任务。全部不勾选则涵盖所有审批。",
+    "wholeModule": "所有{module}审批",
+    "reason": "委托原因",
+    "reasonPlaceholder": "为何委托（例如年假、病假）？",
+    "moduleLabel": {
+      "leave": "请假",
+      "attendance": "考勤",
+      "claims": "报销"
+    },
+    "taskLabel": {
+      "leaveApplication": "请假申请审批",
+      "leaveCancellation": "请假取消审批",
+      "attendanceCorrection": "考勤更正审批",
+      "claimsClaim": "报销审批"
+    }
   },
   "dashboardCardConfig": {
     "title": "仪表板卡片设置",

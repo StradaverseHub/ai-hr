@@ -761,6 +761,14 @@ export const employment = pgTable(
     orgBase: text('org_base'),
     // Employee category (e.g. Management / Executive / Non-executive). Free-text in v1. Nullable.
     employmentCategory: text('employment_category'),
+    // Employee Status redesign (R43 c26c3ce5, migration 0240). Employee Status is now SYSTEM-DERIVED read-time
+    // from the lifecycle dates (see core/employment-status.ts::deriveEmploymentStatus) — it is no longer a
+    // manual field. Blacklist is the ONE genuine stored override: an event-driven (not date-driven) exception
+    // status set by authorised HR via setEmploymentBlacklist. `blacklistedAt` non-null ⇒ the deriver returns
+    // 'blacklisted' (highest priority). Nullable; null = not blacklisted (every existing row). `blacklistReason`
+    // is an optional free-text note captured with the action.
+    blacklistedAt: date('blacklisted_at'),
+    blacklistReason: text('blacklist_reason'),
     createdAt: createdAt(),
   },
   (t) => [
@@ -831,6 +839,9 @@ export const reportingLine = pgTable(
     lineType: reportingLineTypeEnum('line_type').notNull(),
     validFrom: date('valid_from').notNull(),
     validTo: date('valid_to'),
+    // R44 delegation (Phase 2): free-text reason for a `delegate` edge (why the hand-over). Nullable —
+    // legacy rows + all structural line types keep NULL; the UI requires it only for new delegations.
+    reason: text('reason'),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     createdAt: createdAt(),
@@ -839,6 +850,25 @@ export const reportingLine = pgTable(
     index('reporting_line_sub_idx').on(t.subordinateEmploymentId),
     index('reporting_line_mgr_idx').on(t.managerEmploymentId),
   ],
+);
+
+// R44 delegation (Phase 2): per-module / per-task scope for a `delegate` edge. ZERO scope rows for a
+// delegation = "all approvals" (back-compat with every existing whole-scope row). A row with taskType NULL
+// scopes the WHOLE module; a row with a taskType scopes just that approval task. Enforcement lives in
+// app.can_decide_via_delegation (module,taskType overload) + core/approvals.ts assertCanDecide.
+export const reportingLineScope = pgTable(
+  'reporting_line_scope',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    reportingLineId: uuid('reporting_line_id')
+      .notNull()
+      .references(() => reportingLine.id, { onDelete: 'cascade' }),
+    module: text('module').notNull(), // bounded context: 'leave' | 'attendance' | 'claims'
+    taskType: text('task_type'), // null = whole module; else a specific approval task
+    createdAt: createdAt(),
+  },
+  (t) => [index('reporting_line_scope_line_idx').on(t.reportingLineId)],
 );
 
 // ──────────────────────────── Leave ────────────────────────────
@@ -859,6 +889,12 @@ export const leaveType = pgTable('leave_type', {
   // open to all. Enforced at requestLeave; mirrors only what the Act restricts (e.g. maternity is female-
   // only by EA s.37), so it never blocks a statutory entitlement.
   eligibility: jsonb('eligibility'),
+  // Probation eligibility (d6bdbd55, migration 0225): a per-type probation gate alongside the jsonb
+  // eligibility above. NULL = no restriction (every existing row); 'confirmed_only' = only employees past
+  // probation may apply; 'probation_only' = only employees still on probation may apply. Merged into the
+  // LeaveEligibility object at the enforcement chokepoints (assertEligible) so it rides the same gate as
+  // gender/marital/min-service. A DB CHECK constrains it to the closed 2-value set (defence-in-depth).
+  probationEligibility: text('probation_eligibility'),
   // Wave 2 (ADR-0038 2A-2): require a supporting document (e.g. an MC for sick leave). When true,
   // requestLeave rejects a request that has no attachment. Default false = no document needed.
   requiresDocument: boolean('requires_document').notNull().default(false),
@@ -1175,6 +1211,50 @@ export const schemeLeaveEntitlement = pgTable(
   (t) => [
     uniqueIndex('scheme_leave_entitlement_uq').on(t.tenantId, t.benefitSchemeId, t.leaveTypeId),
     index('scheme_leave_entitlement_scheme_idx').on(t.benefitSchemeId),
+  ],
+);
+
+// scheme_leave_combined_limit (R44 4c48fd1f) = a shared per-cycle cap pooling SEVERAL leave types under one
+// total (e.g. "Compassionate + Marriage + Paternity combined = 5 days a year"). Config layer: a named pool
+// with a total day cap, its member leave types held in scheme_leave_combined_limit_member. Enforced at apply
+// / approval time by summing per-cycle usage across ALL member types. ON DELETE CASCADE from the scheme.
+export const schemeLeaveCombinedLimit = pgTable(
+  'scheme_leave_combined_limit',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    benefitSchemeId: uuid('benefit_scheme_id')
+      .notNull()
+      .references(() => benefitScheme.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    totalLimitDays: numeric('total_limit_days', { precision: 6, scale: 2 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('scheme_leave_combined_limit_scheme_idx').on(t.benefitSchemeId)],
+);
+
+// scheme_leave_combined_limit_member = one leave type belonging to a combined-limit pool. benefit_scheme_id is
+// denormalised so a UNIQUE (tenant, scheme, leave_type) can enforce "a leave type joins at most one pool per
+// scheme". ON DELETE CASCADE from the pool.
+export const schemeLeaveCombinedLimitMember = pgTable(
+  'scheme_leave_combined_limit_member',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    combinedLimitId: uuid('combined_limit_id')
+      .notNull()
+      .references(() => schemeLeaveCombinedLimit.id, { onDelete: 'cascade' }),
+    benefitSchemeId: uuid('benefit_scheme_id')
+      .notNull()
+      .references(() => benefitScheme.id, { onDelete: 'cascade' }),
+    leaveTypeId: uuid('leave_type_id')
+      .notNull()
+      .references(() => leaveType.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('scheme_leave_combined_limit_member_uq').on(t.tenantId, t.benefitSchemeId, t.leaveTypeId),
+    index('scheme_leave_combined_limit_member_pool_idx').on(t.combinedLimitId),
   ],
 );
 

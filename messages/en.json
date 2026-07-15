@@ -206,6 +206,8 @@
     "mandatoryCardMessage": "This dashboard card is mandatory and cannot be removed.",
     "mandatoryCardHint": "Mandatory — set by HR, cannot be removed.",
     "shortcutBadge": "Shortcut",
+    "pinnedBadge": "Pinned",
+    "pinnedRowHint": "These cards are pinned to a fixed row and always stay on your dashboard.",
     "emptyDashboardHint": "No cards selected. Use Add Card to choose what to show.",
     "saveChanges": "Save Changes",
     "cancel": "Cancel",
@@ -213,6 +215,11 @@
     "saveConfirmTitle": "Are you sure you want to save the dashboard changes?",
     "saveConfirmConfirm": "Confirm Save",
     "saveConfirmDiscard": "Discard Changes",
+    "removeConfirmTitle": "Remove this card?",
+    "removeConfirmBody": "Remove {card} from your dashboard? You can add it back later.",
+    "removeConfirmConfirm": "Remove",
+    "removeConfirmCancel": "Cancel",
+    "removeConfirmToast": "{card} removed from your dashboard.",
     "block_cards": "Summary Cards",
     "block_plannedAbsences": "Planned Absences",
     "block_recentlyJoined": "Recently Joined",
@@ -220,6 +227,13 @@
     "block_recentActivity": "Recent Activity"
   },
   "people": {
+    "employeeStatus": {
+      "probation": "Probation",
+      "active": "Active",
+      "active_serving_notice": "Active — Serving Notice",
+      "resigned": "Resigned",
+      "blacklisted": "Blacklisted"
+    },
     "list": {
       "title": "Personnel",
       "employeeCount": "{count, plural, one {# employee} other {# employees}}",
@@ -676,7 +690,15 @@
         "save": "Save employment information",
         "assignmentGroup": "Organisation Assignment",
         "saveAssignment": "Save organisation assignment",
-        "assignmentNote": "Changes to Department, Position, Employment Type and Employee Status are recorded with an effective date and kept in the assignment history, so past records stay accurate. Job Grade is saved to the employee record.",
+        "assignmentNote": "Changes to Department, Position and Employment Type are recorded with an effective date and kept in the assignment history, so past records stay accurate. Job Grade is saved to the employee record.",
+        "employeeStatusDerivedNote": "Employee Status is worked out automatically from the employment dates and shown as a read-only badge — no manual step.",
+        "blacklistTitle": "Blacklist",
+        "blacklistReasonLabel": "Reason (optional)",
+        "blacklistReasonPlaceholder": "Reason for blacklisting",
+        "blacklistAction": "Blacklist employee",
+        "blacklistClearAction": "Remove from blacklist",
+        "blacklistNote": "Blacklisting is a deliberate HR action and overrides the automatic Employee Status.",
+        "blacklistActiveNote": "This employee is currently blacklisted.",
         "positionNone": "None",
         "invalidValue": "Invalid value selected.",
         "employmentType_full_time": "Full-time",
@@ -1032,7 +1054,8 @@
       "editNotAllowed": "This leave can no longer be edited.",
       "applyNotAllowed": "Employees cannot apply for {typeName}. Please contact HR.",
       "duplicateApplication": "A leave application already exists for the selected date. Multiple leave applications on the same date are not allowed.",
-      "insufficientBalance": "Insufficient leave balance. Your available leave balance is lower than the requested leave duration."
+      "insufficientBalance": "Insufficient leave balance. Your available leave balance is lower than the requested leave duration.",
+      "combinedLimitExceeded": "Combined leave limit \"{poolName}\" ({days} days a year) would be exceeded across its shared leave types."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
@@ -3196,6 +3219,7 @@
       "saveConfirmConfirm": "Save changes",
       "discardChanges": "Discard changes",
       "codeSavedToast": "Leave type saved.",
+      "savedToast": "Changes saved.",
       "codePlaceholder": "SICK",
       "nameLabel": "Name",
       "namePlaceholder": "Sick Leave",
@@ -3418,6 +3442,12 @@
       "eligibilitySummaryService": "≥ {n} {unit} service",
       "eligibilitySummaryOr": "or",
       "eligibilityMultiHint": "Select one or more; leave empty to allow everyone.",
+      "eligibilityProbationLabel": "Probation status",
+      "eligibilityProbationNone": "No restriction",
+      "eligibilityProbationConfirmedOnly": "Confirmed employees only",
+      "eligibilityProbationProbationOnly": "Employees on probation only",
+      "eligibilitySummaryConfirmedOnly": "Confirmed only",
+      "eligibilitySummaryProbationOnly": "On probation only",
       "allowedDurationsLabel": "Allowed durations",
       "allowedDurationsHelp": "Choose which durations employees may pick for this leave type. Full day is always available.",
       "duration_full_day": "Full day",
@@ -4378,7 +4408,42 @@
       "threshold1": "Tier 1 to (years)",
       "threshold2": "Tier 2 to (years)",
       "thresholdError": "Tier boundaries must be whole numbers with the second greater than the first.",
-      "saveEntitlement": "Save entitlement"
+      "saveEntitlement": "Save entitlement",
+      "tierUnderFixed": "Under 2 Years",
+      "tierMidFixed": "2–5 Years",
+      "tierOverFixed": "More Than 5 Years",
+      "entSortLabel": "Sort",
+      "entSortAsc": "Leave type A–Z",
+      "entSortDesc": "Leave type Z–A",
+      "duplicateError": "This leave type is already configured for this scheme.",
+      "requiredError": "Please fill in all required fields.",
+      "requiredAria": "required",
+      "editSchemeTitle": "Edit benefit scheme",
+      "cancel": "Cancel",
+      "gradeGroupSearchPlaceholder": "Search grade groups…",
+      "gradeGroupNoResults": "No grade groups found.",
+      "legacyValueSuffix": "(legacy)",
+      "schemeCount": "{count} schemes",
+      "combinedTitle": "Combined Leave Limits",
+      "combinedHelp": "Cap several leave types under one shared per-cycle total (e.g. Compassionate + Marriage + Paternity = 5 days a year).",
+      "combinedNameLabel": "Limit name",
+      "combinedNamePlaceholder": "e.g. Compassionate pool",
+      "combinedTotalLabel": "Total days / year",
+      "combinedTypesLabel": "Leave types in this pool",
+      "combinedAdd": "Add combined limit",
+      "combinedNone": "No combined limits configured for this scheme.",
+      "combinedColName": "Name",
+      "combinedColTotal": "Total days",
+      "combinedColTypes": "Leave types",
+      "copyButton": "Copy entitlements from another scheme…",
+      "copyTitle": "Copy entitlements from another scheme",
+      "copySourceLabel": "Source scheme",
+      "copySourcePlaceholder": "Select a scheme…",
+      "copyPreviewCopy": "Will be copied",
+      "copyPreviewSkip": "Skipped — already configured",
+      "copyConfirm": "Copy entitlements",
+      "copyEmpty": "Select a source scheme to preview what will be copied.",
+      "copyNoneToCopy": "Nothing to copy — the target already has every leave type from this source."
     }
   },
   "topbar": {
@@ -6156,6 +6221,16 @@
       "performance_comp_partner": "Perf/Comp Partner"
     }
   },
+  "commandBar": {
+    "open": "Search",
+    "placeholder": "Search for an action…",
+    "noResults": "No matches.",
+    "back": "Back",
+    "loading": "Loading…",
+    "openFull": "Open full page",
+    "delegationTitle": "Approval Delegation",
+    "delegationSubtitle": "Delegate your approval tasks to another user"
+  },
   "delegations": {
     "title": "Delegation Management",
     "subtitle": "Temporarily hand approval duties to a stand-in while an approver is away.",
@@ -6186,7 +6261,23 @@
     "noDownline": "You have no direct reports, so there are no approvals to delegate.",
     "showHistory": "Show history",
     "hideHistory": "Hide history",
-    "selfHint": "You are handing over your own approval duties while you are away."
+    "selfHint": "You are handing over your own approval duties while you are away.",
+    "scopeTitle": "What does this delegation cover?",
+    "scopeHint": "Choose the modules and tasks to hand over. Leave everything unchecked to cover all approvals.",
+    "wholeModule": "All {module} approvals",
+    "reason": "Reason for delegation",
+    "reasonPlaceholder": "Why are you delegating (e.g. annual leave, medical leave)?",
+    "moduleLabel": {
+      "leave": "Leave",
+      "attendance": "Attendance",
+      "claims": "Claims"
+    },
+    "taskLabel": {
+      "leaveApplication": "Leave Application Approval",
+      "leaveCancellation": "Leave Cancellation Approval",
+      "attendanceCorrection": "Attendance Correction Approval",
+      "claimsClaim": "Claim Approval"
+    }
   },
   "dashboardCardConfig": {
     "title": "Dashboard Card Setup",

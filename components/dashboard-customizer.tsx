@@ -9,7 +9,9 @@
  * component; it never calls a function out of a 'use client' module).
  *
  * Normal mode: render the employee's selected cards in their saved order + a "Customize Dashboard" button.
- * Customize mode: a @dnd-kit sortable list whose live render IS the preview, plus
+ * Customize mode (feedback dashgrid): a @dnd-kit 2-D grid — the first row is the employee's draggable
+ *   widget grid (max 4 across on desktop, extra cards wrap); a fixed second row pins the shortcut/action
+ *   cards + Planned Absences so the everyday actions always have a home. The live render IS the preview, plus
  *   • Add Card — a menu of employee-selectable cards not currently shown.
  *   • Remove (×) on each optional card; mandatory cards refuse removal with a shake + the message
  *     "This dashboard card is mandatory and cannot be removed."
@@ -34,16 +36,17 @@ import {
 import {
   SortableContext,
   arrayMove,
+  rectSortingStrategy,
   sortableKeyboardCoordinates,
   useSortable,
-  verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { useTranslations } from 'next-intl';
-import { ArrowUpRight, GripVertical, Plus, X } from 'lucide-react';
+import { toast } from 'sonner';
+import { ArrowUpRight, GripVertical, Pin, Plus, X } from 'lucide-react';
 import { Button, Card } from '@/components/ui';
-import type { DashboardLayout } from '@/lib/dashboard-layout';
+import { MAX_FIRST_ROW, partitionDashboardRows, type DashboardLayout } from '@/lib/dashboard-layout';
 
 /** One HR-configured card the employee may show / add / reorder. */
 export type CustomizerCard = {
@@ -139,6 +142,23 @@ function SortableCard({
   );
 }
 
+/** A card pinned to the fixed second row (customize mode): shown inert, no grip / no remove. */
+function FixedCard({ label, children }: { label: string; children: ReactNode }) {
+  const t = useTranslations('dashboard');
+  return (
+    <div className="relative rounded-2xl border-2 border-dashed border-muted-foreground/25 bg-muted/20 p-2">
+      <div className="mb-2 flex items-center gap-2">
+        <Pin className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="text-xs font-medium text-muted-foreground">{label}</span>
+        <span className="ml-auto text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {t('pinnedBadge')}
+        </span>
+      </div>
+      <div className="pointer-events-none select-none">{children}</div>
+    </div>
+  );
+}
+
 export function DashboardCustomizer({
   cards,
   blocks,
@@ -169,6 +189,9 @@ export function DashboardCustomizer({
   const [customizing, setCustomizing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [shakeKey, setShakeKey] = useState<string | null>(null);
+  // The card whose × was clicked and is awaiting the remove-confirm dialog (feedback removeconfirm). null =
+  // no pending removal. This guards ONLY the individual remove; it is unrelated to the Save-confirm dialog.
+  const [pendingRemoveKey, setPendingRemoveKey] = useState<string | null>(null);
   const shakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -179,14 +202,35 @@ export function DashboardCustomizer({
 
   const addable = cards.filter((c) => c.employeeSelectable && !visible.includes(c.key));
 
+  // Row assignment (feedback dashgrid) is DERIVED from the card config, never persisted: shortcut/action
+  // cards + Planned Absences are pinned to the fixed second row; everything else selected is a draggable
+  // first-row widget. See lib/dashboard-layout.partitionDashboardRows / the design-tension note there.
+  const isPinned = (key: string): boolean => {
+    const c = byKey.get(key);
+    if (!c) return false;
+    return c.cardType === 'shortcut' || c.cardType === 'action' || key === 'plannedAbsences';
+  };
+  const pinnedKeys = useMemo(() => new Set(visible.filter(isPinned)), [visible, byKey]);
+  const { row1: sortableKeys, row2: fixedKeys } = partitionDashboardRows(
+    { selected: visible, order: visible },
+    pinnedKeys,
+  );
+
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     setVisible((cur) => {
-      const from = cur.indexOf(active.id as string);
-      const to = cur.indexOf(over.id as string);
-      if (from < 0 || to < 0) return cur;
-      return arrayMove(cur, from, to);
+      // 2-D grid reorder: dnd-kit's rectSortingStrategy maps the grid geometry onto the flat first-row
+      // order, so a straight arrayMove over the (non-pinned) row-1 keys is the correct L/R + up/down move.
+      const row1 = cur.filter((k) => !isPinned(k));
+      const row2 = cur.filter((k) => isPinned(k));
+      const from = row1.indexOf(active.id as string);
+      const to = row1.indexOf(over.id as string);
+      if (from < 0 || to < 0) return cur; // over a pinned/absent target → spring back (no-op)
+      const nextRow1 = arrayMove(row1, from, to);
+      // Max-4 first row is enforced by the MAX_FIRST_ROW-column grid (extra cards wrap below); a reorder
+      // never changes the count, so this stays within the cap. Rebuild visible as row1-then-fixed.
+      return [...nextRow1, ...row2];
     });
   };
 
@@ -196,15 +240,30 @@ export function DashboardCustomizer({
     shakeTimer.current = setTimeout(() => setShakeKey(null), 600);
   };
 
-  const removeCard = (id: string) => {
+  // × click: mandatory cards shake + refuse (no dialog); optional cards open the remove-confirm dialog
+  // instead of removing immediately, so an accidental click during rearranging can't drop a card.
+  const requestRemove = (id: string) => {
     const card = byKey.get(id);
     if (card?.mandatory) {
       // Mandatory cards can't be removed → shake + message, card stays.
       triggerShake(id);
       return;
     }
-    setVisible((cur) => cur.filter((k) => k !== id));
+    setPendingRemoveKey(id);
   };
+
+  // Confirm in the dialog → actually drop the card from the working set (still not persisted until Save).
+  const confirmRemove = () => {
+    const id = pendingRemoveKey;
+    if (!id) return;
+    setVisible((cur) => cur.filter((k) => k !== id));
+    setPendingRemoveKey(null);
+    toast.success(t('removeConfirmToast', { card: labelFor(id) }));
+  };
+
+  // Cancel/close → leave `visible` untouched (a plain no-op close; NOT the Save-confirm cancel that reverts
+  // the whole customize session).
+  const cancelRemove = () => setPendingRemoveKey(null);
 
   const addCard = (id: string) => {
     setVisible((cur) => (cur.includes(id) ? cur : [...cur, id]));
@@ -340,37 +399,99 @@ export function DashboardCustomizer({
       </div>
 
       {customizing ? (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={visible} strategy={verticalListSortingStrategy}>
-            <div className="space-y-4">
-              {visible.map((key) => (
-                <SortableCard
-                  key={key}
-                  id={key}
-                  label={labelFor(key)}
-                  mandatory={byKey.get(key)?.mandatory ?? false}
-                  shaking={shakeKey === key}
-                  mandatoryMessage={t('mandatoryCardMessage')}
-                  onRemove={removeCard}
-                >
-                  {nodeFor(key)}
-                </SortableCard>
-              ))}
-              {visible.length === 0 && (
-                <p className="rounded-2xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                  {t('emptyDashboardHint')}
-                </p>
-              )}
+        <div className="space-y-6">
+          {/* Row 1 — the draggable widget grid (max MAX_FIRST_ROW=4 across on desktop; extra cards wrap). */}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <SortableContext items={sortableKeys} strategy={rectSortingStrategy}>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {sortableKeys.map((key) => (
+                  <SortableCard
+                    key={key}
+                    id={key}
+                    label={labelFor(key)}
+                    mandatory={byKey.get(key)?.mandatory ?? false}
+                    shaking={shakeKey === key}
+                    mandatoryMessage={t('mandatoryCardMessage')}
+                    onRemove={requestRemove}
+                  >
+                    {nodeFor(key)}
+                  </SortableCard>
+                ))}
+                {sortableKeys.length === 0 && (
+                  <p className="rounded-2xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground sm:col-span-2 lg:col-span-4">
+                    {t('emptyDashboardHint')}
+                  </p>
+                )}
+              </div>
+            </SortableContext>
+          </DndContext>
+          {/* Row 2 — the fixed row of pinned shortcut/action cards + Planned Absences (not draggable). */}
+          {fixedKeys.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">{t('pinnedRowHint')}</p>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {fixedKeys.map((key) => (
+                  <FixedCard key={key} label={labelFor(key)}>
+                    {nodeFor(key)}
+                  </FixedCard>
+                ))}
+              </div>
             </div>
-          </SortableContext>
-        </DndContext>
+          )}
+        </div>
       ) : (
         <div className="space-y-6">
-          {visible.map((key) => (
-            <div key={key}>{nodeFor(key)}</div>
-          ))}
+          {/* Row 1 — the employee's arranged widget grid. */}
+          {sortableKeys.length > 0 && (
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {sortableKeys.map((key) => (
+                <div key={key}>{nodeFor(key)}</div>
+              ))}
+            </div>
+          )}
+          {/* Row 2 — the fixed pinned row. */}
+          {fixedKeys.length > 0 && (
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {fixedKeys.map((key) => (
+                <div key={key}>{nodeFor(key)}</div>
+              ))}
+            </div>
+          )}
         </div>
       )}
+
+      {/* Remove-confirm (feedback removeconfirm): guards the individual card × so an accidental click while
+          rearranging can't drop a card. Controlled by pendingRemoveKey; Cancel is a no-op close. */}
+      <AlertDialog.Root
+        open={pendingRemoveKey !== null}
+        onOpenChange={(open) => {
+          if (!open) cancelRemove();
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
+            <AlertDialog.Title className="text-base font-semibold">
+              {t('removeConfirmTitle')}
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
+              {t('removeConfirmBody', { card: pendingRemoveKey ? labelFor(pendingRemoveKey) : '' })}
+            </AlertDialog.Description>
+            <div className="mt-5 flex justify-end gap-2">
+              <AlertDialog.Cancel asChild>
+                <Button type="button" variant="outline" size="sm" onClick={cancelRemove}>
+                  {t('removeConfirmCancel')}
+                </Button>
+              </AlertDialog.Cancel>
+              <AlertDialog.Action asChild>
+                <Button type="button" variant="destructive" size="sm" onClick={confirmRemove}>
+                  {t('removeConfirmConfirm')}
+                </Button>
+              </AlertDialog.Action>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
     </div>
   );
 }

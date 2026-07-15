@@ -18,6 +18,8 @@ import {
   jobGrade,
   leaveType,
   schemeLeaveEntitlement,
+  schemeLeaveCombinedLimit,
+  schemeLeaveCombinedLimitMember,
 } from '../db/schema';
 import { isWellFormedBands, type ServiceBand } from './leave-compute';
 
@@ -422,6 +424,223 @@ export async function deleteSchemeEntitlement(ctx: SessionContext, p: { id: stri
       aggregateType: 'scheme-leave-entitlement',
       aggregateId: p.id,
       eventType: 'scheme-leave-entitlement.deleted',
+      actor: actorOf(ctx),
+      payload: {},
+    });
+  });
+}
+
+/** Copy all leave entitlements from a source scheme into a target scheme, SKIPPING any leave type the target
+ *  already has (no overwrite). Emits ONE DomainEvent 'scheme-leave-entitlement.copied' with the copied count
+ *  + leave-type ids (not one event per row). Dedup by leaveTypeId ties into the duplicate-validation item. */
+export async function copySchemeEntitlements(
+  ctx: SessionContext,
+  p: { sourceSchemeId: string; targetSchemeId: string },
+): Promise<{ copied: number; copiedLeaveTypeIds: string[] }> {
+  if (!p.sourceSchemeId || !p.targetSchemeId) throw new Error('Source and target schemes are required.');
+  if (p.sourceSchemeId === p.targetSchemeId) throw new Error('Source and target schemes must be different.');
+  return withTenant(ctx, async (tx) => {
+    const sourceRows = await tx
+      .select({ leaveTypeId: schemeLeaveEntitlement.leaveTypeId, serviceBands: schemeLeaveEntitlement.serviceBands })
+      .from(schemeLeaveEntitlement)
+      .where(eq(schemeLeaveEntitlement.benefitSchemeId, p.sourceSchemeId));
+    const targetRows = await tx
+      .select({ leaveTypeId: schemeLeaveEntitlement.leaveTypeId })
+      .from(schemeLeaveEntitlement)
+      .where(eq(schemeLeaveEntitlement.benefitSchemeId, p.targetSchemeId));
+    const existing = new Set(targetRows.map((r) => r.leaveTypeId));
+    const toCopy = sourceRows.filter((r) => !existing.has(r.leaveTypeId));
+    if (toCopy.length === 0) return { copied: 0, copiedLeaveTypeIds: [] };
+    const inserted = await tx
+      .insert(schemeLeaveEntitlement)
+      .values(
+        toCopy.map((r) => ({
+          tenantId: ctx.tenantId,
+          benefitSchemeId: p.targetSchemeId,
+          leaveTypeId: r.leaveTypeId,
+          serviceBands: r.serviceBands as ServiceBand[],
+        })),
+      )
+      .returning({ id: schemeLeaveEntitlement.id, leaveTypeId: schemeLeaveEntitlement.leaveTypeId });
+    const copiedLeaveTypeIds = inserted.map((r) => r.leaveTypeId);
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'scheme-leave-entitlement',
+      aggregateId: p.targetSchemeId,
+      eventType: 'scheme-leave-entitlement.copied',
+      actor: actorOf(ctx),
+      payload: {
+        sourceSchemeId: p.sourceSchemeId,
+        targetSchemeId: p.targetSchemeId,
+        count: inserted.length,
+        copiedLeaveTypeIds,
+      },
+    });
+    return { copied: inserted.length, copiedLeaveTypeIds };
+  });
+}
+
+// ── Scheme combined leave-type limits (R44 4c48fd1f) ──────────────────────────────────────────────────
+export type SchemeCombinedLimitRow = {
+  id: string;
+  benefitSchemeId: string;
+  name: string;
+  totalLimitDays: number;
+  leaveTypeIds: string[];
+};
+
+/** A pool caps SEVERAL leave types under one per-cycle total. Read-only — no events (CLAUDE.md skip rule). */
+export async function listSchemeCombinedLimits(
+  ctx: SessionContext,
+  p?: { benefitSchemeId?: string },
+): Promise<SchemeCombinedLimitRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const pools = await tx
+      .select({
+        id: schemeLeaveCombinedLimit.id,
+        benefitSchemeId: schemeLeaveCombinedLimit.benefitSchemeId,
+        name: schemeLeaveCombinedLimit.name,
+        totalLimitDays: schemeLeaveCombinedLimit.totalLimitDays,
+      })
+      .from(schemeLeaveCombinedLimit)
+      .where(p?.benefitSchemeId ? eq(schemeLeaveCombinedLimit.benefitSchemeId, p.benefitSchemeId) : undefined)
+      .orderBy(asc(schemeLeaveCombinedLimit.name));
+    if (pools.length === 0) return [];
+    const members = await tx
+      .select({
+        combinedLimitId: schemeLeaveCombinedLimitMember.combinedLimitId,
+        leaveTypeId: schemeLeaveCombinedLimitMember.leaveTypeId,
+      })
+      .from(schemeLeaveCombinedLimitMember)
+      .where(
+        inArray(
+          schemeLeaveCombinedLimitMember.combinedLimitId,
+          pools.map((x) => x.id),
+        ),
+      );
+    const byPool = new Map<string, string[]>();
+    for (const m of members) {
+      const arr = byPool.get(m.combinedLimitId);
+      if (arr) arr.push(m.leaveTypeId);
+      else byPool.set(m.combinedLimitId, [m.leaveTypeId]);
+    }
+    return pools.map((x) => ({
+      id: x.id,
+      benefitSchemeId: x.benefitSchemeId,
+      name: x.name,
+      totalLimitDays: Number(x.totalLimitDays),
+      leaveTypeIds: byPool.get(x.id) ?? [],
+    }));
+  });
+}
+
+function cleanLimitDays(v: number | undefined): string {
+  if (v == null || !Number.isFinite(v) || v <= 0) {
+    throw new Error('Combined limit: total days must be greater than zero.');
+  }
+  if (v > 999) throw new Error('Combined limit: total days is too large.');
+  return v.toFixed(2);
+}
+
+function cleanMemberTypeIds(ids: string[] | undefined): string[] {
+  const unique = [...new Set((ids ?? []).filter(Boolean))];
+  if (unique.length < 2) {
+    throw new Error('Combined limit: pick at least two leave types to share the pool.');
+  }
+  return unique;
+}
+
+/** Replace a pool's member leave types. The scheme-wide unique (tenant, scheme, leave_type) enforces that a
+ *  leave type joins at most one pool per scheme → a 23505 becomes a friendly error. */
+async function replaceCombinedLimitMembers(
+  tx: Tx,
+  tenantId: string,
+  poolId: string,
+  benefitSchemeId: string,
+  leaveTypeIds: string[],
+) {
+  await tx
+    .delete(schemeLeaveCombinedLimitMember)
+    .where(eq(schemeLeaveCombinedLimitMember.combinedLimitId, poolId));
+  if (leaveTypeIds.length) {
+    await tx
+      .insert(schemeLeaveCombinedLimitMember)
+      .values(leaveTypeIds.map((leaveTypeId) => ({ tenantId, combinedLimitId: poolId, benefitSchemeId, leaveTypeId })))
+      .catch((e) => {
+        if (String((e as { code?: string })?.code) === '23505') {
+          throw new Error('Combined limit: a chosen leave type already belongs to another pool in this scheme.');
+        }
+        throw e;
+      });
+  }
+}
+
+export async function createSchemeCombinedLimit(
+  ctx: SessionContext,
+  p: { benefitSchemeId: string; name: string; totalLimitDays: number; leaveTypeIds: string[] },
+) {
+  if (!p.benefitSchemeId) throw new Error('Benefit scheme is required.');
+  const name = cleanName(p.name, 'Combined limit name');
+  const totalLimitDays = cleanLimitDays(p.totalLimitDays);
+  const leaveTypeIds = cleanMemberTypeIds(p.leaveTypeIds);
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(schemeLeaveCombinedLimit)
+      .values({ tenantId: ctx.tenantId, benefitSchemeId: p.benefitSchemeId, name, totalLimitDays })
+      .returning({ id: schemeLeaveCombinedLimit.id });
+    await replaceCombinedLimitMembers(tx, ctx.tenantId, row.id, p.benefitSchemeId, leaveTypeIds);
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'scheme-leave-combined-limit',
+      aggregateId: row.id,
+      eventType: 'scheme-leave-combined-limit.created',
+      actor: actorOf(ctx),
+      payload: { benefitSchemeId: p.benefitSchemeId, name, totalLimitDays, leaveTypeIds },
+    });
+    return row;
+  });
+}
+
+export async function updateSchemeCombinedLimit(
+  ctx: SessionContext,
+  p: { id: string; name: string; totalLimitDays: number; leaveTypeIds: string[] },
+) {
+  if (!p.id) throw new Error('Combined limit id is required.');
+  const name = cleanName(p.name, 'Combined limit name');
+  const totalLimitDays = cleanLimitDays(p.totalLimitDays);
+  const leaveTypeIds = cleanMemberTypeIds(p.leaveTypeIds);
+  return withTenant(ctx, async (tx) => {
+    const [existing] = await tx
+      .select({ benefitSchemeId: schemeLeaveCombinedLimit.benefitSchemeId })
+      .from(schemeLeaveCombinedLimit)
+      .where(eq(schemeLeaveCombinedLimit.id, p.id))
+      .limit(1);
+    if (!existing) throw new Error('Combined limit not found.');
+    await tx
+      .update(schemeLeaveCombinedLimit)
+      .set({ name, totalLimitDays })
+      .where(eq(schemeLeaveCombinedLimit.id, p.id));
+    await replaceCombinedLimitMembers(tx, ctx.tenantId, p.id, existing.benefitSchemeId, leaveTypeIds);
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'scheme-leave-combined-limit',
+      aggregateId: p.id,
+      eventType: 'scheme-leave-combined-limit.updated',
+      actor: actorOf(ctx),
+      payload: { name, totalLimitDays, leaveTypeIds },
+    });
+  });
+}
+
+export async function deleteSchemeCombinedLimit(ctx: SessionContext, p: { id: string }) {
+  return withTenant(ctx, async (tx) => {
+    // Members cascade via FK. The pool row delete is the audited write.
+    await tx.delete(schemeLeaveCombinedLimit).where(eq(schemeLeaveCombinedLimit.id, p.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'scheme-leave-combined-limit',
+      aggregateId: p.id,
+      eventType: 'scheme-leave-combined-limit.deleted',
       actor: actorOf(ctx),
       payload: {},
     });

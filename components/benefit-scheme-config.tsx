@@ -1,9 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
+import { Combobox } from '@/components/ui/combobox';
 
 /**
  * Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b) — the client subsection rendered
@@ -38,6 +40,13 @@ type Entitlement = {
   leaveTypeName: string | null;
   serviceBands: ServiceBand[];
 };
+type CombinedLimit = {
+  id: string;
+  benefitSchemeId: string;
+  name: string;
+  totalLimitDays: number;
+  leaveTypeIds: string[];
+};
 
 type Actions = {
   createGradeGroup: (fd: FormData) => void | Promise<void>;
@@ -48,6 +57,10 @@ type Actions = {
   deleteScheme: (fd: FormData) => void | Promise<void>;
   upsertEntitlement: (fd: FormData) => void | Promise<void>;
   deleteEntitlement: (fd: FormData) => void | Promise<void>;
+  copyEntitlements: (fd: FormData) => void | Promise<void>;
+  createCombinedLimit: (fd: FormData) => void | Promise<void>;
+  updateCombinedLimit: (fd: FormData) => void | Promise<void>;
+  deleteCombinedLimit: (fd: FormData) => void | Promise<void>;
 };
 
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as const;
@@ -74,6 +87,7 @@ export function BenefitSchemeConfig({
   gradeGroups,
   schemes,
   entitlements,
+  combinedLimits,
   actions,
 }: {
   companies: Company[];
@@ -82,6 +96,7 @@ export function BenefitSchemeConfig({
   gradeGroups: GradeGroup[];
   schemes: Scheme[];
   entitlements: Entitlement[];
+  combinedLimits: CombinedLimit[];
   actions: Actions;
 }) {
   const t = useTranslations('admin.benefitScheme');
@@ -90,8 +105,32 @@ export function BenefitSchemeConfig({
   const activeGroups = gradeGroups.filter((g) => !g.archived);
   const empTypeLabel = (v: string) => t(`empType_${v}` as `empType_${(typeof EMPLOYMENT_TYPES)[number]}`);
 
+  // R44 02a7082b: group the flat scheme list by company into collapsible per-company sections (companies
+  // ordered A–Z; schemes already asc(name) from the loader). Presentation only — no data change.
+  const schemesByCompany = useMemo(() => {
+    const map = new Map<string, Scheme[]>();
+    for (const s of schemes) {
+      const arr = map.get(s.companyId);
+      if (arr) arr.push(s);
+      else map.set(s.companyId, [s]);
+    }
+    return [...map.entries()]
+      .map(([companyId, list]) => ({ companyId, name: companyName.get(companyId) ?? '—', schemes: list }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [schemes, companyName]);
+
   const [selectedSchemeId, setSelectedSchemeId] = useState<string>(schemes[0]?.id ?? '');
   const selectedEnts = entitlements.filter((e) => e.benefitSchemeId === selectedSchemeId);
+
+  // R44 8d422204: client-side A–Z / Z–A sort of the entitlements table by leave-type name. Display-order
+  // only — re-sorts automatically on add/update/delete via re-render. Default ascending.
+  const [entSort, setEntSort] = useState<'asc' | 'desc'>('asc');
+  const sortedEnts = useMemo(() => {
+    const copy = [...selectedEnts];
+    copy.sort((a, b) => (a.leaveTypeName ?? '').localeCompare(b.leaveTypeName ?? ''));
+    if (entSort === 'desc') copy.reverse();
+    return copy;
+  }, [selectedEnts, entSort]);
 
   // The three service-band column headers interpolate the scheme's ACTUAL configured thresholds
   // (feedback 0aa304a1) rather than the old literal "N1"/"N2" placeholders. Thresholds live per
@@ -189,59 +228,62 @@ export function BenefitSchemeConfig({
           <h3 className="text-sm font-semibold text-foreground">{t('schemesTitle')}</h3>
           <p className="text-xs text-muted-foreground">{t('schemesHelp')}</p>
         </div>
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-3 py-2 font-medium">{t('colCompany')}</th>
-                <th className="px-3 py-2 font-medium">{t('colEmpType')}</th>
-                <th className="px-3 py-2 font-medium">{t('colGradeGroup')}</th>
-                <th className="px-3 py-2 font-medium">{t('colName')}</th>
-                <th className="px-3 py-2 font-medium">{t('colStatus')}</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {schemes.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-3 py-4 text-center text-muted-foreground">{t('noSchemes')}</td>
-                </tr>
-              )}
-              {schemes.map((s) => (
-                <tr key={s.id} className="border-b border-border last:border-0 align-top">
-                  <td className="px-3 py-2">{companyName.get(s.companyId) ?? '—'}</td>
-                  <td className="px-3 py-2">{empTypeLabel(s.employmentType)}</td>
-                  <td className="px-3 py-2">{s.gradeGroupId ? (groupName.get(s.gradeGroupId) ?? '—') : t('anyGroup')}</td>
-                  <td className="px-3 py-2 font-medium">{s.name}</td>
-                  <td className="px-3 py-2">
-                    <Badge variant={s.status === 'active' ? 'success' : 'default'}>
-                      {t(s.status === 'active' ? 'statusActive' : 'statusInactive')}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2">
-                    <details>
-                      <summary className="cursor-pointer text-xs text-primary">{t('edit')}</summary>
-                      <div className="mt-2 space-y-2">
-                        <SchemeForm
-                          action={actions.updateScheme}
-                          companies={companies}
-                          groups={activeGroups}
-                          empTypeLabel={empTypeLabel}
-                          t={t}
-                          scheme={s}
-                        />
-                        <form action={actions.deleteScheme}>
-                          <input type="hidden" name="id" value={s.id} />
-                          <Button type="submit" variant="ghost" size="sm">{t('delete')}</Button>
-                        </form>
-                      </div>
-                    </details>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {schemes.length === 0 ? (
+          <p className="rounded-lg border border-border px-3 py-4 text-center text-sm text-muted-foreground">
+            {t('noSchemes')}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {schemesByCompany.map((group) => (
+              <details key={group.companyId} open className="overflow-hidden rounded-lg border border-border">
+                <summary className="flex cursor-pointer items-center justify-between gap-2 bg-muted/40 px-3 py-2">
+                  <span className="text-sm font-semibold text-foreground">{group.name}</span>
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {t('schemeCount', { count: group.schemes.length })}
+                  </span>
+                </summary>
+                <div className="overflow-x-auto border-t border-border">
+                  <table className="w-full min-w-[640px] text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                        <th className="px-3 py-2 font-medium">{t('colEmpType')}</th>
+                        <th className="px-3 py-2 font-medium">{t('colGradeGroup')}</th>
+                        <th className="px-3 py-2 font-medium">{t('colName')}</th>
+                        <th className="px-3 py-2 font-medium">{t('colStatus')}</th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.schemes.map((s) => (
+                        <tr key={s.id} className="border-b border-border last:border-0 align-top">
+                          <td className="px-3 py-2">{empTypeLabel(s.employmentType)}</td>
+                          <td className="px-3 py-2">{s.gradeGroupId ? (groupName.get(s.gradeGroupId) ?? '—') : t('anyGroup')}</td>
+                          <td className="px-3 py-2 font-medium">{s.name}</td>
+                          <td className="px-3 py-2">
+                            <Badge variant={s.status === 'active' ? 'success' : 'default'}>
+                              {t(s.status === 'active' ? 'statusActive' : 'statusInactive')}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2">
+                            <SchemeEditDialog
+                              scheme={s}
+                              companies={companies}
+                              groups={activeGroups}
+                              empTypeLabel={empTypeLabel}
+                              updateScheme={actions.updateScheme}
+                              deleteScheme={actions.deleteScheme}
+                              t={t}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
         <div className="rounded-lg border border-dashed border-border p-3">
           <p className="mb-2 text-xs font-medium text-muted-foreground">{t('addScheme')}</p>
           <SchemeForm
@@ -265,17 +307,39 @@ export function BenefitSchemeConfig({
           <p className="text-sm text-muted-foreground">{t('entNeedsScheme')}</p>
         ) : (
           <>
-            <Field label={t('selectScheme')}>
-              <select
-                value={selectedSchemeId}
-                onChange={(e) => setSelectedSchemeId(e.target.value)}
-                className={`${inputCls} w-72`}
-              >
-                {schemes.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </Field>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <Field label={t('selectScheme')}>
+                <select
+                  value={selectedSchemeId}
+                  onChange={(e) => setSelectedSchemeId(e.target.value)}
+                  className={`${inputCls} w-72`}
+                >
+                  {schemes.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </Field>
+              <div className="flex items-end gap-3">
+                <Field label={t('entSortLabel')}>
+                  <select
+                    value={entSort}
+                    onChange={(e) => setEntSort(e.target.value as 'asc' | 'desc')}
+                    className={`${inputCls} w-48`}
+                  >
+                    <option value="asc">{t('entSortAsc')}</option>
+                    <option value="desc">{t('entSortDesc')}</option>
+                  </select>
+                </Field>
+                {/* R44 ba494b21 — copy another scheme's entitlements into this one (skip-existing). */}
+                <CopyEntitlementsDialog
+                  targetSchemeId={selectedSchemeId}
+                  schemes={schemes}
+                  entitlements={entitlements}
+                  action={actions.copyEntitlements}
+                  t={t}
+                />
+              </div>
+            </div>
             <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full min-w-[560px] text-sm">
                 <thead>
@@ -293,7 +357,7 @@ export function BenefitSchemeConfig({
                       <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">{t('noEntitlements')}</td>
                     </tr>
                   )}
-                  {selectedEnts.map((e) => {
+                  {sortedEnts.map((e) => {
                     const ti = tiersFromBands(e.serviceBands);
                     return (
                       <tr key={e.id} className="border-b border-border last:border-0">
@@ -317,12 +381,164 @@ export function BenefitSchemeConfig({
               action={actions.upsertEntitlement}
               schemeId={selectedSchemeId}
               leaveTypes={leaveTypes}
+              existingLeaveTypeIds={selectedEnts.map((e) => e.leaveTypeId)}
+              t={t}
+            />
+
+            {/* R44 4c48fd1f — Combined Leave Limits: shared per-cycle caps pooling several leave types. */}
+            <CombinedLimitsSection
+              schemeId={selectedSchemeId}
+              leaveTypes={leaveTypes}
+              limits={combinedLimits.filter((cl) => cl.benefitSchemeId === selectedSchemeId)}
+              createAction={actions.createCombinedLimit}
+              updateAction={actions.updateCombinedLimit}
+              deleteAction={actions.deleteCombinedLimit}
               t={t}
             />
           </>
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * CombinedLimitsSection (R44 4c48fd1f, Stage 1) — per-scheme pools that cap several leave types under one
+ * shared per-cycle total. Lists existing pools (name / total / member type names) with edit + delete, and an
+ * add form. Members are chosen from the scheme-eligible leave types; the server enforces "a type joins at
+ * most one pool per scheme" (unique index) + a friendly error on conflict.
+ */
+function CombinedLimitsSection({
+  schemeId,
+  leaveTypes,
+  limits,
+  createAction,
+  updateAction,
+  deleteAction,
+  t,
+}: {
+  schemeId: string;
+  leaveTypes: LeaveType[];
+  limits: CombinedLimit[];
+  createAction: (fd: FormData) => void | Promise<void>;
+  updateAction: (fd: FormData) => void | Promise<void>;
+  deleteAction: (fd: FormData) => void | Promise<void>;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const typeName = useMemo(() => new Map(leaveTypes.map((lt) => [lt.id, lt.name])), [leaveTypes]);
+  const sortedLeaveTypes = useMemo(
+    () => [...leaveTypes].sort((a, b) => a.name.localeCompare(b.name)),
+    [leaveTypes],
+  );
+  return (
+    <div className="space-y-3 pt-2">
+      <div>
+        <h4 className="text-sm font-semibold text-foreground">{t('combinedTitle')}</h4>
+        <p className="text-xs text-muted-foreground">{t('combinedHelp')}</p>
+      </div>
+      <ul className="divide-y divide-border rounded-lg border border-border">
+        {limits.length === 0 && (
+          <li className="px-3 py-4 text-center text-sm text-muted-foreground">{t('combinedNone')}</li>
+        )}
+        {limits.map((cl) => (
+          <li key={cl.id} className="px-3 py-2.5">
+            <details>
+              <summary className="flex cursor-pointer items-center justify-between gap-2">
+                <span className="text-sm font-medium text-foreground">{cl.name}</span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {cl.totalLimitDays} · {cl.leaveTypeIds.map((id) => typeName.get(id) ?? '—').join(', ')}
+                </span>
+              </summary>
+              <div className="mt-3 space-y-3">
+                <CombinedLimitForm
+                  action={updateAction}
+                  schemeId={schemeId}
+                  leaveTypes={sortedLeaveTypes}
+                  limit={cl}
+                  t={t}
+                />
+                <form action={deleteAction}>
+                  <input type="hidden" name="id" value={cl.id} />
+                  <Button type="submit" variant="ghost" size="sm">{t('delete')}</Button>
+                </form>
+              </div>
+            </details>
+          </li>
+        ))}
+      </ul>
+      <CombinedLimitForm
+        action={createAction}
+        schemeId={schemeId}
+        leaveTypes={sortedLeaveTypes}
+        limit={null}
+        t={t}
+      />
+    </div>
+  );
+}
+
+function CombinedLimitForm({
+  action,
+  schemeId,
+  leaveTypes,
+  limit,
+  t,
+}: {
+  action: (fd: FormData) => void | Promise<void>;
+  schemeId: string;
+  leaveTypes: LeaveType[];
+  limit: CombinedLimit | null;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  return (
+    <form action={action} className="space-y-3 rounded-lg border border-dashed border-border p-3">
+      {limit ? (
+        <input type="hidden" name="id" value={limit.id} />
+      ) : (
+        <input type="hidden" name="benefitSchemeId" value={schemeId} />
+      )}
+      {!limit && <p className="text-xs font-medium text-muted-foreground">{t('combinedAdd')}</p>}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:items-end">
+        <Field label={t('combinedNameLabel')}>
+          <input
+            name="name"
+            required
+            defaultValue={limit?.name ?? ''}
+            placeholder={t('combinedNamePlaceholder')}
+            className={inputCls}
+          />
+        </Field>
+        <Field label={t('combinedTotalLabel')}>
+          <input
+            name="totalLimitDays"
+            type="number"
+            min={0.5}
+            step="0.5"
+            required
+            defaultValue={limit ? String(limit.totalLimitDays) : ''}
+            className={`${inputCls} w-24`}
+          />
+        </Field>
+      </div>
+      <div>
+        <span className="text-xs font-medium text-muted-foreground">{t('combinedTypesLabel')}</span>
+        <div className="mt-1.5 flex flex-wrap gap-2">
+          {leaveTypes.map((lt) => (
+            <label key={lt.id} className="flex items-center gap-1.5 rounded border border-border px-2 py-1 text-xs">
+              <input
+                type="checkbox"
+                name="leaveTypeIds"
+                value={lt.id}
+                defaultChecked={limit?.leaveTypeIds.includes(lt.id) ?? false}
+                className="size-3.5 rounded"
+              />
+              {lt.name}
+            </label>
+          ))}
+        </div>
+      </div>
+      <Button type="submit" size="sm">{limit ? t('save') : t('combinedAdd')}</Button>
+    </form>
   );
 }
 
@@ -359,13 +575,19 @@ function SchemeForm({
           ))}
         </select>
       </Field>
+      {/* R44 d28dffe7: searchable single-select combobox (type-ahead) replaces the plain grade-group dropdown.
+          Same name/value FormData contract (hidden input carries gradeGroupId), so updateScheme is unchanged.
+          Empty selection = "Any / ungrouped" (the placeholder row). Options already asc(name) from the loader. */}
       <Field label={t('colGradeGroup')}>
-        <select name="gradeGroupId" defaultValue={scheme?.gradeGroupId ?? ''} className={inputCls}>
-          <option value="">{t('anyGroup')}</option>
-          {groups.map((g) => (
-            <option key={g.id} value={g.id}>{g.name}</option>
-          ))}
-        </select>
+        <Combobox
+          name="gradeGroupId"
+          value={scheme?.gradeGroupId ?? ''}
+          options={groups.map((g) => ({ value: g.id, label: g.name }))}
+          placeholder={t('anyGroup')}
+          searchPlaceholder={t('gradeGroupSearchPlaceholder')}
+          noResultsLabel={t('gradeGroupNoResults')}
+          legacySuffix={t('legacyValueSuffix')}
+        />
       </Field>
       <Field label={t('colName')}>
         <input name="name" defaultValue={scheme?.name ?? ''} required placeholder={t('schemeNamePlaceholder')} className={inputCls} />
@@ -381,63 +603,296 @@ function SchemeForm({
   );
 }
 
+/**
+ * SchemeEditDialog (R44 4a97f681) — the scheme Edit form now opens in a centred Radix Dialog modal instead of
+ * the cramped right-side <details> disclosure, giving the fields room to breathe. Presentation only: it hosts
+ * the SAME SchemeForm + updateScheme server action and the delete form. On Save it closes immediately and the
+ * action's revalidate refreshes the list (staying on the page). Cancel / overlay / Esc close without saving.
+ */
+function SchemeEditDialog({
+  scheme,
+  companies,
+  groups,
+  empTypeLabel,
+  updateScheme,
+  deleteScheme,
+  t,
+}: {
+  scheme: Scheme;
+  companies: Company[];
+  groups: GradeGroup[];
+  empTypeLabel: (v: string) => string;
+  updateScheme: (fd: FormData) => void | Promise<void>;
+  deleteScheme: (fd: FormData) => void | Promise<void>;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <button type="button" className="cursor-pointer text-xs text-primary hover:underline">
+          {t('edit')}
+        </button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-5 text-popover-foreground shadow-lg">
+          <Dialog.Title className="text-base font-semibold">{t('editSchemeTitle')}</Dialog.Title>
+          <div className="mt-4 space-y-3">
+            <SchemeForm
+              action={(fd) => {
+                setOpen(false);
+                return updateScheme(fd);
+              }}
+              companies={companies}
+              groups={groups}
+              empTypeLabel={empTypeLabel}
+              t={t}
+              scheme={scheme}
+            />
+            <div className="flex items-center justify-between border-t border-border pt-3">
+              <form action={deleteScheme}>
+                <input type="hidden" name="id" value={scheme.id} />
+                <Button type="submit" variant="ghost" size="sm">{t('delete')}</Button>
+              </form>
+              <Dialog.Close asChild>
+                <Button type="button" size="sm" variant="outline">{t('cancel')}</Button>
+              </Dialog.Close>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+/**
+ * CopyEntitlementsDialog (R44 ba494b21) — copy all leave entitlements from a source scheme into the current
+ * (target) scheme, SKIPPING any leave type the target already has. A preview (computed client-side from the
+ * already-loaded entitlements) shows what will be copied vs skipped BEFORE the confirm submit. On confirm it
+ * posts copySchemeEntitlements; the action revalidates + the list refreshes.
+ */
+function CopyEntitlementsDialog({
+  targetSchemeId,
+  schemes,
+  entitlements,
+  action,
+  t,
+}: {
+  targetSchemeId: string;
+  schemes: Scheme[];
+  entitlements: Entitlement[];
+  action: (fd: FormData) => void | Promise<void>;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [sourceId, setSourceId] = useState('');
+
+  const targetTypeIds = useMemo(
+    () => new Set(entitlements.filter((e) => e.benefitSchemeId === targetSchemeId).map((e) => e.leaveTypeId)),
+    [entitlements, targetSchemeId],
+  );
+  const preview = useMemo(() => {
+    if (!sourceId) return [] as { name: string; willCopy: boolean }[];
+    return entitlements
+      .filter((e) => e.benefitSchemeId === sourceId)
+      .map((e) => ({ name: e.leaveTypeName ?? '—', willCopy: !targetTypeIds.has(e.leaveTypeId) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [entitlements, sourceId, targetTypeIds]);
+  const copyCount = preview.filter((p) => p.willCopy).length;
+
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setSourceId('');
+      }}
+    >
+      <Dialog.Trigger asChild>
+        <Button type="button" size="sm" variant="outline">{t('copyButton')}</Button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-5 text-popover-foreground shadow-lg">
+          <Dialog.Title className="text-base font-semibold">{t('copyTitle')}</Dialog.Title>
+          <div className="mt-4 space-y-3">
+            <Field label={t('copySourceLabel')}>
+              <select value={sourceId} onChange={(e) => setSourceId(e.target.value)} className={inputCls}>
+                <option value="" disabled>{t('copySourcePlaceholder')}</option>
+                {schemes
+                  .filter((s) => s.id !== targetSchemeId)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+              </select>
+            </Field>
+            {!sourceId ? (
+              <p className="text-xs text-muted-foreground">{t('copyEmpty')}</p>
+            ) : preview.length === 0 || copyCount === 0 ? (
+              <p className="text-xs text-muted-foreground">{t('copyNoneToCopy')}</p>
+            ) : (
+              <ul className="divide-y divide-border rounded-lg border border-border text-sm">
+                {preview.map((p, i) => (
+                  <li key={i} className="flex items-center justify-between gap-2 px-3 py-1.5">
+                    <span className="text-foreground">{p.name}</span>
+                    <Badge variant={p.willCopy ? 'success' : 'default'}>
+                      {p.willCopy ? t('copyPreviewCopy') : t('copyPreviewSkip')}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <Dialog.Close asChild>
+                <Button type="button" size="sm" variant="outline">{t('cancel')}</Button>
+              </Dialog.Close>
+              <form
+                action={(fd) => {
+                  setOpen(false);
+                  return action(fd);
+                }}
+              >
+                <input type="hidden" name="sourceSchemeId" value={sourceId} />
+                <input type="hidden" name="targetSchemeId" value={targetSchemeId} />
+                <Button type="submit" size="sm" disabled={!sourceId || copyCount === 0}>
+                  {t('copyConfirm')}
+                </Button>
+              </form>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
 function EntitlementForm({
   action,
   schemeId,
   leaveTypes,
+  existingLeaveTypeIds,
   t,
 }: {
   action: (fd: FormData) => void | Promise<void>;
   schemeId: string;
   leaveTypes: LeaveType[];
+  existingLeaveTypeIds: string[];
   t: ReturnType<typeof useTranslations>;
 }) {
-  // Three-tier day entry: < n1 years, n1–n2 years, ≥ n2 years → serialised into contiguous ServiceBands.
-  const [n1, setN1] = useState(2);
-  const [n2, setN2] = useState(5);
+  // Fixed three-band day entry (R44 6421c888): service bands are hardcoded at 0–2 / 2–5 / 5+ years — HR
+  // types the days directly into each predefined range, no tier-cutoff inputs. The 0/2/5 shape satisfies
+  // validateBands and is the SAME contiguous ServiceBand[] the resolver reads. Legacy rows stored with other
+  // cutoffs keep their own values + calculate correctly (read-side table derives each row's own labels).
+  const [leaveTypeId, setLeaveTypeId] = useState('');
   const [d0, setD0] = useState('');
   const [d1, setD1] = useState('');
   const [d2, setD2] = useState('');
 
+  // R44 fdc3f521: block adding a leave type already configured in this scheme (silent-overwrite guard). On a
+  // duplicate the field shakes + an inline error shows, WITHOUT clearing the other entered values. shakeKey
+  // remounts the field wrappers so the shake animation replays on repeated attempts.
+  const [dupError, setDupError] = useState(false);
+  const [shakeKey, setShakeKey] = useState(0);
+
+  // R44 a831b4ca: mandatory-field validation. On submit we collect ALL empty required fields at once and
+  // highlight every one together (shake), rather than one at a time. Field keys: 'leaveType','d0','d1','d2'.
+  const [missing, setMissing] = useState<Set<string>>(new Set());
+  const [requiredError, setRequiredError] = useState(false);
+
+  // R44 3d2ac99f: always present the Leave Type options alphabetically (A–Z by name) for predictable
+  // scanning. Active-only filtering already happens upstream (activeTypeOptions); this is display-order only.
+  const sortedLeaveTypes = useMemo(
+    () => [...leaveTypes].sort((a, b) => a.name.localeCompare(b.name)),
+    [leaveTypes],
+  );
+
   const bands: ServiceBand[] = [
-    { fromYears: 0, toYears: n1, days: Number(d0) || 0 },
-    { fromYears: n1, toYears: n2, days: Number(d1) || 0 },
-    { fromYears: n2, toYears: null, days: Number(d2) || 0 },
+    { fromYears: 0, toYears: 2, days: Number(d0) || 0 },
+    { fromYears: 2, toYears: 5, days: Number(d1) || 0 },
+    { fromYears: 5, toYears: null, days: Number(d2) || 0 },
   ];
-  const valid = Number.isInteger(n1) && Number.isInteger(n2) && n1 >= 1 && n2 > n1;
+
+  // Client action wrapper: validate before delegating to the server action. Blocking simply returns without
+  // calling `action`, so the entered values survive (all fields are controlled state).
+  const handleAction = (fd: FormData) => {
+    // 1) Mandatory fields — collect ALL empties at once so every missing one is highlighted together.
+    const empty = new Set<string>();
+    if (!leaveTypeId) empty.add('leaveType');
+    if (d0 === '') empty.add('d0');
+    if (d1 === '') empty.add('d1');
+    if (d2 === '') empty.add('d2');
+    if (empty.size > 0) {
+      setMissing(empty);
+      setRequiredError(true);
+      setDupError(false);
+      setShakeKey((k) => k + 1);
+      return;
+    }
+    // 2) Duplicate leave type in this scheme.
+    if (leaveTypeId && existingLeaveTypeIds.includes(leaveTypeId)) {
+      setDupError(true);
+      setRequiredError(false);
+      setMissing(new Set());
+      setShakeKey((k) => k + 1);
+      return;
+    }
+    setMissing(new Set());
+    setRequiredError(false);
+    setDupError(false);
+    return action(fd);
+  };
 
   return (
-    <form action={action} className="space-y-3 rounded-lg border border-dashed border-border p-3">
+    <form action={handleAction} className="space-y-3 rounded-lg border border-dashed border-border p-3">
       <input type="hidden" name="benefitSchemeId" value={schemeId} />
       <input type="hidden" name="serviceBands" value={JSON.stringify(bands)} />
       <p className="text-xs font-medium text-muted-foreground">{t('addEntitlement')}</p>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
-        <Field label={t('colLeaveType')}>
-          <select name="leaveTypeId" required defaultValue="" className={inputCls}>
-            <option value="" disabled>{t('selectPlaceholder')}</option>
-            {leaveTypes.map((lt) => (
-              <option key={lt.id} value={lt.id}>{lt.name}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label={t('threshold1')}>
-          <input type="number" min={1} step={1} value={n1} onChange={(e) => setN1(Number(e.target.value))} className={`${inputCls} w-20`} />
-        </Field>
-        <Field label={t('threshold2')}>
-          <input type="number" min={2} step={1} value={n2} onChange={(e) => setN2(Number(e.target.value))} className={`${inputCls} w-20`} />
-        </Field>
-        <Field label={t('tierUnder', { n1, n2 })}>
-          <input type="number" min={0} step="0.5" value={d0} onChange={(e) => setD0(e.target.value)} className={`${inputCls} w-20`} />
-        </Field>
-        <Field label={t('tierMid', { n1, n2 })}>
-          <input type="number" min={0} step="0.5" value={d1} onChange={(e) => setD1(e.target.value)} className={`${inputCls} w-20`} />
-        </Field>
-        <Field label={t('tierOver', { n1, n2 })}>
-          <input type="number" min={0} step="0.5" value={d2} onChange={(e) => setD2(e.target.value)} className={`${inputCls} w-20`} />
-        </Field>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
+        <div key={`lt-${shakeKey}`} className={dupError || missing.has('leaveType') ? 'animate-shake' : ''}>
+          <Field label={t('colLeaveType')} required requiredAriaLabel={t('requiredAria')}>
+            <select
+              name="leaveTypeId"
+              required
+              value={leaveTypeId}
+              onChange={(e) => {
+                setLeaveTypeId(e.target.value);
+                setDupError(false);
+                setMissing((m) => {
+                  if (!m.has('leaveType')) return m;
+                  const n = new Set(m);
+                  n.delete('leaveType');
+                  return n;
+                });
+              }}
+              className={inputCls}
+            >
+              <option value="" disabled>{t('selectPlaceholder')}</option>
+              {sortedLeaveTypes.map((lt) => (
+                <option key={lt.id} value={lt.id}>{lt.name}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <div key={`d0-${shakeKey}`} className={missing.has('d0') ? 'animate-shake' : ''}>
+          <Field label={t('tierUnderFixed')} required requiredAriaLabel={t('requiredAria')}>
+            <input type="number" min={0} step="0.5" value={d0} onChange={(e) => setD0(e.target.value)} className={`${inputCls} w-20`} />
+          </Field>
+        </div>
+        <div key={`d1-${shakeKey}`} className={missing.has('d1') ? 'animate-shake' : ''}>
+          <Field label={t('tierMidFixed')} required requiredAriaLabel={t('requiredAria')}>
+            <input type="number" min={0} step="0.5" value={d1} onChange={(e) => setD1(e.target.value)} className={`${inputCls} w-20`} />
+          </Field>
+        </div>
+        <div key={`d2-${shakeKey}`} className={missing.has('d2') ? 'animate-shake' : ''}>
+          <Field label={t('tierOverFixed')} required requiredAriaLabel={t('requiredAria')}>
+            <input type="number" min={0} step="0.5" value={d2} onChange={(e) => setD2(e.target.value)} className={`${inputCls} w-20`} />
+          </Field>
+        </div>
       </div>
-      {!valid && <p className="text-xs text-destructive">{t('thresholdError')}</p>}
-      <Button type="submit" size="sm" disabled={!valid}>{t('saveEntitlement')}</Button>
+      {requiredError && <p className="text-xs text-destructive">{t('requiredError')}</p>}
+      {dupError && <p className="text-xs text-destructive">{t('duplicateError')}</p>}
+      <Button type="submit" size="sm">{t('saveEntitlement')}</Button>
     </form>
   );
 }

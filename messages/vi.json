@@ -206,6 +206,8 @@
     "mandatoryCardMessage": "Thẻ bảng điều khiển này là bắt buộc và không thể xóa.",
     "mandatoryCardHint": "Bắt buộc — do HR đặt, không thể xóa.",
     "shortcutBadge": "Lối tắt",
+    "pinnedBadge": "Đã ghim",
+    "pinnedRowHint": "Các thẻ này được ghim vào một hàng cố định và luôn hiển thị trên bảng điều khiển của bạn.",
     "emptyDashboardHint": "Chưa chọn thẻ nào. Dùng Thêm thẻ để chọn nội dung hiển thị.",
     "saveChanges": "Lưu thay đổi",
     "cancel": "Hủy",
@@ -213,6 +215,11 @@
     "saveConfirmTitle": "Bạn có chắc chắn muốn lưu các thay đổi bảng điều khiển không?",
     "saveConfirmConfirm": "Xác nhận lưu",
     "saveConfirmDiscard": "Hủy thay đổi",
+    "removeConfirmTitle": "Xóa thẻ này?",
+    "removeConfirmBody": "Xóa {card} khỏi bảng điều khiển của bạn? Bạn có thể thêm lại sau.",
+    "removeConfirmConfirm": "Xóa",
+    "removeConfirmCancel": "Hủy",
+    "removeConfirmToast": "Đã xóa {card} khỏi bảng điều khiển của bạn.",
     "block_cards": "Thẻ tóm tắt",
     "block_plannedAbsences": "Vắng mặt theo kế hoạch",
     "block_recentlyJoined": "Mới tham gia",
@@ -220,6 +227,13 @@
     "block_recentActivity": "Hoạt động gần đây"
   },
   "people": {
+    "employeeStatus": {
+      "probation": "Thử việc",
+      "active": "Đang làm việc",
+      "active_serving_notice": "Đang làm việc — Trong thời gian báo trước",
+      "resigned": "Đã nghỉ việc",
+      "blacklisted": "Trong danh sách đen"
+    },
     "list": {
       "title": "Nhân sự",
       "employeeCount": "{count, plural, one {# nhân viên} other {# nhân viên}}",
@@ -676,7 +690,7 @@
         "save": "Lưu thông tin việc làm",
         "assignmentGroup": "Phân công tổ chức",
         "saveAssignment": "Lưu phân công tổ chức",
-        "assignmentNote": "Các thay đổi về Phòng ban, Chức vụ, Loại hình lao động và Trạng thái nhân viên được ghi lại kèm ngày hiệu lực và lưu trong lịch sử phân công, để hồ sơ trước đây vẫn chính xác. Bậc công việc được lưu vào hồ sơ nhân viên.",
+        "assignmentNote": "Các thay đổi về Phòng ban, Chức vụ và Loại hình việc làm được ghi nhận kèm ngày hiệu lực và lưu trong lịch sử phân công, để hồ sơ quá khứ luôn chính xác. Bậc công việc được lưu vào hồ sơ nhân viên.",
         "positionNone": "Không có",
         "invalidValue": "Giá trị đã chọn không hợp lệ.",
         "employmentType_full_time": "Toàn thời gian",
@@ -705,7 +719,15 @@
         "tenderResignationDate": "Ngày nộp đơn nghỉ việc",
         "lastWorkingDate": "Ngày làm việc cuối cùng",
         "lifecycleDeferredNote": "Ngày nghỉ việc và ngày làm việc cuối cùng được ghi nhận ở đây. Việc kết nối với lương cuối kỳ và mốc chấm công được lên kế hoạch tiếp theo.",
-        "businessUnit": "Đơn vị kinh doanh"
+        "businessUnit": "Đơn vị kinh doanh",
+        "employeeStatusDerivedNote": "Trạng thái nhân viên được tính tự động từ các ngày làm việc và hiển thị dưới dạng huy hiệu chỉ đọc — không cần thao tác thủ công.",
+        "blacklistTitle": "Danh sách đen",
+        "blacklistReasonLabel": "Lý do (tùy chọn)",
+        "blacklistReasonPlaceholder": "Lý do đưa vào danh sách đen",
+        "blacklistAction": "Đưa nhân viên vào danh sách đen",
+        "blacklistClearAction": "Xóa khỏi danh sách đen",
+        "blacklistNote": "Đưa vào danh sách đen là hành động HR có chủ đích và sẽ ghi đè Trạng thái nhân viên tự động.",
+        "blacklistActiveNote": "Nhân viên này hiện đang trong danh sách đen."
       },
       "documents": {
         "title": "Tài liệu",
@@ -1032,7 +1054,8 @@
       "leaveYearNotOpen": "Năm nghỉ phép {year} chưa mở để nộp đơn. Vui lòng liên hệ bộ phận nhân sự.",
       "applyNotAllowed": "Nhân viên không thể đăng ký {typeName}. Vui lòng liên hệ bộ phận Nhân sự.",
       "duplicateApplication": "Đã tồn tại một đơn xin nghỉ phép cho ngày đã chọn. Không được phép nộp nhiều đơn xin nghỉ phép trong cùng một ngày.",
-      "insufficientBalance": "Số dư phép không đủ. Số dư phép khả dụng của bạn thấp hơn thời lượng nghỉ phép được yêu cầu."
+      "insufficientBalance": "Số dư phép không đủ. Số dư phép khả dụng của bạn thấp hơn thời lượng nghỉ phép được yêu cầu.",
+      "combinedLimitExceeded": "Giới hạn nghỉ gộp \"{poolName}\" ({days} ngày mỗi năm) sẽ bị vượt qua trên các loại nghỉ dùng chung."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -3196,6 +3219,7 @@
       "saveConfirmConfirm": "Lưu thay đổi",
       "discardChanges": "Hủy thay đổi",
       "codeSavedToast": "Đã lưu loại nghỉ phép.",
+      "savedToast": "Đã lưu thay đổi.",
       "codePlaceholder": "SICK",
       "nameLabel": "Tên",
       "namePlaceholder": "Nghỉ ốm",
@@ -3399,6 +3423,12 @@
       "eligibilitySummaryService": "≥ {n} {unit} thâm niên",
       "eligibilitySummaryOr": "hoặc",
       "eligibilityMultiHint": "Chọn một hoặc nhiều; để trống để cho phép tất cả mọi người.",
+      "eligibilityProbationLabel": "Trạng thái thử việc",
+      "eligibilityProbationNone": "Không giới hạn",
+      "eligibilityProbationConfirmedOnly": "Chỉ nhân viên đã chính thức",
+      "eligibilityProbationProbationOnly": "Chỉ nhân viên đang thử việc",
+      "eligibilitySummaryConfirmedOnly": "Chỉ đã chính thức",
+      "eligibilitySummaryProbationOnly": "Chỉ đang thử việc",
       "allowedDurationsLabel": "Thời lượng được phép",
       "allowedDurationsHelp": "Chọn thời lượng nhân viên có thể chọn cho loại nghỉ này. Cả ngày luôn khả dụng.",
       "duration_full_day": "Cả ngày",
@@ -4378,7 +4408,42 @@
       "threshold1": "Bậc 1 đến (năm)",
       "threshold2": "Bậc 2 đến (năm)",
       "thresholdError": "Ranh giới bậc phải là số nguyên với giá trị thứ hai lớn hơn giá trị thứ nhất.",
-      "saveEntitlement": "Lưu quyền lợi"
+      "saveEntitlement": "Lưu quyền lợi",
+      "tierUnderFixed": "Dưới 2 năm",
+      "tierMidFixed": "2–5 năm",
+      "tierOverFixed": "Trên 5 năm",
+      "entSortLabel": "Sắp xếp",
+      "entSortAsc": "Loại nghỉ A–Z",
+      "entSortDesc": "Loại nghỉ Z–A",
+      "duplicateError": "Loại nghỉ này đã được cấu hình cho chương trình này.",
+      "requiredError": "Vui lòng điền vào tất cả các trường bắt buộc.",
+      "requiredAria": "bắt buộc",
+      "editSchemeTitle": "Chỉnh sửa chương trình phúc lợi",
+      "cancel": "Hủy",
+      "gradeGroupSearchPlaceholder": "Tìm nhóm ngạch…",
+      "gradeGroupNoResults": "Không tìm thấy nhóm ngạch.",
+      "legacyValueSuffix": "(cũ)",
+      "schemeCount": "{count} chương trình",
+      "combinedTitle": "Giới hạn nghỉ phép gộp",
+      "combinedHelp": "Giới hạn nhiều loại nghỉ dưới một tổng chung theo chu kỳ (vd. Nghỉ tang + Kết hôn + Thai sản của cha = 5 ngày mỗi năm).",
+      "combinedNameLabel": "Tên giới hạn",
+      "combinedNamePlaceholder": "vd. Nhóm nghỉ tang",
+      "combinedTotalLabel": "Tổng ngày / năm",
+      "combinedTypesLabel": "Các loại nghỉ trong nhóm này",
+      "combinedAdd": "Thêm giới hạn gộp",
+      "combinedNone": "Chưa cấu hình giới hạn gộp cho chương trình này.",
+      "combinedColName": "Tên",
+      "combinedColTotal": "Tổng ngày",
+      "combinedColTypes": "Loại nghỉ",
+      "copyButton": "Sao chép quyền lợi từ chương trình khác…",
+      "copyTitle": "Sao chép quyền lợi từ chương trình khác",
+      "copySourceLabel": "Chương trình nguồn",
+      "copySourcePlaceholder": "Chọn một chương trình…",
+      "copyPreviewCopy": "Sẽ được sao chép",
+      "copyPreviewSkip": "Bỏ qua — đã cấu hình",
+      "copyConfirm": "Sao chép quyền lợi",
+      "copyEmpty": "Chọn chương trình nguồn để xem trước nội dung sẽ sao chép.",
+      "copyNoneToCopy": "Không có gì để sao chép — mục tiêu đã có mọi loại nghỉ từ nguồn này."
     }
   },
   "topbar": {
@@ -6156,6 +6221,16 @@
       "performance_comp_partner": "Đối tác Hiệu suất/Lương thưởng"
     }
   },
+  "commandBar": {
+    "open": "Tìm kiếm",
+    "placeholder": "Tìm một thao tác…",
+    "noResults": "Không có kết quả phù hợp.",
+    "back": "Quay lại",
+    "loading": "Đang tải…",
+    "openFull": "Mở trang đầy đủ",
+    "delegationTitle": "Ủy quyền phê duyệt",
+    "delegationSubtitle": "Ủy quyền các nhiệm vụ phê duyệt của bạn cho người dùng khác"
+  },
   "delegations": {
     "title": "Quản lý ủy quyền",
     "subtitle": "Tạm thời giao nhiệm vụ phê duyệt cho người thay thế khi người phê duyệt vắng mặt.",
@@ -6186,7 +6261,23 @@
     "noDownline": "Bạn không có nhân viên cấp dưới trực tiếp nên không có phê duyệt để ủy quyền.",
     "showHistory": "Hiện lịch sử",
     "hideHistory": "Ẩn lịch sử",
-    "selfHint": "Bạn đang bàn giao nhiệm vụ phê duyệt của mình khi vắng mặt."
+    "selfHint": "Bạn đang bàn giao nhiệm vụ phê duyệt của mình khi vắng mặt.",
+    "scopeTitle": "Ủy quyền này bao gồm những gì?",
+    "scopeHint": "Chọn các mô-đun và nhiệm vụ để bàn giao. Bỏ trống tất cả để bao gồm mọi phê duyệt.",
+    "wholeModule": "Tất cả phê duyệt {module}",
+    "reason": "Lý do ủy quyền",
+    "reasonPlaceholder": "Tại sao bạn ủy quyền (ví dụ: nghỉ phép năm, nghỉ ốm)?",
+    "moduleLabel": {
+      "leave": "Nghỉ phép",
+      "attendance": "Chấm công",
+      "claims": "Yêu cầu bồi hoàn"
+    },
+    "taskLabel": {
+      "leaveApplication": "Phê duyệt Đơn xin nghỉ",
+      "leaveCancellation": "Phê duyệt Hủy nghỉ",
+      "attendanceCorrection": "Phê duyệt Điều chỉnh chấm công",
+      "claimsClaim": "Phê duyệt Yêu cầu bồi hoàn"
+    }
   },
   "dashboardCardConfig": {
     "title": "Thiết lập thẻ bảng điều khiển",

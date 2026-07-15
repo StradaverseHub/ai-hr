@@ -206,6 +206,8 @@
     "mandatoryCardMessage": "การ์ดแดชบอร์ดนี้เป็นข้อบังคับและไม่สามารถนำออกได้",
     "mandatoryCardHint": "บังคับ — กำหนดโดยฝ่ายบุคคล ไม่สามารถนำออกได้",
     "shortcutBadge": "ทางลัด",
+    "pinnedBadge": "ปักหมุด",
+    "pinnedRowHint": "การ์ดเหล่านี้ถูกปักหมุดไว้ในแถวคงที่และจะแสดงบนแดชบอร์ดของคุณเสมอ",
     "emptyDashboardHint": "ยังไม่ได้เลือกการ์ด ใช้ 'เพิ่มการ์ด' เพื่อเลือกสิ่งที่จะแสดง",
     "saveChanges": "บันทึกการเปลี่ยนแปลง",
     "cancel": "ยกเลิก",
@@ -213,6 +215,11 @@
     "saveConfirmTitle": "คุณแน่ใจหรือไม่ว่าต้องการบันทึกการเปลี่ยนแปลงแดชบอร์ด?",
     "saveConfirmConfirm": "ยืนยันการบันทึก",
     "saveConfirmDiscard": "ละทิ้งการเปลี่ยนแปลง",
+    "removeConfirmTitle": "นำการ์ดนี้ออกหรือไม่?",
+    "removeConfirmBody": "นำ {card} ออกจากแดชบอร์ดของคุณหรือไม่? คุณสามารถเพิ่มกลับได้ในภายหลัง",
+    "removeConfirmConfirm": "นำออก",
+    "removeConfirmCancel": "ยกเลิก",
+    "removeConfirmToast": "นำ {card} ออกจากแดชบอร์ดของคุณแล้ว",
     "block_cards": "การ์ดสรุป",
     "block_plannedAbsences": "การลาที่วางแผนไว้",
     "block_recentlyJoined": "เข้าร่วมล่าสุด",
@@ -220,6 +227,13 @@
     "block_recentActivity": "กิจกรรมล่าสุด"
   },
   "people": {
+    "employeeStatus": {
+      "probation": "ทดลองงาน",
+      "active": "ทำงานอยู่",
+      "active_serving_notice": "ทำงานอยู่ — ระหว่างแจ้งลาออก",
+      "resigned": "ลาออกแล้ว",
+      "blacklisted": "อยู่ในบัญชีดำ"
+    },
     "list": {
       "title": "พนักงาน",
       "employeeCount": "{count, plural, one {# คน} other {# คน}}",
@@ -676,7 +690,7 @@
         "save": "บันทึกข้อมูลการจ้างงาน",
         "assignmentGroup": "การมอบหมายองค์กร",
         "saveAssignment": "บันทึกการมอบหมายองค์กร",
-        "assignmentNote": "การเปลี่ยนแปลงแผนก ตำแหน่ง ประเภทการจ้างงาน และสถานะพนักงานจะถูกบันทึกพร้อมวันที่มีผลและเก็บไว้ในประวัติการมอบหมาย เพื่อให้บันทึกในอดีตยังคงถูกต้อง ระดับงานจะถูกบันทึกไว้ในระเบียนพนักงาน",
+        "assignmentNote": "การเปลี่ยนแปลงแผนก ตำแหน่ง และประเภทการจ้างงานจะถูกบันทึกพร้อมวันที่มีผล และเก็บไว้ในประวัติการมอบหมายงาน เพื่อให้บันทึกในอดีตถูกต้อง ระดับงานจะถูกบันทึกไว้ในระเบียนพนักงาน",
         "positionNone": "ไม่มี",
         "invalidValue": "ค่าที่เลือกไม่ถูกต้อง",
         "employmentType_full_time": "เต็มเวลา",
@@ -705,7 +719,15 @@
         "tenderResignationDate": "วันที่ยื่นใบลาออก",
         "lastWorkingDate": "วันทำงานสุดท้าย",
         "lifecycleDeferredNote": "วันที่ลาออกและวันทำงานสุดท้ายถูกบันทึกไว้ที่นี่ การเชื่อมโยงเข้ากับการจ่ายเงินงวดสุดท้ายและการตัดยอดการเข้างานมีแผนดำเนินการต่อไป",
-        "businessUnit": "หน่วยธุรกิจ"
+        "businessUnit": "หน่วยธุรกิจ",
+        "employeeStatusDerivedNote": "สถานะพนักงานคำนวณโดยอัตโนมัติจากวันที่การจ้างงานและแสดงเป็นป้ายสถานะแบบอ่านอย่างเดียว — ไม่มีขั้นตอนด้วยตนเอง",
+        "blacklistTitle": "บัญชีดำ",
+        "blacklistReasonLabel": "เหตุผล (ไม่บังคับ)",
+        "blacklistReasonPlaceholder": "เหตุผลในการขึ้นบัญชีดำ",
+        "blacklistAction": "ขึ้นบัญชีดำพนักงาน",
+        "blacklistClearAction": "นำออกจากบัญชีดำ",
+        "blacklistNote": "การขึ้นบัญชีดำเป็นการดำเนินการของ HR โดยเจตนาและจะแทนที่สถานะพนักงานอัตโนมัติ",
+        "blacklistActiveNote": "พนักงานคนนี้อยู่ในบัญชีดำในขณะนี้"
       },
       "documents": {
         "title": "เอกสาร",
@@ -1032,7 +1054,8 @@
       "leaveYearNotOpen": "ปีการลา {year} ยังไม่เปิดให้ยื่นคำขอ กรุณาติดต่อ HR",
       "applyNotAllowed": "พนักงานไม่สามารถยื่นขอ {typeName} ได้ กรุณาติดต่อฝ่ายบุคคล",
       "duplicateApplication": "มีใบลาสำหรับวันที่เลือกอยู่แล้ว ไม่อนุญาตให้ยื่นใบลาหลายใบในวันเดียวกัน",
-      "insufficientBalance": "ยอดวันลาคงเหลือไม่เพียงพอ ยอดวันลาที่ใช้ได้ของคุณน้อยกว่าระยะเวลาที่ขอลา"
+      "insufficientBalance": "ยอดวันลาคงเหลือไม่เพียงพอ ยอดวันลาที่ใช้ได้ของคุณน้อยกว่าระยะเวลาที่ขอลา",
+      "combinedLimitExceeded": "วงเงินลารวม \"{poolName}\" ({days} วันต่อปี) จะเกินในประเภทการลาที่ใช้ร่วมกัน"
     },
     "documentLabel": "เอกสารประกอบ",
     "documentHint": "จำเป็นสำหรับการลาบางประเภท (เช่น ใบรับรองแพทย์) ประเภทไฟล์และขนาดที่อนุญาตขึ้นอยู่กับประเภทการลาที่เลือก",
@@ -3196,6 +3219,7 @@
       "saveConfirmConfirm": "บันทึกการเปลี่ยนแปลง",
       "discardChanges": "ละทิ้งการเปลี่ยนแปลง",
       "codeSavedToast": "บันทึกประเภทการลาแล้ว",
+      "savedToast": "บันทึกการเปลี่ยนแปลงแล้ว",
       "codePlaceholder": "SICK",
       "nameLabel": "ชื่อ",
       "namePlaceholder": "ลาป่วย",
@@ -3399,6 +3423,12 @@
       "eligibilitySummaryService": "อายุงาน ≥ {n} {unit}",
       "eligibilitySummaryOr": "หรือ",
       "eligibilityMultiHint": "เลือกอย่างน้อยหนึ่งรายการ เว้นว่างไว้เพื่ออนุญาตทุกคน",
+      "eligibilityProbationLabel": "สถานะทดลองงาน",
+      "eligibilityProbationNone": "ไม่มีข้อจำกัด",
+      "eligibilityProbationConfirmedOnly": "เฉพาะพนักงานที่ผ่านการทดลองงานแล้ว",
+      "eligibilityProbationProbationOnly": "เฉพาะพนักงานที่อยู่ระหว่างทดลองงาน",
+      "eligibilitySummaryConfirmedOnly": "เฉพาะที่ผ่านทดลองงาน",
+      "eligibilitySummaryProbationOnly": "เฉพาะระหว่างทดลองงาน",
       "allowedDurationsLabel": "ระยะเวลาที่อนุญาต",
       "allowedDurationsHelp": "เลือกระยะเวลาที่พนักงานสามารถเลือกได้สำหรับการลาประเภทนี้ เต็มวันใช้ได้เสมอ",
       "duration_full_day": "เต็มวัน",
@@ -4378,7 +4408,42 @@
       "threshold1": "ระดับ 1 ถึง (ปี)",
       "threshold2": "ระดับ 2 ถึง (ปี)",
       "thresholdError": "ขอบเขตระดับต้องเป็นจำนวนเต็ม โดยค่าที่สองมากกว่าค่าแรก",
-      "saveEntitlement": "บันทึกสิทธิ์"
+      "saveEntitlement": "บันทึกสิทธิ์",
+      "tierUnderFixed": "ต่ำกว่า 2 ปี",
+      "tierMidFixed": "2–5 ปี",
+      "tierOverFixed": "มากกว่า 5 ปี",
+      "entSortLabel": "เรียงลำดับ",
+      "entSortAsc": "ประเภทการลา A–Z",
+      "entSortDesc": "ประเภทการลา Z–A",
+      "duplicateError": "ประเภทการลานี้ถูกกำหนดไว้สำหรับแผนนี้แล้ว",
+      "requiredError": "กรุณากรอกข้อมูลในช่องที่จำเป็นทั้งหมด",
+      "requiredAria": "จำเป็น",
+      "editSchemeTitle": "แก้ไขแผนสวัสดิการ",
+      "cancel": "ยกเลิก",
+      "gradeGroupSearchPlaceholder": "ค้นหากลุ่มระดับ…",
+      "gradeGroupNoResults": "ไม่พบกลุ่มระดับ",
+      "legacyValueSuffix": "(เดิม)",
+      "schemeCount": "{count} แผน",
+      "combinedTitle": "วงเงินลารวม",
+      "combinedHelp": "จำกัดการลาหลายประเภทภายใต้ยอดรวมที่ใช้ร่วมกันต่อรอบ (เช่น ลาเพื่อความเมตตา + ลาแต่งงาน + ลาบิดา = 5 วันต่อปี)",
+      "combinedNameLabel": "ชื่อวงเงิน",
+      "combinedNamePlaceholder": "เช่น กลุ่มลาเพื่อความเมตตา",
+      "combinedTotalLabel": "รวมวัน / ปี",
+      "combinedTypesLabel": "ประเภทการลาในกลุ่มนี้",
+      "combinedAdd": "เพิ่มวงเงินรวม",
+      "combinedNone": "ยังไม่ได้กำหนดวงเงินรวมสำหรับแผนนี้",
+      "combinedColName": "ชื่อ",
+      "combinedColTotal": "รวมวัน",
+      "combinedColTypes": "ประเภทการลา",
+      "copyButton": "คัดลอกสิทธิ์จากแผนอื่น…",
+      "copyTitle": "คัดลอกสิทธิ์จากแผนอื่น",
+      "copySourceLabel": "แผนต้นทาง",
+      "copySourcePlaceholder": "เลือกแผน…",
+      "copyPreviewCopy": "จะถูกคัดลอก",
+      "copyPreviewSkip": "ข้าม — กำหนดไว้แล้ว",
+      "copyConfirm": "คัดลอกสิทธิ์",
+      "copyEmpty": "เลือกแผนต้นทางเพื่อดูตัวอย่างสิ่งที่จะคัดลอก",
+      "copyNoneToCopy": "ไม่มีสิ่งที่จะคัดลอก — ปลายทางมีทุกประเภทการลาจากต้นทางนี้แล้ว"
     }
   },
   "topbar": {
@@ -6156,6 +6221,16 @@
       "performance_comp_partner": "พันธมิตรผลงาน/ค่าตอบแทน"
     }
   },
+  "commandBar": {
+    "open": "ค้นหา",
+    "placeholder": "ค้นหาการดำเนินการ…",
+    "noResults": "ไม่พบรายการที่ตรงกัน",
+    "back": "ย้อนกลับ",
+    "loading": "กำลังโหลด…",
+    "openFull": "เปิดหน้าเต็ม",
+    "delegationTitle": "การมอบหมายการอนุมัติ",
+    "delegationSubtitle": "มอบหมายงานอนุมัติของคุณให้ผู้ใช้อื่น"
+  },
   "delegations": {
     "title": "การจัดการการมอบหมาย",
     "subtitle": "มอบหน้าที่อนุมัติให้ผู้ทำแทนชั่วคราวขณะที่ผู้อนุมัติไม่อยู่",
@@ -6186,7 +6261,23 @@
     "noDownline": "คุณไม่มีผู้ใต้บังคับบัญชาโดยตรง จึงไม่มีการอนุมัติให้มอบหมาย",
     "showHistory": "แสดงประวัติ",
     "hideHistory": "ซ่อนประวัติ",
-    "selfHint": "คุณกำลังมอบหน้าที่อนุมัติของคุณเองขณะที่ไม่อยู่"
+    "selfHint": "คุณกำลังมอบหน้าที่อนุมัติของคุณเองขณะที่ไม่อยู่",
+    "scopeTitle": "การมอบหมายนี้ครอบคลุมอะไรบ้าง?",
+    "scopeHint": "เลือกโมดูลและงานที่จะมอบหมาย เว้นว่างทั้งหมดเพื่อครอบคลุมการอนุมัติทั้งหมด",
+    "wholeModule": "การอนุมัติ{module}ทั้งหมด",
+    "reason": "เหตุผลในการมอบหมาย",
+    "reasonPlaceholder": "เหตุใดจึงมอบหมาย (เช่น ลาพักร้อน ลาป่วย)?",
+    "moduleLabel": {
+      "leave": "การลา",
+      "attendance": "การเข้างาน",
+      "claims": "การเบิกจ่าย"
+    },
+    "taskLabel": {
+      "leaveApplication": "การอนุมัติคำขอลา",
+      "leaveCancellation": "การอนุมัติยกเลิกการลา",
+      "attendanceCorrection": "การอนุมัติแก้ไขการเข้างาน",
+      "claimsClaim": "การอนุมัติการเบิกจ่าย"
+    }
   },
   "dashboardCardConfig": {
     "title": "การตั้งค่าการ์ดแดชบอร์ด",

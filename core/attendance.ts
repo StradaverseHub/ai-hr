@@ -12,6 +12,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
+import { scopeOf } from '../lib/delegation-scope';
 import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './attendance-rule';
 import { holidayDatesFor } from './holidays';
 import { approvedLeaveDates } from './leave';
@@ -1515,7 +1516,7 @@ export async function decideAttendanceCorrection(
     if (!cor) throw new Error('correction request not found (or not visible)');
     if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
 
-    await assertCanDecide(tx, ctx, cor.employmentId, 'attendance correction');
+    await assertCanDecide(tx, ctx, cor.employmentId, 'attendance correction', scopeOf('attendance.correction'));
 
     if (p.decision === 'approved') {
       const sched = await scheduleFor(tx, cor.employmentId, cor.attendanceDate);

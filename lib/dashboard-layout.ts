@@ -86,6 +86,41 @@ export type DashboardCardChoice = {
 /** The persisted per-user layout: which cards are shown, and the full ordering of available cards. */
 export type DashboardLayout = { selected: string[]; order: string[] };
 
+// ───────────────────────── Two-dimensional widget grid (feedback dashgrid) ─────────────────────────
+//
+// v3 turns the single-column customiser into a 2-D grid: the employee's chosen cards flow into a
+// draggable FIRST ROW (`row1`) capped at MAX_FIRST_ROW columns, with a FIXED SECOND ROW (`row2`) that
+// pins the standard shortcut/action cards + Planned Absences so the everyday actions always have a home.
+//
+// Row membership is DERIVED from the live card config (card type + the plannedAbsences key), NOT persisted
+// — so the stored shape stays `{ selected, order }` and every existing saved layout keeps loading
+// unchanged (back-compat: a legacy layout simply partitions into the same two rows on read). The DESIGN
+// TENSION (pinning conflicts with these cards' removable/HR-configurable status) is resolved per the
+// reporter's option 1: while in the fixed row they are shown but not individually removed. Grey drop-zone
+// outlines + widget auto-resize are DEFERRED.
+
+/** Maximum widgets across the draggable first row (the "top row"); extra selected cards wrap below it. */
+export const MAX_FIRST_ROW = 4;
+
+/** A layout split into the draggable first row and the fixed (pinned) second row. */
+export type DashboardRows = { row1: string[]; row2: string[] };
+
+/**
+ * Split a normalised layout's SELECTED cards into the draggable first-row grid (`row1`) and the fixed
+ * second row (`row2`), preserving the layout's order. `pinned` names the cards that belong to the fixed
+ * row (shortcut/action cards + Planned Absences); every other selected card falls into `row1`. Pure /
+ * framework-free so both the server page and the client customize island can call it.
+ */
+export function partitionDashboardRows(layout: DashboardLayout, pinned: Iterable<string>): DashboardRows {
+  const pinnedSet = new Set(pinned);
+  const row1: string[] = [];
+  const row2: string[] = [];
+  for (const key of layout.selected) {
+    (pinnedSet.has(key) ? row2 : row1).push(key);
+  }
+  return { row1, row2 };
+}
+
 /**
  * Built-in default card catalog — the flattened R39 set, used as a safe fallback when a tenant has NO
  * dashboard_card_config rows yet (e.g. a tenant provisioned after the 1586d2f5 seed migration ran). This

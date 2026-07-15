@@ -5,7 +5,8 @@ import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { ESS_VIEW_COMPONENT_KEYS } from '@/core/ess-view';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
-import { Search } from 'lucide-react';
+import { Search, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import {
   LEAVE_COLORS,
   LEAVE_COLOR_TOKENS,
@@ -541,6 +542,7 @@ export function LeaveTypePanel({
   color,
   icon,
   leaveUnit,
+  probationEligibility,
   visibleToEmployee,
   employeeCanApply,
   essPlacement,
@@ -614,6 +616,9 @@ export function LeaveTypePanel({
   /** Leave Unit Configuration (e4980382): whether this type is managed in Days or Hours ('day' | 'hour'),
    *  threaded so the "Leave Unit" select round-trips its saved value. Coarse labelling/reporting only. */
   leaveUnit: string;
+  /** Probation eligibility (d6bdbd55): the stored probation gate ('confirmed_only' | 'probation_only' | null),
+   *  threaded so the eligibility editor's Probation select round-trips its saved value. null ⇒ no restriction. */
+  probationEligibility: string | null;
   /** Leave Type Employee Visibility (7b11f1c1): whether this type is shown to employees on the /me Leave tab
    *  and whether they may apply for it. Threaded so the two checkboxes round-trip their saved value. null ⇒
    *  the default (visible / can-apply). The service rejects can-apply=false on a statutory code. */
@@ -706,6 +711,34 @@ export function LeaveTypePanel({
     return () => window.removeEventListener('hashchange', openIfTargeted);
   }, [id]);
 
+  // Collapsible category panels (f623d50a): each of the 7 category cards inside the expanded row is an
+  // independent accordion. Open/closed state is per-card client state, keyed by the leave-type id so two open
+  // rows don't share it. It is persisted to localStorage so it SURVIVES the stay-on-save redirect (b9dac2d1
+  // keystone re-mounts the panel on the entitlements tab) — the section HR was editing stays open after Save.
+  // Default = all collapsed for the compact view; hydrate from storage in an effect (client-only ⇒ no SSR
+  // hydration mismatch; a brief closed→restored flash is acceptable).
+  const [openCards, setOpenCards] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(`leaveTypeCards:${id}`);
+      if (raw) setOpenCards(JSON.parse(raw) as Record<string, boolean>);
+    } catch {
+      /* storage unavailable / malformed ⇒ keep all collapsed */
+    }
+  }, [id]);
+  const toggleCard = (key: string) =>
+    setOpenCards((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        window.localStorage.setItem(`leaveTypeCards:${id}`, JSON.stringify(next));
+      } catch {
+        /* storage write blocked ⇒ runtime toggle still works, just not persisted */
+      }
+      return next;
+    });
+  const cardHeaderBtn =
+    'flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/40';
+
   // #25 visibility: a composable human summary of the eligibility rule (avoids a key-per-permutation
   // matrix across 6 locales). e.g. "Female only · ≥ 12 months service", or "Open to all employees".
   const genderLabel = (g: string) =>
@@ -730,7 +763,12 @@ export function LeaveTypePanel({
   const eligibilitySummary = () => {
     const genders = asEligList(eligibility?.gender);
     const maritals = asEligList(eligibility?.maritalStatus);
-    if (!eligibility || (genders.length === 0 && maritals.length === 0 && !eligibility.minServiceMonths)) {
+    // Probation (d6bdbd55) is a separate prop, not inside `eligibility` — fold it into the same "open to all"
+    // vs restricted decision so a probation-only rule doesn't read as unrestricted.
+    if (
+      (!eligibility || (genders.length === 0 && maritals.length === 0 && !eligibility.minServiceMonths)) &&
+      !probationEligibility
+    ) {
       return t('eligibilityOpenToAll');
     }
     const parts: string[] = [];
@@ -738,11 +776,13 @@ export function LeaveTypePanel({
     const genderText = orJoin(genders.map(genderLabel));
     const who = [maritalText, genderText].filter(Boolean).join(' ');
     if (who) parts.push(t('eligibilitySummaryOnly', { who }));
-    if (eligibility.minServiceMonths) {
+    if (eligibility?.minServiceMonths) {
       // Min-service unit (#f88f0a63): render "≥ N months/days service". Absent unit ⇒ months (legacy compat).
       const unit = eligibility.minServiceUnit === 'days' ? t('expiryUnitDays') : t('expiryUnitMonths');
       parts.push(t('eligibilitySummaryService', { n: eligibility.minServiceMonths, unit }));
     }
+    if (probationEligibility === 'confirmed_only') parts.push(t('eligibilitySummaryConfirmedOnly'));
+    else if (probationEligibility === 'probation_only') parts.push(t('eligibilitySummaryProbationOnly'));
     return parts.join(' · ');
   };
 
@@ -820,10 +860,14 @@ export function LeaveTypePanel({
       {expanded && (
         <div className="space-y-3 border-t border-border/60 bg-muted/20 px-4 py-3">
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryGeneral')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('general')} aria-expanded={!!openCards.general} aria-controls={`cat-general-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryGeneral')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.general && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.general && (
+            <CardContent id={`cat-general-${id}`} className="space-y-3">
           {/* type-level controls */}
           {editingName ? (
             <form
@@ -880,6 +924,25 @@ export function LeaveTypePanel({
                   placeholder={t('reasonPlaceholder')}
                   className={`${inputCls} w-full`}
                 />
+              </Field>
+              {/* Reposition Leave Unit beside Reason (bd063176 · option b — merge): the Day/Hour unit, formerly
+                  its own always-on sub-form below, now rides the identity/rename form so it sits on the same grid
+                  row as Reason (Reason left, Leave Unit right on lg) and saves in one action. The `leaveUnit=1`
+                  marker makes updateLeaveTypeAction touch leave_unit (tri-state); the select defaults to the
+                  stored value so an unchanged rename re-posts it as a no-op. Semantic shift (flagged): leave unit
+                  is now editable in edit mode with Reason, not always-on. */}
+              <input type="hidden" name="leaveUnit" value="1" />
+              <Field label={t('leaveUnitLabel')}>
+                <select
+                  name="leaveUnitValue"
+                  defaultValue={leaveUnit === 'hour' ? 'hour' : 'day'}
+                  aria-label={t('leaveUnitLabel')}
+                  title={t('leaveUnitHelp')}
+                  className={`${inputCls} w-full`}
+                >
+                  <option value="day">{t('leaveUnitDay')}</option>
+                  <option value="hour">{t('leaveUnitHour')}</option>
+                </select>
               </Field>
               {/* Edit Paid/Unpaid on rename (feedback 75953777): the Paid/Unpaid flag lives on the rename form
                   so a mis-set type can be corrected without recreating it. The `identity=1` marker above means an
@@ -977,37 +1040,21 @@ export function LeaveTypePanel({
               {floorLabel ? t('daysValue', { days: floorLabel }) : t('none')}
             </span>
           </div>
-          {/* Leave Unit Configuration (e4980382). Its own self-contained sub-form (own tri-state) posts
-              `leaveUnit=1` — a Day/Hour select declaring whether this leave type is managed in whole days or
-              in hours. Coarse labelling/reporting only: it does NOT change entitlement, accrual, workflow, or
-              payroll behaviour. Default Day; existing types read Day (backward compatible). */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('leaveUnitSectionTitle')}</span>
-            <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the leave_unit column (tri-state guard) */}
-              <input type="hidden" name="leaveUnit" value="1" />
-              <Field label={t('leaveUnitLabel')}>
-                <select name="leaveUnitValue" defaultValue={leaveUnit === 'hour' ? 'hour' : 'day'} className={`${inputCls} w-32`}>
-                  <option value="day">{t('leaveUnitDay')}</option>
-                  <option value="hour">{t('leaveUnitHour')}</option>
-                </select>
-              </Field>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('leaveUnitHelp')}</p>
-          </div>
+          {/* Leave Unit Configuration (e4980382) — the Day/Hour unit moved into the identity/rename form above
+              (bd063176) so it sits beside Reason and saves in one action; the standalone always-on sub-form
+              that lived here was removed. */}
             </CardContent>
+            )}
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('eligibility')} aria-expanded={!!openCards.eligibility} aria-controls={`cat-eligibility-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.eligibility && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.eligibility && (
+            <CardContent id={`cat-eligibility-${id}`} className="space-y-3">
           {/* #25 visibility — eligibility rules (who can see + apply) */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
@@ -1084,6 +1131,20 @@ export function LeaveTypePanel({
                       <option value="days">{t('expiryUnitDays')}</option>
                     </select>
                   </div>
+                </Field>
+                {/* Probation eligibility (d6bdbd55): restrict this type by the employee's probation status.
+                    Rides the same eligibility=1 marker; blank ⇒ no restriction. Stored in its own column. */}
+                <Field label={t('eligibilityProbationLabel')}>
+                  <select
+                    name="probation"
+                    defaultValue={probationEligibility ?? ''}
+                    aria-label={t('eligibilityProbationLabel')}
+                    className={`${inputCls} w-56`}
+                  >
+                    <option value="">{t('eligibilityProbationNone')}</option>
+                    <option value="confirmed_only">{t('eligibilityProbationConfirmedOnly')}</option>
+                    <option value="probation_only">{t('eligibilityProbationProbationOnly')}</option>
+                  </select>
                 </Field>
                 <p className="w-full text-xs text-muted-foreground">{t('eligibilityMultiHint')}</p>
                 <Button type="submit" size="sm">
@@ -1553,12 +1614,17 @@ export function LeaveTypePanel({
             </div>
           )}
             </CardContent>
+            )}
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryEssPolicy')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('ess')} aria-expanded={!!openCards.ess} aria-controls={`cat-ess-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryEssPolicy')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.ess && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.ess && (
+            <CardContent id={`cat-ess-${id}`} className="space-y-3">
           {/* Feedback 9d8cf621: the "Payroll impact" controls moved to the Payroll Related tab (per-type list
               there). Both were self-contained sub-forms, so moving/removing them here never touches any other
               column on save. */}
@@ -1840,12 +1906,17 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('duplicatePolicyHelp')}</p>
           </div>
             </CardContent>
+            )}
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryApproval')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('approval')} aria-expanded={!!openCards.approval} aria-controls={`cat-approval-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryApproval')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.approval && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.approval && (
+            <CardContent id={`cat-approval-${id}`} className="space-y-3">
           {/* Partial Leave Approval (ADR-0068 · re-added ac6c2025). Its own sub-form (own tri-state) posts
               `partialApproval=1`, so a rename / eligibility / durations / document / payroll / backdating edit
               that omits the marker leaves per_date_approval untouched. This is the HR-facing enable switch for
@@ -1890,12 +1961,17 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
           </div>
             </CardContent>
+            )}
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryDisplay')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('display')} aria-expanded={!!openCards.display} aria-controls={`cat-display-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryDisplay')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.display && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.display && (
+            <CardContent id={`cat-display-${id}`} className="space-y-3">
           {/* Employee Leave View Configuration (65dec703 / dup 1fedb473). Its own self-contained sub-form
               (own tri-state) posts `essView=1` — a checklist of the breakdown components an employee sees in
               My Profile → Leave for THIS leave type. An unchecked box does not post; the action rebuilds the
@@ -2007,12 +2083,17 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('placement.help')}</p>
           </div>
             </CardContent>
+            )}
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryCalculation')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('calculation')} aria-expanded={!!openCards.calculation} aria-controls={`cat-calculation-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryCalculation')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.calculation && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.calculation && (
+            <CardContent id={`cat-calculation-${id}`} className="space-y-3">
           {/* Day Type Inclusion (feedback ef6d7146) — five independent toggles deciding which day types are
               counted when calculating a leave's duration. Lives inside Eligibility Rules (reporter's request),
               its own self-contained <form> + `dayTypeInclusion=1` tri-state marker so an unrelated save never
@@ -2068,12 +2149,17 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.statutoryNote')}</p>
           </div>
             </CardContent>
+            )}
           </Card>
           <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryCustom')}</CardTitle>
+            <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('custom')} aria-expanded={!!openCards.custom} aria-controls={`cat-custom-${id}`} className={cardHeaderBtn}>
+                <CardTitle>{t('categoryCustom')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.custom && 'rotate-90')} />
+              </button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            {openCards.custom && (
+            <CardContent id={`cat-custom-${id}`} className="space-y-3">
           {/* Feedback 9d8cf621 — custom apply-time message. Own sub-form + tri-state marker `applyNotice=1`.
               An "Enable custom message" checkbox reveals the textarea; unchecked ⇒ textarea hidden and an empty
               value posts ⇒ the applyNotice key clears (message disabled). Shown to employees on the apply form. */}
@@ -2117,6 +2203,7 @@ export function LeaveTypePanel({
               existing moves; both null ⇒ default styling (backward compatible). */}
           <LeaveVisualForm t={t} id={id} name={name} color={color} icon={icon} action={updateTypeAction} />
             </CardContent>
+            )}
           </Card>
         </div>
       )}

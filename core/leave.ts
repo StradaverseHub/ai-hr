@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
+import { scopeOf } from '../lib/delegation-scope';
 import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
 import { resolveApprovalChain } from './leave-approval-policy';
 import { consumeReplacementLeaveTx } from './toil';
@@ -98,6 +99,8 @@ import {
   payslip,
   person,
   reportingLine,
+  schemeLeaveCombinedLimit,
+  schemeLeaveCombinedLimitMember,
 } from '../db/schema';
 
 /** ADR-0069: the set of "employmentId|leaveTypeId" keys with an ACTIVE frozen encashment snapshot, for the
@@ -139,6 +142,21 @@ export class InsufficientLeaveBalanceOnSubmitError extends Error {
   constructor() {
     super('Insufficient leave balance for this application');
     this.name = 'InsufficientLeaveBalanceOnSubmitError';
+  }
+}
+
+// Combined Leave Type Limit (R44 4c48fd1f, Stage 2): the requested leave type belongs to a benefit-scheme
+// combined-limit pool (e.g. "Compassionate + Marriage + Paternity = 5 days/year") and this application would
+// push the employee's per-cycle usage ACROSS ALL pooled types over the shared total. Carries the pool name +
+// total for a readable, re-localizable error. Fires for admins too — it's a data cap, like the balance gate.
+export class CombinedLeaveLimitExceededError extends Error {
+  readonly poolName: string;
+  readonly totalLimitDays: number;
+  constructor(poolName: string, totalLimitDays: number) {
+    super(`Combined leave limit "${poolName}" (${totalLimitDays} days) would be exceeded`);
+    this.name = 'CombinedLeaveLimitExceededError';
+    this.poolName = poolName;
+    this.totalLimitDays = totalLimitDays;
   }
 }
 
@@ -323,7 +341,17 @@ export type LeaveEligibility = {
   // written before this field existed keeps its exact old meaning without a migration/backfill. Only carried
   // when a positive minServiceMonths survives cleaning (a lone unit is never stored).
   minServiceUnit?: 'months' | 'days';
+  // Probation eligibility (d6bdbd55): whether the type is restricted by the employee's probation status.
+  // 'confirmed_only' ⇒ only employees past probation may apply; 'probation_only' ⇒ only employees still on
+  // probation may apply; ABSENT/undefined ⇒ no restriction. Stored in leave_type.probation_eligibility (its
+  // own column, migration 0225) and merged into this object at the enforcement chokepoints so it rides the
+  // same assertEligible / isLeaveEligible gate as the other rules.
+  probation?: 'confirmed_only' | 'probation_only';
 };
+
+/** The closed set of probation eligibility values (mirrors the DB CHECK on leave_type.probation_eligibility). */
+export const PROBATION_ELIGIBILITY_VALUES = ['confirmed_only', 'probation_only'] as const;
+export type ProbationEligibility = (typeof PROBATION_ELIGIBILITY_VALUES)[number];
 
 /** Elapsed service in a rule's chosen unit, from an employee's hire date to `asOf`. unit==='days' counts
  *  whole elapsed days (daysBetween); anything else — including an absent unit on a legacy row — counts whole
@@ -584,9 +612,21 @@ function monthsBetween(start: string, asOf: string): number {
   return Math.max(0, months);
 }
 
+/** Confirmation date an employee's probation status is derived from: finalConfirmationDate (canonical — it
+ *  already folds in any probation extension) falling back to confirmationDate, else null. `asOf < date` ⇒ on
+ *  probation; `asOf >= date` or a null date ⇒ NOT on probation (a legacy row with no confirmation date is
+ *  treated as confirmed rather than blocked from a confirmed_only type). */
+type ProbationEmp = { confirmationDate?: string | null; finalConfirmationDate?: string | null };
+function onProbationAsOf(emp: ProbationEmp | undefined, asOf: string): boolean {
+  const confDate = emp?.finalConfirmationDate ?? emp?.confirmationDate ?? null;
+  return confDate != null && asOf < confDate;
+}
+
 function assertEligible(
   elig: LeaveEligibility,
-  emp: { gender: string | null; marital: string | null; hiredOn: string } | undefined,
+  emp:
+    | { gender: string | null; marital: string | null; hiredOn: string; confirmationDate?: string | null; finalConfirmationDate?: string | null }
+    | undefined,
   asOf: string,
 ): void {
   // Multi-select (#badc5966): qualify if the employee's attribute matches ANY selected value (OR within a
@@ -603,6 +643,17 @@ function assertEligible(
     // Unit-aware message (#f88f0a63): 'days' rules read as "N days", months (incl. absent unit) as "N months".
     const unitWord = elig.minServiceUnit === 'days' ? 'days' : 'months';
     throw new LeaveIneligibleError(`This leave type requires at least ${elig.minServiceMonths} ${unitWord} of service.`);
+  }
+  // Probation gate (d6bdbd55): confirmed_only blocks employees still on probation; probation_only blocks
+  // employees who are already confirmed. A null confirmation date ⇒ not-on-probation (see onProbationAsOf).
+  if (elig.probation) {
+    const onProbation = onProbationAsOf(emp, asOf);
+    if (elig.probation === 'confirmed_only' && onProbation) {
+      throw new LeaveIneligibleError('This leave type is available to confirmed employees only (after probation).');
+    }
+    if (elig.probation === 'probation_only' && !onProbation) {
+      throw new LeaveIneligibleError('This leave type is available to employees on probation only.');
+    }
   }
 }
 
@@ -751,7 +802,9 @@ export function maternityAllowanceEligibility(
  *  show an employee only the leave types they could actually take (2F-1 / R18). */
 export function isLeaveEligible(
   elig: LeaveEligibility | null | undefined,
-  emp: { gender: string | null; marital: string | null; hiredOn: string } | undefined,
+  emp:
+    | { gender: string | null; marital: string | null; hiredOn: string; confirmationDate?: string | null; finalConfirmationDate?: string | null }
+    | undefined,
   asOf: string,
 ): boolean {
   if (!elig) return true;
@@ -761,6 +814,12 @@ export function isLeaveEligible(
   if (maritals.length > 0 && !maritals.includes(emp?.marital ?? '')) return false;
   if (elig.minServiceMonths && (!emp || servedFor(elig.minServiceUnit, emp.hiredOn, asOf) < elig.minServiceMonths))
     return false;
+  // Probation gate (d6bdbd55) — mirrors assertEligible so reads hide a type the employee can't take.
+  if (elig.probation) {
+    const onProbation = onProbationAsOf(emp, asOf);
+    if (elig.probation === 'confirmed_only' && onProbation) return false;
+    if (elig.probation === 'probation_only' && !onProbation) return false;
+  }
   return true;
 }
 
@@ -797,6 +856,118 @@ export async function availableLeaveBalance(
       ),
     );
   return round2(bal - Number(row?.pending ?? 0));
+}
+
+// ── Combined Leave Type Limit enforcement (R44 4c48fd1f, Stage 2) ───────────────────────────────────
+/** Resolve ONE employment's effective benefit scheme id (override → auto-match → none), reusing the pure
+ *  resolver. Read-only. Returns null when no active scheme matches (⇒ no combined-limit pools apply). */
+async function resolveSchemeIdForEmployment(tx: Tx, employmentId: string): Promise<string | null> {
+  const [emp] = await tx
+    .select({ companyId: employment.companyId, gradeId: employment.gradeId, overrideSchemeId: employment.benefitSchemeId })
+    .from(employment)
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  if (!emp) return null;
+  const schemes = await tx
+    .select({
+      id: benefitScheme.id,
+      companyId: benefitScheme.companyId,
+      employmentType: benefitScheme.employmentType,
+      gradeGroupId: benefitScheme.gradeGroupId,
+      status: benefitScheme.status,
+    })
+    .from(benefitScheme);
+  if (schemes.length === 0) return null;
+  const [assign] = await tx
+    .select({ employmentType: assignment.employmentType })
+    .from(assignment)
+    .where(and(eq(assignment.employmentId, employmentId), isNull(assignment.validTo), isNull(assignment.supersededAt)))
+    .limit(1);
+  let gradeGroupId: string | null = null;
+  if (emp.gradeId) {
+    const [gm] = await tx
+      .select({ gradeGroupId: gradeGroupMember.gradeGroupId })
+      .from(gradeGroupMember)
+      .where(eq(gradeGroupMember.gradeId, emp.gradeId))
+      .limit(1);
+    gradeGroupId = gm?.gradeGroupId ?? null;
+  }
+  return resolveEffectiveSchemeId(
+    schemes.map((s) => ({
+      id: s.id,
+      companyId: s.companyId,
+      employmentType: s.employmentType,
+      gradeGroupId: s.gradeGroupId,
+      status: s.status,
+    })),
+    {
+      companyId: emp.companyId,
+      employmentType: assign?.employmentType ?? null,
+      gradeGroupId,
+      overrideSchemeId: emp.overrideSchemeId ?? null,
+    },
+  );
+}
+
+/** Combined-limit guard: if the requested leave type belongs to a pool in the employee's effective scheme,
+ *  sum the employee's per-cycle usage ACROSS ALL pooled types (pending + approved, minus the request being
+ *  re-evaluated) and reject when adding `requestedDays` would breach the pool's shared total. The cycle is
+ *  the calendar leave year of `startDate` (mirrors the tenant's calendar-year leave_year_config keying). A
+ *  no-op when the employee has no scheme, or the type is in no pool — so tenants without pools are unchanged. */
+async function enforceCombinedLeaveLimit(
+  tx: Tx,
+  p: { employmentId: string; leaveTypeId: string; startDate: string; requestedDays: number; excludeRequestId?: string },
+): Promise<void> {
+  if (p.requestedDays <= 0) return;
+  const schemeId = await resolveSchemeIdForEmployment(tx, p.employmentId);
+  if (!schemeId) return;
+  // The pool (if any) this leave type belongs to within the effective scheme.
+  const [pool] = await tx
+    .select({
+      id: schemeLeaveCombinedLimit.id,
+      name: schemeLeaveCombinedLimit.name,
+      totalLimitDays: schemeLeaveCombinedLimit.totalLimitDays,
+    })
+    .from(schemeLeaveCombinedLimitMember)
+    .innerJoin(schemeLeaveCombinedLimit, eq(schemeLeaveCombinedLimit.id, schemeLeaveCombinedLimitMember.combinedLimitId))
+    .where(
+      and(
+        eq(schemeLeaveCombinedLimitMember.benefitSchemeId, schemeId),
+        eq(schemeLeaveCombinedLimitMember.leaveTypeId, p.leaveTypeId),
+      ),
+    )
+    .limit(1);
+  if (!pool) return;
+  const total = Number(pool.totalLimitDays);
+  // All member leave types of the pool.
+  const members = await tx
+    .select({ leaveTypeId: schemeLeaveCombinedLimitMember.leaveTypeId })
+    .from(schemeLeaveCombinedLimitMember)
+    .where(eq(schemeLeaveCombinedLimitMember.combinedLimitId, pool.id));
+  const memberTypeIds = members.map((m) => m.leaveTypeId);
+  if (memberTypeIds.length === 0) return;
+  // Per-cycle usage across all member types = pending + approved requests whose start falls in the same
+  // calendar year, minus the request being re-evaluated (avoids double-counting on the approval path).
+  const year = p.startDate.slice(0, 4);
+  const windowStart = `${year}-01-01`;
+  const windowEnd = `${year}-12-31`;
+  const [used] = await tx
+    .select({ total: sql<string>`coalesce(sum(${leaveRequest.days}), 0)` })
+    .from(leaveRequest)
+    .where(
+      and(
+        eq(leaveRequest.employmentId, p.employmentId),
+        inArray(leaveRequest.leaveTypeId, memberTypeIds),
+        inArray(leaveRequest.status, ['pending', 'approved']),
+        gte(leaveRequest.startDate, windowStart),
+        lte(leaveRequest.startDate, windowEnd),
+        ...(p.excludeRequestId ? [sql`${leaveRequest.id} <> ${p.excludeRequestId}`] : []),
+      ),
+    );
+  const usedDays = Number(used?.total ?? 0);
+  if (round2(usedDays + p.requestedDays) > total) {
+    throw new CombinedLeaveLimitExceededError(pool.name, total);
+  }
 }
 
 // ── Emergency Leave (0106) ─────────────────────────────────────────────────────────────────────────
@@ -1189,6 +1360,9 @@ export async function requestLeave(
         name: leaveType.name,
         counting: leaveType.counting,
         eligibility: leaveType.eligibility,
+        // Probation eligibility (d6bdbd55): merged into the eligibility object below so the probation gate
+        // rides the same assertEligible check as gender/marital/min-service.
+        probationEligibility: leaveType.probationEligibility,
         // Day Type Inclusion (feedback ef6d7146): the re-inclusion vector — threaded into the working_days
         // counting below so the deducted `days` honours which day types this type counts.
         dayTypeInclusion: leaveType.dayTypeInclusion,
@@ -1226,11 +1400,21 @@ export async function requestLeave(
     // Doc-config: the mandatory-document gate moved BELOW day-counting (it now depends on `days` vs
     // mandatoryAfterDays). The eligibility gate stays here — it does not depend on `days`.
 
-    // Eligibility gate (2A-1, #25) — fail fast before anything is created.
-    const elig = (lt?.eligibility ?? null) as LeaveEligibility | null;
-    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths)) {
+    // Eligibility gate (2A-1, #25) — fail fast before anything is created. Probation (d6bdbd55) is stored in
+    // its own column; merge it into the eligibility object so the one gate covers every rule.
+    const baseElig = (lt?.eligibility ?? null) as LeaveEligibility | null;
+    const probation = (lt?.probationEligibility ?? null) as ProbationEligibility | null;
+    const elig: LeaveEligibility | null =
+      baseElig || probation ? { ...(baseElig ?? {}), ...(probation ? { probation } : {}) } : null;
+    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths || elig.probation)) {
       const [emp] = await tx
-        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn })
+        .select({
+          gender: person.gender,
+          marital: person.maritalStatus,
+          hiredOn: employment.hiredOn,
+          confirmationDate: employment.confirmationDate,
+          finalConfirmationDate: employment.finalConfirmationDate,
+        })
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))
         .where(eq(employment.id, p.employmentId))
@@ -1453,6 +1637,16 @@ export async function requestLeave(
       const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
       if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
     }
+
+    // Combined Leave Type Limit (R44 4c48fd1f, Stage 2): reject when this application would push the
+    // employee's per-cycle usage across a shared pool (scheme combined-limit) over its total. No-op when the
+    // employee has no effective scheme or the type is in no pool, so tenants without pools are unaffected.
+    await enforceCombinedLeaveLimit(tx, {
+      employmentId: p.employmentId,
+      leaveTypeId: p.leaveTypeId,
+      startDate: p.startDate,
+      requestedDays: days,
+    });
 
     // ADR-0069: a friendly UX pre-check — the DB trigger (guard_frozen_leave_balance) is the real
     // enforcement at approval time, but failing fast here gives the employee a readable error immediately
@@ -2201,7 +2395,8 @@ async function assertCanDecideLeaveStep(
 
   switch (kind) {
     case 'direct_manager':
-      return assertCanDecide(tx, ctx, subjectEmploymentId, label);
+      // The direct-manager chain step is a leave APPLICATION decision — a scoped delegation must cover it.
+      return assertCanDecide(tx, ctx, subjectEmploymentId, label, scopeOf('leave.application'));
     // HR-tier / generic-admin gates. hr_manager and custom_role are cleared by HR/admins today; a distinct
     // ranked hr_manager role and a per-step bound custom role are documented follow-ups (ADR-0071 §i).
     case 'hr_admin':
@@ -2311,6 +2506,16 @@ async function finalizeLeaveApproval(
   const balance = await leaveBalance(tx, req.employmentId, req.leaveTypeId);
   const need = daysOverride ?? Number(req.days);
   if (balance - need < 0) throw new InsufficientLeaveBalanceError();
+  // Combined Leave Type Limit (R44 4c48fd1f, Stage 2): re-check the shared pool at approval time (a second
+  // approver / stale pending set could otherwise breach it). Exclude THIS request from the usage sum and add
+  // its `need` back, so the pending row it represents is counted exactly once.
+  await enforceCombinedLeaveLimit(tx, {
+    employmentId: req.employmentId,
+    leaveTypeId: req.leaveTypeId,
+    startDate: req.startDate,
+    requestedDays: need,
+    excludeRequestId: req.id,
+  });
   await tx.insert(leaveLedger).values({
     tenantId: ctx.tenantId,
     employmentId: req.employmentId,
@@ -2481,7 +2686,7 @@ export async function decideLeave(
     }
 
     // Single-step (no chain) — original behavior.
-    await assertCanDecide(tx, ctx, req.employmentId, 'leave request');
+    await assertCanDecide(tx, ctx, req.employmentId, 'leave request', scopeOf('leave.application'));
     if (p.decision === 'approved') await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId);
     // Partial Leave Approval (0131): stamp the mandatory reject reason onto the rejected event payload.
     else await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { rejectReason });
@@ -2582,7 +2787,7 @@ export async function decideLeaveDate(
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
     // Single-step authority (§4C): per-date rows only exist for single-step companies, so the whole-request
     // assertCanDecide (manager/admin, no self-approval) is the correct gate — no chain-step logic here.
-    await assertCanDecide(tx, ctx, req.employmentId, 'leave request');
+    await assertCanDecide(tx, ctx, req.employmentId, 'leave request', scopeOf('leave.application'));
 
     const [row] = await tx
       .select()
@@ -2695,7 +2900,7 @@ export async function decideLeaveDates(
     if (!req) throw new Error('leave request not found (or not visible)');
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
     // Single-step authority (§4C): per-date rows only exist for single-step companies.
-    await assertCanDecide(tx, ctx, req.employmentId, 'leave request');
+    await assertCanDecide(tx, ctx, req.employmentId, 'leave request', scopeOf('leave.application'));
 
     for (const d of decisions) {
       const [row] = await tx
@@ -3002,7 +3207,7 @@ export async function decideLeaveCancellation(
     if (cr.status !== 'pending') throw new Error(`cancellation request is already ${cr.status}`);
 
     // Self-approval ban + manager/admin authorization — service-layer (RLS is symmetric, §6(2)).
-    await assertCanDecide(tx, ctx, cr.employmentId, 'leave cancellation');
+    await assertCanDecide(tx, ctx, cr.employmentId, 'leave cancellation', scopeOf('leave.cancellation'));
 
     if (p.decision === 'rejected') {
       await tx
@@ -3438,6 +3643,8 @@ export async function editLeaveRequest(
         name: leaveType.name,
         counting: leaveType.counting,
         eligibility: leaveType.eligibility,
+        // Probation eligibility (d6bdbd55): merged into the eligibility object below (same as requestLeave).
+        probationEligibility: leaveType.probationEligibility,
         dayTypeInclusion: leaveType.dayTypeInclusion,
         requiresDocument: leaveType.requiresDocument,
         mandatoryAfterDays: leaveType.mandatoryAfterDays,
@@ -3463,10 +3670,19 @@ export async function editLeaveRequest(
     }
 
     // ── Re-validate the NEW details (fail fast, same gates + errors as requestLeave) ─────────────────────
-    const elig = (lt.eligibility ?? null) as LeaveEligibility | null;
-    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths)) {
+    const baseElig = (lt.eligibility ?? null) as LeaveEligibility | null;
+    const probation = (lt.probationEligibility ?? null) as ProbationEligibility | null;
+    const elig: LeaveEligibility | null =
+      baseElig || probation ? { ...(baseElig ?? {}), ...(probation ? { probation } : {}) } : null;
+    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths || elig.probation)) {
       const [emp] = await tx
-        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn })
+        .select({
+          gender: person.gender,
+          marital: person.maritalStatus,
+          hiredOn: employment.hiredOn,
+          confirmationDate: employment.confirmationDate,
+          finalConfirmationDate: employment.finalConfirmationDate,
+        })
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))
         .where(eq(employment.id, req.employmentId))
