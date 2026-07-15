@@ -44,6 +44,15 @@ export function isDelegationTaskType(v: string): v is DelegationTaskType {
   return TASK_SET.has(v);
 }
 
+// i18n key suffixes. next-intl reads '.' as a nesting separator, so the dotted taskType values can't be
+// message keys directly — map each to a flat camelCase key under the `delegations.taskLabel` namespace.
+export const taskLabelKey: Record<DelegationTaskType, string> = {
+  'leave.application': 'leaveApplication',
+  'leave.cancellation': 'leaveCancellation',
+  'attendance.correction': 'attendanceCorrection',
+  'claims.claim': 'claimsClaim',
+};
+
 /** The (module, taskType) pair passed to the scope-aware decision guard for a given approval flow. */
 export function scopeOf(taskType: DelegationTaskType): { module: DelegationModule; taskType: DelegationTaskType } {
   return { module: moduleOfTask[taskType], taskType };

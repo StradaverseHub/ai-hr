@@ -6196,7 +6196,23 @@
     "noDownline": "You have no direct reports, so there are no approvals to delegate.",
     "showHistory": "Show history",
     "hideHistory": "Hide history",
-    "selfHint": "You are handing over your own approval duties while you are away."
+    "selfHint": "You are handing over your own approval duties while you are away.",
+    "scopeTitle": "What does this delegation cover?",
+    "scopeHint": "Choose the modules and tasks to hand over. Leave everything unchecked to cover all approvals.",
+    "wholeModule": "All {module} approvals",
+    "reason": "Reason for delegation",
+    "reasonPlaceholder": "Why are you delegating (e.g. annual leave, medical leave)?",
+    "moduleLabel": {
+      "leave": "Leave",
+      "attendance": "Attendance",
+      "claims": "Claims"
+    },
+    "taskLabel": {
+      "leaveApplication": "Leave Application Approval",
+      "leaveCancellation": "Leave Cancellation Approval",
+      "attendanceCorrection": "Attendance Correction Approval",
+      "claimsClaim": "Claim Approval"
+    }
   },
   "dashboardCardConfig": {
     "title": "Dashboard Card Setup",

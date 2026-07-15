@@ -6196,7 +6196,23 @@
     "noDownline": "您没有直属下属，因此没有可委托的审批。",
     "showHistory": "显示历史",
     "hideHistory": "隐藏历史",
-    "selfHint": "您外出期间将自己的审批职责交给他人。"
+    "selfHint": "您外出期间将自己的审批职责交给他人。",
+    "scopeTitle": "此委托涵盖哪些内容？",
+    "scopeHint": "选择要移交的模块和任务。全部不勾选则涵盖所有审批。",
+    "wholeModule": "所有{module}审批",
+    "reason": "委托原因",
+    "reasonPlaceholder": "为何委托（例如年假、病假）？",
+    "moduleLabel": {
+      "leave": "请假",
+      "attendance": "考勤",
+      "claims": "报销"
+    },
+    "taskLabel": {
+      "leaveApplication": "请假申请审批",
+      "leaveCancellation": "请假取消审批",
+      "attendanceCorrection": "考勤更正审批",
+      "claimsClaim": "报销审批"
+    }
   },
   "dashboardCardConfig": {
     "title": "仪表板卡片设置",

@@ -5,6 +5,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Search, ArrowRight, UserCog } from 'lucide-react';
 import { inputCls, btnPrimary } from '@/components/ui';
+import { DelegationScopePicker } from '@/components/delegation-scope-picker';
 import {
   createSelfDelegationAction,
   loadSelfDelegationContextAction,
@@ -186,7 +187,7 @@ function DelegationQuickPanel({ onClose, onBack }: { onClose: () => void; onBack
   }, []);
 
   return (
-    <div className="p-4">
+    <div className="max-h-[76vh] overflow-y-auto p-4">
       <div className="mb-3 flex items-center gap-2">
         <button
           type="button"
@@ -234,6 +235,7 @@ function DelegationQuickPanel({ onClose, onBack }: { onClose: () => void; onBack
               <input name="validTo" type="date" className={inputCls} />
             </label>
           </div>
+          <DelegationScopePicker />
           <div className="flex items-center justify-between pt-1">
             <a href="/delegations" className="text-xs text-muted-foreground hover:underline" onClick={onClose}>
               {t('openFull')}
