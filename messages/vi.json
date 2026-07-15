@@ -6178,6 +6178,16 @@
       "performance_comp_partner": "Đối tác Hiệu suất/Lương thưởng"
     }
   },
+  "commandBar": {
+    "open": "Tìm kiếm",
+    "placeholder": "Tìm một thao tác…",
+    "noResults": "Không có kết quả phù hợp.",
+    "back": "Quay lại",
+    "loading": "Đang tải…",
+    "openFull": "Mở trang đầy đủ",
+    "delegationTitle": "Ủy quyền phê duyệt",
+    "delegationSubtitle": "Ủy quyền các nhiệm vụ phê duyệt của bạn cho người dùng khác"
+  },
   "delegations": {
     "title": "Quản lý ủy quyền",
     "subtitle": "Tạm thời giao nhiệm vụ phê duyệt cho người thay thế khi người phê duyệt vắng mặt.",
@@ -6208,7 +6218,23 @@
     "noDownline": "Bạn không có nhân viên cấp dưới trực tiếp nên không có phê duyệt để ủy quyền.",
     "showHistory": "Hiện lịch sử",
     "hideHistory": "Ẩn lịch sử",
-    "selfHint": "Bạn đang bàn giao nhiệm vụ phê duyệt của mình khi vắng mặt."
+    "selfHint": "Bạn đang bàn giao nhiệm vụ phê duyệt của mình khi vắng mặt.",
+    "scopeTitle": "Ủy quyền này bao gồm những gì?",
+    "scopeHint": "Chọn các mô-đun và nhiệm vụ để bàn giao. Bỏ trống tất cả để bao gồm mọi phê duyệt.",
+    "wholeModule": "Tất cả phê duyệt {module}",
+    "reason": "Lý do ủy quyền",
+    "reasonPlaceholder": "Tại sao bạn ủy quyền (ví dụ: nghỉ phép năm, nghỉ ốm)?",
+    "moduleLabel": {
+      "leave": "Nghỉ phép",
+      "attendance": "Chấm công",
+      "claims": "Yêu cầu bồi hoàn"
+    },
+    "taskLabel": {
+      "leaveApplication": "Phê duyệt Đơn xin nghỉ",
+      "leaveCancellation": "Phê duyệt Hủy nghỉ",
+      "attendanceCorrection": "Phê duyệt Điều chỉnh chấm công",
+      "claimsClaim": "Phê duyệt Yêu cầu bồi hoàn"
+    }
   },
   "dashboardCardConfig": {
     "title": "Thiết lập thẻ bảng điều khiển",

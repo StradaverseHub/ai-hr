@@ -26,6 +26,7 @@ import {
   location,
   position,
   reportingLine,
+  reportingLineScope,
   leaveLedger,
   employmentTypeEnum,
   assignmentStatusEnum,
@@ -574,7 +575,16 @@ export async function hasDownline(ctx: SessionContext, employmentId: string, asO
 async function insertDelegateLineTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { subordinateEmploymentId: string; managerEmploymentId: string; validFrom: string; validTo: string | null },
+  p: {
+    subordinateEmploymentId: string;
+    managerEmploymentId: string;
+    validFrom: string;
+    validTo: string | null;
+    // R44 delegation (Phase 2): why the hand-over (free text; nullable for legacy/whole-scope callers), and
+    // the per-module/task scope. An EMPTY/absent scope list = whole-scope (all approvals) — back-compat.
+    reason?: string | null;
+    scopes?: { module: string; taskType: string | null }[];
+  },
 ): Promise<{ reportingLineId: string }> {
   if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
   if (p.validTo != null && p.validTo < p.validFrom) {
@@ -597,6 +607,11 @@ async function insertDelegateLineTx(
     const overlaps = (eTo === null || newFrom <= eTo) && (newTo === null || e.validFrom <= newTo);
     if (overlaps) throw new DelegationError('An overlapping active delegation already exists for this period');
   }
+  // Normalise the scope list: drop blanks, de-dupe. An empty result persists ZERO scope rows = whole-scope.
+  const scopes = (p.scopes ?? [])
+    .filter((s) => s.module && s.module.trim())
+    .map((s) => ({ module: s.module, taskType: s.taskType && s.taskType.trim() ? s.taskType : null }));
+  const reason = p.reason && p.reason.trim() ? p.reason.trim() : null;
   const [row] = await tx
     .insert(reportingLine)
     .values({
@@ -606,8 +621,19 @@ async function insertDelegateLineTx(
       lineType: 'delegate',
       validFrom: p.validFrom,
       validTo: p.validTo ?? null,
+      reason,
     })
     .returning({ id: reportingLine.id });
+  if (scopes.length > 0) {
+    await tx.insert(reportingLineScope).values(
+      scopes.map((s) => ({
+        tenantId: ctx.tenantId,
+        reportingLineId: row.id,
+        module: s.module,
+        taskType: s.taskType,
+      })),
+    );
+  }
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'reporting-line',
@@ -615,7 +641,7 @@ async function insertDelegateLineTx(
     eventType: 'reporting-line.set',
     actor: actorOf(ctx),
     subjectEmploymentId: p.subordinateEmploymentId,
-    payload: { ...p, lineType: 'delegate' },
+    payload: { ...p, lineType: 'delegate', reason, scopes },
   });
   // Global Delegation (Phase 1) — a SECOND, delegation-specific event so notifications can target the
   // stand-in WITHOUT overloading the structural reporting-line.set (which fires for every line type).
@@ -631,6 +657,8 @@ async function insertDelegateLineTx(
       delegateEmploymentId: p.managerEmploymentId,
       validFrom: p.validFrom,
       validTo: p.validTo ?? null,
+      reason,
+      scopes,
     },
   });
   return { reportingLineId: row.id };
@@ -646,7 +674,17 @@ async function insertDelegateLineTx(
  */
 export async function editDelegation(
   ctx: SessionContext,
-  p: { reportingLineId: string; managerEmploymentId: string; validFrom: string; validTo: string | null },
+  p: {
+    reportingLineId: string;
+    managerEmploymentId: string;
+    validFrom: string;
+    validTo: string | null;
+    // R44 delegation (Phase 2): the re-inserted edge carries the (possibly changed) reason + scope. Absent =
+    // no reason / whole-scope on the new edge (the old edge's scope rows drop via CASCADE on supersede? No —
+    // supersede keeps the row; but the new edge starts from the values passed here, which the edit form fills).
+    reason?: string | null;
+    scopes?: { module: string; taskType: string | null }[];
+  },
 ) {
   return withTenant(ctx, async (tx) => {
     const [old] = await tx
@@ -678,6 +716,8 @@ export async function editDelegation(
       managerEmploymentId: p.managerEmploymentId,
       validFrom: p.validFrom,
       validTo: p.validTo,
+      reason: p.reason ?? null,
+      scopes: p.scopes ?? [],
     });
   });
 }
@@ -692,6 +732,10 @@ export async function setReportingLine(
     /** Hierarchy Management (ADR-0052): closing date of the edge window. Required-by-convention for
      *  `delegate` lines (an absence has an end); optional for the structural types (open-ended). */
     validTo?: string | null;
+    // R44 delegation (Phase 2): only meaningful for `delegate` lines — the reason + module/task scope of the
+    // hand-over. Ignored for structural line types. Empty scope list = whole-scope (all approvals).
+    reason?: string | null;
+    scopes?: { module: string; taskType: string | null }[];
   },
 ) {
   return withTenant(ctx, async (tx) => {
@@ -712,6 +756,8 @@ export async function setReportingLine(
         managerEmploymentId: p.managerEmploymentId,
         validFrom: p.validFrom,
         validTo: p.validTo ?? null,
+        reason: p.reason ?? null,
+        scopes: p.scopes ?? [],
       });
     }
     // A subordinate has at most one *active* line per type (one admin manager, one functional, …).

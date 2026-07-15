@@ -6178,6 +6178,16 @@
       "performance_comp_partner": "Rakan Prestasi/Pampasan"
     }
   },
+  "commandBar": {
+    "open": "Cari",
+    "placeholder": "Cari tindakan…",
+    "noResults": "Tiada padanan.",
+    "back": "Kembali",
+    "loading": "Memuatkan…",
+    "openFull": "Buka halaman penuh",
+    "delegationTitle": "Perwakilan Kelulusan",
+    "delegationSubtitle": "Wakilkan tugas kelulusan anda kepada pengguna lain"
+  },
   "delegations": {
     "title": "Pengurusan Perwakilan",
     "subtitle": "Serahkan tugas kelulusan kepada pengganti buat sementara semasa pelulus tiada.",
@@ -6208,7 +6218,23 @@
     "noDownline": "Anda tiada bawahan langsung, jadi tiada kelulusan untuk diwakilkan.",
     "showHistory": "Tunjuk sejarah",
     "hideHistory": "Sembunyi sejarah",
-    "selfHint": "Anda menyerahkan tugas kelulusan anda sendiri semasa anda tiada."
+    "selfHint": "Anda menyerahkan tugas kelulusan anda sendiri semasa anda tiada.",
+    "scopeTitle": "Apakah yang diliputi oleh perwakilan ini?",
+    "scopeHint": "Pilih modul dan tugas untuk diserahkan. Biarkan semua tidak bertanda untuk meliputi semua kelulusan.",
+    "wholeModule": "Semua kelulusan {module}",
+    "reason": "Sebab perwakilan",
+    "reasonPlaceholder": "Mengapa anda mewakilkan (cth. cuti tahunan, cuti sakit)?",
+    "moduleLabel": {
+      "leave": "Cuti",
+      "attendance": "Kehadiran",
+      "claims": "Tuntutan"
+    },
+    "taskLabel": {
+      "leaveApplication": "Kelulusan Permohonan Cuti",
+      "leaveCancellation": "Kelulusan Pembatalan Cuti",
+      "attendanceCorrection": "Kelulusan Pembetulan Kehadiran",
+      "claimsClaim": "Kelulusan Tuntutan"
+    }
   },
   "dashboardCardConfig": {
     "title": "Persediaan Kad Papan Pemuka",

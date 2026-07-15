@@ -4,7 +4,28 @@
  * render time without tripping the RSC boundary guard (test/rsc-boundary-guard.test.ts).
  */
 
+import { taskLabelKey, type DelegationTaskType } from './delegation-scope';
+
 export type DelegationStatus = 'active' | 'scheduled' | 'ended';
+
+/**
+ * R44 delegation (Phase 2) — render a delegation's scope for the list Module column. Empty scopes = "All
+ * approvals"; otherwise a compact comma list of module (whole) / task labels. Pure (takes the translator as
+ * an arg) so the Server Component can call it at render without crossing the RSC boundary.
+ */
+export function formatDelegationScope(
+  scopes: { module: string; taskType: string | null }[],
+  t: (key: string) => string,
+): string {
+  if (scopes.length === 0) return t('allApprovals');
+  return scopes
+    .map((s) => {
+      if (!s.taskType) return t('wholeModule').replace('{module}', t(`moduleLabel.${s.module}`));
+      const key = taskLabelKey[s.taskType as DelegationTaskType];
+      return key ? t(`taskLabel.${key}`) : s.taskType;
+    })
+    .join(', ');
+}
 
 /**
  * Derive the display status of a delegation window as of `asOf` (YYYY-MM-DD):

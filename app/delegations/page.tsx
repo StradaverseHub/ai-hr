@@ -5,7 +5,8 @@ import { delegationsScoped, employmentPickerList, myEmployments } from '@/core/r
 import { hasDownline } from '@/core/org';
 import { todayInKualaLumpur } from '@/core/leave';
 import { Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls, btnPrimary } from '@/components/ui';
-import { delegationStatus, isRevocable } from '@/lib/delegation-format';
+import { delegationStatus, formatDelegationScope, isRevocable } from '@/lib/delegation-format';
+import { DelegationScopePicker } from '@/components/delegation-scope-picker';
 import {
   createSelfDelegationAction,
   hrCreateDelegationAction,
@@ -107,7 +108,10 @@ export default async function DelegationsPage({
             <Field label={t('end')}>
               <input name="validTo" type="date" className={inputCls} />
             </Field>
-            <div>
+            <div className="sm:col-span-5">
+              <DelegationScopePicker />
+            </div>
+            <div className="sm:col-span-5">
               <button className={btnPrimary}>{t('create')}</button>
             </div>
           </form>
@@ -133,7 +137,10 @@ export default async function DelegationsPage({
             <Field label={t('end')}>
               <input name="validTo" type="date" className={inputCls} />
             </Field>
-            <div>
+            <div className="sm:col-span-4">
+              <DelegationScopePicker />
+            </div>
+            <div className="sm:col-span-4">
               <button className={btnPrimary}>{t('create')}</button>
             </div>
           </form>
@@ -180,7 +187,9 @@ export default async function DelegationsPage({
                     <tr key={r.id} className="border-b border-border/60 align-top">
                       <td className="py-2 pr-3">{r.delegatorName}</td>
                       <td className="py-2 pr-3">{r.delegateName}</td>
-                      <td className="py-2 pr-3 text-muted-foreground">{t('allApprovals')}</td>
+                      <td className="py-2 pr-3 text-muted-foreground" title={r.reason ?? undefined}>
+                        {formatDelegationScope(r.scopes, t)}
+                      </td>
                       <td className="py-2 pr-3">{r.validFrom}</td>
                       <td className="py-2 pr-3">{r.validTo ?? t('ongoing')}</td>
                       <td className="py-2 pr-3">
@@ -216,7 +225,10 @@ export default async function DelegationsPage({
                                 <Field label={t('end')}>
                                   <input name="validTo" type="date" defaultValue={r.validTo ?? ''} className={inputCls} />
                                 </Field>
-                                <div>
+                                <div className="sm:col-span-2">
+                                  <DelegationScopePicker defaultReason={r.reason ?? ''} defaultScopes={r.scopes} />
+                                </div>
+                                <div className="sm:col-span-2">
                                   <button className={btnPrimary}>{t('save')}</button>
                                 </div>
                               </form>

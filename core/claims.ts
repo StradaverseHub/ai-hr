@@ -25,6 +25,7 @@ import {
 export type { ClaimRateConfig };
 import { toCsv } from '../lib/csv';
 import { assertCanDecide } from './approvals';
+import { scopeOf } from '../lib/delegation-scope';
 import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
 import { calendarWindowFor } from './payroll-policy-config';
 
@@ -871,7 +872,7 @@ export async function decideClaim(
     const [claim] = await tx.select().from(claimRequest).where(eq(claimRequest.id, p.claimRequestId)).limit(1);
     if (!claim) throw new ClaimError('Claim not found');
     if (claim.status !== 'pending') throw new ClaimError('Only a pending claim can be decided');
-    await assertCanDecide(tx, ctx, claim.employmentId, 'claim');
+    await assertCanDecide(tx, ctx, claim.employmentId, 'claim', scopeOf('claims.claim'));
 
     if (p.decision === 'approve') {
       const taxable = p.taxable ?? claim.taxable;

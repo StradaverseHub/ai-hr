@@ -9,9 +9,9 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import {
   DelegationError,
   ReportingCycleError,
@@ -216,6 +216,115 @@ describe('Global Delegation (Phase 1)', () => {
     await dispatchNotifications(A(b), {});
     notes = await notificationsFor(stand.employmentId);
     expect(notes.map((n) => n.kind)).toContain('delegation.ended');
+  });
+});
+
+describe('Global Delegation (Phase 2 — module/task scope)', () => {
+  // Run the scope-aware decision helper under the DELEGATE's own RLS context (as assertCanDecide does).
+  async function canDecide(ctx: SessionContext, subject: string, module: string, task: string): Promise<boolean> {
+    return withTenant(ctx, async (tx) => {
+      const res = await tx.execute(
+        sql`SELECT app.can_decide_via_delegation(${subject}, ${module}, ${task}) AS ok`,
+      );
+      return (res as unknown as { ok: boolean }[])[0]?.ok ?? false;
+    });
+  }
+
+  it('an UNSCOPED delegation authorizes every module/task (back-compat)', async () => {
+    const mgr = await hire('UMgr');
+    const sub = await hire('USub');
+    await adminLine(sub.employmentId, mgr.employmentId);
+    const stand = await hire('UStand');
+    await setReportingLine(A(b), {
+      subordinateEmploymentId: mgr.employmentId,
+      managerEmploymentId: stand.employmentId,
+      lineType: 'delegate',
+      validFrom: '2024-01-01',
+      validTo: null,
+    });
+    const standCtx = await userCtx(stand.personId, 'manager');
+    expect(await canDecide(standCtx, sub.employmentId, 'leave', 'leave.application')).toBe(true);
+    expect(await canDecide(standCtx, sub.employmentId, 'attendance', 'attendance.correction')).toBe(true);
+    expect(await canDecide(standCtx, sub.employmentId, 'claims', 'claims.claim')).toBe(true);
+  });
+
+  it('a LEAVE-scoped delegation authorizes leave but NOT attendance/claims', async () => {
+    const mgr = await hire('LSMgr');
+    const sub = await hire('LSSub');
+    await adminLine(sub.employmentId, mgr.employmentId);
+    const stand = await hire('LSStand');
+    await setReportingLine(A(b), {
+      subordinateEmploymentId: mgr.employmentId,
+      managerEmploymentId: stand.employmentId,
+      lineType: 'delegate',
+      validFrom: '2024-01-01',
+      validTo: null,
+      reason: 'Covering leave only',
+      scopes: [{ module: 'leave', taskType: null }], // whole leave module
+    });
+    const standCtx = await userCtx(stand.personId, 'manager');
+    expect(await canDecide(standCtx, sub.employmentId, 'leave', 'leave.application')).toBe(true);
+    expect(await canDecide(standCtx, sub.employmentId, 'leave', 'leave.cancellation')).toBe(true);
+    expect(await canDecide(standCtx, sub.employmentId, 'attendance', 'attendance.correction')).toBe(false);
+    expect(await canDecide(standCtx, sub.employmentId, 'claims', 'claims.claim')).toBe(false);
+  });
+
+  it('a TASK-scoped delegation (leave.application only) does not authorize leave.cancellation', async () => {
+    const mgr = await hire('TSMgr');
+    const sub = await hire('TSSub');
+    await adminLine(sub.employmentId, mgr.employmentId);
+    const stand = await hire('TSStand');
+    await setReportingLine(A(b), {
+      subordinateEmploymentId: mgr.employmentId,
+      managerEmploymentId: stand.employmentId,
+      lineType: 'delegate',
+      validFrom: '2024-01-01',
+      validTo: null,
+      reason: 'Applications only',
+      scopes: [{ module: 'leave', taskType: 'leave.application' }],
+    });
+    const standCtx = await userCtx(stand.personId, 'manager');
+    expect(await canDecide(standCtx, sub.employmentId, 'leave', 'leave.application')).toBe(true);
+    expect(await canDecide(standCtx, sub.employmentId, 'leave', 'leave.cancellation')).toBe(false);
+  });
+
+  it('a LEAVE-scoped delegate can decide a leave request end-to-end; scope rows + reason persist', async () => {
+    const mgr = await hire('E2EMgr');
+    const sub = await hire('E2ESub');
+    await adminLine(sub.employmentId, mgr.employmentId);
+    const stand = await hire('E2EStand');
+    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
+    const { leaveRequestId } = await requestLeave(A(b), {
+      employmentId: sub.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-07-01',
+      endDate: '2026-07-01',
+    });
+    const { reportingLineId } = await setReportingLine(A(b), {
+      subordinateEmploymentId: mgr.employmentId,
+      managerEmploymentId: stand.employmentId,
+      lineType: 'delegate',
+      validFrom: '2024-01-01',
+      validTo: null,
+      reason: 'Away on holiday',
+      scopes: [{ module: 'leave', taskType: null }],
+    });
+    // Persisted: reason on the edge + one scope row.
+    const [edge] = await owner.db
+      .select({ reason: schema.reportingLine.reason })
+      .from(schema.reportingLine)
+      .where(eq(schema.reportingLine.id, reportingLineId));
+    expect(edge.reason).toBe('Away on holiday');
+    const scopeRows = await owner.db
+      .select({ module: schema.reportingLineScope.module, taskType: schema.reportingLineScope.taskType })
+      .from(schema.reportingLineScope)
+      .where(eq(schema.reportingLineScope.reportingLineId, reportingLineId));
+    expect(scopeRows).toEqual([{ module: 'leave', taskType: null }]);
+    // Honoured end-to-end: the stand-in clears the direct_manager step within leave scope.
+    const standCtx = await userCtx(stand.personId, 'manager');
+    const res = await decideLeave(standCtx, { leaveRequestId, decision: 'approved' });
+    expect(res.status).toBe('pending');
+    expect((res as { advancedTo?: string }).advancedTo).toBe('hr_admin');
   });
 });
 

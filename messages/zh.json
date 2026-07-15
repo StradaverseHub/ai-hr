@@ -6178,6 +6178,16 @@
       "performance_comp_partner": "绩效/薪酬合作伙伴"
     }
   },
+  "commandBar": {
+    "open": "搜索",
+    "placeholder": "搜索操作…",
+    "noResults": "无匹配结果。",
+    "back": "返回",
+    "loading": "加载中…",
+    "openFull": "打开完整页面",
+    "delegationTitle": "审批委托",
+    "delegationSubtitle": "将您的审批任务委托给其他用户"
+  },
   "delegations": {
     "title": "委托管理",
     "subtitle": "在审批人外出期间临时将审批职责交给代理人。",
@@ -6208,7 +6218,23 @@
     "noDownline": "您没有直属下属，因此没有可委托的审批。",
     "showHistory": "显示历史",
     "hideHistory": "隐藏历史",
-    "selfHint": "您外出期间将自己的审批职责交给他人。"
+    "selfHint": "您外出期间将自己的审批职责交给他人。",
+    "scopeTitle": "此委托涵盖哪些内容？",
+    "scopeHint": "选择要移交的模块和任务。全部不勾选则涵盖所有审批。",
+    "wholeModule": "所有{module}审批",
+    "reason": "委托原因",
+    "reasonPlaceholder": "为何委托（例如年假、病假）？",
+    "moduleLabel": {
+      "leave": "请假",
+      "attendance": "考勤",
+      "claims": "报销"
+    },
+    "taskLabel": {
+      "leaveApplication": "请假申请审批",
+      "leaveCancellation": "请假取消审批",
+      "attendanceCorrection": "考勤更正审批",
+      "claimsClaim": "报销审批"
+    }
   },
   "dashboardCardConfig": {
     "title": "仪表板卡片设置",

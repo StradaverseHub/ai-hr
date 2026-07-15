@@ -5,8 +5,30 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import { editDelegation, endReportingLine, hasDownline, setReportingLine } from '@/core/org';
-import { delegationsScoped, myEmployments } from '@/core/read';
+import { delegationsScoped, employmentPickerList, myEmployments } from '@/core/read';
 import { todayInKualaLumpur } from '@/core/leave';
+import { isDelegationModule, isDelegationTaskType, moduleOfTask, type DelegationTaskType } from '@/lib/delegation-scope';
+
+/**
+ * R44 delegation (Phase 2) — parse the scope picker's form fields into (reason, scope rows). A checked
+ * module with no checked task = the WHOLE module (taskType null); with tasks = those tasks; ZERO modules =
+ * whole-scope (empty list). Reason is required (the UI marks it *, this is the server-side guard).
+ */
+function parseScopeAndReason(formData: FormData): {
+  reason: string;
+  scopes: { module: string; taskType: string | null }[];
+} {
+  const reason = String(formData.get('reason') ?? '').trim();
+  const modules = formData.getAll('scopeModule').map(String).filter(isDelegationModule);
+  const tasks = formData.getAll('scopeTask').map(String).filter(isDelegationTaskType) as DelegationTaskType[];
+  const scopes: { module: string; taskType: string | null }[] = [];
+  for (const m of modules) {
+    const mtasks = tasks.filter((tk) => moduleOfTask[tk] === m);
+    if (mtasks.length) scopes.push(...mtasks.map((tk) => ({ module: m, taskType: tk as string })));
+    else scopes.push({ module: m, taskType: null });
+  }
+  return { reason, scopes };
+}
 
 /**
  * Global Delegation (Phase 1) — server actions for the /delegations screen.
@@ -40,6 +62,35 @@ async function myEmploymentIds(): Promise<string[]> {
 
 // ── Self-service ─────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * R44 delegation (Phase 1) — data loader for the global command-bar quick-delegation modal. Returns
+ * whether the caller may self-delegate (has a downline on any of their own employments) plus the stand-in
+ * picker (all active employments EXCLUDING the caller's own — no self-delegation). Read-only, no event.
+ * Lazily invoked from the client command bar so the app shell doesn't pay this cost on every page render.
+ */
+export async function loadSelfDelegationContextAction(): Promise<{
+  canSelfDelegate: boolean;
+  options: { employmentId: string; name: string; employeeCode: string | null }[];
+}> {
+  const s = await getSession();
+  const today = todayInKualaLumpur();
+  const mine = await myEmployments(s);
+  const myIds = new Set(mine.map((m) => m.employmentId));
+  let canSelfDelegate = false;
+  for (const m of mine) {
+    if (await hasDownline(s, m.employmentId, today)) {
+      canSelfDelegate = true;
+      break;
+    }
+  }
+  if (!canSelfDelegate) return { canSelfDelegate: false, options: [] };
+  const picker = await employmentPickerList(s);
+  const options = picker
+    .filter((p) => !myIds.has(p.employmentId))
+    .map((p) => ({ employmentId: p.employmentId, name: p.name, employeeCode: p.employeeCode }));
+  return { canSelfDelegate: true, options };
+}
+
 export async function createSelfDelegationAction(formData: FormData) {
   const s = await getSession();
   const today = todayInKualaLumpur();
@@ -62,12 +113,16 @@ export async function createSelfDelegationAction(formData: FormData) {
     if (!delegator) throw new Error('Only a manager with direct reports can delegate approvals.');
     // Reject self-delegation, including to another of the caller's own concurrent employments.
     if (mine.includes(delegateEmploymentId)) throw new Error('You cannot delegate approvals to yourself.');
+    const { reason, scopes } = parseScopeAndReason(formData);
+    if (!reason) throw new Error('Please give a reason for the delegation.');
     await setReportingLine(s, {
       subordinateEmploymentId: delegator, // forced to the caller's own employment
       managerEmploymentId: delegateEmploymentId,
       lineType: 'delegate',
       validFrom,
       validTo,
+      reason,
+      scopes,
     });
   } catch (e) {
     fail((e as Error).message);
@@ -112,12 +167,16 @@ export async function hrCreateDelegationAction(formData: FormData) {
     if (!delegatorEmploymentId) throw new Error('Choose the employee handing over their approvals.');
     if (!delegateEmploymentId) throw new Error('Choose the stand-in approver.');
     if (delegatorEmploymentId === delegateEmploymentId) throw new Error('The stand-in must be a different person.');
+    const { reason, scopes } = parseScopeAndReason(formData);
+    if (!reason) throw new Error('Please give a reason for the delegation.');
     await setReportingLine(s, {
       subordinateEmploymentId: delegatorEmploymentId,
       managerEmploymentId: delegateEmploymentId,
       lineType: 'delegate',
       validFrom,
       validTo,
+      reason,
+      scopes,
     });
   } catch (e) {
     fail((e as Error).message);
@@ -134,7 +193,9 @@ export async function hrEditDelegationAction(formData: FormData) {
   try {
     if (!reportingLineId) throw new Error('Missing delegation.');
     if (!delegateEmploymentId) throw new Error('Choose the stand-in approver.');
-    await editDelegation(s, { reportingLineId, managerEmploymentId: delegateEmploymentId, validFrom, validTo });
+    const { reason, scopes } = parseScopeAndReason(formData);
+    if (!reason) throw new Error('Please give a reason for the delegation.');
+    await editDelegation(s, { reportingLineId, managerEmploymentId: delegateEmploymentId, validFrom, validTo, reason, scopes });
   } catch (e) {
     fail((e as Error).message);
   }
