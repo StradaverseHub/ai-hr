@@ -4,15 +4,15 @@
  * The reporter asked for four DISTINCT permission keys — rather than the coarse "is this an admin"
  * check — mapped through the RBAC model and configurable per company/tenant:
  *   • payroll.rollback           — revert a Processed run to Draft
- *   • payroll.unlock             — reopen a Closed run (high-risk, step-up gated)
+ *   • payroll.unlock             — reopen a Closed run (high-risk, single-confirm + mandatory reason)
  *   • payroll.reprocess.selective— reprocess selected employees within a run
  *   • payroll.close              — close a Processed run
  *
  * Enforcement is two-layer: code DEFAULTS below give the shipping behaviour, and a per-company/tenant
  * override table (`payroll_permission_grant`) can widen or narrow any (key, role) pair. The DB resolver
  * (`resolvePayrollPermission` in core/payroll.ts) reads the override rows for a company (falling back to
- * tenant-wide rows, then to these defaults) so an operator can, e.g., grant payroll.unlock to hr_admin
- * for one company without touching code.
+ * tenant-wide rows, then to these defaults) so an operator can, e.g., narrow payroll.unlock back to
+ * super_admin-only for one company without touching code.
  */
 
 export const PAYROLL_PERMISSION_KEYS = [
@@ -24,13 +24,15 @@ export const PAYROLL_PERMISSION_KEYS = [
 
 export type PayrollPermissionKey = (typeof PAYROLL_PERMISSION_KEYS)[number];
 
-/** Default role→keys map (used when no override row exists). Unlock is the most privileged. */
+/** Default role→keys map (used when no override row exists). All four keys default to admin roles. */
 export const PAYROLL_PERMISSION_DEFAULTS: Record<PayrollPermissionKey, readonly string[]> = {
   'payroll.rollback': ['hr_admin', 'super_admin'],
   'payroll.reprocess.selective': ['hr_admin', 'super_admin'],
   'payroll.close': ['hr_admin', 'super_admin'],
-  // High-risk: reopens a legally-frozen closed run — super_admin only by default.
-  'payroll.unlock': ['super_admin'],
+  // Reopens a legally-frozen closed run — restricted to admins. hr_admin is the operator meant to run
+  // unlock, so it defaults in line with its rollback/reprocess/close siblings; narrow back to
+  // super_admin-only per company via an allowed=false hr_admin override when a tenant needs it.
+  'payroll.unlock': ['hr_admin', 'super_admin'],
 } as const;
 
 export function isPayrollPermissionKey(v: string): v is PayrollPermissionKey {
