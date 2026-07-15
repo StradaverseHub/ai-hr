@@ -430,6 +430,56 @@ export async function deleteSchemeEntitlement(ctx: SessionContext, p: { id: stri
   });
 }
 
+/** Copy all leave entitlements from a source scheme into a target scheme, SKIPPING any leave type the target
+ *  already has (no overwrite). Emits ONE DomainEvent 'scheme-leave-entitlement.copied' with the copied count
+ *  + leave-type ids (not one event per row). Dedup by leaveTypeId ties into the duplicate-validation item. */
+export async function copySchemeEntitlements(
+  ctx: SessionContext,
+  p: { sourceSchemeId: string; targetSchemeId: string },
+): Promise<{ copied: number; copiedLeaveTypeIds: string[] }> {
+  if (!p.sourceSchemeId || !p.targetSchemeId) throw new Error('Source and target schemes are required.');
+  if (p.sourceSchemeId === p.targetSchemeId) throw new Error('Source and target schemes must be different.');
+  return withTenant(ctx, async (tx) => {
+    const sourceRows = await tx
+      .select({ leaveTypeId: schemeLeaveEntitlement.leaveTypeId, serviceBands: schemeLeaveEntitlement.serviceBands })
+      .from(schemeLeaveEntitlement)
+      .where(eq(schemeLeaveEntitlement.benefitSchemeId, p.sourceSchemeId));
+    const targetRows = await tx
+      .select({ leaveTypeId: schemeLeaveEntitlement.leaveTypeId })
+      .from(schemeLeaveEntitlement)
+      .where(eq(schemeLeaveEntitlement.benefitSchemeId, p.targetSchemeId));
+    const existing = new Set(targetRows.map((r) => r.leaveTypeId));
+    const toCopy = sourceRows.filter((r) => !existing.has(r.leaveTypeId));
+    if (toCopy.length === 0) return { copied: 0, copiedLeaveTypeIds: [] };
+    const inserted = await tx
+      .insert(schemeLeaveEntitlement)
+      .values(
+        toCopy.map((r) => ({
+          tenantId: ctx.tenantId,
+          benefitSchemeId: p.targetSchemeId,
+          leaveTypeId: r.leaveTypeId,
+          serviceBands: r.serviceBands as ServiceBand[],
+        })),
+      )
+      .returning({ id: schemeLeaveEntitlement.id, leaveTypeId: schemeLeaveEntitlement.leaveTypeId });
+    const copiedLeaveTypeIds = inserted.map((r) => r.leaveTypeId);
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'scheme-leave-entitlement',
+      aggregateId: p.targetSchemeId,
+      eventType: 'scheme-leave-entitlement.copied',
+      actor: actorOf(ctx),
+      payload: {
+        sourceSchemeId: p.sourceSchemeId,
+        targetSchemeId: p.targetSchemeId,
+        count: inserted.length,
+        copiedLeaveTypeIds,
+      },
+    });
+    return { copied: inserted.length, copiedLeaveTypeIds };
+  });
+}
+
 // ── Scheme combined leave-type limits (R44 4c48fd1f) ──────────────────────────────────────────────────
 export type SchemeCombinedLimitRow = {
   id: string;

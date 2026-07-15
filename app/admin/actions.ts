@@ -88,6 +88,7 @@ import {
   deleteBenefitScheme,
   upsertSchemeEntitlement,
   deleteSchemeEntitlement,
+  copySchemeEntitlements,
   createSchemeCombinedLimit,
   updateSchemeCombinedLimit,
   deleteSchemeCombinedLimit,
@@ -1727,6 +1728,21 @@ export async function deleteSchemeEntitlementAction(fd: FormData) {
   const s = await requireAdmin();
   try {
     await deleteSchemeEntitlement(s, { id: String(fd.get('id') ?? '') });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+// Copy / Duplicate Leave Entitlements (R44 ba494b21) — bring a source scheme's entitlements into the target,
+// skipping any leave type already configured on the target (no overwrite).
+export async function copySchemeEntitlementsAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await copySchemeEntitlements(s, {
+      sourceSchemeId: String(fd.get('sourceSchemeId') ?? ''),
+      targetSchemeId: String(fd.get('targetSchemeId') ?? ''),
+    });
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }

@@ -4405,7 +4405,16 @@
       "combinedNone": "ยังไม่ได้กำหนดวงเงินรวมสำหรับแผนนี้",
       "combinedColName": "ชื่อ",
       "combinedColTotal": "รวมวัน",
-      "combinedColTypes": "ประเภทการลา"
+      "combinedColTypes": "ประเภทการลา",
+      "copyButton": "คัดลอกสิทธิ์จากแผนอื่น…",
+      "copyTitle": "คัดลอกสิทธิ์จากแผนอื่น",
+      "copySourceLabel": "แผนต้นทาง",
+      "copySourcePlaceholder": "เลือกแผน…",
+      "copyPreviewCopy": "จะถูกคัดลอก",
+      "copyPreviewSkip": "ข้าม — กำหนดไว้แล้ว",
+      "copyConfirm": "คัดลอกสิทธิ์",
+      "copyEmpty": "เลือกแผนต้นทางเพื่อดูตัวอย่างสิ่งที่จะคัดลอก",
+      "copyNoneToCopy": "ไม่มีสิ่งที่จะคัดลอก — ปลายทางมีทุกประเภทการลาจากต้นทางนี้แล้ว"
     }
   },
   "topbar": {

@@ -4405,7 +4405,16 @@
       "combinedNone": "Chưa cấu hình giới hạn gộp cho chương trình này.",
       "combinedColName": "Tên",
       "combinedColTotal": "Tổng ngày",
-      "combinedColTypes": "Loại nghỉ"
+      "combinedColTypes": "Loại nghỉ",
+      "copyButton": "Sao chép quyền lợi từ chương trình khác…",
+      "copyTitle": "Sao chép quyền lợi từ chương trình khác",
+      "copySourceLabel": "Chương trình nguồn",
+      "copySourcePlaceholder": "Chọn một chương trình…",
+      "copyPreviewCopy": "Sẽ được sao chép",
+      "copyPreviewSkip": "Bỏ qua — đã cấu hình",
+      "copyConfirm": "Sao chép quyền lợi",
+      "copyEmpty": "Chọn chương trình nguồn để xem trước nội dung sẽ sao chép.",
+      "copyNoneToCopy": "Không có gì để sao chép — mục tiêu đã có mọi loại nghỉ từ nguồn này."
     }
   },
   "topbar": {

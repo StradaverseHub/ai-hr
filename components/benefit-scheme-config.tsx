@@ -57,6 +57,7 @@ type Actions = {
   deleteScheme: (fd: FormData) => void | Promise<void>;
   upsertEntitlement: (fd: FormData) => void | Promise<void>;
   deleteEntitlement: (fd: FormData) => void | Promise<void>;
+  copyEntitlements: (fd: FormData) => void | Promise<void>;
   createCombinedLimit: (fd: FormData) => void | Promise<void>;
   updateCombinedLimit: (fd: FormData) => void | Promise<void>;
   deleteCombinedLimit: (fd: FormData) => void | Promise<void>;
@@ -318,16 +319,26 @@ export function BenefitSchemeConfig({
                   ))}
                 </select>
               </Field>
-              <Field label={t('entSortLabel')}>
-                <select
-                  value={entSort}
-                  onChange={(e) => setEntSort(e.target.value as 'asc' | 'desc')}
-                  className={`${inputCls} w-48`}
-                >
-                  <option value="asc">{t('entSortAsc')}</option>
-                  <option value="desc">{t('entSortDesc')}</option>
-                </select>
-              </Field>
+              <div className="flex items-end gap-3">
+                <Field label={t('entSortLabel')}>
+                  <select
+                    value={entSort}
+                    onChange={(e) => setEntSort(e.target.value as 'asc' | 'desc')}
+                    className={`${inputCls} w-48`}
+                  >
+                    <option value="asc">{t('entSortAsc')}</option>
+                    <option value="desc">{t('entSortDesc')}</option>
+                  </select>
+                </Field>
+                {/* R44 ba494b21 — copy another scheme's entitlements into this one (skip-existing). */}
+                <CopyEntitlementsDialog
+                  targetSchemeId={selectedSchemeId}
+                  schemes={schemes}
+                  entitlements={entitlements}
+                  action={actions.copyEntitlements}
+                  t={t}
+                />
+              </div>
             </div>
             <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full min-w-[560px] text-sm">
@@ -647,6 +658,107 @@ function SchemeEditDialog({
               <Dialog.Close asChild>
                 <Button type="button" size="sm" variant="outline">{t('cancel')}</Button>
               </Dialog.Close>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+/**
+ * CopyEntitlementsDialog (R44 ba494b21) — copy all leave entitlements from a source scheme into the current
+ * (target) scheme, SKIPPING any leave type the target already has. A preview (computed client-side from the
+ * already-loaded entitlements) shows what will be copied vs skipped BEFORE the confirm submit. On confirm it
+ * posts copySchemeEntitlements; the action revalidates + the list refreshes.
+ */
+function CopyEntitlementsDialog({
+  targetSchemeId,
+  schemes,
+  entitlements,
+  action,
+  t,
+}: {
+  targetSchemeId: string;
+  schemes: Scheme[];
+  entitlements: Entitlement[];
+  action: (fd: FormData) => void | Promise<void>;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [sourceId, setSourceId] = useState('');
+
+  const targetTypeIds = useMemo(
+    () => new Set(entitlements.filter((e) => e.benefitSchemeId === targetSchemeId).map((e) => e.leaveTypeId)),
+    [entitlements, targetSchemeId],
+  );
+  const preview = useMemo(() => {
+    if (!sourceId) return [] as { name: string; willCopy: boolean }[];
+    return entitlements
+      .filter((e) => e.benefitSchemeId === sourceId)
+      .map((e) => ({ name: e.leaveTypeName ?? '—', willCopy: !targetTypeIds.has(e.leaveTypeId) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [entitlements, sourceId, targetTypeIds]);
+  const copyCount = preview.filter((p) => p.willCopy).length;
+
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setSourceId('');
+      }}
+    >
+      <Dialog.Trigger asChild>
+        <Button type="button" size="sm" variant="outline">{t('copyButton')}</Button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-5 text-popover-foreground shadow-lg">
+          <Dialog.Title className="text-base font-semibold">{t('copyTitle')}</Dialog.Title>
+          <div className="mt-4 space-y-3">
+            <Field label={t('copySourceLabel')}>
+              <select value={sourceId} onChange={(e) => setSourceId(e.target.value)} className={inputCls}>
+                <option value="" disabled>{t('copySourcePlaceholder')}</option>
+                {schemes
+                  .filter((s) => s.id !== targetSchemeId)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+              </select>
+            </Field>
+            {!sourceId ? (
+              <p className="text-xs text-muted-foreground">{t('copyEmpty')}</p>
+            ) : preview.length === 0 || copyCount === 0 ? (
+              <p className="text-xs text-muted-foreground">{t('copyNoneToCopy')}</p>
+            ) : (
+              <ul className="divide-y divide-border rounded-lg border border-border text-sm">
+                {preview.map((p, i) => (
+                  <li key={i} className="flex items-center justify-between gap-2 px-3 py-1.5">
+                    <span className="text-foreground">{p.name}</span>
+                    <Badge variant={p.willCopy ? 'success' : 'default'}>
+                      {p.willCopy ? t('copyPreviewCopy') : t('copyPreviewSkip')}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <Dialog.Close asChild>
+                <Button type="button" size="sm" variant="outline">{t('cancel')}</Button>
+              </Dialog.Close>
+              <form
+                action={(fd) => {
+                  setOpen(false);
+                  return action(fd);
+                }}
+              >
+                <input type="hidden" name="sourceSchemeId" value={sourceId} />
+                <input type="hidden" name="targetSchemeId" value={targetSchemeId} />
+                <Button type="submit" size="sm" disabled={!sourceId || copyCount === 0}>
+                  {t('copyConfirm')}
+                </Button>
+              </form>
             </div>
           </div>
         </Dialog.Content>

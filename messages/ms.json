@@ -4405,7 +4405,16 @@
       "combinedNone": "Tiada had gabungan dikonfigurasikan untuk skim ini.",
       "combinedColName": "Nama",
       "combinedColTotal": "Jumlah hari",
-      "combinedColTypes": "Jenis cuti"
+      "combinedColTypes": "Jenis cuti",
+      "copyButton": "Salin kelayakan dari skim lain…",
+      "copyTitle": "Salin kelayakan dari skim lain",
+      "copySourceLabel": "Skim sumber",
+      "copySourcePlaceholder": "Pilih skim…",
+      "copyPreviewCopy": "Akan disalin",
+      "copyPreviewSkip": "Dilangkau — telah dikonfigurasikan",
+      "copyConfirm": "Salin kelayakan",
+      "copyEmpty": "Pilih skim sumber untuk pratonton apa yang akan disalin.",
+      "copyNoneToCopy": "Tiada apa untuk disalin — sasaran telah mempunyai setiap jenis cuti dari sumber ini."
     }
   },
   "topbar": {

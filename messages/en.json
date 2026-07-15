@@ -4405,7 +4405,16 @@
       "combinedNone": "No combined limits configured for this scheme.",
       "combinedColName": "Name",
       "combinedColTotal": "Total days",
-      "combinedColTypes": "Leave types"
+      "combinedColTypes": "Leave types",
+      "copyButton": "Copy entitlements from another scheme…",
+      "copyTitle": "Copy entitlements from another scheme",
+      "copySourceLabel": "Source scheme",
+      "copySourcePlaceholder": "Select a scheme…",
+      "copyPreviewCopy": "Will be copied",
+      "copyPreviewSkip": "Skipped — already configured",
+      "copyConfirm": "Copy entitlements",
+      "copyEmpty": "Select a source scheme to preview what will be copied.",
+      "copyNoneToCopy": "Nothing to copy — the target already has every leave type from this source."
     }
   },
   "topbar": {

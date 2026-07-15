@@ -4405,7 +4405,16 @@
       "combinedNone": "此方案未配置合并上限。",
       "combinedColName": "名称",
       "combinedColTotal": "总天数",
-      "combinedColTypes": "假期类型"
+      "combinedColTypes": "假期类型",
+      "copyButton": "从其他方案复制权益…",
+      "copyTitle": "从其他方案复制权益",
+      "copySourceLabel": "源方案",
+      "copySourcePlaceholder": "选择方案…",
+      "copyPreviewCopy": "将被复制",
+      "copyPreviewSkip": "已跳过 — 已配置",
+      "copyConfirm": "复制权益",
+      "copyEmpty": "选择源方案以预览将复制的内容。",
+      "copyNoneToCopy": "无内容可复制 — 目标已包含此源的所有假期类型。"
     }
   },
   "topbar": {
