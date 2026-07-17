@@ -45,7 +45,7 @@ describe('ADR-0021 — claim lifecycle', () => {
   async function setup(opts?: { taxable?: boolean; budget?: number | null; cap?: number | null }) {
     const a = adminCtx(base);
     const E = await hire(a, base, 'Subject');
-    const { id: typeId } = await createClaimType(a, { code: 'MEDICAL', name: 'Medical', defaultTaxable: opts?.taxable ?? false, requiresReceipt: false });
+    const { id: typeId } = await createClaimType(a, { code: 'MEDICAL', name: 'Medical', defaultTaxable: opts?.taxable ?? false, requiresReceipt: false, maxReceiptAgeDays: 36500 });
     if (opts && ('budget' in opts || 'cap' in opts)) {
       await setClaimPolicy(a, { claimTypeId: typeId, annualBudget: opts.budget ?? null, perClaimCap: opts.cap ?? null, effectiveFrom: '2026-01-01' });
     }
@@ -115,7 +115,7 @@ describe('ADR-0021 — claim lifecycle', () => {
   it('requires a receipt when the claim type demands it', async () => {
     const a = adminCtx(base);
     const E = await hire(a, base, 'Subject');
-    const { id: typeId } = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: true });
+    const { id: typeId } = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: true, maxReceiptAgeDays: 36500 });
     await expect(submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 50, incurredOn: '2026-06-01' })).rejects.toThrow(/receipt/i);
     await expect(submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 50, incurredOn: '2026-06-01', hasReceipt: true })).resolves.toBeTruthy();
   });
@@ -183,7 +183,7 @@ describe('ADR-0021 — claim lifecycle', () => {
   it('mileage_flat: 520 km at RM0.60 stores RM312.00 and preview == stored == km × rate', async () => {
     const a = adminCtx(base);
     const E = await hire(a, base, 'Driver');
-    const { id: typeId } = await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false });
+    const { id: typeId } = await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false, maxReceiptAgeDays: 36500 });
     await setClaimPolicy(a, {
       claimTypeId: typeId,
       annualBudget: null,

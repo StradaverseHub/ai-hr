@@ -232,13 +232,15 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
     expect(await listIndividualTxnsAcross(a, { companyIds, batchStatus: 'draft' })).toHaveLength(3);
     expect(await listIndividualTxnsAcross(a, { companyIds, batchStatus: 'closed' })).toHaveLength(0);
 
-    // Created date: rows are created "now"; a today lower-bound keeps all, a tomorrow lower-bound drops all.
-    const today = new Date().toISOString().slice(0, 10);
-    const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
-    const all = await listIndividualTxnsAcross(a, { companyIds, createdFrom: today });
+    // Created date: rows are created "now"; a yesterday lower-bound keeps all, a well-future lower-bound
+    // drops all. Bounds are ±2 days from now so server-vs-UTC timezone skew (created_at is date-cast in the
+    // DB's local zone, which can sit a calendar day ahead of the test's UTC "today") can't flip the result.
+    const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    const future = new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10);
+    const all = await listIndividualTxnsAcross(a, { companyIds, createdFrom: yesterday });
     expect(all).toHaveLength(3);
     expect(all.every((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.createdOn))).toBe(true);
-    expect(await listIndividualTxnsAcross(a, { companyIds, createdFrom: tomorrow })).toHaveLength(0);
+    expect(await listIndividualTxnsAcross(a, { companyIds, createdFrom: future })).toHaveLength(0);
 
     // Created-by: an unknown actor id matches nothing; the creators option list is a well-formed array.
     expect(await listIndividualTxnsAcross(a, { companyIds, createdBy: '00000000-0000-0000-0000-000000000000' })).toHaveLength(0);

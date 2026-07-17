@@ -154,7 +154,7 @@ describe('bulk approval — integration (real decide services + events + authori
 
   it('approves every in-authority row, skips out-of-authority + self, writes one event per approved row', async () => {
     const { a, E, M, P, mgrCtx } = await scenario();
-    const { id: typeId } = await createClaimType(a, { code: 'MEDICAL', name: 'Medical', defaultTaxable: false, requiresReceipt: false });
+    const { id: typeId } = await createClaimType(a, { code: 'MEDICAL', name: 'Medical', defaultTaxable: false, requiresReceipt: false, maxReceiptAgeDays: 36500 });
 
     // Two subordinate claims, one peer claim (out of authority), one manager-owned claim (self).
     const cE = await submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 100, incurredOn: '2026-06-01' });
