@@ -10,11 +10,11 @@ import { createConfigAction, updateConfigAction, setStatusAction, deleteConfigAc
 
 const PAGE = '/admin/settings/employee-id';
 
-/** Safe preview of the first ID the setup would issue (prefix + zero-padded start number). Never throws — an
- *  over-long combination is caught by the service on save; here it just falls back to a dash. */
-function previewCode(prefix: string, startNumber: number, numberLength: number): string {
+/** Safe preview of the first ID the setup would issue (prefix + zero-padded start number + suffix). Never
+ *  throws — an over-long combination is caught by the service on save; here it just falls back to a dash. */
+function previewCode(prefix: string, startNumber: number, numberLength: number, suffix: string): string {
   try {
-    return formatEmployeeCode(prefix.toUpperCase(), Math.max(startNumber, 0), numberLength);
+    return formatEmployeeCode(prefix.toUpperCase(), Math.max(startNumber, 0), numberLength, suffix.toUpperCase());
   } catch {
     return '—';
   }
@@ -58,12 +58,14 @@ export default async function EmployeeIdConfigPage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="px-4 py-2 font-medium">{t('colTemplate')}</th>
                 <th className="px-4 py-2 font-medium">{t('colScope')}</th>
                 <th className="px-4 py-2 font-medium">{t('colPrefix')}</th>
+                <th className="px-4 py-2 font-medium">{t('colSuffix')}</th>
                 <th className="px-4 py-2 text-center font-medium">{t('colStart')}</th>
                 <th className="px-4 py-2 text-center font-medium">{t('colLength')}</th>
-                <th className="px-4 py-2 text-center font-medium">{t('colIncrement')}</th>
                 <th className="px-4 py-2 text-center font-medium">{t('colCurrent')}</th>
+                <th className="px-4 py-2 text-center font-medium">{t('colManualOverride')}</th>
                 <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -72,6 +74,9 @@ export default async function EmployeeIdConfigPage({
               {configs.map((c) => (
                 <tr key={c.id} className={editing?.id === c.id ? 'bg-primary/5' : undefined}>
                   <td className="px-4 py-2.5">
+                    {c.templateName ? c.templateName : <span className="text-muted-foreground">{t('templateUnnamed')}</span>}
+                  </td>
+                  <td className="px-4 py-2.5">
                     {c.companyId == null ? (
                       <Badge variant="default">{t('scopeGlobal')}</Badge>
                     ) : (
@@ -79,10 +84,11 @@ export default async function EmployeeIdConfigPage({
                     )}
                   </td>
                   <td className="px-4 py-2.5 font-mono font-medium">{c.prefix}</td>
+                  <td className="px-4 py-2.5 font-mono">{c.suffix || <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-4 py-2.5 text-center tabular-nums">{c.startNumber}</td>
                   <td className="px-4 py-2.5 text-center tabular-nums">{c.numberLength}</td>
-                  <td className="px-4 py-2.5 text-center tabular-nums">{c.increment}</td>
                   <td className="px-4 py-2.5 text-center tabular-nums">{c.currentRunningNumber}</td>
+                  <td className="px-4 py-2.5 text-center">{c.allowManualOverride ? t('yes') : t('no')}</td>
                   <td className="px-4 py-2.5">
                     <Badge variant={c.status === 'active' ? 'success' : 'default'}>{t(`status.${c.status}`)}</Badge>
                   </td>
@@ -115,7 +121,7 @@ export default async function EmployeeIdConfigPage({
               ))}
               {configs.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
                     {t('empty')}
                   </td>
                 </tr>
@@ -150,6 +156,18 @@ export default async function EmployeeIdConfigPage({
             </label>
 
             <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium">{t('fieldTemplateName')}</span>
+              <input
+                name="templateName"
+                defaultValue={editing?.templateName ?? ''}
+                maxLength={80}
+                placeholder={t('fieldTemplateNamePlaceholder')}
+                className={inputCls}
+              />
+              <span className="text-xs text-muted-foreground">{t('fieldTemplateNameHint')}</span>
+            </label>
+
+            <label className="flex flex-col gap-1">
               <span className="text-sm font-medium">{t('fieldPrefix')}</span>
               <input
                 name="prefix"
@@ -163,6 +181,18 @@ export default async function EmployeeIdConfigPage({
             </label>
 
             <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium">{t('fieldSuffix')}</span>
+              <input
+                name="suffix"
+                defaultValue={editing?.suffix ?? ''}
+                maxLength={8}
+                placeholder="MY"
+                className={`${inputCls} font-mono uppercase`}
+              />
+              <span className="text-xs text-muted-foreground">{t('fieldSuffixHint')}</span>
+            </label>
+
+            <label className="flex flex-col gap-1">
               <span className="text-sm font-medium">{t('fieldStart')}</span>
               <input name="startNumber" type="number" min={0} defaultValue={editing?.startNumber ?? 1} className={inputCls} />
             </label>
@@ -170,11 +200,7 @@ export default async function EmployeeIdConfigPage({
             <label className="flex flex-col gap-1">
               <span className="text-sm font-medium">{t('fieldLength')}</span>
               <input name="numberLength" type="number" min={1} max={9} defaultValue={editing?.numberLength ?? 4} className={inputCls} />
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="text-sm font-medium">{t('fieldIncrement')}</span>
-              <input name="increment" type="number" min={1} defaultValue={editing?.increment ?? 1} className={inputCls} />
+              <span className="text-xs text-muted-foreground">{t('fieldLengthHint')}</span>
             </label>
 
             {editing && (
@@ -193,10 +219,23 @@ export default async function EmployeeIdConfigPage({
               </select>
             </label>
 
+            <label className="flex items-start gap-2 sm:col-span-2">
+              <input
+                type="checkbox"
+                name="allowManualOverride"
+                defaultChecked={editing?.allowManualOverride ?? false}
+                className="mt-0.5 size-4 accent-primary"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">{t('fieldAllowManualOverride')}</span>
+                <span className="text-xs text-muted-foreground">{t('fieldAllowManualOverrideHint')}</span>
+              </span>
+            </label>
+
             <p className="sm:col-span-2 text-sm text-muted-foreground">
               {t('previewLabel')}:{' '}
               <span className="font-mono font-semibold text-foreground">
-                {previewCode(editing?.prefix ?? 'EMP', editing?.startNumber ?? 1, editing?.numberLength ?? 4)}
+                {previewCode(editing?.prefix ?? 'EMP', editing?.startNumber ?? 1, editing?.numberLength ?? 4, editing?.suffix ?? '')}
               </span>
             </p>
 

@@ -1759,13 +1759,24 @@ export const employeeIdConfig = pgTable(
     // NULL = GLOBAL scope (shared across all companies). Set = company-specific sequence. ON DELETE no action
     // (a config is a tenant/company-level setting, deleted explicitly via the admin screen, never cascaded).
     companyId: uuid('company_id').references(() => company.id),
+    // Template enhancement (R45 7bf025f0): an optional human label so several numbering formats can run side
+    // by side (e.g. "Malaysia Employee", "HQ Staff"). NULL = unnamed (all pre-existing configs).
+    templateName: text('template_name'),
     // The house prefix (e.g. EMP, STAFF, KL). Uppercased + shape-validated (^[A-Z0-9-]+$) in the service.
     prefix: text('prefix').notNull(),
+    // Template enhancement (R45 7bf025f0): text appended AFTER the zero-padded number (e.g. EMP0001MY).
+    // Defaults to '' so existing configs format exactly as before. prefix + number_length + suffix ≤ 9.
+    suffix: text('suffix').notNull().default(''),
     // First number to ISSUE (e.g. 1 → "0001"). current_running_number tracks the LAST issued number.
     startNumber: integer('start_number').notNull().default(1),
-    // Zero-pad width (e.g. 4 → "0001"). prefix.length + number_length must be ≤ 9 (employee_code cap).
+    // Zero-pad width (e.g. 4 → "0001"). prefix.length + number_length + suffix.length must be ≤ 9 (cap).
     numberLength: integer('number_length').notNull().default(4),
+    // Retained for backward compatibility. The template enhancement (R45 7bf025f0) drops the increment as a
+    // configurable field — new templates advance by +1 — but existing rows keep their stored value.
     increment: integer('increment').notNull().default(1),
+    // Template enhancement (R45 7bf025f0): whether HR may hand-key an Employee ID for this scope. Persisted
+    // + event-logged now; the employee-profile edit gating that consumes it is a follow-up.
+    allowManualOverride: boolean('allow_manual_override').notNull().default(false),
     // Last issued running number (0 = none issued yet → the first hire gets start_number).
     currentRunningNumber: integer('current_running_number').notNull().default(0),
     status: text('status').notNull().default('active'), // 'active' | 'inactive'

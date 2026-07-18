@@ -32,8 +32,12 @@ export const EMPLOYEE_ID_CONFIG_STATUSES = ['active', 'inactive'] as const;
 export type EmployeeIdConfigStatus = (typeof EMPLOYEE_ID_CONFIG_STATUSES)[number];
 
 /** Allowed prefix shape: uppercase letters, digits and dashes (mirrors EMPLOYEE_CODE_RE without the length
- *  cap, which is enforced jointly with number_length instead). */
+ *  cap, which is enforced jointly with number_length + suffix instead). */
 export const EMPLOYEE_ID_PREFIX_RE = /^[A-Z0-9-]+$/;
+
+/** Allowed suffix shape (R45 7bf025f0): uppercase letters, digits and dashes, OR empty (no suffix). Same
+ *  character set as the prefix so the composed employee_code still satisfies EMPLOYEE_CODE_RE. */
+export const EMPLOYEE_ID_SUFFIX_RE = /^[A-Z0-9-]*$/;
 
 /** Thrown when a write would leave more than one ACTIVE config in the same scope (global, or a given company). */
 export class DuplicateActiveConfigError extends Error {
@@ -77,6 +81,19 @@ function cleanPrefix(v: string | undefined): string {
   return s;
 }
 
+/** Normalize an optional suffix (R45 7bf025f0): trim + uppercase; empty ⇒ '' (no suffix). Same char set as
+ *  the prefix so the composed code stays valid. Length is bounded jointly with prefix + number in assertFits. */
+function cleanSuffix(v: string | undefined): string {
+  const s = (v ?? '').trim().toUpperCase();
+  if (s && !EMPLOYEE_ID_SUFFIX_RE.test(s)) throw new Error('Suffix may only contain letters, numbers and dashes');
+  return s;
+}
+
+/** Normalize an optional template name (R45 7bf025f0): trim; empty ⇒ null (unnamed). */
+function cleanTemplateName(v: string | null | undefined): string | null {
+  return (v ?? '').trim() || null;
+}
+
 /** Coerce to a positive integer with a floor (defaults kept in sync with the schema column defaults). */
 function cleanPositiveInt(v: number | undefined, fallback: number, min: number): number {
   const n = Math.trunc(Number(v));
@@ -93,9 +110,11 @@ function normalizeStatus(v: string | undefined): EmployeeIdConfigStatus {
   return v === 'inactive' ? 'inactive' : 'active';
 }
 
-/** prefix.length + numberLength must fit inside the 9-char employee_code cap. */
-function assertFits(prefix: string, numberLength: number): void {
-  if (prefix.length + numberLength > EMPLOYEE_CODE_MAX_LEN) throw new EmployeeCodeTooLongError();
+/** prefix.length + numberLength + suffix.length must fit inside the 9-char employee_code cap (R45 7bf025f0 —
+ *  the suffix now shares that budget; the tenant-wide employee_code contract is 9 chars, so an unlimited
+ *  prefix/suffix would break EMPLOYEE_CODE_RE + downstream validation and is intentionally NOT permitted here). */
+function assertFits(prefix: string, numberLength: number, suffix = ''): void {
+  if (prefix.length + numberLength + suffix.length > EMPLOYEE_CODE_MAX_LEN) throw new EmployeeCodeTooLongError();
 }
 
 /**
@@ -137,20 +156,26 @@ export async function createConfig(
   ctx: SessionContext,
   p: {
     companyId?: string | null;
+    templateName?: string | null;
     prefix: string;
+    suffix?: string;
     startNumber?: number;
     numberLength?: number;
     increment?: number;
+    allowManualOverride?: boolean;
     status?: string;
   },
 ): Promise<{ id: string }> {
   const companyId = p.companyId ?? null;
+  const templateName = cleanTemplateName(p.templateName);
   const prefix = cleanPrefix(p.prefix);
+  const suffix = cleanSuffix(p.suffix);
   const startNumber = cleanNonNegInt(p.startNumber, 1);
   const numberLength = cleanPositiveInt(p.numberLength, 4, 1);
   const increment = cleanPositiveInt(p.increment, 1, 1);
+  const allowManualOverride = Boolean(p.allowManualOverride);
   const status = normalizeStatus(p.status);
-  assertFits(prefix, numberLength);
+  assertFits(prefix, numberLength, suffix);
   return withTenant(ctx, async (tx) => {
     if (status === 'active') await assertActiveInvariants(tx, ctx.tenantId, { companyId, prefix });
     let id: string;
@@ -160,10 +185,13 @@ export async function createConfig(
         .values({
           tenantId: ctx.tenantId,
           companyId,
+          templateName,
           prefix,
+          suffix,
           startNumber,
           numberLength,
           increment,
+          allowManualOverride,
           // current_running_number starts at 0 (nothing issued) → the first hire gets startNumber.
           currentRunningNumber: 0,
           status,
@@ -180,7 +208,7 @@ export async function createConfig(
       aggregateId: id,
       eventType: 'employee-id-config.created',
       actor: actorOf(ctx),
-      payload: { companyId, prefix, startNumber, numberLength, increment, status },
+      payload: { companyId, templateName, prefix, suffix, startNumber, numberLength, increment, allowManualOverride, status },
     });
     return { id };
   });
@@ -190,10 +218,13 @@ export async function updateConfig(
   ctx: SessionContext,
   p: {
     id: string;
+    templateName?: string | null;
     prefix?: string;
+    suffix?: string;
     startNumber?: number;
     numberLength?: number;
     increment?: number;
+    allowManualOverride?: boolean;
     currentRunningNumber?: number;
     status?: string;
   },
@@ -201,21 +232,24 @@ export async function updateConfig(
   return withTenant(ctx, async (tx) => {
     const [before] = await tx.select().from(employeeIdConfig).where(eq(employeeIdConfig.id, p.id)).limit(1);
     if (!before) throw new Error('Employee ID setup not found');
+    const templateName = p.templateName !== undefined ? cleanTemplateName(p.templateName) : before.templateName;
     const prefix = p.prefix !== undefined ? cleanPrefix(p.prefix) : before.prefix;
+    const suffix = p.suffix !== undefined ? cleanSuffix(p.suffix) : before.suffix;
     const startNumber = p.startNumber !== undefined ? cleanNonNegInt(p.startNumber, before.startNumber) : before.startNumber;
     const numberLength = p.numberLength !== undefined ? cleanPositiveInt(p.numberLength, before.numberLength, 1) : before.numberLength;
     const increment = p.increment !== undefined ? cleanPositiveInt(p.increment, before.increment, 1) : before.increment;
+    const allowManualOverride = p.allowManualOverride !== undefined ? Boolean(p.allowManualOverride) : before.allowManualOverride;
     const currentRunningNumber =
       p.currentRunningNumber !== undefined ? cleanNonNegInt(p.currentRunningNumber, before.currentRunningNumber) : before.currentRunningNumber;
     const status = p.status !== undefined ? normalizeStatus(p.status) : (before.status as EmployeeIdConfigStatus);
-    assertFits(prefix, numberLength);
+    assertFits(prefix, numberLength, suffix);
     if (status === 'active') {
       await assertActiveInvariants(tx, ctx.tenantId, { companyId: before.companyId, prefix, excludeId: p.id });
     }
     try {
       await tx
         .update(employeeIdConfig)
-        .set({ prefix, startNumber, numberLength, increment, currentRunningNumber, status, updatedAt: sql`now()` })
+        .set({ templateName, prefix, suffix, startNumber, numberLength, increment, allowManualOverride, currentRunningNumber, status, updatedAt: sql`now()` })
         .where(eq(employeeIdConfig.id, p.id));
     } catch (e) {
       if (isUniqueViolation(e)) throw new DuplicateActiveConfigError();
@@ -229,14 +263,17 @@ export async function updateConfig(
       actor: actorOf(ctx),
       payload: {
         before: {
+          templateName: before.templateName,
           prefix: before.prefix,
+          suffix: before.suffix,
           startNumber: before.startNumber,
           numberLength: before.numberLength,
           increment: before.increment,
+          allowManualOverride: before.allowManualOverride,
           currentRunningNumber: before.currentRunningNumber,
           status: before.status,
         },
-        after: { prefix, startNumber, numberLength, increment, currentRunningNumber, status },
+        after: { templateName, prefix, suffix, startNumber, numberLength, increment, allowManualOverride, currentRunningNumber, status },
       },
     });
     return { id: p.id };
@@ -286,10 +323,12 @@ export async function deleteConfig(ctx: SessionContext, p: { id: string }): Prom
 
 // ─────────────────────────── Generation ───────────────────────────
 
-/** Format an issued number: prefix + zero-padded number, guarding the 9-char employee_code cap (an overflowed
- *  numberLength, e.g. width 4 reaching 10000, would exceed the cap — throw rather than issue an invalid code). */
-export function formatEmployeeCode(prefix: string, n: number, numberLength: number): string {
-  const code = `${prefix}${String(n).padStart(numberLength, '0')}`;
+/** Format an issued number: prefix + zero-padded number + optional suffix (R45 7bf025f0), guarding the 9-char
+ *  employee_code cap (an overflowed numberLength, e.g. width 4 reaching 10000, or a suffix pushing past 9,
+ *  would exceed the cap — throw rather than issue an invalid code). `suffix` defaults to '' so existing
+ *  three-argument callers are unaffected. */
+export function formatEmployeeCode(prefix: string, n: number, numberLength: number, suffix = ''): string {
+  const code = `${prefix}${String(n).padStart(numberLength, '0')}${suffix}`;
   if (code.length > EMPLOYEE_CODE_MAX_LEN) {
     throw new EmployeeCodeTooLongError(
       `Generated Employee ID "${code}" exceeds ${EMPLOYEE_CODE_MAX_LEN} characters — widen the number length or reset the sequence`,
@@ -316,6 +355,7 @@ export async function generateEmployeeCode(
     .select({
       id: employeeIdConfig.id,
       prefix: employeeIdConfig.prefix,
+      suffix: employeeIdConfig.suffix,
       startNumber: employeeIdConfig.startNumber,
       numberLength: employeeIdConfig.numberLength,
       increment: employeeIdConfig.increment,
@@ -348,7 +388,7 @@ export async function generateEmployeeCode(
     })
     .where(eq(employeeIdConfig.id, cfg.id))
     .returning({ n: employeeIdConfig.currentRunningNumber });
-  return formatEmployeeCode(cfg.prefix, advanced.n, cfg.numberLength);
+  return formatEmployeeCode(cfg.prefix, advanced.n, cfg.numberLength, cfg.suffix);
 }
 
 // ─────────────────────────── Reads ───────────────────────────
@@ -357,10 +397,13 @@ export type ConfigRow = {
   id: string;
   companyId: string | null;
   companyName: string | null;
+  templateName: string | null;
   prefix: string;
+  suffix: string;
   startNumber: number;
   numberLength: number;
   increment: number;
+  allowManualOverride: boolean;
   currentRunningNumber: number;
   status: EmployeeIdConfigStatus;
   updatedAt: Date;
@@ -375,10 +418,13 @@ export async function listConfigs(ctx: SessionContext, companyIds?: string[]): P
         id: employeeIdConfig.id,
         companyId: employeeIdConfig.companyId,
         companyName: company.legalName,
+        templateName: employeeIdConfig.templateName,
         prefix: employeeIdConfig.prefix,
+        suffix: employeeIdConfig.suffix,
         startNumber: employeeIdConfig.startNumber,
         numberLength: employeeIdConfig.numberLength,
         increment: employeeIdConfig.increment,
+        allowManualOverride: employeeIdConfig.allowManualOverride,
         currentRunningNumber: employeeIdConfig.currentRunningNumber,
         status: employeeIdConfig.status,
         updatedAt: employeeIdConfig.updatedAt,

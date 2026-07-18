@@ -5175,7 +5175,21 @@
       "duplicateActive": "Đã tồn tại một thiết lập Mã nhân viên đang hoạt động cho phạm vi này",
       "prefixCollision": "Một thiết lập đang hoạt động khác đã dùng tiền tố này",
       "tooLong": "Tiền tố cộng số chữ số tối đa 9 ký tự"
-    }
+    },
+    "colTemplate": "Mẫu",
+    "colSuffix": "Hậu tố",
+    "colManualOverride": "Ghi đè thủ công",
+    "templateUnnamed": "Chưa đặt tên",
+    "yes": "Có",
+    "no": "Không",
+    "fieldTemplateName": "Tên mẫu",
+    "fieldTemplateNamePlaceholder": "ví dụ: Nhân viên Malaysia",
+    "fieldTemplateNameHint": "Nhãn tùy chọn để nhiều định dạng đánh số chạy song song.",
+    "fieldSuffix": "Hậu tố",
+    "fieldSuffixHint": "Văn bản tùy chọn sau số, ví dụ: MY → EMP0001MY. Chữ cái, số và dấu gạch ngang.",
+    "fieldLengthHint": "Số 0 đứng đầu: số được đệm đến số chữ số này.",
+    "fieldAllowManualOverride": "Cho phép ghi đè Mã nhân viên thủ công",
+    "fieldAllowManualOverrideHint": "Khi bật, HR có thể tự nhập Mã nhân viên (được kiểm tra tính duy nhất) thay vì tạo tự động."
   },
   "payrollPolicy": {
     "title": "Chính sách lương",

@@ -5175,7 +5175,21 @@
       "duplicateActive": "Persediaan ID Pekerja yang aktif sudah wujud untuk skop ini",
       "prefixCollision": "Persediaan aktif lain sudah menggunakan awalan ini",
       "tooLong": "Awalan dan panjang nombor mesti tidak melebihi 9 aksara"
-    }
+    },
+    "colTemplate": "Templat",
+    "colSuffix": "Akhiran",
+    "colManualOverride": "Ubah suai manual",
+    "templateUnnamed": "Tanpa nama",
+    "yes": "Ya",
+    "no": "Tidak",
+    "fieldTemplateName": "Nama templat",
+    "fieldTemplateNamePlaceholder": "cth. Pekerja Malaysia",
+    "fieldTemplateNameHint": "Label pilihan supaya beberapa format penomboran boleh digunakan serentak.",
+    "fieldSuffix": "Akhiran",
+    "fieldSuffixHint": "Teks pilihan selepas nombor, cth. MY → EMP0001MY. Huruf, nombor dan sengkang.",
+    "fieldLengthHint": "Sifar hadapan: nombor diisi kepada bilangan digit ini.",
+    "fieldAllowManualOverride": "Benarkan ubah suai ID Pekerja secara manual",
+    "fieldAllowManualOverrideHint": "Apabila dihidupkan, HR boleh menaip ID Pekerja (disemak keunikan) dan bukannya menjananya secara automatik."
   },
   "payrollPolicy": {
     "title": "Dasar gaji",

@@ -5175,7 +5175,21 @@
       "duplicateActive": "An active Employee ID setup already exists for this scope",
       "prefixCollision": "Another active setup already uses this prefix",
       "tooLong": "Prefix plus number length must be at most 9 characters"
-    }
+    },
+    "colTemplate": "Template",
+    "colSuffix": "Suffix",
+    "colManualOverride": "Manual override",
+    "templateUnnamed": "Unnamed",
+    "yes": "Yes",
+    "no": "No",
+    "fieldTemplateName": "Template name",
+    "fieldTemplateNamePlaceholder": "e.g. Malaysia Employee",
+    "fieldTemplateNameHint": "Optional label so several numbering formats can run side by side.",
+    "fieldSuffix": "Suffix",
+    "fieldSuffixHint": "Optional text after the number, e.g. MY → EMP0001MY. Letters, numbers and dashes.",
+    "fieldLengthHint": "Leading zeroes: the number is padded to this many digits.",
+    "fieldAllowManualOverride": "Allow manual Employee ID override",
+    "fieldAllowManualOverrideHint": "When on, HR may hand-key an Employee ID (checked for uniqueness) instead of auto-generating it."
   },
   "payrollPolicy": {
     "title": "Payroll policies",
