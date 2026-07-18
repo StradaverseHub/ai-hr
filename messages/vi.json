@@ -3124,7 +3124,10 @@
       "postcode": "Mã bưu chính",
       "phone": "Số điện thoại",
       "fax": "Số fax",
-      "optionNone": "— Chọn —"
+      "optionNone": "— Chọn —",
+      "tabBankAccount": "Tài khoản ngân hàng",
+      "tabStatutory": "Theo luật định",
+      "bankAccountNonMY": "Hồ sơ giải ngân ngân hàng chỉ khả dụng cho các pháp nhân Malaysia. Công ty này đăng ký tại {country}."
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",

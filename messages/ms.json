@@ -3124,7 +3124,10 @@
       "postcode": "Poskod",
       "phone": "Nombor Telefon",
       "fax": "Nombor Faks",
-      "optionNone": "— Pilih —"
+      "optionNone": "— Pilih —",
+      "tabBankAccount": "Akaun Bank",
+      "tabStatutory": "Berkanun",
+      "bankAccountNonMY": "Profil pengeluaran bank tersedia untuk entiti Malaysia. Syarikat ini didaftarkan di {country}."
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",

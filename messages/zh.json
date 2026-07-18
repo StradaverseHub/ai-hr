@@ -3124,7 +3124,10 @@
       "postcode": "邮编",
       "phone": "电话号码",
       "fax": "传真号码",
-      "optionNone": "— 请选择 —"
+      "optionNone": "— 请选择 —",
+      "tabBankAccount": "银行账户",
+      "tabStatutory": "法定",
+      "bankAccountNonMY": "银行发放档案仅适用于马来西亚实体。此公司注册于 {country}。"
     },
     "systemLabels": {
       "pageTitle": "系统标签",

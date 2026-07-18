@@ -3124,7 +3124,10 @@
       "postcode": "Postcode",
       "phone": "Phone Number",
       "fax": "Fax Number",
-      "optionNone": "— Select —"
+      "optionNone": "— Select —",
+      "tabBankAccount": "Bank Account",
+      "tabStatutory": "Statutory",
+      "bankAccountNonMY": "Bank disbursement profiles are available for Malaysian entities. This company is registered in {country}."
     },
     "systemLabels": {
       "pageTitle": "System Labels",

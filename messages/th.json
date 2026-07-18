@@ -3124,7 +3124,10 @@
       "postcode": "รหัสไปรษณีย์",
       "phone": "หมายเลขโทรศัพท์",
       "fax": "หมายเลขแฟกซ์",
-      "optionNone": "— เลือก —"
+      "optionNone": "— เลือก —",
+      "tabBankAccount": "บัญชีธนาคาร",
+      "tabStatutory": "ตามกฎหมาย",
+      "bankAccountNonMY": "โปรไฟล์การจ่ายเงินผ่านธนาคารใช้ได้กับนิติบุคคลในมาเลเซีย บริษัทนี้จดทะเบียนใน {country}"
     },
     "systemLabels": {
       "pageTitle": "ป้ายระบบ",
