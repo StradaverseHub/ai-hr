@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -28,8 +28,16 @@ export function TimelineNav({
 }) {
   const t = useTranslations('components.timelineNav');
   const router = useRouter();
-  const go = (iso: string | null) =>
-    router.push(iso ? `${basePath}?${param}=${iso}` : basePath, { scroll: false });
+  const searchParams = useSearchParams();
+  // Preserve sibling query params (e.g. the Leave Calendar My/Team `view`) when stepping the window,
+  // so navigating dates never silently resets the other controls.
+  const go = (iso: string | null) => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (iso) next.set(param, iso);
+    else next.delete(param);
+    const qs = next.toString();
+    router.push(qs ? `${basePath}?${qs}` : basePath, { scroll: false });
+  };
   const unit = stepDays === 1 ? t('unitDay') : t('unitWeek');
 
   return (

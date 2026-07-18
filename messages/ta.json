@@ -4457,6 +4457,9 @@
     "plannedAbsences": {
       "title": "விடுப்பு நாட்காட்டி",
       "viewAll": "அனைத்தையும் காண்",
+      "viewMy": "எனது நாட்காட்டி",
+      "viewTeam": "குழு நாட்காட்டி",
+      "viewSwitchLabel": "விடுப்பு நாட்காட்டி காட்சி",
       "empty": "எல்லைக்குள் பணியாளர்கள் இல்லை.",
       "employees": "பணியாளர்கள்",
       "pillTitle": "{type} · {start} முதல் {end} வரை · {status}",

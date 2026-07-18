@@ -4457,6 +4457,9 @@
     "plannedAbsences": {
       "title": "Kalendar Cuti",
       "viewAll": "Lihat semua",
+      "viewMy": "Kalendar Saya",
+      "viewTeam": "Kalendar Pasukan",
+      "viewSwitchLabel": "Paparan kalendar cuti",
       "empty": "Tiada pekerja dalam skop.",
       "employees": "Pekerja",
       "pillTitle": "{type} · {start} hingga {end} · {status}",

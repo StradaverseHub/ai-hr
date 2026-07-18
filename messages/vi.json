@@ -4457,6 +4457,9 @@
     "plannedAbsences": {
       "title": "Lịch nghỉ phép",
       "viewAll": "Xem tất cả",
+      "viewMy": "Lịch của tôi",
+      "viewTeam": "Lịch nhóm",
+      "viewSwitchLabel": "Chế độ xem lịch nghỉ phép",
       "empty": "Không có nhân viên trong phạm vi.",
       "employees": "Nhân viên",
       "pillTitle": "{type} · {start} đến {end} · {status}",

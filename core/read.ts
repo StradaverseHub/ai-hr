@@ -1099,17 +1099,21 @@ export function plannedAbsences(
       else byEmp.set(l.employmentId, [l]);
     }
     // One row per person — concurrent employments merge their leave onto a single row.
-    const byPerson = new Map<string, { id: string; name: string; employeeCode: string | null; role: string | null; leaves: Leave[] }>();
+    // `employmentIds` carries every employment behind the person (My/Team calendar filter, item 8c739dda):
+    // Team view keeps rows whose employment set intersects the viewer's reporting team, INCLUDING people with
+    // no leave in the window (empty rows), which a per-leave employmentId alone could not express.
+    const byPerson = new Map<string, { id: string; name: string; employeeCode: string | null; role: string | null; employmentIds: string[]; leaves: Leave[] }>();
     for (const e of emps) {
       const empLeaves = byEmp.get(e.employmentId) ?? [];
       const existing = byPerson.get(e.personId);
       if (existing) {
         existing.leaves.push(...empLeaves);
+        existing.employmentIds.push(e.employmentId);
         if (!existing.role && e.role) existing.role = e.role;
         // First non-null Employee ID wins for a person spanning concurrent employments (feedback 38668d9b).
         if (!existing.employeeCode && e.employeeCode) existing.employeeCode = e.employeeCode;
       } else {
-        byPerson.set(e.personId, { id: e.personId, name: e.name, employeeCode: e.employeeCode, role: e.role, leaves: empLeaves });
+        byPerson.set(e.personId, { id: e.personId, name: e.name, employeeCode: e.employeeCode, role: e.role, employmentIds: [e.employmentId], leaves: empLeaves });
       }
     }
     return [...byPerson.values()];

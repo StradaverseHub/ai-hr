@@ -4457,6 +4457,9 @@
     "plannedAbsences": {
       "title": "请假日历",
       "viewAll": "查看全部",
+      "viewMy": "我的日历",
+      "viewTeam": "团队日历",
+      "viewSwitchLabel": "请假日历视图",
       "empty": "范围内无员工。",
       "employees": "员工",
       "pillTitle": "{type} · {start} 至 {end} · {status}",

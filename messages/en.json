@@ -4457,6 +4457,9 @@
     "plannedAbsences": {
       "title": "Leave Calendar",
       "viewAll": "View all",
+      "viewMy": "My Calendar",
+      "viewTeam": "Team Calendar",
+      "viewSwitchLabel": "Leave calendar view",
       "empty": "No employees in scope.",
       "employees": "Employees",
       "pillTitle": "{type} · {start} to {end} · {status}",

@@ -4457,6 +4457,9 @@
     "plannedAbsences": {
       "title": "ปฏิทินการลา",
       "viewAll": "ดูทั้งหมด",
+      "viewMy": "ปฏิทินของฉัน",
+      "viewTeam": "ปฏิทินทีม",
+      "viewSwitchLabel": "มุมมองปฏิทินการลา",
       "empty": "ไม่มีพนักงานในขอบเขต",
       "employees": "พนักงาน",
       "pillTitle": "{type} · {start} ถึง {end} · {status}",
