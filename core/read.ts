@@ -20,6 +20,7 @@ import {
   assignment,
   attendance,
   attendanceAllowancePolicy,
+  businessUnit,
   clockingLocation,
   company,
   compensation,
@@ -76,6 +77,10 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
         // Position title of the current assignment — used by the Individual Transaction wizard's Step-1
         // employee card (Employee ID / Name / Department / Position). Nullable, like department.
         position: position.title,
+        // Current-assignment Business Unit — the Fixed / Individual Transaction screens filter Step-1 by it
+        // (a UX narrowing over the already access-fenced list). Nullable, like department.
+        businessUnit: businessUnit.name,
+        businessUnitId: assignment.businessUnitId,
         company: company.legalName,
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
@@ -94,6 +99,7 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
       .where(companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined)
       .orderBy(person.fullName),
   );
