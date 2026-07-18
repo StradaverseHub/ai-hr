@@ -1316,7 +1316,12 @@
     "statusOnLeave": "Đang nghỉ phép",
     "flagLate": "Trễ",
     "flagUnder": "Thiếu giờ",
-    "flagOdd": "Lẻ"
+    "flagOdd": "Lẻ",
+    "punchTrail": "Lượt chấm công",
+    "punchIn": "Vào",
+    "punchOut": "Ra",
+    "punchFirst": "Đầu",
+    "punchLast": "Cuối"
   },
   "org": {
     "title": "Sơ đồ tổ chức",

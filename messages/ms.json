@@ -1316,7 +1316,12 @@
     "statusOnLeave": "Bercuti",
     "flagLate": "Lewat",
     "flagUnder": "Kurang",
-    "flagOdd": "Ganjil"
+    "flagOdd": "Ganjil",
+    "punchTrail": "Rekod jam",
+    "punchIn": "Masuk",
+    "punchOut": "Keluar",
+    "punchFirst": "Pertama",
+    "punchLast": "Terakhir"
   },
   "org": {
     "title": "Carta organisasi",

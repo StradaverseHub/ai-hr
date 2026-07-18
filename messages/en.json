@@ -1316,7 +1316,12 @@
     "statusOnLeave": "On Leave",
     "flagLate": "Late",
     "flagUnder": "Under",
-    "flagOdd": "Odd"
+    "flagOdd": "Odd",
+    "punchTrail": "Clockings",
+    "punchIn": "In",
+    "punchOut": "Out",
+    "punchFirst": "First",
+    "punchLast": "Last"
   },
   "org": {
     "title": "Org chart",

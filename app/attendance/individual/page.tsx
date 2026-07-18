@@ -1,6 +1,7 @@
+import { Fragment } from 'react';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { attendanceForEmploymentRange } from '@/core/attendance';
+import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
 import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { listEmployees } from '@/core/read';
 import { Card, ErrorBanner, PageHeader, SectionHeader, inputCls, Button } from '@/components/ui';
@@ -56,6 +57,9 @@ export default async function IndividualAttendancePage({
   const selectedEmp = sp.emp && employees.some((e) => e.employmentId === sp.emp) ? sp.emp : undefined;
   const selected = employees.find((e) => e.employmentId === selectedEmp);
   const rows = selectedEmp ? await attendanceForEmploymentRange(s, selectedEmp, from, to) : [];
+  // R45 92bdf77a — the full punch trail per day (multiple clocking). Keyed by attendanceId; the summary
+  // columns still use the row's first-in / last-out, this only expands the audit detail below a multi-punch day.
+  const punchesByAttendance = selectedEmp ? await attendancePunchesForRange(s, selectedEmp, from, to) : new Map();
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -122,8 +126,15 @@ export default async function IndividualAttendancePage({
                   const ot = otByRate(r);
                   const status = statusOf(r);
                   const flag = flagOf(r);
+                  // R45 — punch trail for a multiple-clocking day (>2 punches). A plain single pair (or fewer)
+                  // is already fully shown by the Check In / Check Out columns, so we only expand the extras.
+                  const punches: { punchAt: string; direction: 'in' | 'out' }[] = r.attendanceId
+                    ? punchesByAttendance.get(r.attendanceId) ?? []
+                    : [];
+                  const showTrail = punches.length > 2;
                   return (
-                    <tr key={r.date}>
+                    <Fragment key={r.date}>
+                    <tr>
                       <td className="px-3 py-2.5 tabular-nums">{r.date}</td>
                       <td className="px-3 py-2.5 text-muted-foreground">{dayName(r.date)}</td>
                       <td className="px-3 py-2.5 text-muted-foreground">{r.shiftCode ?? '—'}</td>
@@ -149,6 +160,29 @@ export default async function IndividualAttendancePage({
                         )}
                       </td>
                     </tr>
+                    {showTrail && (
+                      <tr className="bg-muted/20">
+                        <td colSpan={13} className="px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                            <span className="font-medium uppercase tracking-wide">{t('punchTrail')}</span>
+                            {punches.map((p, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 tabular-nums"
+                              >
+                                <span className="font-medium text-foreground">{p.punchAt.slice(0, 5)}</span>
+                                <span className={p.direction === 'in' ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400'}>
+                                  {p.direction === 'in' ? t('punchIn') : t('punchOut')}
+                                </span>
+                                {i === 0 && <span className="text-[10px] uppercase">· {t('punchFirst')}</span>}
+                                {i === punches.length - 1 && <span className="text-[10px] uppercase">· {t('punchLast')}</span>}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
                 {rows.length === 0 && (

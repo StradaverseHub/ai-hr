@@ -22,6 +22,7 @@ import {
   attendance,
   attendanceCorrection,
   attendancePolicy,
+  attendancePunch,
   clockingLocation,
   employeeClockingLocation,
   employeeStatutoryMy,
@@ -637,23 +638,91 @@ export async function payableHoursForCycle(
 
 export type GeoInput = { lat: number; lng: number };
 
+/** Map a resolved geofence outcome onto the attendance_punch geo columns (per-punch capture, ADR-0070 parity). */
+function punchGeoValues(geo: GeofenceCheck) {
+  return {
+    lat: geo.lat,
+    lng: geo.lng,
+    clockingLocationId: geo.enforced ? geo.clockingLocationId : null,
+    distanceM: geo.enforced ? geo.distanceM : null,
+    geofenceStatus: (geo.enforced ? 'pass' : 'not_enforced') as 'pass' | 'not_enforced',
+    radiusM: geo.enforced ? geo.radiusM : null,
+  };
+}
+
+/**
+ * R45 92bdf77a — Multiple Clocking. Re-derive the day AGGREGATE row from its child punches after a punch is
+ * appended. Stage-1 rule (per the approved plan): official Clock-In = the earliest in-punch, official
+ * Clock-Out = the latest out-punch, and the day only "closes" (worked/OT computed) when the in/out punches
+ * BALANCE (equal count, ≥1 each). An unbalanced day — a single clocking, or a forgotten clock-out — keeps
+ * checkOutAt null, so worked/OT stay null and the read-time 'odd' flag (core/attendance-derive.ts) surfaces
+ * it for manager/HR review instead of silently miscounting. Worked/OT themselves come from the SAME
+ * deriveAttendance the single-pair path used (first-in → last-out span, minus the shift break) — byte-
+ * identical for the overwhelming single-pair case. Deferred (stage 2, documented GAP): per-pair unpaid-break,
+ * pre-shift/early-OT attribution, split shifts, cross-midnight multi-punch.
+ */
+async function recomputeDayFromPunches(
+  tx: Tx,
+  p: { attendanceId: string; sched: ResolvedSchedule; fallbackCheckInAt: string | null },
+): Promise<{
+  status: 'present' | 'late' | 'half_day';
+  workedMinutes: number | null;
+  otMinutes: number | null;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+}> {
+  const punches = await tx
+    .select({ punchAt: attendancePunch.punchAt, direction: attendancePunch.direction })
+    .from(attendancePunch)
+    .where(eq(attendancePunch.attendanceId, p.attendanceId));
+  const ins = punches.filter((x) => x.direction === 'in').map((x) => x.punchAt);
+  const outs = punches.filter((x) => x.direction === 'out').map((x) => x.punchAt);
+  const minAt = (xs: string[]) => xs.reduce((a, b) => (toMinutes(b) < toMinutes(a) ? b : a));
+  const maxAt = (xs: string[]) => xs.reduce((a, b) => (toMinutes(b) > toMinutes(a) ? b : a));
+  const checkInAt = ins.length ? minAt(ins) : p.fallbackCheckInAt;
+  const balanced = ins.length >= 1 && ins.length === outs.length;
+  const checkOutAt = balanced && outs.length ? maxAt(outs) : null;
+  if (!checkInAt) {
+    // No punches and no fallback anchor — nothing to derive (defensive; a check-in always seeds one).
+    return { status: 'present', workedMinutes: null, otMinutes: null, checkInAt: null, checkOutAt: null };
+  }
+  const { status, workedMinutes, otMinutes } = deriveAttendance(p.sched, checkInAt, checkOutAt);
+  await tx
+    .update(attendance)
+    .set({ checkInAt, checkOutAt, status, workedMinutes, otMinutes })
+    .where(eq(attendance.id, p.attendanceId));
+  return { status, workedMinutes, otMinutes, checkInAt, checkOutAt };
+}
+
 async function checkInTx(
   ctx: SessionContext,
   p: { employmentId: string; date: string; time: string; geo?: GeoInput },
 ) {
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
-      .select({ id: attendance.id })
+      .select({ id: attendance.id, dayType: attendance.dayType })
       .from(attendance)
       .where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date)))
       .limit(1);
-    if (existing) throw new AlreadyCheckedInError();
 
-    const sched = await scheduleFor(tx, p.employmentId, p.date);
+    const sched0 = await scheduleFor(tx, p.employmentId, p.date);
+    // Freeze the day-type stamped at the FIRST check-in (existing row) — same rule check-out applies.
+    const sched: ResolvedSchedule = existing?.dayType ? { ...sched0, dayType: existing.dayType } : sched0;
     const dayType = sched.dayType;
-    // "Late" only means something against a schedule — rest-day/holiday work is just present.
-    const status =
-      dayType === 'workday' && toMinutes(p.time) > toMinutes(sched.lateAfter) ? 'late' : 'present';
+
+    // R45: a SECOND (or later) clock-in of the day is now allowed (multiple clocking). Keep punches monotonic
+    // on a non-cross-midnight day: a new clocking must be later than every punch already recorded today.
+    if (existing && !sched.crossesMidnight) {
+      const [last] = await tx
+        .select({ punchAt: attendancePunch.punchAt })
+        .from(attendancePunch)
+        .where(eq(attendancePunch.attendanceId, existing.id))
+        .orderBy(desc(attendancePunch.punchAt))
+        .limit(1);
+      if (last && toMinutes(p.time) <= toMinutes(last.punchAt)) {
+        throw new Error('Each clocking must be later than the previous one');
+      }
+    }
 
     // ADR-0070: resolve the geofence outcome BEFORE writing. Throws (rolling back this transaction, no
     // row/event written) when enforced and outside every assigned site — the caller catches it outside
@@ -667,34 +736,64 @@ async function checkInTx(
       punch: 'in',
     });
 
-    const [row] = await tx
-      .insert(attendance)
-      .values({
-        tenantId: ctx.tenantId,
-        employmentId: p.employmentId,
-        attendanceDate: p.date,
-        checkInAt: p.time,
-        status,
-        dayType,
-        checkInLat: geo.lat,
-        checkInLng: geo.lng,
-        checkInClockingLocationId: geo.enforced ? geo.clockingLocationId : null,
-        checkInDistanceM: geo.enforced ? geo.distanceM : null,
-        checkInGeofenceStatus: geo.enforced ? 'pass' : 'not_enforced',
-        checkInRadiusM: geo.enforced ? geo.radiusM : null,
-        checkInMethod: 'web',
-      })
-      .returning({ id: attendance.id });
+    let attendanceId: string;
+    if (!existing) {
+      // "Late" only means something against a schedule — rest-day/holiday work is just present.
+      const status =
+        dayType === 'workday' && toMinutes(p.time) > toMinutes(sched.lateAfter) ? 'late' : 'present';
+      const [row] = await tx
+        .insert(attendance)
+        .values({
+          tenantId: ctx.tenantId,
+          employmentId: p.employmentId,
+          attendanceDate: p.date,
+          checkInAt: p.time,
+          status,
+          dayType,
+          // The aggregate's check-in geo reflects the FIRST clock-in punch (each punch also keeps its own).
+          checkInLat: geo.lat,
+          checkInLng: geo.lng,
+          checkInClockingLocationId: geo.enforced ? geo.clockingLocationId : null,
+          checkInDistanceM: geo.enforced ? geo.distanceM : null,
+          checkInGeofenceStatus: geo.enforced ? 'pass' : 'not_enforced',
+          checkInRadiusM: geo.enforced ? geo.radiusM : null,
+          checkInMethod: 'web',
+        })
+        .returning({ id: attendance.id });
+      attendanceId = row.id;
+    } else {
+      attendanceId = existing.id;
+    }
+
+    await tx.insert(attendancePunch).values({
+      tenantId: ctx.tenantId,
+      attendanceId,
+      employmentId: p.employmentId,
+      attendanceDate: p.date,
+      punchAt: p.time,
+      direction: 'in',
+      method: 'web',
+      ...punchGeoValues(geo),
+    });
+
+    const derived = await recomputeDayFromPunches(tx, {
+      attendanceId,
+      sched,
+      fallbackCheckInAt: p.time,
+    });
+
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'attendance',
-      aggregateId: row.id,
+      aggregateId: attendanceId,
       eventType: 'attendance.checked-in',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { employmentId: p.employmentId, date: p.date, time: p.time, status, dayType },
+      // Substrate: the per-punch insert is high-volume; its audit rolls up into this day-level event
+      // (CLAUDE.md documented skip for per-item writes with their own trail). punchAt is on the payload.
+      payload: { employmentId: p.employmentId, date: p.date, time: p.time, status: derived.status, dayType, punch: 'in' },
     });
-    return { attendanceId: row.id, status, dayType };
+    return { attendanceId, status: derived.status, dayType };
   });
 }
 
@@ -727,25 +826,29 @@ async function checkOutTx(
       .where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date)))
       .limit(1);
     if (!rec) throw new Error('No check-in recorded for this day');
-    if (rec.checkOutAt) throw new Error('Already checked out');
-    const checkInAt = rec.checkInAt ?? p.time;
 
     // Resolve the roster/policy schedule, then freeze the day-type stamped at check-in (tolerating legacy
-    // rows). On a non-cross-midnight schedule check-out must be after check-in; a cross-midnight shift may
-    // legitimately check out at an earlier time-of-day (next day) — but never at the exact check-in time.
+    // rows). On a non-cross-midnight schedule check-out must be after the last punch; a cross-midnight shift
+    // may legitimately check out at an earlier time-of-day (next day) — but never at the exact last-punch time.
     const sched0 = await scheduleFor(tx, p.employmentId, p.date);
     const sched: ResolvedSchedule = rec.dayType ? { ...sched0, dayType: rec.dayType } : sched0;
-    if (!sched.crossesMidnight && toMinutes(p.time) <= toMinutes(checkInAt)) {
+
+    // R45 Multiple Clocking: a checkout after a completed pair now APPENDS an out-punch (was: throw
+    // 'Already checked out'). Order against the latest punch already recorded (or the row's check-in for a
+    // legacy row that predates the punch table).
+    const existingPunches = await tx
+      .select({ punchAt: attendancePunch.punchAt })
+      .from(attendancePunch)
+      .where(eq(attendancePunch.attendanceId, rec.id));
+    const anchor = existingPunches.length
+      ? existingPunches.reduce((a, b) => (toMinutes(b.punchAt) > toMinutes(a.punchAt) ? b : a)).punchAt
+      : rec.checkInAt;
+    if (!sched.crossesMidnight && anchor != null && toMinutes(p.time) <= toMinutes(anchor)) {
       throw new Error('Check-out must be after check-in');
     }
-    if (toMinutes(p.time) === toMinutes(checkInAt)) {
+    if (anchor != null && toMinutes(p.time) === toMinutes(anchor)) {
       throw new Error('Check-out must differ from check-in');
     }
-
-    // Workday OT = beyond the scheduled net day; rest-day/holiday work is OT-class in full (EA 1955 pays it
-    // at premium rates — classification here, monetization in payroll). spanMinutes() is cross-midnight aware.
-    const { status, workedMinutes, otMinutes } = deriveAttendance(sched, checkInAt, p.time);
-    const dayType = sched.dayType;
 
     // ADR-0070: resolve the geofence outcome for the CHECK-OUT punch — independent of the check-in punch's
     // status/radius (a mid-day toggle or radius change is representable; each punch freezes its own).
@@ -758,14 +861,42 @@ async function checkOutTx(
       punch: 'out',
     });
 
+    // Legacy backfill: an attendance row created before multi-punch (biometric import, seed) carries a
+    // check_in_at but NO 'in' punch child. Synthesise one from the row so first-in/last-out summation is
+    // correct — otherwise the day would look like a single out-punch. One-time, idempotent (only when empty).
+    if (existingPunches.length === 0 && rec.checkInAt) {
+      await tx.insert(attendancePunch).values({
+        tenantId: ctx.tenantId,
+        attendanceId: rec.id,
+        employmentId: p.employmentId,
+        attendanceDate: p.date,
+        punchAt: rec.checkInAt,
+        direction: 'in',
+        method: rec.checkInMethod ?? 'web',
+        lat: rec.checkInLat,
+        lng: rec.checkInLng,
+        clockingLocationId: rec.checkInClockingLocationId,
+        distanceM: rec.checkInDistanceM,
+        geofenceStatus: rec.checkInGeofenceStatus,
+        radiusM: rec.checkInRadiusM,
+      });
+    }
+
+    await tx.insert(attendancePunch).values({
+      tenantId: ctx.tenantId,
+      attendanceId: rec.id,
+      employmentId: p.employmentId,
+      attendanceDate: p.date,
+      punchAt: p.time,
+      direction: 'out',
+      method: 'web',
+      ...punchGeoValues(geo),
+    });
+
+    // The aggregate's check-out geo reflects the LATEST out-punch (first-in / last-out parity).
     await tx
       .update(attendance)
       .set({
-        checkOutAt: p.time,
-        status,
-        dayType,
-        workedMinutes,
-        otMinutes,
         checkOutLat: geo.lat,
         checkOutLng: geo.lng,
         checkOutClockingLocationId: geo.enforced ? geo.clockingLocationId : null,
@@ -775,6 +906,16 @@ async function checkOutTx(
         checkOutMethod: 'web',
       })
       .where(eq(attendance.id, rec.id));
+
+    // Workday OT = beyond the scheduled net day; rest-day/holiday work is OT-class in full (EA 1955 pays it
+    // at premium rates — classification here, monetization in payroll). Derived from first-in / last-out.
+    const derived = await recomputeDayFromPunches(tx, {
+      attendanceId: rec.id,
+      sched,
+      fallbackCheckInAt: rec.checkInAt,
+    });
+    const dayType = sched.dayType;
+
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'attendance',
@@ -786,13 +927,14 @@ async function checkOutTx(
         employmentId: p.employmentId,
         date: p.date,
         time: p.time,
-        status,
+        status: derived.status,
         dayType,
-        workedMinutes,
-        otMinutes,
+        workedMinutes: derived.workedMinutes,
+        otMinutes: derived.otMinutes,
+        punch: 'out',
       },
     });
-    return { status, dayType, workedMinutes, otMinutes };
+    return { status: derived.status, dayType, workedMinutes: derived.workedMinutes, otMinutes: derived.otMinutes };
   });
 }
 
@@ -1198,6 +1340,48 @@ export function attendanceForEmploymentRange(
       d = next.toISOString().slice(0, 10);
     }
     return out;
+  });
+}
+
+/** R45 92bdf77a — one punch (a single clock-in or clock-out) of a multi-clocking day. */
+export type AttendancePunchRow = { attendanceId: string; punchAt: string; direction: 'in' | 'out' };
+
+/**
+ * R45 92bdf77a — every punch for a SINGLE employment across [from, to], grouped by their day's attendanceId,
+ * ordered by time. The Individual Attendance detail lists the full punch trail (labelled first / in-between /
+ * last) while the hours/OT summary uses first-in / last-out only. Read-only: no DomainEvent (substrate skip).
+ */
+export function attendancePunchesForRange(
+  ctx: SessionContext,
+  employmentId: string,
+  from: string,
+  to: string,
+): Promise<Map<string, AttendancePunchRow[]>> {
+  return withTenant(ctx, async (tx) => {
+    const byAttendance = new Map<string, AttendancePunchRow[]>();
+    if (from > to) return byAttendance;
+    const punches = await tx
+      .select({
+        attendanceId: attendancePunch.attendanceId,
+        punchAt: attendancePunch.punchAt,
+        direction: attendancePunch.direction,
+      })
+      .from(attendancePunch)
+      .where(
+        and(
+          eq(attendancePunch.employmentId, employmentId),
+          gte(attendancePunch.attendanceDate, from),
+          lte(attendancePunch.attendanceDate, to),
+        ),
+      );
+    // Time-of-day order (first → last), the same order the summary uses for first-in / last-out.
+    punches.sort((a, b) => toMinutes(a.punchAt) - toMinutes(b.punchAt));
+    for (const pch of punches) {
+      const list = byAttendance.get(pch.attendanceId) ?? [];
+      list.push(pch);
+      byAttendance.set(pch.attendanceId, list);
+    }
+    return byAttendance;
   });
 }
 

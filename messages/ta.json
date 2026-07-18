@@ -1316,7 +1316,12 @@
     "statusOnLeave": "விடுப்பில்",
     "flagLate": "தாமதம்",
     "flagUnder": "குறைவு",
-    "flagOdd": "ஒற்றை"
+    "flagOdd": "ஒற்றை",
+    "punchTrail": "பதிவுகள்",
+    "punchIn": "உள்ளே",
+    "punchOut": "வெளியே",
+    "punchFirst": "முதல்",
+    "punchLast": "கடைசி"
   },
   "org": {
     "title": "நிறுவன அமைப்பு",

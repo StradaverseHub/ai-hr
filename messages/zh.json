@@ -1316,7 +1316,12 @@
     "statusOnLeave": "请假中",
     "flagLate": "迟到",
     "flagUnder": "不足",
-    "flagOdd": "单次"
+    "flagOdd": "单次",
+    "punchTrail": "打卡记录",
+    "punchIn": "上班",
+    "punchOut": "下班",
+    "punchFirst": "首次",
+    "punchLast": "末次"
   },
   "org": {
     "title": "组织架构图",

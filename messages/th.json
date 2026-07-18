@@ -1316,7 +1316,12 @@
     "statusOnLeave": "ลางาน",
     "flagLate": "สาย",
     "flagUnder": "ไม่ครบ",
-    "flagOdd": "ไม่ครบคู่"
+    "flagOdd": "ไม่ครบคู่",
+    "punchTrail": "บันทึกเวลา",
+    "punchIn": "เข้า",
+    "punchOut": "ออก",
+    "punchFirst": "แรก",
+    "punchLast": "สุดท้าย"
   },
   "org": {
     "title": "ผังองค์กร",

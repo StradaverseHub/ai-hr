@@ -1569,6 +1569,13 @@
       "when": 1781862219000,
       "tag": "0240_employment_blacklist",
       "breakpoints": true
+    },
+    {
+      "idx": 265,
+      "version": "7",
+      "when": 1781862300000,
+      "tag": "0265_attendance_multi_punch",
+      "breakpoints": true
     }
   ]
 }
