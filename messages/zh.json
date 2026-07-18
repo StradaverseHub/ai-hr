@@ -1815,7 +1815,11 @@
       "employmentType_contract": "合同",
       "employmentType_intern": "实习",
       "chipAddPlaceholder": "添加…",
-      "chipRemoveLabel": "移除{value}"
+      "chipRemoveLabel": "移除{value}",
+      "chipSelectAll": "全选",
+      "chipClearAll": "清除全部",
+      "chipAllSelected": "已全选",
+      "chipNSelected": "已选 {count} 项"
     },
     "cycle": {
       "back": "绩效",

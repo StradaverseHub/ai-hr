@@ -1815,7 +1815,11 @@
       "employmentType_contract": "Kontrak",
       "employmentType_intern": "Pelatih",
       "chipAddPlaceholder": "Tambah…",
-      "chipRemoveLabel": "Buang {value}"
+      "chipRemoveLabel": "Buang {value}",
+      "chipSelectAll": "Pilih semua",
+      "chipClearAll": "Kosongkan semua",
+      "chipAllSelected": "Semua dipilih",
+      "chipNSelected": "{count} dipilih"
     },
     "cycle": {
       "back": "Prestasi",

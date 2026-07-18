@@ -1815,7 +1815,11 @@
       "employmentType_contract": "Contract",
       "employmentType_intern": "Intern",
       "chipAddPlaceholder": "Add…",
-      "chipRemoveLabel": "Remove {value}"
+      "chipRemoveLabel": "Remove {value}",
+      "chipSelectAll": "Select all",
+      "chipClearAll": "Clear all",
+      "chipAllSelected": "All selected",
+      "chipNSelected": "{count} selected"
     },
     "cycle": {
       "back": "Performance",

@@ -1815,7 +1815,11 @@
       "employmentType_contract": "Hợp đồng",
       "employmentType_intern": "Thực tập",
       "chipAddPlaceholder": "Thêm…",
-      "chipRemoveLabel": "Gỡ {value}"
+      "chipRemoveLabel": "Gỡ {value}",
+      "chipSelectAll": "Chọn tất cả",
+      "chipClearAll": "Xóa tất cả",
+      "chipAllSelected": "Đã chọn tất cả",
+      "chipNSelected": "Đã chọn {count}"
     },
     "cycle": {
       "back": "Đánh giá hiệu suất",

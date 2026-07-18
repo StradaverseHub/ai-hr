@@ -77,12 +77,16 @@ describe('2cc30077 · eligibility gender/marital become a multi-select dropdown'
     expect(chip).toMatch(/countLabelFor/);
   });
 
-  it('the bulk-control props are OPT-IN — the /performance eligibility pickers stay unchanged', () => {
-    // The extra props are optional (rendered only when provided); the existing new-cycle-form call site
-    // passes none of them, so its behaviour is untouched.
+  it('the bulk-control props are now applied CONSISTENTLY at the /performance pickers too (4dc4c3a5)', () => {
+    // Standardize Dropdown Behaviour (4dc4c3a5): the R44 bulk (Select-all/Clear-all) + collapsed-summary props
+    // are wired at EVERY ChipMultiSelect call site, so the control behaves the same everywhere. new-cycle-form
+    // has three eligibility pickers (Company / Status / Employment Type) — each gets all four props.
     const perf = read('app/performance/new-cycle-form.tsx');
     expect(perf).toMatch(/<ChipMultiSelect/);
-    expect(perf).not.toMatch(/selectAllLabel/);
+    for (const prop of ['selectAllLabel', 'clearAllLabel', 'allSelectedLabel', 'countLabelFor']) {
+      const count = perf.split(prop).length - 1;
+      expect(count, `${prop} should be passed to all three new-cycle pickers`).toBeGreaterThanOrEqual(3);
+    }
   });
 
   it('the save action still reads getAll() arrays — no storage/rule-eval change', () => {
