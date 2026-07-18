@@ -849,6 +849,7 @@
       "headerStatus": "Trạng thái",
       "headerDepartment": "Phòng ban",
       "headerPosition": "Chức vụ",
+      "headerSuperior": "Cấp trên trực tiếp",
       "headerCompany": "Công ty",
       "headerJoinDate": "Ngày vào làm",
       "optionNotSet": "Chưa đặt",

@@ -849,6 +849,7 @@
       "headerStatus": "Status",
       "headerDepartment": "Jabatan",
       "headerPosition": "Jawatan",
+      "headerSuperior": "Penyelia langsung",
       "headerCompany": "Syarikat",
       "headerJoinDate": "Tarikh menyertai",
       "optionNotSet": "Tidak ditetapkan",

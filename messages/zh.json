@@ -849,6 +849,7 @@
       "headerStatus": "状态",
       "headerDepartment": "部门",
       "headerPosition": "职位",
+      "headerSuperior": "直属上级",
       "headerCompany": "公司",
       "headerJoinDate": "入职日期",
       "optionNotSet": "未设置",

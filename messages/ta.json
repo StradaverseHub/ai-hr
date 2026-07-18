@@ -849,6 +849,7 @@
       "headerStatus": "நிலை",
       "headerDepartment": "துறை",
       "headerPosition": "பதவி",
+      "headerSuperior": "நேரடி மேலதிகாரி",
       "headerCompany": "நிறுவனம்",
       "headerJoinDate": "சேர்ந்த தேதி",
       "optionNotSet": "அமைக்கப்படவில்லை",

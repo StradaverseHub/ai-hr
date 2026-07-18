@@ -849,6 +849,7 @@
       "headerStatus": "สถานะ",
       "headerDepartment": "แผนก",
       "headerPosition": "ตำแหน่ง",
+      "headerSuperior": "ผู้บังคับบัญชาโดยตรง",
       "headerCompany": "บริษัท",
       "headerJoinDate": "วันที่เริ่มงาน",
       "optionNotSet": "ไม่ได้ตั้งค่า",

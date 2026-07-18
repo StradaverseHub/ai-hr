@@ -2568,6 +2568,15 @@ export default async function EmployeePage({
               <dt className="text-xs text-muted-foreground">{t('headerPosition')}</dt>
               <dd className="font-medium text-foreground">{current?.position ?? '—'}</dd>
             </div>
+            {/* Item 7a504619 — Direct Superior read straight from the active administrative reporting line
+                (already loaded via reportingLinesFor). Read-only mirror of the Employment tab; a change there
+                shows here automatically. Dash when no manager is assigned. */}
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerSuperior')}</dt>
+              <dd className="font-medium text-foreground">
+                {reporting.managers.find((m) => m.lineType === 'administrative')?.name ?? '—'}
+              </dd>
+            </div>
             <div>
               <dt className="text-xs text-muted-foreground">{t('headerCompany')}</dt>
               <dd className="font-medium text-foreground">{emp.company}</dd>

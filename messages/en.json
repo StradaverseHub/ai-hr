@@ -849,6 +849,7 @@
       "headerStatus": "Status",
       "headerDepartment": "Department",
       "headerPosition": "Position",
+      "headerSuperior": "Direct superior",
       "headerCompany": "Company",
       "headerJoinDate": "Join date",
       "optionNotSet": "Not set",
