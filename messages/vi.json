@@ -221,7 +221,7 @@
     "removeConfirmCancel": "Hủy",
     "removeConfirmToast": "Đã xóa {card} khỏi bảng điều khiển của bạn.",
     "block_cards": "Thẻ tóm tắt",
-    "block_plannedAbsences": "Vắng mặt theo kế hoạch",
+    "block_plannedAbsences": "Lịch nghỉ phép",
     "block_recentlyJoined": "Mới tham gia",
     "block_upcomingEvents": "Sự kiện sắp tới",
     "block_recentActivity": "Hoạt động gần đây"
@@ -4455,7 +4455,7 @@
   },
   "components": {
     "plannedAbsences": {
-      "title": "Vắng mặt theo kế hoạch",
+      "title": "Lịch nghỉ phép",
       "viewAll": "Xem tất cả",
       "empty": "Không có nhân viên trong phạm vi.",
       "employees": "Nhân viên",

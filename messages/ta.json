@@ -221,7 +221,7 @@
     "removeConfirmCancel": "ரத்து",
     "removeConfirmToast": "{card} உங்கள் டாஷ்போர்டிலிருந்து அகற்றப்பட்டது.",
     "block_cards": "சுருக்க அட்டைகள்",
-    "block_plannedAbsences": "திட்டமிட்ட விடுப்புகள்",
+    "block_plannedAbsences": "விடுப்பு நாட்காட்டி",
     "block_recentlyJoined": "சமீபத்தில் சேர்ந்தவர்கள்",
     "block_upcomingEvents": "வரவிருக்கும் நிகழ்வுகள்",
     "block_recentActivity": "சமீபத்திய செயல்பாடு"
@@ -4455,7 +4455,7 @@
   },
   "components": {
     "plannedAbsences": {
-      "title": "திட்டமிடப்பட்ட விடுப்புகள்",
+      "title": "விடுப்பு நாட்காட்டி",
       "viewAll": "அனைத்தையும் காண்",
       "empty": "எல்லைக்குள் பணியாளர்கள் இல்லை.",
       "employees": "பணியாளர்கள்",

@@ -221,7 +221,7 @@
     "removeConfirmCancel": "ยกเลิก",
     "removeConfirmToast": "นำ {card} ออกจากแดชบอร์ดของคุณแล้ว",
     "block_cards": "การ์ดสรุป",
-    "block_plannedAbsences": "การลาที่วางแผนไว้",
+    "block_plannedAbsences": "ปฏิทินการลา",
     "block_recentlyJoined": "เข้าร่วมล่าสุด",
     "block_upcomingEvents": "กิจกรรมที่กำลังจะมาถึง",
     "block_recentActivity": "กิจกรรมล่าสุด"
@@ -4455,7 +4455,7 @@
   },
   "components": {
     "plannedAbsences": {
-      "title": "การลาที่วางแผนไว้",
+      "title": "ปฏิทินการลา",
       "viewAll": "ดูทั้งหมด",
       "empty": "ไม่มีพนักงานในขอบเขต",
       "employees": "พนักงาน",

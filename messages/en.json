@@ -221,7 +221,7 @@
     "removeConfirmCancel": "Cancel",
     "removeConfirmToast": "{card} removed from your dashboard.",
     "block_cards": "Summary Cards",
-    "block_plannedAbsences": "Planned Absences",
+    "block_plannedAbsences": "Leave Calendar",
     "block_recentlyJoined": "Recently Joined",
     "block_upcomingEvents": "Upcoming Events",
     "block_recentActivity": "Recent Activity"
@@ -4455,7 +4455,7 @@
   },
   "components": {
     "plannedAbsences": {
-      "title": "Planned absences",
+      "title": "Leave Calendar",
       "viewAll": "View all",
       "empty": "No employees in scope.",
       "employees": "Employees",

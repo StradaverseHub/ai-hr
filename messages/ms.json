@@ -221,7 +221,7 @@
     "removeConfirmCancel": "Batal",
     "removeConfirmToast": "{card} dialih keluar daripada papan pemuka anda.",
     "block_cards": "Kad Ringkasan",
-    "block_plannedAbsences": "Ketidakhadiran Terancang",
+    "block_plannedAbsences": "Kalendar Cuti",
     "block_recentlyJoined": "Baru Menyertai",
     "block_upcomingEvents": "Acara Akan Datang",
     "block_recentActivity": "Aktiviti Terkini"
@@ -4455,7 +4455,7 @@
   },
   "components": {
     "plannedAbsences": {
-      "title": "Ketidakhadiran terancang",
+      "title": "Kalendar Cuti",
       "viewAll": "Lihat semua",
       "empty": "Tiada pekerja dalam skop.",
       "employees": "Pekerja",

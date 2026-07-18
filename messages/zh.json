@@ -221,7 +221,7 @@
     "removeConfirmCancel": "取消",
     "removeConfirmToast": "已从您的仪表板移除 {card}。",
     "block_cards": "摘要卡片",
-    "block_plannedAbsences": "计划缺勤",
+    "block_plannedAbsences": "请假日历",
     "block_recentlyJoined": "最近加入",
     "block_upcomingEvents": "即将到来的活动",
     "block_recentActivity": "最近活动"
@@ -4455,7 +4455,7 @@
   },
   "components": {
     "plannedAbsences": {
-      "title": "计划缺勤",
+      "title": "请假日历",
       "viewAll": "查看全部",
       "empty": "范围内无员工。",
       "employees": "员工",

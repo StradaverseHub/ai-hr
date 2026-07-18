@@ -1569,6 +1569,13 @@
       "when": 1781862219000,
       "tag": "0240_employment_blacklist",
       "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1781862255000,
+      "tag": "0255_leave_calendar_rename",
+      "breakpoints": true
     }
   ]
 }
