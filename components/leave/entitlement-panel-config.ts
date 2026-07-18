@@ -23,7 +23,29 @@ export type PanelSummary = {
   pending: number;
   /** YTD Entitled = the accrued figure (accrual + in-lieu accrual to date). */
   ytdEntitled: number;
+  /** §1 Balance (877f2f37): the reconciled remaining figure assembled by deriveSummaryBalance below from parts
+   *  the system already tracks (leaveBalances + leaveEntitlementBreakdown). A small display derivation — NOT an
+   *  entitlement-engine change. */
+  balance: number;
 };
+
+/**
+ * §1 Balance row (feedback 877f2f37): the reporter's reconciled remaining figure —
+ *   Balance = (Available + Carry-Forward Remaining + Adjustments) − Taken − Forfeited.
+ * Assembled from figures the system already tracks: `available` / `taken` come from the balance row
+ * (leaveBalances); the remaining parts from leaveEntitlementBreakdown. A missing breakdown ⇒ its parts are 0
+ * (Balance falls back to Available − Taken). Rounded to 2dp. Presentation/derivation only — no engine change.
+ */
+export function deriveSummaryBalance(
+  available: number,
+  taken: number,
+  breakdown: { carryForwardRemaining: number; otherAdjustments: number; forfeited: number } | null | undefined,
+): number {
+  const carryForwardRemaining = breakdown?.carryForwardRemaining ?? 0;
+  const otherAdjustments = breakdown?.otherAdjustments ?? 0;
+  const forfeited = breakdown?.forfeited ?? 0;
+  return Math.round((available + carryForwardRemaining + otherAdjustments - taken - forfeited) * 100) / 100;
+}
 
 /** §5 Upcoming Leave — an approved request whose start is in the future, for THIS leave type. */
 export type UpcomingLeaveItem = {
@@ -46,6 +68,10 @@ export type PanelField = {
   key: string;
   /** i18n key under `leave.breakdown` (e.g. 'field.available' or a legacy '<name>' key for §7). */
   labelKey: string;
+  /** §1 Leave Summary (877f2f37): i18n key under `leave.breakdown` for a STATIC hover tooltip on this row —
+   *  a fixed plain-English explanation of the figure (no HR config). Omit ⇒ no tooltip icon. Distinct from the
+   *  §7 formula info-icon (b8b665ff), which is click-to-expand HR-authored content keyed by field key. */
+  tooltipKey?: string;
   /** Employee Leave View Configuration key (missing ⇒ visible). Omit ⇒ the field is never ESS-gated. */
   essKey?: EssViewComponentKey;
   /** 'days' → 2dp number; 'date' → the string or the noExpiry label. Default 'days'. */
@@ -86,11 +112,18 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
     labelKey: 'section.summary',
     order: 1,
     kind: 'fields',
+    // Reordered (877f2f37) to read the way employees think — from what they were granted, through what they've
+    // used, to what's left: YTD Entitled → Taken → Pending Approval → Available → Balance. Each row carries a
+    // STATIC hover tooltip (tooltipKey; no HR config). Balance is the new reconciled remaining figure, PICKED
+    // from the precomputed d.summary.balance (deriveSummaryBalance) so this stays a declarative pick, not a
+    // hardcoded formula in the descriptor.
     fields: [
-      { key: 'available', labelKey: 'field.available', essKey: 'available', select: (d) => d.summary.available },
-      { key: 'taken', labelKey: 'field.taken', essKey: 'taken', select: (d) => d.summary.taken },
-      { key: 'pendingApproval', labelKey: 'field.pendingApproval', essKey: 'pendingApproval', select: (d) => d.summary.pending },
-      { key: 'ytdEntitled', labelKey: 'field.ytdEntitled', essKey: 'ytdEntitled', select: (d) => d.summary.ytdEntitled },
+      { key: 'ytdEntitled', labelKey: 'field.ytdEntitled', essKey: 'ytdEntitled', tooltipKey: 'summaryTip.ytdEntitled', select: (d) => d.summary.ytdEntitled },
+      { key: 'taken', labelKey: 'field.taken', essKey: 'taken', tooltipKey: 'summaryTip.taken', select: (d) => d.summary.taken },
+      { key: 'pendingApproval', labelKey: 'field.pendingApproval', essKey: 'pendingApproval', tooltipKey: 'summaryTip.pendingApproval', select: (d) => d.summary.pending },
+      { key: 'available', labelKey: 'field.available', essKey: 'available', tooltipKey: 'summaryTip.available', select: (d) => d.summary.available },
+      // Balance has no essKey (never ESS-gated) — it is the headline reconciled remaining figure and always shows.
+      { key: 'balance', labelKey: 'field.balance', tooltipKey: 'summaryTip.balance', select: (d) => d.summary.balance },
     ],
   },
   // §2 Entitlement Breakdown — REMOVED (feedback e503f284): the employee saw two overlapping sections,

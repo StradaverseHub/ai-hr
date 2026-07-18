@@ -1109,7 +1109,8 @@
         "forfeited": "Số dư bị tịch thu",
         "unplanned": "Không kế hoạch",
         "overutilized": "Sử dụng vượt mức",
-        "adjustment": "Điều chỉnh"
+        "adjustment": "Điều chỉnh",
+        "balance": "Số dư"
       },
       "panelSubtitle": "Tính đến {date}",
       "close": "Đóng",
@@ -1120,7 +1121,14 @@
       "explanationHide": "Ẩn giải thích",
       "explanationDescription": "Ý nghĩa",
       "explanationFormula": "Cách tính",
-      "explanationResult": "Kết quả"
+      "explanationResult": "Kết quả",
+      "summaryTip": {
+        "ytdEntitled": "Tổng số ngày nghỉ bạn được cấp cho đến nay trong năm.",
+        "taken": "Ngày nghỉ bạn đã dùng (đã duyệt và đã nghỉ).",
+        "pendingApproval": "Ngày nghỉ bạn đã xin và đang chờ duyệt.",
+        "available": "Ngày nghỉ bạn vẫn có thể dùng ngay bây giờ, sau khi trừ các yêu cầu đang chờ.",
+        "balance": "Số dư còn lại cuối cùng của bạn sau quyền lợi, ngày nghỉ đã dùng và mọi điều chỉnh."
+      }
     },
     "preview": {
       "willDeduct": "Việc này sẽ trừ {days} ngày",

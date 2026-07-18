@@ -122,6 +122,18 @@ export function LeaveDetailsPanel({
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="flex items-center gap-1 text-muted-foreground">
                   {t(f.labelKey)}
+                  {/* §1 Leave Summary (877f2f37): a STATIC hover tooltip on the row — fixed plain-English copy,
+                      no HR config, no expand. Native `title` gives the hover text; the aria-label names it for
+                      assistive tech. Distinct from the §7 click-to-expand formula icon below. */}
+                  {f.tooltipKey && (
+                    <span
+                      title={t(f.tooltipKey)}
+                      aria-label={t(f.tooltipKey)}
+                      className="shrink-0 cursor-help text-muted-foreground/70"
+                    >
+                      <Info className="size-3.5" aria-hidden />
+                    </span>
+                  )}
                   {hasExpl && (
                     <button
                       type="button"

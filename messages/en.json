@@ -1109,7 +1109,8 @@
         "forfeited": "Forfeited balance",
         "unplanned": "Unplanned",
         "overutilized": "Overutilized",
-        "adjustment": "Adjustment"
+        "adjustment": "Adjustment",
+        "balance": "Balance"
       },
       "panelSubtitle": "As at {date}",
       "close": "Close",
@@ -1120,7 +1121,14 @@
       "explanationHide": "Hide explanation",
       "explanationDescription": "What it means",
       "explanationFormula": "How it's calculated",
-      "explanationResult": "Result"
+      "explanationResult": "Result",
+      "summaryTip": {
+        "ytdEntitled": "The total leave you've been granted so far this year.",
+        "taken": "Leave you have already used (approved and taken).",
+        "pendingApproval": "Leave you've applied for that is still awaiting approval.",
+        "available": "Leave you can still take now, after pending requests are set aside.",
+        "balance": "Your final remaining balance after entitlement, leave used, and any adjustments."
+      }
     },
     "preview": {
       "willDeduct": "This will deduct {days} day(s)",

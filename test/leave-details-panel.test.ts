@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   ENTITLEMENT_PANEL_SECTIONS,
+  deriveSummaryBalance,
   type PanelData,
 } from '../components/leave/entitlement-panel-config';
 
@@ -37,7 +38,8 @@ const DATA: PanelData = {
     transactions: [{ effectiveOn: '2026-01-01', entryType: 'accrual', days: 12, sourceRequestId: null }],
     essView: {},
   },
-  summary: { available: 15, taken: 2, pending: 1, ytdEntitled: 12 },
+  // §1 Balance (877f2f37) = (available 15 + carryForwardRemaining 3 + otherAdjustments 4) − taken 2 − forfeited 1 = 19.
+  summary: { available: 15, taken: 2, pending: 1, ytdEntitled: 12, balance: 19 },
   upcoming: [{ startDate: '2026-06-01', endDate: '2026-06-03', days: 3, durationType: 'full_day' }],
 };
 
@@ -91,11 +93,27 @@ describe('entitlement-panel-config: fields PICK existing values (no hardcoded fo
     return s.fields!.find((f) => f.key === fieldKey)!;
   };
 
-  it('§1 summary reads the balance-row figures (available/taken/pending/ytdEntitled)', () => {
+  it('§1 summary reads the balance-row figures (available/taken/pending/ytdEntitled) + picks Balance', () => {
     expect(field('summary', 'available').select!(DATA)).toBe(15);
     expect(field('summary', 'taken').select!(DATA)).toBe(2);
     expect(field('summary', 'pendingApproval').select!(DATA)).toBe(1);
     expect(field('summary', 'ytdEntitled').select!(DATA)).toBe(12);
+    // Balance (877f2f37) is a declarative PICK of the precomputed d.summary.balance, not a hardcoded formula.
+    expect(field('summary', 'balance').select!(DATA)).toBe(19);
+  });
+
+  it('§1 summary is reordered YTD Entitled → Taken → Pending → Available → Balance, each with a static tooltip', () => {
+    const summary = ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === 'summary')!;
+    expect(summary.fields!.map((f) => f.key)).toEqual(['ytdEntitled', 'taken', 'pendingApproval', 'available', 'balance']);
+    // Every summary row carries a STATIC hover tooltip (no HR config); Balance is never ESS-gated (no essKey).
+    expect(summary.fields!.every((f) => typeof f.tooltipKey === 'string')).toBe(true);
+    expect(summary.fields!.find((f) => f.key === 'balance')!.essKey).toBeUndefined();
+  });
+
+  it('deriveSummaryBalance = (Available + Carry-Forward Remaining + Adjustments) − Taken − Forfeited', () => {
+    expect(deriveSummaryBalance(15, 2, { carryForwardRemaining: 3, otherAdjustments: 4, forfeited: 1 })).toBe(19);
+    // A missing breakdown ⇒ its parts are 0 (Balance falls back to Available − Taken).
+    expect(deriveSummaryBalance(10, 4, null)).toBe(6);
   });
 
   it('the §7 calc-breakdown carries the engine figures §2 used to duplicate (e503f284 removed §2)', () => {
@@ -145,7 +163,14 @@ describe('Leave Details panel i18n: every descriptor label resolves in all 6 loc
   const labelKeys = [
     ...ENTITLEMENT_PANEL_SECTIONS.map((s) => s.labelKey),
     ...ENTITLEMENT_PANEL_SECTIONS.flatMap((s) => (s.fields ?? []).map((f) => f.labelKey)),
-    // Literal keys the panel renders directly.
+    // §1 static hover tooltips (877f2f37) — each summary row's tooltipKey must resolve in every locale.
+    ...ENTITLEMENT_PANEL_SECTIONS.flatMap((s) => (s.fields ?? []).flatMap((f) => (f.tooltipKey ? [f.tooltipKey] : []))),
+    // Info-icon per component (b8b665ff) literals + §1 literals the panel renders directly.
+    'explanationShow',
+    'explanationHide',
+    'explanationDescription',
+    'explanationFormula',
+    'explanationResult',
     'panelSubtitle',
     'close',
     'noUpcoming',

@@ -1109,7 +1109,8 @@
         "forfeited": "被没收余额",
         "unplanned": "非计划",
         "overutilized": "超额使用",
-        "adjustment": "调整"
+        "adjustment": "调整",
+        "balance": "余额"
       },
       "panelSubtitle": "截至 {date}",
       "close": "关闭",
@@ -1120,7 +1121,14 @@
       "explanationHide": "隐藏说明",
       "explanationDescription": "含义",
       "explanationFormula": "计算方式",
-      "explanationResult": "结果"
+      "explanationResult": "结果",
+      "summaryTip": {
+        "ytdEntitled": "本年度至今授予您的休假总额。",
+        "taken": "您已使用的休假（已批准并已休）。",
+        "pendingApproval": "您已申请但仍在等待批准的休假。",
+        "available": "在扣除待批准申请后，您现在仍可休的休假。",
+        "balance": "在计入额度、已用休假及任何调整后的最终剩余余额。"
+      }
     },
     "preview": {
       "willDeduct": "将扣除 {days} 天",

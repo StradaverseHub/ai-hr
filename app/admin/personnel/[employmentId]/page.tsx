@@ -18,6 +18,7 @@ import {
 import { Avatar, Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { hasPersonPhoto } from '@/core/person-photo';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
+import { deriveSummaryBalance } from '@/components/leave/entitlement-panel-config';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
@@ -1194,7 +1195,7 @@ export default async function EmployeePage({
               {breakdownByType.get(b.leaveTypeId) && (
                 <EntitlementBreakdown
                   data={breakdownByType.get(b.leaveTypeId)!}
-                  summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued }}
+                  summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, breakdownByType.get(b.leaveTypeId)) }}
                   // §5 Upcoming Approved Leave — approved + future requests for THIS type (name-matched).
                   upcoming={requests
                     .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)

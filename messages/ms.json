@@ -1109,7 +1109,8 @@
         "forfeited": "Baki dilucuthak",
         "unplanned": "Tidak dirancang",
         "overutilized": "Penggunaan berlebihan",
-        "adjustment": "Pelarasan"
+        "adjustment": "Pelarasan",
+        "balance": "Baki"
       },
       "panelSubtitle": "Setakat {date}",
       "close": "Tutup",
@@ -1120,7 +1121,14 @@
       "explanationHide": "Sembunyikan penerangan",
       "explanationDescription": "Maksudnya",
       "explanationFormula": "Cara ia dikira",
-      "explanationResult": "Keputusan"
+      "explanationResult": "Keputusan",
+      "summaryTip": {
+        "ytdEntitled": "Jumlah cuti yang diberikan kepada anda setakat ini tahun ini.",
+        "taken": "Cuti yang telah anda gunakan (diluluskan dan diambil).",
+        "pendingApproval": "Cuti yang anda mohon dan masih menunggu kelulusan.",
+        "available": "Cuti yang masih boleh anda ambil sekarang, selepas permohonan yang menunggu diketepikan.",
+        "balance": "Baki akhir anda selepas mengambil kira kelayakan, cuti digunakan dan sebarang pelarasan."
+      }
     },
     "preview": {
       "willDeduct": "Ini akan menolak {days} hari",

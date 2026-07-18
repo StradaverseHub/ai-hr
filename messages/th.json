@@ -1109,7 +1109,8 @@
         "forfeited": "ยอดที่ถูกริบ",
         "unplanned": "ไม่ได้วางแผน",
         "overutilized": "ใช้เกิน",
-        "adjustment": "การปรับปรุง"
+        "adjustment": "การปรับปรุง",
+        "balance": "คงเหลือ"
       },
       "panelSubtitle": "ณ วันที่ {date}",
       "close": "ปิด",
@@ -1120,7 +1121,14 @@
       "explanationHide": "ซ่อนคำอธิบาย",
       "explanationDescription": "ความหมาย",
       "explanationFormula": "วิธีคำนวณ",
-      "explanationResult": "ผลลัพธ์"
+      "explanationResult": "ผลลัพธ์",
+      "summaryTip": {
+        "ytdEntitled": "จำนวนวันลาทั้งหมดที่คุณได้รับจนถึงตอนนี้ในปีนี้",
+        "taken": "วันลาที่คุณใช้ไปแล้ว (อนุมัติและลาแล้ว)",
+        "pendingApproval": "วันลาที่คุณยื่นขอและยังรอการอนุมัติ",
+        "available": "วันลาที่คุณยังใช้ได้ตอนนี้ หลังหักคำขอที่รออนุมัติแล้ว",
+        "balance": "ยอดคงเหลือสุดท้ายของคุณ หลังคำนวณสิทธิ์ วันลาที่ใช้ และการปรับปรุงต่าง ๆ"
+      }
     },
     "preview": {
       "willDeduct": "จะหัก {days} วัน",

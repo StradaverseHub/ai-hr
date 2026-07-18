@@ -31,6 +31,7 @@ import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { todayInKualaLumpur } from '@/core/leave';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
+import { deriveSummaryBalance } from '@/components/leave/entitlement-panel-config';
 // deriveBalanceRow is imported from the server-safe module (NOT the 'use client' table) so this RSC can
 // call it at render time — importing it from the client module crashed all of /me (b7d84266).
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
@@ -197,7 +198,8 @@ export default async function MePage({
     if (b.essView.entitlementCalcBreakdown === false || !bd) return null;
     return {
       data: bd,
-      summary: { available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued },
+      // §1 Balance (877f2f37): reconciled remaining figure derived from parts already loaded (balance row + bd).
+      summary: { available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) },
       // §5 Upcoming Approved Leave — approved + future requests for THIS type (matched by localized name).
       upcoming: requests
         .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
@@ -1262,7 +1264,7 @@ export default async function MePage({
                                   {showBreakdown && bd && (
                                     <EntitlementBreakdown
                                       data={bd}
-                                      summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued }}
+                                      summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) }}
                                       // §5 Upcoming Approved Leave — approved + future requests for THIS type
                                       // (matched by localized name; both sides resolve via the same pickName + locale).
                                       upcoming={requests
