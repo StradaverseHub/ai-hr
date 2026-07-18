@@ -54,6 +54,7 @@ import {
   upsertLeaveYearConfig,
   setLeaveYearStatus,
   saveFutureOpeningRule,
+  deleteLeaveYear,
   isLeaveYearStatus,
   accrueEarnedLeave,
   asOfForLeaveYear,
@@ -925,6 +926,20 @@ export async function saveFutureOpeningRuleAction(formData: FormData) {
       amount: rawAmount === '' ? null : Number(rawAmount),
       unit: String(formData.get('openBeforeUnit') ?? '') || null,
     });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+// R45 fd71fa38 — delete a mistakenly-created DRAFT leave-year record. The service enforces the guard (draft
+// only + no leave ledger/requests referencing the year) and throws LeaveYearDeleteError, whose message the
+// ErrorBanner surfaces. The actor threads through getSession() (an admin), so the leave-year.deleted event
+// carries a real user, not SYSTEM.
+export async function deleteLeaveYearAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await deleteLeaveYear(s, { year: Number(formData.get('year')) });
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }

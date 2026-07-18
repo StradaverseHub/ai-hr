@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
 import { listAdHocLeaveGrants, listLeavePolicies } from '@/core/admin';
-import { listLeaveYearConfigs } from '@/core/leave';
+import { listLeaveYearConfigs, leaveYearsWithRecords } from '@/core/leave';
 import {
   listGradeGroups,
   listBenefitSchemes,
@@ -14,6 +14,7 @@ import { BenefitSchemeConfig } from '@/components/benefit-scheme-config';
 import type { ServiceBand } from '@/core/leave-compute';
 import { entitlement } from '@/localization/my/leave';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
@@ -30,6 +31,7 @@ import {
   upsertLeaveYearConfigAction,
   setLeaveYearStatusAction,
   saveFutureOpeningRuleAction,
+  deleteLeaveYearAction,
   setCompanyLeaveCycleAction,
   createJobGradeAction,
   archiveJobGradeAction,
@@ -71,7 +73,7 @@ export default async function LeaveEntitlementsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies, grades, adHocGrants, leaveYearConfigs, gradeGroups, benefitSchemes, schemeEntitlements, schemeCombinedLimits] =
+  const [types, policies, companies, grades, adHocGrants, leaveYearConfigs, leaveYearRecordYears, gradeGroups, benefitSchemes, schemeEntitlements, schemeCombinedLimits] =
     await Promise.all([
       listLeaveTypes(s, { includeArchived: true }),
       listLeavePolicies(s),
@@ -82,6 +84,8 @@ export default async function LeaveEntitlementsPage({
       listAdHocLeaveGrants(s),
       // Leave Year Configuration (9aa894a4): the managed Draft/Open/Closed records driving the Leave-Year table.
       listLeaveYearConfigs(s),
+      // R45 fd71fa38: years that already have leave records — used to disable the row Delete button.
+      leaveYearsWithRecords(s),
       // Benefit Scheme & Leave Entitlement (b83c6a3b): the new configuration layer's data.
       listGradeGroups(s),
       listBenefitSchemes(s),
@@ -132,6 +136,9 @@ export default async function LeaveEntitlementsPage({
     earnedLeaveYears.find((y) => y.year === currentYear)?.year ?? earnedLeaveYears[0]?.year ?? currentYear;
   const leaveYearStatusVariant = (status: string) =>
     status === 'open' ? ('success' as const) : status === 'closed' ? ('default' as const) : ('warning' as const);
+  // R45 fd71fa38 — a leave year is deletable only when it is still a DRAFT AND no leave records reference it
+  // (the service guard is authoritative; this drives the pre-emptive enabled/disabled + tooltip in the row).
+  const leaveYearRecordYearSet = new Set(leaveYearRecordYears);
 
   // Statutory floor display (MY pack): sample the three service bands.
   const floorBands = (code: string) => {
@@ -370,6 +377,40 @@ export default async function LeaveEntitlementsPage({
                     </Button>
                   </form>
                 )}
+                {/* R45 fd71fa38 — Delete. Enabled only for a DRAFT year with no leave records referencing it;
+                    otherwise a disabled button with an explanatory tooltip. The confirm dialog guards the
+                    click, and the service re-checks the guard (authoritative) before removing the row. */}
+                {(() => {
+                  const referenced = leaveYearRecordYearSet.has(cfg.year);
+                  const deletable = cfg.status === 'draft' && !referenced;
+                  if (!deletable) {
+                    return (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled
+                        title={cfg.status !== 'draft' ? t('deleteLeaveYearBlockedOpened') : t('deleteLeaveYearBlockedRecords')}
+                      >
+                        {t('deleteLeaveYear')}
+                      </Button>
+                    );
+                  }
+                  return (
+                    <form action={deleteLeaveYearAction}>
+                      <input type="hidden" name="year" value={cfg.year} />
+                      <ConfirmSubmit
+                        size="sm"
+                        variant="ghost"
+                        title={t('deleteLeaveYearConfirmTitle', { year: cfg.year })}
+                        description={t('deleteLeaveYearConfirmBody', { year: cfg.year })}
+                        confirmLabel={t('deleteLeaveYear')}
+                      >
+                        {t('deleteLeaveYear')}
+                      </ConfirmSubmit>
+                    </form>
+                  );
+                })()}
               </div>
             </li>
           ))}

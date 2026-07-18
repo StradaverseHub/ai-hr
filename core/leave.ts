@@ -4109,6 +4109,33 @@ export async function listLeaveYearConfigs(ctx: SessionContext): Promise<LeaveYe
   });
 }
 
+/** R45 fd71fa38 — the set of calendar years that already have leave RECORDS (any leave_ledger row dated in
+ *  the year, or any leave_request overlapping it). The Leave-Year table uses this to DISABLE the row Delete
+ *  button for a referenced year (the service `deleteLeaveYear` guard is the authoritative block; this only
+ *  drives the pre-emptive UI affordance). Read-only, no events. */
+export async function leaveYearsWithRecords(ctx: SessionContext): Promise<number[]> {
+  return withTenant(ctx, async (tx) => {
+    const ledgerYears = await tx
+      .select({ yr: sql<number>`EXTRACT(YEAR FROM ${leaveLedger.effectiveOn})::int` })
+      .from(leaveLedger)
+      .where(eq(leaveLedger.tenantId, ctx.tenantId))
+      .groupBy(sql`1`);
+    const startYears = await tx
+      .select({ yr: sql<number>`EXTRACT(YEAR FROM ${leaveRequest.startDate})::int` })
+      .from(leaveRequest)
+      .where(eq(leaveRequest.tenantId, ctx.tenantId))
+      .groupBy(sql`1`);
+    const endYears = await tx
+      .select({ yr: sql<number>`EXTRACT(YEAR FROM ${leaveRequest.endDate})::int` })
+      .from(leaveRequest)
+      .where(eq(leaveRequest.tenantId, ctx.tenantId))
+      .groupBy(sql`1`);
+    const years = new Set<number>();
+    for (const r of [...ledgerYears, ...startYears, ...endYears]) years.add(Number(r.yr));
+    return [...years];
+  });
+}
+
 /** Create or edit a managed leave-year record's two control dates (status is NOT changed here — use
  *  setLeaveYearStatus for the Draft→Open transition). Idempotent on (tenant, year). Appends
  *  leave-year.configured. Substrate: config write → event. */
@@ -4347,6 +4374,99 @@ export async function saveFutureOpeningRule(
       },
     });
     return { id: row.id, openLeaveYearDate, enabled: p.enabled };
+  });
+}
+
+/** R45 fd71fa38 — a typed error the delete-leave-year path throws when the guard blocks removal (year not
+ *  draft, or leave records already reference it). The action layer surfaces `.message` to the admin. */
+export class LeaveYearDeleteError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LeaveYearDeleteError';
+  }
+}
+
+/**
+ * R45 fd71fa38 — Delete a managed leave-year record. Edit + lifecycle already exist; this adds removal for a
+ * mistakenly-created draft year. There is NO FK to lean on (the grant ledger + leave requests are keyed by
+ * the integer year, not by leave_year_config.id), so the guard is enforced HERE, service-side:
+ *   - the year must still be in `draft` (an opened/closed year has driven grants — never silently orphan them);
+ *   - AND zero leave_ledger rows fall inside the calendar year (no entitlement generated / transactions);
+ *   - AND zero leave_request rows overlap the calendar year (no applications reference it).
+ * Any violation throws LeaveYearDeleteError (the reporter's "cannot delete — records exist"). On success the
+ * row is removed and a `leave-year.deleted` DomainEvent is appended (substrate: the delete write → event).
+ */
+export async function deleteLeaveYear(ctx: SessionContext, p: { year: number }) {
+  if (!Number.isInteger(p.year)) throw new Error('Invalid leave year');
+  const yearStart = `${p.year}-01-01`;
+  const yearEnd = `${p.year}-12-31`;
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(leaveYearConfig)
+      .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.year, p.year)))
+      .limit(1);
+    if (!before) throw new LeaveYearDeleteError('This leave year no longer exists.');
+    if (before.status !== 'draft') {
+      throw new LeaveYearDeleteError(
+        'This leave year cannot be deleted because it has been opened. Only a draft year can be removed.',
+      );
+    }
+    // Guard 1: any leave_ledger row dated inside the calendar year ⇒ entitlement/transactions exist.
+    const [ledgerHit] = await tx
+      .select({ id: leaveLedger.id })
+      .from(leaveLedger)
+      .where(
+        and(
+          eq(leaveLedger.tenantId, ctx.tenantId),
+          gte(leaveLedger.effectiveOn, yearStart),
+          lte(leaveLedger.effectiveOn, yearEnd),
+        ),
+      )
+      .limit(1);
+    if (ledgerHit) {
+      throw new LeaveYearDeleteError(
+        'This leave year cannot be deleted because leave records already exist for it.',
+      );
+    }
+    // Guard 2: any leave_request overlapping the calendar year ⇒ applications reference it.
+    const [requestHit] = await tx
+      .select({ id: leaveRequest.id })
+      .from(leaveRequest)
+      .where(
+        and(
+          eq(leaveRequest.tenantId, ctx.tenantId),
+          lte(leaveRequest.startDate, yearEnd),
+          gte(leaveRequest.endDate, yearStart),
+        ),
+      )
+      .limit(1);
+    if (requestHit) {
+      throw new LeaveYearDeleteError(
+        'This leave year cannot be deleted because leave applications already reference it.',
+      );
+    }
+
+    await tx
+      .delete(leaveYearConfig)
+      .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.id, before.id)));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-year',
+      aggregateId: before.id,
+      eventType: 'leave-year.deleted',
+      actor: actorOf(ctx),
+      payload: {
+        year: p.year,
+        before: {
+          status: before.status,
+          openLeaveYearDate: before.openLeaveYearDate ?? null,
+          employeeApplicationStartDate: before.employeeApplicationStartDate ?? null,
+          openingRuleEnabled: before.openingRuleEnabled,
+        },
+      },
+    });
+    return { deleted: true, year: p.year };
   });
 }
 
