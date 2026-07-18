@@ -93,22 +93,11 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
       { key: 'ytdEntitled', labelKey: 'field.ytdEntitled', essKey: 'ytdEntitled', select: (d) => d.summary.ytdEntitled },
     ],
   },
-  // §2 Entitlement Breakdown
-  {
-    key: 'entitlement',
-    labelKey: 'section.entitlement',
-    order: 2,
-    kind: 'fields',
-    fields: [
-      { key: 'entitlementToDate', labelKey: 'field.entitlementToDate', essKey: 'entitlementToDate', select: (d) => d.breakdown.currentYearEntitlement },
-      { key: 'broughtForward', labelKey: 'field.broughtForward', essKey: 'broughtForward', select: (d) => d.breakdown.carriedForward },
-      // No `select`: the engine exposes no DISTINCT "expired brought forward" figure today (carry-remaining
-      // conflates consumed-vs-lapsed). Configured label now; mapping deferred → em-dash placeholder.
-      { key: 'expiredBroughtForward', labelKey: 'field.expiredBroughtForward', essKey: 'expiredBroughtForward' },
-      { key: 'carryForwardExpiry', labelKey: 'field.carryForwardExpiry', essKey: 'carryForwardExpiry', format: 'date', select: (d) => d.breakdown.carryForwardExpiryDate },
-      { key: 'forfeited', labelKey: 'field.forfeited', essKey: 'forfeited', select: (d) => d.breakdown.forfeited },
-    ],
-  },
+  // §2 Entitlement Breakdown — REMOVED (feedback e503f284): the employee saw two overlapping sections,
+  // "Entitlement Breakdown" (§2) and "Entitlement Calculation Breakdown" (§7). §7 is the fuller of the two, so
+  // §2 is dropped from the panel and §7 is promoted to order 2 (immediately after the summary) — see below. No
+  // backend data is removed; the underlying figures still feed §7. The removal is a pure display change (the
+  // descriptor entry is dropped, exactly like the §6 transaction-history removal), so no leave figure changes.
   // §3 Leave Utilization — NOT computed by the engine today. Per the no-hardcoded-formula mandate these are
   // configured labels with em-dash placeholders, wired to the framework so the values land later.
   {
@@ -138,10 +127,13 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
   // Leave History table. The removal is deliberately universal, not the per-leave-type `transactionHistory` ESS
   // toggle — the descriptor entry is dropped so no leave type can re-surface it here.
   // §7 Entitlement Calculation Breakdown — the existing calculation details from the current engine, verbatim.
+  // Promoted to order 2 (feedback e503f284): now the single entitlement explanation, shown immediately after the
+  // Leave Summary in the spot the removed §2 "Entitlement Breakdown" used to hold. Sections render by ascending
+  // `order`, so 2 places it right after the summary (order 1) and ahead of Utilization/Adjustments/Upcoming.
   {
     key: 'calcBreakdown',
     labelKey: 'section.calcBreakdown',
-    order: 7,
+    order: 2,
     kind: 'fields',
     essKey: 'entitlementCalcBreakdown',
     fields: [

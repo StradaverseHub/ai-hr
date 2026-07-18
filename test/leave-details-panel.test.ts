@@ -42,19 +42,25 @@ const DATA: PanelData = {
 };
 
 describe('entitlement-panel-config: sections in order (feedback 1dd4d827 removed §6 Transaction History)', () => {
-  it('no longer declares the §6 transactions section — the remaining 6 sections keep ascending order', () => {
-    const orders = ENTITLEMENT_PANEL_SECTIONS.map((s) => s.order);
-    // §6 (order 6, Transaction History) is removed; §7 keeps its declared order value so the stack collapses.
-    expect(orders).toEqual([1, 2, 3, 4, 5, 7]);
+  it('no longer declares the §6 transactions or §2 entitlement sections; calcBreakdown promoted to order 2', () => {
     const keys = ENTITLEMENT_PANEL_SECTIONS.map((s) => s.key);
+    // §6 Transaction History (1dd4d827) and §2 Entitlement Breakdown (e503f284) are both removed; the remaining
+    // five descriptor entries keep their declared order values (array order is unchanged: calcBreakdown was
+    // re-numbered from 7 to 2 in place).
     expect(keys).toEqual([
       'summary',
-      'entitlement',
       'utilization',
       'adjustments',
       'upcoming',
       'calcBreakdown',
     ]);
+    // e503f284: §2 "Entitlement Breakdown" is gone and §7 "Entitlement Calculation Breakdown" now sorts to
+    // order 2 — immediately after the summary (order 1), the slot §2 used to hold.
+    expect(keys).not.toContain('entitlement');
+    const byKey = Object.fromEntries(ENTITLEMENT_PANEL_SECTIONS.map((s) => [s.key, s]));
+    expect(byKey.calcBreakdown.order).toBe(2);
+    const sorted = [...ENTITLEMENT_PANEL_SECTIONS].sort((a, b) => a.order - b.order).map((s) => s.key);
+    expect(sorted).toEqual(['summary', 'calcBreakdown', 'utilization', 'adjustments', 'upcoming']);
     // Universal removal: no leave type / ESS config can re-surface it — the descriptor entry is gone entirely.
     expect(keys).not.toContain('transactions');
     expect(ENTITLEMENT_PANEL_SECTIONS.some((s) => s.kind === 'transactions')).toBe(false);
@@ -92,11 +98,13 @@ describe('entitlement-panel-config: fields PICK existing values (no hardcoded fo
     expect(field('summary', 'ytdEntitled').select!(DATA)).toBe(12);
   });
 
-  it('§2 entitlement reads engine figures (entitlement-to-date/BF/expiry/forfeited)', () => {
-    expect(field('entitlement', 'entitlementToDate').select!(DATA)).toBe(12);
-    expect(field('entitlement', 'broughtForward').select!(DATA)).toBe(5);
-    expect(field('entitlement', 'carryForwardExpiry').select!(DATA)).toBe('2026-03-31');
-    expect(field('entitlement', 'forfeited').select!(DATA)).toBe(1);
+  it('the §7 calc-breakdown carries the engine figures §2 used to duplicate (e503f284 removed §2)', () => {
+    // §2 "Entitlement Breakdown" is removed; its engine figures live on in §7 (currentYearEntitlement =
+    // entitlement-to-date, carriedForward = brought-forward, plus carry-forward expiry + forfeited).
+    expect(field('calcBreakdown', 'currentYearEntitlement').select!(DATA)).toBe(12);
+    expect(field('calcBreakdown', 'carriedForward').select!(DATA)).toBe(5);
+    expect(field('calcBreakdown', 'carryForwardExpiry').select!(DATA)).toBe('2026-03-31');
+    expect(field('calcBreakdown', 'forfeited').select!(DATA)).toBe(1);
   });
 
   it('§4 adjustments reads otherAdjustments — the field re-added to the mirror type', () => {
@@ -113,12 +121,11 @@ describe('entitlement-panel-config: fields PICK existing values (no hardcoded fo
 });
 
 describe('entitlement-panel-config: not-yet-mapped labels carry NO select (placeholder path)', () => {
-  it('§2 expired-brought-forward + §3 unplanned/overutilized are configured labels only', () => {
+  it('§3 unplanned/overutilized are configured labels only (§2 removed, e503f284)', () => {
     const noSelect = (sk: string, fk: string) => {
       const s = ENTITLEMENT_PANEL_SECTIONS.find((x) => x.key === sk)!;
       return s.fields!.find((f) => f.key === fk)!.select;
     };
-    expect(noSelect('entitlement', 'expiredBroughtForward')).toBeUndefined();
     expect(noSelect('utilization', 'unplanned')).toBeUndefined();
     expect(noSelect('utilization', 'overutilized')).toBeUndefined();
     // …yet they still carry an ess key so HR can show/hide them and a future enhancement wires the value.
