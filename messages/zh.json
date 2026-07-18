@@ -2606,7 +2606,13 @@
         "periodInvalid": "请选择有效的月份。",
         "componentRequired": "每一行收入或扣款都必须选择薪资项目——一次性项目会通过薪资发放，因此必须明确其法定处理方式。",
         "componentInvalid": "所选薪资项目对此行无效（不存在、已归档或类型不符）。",
-        "componentRequiredHint": "收入和扣款会通过薪资计算发放：请从列表中选择具名薪资项目（将套用其 EPF/SOCSO/PCB 处理方式）。加班、无薪和请假条目无需选择。"
+        "componentRequiredHint": "收入和扣款会通过薪资计算发放：请从列表中选择具名薪资项目（将套用其 EPF/SOCSO/PCB 处理方式）。加班、无薪和请假条目无需选择。",
+        "businessUnitFilter": "业务单位",
+        "allBusinessUnits": "所有业务单位",
+        "reviewNoRows": "尚未输入任何交易。",
+        "reviewTotal": "总计",
+        "reviewTotalPerEmployee": "每位员工总计",
+        "reviewTotalAll": "全部 {count} 名员工总计"
       },
       "tp1": {
         "title": "TP1 减免",

@@ -2606,7 +2606,13 @@
         "periodInvalid": "Chọn tháng hợp lệ.",
         "componentRequired": "Hãy chọn khoản mục lương cho từng dòng thu nhập hoặc khấu trừ — khoản mục một lần được chi trả qua bảng lương nên phải xác định cách xử lý theo luật định.",
         "componentInvalid": "Khoản mục lương đã chọn không hợp lệ cho dòng này (không tồn tại, đã lưu trữ hoặc sai loại).",
-        "componentRequiredHint": "Thu nhập và khấu trừ được chi trả qua tính lương: hãy chọn một khoản mục lương có tên trong danh sách (áp dụng cách xử lý EPF/SOCSO/PCB của khoản mục đó). Các mục tăng ca, nghỉ không lương và nghỉ phép không cần chọn."
+        "componentRequiredHint": "Thu nhập và khấu trừ được chi trả qua tính lương: hãy chọn một khoản mục lương có tên trong danh sách (áp dụng cách xử lý EPF/SOCSO/PCB của khoản mục đó). Các mục tăng ca, nghỉ không lương và nghỉ phép không cần chọn.",
+        "businessUnitFilter": "Đơn vị kinh doanh",
+        "allBusinessUnits": "Tất cả đơn vị kinh doanh",
+        "reviewNoRows": "Chưa nhập giao dịch nào.",
+        "reviewTotal": "Tổng",
+        "reviewTotalPerEmployee": "Tổng mỗi nhân viên",
+        "reviewTotalAll": "Tổng cho tất cả {count} nhân viên"
       },
       "tp1": {
         "title": "Miễn giảm TP1",
