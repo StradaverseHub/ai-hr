@@ -21,17 +21,22 @@ const page = read('app/admin/personnel/[employmentId]/page.tsx');
 const identityTaxCard = read('components/identity-tax-card.tsx');
 
 describe('Statutory (Malaysia) layout: lives in the Bank & Statutory tab', () => {
-  it('renders {bankCard} + {identityTaxCard} + {statutoryCard} in the bankStatutory tab panel', () => {
+  it('renders {bankCard} + {statutoryCard} in the bankStatutory tab panel, with Identity/Tax merged into statutoryCard', () => {
     // R24 40ef71a0 relocated statutory into its own Bank & Statutory tab. Item ef720d3a split the bank fields
-    // into a dedicated Bank Information card. Item 8b5334db then split the tax fields into a dedicated
-    // Identification & Tax card (identityTaxCard) rendered alongside on the same tab.
+    // into a dedicated Bank Information card. Item 8b5334db split the tax fields into an Identification & Tax card.
+    // R45 df09f22a then MERGED that Identity/Tax card into statutoryCard as a nested "Income Tax (PCB)" section
+    // (income tax is a Malaysia statutory item), so it is no longer a standalone panel entry — the
+    // <IdentityTaxCard embedded> island is now rendered inside the statutoryCard definition.
     const start = page.indexOf('bankStatutory: (');
     expect(start).toBeGreaterThan(-1);
     const end = page.indexOf('),', start);
     const panel = page.slice(start, end);
     expect(panel.includes('{bankCard}')).toBe(true);
-    expect(panel.includes('{identityTaxCard}')).toBe(true);
     expect(panel.includes('{statutoryCard}')).toBe(true);
+    expect(panel.includes('{identityTaxCard}')).toBe(false);
+    // The Identity/Tax island still exists, now embedded inside statutoryCard.
+    expect(page.includes('<IdentityTaxCard')).toBe(true);
+    expect(page.includes('embedded')).toBe(true);
   });
 
   it('keeps the remaining payroll cards in the payroll tab panel', () => {
