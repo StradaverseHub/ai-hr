@@ -139,7 +139,7 @@ export const BUILTIN_DASHBOARD_CARDS: BuiltinDashboardCard[] = [
   { cardKey: 'leaveBalance', name: 'Leave Balance', cardType: 'information', href: '/leave', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 1 },
   { cardKey: 'nextHoliday', name: 'Upcoming Holidays', cardType: 'information', href: '#upcoming-events', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 2 },
   { cardKey: 'pendingTasks', name: 'Pending Tasks', cardType: 'action', href: '/me', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 3 },
-  { cardKey: 'plannedAbsences', name: 'Planned Absences', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 4 },
+  { cardKey: 'plannedAbsences', name: 'Leave Calendar', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 4 },
   { cardKey: 'recentlyJoined', name: 'Recently Joined', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 5 },
   { cardKey: 'upcomingEvents', name: 'Upcoming Events', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 6 },
   { cardKey: 'recentActivity', name: 'Recent Activity', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 7 },
