@@ -1139,13 +1139,26 @@
         "forfeited": "ยอดที่ถูกริบ",
         "unplanned": "ไม่ได้วางแผน",
         "overutilized": "ใช้เกิน",
-        "adjustment": "การปรับปรุง"
+        "adjustment": "การปรับปรุง",
+        "balance": "คงเหลือ"
       },
       "panelSubtitle": "ณ วันที่ {date}",
       "close": "ปิด",
       "noUpcoming": "ไม่มีวันลาที่อนุมัติที่กำลังจะมาถึง",
       "daysCount": "{count} วัน",
-      "colBalanceChange": "การเปลี่ยนแปลงยอด"
+      "colBalanceChange": "การเปลี่ยนแปลงยอด",
+      "explanationShow": "แสดงคำอธิบาย",
+      "explanationHide": "ซ่อนคำอธิบาย",
+      "explanationDescription": "ความหมาย",
+      "explanationFormula": "วิธีคำนวณ",
+      "explanationResult": "ผลลัพธ์",
+      "summaryTip": {
+        "ytdEntitled": "จำนวนวันลาทั้งหมดที่คุณได้รับจนถึงตอนนี้ในปีนี้",
+        "taken": "วันลาที่คุณใช้ไปแล้ว (อนุมัติและลาแล้ว)",
+        "pendingApproval": "วันลาที่คุณยื่นขอและยังรอการอนุมัติ",
+        "available": "วันลาที่คุณยังใช้ได้ตอนนี้ หลังหักคำขอที่รออนุมัติแล้ว",
+        "balance": "ยอดคงเหลือสุดท้ายของคุณ หลังคำนวณสิทธิ์ วันลาที่ใช้ และการปรับปรุงต่าง ๆ"
+      }
     },
     "preview": {
       "willDeduct": "จะหัก {days} วัน",
@@ -1399,19 +1412,26 @@
     "noBalances": "ยังไม่มียอดคงเหลือ",
     "leaveBalanceTable": {
       "colLeaveType": "ประเภทการลา",
-      "colAvailable": "คงเหลือ",
       "colTaken": "ใช้ไป",
-      "colEntitlementToDate": "สิทธิ์ถึงปัจจุบัน",
-      "colBroughtForward": "ยกมา",
-      "colExpiredBroughtForward": "ยอดยกมาที่หมดอายุ",
-      "colUnplanned": "ไม่ได้วางแผน",
       "colAdjustment": "การปรับปรุง",
       "colOverutilized": "ใช้เกิน",
       "colYtdEntitled": "สิทธิ์สะสมทั้งปี",
       "daysValue": "{value} วัน",
       "sortBy": "เรียงตาม {column}",
       "asAtDate": "ณ วันที่",
-      "apply": "ใช้"
+      "apply": "ใช้",
+      "colAccrued": "สะสม",
+      "colCarriedForward": "ยกยอดมา",
+      "colBalance": "คงเหลือ",
+      "tip": {
+        "ytdEntitled": "จำนวนวันลาทั้งหมดที่ได้รับจนถึงตอนนี้ในปีนี้ รวมยอดยกมาด้วย",
+        "accrued": "วันลาที่คุณใช้ได้ตอนนี้ หลังหักคำขอที่รออนุมัติแล้ว",
+        "carriedForward": "วันลาที่ไม่ได้ใช้ยกมาจากปีที่แล้วสู่ปีนี้",
+        "taken": "วันลาที่คุณใช้ไปแล้ว",
+        "adjustment": "การเปลี่ยนแปลงยอดคงเหลือแบบแมนนวลหรือครั้งเดียว เช่น วันลาช่วงเทศกาล",
+        "overutilized": "ยอดคงเหลือของคุณติดลบไปมากเท่าใด (ถ้ามี)",
+        "balance": "ยอดคงเหลือสุดท้าย: สะสม บวกยอดยกมาและการปรับปรุง ลบวันที่ใช้และที่ใช้เกิน"
+      }
     },
     "typeLabel": "ประเภท",
     "fromLabel": "จาก",
@@ -1838,7 +1858,11 @@
       "employmentType_contract": "สัญญาจ้าง",
       "employmentType_intern": "ฝึกงาน",
       "chipAddPlaceholder": "เพิ่ม…",
-      "chipRemoveLabel": "นำ {value} ออก"
+      "chipRemoveLabel": "นำ {value} ออก",
+      "chipSelectAll": "เลือกทั้งหมด",
+      "chipClearAll": "ล้างทั้งหมด",
+      "chipAllSelected": "เลือกทั้งหมดแล้ว",
+      "chipNSelected": "เลือกแล้ว {count} รายการ"
     },
     "cycle": {
       "back": "ผลงาน",
@@ -3784,7 +3808,24 @@
       "categoryApproval": "กฎการอนุมัติ",
       "categoryDisplay": "การแสดงข้อมูลการลา",
       "categoryCalculation": "กฎการคำนวณการลา",
-      "categoryCustom": "การตั้งค่าที่กำหนดเอง"
+      "categoryCustom": "การตั้งค่าที่กำหนดเอง",
+      "formula": {
+        "sectionTitle": "การจัดการสูตรสิทธิ์การลา",
+        "help": "เขียนอธิบายด้วยภาษาที่เข้าใจง่ายว่าแต่ละส่วนของการคำนวณสิทธิ์หมายถึงอะไรและคำนวณอย่างไร พนักงานจะเห็นข้อความนี้ในรายละเอียดการลาข้างตัวเลขแต่ละตัว เว้นว่างไว้เพื่อซ่อนไอคอนข้อมูลของส่วนนั้น การตั้งค่านี้เปลี่ยนเฉพาะคำอธิบายเท่านั้น ไม่เปลี่ยนตัวเลขการลาใด ๆ",
+        "configured": "ตั้งค่าแล้ว",
+        "descriptionLabel": "คำอธิบาย",
+        "formulaLabel": "คำอธิบายสูตร",
+        "resultLabel": "ผลลัพธ์ / วันที่ (ไม่บังคับ)",
+        "component": {
+          "currentYearEntitlement": "สิทธิ์ของปีนี้",
+          "monthlyAccrued": "สะสมถึงปัจจุบันในปีนี้",
+          "carriedForward": "ยกยอดมา",
+          "carryForwardRemaining": "ยอดยกมาคงเหลือ",
+          "carryForwardExpiry": "การหมดอายุยอดยกมา",
+          "forfeited": "ถูกริบ",
+          "totalAvailable": "รวมที่ใช้ได้"
+        }
+      }
     },
     "holidays": {
       "pageTitle": "วันหยุดราชการ",

@@ -1139,13 +1139,26 @@
         "forfeited": "Forfeited balance",
         "unplanned": "Unplanned",
         "overutilized": "Overutilized",
-        "adjustment": "Adjustment"
+        "adjustment": "Adjustment",
+        "balance": "Balance"
       },
       "panelSubtitle": "As at {date}",
       "close": "Close",
       "noUpcoming": "No upcoming approved leave.",
       "daysCount": "{count} days",
-      "colBalanceChange": "Balance change"
+      "colBalanceChange": "Balance change",
+      "explanationShow": "Show explanation",
+      "explanationHide": "Hide explanation",
+      "explanationDescription": "What it means",
+      "explanationFormula": "How it's calculated",
+      "explanationResult": "Result",
+      "summaryTip": {
+        "ytdEntitled": "The total leave you've been granted so far this year.",
+        "taken": "Leave you have already used (approved and taken).",
+        "pendingApproval": "Leave you've applied for that is still awaiting approval.",
+        "available": "Leave you can still take now, after pending requests are set aside.",
+        "balance": "Your final remaining balance after entitlement, leave used, and any adjustments."
+      }
     },
     "preview": {
       "willDeduct": "This will deduct {days} day(s)",
@@ -1399,19 +1412,26 @@
     "noBalances": "No balances yet.",
     "leaveBalanceTable": {
       "colLeaveType": "Leave Type",
-      "colAvailable": "Available",
       "colTaken": "Taken",
-      "colEntitlementToDate": "Entitlement to Date",
-      "colBroughtForward": "Brought Forward",
-      "colExpiredBroughtForward": "Expired Brought Forward",
-      "colUnplanned": "Unplanned",
       "colAdjustment": "Adjustment",
       "colOverutilized": "Overutilized",
       "colYtdEntitled": "YTD Entitled",
       "daysValue": "{value} Days",
       "sortBy": "Sort by {column}",
       "asAtDate": "As at",
-      "apply": "Apply"
+      "apply": "Apply",
+      "colAccrued": "Accrued",
+      "colCarriedForward": "Carried Forward",
+      "colBalance": "Balance",
+      "tip": {
+        "ytdEntitled": "Total leave granted so far this year, including any carried forward.",
+        "accrued": "Leave you can take now, after pending requests are set aside.",
+        "carriedForward": "Unused leave carried into this year from last year.",
+        "taken": "Leave you have already used.",
+        "adjustment": "Manual or one-off changes to your balance, such as festive grants.",
+        "overutilized": "How far your balance has gone below zero, if at all.",
+        "balance": "Final remaining balance: Accrued plus Carried Forward and Adjustment, minus Taken and Overutilized."
+      }
     },
     "typeLabel": "Type",
     "fromLabel": "From",
@@ -1838,7 +1858,11 @@
       "employmentType_contract": "Contract",
       "employmentType_intern": "Intern",
       "chipAddPlaceholder": "Add…",
-      "chipRemoveLabel": "Remove {value}"
+      "chipRemoveLabel": "Remove {value}",
+      "chipSelectAll": "Select all",
+      "chipClearAll": "Clear all",
+      "chipAllSelected": "All selected",
+      "chipNSelected": "{count} selected"
     },
     "cycle": {
       "back": "Performance",
@@ -3784,7 +3808,24 @@
       "categoryApproval": "Approval Rules",
       "categoryDisplay": "Leave Information Display",
       "categoryCalculation": "Leave Calculation Rules",
-      "categoryCustom": "Custom Settings"
+      "categoryCustom": "Custom Settings",
+      "formula": {
+        "sectionTitle": "Leave Entitlement Formula Management",
+        "help": "Write, in plain words, what each part of the entitlement calculation means and how it is worked out. Employees see this on their leave breakdown next to each figure. Leave a component blank to hide its info icon. This changes explanations only — never any leave figure.",
+        "configured": "Set",
+        "descriptionLabel": "Description",
+        "formulaLabel": "Formula explanation",
+        "resultLabel": "Result / date (optional)",
+        "component": {
+          "currentYearEntitlement": "This Year's Entitlement",
+          "monthlyAccrued": "Accrued So Far This Year",
+          "carriedForward": "Carried Forward",
+          "carryForwardRemaining": "Carry-Forward Remaining",
+          "carryForwardExpiry": "Carry-Forward Expiry",
+          "forfeited": "Forfeited",
+          "totalAvailable": "Total Available"
+        }
+      }
     },
     "holidays": {
       "pageTitle": "Public holidays",

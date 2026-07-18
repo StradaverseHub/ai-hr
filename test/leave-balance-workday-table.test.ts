@@ -43,53 +43,56 @@ const baseBreakdown = (over: Partial<NonNullable<BreakdownInput>> = {}): Breakdo
   ...over,
 });
 
-describe('deriveBalanceRow: the ten reporter columns map from existing figures', () => {
-  it('maps every column from balances + breakdown (earned type uses accrued-to-date for Entitlement to Date)', () => {
+describe('deriveBalanceRow: the standardized balance columns map from existing figures (776cd1b5)', () => {
+  it('maps every column from balances + breakdown; Accrued = available; Balance is computed', () => {
     const row = deriveBalanceRow(baseBalance(), baseBreakdown());
-    expect(row.available).toBe(8.5);
+    expect(row.available).toBe(8.5); // shown as "Accrued"
     expect(row.taken).toBe(3);
-    expect(row.entitlementToDate).toBe(7); // monthlyAccruedToDate preferred
-    expect(row.broughtForward).toBe(5); // carriedForward
-    expect(row.expiredBroughtForward).toBe(1); // forfeited
-    expect(row.unplanned).toBeNull(); // deferred in v1
+    expect(row.broughtForward).toBe(5); // Carried Forward
     expect(row.adjustment).toBe(2); // otherAdjustments
     expect(row.overutilized).toBe(0); // available >= 0 ⇒ 0
     expect(row.ytdEntitled).toBe(17); // currentYearEntitlement(12) + carriedForward(5)
+    // Balance = (Accrued 8.5 + Carried Forward 5 + Adjustment 2) − Taken 3 − Overutilized 0 = 12.5.
+    expect(row.balance).toBe(12.5);
     expect(row.visual).toEqual({ color: null, icon: null, code: 'AL' });
   });
 
-  it('grant-on-open type (monthlyAccruedToDate null) falls back to full current-year entitlement', () => {
-    const row = deriveBalanceRow(baseBalance(), baseBreakdown({ monthlyAccruedToDate: null }));
-    expect(row.entitlementToDate).toBe(12);
+  it('dropped columns (entitlementToDate/expiredBroughtForward/unplanned) are gone from the row', () => {
+    const row = deriveBalanceRow(baseBalance(), baseBreakdown()) as Record<string, unknown>;
+    expect('entitlementToDate' in row).toBe(false);
+    expect('expiredBroughtForward' in row).toBe(false);
+    expect('unplanned' in row).toBe(false);
   });
 
-  it('Overutilized is derived as max(0, -available) when the type is over-drawn', () => {
+  it('Overutilized is derived as max(0, -available), and reduces Balance, when the type is over-drawn', () => {
     const row = deriveBalanceRow(baseBalance({ available: -2.5 }), baseBreakdown());
     expect(row.overutilized).toBe(2.5);
     expect(row.available).toBe(-2.5);
+    // Balance = (−2.5 + 5 + 2) − 3 − 2.5 = −1.
+    expect(row.balance).toBe(-1);
   });
 
-  it('a type with NO breakdown loaded shows "—" (null) for every breakdown-derived column', () => {
+  it('a type with NO breakdown loaded: breakdown columns null; Balance falls back to Accrued − Taken', () => {
     const row = deriveBalanceRow(baseBalance(), null);
-    expect(row.entitlementToDate).toBeNull();
     expect(row.broughtForward).toBeNull();
-    expect(row.expiredBroughtForward).toBeNull();
     expect(row.adjustment).toBeNull();
     expect(row.ytdEntitled).toBeNull();
-    // ...but ledger-sourced Available / Taken still show.
+    // ...but ledger-sourced Available / Taken still show, and Balance uses 0 for the missing carry/adjustment.
     expect(row.available).toBe(8.5);
     expect(row.taken).toBe(3);
+    expect(row.balance).toBe(5.5); // (8.5 + 0 + 0) − 3 − 0
   });
 
-  it('ESS view-config (65dec703) gates Available/Taken/Overutilized to null without leaking the hidden number', () => {
+  it('ESS view-config (65dec703) gates Available/Taken/Overutilized/Balance to null without leaking figures', () => {
     const gated = deriveBalanceRow(
       baseBalance({ available: -4, essView: { available: false, taken: false } }),
       baseBreakdown(),
     );
     expect(gated.available).toBeNull();
     expect(gated.taken).toBeNull();
-    // Overutilized is the negation of Available, so it must hide with it.
+    // Overutilized is the negation of Available, so it must hide with it; Balance contains both ⇒ hidden too.
     expect(gated.overutilized).toBeNull();
+    expect(gated.balance).toBeNull();
     // Missing key ⇒ visible (backward compatible).
     const visible = deriveBalanceRow(baseBalance({ essView: {} }), baseBreakdown());
     expect(visible.available).toBe(8.5);
@@ -128,26 +131,33 @@ describe('Leave Balance table i18n: column headers + "Days" format resolve in al
   const dicts = Object.fromEntries(
     LOCALES.map((l) => [l, JSON.parse(read(`/messages/${l}.json`)).me.leaveBalanceTable as Record<string, unknown>]),
   );
+  // Standardized column set (776cd1b5): dropped keys removed; Accrued / Carried Forward / Balance added, plus a
+  // tip.* tooltip per numeric column.
   const KEYS = [
     'colLeaveType',
-    'colAvailable',
+    'colYtdEntitled',
+    'colAccrued',
+    'colCarriedForward',
     'colTaken',
-    'colEntitlementToDate',
-    'colBroughtForward',
-    'colExpiredBroughtForward',
-    'colUnplanned',
     'colAdjustment',
     'colOverutilized',
-    'colYtdEntitled',
+    'colBalance',
     'daysValue',
     'sortBy',
     'asAtDate',
     'apply',
   ];
+  const TIP_KEYS = ['ytdEntitled', 'accrued', 'carriedForward', 'taken', 'adjustment', 'overutilized', 'balance'];
+  const REMOVED = ['colAvailable', 'colEntitlementToDate', 'colBroughtForward', 'colExpiredBroughtForward', 'colUnplanned'];
   for (const loc of LOCALES) {
-    it(`${loc} resolves every leaveBalanceTable key`, () => {
+    it(`${loc} resolves every leaveBalanceTable key + tooltip, and drops the removed keys`, () => {
       const missing = KEYS.filter((k) => dicts[loc][k] == null || dicts[loc][k] === '');
       expect(missing, `[${loc}] missing: ${missing.join(', ')}`).toEqual([]);
+      const tips = (dicts[loc].tip ?? {}) as Record<string, unknown>;
+      const missingTips = TIP_KEYS.filter((k) => tips[k] == null || tips[k] === '');
+      expect(missingTips, `[${loc}] missing tips: ${missingTips.join(', ')}`).toEqual([]);
+      // The now-unused labels are removed (plan: remove colEntitlementToDate/colExpiredBroughtForward/colUnplanned).
+      expect(REMOVED.filter((k) => k in dicts[loc]), `[${loc}] stale keys`).toEqual([]);
     });
     it(`${loc} daysValue + sortBy carry their ICU placeholders`, () => {
       expect(String(dicts[loc].daysValue)).toContain('{value}');
@@ -171,20 +181,22 @@ describe('Leave Balance table source: responsive DB-free client island', () => {
     expect(cmp).toMatch(/tabular-nums/);
   });
 
-  it('declares the nine numeric columns + the Leave Type column and click-to-sort headers', () => {
+  it('declares the standardized numeric columns + the Leave Type column and click-to-sort headers (776cd1b5)', () => {
     for (const k of [
-      'colAvailable',
+      'colYtdEntitled',
+      'colAccrued',
+      'colCarriedForward',
       'colTaken',
-      'colEntitlementToDate',
-      'colBroughtForward',
-      'colExpiredBroughtForward',
-      'colUnplanned',
       'colAdjustment',
       'colOverutilized',
-      'colYtdEntitled',
+      'colBalance',
       'colLeaveType',
     ]) {
       expect(cmp).toContain(k);
+    }
+    // Dropped columns must not reappear in the table source.
+    for (const k of ['colEntitlementToDate', 'colExpiredBroughtForward', 'colUnplanned']) {
+      expect(cmp).not.toContain(k);
     }
     expect(cmp).toMatch(/onClick=\{\(\) => toggle\(/);
     expect(cmp).toMatch(/aria-sort=/);

@@ -1139,13 +1139,26 @@
         "forfeited": "被没收余额",
         "unplanned": "非计划",
         "overutilized": "超额使用",
-        "adjustment": "调整"
+        "adjustment": "调整",
+        "balance": "余额"
       },
       "panelSubtitle": "截至 {date}",
       "close": "关闭",
       "noUpcoming": "没有即将到来的已批准假期。",
       "daysCount": "{count} 天",
-      "colBalanceChange": "余额变动"
+      "colBalanceChange": "余额变动",
+      "explanationShow": "显示说明",
+      "explanationHide": "隐藏说明",
+      "explanationDescription": "含义",
+      "explanationFormula": "计算方式",
+      "explanationResult": "结果",
+      "summaryTip": {
+        "ytdEntitled": "本年度至今授予您的休假总额。",
+        "taken": "您已使用的休假（已批准并已休）。",
+        "pendingApproval": "您已申请但仍在等待批准的休假。",
+        "available": "在扣除待批准申请后，您现在仍可休的休假。",
+        "balance": "在计入额度、已用休假及任何调整后的最终剩余余额。"
+      }
     },
     "preview": {
       "willDeduct": "将扣除 {days} 天",
@@ -1399,19 +1412,26 @@
     "noBalances": "暂无余额。",
     "leaveBalanceTable": {
       "colLeaveType": "假别",
-      "colAvailable": "可用",
       "colTaken": "已用",
-      "colEntitlementToDate": "至今应享",
-      "colBroughtForward": "结转",
-      "colExpiredBroughtForward": "已过期结转",
-      "colUnplanned": "未计划",
       "colAdjustment": "调整",
       "colOverutilized": "超用",
       "colYtdEntitled": "年度应享",
       "daysValue": "{value} 天",
       "sortBy": "按{column}排序",
       "asAtDate": "截至",
-      "apply": "应用"
+      "apply": "应用",
+      "colAccrued": "累计",
+      "colCarriedForward": "结转",
+      "colBalance": "余额",
+      "tip": {
+        "ytdEntitled": "本年度至今授予的休假总额，包括任何结转。",
+        "accrued": "在扣除待批准申请后，您现在可休的休假。",
+        "carriedForward": "从去年结转到本年的未用休假。",
+        "taken": "您已使用的休假。",
+        "adjustment": "对余额的手动或一次性变更，例如节日额度。",
+        "overutilized": "您的余额低于零的程度（如有）。",
+        "balance": "最终剩余余额：累计加结转和调整，减去已用和超用。"
+      }
     },
     "typeLabel": "类型",
     "fromLabel": "从",
@@ -1838,7 +1858,11 @@
       "employmentType_contract": "合同",
       "employmentType_intern": "实习",
       "chipAddPlaceholder": "添加…",
-      "chipRemoveLabel": "移除{value}"
+      "chipRemoveLabel": "移除{value}",
+      "chipSelectAll": "全选",
+      "chipClearAll": "清除全部",
+      "chipAllSelected": "已全选",
+      "chipNSelected": "已选 {count} 项"
     },
     "cycle": {
       "back": "绩效",
@@ -3784,7 +3808,24 @@
       "categoryApproval": "审批规则",
       "categoryDisplay": "休假信息显示",
       "categoryCalculation": "休假计算规则",
-      "categoryCustom": "自定义设置"
+      "categoryCustom": "自定义设置",
+      "formula": {
+        "sectionTitle": "休假额度公式管理",
+        "help": "用通俗的语言说明额度计算中每一项的含义及计算方式。员工会在休假明细中每个数字旁看到这些说明。将某组件留空即可隐藏其信息图标。此设置仅更改说明文字，不会更改任何休假数字。",
+        "configured": "已设置",
+        "descriptionLabel": "说明",
+        "formulaLabel": "公式说明",
+        "resultLabel": "结果／日期（可选）",
+        "component": {
+          "currentYearEntitlement": "本年度额度",
+          "monthlyAccrued": "本年度至今累计",
+          "carriedForward": "结转",
+          "carryForwardRemaining": "结转剩余",
+          "carryForwardExpiry": "结转到期",
+          "forfeited": "已作废",
+          "totalAvailable": "可用总额"
+        }
+      }
     },
     "holidays": {
       "pageTitle": "公共假期",

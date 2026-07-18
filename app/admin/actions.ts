@@ -79,6 +79,7 @@ import {
 } from '@/core/clocking-location';
 import { countEmployeesInScope } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
+import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaConfig } from '@/core/leave-formula';
 import { requireAdmin } from '@/lib/authz';
 import {
   createGradeGroup,
@@ -1270,6 +1271,26 @@ export async function updateLeaveTypeAction(fd: FormData) {
         ) as EssViewConfig,
       }
     : {};
+  // Leave Entitlement Formula Management (79011509): the formula editor sub-form posts `formula=1` (marker)
+  // plus, per component, up to three free-text fields (`formula_<key>_description`, `formula_<key>_formula`,
+  // `formula_<key>_result`). We build the COMPLETE { key: entry } map from the closed component list and hand
+  // it to the service, which trims + drops blanks + normalises an all-blank map to null (clear). Any other
+  // sub-form save omits the marker ⇒ formula_explanations stays untouched (same tri-state guard as essView).
+  const touchFormula = fd.get('formula') === '1';
+  const formulaFields = touchFormula
+    ? {
+        formulaExplanations: Object.fromEntries(
+          LEAVE_FORMULA_COMPONENT_KEYS.map((key) => [
+            key,
+            {
+              description: String(fd.get(`formula_${key}_description`) ?? ''),
+              formula: String(fd.get(`formula_${key}_formula`) ?? ''),
+              result: String(fd.get(`formula_${key}_result`) ?? ''),
+            },
+          ]),
+        ) as LeaveFormulaConfig,
+      }
+    : {};
   // Day Type Inclusion (feedback ef6d7146): the "Day Type Inclusion" sub-form posts `dayTypeInclusion=1`
   // (marker) plus one checkbox per day type (`dayType_<key>`). An unchecked box does not post, so we build the
   // COMPLETE five-key vector (checked ⇒ true/counted, absent ⇒ false/skipped) and hand it to the service,
@@ -1371,6 +1392,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...duplicatePolicyFields,
       ...negativeBalanceFields,
       ...essViewFields,
+      ...formulaFields,
       ...dayTypeInclusionFields,
       ...visualFields,
       ...leaveUnitFields,

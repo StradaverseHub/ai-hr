@@ -1139,13 +1139,26 @@
         "forfeited": "Baki dilucuthak",
         "unplanned": "Tidak dirancang",
         "overutilized": "Penggunaan berlebihan",
-        "adjustment": "Pelarasan"
+        "adjustment": "Pelarasan",
+        "balance": "Baki"
       },
       "panelSubtitle": "Setakat {date}",
       "close": "Tutup",
       "noUpcoming": "Tiada cuti diluluskan akan datang.",
       "daysCount": "{count} hari",
-      "colBalanceChange": "Perubahan baki"
+      "colBalanceChange": "Perubahan baki",
+      "explanationShow": "Tunjuk penerangan",
+      "explanationHide": "Sembunyikan penerangan",
+      "explanationDescription": "Maksudnya",
+      "explanationFormula": "Cara ia dikira",
+      "explanationResult": "Keputusan",
+      "summaryTip": {
+        "ytdEntitled": "Jumlah cuti yang diberikan kepada anda setakat ini tahun ini.",
+        "taken": "Cuti yang telah anda gunakan (diluluskan dan diambil).",
+        "pendingApproval": "Cuti yang anda mohon dan masih menunggu kelulusan.",
+        "available": "Cuti yang masih boleh anda ambil sekarang, selepas permohonan yang menunggu diketepikan.",
+        "balance": "Baki akhir anda selepas mengambil kira kelayakan, cuti digunakan dan sebarang pelarasan."
+      }
     },
     "preview": {
       "willDeduct": "Ini akan menolak {days} hari",
@@ -1399,19 +1412,26 @@
     "noBalances": "Belum ada baki.",
     "leaveBalanceTable": {
       "colLeaveType": "Jenis Cuti",
-      "colAvailable": "Tersedia",
       "colTaken": "Diambil",
-      "colEntitlementToDate": "Kelayakan Setakat Ini",
-      "colBroughtForward": "Bawa Ke Hadapan",
-      "colExpiredBroughtForward": "Bawa Ke Hadapan Luput",
-      "colUnplanned": "Tidak Dirancang",
       "colAdjustment": "Pelarasan",
       "colOverutilized": "Terlebih Guna",
       "colYtdEntitled": "Kelayakan YTD",
       "daysValue": "{value} Hari",
       "sortBy": "Susun mengikut {column}",
       "asAtDate": "Setakat",
-      "apply": "Guna"
+      "apply": "Guna",
+      "colAccrued": "Terkumpul",
+      "colCarriedForward": "Dibawa Ke Hadapan",
+      "colBalance": "Baki",
+      "tip": {
+        "ytdEntitled": "Jumlah cuti yang diberikan setakat ini tahun ini, termasuk sebarang bawa ke hadapan.",
+        "accrued": "Cuti yang boleh anda ambil sekarang, selepas permohonan yang menunggu diketepikan.",
+        "carriedForward": "Cuti tidak digunakan yang dibawa ke tahun ini dari tahun lepas.",
+        "taken": "Cuti yang telah anda gunakan.",
+        "adjustment": "Perubahan manual atau sekali sahaja pada baki anda, seperti pemberian perayaan.",
+        "overutilized": "Sejauh mana baki anda telah menjadi negatif, jika ada.",
+        "balance": "Baki akhir: Terkumpul tambah Dibawa Ke Hadapan dan Pelarasan, tolak Diambil dan Terlebih Guna."
+      }
     },
     "typeLabel": "Jenis",
     "fromLabel": "Dari",
@@ -1838,7 +1858,11 @@
       "employmentType_contract": "Kontrak",
       "employmentType_intern": "Pelatih",
       "chipAddPlaceholder": "Tambah…",
-      "chipRemoveLabel": "Buang {value}"
+      "chipRemoveLabel": "Buang {value}",
+      "chipSelectAll": "Pilih semua",
+      "chipClearAll": "Kosongkan semua",
+      "chipAllSelected": "Semua dipilih",
+      "chipNSelected": "{count} dipilih"
     },
     "cycle": {
       "back": "Prestasi",
@@ -3784,7 +3808,24 @@
       "categoryApproval": "Peraturan Kelulusan",
       "categoryDisplay": "Paparan Maklumat Cuti",
       "categoryCalculation": "Peraturan Pengiraan Cuti",
-      "categoryCustom": "Tetapan Tersuai"
+      "categoryCustom": "Tetapan Tersuai",
+      "formula": {
+        "sectionTitle": "Pengurusan Formula Kelayakan Cuti",
+        "help": "Tuliskan, dalam bahasa mudah, maksud setiap bahagian pengiraan kelayakan dan cara ia dikira. Pekerja melihatnya pada pecahan cuti di sebelah setiap angka. Biarkan komponen kosong untuk menyembunyikan ikon maklumatnya. Ini mengubah penerangan sahaja — bukan mana-mana angka cuti.",
+        "configured": "Ditetapkan",
+        "descriptionLabel": "Penerangan",
+        "formulaLabel": "Penerangan formula",
+        "resultLabel": "Keputusan / tarikh (pilihan)",
+        "component": {
+          "currentYearEntitlement": "Kelayakan Tahun Ini",
+          "monthlyAccrued": "Terkumpul Setakat Ini Tahun Ini",
+          "carriedForward": "Dibawa Ke Hadapan",
+          "carryForwardRemaining": "Baki Bawa Ke Hadapan",
+          "carryForwardExpiry": "Tamat Tempoh Bawa Ke Hadapan",
+          "forfeited": "Dilucutkan",
+          "totalAvailable": "Jumlah Tersedia"
+        }
+      }
     },
     "holidays": {
       "pageTitle": "Cuti umum",
