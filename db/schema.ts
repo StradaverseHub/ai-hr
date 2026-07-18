@@ -2364,6 +2364,44 @@ export const attendance = pgTable(
   (t) => [uniqueIndex('attendance_employment_date_uq').on(t.employmentId, t.attendanceDate)],
 );
 
+// ── R45 92bdf77a · Multiple Clocking (migration 0265) ────────────────────────────────────────────────
+// The day still keeps exactly ONE `attendance` aggregate row (the unique index above is untouched). Every
+// individual clock-in / clock-out is captured here as a child punch so a person can clock in/out more than
+// once a day (lunch, off-site trip, meeting). The aggregate row's check_in_at / check_out_at are DERIVED
+// from these punches (first-in / last-out) — see recomputeDayFromPunches in core/attendance.ts. Direction is
+// captured at punch time (the /me button pressed) but the summation uses first-in-time / last-out-time.
+// Stage-1 scope: capture + first-in/last-out summation. Deferred (stage 2, documented GAP): per-pair
+// unpaid-break, pre-shift/early-OT attribution, split shifts, cross-midnight multi-punch.
+export const attendancePunchDirectionEnum = pgEnum('attendance_punch_direction', ['in', 'out']);
+export const attendancePunch = pgTable(
+  'attendance_punch',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // The day aggregate this punch rolls up into. Cascade-deletes with the day row.
+    attendanceId: uuid('attendance_id')
+      .notNull()
+      .references(() => attendance.id, { onDelete: 'cascade' }),
+    // Denormalised employment + date so RLS (can_see_employment) and range reads stay a single-table scan.
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    attendanceDate: date('attendance_date').notNull(),
+    punchAt: time('punch_at').notNull(),
+    direction: attendancePunchDirectionEnum('direction').notNull(),
+    method: clockMethodEnum('method').notNull().default('web'),
+    // Per-punch geo capture (ADR-0070 parity) — all nullable; a punch written while geofencing is off leaves them null.
+    lat: doublePrecision('lat'),
+    lng: doublePrecision('lng'),
+    clockingLocationId: uuid('clocking_location_id').references((): AnyPgColumn => clockingLocation.id),
+    distanceM: integer('distance_m'),
+    geofenceStatus: geofenceStatusEnum('geofence_status'),
+    radiusM: integer('radius_m'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('attendance_punch_attendance_idx').on(t.attendanceId, t.punchAt)],
+);
+
 // Per-company attendance thresholds + work schedule (ADR-0011). One pattern per company;
 // per-employee shift/roster overrides are a deliberate later phase.
 export const attendancePolicy = pgTable(
