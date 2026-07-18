@@ -103,9 +103,11 @@ import { packFor } from '@/localization/registry';
 
 const ORG = '/admin/organization';
 const LEAVE = '/admin/leave';
-// Leave Year Configuration (9aa894a4): the managed Leave-Year table lives on the Entitlements tab, so its
-// actions revalidate/redirect there (the page reads ?error= for the ErrorBanner).
 const ENTITLEMENTS = '/admin/leave/entitlements';
+// R45 cc816207 — the managed Leave-Year table RELOCATED from the Entitlements tab to the Application Rules
+// tab, so its create/edit/open/close/delete/opening-rule actions revalidate/redirect HERE (the page reads
+// ?error= for the ErrorBanner).
+const APPLICATION_RULES = '/admin/leave/application-rules';
 const USERS = '/admin/users';
 const HOLIDAYS = '/admin/holidays';
 // 66b8f5a8 — the Holiday Group tab + its dedicated add/edit pages.
@@ -879,9 +881,9 @@ export async function upsertLeaveYearConfigAction(formData: FormData) {
       employeeApplicationStartDate: String(formData.get('employeeApplicationStartDate') ?? '') || null,
     });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    fail(APPLICATION_RULES, e);
   }
-  ok(ENTITLEMENTS);
+  ok(APPLICATION_RULES);
 }
 
 // Leave Year Configuration (9aa894a4): transition a managed leave-year's status. →open runs the existing
@@ -896,12 +898,12 @@ export async function setLeaveYearStatusAction(formData: FormData) {
     if (!isLeaveYearStatus(status)) throw new Error('Invalid leave-year status');
     res = await setLeaveYearStatus(s, { year, status });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    fail(APPLICATION_RULES, e);
   }
-  revalidatePath(ENTITLEMENTS);
+  revalidatePath(APPLICATION_RULES);
   const opened = res?.opened;
   redirect(
-    `${ENTITLEMENTS}?toast=${encodeURIComponent(
+    `${APPLICATION_RULES}?toast=${encodeURIComponent(
       opened
         ? `Leave year ${year} opened: ${opened.granted} grant${opened.granted === 1 ? '' : 's'} posted` +
             (opened.skipped ? `, ${opened.skipped} already open` : '') +
@@ -927,9 +929,9 @@ export async function saveFutureOpeningRuleAction(formData: FormData) {
       unit: String(formData.get('openBeforeUnit') ?? '') || null,
     });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    fail(APPLICATION_RULES, e);
   }
-  ok(ENTITLEMENTS);
+  ok(APPLICATION_RULES);
 }
 
 // R45 fd71fa38 — delete a mistakenly-created DRAFT leave-year record. The service enforces the guard (draft
@@ -941,9 +943,9 @@ export async function deleteLeaveYearAction(formData: FormData) {
   try {
     await deleteLeaveYear(s, { year: Number(formData.get('year')) });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    fail(APPLICATION_RULES, e);
   }
-  ok(ENTITLEMENTS);
+  ok(APPLICATION_RULES);
 }
 
 export async function assignRoleAction(formData: FormData) {
