@@ -54,6 +54,7 @@ import { payslipReleaseAt } from './payroll-policy-config';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
 import { visibleLabelIdsCondition } from './system-labels';
 import { resolveEssView, type ResolvedEssView } from './ess-view';
+import { resolveLeaveFormula, type LeaveFormulaEntry, type ResolvedLeaveFormula } from './leave-formula';
 import { resolvePlacement, type EssPlacement } from '../lib/leave-groups';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
@@ -450,6 +451,9 @@ export function listLeaveTypes(
         // Employee Leave View Configuration (65dec703): feeds the admin panel's ESS-view checklist (MUST be
         // projected or every checkbox renders at its default on every reload). null ⇒ all-visible default.
         essViewConfig: leaveType.essViewConfig,
+        // Leave Entitlement Formula Management (79011509): feeds the admin panel's formula editor (MUST be
+        // projected or every field renders empty on every reload). null ⇒ no explanations.
+        formulaExplanations: leaveType.formulaExplanations,
         // Day Type Inclusion (ef6d7146): feeds the admin panel's "Day Type Inclusion" toggles (MUST be
         // projected or every toggle renders unchecked on every reload). null ⇒ counting-mode default.
         dayTypeInclusion: leaveType.dayTypeInclusion,
@@ -1582,6 +1586,10 @@ export type LeaveEntitlementBreakdown = {
    *  resolved (missing key ⇒ visible). The shared EntitlementBreakdown gates rows against this ONLY when
    *  its `applyEssConfig` prop is set (i.e. on /me); admin/HR pass it false and see every row. */
   essView: ResolvedEssView;
+  /** Leave Entitlement Formula Management (79011509): HR-authored per-component explanations for this leave
+   *  type, resolved (missing / all-empty ⇒ null). The breakdown panel shows a per-row info icon only where an
+   *  explanation exists (feedback b8b665ff). Explanation layer only — never a computed figure. */
+  formulaExplanations: ResolvedLeaveFormula;
 };
 
 export function leaveEntitlementBreakdown(
@@ -1596,7 +1604,7 @@ export function leaveEntitlementBreakdown(
     // here (employment join returns nothing) → a defined empty state, never an error or a leak.
     const [[type], [emp]] = await Promise.all([
       tx
-        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig })
+        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations })
         .from(leaveType)
         .where(eq(leaveType.id, leaveTypeId))
         .limit(1),
@@ -1768,6 +1776,7 @@ export function leaveEntitlementBreakdown(
         sourceRequestId: r.sourceRequestId,
       })),
       essView: resolveEssView(type.essViewConfig as Record<string, boolean> | null),
+      formulaExplanations: resolveLeaveFormula(type.formulaExplanations as Record<string, LeaveFormulaEntry> | null),
     };
   });
 }

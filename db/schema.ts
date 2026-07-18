@@ -1065,6 +1065,18 @@ export const leaveType = pgTable('leave_type', {
   // row gains the block immediately (no backfill needed). Enforced only at requestLeave/editLeaveRequest —
   // never read for entitlement / accrual / eligibility / payroll.
   allowNegativeBalance: boolean('allow_negative_balance').notNull().default(false),
+  // Leave Entitlement Formula Management (feedback 79011509, migration 0241): HR-owned, per-leave-type
+  // plain-language EXPLANATIONS for each entitlement-breakdown component — keyed by the seven §7
+  // "Entitlement Calculation Breakdown" component keys (core/leave-formula.ts LEAVE_FORMULA_COMPONENT_KEYS),
+  // each an optional { description, formula, result } of free text. Purely an explanation layer surfaced to
+  // employees on the leave breakdown panel; NEVER read for entitlement / accrual / eligibility / workflow /
+  // payroll — the days an employee is entitled to are unchanged. A missing key or a null column ⇒ no
+  // explanation (the info icon is hidden for that row). JSONB extension point matching the serviceBands /
+  // customMessages pattern: the map is REPLACED wholesale on write (the editor always posts the complete set),
+  // and unknown keys are rejected in updateLeaveType. null on every existing row (no backfill).
+  formulaExplanations: jsonb('formula_explanations').$type<
+    Record<string, { description?: string; formula?: string; result?: string }>
+  >(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

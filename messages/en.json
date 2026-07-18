@@ -3705,7 +3705,24 @@
       "categoryApproval": "Approval Rules",
       "categoryDisplay": "Leave Information Display",
       "categoryCalculation": "Leave Calculation Rules",
-      "categoryCustom": "Custom Settings"
+      "categoryCustom": "Custom Settings",
+      "formula": {
+        "sectionTitle": "Leave Entitlement Formula Management",
+        "help": "Write, in plain words, what each part of the entitlement calculation means and how it is worked out. Employees see this on their leave breakdown next to each figure. Leave a component blank to hide its info icon. This changes explanations only — never any leave figure.",
+        "configured": "Set",
+        "descriptionLabel": "Description",
+        "formulaLabel": "Formula explanation",
+        "resultLabel": "Result / date (optional)",
+        "component": {
+          "currentYearEntitlement": "This Year's Entitlement",
+          "monthlyAccrued": "Accrued So Far This Year",
+          "carriedForward": "Carried Forward",
+          "carryForwardRemaining": "Carry-Forward Remaining",
+          "carryForwardExpiry": "Carry-Forward Expiry",
+          "forfeited": "Forfeited",
+          "totalAvailable": "Total Available"
+        }
+      }
     },
     "holidays": {
       "pageTitle": "Public holidays",

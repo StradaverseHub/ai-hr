@@ -9,6 +9,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { CrossCompanyError } from './org';
 import { isEssViewComponentKey, type EssViewConfig } from './ess-view';
+import { normalizeLeaveFormulaConfig, type LeaveFormulaConfig } from './leave-formula';
 import { isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual';
 import { visibleLabelIdsCondition } from './system-labels';
 import {
@@ -2789,6 +2790,14 @@ export async function updateLeaveType(
     // clear (revert to all-visible default). Every key MUST be in the closed allow-list (core/ess-view.ts);
     // an unknown key is rejected. Value false ⇒ hidden in ESS; missing/true ⇒ visible.
     essViewConfig?: EssViewConfig | null;
+    // Leave Entitlement Formula Management (feedback 79011509): HR-authored per-component explanation store.
+    // OWN tri-state (undefined = formula_explanations column untouched), mirroring essViewConfig — its own
+    // editor sub-form posts `formula=1` so an unrelated save never resets it. The full { key: entry } map is
+    // REPLACED wholesale (the editor always posts the complete component set). Each entry's free-text fields are
+    // trimmed; blank fields (and all-blank entries) are dropped; an empty result ⇒ null (clear). Every key MUST
+    // be in the closed component allow-list (core/leave-formula.ts); an unknown key is rejected. Explanation
+    // layer only — never read for entitlement / accrual / eligibility / workflow / payroll.
+    formulaExplanations?: LeaveFormulaConfig | null;
     // Day Type Inclusion (feedback ef6d7146): the five-toggle re-inclusion vector { offDay, restDay,
     // publicHoliday, companyHoliday, shutdownDay }. OWN tri-state (undefined = day_type_inclusion column
     // untouched), mirroring essViewConfig — its own "Day Type Inclusion" sub-form posts `dayTypeInclusion=1`
@@ -2997,6 +3006,15 @@ export async function updateLeaveType(
       nextEssViewConfig = Object.keys(cleaned).length === 0 ? null : cleaned;
     }
   }
+  // Leave Entitlement Formula Management (79011509): OWN tri-state, mirroring touchEssViewConfig — the formula
+  // editor sub-form posts `formula=1`, any other save omits formulaExplanations so the column stays untouched.
+  // Validate + normalise (reject unknown keys, trim, drop blank fields/entries, cap length); an all-blank map ⇒
+  // null (clear). This map REPLACES the column wholesale.
+  const touchFormulaExplanations = p.formulaExplanations !== undefined;
+  let nextFormulaExplanations: LeaveFormulaConfig | null | undefined;
+  if (touchFormulaExplanations) {
+    nextFormulaExplanations = p.formulaExplanations === null ? null : normalizeLeaveFormulaConfig(p.formulaExplanations!);
+  }
   // Leave Type Visual Configuration Enhancement (639fdf77): OWN tri-state, mirroring touchEssViewConfig — the
   // visual sub-form posts `visual=1`, any other save omits color/icon so those columns stay untouched. Both
   // keys are touched together (one sub-form). An empty string clears (⇒ null). color is validated against the
@@ -3146,6 +3164,8 @@ export async function updateLeaveType(
         customMessages: leaveType.customMessages,
         // ESS view config (65dec703): selected for the before/after audit diff.
         essViewConfig: leaveType.essViewConfig,
+        // Leave Entitlement Formula Management (79011509): selected for the before/after audit diff.
+        formulaExplanations: leaveType.formulaExplanations,
         // Day Type Inclusion (ef6d7146): selected for the before/after audit diff.
         dayTypeInclusion: leaveType.dayTypeInclusion,
         // Visual config (639fdf77): selected for the before/after audit diff.
@@ -3269,6 +3289,7 @@ export async function updateLeaveType(
         ...negativeBalanceSet,
         ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
         ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
+        ...(touchFormulaExplanations ? { formulaExplanations: nextFormulaExplanations } : {}),
         ...dayTypeInclusionSet,
         ...leaveUnitSet,
         ...visibleToEmployeeSet,
@@ -3323,6 +3344,7 @@ export async function updateLeaveType(
           ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: before?.customMessages ?? null } : {}),
           ...(touchEssViewConfig ? { essViewConfig: before?.essViewConfig ?? null } : {}),
+          ...(touchFormulaExplanations ? { formulaExplanations: before?.formulaExplanations ?? null } : {}),
           ...(touchDayTypeInclusion ? { dayTypeInclusion: before?.dayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: before?.color ?? null, icon: before?.icon ?? null } : {}),
           ...(touchLeaveUnit ? { leaveUnit: before?.leaveUnit ?? null } : {}),
@@ -3367,6 +3389,7 @@ export async function updateLeaveType(
           ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: nextCustomMessages ?? null } : {}),
           ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig ?? null } : {}),
+          ...(touchFormulaExplanations ? { formulaExplanations: nextFormulaExplanations ?? null } : {}),
           ...(touchDayTypeInclusion ? { dayTypeInclusion: nextDayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: nextColor ?? null, icon: nextIcon ?? null } : {}),
           ...(touchLeaveUnit ? { leaveUnit: p.leaveUnit ?? before?.leaveUnit ?? null } : {}),

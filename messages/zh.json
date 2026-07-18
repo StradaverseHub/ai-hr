@@ -3705,7 +3705,24 @@
       "categoryApproval": "审批规则",
       "categoryDisplay": "休假信息显示",
       "categoryCalculation": "休假计算规则",
-      "categoryCustom": "自定义设置"
+      "categoryCustom": "自定义设置",
+      "formula": {
+        "sectionTitle": "休假额度公式管理",
+        "help": "用通俗的语言说明额度计算中每一项的含义及计算方式。员工会在休假明细中每个数字旁看到这些说明。将某组件留空即可隐藏其信息图标。此设置仅更改说明文字，不会更改任何休假数字。",
+        "configured": "已设置",
+        "descriptionLabel": "说明",
+        "formulaLabel": "公式说明",
+        "resultLabel": "结果／日期（可选）",
+        "component": {
+          "currentYearEntitlement": "本年度额度",
+          "monthlyAccrued": "本年度至今累计",
+          "carriedForward": "结转",
+          "carryForwardRemaining": "结转剩余",
+          "carryForwardExpiry": "结转到期",
+          "forfeited": "已作废",
+          "totalAvailable": "可用总额"
+        }
+      }
     },
     "holidays": {
       "pageTitle": "公共假期",

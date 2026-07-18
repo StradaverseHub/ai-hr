@@ -1,0 +1,15 @@
+-- Leave Entitlement Formula Management (feedback 79011509).
+--
+-- Adds a per-leave-type, HR-owned store of plain-language EXPLANATIONS for each entitlement-breakdown
+-- component. Keyed by the seven §7 "Entitlement Calculation Breakdown" component keys
+-- (core/leave-formula.ts LEAVE_FORMULA_COMPONENT_KEYS), each value is an optional
+-- { description, formula, result } of free text that HR writes and employees see on their leave breakdown
+-- panel (feedback b8b665ff surfaces it behind a per-row info icon).
+--
+-- This is an EXPLANATION layer only — it never changes how any entitlement number is calculated. The map is
+-- replaced wholesale on write (the admin editor always posts the complete set); unknown keys are rejected in
+-- the service (updateLeaveType). Additive + NULLABLE: null on every existing row reproduces today's exact
+-- behaviour (no explanation ⇒ no info icon), so no backfill is needed. IF NOT EXISTS makes a re-run on a
+-- partially-migrated DB safe. No RLS change: leave_type already has tenant-read + admin-write policies, which
+-- this column inherits (same as the 0208 duplicate-policy / 0209 negative-balance migrations).
+ALTER TABLE leave_type ADD COLUMN IF NOT EXISTS formula_explanations jsonb;

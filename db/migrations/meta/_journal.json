@@ -1569,6 +1569,13 @@
       "when": 1781862219000,
       "tag": "0240_employment_blacklist",
       "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1781862219001,
+      "tag": "0241_leave_formula_explanation",
+      "breakpoints": true
     }
   ]
 }

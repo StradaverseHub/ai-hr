@@ -3705,7 +3705,24 @@
       "categoryApproval": "Quy tắc phê duyệt",
       "categoryDisplay": "Hiển thị thông tin nghỉ phép",
       "categoryCalculation": "Quy tắc tính toán nghỉ phép",
-      "categoryCustom": "Cài đặt tùy chỉnh"
+      "categoryCustom": "Cài đặt tùy chỉnh",
+      "formula": {
+        "sectionTitle": "Quản lý Công thức Quyền lợi Nghỉ phép",
+        "help": "Viết bằng ngôn ngữ dễ hiểu ý nghĩa của từng phần trong cách tính quyền lợi và cách tính ra con số đó. Nhân viên sẽ thấy nội dung này trong bảng chi tiết nghỉ phép bên cạnh mỗi con số. Để trống một thành phần để ẩn biểu tượng thông tin của nó. Thiết lập này chỉ thay đổi phần giải thích — không thay đổi bất kỳ con số nghỉ phép nào.",
+        "configured": "Đã đặt",
+        "descriptionLabel": "Mô tả",
+        "formulaLabel": "Giải thích công thức",
+        "resultLabel": "Kết quả / ngày (tùy chọn)",
+        "component": {
+          "currentYearEntitlement": "Quyền lợi năm nay",
+          "monthlyAccrued": "Tích lũy đến nay trong năm",
+          "carriedForward": "Chuyển sang",
+          "carryForwardRemaining": "Số chuyển sang còn lại",
+          "carryForwardExpiry": "Hết hạn số chuyển sang",
+          "forfeited": "Bị mất",
+          "totalAvailable": "Tổng khả dụng"
+        }
+      }
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

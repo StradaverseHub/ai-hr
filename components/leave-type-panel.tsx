@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { ESS_VIEW_COMPONENT_KEYS } from '@/core/ess-view';
+import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
 import { Search, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -538,6 +539,7 @@ export function LeaveTypePanel({
   expiryUnit,
   customMessages,
   essViewConfig,
+  formulaExplanations,
   dayTypeInclusion,
   color,
   icon,
@@ -605,6 +607,10 @@ export function LeaveTypePanel({
   /** Employee Leave View Configuration (65dec703 / dup 1fedb473): per-component ESS visibility map, threaded
    *  so each checkbox round-trips its stored value. null / missing key ⇒ visible (all-visible default). */
   essViewConfig: Record<string, boolean> | null;
+  /** Leave Entitlement Formula Management (79011509): stored per-component explanation map, threaded so each
+   *  component's description / formula / result textareas round-trip their saved value. null / missing key ⇒
+   *  no explanation (the employee-panel info icon stays hidden). */
+  formulaExplanations: Record<string, LeaveFormulaEntry> | null;
   /** Day Type Inclusion (ef6d7146): stored { offDay, restDay, publicHoliday, companyHoliday, shutdownDay }
    *  map, threaded so each toggle round-trips its saved value. null / missing key ⇒ off (day type skipped,
    *  the counting-mode default). */
@@ -2003,6 +2009,69 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('essView.help')}</p>
+          </div>
+          {/* Leave Entitlement Formula Management (79011509). Its own self-contained sub-form (own tri-state)
+              posts `formula=1` — an HR-owned, per-component plain-language explanation store surfaced to
+              employees on the leave breakdown panel (feedback b8b665ff shows it behind a per-row info icon).
+              Each of the seven §7 calculation components is an expand/collapse block with a short Description
+              and a free-text Formula explanation (plus an optional Result/date note). Explanation layer only —
+              editing these NEVER changes any entitlement figure. Empty fields are dropped by the service; an
+              all-blank map clears the column. */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('formula.sectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the formula_explanations column (tri-state guard) */}
+              <input type="hidden" name="formula" value="1" />
+              <div className="space-y-1.5">
+                {LEAVE_FORMULA_COMPONENT_KEYS.map((key) => {
+                  const entry = formulaExplanations?.[key];
+                  const configured = !!(entry && (entry.description || entry.formula || entry.result));
+                  return (
+                    <details key={key} open={configured} className="rounded-md border border-border">
+                      <summary className="flex cursor-pointer items-center justify-between gap-2 px-2.5 py-1.5 text-xs font-medium text-foreground">
+                        <span>{t(`formula.component.${key}`)}</span>
+                        {configured && <span className="text-[10px] font-normal text-primary">{t('formula.configured')}</span>}
+                      </summary>
+                      <div className="space-y-2 border-t border-border px-2.5 py-2">
+                        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                          {t('formula.descriptionLabel')}
+                          <textarea
+                            name={`formula_${key}_description`}
+                            defaultValue={entry?.description ?? ''}
+                            rows={2}
+                            className={`${inputCls} text-xs`}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                          {t('formula.formulaLabel')}
+                          <textarea
+                            name={`formula_${key}_formula`}
+                            defaultValue={entry?.formula ?? ''}
+                            rows={2}
+                            className={`${inputCls} text-xs`}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                          {t('formula.resultLabel')}
+                          <input
+                            name={`formula_${key}_result`}
+                            defaultValue={entry?.result ?? ''}
+                            className={`${inputCls} text-xs`}
+                          />
+                        </label>
+                      </div>
+                    </details>
+                  );
+                })}
+              </div>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('formula.help')}</p>
           </div>
           {/* Leave Type Employee Visibility (7b11f1c1). Its own self-contained sub-form (own tri-state) posts
               `visibility=1` — two checkboxes controlling whether an employee sees this leave type on their

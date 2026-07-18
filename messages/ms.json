@@ -3705,7 +3705,24 @@
       "categoryApproval": "Peraturan Kelulusan",
       "categoryDisplay": "Paparan Maklumat Cuti",
       "categoryCalculation": "Peraturan Pengiraan Cuti",
-      "categoryCustom": "Tetapan Tersuai"
+      "categoryCustom": "Tetapan Tersuai",
+      "formula": {
+        "sectionTitle": "Pengurusan Formula Kelayakan Cuti",
+        "help": "Tuliskan, dalam bahasa mudah, maksud setiap bahagian pengiraan kelayakan dan cara ia dikira. Pekerja melihatnya pada pecahan cuti di sebelah setiap angka. Biarkan komponen kosong untuk menyembunyikan ikon maklumatnya. Ini mengubah penerangan sahaja — bukan mana-mana angka cuti.",
+        "configured": "Ditetapkan",
+        "descriptionLabel": "Penerangan",
+        "formulaLabel": "Penerangan formula",
+        "resultLabel": "Keputusan / tarikh (pilihan)",
+        "component": {
+          "currentYearEntitlement": "Kelayakan Tahun Ini",
+          "monthlyAccrued": "Terkumpul Setakat Ini Tahun Ini",
+          "carriedForward": "Dibawa Ke Hadapan",
+          "carryForwardRemaining": "Baki Bawa Ke Hadapan",
+          "carryForwardExpiry": "Tamat Tempoh Bawa Ke Hadapan",
+          "forfeited": "Dilucutkan",
+          "totalAvailable": "Jumlah Tersedia"
+        }
+      }
     },
     "holidays": {
       "pageTitle": "Cuti umum",
