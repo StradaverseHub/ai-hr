@@ -111,13 +111,9 @@ export default async function SystemLabelsPage({
     business_unit: inScope(businessUnits).map((r) => norm(r, buMap)),
   };
 
-  // Active business units per company, for the department BU-link select.
-  const buByCompany: Record<string, { id: string; label: string }[]> = {};
-  for (const bu of businessUnits) {
-    if (bu.archivedAt) continue;
-    (buByCompany[bu.companyId] ??= []).push({ id: bu.id, label: `${bu.code} — ${bu.name}` });
-  }
-
+  // 71bacb95: the Business Unit select was removed from the Department config grid (the BU link is now
+  // maintained via the employee's organisation assignment), so the per-company BU option list it fed is no
+  // longer built or passed here. department.businessUnitId + its hire-form / payroll cascade are unchanged.
   // 797e3523: the Head column was removed from the System Labels surface, so employee/head options are no
   // longer loaded here. Dept/BU heads (approval routing) are maintained via the organisation admin surface.
 
@@ -143,7 +139,7 @@ export default async function SystemLabelsPage({
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesInScope')}</p>
         </Card>
       ) : (
-        <SystemLabelsGrid data={data} companies={gridCompanies} buByCompany={buByCompany} isGroupAdmin={isGroupAdmin(s)} actions={actions} />
+        <SystemLabelsGrid data={data} companies={gridCompanies} isGroupAdmin={isGroupAdmin(s)} actions={actions} />
       )}
     </div>
   );

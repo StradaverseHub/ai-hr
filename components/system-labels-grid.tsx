@@ -150,14 +150,11 @@ function emptyDraft(key: string, companyId: string, isGlobal: boolean): RowState
 export function SystemLabelsGrid({
   data,
   companies,
-  buByCompany,
   isGroupAdmin,
   actions,
 }: {
   data: Record<GridKind, GridRecord[]>;
   companies: GridCompany[];
-  /** Active business units per company, for the department BU-link select. */
-  buByCompany: Record<string, { id: string; label: string }[]>;
   isGroupAdmin: boolean;
   actions: GridActions;
 }) {
@@ -626,7 +623,10 @@ export function SystemLabelsGrid({
                     {sortField === c.field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                   </th>
                 ))}
-                {kind === 'department' && <th className="px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('col.businessUnit')}</th>}
+                {/* 71bacb95: Business Unit column removed from the Department config — the BU link is now
+                    maintained via the employee's organisation assignment, not per-department here. The
+                    department.businessUnitId column + its hire-form / payroll cascade are unchanged; the grid
+                    simply re-sends each row's loaded value unedited (see save() below). */}
                 {/* 797e3523: Head column removed from the System Labels surface. */}
                 <th className="px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('col.scope')}</th>
                 <th className={headerCls} onClick={() => toggleSort('archived')}>{t('col.status')}</th>
@@ -674,22 +674,8 @@ export function SystemLabelsGrid({
                         />
                       </td>
                     ))}
-                    {kind === 'department' && (
-                      <td className="px-1.5 py-1">
-                        <select
-                          value={r.businessUnitId ?? ''}
-                          onChange={(e) => updateCell(r.key, 'businessUnitId', e.target.value || null)}
-                          className={`${cellInput} ${err?.field === 'businessUnitId' ? 'border-destructive' : ''}`}
-                        >
-                          <option value="">{t('businessUnitNone')}</option>
-                          {(buByCompany[r.companyId] ?? []).map((o) => (
-                            <option key={o.id} value={o.id}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                    )}
+                    {/* 71bacb95: Business Unit select removed — see the header note. r.businessUnitId is still
+                        carried on the row and re-sent unchanged by save(), so existing links are preserved. */}
                     {/* 797e3523: Head column removed from the System Labels surface. */}
                     {/* Criteria (scope) */}
                     <td className="relative px-1.5 py-1">
