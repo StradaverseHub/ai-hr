@@ -866,6 +866,7 @@
       "customHolderId": "Số giấy tờ tùy thân chủ tài khoản tùy chỉnh",
       "bankSave": "Lưu thông tin ngân hàng",
       "identityTaxCardTitle": "Nhận dạng & Thuế",
+      "incomeTaxPcbSection": "Thuế thu nhập (PCB)",
       "taxInfoLegend": "Thông tin thuế",
       "taxCategoryLabel": "Nhóm thuế",
       "taxCategorySingle": "Độc thân",

@@ -1503,6 +1503,27 @@ export default async function EmployeePage({
           <button className={btnPrimary}>{t('saveStatutory')}</button>
         </div>
       </form>
+
+      {/* Item df09f22a — Income Tax (PCB) is a Malaysia statutory payroll item, so the Identification & Tax
+          island is nested INSIDE this Statutory (Malaysia) card as an "Income Tax (PCB)" section (visual merge).
+          It keeps its OWN <form action={setTaxAction}> + Save button (embedded mode) rather than folding into the
+          full-row setStatutoryAction form — the two-action design is preserved so one save can't overwrite the
+          other. Rendered as a sibling of the statutory form inside the same Card (no nested forms). */}
+      <IdentityTaxCard
+        embedded
+        action={setTaxAction}
+        employmentId={emp.employmentId}
+        personId={emp.personId}
+        derivedChildCount={eligibleChildReliefCount(dependents)}
+        defaults={{
+          taxNumber: statutory?.taxNumber ?? null,
+          taxCategory: statutory?.taxCategory ?? 1,
+          taxResidency: statutory?.taxResidency ?? 'resident',
+          numChildren: statutory?.numChildren ?? 0,
+          childReliefMode: statutory?.childReliefMode ?? 'manual',
+          employerBearsTax: statutory?.employerBearsTax ?? false,
+        }}
+      />
     </Card>
   ) : null;
 
@@ -1528,29 +1549,10 @@ export default async function EmployeePage({
     />
   ) : null;
 
-  // ── IDENTIFICATION & TAX (Bank & Statutory tab) ─────────────────────────────
-  // Item 8b5334db — the tax fields were split out of the full-row statutory form into their OWN dedicated card
-  // with a partial save (setTaxAction, only the tax columns). IC is gone (relocated to Profile). The card adds
-  // Income Tax Resident (resident / non-resident / REP / Knowledge Worker → drives the PCB method), a manual/auto
-  // Children (PCB relief) control (auto surfaces a family-derived suggestion for HR to confirm — never silent),
-  // and an Employer-bears-tax switch. It's a client island rendered as JSX only, so the RSC boundary is respected.
-  // The eligible-child suggestion is derived here (server-side, read-only) from the already-loaded Family records.
-  const identityTaxCard = admin ? (
-    <IdentityTaxCard
-      action={setTaxAction}
-      employmentId={emp.employmentId}
-      personId={emp.personId}
-      derivedChildCount={eligibleChildReliefCount(dependents)}
-      defaults={{
-        taxNumber: statutory?.taxNumber ?? null,
-        taxCategory: statutory?.taxCategory ?? 1,
-        taxResidency: statutory?.taxResidency ?? 'resident',
-        numChildren: statutory?.numChildren ?? 0,
-        childReliefMode: statutory?.childReliefMode ?? 'manual',
-        employerBearsTax: statutory?.employerBearsTax ?? false,
-      }}
-    />
-  ) : null;
+  // Item df09f22a — the standalone Identification & Tax card (item 8b5334db) was merged into the Statutory
+  // (Malaysia) card as a nested "Income Tax (PCB)" section (see statutoryCard above). Income tax is a Malaysia
+  // statutory payroll item, so all statutory fields now live in one box. The IdentityTaxCard island still owns
+  // its own setTaxAction partial save — only its render location + chrome (embedded mode) changed.
 
   // ── TP3 / OPENING BALANCES (Payroll tab) ────────────────────────────────────
   // Item a6a47698 — relocated off the Bank & Statutory card onto the Payroll tab. It is a payroll matter
@@ -2422,9 +2424,8 @@ export default async function EmployeePage({
     bankStatutory: (
       <>
         {bankCard}
-        {/* Item 8b5334db — dedicated Identification & Tax card (tax fields split out of the statutory card, its
-            own partial save setTaxAction). Sits between Bank and the EPF/SOCSO statutory registration card. */}
-        {identityTaxCard}
+        {/* Item df09f22a — the Identification & Tax card was merged into statutoryCard as a nested "Income Tax
+            (PCB)" section (Income tax is a Malaysia statutory item). One box now holds every statutory field. */}
         {statutoryCard}
       </>
     ),

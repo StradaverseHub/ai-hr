@@ -866,6 +866,7 @@
       "customHolderId": "Custom holder identification",
       "bankSave": "Save bank information",
       "identityTaxCardTitle": "Identification & Tax",
+      "incomeTaxPcbSection": "Income Tax (PCB)",
       "taxInfoLegend": "Tax information",
       "taxCategoryLabel": "Tax Category",
       "taxCategorySingle": "Single",

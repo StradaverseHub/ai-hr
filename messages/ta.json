@@ -866,6 +866,7 @@
       "customHolderId": "தனிப்பயன் பெறுநர் அடையாள எண்",
       "bankSave": "வங்கித் தகவலைச் சேமிக்கவும்",
       "identityTaxCardTitle": "அடையாளம் & வரி",
+      "incomeTaxPcbSection": "வருமான வரி (PCB)",
       "taxInfoLegend": "வரித் தகவல்",
       "taxCategoryLabel": "வரி வகை",
       "taxCategorySingle": "தனிநபர்",

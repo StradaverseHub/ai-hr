@@ -866,6 +866,7 @@
       "customHolderId": "自定义持有人证件号码",
       "bankSave": "保存银行信息",
       "identityTaxCardTitle": "身份与税务",
+      "incomeTaxPcbSection": "所得税 (PCB)",
       "taxInfoLegend": "税务信息",
       "taxCategoryLabel": "税务类别",
       "taxCategorySingle": "单身",

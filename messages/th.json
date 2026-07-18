@@ -866,6 +866,7 @@
       "customHolderId": "เลขประจำตัวผู้ถือบัญชีที่กำหนดเอง",
       "bankSave": "บันทึกข้อมูลธนาคาร",
       "identityTaxCardTitle": "ข้อมูลประจำตัว & ภาษี",
+      "incomeTaxPcbSection": "ภาษีเงินได้ (PCB)",
       "taxInfoLegend": "ข้อมูลภาษี",
       "taxCategoryLabel": "หมวดภาษี",
       "taxCategorySingle": "โสด",
