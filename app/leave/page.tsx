@@ -14,6 +14,7 @@ import {
   listLeaveRequests,
   listLeaveRequestsPage,
   listLeaveApprovers,
+  reportingLinesFor,
 } from '@/core/read';
 import { listBusinessUnits } from '@/core/admin';
 import { listLocations } from '@/core/location';
@@ -172,6 +173,11 @@ export default async function LeavePage({
     applyNotice: (lt.customMessages as Record<string, string> | null)?.applyNotice ?? null,
   }));
   const requestLeaveEmployeeOptions = active.map((e) => ({ id: e.employmentId, name: e.name }));
+  // Employee selector visibility (item 69088c13): only an on-behalf-of applicant (an HR admin or a line
+  // manager with direct reports) needs to pick WHO the leave is for. A plain self-service employee applies
+  // for themselves, so the selector is hidden and the submit binds to their own employment server-side.
+  const canApplyOnBehalf =
+    admin || (!!me && (await reportingLinesFor(session, me.employmentId)).reports.length > 0);
 
   // ── Detailed leave-balance table (relocated from /me · R37 e5a158d3) ─────────────────────────────────
   // The self-service balance view is the same dense Workday-style table the /me Leave tab used to carry:
@@ -491,7 +497,7 @@ export default async function LeavePage({
               <RequestLeaveDialog
                 types={requestLeaveTypeOptions}
                 startDefault={today}
-                employeeOptions={requestLeaveEmployeeOptions}
+                employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}
                 submitAction={requestLeaveAction}
                 previewAction={previewLeaveDeductionAction}
               />
