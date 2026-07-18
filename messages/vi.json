@@ -3163,7 +3163,10 @@
       "postcode": "Mã bưu chính",
       "phone": "Số điện thoại",
       "fax": "Số fax",
-      "optionNone": "— Chọn —"
+      "optionNone": "— Chọn —",
+      "tabBankAccount": "Tài khoản ngân hàng",
+      "tabStatutory": "Theo luật định",
+      "bankAccountNonMY": "Hồ sơ giải ngân ngân hàng chỉ khả dụng cho các pháp nhân Malaysia. Công ty này đăng ký tại {country}."
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",
@@ -4293,7 +4296,24 @@
       "criteriaNa": "Không áp dụng",
       "statusActive": "Đang hoạt động",
       "statusInactive": "Không hoạt động",
-      "descriptionPlaceholder": "Mô tả (tùy chọn)"
+      "descriptionPlaceholder": "Mô tả (tùy chọn)",
+      "categoriesHeading": "Danh mục",
+      "filter": "Lọc",
+      "filterAll": "Tất cả trạng thái",
+      "filterActive": "Đang hoạt động",
+      "filterInactive": "Ngừng hoạt động",
+      "clearFilters": "Xóa",
+      "searchPlaceholder": "Tìm giá trị…",
+      "addRow": "Thêm hàng",
+      "saveAll": "Lưu tất cả",
+      "discard": "Hủy bỏ",
+      "saved": "Đã lưu — thêm {created}, cập nhật {updated}",
+      "saveFailed": "Một số thay đổi không thể lưu. Kiểm tra các hàng được đánh dấu.",
+      "unsavedChanges": "Bạn có thay đổi chưa lưu.",
+      "noRows": "Không có tùy chọn phù hợp.",
+      "codeImmutableHint": "Mã sẽ cố định sau khi được tạo.",
+      "valueRequired": "Cần có mã.",
+      "labelRequired": "Cần có nhãn."
     },
     "holidayTabs": {
       "holidays": "Ngày lễ",
@@ -5197,7 +5217,21 @@
       "duplicateActive": "Đã tồn tại một thiết lập Mã nhân viên đang hoạt động cho phạm vi này",
       "prefixCollision": "Một thiết lập đang hoạt động khác đã dùng tiền tố này",
       "tooLong": "Tiền tố cộng số chữ số tối đa 9 ký tự"
-    }
+    },
+    "colTemplate": "Mẫu",
+    "colSuffix": "Hậu tố",
+    "colManualOverride": "Ghi đè thủ công",
+    "templateUnnamed": "Chưa đặt tên",
+    "yes": "Có",
+    "no": "Không",
+    "fieldTemplateName": "Tên mẫu",
+    "fieldTemplateNamePlaceholder": "ví dụ: Nhân viên Malaysia",
+    "fieldTemplateNameHint": "Nhãn tùy chọn để nhiều định dạng đánh số chạy song song.",
+    "fieldSuffix": "Hậu tố",
+    "fieldSuffixHint": "Văn bản tùy chọn sau số, ví dụ: MY → EMP0001MY. Chữ cái, số và dấu gạch ngang.",
+    "fieldLengthHint": "Số 0 đứng đầu: số được đệm đến số chữ số này.",
+    "fieldAllowManualOverride": "Cho phép ghi đè Mã nhân viên thủ công",
+    "fieldAllowManualOverrideHint": "Khi bật, HR có thể tự nhập Mã nhân viên (được kiểm tra tính duy nhất) thay vì tạo tự động."
   },
   "payrollPolicy": {
     "title": "Chính sách lương",

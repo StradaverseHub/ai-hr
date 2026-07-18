@@ -3163,7 +3163,10 @@
       "postcode": "邮编",
       "phone": "电话号码",
       "fax": "传真号码",
-      "optionNone": "— 请选择 —"
+      "optionNone": "— 请选择 —",
+      "tabBankAccount": "银行账户",
+      "tabStatutory": "法定",
+      "bankAccountNonMY": "银行发放档案仅适用于马来西亚实体。此公司注册于 {country}。"
     },
     "systemLabels": {
       "pageTitle": "系统标签",
@@ -4293,7 +4296,24 @@
       "criteriaNa": "不适用",
       "statusActive": "启用",
       "statusInactive": "停用",
-      "descriptionPlaceholder": "可选说明"
+      "descriptionPlaceholder": "可选说明",
+      "categoriesHeading": "类别",
+      "filter": "筛选",
+      "filterAll": "所有状态",
+      "filterActive": "启用",
+      "filterInactive": "停用",
+      "clearFilters": "清除",
+      "searchPlaceholder": "搜索值…",
+      "addRow": "添加行",
+      "saveAll": "全部保存",
+      "discard": "放弃",
+      "saved": "已保存 — 新增 {created} 项，更新 {updated} 项",
+      "saveFailed": "部分更改无法保存。请检查突出显示的行。",
+      "unsavedChanges": "您有未保存的更改。",
+      "noRows": "没有匹配的选项。",
+      "codeImmutableHint": "代码一经创建即固定不变。",
+      "valueRequired": "代码为必填项。",
+      "labelRequired": "标签为必填项。"
     },
     "holidayTabs": {
       "holidays": "假期",
@@ -5197,7 +5217,21 @@
       "duplicateActive": "此范围已存在一个启用中的员工编号设置",
       "prefixCollision": "另一个启用中的设置已使用该前缀",
       "tooLong": "前缀加号码位数最多 9 个字符"
-    }
+    },
+    "colTemplate": "模板",
+    "colSuffix": "后缀",
+    "colManualOverride": "手动覆盖",
+    "templateUnnamed": "未命名",
+    "yes": "是",
+    "no": "否",
+    "fieldTemplateName": "模板名称",
+    "fieldTemplateNamePlaceholder": "例如 马来西亚员工",
+    "fieldTemplateNameHint": "可选标签，以便多种编号格式并行使用。",
+    "fieldSuffix": "后缀",
+    "fieldSuffixHint": "编号后的可选文本，例如 MY → EMP0001MY。字母、数字和连字符。",
+    "fieldLengthHint": "前导零：编号补齐到该位数。",
+    "fieldAllowManualOverride": "允许手动覆盖员工编号",
+    "fieldAllowManualOverrideHint": "启用后，HR 可手动输入员工编号（检查唯一性），而非自动生成。"
   },
   "payrollPolicy": {
     "title": "薪资政策",

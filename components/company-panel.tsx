@@ -4,10 +4,15 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
+import { COUNTRY_CODE_OPTIONS, COUNTRY_NAME_OPTIONS } from '@/lib/countries';
 import { Avatar, Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 
-type TabKey = 'general' | 'payroll';
+// 94ae7e1f — the company config panel is reorganised into three tabs: General / Bank Account / Statutory.
+// The old "Payroll" tab is renamed Statutory (it only ever held statutory identity), and the Bank
+// Disbursement Profiles move out of it into a dedicated Bank Account tab (disbursement is a banking concern,
+// not a statutory one). Pure UI/relocation — the underlying statutory + bank-profile data/logic is unchanged.
+type TabKey = 'general' | 'bankAccount' | 'statutory';
 
 /** One tab trigger — mirrors the payroll-tabs styling (border-b, active = border-primary text-primary). */
 function TabButton({
@@ -179,7 +184,6 @@ export function CompanyPanel({
   statutory,
   bankProfiles,
   stateOptions = [],
-  countryOptions = [],
   actions,
   className,
 }: {
@@ -187,9 +191,9 @@ export function CompanyPanel({
   companies: { id: string; name: string }[];
   statutory: PanelStatutory;
   bankProfiles: PanelBankProfile[];
-  // Enhance Company General Tab (bc5d4891) — tenant-wide catalogs for the Contact-Info State/Country pickers.
+  // Enhance Company General Tab (bc5d4891) — tenant-wide catalog for the Contact-Info State picker. The
+  // Country picker (94ae7e1f) now uses the complete shared ISO list (lib/countries), not a curated catalog.
   stateOptions?: PanelOption[];
-  countryOptions?: PanelOption[];
   actions: {
     updateCompany: Action;
     archiveCompany: Action;
@@ -256,8 +260,11 @@ export function CompanyPanel({
             <TabButton active={tab === 'general'} onClick={() => setTab('general')}>
               {t('tabGeneral')}
             </TabButton>
-            <TabButton active={tab === 'payroll'} onClick={() => setTab('payroll')}>
-              {t('tabPayroll')}
+            <TabButton active={tab === 'bankAccount'} onClick={() => setTab('bankAccount')}>
+              {t('tabBankAccount')}
+            </TabButton>
+            <TabButton active={tab === 'statutory'} onClick={() => setTab('statutory')}>
+              {t('tabStatutory')}
             </TabButton>
           </div>
 
@@ -299,8 +306,20 @@ export function CompanyPanel({
                 />
               </Field>
               <div className="grid grid-cols-2 gap-2">
+                {/* 94ae7e1f — country is now the complete ISO list (shared lib/countries), stored as the
+                    same ISO alpha-2 code that drives statutory-pack + holiday matching. Legacy-tolerant: an
+                    out-of-list stored code is still shown so editing another field never drops it. */}
                 <Field label={t('country')}>
-                  <input name="country" defaultValue={c.country} pattern="[A-Za-z]{2}" maxLength={2} title={t('countryHint')} className={`${inputCls} uppercase`} />
+                  <select name="country" defaultValue={c.country} required className={inputCls}>
+                    {c.country && !COUNTRY_CODE_OPTIONS.some((o) => o.value === c.country) ? (
+                      <option value={c.country}>{c.country}</option>
+                    ) : null}
+                    {COUNTRY_CODE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label={t('currency')}>
                   <input name="currency" defaultValue={c.currency} pattern="[A-Za-z]{3}" maxLength={3} title={t('currencyHint')} className={`${inputCls} uppercase`} />
@@ -331,7 +350,8 @@ export function CompanyPanel({
                   <input name="postcode" defaultValue={c.postcode ?? ''} className={inputCls} />
                 </Field>
                 <Field label={t('addrCountry')}>
-                  <OptionSelect name="addressCountry" value={c.addressCountry} options={countryOptions} placeholder={t('optionNone')} />
+                  {/* 94ae7e1f — the complete ISO country list replaces the old 7-entry curated catalog. */}
+                  <OptionSelect name="addressCountry" value={c.addressCountry} options={COUNTRY_NAME_OPTIONS} placeholder={t('optionNone')} />
                 </Field>
                 <Field label={t('phone')}>
                   <input name="phone" type="tel" defaultValue={c.phone ?? ''} className={inputCls} />
@@ -443,66 +463,11 @@ export function CompanyPanel({
           </div>
           {/* end General tab */}
 
-          {/* Payroll: statutory identity + bank disbursement profiles + payroll-cycle cross-link */}
-          <div className={cn('space-y-4', tab === 'payroll' ? '' : 'hidden')}>
-          {/* Statutory identity — country-pack section (ADR-0008) */}
-          {isMY ? (
-            <form action={actions.setStatutory} className="space-y-2.5 rounded-lg bg-background p-3">
-              <SubHeader>{t('statutoryIdentityMY')}</SubHeader>
-              <input type="hidden" name="companyId" value={c.id} />
-              <input type="hidden" name="country" value="MY" />
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <Field label={t('epfEmployerNo')}>
-                  <input name="epfEmployerNo" defaultValue={statutory?.epfEmployerNo ?? ''} className={inputCls} />
-                </Field>
-                <Field label={t('socsoEmployerCode')}>
-                  <input
-                    name="socsoEmployerCode"
-                    defaultValue={statutory?.socsoEmployerCode ?? ''}
-                    className={inputCls}
-                  />
-                </Field>
-                <Field label={t('lhdnENumber')}>
-                  <input name="lhdnEmployerNo" defaultValue={statutory?.lhdnEmployerNo ?? ''} className={inputCls} />
-                </Field>
-                <Field label={t('myinvoisTin')}>
-                  <input name="myinvoisTin" defaultValue={statutory?.myinvoisTin ?? ''} className={inputCls} />
-                </Field>
-                <Field label={t('ssmRegistrationNo')}>
-                  <input
-                    name="ssmRegistrationNo"
-                    defaultValue={statutory?.ssmRegistrationNo ?? ''}
-                    className={inputCls}
-                  />
-                </Field>
-                <Field label={t('hrdfStatusLabel')}>
-                  <select
-                    name="hrdfStatus"
-                    defaultValue={statutory?.hrdfStatus ?? 'not_registered'}
-                    className={inputCls}
-                  >
-                    <option value="not_registered">{t('hrdfNotRegistered')}</option>
-                    <option value="mandatory">{t('hrdfMandatory')}</option>
-                    <option value="optional">{t('hrdfOptional')}</option>
-                  </select>
-                </Field>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t('statutoryFilingsHint')}
-              </p>
-              <p className="text-xs text-muted-foreground">{t('hrdfHint')}</p>
-              <Button type="submit" size="sm">
-                {t('saveStatutoryIdentity')}
-              </Button>
-            </form>
-          ) : (
-            <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
-              {t('noStatutoryPack', { country: c.country })}
-            </p>
-          )}
-
+          {/* Bank Account: bank disbursement profiles (94ae7e1f — relocated out of the old Payroll tab, since
+              disbursement is a banking concern, not a statutory one). Data/logic (core/bank-profile) unchanged. */}
+          <div className={cn('space-y-4', tab === 'bankAccount' ? '' : 'hidden')}>
           {/* Bank disbursement profiles (ADR-0031) — bank-issued corporate ID + employer debit account */}
-          {isMY && (
+          {isMY ? (
             <div className="space-y-2.5 rounded-lg bg-background p-3">
               <SubHeader>{t('bankProfilesTitle')}</SubHeader>
               {bankProfiles.length === 0 ? (
@@ -566,9 +531,73 @@ export function CompanyPanel({
               </form>
               <p className="text-xs text-muted-foreground">{t('bankProfilesHint')}</p>
             </div>
+          ) : (
+            <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
+              {t('bankAccountNonMY', { country: c.country })}
+            </p>
           )}
           </div>
-          {/* end Payroll tab */}
+          {/* end Bank Account tab */}
+
+          {/* Statutory: statutory identity (94ae7e1f — the old "Payroll" tab, renamed; it only ever held
+              statutory configuration). Country-pack section (ADR-0008). */}
+          <div className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>
+          {isMY ? (
+            <form action={actions.setStatutory} className="space-y-2.5 rounded-lg bg-background p-3">
+              <SubHeader>{t('statutoryIdentityMY')}</SubHeader>
+              <input type="hidden" name="companyId" value={c.id} />
+              <input type="hidden" name="country" value="MY" />
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <Field label={t('epfEmployerNo')}>
+                  <input name="epfEmployerNo" defaultValue={statutory?.epfEmployerNo ?? ''} className={inputCls} />
+                </Field>
+                <Field label={t('socsoEmployerCode')}>
+                  <input
+                    name="socsoEmployerCode"
+                    defaultValue={statutory?.socsoEmployerCode ?? ''}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label={t('lhdnENumber')}>
+                  <input name="lhdnEmployerNo" defaultValue={statutory?.lhdnEmployerNo ?? ''} className={inputCls} />
+                </Field>
+                <Field label={t('myinvoisTin')}>
+                  <input name="myinvoisTin" defaultValue={statutory?.myinvoisTin ?? ''} className={inputCls} />
+                </Field>
+                <Field label={t('ssmRegistrationNo')}>
+                  <input
+                    name="ssmRegistrationNo"
+                    defaultValue={statutory?.ssmRegistrationNo ?? ''}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label={t('hrdfStatusLabel')}>
+                  <select
+                    name="hrdfStatus"
+                    defaultValue={statutory?.hrdfStatus ?? 'not_registered'}
+                    className={inputCls}
+                  >
+                    <option value="not_registered">{t('hrdfNotRegistered')}</option>
+                    <option value="mandatory">{t('hrdfMandatory')}</option>
+                    <option value="optional">{t('hrdfOptional')}</option>
+                  </select>
+                </Field>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t('statutoryFilingsHint')}
+              </p>
+              <p className="text-xs text-muted-foreground">{t('hrdfHint')}</p>
+              <Button type="submit" size="sm">
+                {t('saveStatutoryIdentity')}
+              </Button>
+            </form>
+          ) : (
+            <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
+              {t('noStatutoryPack', { country: c.country })}
+            </p>
+          )}
+          </div>
+          {/* end Statutory tab */}
         </div>
       )}
     </li>

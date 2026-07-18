@@ -3163,7 +3163,10 @@
       "postcode": "รหัสไปรษณีย์",
       "phone": "หมายเลขโทรศัพท์",
       "fax": "หมายเลขแฟกซ์",
-      "optionNone": "— เลือก —"
+      "optionNone": "— เลือก —",
+      "tabBankAccount": "บัญชีธนาคาร",
+      "tabStatutory": "ตามกฎหมาย",
+      "bankAccountNonMY": "โปรไฟล์การจ่ายเงินผ่านธนาคารใช้ได้กับนิติบุคคลในมาเลเซีย บริษัทนี้จดทะเบียนใน {country}"
     },
     "systemLabels": {
       "pageTitle": "ป้ายระบบ",
@@ -4293,7 +4296,24 @@
       "criteriaNa": "ไม่มี",
       "statusActive": "ใช้งาน",
       "statusInactive": "ไม่ใช้งาน",
-      "descriptionPlaceholder": "คำอธิบาย (ไม่บังคับ)"
+      "descriptionPlaceholder": "คำอธิบาย (ไม่บังคับ)",
+      "categoriesHeading": "หมวดหมู่",
+      "filter": "กรอง",
+      "filterAll": "ทุกสถานะ",
+      "filterActive": "ใช้งาน",
+      "filterInactive": "ไม่ใช้งาน",
+      "clearFilters": "ล้าง",
+      "searchPlaceholder": "ค้นหาค่า…",
+      "addRow": "เพิ่มแถว",
+      "saveAll": "บันทึกทั้งหมด",
+      "discard": "ยกเลิก",
+      "saved": "บันทึกแล้ว — เพิ่ม {created} รายการ อัปเดต {updated} รายการ",
+      "saveFailed": "ไม่สามารถบันทึกการเปลี่ยนแปลงบางอย่างได้ โปรดตรวจสอบแถวที่ไฮไลต์",
+      "unsavedChanges": "คุณมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก",
+      "noRows": "ไม่มีตัวเลือกที่ตรงกัน",
+      "codeImmutableHint": "รหัสจะถาวรเมื่อสร้างแล้ว",
+      "valueRequired": "จำเป็นต้องมีรหัส",
+      "labelRequired": "จำเป็นต้องมีป้ายกำกับ"
     },
     "holidayTabs": {
       "holidays": "วันหยุด",
@@ -5197,7 +5217,21 @@
       "duplicateActive": "มีการตั้งค่ารหัสพนักงานที่ใช้งานอยู่แล้วสำหรับขอบเขตนี้",
       "prefixCollision": "การตั้งค่าที่ใช้งานอยู่อื่นใช้คำนำหน้านี้อยู่แล้ว",
       "tooLong": "คำนำหน้าและจำนวนหลักต้องไม่เกิน 9 อักขระ"
-    }
+    },
+    "colTemplate": "เทมเพลต",
+    "colSuffix": "คำต่อท้าย",
+    "colManualOverride": "แทนที่ด้วยตนเอง",
+    "templateUnnamed": "ไม่มีชื่อ",
+    "yes": "ใช่",
+    "no": "ไม่",
+    "fieldTemplateName": "ชื่อเทมเพลต",
+    "fieldTemplateNamePlaceholder": "เช่น พนักงานมาเลเซีย",
+    "fieldTemplateNameHint": "ป้ายกำกับที่ไม่บังคับ เพื่อให้ใช้รูปแบบการกำหนดหมายเลขหลายแบบพร้อมกันได้",
+    "fieldSuffix": "คำต่อท้าย",
+    "fieldSuffixHint": "ข้อความหลังหมายเลข (ไม่บังคับ) เช่น MY → EMP0001MY ตัวอักษร ตัวเลข และขีดกลาง",
+    "fieldLengthHint": "เลขศูนย์นำหน้า: เติมหมายเลขให้ครบตามจำนวนหลักนี้",
+    "fieldAllowManualOverride": "อนุญาตให้แทนที่รหัสพนักงานด้วยตนเอง",
+    "fieldAllowManualOverrideHint": "เมื่อเปิด HR สามารถพิมพ์รหัสพนักงานเอง (ตรวจสอบความไม่ซ้ำ) แทนการสร้างอัตโนมัติ"
   },
   "payrollPolicy": {
     "title": "นโยบายเงินเดือน",
