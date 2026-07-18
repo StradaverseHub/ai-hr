@@ -99,12 +99,19 @@ export function NewCycleForm({
         <h3 className="mb-1 text-sm font-semibold">{te('eligibilityRulesTitle')}</h3>
         <p className="mb-3 text-xs text-muted-foreground">{te('fieldEligibility')}</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* Standardized dropdown behaviour (4dc4c3a5): every ChipMultiSelect gets R44's in-menu Select-all /
+              Clear-all + the collapsed "All selected" / "{n} selected" summary, matching the leave-type-panel
+              eligibility pickers so the control behaves identically everywhere it appears. */}
           <Field label={te('fieldCompany')}>
             <ChipMultiSelect
               name="eligibilityCompanyId"
               options={companies.map((c) => ({ value: c.id, label: c.name }))}
               addPlaceholder={te('chipAddPlaceholder')}
               removeLabelFor={(label) => te('chipRemoveLabel', { value: label })}
+              selectAllLabel={te('chipSelectAll')}
+              clearAllLabel={te('chipClearAll')}
+              allSelectedLabel={te('chipAllSelected')}
+              countLabelFor={(n) => te('chipNSelected', { count: n })}
             />
           </Field>
           <Field label={te('fieldStatus')}>
@@ -113,6 +120,10 @@ export function NewCycleForm({
               options={STATUS_OPTS.map((v) => ({ value: v, label: te(`status_${v}`) }))}
               addPlaceholder={te('chipAddPlaceholder')}
               removeLabelFor={(label) => te('chipRemoveLabel', { value: label })}
+              selectAllLabel={te('chipSelectAll')}
+              clearAllLabel={te('chipClearAll')}
+              allSelectedLabel={te('chipAllSelected')}
+              countLabelFor={(n) => te('chipNSelected', { count: n })}
             />
           </Field>
           <Field label={te('fieldEmploymentType')}>
@@ -121,6 +132,10 @@ export function NewCycleForm({
               options={EMP_TYPE_OPTS.map((v) => ({ value: v, label: te(`employmentType_${v}`) }))}
               addPlaceholder={te('chipAddPlaceholder')}
               removeLabelFor={(label) => te('chipRemoveLabel', { value: label })}
+              selectAllLabel={te('chipSelectAll')}
+              clearAllLabel={te('chipClearAll')}
+              allSelectedLabel={te('chipAllSelected')}
+              countLabelFor={(n) => te('chipNSelected', { count: n })}
             />
           </Field>
           <div className="space-y-4">

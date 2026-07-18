@@ -20,6 +20,7 @@ import {
   assignment,
   attendance,
   attendanceAllowancePolicy,
+  businessUnit,
   clockingLocation,
   company,
   compensation,
@@ -54,6 +55,7 @@ import { payslipReleaseAt } from './payroll-policy-config';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
 import { visibleLabelIdsCondition } from './system-labels';
 import { resolveEssView, type ResolvedEssView } from './ess-view';
+import { resolveLeaveFormula, type LeaveFormulaEntry, type ResolvedLeaveFormula } from './leave-formula';
 import { resolvePlacement, type EssPlacement } from '../lib/leave-groups';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
@@ -76,6 +78,10 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
         // Position title of the current assignment — used by the Individual Transaction wizard's Step-1
         // employee card (Employee ID / Name / Department / Position). Nullable, like department.
         position: position.title,
+        // Current-assignment Business Unit — the Fixed / Individual Transaction screens filter Step-1 by it
+        // (a UX narrowing over the already access-fenced list). Nullable, like department.
+        businessUnit: businessUnit.name,
+        businessUnitId: assignment.businessUnitId,
         company: company.legalName,
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
@@ -94,6 +100,7 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
       .where(companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined)
       .orderBy(person.fullName),
   );
@@ -450,6 +457,9 @@ export function listLeaveTypes(
         // Employee Leave View Configuration (65dec703): feeds the admin panel's ESS-view checklist (MUST be
         // projected or every checkbox renders at its default on every reload). null ⇒ all-visible default.
         essViewConfig: leaveType.essViewConfig,
+        // Leave Entitlement Formula Management (79011509): feeds the admin panel's formula editor (MUST be
+        // projected or every field renders empty on every reload). null ⇒ no explanations.
+        formulaExplanations: leaveType.formulaExplanations,
         // Day Type Inclusion (ef6d7146): feeds the admin panel's "Day Type Inclusion" toggles (MUST be
         // projected or every toggle renders unchecked on every reload). null ⇒ counting-mode default.
         dayTypeInclusion: leaveType.dayTypeInclusion,
@@ -1099,17 +1109,21 @@ export function plannedAbsences(
       else byEmp.set(l.employmentId, [l]);
     }
     // One row per person — concurrent employments merge their leave onto a single row.
-    const byPerson = new Map<string, { id: string; name: string; employeeCode: string | null; role: string | null; leaves: Leave[] }>();
+    // `employmentIds` carries every employment behind the person (My/Team calendar filter, item 8c739dda):
+    // Team view keeps rows whose employment set intersects the viewer's reporting team, INCLUDING people with
+    // no leave in the window (empty rows), which a per-leave employmentId alone could not express.
+    const byPerson = new Map<string, { id: string; name: string; employeeCode: string | null; role: string | null; employmentIds: string[]; leaves: Leave[] }>();
     for (const e of emps) {
       const empLeaves = byEmp.get(e.employmentId) ?? [];
       const existing = byPerson.get(e.personId);
       if (existing) {
         existing.leaves.push(...empLeaves);
+        existing.employmentIds.push(e.employmentId);
         if (!existing.role && e.role) existing.role = e.role;
         // First non-null Employee ID wins for a person spanning concurrent employments (feedback 38668d9b).
         if (!existing.employeeCode && e.employeeCode) existing.employeeCode = e.employeeCode;
       } else {
-        byPerson.set(e.personId, { id: e.personId, name: e.name, employeeCode: e.employeeCode, role: e.role, leaves: empLeaves });
+        byPerson.set(e.personId, { id: e.personId, name: e.name, employeeCode: e.employeeCode, role: e.role, employmentIds: [e.employmentId], leaves: empLeaves });
       }
     }
     return [...byPerson.values()];
@@ -1582,6 +1596,10 @@ export type LeaveEntitlementBreakdown = {
    *  resolved (missing key ⇒ visible). The shared EntitlementBreakdown gates rows against this ONLY when
    *  its `applyEssConfig` prop is set (i.e. on /me); admin/HR pass it false and see every row. */
   essView: ResolvedEssView;
+  /** Leave Entitlement Formula Management (79011509): HR-authored per-component explanations for this leave
+   *  type, resolved (missing / all-empty ⇒ null). The breakdown panel shows a per-row info icon only where an
+   *  explanation exists (feedback b8b665ff). Explanation layer only — never a computed figure. */
+  formulaExplanations: ResolvedLeaveFormula;
 };
 
 export function leaveEntitlementBreakdown(
@@ -1596,7 +1614,7 @@ export function leaveEntitlementBreakdown(
     // here (employment join returns nothing) → a defined empty state, never an error or a leak.
     const [[type], [emp]] = await Promise.all([
       tx
-        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig })
+        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations })
         .from(leaveType)
         .where(eq(leaveType.id, leaveTypeId))
         .limit(1),
@@ -1768,6 +1786,7 @@ export function leaveEntitlementBreakdown(
         sourceRequestId: r.sourceRequestId,
       })),
       essView: resolveEssView(type.essViewConfig as Record<string, boolean> | null),
+      formulaExplanations: resolveLeaveFormula(type.formulaExplanations as Record<string, LeaveFormulaEntry> | null),
     };
   });
 }

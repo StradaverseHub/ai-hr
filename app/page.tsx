@@ -23,6 +23,7 @@ import { Card, PageHeader, StatusBadge } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
 import { LeaveBalanceCard } from '@/components/leave-balance-card';
 import { TimelineNav } from '@/components/timeline-nav';
+import { AbsenceViewSwitch } from '@/components/absence-view-switch';
 import { requestLeaveCancellationAction, adminCancelLeaveAction, cancelOwnLeaveAction } from '@/app/leave/actions';
 import {
   type DashboardCardId,
@@ -119,23 +120,33 @@ function orderTree(rows: BreakdownRow[]) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ abs?: string }>;
+  searchParams: Promise<{ abs?: string; view?: string }>;
 }) {
   const t = await getTranslations('dashboard');
   const locale = await getLocale(); // R37: render leave-type names in the viewer's language
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
-  // Date window: a 14-day planned-absences strip, by default starting 2 days before
-  // today; ?abs=YYYY-MM-DD (from the timeline nav) overrides the window start.
+  // Leave Calendar window (item 8c739dda): a single Monday–Sunday week, defaulting to the current week.
+  // ?abs=YYYY-MM-DD (from the timeline nav / date picker) anchors the week; whatever date is chosen resolves
+  // to that date's Monday so the strip always aligns to a week boundary and prev/next step a clean 7 days.
   const now = new Date();
   const nowMs = now.getTime();
   const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const todayIso = new Date(todayMs).toISOString().slice(0, 10);
-  const ABS_DAYS = 14;
+  const ABS_DAYS = 7;
+  // Monday-align a UTC-midnight timestamp: getUTCDay() is 0=Sun..6=Sat, so Monday is (dow+6)%7 days back.
+  const mondayOf = (msVal: number) => {
+    const dow = new Date(msVal).getUTCDay();
+    return msVal - ((dow + 6) % 7) * 86_400_000;
+  };
   const absParam = sp.abs && /^\d{4}-\d{2}-\d{2}$/.test(sp.abs) ? sp.abs : null;
-  const startMs = absParam ? Date.parse(`${absParam}T00:00:00Z`) : todayMs - 2 * 86_400_000;
+  const anchorMs = absParam ? Date.parse(`${absParam}T00:00:00Z`) : todayMs;
+  const startMs = mondayOf(anchorMs);
   const absFrom = new Date(startMs).toISOString().slice(0, 10);
   const absTo = new Date(startMs + (ABS_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
+  // My/Team view switch (item 8c739dda): default "my" (own leave only); "team" widens to the viewer's
+  // reporting team. The switch only renders when the viewer actually has direct reports (resolved below).
+  const absView = sp.view === 'team' ? 'team' : 'my';
   const since60 = new Date(todayMs - 60 * 86_400_000).toISOString().slice(0, 10);
 
   // R17 e6f0384c — role-based summary cards. Resolve the viewer's dashboard role FIRST (cheap: own
@@ -145,11 +156,14 @@ export default async function DashboardPage({
   const me = await myEmployment(s);
   const admin = isAdmin(s);
   const managerRole = (s.roles ?? []).includes('manager');
+  // Resolve the viewer's reporting edges ONCE: powers both the dashboard-role decision below and the
+  // Leave Calendar My/Team switch (item 8c739dda). Team = the viewer's own employment + direct reports.
+  const reportingLines = me ? await reportingLinesFor(s, me.employmentId) : null;
+  const teamEmploymentIds = me
+    ? new Set<string>([me.employmentId, ...(reportingLines?.reports ?? []).map((r) => r.employmentId)])
+    : new Set<string>();
+  const hasDirectReports = (reportingLines?.reports.length ?? 0) > 0;
   // A Direct Manager via a reporting_line edge may not hold the `manager` platform role (0110); OR it in.
-  const hasDirectReports =
-    !admin && !managerRole && me
-      ? (await reportingLinesFor(s, me.employmentId)).reports.length > 0
-      : false;
   const role = resolveDashboardRole({ admin, managerRole, hasDirectReports });
   const wantStats = role === 'hr_admin' || role === 'manager'; // manager needs attendance breakdown
   const wantBreakdown = role === 'hr_admin';
@@ -294,14 +308,31 @@ export default async function DashboardPage({
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{ROLE_CARDS[role].map(renderCard)}</div>
   );
 
+  // My/Team view (item 8c739dda): filter the full scope set for the Leave Calendar render WITHOUT mutating
+  // `absences` (the manager teamAwayToday count above still needs the whole set). "my" keeps only the viewer's
+  // own person row; "team" keeps rows whose employment set intersects the viewer's reporting team. The switch
+  // only appears when the viewer has direct reports — a plain employee always sees just their own week.
+  const showAbsViewSwitch = hasDirectReports;
+  const effectiveAbsView = showAbsViewSwitch ? absView : 'my';
+  const absencesView =
+    effectiveAbsView === 'team'
+      ? absences.filter((r) => r.employmentIds.some((id) => teamEmploymentIds.has(id)))
+      : absences.filter((r) => r.id === s.personId);
+  const absControls = (
+    <div className="flex flex-wrap items-center gap-2">
+      {showAbsViewSwitch && <AbsenceViewSwitch view={effectiveAbsView} abs={absParam} />}
+      <TimelineNav from={absFrom} isDefault={!absParam} />
+    </div>
+  );
+
   const plannedAbsencesBlock = (
     <div id="planned-absences" className="scroll-mt-4">
       <PlannedAbsences
-        rows={absences}
+        rows={absencesView}
         from={absFrom}
         days={ABS_DAYS}
         todayIso={todayIso}
-        controls={<TimelineNav from={absFrom} isDefault={!absParam} />}
+        controls={absControls}
         // Partial Leave Cancellation from the calendar (ADR-0065): the viewer gates "own leave only"; the action
         // is the SAME one the Leave page posts (redirects to /leave?toast=cancellationRequested + revalidates /).
         viewerPersonId={s.personId}

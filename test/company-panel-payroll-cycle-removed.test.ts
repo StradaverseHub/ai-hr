@@ -23,11 +23,15 @@ describe('company-panel Payroll tab — payroll-cycle cross-link removed', () =>
     expect(src).toContain('function CrossLinkTab(');
   });
 
-  it('retains the statutory identity + bank disbursement payroll forms', () => {
-    // statutory identity form fields
+  it('retains the statutory identity + bank disbursement forms', () => {
+    // bank disbursement form fields (94ae7e1f: now under the Bank Account tab)
     expect(src).toContain("t('bankProfileSave')");
     expect(src).toContain("t('bankProfilesHint')");
-    // the Payroll tab container still closes correctly
-    expect(src).toContain('{/* end Payroll tab */}');
+    // statutory identity form (94ae7e1f: the old "Payroll" tab, renamed Statutory)
+    expect(src).toContain("t('statutoryIdentityMY')");
+    // 94ae7e1f: the Payroll tab was split into a Bank Account tab + a renamed Statutory tab; both close.
+    expect(src).toContain('{/* end Bank Account tab */}');
+    expect(src).toContain('{/* end Statutory tab */}');
+    expect(src).not.toContain('{/* end Payroll tab */}');
   });
 });

@@ -63,7 +63,6 @@ import { validateEmployeeImport, commitEmployeeImport } from '../core/import';
 import { parseCsvRecords } from '../lib/csv';
 import { annualEntitlement, entitlement } from '../localization/my/leave';
 import {
-  AlreadyCheckedInError,
   checkIn,
   checkOut,
   decideAttendanceCorrection,
@@ -390,15 +389,13 @@ describe('Slice 2 — MY leave rules', () => {
 });
 
 describe('Slice 3 — attendance', () => {
-  it('derives status from thresholds; one per day; check-out after check-in', async () => {
+  it('derives status from thresholds; one aggregate per day; check-out after check-in', async () => {
     const a = adminCtx(base);
     const { employmentId } = await hire(a, base, 'Att');
 
     const r1 = await checkIn(a, { employmentId, date: '2026-06-05', time: '09:00' });
     expect(r1.status).toBe('present'); // before 09:15
-    await expect(
-      checkIn(a, { employmentId, date: '2026-06-05', time: '10:00' }),
-    ).rejects.toBeInstanceOf(AlreadyCheckedInError);
+    // R45 Multiple Clocking: a checkout before the recorded check-in is still rejected.
     await expect(
       checkOut(a, { employmentId, date: '2026-06-05', time: '08:00' }),
     ).rejects.toThrow(); // before check-in

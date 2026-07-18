@@ -91,3 +91,75 @@ export async function seedProfileOptionsAction() {
   revalidatePath(BASE);
   redirect(`${BASE}?toast=${encodeURIComponent('Defaults added')}`);
 }
+
+// 15277676 — the Excel-style Profile Options grid batches all pending edits into ONE Save. This value-
+// returning action fans the batch out across the SAME five core mutations the per-row forms used, so each
+// create / update / (de)activate still appends its own DomainEvent (substrate coverage unchanged). Row-level
+// failures are collected and returned so the grid can highlight the offending cell without losing the rest.
+export type ProfileOptionSaveResult =
+  | { ok: true; created: number; updated: number; createdIds: { key: string; id: string }[] }
+  | { ok: false; rowErrors: { key: string; message: string }[]; message?: string };
+
+export async function saveProfileOptionsAction(payload: {
+  creates: { key: string; category: string; value: string; label: string; description: string; sortOrder: number }[];
+  updates: { key: string; id: string; label: string; description: string; sortOrder: number; setActive: boolean | null }[];
+}): Promise<ProfileOptionSaveResult> {
+  const s = await getSession();
+  const rowErrors: { key: string; message: string }[] = [];
+  const createdIds: { key: string; id: string }[] = [];
+  let created = 0;
+  let updated = 0;
+
+  for (const c of payload.creates) {
+    try {
+      const { id } = await createProfileOption(s, {
+        category: c.category,
+        value: c.value,
+        label: c.label || null,
+        description: c.description || null,
+        sortOrder: c.sortOrder,
+      });
+      createdIds.push({ key: c.key, id });
+      created += 1;
+    } catch (e) {
+      rowErrors.push({ key: c.key, message: (e as Error).message });
+    }
+  }
+
+  for (const u of payload.updates) {
+    try {
+      await updateProfileOption(s, {
+        id: u.id,
+        label: u.label,
+        description: u.description,
+        sortOrder: u.sortOrder,
+      });
+      // Active state lives on a separate core mutation (its own activated/deactivated event); only fire it
+      // when the row's status actually changed, so a plain label edit never emits a spurious status event.
+      if (u.setActive !== null) {
+        await setProfileOptionActive(s, { id: u.id, isActive: u.setActive });
+      }
+      updated += 1;
+    } catch (e) {
+      rowErrors.push({ key: u.key, message: (e as Error).message });
+    }
+  }
+
+  if (rowErrors.length > 0) {
+    return { ok: false, rowErrors, message: undefined };
+  }
+  revalidatePath(BASE);
+  return { ok: true, created, updated, createdIds };
+}
+
+/** Delete a single option (immediate, from the grid's row action). Returns ok/message rather than redirecting. */
+export async function removeProfileOptionAction(id: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const s = await getSession();
+  try {
+    await deleteProfileOption(s, id);
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
+  revalidatePath(BASE);
+  return { ok: true };
+}

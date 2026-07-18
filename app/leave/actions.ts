@@ -93,8 +93,17 @@ export async function requestLeaveAction(formData: FormData) {
         { mimeType: file.type || 'application/octet-stream', sizeBytes: file.size },
       );
     }
+    // Self-service apply (item 69088c13): the ESS form no longer renders the Employee selector, so no
+    // employmentId is posted. Fall back to the signed-in viewer's own employment (mirrors /me's myRequestLeave)
+    // so a self-service submit still binds to the logged-in employee. The on-behalf admin/manager path still
+    // posts an explicit employmentId from the selector, which takes precedence.
+    const postedEmploymentId = String(formData.get('employmentId') ?? '').trim();
+    const employmentId = postedEmploymentId || (await myEmployment(session))?.employmentId;
+    if (!employmentId) {
+      throw new Error('No employment on record for this account.');
+    }
     const res = await requestLeave(session, {
-      employmentId: String(formData.get('employmentId')),
+      employmentId,
       leaveTypeId,
       startDate: String(formData.get('startDate')),
       endDate: String(formData.get('endDate')),

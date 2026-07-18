@@ -58,18 +58,17 @@ export default async function OrganizationPage({
   // The tree stays unscoped (it needs every node to draw the group); the company panels follow
   // the active company context. Org catalogs (departments/positions/cost-centers/business-units) moved to
   // Settings → System Labels, so this page no longer fetches them.
-  const [companies, tree, statutory, bankProfiles, stateOpts, countryOpts] = await Promise.all([
+  const [companies, tree, statutory, bankProfiles, stateOpts] = await Promise.all([
     listCompanies(s, { includeArchived: true }),
     companyTree(s),
     listCompanyStatutoryMY(s),
     listAllCompanyBankProfiles(s),
-    // Enhance Company General Tab (bc5d4891): reuse the tenant-wide profile-option catalogs for the
-    // Contact-Information State + Country pick-lists (same source the Personnel profile dropdowns read).
+    // Enhance Company General Tab (bc5d4891): reuse the tenant-wide profile-option catalog for the
+    // Contact-Information State pick-list (same source the Personnel profile dropdowns read). 94ae7e1f — the
+    // Country picker now uses the complete shared ISO list (lib/countries) instead of a curated catalog.
     listProfileOptions(s, 'state', { activeOnly: true }),
-    listProfileOptions(s, 'country', { activeOnly: true }),
   ]);
   const stateOptions = stateOpts.map((o) => ({ value: o.value, label: o.label }));
-  const countryOptions = countryOpts.map((o) => ({ value: o.value, label: o.label }));
   const statBy = new Map(statutory.map((r) => [r.companyId, r]));
   const bankBy = new Map<string, PanelBankProfile[]>();
   for (const bp of bankProfiles) {
@@ -173,7 +172,6 @@ export default async function OrganizationPage({
                   statutory={statBy.get(c.id) ?? null}
                   bankProfiles={bankBy.get(c.id) ?? []}
                   stateOptions={stateOptions}
-                  countryOptions={countryOptions}
                   actions={actions}
                 />
               ),

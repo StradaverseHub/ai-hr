@@ -48,6 +48,13 @@ export type WorkflowMatrixLabels = {
   basicInfo: string;
   sectionWorkflowType: string;
   sectionConditions: string;
+  // Item e694f722 — the reporting-line-derived default + the "Advanced override" that reveals the manual
+  // template / custom-level config for the minority of flows that intentionally diverge from the reporting line.
+  workflowTypeAuto: string;
+  workflowTypeAutoHint: string;
+  workflowTypeAutoBadge: string;
+  advancedOverride: string;
+  advancedOverrideHint: string;
   workflowTypeDefault: string;
   workflowTypeCustom: string;
   workflowTypeDefaultHint: string;
@@ -95,6 +102,16 @@ type Actions = {
 };
 
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as const;
+
+/**
+ * Item e694f722 — a rule is "Automatic (follow reporting line)" when it carries no template and its only level
+ * is `direct_manager`: at request time that binds the subject's active administrative manager (their reporting
+ * line) and climbs, so no separate level-by-level config is needed. Everything else (a template, or a hand-built
+ * multi-kind chain) is an Advanced override that intentionally diverges from the reporting line.
+ */
+function isReportingLineRule(r: { templateId: string | null; levels: string[] }): boolean {
+  return !r.templateId && r.levels.length === 1 && r.levels[0] === 'direct_manager';
+}
 
 /**
  * R41 72800eda — Approval Workflow Configuration Enhancement.
@@ -187,6 +204,8 @@ export function WorkflowMatrix({
                           <Badge variant="info">
                             {labels.workflowTypeDefaultBadge}: {nameOf(templates, r.templateId) ?? '—'}
                           </Badge>
+                        ) : isReportingLineRule(r) ? (
+                          <Badge variant="success">{labels.workflowTypeAutoBadge}</Badge>
                         ) : (
                           <Badge variant="accent">{labels.workflowTypeCustomBadge}</Badge>
                         )}
@@ -266,9 +285,18 @@ function WorkflowDialog({
   onClose: () => void;
 }) {
   const [companyId, setCompanyId] = useState<string>(row?.companyId ?? companies[0]?.id ?? '');
+  // Item e694f722 — top-level mode. New rules default to "auto" (the approval chain follows the reporting line);
+  // existing non-reporting-line rules open on "advanced" so their template / custom chain is preserved + editable.
+  const [mode, setMode] = useState<'auto' | 'advanced'>(
+    row === null || isReportingLineRule(row) ? 'auto' : 'advanced',
+  );
   const [workflowType, setWorkflowType] = useState<'default' | 'custom'>(row?.templateId ? 'default' : 'custom');
   const [templateId, setTemplateId] = useState<string>(row?.templateId ?? '');
-  const [levels, setLevels] = useState<string[]>(row?.levels?.length ? row.levels : ['direct_manager', 'hr_admin']);
+  // In auto mode the manual editor is hidden; seed the custom editor with the fallback chain so switching to
+  // Advanced → Custom starts from a sensible default rather than an empty list.
+  const [levels, setLevels] = useState<string[]>(
+    row?.levels?.length && !isReportingLineRule(row) ? row.levels : ['direct_manager', 'hr_admin'],
+  );
 
   // Condition (Leave Duration → min/max) — v1 exposes the existing day-range as one condition.
   const initCond = (row?.minDays ?? null) != null || (row?.maxDays ?? null) != null;
@@ -322,8 +350,11 @@ function WorkflowDialog({
             {/* Condition hidden fields (mapped from operator/value UI) */}
             <input type="hidden" name="minDays" value={minDays} />
             <input type="hidden" name="maxDays" value={maxDays} />
-            {/* Workflow-type hidden fields: only ONE of templateId / levels reaches the server. */}
-            {workflowType === 'default' ? (
+            {/* Workflow-type hidden fields: only ONE of templateId / levels reaches the server. In auto mode the
+                chain is the single `direct_manager` level (binds + climbs the reporting line at request time). */}
+            {mode === 'auto' ? (
+              <input type="hidden" name="levels" value="direct_manager" />
+            ) : workflowType === 'default' ? (
               <input type="hidden" name="templateId" value={templateId} />
             ) : (
               <input type="hidden" name="levels" value={levels.join(',')} />
@@ -393,57 +424,94 @@ function WorkflowDialog({
             </section>
 
             {/* ── Section 2: Workflow Type ── */}
+            {/* Item e694f722 — the common case is "Automatic": the approval chain derives from the employee's
+                reporting line, so no level-by-level setup is needed. The manual template / custom-chain config is
+                collapsed behind an "Advanced override" for the minority of flows that intentionally diverge from
+                the reporting line (e.g. a mandatory final HR sign-off). The override path is preserved intact. */}
             <section className="space-y-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{labels.sectionWorkflowType}</div>
               <div className="flex flex-col gap-2">
                 <label className="flex items-start gap-2 text-sm">
                   <input
                     type="radio"
-                    name="__workflowType"
-                    checked={workflowType === 'default'}
-                    onChange={() => setWorkflowType('default')}
+                    name="__workflowMode"
+                    checked={mode === 'auto'}
+                    onChange={() => setMode('auto')}
                     className="mt-0.5 h-4 w-4"
                   />
                   <span>
-                    <span className="font-medium">{labels.workflowTypeDefault}</span>
-                    <span className="block text-xs text-muted-foreground">{labels.workflowTypeDefaultHint}</span>
+                    <span className="font-medium">{labels.workflowTypeAuto}</span>
+                    <span className="block text-xs text-muted-foreground">{labels.workflowTypeAutoHint}</span>
                   </span>
                 </label>
                 <label className="flex items-start gap-2 text-sm">
                   <input
                     type="radio"
-                    name="__workflowType"
-                    checked={workflowType === 'custom'}
-                    onChange={() => setWorkflowType('custom')}
+                    name="__workflowMode"
+                    checked={mode === 'advanced'}
+                    onChange={() => setMode('advanced')}
                     className="mt-0.5 h-4 w-4"
                   />
                   <span>
-                    <span className="font-medium">{labels.workflowTypeCustom}</span>
-                    <span className="block text-xs text-muted-foreground">{labels.workflowTypeCustomHint}</span>
+                    <span className="font-medium">{labels.advancedOverride}</span>
+                    <span className="block text-xs text-muted-foreground">{labels.advancedOverrideHint}</span>
                   </span>
                 </label>
               </div>
 
-              {workflowType === 'default' ? (
-                <label className="block space-y-1 text-sm">
-                  <span className="text-xs font-medium text-muted-foreground">{labels.selectTemplate}</span>
-                  {templates.length === 0 ? (
-                    <p className="text-xs text-amber-700 dark:text-amber-400">{labels.noActiveTemplates}</p>
+              {mode === 'advanced' && (
+                <div className="space-y-3 rounded-lg border border-border/70 bg-muted/10 p-3">
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-start gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="__workflowType"
+                        checked={workflowType === 'default'}
+                        onChange={() => setWorkflowType('default')}
+                        className="mt-0.5 h-4 w-4"
+                      />
+                      <span>
+                        <span className="font-medium">{labels.workflowTypeDefault}</span>
+                        <span className="block text-xs text-muted-foreground">{labels.workflowTypeDefaultHint}</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="__workflowType"
+                        checked={workflowType === 'custom'}
+                        onChange={() => setWorkflowType('custom')}
+                        className="mt-0.5 h-4 w-4"
+                      />
+                      <span>
+                        <span className="font-medium">{labels.workflowTypeCustom}</span>
+                        <span className="block text-xs text-muted-foreground">{labels.workflowTypeCustomHint}</span>
+                      </span>
+                    </label>
+                  </div>
+
+                  {workflowType === 'default' ? (
+                    <label className="block space-y-1 text-sm">
+                      <span className="text-xs font-medium text-muted-foreground">{labels.selectTemplate}</span>
+                      {templates.length === 0 ? (
+                        <p className="text-xs text-amber-700 dark:text-amber-400">{labels.noActiveTemplates}</p>
+                      ) : (
+                        <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} required className={inputCls}>
+                          <option value="" disabled>
+                            —
+                          </option>
+                          {templates.map((tpl) => (
+                            <option key={tpl.id} value={tpl.id}>
+                              {tpl.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </label>
                   ) : (
-                    <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} required className={inputCls}>
-                      <option value="" disabled>
-                        —
-                      </option>
-                      {templates.map((tpl) => (
-                        <option key={tpl.id} value={tpl.id}>
-                          {tpl.label}
-                        </option>
-                      ))}
-                    </select>
+                    <StepListEditor levels={levels} setLevels={setLevels} labels={labels.step} />
                   )}
-                </label>
-              ) : (
-                <StepListEditor levels={levels} setLevels={setLevels} labels={labels.step} />
+                </div>
               )}
             </section>
 
@@ -514,7 +582,7 @@ function WorkflowDialog({
                 title={labels.saveConfirmTitle}
                 description={labels.saveConfirmBody}
                 confirmLabel={labels.saveConfirm}
-                disabled={workflowType === 'custom' ? levels.length === 0 : templates.length === 0}
+                disabled={mode === 'auto' ? false : workflowType === 'custom' ? levels.length === 0 : templates.length === 0}
               >
                 {labels.save}
               </ConfirmSubmit>

@@ -49,7 +49,7 @@ CROSS JOIN (VALUES
 	('leaveBalance',    'Leave Balance',    'Your current leave balance at a glance.',              'information', 1, '/leave'),
 	('nextHoliday',     'Upcoming Holidays','The next public holiday for your company.',            'information', 2, '#upcoming-events'),
 	('pendingTasks',    'Pending Tasks',    'Self-service items that need your attention.',         'action',      3, '/me'),
-	('plannedAbsences', 'Planned Absences', 'Who is away, on a rolling timeline.',                  'information', 4, NULL),
+	('plannedAbsences', 'Leave Calendar',   'Who is away, on a rolling timeline.',                  'information', 4, NULL),
 	('recentlyJoined',  'Recently Joined',  'Colleagues who joined recently.',                      'information', 5, NULL),
 	('upcomingEvents',  'Upcoming Events',  'Upcoming public holidays and company events.',         'information', 6, NULL),
 	('recentActivity',  'Recent Activity',  'A feed of recent activity relevant to you.',           'information', 7, NULL)

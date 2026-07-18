@@ -1065,6 +1065,18 @@ export const leaveType = pgTable('leave_type', {
   // row gains the block immediately (no backfill needed). Enforced only at requestLeave/editLeaveRequest —
   // never read for entitlement / accrual / eligibility / payroll.
   allowNegativeBalance: boolean('allow_negative_balance').notNull().default(false),
+  // Leave Entitlement Formula Management (feedback 79011509, migration 0241): HR-owned, per-leave-type
+  // plain-language EXPLANATIONS for each entitlement-breakdown component — keyed by the seven §7
+  // "Entitlement Calculation Breakdown" component keys (core/leave-formula.ts LEAVE_FORMULA_COMPONENT_KEYS),
+  // each an optional { description, formula, result } of free text. Purely an explanation layer surfaced to
+  // employees on the leave breakdown panel; NEVER read for entitlement / accrual / eligibility / workflow /
+  // payroll — the days an employee is entitled to are unchanged. A missing key or a null column ⇒ no
+  // explanation (the info icon is hidden for that row). JSONB extension point matching the serviceBands /
+  // customMessages pattern: the map is REPLACED wholesale on write (the editor always posts the complete set),
+  // and unknown keys are rejected in updateLeaveType. null on every existing row (no backfill).
+  formulaExplanations: jsonb('formula_explanations').$type<
+    Record<string, { description?: string; formula?: string; result?: string }>
+  >(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
@@ -1759,13 +1771,24 @@ export const employeeIdConfig = pgTable(
     // NULL = GLOBAL scope (shared across all companies). Set = company-specific sequence. ON DELETE no action
     // (a config is a tenant/company-level setting, deleted explicitly via the admin screen, never cascaded).
     companyId: uuid('company_id').references(() => company.id),
+    // Template enhancement (R45 7bf025f0): an optional human label so several numbering formats can run side
+    // by side (e.g. "Malaysia Employee", "HQ Staff"). NULL = unnamed (all pre-existing configs).
+    templateName: text('template_name'),
     // The house prefix (e.g. EMP, STAFF, KL). Uppercased + shape-validated (^[A-Z0-9-]+$) in the service.
     prefix: text('prefix').notNull(),
+    // Template enhancement (R45 7bf025f0): text appended AFTER the zero-padded number (e.g. EMP0001MY).
+    // Defaults to '' so existing configs format exactly as before. prefix + number_length + suffix ≤ 9.
+    suffix: text('suffix').notNull().default(''),
     // First number to ISSUE (e.g. 1 → "0001"). current_running_number tracks the LAST issued number.
     startNumber: integer('start_number').notNull().default(1),
-    // Zero-pad width (e.g. 4 → "0001"). prefix.length + number_length must be ≤ 9 (employee_code cap).
+    // Zero-pad width (e.g. 4 → "0001"). prefix.length + number_length + suffix.length must be ≤ 9 (cap).
     numberLength: integer('number_length').notNull().default(4),
+    // Retained for backward compatibility. The template enhancement (R45 7bf025f0) drops the increment as a
+    // configurable field — new templates advance by +1 — but existing rows keep their stored value.
     increment: integer('increment').notNull().default(1),
+    // Template enhancement (R45 7bf025f0): whether HR may hand-key an Employee ID for this scope. Persisted
+    // + event-logged now; the employee-profile edit gating that consumes it is a follow-up.
+    allowManualOverride: boolean('allow_manual_override').notNull().default(false),
     // Last issued running number (0 = none issued yet → the first hire gets start_number).
     currentRunningNumber: integer('current_running_number').notNull().default(0),
     status: text('status').notNull().default('active'), // 'active' | 'inactive'
@@ -2362,6 +2385,44 @@ export const attendance = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('attendance_employment_date_uq').on(t.employmentId, t.attendanceDate)],
+);
+
+// ── R45 92bdf77a · Multiple Clocking (migration 0265) ────────────────────────────────────────────────
+// The day still keeps exactly ONE `attendance` aggregate row (the unique index above is untouched). Every
+// individual clock-in / clock-out is captured here as a child punch so a person can clock in/out more than
+// once a day (lunch, off-site trip, meeting). The aggregate row's check_in_at / check_out_at are DERIVED
+// from these punches (first-in / last-out) — see recomputeDayFromPunches in core/attendance.ts. Direction is
+// captured at punch time (the /me button pressed) but the summation uses first-in-time / last-out-time.
+// Stage-1 scope: capture + first-in/last-out summation. Deferred (stage 2, documented GAP): per-pair
+// unpaid-break, pre-shift/early-OT attribution, split shifts, cross-midnight multi-punch.
+export const attendancePunchDirectionEnum = pgEnum('attendance_punch_direction', ['in', 'out']);
+export const attendancePunch = pgTable(
+  'attendance_punch',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // The day aggregate this punch rolls up into. Cascade-deletes with the day row.
+    attendanceId: uuid('attendance_id')
+      .notNull()
+      .references(() => attendance.id, { onDelete: 'cascade' }),
+    // Denormalised employment + date so RLS (can_see_employment) and range reads stay a single-table scan.
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    attendanceDate: date('attendance_date').notNull(),
+    punchAt: time('punch_at').notNull(),
+    direction: attendancePunchDirectionEnum('direction').notNull(),
+    method: clockMethodEnum('method').notNull().default('web'),
+    // Per-punch geo capture (ADR-0070 parity) — all nullable; a punch written while geofencing is off leaves them null.
+    lat: doublePrecision('lat'),
+    lng: doublePrecision('lng'),
+    clockingLocationId: uuid('clocking_location_id').references((): AnyPgColumn => clockingLocation.id),
+    distanceM: integer('distance_m'),
+    geofenceStatus: geofenceStatusEnum('geofence_status'),
+    radiusM: integer('radius_m'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('attendance_punch_attendance_idx').on(t.attendanceId, t.punchAt)],
 );
 
 // Per-company attendance thresholds + work schedule (ADR-0011). One pattern per company;
@@ -3164,6 +3225,14 @@ export const employeeDependent = pgTable(
     // Children-specific
     isStudent: boolean('is_student'),
     schoolName: text('school_name'),
+    // Item 6c635212 (R45, migration 0250) — Malaysia Income Tax (PCB / TP1) child-relief config, per child.
+    // SEPARATE from the approval-gated employee_statutory_my.num_children figure (benefits-vs-tax firewall):
+    // these capture the LHDN per-child detail (relief category / claim flag / 100|50 share) and only SURFACE
+    // a suggested relief total for HR to confirm — never silently drive tax. All nullable → legacy rows
+    // unaffected. Validated in core/dependents.ts (allowed category set, 100|50 percentage).
+    childReliefCategory: text('child_relief_category'), // under_18|study_preu|study_tertiary|disabled|disabled_study
+    childTaxRelief: boolean('child_tax_relief'), // claim PCB/TP1 child relief for this child
+    childReliefPercentage: integer('child_relief_percentage'), // 100 | 50 (shared claim)
     archivedAt: timestamp('archived_at', { withTimezone: true }), // soft-delete
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -4444,6 +4513,42 @@ export const leaveYearConfig = pgTable(
   ],
 );
 export type LeaveYearConfigRow = typeof leaveYearConfig.$inferSelect;
+
+// R45 7527ea5f — Automatic Leave Entitlement Recalculation history (0245). When an employee's PROFILE
+// changes (grade / grade group / employment type / confirmation status / hire date), the leave engine
+// re-projects the current cycle and posts a compensating `adjustment` ledger row (reason sys:profile_recalc:*)
+// — see reprojectEntitlementForEmployment in core/leave.ts. This table is the human-readable audit trail of
+// each such recalculation: what the entitlement was before, what it became, why (which profile field moved),
+// and the effective date. `ledger_id` links to the compensating leave_ledger row that carried the delta.
+// RLS: tenant-read + admin-write, mirroring leave_year_config / the other leave-config tables.
+export const leaveEntitlementRecalcAudit = pgTable(
+  'leave_entitlement_recalc_audit',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    leaveTypeId: uuid('leave_type_id')
+      .notNull()
+      .references(() => leaveType.id),
+    // The signed running entitlement materialized BEFORE this recalc (accrual + prior recalc adjustments).
+    previousEntitlement: numeric('previous_entitlement', { precision: 6, scale: 2 }).notNull(),
+    // The re-projected entitlement the corrected profile SHOULD have for the current cycle.
+    newEntitlement: numeric('new_entitlement', { precision: 6, scale: 2 }).notNull(),
+    // newEntitlement − previousEntitlement (the compensating adjustment posted to the ledger).
+    delta: numeric('delta', { precision: 6, scale: 2 }).notNull(),
+    // Which profile change triggered the recalc (e.g. 'grade_changed', 'employment_changed', 'hire_date_changed').
+    reason: text('reason').notNull(),
+    // The date the compensating adjustment was posted (the recalc's effective date, = the cycle asOf).
+    effectiveOn: date('effective_on').notNull(),
+    // The leave_ledger row that carried the compensating delta (nullable for defensive/rollback safety).
+    ledgerId: uuid('ledger_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('leave_entitlement_recalc_audit_employment_idx').on(t.employmentId, t.leaveTypeId)],
+);
+export type LeaveEntitlementRecalcAuditRow = typeof leaveEntitlementRecalcAudit.$inferSelect;
 
 // Dependent sub-category under a claim type (e.g. TRAVEL → MILEAGE / PARKING / TOLL). The submission form
 // shows it as a dependent dropdown; mandatory only when the chosen type has ≥1 live item (enforced in the

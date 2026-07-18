@@ -14,6 +14,7 @@ import {
   listLeaveRequests,
   listLeaveRequestsPage,
   listLeaveApprovers,
+  reportingLinesFor,
 } from '@/core/read';
 import { listBusinessUnits } from '@/core/admin';
 import { listLocations } from '@/core/location';
@@ -28,6 +29,7 @@ import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
 import { LeaveBalanceTable } from '@/components/leave/leave-balance-table';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
+import { deriveSummaryBalance } from '@/components/leave/entitlement-panel-config';
 // deriveBalanceRow lives in a SERVER-SAFE module (no 'use client'), so this RSC can call it at render
 // time — importing it from the client table would trip the RSC boundary guard (b7d84266). R37 e5a158d3.
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
@@ -172,6 +174,11 @@ export default async function LeavePage({
     applyNotice: (lt.customMessages as Record<string, string> | null)?.applyNotice ?? null,
   }));
   const requestLeaveEmployeeOptions = active.map((e) => ({ id: e.employmentId, name: e.name }));
+  // Employee selector visibility (item 69088c13): only an on-behalf-of applicant (an HR admin or a line
+  // manager with direct reports) needs to pick WHO the leave is for. A plain self-service employee applies
+  // for themselves, so the selector is hidden and the submit binds to their own employment server-side.
+  const canApplyOnBehalf =
+    admin || (!!me && (await reportingLinesFor(session, me.employmentId)).reports.length > 0);
 
   // ── Detailed leave-balance table (relocated from /me · R37 e5a158d3) ─────────────────────────────────
   // The self-service balance view is the same dense Workday-style table the /me Leave tab used to carry:
@@ -491,7 +498,7 @@ export default async function LeavePage({
               <RequestLeaveDialog
                 types={requestLeaveTypeOptions}
                 startDefault={today}
-                employeeOptions={requestLeaveEmployeeOptions}
+                employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}
                 submitAction={requestLeaveAction}
                 previewAction={previewLeaveDeductionAction}
               />
@@ -575,7 +582,7 @@ export default async function LeavePage({
                     showBreakdown && bd ? (
                       <EntitlementBreakdown
                         data={bd}
-                        summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued }}
+                        summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) }}
                         upcoming={selfRequests
                           .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
                           .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}

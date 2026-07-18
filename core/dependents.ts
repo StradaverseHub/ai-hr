@@ -36,6 +36,27 @@ export type DependentGender = (typeof DEPENDENT_GENDERS)[number];
 export const DEPENDENT_MARRIAGE_STATUSES = ['married', 'divorced', 'widowed', 'separated'] as const;
 export type DependentMarriageStatus = (typeof DEPENDENT_MARRIAGE_STATUSES)[number];
 
+/**
+ * Item 6c635212 — Malaysia Income Tax (PCB / TP1) child-relief categories, the five LHDN s.48 cases:
+ *   under_18         — child under 18
+ *   study_preu       — 18+, unmarried, in full-time pre-university study (A-Levels, matriculation, etc.)
+ *   study_tertiary   — 18+, unmarried, in full-time diploma / degree (and above) study
+ *   disabled         — disabled child (OKU)
+ *   disabled_study   — disabled child in full-time (diploma / degree and above) study
+ * Only meaningful for a `child` record; validate-or-ignore otherwise. Nullable = not yet configured.
+ */
+export const CHILD_RELIEF_CATEGORIES = [
+  'under_18',
+  'study_preu',
+  'study_tertiary',
+  'disabled',
+  'disabled_study',
+] as const;
+export type ChildReliefCategory = (typeof CHILD_RELIEF_CATEGORIES)[number];
+
+/** Allowed relief shares when parents split the claim (LHDN: 100% one parent, or 50% each). */
+export const CHILD_RELIEF_PERCENTAGES = [100, 50] as const;
+
 export class DependentValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -67,6 +88,10 @@ export type DependentRow = {
   employerAddress: string | null;
   isStudent: boolean | null;
   schoolName: string | null;
+  // Item 6c635212 — Malaysia Income Tax child-relief config (child records only).
+  childReliefCategory: string | null;
+  childTaxRelief: boolean | null;
+  childReliefPercentage: number | null;
   archivedAt: Date | null;
 };
 
@@ -87,6 +112,10 @@ export type DependentExtraInput = {
   employerAddress?: string | null;
   isStudent?: boolean | null;
   schoolName?: string | null;
+  // Item 6c635212 — Malaysia Income Tax child-relief config (child records only; validate-or-ignore otherwise).
+  childReliefCategory?: string | null;
+  childTaxRelief?: boolean | null;
+  childReliefPercentage?: number | null;
 };
 
 function isRelationship(v: string): v is DependentRelationship {
@@ -103,9 +132,19 @@ function isRelationship(v: string): v is DependentRelationship {
  * LHDN child-relief eligibility (simplified, per the Income Tax Act s.48): an unmarried child is eligible if
  * they are (a) under 18, OR (b) 18+ and in full-time education (isStudent). Deceased children are excluded.
  * Only `relationship === 'child'` rows are considered. `asOf` defaults to today (age is computed against it).
+ *
+ * Item 6c635212 — when a child carries an EXPLICIT per-child relief decision (childTaxRelief non-null), it
+ * takes precedence over the DOB/student inference: `true` counts, `false` is an explicit opt-out. A child with
+ * childTaxRelief === null (legacy / not yet configured) falls back to the inference below, so existing rows and
+ * the suggestion behaviour are unchanged. The 100|50 relief SHARE affects the relief AMOUNT, not the head
+ * count, so a 50%-shared eligible child is still one eligible child here (num_children is a whole count).
  */
 export function eligibleChildReliefCount(
-  rows: Pick<DependentRow, 'relationship' | 'dateOfBirth' | 'isStudent' | 'isDeceased' | 'archivedAt'>[],
+  rows: (Pick<DependentRow, 'relationship' | 'dateOfBirth' | 'isStudent' | 'isDeceased' | 'archivedAt'> & {
+    // Optional so legacy callers (that don't carry the R45 per-child flag) still type-check; an absent flag
+    // (undefined) falls through to the DOB/student inference exactly like a null.
+    childTaxRelief?: boolean | null;
+  })[],
   asOf: Date = new Date(),
 ): number {
   const asOfMs = asOf.getTime();
@@ -113,6 +152,8 @@ export function eligibleChildReliefCount(
     if (r.relationship !== 'child') return false;
     if (r.isDeceased) return false;
     if (r.archivedAt) return false;
+    // Explicit per-child decision wins over inference (both directions).
+    if (r.childTaxRelief != null) return r.childTaxRelief;
     // Full-time student ⇒ eligible regardless of exact age (covers the 18+ in-education case).
     if (r.isStudent) return true;
     // Otherwise eligible only when under 18. No DOB ⇒ cannot confirm age ⇒ not auto-counted (HR keys it).
@@ -145,6 +186,24 @@ function trimOrNull(v: string | null | undefined): string | null {
   return s === '' ? null : s;
 }
 
+/** Item 6c635212 — normalise the PCB child-relief category (∈ allowed set, else throw). Blank ⇒ null. */
+function normChildReliefCategory(v: string | null | undefined): string | null {
+  if (v == null || v.trim() === '') return null;
+  if (!(CHILD_RELIEF_CATEGORIES as readonly string[]).includes(v)) {
+    throw new DependentValidationError('Child relief category is invalid.');
+  }
+  return v;
+}
+
+/** Item 6c635212 — normalise the child-relief share (100 | 50, else throw). Null/blank ⇒ null. */
+function normChildReliefPercentage(v: number | null | undefined): number | null {
+  if (v == null) return null;
+  if (!(CHILD_RELIEF_PERCENTAGES as readonly number[]).includes(v)) {
+    throw new DependentValidationError('Child relief percentage must be 100 or 50.');
+  }
+  return v;
+}
+
 /**
  * Column values for the enhancement fields on an ADD, relationship-gated: spouse-only fields (marriage,
  * spouse employment) persist only for a spouse; student/school only for a child; anything else is stored
@@ -166,6 +225,10 @@ function extraColumnsForAdd(relationship: string, x: DependentExtraInput) {
     employerAddress: isSpouse ? trimOrNull(x.employerAddress) : null,
     isStudent: isChild ? (x.isStudent ?? null) : null,
     schoolName: isChild ? trimOrNull(x.schoolName) : null,
+    // Item 6c635212 — PCB child-relief config, child-gated (validate-or-ignore for non-children).
+    childReliefCategory: isChild ? normChildReliefCategory(x.childReliefCategory) : null,
+    childTaxRelief: isChild ? (x.childTaxRelief ?? null) : null,
+    childReliefPercentage: isChild ? normChildReliefPercentage(x.childReliefPercentage) : null,
   };
 }
 
@@ -202,6 +265,9 @@ export function listDependents(
         employerAddress: employeeDependent.employerAddress,
         isStudent: employeeDependent.isStudent,
         schoolName: employeeDependent.schoolName,
+        childReliefCategory: employeeDependent.childReliefCategory,
+        childTaxRelief: employeeDependent.childTaxRelief,
+        childReliefPercentage: employeeDependent.childReliefPercentage,
         archivedAt: employeeDependent.archivedAt,
       })
       .from(employeeDependent)
@@ -362,9 +428,16 @@ export function updateDependent(
     if (isChild) {
       if (p.isStudent !== undefined) patch.isStudent = p.isStudent;
       if (p.schoolName !== undefined) patch.schoolName = trimOrNull(p.schoolName);
+      // Item 6c635212 — PCB child-relief config.
+      if (p.childReliefCategory !== undefined) patch.childReliefCategory = normChildReliefCategory(p.childReliefCategory);
+      if (p.childTaxRelief !== undefined) patch.childTaxRelief = p.childTaxRelief;
+      if (p.childReliefPercentage !== undefined) patch.childReliefPercentage = normChildReliefPercentage(p.childReliefPercentage);
     } else if (relChanged) {
       patch.isStudent = null;
       patch.schoolName = null;
+      patch.childReliefCategory = null;
+      patch.childTaxRelief = null;
+      patch.childReliefPercentage = null;
     }
 
     if (Object.keys(patch).length > 0) {

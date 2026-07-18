@@ -23,6 +23,12 @@ const numOrUndef = (fd: FormData, k: string): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
+/** An unchecked checkbox is absent from FormData; a checked one posts "on" (or any truthy string). */
+const boolOf = (fd: FormData, k: string): boolean => {
+  const v = fd.get(k);
+  return v != null && v !== '' && v !== 'false' && v !== 'off';
+};
+
 /** Map a known service error to its localized message; fall back to the raw message otherwise. */
 async function errorMessage(e: unknown): Promise<string> {
   const t = await getTranslations('employeeIdConfig.errors');
@@ -53,10 +59,13 @@ export async function createConfigAction(formData: FormData) {
     () =>
       createConfig(s, {
         companyId,
+        templateName: String(formData.get('templateName') ?? ''),
         prefix: String(formData.get('prefix') ?? ''),
+        suffix: String(formData.get('suffix') ?? ''),
         startNumber: numOrUndef(formData, 'startNumber'),
         numberLength: numOrUndef(formData, 'numberLength'),
-        increment: numOrUndef(formData, 'increment'),
+        // increment is no longer a form field (R45 7bf025f0): new templates advance by +1 (service default).
+        allowManualOverride: boolOf(formData, 'allowManualOverride'),
         status: String(formData.get('status') ?? 'active'),
       }).then(() => undefined),
     'saved',
@@ -69,10 +78,13 @@ export async function updateConfigAction(formData: FormData) {
     () =>
       updateConfig(s, {
         id: String(formData.get('id') ?? ''),
+        templateName: String(formData.get('templateName') ?? ''),
         prefix: String(formData.get('prefix') ?? ''),
+        suffix: String(formData.get('suffix') ?? ''),
         startNumber: numOrUndef(formData, 'startNumber'),
         numberLength: numOrUndef(formData, 'numberLength'),
-        increment: numOrUndef(formData, 'increment'),
+        // increment is no longer a form field (R45 7bf025f0) — the stored value is left untouched.
+        allowManualOverride: boolOf(formData, 'allowManualOverride'),
         currentRunningNumber: numOrUndef(formData, 'currentRunningNumber'),
         status: String(formData.get('status') ?? 'active'),
       }).then(() => undefined),

@@ -54,6 +54,7 @@ import {
   upsertLeaveYearConfig,
   setLeaveYearStatus,
   saveFutureOpeningRule,
+  deleteLeaveYear,
   isLeaveYearStatus,
   accrueEarnedLeave,
   asOfForLeaveYear,
@@ -78,6 +79,7 @@ import {
 } from '@/core/clocking-location';
 import { countEmployeesInScope } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
+import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaConfig } from '@/core/leave-formula';
 import { requireAdmin } from '@/lib/authz';
 import {
   createGradeGroup,
@@ -102,9 +104,11 @@ import { packFor } from '@/localization/registry';
 
 const ORG = '/admin/organization';
 const LEAVE = '/admin/leave';
-// Leave Year Configuration (9aa894a4): the managed Leave-Year table lives on the Entitlements tab, so its
-// actions revalidate/redirect there (the page reads ?error= for the ErrorBanner).
 const ENTITLEMENTS = '/admin/leave/entitlements';
+// R45 cc816207 — the managed Leave-Year table RELOCATED from the Entitlements tab to the Application Rules
+// tab, so its create/edit/open/close/delete/opening-rule actions revalidate/redirect HERE (the page reads
+// ?error= for the ErrorBanner).
+const APPLICATION_RULES = '/admin/leave/application-rules';
 const USERS = '/admin/users';
 const HOLIDAYS = '/admin/holidays';
 // 66b8f5a8 — the Holiday Group tab + its dedicated add/edit pages.
@@ -878,9 +882,9 @@ export async function upsertLeaveYearConfigAction(formData: FormData) {
       employeeApplicationStartDate: String(formData.get('employeeApplicationStartDate') ?? '') || null,
     });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    fail(APPLICATION_RULES, e);
   }
-  ok(ENTITLEMENTS);
+  ok(APPLICATION_RULES);
 }
 
 // Leave Year Configuration (9aa894a4): transition a managed leave-year's status. →open runs the existing
@@ -895,12 +899,12 @@ export async function setLeaveYearStatusAction(formData: FormData) {
     if (!isLeaveYearStatus(status)) throw new Error('Invalid leave-year status');
     res = await setLeaveYearStatus(s, { year, status });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    fail(APPLICATION_RULES, e);
   }
-  revalidatePath(ENTITLEMENTS);
+  revalidatePath(APPLICATION_RULES);
   const opened = res?.opened;
   redirect(
-    `${ENTITLEMENTS}?toast=${encodeURIComponent(
+    `${APPLICATION_RULES}?toast=${encodeURIComponent(
       opened
         ? `Leave year ${year} opened: ${opened.granted} grant${opened.granted === 1 ? '' : 's'} posted` +
             (opened.skipped ? `, ${opened.skipped} already open` : '') +
@@ -926,9 +930,23 @@ export async function saveFutureOpeningRuleAction(formData: FormData) {
       unit: String(formData.get('openBeforeUnit') ?? '') || null,
     });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    fail(APPLICATION_RULES, e);
   }
-  ok(ENTITLEMENTS);
+  ok(APPLICATION_RULES);
+}
+
+// R45 fd71fa38 — delete a mistakenly-created DRAFT leave-year record. The service enforces the guard (draft
+// only + no leave ledger/requests referencing the year) and throws LeaveYearDeleteError, whose message the
+// ErrorBanner surfaces. The actor threads through getSession() (an admin), so the leave-year.deleted event
+// carries a real user, not SYSTEM.
+export async function deleteLeaveYearAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await deleteLeaveYear(s, { year: Number(formData.get('year')) });
+  } catch (e) {
+    fail(APPLICATION_RULES, e);
+  }
+  ok(APPLICATION_RULES);
 }
 
 export async function assignRoleAction(formData: FormData) {
@@ -1253,6 +1271,26 @@ export async function updateLeaveTypeAction(fd: FormData) {
         ) as EssViewConfig,
       }
     : {};
+  // Leave Entitlement Formula Management (79011509): the formula editor sub-form posts `formula=1` (marker)
+  // plus, per component, up to three free-text fields (`formula_<key>_description`, `formula_<key>_formula`,
+  // `formula_<key>_result`). We build the COMPLETE { key: entry } map from the closed component list and hand
+  // it to the service, which trims + drops blanks + normalises an all-blank map to null (clear). Any other
+  // sub-form save omits the marker ⇒ formula_explanations stays untouched (same tri-state guard as essView).
+  const touchFormula = fd.get('formula') === '1';
+  const formulaFields = touchFormula
+    ? {
+        formulaExplanations: Object.fromEntries(
+          LEAVE_FORMULA_COMPONENT_KEYS.map((key) => [
+            key,
+            {
+              description: String(fd.get(`formula_${key}_description`) ?? ''),
+              formula: String(fd.get(`formula_${key}_formula`) ?? ''),
+              result: String(fd.get(`formula_${key}_result`) ?? ''),
+            },
+          ]),
+        ) as LeaveFormulaConfig,
+      }
+    : {};
   // Day Type Inclusion (feedback ef6d7146): the "Day Type Inclusion" sub-form posts `dayTypeInclusion=1`
   // (marker) plus one checkbox per day type (`dayType_<key>`). An unchecked box does not post, so we build the
   // COMPLETE five-key vector (checked ⇒ true/counted, absent ⇒ false/skipped) and hand it to the service,
@@ -1354,6 +1392,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...duplicatePolicyFields,
       ...negativeBalanceFields,
       ...essViewFields,
+      ...formulaFields,
       ...dayTypeInclusionFields,
       ...visualFields,
       ...leaveUnitFields,

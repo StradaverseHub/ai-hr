@@ -40,6 +40,9 @@ export type WizardEmployee = {
   employeeCode: string | null;
   department: string | null;
   departmentId: string | null;
+  /** Current-assignment Business Unit — the Step-1 Business Unit filter (feedback 65377ed0). Nullable. */
+  businessUnit: string | null;
+  businessUnitId: string | null;
   position: string | null;
   company: string;
   companyId: string;
@@ -139,6 +142,7 @@ export function TxnGrid({
   const [step, setStep] = useState(0);
   const [query, setQuery] = useState('');
   const [companyId, setCompanyId] = useState('');
+  const [businessUnitFilter, setBusinessUnitFilter] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   // Multi-employee: the wizard now records the same grid for one OR many employees, all in one atomic save.
@@ -203,25 +207,36 @@ export function TxnGrid({
     [chosenBatch, selectedEmployees],
   );
 
-  // Department options derive from the currently-visible (in-company) employee set — no extra query.
+  // Business Unit + Department options derive from the currently-visible (in-company) employee set — no
+  // extra query. Business Unit filters the Department options too, so the two stay consistent.
+  const inCompany = useMemo(
+    () => (companyId ? employees.filter((e) => e.companyId === companyId) : employees),
+    [employees, companyId],
+  );
+  const businessUnitOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const e of inCompany) if (e.businessUnitId && e.businessUnit) seen.set(e.businessUnitId, e.businessUnit);
+    return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [inCompany]);
   const departmentOptions = useMemo(() => {
-    const src = companyId ? employees.filter((e) => e.companyId === companyId) : employees;
+    const src = businessUnitFilter ? inCompany.filter((e) => e.businessUnitId === businessUnitFilter) : inCompany;
     const seen = new Map<string, string>();
     for (const e of src) if (e.departmentId && e.department) seen.set(e.departmentId, e.department);
     return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [employees, companyId]);
+  }, [inCompany, businessUnitFilter]);
 
   const CAP = 25;
   const filteredEmployees = useMemo(() => {
     const q = query.trim().toLowerCase();
-    // Narrow to company → department → status BEFORE the name/number match, then cap. The cap counts only
-    // rows that already pass every filter, so a large company never hides a small filtered result set.
+    // Narrow to company → business unit → department → status BEFORE the name/number match, then cap. The
+    // cap counts only rows that already pass every filter, so a large company never hides a small result set.
     let base = companyId ? employees.filter((e) => e.companyId === companyId) : employees;
+    if (businessUnitFilter) base = base.filter((e) => e.businessUnitId === businessUnitFilter);
     if (deptFilter) base = base.filter((e) => e.departmentId === deptFilter);
     if (statusFilter) base = base.filter((e) => e.status === statusFilter);
     if (q) base = base.filter((e) => e.name.toLowerCase().includes(q) || (e.employeeCode ?? '').toLowerCase().includes(q));
     return base;
-  }, [employees, query, companyId, deptFilter, statusFilter]);
+  }, [employees, query, companyId, businessUnitFilter, deptFilter, statusFilter]);
   const searchResults = useMemo(() => filteredEmployees.slice(0, CAP), [filteredEmployees]);
   const capped = filteredEmployees.length > CAP;
 
@@ -231,12 +246,18 @@ export function TxnGrid({
     if (companies.length === 1) setCompanyId(companies[0].id);
   }, [companies]);
 
-  // Reset the employee selection + dept filter when the company changes so stale picks from another company
-  // can't carry forward. The selection effect below then unwinds period/run/batch.
+  // Reset the employee selection + BU/dept filters when the company changes so stale picks from another
+  // company can't carry forward. The selection effect below then unwinds period/run/batch.
   useEffect(() => {
     setSelectedIds([]);
+    setBusinessUnitFilter('');
     setDeptFilter('');
   }, [companyId]);
+
+  // A department belongs to one business unit, so clear a stale department pick when the BU filter changes.
+  useEffect(() => {
+    setDeptFilter('');
+  }, [businessUnitFilter]);
 
   // Reset every downstream selection when the chosen employee SET changes — a stale period/run/batch from a
   // different selection (possibly a different company) must never leak forward.
@@ -424,15 +445,30 @@ export function TxnGrid({
         {/* ── Step 1 — Employees (multi-select) ── */}
         {step === 0 && (
           <div className="space-y-4">
-            {/* Filters — company / department / employment status narrow the list before the name/ID search.
-                A single company is auto-selected above; department options derive from the visible set. */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {/* Filters — company / business unit / department / employment status narrow the list before the
+                name/ID search. A single company is auto-selected above; BU + department options derive from
+                the visible set. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Field label={t('company')}>
                 <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className={inputCls}>
                   {companies.length > 1 && <option value="">—</option>}
                   {companies.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('businessUnitFilter')}>
+                <select
+                  value={businessUnitFilter}
+                  onChange={(e) => setBusinessUnitFilter(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">{t('allBusinessUnits')}</option>
+                  {businessUnitOptions.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
                     </option>
                   ))}
                 </select>
@@ -733,6 +769,61 @@ export function TxnGrid({
                 </div>
               </div>
             </div>
+            {/* Line-item breakdown + totals (feedback 65377ed0) — a clear review of exactly what will be
+                saved before the atomic write. Each row is applied to every selected employee. */}
+            {(() => {
+              const reviewRows = rows.filter((r) => !isEmptyRow(r));
+              const multiplier = Math.max(selectedEmployees.length, 1);
+              const perEmployeeTotal = reviewRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+              const grandTotal = perEmployeeTotal * multiplier;
+              const fmt = (n: number) =>
+                n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              return (
+                <div className="overflow-hidden rounded-md border border-border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">{t('colItem')}</th>
+                        <th className="px-3 py-2 font-medium">{t('colEffectiveDate')}</th>
+                        <th className="px-3 py-2 text-right font-medium">{t('colAmount')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {reviewRows.map((r, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2">{itemByValue.get(r.item)?.label ?? r.item}</td>
+                          <td className="px-3 py-2 tabular-nums">{r.txnDate || '—'}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{fmt(Number(r.amount) || 0)}</td>
+                        </tr>
+                      ))}
+                      {reviewRows.length === 0 && (
+                        <tr>
+                          <td colSpan={3} className="px-3 py-4 text-center text-muted-foreground">
+                            {t('reviewNoRows')}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                    <tfoot className="border-t border-border bg-muted/30">
+                      <tr>
+                        <td className="px-3 py-2 text-xs font-medium uppercase text-muted-foreground" colSpan={2}>
+                          {multiplier > 1 ? t('reviewTotalPerEmployee') : t('reviewTotal')}
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums">{fmt(perEmployeeTotal)}</td>
+                      </tr>
+                      {multiplier > 1 && (
+                        <tr>
+                          <td className="px-3 py-2 text-xs font-medium uppercase text-muted-foreground" colSpan={2}>
+                            {t('reviewTotalAll', { count: multiplier })}
+                          </td>
+                          <td className="px-3 py-2 text-right font-semibold tabular-nums">{fmt(grandTotal)}</td>
+                        </tr>
+                      )}
+                    </tfoot>
+                  </table>
+                </div>
+              );
+            })()}
             <p className="text-sm text-muted-foreground">
               {t('reviewCount', {
                 count: rows.filter((r) => !isEmptyRow(r)).length * Math.max(selectedEmployees.length, 1),

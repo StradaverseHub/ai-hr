@@ -18,9 +18,10 @@
  * Visual (639fdf77): the header shows the per-type icon + colour chip.
  * Substrate: read-only presentation → NO DomainEvent. // substrate: read-only, no event
  */
+import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
-import { X } from 'lucide-react';
+import { Info, X } from 'lucide-react';
 import { leaveVisual } from '@/lib/leave-visual';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
 import {
@@ -33,17 +34,6 @@ import {
 } from './entitlement-panel-config';
 
 const PLACEHOLDER = '—';
-
-function Row({ label, value, muted, strong }: { label: string; value: string; muted?: boolean; strong?: boolean }) {
-  return (
-    <div className={`flex items-baseline justify-between gap-3 py-1.5 text-sm ${strong ? 'font-semibold' : ''}`}>
-      <span className={strong ? 'text-foreground' : 'text-muted-foreground'}>{label}</span>
-      <span className={`tabular-nums ${muted ? 'text-muted-foreground' : 'font-medium text-foreground'} ${strong ? 'font-semibold' : ''}`}>
-        {value}
-      </span>
-    </div>
-  );
-}
 
 export function LeaveDetailsPanel({
   data,
@@ -78,6 +68,17 @@ export function LeaveDetailsPanel({
   const t = useTranslations('leave.breakdown');
   const fmtDays = (n: number) => n.toFixed(2);
 
+  // Info-icon per component (b8b665ff): which calculation rows are expanded, keyed by `${sectionKey}:${fieldKey}`.
+  // Several rows may stay open at once and toggling one never affects another (a Set, no single-open constraint).
+  const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleRow = (rowKey: string) =>
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowKey)) next.delete(rowKey);
+      else next.add(rowKey);
+      return next;
+    });
+
   const panel: PanelData = { breakdown: data, summary, upcoming };
   // ESS gate: shown when config is not applied (admin) OR the key is not explicitly false (missing ⇒ visible).
   const show = (key?: string) => !applyEssConfig || key == null || data.essView?.[key as keyof typeof data.essView] !== false;
@@ -103,16 +104,77 @@ export function LeaveDetailsPanel({
       .map((f) => ({ f, value: fieldValue(f) }))
       .filter((r) => r.value !== null); // omitWhenNull drop
     if (rows.length === 0) return null;
+    // Info-icon explanations (b8b665ff): only the §7 "Entitlement Calculation Breakdown" rows carry the
+    // HR-authored explanations (79011509), keyed by the field key (= the formula component key). Other sections'
+    // field keys have no entry, so this is naturally scoped to the calculation rows; the icon is hidden entirely
+    // for any row HR left blank. Content is read-only presentation over 79011509's store — no persistence here.
+    const withFormula = section.key === 'calcBreakdown';
     return (
       <div className="divide-y divide-border">
-        {rows.map(({ f, value }) => (
-          <Row
-            key={f.key}
-            label={t(f.labelKey)}
-            value={value!}
-            muted={value === PLACEHOLDER || (f.format === 'date' && value === t('noExpiry'))}
-          />
-        ))}
+        {rows.map(({ f, value }) => {
+          const explanation = withFormula ? (data.formulaExplanations?.[f.key] ?? null) : null;
+          const hasExpl = !!(explanation && (explanation.description || explanation.formula || explanation.result));
+          const rowKey = `${section.key}:${f.key}`;
+          const isOpen = hasExpl && expandedRows.has(rowKey);
+          const muted = value === PLACEHOLDER || (f.format === 'date' && value === t('noExpiry'));
+          return (
+            <div key={f.key} className="py-1.5">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  {t(f.labelKey)}
+                  {/* §1 Leave Summary (877f2f37): a STATIC hover tooltip on the row — fixed plain-English copy,
+                      no HR config, no expand. Native `title` gives the hover text; the aria-label names it for
+                      assistive tech. Distinct from the §7 click-to-expand formula icon below. */}
+                  {f.tooltipKey && (
+                    <span
+                      title={t(f.tooltipKey)}
+                      aria-label={t(f.tooltipKey)}
+                      className="shrink-0 cursor-help text-muted-foreground/70"
+                    >
+                      <Info className="size-3.5" aria-hidden />
+                    </span>
+                  )}
+                  {hasExpl && (
+                    <button
+                      type="button"
+                      onClick={() => toggleRow(rowKey)}
+                      aria-expanded={isOpen}
+                      aria-label={isOpen ? t('explanationHide') : t('explanationShow')}
+                      className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground dark:hover:bg-muted/40"
+                    >
+                      <Info className="size-3.5" aria-hidden />
+                    </button>
+                  )}
+                </span>
+                <span className={`tabular-nums ${muted ? 'text-muted-foreground' : 'font-medium text-foreground'}`}>
+                  {value}
+                </span>
+              </div>
+              {isOpen && (
+                <div className="mt-1.5 space-y-1 rounded-md bg-muted/50 px-2.5 py-2 text-xs text-muted-foreground dark:bg-muted/30">
+                  {explanation!.description && (
+                    <p>
+                      <span className="font-medium text-foreground">{t('explanationDescription')}: </span>
+                      {explanation!.description}
+                    </p>
+                  )}
+                  {explanation!.formula && (
+                    <p>
+                      <span className="font-medium text-foreground">{t('explanationFormula')}: </span>
+                      {explanation!.formula}
+                    </p>
+                  )}
+                  {explanation!.result && (
+                    <p>
+                      <span className="font-medium text-foreground">{t('explanationResult')}: </span>
+                      {explanation!.result}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   };

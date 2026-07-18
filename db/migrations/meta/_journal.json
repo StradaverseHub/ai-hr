@@ -1569,6 +1569,48 @@
       "when": 1781862219000,
       "tag": "0240_employment_blacklist",
       "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1781862310000,
+      "tag": "0241_leave_formula_explanation",
+      "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1781862320000,
+      "tag": "0245_leave_entitlement_recalc_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "when": 1781862330000,
+      "tag": "0250_dependent_child_relief",
+      "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1781862340000,
+      "tag": "0255_leave_calendar_rename",
+      "breakpoints": true
+    },
+    {
+      "idx": 261,
+      "version": "7",
+      "when": 1781862350000,
+      "tag": "0261_employee_id_template_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 265,
+      "version": "7",
+      "when": 1781862360000,
+      "tag": "0265_attendance_multi_punch",
+      "breakpoints": true
     }
   ]
 }
