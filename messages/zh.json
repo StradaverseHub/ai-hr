@@ -3669,6 +3669,8 @@
       "closeLeaveYear": "关闭",
       "reopenLeaveYear": "重新开放",
       "noLeaveYears": "尚未配置任何假期年度。",
+      "leaveYearAdvancedTitle": "高级假期年度规则",
+      "leaveYearAdvancedHelp": "可选自动化 — 开启假期年度并不需要它。",
       "openingRuleTitle": "未来假期年度开启规则",
       "openingRuleHelp": "自动决定即将到来的假期年度何时开启。选择在年度开始前多久开启——系统会计算开启日期（1 月 1 日减去该时段）并标记到该年度。不同公司可设置不同的时段。",
       "openingRuleEnableLabel": "启用未来假期年度开启",

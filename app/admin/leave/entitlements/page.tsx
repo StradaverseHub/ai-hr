@@ -397,14 +397,28 @@ export default async function LeaveEntitlementsPage({
           <button className={btnPrimary}>{t('addLeaveYear')}</button>
         </form>
 
-        {/* Future Leave Year Opening Rule (d9e41725). HR Admin defines an advance-opening window ("open the
+        {/* R45 4822de27 — Separate leave-year creation from the future auto-opening RULE. Everything above
+            (records list + the create form with the two control dates + the lifecycle Open/Close actions) is
+            the everyday, primary flow. The auto-opening rule below is OPTIONAL automation that HR often
+            mistook for mandatory, so it now lives in a collapsed-by-default "Advanced" disclosure. Purely a
+            layout split — fields, actions and behaviour are unchanged.
+
+            Future Leave Year Opening Rule (d9e41725). HR Admin defines an advance-opening window ("open the
             year N Days/Weeks/Months before it starts") for a chosen Effective Leave Year; on save the system
             COMPUTES open_leave_year_date = 1-Jan-of-year minus that window (UTC-correct calendar math) and
             stamps it on that year's record. v1 is compute-only — enabling the rule sets the date; an automatic
             open-the-year cron is deferred. The hidden `ruleSubmitted` marker + checkbox `enable` follow the
             tri-state sub-form convention so an unchecked box reliably disables the rule. Prefilled from the
             default (next uncofigured) year's existing rule, if any. */}
-        <div className="border-t border-border px-4 py-3">
+        <details className="group border-t border-border">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="text-sm font-semibold text-foreground">{t('leaveYearAdvancedTitle')}</span>
+              <span className="block text-xs text-muted-foreground">{t('leaveYearAdvancedHelp')}</span>
+            </span>
+            <span className="text-xs text-muted-foreground group-open:rotate-180">▾</span>
+          </summary>
+          <div className="px-4 pb-3">
           <h3 className="text-sm font-semibold text-foreground">{t('openingRuleTitle')}</h3>
           <p className="mt-1 max-w-2xl text-xs text-muted-foreground">{t('openingRuleHelp')}</p>
           <form action={saveFutureOpeningRuleAction} className="mt-3 flex flex-wrap items-end gap-3">
@@ -478,7 +492,8 @@ export default async function LeaveEntitlementsPage({
                 ))}
             </ul>
           )}
-        </div>
+          </div>
+        </details>
 
         {/* feedback 2c7c6385 (Run Earned Accrual button): the bare fire-immediately button is replaced with a
             scope + preview/dry-run + confirm review card. Scope axes narrow the shipped idempotent engine;
