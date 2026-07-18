@@ -17,6 +17,7 @@ import {
 } from '@/core/read';
 import { Avatar, Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { hasPersonPhoto } from '@/core/person-photo';
+import { listEntitlementRecalcAudit } from '@/core/leave';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -148,7 +149,7 @@ export default async function EmployeePage({
   // b4682879 — does this employee have a profile photo the viewer may see? (existence only; never the blob).
   const photoExists = await hasPersonPhoto(s, emp.personId);
 
-  const [history, balances, requests, departments, reporting, employees, grades, delegations] = await Promise.all([
+  const [history, balances, requests, departments, reporting, employees, grades, delegations, recalcAudit] = await Promise.all([
     assignmentHistory(s, employmentId),
     leaveBalances(s, employmentId),
     leaveRequestsFor(s, employmentId),
@@ -157,6 +158,8 @@ export default async function EmployeePage({
     listEmployees(s),
     listJobGrades(s),
     delegationsFor(s, employmentId),
+    // R45 7527ea5f — profile-change entitlement recalculation history for the Leave tab.
+    listEntitlementRecalcAudit(s, employmentId),
   ]);
   // Leave entitlement breakdown (read-only). HR reuses the same component as /me; one ?asOf= drives the
   // whole leave card. RLS scopes every read, so a viewer who can't see this employment's ledger/policy
@@ -1272,6 +1275,58 @@ export default async function EmployeePage({
         </div>
     </Card>
   );
+
+  // R45 7527ea5f — Automatic Leave Entitlement Recalculation history. When a profile change (grade /
+  // employment type / hire date / confirmation) moves the resolved entitlement, the engine posts a
+  // compensating adjustment and records it here: previous → new entitlement, the reason (which field
+  // moved), and the effective date. Admin-only, shown under the Leave tab beneath the balance card.
+  const recalcReasonLabel = (reason: string): string => {
+    const key = `recalcReason.${reason}`;
+    const label = t(key);
+    return label === key ? reason : label;
+  };
+  const recalcHistoryCard = admin ? (
+    <Card id="section-entitlement-recalc">
+      <SectionHeader title={t('recalcHistoryTitle')} count={recalcAudit.length} />
+      <p className="px-4 pt-3 text-xs text-muted-foreground">{t('recalcHistoryHelp')}</p>
+      {recalcAudit.length === 0 ? (
+        <div className="p-4 text-sm text-muted-foreground">{t('recalcHistoryEmpty')}</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th className="px-4 py-2 font-medium">{t('recalcColEffective')}</th>
+                <th className="px-4 py-2 font-medium">{t('recalcColType')}</th>
+                <th className="px-4 py-2 font-medium">{t('recalcColReason')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('recalcColPrevious')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('recalcColNew')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('recalcColChange')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recalcAudit.map((r) => (
+                <tr key={r.id} className="border-b border-border last:border-0">
+                  <td className="px-4 py-2 tabular-nums">{r.effectiveOn}</td>
+                  <td className="px-4 py-2">{r.leaveTypeName}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{recalcReasonLabel(r.reason)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{r.previousEntitlement}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{r.newEntitlement}</td>
+                  <td
+                    className={`px-4 py-2 text-right tabular-nums font-medium ${
+                      r.delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : r.delta < 0 ? 'text-red-600 dark:text-red-400' : ''
+                    }`}
+                  >
+                    {r.delta > 0 ? `+${r.delta}` : r.delta}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  ) : null;
 
   // Basic Salary card (feedback 87c82b18 — "Compensation" renamed & rebuilt as salary history). The
   // salary engine (effective-dated CLOSE+INSERT, payroll picks the row in effect per period) already
@@ -2517,6 +2572,8 @@ export default async function EmployeePage({
         {/* Item 52a30630 — Grade relocated from Profile onto this tab, pinned above the balance card. */}
         {gradeCard}
         {leaveBalanceCard}
+        {/* R45 7527ea5f — profile-change entitlement recalculation history. */}
+        {recalcHistoryCard}
       </>
     ),
     documents: documentsPanel,

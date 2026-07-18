@@ -88,6 +88,7 @@ import {
   leaveApprovalStep,
   leaveCancellationRequest,
   leaveEncashmentSnapshot,
+  leaveEntitlementRecalcAudit,
   leaveLedger,
   leavePolicy,
   leaveRequest,
@@ -4007,6 +4008,21 @@ export const AGED_FORFEIT_REASON = 'sys:leave_type_expiry';
  */
 export const POLICY_RECALC_REASON_PREFIX = 'sys:policy_recalc';
 
+/** R45 7527ea5f — reason prefix for the PROFILE-triggered recalc (reprojectEntitlementForEmployment): when
+ *  an employee's grade / grade group / employment type / confirmation status / hire date changes, the current
+ *  cycle is re-projected and a compensating `adjustment` (reason `sys:profile_recalc:<employmentId>`) is
+ *  posted. Same `sys:` family as the policy prefix — counts as "already granted this cycle" everywhere the
+ *  policy prefix does, so the two recalc paths (and the accrual cron) stay mutually idempotent. */
+export const PROFILE_RECALC_REASON_PREFIX = 'sys:profile_recalc';
+
+/** Drizzle predicate: a `leave_ledger.reason` stamped by EITHER recalc path (policy or profile). Both count
+ *  as already-materialized entitlement, so the delta math sees them and never double-posts. */
+const recalcAdjustmentReasonCond = () =>
+  or(
+    like(leaveLedger.reason, `${POLICY_RECALC_REASON_PREFIX}:%`),
+    like(leaveLedger.reason, `${PROFILE_RECALC_REASON_PREFIX}:%`),
+  );
+
 /** Completed years of service at a date (calendar-accurate, not /365.25). */
 export const serviceYearsAt = (hiredOn: string, asOf: string): number => {
   const h = new Date(`${hiredOn}T00:00:00Z`);
@@ -4090,6 +4106,33 @@ export async function listLeaveYearConfigs(ctx: SessionContext): Promise<LeaveYe
       openedAt: r.openedAt ? r.openedAt.toISOString() : null,
       openedBy: r.openedBy ?? null,
     }));
+  });
+}
+
+/** R45 fd71fa38 — the set of calendar years that already have leave RECORDS (any leave_ledger row dated in
+ *  the year, or any leave_request overlapping it). The Leave-Year table uses this to DISABLE the row Delete
+ *  button for a referenced year (the service `deleteLeaveYear` guard is the authoritative block; this only
+ *  drives the pre-emptive UI affordance). Read-only, no events. */
+export async function leaveYearsWithRecords(ctx: SessionContext): Promise<number[]> {
+  return withTenant(ctx, async (tx) => {
+    const ledgerYears = await tx
+      .select({ yr: sql<number>`EXTRACT(YEAR FROM ${leaveLedger.effectiveOn})::int` })
+      .from(leaveLedger)
+      .where(eq(leaveLedger.tenantId, ctx.tenantId))
+      .groupBy(sql`1`);
+    const startYears = await tx
+      .select({ yr: sql<number>`EXTRACT(YEAR FROM ${leaveRequest.startDate})::int` })
+      .from(leaveRequest)
+      .where(eq(leaveRequest.tenantId, ctx.tenantId))
+      .groupBy(sql`1`);
+    const endYears = await tx
+      .select({ yr: sql<number>`EXTRACT(YEAR FROM ${leaveRequest.endDate})::int` })
+      .from(leaveRequest)
+      .where(eq(leaveRequest.tenantId, ctx.tenantId))
+      .groupBy(sql`1`);
+    const years = new Set<number>();
+    for (const r of [...ledgerYears, ...startYears, ...endYears]) years.add(Number(r.yr));
+    return [...years];
   });
 }
 
@@ -4331,6 +4374,99 @@ export async function saveFutureOpeningRule(
       },
     });
     return { id: row.id, openLeaveYearDate, enabled: p.enabled };
+  });
+}
+
+/** R45 fd71fa38 — a typed error the delete-leave-year path throws when the guard blocks removal (year not
+ *  draft, or leave records already reference it). The action layer surfaces `.message` to the admin. */
+export class LeaveYearDeleteError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LeaveYearDeleteError';
+  }
+}
+
+/**
+ * R45 fd71fa38 — Delete a managed leave-year record. Edit + lifecycle already exist; this adds removal for a
+ * mistakenly-created draft year. There is NO FK to lean on (the grant ledger + leave requests are keyed by
+ * the integer year, not by leave_year_config.id), so the guard is enforced HERE, service-side:
+ *   - the year must still be in `draft` (an opened/closed year has driven grants — never silently orphan them);
+ *   - AND zero leave_ledger rows fall inside the calendar year (no entitlement generated / transactions);
+ *   - AND zero leave_request rows overlap the calendar year (no applications reference it).
+ * Any violation throws LeaveYearDeleteError (the reporter's "cannot delete — records exist"). On success the
+ * row is removed and a `leave-year.deleted` DomainEvent is appended (substrate: the delete write → event).
+ */
+export async function deleteLeaveYear(ctx: SessionContext, p: { year: number }) {
+  if (!Number.isInteger(p.year)) throw new Error('Invalid leave year');
+  const yearStart = `${p.year}-01-01`;
+  const yearEnd = `${p.year}-12-31`;
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(leaveYearConfig)
+      .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.year, p.year)))
+      .limit(1);
+    if (!before) throw new LeaveYearDeleteError('This leave year no longer exists.');
+    if (before.status !== 'draft') {
+      throw new LeaveYearDeleteError(
+        'This leave year cannot be deleted because it has been opened. Only a draft year can be removed.',
+      );
+    }
+    // Guard 1: any leave_ledger row dated inside the calendar year ⇒ entitlement/transactions exist.
+    const [ledgerHit] = await tx
+      .select({ id: leaveLedger.id })
+      .from(leaveLedger)
+      .where(
+        and(
+          eq(leaveLedger.tenantId, ctx.tenantId),
+          gte(leaveLedger.effectiveOn, yearStart),
+          lte(leaveLedger.effectiveOn, yearEnd),
+        ),
+      )
+      .limit(1);
+    if (ledgerHit) {
+      throw new LeaveYearDeleteError(
+        'This leave year cannot be deleted because leave records already exist for it.',
+      );
+    }
+    // Guard 2: any leave_request overlapping the calendar year ⇒ applications reference it.
+    const [requestHit] = await tx
+      .select({ id: leaveRequest.id })
+      .from(leaveRequest)
+      .where(
+        and(
+          eq(leaveRequest.tenantId, ctx.tenantId),
+          lte(leaveRequest.startDate, yearEnd),
+          gte(leaveRequest.endDate, yearStart),
+        ),
+      )
+      .limit(1);
+    if (requestHit) {
+      throw new LeaveYearDeleteError(
+        'This leave year cannot be deleted because leave applications already reference it.',
+      );
+    }
+
+    await tx
+      .delete(leaveYearConfig)
+      .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.id, before.id)));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-year',
+      aggregateId: before.id,
+      eventType: 'leave-year.deleted',
+      actor: actorOf(ctx),
+      payload: {
+        year: p.year,
+        before: {
+          status: before.status,
+          openLeaveYearDate: before.openLeaveYearDate ?? null,
+          employeeApplicationStartDate: before.employeeApplicationStartDate ?? null,
+          openingRuleEnabled: before.openingRuleEnabled,
+        },
+      },
+    });
+    return { deleted: true, year: p.year };
   });
 }
 
@@ -4837,16 +4973,16 @@ export async function accrueEarnedLeave(
         and(
           inArray(leaveLedger.employmentId, empIds),
           inArray(leaveLedger.leaveTypeId, earnedTypeIds),
-          // Feedback 49809272: the `already` sum must ALSO see the compensating `sys:policy_recalc:*`
-          // adjustments an in-place policy correction posts mid-cycle (reprojectEntitlementForPolicy) —
-          // otherwise this top-up would re-grant the same delta on top of the recalc credit. No
-          // pre-existing row carries that reason, so behaviour is byte-identical for tenants that never
-          // corrected a policy in place.
+          // Feedback 49809272 + R45 7527ea5f: the `already` sum must ALSO see the compensating
+          // `sys:policy_recalc:*` / `sys:profile_recalc:*` adjustments a policy correction or a profile-change
+          // recalc posts mid-cycle (reprojectEntitlementForPolicy / reprojectEntitlementForEmployment) —
+          // otherwise this top-up would re-grant the same delta on top of the recalc credit. No pre-existing
+          // row carries either reason, so behaviour is byte-identical for tenants that never recalc'd.
           or(
             eq(leaveLedger.entryType, 'accrual'),
             and(
               eq(leaveLedger.entryType, 'adjustment'),
-              like(leaveLedger.reason, `${POLICY_RECALC_REASON_PREFIX}:%`),
+              recalcAdjustmentReasonCond(),
             ),
           ),
           gte(leaveLedger.effectiveOn, accrualFrom),
@@ -5068,6 +5204,61 @@ export async function accrueEarnedLeave(
 export type PolicyScope = { gradeId: string | null; companyId: string | null };
 
 /**
+ * Pure per-employee current-cycle entitlement projection — the shared kernel used by BOTH recalc paths:
+ * the policy-triggered `reprojectEntitlementForPolicy` (49809272) and the profile-triggered
+ * `reprojectEntitlementForEmployment` (R45 7527ea5f). Given the employee's service facts + the active
+ * policy rows for one leave type, it returns the entitlement that SHOULD be materialized to `asOf` for the
+ * current cycle, plus that cycle's window start. Byte-identical to the granting engines (openLeaveYear /
+ * the hire grant / accrueEarnedLeave): resolve the winning grade policy, apply the EA-1955 floor, then
+ * project upfront (calendar-year, hire-month prorate for ANNUAL) or earned (elapsed periods only).
+ *
+ * Returns null to signal a defensive SKIP: an anniversary company whose calendar-year re-resolution flips
+ * the winner to an earned method (mixing windows) — the caller leaves that employee/type untouched.
+ */
+export function projectExpectedEntitlement(
+  emp: { hiredOn: string; leaveCycle: string | null; gradeId: string | null; companyId: string },
+  typeCode: string,
+  policyRows: GradePolicyRow[],
+  floor: (code: string, years: number) => number,
+  asOf: string,
+): { expected: number; windowStart: string } | null {
+  const yearStart = `${asOf.slice(0, 4)}-01-01`;
+  const cycleStartEarned = earnedCycleStart(emp.hiredOn, asOf, emp.leaveCycle);
+  let years = serviceYearsAt(emp.hiredOn, cycleStartEarned);
+  let pol = resolveGradePolicy(policyRows, emp.gradeId, emp.companyId, years);
+  const earnedMethod = isEarnedMethod(pol?.method);
+  if (!earnedMethod && cycleStartEarned !== yearStart) {
+    // Anniversary company whose winner is upfront: re-resolve with service measured at the calendar
+    // year-open (openLeaveYear's own band anchor). If a banded config flips the winner to an earned
+    // method under these years, skip defensively rather than mix windows.
+    years = serviceYearsAt(emp.hiredOn, yearStart);
+    pol = resolveGradePolicy(policyRows, emp.gradeId, emp.companyId, years);
+    if (isEarnedMethod(pol?.method)) return null;
+  }
+  const windowStart = earnedMethod ? cycleStartEarned : yearStart;
+
+  // ⚠️ EA-FLOOR INVARIANT — identical to openLeaveYear / the hire grant / accrueEarnedLeave: the resolved
+  // entitlement is max(statutory floor, policy). A below-floor correction claws back only down TO the floor.
+  const days = Math.max(floor(typeCode, years), pol?.days ?? 0);
+  let expected: number;
+  if (earnedMethod) {
+    const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
+    const accrualStart =
+      emp.leaveCycle === 'anniversary' || emp.hiredOn <= windowStart ? windowStart : `${emp.hiredOn.slice(0, 7)}-01`;
+    const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, asOf, pol!.method!));
+    expected = days > 0 ? round2((days / totalPeriods) * elapsed) : 0;
+  } else if (emp.hiredOn >= windowStart && typeCode === 'ANNUAL') {
+    // Joiner during the current leave year: ANNUAL pro-rates by hire month (core/org.ts formula).
+    const month = Number(emp.hiredOn.slice(5, 7));
+    expected = round2((days * (12 - (month - 1))) / 12);
+  } else {
+    // Existing employee (year-open grant) or a non-prorating type: the full resolved amount.
+    expected = days;
+  }
+  return { expected, windowStart };
+}
+
+/**
  * Configurable Earned Leave Entitlement Rules (feedback 49809272) — when an admin CORRECTS an
  * entitlement policy IN PLACE (updateLeavePolicy: same effective date, "fix a mis-typed value"), the
  * employees who were ALREADY granted under the old values this cycle must not keep a stale balance.
@@ -5202,7 +5393,7 @@ export async function reprojectEntitlementForPolicy(
 
   // 5. Bulk ledger read (never per-employee): trailing ~12 months covers every possible cycle start
   //    (calendar Jan-1 and any anniversary month) — the accrueEarnedLeave pattern. Fetch the `accrual`
-  //    grants PLUS prior policy-recalc adjustments; both count as "already posted" (idempotency).
+  //    grants PLUS prior policy-/profile-recalc adjustments; all count as "already posted" (idempotency).
   const accrualFrom = `${Number(p.asOf.slice(0, 4)) - 1}-${p.asOf.slice(5, 7)}-01`;
   const ledgerRows = await tx
     .select({
@@ -5219,10 +5410,7 @@ export async function reprojectEntitlementForPolicy(
         gte(leaveLedger.effectiveOn, accrualFrom),
         or(
           eq(leaveLedger.entryType, 'accrual'),
-          and(
-            eq(leaveLedger.entryType, 'adjustment'),
-            like(leaveLedger.reason, `${POLICY_RECALC_REASON_PREFIX}:%`),
-          ),
+          and(eq(leaveLedger.entryType, 'adjustment'), recalcAdjustmentReasonCond()),
         ),
       ),
     );
@@ -5244,42 +5432,17 @@ export async function reprojectEntitlementForPolicy(
     if (!pack) continue;
     if (frozenSet.has(`${e.employmentId}|${p.leaveTypeId}`)) continue;
 
-    // Resolve the employee's winner. Earned-ness decides the projection window: earned re-projects the
-    // employee's accrual cycle (2D-2, calendar or anniversary); upfront re-projects the calendar leave
-    // year (hire grants and openLeaveYear are calendar-anchored regardless of company leaveCycle).
-    const cycleStartEarned = earnedCycleStart(e.hiredOn, p.asOf, e.leaveCycle);
-    let years = serviceYearsAt(e.hiredOn, cycleStartEarned);
-    let pol = resolveGradePolicy(policyRows, e.gradeId, e.companyId, years);
-    const earnedMethod = isEarnedMethod(pol?.method);
-    if (!earnedMethod && cycleStartEarned !== yearStart) {
-      // Anniversary company whose winner is upfront: re-resolve with service measured at the calendar
-      // year-open (openLeaveYear's own band anchor). If a banded config flips the winner to an earned
-      // method under these years, skip defensively rather than mix windows.
-      years = serviceYearsAt(e.hiredOn, yearStart);
-      pol = resolveGradePolicy(policyRows, e.gradeId, e.companyId, years);
-      if (isEarnedMethod(pol?.method)) continue;
-    }
-    const windowStart = earnedMethod ? cycleStartEarned : yearStart;
-
-    // ⚠️ EA-FLOOR INVARIANT — identical to openLeaveYear / the hire grant / accrueEarnedLeave: the
-    // resolved entitlement is max(statutory floor, policy). A below-floor correction claws back only
-    // down TO the floor, never below it.
-    const days = Math.max(pack.leave.entitlement(type.code, years), pol?.days ?? 0);
-    let expected: number;
-    if (earnedMethod) {
-      const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
-      const accrualStart =
-        e.leaveCycle === 'anniversary' || e.hiredOn <= windowStart ? windowStart : `${e.hiredOn.slice(0, 7)}-01`;
-      const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, p.asOf, pol!.method!));
-      expected = days > 0 ? round2((days / totalPeriods) * elapsed) : 0;
-    } else if (e.hiredOn >= windowStart && type.code === 'ANNUAL') {
-      // Joiner during the current leave year: ANNUAL pro-rates by hire month (core/org.ts formula).
-      const month = Number(e.hiredOn.slice(5, 7));
-      expected = round2((days * (12 - (month - 1))) / 12);
-    } else {
-      // Existing employee (year-open grant) or a non-prorating type: the full resolved amount.
-      expected = days;
-    }
+    // Resolve the employee's winner + project the current-cycle entitlement via the shared kernel (same
+    // math the profile-triggered recalc uses). null ⇒ defensive skip (anniversary/earned window mix).
+    const projected = projectExpectedEntitlement(
+      { hiredOn: e.hiredOn, leaveCycle: e.leaveCycle, gradeId: e.gradeId, companyId: e.companyId },
+      type.code,
+      policyRows,
+      (c, y) => pack.leave.entitlement(c, y),
+      p.asOf,
+    );
+    if (!projected) continue;
+    const { expected, windowStart } = projected;
 
     const inWindow = (rowsBy.get(e.employmentId) ?? []).filter((r) => r.effectiveOn >= windowStart);
     // Materialized-only guard (see the docblock): no `accrual` row this cycle ⇒ nothing to correct here.
@@ -5325,6 +5488,253 @@ export async function reprojectEntitlementForPolicy(
     totalDelta = round2(totalDelta + delta);
   }
   return { affected, totalDelta };
+}
+
+// ── Profile-change recalculation (R45 7527ea5f) ────────────────────────────────────────────────────
+/**
+ * Automatic Leave Entitlement Recalculation on profile / eligibility change (R45 7527ea5f).
+ *
+ * The counterpart to reprojectEntitlementForPolicy: that path fires when the POLICY moves; THIS path fires
+ * when the EMPLOYEE's own profile moves — grade, grade group, employment type, confirmation status, or hire
+ * date — any of which can change the resolved entitlement (a promotion to a grade with more days, passing
+ * probation into a scheme, a corrected hire date shifting the service band). For the ONE changed employment
+ * it re-projects the current cycle across every active leave type and posts a compensating `adjustment`
+ * (reason `sys:profile_recalc:<employmentId>`) for the delta between what the corrected profile SHOULD have
+ * materialized to `asOf` and what the ledger already holds — then records an audit-history row and appends
+ * one `leave.entitlement.recalculated` DomainEvent per corrected type.
+ *
+ * Same invariants as the policy path (they share `projectExpectedEntitlement`):
+ *  - CURRENT cycle only (closed prior years, governed by their year-open version, are never rewritten).
+ *  - MATERIALIZED-only: a type with no `accrual` row this cycle is skipped (the grant engines will grant
+ *    from the new profile when they next run; posting here would double-grant).
+ *  - EA-FLOOR: expected = max(statutory floor, band-resolved policy days).
+ *  - IDEMPOTENT: prior `sys:policy_recalc:*` AND `sys:profile_recalc:*` adjustments count into
+ *    `alreadyPosted`, so re-running after a no-op profile save computes delta 0 and posts nothing.
+ *  - FROZEN encashment snapshots are skipped (the DB trigger would abort the tx).
+ *
+ * Runs in its OWN transaction AFTER the profile write has committed (called best-effort from the personnel
+ * actions), so a recalc hiccup never blocks the profile edit — the correction is idempotent and self-heals
+ * on the next trigger. `trigger` names the profile field that moved (recorded on the audit row + event).
+ */
+export async function reprojectEntitlementForEmployment(
+  ctx: SessionContext,
+  p: { employmentId: string; asOf?: string; trigger: string },
+): Promise<{ affected: number; totalDelta: number }> {
+  const asOf = p.asOf ?? todayInKualaLumpur();
+  const none = { affected: 0, totalDelta: 0 };
+  return withTenant(ctx, async (tx) => {
+    // 1. Resolve the employment + its company's country/leave-cycle context.
+    const [emp] = await tx
+      .select({
+        employmentId: employment.id,
+        hiredOn: employment.hiredOn,
+        gradeId: employment.gradeId,
+        companyId: employment.companyId,
+        terminatedOn: employment.terminatedOn,
+        country: company.country,
+        leaveCycle: company.leaveCycle,
+      })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp) return none;
+    const pack = packFor(emp.country);
+    if (!pack) return none;
+    // Same live-in-cycle window guard the granting engines use: pre-hire or terminated-before-this-year
+    // employments have nothing to correct in the current cycle.
+    const yearStart = `${asOf.slice(0, 4)}-01-01`;
+    if (emp.hiredOn > asOf) return none;
+    if (emp.terminatedOn != null && emp.terminatedOn < yearStart) return none;
+
+    // 2. Active leave types (a type with no accrual row this cycle is skipped by the materialized guard).
+    const types = await tx
+      .select({ id: leaveType.id, code: leaveType.code })
+      .from(leaveType)
+      .where(and(eq(leaveType.tenantId, ctx.tenantId), isNull(leaveType.archivedAt)));
+    if (types.length === 0) return none;
+    const typeIds = types.map((t) => t.id);
+
+    // 3. All active policies for these types as of asOf, grouped by type (resolveGradePolicy picks the
+    //    employee's winner among them — exactly as openLeaveYear / accrueEarnedLeave do).
+    const policyRows = await tx
+      .select({
+        leaveTypeId: leavePolicy.leaveTypeId,
+        gradeId: leavePolicy.gradeId,
+        companyId: leavePolicy.companyId,
+        accrual: leavePolicy.accrual,
+      })
+      .from(leavePolicy)
+      .where(
+        and(
+          inArray(leavePolicy.leaveTypeId, typeIds),
+          lte(leavePolicy.validFrom, asOf),
+          or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, asOf)),
+        ),
+      );
+    const policyByType = new Map<string, GradePolicyRow[]>();
+    for (const r of policyRows) {
+      const arr = policyByType.get(r.leaveTypeId);
+      const row: GradePolicyRow = { gradeId: r.gradeId, companyId: r.companyId, accrual: r.accrual };
+      if (arr) arr.push(row);
+      else policyByType.set(r.leaveTypeId, [row]);
+    }
+
+    // 4. This employment's ledger across all types (accrual grants + prior recalc adjustments) — the
+    //    trailing ~12 months covers every possible cycle start (calendar Jan-1 and any anniversary month).
+    const accrualFrom = `${Number(asOf.slice(0, 4)) - 1}-${asOf.slice(5, 7)}-01`;
+    const ledgerRows = await tx
+      .select({
+        leaveTypeId: leaveLedger.leaveTypeId,
+        entryType: leaveLedger.entryType,
+        days: leaveLedger.days,
+        effectiveOn: leaveLedger.effectiveOn,
+      })
+      .from(leaveLedger)
+      .where(
+        and(
+          eq(leaveLedger.employmentId, p.employmentId),
+          inArray(leaveLedger.leaveTypeId, typeIds),
+          gte(leaveLedger.effectiveOn, accrualFrom),
+          or(
+            eq(leaveLedger.entryType, 'accrual'),
+            and(eq(leaveLedger.entryType, 'adjustment'), recalcAdjustmentReasonCond()),
+          ),
+        ),
+      );
+    const ledgerByType = new Map<string, { entryType: string; days: number; effectiveOn: string }[]>();
+    for (const r of ledgerRows) {
+      const row = { entryType: r.entryType, days: Number(r.days), effectiveOn: r.effectiveOn };
+      const arr = ledgerByType.get(r.leaveTypeId);
+      if (arr) arr.push(row);
+      else ledgerByType.set(r.leaveTypeId, [row]);
+    }
+
+    // ADR-0069: never touch a balance frozen for encashment (the DB trigger would abort the whole tx).
+    const frozenSet = await frozenSnapshotKeySet(tx, [p.employmentId], typeIds);
+
+    let affected = 0;
+    let totalDelta = 0;
+    for (const type of types) {
+      if (frozenSet.has(`${p.employmentId}|${type.id}`)) continue;
+      const projected = projectExpectedEntitlement(
+        { hiredOn: emp.hiredOn, leaveCycle: emp.leaveCycle, gradeId: emp.gradeId, companyId: emp.companyId },
+        type.code,
+        policyByType.get(type.id) ?? [],
+        (c, y) => pack.leave.entitlement(c, y),
+        asOf,
+      );
+      if (!projected) continue;
+      const { expected, windowStart } = projected;
+
+      const inWindow = (ledgerByType.get(type.id) ?? []).filter((r) => r.effectiveOn >= windowStart);
+      // Materialized-only guard: no `accrual` row this cycle ⇒ nothing granted yet ⇒ nothing to correct.
+      if (!inWindow.some((r) => r.entryType === 'accrual')) continue;
+      const alreadyPosted = round2(inWindow.reduce((s, r) => s + r.days, 0));
+      const delta = round2(expected - alreadyPosted);
+      if (delta === 0) continue;
+
+      const [row] = await tx
+        .insert(leaveLedger)
+        .values({
+          tenantId: ctx.tenantId,
+          employmentId: p.employmentId,
+          leaveTypeId: type.id,
+          entryType: 'adjustment',
+          days: delta.toFixed(2),
+          effectiveOn: asOf,
+          reason: `${PROFILE_RECALC_REASON_PREFIX}:${p.employmentId}`,
+        })
+        .returning({ id: leaveLedger.id });
+      // Audit-history row (the human-readable trail: previous → new entitlement, why, effective date).
+      await tx.insert(leaveEntitlementRecalcAudit).values({
+        tenantId: ctx.tenantId,
+        employmentId: p.employmentId,
+        leaveTypeId: type.id,
+        previousEntitlement: alreadyPosted.toFixed(2),
+        newEntitlement: expected.toFixed(2),
+        delta: delta.toFixed(2),
+        reason: p.trigger,
+        effectiveOn: asOf,
+        ledgerId: row.id,
+      });
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'leave-ledger',
+        aggregateId: row.id,
+        eventType: 'leave.entitlement.recalculated',
+        actor: actorOf(ctx),
+        subjectEmploymentId: p.employmentId,
+        payload: {
+          employmentId: p.employmentId,
+          leaveTypeId: type.id,
+          before: alreadyPosted,
+          after: expected,
+          delta,
+          cycleStart: windowStart,
+          reason: 'profile_recalc',
+          trigger: p.trigger,
+        },
+      });
+      affected += 1;
+      totalDelta = round2(totalDelta + delta);
+    }
+    return { affected, totalDelta };
+  });
+}
+
+/** R45 7527ea5f — the profile-change recalculation history for one employment (newest first), joined to
+ *  the leave-type name for display. Read-only (RLS: tenant-read), no events. */
+export async function listEntitlementRecalcAudit(
+  ctx: SessionContext,
+  employmentId: string,
+): Promise<
+  {
+    id: string;
+    leaveTypeId: string;
+    leaveTypeName: string;
+    previousEntitlement: number;
+    newEntitlement: number;
+    delta: number;
+    reason: string;
+    effectiveOn: string;
+    createdAt: string;
+  }[]
+> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: leaveEntitlementRecalcAudit.id,
+        leaveTypeId: leaveEntitlementRecalcAudit.leaveTypeId,
+        leaveTypeName: leaveType.name,
+        previousEntitlement: leaveEntitlementRecalcAudit.previousEntitlement,
+        newEntitlement: leaveEntitlementRecalcAudit.newEntitlement,
+        delta: leaveEntitlementRecalcAudit.delta,
+        reason: leaveEntitlementRecalcAudit.reason,
+        effectiveOn: leaveEntitlementRecalcAudit.effectiveOn,
+        createdAt: leaveEntitlementRecalcAudit.createdAt,
+      })
+      .from(leaveEntitlementRecalcAudit)
+      .innerJoin(leaveType, eq(leaveType.id, leaveEntitlementRecalcAudit.leaveTypeId))
+      .where(
+        and(
+          eq(leaveEntitlementRecalcAudit.tenantId, ctx.tenantId),
+          eq(leaveEntitlementRecalcAudit.employmentId, employmentId),
+        ),
+      )
+      .orderBy(desc(leaveEntitlementRecalcAudit.createdAt));
+    return rows.map((r) => ({
+      id: r.id,
+      leaveTypeId: r.leaveTypeId,
+      leaveTypeName: r.leaveTypeName,
+      previousEntitlement: Number(r.previousEntitlement),
+      newEntitlement: Number(r.newEntitlement),
+      delta: Number(r.delta),
+      reason: r.reason,
+      effectiveOn: r.effectiveOn,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  });
 }
 
 // ── Carry reconstruction (shared by expireCarriedLeave + the read-only breakdown view) ─────────────

@@ -6,6 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentBlacklist, setEmploymentGrade, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation, updateCompensation } from '@/core/comp';
+import { reprojectEntitlementForEmployment } from '@/core/leave';
 import { assignEmployeeShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
 import { FixedTransactionAmountError, FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
@@ -34,6 +35,26 @@ function withTab(formData: FormData, url: string): string {
 }
 
 const REVIEW_TYPES: ReviewType[] = ['probation', 'contract', 'internship'];
+
+/**
+ * R45 7527ea5f — Automatic Leave Entitlement Recalculation. After a profile change that can move an
+ * employee's leave entitlement (grade / grade group / employment type / confirmation status / hire date),
+ * re-project their current-cycle entitlement and post a compensating adjustment + audit-history row (see
+ * reprojectEntitlementForEmployment). Best-effort: the profile write has already committed, and the recalc
+ * is idempotent + self-healing, so a hiccup here must never fail the save the admin just made. `trigger`
+ * names the field that moved (recorded on the audit trail).
+ */
+async function recomputeEntitlement(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  employmentId: string,
+  trigger: string,
+): Promise<void> {
+  try {
+    await reprojectEntitlementForEmployment(s, { employmentId, trigger });
+  } catch {
+    // non-fatal — idempotent, re-runs on the next profile trigger or policy edit.
+  }
+}
 
 export async function setReviewEndDateAction(formData: FormData) {
   const s = await requireAdmin();
@@ -514,6 +535,8 @@ export async function setEmploymentGradeAction(formData: FormData) {
   const employmentId = String(formData.get('employmentId'));
   try {
     await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null });
+    // R45 7527ea5f — a grade change can move the resolved (grade-scoped) leave entitlement; recompute.
+    await recomputeEntitlement(s, employmentId, 'grade_changed');
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -669,6 +692,9 @@ export async function setEmploymentInfoAction(formData: FormData) {
       orgBase: str('orgBase'),
       employmentCategory: str('employmentCategory'),
     });
+    // R45 7527ea5f — hire date + confirmation date drive service-band + probation-eligibility entitlement;
+    // recompute the current cycle when they change.
+    await recomputeEntitlement(s, employmentId, 'employment_info_changed');
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -715,6 +741,9 @@ export async function setEmploymentAssignmentAction(formData: FormData) {
       businessUnitId: (formData.get('businessUnitId') as string) || null,
       employmentType,
     });
+    // R45 7527ea5f — grade + employment type feed benefit-scheme / grade-scoped entitlement resolution;
+    // recompute the current cycle after this assignment change.
+    await recomputeEntitlement(s, employmentId, 'employment_changed');
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }

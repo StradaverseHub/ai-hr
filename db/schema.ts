@@ -4502,6 +4502,42 @@ export const leaveYearConfig = pgTable(
 );
 export type LeaveYearConfigRow = typeof leaveYearConfig.$inferSelect;
 
+// R45 7527ea5f — Automatic Leave Entitlement Recalculation history (0245). When an employee's PROFILE
+// changes (grade / grade group / employment type / confirmation status / hire date), the leave engine
+// re-projects the current cycle and posts a compensating `adjustment` ledger row (reason sys:profile_recalc:*)
+// — see reprojectEntitlementForEmployment in core/leave.ts. This table is the human-readable audit trail of
+// each such recalculation: what the entitlement was before, what it became, why (which profile field moved),
+// and the effective date. `ledger_id` links to the compensating leave_ledger row that carried the delta.
+// RLS: tenant-read + admin-write, mirroring leave_year_config / the other leave-config tables.
+export const leaveEntitlementRecalcAudit = pgTable(
+  'leave_entitlement_recalc_audit',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    leaveTypeId: uuid('leave_type_id')
+      .notNull()
+      .references(() => leaveType.id),
+    // The signed running entitlement materialized BEFORE this recalc (accrual + prior recalc adjustments).
+    previousEntitlement: numeric('previous_entitlement', { precision: 6, scale: 2 }).notNull(),
+    // The re-projected entitlement the corrected profile SHOULD have for the current cycle.
+    newEntitlement: numeric('new_entitlement', { precision: 6, scale: 2 }).notNull(),
+    // newEntitlement − previousEntitlement (the compensating adjustment posted to the ledger).
+    delta: numeric('delta', { precision: 6, scale: 2 }).notNull(),
+    // Which profile change triggered the recalc (e.g. 'grade_changed', 'employment_changed', 'hire_date_changed').
+    reason: text('reason').notNull(),
+    // The date the compensating adjustment was posted (the recalc's effective date, = the cycle asOf).
+    effectiveOn: date('effective_on').notNull(),
+    // The leave_ledger row that carried the compensating delta (nullable for defensive/rollback safety).
+    ledgerId: uuid('ledger_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('leave_entitlement_recalc_audit_employment_idx').on(t.employmentId, t.leaveTypeId)],
+);
+export type LeaveEntitlementRecalcAuditRow = typeof leaveEntitlementRecalcAudit.$inferSelect;
+
 // Dependent sub-category under a claim type (e.g. TRAVEL → MILEAGE / PARKING / TOLL). The submission form
 // shows it as a dependent dropdown; mandatory only when the chosen type has ≥1 live item (enforced in the
 // service, not the schema — claim_request.claim_item_id stays nullable for legacy/zero-item types).
