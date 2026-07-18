@@ -75,28 +75,29 @@ describe('dafd475a — standardized System Labels columns', () => {
     expect(col.status).toBe('Status');
   });
 
-  // ── B. Profile Options page: standardized table header set + order ───────────────────────────────
-  it('B. profile-options page renders the six standard headers in order, labelled per the standard set', () => {
-    const src = read('app/admin/settings/system-labels/profile-options/page.tsx');
+  // ── B. Profile Options grid: standardized header set + order ─────────────────────────────────────
+  // 15277676 — Profile Options was rebuilt from a stack of one table-per-category into a single Excel-style
+  // master-data grid (components/profile-options-grid.tsx). The standardized Code / Label / Description
+  // headers are preserved and precede Status / Action; the flat tenant-wide catalog has no Criteria(scope),
+  // so that always-"N/A" column is dropped and a useful Sort column takes its place.
+  it('B. profile-options grid renders the standard headers in order, labelled per the standard set', () => {
+    const src = read('components/profile-options-grid.tsx');
     // It is a real table with a header row.
     expect(src).toContain('<table');
-    // The six headers render in the standard order.
-    const order = ['col.code', 'col.label', 'col.description', 'col.criteria', 'col.status', 'col.action'];
+    // The standardized headers render in order (Code → Label → Description → … → Status → Action).
+    const order = ['col.code', 'col.label', 'col.description', 'col.status', 'col.action'];
     for (let i = 1; i < order.length; i++) {
       expect(at(src, order[i - 1]), `${order[i - 1]} before ${order[i]}`).toBeLessThan(at(src, order[i]));
     }
-    // Criteria is surfaced as N/A for the flat catalog.
-    expect(src).toContain("t('criteriaNa')");
+    // A Sort column replaces the (N/A) Criteria column for the flat catalog.
+    expect(src).toContain("t('sortOrderLabel')");
 
     const col = en.admin.profileOptions.col;
-    expect(col).toEqual({
-      code: 'Code',
-      label: 'Label',
-      description: 'Description',
-      criteria: 'Criteria',
-      status: 'Status',
-      action: 'Actions',
-    });
+    expect(col.code).toBe('Code');
+    expect(col.label).toBe('Label');
+    expect(col.description).toBe('Description');
+    expect(col.status).toBe('Status');
+    expect(col.action).toBe('Actions');
   });
 
   // ── DB-backed suite ──────────────────────────────────────────────────────────────────────────────
