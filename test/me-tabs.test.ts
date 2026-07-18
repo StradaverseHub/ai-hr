@@ -19,6 +19,7 @@ const ACTIONS = [
   'myCheckIn',
   'myCheckOut',
   'myRequestCorrection',
+  'myRequestOvertime',
   'myRequestTravel',
   'myRequestLeave',
   'myPreviewLeaveDeduction',

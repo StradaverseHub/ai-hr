@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
-import { attendanceMonthSummary, listAttendanceCorrections } from '@/core/attendance';
+import { attendanceMonthSummary, listAttendanceCorrections, resolveApprovedOt } from '@/core/attendance';
 import { Avatar, Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { OtReportExport } from '@/components/ot-report-export';
 import { AttendanceTabs } from '@/components/attendance-tabs';
@@ -90,6 +90,13 @@ export default async function AttendancePage({
                 {corrections.map((c) => {
                   // No self-approval (the service enforces it too — this just hides the buttons).
                   const canAct = s.personId == null || c.personId !== s.personId;
+                  // R45 3707cba9 — surface the "Actual vs Approved" OT the decide path already computes:
+                  // Actual = the engine's system-calculated OT from the day's real clockings; Approved =
+                  // that + the request run through the company's OT-approval rule (previewed pre-decision).
+                  const previewApprovedOt =
+                    c.requestedOtMinutes != null
+                      ? resolveApprovedOt(c.requestedOtMinutes, c.systemOtMinutes, c.otApprovalCalculation ?? 'system_calculated')
+                      : null;
                   return (
                     <tr key={c.id}>
                       <td className="px-4 py-2.5">
@@ -103,9 +110,17 @@ export default async function AttendancePage({
                         {c.proposedCheckIn
                           ? `${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? ` → ${c.proposedCheckOut.slice(0, 5)}` : ''}`
                           : ''}
-                        {c.requestedOtMinutes != null
-                          ? `${c.proposedCheckIn ? ' · ' : ''}${t('otHoursLabel')} ${(c.requestedOtMinutes / 60).toFixed(1)}h`
-                          : ''}
+                        {c.requestedOtMinutes != null && (
+                          <div className="flex flex-col gap-0.5">
+                            <span>
+                              {c.proposedCheckIn ? '· ' : ''}
+                              {t('otHoursLabel')} {(c.requestedOtMinutes / 60).toFixed(1)}h
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {t('actualOt')} {fmtOt(c.systemOtMinutes)} · {t('approvedOt')} {fmtOt(previewApprovedOt)}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-muted-foreground">{c.reason ?? '—'}</td>
                       <td className="px-4 py-2.5">

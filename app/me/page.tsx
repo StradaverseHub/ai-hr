@@ -45,6 +45,7 @@ import {
   myCreateGoal,
   myDeclinePeerFeedback,
   myRequestCorrection,
+  myRequestOvertime,
   myRequestTravel,
   myRequestLeave,
   myEditLeave,
@@ -378,10 +379,15 @@ export default async function MePage({
             </Link>
           </div>
 
-          {/* Missed-punch correction (manager/admin approves — ADR-0011 Phase B) */}
+          {/* R45 3707cba9 — ESS request menu, ordered: Attendance Request · Overtime Request · Travel Request.
+              (Replacement-leave requests live in the Leave tab.) The old combined "Fix a missed punch" form is
+              split: attendance corrections and overtime are now distinct requests, both on the same proven
+              correction/approval engine (requestAttendanceCorrection → decideAttendanceCorrection). */}
+
+          {/* Attendance Request — a pure clock-in/out correction (manager/admin approves, ADR-0011 Phase B). */}
           <details className="mt-4 border-t border-border pt-4">
             <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('fixMissedPunch')}
+              {t('attendanceRequest')}
             </summary>
             <form action={myRequestCorrection} className="mt-3 space-y-2.5">
               <Field label={t('dateLabel')}>
@@ -395,41 +401,74 @@ export default async function MePage({
                   <input type="time" name="checkOut" defaultValue="18:00" className={inputCls} />
                 </Field>
               </div>
-              {/* ADR-0069: optional overtime-hours request (leave blank for a plain clock fix; fill it and clear
-                  the times for an OT-only request). */}
-              <Field label={t('otHoursLabel')}>
-                <input type="number" name="otHours" min="0" step="0.25" placeholder={t('otHoursPlaceholder')} className={inputCls} />
-              </Field>
               <Field label={t('reasonRequired')}>
                 <input name="reason" required placeholder={t('reasonPlaceholder')} className={inputCls} />
               </Field>
-              <p className="text-[11px] text-muted-foreground">{t('otHoursHelp')}</p>
               <Button type="submit" size="sm">
                 {t('requestCorrection')}
               </Button>
             </form>
-            {corrections.length > 0 && (
+            {corrections.filter((c) => c.requestedOtMinutes == null).length > 0 && (
               <ul className="mt-3 space-y-1.5 text-xs">
-                {corrections.map((c) => (
-                  <li key={c.id} className="flex items-center justify-between gap-2">
-                    <span className="tabular-nums text-muted-foreground">
-                      {c.attendanceDate}
-                      {c.proposedCheckIn
-                        ? ` · ${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? `–${c.proposedCheckOut.slice(0, 5)}` : ''}`
-                        : ''}
-                      {c.requestedOtMinutes != null ? ` · ${t('otHoursLabel')} ${(c.requestedOtMinutes / 60).toFixed(1)}h` : ''}
-                    </span>
-                    <Pill status={c.status} map={LEAVE_STATUS} label={t(`leaveStatus.${c.status}`)} />
-                  </li>
-                ))}
+                {corrections
+                  .filter((c) => c.requestedOtMinutes == null)
+                  .map((c) => (
+                    <li key={c.id} className="flex items-center justify-between gap-2">
+                      <span className="tabular-nums text-muted-foreground">
+                        {c.attendanceDate}
+                        {c.proposedCheckIn
+                          ? ` · ${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? `–${c.proposedCheckOut.slice(0, 5)}` : ''}`
+                          : ''}
+                      </span>
+                      <Pill status={c.status} map={LEAVE_STATUS} label={t(`leaveStatus.${c.status}`)} />
+                    </li>
+                  ))}
               </ul>
             )}
           </details>
 
-          {/* ADR-0069: Travel Request (off-site work window). Same approvals inbox / decide flow. */}
+          {/* Overtime Request — OT only (planned before the shift, or actual after). Reuses the correction
+              engine with an OT-only intent (requestedOtMinutes, no punch edits) — no new record type. */}
           <details className="mt-4 border-t border-border pt-4">
             <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('requestTravel')}
+              {t('overtimeRequest')}
+            </summary>
+            <form action={myRequestOvertime} className="mt-3 space-y-2.5">
+              <Field label={t('dateLabel')}>
+                <input type="date" name="date" required defaultValue={yesterday} className={inputCls} />
+              </Field>
+              <Field label={t('otHoursLabel')}>
+                <input type="number" name="otHours" min="0" step="0.25" required placeholder={t('otHoursPlaceholder')} className={inputCls} />
+              </Field>
+              <Field label={t('reasonRequired')}>
+                <input name="reason" required placeholder={t('otReasonPlaceholder')} className={inputCls} />
+              </Field>
+              <p className="text-[11px] text-muted-foreground">{t('overtimeRequestHelp')}</p>
+              <Button type="submit" size="sm">
+                {t('requestOvertime')}
+              </Button>
+            </form>
+            {corrections.filter((c) => c.requestedOtMinutes != null).length > 0 && (
+              <ul className="mt-3 space-y-1.5 text-xs">
+                {corrections
+                  .filter((c) => c.requestedOtMinutes != null)
+                  .map((c) => (
+                    <li key={c.id} className="flex items-center justify-between gap-2">
+                      <span className="tabular-nums text-muted-foreground">
+                        {c.attendanceDate}
+                        {c.requestedOtMinutes != null ? ` · ${t('otHoursLabel')} ${(c.requestedOtMinutes / 60).toFixed(1)}h` : ''}
+                      </span>
+                      <Pill status={c.status} map={LEAVE_STATUS} label={t(`leaveStatus.${c.status}`)} />
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </details>
+
+          {/* Travel Request (off-site work window; renamed from "Request Travel"). Same approvals inbox / decide flow. */}
+          <details className="mt-4 border-t border-border pt-4">
+            <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t('travelRequest')}
             </summary>
             <form action={myRequestTravel} className="mt-3 space-y-2.5">
               <div className="grid grid-cols-2 gap-2">

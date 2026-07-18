@@ -309,14 +309,36 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   return (e as Error).message;
 }
 
+// R45 3707cba9 — "Attendance Request": a PURE clock-in/out correction (date + optional check-in/out +
+// mandatory reason). Overtime moved to its own myRequestOvertime request; the OT field is gone from here.
 export async function myRequestCorrection(formData: FormData) {
   const { s, employmentId } = await resolveMe();
   const date = String(formData.get('date'));
   const checkInTime = String(formData.get('checkIn') || '');
   const checkOutTime = String(formData.get('checkOut') || '');
   const reason = String(formData.get('reason') || '').trim();
-  // ADR-0069: optional overtime-hours field (decimal hours in the form → whole minutes for the service). An
-  // OT-only request (no clock-in/out) is allowed; the service validates "at least one of" + mandatory reason.
+  try {
+    await requestAttendanceCorrection(s, {
+      employmentId,
+      date,
+      checkIn: checkInTime || null,
+      checkOut: checkOutTime || null,
+      reason: reason || undefined,
+    });
+  } catch (e) {
+    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?toast=Attendance+request+submitted');
+}
+
+// R45 3707cba9 — "Overtime Request": OT-only, reusing the proven correction engine (requestedOtMinutes set,
+// no punch edits — no new schema). Date + overtime hours + mandatory reason. Planned (before the shift) or
+// actual (after) is up to the employee; the approver compares Actual (system) vs Approved on their screen.
+export async function myRequestOvertime(formData: FormData) {
+  const { s, employmentId } = await resolveMe();
+  const date = String(formData.get('date'));
+  const reason = String(formData.get('reason') || '').trim();
   const otHoursRaw = String(formData.get('otHours') || '').trim();
   let requestedOtMinutes: number | null = null;
   if (otHoursRaw.length > 0) {
@@ -330,8 +352,6 @@ export async function myRequestCorrection(formData: FormData) {
     await requestAttendanceCorrection(s, {
       employmentId,
       date,
-      checkIn: checkInTime || null,
-      checkOut: checkOutTime || null,
       requestedOtMinutes,
       reason: reason || undefined,
     });
@@ -339,7 +359,7 @@ export async function myRequestCorrection(formData: FormData) {
     redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/me');
-  redirect('/me?toast=Correction+requested');
+  redirect('/me?toast=Overtime+request+submitted');
 }
 
 /** ADR-0069: submit a Travel Request (off-site work window). Same approvals inbox, same decide flow. */

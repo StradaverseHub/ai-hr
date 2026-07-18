@@ -1932,10 +1932,24 @@ export function listAttendanceCorrections(
         reason: attendanceCorrection.reason,
         status: attendanceCorrection.status,
         createdAt: attendanceCorrection.createdAt,
+        // ADR-0069 / R45 3707cba9 — surface the "Actual vs Approved" OT comparison the decide path already
+        // computes. systemOtMinutes = the OT the engine derived from the day's real clockings (the row's
+        // stored figure); otApprovalCalculation = the company rule that turns it + the request into the
+        // approved figure. The approver page previews the resolved figure with resolveApprovedOt().
+        systemOtMinutes: attendance.otMinutes,
+        otApprovalCalculation: attendancePolicy.otApprovalCalculation,
       })
       .from(attendanceCorrection)
       .innerJoin(employment, eq(employment.id, attendanceCorrection.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(
+        attendance,
+        and(
+          eq(attendance.employmentId, attendanceCorrection.employmentId),
+          eq(attendance.attendanceDate, attendanceCorrection.attendanceDate),
+        ),
+      )
+      .leftJoin(attendancePolicy, eq(attendancePolicy.companyId, employment.companyId))
       .where(
         and(
           opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
