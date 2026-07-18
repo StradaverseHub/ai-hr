@@ -60,7 +60,7 @@ import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
-import { listDependents, eligibleChildReliefCount, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, type DependentRow } from '@/core/dependents';
+import { listDependents, eligibleChildReliefCount, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
 import { listAssignablePolicies } from '@/core/payroll-policy';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
@@ -875,6 +875,15 @@ export default async function EmployeePage({
     </label>
   );
 
+  // Item 6c635212 — whole-year age from a DOB string (server-side, read-only), used to suggest the right PCB
+  // child-relief category. Null when no/invalid DOB (e.g. the Add form before a date is keyed).
+  const dobAgeYears = (dob: string | null | undefined): number | null => {
+    if (!dob) return null;
+    const ms = Date.parse(`${dob}T00:00:00Z`);
+    if (Number.isNaN(ms)) return null;
+    return Math.floor((Date.now() - ms) / (365.25 * 24 * 60 * 60 * 1000));
+  };
+
   // Shared field inputs for one dependent form. `section` selects which grouped fields appear; `d` is the
   // existing row (null on the Add form). Every control is named exactly as its server-side field.
   const dependentFields = (section: FamilySection, d: DependentRow | null) => (
@@ -953,6 +962,58 @@ export default async function EmployeePage({
         <Field label={t('family.schoolName')}>
           <input name="schoolName" defaultValue={d?.schoolName ?? ''} className={inputCls} />
         </Field>
+      )}
+      {/* Item 6c635212 — Malaysia Income Tax Child Relief (PCB / TP1). Per-child relief category, claim flag and
+          100|50 share. Age is derived read-only from DOB to guide the category choice. This is the Family-register
+          side of the benefits-vs-tax firewall: it feeds a SUGGESTED relief total the IdentityTaxCard surfaces for
+          HR to confirm into num_children — it never silently drives the approval-gated tax figure. */}
+      {section === 'child' && (
+        <div className="rounded-lg border border-border bg-muted/30 p-3 sm:col-span-2">
+          <div className="mb-3 flex items-center gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t('family.childReliefSection')}
+            </span>
+            <span
+              className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground"
+              title={t('family.childReliefGuidance')}
+              aria-label={t('family.childReliefGuidance')}
+            >
+              i
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t('family.childReliefCategory')}>
+              <select name="childReliefCategory" defaultValue={d?.childReliefCategory ?? ''} className={inputCls}>
+                <option value="">{t('family.childReliefCategoryUnset')}</option>
+                {CHILD_RELIEF_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{t(`family.childReliefCat_${c}`)}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('family.childReliefPercentage')}>
+              <select
+                name="childReliefPercentage"
+                defaultValue={d?.childReliefPercentage != null ? String(d.childReliefPercentage) : ''}
+                className={inputCls}
+              >
+                <option value="">{t('family.childReliefCategoryUnset')}</option>
+                <option value="100">{t('family.childReliefPct_100')}</option>
+                <option value="50">{t('family.childReliefPct_50')}</option>
+              </select>
+            </Field>
+            <Field label={t('family.childAge')}>
+              <input
+                readOnly
+                disabled
+                value={dobAgeYears(d?.dateOfBirth) ?? '—'}
+                className={`${inputCls} bg-muted/50`}
+              />
+            </Field>
+            <div className="flex items-end pb-1">
+              {familyCheckbox('childTaxRelief', d?.childTaxRelief ?? false, t('family.childTaxRelief'))}
+            </div>
+          </div>
+        </div>
       )}
       <Field label={t('family.remarks')}>
         <input name="remarks" type="text" defaultValue={d?.remarks ?? ''} placeholder={t('family.remarksPlaceholder')} className={inputCls} />
@@ -1503,6 +1564,27 @@ export default async function EmployeePage({
           <button className={btnPrimary}>{t('saveStatutory')}</button>
         </div>
       </form>
+
+      {/* Item df09f22a — Income Tax (PCB) is a Malaysia statutory payroll item, so the Identification & Tax
+          island is nested INSIDE this Statutory (Malaysia) card as an "Income Tax (PCB)" section (visual merge).
+          It keeps its OWN <form action={setTaxAction}> + Save button (embedded mode) rather than folding into the
+          full-row setStatutoryAction form — the two-action design is preserved so one save can't overwrite the
+          other. Rendered as a sibling of the statutory form inside the same Card (no nested forms). */}
+      <IdentityTaxCard
+        embedded
+        action={setTaxAction}
+        employmentId={emp.employmentId}
+        personId={emp.personId}
+        derivedChildCount={eligibleChildReliefCount(dependents)}
+        defaults={{
+          taxNumber: statutory?.taxNumber ?? null,
+          taxCategory: statutory?.taxCategory ?? 1,
+          taxResidency: statutory?.taxResidency ?? 'resident',
+          numChildren: statutory?.numChildren ?? 0,
+          childReliefMode: statutory?.childReliefMode ?? 'manual',
+          employerBearsTax: statutory?.employerBearsTax ?? false,
+        }}
+      />
     </Card>
   ) : null;
 
@@ -1528,29 +1610,10 @@ export default async function EmployeePage({
     />
   ) : null;
 
-  // ── IDENTIFICATION & TAX (Bank & Statutory tab) ─────────────────────────────
-  // Item 8b5334db — the tax fields were split out of the full-row statutory form into their OWN dedicated card
-  // with a partial save (setTaxAction, only the tax columns). IC is gone (relocated to Profile). The card adds
-  // Income Tax Resident (resident / non-resident / REP / Knowledge Worker → drives the PCB method), a manual/auto
-  // Children (PCB relief) control (auto surfaces a family-derived suggestion for HR to confirm — never silent),
-  // and an Employer-bears-tax switch. It's a client island rendered as JSX only, so the RSC boundary is respected.
-  // The eligible-child suggestion is derived here (server-side, read-only) from the already-loaded Family records.
-  const identityTaxCard = admin ? (
-    <IdentityTaxCard
-      action={setTaxAction}
-      employmentId={emp.employmentId}
-      personId={emp.personId}
-      derivedChildCount={eligibleChildReliefCount(dependents)}
-      defaults={{
-        taxNumber: statutory?.taxNumber ?? null,
-        taxCategory: statutory?.taxCategory ?? 1,
-        taxResidency: statutory?.taxResidency ?? 'resident',
-        numChildren: statutory?.numChildren ?? 0,
-        childReliefMode: statutory?.childReliefMode ?? 'manual',
-        employerBearsTax: statutory?.employerBearsTax ?? false,
-      }}
-    />
-  ) : null;
+  // Item df09f22a — the standalone Identification & Tax card (item 8b5334db) was merged into the Statutory
+  // (Malaysia) card as a nested "Income Tax (PCB)" section (see statutoryCard above). Income tax is a Malaysia
+  // statutory payroll item, so all statutory fields now live in one box. The IdentityTaxCard island still owns
+  // its own setTaxAction partial save — only its render location + chrome (embedded mode) changed.
 
   // ── TP3 / OPENING BALANCES (Payroll tab) ────────────────────────────────────
   // Item a6a47698 — relocated off the Bank & Statutory card onto the Payroll tab. It is a payroll matter
@@ -2422,9 +2485,8 @@ export default async function EmployeePage({
     bankStatutory: (
       <>
         {bankCard}
-        {/* Item 8b5334db — dedicated Identification & Tax card (tax fields split out of the statutory card, its
-            own partial save setTaxAction). Sits between Bank and the EPF/SOCSO statutory registration card. */}
-        {identityTaxCard}
+        {/* Item df09f22a — the Identification & Tax card was merged into statutoryCard as a nested "Income Tax
+            (PCB)" section (Income tax is a Malaysia statutory item). One box now holds every statutory field. */}
         {statutoryCard}
       </>
     ),
@@ -2566,6 +2628,15 @@ export default async function EmployeePage({
             <div>
               <dt className="text-xs text-muted-foreground">{t('headerPosition')}</dt>
               <dd className="font-medium text-foreground">{current?.position ?? '—'}</dd>
+            </div>
+            {/* Item 7a504619 — Direct Superior read straight from the active administrative reporting line
+                (already loaded via reportingLinesFor). Read-only mirror of the Employment tab; a change there
+                shows here automatically. Dash when no manager is assigned. */}
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerSuperior')}</dt>
+              <dd className="font-medium text-foreground">
+                {reporting.managers.find((m) => m.lineType === 'administrative')?.name ?? '—'}
+              </dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">{t('headerCompany')}</dt>

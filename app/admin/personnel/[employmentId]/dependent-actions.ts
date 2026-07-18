@@ -40,6 +40,15 @@ const editStr = (formData: FormData, key: string): string | null | undefined =>
 const editBool = (formData: FormData, key: string): boolean | undefined =>
   formData.get(`${key}__present`) !== null ? formData.get(key) != null : undefined;
 
+// Item 6c635212 — a numeric select value. `numOrNull` (add form): blank ⇒ null, else Number. `editNum` (edit
+// form, present-only semantics): field absent ⇒ undefined (unchanged); present-but-blank ⇒ null; else Number.
+const numOrNull = (v: FormDataEntryValue | null): number | null => {
+  const s = str(v);
+  return s === undefined ? null : Number(s);
+};
+const editNum = (formData: FormData, key: string): number | null | undefined =>
+  formData.get(key) !== null ? numOrNull(formData.get(key)) : undefined;
+
 export async function addDependentAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
@@ -68,6 +77,11 @@ export async function addDependentAction(formData: FormData) {
       employerAddress: str(formData.get('employerAddress')) ?? null,
       isStudent: formData.get('isStudent__present') !== null ? formData.get('isStudent') != null : null,
       schoolName: str(formData.get('schoolName')) ?? null,
+      // Item 6c635212 — Malaysia Income Tax child-relief config.
+      childReliefCategory: str(formData.get('childReliefCategory')) ?? null,
+      childTaxRelief:
+        formData.get('childTaxRelief__present') !== null ? formData.get('childTaxRelief') != null : null,
+      childReliefPercentage: numOrNull(formData.get('childReliefPercentage')),
     });
   } catch (e) {
     back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`, formData);
@@ -103,6 +117,10 @@ export async function editDependentAction(formData: FormData) {
       employerAddress: editStr(formData, 'employerAddress'),
       isStudent: editBool(formData, 'isStudent'),
       schoolName: editStr(formData, 'schoolName'),
+      // Item 6c635212 — Malaysia Income Tax child-relief config.
+      childReliefCategory: editStr(formData, 'childReliefCategory'),
+      childTaxRelief: editBool(formData, 'childTaxRelief'),
+      childReliefPercentage: editNum(formData, 'childReliefPercentage'),
     });
   } catch (e) {
     back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`, formData);

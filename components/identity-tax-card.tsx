@@ -48,23 +48,42 @@ export function IdentityTaxCard({
   personId,
   defaults,
   derivedChildCount,
+  embedded = false,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   employmentId: string;
   personId: string;
   defaults: IdentityTaxDefaults;
   derivedChildCount: number;
+  /**
+   * Item df09f22a — when true the island drops its own outer card chrome and renders as an "Income Tax (PCB)"
+   * section nested inside the Statutory (Malaysia) card (visual merge). It keeps its OWN <form action={setTaxAction}>
+   * and Save button — only the surrounding presentation changes, so the two-action design is preserved.
+   */
+  embedded?: boolean;
 }) {
   const t = useTranslations('people.detail');
   const [mode, setMode] = useState(defaults.childReliefMode === 'auto' ? 'auto' : 'manual');
   const [numChildren, setNumChildren] = useState<string>(String(defaults.numChildren ?? 0));
 
+  const heading = embedded ? (
+    <div className="px-4 py-3">
+      <h3 className="text-sm font-semibold text-foreground">{t('incomeTaxPcbSection')}</h3>
+    </div>
+  ) : (
+    <div className="border-b border-border px-4 py-3">
+      <h3 className="text-sm font-semibold text-foreground">{t('identityTaxCardTitle')}</h3>
+    </div>
+  );
+
+  const wrapperCls = embedded
+    ? 'border-t border-border'
+    : 'rounded-xl border border-border bg-card shadow-sm';
+
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm">
-      <div className="border-b border-border px-4 py-3">
-        <h3 className="text-sm font-semibold text-foreground">{t('identityTaxCardTitle')}</h3>
-      </div>
-      <form action={action} className="flex flex-col gap-6 p-4">
+    <div className={wrapperCls}>
+      {heading}
+      <form action={action} className="flex flex-col gap-6 px-4 pb-4">
         <input type="hidden" name="employmentId" value={employmentId} />
         <input type="hidden" name="personId" value={personId} />
 
