@@ -2466,7 +2466,27 @@
         "deleteTitle": "Keluarkan transaksi tetap ini?",
         "deleteBody": "Ini akan mengeluarkan item daripada senarai dan mengecualikannya daripada semua pengiraan gaji. Tindakan ini tidak boleh dibatalkan.",
         "delete": "Keluarkan",
-        "notFound": "Transaksi tetap itu tidak wujud lagi."
+        "notFound": "Transaksi tetap itu tidak wujud lagi.",
+        "filterCompany": "Syarikat",
+        "allCompanies": "Semua syarikat",
+        "filterBusinessUnit": "Unit perniagaan",
+        "allBusinessUnits": "Semua unit perniagaan",
+        "filterDepartment": "Jabatan",
+        "allDepartments": "Semua jabatan",
+        "filterStatus": "Status",
+        "allStatuses": "Semua status",
+        "searchLabel": "Cari pekerja",
+        "searchPlaceholder": "ID pekerja atau nama",
+        "reset": "Set semula",
+        "noEmployees": "Tiada pekerja sepadan dengan penapis anda.",
+        "selectedTag": "Dipilih",
+        "showingCapped": "Memaparkan {cap} pertama daripada {total} padanan — perhalusi carian anda.",
+        "addNew": "Tambah Transaksi Tetap Baharu",
+        "requiredField": "Wajib",
+        "cancel": "Batal",
+        "export": "Eksport",
+        "exportSoon": "Eksport akan datang tidak lama lagi.",
+        "refresh": "Segar semula"
       },
       "individual": {
         "title": "Transaksi Individu",
@@ -2586,7 +2606,13 @@
         "periodInvalid": "Pilih bulan yang sah.",
         "componentRequired": "Pilih item gaji untuk setiap baris pendapatan atau potongan — item sekali sahaja dibayar melalui penggajian, jadi layanan statutorinya mesti ditakrifkan.",
         "componentInvalid": "Item gaji yang dipilih tidak sah untuk baris ini (tidak wujud, telah diarkibkan, atau jenis yang salah).",
-        "componentRequiredHint": "Pendapatan dan potongan dibayar melalui penggajian: pilih item gaji bernama daripada senarai (layanan KWSP/PERKESO/PCB item itu digunakan). Entri kerja lebih masa, tanpa gaji dan cuti tidak memerlukannya."
+        "componentRequiredHint": "Pendapatan dan potongan dibayar melalui penggajian: pilih item gaji bernama daripada senarai (layanan KWSP/PERKESO/PCB item itu digunakan). Entri kerja lebih masa, tanpa gaji dan cuti tidak memerlukannya.",
+        "businessUnitFilter": "Unit perniagaan",
+        "allBusinessUnits": "Semua unit perniagaan",
+        "reviewNoRows": "Tiada transaksi dimasukkan lagi.",
+        "reviewTotal": "Jumlah",
+        "reviewTotalPerEmployee": "Jumlah setiap pekerja",
+        "reviewTotalAll": "Jumlah untuk semua {count} pekerja"
       },
       "tp1": {
         "title": "Pelepasan TP1",

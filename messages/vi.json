@@ -2466,7 +2466,27 @@
         "deleteTitle": "Xóa giao dịch cố định này?",
         "deleteBody": "Thao tác này xóa khoản khỏi danh sách và loại khỏi mọi phép tính lương. Không thể hoàn tác.",
         "delete": "Xóa",
-        "notFound": "Giao dịch cố định đó không còn tồn tại."
+        "notFound": "Giao dịch cố định đó không còn tồn tại.",
+        "filterCompany": "Công ty",
+        "allCompanies": "Tất cả công ty",
+        "filterBusinessUnit": "Đơn vị kinh doanh",
+        "allBusinessUnits": "Tất cả đơn vị kinh doanh",
+        "filterDepartment": "Phòng ban",
+        "allDepartments": "Tất cả phòng ban",
+        "filterStatus": "Trạng thái",
+        "allStatuses": "Tất cả trạng thái",
+        "searchLabel": "Tìm nhân viên",
+        "searchPlaceholder": "Mã nhân viên hoặc tên",
+        "reset": "Đặt lại",
+        "noEmployees": "Không có nhân viên nào khớp với bộ lọc.",
+        "selectedTag": "Đã chọn",
+        "showingCapped": "Hiển thị {cap} trong số {total} kết quả — hãy thu hẹp tìm kiếm.",
+        "addNew": "Thêm giao dịch cố định mới",
+        "requiredField": "Bắt buộc",
+        "cancel": "Hủy",
+        "export": "Xuất",
+        "exportSoon": "Tính năng xuất sắp ra mắt.",
+        "refresh": "Làm mới"
       },
       "individual": {
         "title": "Giao dịch Riêng lẻ",
@@ -2586,7 +2606,13 @@
         "periodInvalid": "Chọn tháng hợp lệ.",
         "componentRequired": "Hãy chọn khoản mục lương cho từng dòng thu nhập hoặc khấu trừ — khoản mục một lần được chi trả qua bảng lương nên phải xác định cách xử lý theo luật định.",
         "componentInvalid": "Khoản mục lương đã chọn không hợp lệ cho dòng này (không tồn tại, đã lưu trữ hoặc sai loại).",
-        "componentRequiredHint": "Thu nhập và khấu trừ được chi trả qua tính lương: hãy chọn một khoản mục lương có tên trong danh sách (áp dụng cách xử lý EPF/SOCSO/PCB của khoản mục đó). Các mục tăng ca, nghỉ không lương và nghỉ phép không cần chọn."
+        "componentRequiredHint": "Thu nhập và khấu trừ được chi trả qua tính lương: hãy chọn một khoản mục lương có tên trong danh sách (áp dụng cách xử lý EPF/SOCSO/PCB của khoản mục đó). Các mục tăng ca, nghỉ không lương và nghỉ phép không cần chọn.",
+        "businessUnitFilter": "Đơn vị kinh doanh",
+        "allBusinessUnits": "Tất cả đơn vị kinh doanh",
+        "reviewNoRows": "Chưa nhập giao dịch nào.",
+        "reviewTotal": "Tổng",
+        "reviewTotalPerEmployee": "Tổng mỗi nhân viên",
+        "reviewTotalAll": "Tổng cho tất cả {count} nhân viên"
       },
       "tp1": {
         "title": "Miễn giảm TP1",

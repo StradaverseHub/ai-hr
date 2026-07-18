@@ -2466,7 +2466,27 @@
         "deleteTitle": "Remove this fixed transaction?",
         "deleteBody": "This removes the item from the list and excludes it from all payroll calculations. This cannot be undone.",
         "delete": "Remove",
-        "notFound": "That fixed transaction no longer exists."
+        "notFound": "That fixed transaction no longer exists.",
+        "filterCompany": "Company",
+        "allCompanies": "All companies",
+        "filterBusinessUnit": "Business unit",
+        "allBusinessUnits": "All business units",
+        "filterDepartment": "Department",
+        "allDepartments": "All departments",
+        "filterStatus": "Status",
+        "allStatuses": "All statuses",
+        "searchLabel": "Search employee",
+        "searchPlaceholder": "Employee ID or name",
+        "reset": "Reset",
+        "noEmployees": "No employees match your filters.",
+        "selectedTag": "Selected",
+        "showingCapped": "Showing first {cap} of {total} matches — refine your search.",
+        "addNew": "Add New Fixed Transaction",
+        "requiredField": "Required",
+        "cancel": "Cancel",
+        "export": "Export",
+        "exportSoon": "Export is coming soon.",
+        "refresh": "Refresh"
       },
       "individual": {
         "title": "Individual Transaction",
@@ -2586,7 +2606,13 @@
         "periodInvalid": "Choose a valid month.",
         "componentRequired": "Pick a pay item for each earning or deduction row — one-off pay items are paid through payroll, so the item's statutory treatment must be defined.",
         "componentInvalid": "The selected pay item is not valid for this row (unknown, archived, or the wrong type).",
-        "componentRequiredHint": "Earnings and deductions are paid through payroll: pick a named pay item from the list (its EPF/SOCSO/PCB treatment applies). Overtime, unpaid and leave entries do not need one."
+        "componentRequiredHint": "Earnings and deductions are paid through payroll: pick a named pay item from the list (its EPF/SOCSO/PCB treatment applies). Overtime, unpaid and leave entries do not need one.",
+        "businessUnitFilter": "Business unit",
+        "allBusinessUnits": "All business units",
+        "reviewNoRows": "No transactions entered yet.",
+        "reviewTotal": "Total",
+        "reviewTotalPerEmployee": "Total per employee",
+        "reviewTotalAll": "Total for all {count} employees"
       },
       "tp1": {
         "title": "TP1 Relief",

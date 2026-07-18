@@ -2,12 +2,12 @@ import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import { listEmploymentPayComponents, listPayComponents, FIXED_TRANSACTION_CYCLES } from '@/core/pay-components';
-import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { employeeLabel } from '@/lib/employee-code';
+import { Badge, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { PayrollTabs } from '@/components/payroll-tabs';
+import { EmployeePicker, type PickerEmployee } from './employee-picker';
+import { FixedToolbar } from './add-fixed-dialog';
 import {
-  createFixedTransactionAction,
   updateFixedTransactionAction,
   endFixedTransactionAction,
   archiveFixedTransactionAction,
@@ -41,6 +41,21 @@ export default async function FixedTransactionPage({
   const selected = employmentId && employees.some((e) => e.employmentId === employmentId) ? employmentId : null;
   const selectedEmp = selected ? employees.find((e) => e.employmentId === selected) ?? null : null;
 
+  // Step-1 search/filter panel source (feedback ee21508c). Derive employment status ('active' when not
+  // terminated, else 'ended') for the Status filter — matches the Individual Transaction wizard convention.
+  const pickerEmployees: PickerEmployee[] = employees.map((e) => ({
+    employmentId: e.employmentId,
+    name: e.name,
+    employeeCode: e.employeeCode,
+    company: e.company,
+    companyId: e.companyId,
+    department: e.department,
+    departmentId: e.departmentId,
+    businessUnit: e.businessUnit,
+    businessUnitId: e.businessUnitId,
+    status: e.terminatedOn == null ? 'active' : 'ended',
+  }));
+
   const [components, existing] = selected
     ? await Promise.all([listPayComponents(s), listEmploymentPayComponents(s, selected)])
     : [[], []];
@@ -70,85 +85,37 @@ export default async function FixedTransactionPage({
       <ErrorBanner message={errorMessage} />
 
       <Card className="p-4">
-        <form method="GET" className="flex flex-wrap items-end gap-3">
-          <Field label={t('fixed.pickEmployee')}>
-            <select name="employmentId" defaultValue={selected ?? ''} className={inputCls}>
-              <option value="">—</option>
-              {employees.map((e) => (
-                <option key={e.employmentId} value={e.employmentId}>
-                  {/* Employee ID left-of-name (feedback 38668d9b) */}
-                  {employeeLabel(e.employeeCode, e.name)} · {e.company}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Button type="submit" variant="secondary">
-            {t('fixed.pickEmployee')}
-          </Button>
-        </form>
-        {employees.length === 0 && <p className="mt-3 text-sm text-muted-foreground">{t('fixed.empty')}</p>}
+        <h2 className="text-sm font-medium">{t('fixed.pickEmployee')}</h2>
+        {employees.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">{t('fixed.empty')}</p>
+        ) : (
+          <div className="mt-3">
+            <EmployeePicker employees={pickerEmployees} selectedId={selected} />
+          </div>
+        )}
       </Card>
 
       {selectedEmp && (
         <>
           <Card className="p-4">
-            <div className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
-              <span>
-                {t('fixed.employeeId')}:{' '}
-                <span className="font-medium text-foreground">{selectedEmp.employeeCode ?? '—'}</span>
-              </span>
-              <span>
-                {t('fixed.employeeName')}:{' '}
-                <span className="font-medium text-foreground">{selectedEmp.name}</span>
-              </span>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
+                <span>
+                  {t('fixed.employeeId')}:{' '}
+                  <span className="font-medium text-foreground">{selectedEmp.employeeCode ?? '—'}</span>
+                </span>
+                <span>
+                  {t('fixed.employeeName')}:{' '}
+                  <span className="font-medium text-foreground">{selectedEmp.name}</span>
+                </span>
+              </div>
+              <FixedToolbar
+                employmentId={selected!}
+                defaultStart={selectedEmp.hiredOn}
+                components={activeComponents.map((c) => ({ id: c.id, code: c.code, name: c.name }))}
+                cycles={FIXED_TRANSACTION_CYCLES}
+              />
             </div>
-          </Card>
-
-          <Card className="overflow-hidden">
-            <SectionHeader title={t('fixed.formTitle')} />
-            <p className="px-4 pt-3 text-xs text-muted-foreground">{t('fixed.intro')}</p>
-            <form
-              action={createFixedTransactionAction}
-              className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3"
-            >
-              <input type="hidden" name="employmentId" value={selected!} />
-              <Field label={t('fixed.payrollItem')}>
-                <select name="componentId" required className={inputCls}>
-                  {activeComponents.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.code} — {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('fixed.payrollCycle')}>
-                {/* Required, no default — forces an explicit choice (mandatory field). Values reuse the
-                    payroll_run_type taxonomy; labels reuse the existing individual.cycle.* translations. */}
-                <select name="runType" required defaultValue="" className={inputCls}>
-                  <option value="" disabled>
-                    —
-                  </option>
-                  {FIXED_TRANSACTION_CYCLES.map((c) => (
-                    <option key={c} value={c}>
-                      {t(`individual.cycle.${c}`)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('fixed.amount')}>
-                <input name="amount" type="number" min="0.01" step="0.01" required className={`${inputCls} text-right`} />
-              </Field>
-              <Field label={t('fixed.startDate')}>
-                <input name="effectiveFrom" type="date" required defaultValue={selectedEmp.hiredOn} className={inputCls} />
-              </Field>
-              <Field label={t('fixed.endDate')}>
-                <input name="effectiveTo" type="date" className={inputCls} />
-              </Field>
-              <Field label={t('fixed.remarks')}>
-                <input name="remarks" type="text" className={inputCls} />
-              </Field>
-              <Button type="submit">{t('fixed.add')}</Button>
-            </form>
           </Card>
 
           <Card className="overflow-hidden">
