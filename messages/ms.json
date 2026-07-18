@@ -898,7 +898,21 @@
       "passportHint": "Untuk pekerja bukan warganegara Malaysia. Nombor pasport, tarikh keluaran dan tarikh luput diperlukan; catatan adalah pilihan.",
       "savePassport": "Simpan maklumat pasport",
       "holidayCalendarCardTitle": "Kalendar Cuti",
-      "gradeCardTitle": "Gred"
+      "gradeCardTitle": "Gred",
+      "recalcHistoryTitle": "Sejarah pengiraan semula kelayakan",
+      "recalcHistoryHelp": "Pelarasan automatik pada kelayakan cuti pekerja ini selepas perubahan profil (gred, jenis pekerjaan, tarikh mula atau pengesahan).",
+      "recalcHistoryEmpty": "Belum ada pengiraan semula kelayakan.",
+      "recalcColEffective": "Tarikh berkuat kuasa",
+      "recalcColType": "Jenis cuti",
+      "recalcColReason": "Sebab",
+      "recalcColPrevious": "Sebelum",
+      "recalcColNew": "Baharu",
+      "recalcColChange": "Perubahan",
+      "recalcReason": {
+        "grade_changed": "Gred ditukar",
+        "employment_changed": "Butiran pekerjaan ditukar",
+        "employment_info_changed": "Tarikh mula/pengesahan ditukar"
+      }
     },
     "import": {
       "title": "Import pekerja",

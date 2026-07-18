@@ -898,7 +898,21 @@
       "passportHint": "மலேசியர் அல்லாத ஊழியர்களுக்கு. கடவுச்சீட்டு எண், வழங்கிய தேதி மற்றும் காலாவதி தேதி தேவை; குறிப்பு விருப்பமானது.",
       "savePassport": "கடவுச்சீட்டு தகவலைச் சேமிக்கவும்",
       "holidayCalendarCardTitle": "விடுமுறை நாட்காட்டி",
-      "gradeCardTitle": "தரம்"
+      "gradeCardTitle": "தரம்",
+      "recalcHistoryTitle": "உரிமை மறுகணக்கீட்டு வரலாறு",
+      "recalcHistoryHelp": "சுயவிவர மாற்றத்திற்குப் பிறகு (தரம், பணி வகை, பணியமர்த்தல் தேதி அல்லது உறுதிப்படுத்தல்) இந்த ஊழியரின் விடுப்பு உரிமையில் செய்யப்பட்ட தானியங்கி சரிசெய்தல்கள்.",
+      "recalcHistoryEmpty": "இதுவரை உரிமை மறுகணக்கீடு எதுவும் இல்லை.",
+      "recalcColEffective": "நடைமுறை தேதி",
+      "recalcColType": "விடுப்பு வகை",
+      "recalcColReason": "காரணம்",
+      "recalcColPrevious": "முந்தையது",
+      "recalcColNew": "புதியது",
+      "recalcColChange": "மாற்றம்",
+      "recalcReason": {
+        "grade_changed": "தரம் மாற்றப்பட்டது",
+        "employment_changed": "பணி விவரங்கள் மாற்றப்பட்டன",
+        "employment_info_changed": "பணியமர்த்தல்/உறுதிப்படுத்தல் தேதி மாற்றப்பட்டது"
+      }
     },
     "import": {
       "title": "பணியாளர்களை இறக்குமதி செய்",

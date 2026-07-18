@@ -898,7 +898,21 @@
       "passportHint": "สำหรับพนักงานที่ไม่ใช่ชาวมาเลเซีย ต้องระบุหมายเลขหนังสือเดินทาง วันที่ออก และวันหมดอายุ ส่วนหมายเหตุไม่บังคับ",
       "savePassport": "บันทึกข้อมูลหนังสือเดินทาง",
       "holidayCalendarCardTitle": "ปฏิทินวันหยุด",
-      "gradeCardTitle": "ระดับ"
+      "gradeCardTitle": "ระดับ",
+      "recalcHistoryTitle": "ประวัติการคำนวณสิทธิใหม่",
+      "recalcHistoryHelp": "การปรับสิทธิวันลาของพนักงานโดยอัตโนมัติหลังการเปลี่ยนแปลงข้อมูลประวัติ (ระดับ ประเภทการจ้าง วันที่เริ่มงาน หรือการบรรจุ)",
+      "recalcHistoryEmpty": "ยังไม่มีการคำนวณสิทธิใหม่",
+      "recalcColEffective": "วันที่มีผล",
+      "recalcColType": "ประเภทการลา",
+      "recalcColReason": "เหตุผล",
+      "recalcColPrevious": "ก่อนหน้า",
+      "recalcColNew": "ใหม่",
+      "recalcColChange": "การเปลี่ยนแปลง",
+      "recalcReason": {
+        "grade_changed": "เปลี่ยนระดับ",
+        "employment_changed": "เปลี่ยนรายละเอียดการจ้าง",
+        "employment_info_changed": "เปลี่ยนวันที่เริ่มงาน/บรรจุ"
+      }
     },
     "import": {
       "title": "นำเข้าพนักงาน",

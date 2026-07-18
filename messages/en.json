@@ -898,7 +898,21 @@
       "passportHint": "For non-Malaysian employees. Passport number, issue date and expiry date are required; the remark is optional.",
       "savePassport": "Save passport information",
       "holidayCalendarCardTitle": "Holiday Calendar",
-      "gradeCardTitle": "Grade"
+      "gradeCardTitle": "Grade",
+      "recalcHistoryTitle": "Entitlement recalculation history",
+      "recalcHistoryHelp": "Automatic adjustments made to this employee's leave entitlement after a profile change (grade, employment type, hire date or confirmation).",
+      "recalcHistoryEmpty": "No entitlement recalculations yet.",
+      "recalcColEffective": "Effective date",
+      "recalcColType": "Leave type",
+      "recalcColReason": "Reason",
+      "recalcColPrevious": "Previous",
+      "recalcColNew": "New",
+      "recalcColChange": "Change",
+      "recalcReason": {
+        "grade_changed": "Grade changed",
+        "employment_changed": "Employment details changed",
+        "employment_info_changed": "Hire/confirmation date changed"
+      }
     },
     "import": {
       "title": "Import employees",

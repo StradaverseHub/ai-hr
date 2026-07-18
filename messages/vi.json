@@ -898,7 +898,21 @@
       "passportHint": "Dành cho nhân viên không phải người Malaysia. Số hộ chiếu, ngày cấp và ngày hết hạn là bắt buộc; ghi chú là tùy chọn.",
       "savePassport": "Lưu thông tin hộ chiếu",
       "holidayCalendarCardTitle": "Lịch nghỉ lễ",
-      "gradeCardTitle": "Cấp bậc"
+      "gradeCardTitle": "Cấp bậc",
+      "recalcHistoryTitle": "Lịch sử tính lại quyền lợi",
+      "recalcHistoryHelp": "Các điều chỉnh tự động đối với quyền nghỉ phép của nhân viên này sau khi thay đổi hồ sơ (cấp bậc, loại hình lao động, ngày tuyển dụng hoặc xác nhận).",
+      "recalcHistoryEmpty": "Chưa có lần tính lại quyền lợi nào.",
+      "recalcColEffective": "Ngày hiệu lực",
+      "recalcColType": "Loại nghỉ phép",
+      "recalcColReason": "Lý do",
+      "recalcColPrevious": "Trước đây",
+      "recalcColNew": "Mới",
+      "recalcColChange": "Thay đổi",
+      "recalcReason": {
+        "grade_changed": "Thay đổi cấp bậc",
+        "employment_changed": "Thay đổi thông tin lao động",
+        "employment_info_changed": "Thay đổi ngày tuyển dụng/xác nhận"
+      }
     },
     "import": {
       "title": "Nhập nhân viên",
