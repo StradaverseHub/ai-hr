@@ -1115,7 +1115,12 @@
       "close": "Close",
       "noUpcoming": "No upcoming approved leave.",
       "daysCount": "{count} days",
-      "colBalanceChange": "Balance change"
+      "colBalanceChange": "Balance change",
+      "explanationShow": "Show explanation",
+      "explanationHide": "Hide explanation",
+      "explanationDescription": "What it means",
+      "explanationFormula": "How it's calculated",
+      "explanationResult": "Result"
     },
     "preview": {
       "willDeduct": "This will deduct {days} day(s)",

@@ -1115,7 +1115,12 @@
       "close": "Đóng",
       "noUpcoming": "Không có nghỉ phép đã duyệt sắp tới.",
       "daysCount": "{count} ngày",
-      "colBalanceChange": "Thay đổi số dư"
+      "colBalanceChange": "Thay đổi số dư",
+      "explanationShow": "Hiện giải thích",
+      "explanationHide": "Ẩn giải thích",
+      "explanationDescription": "Ý nghĩa",
+      "explanationFormula": "Cách tính",
+      "explanationResult": "Kết quả"
     },
     "preview": {
       "willDeduct": "Việc này sẽ trừ {days} ngày",

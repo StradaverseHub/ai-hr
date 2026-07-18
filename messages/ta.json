@@ -1115,7 +1115,12 @@
       "close": "மூடு",
       "noUpcoming": "வரவிருக்கும் அங்கீகரிக்கப்பட்ட விடுப்பு இல்லை.",
       "daysCount": "{count} நாட்கள்",
-      "colBalanceChange": "இருப்பு மாற்றம்"
+      "colBalanceChange": "இருப்பு மாற்றம்",
+      "explanationShow": "விளக்கத்தைக் காட்டு",
+      "explanationHide": "விளக்கத்தை மறை",
+      "explanationDescription": "பொருள்",
+      "explanationFormula": "எவ்வாறு கணக்கிடப்படுகிறது",
+      "explanationResult": "முடிவு"
     },
     "preview": {
       "willDeduct": "இது {days} நாள்(கள்) கழிக்கும்",

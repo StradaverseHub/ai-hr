@@ -1115,7 +1115,12 @@
       "close": "Tutup",
       "noUpcoming": "Tiada cuti diluluskan akan datang.",
       "daysCount": "{count} hari",
-      "colBalanceChange": "Perubahan baki"
+      "colBalanceChange": "Perubahan baki",
+      "explanationShow": "Tunjuk penerangan",
+      "explanationHide": "Sembunyikan penerangan",
+      "explanationDescription": "Maksudnya",
+      "explanationFormula": "Cara ia dikira",
+      "explanationResult": "Keputusan"
     },
     "preview": {
       "willDeduct": "Ini akan menolak {days} hari",

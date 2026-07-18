@@ -1115,7 +1115,12 @@
       "close": "关闭",
       "noUpcoming": "没有即将到来的已批准假期。",
       "daysCount": "{count} 天",
-      "colBalanceChange": "余额变动"
+      "colBalanceChange": "余额变动",
+      "explanationShow": "显示说明",
+      "explanationHide": "隐藏说明",
+      "explanationDescription": "含义",
+      "explanationFormula": "计算方式",
+      "explanationResult": "结果"
     },
     "preview": {
       "willDeduct": "将扣除 {days} 天",

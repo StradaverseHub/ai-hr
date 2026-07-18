@@ -1115,7 +1115,12 @@
       "close": "ปิด",
       "noUpcoming": "ไม่มีวันลาที่อนุมัติที่กำลังจะมาถึง",
       "daysCount": "{count} วัน",
-      "colBalanceChange": "การเปลี่ยนแปลงยอด"
+      "colBalanceChange": "การเปลี่ยนแปลงยอด",
+      "explanationShow": "แสดงคำอธิบาย",
+      "explanationHide": "ซ่อนคำอธิบาย",
+      "explanationDescription": "ความหมาย",
+      "explanationFormula": "วิธีคำนวณ",
+      "explanationResult": "ผลลัพธ์"
     },
     "preview": {
       "willDeduct": "จะหัก {days} วัน",
