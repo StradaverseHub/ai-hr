@@ -3164,6 +3164,14 @@ export const employeeDependent = pgTable(
     // Children-specific
     isStudent: boolean('is_student'),
     schoolName: text('school_name'),
+    // Item 6c635212 (R45, migration 0250) — Malaysia Income Tax (PCB / TP1) child-relief config, per child.
+    // SEPARATE from the approval-gated employee_statutory_my.num_children figure (benefits-vs-tax firewall):
+    // these capture the LHDN per-child detail (relief category / claim flag / 100|50 share) and only SURFACE
+    // a suggested relief total for HR to confirm — never silently drive tax. All nullable → legacy rows
+    // unaffected. Validated in core/dependents.ts (allowed category set, 100|50 percentage).
+    childReliefCategory: text('child_relief_category'), // under_18|study_preu|study_tertiary|disabled|disabled_study
+    childTaxRelief: boolean('child_tax_relief'), // claim PCB/TP1 child relief for this child
+    childReliefPercentage: integer('child_relief_percentage'), // 100 | 50 (shared claim)
     archivedAt: timestamp('archived_at', { withTimezone: true }), // soft-delete
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
