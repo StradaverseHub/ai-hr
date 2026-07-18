@@ -1375,19 +1375,26 @@
     "noBalances": "Chưa có số dư phép.",
     "leaveBalanceTable": {
       "colLeaveType": "Loại phép",
-      "colAvailable": "Khả dụng",
       "colTaken": "Đã dùng",
-      "colEntitlementToDate": "Quyền lợi đến nay",
-      "colBroughtForward": "Chuyển sang",
-      "colExpiredBroughtForward": "Chuyển sang đã hết hạn",
-      "colUnplanned": "Không kế hoạch",
       "colAdjustment": "Điều chỉnh",
       "colOverutilized": "Dùng vượt",
       "colYtdEntitled": "Quyền lợi trong năm",
       "daysValue": "{value} ngày",
       "sortBy": "Sắp xếp theo {column}",
       "asAtDate": "Tính đến",
-      "apply": "Áp dụng"
+      "apply": "Áp dụng",
+      "colAccrued": "Tích lũy",
+      "colCarriedForward": "Chuyển sang",
+      "colBalance": "Số dư",
+      "tip": {
+        "ytdEntitled": "Tổng số ngày nghỉ được cấp đến nay trong năm, bao gồm phần chuyển sang.",
+        "accrued": "Ngày nghỉ bạn có thể dùng ngay bây giờ, sau khi trừ các yêu cầu đang chờ.",
+        "carriedForward": "Ngày nghỉ chưa dùng chuyển từ năm ngoái sang năm nay.",
+        "taken": "Ngày nghỉ bạn đã dùng.",
+        "adjustment": "Thay đổi thủ công hoặc một lần đối với số dư, chẳng hạn ngày nghỉ lễ.",
+        "overutilized": "Mức số dư của bạn xuống dưới 0, nếu có.",
+        "balance": "Số dư còn lại cuối cùng: Tích lũy cộng Chuyển sang và Điều chỉnh, trừ Đã dùng và Dùng vượt."
+      }
     },
     "typeLabel": "Loại",
     "fromLabel": "Từ",

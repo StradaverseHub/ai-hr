@@ -1375,19 +1375,26 @@
     "noBalances": "Belum ada baki.",
     "leaveBalanceTable": {
       "colLeaveType": "Jenis Cuti",
-      "colAvailable": "Tersedia",
       "colTaken": "Diambil",
-      "colEntitlementToDate": "Kelayakan Setakat Ini",
-      "colBroughtForward": "Bawa Ke Hadapan",
-      "colExpiredBroughtForward": "Bawa Ke Hadapan Luput",
-      "colUnplanned": "Tidak Dirancang",
       "colAdjustment": "Pelarasan",
       "colOverutilized": "Terlebih Guna",
       "colYtdEntitled": "Kelayakan YTD",
       "daysValue": "{value} Hari",
       "sortBy": "Susun mengikut {column}",
       "asAtDate": "Setakat",
-      "apply": "Guna"
+      "apply": "Guna",
+      "colAccrued": "Terkumpul",
+      "colCarriedForward": "Dibawa Ke Hadapan",
+      "colBalance": "Baki",
+      "tip": {
+        "ytdEntitled": "Jumlah cuti yang diberikan setakat ini tahun ini, termasuk sebarang bawa ke hadapan.",
+        "accrued": "Cuti yang boleh anda ambil sekarang, selepas permohonan yang menunggu diketepikan.",
+        "carriedForward": "Cuti tidak digunakan yang dibawa ke tahun ini dari tahun lepas.",
+        "taken": "Cuti yang telah anda gunakan.",
+        "adjustment": "Perubahan manual atau sekali sahaja pada baki anda, seperti pemberian perayaan.",
+        "overutilized": "Sejauh mana baki anda telah menjadi negatif, jika ada.",
+        "balance": "Baki akhir: Terkumpul tambah Dibawa Ke Hadapan dan Pelarasan, tolak Diambil dan Terlebih Guna."
+      }
     },
     "typeLabel": "Jenis",
     "fromLabel": "Dari",

@@ -19,22 +19,25 @@
  */
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { Info } from 'lucide-react';
 import { leaveVisual } from '@/lib/leave-visual';
 // The pure row-derivation + sort + types live in a SERVER-SAFE module (no 'use client') so the RSC /me
 // page can call deriveBalanceRow() without the "called from the server but it's on the client" crash
 // (b7d84266). This client table only needs the sort + types.
 import { sortBalanceRows, type LeaveBalanceRow, type NumCol, type SortKey } from './leave-balance-row';
 
-const NUM_COLS: { key: NumCol; labelKey: string }[] = [
-  { key: 'available', labelKey: 'colAvailable' },
-  { key: 'taken', labelKey: 'colTaken' },
-  { key: 'entitlementToDate', labelKey: 'colEntitlementToDate' },
-  { key: 'broughtForward', labelKey: 'colBroughtForward' },
-  { key: 'expiredBroughtForward', labelKey: 'colExpiredBroughtForward' },
-  { key: 'unplanned', labelKey: 'colUnplanned' },
-  { key: 'adjustment', labelKey: 'colAdjustment' },
-  { key: 'overutilized', labelKey: 'colOverutilized' },
-  { key: 'ytdEntitled', labelKey: 'colYtdEntitled' },
+// Standardize Leave Balance Table (776cd1b5): the trimmed, consistently-named column set —
+// Leave Type | YTD Entitled | Accrued | Carried Forward | Taken | Adjustment | Overutilized | Balance.
+// "Accrued" surfaces the existing `available` value; Balance is a new computed column (deriveBalanceRow). Each
+// numeric column carries a STATIC plain-English hover tooltip (tipKey, no HR config). Order = display order.
+const NUM_COLS: { key: NumCol; labelKey: string; tipKey: string }[] = [
+  { key: 'ytdEntitled', labelKey: 'colYtdEntitled', tipKey: 'tip.ytdEntitled' },
+  { key: 'available', labelKey: 'colAccrued', tipKey: 'tip.accrued' },
+  { key: 'broughtForward', labelKey: 'colCarriedForward', tipKey: 'tip.carriedForward' },
+  { key: 'taken', labelKey: 'colTaken', tipKey: 'tip.taken' },
+  { key: 'adjustment', labelKey: 'colAdjustment', tipKey: 'tip.adjustment' },
+  { key: 'overutilized', labelKey: 'colOverutilized', tipKey: 'tip.overutilized' },
+  { key: 'balance', labelKey: 'colBalance', tipKey: 'tip.balance' },
 ];
 
 export function LeaveBalanceTable({ rows }: { rows: LeaveBalanceRow[] }) {
@@ -79,15 +82,21 @@ export function LeaveBalanceTable({ rows }: { rows: LeaveBalanceRow[] }) {
                 aria-sort={ariaSort(c.key)}
                 className="whitespace-nowrap py-2 pl-3 text-right font-medium"
               >
-                <button
-                  type="button"
-                  onClick={() => toggle(c.key)}
-                  aria-label={tt('sortBy', { column: tt(c.labelKey) })}
-                  className="inline-flex items-center font-medium hover:text-foreground"
-                >
-                  {tt(c.labelKey)}
-                  <span aria-hidden>{caret(c.key)}</span>
-                </button>
+                <span className="inline-flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => toggle(c.key)}
+                    aria-label={tt('sortBy', { column: tt(c.labelKey) })}
+                    className="inline-flex items-center font-medium hover:text-foreground"
+                  >
+                    {tt(c.labelKey)}
+                    <span aria-hidden>{caret(c.key)}</span>
+                  </button>
+                  {/* Static plain-English hover tooltip on each calculated column (776cd1b5) — no HR config. */}
+                  <span title={tt(c.tipKey)} aria-label={tt(c.tipKey)} className="shrink-0 cursor-help text-muted-foreground/70">
+                    <Info className="size-3" aria-hidden />
+                  </span>
+                </span>
               </th>
             ))}
           </tr>
@@ -107,19 +116,20 @@ export function LeaveBalanceTable({ rows }: { rows: LeaveBalanceRow[] }) {
                   </span>
                   {r.detail}
                 </th>
+                {/* Column order matches NUM_COLS: YTD Entitled | Accrued | Carried Forward | Taken | Adjustment | Overutilized | Balance. */}
+                <td className="py-2.5 pl-3 text-right tabular-nums text-foreground">{fmt(r.ytdEntitled)}</td>
                 <td className="py-2.5 pl-3 text-right tabular-nums">
                   <span className={r.available != null && r.available < 0 ? 'font-medium text-destructive' : ''}>{fmt(r.available)}</span>
                 </td>
-                <td className="py-2.5 pl-3 text-right tabular-nums text-foreground">{fmt(r.taken)}</td>
-                <td className="py-2.5 pl-3 text-right tabular-nums text-foreground">{fmt(r.entitlementToDate)}</td>
                 <td className="py-2.5 pl-3 text-right tabular-nums text-foreground">{fmt(r.broughtForward)}</td>
-                <td className="py-2.5 pl-3 text-right tabular-nums text-foreground">{fmt(r.expiredBroughtForward)}</td>
-                <td className="py-2.5 pl-3 text-right tabular-nums text-muted-foreground">{fmt(r.unplanned)}</td>
+                <td className="py-2.5 pl-3 text-right tabular-nums text-foreground">{fmt(r.taken)}</td>
                 <td className="py-2.5 pl-3 text-right tabular-nums text-foreground">{fmt(r.adjustment)}</td>
                 <td className="py-2.5 pl-3 text-right tabular-nums">
                   <span className={r.overutilized != null && r.overutilized > 0 ? 'font-medium text-destructive' : 'text-foreground'}>{fmt(r.overutilized)}</span>
                 </td>
-                <td className="py-2.5 pl-3 text-right tabular-nums text-foreground">{fmt(r.ytdEntitled)}</td>
+                <td className="py-2.5 pl-3 text-right tabular-nums">
+                  <span className={r.balance != null && r.balance < 0 ? 'font-medium text-destructive' : 'font-medium text-foreground'}>{fmt(r.balance)}</span>
+                </td>
               </tr>
             );
           })}

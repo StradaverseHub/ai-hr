@@ -15,35 +15,34 @@ export type LeaveBalanceRow = {
   leaveTypeId: string;
   leaveType: string;
   visual: { color: string | null; icon: string | null; code: string | null };
-  /** Ledger balance minus pending. null ⇒ ESS-hidden for this type. */
+  /** Ledger balance minus pending — shown as the "Accrued" column (776cd1b5). null ⇒ ESS-hidden for this type. */
   available: number | null;
   taken: number | null;
-  /** Prorated accrual-to-date, else full current-year entitlement. */
-  entitlementToDate: number | null;
+  /** Carry brought into the current cycle — shown as the "Carried Forward" column. */
   broughtForward: number | null;
-  /** Forfeited carry (expiry sweep / cap excess). */
-  expiredBroughtForward: number | null;
-  /** No aggregate exists yet (deferred; product must define). Always null in v1 ⇒ "—". */
-  unplanned: number | null;
   adjustment: number | null;
   /** Derived max(0, -available): how far the type is over-drawn. */
   overutilized: number | null;
   /** Derived currentYearEntitlement + carriedForward. */
   ytdEntitled: number | null;
+  /** Standardize Leave Balance Table (776cd1b5): computed final remaining balance —
+   *  (Accrued + Carried Forward + Adjustment) − Taken − Overutilized. null ⇒ Accrued/Taken ESS-hidden. */
+  balance: number | null;
   /** RSC-instantiated <EntitlementBreakdown/> side-sheet trigger (R22). */
   detail?: ReactNode;
 };
 
+// Standardize Leave Balance Table (776cd1b5): trimmed to the columns that help an employee read their balance —
+// entitlementToDate, expiredBroughtForward and the always-empty unplanned column are dropped; a computed
+// balance column is added. Order here is the display order (matched by the table body).
 export type NumCol =
+  | 'ytdEntitled'
   | 'available'
-  | 'taken'
-  | 'entitlementToDate'
   | 'broughtForward'
-  | 'expiredBroughtForward'
-  | 'unplanned'
+  | 'taken'
   | 'adjustment'
   | 'overutilized'
-  | 'ytdEntitled';
+  | 'balance';
 
 export type SortKey = 'leaveType' | NumCol;
 
@@ -78,24 +77,29 @@ export type BreakdownInput = {
 export function deriveBalanceRow(b: BalanceInput, bd: BreakdownInput): Omit<LeaveBalanceRow, 'detail'> {
   const showAvailable = b.essView.available !== false;
   const showTaken = b.essView.taken !== false;
+  const overutilized = showAvailable ? Math.max(0, -b.available) : null;
+  // Standardize Leave Balance Table (776cd1b5): Balance = (Accrued + Carried Forward + Adjustment) − Taken −
+  // Overutilized, where Accrued = available. Missing breakdown parts count as 0. Gated on Available AND Taken
+  // being visible (Balance contains both) so a hidden figure can never leak through the computed column.
+  const carried = bd ? bd.carriedForward : 0;
+  const adj = bd ? bd.otherAdjustments : 0;
+  const balance =
+    showAvailable && showTaken
+      ? Math.round((b.available + carried + adj - b.taken - Math.max(0, -b.available)) * 100) / 100
+      : null;
   return {
     leaveTypeId: b.leaveTypeId,
     leaveType: b.leaveType,
     visual: { color: b.color, icon: b.icon, code: b.code },
     available: showAvailable ? b.available : null,
     taken: showTaken ? b.taken : null,
-    // Entitlement to Date = prorated accrual-to-date for earned types, else the full current-year
-    // entitlement (grant-on-open). Null when no breakdown was loaded for this type.
-    entitlementToDate: bd ? (bd.monthlyAccruedToDate ?? bd.currentYearEntitlement) : null,
     broughtForward: bd ? bd.carriedForward : null,
-    expiredBroughtForward: bd ? bd.forfeited : null,
-    // No aggregate for emergency/"unplanned" leave exists yet — deferred (see plan). "—" in v1.
-    unplanned: null,
     adjustment: bd ? bd.otherAdjustments : null,
     // Overutilized = how far the type is over-drawn. Gated with Available (its own negation) so a hidden
     // balance can't leak.
-    overutilized: showAvailable ? Math.max(0, -b.available) : null,
+    overutilized,
     ytdEntitled: bd ? bd.currentYearEntitlement + bd.carriedForward : null,
+    balance,
   };
 }
 

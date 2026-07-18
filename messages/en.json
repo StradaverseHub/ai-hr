@@ -1375,19 +1375,26 @@
     "noBalances": "No balances yet.",
     "leaveBalanceTable": {
       "colLeaveType": "Leave Type",
-      "colAvailable": "Available",
       "colTaken": "Taken",
-      "colEntitlementToDate": "Entitlement to Date",
-      "colBroughtForward": "Brought Forward",
-      "colExpiredBroughtForward": "Expired Brought Forward",
-      "colUnplanned": "Unplanned",
       "colAdjustment": "Adjustment",
       "colOverutilized": "Overutilized",
       "colYtdEntitled": "YTD Entitled",
       "daysValue": "{value} Days",
       "sortBy": "Sort by {column}",
       "asAtDate": "As at",
-      "apply": "Apply"
+      "apply": "Apply",
+      "colAccrued": "Accrued",
+      "colCarriedForward": "Carried Forward",
+      "colBalance": "Balance",
+      "tip": {
+        "ytdEntitled": "Total leave granted so far this year, including any carried forward.",
+        "accrued": "Leave you can take now, after pending requests are set aside.",
+        "carriedForward": "Unused leave carried into this year from last year.",
+        "taken": "Leave you have already used.",
+        "adjustment": "Manual or one-off changes to your balance, such as festive grants.",
+        "overutilized": "How far your balance has gone below zero, if at all.",
+        "balance": "Final remaining balance: Accrued plus Carried Forward and Adjustment, minus Taken and Overutilized."
+      }
     },
     "typeLabel": "Type",
     "fromLabel": "From",

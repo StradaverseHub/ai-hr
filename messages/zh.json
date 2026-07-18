@@ -1375,19 +1375,26 @@
     "noBalances": "暂无余额。",
     "leaveBalanceTable": {
       "colLeaveType": "假别",
-      "colAvailable": "可用",
       "colTaken": "已用",
-      "colEntitlementToDate": "至今应享",
-      "colBroughtForward": "结转",
-      "colExpiredBroughtForward": "已过期结转",
-      "colUnplanned": "未计划",
       "colAdjustment": "调整",
       "colOverutilized": "超用",
       "colYtdEntitled": "年度应享",
       "daysValue": "{value} 天",
       "sortBy": "按{column}排序",
       "asAtDate": "截至",
-      "apply": "应用"
+      "apply": "应用",
+      "colAccrued": "累计",
+      "colCarriedForward": "结转",
+      "colBalance": "余额",
+      "tip": {
+        "ytdEntitled": "本年度至今授予的休假总额，包括任何结转。",
+        "accrued": "在扣除待批准申请后，您现在可休的休假。",
+        "carriedForward": "从去年结转到本年的未用休假。",
+        "taken": "您已使用的休假。",
+        "adjustment": "对余额的手动或一次性变更，例如节日额度。",
+        "overutilized": "您的余额低于零的程度（如有）。",
+        "balance": "最终剩余余额：累计加结转和调整，减去已用和超用。"
+      }
     },
     "typeLabel": "类型",
     "fromLabel": "从",

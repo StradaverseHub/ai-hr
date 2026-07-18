@@ -1375,19 +1375,26 @@
     "noBalances": "ยังไม่มียอดคงเหลือ",
     "leaveBalanceTable": {
       "colLeaveType": "ประเภทการลา",
-      "colAvailable": "คงเหลือ",
       "colTaken": "ใช้ไป",
-      "colEntitlementToDate": "สิทธิ์ถึงปัจจุบัน",
-      "colBroughtForward": "ยกมา",
-      "colExpiredBroughtForward": "ยอดยกมาที่หมดอายุ",
-      "colUnplanned": "ไม่ได้วางแผน",
       "colAdjustment": "การปรับปรุง",
       "colOverutilized": "ใช้เกิน",
       "colYtdEntitled": "สิทธิ์สะสมทั้งปี",
       "daysValue": "{value} วัน",
       "sortBy": "เรียงตาม {column}",
       "asAtDate": "ณ วันที่",
-      "apply": "ใช้"
+      "apply": "ใช้",
+      "colAccrued": "สะสม",
+      "colCarriedForward": "ยกยอดมา",
+      "colBalance": "คงเหลือ",
+      "tip": {
+        "ytdEntitled": "จำนวนวันลาทั้งหมดที่ได้รับจนถึงตอนนี้ในปีนี้ รวมยอดยกมาด้วย",
+        "accrued": "วันลาที่คุณใช้ได้ตอนนี้ หลังหักคำขอที่รออนุมัติแล้ว",
+        "carriedForward": "วันลาที่ไม่ได้ใช้ยกมาจากปีที่แล้วสู่ปีนี้",
+        "taken": "วันลาที่คุณใช้ไปแล้ว",
+        "adjustment": "การเปลี่ยนแปลงยอดคงเหลือแบบแมนนวลหรือครั้งเดียว เช่น วันลาช่วงเทศกาล",
+        "overutilized": "ยอดคงเหลือของคุณติดลบไปมากเท่าใด (ถ้ามี)",
+        "balance": "ยอดคงเหลือสุดท้าย: สะสม บวกยอดยกมาและการปรับปรุง ลบวันที่ใช้และที่ใช้เกิน"
+      }
     },
     "typeLabel": "ประเภท",
     "fromLabel": "จาก",
