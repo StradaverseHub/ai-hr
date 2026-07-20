@@ -62,6 +62,13 @@ export const employmentTypeEnum = pgEnum('employment_type', [
   'contract',
   'intern',
 ]);
+/**
+ * R46 79eb7151 (migration 0270) — how an employee is paid. Distinct from Pay Mode (payroll_policy.policy_type)
+ * and Payment Term (PayrollPolicyConfig.frequency), which describe how pay is CALCULATED and how often, not
+ * the disbursement channel. Also distinct from the company-level disbursement_bank, which names the corporate
+ * account the bulk file is drawn on.
+ */
+export const paymentMethodEnum = pgEnum('payment_method', ['bank_transfer', 'cheque', 'cash']);
 export const assignmentStatusEnum = pgEnum('assignment_status', [
   'active',
   'on_leave',
@@ -769,6 +776,21 @@ export const employment = pgTable(
     // is an optional free-text note captured with the action.
     blacklistedAt: date('blacklisted_at'),
     blacklistReason: text('blacklist_reason'),
+    // R46 79eb7151 (migration 0270) — HOW this employee is paid: bank transfer, cheque or cash. Genuinely
+    // new per-employee data; before this the only payment settings were COMPANY-level (disbursement_bank /
+    // company_bank_profile = which corporate account emits the bulk file) plus the employee's own bank name
+    // and account number on employee_statutory_my. Nullable = not specified (every pre-existing row).
+    //
+    // NOT to be confused with Pay Mode or Payment Term, which are NOT columns here and must not become
+    // ones: Pay Mode ≡ payroll_policy.policy_type and Payment Term ≡ PayrollPolicyConfig.frequency. Those
+    // are resolved from the assigned policy (resolveAssignedPolicy) and only SURFACED read-only on the
+    // Payroll tab — duplicating them per-employee would give the kernel two disagreeing sources of truth
+    // for the same input and require a precedence rule. See ADR-0064.
+    //
+    // INVARIANT (enforced in setEmploymentPaymentMethod, not by the DB — the bank details live on a
+    // different, person-keyed table): 'bank_transfer' requires a bank name AND an account number on the
+    // person's employee_statutory_my row.
+    paymentMethod: paymentMethodEnum('payment_method'),
     createdAt: createdAt(),
   },
   (t) => [

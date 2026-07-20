@@ -929,7 +929,26 @@
         "grade_changed": "职级变更",
         "employment_changed": "雇佣信息变更",
         "employment_info_changed": "入职/确认日期变更"
-      }
+      },
+      "payMethodGroup": "该员工的支付方式",
+      "payMode": "计薪方式",
+      "payMode_monthly": "月薪",
+      "payMode_daily": "日薪",
+      "payMode_hourly": "时薪",
+      "payMode_custom_period": "自定义周期",
+      "paymentTerm": "支付周期",
+      "paymentTerm_monthly": "每月",
+      "paymentTerm_weekly": "每周",
+      "paymentTerm_biweekly": "每两周",
+      "paymentMethod": "支付方式",
+      "paymentMethodNotSet": "未指定",
+      "paymentMethod_bank_transfer": "银行转账",
+      "paymentMethod_cheque": "支票",
+      "paymentMethod_cash": "现金",
+      "paymentMethodSave": "保存",
+      "paymentMethodBankHint": "银行转账需要在「银行与法定」标签页填写银行名称和账号。缺少任一项将拒绝保存，以免无法支付的记录进入银行文件。",
+      "payPolicyDefaultName": "月薪默认设置",
+      "payPolicySourceNote": "计薪方式和支付周期来自薪资政策 <link>{policy}</link>，此处仅供参考。请在该政策中修改，以保持所有使用它的员工一致。"
     },
     "import": {
       "title": "导入员工",

@@ -929,7 +929,26 @@
         "grade_changed": "Grade changed",
         "employment_changed": "Employment details changed",
         "employment_info_changed": "Hire/confirmation date changed"
-      }
+      },
+      "payMethodGroup": "How This Employee Is Paid",
+      "payMode": "Pay Mode",
+      "payMode_monthly": "Monthly",
+      "payMode_daily": "Daily",
+      "payMode_hourly": "Hourly",
+      "payMode_custom_period": "Custom Period",
+      "paymentTerm": "Payment Term",
+      "paymentTerm_monthly": "Monthly",
+      "paymentTerm_weekly": "Weekly",
+      "paymentTerm_biweekly": "Bi-Weekly",
+      "paymentMethod": "Payment Method",
+      "paymentMethodNotSet": "Not specified",
+      "paymentMethod_bank_transfer": "Bank Transfer",
+      "paymentMethod_cheque": "Cheque",
+      "paymentMethod_cash": "Cash",
+      "paymentMethodSave": "Save",
+      "paymentMethodBankHint": "Bank Transfer requires both a bank name and an account number on the Bank & Statutory tab. Without them the change is rejected, so an unpayable record never reaches the bank file.",
+      "payPolicyDefaultName": "the monthly default",
+      "payPolicySourceNote": "Pay Mode and Payment Term come from the payroll policy <link>{policy}</link> and are shown here for reference. Edit them on the policy so every employee using it stays consistent."
     },
     "import": {
       "title": "Import employees",

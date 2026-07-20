@@ -38,6 +38,7 @@ import {
   setEmergencyContactAction,
   setEmploymentAssignmentAction,
   setEmploymentBlacklistAction,
+  setPaymentMethodAction,
   setEmploymentComponentAction,
   setEmploymentInfoAction,
   setLocationAction,
@@ -64,7 +65,9 @@ import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
 import { listDependents, eligibleChildReliefCount, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
-import { listAssignablePolicies } from '@/core/payroll-policy';
+import { listAssignablePolicies, resolvedPolicyForEmployment } from '@/core/payroll-policy';
+import { PAYMENT_METHODS } from '@/core/org';
+import { payrollFrequencyOf } from '@/core/payroll-policy-config';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { listShiftsForTenant } from '@/core/roster';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
@@ -220,6 +223,14 @@ export default async function EmployeePage({
   const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
+  // R46 79eb7151 — resolve the policy the payroll kernel will ACTUALLY use for this employee (direct
+  // assignment → company default → null ⇒ monthly default), so the Salary section can surface its Pay Mode
+  // and Payment Term read-only. Resolving rather than reading emp.payrollPolicyId matters: an employee with
+  // no direct assignment still computes under the company default, and an assigned-but-inactive policy
+  // silently falls back to monthly — both cases would be misreported by the raw column.
+  const resolvedPolicy = admin ? await resolvedPolicyForEmployment(s, employmentId) : null;
+  const resolvedPayMode = resolvedPolicy?.policyType ?? 'monthly';
+  const resolvedPaymentTerm = payrollFrequencyOf(resolvedPolicy?.config ?? null);
   // R33 f21d6eee — Default shift picker options: the SHARED tenant-wide shift library (a template may now be
   // assigned to any employee regardless of company). Loaded WITH archived rows so a currently-assigned-but-
   // later-archived shift still renders as the selected option (instead of silently showing "None"), then
@@ -1471,6 +1482,76 @@ export default async function EmployeePage({
           />
         </form>
       )}
+
+      {/* ── R46 79eb7151 — How this employee is paid ──────────────────────────────────────────────────────
+          The reporter asked for Pay Mode, Payment Term and Payment Method on the Payroll tab, believing all
+          three were missing. Two of them already existed; they were just invisible from here, because the
+          Payroll Policy card rendered at the very BOTTOM of the tab while Basic Salary sits at the top. That
+          distance is the actual defect, and it is fixed two ways: payrollPolicyCard now renders immediately
+          after this card, and the resolved values appear right here.
+
+          DECISION (approved option 1: surface, do NOT duplicate). Pay Mode ≡ payroll_policy.policy_type and
+          Payment Term ≡ PayrollPolicyConfig.frequency. Both are properties of the reusable POLICY, which is
+          the single input the payroll kernel reads. They are rendered READ-ONLY with a link to edit the
+          policy. Per-employee override columns were explicitly rejected: they would shadow the policy, give
+          the kernel two disagreeing sources of truth for one input, and require a precedence rule in
+          core/payroll.ts. Payment Method is different — it had no home anywhere in the system — so it IS a
+          real per-employee field, with its own column, event and save.
+
+          These are the RESOLVED values (assignment → company default → monthly), i.e. what will actually
+          compute this person's pay, not the raw assigned column. */}
+      <div className="space-y-3 border-t border-border p-4">
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t('payMethodGroup')}
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label={t('payMode')}>
+            <div className="flex h-9 items-center text-sm">
+              {t(`payMode_${resolvedPayMode}` as 'payMode_monthly')}
+            </div>
+          </Field>
+          <Field label={t('paymentTerm')}>
+            <div className="flex h-9 items-center text-sm">
+              {t(`paymentTerm_${resolvedPaymentTerm}` as 'paymentTerm_monthly')}
+            </div>
+          </Field>
+          {/* Payment Method — the one genuinely new setting, so it gets a real control and its own Save.
+              Bank Transfer is validated server-side against the employee's bank name + account number
+              (setEmploymentPaymentMethod); a missing destination is rejected with an explanatory toast
+              rather than saved as an unpayable row. */}
+          <form action={setPaymentMethodAction} className="flex flex-col gap-1.5">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <span className="text-xs font-medium text-muted-foreground">{t('paymentMethod')}</span>
+            <div className="flex gap-2">
+              <select
+                name="paymentMethod"
+                defaultValue={emp.paymentMethod ?? ''}
+                disabled={!!emp.terminatedOn}
+                className={inputCls}
+              >
+                <option value="">{t('paymentMethodNotSet')}</option>
+                {PAYMENT_METHODS.map((m) => (
+                  <option key={m} value={m}>
+                    {t(`paymentMethod_${m}` as 'paymentMethod_bank_transfer')}
+                  </option>
+                ))}
+              </select>
+              {!emp.terminatedOn && <button className={btnPrimary}>{t('paymentMethodSave')}</button>}
+            </div>
+          </form>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {t.rich('payPolicySourceNote', {
+            policy: resolvedPolicy?.name ?? t('payPolicyDefaultName'),
+            link: (chunks) => (
+              <Link href="/admin/payroll-policy" className="underline underline-offset-2 hover:text-foreground">
+                {chunks}
+              </Link>
+            ),
+          })}
+        </p>
+        <p className="text-xs text-muted-foreground">{t('paymentMethodBankHint')}</p>
+      </div>
     </Card>
   ) : null;
 
@@ -2589,15 +2670,20 @@ export default async function EmployeePage({
     // Item a6a47698 — TP3 / opening balances and the Zakat summary relocated here from Bank & Statutory so
     // all payroll-related employee information is centralized on this tab. tp3Card has its own partial save
     // (setTp3Action); zakatSummaryCard is read-only and links to Payroll → Transactions → Zakat to edit.
+    // R46 79eb7151 — payrollPolicyCard moved from LAST to SECOND, directly under compensationCard. It was
+    // the layout root cause: Pay Mode and Payment Term both live on the payroll policy, but the card holding
+    // it sat below pay components, CP38, encashment, TP3 and zakat, so from the Salary section at the top of
+    // the tab they looked absent. Basic Salary and the policy that decides how it is paid now read together.
+    // compensationCard stays FIRST (feedback 326f0b5e) — Basic Salary must still open at the top.
     payroll: (
       <>
         {compensationCard}
+        {payrollPolicyCard}
         {payComponentsCard}
         {cp38Card}
         {encashmentCard}
         {tp3Card}
         {zakatSummaryCard}
-        {payrollPolicyCard}
       </>
     ),
     // Leave Information (feedback d085c6fc): the Leave Balance card — including its entitlement

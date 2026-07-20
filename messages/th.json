@@ -929,7 +929,26 @@
         "grade_changed": "เปลี่ยนระดับ",
         "employment_changed": "เปลี่ยนรายละเอียดการจ้าง",
         "employment_info_changed": "เปลี่ยนวันที่เริ่มงาน/บรรจุ"
-      }
+      },
+      "payMethodGroup": "พนักงานคนนี้รับเงินอย่างไร",
+      "payMode": "รูปแบบการจ่าย",
+      "payMode_monthly": "รายเดือน",
+      "payMode_daily": "รายวัน",
+      "payMode_hourly": "รายชั่วโมง",
+      "payMode_custom_period": "รอบกำหนดเอง",
+      "paymentTerm": "งวดการจ่าย",
+      "paymentTerm_monthly": "รายเดือน",
+      "paymentTerm_weekly": "รายสัปดาห์",
+      "paymentTerm_biweekly": "ทุกสองสัปดาห์",
+      "paymentMethod": "วิธีการจ่ายเงิน",
+      "paymentMethodNotSet": "ยังไม่ระบุ",
+      "paymentMethod_bank_transfer": "โอนผ่านธนาคาร",
+      "paymentMethod_cheque": "เช็ค",
+      "paymentMethod_cash": "เงินสด",
+      "paymentMethodSave": "บันทึก",
+      "paymentMethodBankHint": "การโอนผ่านธนาคารต้องมีทั้งชื่อธนาคารและเลขที่บัญชีในแท็บธนาคารและกฎหมาย หากไม่มีระบบจะปฏิเสธการบันทึก เพื่อไม่ให้รายการที่จ่ายไม่ได้เข้าสู่ไฟล์ธนาคาร",
+      "payPolicyDefaultName": "ค่าเริ่มต้นรายเดือน",
+      "payPolicySourceNote": "รูปแบบการจ่ายและงวดการจ่ายมาจากนโยบายเงินเดือน <link>{policy}</link> และแสดงที่นี่เพื่อการอ้างอิง แก้ไขที่นโยบายเพื่อให้พนักงานทุกคนที่ใช้นโยบายนี้สอดคล้องกัน"
     },
     "import": {
       "title": "นำเข้าพนักงาน",

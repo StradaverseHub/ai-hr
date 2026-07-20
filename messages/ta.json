@@ -929,7 +929,26 @@
         "grade_changed": "தரம் மாற்றப்பட்டது",
         "employment_changed": "பணி விவரங்கள் மாற்றப்பட்டன",
         "employment_info_changed": "பணியமர்த்தல்/உறுதிப்படுத்தல் தேதி மாற்றப்பட்டது"
-      }
+      },
+      "payMethodGroup": "இந்த ஊழியருக்கு எவ்வாறு ஊதியம் வழங்கப்படுகிறது",
+      "payMode": "ஊதிய முறை",
+      "payMode_monthly": "மாதாந்திரம்",
+      "payMode_daily": "நாள்தோறும்",
+      "payMode_hourly": "மணிநேரம்",
+      "payMode_custom_period": "தனிப்பயன் காலம்",
+      "paymentTerm": "கட்டண காலம்",
+      "paymentTerm_monthly": "மாதாந்திரம்",
+      "paymentTerm_weekly": "வாராந்திரம்",
+      "paymentTerm_biweekly": "இரு வாரங்களுக்கு ஒருமுறை",
+      "paymentMethod": "கட்டண முறை",
+      "paymentMethodNotSet": "குறிப்பிடப்படவில்லை",
+      "paymentMethod_bank_transfer": "வங்கி பரிமாற்றம்",
+      "paymentMethod_cheque": "காசோலை",
+      "paymentMethod_cash": "பணம்",
+      "paymentMethodSave": "சேமி",
+      "paymentMethodBankHint": "வங்கி பரிமாற்றத்திற்கு வங்கி & சட்டப்பூர்வ தாவலில் வங்கிப் பெயரும் கணக்கு எண்ணும் தேவை. அவை இல்லாமல் மாற்றம் நிராகரிக்கப்படும், எனவே செலுத்த முடியாத பதிவு வங்கிக் கோப்பை அடையாது.",
+      "payPolicyDefaultName": "மாதாந்திர இயல்புநிலை",
+      "payPolicySourceNote": "ஊதிய முறையும் கட்டண காலமும் ஊதியக் கொள்கை <link>{policy}</link> இலிருந்து வருகின்றன, இங்கே குறிப்புக்காக மட்டுமே காட்டப்படுகின்றன. அதைப் பயன்படுத்தும் அனைத்து ஊழியர்களும் ஒரே சீராக இருக்க கொள்கையில் திருத்தவும்."
     },
     "import": {
       "title": "பணியாளர்களை இறக்குமதி செய்",

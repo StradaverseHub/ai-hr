@@ -450,6 +450,20 @@ export async function listAssignablePolicies(
 }
 
 /**
+ * R46 79eb7151 — session-level wrapper over resolveAssignedPolicy for read surfaces (the Personnel Payroll
+ * tab) that are not already inside a transaction. It resolves the SAME policy the payroll kernel will use —
+ * direct assignment → company default → null (monthly default) — which is the entire point: the Pay Mode and
+ * Payment Term shown on the employee must be what actually computes their pay, not the raw assigned row.
+ * Pure read: appends no DomainEvent (substrate rule — derived reads are exempt, per ADR-0064 §3).
+ */
+export async function resolvedPolicyForEmployment(
+  ctx: SessionContext,
+  employmentId: string,
+): Promise<PolicyRow | null> {
+  return withTenant(ctx, (tx) => resolveAssignedPolicy(tx, employmentId));
+}
+
+/**
  * Resolve the policy assigned to an employment for payroll computation. Returns the assigned policy only if
  * its status is 'active'; otherwise null (monthly default). Takes a Tx so the kernel can call it inside its
  * own transaction (under the caller's session — hence the tenant-wide read RLS). No effective-date logic:

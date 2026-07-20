@@ -929,7 +929,26 @@
         "grade_changed": "Thay đổi cấp bậc",
         "employment_changed": "Thay đổi thông tin lao động",
         "employment_info_changed": "Thay đổi ngày tuyển dụng/xác nhận"
-      }
+      },
+      "payMethodGroup": "Nhân viên này được trả lương như thế nào",
+      "payMode": "Hình thức tính lương",
+      "payMode_monthly": "Theo tháng",
+      "payMode_daily": "Theo ngày",
+      "payMode_hourly": "Theo giờ",
+      "payMode_custom_period": "Kỳ tùy chỉnh",
+      "paymentTerm": "Kỳ thanh toán",
+      "paymentTerm_monthly": "Hàng tháng",
+      "paymentTerm_weekly": "Hàng tuần",
+      "paymentTerm_biweekly": "Hai tuần một lần",
+      "paymentMethod": "Phương thức thanh toán",
+      "paymentMethodNotSet": "Chưa xác định",
+      "paymentMethod_bank_transfer": "Chuyển khoản ngân hàng",
+      "paymentMethod_cheque": "Séc",
+      "paymentMethod_cash": "Tiền mặt",
+      "paymentMethodSave": "Lưu",
+      "paymentMethodBankHint": "Chuyển khoản ngân hàng yêu cầu cả tên ngân hàng và số tài khoản ở tab Ngân hàng & Luật định. Thiếu một trong hai thì thay đổi sẽ bị từ chối, để hồ sơ không thể chi trả không lọt vào tệp ngân hàng.",
+      "payPolicyDefaultName": "mặc định hàng tháng",
+      "payPolicySourceNote": "Hình thức tính lương và Kỳ thanh toán lấy từ chính sách lương <link>{policy}</link> và chỉ hiển thị ở đây để tham khảo. Hãy chỉnh sửa trên chính sách để mọi nhân viên dùng nó đều nhất quán."
     },
     "import": {
       "title": "Nhập nhân viên",
