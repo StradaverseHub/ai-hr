@@ -100,6 +100,11 @@ import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/
 import { setEncashmentPolicy } from '@/core/leave-encashment';
 import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
+import { isMyBankKey } from '@/lib/my-banks';
+import {
+  upsertCompanyStatutoryAuthority,
+  removeCompanyStatutoryAuthority,
+} from '@/core/statutory-authority';
 import { packFor } from '@/localization/registry';
 
 const ORG = '/admin/organization';
@@ -227,20 +232,31 @@ export async function setCompanyStatutoryAction(formData: FormData) {
   ok(ORG);
 }
 
-const DISBURSEMENT_BANKS: DisbursementBank[] = ['maybank', 'cimb', 'public_bank', 'rhb'];
-
 export async function setCompanyBankProfileAction(formData: FormData) {
   const s = await getSession();
   const bank = String(formData.get('bank') ?? '');
   try {
-    if (!DISBURSEMENT_BANKS.includes(bank as DisbursementBank)) throw new Error('Select a supported bank');
+    // R46 orgbank (84719377): the bank set is the shared Malaysian master (lib/my-banks.ts), not a
+    // 4-value enum. The service re-validates — this is the early, friendlier rejection.
+    if (!isMyBankKey(bank)) throw new Error('Select a bank from the Malaysian bank list');
     await upsertCompanyBankProfile(s, {
+      // Present ⇒ edit that account; absent ⇒ add another (a company may hold several, incl. per bank).
+      id: (formData.get('id') as string) || null,
       companyId: String(formData.get('companyId')),
       bank: bank as DisbursementBank,
       corporateId: String(formData.get('corporateId') ?? ''),
       debitAccountNo: String(formData.get('debitAccountNo') ?? ''),
       orgName: (formData.get('orgName') as string) || null,
+      // R46: the Payment rail picker is hidden from the form, so this is normally absent and the service
+      // keeps the 'IBG' default. The column stays — RENTAS matters for large single payments.
       txnType: (formData.get('txnType') as string) || null,
+      accountLabel: (formData.get('accountLabel') as string) || null,
+      accountName: (formData.get('accountName') as string) || null,
+      accountType: (formData.get('accountType') as string) || null,
+      branch: (formData.get('branch') as string) || null,
+      swiftCode: (formData.get('swiftCode') as string) || null,
+      currency: (formData.get('currency') as string) || null,
+      isPrimary: formData.get('isPrimary') === 'on' || formData.get('isPrimary') === 'true',
     });
   } catch (e) {
     fail(ORG, e);
@@ -252,6 +268,44 @@ export async function removeCompanyBankProfileAction(formData: FormData) {
   const s = await getSession();
   try {
     await removeCompanyBankProfile(s, { id: String(formData.get('id')) });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  ok(ORG);
+}
+
+// R46 orgbank (84719377) — per-authority statutory payment configuration. One form per authority; the
+// service validates the authority code, that the chosen bank account belongs to this company, and that a
+// NEWLY chosen signatory is an active employee of it.
+export async function setCompanyStatutoryAuthorityAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await upsertCompanyStatutoryAuthority(s, {
+      companyId: String(formData.get('companyId')),
+      authority: String(formData.get('authority') ?? ''),
+      accountNo: (formData.get('accountNo') as string) || null,
+      bankProfileId: (formData.get('bankProfileId') as string) || null,
+      addressLine1: (formData.get('addressLine1') as string) || null,
+      addressLine2: (formData.get('addressLine2') as string) || null,
+      addressLine3: (formData.get('addressLine3') as string) || null,
+      city: (formData.get('city') as string) || null,
+      state: (formData.get('state') as string) || null,
+      postcode: (formData.get('postcode') as string) || null,
+      country: (formData.get('country') as string) || null,
+      phone: (formData.get('phone') as string) || null,
+      email: (formData.get('email') as string) || null,
+      signatoryPersonId: (formData.get('signatoryPersonId') as string) || null,
+    });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  ok(ORG);
+}
+
+export async function removeCompanyStatutoryAuthorityAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await removeCompanyStatutoryAuthority(s, { id: String(formData.get('id')) });
   } catch (e) {
     fail(ORG, e);
   }
