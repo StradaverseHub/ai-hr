@@ -91,8 +91,8 @@ function StatCard({
   href: string;
 }) {
   return (
-    <Link href={href} className="block">
-      <Card className="p-5 transition-colors hover:border-foreground/20">
+    <Link href={href} className="block h-full">
+      <Card className="h-full p-5 transition-colors hover:border-foreground/20">
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
         <div className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{value}</div>
         {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
@@ -305,7 +305,9 @@ export default async function DashboardPage({
   // vertical reorder of existing sections; the island only chooses ORDER, it reads no data). The exact
   // same nodes render inline for manager/admin below, so those dashboards are byte-for-byte untouched.
   const cardsGrid = (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{ROLE_CARDS[role].map(renderCard)}</div>
+    // 84d1233d step 1: 1 col on phones (was 2-across even at 375px), 2 from sm, 4 from xl so a 1024px
+    // landscape tablet doesn't jump straight to 4-across.
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">{ROLE_CARDS[role].map(renderCard)}</div>
   );
 
   // My/Team view (item 8c739dda): filter the full scope set for the Leave Calendar render WITHOUT mutating
@@ -326,7 +328,7 @@ export default async function DashboardPage({
   );
 
   const plannedAbsencesBlock = (
-    <div id="planned-absences" className="scroll-mt-4">
+    <div id="planned-absences" className="h-full scroll-mt-4">
       <PlannedAbsences
         rows={absencesView}
         from={absFrom}
@@ -349,7 +351,7 @@ export default async function DashboardPage({
   );
 
   const recentlyJoinedCard = (
-    <Card className="p-5">
+    <Card className="h-full p-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold">{t('onboarding')}</h2>
@@ -383,7 +385,7 @@ export default async function DashboardPage({
   );
 
   const upcomingEventsCard = (
-    <Card id="upcoming-events" className="scroll-mt-4 p-5">
+    <Card id="upcoming-events" className="h-full scroll-mt-4 p-5">
       <h2 className="text-sm font-semibold">{t('upcomingEvents')}</h2>
       <p className="text-xs text-muted-foreground">{t('publicHolidays')}</p>
       {events.length === 0 ? (
@@ -412,7 +414,7 @@ export default async function DashboardPage({
   );
 
   const recentActivityCard = (
-    <Card className="p-5">
+    <Card className="h-full p-5">
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold">{t('recentActivity')}</h2>
         {isAdmin(s) && (

@@ -41,9 +41,10 @@ import {
   upsertSchemeEntitlementAction,
   deleteSchemeEntitlementAction,
   copySchemeEntitlementsAction,
-  createSchemeCombinedLimitAction,
   updateSchemeCombinedLimitAction,
   deleteSchemeCombinedLimitAction,
+  moveCombinedLimitMemberAction,
+  groupSchemeLeaveTypesAction,
 } from '../../actions';
 import { GradeCatalog } from '@/components/grade-catalog';
 
@@ -407,9 +408,11 @@ export default async function LeaveEntitlementsPage({
               upsertEntitlement: upsertSchemeEntitlementAction,
               deleteEntitlement: deleteSchemeEntitlementAction,
               copyEntitlements: copySchemeEntitlementsAction,
-              createCombinedLimit: createSchemeCombinedLimitAction,
               updateCombinedLimit: updateSchemeCombinedLimitAction,
               deleteCombinedLimit: deleteSchemeCombinedLimitAction,
+              // R47 d6f88c2f — DnD grouping writes for the entitlement table.
+              moveCombinedLimitMember: moveCombinedLimitMemberAction,
+              groupLeaveTypes: groupSchemeLeaveTypesAction,
             }}
           />
         </div>
