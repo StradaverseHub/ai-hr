@@ -1611,6 +1611,13 @@
       "when": 1781862360000,
       "tag": "0265_attendance_multi_punch",
       "breakpoints": true
+    },
+    {
+      "idx": 270,
+      "version": "7",
+      "when": 1781862380000,
+      "tag": "0270_employment_payment_method",
+      "breakpoints": true
     }
   ]
 }

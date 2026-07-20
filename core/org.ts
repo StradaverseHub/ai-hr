@@ -30,6 +30,9 @@ import {
   leaveLedger,
   employmentTypeEnum,
   assignmentStatusEnum,
+  // R46 79eb7151 — read-only here, to validate the bank-transfer payment method against the person's
+  // salary-payment destination. This module never WRITES the statutory row.
+  employeeStatutoryMy,
 } from '../db/schema';
 
 export type EmploymentTypeValue = (typeof employmentTypeEnum.enumValues)[number];
@@ -1728,6 +1731,86 @@ export async function setEmploymentBlacklist(
       },
     });
     return { id: p.employmentId, blacklisted: p.blacklisted, changed: true as const };
+  });
+}
+
+/** R46 79eb7151 — the disbursement channels an employee can be paid through. */
+export const PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash'] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+/** R46 79eb7151 — Payment Method is 'bank_transfer' but the employee has no usable bank destination. */
+export class MissingBankForTransferError extends Error {
+  constructor(message = 'Bank Transfer requires both a bank name and an account number for this employee.') {
+    super(message);
+    this.name = 'MissingBankForTransferError';
+  }
+}
+
+/**
+ * R46 79eb7151 — set HOW this employee is paid (bank transfer / cheque / cash). Pass `null` to clear back to
+ * "not specified". Admin-gated (defence-in-depth over the employment RLS admin-write policy) and idempotent:
+ * re-setting the same value is a no-op with no event.
+ *
+ * The bank-transfer invariant is enforced HERE rather than in the DB because the bank details live on a
+ * different, PERSON-keyed table (employee_statutory_my) — a CHECK constraint cannot reach across it. We
+ * require BOTH bankName and bankAccountNo: half a destination is not a payable one, and letting it through
+ * would surface as an unroutable row in the bank file long after the person who set it moved on. This is the
+ * same both-or-neither posture the bank card already takes on the custom-holder pair.
+ *
+ * NOTE what this function deliberately does NOT touch: Pay Mode (payroll_policy.policy_type) and Payment Term
+ * (PayrollPolicyConfig.frequency). Those belong to the assigned policy and stay there — see ADR-0064.
+ */
+export async function setEmploymentPaymentMethod(
+  ctx: SessionContext,
+  p: { employmentId: string; paymentMethod: PaymentMethod | null },
+) {
+  const roles = ctx.roles ?? [];
+  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
+    throw new Error('Only an admin can change the payment method.');
+  }
+  const next = p.paymentMethod;
+  if (next != null && !(PAYMENT_METHODS as readonly string[]).includes(next)) {
+    throw new Error('Payment method is invalid.');
+  }
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ paymentMethod: employment.paymentMethod, personId: employment.personId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!before) throw new Error('Employment not found');
+    // Idempotent — no write, no event, when nothing moved.
+    if ((before.paymentMethod ?? null) === (next ?? null)) {
+      return { id: p.employmentId, paymentMethod: next, changed: false as const };
+    }
+
+    if (next === 'bank_transfer') {
+      const [bank] = await tx
+        .select({
+          bankName: employeeStatutoryMy.bankName,
+          bankAccountNo: employeeStatutoryMy.bankAccountNo,
+        })
+        .from(employeeStatutoryMy)
+        .where(eq(employeeStatutoryMy.personId, before.personId))
+        .limit(1);
+      if (!bank?.bankName?.trim() || !bank?.bankAccountNo?.trim()) {
+        throw new MissingBankForTransferError();
+      }
+    }
+
+    await tx.update(employment).set({ paymentMethod: next }).where(eq(employment.id, p.employmentId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.payment-method.changed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      // How someone is paid is a disbursement-routing decision an auditor must be able to reconstruct —
+      // same rationale as the bank/custom-holder before/after on employee.bank.updated.
+      payload: { before: before.paymentMethod ?? null, after: next },
+    });
+    return { id: p.employmentId, paymentMethod: next, changed: true as const };
   });
 }
 

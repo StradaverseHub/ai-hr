@@ -4433,6 +4433,11 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
         customHolderName: employeeStatutoryMy.customHolderName,
         enableCustomHolderId: employeeStatutoryMy.enableCustomHolderId,
         customHolderId: employeeStatutoryMy.customHolderId,
+        // R46 79eb7151 — HOW this employee is paid. The bank-upload file is only meaningful for the rows
+        // that are actually paid BY bank transfer; cheque and cash rows have to be settled another way.
+        // Emitting the method turns a flat list into something the payment run can be split on, instead of
+        // whoever opens the CSV having to remember who is not on transfer.
+        paymentMethod: employment.paymentMethod,
         net: payslip.netPay,
       })
       .from(payslip)
@@ -4460,6 +4465,13 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
       'Bank',
       'Account No',
       'Net Pay (RM)',
+      // R46 79eb7151 — appended strictly LAST so every pre-existing column keeps its INDEX (0..8 unchanged).
+      // A row with no method set emits an empty cell, so the data in every existing column is byte-identical
+      // to before. Note the one thing that does change: Net Pay is no longer the final cell, so a consumer
+      // reading "the last column" rather than a fixed index or the header sees the method instead. That is
+      // unavoidable when widening a CSV; last-position is still the least disruptive placement, and the
+      // header row names every column for anything parsing by name.
+      'Payment Method',
     ];
     const body = rows.map((r, i) => {
       const payee = payeeFor(r);
@@ -4473,6 +4485,7 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
         r.bankName ?? '',
         r.bankAccountNo ?? '',
         Number(r.net).toFixed(2),
+        r.paymentMethod ?? '',
       ];
     });
     const content = toCsv([header, ...body]);

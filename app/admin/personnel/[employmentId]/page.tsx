@@ -38,6 +38,7 @@ import {
   setEmergencyContactAction,
   setEmploymentAssignmentAction,
   setEmploymentBlacklistAction,
+  setPaymentMethodAction,
   setEmploymentComponentAction,
   setEmploymentInfoAction,
   setLocationAction,
@@ -64,7 +65,9 @@ import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
 import { listDependents, eligibleChildReliefCount, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
-import { listAssignablePolicies } from '@/core/payroll-policy';
+import { listAssignablePolicies, resolvedPolicyForEmployment } from '@/core/payroll-policy';
+import { PAYMENT_METHODS } from '@/core/org';
+import { payrollFrequencyOf } from '@/core/payroll-policy-config';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { listShiftsForTenant } from '@/core/roster';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
@@ -122,6 +125,12 @@ export default async function EmployeePage({
     asOf?: string;
     encashmentError?: string;
     tab?: string;
+    // R46 47146ea3 — Children (PCB Relief) auto-sync feedback. `childReliefSynced` = the count moved
+    // quietly (to this value); `childReliefAlert` = it moved while a payroll batch for that 'YYYY-MM'
+    // period was still open, which is the case HR must actually see (rail (d): alert, never block).
+    childReliefSynced?: string;
+    childReliefAlert?: string;
+    childReliefTo?: string;
   }>;
 }) {
   const s = await requireAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
@@ -131,7 +140,17 @@ export default async function EmployeePage({
   const tStatus = await getTranslations('people.employeeStatus');
   const admin = isAdmin(s);
   const { employmentId } = await params;
-  const { error, from, cp38Error, asOf: spAsOf, encashmentError, tab } = await searchParams;
+  const {
+    error,
+    from,
+    cp38Error,
+    asOf: spAsOf,
+    encashmentError,
+    tab,
+    childReliefSynced,
+    childReliefAlert,
+    childReliefTo,
+  } = await searchParams;
   // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the
   // people directory. Keeps the `from` param flowing through so nested navigation stays consistent.
   const back =
@@ -204,6 +223,14 @@ export default async function EmployeePage({
   const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
+  // R46 79eb7151 — resolve the policy the payroll kernel will ACTUALLY use for this employee (direct
+  // assignment → company default → null ⇒ monthly default), so the Salary section can surface its Pay Mode
+  // and Payment Term read-only. Resolving rather than reading emp.payrollPolicyId matters: an employee with
+  // no direct assignment still computes under the company default, and an assigned-but-inactive policy
+  // silently falls back to monthly — both cases would be misreported by the raw column.
+  const resolvedPolicy = admin ? await resolvedPolicyForEmployment(s, employmentId) : null;
+  const resolvedPayMode = resolvedPolicy?.policyType ?? 'monthly';
+  const resolvedPaymentTerm = payrollFrequencyOf(resolvedPolicy?.config ?? null);
   // R33 f21d6eee — Default shift picker options: the SHARED tenant-wide shift library (a template may now be
   // assigned to any employee regardless of company). Loaded WITH archived rows so a currently-assigned-but-
   // later-archived shift still renders as the selected option (instead of silently showing "None"), then
@@ -1455,6 +1482,76 @@ export default async function EmployeePage({
           />
         </form>
       )}
+
+      {/* ── R46 79eb7151 — How this employee is paid ──────────────────────────────────────────────────────
+          The reporter asked for Pay Mode, Payment Term and Payment Method on the Payroll tab, believing all
+          three were missing. Two of them already existed; they were just invisible from here, because the
+          Payroll Policy card rendered at the very BOTTOM of the tab while Basic Salary sits at the top. That
+          distance is the actual defect, and it is fixed two ways: payrollPolicyCard now renders immediately
+          after this card, and the resolved values appear right here.
+
+          DECISION (approved option 1: surface, do NOT duplicate). Pay Mode ≡ payroll_policy.policy_type and
+          Payment Term ≡ PayrollPolicyConfig.frequency. Both are properties of the reusable POLICY, which is
+          the single input the payroll kernel reads. They are rendered READ-ONLY with a link to edit the
+          policy. Per-employee override columns were explicitly rejected: they would shadow the policy, give
+          the kernel two disagreeing sources of truth for one input, and require a precedence rule in
+          core/payroll.ts. Payment Method is different — it had no home anywhere in the system — so it IS a
+          real per-employee field, with its own column, event and save.
+
+          These are the RESOLVED values (assignment → company default → monthly), i.e. what will actually
+          compute this person's pay, not the raw assigned column. */}
+      <div className="space-y-3 border-t border-border p-4">
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t('payMethodGroup')}
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label={t('payMode')}>
+            <div className="flex h-9 items-center text-sm">
+              {t(`payMode_${resolvedPayMode}` as 'payMode_monthly')}
+            </div>
+          </Field>
+          <Field label={t('paymentTerm')}>
+            <div className="flex h-9 items-center text-sm">
+              {t(`paymentTerm_${resolvedPaymentTerm}` as 'paymentTerm_monthly')}
+            </div>
+          </Field>
+          {/* Payment Method — the one genuinely new setting, so it gets a real control and its own Save.
+              Bank Transfer is validated server-side against the employee's bank name + account number
+              (setEmploymentPaymentMethod); a missing destination is rejected with an explanatory toast
+              rather than saved as an unpayable row. */}
+          <form action={setPaymentMethodAction} className="flex flex-col gap-1.5">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <span className="text-xs font-medium text-muted-foreground">{t('paymentMethod')}</span>
+            <div className="flex gap-2">
+              <select
+                name="paymentMethod"
+                defaultValue={emp.paymentMethod ?? ''}
+                disabled={!!emp.terminatedOn}
+                className={inputCls}
+              >
+                <option value="">{t('paymentMethodNotSet')}</option>
+                {PAYMENT_METHODS.map((m) => (
+                  <option key={m} value={m}>
+                    {t(`paymentMethod_${m}` as 'paymentMethod_bank_transfer')}
+                  </option>
+                ))}
+              </select>
+              {!emp.terminatedOn && <button className={btnPrimary}>{t('paymentMethodSave')}</button>}
+            </div>
+          </form>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {t.rich('payPolicySourceNote', {
+            policy: resolvedPolicy?.name ?? t('payPolicyDefaultName'),
+            link: (chunks) => (
+              <Link href="/admin/payroll-policy" className="underline underline-offset-2 hover:text-foreground">
+                {chunks}
+              </Link>
+            ),
+          })}
+        </p>
+        <p className="text-xs text-muted-foreground">{t('paymentMethodBankHint')}</p>
+      </div>
     </Card>
   ) : null;
 
@@ -1900,16 +1997,15 @@ export default async function EmployeePage({
               ))}
             </select>
           </Field>
-          {/* R43 c26c3ce5 — Employee Status is now system-derived + read-only (a badge), not an editable
-              dropdown, so it can never drift out of sync with the employment dates. Blacklisting (the one
-              manual override) has its own audited control below. */}
-          <Field label={t('employmentInfo.employeeStatus')}>
-            <div className="flex h-9 items-center">
-              <StatusBadge status={derivedStatus} label={derivedStatusLabel} />
-            </div>
-            <p className="text-xs text-muted-foreground">{t('employmentInfo.employeeStatusDerivedNote')}</p>
-          </Field>
-          <Field label={t('effectiveDate')}>
+          {/* R46 b272ab6b — the duplicate read-only Employee Status badge that used to sit here was removed.
+              The same derived value already renders TWICE above the fold: on the PageHeader actions slot and
+              on the employee summary Card. A third copy inside the form added noise without adding
+              information. Blacklisting (the one manual override) now has its own Card on the Movement tab. */}
+          {/* R46 b272ab6b — the Effective Date label is scoped to this assignment sub-group. It applies ONLY
+              to the effective-dated Department / Position / Business Unit / Employment Type change saved by
+              setEmploymentAssignmentAction — NOT to the flat organisation fields below, which have no
+              history. The generic `effectiveDate` label read as if it governed the whole card. */}
+          <Field label={t('employmentInfo.assignmentEffectiveDate')}>
             <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
           </Field>
         </div>
@@ -1919,46 +2015,108 @@ export default async function EmployeePage({
         </div>
       </form>
 
-      {/* R43 c26c3ce5 — Blacklist: the one manual, audited exception status that overrides the derived
-          Employee Status. Its own <form> (HTML forms can't nest) → setEmploymentBlacklistAction. */}
-      <form action={setEmploymentBlacklistAction} className="space-y-3 border-b border-border p-4">
-        <input type="hidden" name="employmentId" value={emp.employmentId} />
-        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {t('employmentInfo.blacklistTitle')}
-        </div>
-        {emp.blacklistedAt ? (
-          <>
-            <input type="hidden" name="blacklisted" value="false" />
-            <p className="text-sm text-rose-700 dark:text-rose-400">
-              {t('employmentInfo.blacklistActiveNote')}
-              {emp.blacklistReason ? ` — ${emp.blacklistReason}` : ''}
-            </p>
-            <div className="flex justify-end">
-              <button className={btnGhost}>{t('employmentInfo.blacklistClearAction')}</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <input type="hidden" name="blacklisted" value="true" />
-            <p className="text-xs text-muted-foreground">{t('employmentInfo.blacklistNote')}</p>
-            <Field label={t('employmentInfo.blacklistReasonLabel')}>
-              <input
-                name="reason"
-                className={inputCls}
-                placeholder={t('employmentInfo.blacklistReasonPlaceholder')}
-              />
-            </Field>
-            <div className="flex justify-end">
-              <button className={`${btnGhost} border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-400 dark:hover:bg-rose-500/10`}>
-                {t('employmentInfo.blacklistAction')}
-              </button>
-            </div>
-          </>
-        )}
-      </form>
-
       <form action={setEmploymentInfoAction} className="space-y-6 p-4">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
+
+        {/* ── Organisation (continued) ── R46 b272ab6b: relocated from the BOTTOM of this form to the TOP so it
+            sits directly beneath the Organisation Assignment sub-group above, putting every organisation
+            dimension — Company / Business Unit / Department / Position / Grade / Type, then Division / Branch /
+            Region / Line / Section / Team / Base / Category — in one contiguous block.
+
+            DECISION 1 (approved: keep both Saves): these eight fields are FLAT, non-dated columns on
+            `employment` and are saved by setEmploymentInfoAction, whereas the sub-group above is
+            EFFECTIVE-DATED on `assignment` and saved by setEmploymentAssignmentAction. HTML forms cannot
+            nest, so re-parenting these inputs into the assignment form would mean widening that action and
+            making these fields date-effective — a data-model change that was explicitly NOT approved. The
+            grouping here is therefore purely visual: the inputs stay in their original <form>, the two
+            server actions are untouched, and no field changed its persistence semantics. */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('employmentInfo.orgGroup')}
+          </legend>
+          {/* 1001ff61 — the org fields are now System-Labels dropdowns (profile_option categories) instead of
+              free text, preventing duplicate/misspelled values. Division is rendered FIRST per the requested
+              Organisation hierarchy. Legacy free-text values stay valid (ProfileOptionSelect renders any
+              off-catalog stored value pre-selected). An empty catalog imposes no constraint yet. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <Field label={t('employmentInfo.division')}>
+              <ProfileOptionSelect
+                name="orgDivision"
+                value={emp.orgDivision}
+                options={profileOptions.division}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.branch')}>
+              <ProfileOptionSelect
+                name="orgBranch"
+                value={emp.orgBranch}
+                options={profileOptions.branch}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.region')}>
+              <ProfileOptionSelect
+                name="orgRegion"
+                value={emp.orgRegion}
+                options={profileOptions.region}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.line')}>
+              <ProfileOptionSelect
+                name="orgLine"
+                value={emp.orgLine}
+                options={profileOptions.line}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.section')}>
+              <ProfileOptionSelect
+                name="orgSection"
+                value={emp.orgSection}
+                options={profileOptions.section}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.team')}>
+              <ProfileOptionSelect
+                name="orgTeam"
+                value={emp.orgTeam}
+                options={profileOptions.team}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.base')}>
+              <ProfileOptionSelect
+                name="orgBase"
+                value={emp.orgBase}
+                options={profileOptions.base}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            {/* R46 b272ab6b — Category folded in from the former standalone "Job" fieldset, whose only field it
+                was. It is the same flat catalog-backed column on the same form/action; only its visual home
+                moved, so the one-field group no longer fragments the organisation block. */}
+            <Field label={t('employmentInfo.category')}>
+              {/* 1001ff61 — Category is now a System-Labels dropdown (profile_option category `category`). */}
+              <ProfileOptionSelect
+                name="employmentCategory"
+                value={emp.employmentCategory}
+                options={profileOptions.category}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+          </div>
+        </fieldset>
 
         {/* ── Employment Dates (redesigned 955c7de4) ── explicit period UNITS + full lifecycle dates, grouped
             into Joining / Probation / Notice / Resignation sub-sections. Each period is a value + unit dropdown
@@ -2071,105 +2229,58 @@ export default async function EmployeePage({
           </div>
         </fieldset>
 
-        {/* ── Organisation ── */}
-        <fieldset className="space-y-3">
-          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t('employmentInfo.orgGroup')}
-          </legend>
-          {/* 1001ff61 — the org fields are now System-Labels dropdowns (profile_option categories) instead of
-              free text, preventing duplicate/misspelled values. Division is rendered FIRST per the requested
-              Organisation hierarchy. Legacy free-text values stay valid (ProfileOptionSelect renders any
-              off-catalog stored value pre-selected). An empty catalog imposes no constraint yet. */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <Field label={t('employmentInfo.division')}>
-              <ProfileOptionSelect
-                name="orgDivision"
-                value={emp.orgDivision}
-                options={profileOptions.division}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.branch')}>
-              <ProfileOptionSelect
-                name="orgBranch"
-                value={emp.orgBranch}
-                options={profileOptions.branch}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.region')}>
-              <ProfileOptionSelect
-                name="orgRegion"
-                value={emp.orgRegion}
-                options={profileOptions.region}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.line')}>
-              <ProfileOptionSelect
-                name="orgLine"
-                value={emp.orgLine}
-                options={profileOptions.line}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.section')}>
-              <ProfileOptionSelect
-                name="orgSection"
-                value={emp.orgSection}
-                options={profileOptions.section}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.team')}>
-              <ProfileOptionSelect
-                name="orgTeam"
-                value={emp.orgTeam}
-                options={profileOptions.team}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.base')}>
-              <ProfileOptionSelect
-                name="orgBase"
-                value={emp.orgBase}
-                options={profileOptions.base}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-          </div>
-        </fieldset>
-
-        {/* ── Job ── (Position / Grade / Type / Status read-only above; Category is new master data) */}
-        <fieldset className="space-y-3">
-          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t('employmentInfo.jobGroup')}
-          </legend>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <Field label={t('employmentInfo.category')}>
-              {/* 1001ff61 — Category is now a System-Labels dropdown (profile_option category `category`). */}
-              <ProfileOptionSelect
-                name="employmentCategory"
-                value={emp.employmentCategory}
-                options={profileOptions.category}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-          </div>
-        </fieldset>
-
         <p className="text-xs text-muted-foreground">{t('employmentInfo.superiorNote')}</p>
         <div className="flex justify-end">
           <button className={btnPrimary}>{t('employmentInfo.save')}</button>
         </div>
+      </form>
+    </Card>
+  ) : null;
+
+  /* R46 b272ab6b — Blacklist lifted OUT of employmentInfoCard into its own Card, rendered on the Career
+     Movement tab alongside the other lifecycle actions (Transfer, Terminate, Assignment History). It was
+     already its own <form> (HTML forms can't nest), so this is a pure relocation: setEmploymentBlacklistAction,
+     the employment.blacklisted_at / blacklist_reason columns and the audit event it emits are all untouched.
+     Blacklist is a lifecycle state change, not employment master data — it belongs with the other lifecycle
+     actions, not buried between the organisation assignment and the employment dates.
+
+     NOTE (deliberate scope boundary): a dedicated "Blacklist History" list is NOT built here. No such UI
+     exists today — blacklist changes surface generically through changeHistoryCard on the Others tab — so
+     it would be new work rather than a relocation. It stays out of this item. */
+  const blacklistCard = admin ? (
+    <Card id="section-blacklist">
+      <SectionHeader title={t('employmentInfo.blacklistTitle')} />
+      <form action={setEmploymentBlacklistAction} className="space-y-3 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        {emp.blacklistedAt ? (
+          <>
+            <input type="hidden" name="blacklisted" value="false" />
+            <p className="text-sm text-rose-700 dark:text-rose-400">
+              {t('employmentInfo.blacklistActiveNote')}
+              {emp.blacklistReason ? ` — ${emp.blacklistReason}` : ''}
+            </p>
+            <div className="flex justify-end">
+              <button className={btnGhost}>{t('employmentInfo.blacklistClearAction')}</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <input type="hidden" name="blacklisted" value="true" />
+            <p className="text-xs text-muted-foreground">{t('employmentInfo.blacklistNote')}</p>
+            <Field label={t('employmentInfo.blacklistReasonLabel')}>
+              <input
+                name="reason"
+                className={inputCls}
+                placeholder={t('employmentInfo.blacklistReasonPlaceholder')}
+              />
+            </Field>
+            <div className="flex justify-end">
+              <button className={`${btnGhost} border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-400 dark:hover:bg-rose-500/10`}>
+                {t('employmentInfo.blacklistAction')}
+              </button>
+            </div>
+          </>
+        )}
       </form>
     </Card>
   ) : null;
@@ -2509,10 +2620,15 @@ export default async function EmployeePage({
     // the "── JOB ──" section) are untouched: only their render location moved, so transferAction /
     // terminateAction keep their existing effective-date rules and DomainEvents and no data is affected.
     // Order mirrors the lifecycle: past movements (history) first, then the actions that create the next.
+    // R46 b272ab6b — blacklistCard joins them: Blacklist is a lifecycle state change (like transfer and
+    // termination), not employment master data, so it moved off the Employment tab to sit with its peers.
+    // Rendered LAST — it is the exceptional, rarely-used action, and should not compete with the routine
+    // movement actions above it.
     careerMovement: (
       <>
         {assignmentHistoryCard}
         {transferTerminateCards}
+        {blacklistCard}
       </>
     ),
     // Attendance Information (feedback 1fbe9891): the four attendance-related section cards relocated
@@ -2554,15 +2670,20 @@ export default async function EmployeePage({
     // Item a6a47698 — TP3 / opening balances and the Zakat summary relocated here from Bank & Statutory so
     // all payroll-related employee information is centralized on this tab. tp3Card has its own partial save
     // (setTp3Action); zakatSummaryCard is read-only and links to Payroll → Transactions → Zakat to edit.
+    // R46 79eb7151 — payrollPolicyCard moved from LAST to SECOND, directly under compensationCard. It was
+    // the layout root cause: Pay Mode and Payment Term both live on the payroll policy, but the card holding
+    // it sat below pay components, CP38, encashment, TP3 and zakat, so from the Salary section at the top of
+    // the tab they looked absent. Basic Salary and the policy that decides how it is paid now read together.
+    // compensationCard stays FIRST (feedback 326f0b5e) — Basic Salary must still open at the top.
     payroll: (
       <>
         {compensationCard}
+        {payrollPolicyCard}
         {payComponentsCard}
         {cp38Card}
         {encashmentCard}
         {tp3Card}
         {zakatSummaryCard}
-        {payrollPolicyCard}
       </>
     ),
     // Leave Information (feedback d085c6fc): the Leave Balance card — including its entitlement
@@ -2709,6 +2830,31 @@ export default async function EmployeePage({
       </Card>
 
       <ErrorBanner message={error} />
+
+      {/* R46 47146ea3 — Children (PCB Relief) auto-sync feedback. The manual "Use {count}" confirmation is
+          gone: a Family-record change now moves the PCB child count by itself whenever Child Relief Mode is
+          'Auto'. Because that silently changes a TAX input, the person who made the edit is told what moved.
+
+          The AMBER case is rail (d): the count changed while a payroll batch for that period was still open
+          (draft/processed). We deliberately allow the edit — blocking would leave HR unable to correct a
+          family record for as long as payroll stays open — but a regenerate would now produce a different
+          PCB, so the payroll team has to know. Closed batches are unaffected: their payslips are frozen
+          snapshots and closed-batch immutability is enforced by DB triggers.
+
+          The NEUTRAL case is the quiet confirmation that the count moved with no payroll run in flight.
+          Both are transient; the permanent record is the `employee.tax.updated` event, stamped auto: true. */}
+      {childReliefAlert ? (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+          {t('childReliefAutoSyncedPayrollAlert', {
+            count: Number(childReliefTo ?? 0),
+            period: childReliefAlert,
+          })}
+        </div>
+      ) : childReliefSynced ? (
+        <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          {t('childReliefAutoSynced', { count: Number(childReliefSynced) })}
+        </div>
+      ) : null}
 
       <PersonnelTabs
         tabs={tabs}
