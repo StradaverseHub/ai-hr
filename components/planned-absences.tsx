@@ -215,7 +215,7 @@ export async function PlannedAbsences({
   }));
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="h-full overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div>
           <h2 className="text-base font-semibold tracking-tight">{t('title')}</h2>

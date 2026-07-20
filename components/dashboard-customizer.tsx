@@ -48,6 +48,23 @@ import { ArrowUpRight, GripVertical, Pin, Plus, X } from 'lucide-react';
 import { Button, Card } from '@/components/ui';
 import { MAX_FIRST_ROW, partitionDashboardRows, type DashboardLayout } from '@/lib/dashboard-layout';
 
+/**
+ * Column classes derived from the ACTUAL number of cards in a row (feedback 84d1233d step 1), so two
+ * cards share the full width instead of leaving half the row empty, removing a card closes the gap, and
+ * a lone pinned card no longer squashes to a quarter. STATIC map — Tailwind cannot JIT a
+ * runtime-interpolated class name. Capped at 4 across; the 3/4-column step is xl (1280px), not lg, so a
+ * 1024px landscape tablet stays at 2-up instead of jumping straight to 4 across.
+ */
+const GRID_COLS: Record<number, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-1 sm:grid-cols-2',
+  3: 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3',
+  4: 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4',
+};
+export function gridColsFor(count: number): string {
+  return GRID_COLS[Math.min(Math.max(count, 1), 4)] ?? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4';
+}
+
 /** One HR-configured card the employee may show / add / reorder. */
 export type CustomizerCard = {
   key: string;
@@ -62,8 +79,8 @@ export type CustomizerCard = {
 /** A shortcut/action card with no bespoke server node — a clickable jump to its configured destination. */
 function ShortcutCard({ label, href, badge }: { label: string; href: string; badge: string }) {
   return (
-    <Link href={href} className="block">
-      <Card className="flex items-center justify-between gap-3 p-5 transition-colors hover:border-foreground/20">
+    <Link href={href} className="block h-full">
+      <Card className="flex h-full items-center justify-between gap-3 p-5 transition-colors hover:border-foreground/20">
         <div className="min-w-0">
           <div className="text-[10px] font-medium uppercase tracking-wide text-primary/80">{badge}</div>
           <div className="mt-1 truncate text-lg font-semibold tracking-tight">{label}</div>
@@ -104,7 +121,7 @@ function SortableCard({
       ref={setNodeRef}
       style={style}
       data-card-key={id}
-      className={`relative rounded-2xl border-2 border-dashed border-primary/30 p-2 ${
+      className={`relative h-full rounded-2xl border-2 border-dashed border-primary/30 p-2 ${
         isDragging ? 'opacity-80 shadow-lg' : ''
       } ${shaking ? 'animate-shake border-destructive/60' : ''}`}
     >
@@ -146,7 +163,7 @@ function SortableCard({
 function FixedCard({ label, children }: { label: string; children: ReactNode }) {
   const t = useTranslations('dashboard');
   return (
-    <div className="relative rounded-2xl border-2 border-dashed border-muted-foreground/25 bg-muted/20 p-2">
+    <div className="relative h-full rounded-2xl border-2 border-dashed border-muted-foreground/25 bg-muted/20 p-2">
       <div className="mb-2 flex items-center gap-2">
         <Pin className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className="text-xs font-medium text-muted-foreground">{label}</span>
@@ -403,7 +420,7 @@ export function DashboardCustomizer({
           {/* Row 1 — the draggable widget grid (max MAX_FIRST_ROW=4 across on desktop; extra cards wrap). */}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={sortableKeys} strategy={rectSortingStrategy}>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className={`grid gap-4 ${gridColsFor(sortableKeys.length)}`}>
                 {sortableKeys.map((key) => (
                   <SortableCard
                     key={key}
@@ -418,7 +435,7 @@ export function DashboardCustomizer({
                   </SortableCard>
                 ))}
                 {sortableKeys.length === 0 && (
-                  <p className="rounded-2xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground sm:col-span-2 lg:col-span-4">
+                  <p className="col-span-full rounded-2xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground">
                     {t('emptyDashboardHint')}
                   </p>
                 )}
@@ -429,7 +446,7 @@ export function DashboardCustomizer({
           {fixedKeys.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">{t('pinnedRowHint')}</p>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className={`grid gap-4 ${gridColsFor(fixedKeys.length)}`}>
                 {fixedKeys.map((key) => (
                   <FixedCard key={key} label={labelFor(key)}>
                     {nodeFor(key)}
@@ -443,17 +460,17 @@ export function DashboardCustomizer({
         <div className="space-y-6">
           {/* Row 1 — the employee's arranged widget grid. */}
           {sortableKeys.length > 0 && (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div className={`grid gap-6 ${gridColsFor(sortableKeys.length)}`}>
               {sortableKeys.map((key) => (
-                <div key={key}>{nodeFor(key)}</div>
+                <div key={key} className="h-full">{nodeFor(key)}</div>
               ))}
             </div>
           )}
           {/* Row 2 — the fixed pinned row. */}
           {fixedKeys.length > 0 && (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div className={`grid gap-6 ${gridColsFor(fixedKeys.length)}`}>
               {fixedKeys.map((key) => (
-                <div key={key}>{nodeFor(key)}</div>
+                <div key={key} className="h-full">{nodeFor(key)}</div>
               ))}
             </div>
           )}
