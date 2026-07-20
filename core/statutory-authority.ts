@@ -16,31 +16,12 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { companyBankProfile, companyStatutoryAuthority, employment, person } from '../db/schema';
+// The controlled authority set lives in lib/ so the client Company panel can import it too (core/ pulls in
+// the DB client). Re-exported here so service callers keep one import site.
+import { STATUTORY_AUTHORITIES, isStatutoryAuthority, type StatutoryAuthority } from '../lib/statutory-authorities';
 
-/**
- * The statutory bodies a Malaysian employer pays. Controlled in CODE, not a pgEnum — migration 0275 exists
- * precisely because a 4-value pgEnum had to be widened, and this set will grow.
- *
- * ⚠ Confirm this list with the client before go-live: it covers the bodies named in the request (EPF,
- * SOCSO, EIS, LHDN, HRD Corp, Zakat) plus the common third-party payroll deduction bodies. Adding an
- * authority is a one-line change here with no migration.
- */
-export const STATUTORY_AUTHORITIES = [
-  'epf', // KWSP — Employees Provident Fund
-  'socso', // PERKESO — Social Security Organisation
-  'eis', // SIP — Employment Insurance System (administered by PERKESO)
-  'lhdn', // Inland Revenue Board — PCB / CP38
-  'hrdf', // HRD Corp — levy under the PSMB Act 2001
-  'zakat', // State religious council — zakat via salary deduction
-  'ptptn', // National Higher Education Fund loan repayments
-  'tabung_haji', // Lembaga Tabung Haji savings deduction
-  'koperasi', // Co-operative loan / savings deduction
-] as const;
-export type StatutoryAuthority = (typeof STATUTORY_AUTHORITIES)[number];
-
-export function isStatutoryAuthority(v: string | null | undefined): v is StatutoryAuthority {
-  return !!v && (STATUTORY_AUTHORITIES as readonly string[]).includes(v);
-}
+export { STATUTORY_AUTHORITIES, isStatutoryAuthority };
+export type { StatutoryAuthority };
 
 export type CompanyStatutoryAuthorityInput = {
   companyId: string;

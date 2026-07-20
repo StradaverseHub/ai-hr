@@ -4,8 +4,16 @@ import { companyTree, listCompanies } from '@/core/read';
 import { listProfileOptions } from '@/core/profile-options';
 import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { listAllCompanyBankProfiles } from '@/core/bank-profile';
+// R46 orgbank (84719377) — per-authority statutory payment configuration + the company-scoped signatory
+// candidates. Both are RLS-scoped listers, grouped by company here like the bank profiles.
+import { listAllCompanyStatutoryAuthorities, listSignatoryCandidates } from '@/core/statutory-authority';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
-import { CompanyPanel, type PanelBankProfile } from '@/components/company-panel';
+import {
+  CompanyPanel,
+  type PanelBankProfile,
+  type PanelSignatory,
+  type PanelStatutoryAuthority,
+} from '@/components/company-panel';
 import { OrganizationList } from '@/components/organization-list';
 import { CompaniesCardHeader } from '@/components/add-company';
 import {
@@ -14,7 +22,9 @@ import {
   deleteCompanyAction,
   removeCompanyBankProfileAction,
   removeCompanyLogoAction,
+  removeCompanyStatutoryAuthorityAction,
   setCompanyBankProfileAction,
+  setCompanyStatutoryAuthorityAction,
   setCompanyLogoAction,
   setCompanyParentAction,
   setCompanyStatutoryAction,
@@ -58,11 +68,13 @@ export default async function OrganizationPage({
   // The tree stays unscoped (it needs every node to draw the group); the company panels follow
   // the active company context. Org catalogs (departments/positions/cost-centers/business-units) moved to
   // Settings → System Labels, so this page no longer fetches them.
-  const [companies, tree, statutory, bankProfiles, stateOpts] = await Promise.all([
+  const [companies, tree, statutory, bankProfiles, authorities, signatories, stateOpts] = await Promise.all([
     listCompanies(s, { includeArchived: true }),
     companyTree(s),
     listCompanyStatutoryMY(s),
     listAllCompanyBankProfiles(s),
+    listAllCompanyStatutoryAuthorities(s),
+    listSignatoryCandidates(s),
     // Enhance Company General Tab (bc5d4891): reuse the tenant-wide profile-option catalog for the
     // Contact-Information State pick-list (same source the Personnel profile dropdowns read). 94ae7e1f — the
     // Country picker now uses the complete shared ISO list (lib/countries) instead of a curated catalog.
@@ -90,6 +102,33 @@ export default async function OrganizationPage({
     });
     bankBy.set(bp.companyId, list);
   }
+  const authorityBy = new Map<string, PanelStatutoryAuthority[]>();
+  for (const a of authorities) {
+    const list = authorityBy.get(a.companyId) ?? [];
+    list.push({
+      id: a.id,
+      authority: a.authority,
+      accountNo: a.accountNo,
+      bankProfileId: a.bankProfileId,
+      addressLine1: a.addressLine1,
+      addressLine2: a.addressLine2,
+      addressLine3: a.addressLine3,
+      city: a.city,
+      state: a.state,
+      postcode: a.postcode,
+      country: a.country,
+      phone: a.phone,
+      email: a.email,
+      signatoryPersonId: a.signatoryPersonId,
+    });
+    authorityBy.set(a.companyId, list);
+  }
+  const signatoryBy = new Map<string, PanelSignatory[]>();
+  for (const sg of signatories) {
+    const list = signatoryBy.get(sg.companyId) ?? [];
+    list.push({ personId: sg.personId, name: sg.name });
+    signatoryBy.set(sg.companyId, list);
+  }
   const parentBy = new Map(tree.map((n) => [n.id, n.parentId]));
   // substrate: read-only, no event. The Companies management card is a tenant-wide master:
   // it renders every company regardless of the company-switcher scope (getScopeIds), unlike
@@ -103,6 +142,8 @@ export default async function OrganizationPage({
     setStatutory: setCompanyStatutoryAction,
     setBankProfile: setCompanyBankProfileAction,
     removeBankProfile: removeCompanyBankProfileAction,
+    setStatutoryAuthority: setCompanyStatutoryAuthorityAction,
+    removeStatutoryAuthority: removeCompanyStatutoryAuthorityAction,
     setCompanyLogo: setCompanyLogoAction,
     removeCompanyLogo: removeCompanyLogoAction,
   };
@@ -185,6 +226,8 @@ export default async function OrganizationPage({
                   companies={companies}
                   statutory={statBy.get(c.id) ?? null}
                   bankProfiles={bankBy.get(c.id) ?? []}
+                  statutoryAuthorities={authorityBy.get(c.id) ?? []}
+                  signatories={signatoryBy.get(c.id) ?? []}
                   stateOptions={stateOptions}
                   actions={actions}
                 />

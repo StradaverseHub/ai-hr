@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { COUNTRY_CODE_OPTIONS, COUNTRY_NAME_OPTIONS } from '@/lib/countries';
-import { DISBURSEMENT_CAPABLE_BANKS, DISBURSEMENT_UNSUPPORTED_BANKS, myBankLabel } from '@/lib/my-banks';
+import { DISBURSEMENT_CAPABLE_BANKS, DISBURSEMENT_UNSUPPORTED_BANKS, MY_BANKS, myBankLabel } from '@/lib/my-banks';
+import { STATUTORY_AUTHORITIES } from '@/lib/statutory-authorities';
 import { Avatar, Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 
@@ -112,6 +113,26 @@ export type PanelBankProfile = {
   isPrimary: boolean;
 };
 
+// R46 orgbank (84719377) — per-authority statutory payment configuration (company_statutory_authority).
+export type PanelStatutoryAuthority = {
+  id: string;
+  authority: string;
+  accountNo: string | null;
+  bankProfileId: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressLine3: string | null;
+  city: string | null;
+  state: string | null;
+  postcode: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+  signatoryPersonId: string | null;
+};
+/** An ACTIVE employee of this company — the authorised-signatory picker is company-scoped. */
+export type PanelSignatory = { personId: string; name: string };
+
 const badge = {
   amber:
     'rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
@@ -153,6 +174,275 @@ function OptionSelect({
   );
 }
 
+/**
+ * One company bank account (R46 orgbank 84719377). Used twice: prefilled for each saved account (a hidden
+ * `id` makes the save an UPDATE of that row) and blank to add another. A company may hold several accounts
+ * including more than one at the same bank, so the row id — not (company, bank) — is the identity.
+ *
+ * The Bank picker is the SHARED Malaysian bank master (lib/my-banks.ts), the same list the employee bank
+ * screen offers. Banks ai-hr cannot yet BUILD a bulk salary file for are still selectable but sit in a
+ * clearly-labelled group: widening the picker without widening the file builders is how a company ends up
+ * saving a profile that only fails at file-build time, so the limitation is stated up front instead.
+ *
+ * The Payment rail (IBG / RENTAS) select is deliberately NOT rendered — the reporter asked for it off the
+ * screen. The column and its 'IBG' default remain (RENTAS is required for large single payments); nothing
+ * here posts txnType, so the service leaves the stored value alone.
+ */
+function BankAccountForm({
+  action,
+  companyId,
+  companyName,
+  profile,
+}: {
+  action: Action;
+  companyId: string;
+  companyName: string;
+  profile: PanelBankProfile | null;
+}) {
+  const t = useTranslations('admin.organization');
+  const p = profile;
+  // Legacy-tolerant: a stored bank key no longer in the master is still offered so editing any OTHER field
+  // cannot silently drop it (same posture as OptionSelect).
+  const known = !p?.bank || MY_BANKS.some((b) => b.key === p.bank);
+  return (
+    <form action={action} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <input type="hidden" name="companyId" value={companyId} />
+      {p && <input type="hidden" name="id" value={p.id} />}
+      <Field label={t('bankLabel')}>
+        <select name="bank" defaultValue={p?.bank ?? ''} required className={inputCls}>
+          <option value="" disabled>
+            {t('bankSelect')}
+          </option>
+          {!known && p?.bank ? <option value={p.bank}>{p.bank}</option> : null}
+          {DISBURSEMENT_CAPABLE_BANKS.map((b) => (
+            <option key={b.key} value={b.key}>
+              {b.canonical}
+            </option>
+          ))}
+          <optgroup label={t('bankNoFileFormatGroup')}>
+            {DISBURSEMENT_UNSUPPORTED_BANKS.map((b) => (
+              <option key={b.key} value={b.key}>
+                {b.canonical}
+              </option>
+            ))}
+          </optgroup>
+        </select>
+      </Field>
+      <Field label={t('bankAccountLabel')}>
+        <input
+          name="accountLabel"
+          defaultValue={p?.accountLabel ?? ''}
+          className={inputCls}
+          placeholder={t('bankAccountLabelHint')}
+        />
+      </Field>
+      <Field label={t('bankCorporateId')}>
+        <input
+          name="corporateId"
+          required
+          defaultValue={p?.corporateId ?? ''}
+          className={inputCls}
+          placeholder={t('bankCorporateIdHint')}
+        />
+      </Field>
+      <Field label={t('bankDebitAccount')}>
+        <input name="debitAccountNo" required defaultValue={p?.debitAccountNo ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('bankAccountName')}>
+        <input name="accountName" defaultValue={p?.accountName ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('bankAccountType')}>
+        <select name="accountType" defaultValue={p?.accountType ?? ''} className={inputCls}>
+          <option value="">{t('optionNone')}</option>
+          <option value="current">{t('bankAccountTypeCurrent')}</option>
+          <option value="savings">{t('bankAccountTypeSavings')}</option>
+        </select>
+      </Field>
+      <Field label={t('bankBranch')}>
+        <input name="branch" defaultValue={p?.branch ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('bankSwift')}>
+        <input name="swiftCode" defaultValue={p?.swiftCode ?? ''} className={`${inputCls} uppercase`} />
+      </Field>
+      <Field label={t('bankCurrency')}>
+        <input
+          name="currency"
+          defaultValue={p?.currency ?? 'MYR'}
+          pattern="[A-Za-z]{3}"
+          maxLength={3}
+          className={`${inputCls} uppercase`}
+        />
+      </Field>
+      <div className="sm:col-span-2">
+        <Field label={t('bankOrgName')}>
+          <input name="orgName" defaultValue={p?.orgName ?? companyName} className={inputCls} />
+        </Field>
+      </div>
+      <label className="flex items-center gap-2 text-sm sm:col-span-2">
+        <input type="checkbox" name="isPrimary" defaultChecked={p?.isPrimary ?? false} className="size-4 rounded" />
+        {t('bankPrimaryLabel')}
+      </label>
+      <div className="sm:col-span-2">
+        <Button type="submit" size="sm">
+          {t('bankProfileSave')}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * One statutory body's payment configuration (R46 orgbank 84719377): which of the company's bank accounts
+ * pays it, the employer's payment reference with it, its correspondence address + contact, and the
+ * authorised signatory.
+ *
+ * The signatory picker is scoped to ACTIVE employees of THIS company. It is legacy-tolerant in the same way
+ * the profile-option pickers are: a stored signatory who has since left is still shown as selected, so
+ * editing the phone number does not silently clear them. The service refuses to newly APPOINT a leaver.
+ */
+function StatutoryAuthorityCard({
+  authority,
+  row,
+  companyId,
+  bankProfiles,
+  signatories,
+  stateOptions,
+  setAction,
+  removeAction,
+}: {
+  authority: string;
+  row: PanelStatutoryAuthority | null;
+  companyId: string;
+  bankProfiles: PanelBankProfile[];
+  signatories: PanelSignatory[];
+  stateOptions: PanelOption[];
+  setAction: Action;
+  removeAction: Action;
+}) {
+  const t = useTranslations('admin.organization');
+  const r = row;
+  const configured = !!r;
+  const signatoryKnown = !r?.signatoryPersonId || signatories.some((sg) => sg.personId === r.signatoryPersonId);
+  return (
+    <li className="rounded-md border border-border/60">
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0 text-sm">
+            {/* Dynamic message key (`authority_epf`, `authority_socso`, …) — one per entry in
+                STATUTORY_AUTHORITIES, present in all six locales. The `as never` cast is the repo's
+                existing convention for a computed key (see txn-grid.tsx). NOTE: the i18n-coverage test
+                cannot see dynamic keys, so adding an authority means adding its label to all six
+                locales by hand. */}
+            <span className="font-medium">{t(`authority_${authority}` as never)}</span>
+            {configured ? (
+              <span className={`ml-2 ${badge.emerald}`}>{t('authorityConfigured')}</span>
+            ) : (
+              <span className={`ml-2 ${badge.muted}`}>{t('authorityNotConfigured')}</span>
+            )}
+          </span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            <span className="group-open:hidden">{t('bankAccountEdit')}</span>
+            <span className="hidden group-open:inline">{t('bankAccountCollapse')}</span>
+          </span>
+        </summary>
+        <div className="space-y-2 border-t border-border/60 px-3 py-3">
+          <form action={setAction} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <input type="hidden" name="companyId" value={companyId} />
+            <input type="hidden" name="authority" value={authority} />
+            <Field label={t('authorityAccountNo')}>
+              <input
+                name="accountNo"
+                defaultValue={r?.accountNo ?? ''}
+                className={inputCls}
+                placeholder={t('authorityAccountNoHint')}
+              />
+            </Field>
+            <div className="sm:col-span-2">
+              <Field label={t('authorityBankAccount')}>
+                <select name="bankProfileId" defaultValue={r?.bankProfileId ?? ''} className={inputCls}>
+                  <option value="">{t('authorityBankAccountNone')}</option>
+                  {bankProfiles.map((bp) => (
+                    <option key={bp.id} value={bp.id}>
+                      {(bp.accountLabel || myBankLabel(bp.bank)) + ' · ••••' + bp.debitAccountNo.slice(-4)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <div className="sm:col-span-3">
+              <Field label={t('addressLine1')}>
+                <input name="addressLine1" defaultValue={r?.addressLine1 ?? ''} className={inputCls} />
+              </Field>
+            </div>
+            <div className="sm:col-span-3">
+              <Field label={t('addressLine2')}>
+                <input name="addressLine2" defaultValue={r?.addressLine2 ?? ''} className={inputCls} />
+              </Field>
+            </div>
+            <div className="sm:col-span-3">
+              <Field label={t('addressLine3')}>
+                <input name="addressLine3" defaultValue={r?.addressLine3 ?? ''} className={inputCls} />
+              </Field>
+            </div>
+            <Field label={t('city')}>
+              <input name="city" defaultValue={r?.city ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('addrState')}>
+              <OptionSelect name="state" value={r?.state ?? null} options={stateOptions} placeholder={t('optionNone')} />
+            </Field>
+            <Field label={t('postcode')}>
+              <input name="postcode" defaultValue={r?.postcode ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('addrCountry')}>
+              <OptionSelect
+                name="country"
+                value={r?.country ?? null}
+                options={COUNTRY_NAME_OPTIONS}
+                placeholder={t('optionNone')}
+              />
+            </Field>
+            <Field label={t('phone')}>
+              <input name="phone" type="tel" defaultValue={r?.phone ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('authorityEmail')}>
+              <input name="email" type="email" defaultValue={r?.email ?? ''} className={inputCls} />
+            </Field>
+            <div className="sm:col-span-3">
+              <Field label={t('authoritySignatory')}>
+                <select name="signatoryPersonId" defaultValue={r?.signatoryPersonId ?? ''} className={inputCls}>
+                  <option value="">{t('optionNone')}</option>
+                  {/* A signatory who has since left is still shown so an unrelated edit can't clear them. */}
+                  {!signatoryKnown && r?.signatoryPersonId ? (
+                    <option value={r.signatoryPersonId}>{t('authoritySignatoryFormer')}</option>
+                  ) : null}
+                  {signatories.map((sg) => (
+                    <option key={sg.personId} value={sg.personId}>
+                      {sg.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <div className="sm:col-span-3">
+              <Button type="submit" size="sm">
+                {t('authoritySave')}
+              </Button>
+            </div>
+          </form>
+          {r && (
+            <form action={removeAction}>
+              <input type="hidden" name="id" value={r.id} />
+              <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+                {t('authorityClear')}
+              </button>
+            </form>
+          )}
+        </div>
+      </details>
+    </li>
+  );
+}
+
 /** The company's logo (served inline by the RLS-scoped logo route) or the initials Avatar placeholder when
  *  none is set. On an <img> load error (e.g. a corrupt-but-sniffed file) it falls back to the Avatar. */
 function CompanyLogo({
@@ -188,6 +478,8 @@ export function CompanyPanel({
   companies,
   statutory,
   bankProfiles,
+  statutoryAuthorities = [],
+  signatories = [],
   stateOptions = [],
   actions,
   className,
@@ -196,6 +488,10 @@ export function CompanyPanel({
   companies: { id: string; name: string }[];
   statutory: PanelStatutory;
   bankProfiles: PanelBankProfile[];
+  // R46 orgbank (84719377) — per-authority statutory payment configuration + the company-scoped
+  // authorised-signatory candidates (active employees of THIS company).
+  statutoryAuthorities?: PanelStatutoryAuthority[];
+  signatories?: PanelSignatory[];
   // Enhance Company General Tab (bc5d4891) — tenant-wide catalog for the Contact-Info State picker. The
   // Country picker (94ae7e1f) now uses the complete shared ISO list (lib/countries), not a curated catalog.
   stateOptions?: PanelOption[];
@@ -207,6 +503,8 @@ export function CompanyPanel({
     setStatutory: Action;
     setBankProfile: Action;
     removeBankProfile: Action;
+    setStatutoryAuthority: Action;
+    removeStatutoryAuthority: Action;
     setCompanyLogo: Action;
     removeCompanyLogo: Action;
   };
@@ -473,75 +771,54 @@ export function CompanyPanel({
           <div className={cn('space-y-4', tab === 'bankAccount' ? '' : 'hidden')}>
           {/* Bank disbursement profiles (ADR-0031) — bank-issued corporate ID + employer debit account */}
           {isMY ? (
-            <div className="space-y-2.5 rounded-lg bg-background p-3">
+            <div className="space-y-3 rounded-lg bg-background p-3">
               <SubHeader>{t('bankProfilesTitle')}</SubHeader>
+              {/* R46: a company may hold SEVERAL accounts, including more than one at the same bank, so each
+                  saved account is its own editable form (identity is the row id) rather than one upsert box. */}
               {bankProfiles.length === 0 ? (
                 <p className="text-xs text-muted-foreground">{t('noBankProfiles')}</p>
               ) : (
-                <ul className="divide-y divide-border/60">
+                <ul className="space-y-2">
                   {bankProfiles.map((bp) => (
-                    <li key={bp.id} className="flex items-center justify-between gap-2 py-1.5">
-                      <div className="min-w-0 text-sm">
-                        <span className="font-medium">{myBankLabel(bp.bank)}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {bp.corporateId} · ••••{bp.debitAccountNo.slice(-4)} · {bp.txnType}
-                        </span>
-                      </div>
-                      <form action={actions.removeBankProfile}>
-                        <input type="hidden" name="id" value={bp.id} />
-                        <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
-                          {t('bankProfileRemove')}
-                        </button>
-                      </form>
+                    <li key={bp.id} className="rounded-md border border-border/60">
+                      <details className="group">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+                          <span className="min-w-0 text-sm">
+                            <span className="font-medium">{bp.accountLabel || myBankLabel(bp.bank)}</span>
+                            {bp.isPrimary && <span className={`ml-2 ${badge.emerald}`}>{t('bankPrimary')}</span>}
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {myBankLabel(bp.bank)} · ••••{bp.debitAccountNo.slice(-4)} · {bp.currency}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            <span className="group-open:hidden">{t('bankAccountEdit')}</span>
+                            <span className="hidden group-open:inline">{t('bankAccountCollapse')}</span>
+                          </span>
+                        </summary>
+                        <div className="border-t border-border/60 px-3 py-3">
+                          <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={bp} />
+                          <form action={actions.removeBankProfile} className="mt-2">
+                            <input type="hidden" name="id" value={bp.id} />
+                            <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+                              {t('bankProfileRemove')}
+                            </button>
+                          </form>
+                        </div>
+                      </details>
                     </li>
                   ))}
                 </ul>
               )}
-              <form action={actions.setBankProfile} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <input type="hidden" name="companyId" value={c.id} />
-                <Field label={t('bankLabel')}>
-                  <select name="bank" defaultValue="" required className={inputCls}>
-                    <option value="" disabled>
-                      {t('bankSelect')}
-                    </option>
-                    {DISBURSEMENT_CAPABLE_BANKS.map((b) => (
-                      <option key={b.key} value={b.key}>
-                        {b.canonical}
-                      </option>
-                    ))}
-                    <optgroup label={t('bankNoFileFormatGroup')}>
-                      {DISBURSEMENT_UNSUPPORTED_BANKS.map((b) => (
-                        <option key={b.key} value={b.key}>
-                          {b.canonical}
-                        </option>
-                      ))}
-                    </optgroup>
-                  </select>
-                </Field>
-                <Field label={t('bankTxnType')}>
-                  <select name="txnType" defaultValue="IBG" className={inputCls}>
-                    <option value="IBG">IBG</option>
-                    <option value="RENTAS">RENTAS</option>
-                  </select>
-                </Field>
-                <Field label={t('bankCorporateId')}>
-                  <input name="corporateId" required className={inputCls} placeholder={t('bankCorporateIdHint')} />
-                </Field>
-                <Field label={t('bankDebitAccount')}>
-                  <input name="debitAccountNo" required className={inputCls} />
-                </Field>
-                <div className="sm:col-span-2">
-                  <Field label={t('bankOrgName')}>
-                    <input name="orgName" defaultValue={c.name} className={inputCls} />
-                  </Field>
+              <details className="rounded-md border border-dashed border-border">
+                <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium text-primary [&::-webkit-details-marker]:hidden">
+                  {t('bankAccountAdd')}
+                </summary>
+                <div className="border-t border-border/60 px-3 py-3">
+                  <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={null} />
                 </div>
-                <div className="sm:col-span-2">
-                  <Button type="submit" size="sm">
-                    {t('bankProfileSave')}
-                  </Button>
-                </div>
-              </form>
+              </details>
               <p className="text-xs text-muted-foreground">{t('bankProfilesHint')}</p>
+              <p className="text-xs text-muted-foreground">{t('bankMasterHint')}</p>
             </div>
           ) : (
             <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
@@ -555,6 +832,7 @@ export function CompanyPanel({
               statutory configuration). Country-pack section (ADR-0008). */}
           <div className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>
           {isMY ? (
+            <>
             <form action={actions.setStatutory} className="space-y-2.5 rounded-lg bg-background p-3">
               <SubHeader>{t('statutoryIdentityMY')}</SubHeader>
               <input type="hidden" name="companyId" value={c.id} />
@@ -603,6 +881,34 @@ export function CompanyPanel({
                 {t('saveStatutoryIdentity')}
               </Button>
             </form>
+
+            {/* R46 orgbank (84719377) — per-authority PAYMENT setup. The form above holds the employer
+                IDENTITY (one flat row per company); this section holds, per statutory body, which company
+                bank account pays it, its address/contact, and the authorised signatory. Every authority in
+                the controlled set is listed whether configured or not, so nothing is silently missing. */}
+            <div className="space-y-2.5 rounded-lg bg-background p-3">
+              <SubHeader>{t('authoritiesTitle')}</SubHeader>
+              <p className="text-xs text-muted-foreground">{t('authoritiesHint')}</p>
+              {bankProfiles.length === 0 && (
+                <p className="text-xs text-amber-700 dark:text-amber-400">{t('authoritiesNoBankAccounts')}</p>
+              )}
+              <ul className="space-y-2">
+                {STATUTORY_AUTHORITIES.map((a) => (
+                  <StatutoryAuthorityCard
+                    key={a}
+                    authority={a}
+                    row={statutoryAuthorities.find((r) => r.authority === a) ?? null}
+                    companyId={c.id}
+                    bankProfiles={bankProfiles}
+                    signatories={signatories}
+                    stateOptions={stateOptions}
+                    setAction={actions.setStatutoryAuthority}
+                    removeAction={actions.removeStatutoryAuthority}
+                  />
+                ))}
+              </ul>
+            </div>
+            </>
           ) : (
             <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
               {t('noStatutoryPack', { country: c.country })}
