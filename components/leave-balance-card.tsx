@@ -30,7 +30,7 @@ export function LeaveBalanceCard({
   const selected = balances.find((b) => b.leaveTypeId === selectedId) ?? balances[0] ?? null;
 
   return (
-    <Card className="p-5">
+    <Card className="h-full p-5">
       <div className="flex items-center justify-between gap-2">
         <Link
           href={href}
