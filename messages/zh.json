@@ -4600,7 +4600,7 @@
       "tierMid": "{n1} 至不足 {n2} 年",
       "tierOver": "{n2} 年及以上",
       "noEntitlements": "此方案未配置额度。",
-      "addEntitlement": "添加／更新休假额度",
+      "addEntitlement": "添加休假额度",
       "threshold1": "层级1 至（年）",
       "threshold2": "层级2 至（年）",
       "thresholdError": "层级边界必须为整数，且第二个大于第一个。",
@@ -4639,7 +4639,10 @@
       "copyPreviewSkip": "已跳过 — 已配置",
       "copyConfirm": "复制权益",
       "copyEmpty": "选择源方案以预览将复制的内容。",
-      "copyNoneToCopy": "无内容可复制 — 目标已包含此源的所有假期类型。"
+      "copyNoneToCopy": "无内容可复制 — 目标已包含此源的所有假期类型。",
+      "editEntitlementTitle": "编辑休假额度",
+      "deleteEntitlementConfirmTitle": "删除此休假额度？",
+      "deleteEntitlementConfirmDescription": "该假期类型在本方案中的额度天数将被移除。此操作无法撤销。"
     }
   },
   "topbar": {

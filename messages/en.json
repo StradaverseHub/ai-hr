@@ -4600,7 +4600,7 @@
       "tierMid": "{n1} to under {n2} years",
       "tierOver": "{n2} years and over",
       "noEntitlements": "No entitlements configured for this scheme.",
-      "addEntitlement": "Add / update a leave entitlement",
+      "addEntitlement": "Add a leave entitlement",
       "threshold1": "Tier 1 to (years)",
       "threshold2": "Tier 2 to (years)",
       "thresholdError": "Tier boundaries must be whole numbers with the second greater than the first.",
@@ -4639,7 +4639,10 @@
       "copyPreviewSkip": "Skipped — already configured",
       "copyConfirm": "Copy entitlements",
       "copyEmpty": "Select a source scheme to preview what will be copied.",
-      "copyNoneToCopy": "Nothing to copy — the target already has every leave type from this source."
+      "copyNoneToCopy": "Nothing to copy — the target already has every leave type from this source.",
+      "editEntitlementTitle": "Edit leave entitlement",
+      "deleteEntitlementConfirmTitle": "Delete this leave entitlement?",
+      "deleteEntitlementConfirmDescription": "This removes the leave type's entitlement days from this scheme. This cannot be undone."
     }
   },
   "topbar": {

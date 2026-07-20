@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
 import { Combobox } from '@/components/ui/combobox';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 
 /**
  * Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b) — the client subsection rendered
@@ -366,10 +367,29 @@ export function BenefitSchemeConfig({
                         <td className="px-3 py-2">{ti.d1 || '0'}</td>
                         <td className="px-3 py-2">{ti.d2 || '0'}</td>
                         <td className="px-3 py-2 text-right">
-                          <form action={actions.deleteEntitlement} className="inline">
-                            <input type="hidden" name="id" value={e.id} />
-                            <Button type="submit" variant="ghost" size="sm">{t('delete')}</Button>
-                          </form>
+                          {/* R47 edb0309d: Edit reopens the row in a pre-filled dialog (the R44 dup guard
+                              closed the old re-add-to-overwrite path); Delete now confirms like its R44
+                              sibling delete surfaces. */}
+                          <div className="inline-flex items-center gap-1">
+                            <EntitlementEditDialog
+                              entitlement={e}
+                              action={actions.upsertEntitlement}
+                              t={t}
+                            />
+                            <form action={actions.deleteEntitlement} className="inline">
+                              <input type="hidden" name="id" value={e.id} />
+                              <ConfirmSubmit
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive hover:text-destructive"
+                                title={t('deleteEntitlementConfirmTitle')}
+                                description={t('deleteEntitlementConfirmDescription')}
+                                confirmLabel={t('delete')}
+                              >
+                                {t('delete')}
+                              </ConfirmSubmit>
+                            </form>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -767,27 +787,85 @@ function CopyEntitlementsDialog({
   );
 }
 
+/**
+ * EntitlementEditDialog (R47 edb0309d) — per-row Edit for a leave entitlement. The R44 fdc3f521 dup guard
+ * closed the old "re-enter the same leave type to overwrite" path, so this dialog restores editing via the
+ * SAME upsertSchemeEntitlement action (onConflictDoUpdate does the update server-side). The leave type is
+ * LOCKED in edit mode: changing it would be a delete-and-add and could collide with the unique
+ * (scheme, leave type) index.
+ */
+function EntitlementEditDialog({
+  entitlement,
+  action,
+  t,
+}: {
+  entitlement: Entitlement;
+  action: (fd: FormData) => void | Promise<void>;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <Button type="button" variant="ghost" size="sm">{t('edit')}</Button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-5 text-popover-foreground shadow-lg">
+          <Dialog.Title className="text-base font-semibold">{t('editEntitlementTitle')}</Dialog.Title>
+          <div className="mt-4 space-y-3">
+            <EntitlementForm
+              action={(fd) => {
+                setOpen(false);
+                return action(fd);
+              }}
+              schemeId={entitlement.benefitSchemeId}
+              leaveTypes={[]}
+              existingLeaveTypeIds={[]}
+              entitlement={entitlement}
+              t={t}
+            />
+            <div className="flex justify-end border-t border-border pt-3">
+              <Dialog.Close asChild>
+                <Button type="button" size="sm" variant="outline">{t('cancel')}</Button>
+              </Dialog.Close>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
 function EntitlementForm({
   action,
   schemeId,
   leaveTypes,
   existingLeaveTypeIds,
+  entitlement = null,
   t,
 }: {
   action: (fd: FormData) => void | Promise<void>;
   schemeId: string;
   leaveTypes: LeaveType[];
   existingLeaveTypeIds: string[];
+  /** R47 edb0309d: when set, the form EDITS this row — leave type locked, day values pre-filled from its
+   *  stored serviceBands (including legacy non-2/5 cutoffs, which are preserved on save). */
+  entitlement?: Entitlement | null;
   t: ReturnType<typeof useTranslations>;
 }) {
   // Fixed three-band day entry (R44 6421c888): service bands are hardcoded at 0–2 / 2–5 / 5+ years — HR
   // types the days directly into each predefined range, no tier-cutoff inputs. The 0/2/5 shape satisfies
   // validateBands and is the SAME contiguous ServiceBand[] the resolver reads. Legacy rows stored with other
   // cutoffs keep their own values + calculate correctly (read-side table derives each row's own labels).
-  const [leaveTypeId, setLeaveTypeId] = useState('');
-  const [d0, setD0] = useState('');
-  const [d1, setD1] = useState('');
-  const [d2, setD2] = useState('');
+  // In EDIT mode the row's OWN cutoffs (tiersFromBands) seed both the values and the band shape written back.
+  const editTiers = entitlement ? tiersFromBands(entitlement.serviceBands) : null;
+  const [leaveTypeId, setLeaveTypeId] = useState(entitlement?.leaveTypeId ?? '');
+  const [d0, setD0] = useState(editTiers?.d0 ?? '');
+  const [d1, setD1] = useState(editTiers?.d1 ?? '');
+  const [d2, setD2] = useState(editTiers?.d2 ?? '');
+  const n1 = editTiers?.n1 ?? 2;
+  const n2 = editTiers?.n2 ?? 5;
 
   // R44 fdc3f521: block adding a leave type already configured in this scheme (silent-overwrite guard). On a
   // duplicate the field shakes + an inline error shows, WITHOUT clearing the other entered values. shakeKey
@@ -808,9 +886,9 @@ function EntitlementForm({
   );
 
   const bands: ServiceBand[] = [
-    { fromYears: 0, toYears: 2, days: Number(d0) || 0 },
-    { fromYears: 2, toYears: 5, days: Number(d1) || 0 },
-    { fromYears: 5, toYears: null, days: Number(d2) || 0 },
+    { fromYears: 0, toYears: n1, days: Number(d0) || 0 },
+    { fromYears: n1, toYears: n2, days: Number(d1) || 0 },
+    { fromYears: n2, toYears: null, days: Number(d2) || 0 },
   ];
 
   // Client action wrapper: validate before delegating to the server action. Blocking simply returns without
@@ -829,8 +907,10 @@ function EntitlementForm({
       setShakeKey((k) => k + 1);
       return;
     }
-    // 2) Duplicate leave type in this scheme.
-    if (leaveTypeId && existingLeaveTypeIds.includes(leaveTypeId)) {
+    // 2) Duplicate leave type in this scheme — ADD mode only (R47 edb0309d): when editing, the form's
+    //    leaveTypeId is by definition already configured (that IS the row being edited), so the guard must
+    //    not fire; it keeps firing for genuine adds.
+    if (!entitlement && leaveTypeId && existingLeaveTypeIds.includes(leaveTypeId)) {
       setDupError(true);
       setRequiredError(false);
       setMissing(new Set());
@@ -843,56 +923,81 @@ function EntitlementForm({
     return action(fd);
   };
 
+  // Edit mode labels interpolate the ROW's actual cutoffs (legacy rows may not be 2/5); add mode keeps the
+  // fixed 0–2 / 2–5 / 5+ wording.
+  const tierLabels = entitlement
+    ? ([t('tierUnder', { n1, n2 }), t('tierMid', { n1, n2 }), t('tierOver', { n1, n2 })] as const)
+    : ([t('tierUnderFixed'), t('tierMidFixed'), t('tierOverFixed')] as const);
+
   return (
-    <form action={handleAction} className="space-y-3 rounded-lg border border-dashed border-border p-3">
+    <form
+      action={handleAction}
+      className={entitlement ? 'space-y-3' : 'space-y-3 rounded-lg border border-dashed border-border p-3'}
+    >
       <input type="hidden" name="benefitSchemeId" value={schemeId} />
       <input type="hidden" name="serviceBands" value={JSON.stringify(bands)} />
-      <p className="text-xs font-medium text-muted-foreground">{t('addEntitlement')}</p>
+      {!entitlement && <p className="text-xs font-medium text-muted-foreground">{t('addEntitlement')}</p>}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
         <div key={`lt-${shakeKey}`} className={dupError || missing.has('leaveType') ? 'animate-shake' : ''}>
-          <Field label={t('colLeaveType')} required requiredAriaLabel={t('requiredAria')}>
-            <select
-              name="leaveTypeId"
-              required
-              value={leaveTypeId}
-              onChange={(e) => {
-                setLeaveTypeId(e.target.value);
-                setDupError(false);
-                setMissing((m) => {
-                  if (!m.has('leaveType')) return m;
-                  const n = new Set(m);
-                  n.delete('leaveType');
-                  return n;
-                });
-              }}
-              className={inputCls}
-            >
-              <option value="" disabled>{t('selectPlaceholder')}</option>
-              {sortedLeaveTypes.map((lt) => (
-                <option key={lt.id} value={lt.id}>{lt.name}</option>
-              ))}
-            </select>
-          </Field>
+          {entitlement ? (
+            /* Leave type is LOCKED when editing — changing it is really delete-and-add and would collide
+               with the unique (scheme, leave type) index. Hidden input keeps the FormData contract. */
+            <Field label={t('colLeaveType')}>
+              <>
+                <input type="hidden" name="leaveTypeId" value={entitlement.leaveTypeId} />
+                <input
+                  value={entitlement.leaveTypeName ?? '—'}
+                  readOnly
+                  disabled
+                  className={`${inputCls} cursor-not-allowed opacity-70`}
+                />
+              </>
+            </Field>
+          ) : (
+            <Field label={t('colLeaveType')} required requiredAriaLabel={t('requiredAria')}>
+              <select
+                name="leaveTypeId"
+                required
+                value={leaveTypeId}
+                onChange={(e) => {
+                  setLeaveTypeId(e.target.value);
+                  setDupError(false);
+                  setMissing((m) => {
+                    if (!m.has('leaveType')) return m;
+                    const n = new Set(m);
+                    n.delete('leaveType');
+                    return n;
+                  });
+                }}
+                className={inputCls}
+              >
+                <option value="" disabled>{t('selectPlaceholder')}</option>
+                {sortedLeaveTypes.map((lt) => (
+                  <option key={lt.id} value={lt.id}>{lt.name}</option>
+                ))}
+              </select>
+            </Field>
+          )}
         </div>
         <div key={`d0-${shakeKey}`} className={missing.has('d0') ? 'animate-shake' : ''}>
-          <Field label={t('tierUnderFixed')} required requiredAriaLabel={t('requiredAria')}>
+          <Field label={tierLabels[0]} required requiredAriaLabel={t('requiredAria')}>
             <input type="number" min={0} step="0.5" value={d0} onChange={(e) => setD0(e.target.value)} className={`${inputCls} w-20`} />
           </Field>
         </div>
         <div key={`d1-${shakeKey}`} className={missing.has('d1') ? 'animate-shake' : ''}>
-          <Field label={t('tierMidFixed')} required requiredAriaLabel={t('requiredAria')}>
+          <Field label={tierLabels[1]} required requiredAriaLabel={t('requiredAria')}>
             <input type="number" min={0} step="0.5" value={d1} onChange={(e) => setD1(e.target.value)} className={`${inputCls} w-20`} />
           </Field>
         </div>
         <div key={`d2-${shakeKey}`} className={missing.has('d2') ? 'animate-shake' : ''}>
-          <Field label={t('tierOverFixed')} required requiredAriaLabel={t('requiredAria')}>
+          <Field label={tierLabels[2]} required requiredAriaLabel={t('requiredAria')}>
             <input type="number" min={0} step="0.5" value={d2} onChange={(e) => setD2(e.target.value)} className={`${inputCls} w-20`} />
           </Field>
         </div>
       </div>
       {requiredError && <p className="text-xs text-destructive">{t('requiredError')}</p>}
       {dupError && <p className="text-xs text-destructive">{t('duplicateError')}</p>}
-      <Button type="submit" size="sm">{t('saveEntitlement')}</Button>
+      <Button type="submit" size="sm">{entitlement ? t('save') : t('saveEntitlement')}</Button>
     </form>
   );
 }

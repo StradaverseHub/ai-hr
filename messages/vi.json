@@ -4600,7 +4600,7 @@
       "tierMid": "Từ {n1} đến dưới {n2} năm",
       "tierOver": "Từ {n2} năm trở lên",
       "noEntitlements": "Chưa cấu hình quyền lợi cho chương trình này.",
-      "addEntitlement": "Thêm / cập nhật quyền nghỉ phép",
+      "addEntitlement": "Thêm quyền nghỉ phép",
       "threshold1": "Bậc 1 đến (năm)",
       "threshold2": "Bậc 2 đến (năm)",
       "thresholdError": "Ranh giới bậc phải là số nguyên với giá trị thứ hai lớn hơn giá trị thứ nhất.",
@@ -4639,7 +4639,10 @@
       "copyPreviewSkip": "Bỏ qua — đã cấu hình",
       "copyConfirm": "Sao chép quyền lợi",
       "copyEmpty": "Chọn chương trình nguồn để xem trước nội dung sẽ sao chép.",
-      "copyNoneToCopy": "Không có gì để sao chép — mục tiêu đã có mọi loại nghỉ từ nguồn này."
+      "copyNoneToCopy": "Không có gì để sao chép — mục tiêu đã có mọi loại nghỉ từ nguồn này.",
+      "editEntitlementTitle": "Chỉnh sửa quyền nghỉ phép",
+      "deleteEntitlementConfirmTitle": "Xóa quyền nghỉ phép này?",
+      "deleteEntitlementConfirmDescription": "Số ngày quyền lợi của loại nghỉ này sẽ bị xóa khỏi chương trình. Hành động này không thể hoàn tác."
     }
   },
   "topbar": {
