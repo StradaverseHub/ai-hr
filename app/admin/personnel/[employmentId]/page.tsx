@@ -1900,16 +1900,15 @@ export default async function EmployeePage({
               ))}
             </select>
           </Field>
-          {/* R43 c26c3ce5 — Employee Status is now system-derived + read-only (a badge), not an editable
-              dropdown, so it can never drift out of sync with the employment dates. Blacklisting (the one
-              manual override) has its own audited control below. */}
-          <Field label={t('employmentInfo.employeeStatus')}>
-            <div className="flex h-9 items-center">
-              <StatusBadge status={derivedStatus} label={derivedStatusLabel} />
-            </div>
-            <p className="text-xs text-muted-foreground">{t('employmentInfo.employeeStatusDerivedNote')}</p>
-          </Field>
-          <Field label={t('effectiveDate')}>
+          {/* R46 b272ab6b — the duplicate read-only Employee Status badge that used to sit here was removed.
+              The same derived value already renders TWICE above the fold: on the PageHeader actions slot and
+              on the employee summary Card. A third copy inside the form added noise without adding
+              information. Blacklisting (the one manual override) now has its own Card on the Movement tab. */}
+          {/* R46 b272ab6b — the Effective Date label is scoped to this assignment sub-group. It applies ONLY
+              to the effective-dated Department / Position / Business Unit / Employment Type change saved by
+              setEmploymentAssignmentAction — NOT to the flat organisation fields below, which have no
+              history. The generic `effectiveDate` label read as if it governed the whole card. */}
+          <Field label={t('employmentInfo.assignmentEffectiveDate')}>
             <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
           </Field>
         </div>
@@ -1919,46 +1918,108 @@ export default async function EmployeePage({
         </div>
       </form>
 
-      {/* R43 c26c3ce5 — Blacklist: the one manual, audited exception status that overrides the derived
-          Employee Status. Its own <form> (HTML forms can't nest) → setEmploymentBlacklistAction. */}
-      <form action={setEmploymentBlacklistAction} className="space-y-3 border-b border-border p-4">
-        <input type="hidden" name="employmentId" value={emp.employmentId} />
-        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {t('employmentInfo.blacklistTitle')}
-        </div>
-        {emp.blacklistedAt ? (
-          <>
-            <input type="hidden" name="blacklisted" value="false" />
-            <p className="text-sm text-rose-700 dark:text-rose-400">
-              {t('employmentInfo.blacklistActiveNote')}
-              {emp.blacklistReason ? ` — ${emp.blacklistReason}` : ''}
-            </p>
-            <div className="flex justify-end">
-              <button className={btnGhost}>{t('employmentInfo.blacklistClearAction')}</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <input type="hidden" name="blacklisted" value="true" />
-            <p className="text-xs text-muted-foreground">{t('employmentInfo.blacklistNote')}</p>
-            <Field label={t('employmentInfo.blacklistReasonLabel')}>
-              <input
-                name="reason"
-                className={inputCls}
-                placeholder={t('employmentInfo.blacklistReasonPlaceholder')}
-              />
-            </Field>
-            <div className="flex justify-end">
-              <button className={`${btnGhost} border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-400 dark:hover:bg-rose-500/10`}>
-                {t('employmentInfo.blacklistAction')}
-              </button>
-            </div>
-          </>
-        )}
-      </form>
-
       <form action={setEmploymentInfoAction} className="space-y-6 p-4">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
+
+        {/* ── Organisation (continued) ── R46 b272ab6b: relocated from the BOTTOM of this form to the TOP so it
+            sits directly beneath the Organisation Assignment sub-group above, putting every organisation
+            dimension — Company / Business Unit / Department / Position / Grade / Type, then Division / Branch /
+            Region / Line / Section / Team / Base / Category — in one contiguous block.
+
+            DECISION 1 (approved: keep both Saves): these eight fields are FLAT, non-dated columns on
+            `employment` and are saved by setEmploymentInfoAction, whereas the sub-group above is
+            EFFECTIVE-DATED on `assignment` and saved by setEmploymentAssignmentAction. HTML forms cannot
+            nest, so re-parenting these inputs into the assignment form would mean widening that action and
+            making these fields date-effective — a data-model change that was explicitly NOT approved. The
+            grouping here is therefore purely visual: the inputs stay in their original <form>, the two
+            server actions are untouched, and no field changed its persistence semantics. */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('employmentInfo.orgGroup')}
+          </legend>
+          {/* 1001ff61 — the org fields are now System-Labels dropdowns (profile_option categories) instead of
+              free text, preventing duplicate/misspelled values. Division is rendered FIRST per the requested
+              Organisation hierarchy. Legacy free-text values stay valid (ProfileOptionSelect renders any
+              off-catalog stored value pre-selected). An empty catalog imposes no constraint yet. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <Field label={t('employmentInfo.division')}>
+              <ProfileOptionSelect
+                name="orgDivision"
+                value={emp.orgDivision}
+                options={profileOptions.division}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.branch')}>
+              <ProfileOptionSelect
+                name="orgBranch"
+                value={emp.orgBranch}
+                options={profileOptions.branch}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.region')}>
+              <ProfileOptionSelect
+                name="orgRegion"
+                value={emp.orgRegion}
+                options={profileOptions.region}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.line')}>
+              <ProfileOptionSelect
+                name="orgLine"
+                value={emp.orgLine}
+                options={profileOptions.line}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.section')}>
+              <ProfileOptionSelect
+                name="orgSection"
+                value={emp.orgSection}
+                options={profileOptions.section}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.team')}>
+              <ProfileOptionSelect
+                name="orgTeam"
+                value={emp.orgTeam}
+                options={profileOptions.team}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            <Field label={t('employmentInfo.base')}>
+              <ProfileOptionSelect
+                name="orgBase"
+                value={emp.orgBase}
+                options={profileOptions.base}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+            {/* R46 b272ab6b — Category folded in from the former standalone "Job" fieldset, whose only field it
+                was. It is the same flat catalog-backed column on the same form/action; only its visual home
+                moved, so the one-field group no longer fragments the organisation block. */}
+            <Field label={t('employmentInfo.category')}>
+              {/* 1001ff61 — Category is now a System-Labels dropdown (profile_option category `category`). */}
+              <ProfileOptionSelect
+                name="employmentCategory"
+                value={emp.employmentCategory}
+                options={profileOptions.category}
+                placeholder={t('optionNotSet')}
+                legacySuffix={t('optionLegacySuffix')}
+              />
+            </Field>
+          </div>
+        </fieldset>
 
         {/* ── Employment Dates (redesigned 955c7de4) ── explicit period UNITS + full lifecycle dates, grouped
             into Joining / Probation / Notice / Resignation sub-sections. Each period is a value + unit dropdown
@@ -2071,105 +2132,58 @@ export default async function EmployeePage({
           </div>
         </fieldset>
 
-        {/* ── Organisation ── */}
-        <fieldset className="space-y-3">
-          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t('employmentInfo.orgGroup')}
-          </legend>
-          {/* 1001ff61 — the org fields are now System-Labels dropdowns (profile_option categories) instead of
-              free text, preventing duplicate/misspelled values. Division is rendered FIRST per the requested
-              Organisation hierarchy. Legacy free-text values stay valid (ProfileOptionSelect renders any
-              off-catalog stored value pre-selected). An empty catalog imposes no constraint yet. */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <Field label={t('employmentInfo.division')}>
-              <ProfileOptionSelect
-                name="orgDivision"
-                value={emp.orgDivision}
-                options={profileOptions.division}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.branch')}>
-              <ProfileOptionSelect
-                name="orgBranch"
-                value={emp.orgBranch}
-                options={profileOptions.branch}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.region')}>
-              <ProfileOptionSelect
-                name="orgRegion"
-                value={emp.orgRegion}
-                options={profileOptions.region}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.line')}>
-              <ProfileOptionSelect
-                name="orgLine"
-                value={emp.orgLine}
-                options={profileOptions.line}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.section')}>
-              <ProfileOptionSelect
-                name="orgSection"
-                value={emp.orgSection}
-                options={profileOptions.section}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.team')}>
-              <ProfileOptionSelect
-                name="orgTeam"
-                value={emp.orgTeam}
-                options={profileOptions.team}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.base')}>
-              <ProfileOptionSelect
-                name="orgBase"
-                value={emp.orgBase}
-                options={profileOptions.base}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-          </div>
-        </fieldset>
-
-        {/* ── Job ── (Position / Grade / Type / Status read-only above; Category is new master data) */}
-        <fieldset className="space-y-3">
-          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t('employmentInfo.jobGroup')}
-          </legend>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <Field label={t('employmentInfo.category')}>
-              {/* 1001ff61 — Category is now a System-Labels dropdown (profile_option category `category`). */}
-              <ProfileOptionSelect
-                name="employmentCategory"
-                value={emp.employmentCategory}
-                options={profileOptions.category}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-          </div>
-        </fieldset>
-
         <p className="text-xs text-muted-foreground">{t('employmentInfo.superiorNote')}</p>
         <div className="flex justify-end">
           <button className={btnPrimary}>{t('employmentInfo.save')}</button>
         </div>
+      </form>
+    </Card>
+  ) : null;
+
+  /* R46 b272ab6b — Blacklist lifted OUT of employmentInfoCard into its own Card, rendered on the Career
+     Movement tab alongside the other lifecycle actions (Transfer, Terminate, Assignment History). It was
+     already its own <form> (HTML forms can't nest), so this is a pure relocation: setEmploymentBlacklistAction,
+     the employment.blacklisted_at / blacklist_reason columns and the audit event it emits are all untouched.
+     Blacklist is a lifecycle state change, not employment master data — it belongs with the other lifecycle
+     actions, not buried between the organisation assignment and the employment dates.
+
+     NOTE (deliberate scope boundary): a dedicated "Blacklist History" list is NOT built here. No such UI
+     exists today — blacklist changes surface generically through changeHistoryCard on the Others tab — so
+     it would be new work rather than a relocation. It stays out of this item. */
+  const blacklistCard = admin ? (
+    <Card id="section-blacklist">
+      <SectionHeader title={t('employmentInfo.blacklistTitle')} />
+      <form action={setEmploymentBlacklistAction} className="space-y-3 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        {emp.blacklistedAt ? (
+          <>
+            <input type="hidden" name="blacklisted" value="false" />
+            <p className="text-sm text-rose-700 dark:text-rose-400">
+              {t('employmentInfo.blacklistActiveNote')}
+              {emp.blacklistReason ? ` — ${emp.blacklistReason}` : ''}
+            </p>
+            <div className="flex justify-end">
+              <button className={btnGhost}>{t('employmentInfo.blacklistClearAction')}</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <input type="hidden" name="blacklisted" value="true" />
+            <p className="text-xs text-muted-foreground">{t('employmentInfo.blacklistNote')}</p>
+            <Field label={t('employmentInfo.blacklistReasonLabel')}>
+              <input
+                name="reason"
+                className={inputCls}
+                placeholder={t('employmentInfo.blacklistReasonPlaceholder')}
+              />
+            </Field>
+            <div className="flex justify-end">
+              <button className={`${btnGhost} border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-400 dark:hover:bg-rose-500/10`}>
+                {t('employmentInfo.blacklistAction')}
+              </button>
+            </div>
+          </>
+        )}
       </form>
     </Card>
   ) : null;
@@ -2509,10 +2523,15 @@ export default async function EmployeePage({
     // the "── JOB ──" section) are untouched: only their render location moved, so transferAction /
     // terminateAction keep their existing effective-date rules and DomainEvents and no data is affected.
     // Order mirrors the lifecycle: past movements (history) first, then the actions that create the next.
+    // R46 b272ab6b — blacklistCard joins them: Blacklist is a lifecycle state change (like transfer and
+    // termination), not employment master data, so it moved off the Employment tab to sit with its peers.
+    // Rendered LAST — it is the exceptional, rarely-used action, and should not compete with the routine
+    // movement actions above it.
     careerMovement: (
       <>
         {assignmentHistoryCard}
         {transferTerminateCards}
+        {blacklistCard}
       </>
     ),
     // Attendance Information (feedback 1fbe9891): the four attendance-related section cards relocated
