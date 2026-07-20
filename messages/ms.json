@@ -3220,7 +3220,8 @@
       "optionNone": "— Pilih —",
       "tabBankAccount": "Akaun Bank",
       "tabStatutory": "Berkanun",
-      "bankAccountNonMY": "Profil pengeluaran bank tersedia untuk entiti Malaysia. Syarikat ini didaftarkan di {country}."
+      "bankAccountNonMY": "Profil pengeluaran bank tersedia untuk entiti Malaysia. Syarikat ini didaftarkan di {country}.",
+      "bankNoFileFormatGroup": "Bank lain (tiada format fail gaji lagi)"
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",

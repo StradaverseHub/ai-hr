@@ -3220,7 +3220,8 @@
       "optionNone": "— Select —",
       "tabBankAccount": "Bank Account",
       "tabStatutory": "Statutory",
-      "bankAccountNonMY": "Bank disbursement profiles are available for Malaysian entities. This company is registered in {country}."
+      "bankAccountNonMY": "Bank disbursement profiles are available for Malaysian entities. This company is registered in {country}.",
+      "bankNoFileFormatGroup": "Other banks (no salary-file format yet)"
     },
     "systemLabels": {
       "pageTitle": "System Labels",

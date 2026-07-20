@@ -73,7 +73,21 @@ export default async function OrganizationPage({
   const bankBy = new Map<string, PanelBankProfile[]>();
   for (const bp of bankProfiles) {
     const list = bankBy.get(bp.companyId) ?? [];
-    list.push({ id: bp.id, bank: bp.bank, corporateId: bp.corporateId, debitAccountNo: bp.debitAccountNo, orgName: bp.orgName, txnType: bp.txnType });
+    list.push({
+      id: bp.id,
+      bank: bp.bank,
+      corporateId: bp.corporateId,
+      debitAccountNo: bp.debitAccountNo,
+      orgName: bp.orgName,
+      txnType: bp.txnType,
+      accountLabel: bp.accountLabel,
+      accountName: bp.accountName,
+      accountType: bp.accountType,
+      branch: bp.branch,
+      swiftCode: bp.swiftCode,
+      currency: bp.currency,
+      isPrimary: bp.isPrimary,
+    });
     bankBy.set(bp.companyId, list);
   }
   const parentBy = new Map(tree.map((n) => [n.id, n.parentId]));

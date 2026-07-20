@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { COUNTRY_CODE_OPTIONS, COUNTRY_NAME_OPTIONS } from '@/lib/countries';
+import { DISBURSEMENT_CAPABLE_BANKS, DISBURSEMENT_UNSUPPORTED_BANKS, myBankLabel } from '@/lib/my-banks';
 import { Avatar, Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 
@@ -92,19 +93,23 @@ export type PanelStatutory = {
   ssmRegistrationNo: string | null;
   hrdfStatus: 'not_registered' | 'mandatory' | 'optional' | null;
 } | null;
+// R46 orgbank (84719377) — `bank` is a key from the SHARED Malaysian bank master (lib/my-banks.ts), the
+// same list the employee bank picker reads. The old hardcoded 4-entry BANK_LABEL is gone; labels come from
+// myBankLabel(), which falls back to the raw key so a legacy value never renders blank.
 export type PanelBankProfile = {
   id: string;
-  bank: 'maybank' | 'cimb' | 'public_bank' | 'rhb';
+  bank: string;
   corporateId: string;
   debitAccountNo: string;
   orgName: string | null;
   txnType: string;
-};
-const BANK_LABEL: Record<PanelBankProfile['bank'], string> = {
-  maybank: 'Maybank',
-  cimb: 'CIMB',
-  public_bank: 'Public Bank',
-  rhb: 'RHB',
+  accountLabel: string | null;
+  accountName: string | null;
+  accountType: string | null;
+  branch: string | null;
+  swiftCode: string | null;
+  currency: string;
+  isPrimary: boolean;
 };
 
 const badge = {
@@ -477,7 +482,7 @@ export function CompanyPanel({
                   {bankProfiles.map((bp) => (
                     <li key={bp.id} className="flex items-center justify-between gap-2 py-1.5">
                       <div className="min-w-0 text-sm">
-                        <span className="font-medium">{BANK_LABEL[bp.bank]}</span>
+                        <span className="font-medium">{myBankLabel(bp.bank)}</span>
                         <span className="ml-2 text-xs text-muted-foreground">
                           {bp.corporateId} · ••••{bp.debitAccountNo.slice(-4)} · {bp.txnType}
                         </span>
@@ -499,11 +504,18 @@ export function CompanyPanel({
                     <option value="" disabled>
                       {t('bankSelect')}
                     </option>
-                    {(Object.keys(BANK_LABEL) as PanelBankProfile['bank'][]).map((b) => (
-                      <option key={b} value={b}>
-                        {BANK_LABEL[b]}
+                    {DISBURSEMENT_CAPABLE_BANKS.map((b) => (
+                      <option key={b.key} value={b.key}>
+                        {b.canonical}
                       </option>
                     ))}
+                    <optgroup label={t('bankNoFileFormatGroup')}>
+                      {DISBURSEMENT_UNSUPPORTED_BANKS.map((b) => (
+                        <option key={b.key} value={b.key}>
+                          {b.canonical}
+                        </option>
+                      ))}
+                    </optgroup>
                   </select>
                 </Field>
                 <Field label={t('bankTxnType')}>

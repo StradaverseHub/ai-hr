@@ -100,6 +100,7 @@ import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/
 import { setEncashmentPolicy } from '@/core/leave-encashment';
 import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
+import { isMyBankKey } from '@/lib/my-banks';
 import { packFor } from '@/localization/registry';
 
 const ORG = '/admin/organization';
@@ -227,20 +228,31 @@ export async function setCompanyStatutoryAction(formData: FormData) {
   ok(ORG);
 }
 
-const DISBURSEMENT_BANKS: DisbursementBank[] = ['maybank', 'cimb', 'public_bank', 'rhb'];
-
 export async function setCompanyBankProfileAction(formData: FormData) {
   const s = await getSession();
   const bank = String(formData.get('bank') ?? '');
   try {
-    if (!DISBURSEMENT_BANKS.includes(bank as DisbursementBank)) throw new Error('Select a supported bank');
+    // R46 orgbank (84719377): the bank set is the shared Malaysian master (lib/my-banks.ts), not a
+    // 4-value enum. The service re-validates — this is the early, friendlier rejection.
+    if (!isMyBankKey(bank)) throw new Error('Select a bank from the Malaysian bank list');
     await upsertCompanyBankProfile(s, {
+      // Present ⇒ edit that account; absent ⇒ add another (a company may hold several, incl. per bank).
+      id: (formData.get('id') as string) || null,
       companyId: String(formData.get('companyId')),
       bank: bank as DisbursementBank,
       corporateId: String(formData.get('corporateId') ?? ''),
       debitAccountNo: String(formData.get('debitAccountNo') ?? ''),
       orgName: (formData.get('orgName') as string) || null,
+      // R46: the Payment rail picker is hidden from the form, so this is normally absent and the service
+      // keeps the 'IBG' default. The column stays — RENTAS matters for large single payments.
       txnType: (formData.get('txnType') as string) || null,
+      accountLabel: (formData.get('accountLabel') as string) || null,
+      accountName: (formData.get('accountName') as string) || null,
+      accountType: (formData.get('accountType') as string) || null,
+      branch: (formData.get('branch') as string) || null,
+      swiftCode: (formData.get('swiftCode') as string) || null,
+      currency: (formData.get('currency') as string) || null,
+      isPrimary: formData.get('isPrimary') === 'on' || formData.get('isPrimary') === 'true',
     });
   } catch (e) {
     fail(ORG, e);

@@ -3220,7 +3220,8 @@
       "optionNone": "— 请选择 —",
       "tabBankAccount": "银行账户",
       "tabStatutory": "法定",
-      "bankAccountNonMY": "银行发放档案仅适用于马来西亚实体。此公司注册于 {country}。"
+      "bankAccountNonMY": "银行发放档案仅适用于马来西亚实体。此公司注册于 {country}。",
+      "bankNoFileFormatGroup": "其他银行（尚无薪资文件格式）"
     },
     "systemLabels": {
       "pageTitle": "系统标签",
