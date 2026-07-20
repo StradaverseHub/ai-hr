@@ -567,7 +567,10 @@ async function replaceCombinedLimitMembers(
       .insert(schemeLeaveCombinedLimitMember)
       .values(leaveTypeIds.map((leaveTypeId) => ({ tenantId, combinedLimitId: poolId, benefitSchemeId, leaveTypeId })))
       .catch((e) => {
-        if (String((e as { code?: string })?.code) === '23505') {
+        // R47 d6f88c2f fix: drizzle wraps the driver error (DrizzleQueryError), so the SQLSTATE lives on
+        // `.cause` — the original `.code`-only check never matched and the raw query error leaked through.
+        const code = (e as { code?: string })?.code ?? ((e as { cause?: { code?: string } })?.cause?.code);
+        if (String(code) === '23505') {
           throw new Error('Combined limit: a chosen leave type already belongs to another pool in this scheme.');
         }
         throw e;
@@ -644,6 +647,155 @@ export async function deleteSchemeCombinedLimit(ctx: SessionContext, p: { id: st
       actor: actorOf(ctx),
       payload: {},
     });
+  });
+}
+
+// ── DnD grouping entrypoints (R47 d6f88c2f) ───────────────────────────────────────────────────────────
+// The drag-and-drop entitlement table replaces the standalone Combined Limits section. Two narrow writes
+// back it: MOVE one leave type between pools (or out of its pool), and CREATE a pool from dragged rows even
+// when a dragged type already belongs to another pool. Both respect the invariants the old forms enforced:
+// a type is in at most ONE pool per scheme (DB unique), and a pool always has ≥2 members — a pool left with
+// fewer than 2 members after a detach is DISSOLVED (deleted), never persisted as a 1-member pool.
+
+/** Detach a leave type from whatever pool it is in within the scheme. Dissolves the source pool when the
+ *  detach leaves it under the 2-member minimum. Appends the pool's `.deleted` event on dissolve (the same
+ *  audit shape deleteSchemeCombinedLimit emits); the caller appends its own move/regroup event. */
+async function detachTypeFromPool(
+  tx: Tx,
+  ctx: SessionContext,
+  benefitSchemeId: string,
+  leaveTypeId: string,
+): Promise<{ fromCombinedLimitId: string | null; dissolvedCombinedLimitId: string | null }> {
+  const [member] = await tx
+    .select({ id: schemeLeaveCombinedLimitMember.id, combinedLimitId: schemeLeaveCombinedLimitMember.combinedLimitId })
+    .from(schemeLeaveCombinedLimitMember)
+    .where(
+      and(
+        eq(schemeLeaveCombinedLimitMember.benefitSchemeId, benefitSchemeId),
+        eq(schemeLeaveCombinedLimitMember.leaveTypeId, leaveTypeId),
+      ),
+    )
+    .limit(1);
+  if (!member) return { fromCombinedLimitId: null, dissolvedCombinedLimitId: null };
+  await tx.delete(schemeLeaveCombinedLimitMember).where(eq(schemeLeaveCombinedLimitMember.id, member.id));
+  const remaining = await tx
+    .select({ id: schemeLeaveCombinedLimitMember.id })
+    .from(schemeLeaveCombinedLimitMember)
+    .where(eq(schemeLeaveCombinedLimitMember.combinedLimitId, member.combinedLimitId));
+  if (remaining.length >= 2) return { fromCombinedLimitId: member.combinedLimitId, dissolvedCombinedLimitId: null };
+  await tx.delete(schemeLeaveCombinedLimit).where(eq(schemeLeaveCombinedLimit.id, member.combinedLimitId));
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'scheme-leave-combined-limit',
+    aggregateId: member.combinedLimitId,
+    eventType: 'scheme-leave-combined-limit.deleted',
+    actor: actorOf(ctx),
+    payload: { dissolvedBy: 'member-detach', leaveTypeId },
+  });
+  return { fromCombinedLimitId: member.combinedLimitId, dissolvedCombinedLimitId: member.combinedLimitId };
+}
+
+/** Move one leave type into an existing pool (`toCombinedLimitId`) or out of its pool (`null` = ungroup).
+ *  A single drag never round-trips the whole member set: the source membership is detached (dissolving a
+ *  now-under-minimum pool) and, for a move, one member row is inserted into the target. No-ops quietly when
+ *  nothing changes (already in the target pool / ungrouping an ungrouped type). */
+export async function moveCombinedLimitMember(
+  ctx: SessionContext,
+  p: { benefitSchemeId: string; leaveTypeId: string; toCombinedLimitId: string | null },
+) {
+  if (!p.benefitSchemeId) throw new Error('Benefit scheme is required.');
+  if (!p.leaveTypeId) throw new Error('Leave type is required.');
+  return withTenant(ctx, async (tx) => {
+    if (p.toCombinedLimitId) {
+      const [target] = await tx
+        .select({ id: schemeLeaveCombinedLimit.id })
+        .from(schemeLeaveCombinedLimit)
+        .where(
+          and(
+            eq(schemeLeaveCombinedLimit.id, p.toCombinedLimitId),
+            eq(schemeLeaveCombinedLimit.benefitSchemeId, p.benefitSchemeId),
+          ),
+        )
+        .limit(1);
+      if (!target) throw new Error('Combined limit not found in this scheme.');
+    }
+    const [current] = await tx
+      .select({ combinedLimitId: schemeLeaveCombinedLimitMember.combinedLimitId })
+      .from(schemeLeaveCombinedLimitMember)
+      .where(
+        and(
+          eq(schemeLeaveCombinedLimitMember.benefitSchemeId, p.benefitSchemeId),
+          eq(schemeLeaveCombinedLimitMember.leaveTypeId, p.leaveTypeId),
+        ),
+      )
+      .limit(1);
+    const from = current?.combinedLimitId ?? null;
+    if (from === p.toCombinedLimitId) return; // no-op: nothing to move
+    const detach = await detachTypeFromPool(tx, ctx, p.benefitSchemeId, p.leaveTypeId);
+    if (p.toCombinedLimitId) {
+      await tx.insert(schemeLeaveCombinedLimitMember).values({
+        tenantId: ctx.tenantId,
+        combinedLimitId: p.toCombinedLimitId,
+        benefitSchemeId: p.benefitSchemeId,
+        leaveTypeId: p.leaveTypeId,
+      });
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'scheme-leave-combined-limit',
+      // The pool that gained the member, else the pool that lost it (pure ungroup).
+      aggregateId: p.toCombinedLimitId ?? from ?? p.benefitSchemeId,
+      eventType: 'scheme-leave-combined-limit.member.moved',
+      actor: actorOf(ctx),
+      payload: {
+        benefitSchemeId: p.benefitSchemeId,
+        leaveTypeId: p.leaveTypeId,
+        fromCombinedLimitId: from,
+        toCombinedLimitId: p.toCombinedLimitId,
+        dissolvedCombinedLimitId: detach.dissolvedCombinedLimitId,
+      },
+    });
+  });
+}
+
+/** Create a pool from dragged rows. Same validation as createSchemeCombinedLimit, but each chosen type is
+ *  first DETACHED from any pool it already belongs to in the scheme (dissolving under-minimum pools), so a
+ *  grouped row can be dragged straight onto an ungrouped one to form a fresh group. The group name is
+ *  supplied by the caller (the UI auto-names from the member leave-type names, editable before save). */
+export async function groupSchemeLeaveTypes(
+  ctx: SessionContext,
+  p: { benefitSchemeId: string; name: string; totalLimitDays: number; leaveTypeIds: string[] },
+) {
+  if (!p.benefitSchemeId) throw new Error('Benefit scheme is required.');
+  const name = cleanName(p.name, 'Combined limit name');
+  const totalLimitDays = cleanLimitDays(p.totalLimitDays);
+  const leaveTypeIds = cleanMemberTypeIds(p.leaveTypeIds);
+  return withTenant(ctx, async (tx) => {
+    const dissolved: string[] = [];
+    for (const leaveTypeId of leaveTypeIds) {
+      const d = await detachTypeFromPool(tx, ctx, p.benefitSchemeId, leaveTypeId);
+      if (d.dissolvedCombinedLimitId) dissolved.push(d.dissolvedCombinedLimitId);
+    }
+    const [row] = await tx
+      .insert(schemeLeaveCombinedLimit)
+      .values({ tenantId: ctx.tenantId, benefitSchemeId: p.benefitSchemeId, name, totalLimitDays })
+      .returning({ id: schemeLeaveCombinedLimit.id });
+    await replaceCombinedLimitMembers(tx, ctx.tenantId, row.id, p.benefitSchemeId, leaveTypeIds);
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'scheme-leave-combined-limit',
+      aggregateId: row.id,
+      eventType: 'scheme-leave-combined-limit.created',
+      actor: actorOf(ctx),
+      payload: {
+        benefitSchemeId: p.benefitSchemeId,
+        name,
+        totalLimitDays,
+        leaveTypeIds,
+        ...(dissolved.length ? { dissolvedCombinedLimitIds: dissolved } : {}),
+      },
+    });
+    return row;
   });
 }
 

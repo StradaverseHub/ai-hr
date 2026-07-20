@@ -94,6 +94,8 @@ import {
   createSchemeCombinedLimit,
   updateSchemeCombinedLimit,
   deleteSchemeCombinedLimit,
+  moveCombinedLimitMember,
+  groupSchemeLeaveTypes,
 } from '@/core/benefit-scheme';
 import { inviteUser, revokeInvitation } from '@/core/auth';
 import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
@@ -1891,6 +1893,38 @@ export async function deleteSchemeCombinedLimitAction(fd: FormData) {
   const s = await requireAdmin();
   try {
     await deleteSchemeCombinedLimit(s, { id: String(fd.get('id') ?? '') });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+// R47 d6f88c2f — drag-and-drop grouping in the entitlement table. One drag = one narrow write: either move
+// a leave type between pools (empty toCombinedLimitId = ungroup), or create a pool from the dragged rows
+// (detaching them from any previous pool server-side).
+export async function moveCombinedLimitMemberAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await moveCombinedLimitMember(s, {
+      benefitSchemeId: String(fd.get('benefitSchemeId') ?? ''),
+      leaveTypeId: String(fd.get('leaveTypeId') ?? ''),
+      toCombinedLimitId: String(fd.get('toCombinedLimitId') ?? '') || null,
+    });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+export async function groupSchemeLeaveTypesAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await groupSchemeLeaveTypes(s, {
+      benefitSchemeId: String(fd.get('benefitSchemeId') ?? ''),
+      name: String(fd.get('name') ?? ''),
+      totalLimitDays: Number(fd.get('totalLimitDays') ?? ''),
+      leaveTypeIds: fd.getAll('leaveTypeIds').map((v) => String(v)).filter(Boolean),
+    });
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }

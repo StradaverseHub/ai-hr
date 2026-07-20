@@ -1,11 +1,25 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useTransition } from 'react';
+import {
+  DndContext,
+  PointerSensor,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import * as Dialog from '@radix-ui/react-dialog';
+import { GripVertical } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
 import { Combobox } from '@/components/ui/combobox';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 
 /**
  * Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b) — the client subsection rendered
@@ -58,9 +72,12 @@ type Actions = {
   upsertEntitlement: (fd: FormData) => void | Promise<void>;
   deleteEntitlement: (fd: FormData) => void | Promise<void>;
   copyEntitlements: (fd: FormData) => void | Promise<void>;
-  createCombinedLimit: (fd: FormData) => void | Promise<void>;
   updateCombinedLimit: (fd: FormData) => void | Promise<void>;
   deleteCombinedLimit: (fd: FormData) => void | Promise<void>;
+  // R47 d6f88c2f — DnD grouping writes: move one leave type between pools (blank target = ungroup) and
+  // create a pool from dragged rows (server detaches them from any previous pool).
+  moveCombinedLimitMember: (fd: FormData) => void | Promise<void>;
+  groupLeaveTypes: (fd: FormData) => void | Promise<void>;
 };
 
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as const;
@@ -340,59 +357,21 @@ export function BenefitSchemeConfig({
                 />
               </div>
             </div>
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[560px] text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">{t('colLeaveType')}</th>
-                    <th className="px-3 py-2 font-medium">{t('tierUnder', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
-                    <th className="px-3 py-2 font-medium">{t('tierMid', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
-                    <th className="px-3 py-2 font-medium">{t('tierOver', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
-                    <th className="px-3 py-2" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedEnts.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">{t('noEntitlements')}</td>
-                    </tr>
-                  )}
-                  {sortedEnts.map((e) => {
-                    const ti = tiersFromBands(e.serviceBands);
-                    return (
-                      <tr key={e.id} className="border-b border-border last:border-0">
-                        <td className="px-3 py-2 font-medium">{e.leaveTypeName ?? '—'}</td>
-                        <td className="px-3 py-2">{ti.d0 || '0'}</td>
-                        <td className="px-3 py-2">{ti.d1 || '0'}</td>
-                        <td className="px-3 py-2">{ti.d2 || '0'}</td>
-                        <td className="px-3 py-2 text-right">
-                          <form action={actions.deleteEntitlement} className="inline">
-                            <input type="hidden" name="id" value={e.id} />
-                            <Button type="submit" variant="ghost" size="sm">{t('delete')}</Button>
-                          </form>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {/* R47 d6f88c2f — the standalone Combined Leave Limits section is gone: shared caps are now
+                configured by dragging entitlement rows together, directly in this table. */}
+            <EntitlementDndTable
+              schemeId={selectedSchemeId}
+              ents={sortedEnts}
+              pools={combinedLimits.filter((cl) => cl.benefitSchemeId === selectedSchemeId)}
+              headerTiers={headerTiers}
+              actions={actions}
+              t={t}
+            />
             <EntitlementForm
               action={actions.upsertEntitlement}
               schemeId={selectedSchemeId}
               leaveTypes={leaveTypes}
               existingLeaveTypeIds={selectedEnts.map((e) => e.leaveTypeId)}
-              t={t}
-            />
-
-            {/* R44 4c48fd1f — Combined Leave Limits: shared per-cycle caps pooling several leave types. */}
-            <CombinedLimitsSection
-              schemeId={selectedSchemeId}
-              leaveTypes={leaveTypes}
-              limits={combinedLimits.filter((cl) => cl.benefitSchemeId === selectedSchemeId)}
-              createAction={actions.createCombinedLimit}
-              updateAction={actions.updateCombinedLimit}
-              deleteAction={actions.deleteCombinedLimit}
               t={t}
             />
           </>
@@ -403,142 +382,463 @@ export function BenefitSchemeConfig({
 }
 
 /**
- * CombinedLimitsSection (R44 4c48fd1f, Stage 1) — per-scheme pools that cap several leave types under one
- * shared per-cycle total. Lists existing pools (name / total / member type names) with edit + delete, and an
- * add form. Members are chosen from the scheme-eligible leave types; the server enforces "a type joins at
- * most one pool per scheme" (unique index) + a friendly error on conflict.
+ * EntitlementDndTable (R47 d6f88c2f) — the per-scheme entitlement table with drag-and-drop leave-type
+ * grouping, replacing the R44 4c48fd1f standalone Combined Leave Limits section. Every row is draggable:
+ * drop it on an ungrouped row to form a new pool (auto-named from the members, editable in the confirm
+ * dialog — the total limit HAS to be asked for there since a silent default would cap real leave), or on a
+ * group / grouped row to MOVE it into that pool (a type is in at most one pool per scheme). Grouped rows
+ * render banded + contiguous with an inline-renameable name and a shared editable Total Limit column
+ * (scheme_leave_combined_limit.total_limit_days). Ungroup per row (moveCombinedLimitMember with a blank
+ * target) and per group (deleteCombinedLimit). Enforcement (core/leave.ts) reads the same tables and is
+ * untouched.
  */
-function CombinedLimitsSection({
+function EntitlementDndTable({
   schemeId,
-  leaveTypes,
-  limits,
-  createAction,
-  updateAction,
-  deleteAction,
+  ents,
+  pools,
+  headerTiers,
+  actions,
   t,
 }: {
   schemeId: string;
-  leaveTypes: LeaveType[];
-  limits: CombinedLimit[];
-  createAction: (fd: FormData) => void | Promise<void>;
-  updateAction: (fd: FormData) => void | Promise<void>;
-  deleteAction: (fd: FormData) => void | Promise<void>;
+  /** The selected scheme's entitlements, ALREADY sorted by the A–Z/Z–A toggle. */
+  ents: Entitlement[];
+  pools: CombinedLimit[];
+  headerTiers: { n1: number; n2: number };
+  actions: Actions;
   t: ReturnType<typeof useTranslations>;
 }) {
-  const typeName = useMemo(() => new Map(leaveTypes.map((lt) => [lt.id, lt.name])), [leaveTypes]);
-  const sortedLeaveTypes = useMemo(
-    () => [...leaveTypes].sort((a, b) => a.name.localeCompare(b.name)),
-    [leaveTypes],
-  );
+  const [, startTransition] = useTransition();
+  // A small activation distance keeps plain clicks (Edit/Delete/inputs) from starting a drag.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const poolByTypeId = useMemo(() => {
+    const m = new Map<string, CombinedLimit>();
+    for (const p of pools) for (const id of p.leaveTypeIds) m.set(id, p);
+    return m;
+  }, [pools]);
+  const entById = useMemo(() => new Map(ents.map((e) => [e.id, e])), [ents]);
+  const hasPools = pools.length > 0;
+  const colCount = hasPools ? 6 : 5;
+
+  // Sorting vs grouping (approved decision): grouped rows must stay CONTIGUOUS while the A–Z/Z–A toggle
+  // stays useful. Walking the direction-sorted rows in order, a group block is ANCHORED at its first
+  // member's sorted position (later members join that block) and ungrouped rows keep their own slot —
+  // so members sort within their group and blocks interleave with singles by the same sort key.
+  type Block = { pool: CombinedLimit | null; ents: Entitlement[] };
+  const blocks = useMemo<Block[]>(() => {
+    const out: Block[] = [];
+    const byPool = new Map<string, Block>();
+    for (const e of ents) {
+      const pool = poolByTypeId.get(e.leaveTypeId) ?? null;
+      if (!pool) {
+        out.push({ pool: null, ents: [e] });
+        continue;
+      }
+      const existing = byPool.get(pool.id);
+      if (existing) {
+        existing.ents.push(e);
+      } else {
+        const blk: Block = { pool, ents: [e] };
+        byPool.set(pool.id, blk);
+        out.push(blk);
+      }
+    }
+    return out;
+  }, [ents, poolByTypeId]);
+
+  const [active, setActive] = useState<Entitlement | null>(null);
+  const [pendingGroup, setPendingGroup] = useState<[Entitlement, Entitlement] | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const activePoolId = active ? (poolByTypeId.get(active.leaveTypeId)?.id ?? null) : null;
+
+  const onDragStart = (e: DragStartEvent) => {
+    setNotice(null);
+    setActive(entById.get(String(e.active.id)) ?? null);
+  };
+  const onDragEnd = (e: DragEndEvent) => {
+    const src = active;
+    setActive(null);
+    if (!src || !e.over) return;
+    const overId = String(e.over.id);
+    const srcPool = poolByTypeId.get(src.leaveTypeId) ?? null;
+    let targetPool: CombinedLimit | null = null;
+    let targetEnt: Entitlement | null = null;
+    if (overId.startsWith('pool:')) {
+      targetPool = pools.find((p) => p.id === overId.slice(5)) ?? null;
+    } else if (overId.startsWith('row:')) {
+      targetEnt = entById.get(overId.slice(4)) ?? null;
+      if (!targetEnt || targetEnt.id === src.id) return;
+      targetPool = poolByTypeId.get(targetEnt.leaveTypeId) ?? null;
+    }
+    if (targetPool) {
+      // Dropping onto a group (band or member row) MOVES the type there — unless it is already a member.
+      if (srcPool?.id === targetPool.id) {
+        setNotice(t('groupConflict'));
+        return;
+      }
+      const fd = new FormData();
+      fd.set('benefitSchemeId', schemeId);
+      fd.set('leaveTypeId', src.leaveTypeId);
+      fd.set('toCombinedLimitId', targetPool.id);
+      startTransition(() => {
+        void actions.moveCombinedLimitMember(fd);
+      });
+      return;
+    }
+    // Dropping onto an ungrouped row proposes a NEW group — confirmed in a dialog because the shared
+    // total limit needs a value (no safe default) and the auto-name should be reviewable.
+    if (targetEnt) setPendingGroup([src, targetEnt]);
+  };
+
   return (
-    <div className="space-y-3 pt-2">
-      <div>
-        <h4 className="text-sm font-semibold text-foreground">{t('combinedTitle')}</h4>
-        <p className="text-xs text-muted-foreground">{t('combinedHelp')}</p>
-      </div>
-      <ul className="divide-y divide-border rounded-lg border border-border">
-        {limits.length === 0 && (
-          <li className="px-3 py-4 text-center text-sm text-muted-foreground">{t('combinedNone')}</li>
-        )}
-        {limits.map((cl) => (
-          <li key={cl.id} className="px-3 py-2.5">
-            <details>
-              <summary className="flex cursor-pointer items-center justify-between gap-2">
-                <span className="text-sm font-medium text-foreground">{cl.name}</span>
-                <span className="text-xs font-normal text-muted-foreground">
-                  {cl.totalLimitDays} · {cl.leaveTypeIds.map((id) => typeName.get(id) ?? '—').join(', ')}
-                </span>
-              </summary>
-              <div className="mt-3 space-y-3">
-                <CombinedLimitForm
-                  action={updateAction}
-                  schemeId={schemeId}
-                  leaveTypes={sortedLeaveTypes}
-                  limit={cl}
-                  t={t}
-                />
-                <form action={deleteAction}>
-                  <input type="hidden" name="id" value={cl.id} />
-                  <Button type="submit" variant="ghost" size="sm">{t('delete')}</Button>
-                </form>
-              </div>
-            </details>
-          </li>
-        ))}
-      </ul>
-      <CombinedLimitForm
-        action={createAction}
-        schemeId={schemeId}
-        leaveTypes={sortedLeaveTypes}
-        limit={null}
-        t={t}
-      />
-    </div>
+    <>
+      <p className="text-xs text-muted-foreground">{t('dragHint')}</p>
+      {notice && <p className="text-xs text-destructive">{notice}</p>}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pointerWithin}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => setActive(null)}
+      >
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th className="px-3 py-2 font-medium">{t('colLeaveType')}</th>
+                <th className="px-3 py-2 font-medium">{t('tierUnder', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
+                <th className="px-3 py-2 font-medium">{t('tierMid', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
+                <th className="px-3 py-2 font-medium">{t('tierOver', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
+                {hasPools && <th className="px-3 py-2 font-medium">{t('colTotalLimit')}</th>}
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {ents.length === 0 && (
+                <tr>
+                  <td colSpan={colCount} className="px-3 py-4 text-center text-muted-foreground">{t('noEntitlements')}</td>
+                </tr>
+              )}
+              {blocks.map((blk) =>
+                blk.pool ? (
+                  <GroupBlock
+                    key={`g-${blk.pool.id}`}
+                    pool={blk.pool}
+                    ents={blk.ents}
+                    schemeId={schemeId}
+                    colCount={colCount}
+                    hasPools={hasPools}
+                    activeEnt={active}
+                    activePoolId={activePoolId}
+                    actions={actions}
+                    t={t}
+                  />
+                ) : (
+                  <EntitlementRow
+                    key={blk.ents[0].id}
+                    ent={blk.ents[0]}
+                    pool={null}
+                    isFirstOfGroup={false}
+                    groupSize={0}
+                    schemeId={schemeId}
+                    hasPools={hasPools}
+                    activeEnt={active}
+                    activePoolId={activePoolId}
+                    actions={actions}
+                    t={t}
+                  />
+                ),
+              )}
+            </tbody>
+          </table>
+        </div>
+      </DndContext>
+      {pendingGroup && (
+        <CreateGroupDialog
+          schemeId={schemeId}
+          members={pendingGroup}
+          action={actions.groupLeaveTypes}
+          onClose={() => setPendingGroup(null)}
+          t={t}
+        />
+      )}
+    </>
   );
 }
 
-function CombinedLimitForm({
-  action,
+/** A pool's banded block: a full-width header row (droppable target, inline rename, dissolve) followed by
+ *  its member rows, the first of which carries the shared Total Limit cell (rowSpan). */
+function GroupBlock({
+  pool,
+  ents,
   schemeId,
-  leaveTypes,
-  limit,
+  colCount,
+  hasPools,
+  activeEnt,
+  activePoolId,
+  actions,
   t,
 }: {
-  action: (fd: FormData) => void | Promise<void>;
+  pool: CombinedLimit;
+  ents: Entitlement[];
   schemeId: string;
-  leaveTypes: LeaveType[];
-  limit: CombinedLimit | null;
+  colCount: number;
+  hasPools: boolean;
+  activeEnt: Entitlement | null;
+  activePoolId: string | null;
+  actions: Actions;
   t: ReturnType<typeof useTranslations>;
 }) {
+  const { isOver, setNodeRef } = useDroppable({ id: `pool:${pool.id}` });
+  const validTarget = !!activeEnt && activePoolId !== pool.id;
   return (
-    <form action={action} className="space-y-3 rounded-lg border border-dashed border-border p-3">
-      {limit ? (
-        <input type="hidden" name="id" value={limit.id} />
-      ) : (
-        <input type="hidden" name="benefitSchemeId" value={schemeId} />
-      )}
-      {!limit && <p className="text-xs font-medium text-muted-foreground">{t('combinedAdd')}</p>}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:items-end">
-        <Field label={t('combinedNameLabel')}>
-          <input
-            name="name"
-            required
-            defaultValue={limit?.name ?? ''}
-            placeholder={t('combinedNamePlaceholder')}
-            className={inputCls}
-          />
-        </Field>
-        <Field label={t('combinedTotalLabel')}>
-          <input
-            name="totalLimitDays"
-            type="number"
-            min={0.5}
-            step="0.5"
-            required
-            defaultValue={limit ? String(limit.totalLimitDays) : ''}
-            className={`${inputCls} w-24`}
-          />
-        </Field>
-      </div>
-      <div>
-        <span className="text-xs font-medium text-muted-foreground">{t('combinedTypesLabel')}</span>
-        <div className="mt-1.5 flex flex-wrap gap-2">
-          {leaveTypes.map((lt) => (
-            <label key={lt.id} className="flex items-center gap-1.5 rounded border border-border px-2 py-1 text-xs">
+    <>
+      <tr
+        ref={setNodeRef}
+        className={`border-b border-border bg-muted/40 ${
+          validTarget ? (isOver ? 'bg-primary/15' : 'bg-primary/5') : ''
+        }`}
+      >
+        <td colSpan={colCount} className="px-3 py-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <form action={actions.updateCombinedLimit} className="flex items-center gap-1.5">
+              <input type="hidden" name="id" value={pool.id} />
+              <input type="hidden" name="totalLimitDays" value={String(pool.totalLimitDays)} />
+              {pool.leaveTypeIds.map((id) => (
+                <input key={id} type="hidden" name="leaveTypeIds" value={id} />
+              ))}
               <input
-                type="checkbox"
-                name="leaveTypeIds"
-                value={lt.id}
-                defaultChecked={limit?.leaveTypeIds.includes(lt.id) ?? false}
-                className="size-3.5 rounded"
+                name="name"
+                required
+                defaultValue={pool.name}
+                aria-label={t('renameGroup')}
+                className={`${inputCls} h-7 w-56 text-xs font-medium`}
               />
-              {lt.name}
-            </label>
-          ))}
+              <Button type="submit" variant="ghost" size="sm">{t('save')}</Button>
+            </form>
+            <form action={actions.deleteCombinedLimit}>
+              <input type="hidden" name="id" value={pool.id} />
+              <ConfirmSubmit
+                size="sm"
+                variant="ghost"
+                title={t('dissolveGroupConfirmTitle')}
+                description={t('dissolveGroupConfirmDescription')}
+                confirmLabel={t('dissolveGroup')}
+              >
+                {t('dissolveGroup')}
+              </ConfirmSubmit>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {ents.map((e, i) => (
+        <EntitlementRow
+          key={e.id}
+          ent={e}
+          pool={pool}
+          isFirstOfGroup={i === 0}
+          groupSize={ents.length}
+          schemeId={schemeId}
+          hasPools={hasPools}
+          activeEnt={activeEnt}
+          activePoolId={activePoolId}
+          actions={actions}
+          t={t}
+        />
+      ))}
+    </>
+  );
+}
+
+/** One entitlement row — draggable (grip handle) AND a drop target. Grouped rows band with the pool
+ *  colour, carry an Ungroup action, and the first row of a group hosts the shared Total Limit cell. */
+function EntitlementRow({
+  ent,
+  pool,
+  isFirstOfGroup,
+  groupSize,
+  schemeId,
+  hasPools,
+  activeEnt,
+  activePoolId,
+  actions,
+  t,
+}: {
+  ent: Entitlement;
+  pool: CombinedLimit | null;
+  isFirstOfGroup: boolean;
+  groupSize: number;
+  schemeId: string;
+  hasPools: boolean;
+  activeEnt: Entitlement | null;
+  activePoolId: string | null;
+  actions: Actions;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const { attributes, listeners, setNodeRef: setDragRef, setActivatorNodeRef, transform, isDragging } = useDraggable({
+    id: ent.id,
+  });
+  const { isOver, setNodeRef: setDropRef } = useDroppable({ id: `row:${ent.id}` });
+  const ti = tiersFromBands(ent.serviceBands);
+  // Valid target = not the dragged row itself, and not a sibling of the dragged row's own pool.
+  const validTarget =
+    !!activeEnt && activeEnt.id !== ent.id && (pool ? pool.id !== activePoolId : true);
+  const banded = pool ? 'bg-muted/30' : '';
+  const highlight = validTarget ? (isOver ? 'bg-primary/15' : 'bg-primary/5') : '';
+  return (
+    <tr
+      ref={(node) => {
+        setDragRef(node);
+        setDropRef(node);
+      }}
+      style={{ transform: CSS.Translate.toString(transform) }}
+      className={`border-b border-border last:border-0 ${banded} ${highlight} ${
+        isDragging ? 'relative z-10 opacity-60' : ''
+      }`}
+    >
+      <td className="px-3 py-2 font-medium">
+        <span className="flex items-center gap-1.5">
+          <button
+            type="button"
+            ref={setActivatorNodeRef}
+            aria-label={t('dragHandleAria')}
+            className="grid size-6 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-primary/40"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="size-3.5" />
+          </button>
+          {ent.leaveTypeName ?? '—'}
+        </span>
+      </td>
+      <td className="px-3 py-2">{ti.d0 || '0'}</td>
+      <td className="px-3 py-2">{ti.d1 || '0'}</td>
+      <td className="px-3 py-2">{ti.d2 || '0'}</td>
+      {hasPools &&
+        (pool ? (
+          isFirstOfGroup ? (
+            <td rowSpan={groupSize} className="border-l border-border bg-muted/30 px-3 py-2 align-middle">
+              {/* The shared cap: scheme_leave_combined_limit.total_limit_days, editable in place. */}
+              <form action={actions.updateCombinedLimit} className="flex flex-col items-start gap-1.5">
+                <input type="hidden" name="id" value={pool.id} />
+                <input type="hidden" name="name" value={pool.name} />
+                {pool.leaveTypeIds.map((id) => (
+                  <input key={id} type="hidden" name="leaveTypeIds" value={id} />
+                ))}
+                <input
+                  name="totalLimitDays"
+                  type="number"
+                  min={0.5}
+                  step="0.5"
+                  required
+                  defaultValue={String(pool.totalLimitDays)}
+                  aria-label={t('colTotalLimit')}
+                  className={`${inputCls} h-7 w-20 text-xs`}
+                />
+                <Button type="submit" variant="ghost" size="sm">{t('save')}</Button>
+              </form>
+            </td>
+          ) : null
+        ) : (
+          <td className="px-3 py-2 text-muted-foreground">—</td>
+        ))}
+      <td className="px-3 py-2 text-right">
+        {/* R47 edb0309d: Edit reopens the row in a pre-filled dialog (the R44 dup guard closed the old
+            re-add-to-overwrite path); Delete confirms like its R44 sibling delete surfaces. */}
+        <div className="inline-flex items-center gap-1">
+          <EntitlementEditDialog entitlement={ent} action={actions.upsertEntitlement} t={t} />
+          {pool && (
+            <form action={actions.moveCombinedLimitMember} className="inline">
+              <input type="hidden" name="benefitSchemeId" value={schemeId} />
+              <input type="hidden" name="leaveTypeId" value={ent.leaveTypeId} />
+              <input type="hidden" name="toCombinedLimitId" value="" />
+              <Button type="submit" variant="ghost" size="sm">{t('ungroupRow')}</Button>
+            </form>
+          )}
+          <form action={actions.deleteEntitlement} className="inline">
+            <input type="hidden" name="id" value={ent.id} />
+            <ConfirmSubmit
+              size="sm"
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              title={t('deleteEntitlementConfirmTitle')}
+              description={t('deleteEntitlementConfirmDescription')}
+              confirmLabel={t('delete')}
+            >
+              {t('delete')}
+            </ConfirmSubmit>
+          </form>
         </div>
-      </div>
-      <Button type="submit" size="sm">{limit ? t('save') : t('combinedAdd')}</Button>
-    </form>
+      </td>
+    </tr>
+  );
+}
+
+/** Confirm dialog for a drag-created group: members fixed (the two dragged rows), name auto-generated
+ *  from the member leave-type names (approved decision — editable before save), total limit REQUIRED
+ *  (a silent default would cap real leave). Posts groupSchemeLeaveTypesAction, which detaches the
+ *  members from any previous pool server-side. */
+function CreateGroupDialog({
+  schemeId,
+  members,
+  action,
+  onClose,
+  t,
+}: {
+  schemeId: string;
+  members: [Entitlement, Entitlement];
+  action: (fd: FormData) => void | Promise<void>;
+  onClose: () => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const autoName = members
+    .map((m) => m.leaveTypeName ?? '—')
+    .join(' + ')
+    .slice(0, 120);
+  return (
+    <Dialog.Root
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-5 text-popover-foreground shadow-lg">
+          <Dialog.Title className="text-base font-semibold">{t('createGroupTitle')}</Dialog.Title>
+          <p className="mt-1 text-xs text-muted-foreground">{t('createGroupHelp')}</p>
+          <form
+            action={(fd) => {
+              onClose();
+              return action(fd);
+            }}
+            className="mt-4 space-y-3"
+          >
+            <input type="hidden" name="benefitSchemeId" value={schemeId} />
+            {members.map((m) => (
+              <input key={m.id} type="hidden" name="leaveTypeIds" value={m.leaveTypeId} />
+            ))}
+            <div className="flex flex-wrap gap-2">
+              {members.map((m) => (
+                <Badge key={m.id}>{m.leaveTypeName ?? '—'}</Badge>
+              ))}
+            </div>
+            <Field label={t('groupNameLabel')}>
+              <input name="name" required defaultValue={autoName} className={inputCls} />
+            </Field>
+            <Field label={t('totalLimitPerYear')}>
+              <input name="totalLimitDays" type="number" min={0.5} step="0.5" required className={`${inputCls} w-28`} />
+            </Field>
+            <div className="flex justify-end gap-2 pt-1">
+              <Dialog.Close asChild>
+                <Button type="button" size="sm" variant="outline">{t('cancel')}</Button>
+              </Dialog.Close>
+              <Button type="submit" size="sm">{t('createGroupConfirm')}</Button>
+            </div>
+          </form>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -767,27 +1067,85 @@ function CopyEntitlementsDialog({
   );
 }
 
+/**
+ * EntitlementEditDialog (R47 edb0309d) — per-row Edit for a leave entitlement. The R44 fdc3f521 dup guard
+ * closed the old "re-enter the same leave type to overwrite" path, so this dialog restores editing via the
+ * SAME upsertSchemeEntitlement action (onConflictDoUpdate does the update server-side). The leave type is
+ * LOCKED in edit mode: changing it would be a delete-and-add and could collide with the unique
+ * (scheme, leave type) index.
+ */
+function EntitlementEditDialog({
+  entitlement,
+  action,
+  t,
+}: {
+  entitlement: Entitlement;
+  action: (fd: FormData) => void | Promise<void>;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <Button type="button" variant="ghost" size="sm">{t('edit')}</Button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-5 text-popover-foreground shadow-lg">
+          <Dialog.Title className="text-base font-semibold">{t('editEntitlementTitle')}</Dialog.Title>
+          <div className="mt-4 space-y-3">
+            <EntitlementForm
+              action={(fd) => {
+                setOpen(false);
+                return action(fd);
+              }}
+              schemeId={entitlement.benefitSchemeId}
+              leaveTypes={[]}
+              existingLeaveTypeIds={[]}
+              entitlement={entitlement}
+              t={t}
+            />
+            <div className="flex justify-end border-t border-border pt-3">
+              <Dialog.Close asChild>
+                <Button type="button" size="sm" variant="outline">{t('cancel')}</Button>
+              </Dialog.Close>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
 function EntitlementForm({
   action,
   schemeId,
   leaveTypes,
   existingLeaveTypeIds,
+  entitlement = null,
   t,
 }: {
   action: (fd: FormData) => void | Promise<void>;
   schemeId: string;
   leaveTypes: LeaveType[];
   existingLeaveTypeIds: string[];
+  /** R47 edb0309d: when set, the form EDITS this row — leave type locked, day values pre-filled from its
+   *  stored serviceBands (including legacy non-2/5 cutoffs, which are preserved on save). */
+  entitlement?: Entitlement | null;
   t: ReturnType<typeof useTranslations>;
 }) {
   // Fixed three-band day entry (R44 6421c888): service bands are hardcoded at 0–2 / 2–5 / 5+ years — HR
   // types the days directly into each predefined range, no tier-cutoff inputs. The 0/2/5 shape satisfies
   // validateBands and is the SAME contiguous ServiceBand[] the resolver reads. Legacy rows stored with other
   // cutoffs keep their own values + calculate correctly (read-side table derives each row's own labels).
-  const [leaveTypeId, setLeaveTypeId] = useState('');
-  const [d0, setD0] = useState('');
-  const [d1, setD1] = useState('');
-  const [d2, setD2] = useState('');
+  // In EDIT mode the row's OWN cutoffs (tiersFromBands) seed both the values and the band shape written back.
+  const editTiers = entitlement ? tiersFromBands(entitlement.serviceBands) : null;
+  const [leaveTypeId, setLeaveTypeId] = useState(entitlement?.leaveTypeId ?? '');
+  const [d0, setD0] = useState(editTiers?.d0 ?? '');
+  const [d1, setD1] = useState(editTiers?.d1 ?? '');
+  const [d2, setD2] = useState(editTiers?.d2 ?? '');
+  const n1 = editTiers?.n1 ?? 2;
+  const n2 = editTiers?.n2 ?? 5;
 
   // R44 fdc3f521: block adding a leave type already configured in this scheme (silent-overwrite guard). On a
   // duplicate the field shakes + an inline error shows, WITHOUT clearing the other entered values. shakeKey
@@ -808,9 +1166,9 @@ function EntitlementForm({
   );
 
   const bands: ServiceBand[] = [
-    { fromYears: 0, toYears: 2, days: Number(d0) || 0 },
-    { fromYears: 2, toYears: 5, days: Number(d1) || 0 },
-    { fromYears: 5, toYears: null, days: Number(d2) || 0 },
+    { fromYears: 0, toYears: n1, days: Number(d0) || 0 },
+    { fromYears: n1, toYears: n2, days: Number(d1) || 0 },
+    { fromYears: n2, toYears: null, days: Number(d2) || 0 },
   ];
 
   // Client action wrapper: validate before delegating to the server action. Blocking simply returns without
@@ -829,8 +1187,10 @@ function EntitlementForm({
       setShakeKey((k) => k + 1);
       return;
     }
-    // 2) Duplicate leave type in this scheme.
-    if (leaveTypeId && existingLeaveTypeIds.includes(leaveTypeId)) {
+    // 2) Duplicate leave type in this scheme — ADD mode only (R47 edb0309d): when editing, the form's
+    //    leaveTypeId is by definition already configured (that IS the row being edited), so the guard must
+    //    not fire; it keeps firing for genuine adds.
+    if (!entitlement && leaveTypeId && existingLeaveTypeIds.includes(leaveTypeId)) {
       setDupError(true);
       setRequiredError(false);
       setMissing(new Set());
@@ -843,56 +1203,81 @@ function EntitlementForm({
     return action(fd);
   };
 
+  // Edit mode labels interpolate the ROW's actual cutoffs (legacy rows may not be 2/5); add mode keeps the
+  // fixed 0–2 / 2–5 / 5+ wording.
+  const tierLabels = entitlement
+    ? ([t('tierUnder', { n1, n2 }), t('tierMid', { n1, n2 }), t('tierOver', { n1, n2 })] as const)
+    : ([t('tierUnderFixed'), t('tierMidFixed'), t('tierOverFixed')] as const);
+
   return (
-    <form action={handleAction} className="space-y-3 rounded-lg border border-dashed border-border p-3">
+    <form
+      action={handleAction}
+      className={entitlement ? 'space-y-3' : 'space-y-3 rounded-lg border border-dashed border-border p-3'}
+    >
       <input type="hidden" name="benefitSchemeId" value={schemeId} />
       <input type="hidden" name="serviceBands" value={JSON.stringify(bands)} />
-      <p className="text-xs font-medium text-muted-foreground">{t('addEntitlement')}</p>
+      {!entitlement && <p className="text-xs font-medium text-muted-foreground">{t('addEntitlement')}</p>}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
         <div key={`lt-${shakeKey}`} className={dupError || missing.has('leaveType') ? 'animate-shake' : ''}>
-          <Field label={t('colLeaveType')} required requiredAriaLabel={t('requiredAria')}>
-            <select
-              name="leaveTypeId"
-              required
-              value={leaveTypeId}
-              onChange={(e) => {
-                setLeaveTypeId(e.target.value);
-                setDupError(false);
-                setMissing((m) => {
-                  if (!m.has('leaveType')) return m;
-                  const n = new Set(m);
-                  n.delete('leaveType');
-                  return n;
-                });
-              }}
-              className={inputCls}
-            >
-              <option value="" disabled>{t('selectPlaceholder')}</option>
-              {sortedLeaveTypes.map((lt) => (
-                <option key={lt.id} value={lt.id}>{lt.name}</option>
-              ))}
-            </select>
-          </Field>
+          {entitlement ? (
+            /* Leave type is LOCKED when editing — changing it is really delete-and-add and would collide
+               with the unique (scheme, leave type) index. Hidden input keeps the FormData contract. */
+            <Field label={t('colLeaveType')}>
+              <>
+                <input type="hidden" name="leaveTypeId" value={entitlement.leaveTypeId} />
+                <input
+                  value={entitlement.leaveTypeName ?? '—'}
+                  readOnly
+                  disabled
+                  className={`${inputCls} cursor-not-allowed opacity-70`}
+                />
+              </>
+            </Field>
+          ) : (
+            <Field label={t('colLeaveType')} required requiredAriaLabel={t('requiredAria')}>
+              <select
+                name="leaveTypeId"
+                required
+                value={leaveTypeId}
+                onChange={(e) => {
+                  setLeaveTypeId(e.target.value);
+                  setDupError(false);
+                  setMissing((m) => {
+                    if (!m.has('leaveType')) return m;
+                    const n = new Set(m);
+                    n.delete('leaveType');
+                    return n;
+                  });
+                }}
+                className={inputCls}
+              >
+                <option value="" disabled>{t('selectPlaceholder')}</option>
+                {sortedLeaveTypes.map((lt) => (
+                  <option key={lt.id} value={lt.id}>{lt.name}</option>
+                ))}
+              </select>
+            </Field>
+          )}
         </div>
         <div key={`d0-${shakeKey}`} className={missing.has('d0') ? 'animate-shake' : ''}>
-          <Field label={t('tierUnderFixed')} required requiredAriaLabel={t('requiredAria')}>
+          <Field label={tierLabels[0]} required requiredAriaLabel={t('requiredAria')}>
             <input type="number" min={0} step="0.5" value={d0} onChange={(e) => setD0(e.target.value)} className={`${inputCls} w-20`} />
           </Field>
         </div>
         <div key={`d1-${shakeKey}`} className={missing.has('d1') ? 'animate-shake' : ''}>
-          <Field label={t('tierMidFixed')} required requiredAriaLabel={t('requiredAria')}>
+          <Field label={tierLabels[1]} required requiredAriaLabel={t('requiredAria')}>
             <input type="number" min={0} step="0.5" value={d1} onChange={(e) => setD1(e.target.value)} className={`${inputCls} w-20`} />
           </Field>
         </div>
         <div key={`d2-${shakeKey}`} className={missing.has('d2') ? 'animate-shake' : ''}>
-          <Field label={t('tierOverFixed')} required requiredAriaLabel={t('requiredAria')}>
+          <Field label={tierLabels[2]} required requiredAriaLabel={t('requiredAria')}>
             <input type="number" min={0} step="0.5" value={d2} onChange={(e) => setD2(e.target.value)} className={`${inputCls} w-20`} />
           </Field>
         </div>
       </div>
       {requiredError && <p className="text-xs text-destructive">{t('requiredError')}</p>}
       {dupError && <p className="text-xs text-destructive">{t('duplicateError')}</p>}
-      <Button type="submit" size="sm">{t('saveEntitlement')}</Button>
+      <Button type="submit" size="sm">{entitlement ? t('save') : t('saveEntitlement')}</Button>
     </form>
   );
 }
