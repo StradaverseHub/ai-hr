@@ -310,8 +310,13 @@ describe('Identification & Tax — i18n (item 8b5334db)', () => {
       'childReliefModeLabel',
       'childReliefModeManual',
       'childReliefModeAuto',
-      'childReliefAutoSuggestion',
-      'childReliefAutoApply',
+      // R46 47146ea3 — childReliefAutoSuggestion / childReliefAutoApply ("Use {count}") are GONE. The
+      // manual confirm step they described no longer exists: the count now syncs server-side from the
+      // Family register. These three replace them — the explanatory note on the card, plus the two
+      // post-save banners (quiet sync, and the open-payroll alert).
+      'childReliefAutoSyncNote',
+      'childReliefAutoSynced',
+      'childReliefAutoSyncedPayrollAlert',
       'employerBearsTax',
       'employerBearsTaxHint',
       'identityTaxSave',

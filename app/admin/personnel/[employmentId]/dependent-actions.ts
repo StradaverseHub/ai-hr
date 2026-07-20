@@ -8,6 +8,7 @@ import {
   updateDependent,
   archiveDependent,
   DependentValidationError,
+  type ChildReliefSyncResult,
 } from '@/core/dependents';
 
 // Family / Dependents (phase 1) — per-person benefits/insurance register, managed from the employee detail
@@ -23,6 +24,24 @@ const back = (employmentId: string, qs: string, formData: FormData) => {
 
 const errorMsg = (e: unknown): string =>
   e instanceof DependentValidationError ? e.message : (e as Error).message;
+
+/**
+ * R46 47146ea3 — rail (d) surfacing. The Children (PCB Relief) figure is now synced automatically from the
+ * Family register, so a family edit CAN move an employee's tax. When it does so while a payroll batch for
+ * the current period is still open (draft/processed), the save is allowed — we alert rather than block, so
+ * HR is never stuck — but the person who made the edit must be told, right there, that payroll for a live
+ * period just shifted underneath them. Appended to the post-save redirect and rendered as a warning banner
+ * on the detail page. `childReliefSynced` (without an alert) reports the quieter case: the count changed,
+ * no payroll run is open. The write itself is also permanently traceable via the `auto: true` provenance on
+ * the employee.tax.updated event, for anyone who arrives after the redirect is gone.
+ */
+const syncQs = (r: ChildReliefSyncResult | undefined): string => {
+  if (!r || !r.changed) return '';
+  if (r.payrollAlert) {
+    return `&childReliefAlert=${encodeURIComponent(r.payrollAlert.period)}&childReliefTo=${r.after ?? 0}`;
+  }
+  return `&childReliefSynced=${r.after ?? 0}`;
+};
 
 const str = (v: FormDataEntryValue | null): string | undefined => {
   const s = (v as string) ?? '';
@@ -52,8 +71,9 @@ const editNum = (formData: FormData, key: string): number | null | undefined =>
 export async function addDependentAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  let sync: ChildReliefSyncResult | undefined;
   try {
-    await addDependent(s, {
+    ({ childReliefSync: sync } = await addDependent(s, {
       personId: String(formData.get('personId')),
       fullName: String(formData.get('fullName') ?? '').trim(),
       relationship: String(formData.get('relationship') ?? '').trim(),
@@ -82,19 +102,20 @@ export async function addDependentAction(formData: FormData) {
       childTaxRelief:
         formData.get('childTaxRelief__present') !== null ? formData.get('childTaxRelief') != null : null,
       childReliefPercentage: numOrNull(formData.get('childReliefPercentage')),
-    });
+    }));
   } catch (e) {
     back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`, formData);
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  back(employmentId, 'toast=Saved', formData);
+  back(employmentId, `toast=Saved${syncQs(sync)}`, formData);
 }
 
 export async function editDependentAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  let sync: ChildReliefSyncResult | undefined;
   try {
-    await updateDependent(s, {
+    ({ childReliefSync: sync } = await updateDependent(s, {
       id: String(formData.get('id')),
       fullName: str(formData.get('fullName')),
       relationship: str(formData.get('relationship')),
@@ -121,22 +142,23 @@ export async function editDependentAction(formData: FormData) {
       childReliefCategory: editStr(formData, 'childReliefCategory'),
       childTaxRelief: editBool(formData, 'childTaxRelief'),
       childReliefPercentage: editNum(formData, 'childReliefPercentage'),
-    });
+    }));
   } catch (e) {
     back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`, formData);
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  back(employmentId, 'toast=Saved', formData);
+  back(employmentId, `toast=Saved${syncQs(sync)}`, formData);
 }
 
 export async function archiveDependentAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  let sync: ChildReliefSyncResult | undefined;
   try {
-    await archiveDependent(s, { id: String(formData.get('id')) });
+    ({ childReliefSync: sync } = await archiveDependent(s, { id: String(formData.get('id')) }));
   } catch (e) {
     back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`, formData);
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  back(employmentId, 'toast=Saved', formData);
+  back(employmentId, `toast=Saved${syncQs(sync)}`, formData);
 }

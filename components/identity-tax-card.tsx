@@ -134,30 +134,35 @@ export function IdentityTaxCard({
                 <option value="auto">{t('childReliefModeAuto')}</option>
               </select>
             </Field>
+            {/* R46 47146ea3 — in 'auto' the count is machine-maintained, so the input goes read-only and
+                shows the DERIVED value rather than the stored one. readOnly (not disabled) is deliberate: a
+                disabled input submits nothing, and setTaxProfileMY overwrites the whole tax column set, so
+                disabling it would reset num_children to 0 on the next manual save of this card. Switching
+                back to 'manual' restores the editable stored value. */}
             <Field label={t('childrenPcbRelief')}>
               <input
                 name="numChildren"
                 type="number"
                 min="0"
                 step="1"
-                value={numChildren}
+                value={mode === 'auto' ? String(derivedChildCount) : numChildren}
                 onChange={(e) => setNumChildren(e.target.value)}
-                className={inputCls}
+                readOnly={mode === 'auto'}
+                aria-readonly={mode === 'auto'}
+                className={`${inputCls}${mode === 'auto' ? ' bg-muted/50 text-muted-foreground' : ''}`}
               />
             </Field>
           </div>
           {mode === 'auto' && (
-            <div className="flex flex-col gap-2 rounded-md border border-dashed border-border bg-card/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+            // R46 47146ea3 — the "Use {count}" button and its client-side confirm step are GONE. The count is
+            // now synced server-side from the Family register on every dependent add / edit / archive (see
+            // syncChildReliefFromFamily in core/dependents.ts), so there is nothing left for a human to
+            // confirm. What remains is an explanation of where the number comes from and that it maintains
+            // itself — plus the honest warning that this is a tax figure moving without a human in the loop.
+            <div className="rounded-md border border-dashed border-border bg-card/60 p-3">
               <p className="text-xs text-muted-foreground">
-                {t('childReliefAutoSuggestion', { count: derivedChildCount })}
+                {t('childReliefAutoSyncNote', { count: derivedChildCount })}
               </p>
-              <button
-                type="button"
-                onClick={() => setNumChildren(String(derivedChildCount))}
-                className="inline-flex h-8 items-center justify-center rounded-md border border-input bg-card px-3 text-xs font-medium shadow-sm transition-colors hover:bg-muted"
-              >
-                {t('childReliefAutoApply', { count: derivedChildCount })}
-              </button>
             </div>
           )}
         </fieldset>

@@ -122,6 +122,12 @@ export default async function EmployeePage({
     asOf?: string;
     encashmentError?: string;
     tab?: string;
+    // R46 47146ea3 — Children (PCB Relief) auto-sync feedback. `childReliefSynced` = the count moved
+    // quietly (to this value); `childReliefAlert` = it moved while a payroll batch for that 'YYYY-MM'
+    // period was still open, which is the case HR must actually see (rail (d): alert, never block).
+    childReliefSynced?: string;
+    childReliefAlert?: string;
+    childReliefTo?: string;
   }>;
 }) {
   const s = await requireAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
@@ -131,7 +137,17 @@ export default async function EmployeePage({
   const tStatus = await getTranslations('people.employeeStatus');
   const admin = isAdmin(s);
   const { employmentId } = await params;
-  const { error, from, cp38Error, asOf: spAsOf, encashmentError, tab } = await searchParams;
+  const {
+    error,
+    from,
+    cp38Error,
+    asOf: spAsOf,
+    encashmentError,
+    tab,
+    childReliefSynced,
+    childReliefAlert,
+    childReliefTo,
+  } = await searchParams;
   // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the
   // people directory. Keeps the `from` param flowing through so nested navigation stays consistent.
   const back =
@@ -2728,6 +2744,31 @@ export default async function EmployeePage({
       </Card>
 
       <ErrorBanner message={error} />
+
+      {/* R46 47146ea3 — Children (PCB Relief) auto-sync feedback. The manual "Use {count}" confirmation is
+          gone: a Family-record change now moves the PCB child count by itself whenever Child Relief Mode is
+          'Auto'. Because that silently changes a TAX input, the person who made the edit is told what moved.
+
+          The AMBER case is rail (d): the count changed while a payroll batch for that period was still open
+          (draft/processed). We deliberately allow the edit — blocking would leave HR unable to correct a
+          family record for as long as payroll stays open — but a regenerate would now produce a different
+          PCB, so the payroll team has to know. Closed batches are unaffected: their payslips are frozen
+          snapshots and closed-batch immutability is enforced by DB triggers.
+
+          The NEUTRAL case is the quiet confirmation that the count moved with no payroll run in flight.
+          Both are transient; the permanent record is the `employee.tax.updated` event, stamped auto: true. */}
+      {childReliefAlert ? (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+          {t('childReliefAutoSyncedPayrollAlert', {
+            count: Number(childReliefTo ?? 0),
+            period: childReliefAlert,
+          })}
+        </div>
+      ) : childReliefSynced ? (
+        <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          {t('childReliefAutoSynced', { count: Number(childReliefSynced) })}
+        </div>
+      ) : null}
 
       <PersonnelTabs
         tabs={tabs}
