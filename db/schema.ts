@@ -62,6 +62,13 @@ export const employmentTypeEnum = pgEnum('employment_type', [
   'contract',
   'intern',
 ]);
+/**
+ * R46 79eb7151 (migration 0270) — how an employee is paid. Distinct from Pay Mode (payroll_policy.policy_type)
+ * and Payment Term (PayrollPolicyConfig.frequency), which describe how pay is CALCULATED and how often, not
+ * the disbursement channel. Also distinct from the company-level disbursement_bank, which names the corporate
+ * account the bulk file is drawn on.
+ */
+export const paymentMethodEnum = pgEnum('payment_method', ['bank_transfer', 'cheque', 'cash']);
 export const assignmentStatusEnum = pgEnum('assignment_status', [
   'active',
   'on_leave',
@@ -769,6 +776,21 @@ export const employment = pgTable(
     // is an optional free-text note captured with the action.
     blacklistedAt: date('blacklisted_at'),
     blacklistReason: text('blacklist_reason'),
+    // R46 79eb7151 (migration 0270) — HOW this employee is paid: bank transfer, cheque or cash. Genuinely
+    // new per-employee data; before this the only payment settings were COMPANY-level (disbursement_bank /
+    // company_bank_profile = which corporate account emits the bulk file) plus the employee's own bank name
+    // and account number on employee_statutory_my. Nullable = not specified (every pre-existing row).
+    //
+    // NOT to be confused with Pay Mode or Payment Term, which are NOT columns here and must not become
+    // ones: Pay Mode ≡ payroll_policy.policy_type and Payment Term ≡ PayrollPolicyConfig.frequency. Those
+    // are resolved from the assigned policy (resolveAssignedPolicy) and only SURFACED read-only on the
+    // Payroll tab — duplicating them per-employee would give the kernel two disagreeing sources of truth
+    // for the same input and require a precedence rule. See ADR-0064.
+    //
+    // INVARIANT (enforced in setEmploymentPaymentMethod, not by the DB — the bank details live on a
+    // different, person-keyed table): 'bank_transfer' requires a bank name AND an account number on the
+    // person's employee_statutory_my row.
+    paymentMethod: paymentMethodEnum('payment_method'),
     createdAt: createdAt(),
   },
   (t) => [
@@ -2044,10 +2066,12 @@ export const employeeStatutoryMy = pgTable(
 // optional = 5–9 who opt to register (0.5%). Sourced in docs/wave2-payroll-design.md.
 export const hrdfStatusEnum = pgEnum('hrdf_status', ['not_registered', 'mandatory', 'optional']);
 
-// Banks ai-hr can emit bulk salary-disbursement files for (ADR-0031). CIMB + Public Bank share the IBG
-// Autopay layout; Maybank (M2E-RC) and RHB (Reflex) are distinct formats. The file format is derived from
-// the bank in code, not stored.
-export const disbursementBankEnum = pgEnum('disbursement_bank', ['maybank', 'cimb', 'public_bank', 'rhb']);
+// R46 orgbank (84719377) — the `disbursement_bank` pgEnum (maybank/cimb/public_bank/rhb) is GONE. The
+// company bank column is now plain text carrying a key from the shared Malaysian bank master
+// (lib/my-banks.ts), which is the same list the employee bank picker reads and which carries each bank's
+// BNM routing code. The four historical enum values are byte-identical to the first four master keys, so
+// existing rows and every historical domain event still read the same. Whether a bulk salary-disbursement
+// file can be BUILT for a bank is `MyBank.disbursementFormat` in the master, not the storage value.
 
 // MY company-level statutory identity (ADR-0009): each entity files under its own registrations.
 export const companyStatutoryMy = pgTable(
@@ -2115,9 +2139,17 @@ export const companyPayrollConfig = pgTable(
   (t) => [uniqueIndex('company_payroll_config_company_uq').on(t.companyId)],
 );
 
-// Per-entity, per-bank disbursement profile (ADR-0031). Holds the BANK-ISSUED corporate/organisation ID
-// + employer debit account needed in every bulk-payment file header. One row per (company, bank). These
-// are sensitive employer credentials — RLS restricts both read and write to company-scoped admins.
+// Per-entity bank account / disbursement profile (ADR-0031; reworked by R46 orgbank 84719377). Holds the
+// BANK-ISSUED corporate/organisation ID + employer debit account every bulk-payment file header needs,
+// plus the fuller account master data (account name, type, branch, SWIFT, currency).
+//
+// R46: a company may now hold SEVERAL accounts, INCLUDING more than one at the same bank — the old
+// uniqueIndex (companyId, bank) is dropped (migration 0275). Rows are therefore identified by `id`, and
+// the write path is update-by-id / insert-new rather than an ON CONFLICT upsert. `accountLabel` is the
+// human handle that distinguishes two accounts at the same bank.
+//
+// These are sensitive employer credentials — RLS restricts both read and write to company-scoped admins
+// (latest policy: migration 0099, can_admin_payroll_for).
 export const companyBankProfile = pgTable(
   'company_bank_profile',
   {
@@ -2126,7 +2158,9 @@ export const companyBankProfile = pgTable(
     companyId: uuid('company_id')
       .notNull()
       .references(() => company.id),
-    bank: disbursementBankEnum('bank').notNull(),
+    // R46: plain text carrying a key from the shared bank master (lib/my-banks.ts). Was the 4-value
+    // `disbursement_bank` pgEnum; the four legacy values are master keys verbatim, so no data moved.
+    bank: text('bank').notNull(),
     // Bank-issued: Maybank Corporate ID / CIMB 5-digit Autopay Org Code / RHB 6-digit Corporate ID /
     // Public Bank 3-char Org Code. Free text — each bank's shape differs; validated at file-build time.
     corporateId: text('corporate_id').notNull(),
@@ -2134,11 +2168,78 @@ export const companyBankProfile = pgTable(
     // Organisation name as registered with the bank (header field). Falls back to the company name in UI.
     orgName: text('org_name'),
     // Default transaction rail; RENTAS only matters for ≥ RM10k single payments (rare in payroll).
+    // R46: the picker is HIDDEN from the form (the reporter asked for it off the screen) but the column
+    // STAYS and keeps its 'IBG' default — RENTAS is not decorative and dropping it would break large
+    // single payments. Re-expose the select when a RENTAS flow needs it.
     txnType: text('txn_type').notNull().default('IBG'),
+    // ── R46 orgbank: fuller account master data ──
+    // Human handle for this account ("Payroll — Maybank", "Statutory — Maybank"). The only way to tell two
+    // accounts at the same bank apart in a picker, so the service defaults it from the bank name.
+    accountLabel: text('account_label'),
+    // Name the account is held in at the bank (may differ from orgName, which is the file-header field).
+    accountName: text('account_name'),
+    accountType: text('account_type'), // 'current' | 'savings' | free text — display/metadata only
+    branch: text('branch'),
+    swiftCode: text('swift_code'),
+    currency: text('currency').notNull().default('MYR'),
+    // At most one primary per company (partial unique index below). The default account a payment run
+    // debits when nothing more specific is chosen.
+    isPrimary: boolean('is_primary').notNull().default(false),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [uniqueIndex('company_bank_profile_company_bank_uq').on(t.companyId, t.bank)],
+  (t) => [
+    // R46: (companyId, bank) is NO LONGER unique — several accounts per bank are the point of this item.
+    index('company_bank_profile_company_idx').on(t.companyId, t.bank),
+    uniqueIndex('company_bank_profile_primary_uq').on(t.companyId).where(sql`is_primary`),
+  ],
+);
+
+// Per-authority statutory payment configuration (R46 orgbank 84719377). company_statutory_my is one flat
+// row per company holding the employer REFERENCE NUMBERS; it cannot hold per-authority payment routing.
+// This child table does: for each statutory body (EPF, SOCSO, EIS, LHDN, HRD Corp, Zakat, PTPTN, Tabung
+// Haji, Koperasi) it records the employer account/reference with that body, WHICH company bank account
+// pays it, the body's correspondence address + phone, and the authorised signatory.
+//
+// bankProfileId → company_bank_profile ON DELETE SET NULL: removing a bank account must not silently drop
+// the authority's whole configuration, it just unroutes it (surfaced in the UI as "no account chosen").
+// signatoryPersonId → person ON DELETE SET NULL for the same reason plus PDPA erasure: a hard-deleted
+// person leaves the row intact with an empty signatory. A merely-TERMINATED employee is not deleted, so
+// the stored value survives; the picker is scoped to active employments of the company and is
+// legacy-tolerant (an out-of-list stored signatory is still shown, like the profile-option pickers).
+//
+// RLS mirrors company_bank_profile exactly (company-scoped admin for BOTH read and write) — this row
+// references a bank account and names a signatory, so it is at least as sensitive.
+export const companyStatutoryAuthority = pgTable(
+  'company_statutory_authority',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    // Controlled set, validated in core/statutory-authority.ts (STATUTORY_AUTHORITIES) rather than a
+    // pgEnum — the R46 enum-widening pain is exactly what a text + code-side master avoids.
+    authority: text('authority').notNull(),
+    // The employer's account / reference number WITH that authority (e.g. the EPF employer no. as it
+    // appears on the payment slip). Distinct from company_statutory_my's identity fields: this is the
+    // payment reference, which some bodies issue separately.
+    accountNo: text('account_no'),
+    bankProfileId: uuid('bank_profile_id').references(() => companyBankProfile.id, { onDelete: 'set null' }),
+    addressLine1: text('address_line1'),
+    addressLine2: text('address_line2'),
+    addressLine3: text('address_line3'),
+    city: text('city'),
+    state: text('state'),
+    postcode: text('postcode'),
+    country: text('country'),
+    phone: text('phone'),
+    email: text('email'),
+    signatoryPersonId: uuid('signatory_person_id').references(() => person.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('company_statutory_authority_company_authority_uq').on(t.companyId, t.authority)],
 );
 
 // Per-subject crypto-shred key custody (ADR-0030 Layer 1). Each subject has a data-encryption key (DEK)

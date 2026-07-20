@@ -11,7 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
-import { setStatutoryProfileMY, getStatutoryProfileMY } from '../localization/my/statutory';
+import { setStatutoryProfileMY, getStatutoryProfileMY, setTaxProfileMY } from '../localization/my/statutory';
 import {
   listDependents,
   addDependent,
@@ -168,7 +168,10 @@ describe('Personnel — Family / Dependents (phase 1)', () => {
     ).rejects.toThrow();
   });
 
-  it('kept separate from tax: adding a dependent does NOT change the statutory num_children figure', async () => {
+  // R46 47146ea3 — rail (a). The benefits-vs-tax firewall is no longer absolute, but it is still the DEFAULT:
+  // child_relief_mode defaults to 'manual', and a person on manual keeps full human control of their tax
+  // figure. This is the original firewall test, retained deliberately — it now pins the opt-in boundary.
+  it('rail (a) manual mode: adding a dependent does NOT change the statutory num_children figure', async () => {
     const a = adminCtx(base);
     const e = await hire(a, base, 'Dep Tax');
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101019999', numChildren: 2 });
@@ -179,9 +182,86 @@ describe('Personnel — Family / Dependents (phase 1)', () => {
     await addDependent(a, { personId: e.personId, fullName: 'C3', relationship: 'child' });
     expect(await listDependents(a, { personId: e.personId })).toHaveLength(3);
 
-    // ...but the tax num_children figure is UNTOUCHED (it stays the approval-gated statutory value).
+    // ...but the tax num_children figure is UNTOUCHED (it stays the human-set statutory value).
     const st = await getStatutoryProfileMY(a, e.personId);
     expect(st?.numChildren).toBe(2);
+  });
+
+  // R46 47146ea3 — the amended firewall. In 'auto' mode the derived eligible-child count flows straight into
+  // the PCB tax field with no human confirmation, on add AND on archive.
+  it('auto mode: num_children syncs from the Family register on add and on archive', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Dep Auto');
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101019888', numChildren: 0 });
+    await setTaxProfileMY(a, { personId: e.personId, childReliefMode: 'auto', numChildren: 0 });
+
+    // Under-18 children are eligible; the count follows them up...
+    const c1 = await addDependent(a, {
+      personId: e.personId, fullName: 'K1', relationship: 'child', dateOfBirth: '2018-05-05',
+    });
+    expect(c1.childReliefSync.changed).toBe(true);
+    expect(c1.childReliefSync.after).toBe(1);
+    await addDependent(a, {
+      personId: e.personId, fullName: 'K2', relationship: 'child', dateOfBirth: '2020-05-05',
+    });
+    expect((await getStatutoryProfileMY(a, e.personId))?.numChildren).toBe(2);
+
+    // ...and back down on archive (eligibleChildReliefCount excludes archived rows).
+    const arch = await archiveDependent(a, { id: c1.id });
+    expect(arch.childReliefSync.changed).toBe(true);
+    expect(arch.childReliefSync.after).toBe(1);
+    expect((await getStatutoryProfileMY(a, e.personId))?.numChildren).toBe(1);
+
+    // A non-child relative never moves a tax figure.
+    const sp = await addDependent(a, { personId: e.personId, fullName: 'Spouse', relationship: 'spouse' });
+    expect(sp.childReliefSync.changed).toBe(false);
+    expect(sp.childReliefSync.skipped).toBe('unchanged');
+    expect((await getStatutoryProfileMY(a, e.personId))?.numChildren).toBe(1);
+  });
+
+  // R46 47146ea3 — rail (c). An automatic tax move must be distinguishable from a human one in the audit
+  // trail, forever. That provenance marker is what replaced the human approval step, so it is load-bearing.
+  it('rail (c): the auto-sync tax event carries auto:true provenance', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Dep Prov');
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101019777', numChildren: 0 });
+    await setTaxProfileMY(a, { personId: e.personId, childReliefMode: 'auto', numChildren: 0 });
+
+    await addDependent(a, {
+      personId: e.personId, fullName: 'K', relationship: 'child', dateOfBirth: '2019-01-01',
+    });
+
+    // The tax event is keyed on the statutory row, so read it by event type rather than by aggregate id.
+    const rows = await owner.db
+      .select({ payload: schema.domainEvent.payload, seq: schema.domainEvent.sequence })
+      .from(schema.domainEvent)
+      .where(
+        and(
+          eq(schema.domainEvent.tenantId, base.tenantId),
+          eq(schema.domainEvent.eventType, 'employee.tax.updated'),
+        ),
+      );
+    const payload = rows.sort((x, y) => Number(y.seq) - Number(x.seq))[0]?.payload as
+      | Record<string, unknown>
+      | undefined;
+    expect(payload?.auto).toBe(true);
+    expect(payload?.provenance).toBe('auto_child_relief');
+    expect((payload?.before as { numChildren?: number } | null)?.numChildren).toBe(0);
+    expect((payload?.after as { numChildren?: number } | null)?.numChildren).toBe(1);
+  });
+
+  // R46 47146ea3 — the sync must NEVER fail the family-record save it is attached to. A person with no
+  // statutory row (no IC keyed yet) would make setTaxProfileMY throw NoIcYetError; that has to be swallowed.
+  it('a missing statutory row does not crash the dependent save', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Dep NoIc');
+    const r = await addDependent(a, {
+      personId: e.personId, fullName: 'K', relationship: 'child', dateOfBirth: '2019-01-01',
+    });
+    expect(r.id).toBeTruthy();
+    expect(r.childReliefSync.changed).toBe(false);
+    expect(r.childReliefSync.skipped).toBe('no_statutory_row');
+    expect(await listDependents(a, { personId: e.personId })).toHaveLength(1);
   });
 
   it('DomainEvents: appended on add/update/archive with NO PII (name/IC/DOB) in any payload', async () => {

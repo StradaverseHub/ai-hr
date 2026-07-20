@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentBlacklist, setEmploymentGrade, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection } from '@/core/org';
+import { endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentBlacklist, setEmploymentGrade, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import { setCompensation, updateCompensation } from '@/core/comp';
 import { reprojectEntitlementForEmployment } from '@/core/leave';
 import { assignEmployeeShift } from '@/core/roster';
@@ -763,6 +763,34 @@ export async function setEmploymentBlacklistAction(formData: FormData) {
   const reason = blacklisted ? (String(formData.get('reason') ?? '').trim() || null) : null;
   try {
     await setEmploymentBlacklist(s, { employmentId, blacklisted, reason });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * R46 79eb7151 — set the employee's Payment Method (Bank Transfer / Cheque / Cash) from the Salary section of
+ * the Payroll tab. Blank clears it back to "not specified". Admin-gated (requireAdmin + the service re-checks
+ * the role); routes to setEmploymentPaymentMethod, which enforces the bank-transfer-needs-bank-details
+ * invariant and emits `employment.payment-method.changed`. A MissingBankForTransferError surfaces through the
+ * standard ?error= toast, so HR is told exactly what is missing instead of silently saving an unpayable row.
+ */
+export async function setPaymentMethodAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const raw = String(formData.get('paymentMethod') ?? '').trim();
+  // A present-but-unrecognised value is a tampered/stale submit — reject rather than silently ignore
+  // (same posture as setEmploymentAssignmentAction's employmentType guard).
+  if (raw !== '' && !(PAYMENT_METHODS as readonly string[]).includes(raw)) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent('Payment method is invalid.')}`));
+  }
+  try {
+    await setEmploymentPaymentMethod(s, {
+      employmentId,
+      paymentMethod: raw === '' ? null : (raw as PaymentMethod),
+    });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }

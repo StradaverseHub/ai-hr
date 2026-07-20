@@ -1248,6 +1248,8 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         payrollPolicyId: employment.payrollPolicyId,
         payrollPolicyName: payrollPolicy.name,
         payrollPolicyStatus: payrollPolicy.status,
+        // R46 79eb7151 — HOW this employee is paid (bank transfer / cheque / cash). Null = not specified.
+        paymentMethod: employment.paymentMethod,
         // ec4cbf63: the employee's DEFAULT shift (null = company default schedule) — profile assignment.
         defaultShiftId: employment.defaultShiftId,
         // R17 3e8350db: the shift ARRANGEMENT — 'fixed' (follows defaultShiftId) or 'roster' (scheduled

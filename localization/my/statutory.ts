@@ -735,7 +735,19 @@ export type TaxInput = {
   numChildren?: number;
   childReliefMode?: ChildReliefMode | string | null;
   employerBearsTax?: boolean;
+  /**
+   * R46 47146ea3 — write PROVENANCE, stamped onto the `employee.tax.updated` event payload so an auditor can
+   * tell a machine-driven write from a human one. Absent (the default) ⇒ a human saved the Identity & Tax
+   * form. 'auto_child_relief' ⇒ the num_children figure was derived from the Family/dependents register and
+   * written without a human confirming it. This distinction is the whole reason the item was allowed to
+   * relax the benefits-vs-tax firewall: the wall is replaced by traceability, so it must never be optional
+   * on the automatic path. Does NOT change what is written — only how the event is labelled.
+   */
+  provenance?: TaxWriteProvenance;
 };
+
+/** R46 47146ea3 — who/what moved a tax figure. See TaxInput.provenance. */
+export type TaxWriteProvenance = 'auto_child_relief';
 
 /**
  * Partial update of ONLY the tax columns on employee_statutory_my (taxNumber, taxCategory, taxResidency +
@@ -806,6 +818,9 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
             }
           : null,
         after: values,
+        // R46 47146ea3 — provenance. `auto: true` + a reason code ONLY on machine-driven writes; a human
+        // save leaves both absent, so existing events and their readers are unchanged.
+        ...(p.provenance ? { auto: true, provenance: p.provenance } : {}),
       },
     });
     return { id: existing.id };

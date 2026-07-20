@@ -2114,14 +2114,19 @@ describe('UC — payment summary export', () => {
     expect(file.filename).toMatch(/payment-summary_.*_2026-05\.csv/);
     const lines = file.content.trim().split('\r\n');
     // Item ef720d3a added Payment Holder Name / Payment Holder ID columns (custom-holder payee resolution).
+    // R46 79eb7151 appended Payment Method strictly LAST, so every pre-existing column — including Net Pay —
+    // keeps its index and any positional parser of this file is unaffected. This employee has no method set,
+    // so the cell is empty, exactly as the file behaved before the column existed.
     expect(lines[0]).toBe(
-      'No,Employee,Employee Code,IC,Payment Holder Name,Payment Holder ID,Bank,Account No,Net Pay (RM)',
+      'No,Employee,Employee Code,IC,Payment Holder Name,Payment Holder ID,Bank,Account No,Net Pay (RM),Payment Method',
     );
     expect(lines[1]).toContain('Payee');
     expect(lines[1]).toContain('Maybank');
     expect(lines[1]).toContain('5566778899');
-    // The row's net equals the recorded batch total to the cent.
-    const net = Number(lines[1].split(',').pop());
+    // The row's net equals the recorded batch total to the cent. Read Net Pay by its HEADER index, not by
+    // "the last cell": R46 79eb7151 appended Payment Method after it, so last-position is no longer net pay.
+    const netIdx = lines[0].split(',').indexOf('Net Pay (RM)');
+    const net = Number(lines[1].split(',')[netIdx]);
     expect(Math.round(net * 100)).toBe(file.netTotalCents);
 
     expect(await eventTypesFor(base.tenantId, batchId)).toContain('payroll-batch.payment-summary.exported');
