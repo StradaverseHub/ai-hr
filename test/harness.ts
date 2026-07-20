@@ -64,6 +64,10 @@ const ALL_TABLES = [
   // 3d0031e6 — Employee ID Auto Running Number Setup: a leaked active config would trip the partial
   // one-active-per-scope unique indexes (or make a later hire auto-generate unexpectedly) across test files.
   'employee_id_config',
+  // R46 orgbank (84719377) — company bank accounts + per-authority statutory payment config. Both cascade
+  // from company, but list them explicitly: a leaked row would trip the one-primary-per-company partial
+  // unique index / the (company, authority) unique index across test files.
+  'company_bank_profile', 'company_statutory_authority',
 ];
 
 export async function migrateTestDb() {
