@@ -3430,6 +3430,7 @@
       "gradesTitle": "Bậc",
       "gradesHelp": "Các bậc thâm niên. Giới hạn chính sách phép theo bậc để bậc đó có quyền lợi khác; nhân viên không có bậc dùng mặc định của công ty.",
       "gradesEmpty": "Chưa có bậc nào",
+      "gradesToggle": "Hiện hoặc ẩn danh sách bậc",
       "gradeRank": "Hạng {rank}",
       "gradeCodeLabel": "Mã",
       "gradeNameLabel": "Tên",

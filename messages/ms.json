@@ -3430,6 +3430,7 @@
       "gradesTitle": "Gred",
       "gradesHelp": "Jalur kekananan. Skopkan dasar cuti kepada gred untuk memberi gred itu kelayakan berbeza; pekerja tanpa gred guna lalai syarikat.",
       "gradesEmpty": "Tiada gred lagi",
+      "gradesToggle": "Tunjuk atau sembunyikan senarai gred",
       "gradeRank": "Pangkat {rank}",
       "gradeCodeLabel": "Kod",
       "gradeNameLabel": "Nama",
