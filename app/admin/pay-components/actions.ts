@@ -7,6 +7,7 @@ import { getSession } from '@/lib/session';
 import {
   archivePayComponent,
   deletePayComponent,
+  lookupPayComponentByCode,
   PayComponentInUseError,
   PayRuleInvalidError,
   seedPayComponentCatalog,
@@ -16,6 +17,9 @@ import { draftPayRule, PayRuleDraftError } from '@/core/pay-rule-ai';
 import type { PayRule } from '@/core/pay-rule';
 
 const PAGE = '/admin/pay-components';
+// NOTE — redirect() throws NEXT_REDIRECT by design. back()/fail() must therefore be called OUTSIDE any
+// try/catch: a back() inside a try is caught, re-thrown through fail(e), and toasts the raw redirect
+// sentinel instead of the intended message (the pre-existing bug this file used to carry).
 const back = (toast: string) => redirect(`${PAGE}?toast=${encodeURIComponent(toast)}`);
 const fail = (e: unknown) => redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
 
@@ -33,28 +37,42 @@ function parseRule(raw: string): PayRule | null {
 
 export async function seedCatalogAction() {
   const s = await getSession();
+  const t = await getTranslations('payComponents');
+  let created: number;
   try {
     const r = await seedPayComponentCatalog(s);
+    created = r.created;
     revalidatePath(PAGE);
-    back(`Seeded default catalog (${r.created} added)`);
   } catch (e) {
-    fail(e);
+    return fail(e);
   }
+  back(t('toastSeeded', { created }));
 }
 
 const bool = (fd: FormData, name: string) => fd.get(name) === 'on';
 
 export async function upsertComponentAction(formData: FormData) {
   const s = await getSession();
+  const t = await getTranslations('payComponents');
   const rawKind = String(formData.get('kind') ?? 'allowance');
   const kind = (['allowance', 'deduction', 'contribution', 'non_payable'] as const).includes(rawKind as never)
     ? (rawKind as 'allowance' | 'deduction' | 'contribution' | 'non_payable')
     : 'allowance';
   const rule = parseRule(String(formData.get('rule') ?? ''));
+  const code = String(formData.get('code') ?? '').trim().toUpperCase();
   try {
+    // Create-mode duplicate guard (the Pay Code field is read-only on edit): the service upsert is
+    // by-code, so without this a typed-in existing code would silently OVERWRITE that code's entire
+    // statutory configuration — or, colliding with a deactivated code, appear to save into the void.
+    if (String(formData.get('mode') ?? '') === 'create') {
+      const hit = await lookupPayComponentByCode(s, code);
+      if (hit) throw new Error(hit.archivedAt ? t('errorCodeDuplicateArchived', { code }) : t('errorCodeDuplicate', { code }));
+    }
     await upsertPayComponent(s, {
-      code: String(formData.get('code') ?? '').trim().toUpperCase(),
+      code,
       name: String(formData.get('name') ?? '').trim(),
+      // Optional short display name; the service trims and stores blank as null.
+      label: String(formData.get('label') ?? ''),
       kind,
       includedInEpf: bool(formData, 'includedInEpf'),
       includedInSocsoEis: bool(formData, 'includedInSocsoEis'),
@@ -62,20 +80,22 @@ export async function upsertComponentAction(formData: FormData) {
       includedInHrdfBase: bool(formData, 'includedInHrdfBase'),
       isNonPayable: kind === 'non_payable',
       prorates: bool(formData, 'prorates'),
+      // Hidden passthrough — the EA line left the maintenance SCREEN (moving to a dedicated statutory
+      // module later); the form re-submits the row's current value so existing mappings survive a save.
       eaFormLine: String(formData.get('eaFormLine') ?? '') || null,
       roundingMethod: String(formData.get('roundingMethod') ?? 'none'),
       rule,
     });
     revalidatePath(PAGE);
-    back('Component saved');
   } catch (e) {
     // A bad rule ⇒ map the stable error CODE to a localised payRule.errors.* message (no raw English).
     if (e instanceof PayRuleInvalidError) {
-      const t = await getTranslations('payRule');
-      return fail(new Error(t(`errors.${e.code}`)));
+      const tr = await getTranslations('payRule');
+      return fail(new Error(tr(`errors.${e.code}`)));
     }
-    fail(e);
+    return fail(e);
   }
+  back(t('toastSaved'));
 }
 
 /**
@@ -105,29 +125,30 @@ export async function draftPayRuleAction(p: {
   }
 }
 
+/** Deactivate OR reactivate (feedback 4994a48f) — one toggle action over the house-shaped service toggle. */
 export async function archiveComponentAction(formData: FormData) {
   const s = await getSession();
+  const t = await getTranslations('payComponents');
+  const archived = String(formData.get('archived')) === 'true';
   try {
-    await archivePayComponent(s, String(formData.get('id')));
+    await archivePayComponent(s, { id: String(formData.get('id')), archived });
     revalidatePath(PAGE);
-    back('Component archived');
   } catch (e) {
-    fail(e);
+    return fail(e);
   }
+  back(archived ? t('toastDeactivated') : t('toastReactivated'));
 }
 
 /** Hard delete (guarded). Friendly message when the component is still referenced (#21). */
 export async function deleteComponentAction(formData: FormData) {
   const s = await getSession();
+  const t = await getTranslations('payComponents');
   try {
     await deletePayComponent(s, String(formData.get('id')));
   } catch (e) {
-    const msg =
-      e instanceof PayComponentInUseError
-        ? `This component is used by ${e.refs} record(s) — archive it instead of deleting.`
-        : (e as Error).message;
+    const msg = e instanceof PayComponentInUseError ? t('errorInUse', { refs: e.refs }) : (e as Error).message;
     return fail(new Error(msg));
   }
   revalidatePath(PAGE);
-  back('Component deleted');
+  back(t('toastDeleted'));
 }

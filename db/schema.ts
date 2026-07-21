@@ -3666,6 +3666,10 @@ export const payComponent = pgTable(
     tenantId: tenantId(),
     code: text('code').notNull(),
     name: text('name').notNull(),
+    // Pay Items redesign (0289): optional short display name for payslips and reports (e.g. "Transport"),
+    // mirroring the System Labels label field on department/cost_center. No unique index — house rule
+    // (core/admin.ts): label uniqueness, if ever specified, is enforced in the service, not a DB index.
+    label: text('label'),
     kind: payComponentKindEnum('kind').notNull(),
     // Treatment flags — which statutory base the component feeds (the four MY "wages" definitions).
     includedInEpf: boolean('included_in_epf').notNull().default(false),

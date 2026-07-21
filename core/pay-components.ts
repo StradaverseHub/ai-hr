@@ -169,6 +169,11 @@ export function listSupportedBatchComponents(ctx: SessionContext) {
 export type PayComponentInput = {
   code: string;
   name: string;
+  // Pay Items redesign (feedback 4994a48f): optional short display name ("Transport") for payslips and
+  // reports later. undefined ⇒ leave the stored value untouched (existing callers that predate the field
+  // must not wipe it); ''/null ⇒ stored as null. Deliberately NO uniqueness rule (house precedent:
+  // department/cost_center/position/business_unit all carry the same optional label with none).
+  label?: string | null;
   kind: 'allowance' | 'deduction' | 'contribution' | 'non_payable';
   includedInEpf: boolean;
   includedInSocsoEis: boolean;
@@ -196,9 +201,35 @@ export class PayRuleInvalidError extends Error {
 }
 
 const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod) });
+// Label normalisation: undefined ⇒ "not supplied" (leave as-is on update / null on insert); trimmed-blank ⇒ null.
+const cleanLabel = (v: string | null | undefined): string | null | undefined =>
+  v === undefined ? undefined : (v?.trim() || null);
 // Normalise the rule for storage: a null / fixed rule is stored as null so an unconfigured component stays
 // byte-identical to the legacy fixed-amount path (and the compat golden never sees a non-null rule column).
 const ruleOf = (p: PayComponentInput): PayRule | null => (p.rule == null || p.rule.kind === 'fixed' ? null : p.rule);
+
+/**
+ * Pay Items redesign (feedback 4994a48f) — code lookup across ALL rows INCLUDING archived, for the
+ * create-mode duplicate guard at the action boundary. upsertPayComponent stays upsert-by-code (the seed
+ * depends on that idempotency); the CREATE form path must instead refuse a collision — one message for an
+ * active hit, another for "deactivated — reactivate it instead" — because componentIdByCode has no
+ * archivedAt filter and a silent upsert would overwrite a live code's entire statutory configuration.
+ */
+export function lookupPayComponentByCode(ctx: SessionContext, code: string) {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ id: payComponent.id, code: payComponent.code, archivedAt: payComponent.archivedAt })
+      .from(payComponent)
+      .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, code)))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+// The diffable catalog fields for the trimmed audit payload (changed field NAMES only — no values:
+// app/admin/audit/page.tsx never renders payloads, and free-text name/label in the immutable event
+// stream would violate the payload discipline the comment below enforces).
+const DIFF_FIELDS = ['name', 'label', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule'] as const;
 
 /** Admin upsert of a single catalog component (by code). Validates the rule against the component's
  *  proration flag before any write (throws PayRuleInvalidError on failure — same proration/sign/bounds
@@ -208,15 +239,30 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
     const rule = ruleOf(p);
     const v = validatePayRule(rule, p.prorates);
     if (!v.ok) throw new PayRuleInvalidError(v.code);
-    const existing = await componentIdByCode(tx, ctx.tenantId, p.code);
+    const label = cleanLabel(p.label);
+    // Full row (not just the id) so the event can carry the changed-field-name list + archived state
+    // without a second SELECT.
+    const [existing] = await tx
+      .select()
+      .from(payComponent)
+      .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, p.code)))
+      .limit(1);
     let id: string;
+    let changed: string[] = [];
     if (existing) {
-      await tx.update(payComponent).set({ name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), rule }).where(eq(payComponent.id, existing));
-      id = existing;
+      const next = { name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), rule, ...(label !== undefined ? { label } : {}) };
+      changed = DIFF_FIELDS.filter((f) => {
+        if (!(f in next)) return false; // label omitted ⇒ untouched ⇒ not a change
+        const a = (next as Record<string, unknown>)[f];
+        const b = (existing as unknown as Record<string, unknown>)[f];
+        return f === 'rule' ? JSON.stringify(a ?? null) !== JSON.stringify(b ?? null) : a !== b;
+      });
+      await tx.update(payComponent).set(next).where(eq(payComponent.id, existing.id));
+      id = existing.id;
     } else {
       const [row] = await tx
         .insert(payComponent)
-        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), rule })
+        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), rule })
         .returning({ id: payComponent.id });
       id = row.id;
     }
@@ -226,25 +272,33 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
       aggregateId: id,
       eventType: existing ? 'pay-component.updated' : 'pay-component.created',
       actor: actorOf(ctx),
-      // No PII, no amounts — just the code and which rule kind (null when fixed/unconfigured).
-      payload: { code: p.code, ruleKind: rule?.kind ?? null },
+      // No PII, no amounts, no field VALUES — the code, which rule kind (null when fixed/unconfigured),
+      // which fields changed (names only) and whether the row is archived (actor/time live on the event).
+      payload: { code: p.code, ruleKind: rule?.kind ?? null, changed, archived: existing ? existing.archivedAt != null : false },
     });
     return { id };
   });
 }
 
-/** Soft-retire a component: stops new use, preserves every historical reference. Always safe. */
-export function archivePayComponent(ctx: SessionContext, id: string) {
+/**
+ * Soft-retire OR reinstate a component (house toggle shape — mirrors archiveDepartment / archivePosition /
+ * archiveCostCenter / archiveBusinessUnit / archiveJobGrade / archiveLeaveType in core/admin.ts).
+ * Archiving stops new use and preserves every historical reference; unarchiving reactivates the code.
+ * Unlike leave_type, pay_component_code_uq (db/schema.ts) is NOT partial on archived_at — the code stays
+ * reserved while archived — so unarchiving cannot trip a unique violation and the DuplicateError catch
+ * those core/admin.ts call sites carry is unnecessary here.
+ */
+export function archivePayComponent(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
-    await tx.update(payComponent).set({ archivedAt: new Date() }).where(eq(payComponent.id, id));
+    await tx.update(payComponent).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(payComponent.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'pay-component',
-      aggregateId: id,
-      eventType: 'pay-component.archived',
+      aggregateId: p.id,
+      eventType: p.archived ? 'pay-component.archived' : 'pay-component.unarchived',
       actor: actorOf(ctx),
     });
-    return { id };
+    return { id: p.id };
   });
 }
 

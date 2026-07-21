@@ -31,7 +31,9 @@ export default async function PayrollSetupPage() {
     { key: 'payrollPolicies', href: '/admin/payroll-policy' },
     { key: 'period', href: '/admin/payroll-config' },
     { key: 'submission', href: '/admin/payroll-config' },
-    { key: 'ea', href: '/admin/pay-components' },
+    // 'ea' card removed (Pay Items redesign, 4994a48f): the EA-line control left the Pay Items screen,
+    // so the card led to a screen with no EA control. Its i18n keys are retained for the future
+    // dedicated statutory-mapping module; stored eaFormLine data and the EA report are untouched.
     { key: 'statutory', href: '/payroll/configuration' },
   ] as const;
 
