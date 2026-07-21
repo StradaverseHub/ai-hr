@@ -2,12 +2,16 @@ import { getTranslations } from 'next-intl/server';
 
 /**
  * /invite/[token] (ADR-0072). Activation landing for an emailed, single-use invitation. The invitee
- * clicks "Activate", which sends them into WorkOS to set their password; on return, the callback binds
- * the verified WorkOS subject to the invitation via app.consume_invitation (core acceptInvitation).
+ * clicks "Activate", which hands off to ./activate — that page authenticates via WorkOS if needed and
+ * then binds the verified subject through app.consume_invitation (core acceptInvitation).
  *
  * This page only carries the opaque token through to the activation step — it never validates or
  * consumes the token itself (consume is single-use and must happen exactly once, server-side, with the
  * verified subject). Rendered outside the app shell.
+ *
+ * NOTE: this used to link to /callback?invite=… , but the callback never read that parameter, so the
+ * invitation was never consumed and no invited user could be bound. The activate route now owns that
+ * step; keep the link pointing there.
  */
 export default async function InviteActivationPage({
   params,
@@ -16,8 +20,8 @@ export default async function InviteActivationPage({
 }) {
   const t = await getTranslations('auth');
   const { token } = await params;
-  // Carry the token to the callback so the post-WorkOS step can bind subject → invitation.
-  const activateHref = `/callback?invite=${encodeURIComponent(token)}`;
+  // Keep the token in the PATH so it survives the WorkOS round trip without a cookie or state param.
+  const activateHref = `/invite/${encodeURIComponent(token)}/activate`;
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-5 px-6 text-center">
