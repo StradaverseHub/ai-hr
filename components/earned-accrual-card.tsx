@@ -3,11 +3,11 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { toCsv } from '@/lib/csv';
 import { Button, Field, inputCls } from './ui';
+import { MultiSelectPopover } from './ui/multi-select-popover';
 import { previewEarnedAccrualAction, runEarnedAccrualAction } from '@/app/admin/actions';
 import type { EarnedAccrualGroup } from '@/core/leave';
 
@@ -140,7 +140,7 @@ export function EarnedAccrualCard({
 
       {/* Step 1 — Select Scope. */}
       <div className="flex flex-wrap items-end gap-3">
-        <MultiSelect
+        <MultiSelectPopover
           label={t('earnedScopeCompany')}
           allLabel={t('earnedAllCompanies')}
           options={companies}
@@ -164,7 +164,7 @@ export function EarnedAccrualCard({
             ))}
           </select>
         </Field>
-        <MultiSelect
+        <MultiSelectPopover
           label={t('earnedScopeLeaveType')}
           allLabel={t('earnedAllTypes')}
           options={leaveTypes}
@@ -175,7 +175,7 @@ export function EarnedAccrualCard({
           clearAllLabel={t('festiveClearAll')}
           selectedCount={(n) => t('festiveSelectedCount', { count: n })}
         />
-        <MultiSelect
+        <MultiSelectPopover
           label={t('earnedScopeGrade')}
           allLabel={t('earnedAllGrades')}
           options={grades}
@@ -279,106 +279,5 @@ export function EarnedAccrualCard({
         </div>
       )}
     </div>
-  );
-}
-
-/** Compact multi-select popover (empty selection ⇒ "all"), mirroring FestiveGrantCard's company picker. */
-function MultiSelect({
-  label,
-  allLabel,
-  options,
-  selected,
-  onChange,
-  searchPlaceholder,
-  selectAllLabel,
-  clearAllLabel,
-  selectedCount,
-}: {
-  label: string;
-  allLabel: string;
-  options: EarnedScopeOption[];
-  selected: Set<string>;
-  onChange: (next: Set<string>) => void;
-  searchPlaceholder: string;
-  selectAllLabel: string;
-  clearAllLabel: string;
-  selectedCount: (n: number) => string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((o) => o.name.toLowerCase().includes(q));
-  }, [options, search]);
-  const visibleIds = useMemo(() => new Set(visible.map((o) => o.id)), [visible]);
-
-  const toggle = (id: string) => {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    onChange(next);
-  };
-  const selectAll = () => onChange(new Set([...selected, ...visibleIds]));
-  const clearAll = () => onChange(new Set([...selected].filter((id) => !visibleIds.has(id))));
-
-  const triggerLabel = selected.size === 0 ? allLabel : selectedCount(selected.size);
-
-  return (
-    <Field label={label}>
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          className={cn(inputCls, 'flex w-48 items-center justify-between gap-2 text-left')}
-        >
-          <span className="truncate">{triggerLabel}</span>
-          <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
-        </button>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <div className="absolute left-0 z-50 mt-1 w-72 rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-lg">
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={searchPlaceholder}
-                className={`${inputCls} mb-2`}
-              />
-              <div className="mb-2 flex items-center gap-3 px-1 text-xs">
-                <button type="button" onClick={selectAll} className="font-medium text-primary hover:underline">
-                  {selectAllLabel}
-                </button>
-                <button type="button" onClick={clearAll} className="font-medium text-muted-foreground hover:underline">
-                  {clearAllLabel}
-                </button>
-                <span className="ml-auto text-muted-foreground">{selectedCount(selected.size)}</span>
-              </div>
-              <div className="max-h-56 overflow-y-auto">
-                {options.map((o) => (
-                  <label
-                    key={o.id}
-                    className={cn(
-                      'flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-muted',
-                      !visibleIds.has(o.id) && 'hidden',
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(o.id)}
-                      onChange={() => toggle(o.id)}
-                      className="size-4 accent-[var(--color-primary)]"
-                    />
-                    <span className="truncate">{o.name}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </Field>
   );
 }

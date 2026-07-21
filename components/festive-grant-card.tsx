@@ -1,12 +1,11 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import { Button, Field, inputCls } from './ui';
+import { MultiSelectPopover } from './ui/multi-select-popover';
 import { grantAdHocLeaveAction } from '@/app/admin/actions';
 
 export type FestiveCompanyOption = { id: string; name: string };
@@ -49,33 +48,9 @@ export function FestiveGrantCard({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [groupWide, setGroupWide] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [daysError, setDaysError] = useState<string | null>(null);
   const [days, setDays] = useState('1');
-
-  const visibleCompanies = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return companies;
-    return companies.filter((c) => c.name.toLowerCase().includes(q));
-  }, [companies, search]);
-  const visibleIds = useMemo(() => new Set(visibleCompanies.map((c) => c.id)), [visibleCompanies]);
-
-  const selectAllVisible = () => setSelected((prev) => new Set([...prev, ...visibleIds]));
-  const clearAllVisible = () =>
-    setSelected((prev) => new Set([...prev].filter((id) => !visibleIds.has(id))));
-
-  const toggleCompany = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  const triggerLabel =
-    selected.size === 0 ? t('festiveCompaniesPlaceholder') : t('festiveSelectedCount', { count: selected.size });
 
   const validateDays = (v: string): string | null => {
     const n = Number(v);
@@ -134,67 +109,19 @@ export function FestiveGrantCard({
         <p className="mx-4 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>
       )}
       <form action={onSubmit} className="flex flex-wrap items-end gap-3 px-4">
-        <Field label={t('festiveCompaniesLabel')}>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setOpen((o) => !o)}
-              aria-expanded={open}
-              disabled={groupWide}
-              className={cn(
-                inputCls,
-                'flex w-56 items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-50',
-              )}
-            >
-              <span className="truncate">{triggerLabel}</span>
-              <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
-            </button>
-            {open && !groupWide && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-                <div className="absolute left-0 z-50 mt-1 w-72 rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-lg">
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder={t('festiveCompanySearchPlaceholder')}
-                    className={`${inputCls} mb-2`}
-                  />
-                  <div className="mb-2 flex items-center gap-3 px-1 text-xs">
-                    <button type="button" onClick={selectAllVisible} className="font-medium text-primary hover:underline">
-                      {t('festiveSelectAll')}
-                    </button>
-                    <button type="button" onClick={clearAllVisible} className="font-medium text-muted-foreground hover:underline">
-                      {t('festiveClearAll')}
-                    </button>
-                    <span className="ml-auto text-muted-foreground">{t('festiveSelectedCount', { count: selected.size })}</span>
-                  </div>
-                  <div className="max-h-56 overflow-y-auto">
-                    {companies.map((c) => (
-                      <label
-                        key={c.id}
-                        className={cn(
-                          'flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-muted',
-                          !visibleIds.has(c.id) && 'hidden',
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          name="companyIds"
-                          value={c.id}
-                          checked={selected.has(c.id)}
-                          onChange={() => toggleCompany(c.id)}
-                          className="size-4 accent-[var(--color-primary)]"
-                        />
-                        <span className="truncate">{c.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </Field>
+        <MultiSelectPopover
+          label={t('festiveCompaniesLabel')}
+          allLabel={t('festiveCompaniesPlaceholder')}
+          options={companies}
+          selected={selected}
+          onChange={setSelected}
+          searchPlaceholder={t('festiveCompanySearchPlaceholder')}
+          selectAllLabel={t('festiveSelectAll')}
+          clearAllLabel={t('festiveClearAll')}
+          selectedCount={(n) => t('festiveSelectedCount', { count: n })}
+          name="companyIds"
+          disabled={groupWide}
+        />
         {canGroupWide && (
           <label className="flex items-center gap-2 pb-2 text-sm">
             <input
