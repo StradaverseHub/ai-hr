@@ -125,7 +125,9 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/approvals',
     labelKey: 'nav.approvals',
     guard: 'scopedSession',
-    routes: ['/approvals'],
+    // /approvals/history (44a89810) is the same surface and audience — the full-page approval activity
+    // history the bell's History tab links to — so it rides the approvals column rather than minting one.
+    routes: ['/approvals', '/approvals/history'],
     hasScopeNote: true,
   },
   {

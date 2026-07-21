@@ -82,6 +82,10 @@ describe('Approval activity history (44a89810)', () => {
     const sub = await hire('LSub');
     await adminLine(sub.employmentId, mgr.employmentId);
     const stand = await hire('Stand');
+    // baf56348 same-level guard: a delegation now requires the stand-in to hold the delegator's approval
+    // level. Give the stand-in one administrative report so both sides are line managers as of validFrom.
+    const standSub = await hire('StandSub');
+    await adminLine(standSub.employmentId, stand.employmentId);
     await grantAnnual(sub.employmentId);
     await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
     const { leaveRequestId } = await requestLeave(A(b), {
@@ -125,6 +129,9 @@ describe('Approval activity history (44a89810)', () => {
     const sub = await hire('PSub');
     await adminLine(sub.employmentId, mgr.employmentId);
     const stand = await hire('PStand');
+    // baf56348 same-level guard — see test (a+d).
+    const standSub = await hire('PStandSub');
+    await adminLine(standSub.employmentId, stand.employmentId);
     await delegate(mgr.employmentId, stand.employmentId);
     // A per-date-eligible type: working-days counting + perDateApproval, single-step company (seedBase
     // default), multi-working-day span (Mon 2026-07-06 → Wed 2026-07-08).
@@ -321,6 +328,9 @@ describe('Approval activity history (44a89810)', () => {
     await adminLine(sub1.employmentId, mgr.employmentId);
     await adminLine(sub2.employmentId, mgr.employmentId);
     const stand = await hire('TStand');
+    // baf56348 same-level guard — see test (a+d).
+    const standSub = await hire('TStandSub');
+    await adminLine(standSub.employmentId, stand.employmentId);
     const { reportingLineId } = await delegate(mgr.employmentId, stand.employmentId);
     await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
     const { leaveRequestId: lr1 } = await requestLeave(A(b), {
