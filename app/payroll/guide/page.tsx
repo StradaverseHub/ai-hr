@@ -29,6 +29,7 @@ const CHECK_CAP: Record<ReadinessCheck['key'], string> = {
   payrollCycle: 'PayrollCycle',
   payrollSchedule: 'PayrollSchedule',
   payrollPolicy: 'PayrollPolicy',
+  payModes: 'PayModes', // ADR-0078 — custom_period pay-mode blocker (names the affected employees)
   transactions: 'Transactions',
 };
 const STATUS_CAP: Record<ReadinessCheck['status'], string> = { ok: 'Ok', warning: 'Warning', blocker: 'Blocker' };
@@ -151,7 +152,11 @@ export default async function PayrollGuidePage() {
                                         {t(`check${CHECK_CAP[check.key]}Title`)}
                                       </span>
                                     </div>
-                                    <p className="text-xs text-muted-foreground">{t(msgKey, check.detail)}</p>
+                                    {/* ADR-0078 — `names` rides only on the payModes blocker; the join is a
+                                        harmless extra ICU arg for every other message. */}
+                                    <p className="text-xs text-muted-foreground">
+                                      {t(msgKey, { ...check.detail, names: (check.names ?? []).join(', ') })}
+                                    </p>
                                   </div>
                                   <Link
                                     href={check.href}

@@ -1845,7 +1845,12 @@ export async function generatePayslips(
       // BLOCKER: no compensation row (silently dropped by the earnings inner-join) OR — when the typed
       // path is live (R37 62e370b0) — a compensation row with no BASIC component (typed earnings would read
       // basic as 0). Both are salary-data gaps that must be fixed before the run, so generation fails closed.
-      const blocked = checks.missingCompensation.length + checks.missingBasicComponent.length;
+      // ADR-0078 adds unpayablePayMode: a custom_period employee has NO calculation and must not be quietly
+      // paid their monthly-equivalent basic — the guard deliberately precedes the basicFallback path below.
+      const blocked =
+        checks.missingCompensation.length +
+        checks.missingBasicComponent.length +
+        (checks.unpayablePayMode?.length ?? 0);
       if (blocked > 0) throw new PreProcessBlockedError(blocked);
     }
 
@@ -1960,6 +1965,11 @@ export async function generatePayslips(
         terminatedOn: employment.terminatedOn,
         basic: compensation.basicSalary,
         allowance: compensation.monthlyAllowance,
+        // ADR-0078 (642ecc55) — the employee's OWN salary structure: `basic` stays the monthly-equivalent
+        // wage for every statutory/derived read; payMode + rateAmount drive the daily/hourly basic-pay
+        // branches below (the rate source moved here from policy.payRule in migration 0290).
+        payMode: compensation.payMode,
+        rateAmount: compensation.rateAmount,
         taxCategory: employeeStatutoryMy.taxCategory,
         numChildren: employeeStatutoryMy.numChildren,
         isResident: employeeStatutoryMy.isResident,
@@ -2150,11 +2160,14 @@ export async function generatePayslips(
       if (opts.divisorDays !== undefined || opts.workingDayBasis || opts.window) prorationOptsByEmp.set(e.employmentId, opts);
       // Gap-fix (per-employment cut-off) — this employment's LEAVE cut-off window (policy → company → calendar).
       leaveWindowByEmp.set(e.employmentId, cutOffWindowFor('leave', cfg, cutOffSchedule.companyCfg, payPeriod));
-      // 2.1.2 daily branch — only when the resolved policy is daily AND carries a per_day rate. Eligible days
-      // = the employee's working days (Mon–Fri) in the period, less public holidays, within their tenure
-      // window. Zero eligible days ⇒ basic = 0 (no divide-by-zero: this is a multiply, not a divide).
-      if (policy?.policyType === 'daily' && policy.payRule?.kind === 'per_day') {
-        const rate = Number(policy.payRule.rate);
+      // 2.1.2 daily branch — ADR-0078: keyed off the EMPLOYEE'S pay_mode (compensation.pay_mode), with the
+      // rate from compensation.rate_amount. The former policy.payRule source (and its fallback) is gone —
+      // it could never express one daily employee among monthly colleagues on the same policy (resolveRule
+      // accepts a per_day rule only on a daily policy). Eligible days = the employee's working days
+      // (Mon–Fri) in the period, less public holidays, within their tenure window. Zero eligible days ⇒
+      // basic = 0 (no divide-by-zero: this is a multiply, not a divide).
+      if (e.payMode === 'daily' && e.rateAmount != null) {
+        const rate = Number(e.rateAmount);
         const dailyHolidays = await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd });
         const eligibleDays = eligibleWorkingDays(payPeriod, e.hiredOn, e.terminatedOn, dailyHolidays);
         dailyPayByEmp.set(e.employmentId, { rate, eligibleDays, basic: round2(rate * eligibleDays) });
@@ -2652,8 +2665,12 @@ export async function generatePayslips(
     // (gated on typedComponents) so the per-component resolver reads a map, not a re-query. No attendance
     // rows ⇒ 0 hours, a real, non-erroring outcome (paid by the hour, worked no hours) — there is NO division
     // in the resolver, so a zero-hours employee never aborts the batch.
+    // ADR-0078 — an employee whose OWN pay_mode is hourly also needs the worked-hours map (rate × hours),
+    // independent of the typed-components flag, so the gate widens when any such employee is in scope. A
+    // batch with neither typed components nor an hourly-mode employee issues NO extra query (byte-identical).
+    const hourlyModeEmps = emps.filter((e) => e.payMode === 'hourly' && e.rateAmount != null);
     const hoursByEmp = new Map<string, number>();
-    if (typedComponents && empIds.length) {
+    if ((typedComponents || hourlyModeEmps.length > 0) && empIds.length) {
       const att = await tx
         .select({ employmentId: attendance.employmentId, minutes: sql<string>`coalesce(sum(${attendance.workedMinutes}), 0)` })
         .from(attendance)
@@ -2666,6 +2683,19 @@ export async function generatePayslips(
         )
         .groupBy(attendance.employmentId);
       for (const a of att) hoursByEmp.set(a.employmentId, Number(a.minutes) / 60);
+    }
+
+    // ── ADR-0078 (642ecc55) — Hourly pay mode: basic = per-hour rate × attendance hours in the period ──
+    // With the rate now living on the employee's own compensation row, hourly becomes genuinely usable: one
+    // hourly employee can sit among monthly colleagues on the same policy (the catalog per_hour rule could
+    // only ever be tenant-wide). Zero worked hours ⇒ basic = 0 — a real outcome, not an error (multiply,
+    // never divide). custom_period has NO calculation and is blocked at pre-flight (preProcessChecksTx), so
+    // it never reaches this loop through a generated run.
+    const hourlyPayByEmp = new Map<string, { rate: number; hours: number; basic: number }>();
+    for (const e of hourlyModeEmps) {
+      const rate = Number(e.rateAmount);
+      const hours = hoursByEmp.get(e.employmentId) ?? 0;
+      hourlyPayByEmp.set(e.employmentId, { rate, hours, basic: round2(rate * hours) });
     }
 
     /** Per-employee earnings, from the typed components (flag on) or the legacy comp+input (flag off).
@@ -2846,6 +2876,9 @@ export async function generatePayslips(
       // 2.1.2 — a daily-rated employee is paid rate × eligible days; the monthly proration basis does not apply.
       // Surface the eligible-day count as `daysWorked` (a real day count, not factor×dim) for the daily path.
       const daily = dailyPayByEmp.get(e.employmentId) ?? null;
+      // ADR-0078 — hourly pay mode mirrors the daily override: basic = rate × attendance hours; daysWorked
+      // keeps the factor-based surface (attendance days are not the proration basis for an hourly worker).
+      const hourly = hourlyPayByEmp.get(e.employmentId) ?? null;
       const daysWorked = daily ? daily.eligibleDays : Math.round(factor * dim); // proration basis surfaced on the payslip
       // Earnings come from the typed components (flag on) or compensation + payroll_input (flag off).
       // Either way these reproduce the same variables, so the agency-base math below is unchanged.
@@ -2853,10 +2886,18 @@ export async function generatePayslips(
       // 1c — salary-increment proration: when the policy enables it AND a mid-period increment straddles the
       // period, the basic is the two-row blend (already day-weighted across the increment date), NOT
       // basic×factor. Default (off / no straddle) ⇒ undefined ⇒ the kernel's normal basicGross is used.
-      // 2.1.2 — for a daily policy, basic = per_day rate × eligible days (no proration, no increment blend).
+      // 2.1.2 — for a daily pay mode, basic = per-day rate × eligible days (no proration, no increment
+      // blend); hourly = per-hour rate × worked hours. D4's period-boundary rule means a mode never changes
+      // mid-period, so these overrides and the increment blend cannot both legitimately fire.
       const incrementBasic = incrementBasicByEmp.get(e.employmentId);
-      const basicRaw = daily ? daily.basic : (incrementBasic ?? en.basicRaw);
-      const basic = daily ? daily.basic : (incrementBasic !== undefined ? round2(incrementBasic) : en.basicGross);
+      const basicRaw = daily ? daily.basic : hourly ? hourly.basic : (incrementBasic ?? en.basicRaw);
+      const basic = daily
+        ? daily.basic
+        : hourly
+          ? hourly.basic
+          : incrementBasic !== undefined
+            ? round2(incrementBasic)
+            : en.basicGross;
       // 1e — OT caps: wrap the prefilled/keyed OT figure with the policy's caps (eligible day types, max
       // hours, max amount, floored multiplier). Default (no overtime config) ⇒ the figure is unchanged.
       // f1564110 Phase 3 — one-off 'overtime' ledger rows ADD to the OT figure BEFORE the caps (flag off ⇒
@@ -4223,6 +4264,13 @@ export type PreProcessCheckRow = { employmentId: string; name: string; employeeC
 
 export type PreProcessAdvisory = {
   missingCompensation: PreProcessCheckRow[];
+  // BLOCKER (ADR-0078 / 642ecc55). The employee's open compensation row carries pay_mode='custom_period',
+  // which has NO calculation behind it — letting the run proceed would quietly pay the monthly-equivalent
+  // basic for a structure the admin explicitly marked as NOT monthly. Named per employee, blocked at
+  // pre-flight (generatePayslips re-asserts fail-closed) rather than thrown inside the engine: the batch
+  // is all-or-nothing, so an engine throw would take down the whole company's run. OPTIONAL so pre-0290
+  // literals stay valid; absent ⇒ no such employees.
+  unpayablePayMode?: PreProcessCheckRow[];
   // BLOCKER (R37 62e370b0). Only populated when TYPED_PAY_COMPONENTS_ENABLED is on: the employee HAS a
   // current compensation row but NO period-active BASIC employment_pay_component. In that state the typed
   // earnings path used to resolve basic to 0 and pay them nothing (the earningsOf fallback now prevents the
@@ -4249,6 +4297,7 @@ async function preProcessChecksTx(
       name: person.fullName,
       employeeCode: employment.employeeCode,
       compId: compensation.id,
+      compPayMode: compensation.payMode,
       statPersonId: employeeStatutoryMy.personId,
       bankName: employeeStatutoryMy.bankName,
       bankAccountNo: employeeStatutoryMy.bankAccountNo,
@@ -4293,10 +4342,14 @@ async function preProcessChecksTx(
     for (const b of basicRows) basicComponentEmpIds.add(b.employmentId);
   }
   const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
-  const out: PreProcessAdvisory = { missingCompensation: [], missingBasicComponent: [], missingStatutory: [], missingBank: [] };
+  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], missingBasicComponent: [], missingStatutory: [], missingBank: [] };
   for (const r of rows) {
     const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
     if (!r.compId) out.missingCompensation.push(row);
+    // ADR-0078 — pay_mode='custom_period' has no calculation: BLOCKER, named per employee. Checked before
+    // the BASIC-component gap so one row lands in exactly one blocker list (the mode gap subsumes it —
+    // there is nothing to compute regardless of components).
+    else if (r.compPayMode === 'custom_period') out.unpayablePayMode!.push(row);
     // A compensation row exists but the typed path has no BASIC component to read → BLOCKER (only when the
     // typed path is live). Reported alongside missingCompensation, not instead of it: the two gaps are
     // disjoint (this branch requires compId to be present).
@@ -4340,6 +4393,7 @@ export function preProcessAdvisoryForSelection(
       input.employmentIds && input.employmentIds.length ? { employmentIds: input.employmentIds } : null;
     const merged: PreProcessAdvisory = {
       missingCompensation: [],
+      unpayablePayMode: [],
       missingBasicComponent: [],
       missingStatutory: [],
       missingBank: [],
@@ -4347,6 +4401,7 @@ export function preProcessAdvisoryForSelection(
     for (const companyId of input.companyIds) {
       const a = await preProcessChecksTx(tx, { companyId, payPeriod: input.payPeriod, scope });
       merged.missingCompensation.push(...a.missingCompensation);
+      merged.unpayablePayMode!.push(...(a.unpayablePayMode ?? []));
       merged.missingBasicComponent.push(...a.missingBasicComponent);
       merged.missingStatutory.push(...a.missingStatutory);
       merged.missingBank.push(...a.missingBank);

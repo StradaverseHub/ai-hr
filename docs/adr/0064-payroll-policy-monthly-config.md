@@ -1,6 +1,9 @@
 # ADR-0064 — Monthly payroll-policy General Settings (config-at-run-time)
 
-Status: Accepted
+Status: Accepted — PARTIALLY SUPERSEDED by ADR-0078 (642ecc55, migration 0290): ownership of Pay Mode,
+Payment Term and the non-monthly rate moved from the policy to the employee's own effective-dated
+compensation row. The policy's calculation config (proration, OT caps, leave divisors, cut-offs, rounding)
+remains exactly as decided here; only the "policy owns the salary structure" part is reversed.
 Date: 2026-06-29
 Extends: ADR-0035 (rounding), the 2.1 Payroll Policy slice (migrations 0127/0128, `core/payroll-policy.ts`)
 

@@ -798,11 +798,15 @@ export const employment = pgTable(
     // company_bank_profile = which corporate account emits the bulk file) plus the employee's own bank name
     // and account number on employee_statutory_my. Nullable = not specified (every pre-existing row).
     //
-    // NOT to be confused with Pay Mode or Payment Term, which are NOT columns here and must not become
-    // ones: Pay Mode ≡ payroll_policy.policy_type and Payment Term ≡ PayrollPolicyConfig.frequency. Those
-    // are resolved from the assigned policy (resolveAssignedPolicy) and only SURFACED read-only on the
-    // Payroll tab — duplicating them per-employee would give the kernel two disagreeing sources of truth
-    // for the same input and require a precedence rule. See ADR-0064.
+    // SUPERSEDED (ADR-0078 / migration 0290): the paragraph below recorded the R46 79eb7151 decision that
+    // Pay Mode and Payment Term must stay policy-owned. That decision is reversed — they now live as
+    // effective-dated columns on `compensation` (pay_mode / payment_term / rate_amount), NOT NULL with no
+    // policy fallback, so there is still exactly ONE source of truth per period and no precedence rule.
+    // The original reasoning is kept for the audit trail:
+    //   Pay Mode ≡ payroll_policy.policy_type and Payment Term ≡ PayrollPolicyConfig.frequency. Those
+    //   are resolved from the assigned policy (resolveAssignedPolicy) and only SURFACED read-only on the
+    //   Payroll tab — duplicating them per-employee would give the kernel two disagreeing sources of truth
+    //   for the same input and require a precedence rule. See ADR-0064.
     //
     // INVARIANT (enforced in setEmploymentPaymentMethod, not by the DB — the bank details live on a
     // different, person-keyed table): 'bank_transfer' requires a bank name AND an account number on the
@@ -1939,6 +1943,20 @@ export const compensation = pgTable(
     basicSalary: numeric('basic_salary', { precision: 12, scale: 2 }).notNull(),
     currency: text('currency').notNull().default('MYR'),
     monthlyAllowance: numeric('monthly_allowance', { precision: 12, scale: 2 }).notNull().default('0'),
+    // Employee-specific salary structure (feedback 642ecc55, migration 0290; ADR-0078 supersedes the
+    // ADR-0064 "policy owns pay mode" decision). pay_mode reuses payroll_policy_type (no second enum);
+    // payment_term is text validated against the PayrollFrequency TS union in core/comp.ts (a parallel pg
+    // enum would need a migration per new term). Both are NOT NULL (backfilled from the resolved policy /
+    // company default in 0290) — there is deliberately NO nullable "inherit from the policy" fallback,
+    // because payroll_policy is mutable and a live fallback would rewrite history on reprocess.
+    // basic_salary KEEPS its monthly-equivalent semantics for every statutory/derived calculation; the
+    // nullable rate_amount (per-day / per-hour rate) is what pays a non-monthly employee. NULL rate is the
+    // correct, expected state for a monthly employee.
+    // DEFAULT 'monthly' is a plain constant (today's only behaviour), NOT a policy fallback — it exists so
+    // a raw INSERT (tests, tooling) stays valid; core/comp.ts always writes explicit values.
+    payMode: payrollPolicyTypeEnum('pay_mode').notNull().default('monthly'),
+    paymentTerm: text('payment_term').notNull().default('monthly'),
+    rateAmount: numeric('rate_amount', { precision: 12, scale: 2 }),
     validFrom: date('valid_from').notNull(),
     validTo: date('valid_to'),
     // Free-text reason for the change (e.g. "annual increment", "merit adjustment"). Nullable — historical

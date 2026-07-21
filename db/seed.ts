@@ -243,6 +243,8 @@ async function main() {
     const session: SessionContext = { tenantId: DEV_TENANT_ID, userId: u.id, roles: [role], personId };
     hired.push({ employmentId, personId, session });
 
+    // ADR-0078 — payMode/paymentTerm/rateAmount are omitted on every seed call: the service defaults a
+    // brand-new record to monthly / monthly / no rate, which is exactly what the demo staff are.
     await setCompensation(admin, { employmentId, basicSalary: p.salary, monthlyAllowance: 500, effectiveFrom: '2026-01-06' });
     await setStatutoryProfileMY(admin, {
       personId,

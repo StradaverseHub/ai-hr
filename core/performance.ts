@@ -1107,6 +1107,10 @@ export async function enactCompAction(
       const pct = Number(review.recommendedMeritPct);
       const newBasic = round2(Number(cur.basicSalary) * (1 + pct / 100));
       // Pass tx so the raise commits/rolls back atomically with the rest of the enact.
+      // ADR-0078 — the merit % applies to the MONTHLY-EQUIVALENT basicSalary only. payMode / paymentTerm /
+      // rateAmount are deliberately omitted: setCompensation CARRIES them FORWARD unchanged, so a merit
+      // enact never silently scales a daily/hourly employee's rate_amount (re-rating is an explicit admin
+      // action on the Basic Salary screen, not a side effect of a percentage raise).
       const res = await setCompensation(
         ctx,
         { employmentId: review.employmentId, basicSalary: newBasic, effectiveFrom: p.meritEffectiveFrom },

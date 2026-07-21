@@ -86,6 +86,9 @@ export const employeeTemplate: TemplateSpec = {
       'true', // eis_eligible
       'true', // is_resident
       'MALAYSIAN', // epf_citizenship
+      'monthly', // pay_mode (ADR-0078; blank = monthly)
+      'monthly', // payment_term (blank = monthly)
+      '', // rate_amount (only for daily/hourly pay modes)
     ],
     [
       'Daniel Tan Wei Ming', // full_name
@@ -110,6 +113,9 @@ export const employeeTemplate: TemplateSpec = {
       'true', // eis_eligible
       'true', // is_resident
       'MALAYSIAN', // epf_citizenship
+      'daily', // pay_mode (ADR-0078) — a daily-rated worker; basic_salary above stays the monthly-equivalent
+      'monthly', // payment_term
+      '180', // rate_amount — RM per day (required for daily/hourly)
     ],
   ],
 };

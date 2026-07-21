@@ -65,6 +65,7 @@ export default async function BatchPage({
     payrollCycle: 'PayrollCycle',
     payrollSchedule: 'PayrollSchedule',
     payrollPolicy: 'PayrollPolicy',
+    payModes: 'PayModes', // ADR-0078 — custom_period pay-mode blocker (names the affected employees)
     transactions: 'Transactions',
   };
   const STATUS_CAP: Record<string, string> = { ok: 'Ok', warning: 'Warning', blocker: 'Blocker' };
@@ -307,7 +308,10 @@ export default async function BatchPage({
                       </span>
                       <span className="text-sm font-medium text-foreground">{tg(`check${CHECK_CAP[c.key]}Title`)}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground">{tg(`check${CHECK_CAP[c.key]}${STATUS_CAP[c.status]}`, c.detail)}</p>
+                    {/* ADR-0078 — `names` rides only on the payModes blocker; a harmless extra ICU arg otherwise. */}
+                    <p className="text-xs text-muted-foreground">
+                      {tg(`check${CHECK_CAP[c.key]}${STATUS_CAP[c.status]}`, { ...c.detail, names: (c.names ?? []).join(', ') })}
+                    </p>
                   </div>
                   <Link href={c.href} className="shrink-0 text-xs font-medium text-primary hover:underline">
                     {tg('fix')} →

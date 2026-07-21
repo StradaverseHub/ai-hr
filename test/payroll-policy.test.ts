@@ -242,16 +242,24 @@ describe('2.1.2 Daily Payroll Policy — kernel pays rate × eligible days', () 
 
   let icSeq = 0;
   const nextIc = () => `880202${String(220000 + icSeq++).padStart(6, '0')}`;
-  /** A payable employee with NO allowance (so the daily wage is exactly rate × days for the statutory oracle). */
-  async function seedDailyPayable(name: string, basicSalary: number) {
+  /** A payable employee with NO allowance (so the daily wage is exactly rate × days for the statutory oracle).
+   *  ADR-0078: the daily structure now lives on the EMPLOYEE'S compensation row (pay_mode + rate_amount),
+   *  not on the policy — pass `dailyRate` to make the worker daily-rated. */
+  async function seedDailyPayable(name: string, basicSalary: number, dailyRate?: number) {
     const a = adminCtx(b);
     const e = await hire(name);
-    await setCompensation(a, { employmentId: e.employmentId, basicSalary, monthlyAllowance: 0, effectiveFrom: '2024-01-01' });
+    await setCompensation(a, {
+      employmentId: e.employmentId,
+      basicSalary,
+      monthlyAllowance: 0,
+      effectiveFrom: '2024-01-01',
+      ...(dailyRate !== undefined ? { payMode: 'daily', rateAmount: dailyRate } : {}),
+    });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: nextIc() });
     return e;
   }
   /** Hire on a specific date (mid-month-start edge) with no allowance. */
-  async function seedDailyHiredOn(name: string, basicSalary: number, hiredOn: string) {
+  async function seedDailyHiredOn(name: string, basicSalary: number, hiredOn: string, dailyRate?: number) {
     const a = adminCtx(b);
     const e = await hireEmployee(a, {
       person: { fullName: name, primaryEmail: `dp_${randomUUID().slice(0, 8)}@t.local` },
@@ -260,7 +268,13 @@ describe('2.1.2 Daily Payroll Policy — kernel pays rate × eligible days', () 
       employmentType: 'full_time',
       hiredOn,
     });
-    await setCompensation(a, { employmentId: e.employmentId, basicSalary, monthlyAllowance: 0, effectiveFrom: hiredOn });
+    await setCompensation(a, {
+      employmentId: e.employmentId,
+      basicSalary,
+      monthlyAllowance: 0,
+      effectiveFrom: hiredOn,
+      ...(dailyRate !== undefined ? { payMode: 'daily', rateAmount: dailyRate } : {}),
+    });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: nextIc() });
     return e;
   }
@@ -270,13 +284,16 @@ describe('2.1.2 Daily Payroll Policy — kernel pays rate × eligible days', () 
     const rate = 300;
     const dailyWage = rate * ELIGIBLE_MAY_2026; // 6300
 
-    // Daily employee on an active Daily policy.
-    const eDaily = await seedDailyPayable('DailyWorker', 9999); // basicSalary is ignored on the daily path
+    // Daily employee — ADR-0078: daily-rated via their OWN compensation row (pay_mode + rate_amount).
+    // basicSalary (9999) stays the monthly-equivalent figure and is ignored by the daily basic-pay path.
+    // A Daily policy is still created + assigned to prove the policy no longer drives the calculation
+    // (the compensation rate is 300; the policy rate is a decoy 777 that must NOT be paid).
+    const eDaily = await seedDailyPayable('DailyWorker', 9999, rate);
     const { id: dailyPol } = await createPolicy(a, {
       companyId: b.companyId,
       name: 'Daily300',
       policyType: 'daily',
-      payRule: { kind: 'per_day', rate },
+      payRule: { kind: 'per_day', rate: 777 },
     });
     await assignPolicy(a, { employmentId: eDaily.employmentId, policyId: dailyPol });
 
@@ -327,9 +344,10 @@ describe('2.1.2 Daily Payroll Policy — kernel pays rate × eligible days', () 
     await generatePayslips(a, { batchId: bb1 });
     const before = await payslipOf(bb1, eBase.employmentId);
 
-    // Company A: a Daily policy + a daily worker assigned, AND an identical monthly employee left unassigned.
+    // Company A: a Daily policy + a genuinely daily-rated worker (ADR-0078: rate on compensation), AND an
+    // identical monthly employee left unassigned.
     const { id: dailyPol } = await createPolicy(a, { companyId: b.companyId, name: 'DailyElsewhere', policyType: 'daily', payRule: { kind: 'per_day', rate: 250 } });
-    const eOther = await seedDailyPayable('DailyAssignee', 1);
+    const eOther = await seedDailyPayable('DailyAssignee', 1, 250);
     await assignPolicy(a, { employmentId: eOther.employmentId, policyId: dailyPol });
     const eSame = await seedDailyPayable('StillMonthly', 5000);
     const { batchId: bb2 } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD, scope: { employmentIds: [eSame.employmentId, eOther.employmentId] } });
@@ -349,9 +367,8 @@ describe('2.1.2 Daily Payroll Policy — kernel pays rate × eligible days', () 
   it('edge — zero eligible days: a Daily employee with only weekend days employed has basic = 0 (no divide-by-zero)', async () => {
     const a = adminCtx(b);
     // Hired 2026-05-30 (a Sat); the only days employed in May are 30 (Sat) + 31 (Sun) → 0 eligible Mon–Fri days.
-    const e = await seedDailyHiredOn('WeekendOnly', 1, '2026-05-30');
-    const { id } = await createPolicy(a, { companyId: b.companyId, name: 'DailyZero', policyType: 'daily', payRule: { kind: 'per_day', rate: 400 } });
-    await assignPolicy(a, { employmentId: e.employmentId, policyId: id });
+    // ADR-0078: daily via the compensation rate (the first record may start on any date — no prior mode).
+    const e = await seedDailyHiredOn('WeekendOnly', 1, '2026-05-30', 400);
     const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD, scope: { employmentIds: [e.employmentId] } });
     await generatePayslips(a, { batchId });
     const ps = await payslipOf(batchId, e.employmentId);
@@ -367,9 +384,7 @@ describe('2.1.2 Daily Payroll Policy — kernel pays rate × eligible days', () 
     const a = adminCtx(b);
     // Hired 2026-05-20 (a Wed). Eligible Mon–Fri days from 20→31 May 2026: 20,21,22,25,26,27,28,29 = 8 days.
     const rate = 50; // 50 × 8 = 400 → below the SOCSO/EIS floor, exercises the small-wage path
-    const e = await seedDailyHiredOn('MidMonthSmall', 1, '2026-05-20');
-    const { id } = await createPolicy(a, { companyId: b.companyId, name: 'DailySmall', policyType: 'daily', payRule: { kind: 'per_day', rate } });
-    await assignPolicy(a, { employmentId: e.employmentId, policyId: id });
+    const e = await seedDailyHiredOn('MidMonthSmall', 1, '2026-05-20', rate);
     const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD, scope: { employmentIds: [e.employmentId] } });
     await generatePayslips(a, { batchId });
     const ps = await payslipOf(batchId, e.employmentId);

@@ -2,12 +2,59 @@
  * Compensation — generic, jurisdiction-neutral, effective-dated (ADR-0008 #5).
  * Salary is comp *history*: a change CLOSE + INSERTs a new version. Amounts are tenant data.
  */
-import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { appUser, compensation, domainEvent, payrollBatch, payslip, person, tenantCounter } from '../db/schema';
+import {
+  appUser,
+  compensation,
+  domainEvent,
+  payrollBatch,
+  payrollPolicyTypeEnum,
+  payslip,
+  person,
+  tenantCounter,
+  type PayrollFrequency,
+} from '../db/schema';
+import { PAYROLL_FREQUENCIES } from './payroll-policy-config';
 
 const money = (n: number | string): string => (typeof n === 'number' ? n.toFixed(2) : String(n));
+
+// ─────────────── Employee-specific salary structure (feedback 642ecc55 / ADR-0078) ───────────────
+// pay_mode reuses the payroll_policy_type enum values; payment_term is validated against the
+// PayrollFrequency TS union (mirroring core/payroll-policy-config.ts cleanFrequency — no second pg enum).
+export const PAY_MODES = payrollPolicyTypeEnum.enumValues;
+export type PayMode = (typeof PAY_MODES)[number];
+
+/** ADR-0078 D4 — a Pay Mode change is only valid on a pay-period boundary (the 1st of a month). The engine
+ *  reads ONE open compensation row for the whole period and the increment-proration path day-weight-blends
+ *  two straddling rows — a blend across two different pay modes is meaningless, so mid-period conversions
+ *  are rejected at the service. Salary AMOUNT changes keep today's mid-period behaviour untouched. */
+export class PayModePeriodBoundaryError extends Error {
+  constructor(message = 'A pay-mode change must take effect on the first day of a pay period') {
+    super(message);
+    this.name = 'PayModePeriodBoundaryError';
+  }
+}
+
+const isPeriodBoundary = (d: string): boolean => /^\d{4}-\d{2}-01$/.test(d);
+
+function normalizePayMode(v: string): PayMode {
+  if (!PAY_MODES.includes(v as PayMode)) throw new Error('Unknown pay mode');
+  return v as PayMode;
+}
+
+function normalizePaymentTerm(v: string): PayrollFrequency {
+  if (!PAYROLL_FREQUENCIES.includes(v as PayrollFrequency)) throw new Error('Unknown payment term');
+  return v as PayrollFrequency;
+}
+
+/** Daily/hourly pay is rate × days / rate × hours — a missing rate would silently pay 0. Fail at write. */
+function assertRateForMode(payMode: PayMode, rateAmount: string | null): void {
+  if ((payMode === 'daily' || payMode === 'hourly') && (rateAmount == null || !(Number(rateAmount) > 0))) {
+    throw new Error('A daily or hourly pay mode requires a rate greater than zero');
+  }
+}
 
 /** First day of the month AFTER a 'YYYY-MM' pay period — the exclusive end of its date range. */
 const nextMonthStart = (period: string): string => {
@@ -34,6 +81,18 @@ async function closedPeriodsTx(tx: Tx, employmentId: string): Promise<string[]> 
   return rows.map((r) => r.period);
 }
 
+/** 'YYYY-MM' periods of PROCESSED-or-CLOSED batches that paid this employment (ADR-0078 D4): an in-place
+ *  pay-mode edit on a row whose window such a run already relied on would retroactively change how that
+ *  period was computed on any reprocess (mode from record A, money from record B). */
+async function processedPeriodsTx(tx: Tx, employmentId: string): Promise<string[]> {
+  const rows = await tx
+    .selectDistinct({ period: payrollBatch.payPeriod })
+    .from(payslip)
+    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+    .where(and(eq(payslip.employmentId, employmentId), inArray(payrollBatch.status, ['processed', 'closed'])));
+  return rows.map((r) => r.period);
+}
+
 /**
  * 'YYYY-MM' periods of CLOSED payroll runs that paid this employment. The Basic Salary card uses this
  * (with `overlapsClosedPeriod`) to decide which history rows are deletable — a record whose window a
@@ -55,6 +114,14 @@ export async function setCompensation(
     monthlyAllowance?: number;
     /** Free-text reason for the change (Basic Salary screen, feedback 87c82b18). */
     remarks?: string;
+    /** ADR-0078 — employee-specific salary structure. Omit any of the three to CARRY FORWARD the current
+     *  record's value (same semantics as monthlyAllowance), so a basic-only revision never resets the
+     *  structure. Defaults for a brand-new first record: monthly / monthly / no rate. A pay-mode CHANGE
+     *  must take effect on a period boundary (D4); daily/hourly require a positive rateAmount. */
+    payMode?: string;
+    paymentTerm?: string;
+    /** Per-day / per-hour rate (RM). Pass null to clear it (only valid for monthly/custom_period). */
+    rateAmount?: number | null;
     effectiveFrom: string;
   },
   /** Optional caller transaction — pass it to make this write participate in an enclosing
@@ -82,6 +149,30 @@ export async function setCompensation(
     const effectiveAllowance = allowanceProvided
       ? (p.monthlyAllowance as number)
       : Number(cur?.monthlyAllowance ?? 0);
+    // ADR-0078 — pay structure with the SAME carry-forward semantics as monthlyAllowance: an omitted field
+    // keeps the prior record's value (monthly/monthly/null for a brand-new first record), so a basic-only
+    // revision never resets the structure. An explicit value sets it (rateAmount: null clears the rate).
+    const payModeProvided = p.payMode !== undefined;
+    const payMode: PayMode = payModeProvided
+      ? normalizePayMode(p.payMode as string)
+      : ((cur?.payMode as PayMode | undefined) ?? 'monthly');
+    const paymentTermProvided = p.paymentTerm !== undefined;
+    const paymentTerm: PayrollFrequency = paymentTermProvided
+      ? normalizePaymentTerm(p.paymentTerm as string)
+      : ((cur?.paymentTerm as PayrollFrequency | undefined) ?? 'monthly');
+    const rateProvided = p.rateAmount !== undefined;
+    const rateAmount: string | null = rateProvided
+      ? p.rateAmount == null
+        ? null
+        : money(p.rateAmount)
+      : (cur?.rateAmount ?? null);
+    assertRateForMode(payMode, rateAmount);
+    // D4 — a pay-mode CHANGE (relative to the record it supersedes) only takes effect on a period boundary.
+    // The first record of an employment carries no prior mode, so it may start on any date (e.g. mid-month
+    // hire of a daily worker).
+    if (cur && (cur.payMode as PayMode) !== payMode && !isPeriodBoundary(p.effectiveFrom)) {
+      throw new PayModePeriodBoundaryError();
+    }
     const [row] = await tx
       .insert(compensation)
       .values({
@@ -90,6 +181,9 @@ export async function setCompensation(
         basicSalary: money(p.basicSalary),
         currency: p.currency ?? 'MYR',
         monthlyAllowance: money(effectiveAllowance),
+        payMode,
+        paymentTerm,
+        rateAmount,
         remarks: p.remarks ?? null,
         validFrom: p.effectiveFrom,
         validTo: null,
@@ -97,6 +191,9 @@ export async function setCompensation(
       .returning({ id: compensation.id });
     const fieldsChanged = ['basicSalary'];
     if (allowanceProvided) fieldsChanged.push('monthlyAllowance');
+    if (payModeProvided) fieldsChanged.push('payMode');
+    if (paymentTermProvided) fieldsChanged.push('paymentTerm');
+    if (rateProvided) fieldsChanged.push('rateAmount');
     if (p.remarks) fieldsChanged.push('remarks');
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -139,6 +236,12 @@ export async function updateCompensation(
     employmentId: string;
     basicSalary?: number;
     remarks?: string | null;
+    /** ADR-0078 — edit the open row's pay structure. A pay-mode change requires the row's effective date
+     *  to be a period boundary AND rejects rows whose window a processed/closed run already relied on. */
+    payMode?: string;
+    paymentTerm?: string;
+    /** Pass null to clear the rate (monthly/custom_period only — daily/hourly must keep a rate). */
+    rateAmount?: number | null;
     /** New effective date (7c7c2f80) — open row only; overlap + closed-period rules apply. */
     validFrom?: string;
   },
@@ -169,6 +272,42 @@ export async function updateCompensation(
     if (p.remarks !== undefined) {
       set.remarks = p.remarks && p.remarks.trim() ? p.remarks.trim() : null;
       fieldsChanged.push('remarks');
+    }
+    // ADR-0078 — pay-structure edits on the open row. The rate consistency check runs against the row's
+    // RESULTING mode+rate pair, so a mode flip to daily without a rate (or a rate clear on a daily row)
+    // is rejected as one invalid combination.
+    const nextPayMode: PayMode =
+      p.payMode !== undefined ? normalizePayMode(p.payMode) : (row.payMode as PayMode);
+    const nextRate: string | null =
+      p.rateAmount !== undefined ? (p.rateAmount == null ? null : money(p.rateAmount)) : row.rateAmount;
+    assertRateForMode(nextPayMode, nextRate);
+    if (p.payMode !== undefined && nextPayMode !== (row.payMode as PayMode)) {
+      // D4 — the (possibly moved) effective date must be a period boundary…
+      const resultingFrom = p.validFrom !== undefined ? p.validFrom : row.validFrom;
+      if (!isPeriodBoundary(resultingFrom)) throw new PayModePeriodBoundaryError();
+      // …and a row whose window a PROCESSED/CLOSED run already relied on cannot change mode in place — a
+      // reprocess would recompute that period under a different structure than the one that paid it.
+      const processed = await processedPeriodsTx(tx, p.employmentId);
+      if (overlapsClosedPeriod(processed, row.validFrom, row.validTo)) {
+        throw new PayModePeriodBoundaryError(
+          'This salary record was used by a processed payroll run — its pay mode can no longer be changed',
+        );
+      }
+      set.payMode = nextPayMode;
+      fieldsChanged.push('payMode');
+    } else if (p.payMode !== undefined) {
+      // Same mode re-submitted (the edit form always posts it) — not a change; nothing to record.
+    }
+    if (p.paymentTerm !== undefined) {
+      const term = normalizePaymentTerm(p.paymentTerm);
+      if (term !== (row.paymentTerm as PayrollFrequency)) {
+        set.paymentTerm = term;
+        fieldsChanged.push('paymentTerm');
+      }
+    }
+    if (p.rateAmount !== undefined && nextRate !== row.rateAmount) {
+      set.rateAmount = nextRate;
+      fieldsChanged.push('rateAmount');
     }
     // Effective-date move. `prevAdjacent` is deliberately resolved BEFORE the main update so the
     // truncate/extend of the neighbour and the row's own move are ordered to satisfy the EXCLUDE
@@ -326,6 +465,45 @@ export function currentCompensation(ctx: SessionContext, employmentId: string) {
   });
 }
 
+export type EffectivePayStructure = {
+  payMode: PayMode;
+  paymentTerm: string;
+  /** Per-day / per-hour rate; null for a monthly (or custom_period) employee. */
+  rateAmount: string | null;
+};
+
+/**
+ * ADR-0078 step 4 — the effective pay structure for an employment: pay mode, payment term and rate. Reads
+ * the SAME open row the payroll engine joins (validTo IS NULL AND supersededAt IS NULL, core/payroll.ts) —
+ * deliberately NOT a date-effective read, which on a reprocess would take the mode from a historical record
+ * while the engine takes the money from the open one (mode from record A, money from record B). D4's
+ * period-boundary constraint on pay-mode changes is what keeps the open-row read honest. Null when the
+ * employment has no salary record yet.
+ */
+export function effectivePayStructure(
+  ctx: SessionContext,
+  employmentId: string,
+): Promise<EffectivePayStructure | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        payMode: compensation.payMode,
+        paymentTerm: compensation.paymentTerm,
+        rateAmount: compensation.rateAmount,
+      })
+      .from(compensation)
+      .where(
+        and(
+          eq(compensation.employmentId, employmentId),
+          isNull(compensation.validTo),
+          isNull(compensation.supersededAt),
+        ),
+      )
+      .limit(1);
+    return row ? { payMode: row.payMode as PayMode, paymentTerm: row.paymentTerm, rateAmount: row.rateAmount } : null;
+  });
+}
+
 export function compensationHistory(ctx: SessionContext, employmentId: string) {
   return withTenant(ctx, (tx) =>
     tx
@@ -341,6 +519,10 @@ export type CompensationHistoryRow = {
   basicSalary: string;
   currency: string;
   monthlyAllowance: string;
+  /** ADR-0078 — the salary structure in force for this record's window. */
+  payMode: PayMode;
+  paymentTerm: string;
+  rateAmount: string | null;
   remarks: string | null;
   validFrom: string;
   validTo: string | null;
@@ -372,6 +554,9 @@ export function compensationHistoryDetailed(
         basicSalary: compensation.basicSalary,
         currency: compensation.currency,
         monthlyAllowance: compensation.monthlyAllowance,
+        payMode: compensation.payMode,
+        paymentTerm: compensation.paymentTerm,
+        rateAmount: compensation.rateAmount,
         remarks: compensation.remarks,
         validFrom: compensation.validFrom,
         validTo: compensation.validTo,
