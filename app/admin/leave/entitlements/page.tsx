@@ -278,16 +278,23 @@ export default async function LeaveEntitlementsPage({
               <option value="inactive">{t('statusInactive')}</option>
             </select>
           </Field>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="paid" defaultChecked className="size-4 rounded" />
-            {t('paidLabel')}
-          </label>
-          {/* Leave Unit Configuration (e4980382): Day/Hour select beside Paid. Default Day. */}
+          {/* Leave Unit Configuration (e4980382 → dc3ec3c6): Day/Hour select sits BEFORE Paid in the final two
+              columns (Leave Unit column 5, Paid column 6), mirroring the edit form's Leave Unit → Paid order.
+              Default Day. */}
           <Field label={t('leaveUnitLabel')}>
             <select name="leaveUnit" defaultValue="day" className={inputCls}>
               <option value="day">{t('leaveUnitDay')}</option>
               <option value="hour">{t('leaveUnitHour')}</option>
             </select>
+          </Field>
+          {/* dc3ec3c6: Paid adopts the captioned Field + right-aligned checkbox pattern the edit form uses
+              (components/leave-type-panel.tsx), so it gets the same small grey caption as its neighbours and an
+              explicit aria-label instead of relying on the old bare wrapping <label>. defaultChecked stays —
+              dropping it would silently flip every new leave type's default from Paid to Unpaid. */}
+          <Field label={t('paidLabel')} className="justify-self-end">
+            <div className="flex h-9 items-center">
+              <input type="checkbox" name="paid" defaultChecked aria-label={t('paidLabel')} className="size-4 rounded" />
+            </div>
           </Field>
           <button className={btnPrimary}>{t('addType')}</button>
         </form>

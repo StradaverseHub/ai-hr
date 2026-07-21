@@ -99,9 +99,11 @@ export function NewCycleForm({
         <h3 className="mb-1 text-sm font-semibold">{te('eligibilityRulesTitle')}</h3>
         <p className="mb-3 text-xs text-muted-foreground">{te('fieldEligibility')}</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {/* Standardized dropdown behaviour (4dc4c3a5): every ChipMultiSelect gets R44's in-menu Select-all /
-              Clear-all + the collapsed "All selected" / "{n} selected" summary, matching the leave-type-panel
-              eligibility pickers so the control behaves identically everywhere it appears. */}
+          {/* 4dc4c3a5 → 0af0729d: the bulk (Select-all / Clear-all) + collapsed-summary props are OPT-IN
+              affordances of the shared ChipMultiSelect. This screen keeps all four on its three pickers because
+              the company list is dynamic and unbounded (one-click select-all and the "{n} selected" summary
+              genuinely matter here); the leave-type-panel eligibility pickers omit them — their short option
+              lists read best as a plain checkbox popover with the chips always visible. */}
           <Field label={te('fieldCompany')}>
             <ChipMultiSelect
               name="eligibilityCompanyId"

@@ -742,8 +742,24 @@ export function LeaveTypePanel({
       }
       return next;
     });
-  const cardHeaderBtn =
-    'flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/40';
+  // Active-section indicator (27136ea6): an OPEN card's header gets the accent wash + a bolder, slightly
+  // indented title so HR can tell at a glance which section(s) they are editing — the treatment the sidebar's
+  // active nav item already uses (nav-collapsible-group.tsx). "Active" means EXPANDED: the seven cards are
+  // independent accordions by design, so several headers can be highlighted at once. Notes:
+  //   - horizontal padding lives in each branch (pl-6 pr-4 vs px-4) — no tailwind-merge subtlety; pl-6 is what
+  //     nudges the title right (the chevron stays pinned by justify-between).
+  //   - [&_h3]:font-semibold bolds the CardTitle h3 from the button (specificity beats its own font-medium)
+  //     without touching the seven CardTitle anchors leave-type-config-categories.test.ts slices on.
+  //   - rounded-t-[1.25rem] mirrors Card's rounded-[1.25rem]: Card has no overflow-hidden, so an opaque header
+  //     background would otherwise paint square over the top corners.
+  //   - hover:bg-accent/80 keeps a visible hover cue that an open header is still clickable to collapse.
+  const cardHeaderBtn = (active: boolean) =>
+    cn(
+      'flex w-full items-center justify-between gap-2 py-3 text-left transition-colors',
+      active
+        ? 'rounded-t-[1.25rem] bg-accent pl-6 pr-4 text-accent-foreground [&_h3]:font-semibold hover:bg-accent/80'
+        : 'px-4 hover:bg-muted/40',
+    );
 
   // #25 visibility: a composable human summary of the eligibility rule (avoids a key-per-permutation
   // matrix across 6 locales). e.g. "Female only · ≥ 12 months service", or "Open to all employees".
@@ -867,7 +883,7 @@ export function LeaveTypePanel({
         <div className="space-y-3 border-t border-border/60 bg-muted/20 px-4 py-3">
           <Card>
             <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('general')} aria-expanded={!!openCards.general} aria-controls={`cat-general-${id}`} className={cardHeaderBtn}>
+              <button type="button" onClick={() => toggleCard('general')} aria-expanded={!!openCards.general} aria-controls={`cat-general-${id}`} className={cardHeaderBtn(!!openCards.general)}>
                 <CardTitle>{t('categoryGeneral')}</CardTitle>
                 <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.general && 'rotate-90')} />
               </button>
@@ -880,8 +896,9 @@ export function LeaveTypePanel({
               action={updateTypeAction}
               /* 6ef6e355 — responsive grid re-layout. Was a single `flex flex-wrap items-end gap-2` row where the
                  Paid checkbox sat wedged between text inputs and Description was a fixed oversized box. Now a
-                 breakpoint-aware grid: 1 col (mobile) → 2 (sm) → 4 (lg). Compact fields pack the top row, Paid is
-                 pushed to the far-right cell, Description spans the full width and flows fluid, and Save/Cancel get
+                 breakpoint-aware grid: 1 col (mobile) → 2 (sm) → 4 (lg). Compact fields pack the top row; Leave
+                 Unit and Paid share the last cell (13ec5d3b) so Paid sits beside the unit select instead of
+                 wrapping onto its own row, Description spans the full width and flows fluid, and Save/Cancel get
                  their own aligned full-width row. Cells wrap cleanly instead of compressing. Pure presentation —
                  no field, name attr, marker, server action or substrate changed. */
               className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-4"
@@ -920,7 +937,8 @@ export function LeaveTypePanel({
                 <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-full`} />
               </Field>
               {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. Placed ahead of
-                  Paid so the compact fields pack the first grid row and Paid lands in the last (right-most) cell. */}
+                  the Leave Unit + Paid pair so the compact fields pack the first grid row and that pair lands in
+                  the last (right-most) cell (13ec5d3b). */}
               <Field label={t('reasonLabel')}>
                 <input
                   name="reason"
@@ -938,34 +956,38 @@ export function LeaveTypePanel({
                   stored value so an unchanged rename re-posts it as a no-op. Semantic shift (flagged): leave unit
                   is now editable in edit mode with Reason, not always-on. */}
               <input type="hidden" name="leaveUnit" value="1" />
-              <Field label={t('leaveUnitLabel')}>
-                <select
-                  name="leaveUnitValue"
-                  defaultValue={leaveUnit === 'hour' ? 'hour' : 'day'}
-                  aria-label={t('leaveUnitLabel')}
-                  title={t('leaveUnitHelp')}
-                  className={`${inputCls} w-full`}
-                >
-                  <option value="day">{t('leaveUnitDay')}</option>
-                  <option value="hour">{t('leaveUnitHour')}</option>
-                </select>
-              </Field>
-              {/* Edit Paid/Unpaid on rename (feedback 75953777): the Paid/Unpaid flag lives on the rename form
-                  so a mis-set type can be corrected without recreating it. The `identity=1` marker above means an
-                  unchecked box is a real "unpaid" choice, not "untouched". Applies to future leave only.
-                  6ef6e355: pushed to the right edge of its cell (`justify-self-end`) so it no longer sits squeezed
-                  between text inputs. */}
-              <Field label={t('paidLabel')} className="justify-self-end">
-                <div className="flex h-9 items-center">
-                  <input
-                    type="checkbox"
-                    name="paid"
-                    defaultChecked={paid}
-                    aria-label={t('paidLabel')}
-                    className="size-4 rounded"
-                  />
-                </div>
-              </Field>
+              {/* 13ec5d3b: Leave Unit and Paid are co-located inside ONE grid cell (flex row) so Paid sits
+                  immediately to the unit select's right instead of orphaning onto its own grid row on lg. */}
+              <div className="flex items-end gap-3">
+                <Field label={t('leaveUnitLabel')} className="min-w-0 flex-1">
+                  <select
+                    name="leaveUnitValue"
+                    defaultValue={leaveUnit === 'hour' ? 'hour' : 'day'}
+                    aria-label={t('leaveUnitLabel')}
+                    title={t('leaveUnitHelp')}
+                    className={`${inputCls} w-full`}
+                  >
+                    <option value="day">{t('leaveUnitDay')}</option>
+                    <option value="hour">{t('leaveUnitHour')}</option>
+                  </select>
+                </Field>
+                {/* Edit Paid/Unpaid on rename (feedback 75953777): the Paid/Unpaid flag lives on the rename form
+                    so a mis-set type can be corrected without recreating it. The `identity=1` marker above means an
+                    unchecked box is a real "unpaid" choice, not "untouched". Applies to future leave only.
+                    13ec5d3b: shares this cell with Leave Unit (replacing 6ef6e355's justify-self-end far-right
+                    cell) so the pair reads Leave Unit → Paid side by side. */}
+                <Field label={t('paidLabel')}>
+                  <div className="flex h-9 items-center">
+                    <input
+                      type="checkbox"
+                      name="paid"
+                      defaultChecked={paid}
+                      aria-label={t('paidLabel')}
+                      className="size-4 rounded"
+                    />
+                  </div>
+                </Field>
+              </div>
               <Field label={t('descriptionLabel')} className="col-span-full">
                 {/* Multiline (fbcadc71): textarea so Enter inserts a newline instead of submitting the rename form;
                     h-auto/min-h/resize-y overrides inputCls's fixed h-9 so it shows ~3 lines, grows via the drag
@@ -1054,7 +1076,7 @@ export function LeaveTypePanel({
           </Card>
           <Card>
             <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('eligibility')} aria-expanded={!!openCards.eligibility} aria-controls={`cat-eligibility-${id}`} className={cardHeaderBtn}>
+              <button type="button" onClick={() => toggleCard('eligibility')} aria-expanded={!!openCards.eligibility} aria-controls={`cat-eligibility-${id}`} className={cardHeaderBtn(!!openCards.eligibility)}>
                 <CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>
                 <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.eligibility && 'rotate-90')} />
               </button>
@@ -1082,12 +1104,15 @@ export function LeaveTypePanel({
                 <input type="hidden" name="name" value={name} />
                 {/* marker: tells the action to touch the eligibility column (tri-state guard) */}
                 <input type="hidden" name="eligibility" value="1" />
-                {/* Multi-select (#badc5966 → 2cc30077): compact ChipMultiSelect pickers per field, posting
+                {/* Multi-select (#badc5966 → 2cc30077 → 0af0729d): ChipMultiSelect pickers per field, posting
                     repeated name="gender" / name="maritalStatus" (one hidden input per value — identical
                     FormData shape to the old checkbox group, so updateLeaveTypeAction's getAll() is unchanged).
                     An employee qualifies if their attribute matches ANY selected value; select nothing ⇒ no
-                    restriction on that field (open to all). Select-all / clear-all + a collapsed "All selected"
-                    / "{n} selected" summary keep the editor tidy as the option lists grow. */}
+                    restriction on that field (open to all). 0af0729d: the picker opens a popover listing the
+                    FULL option list with checkbox indicators (stored values pre-checked); the bulk Select-all /
+                    Clear-all and collapsed "All selected" / "{n} selected" summary props are deliberately NOT
+                    passed here — these two lists are short, so the checklist reads clean and the chips (with
+                    their remove buttons) are always visible. */}
                 <Field label={t('eligibilityGenderLabel')}>
                   <ChipMultiSelect
                     name="gender"
@@ -1095,10 +1120,6 @@ export function LeaveTypePanel({
                     defaultSelected={asEligList(eligibility?.gender)}
                     addPlaceholder={t('eligibilityChipAddPlaceholder')}
                     removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
-                    selectAllLabel={t('eligibilitySelectAll')}
-                    clearAllLabel={t('eligibilityClearAll')}
-                    allSelectedLabel={t('eligibilityAllSelected')}
-                    countLabelFor={(n) => t('eligibilityNSelected', { count: n })}
                   />
                 </Field>
                 <Field label={t('eligibilityMaritalLabel')}>
@@ -1108,10 +1129,6 @@ export function LeaveTypePanel({
                     defaultSelected={asEligList(eligibility?.maritalStatus)}
                     addPlaceholder={t('eligibilityChipAddPlaceholder')}
                     removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
-                    selectAllLabel={t('eligibilitySelectAll')}
-                    clearAllLabel={t('eligibilityClearAll')}
-                    allSelectedLabel={t('eligibilityAllSelected')}
-                    countLabelFor={(n) => t('eligibilityNSelected', { count: n })}
                   />
                 </Field>
                 <Field label={t('eligibilityMinServiceLabel')}>
@@ -1624,7 +1641,7 @@ export function LeaveTypePanel({
           </Card>
           <Card>
             <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('ess')} aria-expanded={!!openCards.ess} aria-controls={`cat-ess-${id}`} className={cardHeaderBtn}>
+              <button type="button" onClick={() => toggleCard('ess')} aria-expanded={!!openCards.ess} aria-controls={`cat-ess-${id}`} className={cardHeaderBtn(!!openCards.ess)}>
                 <CardTitle>{t('categoryEssPolicy')}</CardTitle>
                 <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.ess && 'rotate-90')} />
               </button>
@@ -1916,7 +1933,7 @@ export function LeaveTypePanel({
           </Card>
           <Card>
             <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('approval')} aria-expanded={!!openCards.approval} aria-controls={`cat-approval-${id}`} className={cardHeaderBtn}>
+              <button type="button" onClick={() => toggleCard('approval')} aria-expanded={!!openCards.approval} aria-controls={`cat-approval-${id}`} className={cardHeaderBtn(!!openCards.approval)}>
                 <CardTitle>{t('categoryApproval')}</CardTitle>
                 <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.approval && 'rotate-90')} />
               </button>
@@ -1971,7 +1988,7 @@ export function LeaveTypePanel({
           </Card>
           <Card>
             <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('display')} aria-expanded={!!openCards.display} aria-controls={`cat-display-${id}`} className={cardHeaderBtn}>
+              <button type="button" onClick={() => toggleCard('display')} aria-expanded={!!openCards.display} aria-controls={`cat-display-${id}`} className={cardHeaderBtn(!!openCards.display)}>
                 <CardTitle>{t('categoryDisplay')}</CardTitle>
                 <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.display && 'rotate-90')} />
               </button>
@@ -2156,7 +2173,7 @@ export function LeaveTypePanel({
           </Card>
           <Card>
             <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('calculation')} aria-expanded={!!openCards.calculation} aria-controls={`cat-calculation-${id}`} className={cardHeaderBtn}>
+              <button type="button" onClick={() => toggleCard('calculation')} aria-expanded={!!openCards.calculation} aria-controls={`cat-calculation-${id}`} className={cardHeaderBtn(!!openCards.calculation)}>
                 <CardTitle>{t('categoryCalculation')}</CardTitle>
                 <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.calculation && 'rotate-90')} />
               </button>
@@ -2222,7 +2239,7 @@ export function LeaveTypePanel({
           </Card>
           <Card>
             <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('custom')} aria-expanded={!!openCards.custom} aria-controls={`cat-custom-${id}`} className={cardHeaderBtn}>
+              <button type="button" onClick={() => toggleCard('custom')} aria-expanded={!!openCards.custom} aria-controls={`cat-custom-${id}`} className={cardHeaderBtn(!!openCards.custom)}>
                 <CardTitle>{t('categoryCustom')}</CardTitle>
                 <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.custom && 'rotate-90')} />
               </button>
