@@ -123,6 +123,60 @@ sudo visudo -cf /etc/sudoers.d/aihr-restart   # must print "parsed OK"
 
 Edit `deploy/aihr-sudoers` first if your deploy user isn't `ubuntu` or `systemctl` isn't at `/usr/bin/systemctl`. Without this, just run `sudo systemctl restart aihr` yourself after each `deploy.sh`.
 
+## 5b. Scheduled sweeps (REQUIRED — the app does not run these itself)
+
+Four routine jobs keep leave and reviews correct. **Nothing in the app starts them.** Without this step
+they never run, and the failure is silent: leave quietly stops accruing, expired leave is never forfeited,
+probation and contract reviews are never opened, and the notifications that depend on the review sweep are
+only dispatched when an admin happens to load a page. The demo server ran for months in exactly that state.
+
+| Job | Schedule (server-local) | What it does |
+| --- | --- | --- |
+| `scripts/accrue-earned.ts` | `0 2 1 * *` | Tops earned-leave policies up to the amount earned |
+| `scripts/review-sweep.ts` | `0 3 * * *` | Opens due probation/contract reviews, sends reminders, dispatches notifications |
+| `scripts/expire-aged-leave.ts` | `30 3 * * *` | Forfeits earned leave past its configured age |
+| `scripts/expire-carry.ts` | `0 3 1 4 *` | Forfeits carried-forward leave, just after the 31 Mar expiry |
+
+All four are idempotent — re-running grants, opens and forfeits nothing extra.
+
+**The host timezone matters.** The scripts resolve "today" via `todayInKualaLumpur()`, and the schedules
+above are small-hours local times. Confirm the host agrees before installing:
+
+```bash
+timedatectl | grep "Time zone"      # expect Asia/Kuala_Lumpur (+08)
+```
+
+Install as the deploy user (no root needed):
+
+```bash
+crontab -e
+```
+
+```cron
+0 2 1 * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/accrue-earned.ts >> /home/ubuntu/aihr-cron-logs/accrue.log 2>&1
+0 3 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/review-sweep.ts >> /home/ubuntu/aihr-cron-logs/review-sweep.log 2>&1
+30 3 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/expire-aged-leave.ts >> /home/ubuntu/aihr-cron-logs/expire-aged.log 2>&1
+0 3 1 4 * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/expire-carry.ts >> /home/ubuntu/aihr-cron-logs/expire-carry.log 2>&1
+```
+
+First `mkdir -p /home/ubuntu/aihr-cron-logs`. Keep the logs **outside** `/opt/ai-hr`: `improve:release`
+rsyncs with `--delete` and would wipe anything it doesn't exclude.
+
+Use the absolute node path — cron's `PATH` does not include `/opt/node20/bin`. Do **not** rely on the
+`pnpm leave:*` scripts here: they load `.env.local`, which does not exist on a server.
+
+Verify:
+
+```bash
+crontab -l                                   # the four lines
+systemctl is-active cron                     # active
+tail -f /home/ubuntu/aihr-cron-logs/review-sweep.log   # after the next 03:00
+```
+
+A reboot spanning a trigger means cron skips that run — it does not catch up. For the monthly and annual
+jobs that is worth guarding with systemd timers (`OnCalendar` + `Persistent=true`) instead, which needs
+root and additional `aihr-sudoers` entries for `daemon-reload` and `enable`.
+
 ## 6. Open the firewall + share
 
 ```bash
