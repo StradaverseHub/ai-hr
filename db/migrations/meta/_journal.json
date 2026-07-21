@@ -1681,6 +1681,13 @@
       "when": 1781862387000,
       "tag": "0287_leave_approval_escalation",
       "breakpoints": true
+    },
+    {
+      "idx": 288,
+      "version": "7",
+      "when": 1781862388000,
+      "tag": "0288_approval_history",
+      "breakpoints": true
     }
   ]
 }

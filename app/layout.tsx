@@ -31,6 +31,8 @@ import { NotificationBell } from '@/components/notification-bell';
 import { NotificationCenter } from '@/components/notification-center';
 import { CommandBar } from '@/components/command-bar';
 import { dispatchNotifications, listNotifications, unreadNotificationCount } from '@/core/notifications';
+import { listApprovalHistory } from '@/core/read';
+import { shapeApprovalHistoryItems } from '@/lib/approval-history';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 
 const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap' });
@@ -99,6 +101,17 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   if (notifEnabled && isAdmin(session)) await dispatchNotifications(session).catch(() => {});
   const notifUnread = notifEnabled ? await unreadNotificationCount(session) : 0;
   const notifItems = notifEnabled ? await listNotifications(session, undefined, { limit: 12 }) : [];
+  // Approval history tab (44a89810): recent team decisions for the bell's History tab. Fetched ONLY when
+  // the bell is on AND the viewer can approve — no dead query for regular employees or in flag-off mode.
+  const approvalHistory =
+    notifEnabled && canApprove
+      ? shapeApprovalHistoryItems(
+          await listApprovalHistory(session, {
+            from: new Date(Date.now() - 90 * 86400000).toISOString(),
+            limit: 10,
+          }),
+        )
+      : [];
   return (
     <html
       lang={locale}
@@ -142,7 +155,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
                   <div className="h-5 w-px bg-border" />
                   {notifEnabled ? (
-                    <NotificationCenter unread={notifUnread} items={notifItems} />
+                    <NotificationCenter
+                      unread={notifUnread}
+                      items={notifItems}
+                      history={approvalHistory}
+                      canApprove={canApprove}
+                    />
                   ) : (
                     canApprove && <NotificationBell count={pendingApprovals} />
                   )}
