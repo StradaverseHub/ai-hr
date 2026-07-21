@@ -3,6 +3,12 @@ import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, or, sql, 
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
+  aggregateTypesOfModule,
+  isApprovalHistoryAction,
+  type ApprovalHistoryAction,
+  type ApprovalHistoryModule,
+} from '../lib/approval-history';
+import {
   AGED_FORFEIT_REASON,
   POLICY_RECALC_REASON_PREFIX,
   earnedCycleStart,
@@ -2620,6 +2626,103 @@ export function auditActors(
       )
       .orderBy(person.fullName),
   ) as Promise<{ actorId: string | null; actorName: string | null }[]>;
+}
+
+// ─── Approval activity history (bell History tab + /approvals/history) ───────────────────────────────
+
+export type ApprovalHistoryRow = {
+  id: string;
+  aggregateType: string;
+  aggregateId: string;
+  eventType: string;
+  occurredAt: Date;
+  subjectEmploymentId: string | null;
+  subjectName: string | null;
+  deciderName: string | null;
+  isAuto: boolean;
+  onBehalfOfEmploymentId: string | null;
+  onBehalfOfName: string | null;
+  payload: unknown;
+};
+
+export type ApprovalHistoryFilters = {
+  /** ISO timestamptz bound, inclusive. */
+  from?: string;
+  /** ISO timestamptz bound, exclusive. */
+  to?: string;
+  /** Area filter — mapped to the aggregate-type set (lib/approval-history). */
+  module?: ApprovalHistoryModule;
+  /** Coarse action filter: approved / rejected / other. */
+  action?: ApprovalHistoryAction;
+  /** The decider's EMPLOYMENT id — mapped to the actor app_user id server-side (the viewer may not be
+   *  able to read a delegate's employment under RLS, so the mapping cannot happen app-side). */
+  deciderEmploymentId?: string;
+  limit?: number;
+  offset?: number;
+};
+
+/**
+ * The approval decision log for the viewer's team (feedback 44a89810). Thin wrapper over the
+ * SECURITY-DEFINER `app.approval_history()` (migration 0288) — the same vetted-boundary pattern as
+ * `app.self_delegations`: the function itself scopes visibility (admin = whole tenant; non-admin = the
+ * recursive administrative down-walk, mirroring the domain_event read policy) and resolves decider /
+ * subject / on-behalf NAMES under definer privileges, because person RLS would NULL a peer-manager
+ * delegate's name for a non-admin viewer (the exact gap 0196 documents). "On behalf of" is DERIVED at
+ * read time from reporting_line `delegate` edges — no write-path change, so historical rows are labelled
+ * too. The viewer's own requests never appear (team log, not a self log). Read-only (no DomainEvent).
+ *
+ * Why not extend `auditEvents` (its conventions ARE reused: action filter, from/to, type-set,
+ * limit/offset): its plain person join yields NULL names for non-admin viewers and the audit page is
+ * admin-only — this read must go through the definer boundary.
+ */
+export function listApprovalHistory(
+  ctx: SessionContext,
+  f: ApprovalHistoryFilters = {},
+): Promise<ApprovalHistoryRow[]> {
+  const typesCsv = f.module ? aggregateTypesOfModule[f.module].join(',') : null;
+  const action = f.action && isApprovalHistoryAction(f.action) ? f.action : null;
+  const limit = Math.min(Math.max(f.limit ?? 50, 1), 500);
+  const offset = Math.max(f.offset ?? 0, 0);
+  return withTenant(ctx, async (tx) => {
+    const res = await tx.execute(sql`
+      SELECT * FROM app.approval_history(
+        ${f.from ?? null}::timestamptz,
+        ${f.to ?? null}::timestamptz,
+        string_to_array(${typesCsv}::text, ','),
+        ${action}::text,
+        ${f.deciderEmploymentId ?? null}::uuid,
+        ${limit}::int,
+        ${offset}::int
+      )`);
+    const raws = res as unknown as {
+      id: string;
+      aggregate_type: string;
+      aggregate_id: string;
+      event_type: string;
+      occurred_at: Date;
+      subject_employment_id: string | null;
+      subject_name: string | null;
+      decider_name: string | null;
+      is_auto: boolean;
+      on_behalf_of_employment_id: string | null;
+      on_behalf_of_name: string | null;
+      payload: unknown;
+    }[];
+    return raws.map((r) => ({
+      id: r.id,
+      aggregateType: r.aggregate_type,
+      aggregateId: r.aggregate_id,
+      eventType: r.event_type,
+      occurredAt: r.occurred_at instanceof Date ? r.occurred_at : new Date(r.occurred_at),
+      subjectEmploymentId: r.subject_employment_id,
+      subjectName: r.subject_name,
+      deciderName: r.decider_name,
+      isAuto: r.is_auto,
+      onBehalfOfEmploymentId: r.on_behalf_of_employment_id,
+      onBehalfOfName: r.on_behalf_of_name,
+      payload: r.payload,
+    }));
+  });
 }
 
 /** Change history for one employee — every event touching their employment, person, statutory
