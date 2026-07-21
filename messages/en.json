@@ -3456,6 +3456,7 @@
       "gradesTitle": "Grades",
       "gradesHelp": "Seniority bands. Scope a leave policy to a grade to give that grade a different entitlement; ungraded employees use the company default.",
       "gradesEmpty": "No grades yet",
+      "gradesToggle": "Show or hide the grades list",
       "gradeRank": "Rank {rank}",
       "gradeCodeLabel": "Code",
       "gradeNameLabel": "Name",

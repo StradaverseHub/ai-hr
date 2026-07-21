@@ -3430,6 +3430,7 @@
       "gradesTitle": "职级",
       "gradesHelp": "资历职级。将假期政策限定到某职级，可为该职级设定不同的额度；无职级的员工使用公司默认。",
       "gradesEmpty": "尚无职级",
+      "gradesToggle": "显示或隐藏职级列表",
       "gradeRank": "排序 {rank}",
       "gradeCodeLabel": "代码",
       "gradeNameLabel": "名称",
