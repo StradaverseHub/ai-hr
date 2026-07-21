@@ -138,7 +138,8 @@
     "profileOptions": "ตัวเลือกโปรไฟล์",
     "delegations": "การมอบหมาย",
     "dashboardCardConfig": "การ์ดแดชบอร์ด",
-    "scheduledActions": "งานตามกำหนดเวลา"
+    "scheduledActions": "งานตามกำหนดเวลา",
+    "systemSettings": "การตั้งค่าระบบ"
   },
   "dashboard": {
     "title": "แดชบอร์ด",

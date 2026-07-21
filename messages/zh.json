@@ -138,7 +138,8 @@
     "profileOptions": "档案选项",
     "delegations": "委托",
     "dashboardCardConfig": "仪表板卡片",
-    "scheduledActions": "计划任务"
+    "scheduledActions": "计划任务",
+    "systemSettings": "系统设置"
   },
   "dashboard": {
     "title": "仪表盘",

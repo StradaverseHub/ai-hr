@@ -138,7 +138,8 @@
     "profileOptions": "Profile Options",
     "delegations": "Delegations",
     "dashboardCardConfig": "Dashboard cards",
-    "scheduledActions": "Scheduled actions"
+    "scheduledActions": "Scheduled actions",
+    "systemSettings": "System Settings"
   },
   "dashboard": {
     "title": "Dashboard",

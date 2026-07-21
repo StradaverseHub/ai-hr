@@ -138,7 +138,8 @@
     "profileOptions": "சுயவிவர விருப்பங்கள்",
     "delegations": "ஒப்படைப்புகள்",
     "dashboardCardConfig": "டாஷ்போர்டு அட்டைகள்",
-    "scheduledActions": "திட்டமிட்ட பணிகள்"
+    "scheduledActions": "திட்டமிட்ட பணிகள்",
+    "systemSettings": "அமைப்பு அமைவுகள்"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",
