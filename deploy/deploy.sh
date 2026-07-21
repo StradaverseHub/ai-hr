@@ -29,7 +29,15 @@ else
 fi
 
 echo "▸ Building production server…"
-pnpm build
+# Heap headroom for `next build`'s TypeScript pass. Node's default old-space cap (~2 GB on this box) was
+# hit on 2026-07-21 deploying R52: compilation succeeded, then the build died with "Ineffective
+# mark-compacts near heap limit" partway through "Running TypeScript" at ~1.95 GB. Nothing was wrong with
+# the code — tsc --noEmit passes locally and in the clean-room gate; the project simply outgrew the
+# default. deploy.sh runs in an SSH session, NOT under aihr.service's cgroup, so that unit's MemoryMax
+# does not apply here; the box has ~3 GB free plus swap. If this OOMs again, raise the number rather than
+# setting typescript.ignoreBuildErrors — the build's type pass catches RSC client/server boundary errors
+# that tsc alone does not.
+NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=3072" pnpm build
 
 echo "▸ Applying database migrations (as ai_hr_owner)…"
 pnpm db:migrate
