@@ -359,6 +359,10 @@ export const appUser = pgTable(
     // employee's preferred vertical section order; NULL = system default. Written only through the
     // SECURITY DEFINER app.dashboard_layout_* seam so a user can touch only their own row.
     dashboardLayout: jsonb('dashboard_layout'),
+    // Login lifecycle (0279): non-null = this login is archived (switched off by an administrator) and
+    // app.principal_by_subject refuses to resolve it. Reversible via Restore; permissions are untouched.
+    // A leaver is blocked separately and LIVE off their employment end dates — see app.login_blocked.
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index('app_user_tenant_idx').on(t.tenantId)],

@@ -45,12 +45,22 @@ function toSession(userId: string, principal: PrincipalRow): SessionContext {
  * identity instead of throwing an uncaught `TypeError: ... reading 'grants'` on every request. Only
  * when no candidate id resolves at all (e.g. the DB isn't seeded) does it throw a CLEAR, typed error.
  *
- * Pure + injectable (`lookup`) so the unknown-id path is unit-testable without a request context.
+ * BLOCKED ids fail CLOSED and must NOT use that fall-through (0279). An archived login, or one whose
+ * person has left, still RESOLVES here — app.principal() is deliberately left unfiltered — so if the
+ * filter lived in the SQL instead, an archived cookie identity would fall through to DEV_USER_ID, i.e.
+ * normally the seeded GROUP ADMIN. Archiving a user would then ESCALATE their privileges rather than
+ * block them. And this path is not dev-only: demoSwitcherEnabled() is true in a real build whenever
+ * ALLOW_DEMO_SESSION is set. So: an id that resolves AND is blocked throws AuthRequiredError
+ * immediately (→ /login via app/layout.tsx); an id that does not resolve at all still self-heals.
+ *
+ * Pure + injectable (`lookup`, `blocked`) so both paths are unit-testable without a request context.
+ * `blocked` defaults to never-blocked so existing 3-arg callers keep their pinned behaviour.
  */
 export async function resolveDevPrincipal(
   lookup: (id: string) => Promise<PrincipalRow[]>,
   cookieUser: string | undefined,
   fallback: string | undefined,
+  blocked: (id: string) => Promise<boolean> = async () => false,
 ): Promise<SessionContext> {
   const ids = [...new Set([cookieUser, fallback].filter((v): v is string => Boolean(v)))];
   if (ids.length === 0) {
@@ -58,7 +68,13 @@ export async function resolveDevPrincipal(
   }
   for (const id of ids) {
     const [principal] = await lookup(id);
-    if (principal) return toSession(id, principal);
+    // Unknown id → try the next candidate (the self-heal). Known-but-blocked → stop here, never
+    // continue to the fallback identity: continuing is the privilege escalation described above.
+    if (!principal) continue;
+    if (await blocked(id)) {
+      throw new AuthRequiredError('This login has been archived or its employment has ended.');
+    }
+    return toSession(id, principal);
   }
   throw new Error(
     `No valid dev principal (tried ${ids.join(', ')}) — run \`pnpm db:seed\`, then pick an identity.`,
@@ -90,7 +106,12 @@ export async function getSession(): Promise<SessionContext> {
       client<PrincipalRow[]>`
         select tenant_id, person_id, grants from app.principal(${id}::uuid)
       `;
-    return resolveDevPrincipal(lookup, cookieUser, fallback);
+    // Separate lookup, NOT a filter inside app.principal — see resolveDevPrincipal's header.
+    const blocked = async (id: string) => {
+      const [row] = await client<{ blocked: boolean }[]>`select app.login_blocked(${id}::uuid) as blocked`;
+      return Boolean(row?.blocked);
+    };
+    return resolveDevPrincipal(lookup, cookieUser, fallback, blocked);
   }
 
   // Production: WorkOS is the auth. Imported lazily so the dev/test path never loads the WorkOS SDK.
