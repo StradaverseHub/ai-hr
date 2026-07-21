@@ -5,7 +5,7 @@
  */
 import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
+import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } from '../db/events';
 import { nextEmployeeCode } from './comp';
 import { generateEmployeeCode } from './employee-id-config';
 import { requireEmployeeCode } from '../lib/employee-code';
@@ -340,6 +340,9 @@ export async function transferEmployee(
     // (cross-company coherence — RLS checks assignment and location independently, so it can't enforce
     // this; the service does).
     locationId?: string | null;
+    /** Movement tab redesign (78853b97): optional classification tag merged into the event payload as
+     *  payload.movement (see db/events.ts). Existing callers pass nothing — payload unchanged. */
+    movement?: MovementTag;
   },
 ) {
   return withTenant(ctx, async (tx) => {
@@ -404,6 +407,8 @@ export async function transferEmployee(
         from: { departmentId: cur.departmentId, locationId: cur.locationId },
         to: { departmentId: p.departmentId ?? cur.departmentId, locationId: nextLocationId },
         effectiveDate: p.effectiveDate,
+        // 78853b97 — movement classification tag (additive; absent for legacy callers).
+        ...(p.movement ? { movement: p.movement } : {}),
       },
     });
     return { assignmentId: next.id };
@@ -1331,18 +1336,27 @@ export async function setEmploymentHolidayCalendar(
 }
 
 /** ADR-0041 2E: set an employment's seniority grade (drives grade-scoped leave entitlements). Pass null
- *  to clear. The grade applies to future grants/accruals; past ledger entries are untouched. */
+ *  to clear. The grade applies to future grants/accruals; past ledger entries are untouched.
+ *  78853b97 (Movement tab): no-ops when the grade is unchanged (returns { changed: false }, no event —
+ *  matching this writer's long-documented contract at its call sites); accepts an optional caller tx
+ *  (the exact run(outerTx) pattern of core/comp.ts setCompensation) so a Promotion/Demotion can change
+ *  assignment + grade atomically in ONE transaction; and takes an optional movement classification tag
+ *  merged into the event payload. Existing callers pass neither — behaviour unchanged for real edits. */
 export async function setEmploymentGrade(
   ctx: SessionContext,
-  p: { employmentId: string; gradeId: string | null },
+  p: { employmentId: string; gradeId: string | null; movement?: MovementTag },
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const [before] = await tx
       .select({ gradeId: employment.gradeId })
       .from(employment)
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!before) throw new Error('Employment not found');
+    if ((before.gradeId ?? null) === (p.gradeId ?? null)) {
+      return { id: p.employmentId, changed: false as const };
+    }
     await tx.update(employment).set({ gradeId: p.gradeId }).where(eq(employment.id, p.employmentId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -1351,10 +1365,11 @@ export async function setEmploymentGrade(
       eventType: 'employment.grade.changed',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { before: before.gradeId, after: p.gradeId },
+      payload: { before: before.gradeId, after: p.gradeId, ...(p.movement ? { movement: p.movement } : {}) },
     });
-    return { id: p.employmentId };
-  });
+    return { id: p.employmentId, changed: true as const };
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 /**
@@ -1383,9 +1398,14 @@ export async function setEmploymentAssignment(
     businessUnitId?: string | null;
     employmentType?: EmploymentTypeValue;
     status?: AssignmentStatusValue;
+    /** 78853b97 — optional movement classification tag merged into the event payload (see db/events.ts). */
+    movement?: MovementTag;
   },
+  /** 78853b97 — optional caller transaction (run(outerTx) pattern, as in core/comp.ts setCompensation)
+   *  so a Promotion/Demotion can pair this with setEmploymentGrade atomically. */
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const [cur] = await tx
       .select()
       .from(assignment)
@@ -1480,10 +1500,13 @@ export async function setEmploymentAssignment(
           employmentType: nextEmploymentType,
           status: nextStatus,
         },
+        // 78853b97 — movement classification tag (additive; absent for legacy callers).
+        ...(p.movement ? { movement: p.movement } : {}),
       },
     });
     return { assignmentId: next.id, changed: true as const };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 /**
@@ -1536,6 +1559,9 @@ export type EmploymentInfoInput = {
   orgTeam?: string | null;
   orgBase?: string | null;
   employmentCategory?: string | null;
+  /** 78853b97 — optional movement classification tag merged into the event payload (see db/events.ts).
+   *  NOT a column: never enters the write set, only the audit payload. */
+  movement?: MovementTag;
 };
 
 const EMPLOYMENT_INFO_TEXT_FIELDS = [
@@ -1773,7 +1799,7 @@ export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoIn
       eventType: 'employment.info.updated',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { fields: Object.keys(set), before, after },
+      payload: { fields: Object.keys(set), before, after, ...(p.movement ? { movement: p.movement } : {}) },
     });
     return { id: p.employmentId };
   });

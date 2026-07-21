@@ -4,7 +4,7 @@
  */
 import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { actorOf, appendEvent } from '../db/events';
+import { actorOf, appendEvent, type MovementTag } from '../db/events';
 import {
   appUser,
   compensation,
@@ -123,6 +123,10 @@ export async function setCompensation(
     /** Per-day / per-hour rate (RM). Pass null to clear it (only valid for monthly/custom_period). */
     rateAmount?: number | null;
     effectiveFrom: string;
+    /** 78853b97 — optional movement classification tag. Only `type` is merged into the event payload:
+     *  the tag NEVER carries pay or remark text for comp events (ADR-0030 redact-to-reference — remarks
+     *  live on the compensation row and are reconstructed at read time). */
+    movement?: MovementTag;
   },
   /** Optional caller transaction — pass it to make this write participate in an enclosing
    *  transaction (e.g. the performance pay-seam enact) so it commits/rolls back atomically. */
@@ -204,8 +208,13 @@ export async function setCompensation(
       subjectEmploymentId: p.employmentId,
       // PDPA redact-to-reference (ADR-0030 Layer 0): the salary AND the remarks text live on
       // compensation[aggregateId]; the event keeps who/what/when + a reference, never cleartext pay or
-      // remark text in the append-only log.
-      payload: { employmentId: p.employmentId, effectiveFrom: p.effectiveFrom, fieldsChanged },
+      // remark text in the append-only log. The 78853b97 movement tag is stripped to its `type` alone.
+      payload: {
+        employmentId: p.employmentId,
+        effectiveFrom: p.effectiveFrom,
+        fieldsChanged,
+        ...(p.movement ? { movement: { type: p.movement.type } } : {}),
+      },
     });
     return { compensationId: row.id };
   };

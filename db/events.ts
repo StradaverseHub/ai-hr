@@ -9,6 +9,23 @@ import type { SessionContext, Tx } from './client';
 
 export type Actor = { type: 'user' | 'system' | 'agent' | 'external'; id?: string };
 
+/**
+ * Movement tab redesign (78853b97) — an OPTIONAL classification tag a writer merges into its event
+ * payload as `payload.movement`. Employment History is a read-model projection over this ledger; the
+ * tag records the INTENT behind a change (Promotion vs a plain assignment edit) at the single entry
+ * point that knows it (core/movement.ts createMovementEvent). Untagged events keep their factual
+ * fallback labels, so the tag is never required. `secondary` marks the companion event of a paired
+ * write (e.g. the grade half of a Promotion) so the history renders ONE row per movement. Comp events
+ * never carry `remarks` in the tag (ADR-0030 redact-to-reference — remarks live on the compensation
+ * row); no key here is on the PII ban list.
+ */
+export type MovementTag = {
+  type: string;
+  remarks?: string | null;
+  endDate?: string | null;
+  secondary?: boolean;
+};
+
 export type AppendEventArgs = {
   tenantId: string;
   aggregateType: string;

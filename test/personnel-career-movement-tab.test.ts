@@ -1,14 +1,11 @@
 /**
- * Career Movement tab (feedback 5296d984) — the Personnel (Admin) employee-detail page must expose a
- * dedicated "Career Movement" tab that centralises the employment-lifecycle actions previously buried in
- * the Employment (`job`) tab: Assignment History, Transfer (Effective-Dated) and Terminate. The section
- * cards are relocated WHOLE — the const definitions (assignmentHistoryCard, transferTerminateCards which
- * bundles BOTH transferAction and terminateAction) stay byte-identical; only the render reference moves.
- * The Employment tab must no longer render the relocated cards; it keeps reporting lines + delegations.
- *
- * A source-static test (precedent: test/personnel-attendance-tab.test.ts, test/personnel-bank-statutory-tab.test.ts)
- * is the cheapest guard against a future refactor silently un-relocating a card or dropping the new tab.
- * It also pins the i18n label present in all six locales so tab navigation never renders a raw key.
+ * Movement tab — Employment History redesign (78853b97, supersedes the 5296d984 relocation checks).
+ * The Personnel (Admin) Movement tab is now ONE clean screen: an Employment History timeline
+ * (employmentHistoryCard — a Hired-first projection over the domain_event ledger, header WITHOUT a row
+ * count), a per-row View detail (movementDetailCard) and a single New Event entry point (newEventCard)
+ * that folds in the former Transfer / Terminate / Blacklist boxes. This source-static suite (precedent:
+ * test/personnel-attendance-tab.test.ts) guards the panel composition, the preserved deep-link anchor,
+ * the static event-type label map (no dynamic t() keys) and the six-locale i18n coverage.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -35,65 +32,93 @@ function panelBody(key: string): string {
   return PAGE.slice(from, PAGE.indexOf('    ),', from) + 6);
 }
 
-describe('Personnel — Career Movement tab (5296d984)', () => {
-  it('registers the career-movement tab in the tab strip', () => {
+describe('Personnel — Movement tab / Employment History (78853b97)', () => {
+  it('registers the career-movement tab in the tab strip, after Employment (job)', () => {
     expect(PAGE.includes("{ key: 'careerMovement', label: t('tabs.careerMovement') }")).toBe(true);
-    // The union type the tab array is annotated with must include the key too.
-    expect(PAGE.includes("'careerMovement'")).toBe(true);
-  });
-
-  it('positions the career-movement tab immediately after Employment (job)', () => {
     const jobIdx = PAGE.indexOf("{ key: 'job', label: t('tabs.job') }");
     const cmIdx = PAGE.indexOf("{ key: 'careerMovement', label: t('tabs.careerMovement') }");
-    const attIdx = PAGE.indexOf("{ key: 'attendance', label: t('tabs.attendance') }");
     expect(jobIdx).toBeGreaterThan(-1);
     expect(cmIdx).toBeGreaterThan(jobIdx);
-    expect(attIdx).toBeGreaterThan(cmIdx);
-  });
-
-  it('mirrors the new key in the ClientTabs PersonnelTabKey union', () => {
     expect(TABS.includes("'careerMovement'")).toBe(true);
   });
 
-  it('renders Assignment History + Transfer/Terminate inside the career-movement panel', () => {
+  it('renders detail + new-event + Employment History inside the careerMovement panel', () => {
     const cm = panelBody('careerMovement');
-    expect(cm.includes('{assignmentHistoryCard}')).toBe(true);
-    // transferTerminateCards bundles BOTH the Transfer (Effective-Dated) form and the Terminate form,
-    // so one reference satisfies the reporter's Transfer + Termination relocations.
-    expect(cm.includes('{transferTerminateCards}')).toBe(true);
+    expect(cm.includes('{movementDetailCard}')).toBe(true);
+    expect(cm.includes('{newEventCard}')).toBe(true);
+    expect(cm.includes('{employmentHistoryCard}')).toBe(true);
   });
 
-  it('relocates the three lifecycle functions OUT of the Employment (job) tab', () => {
+  it('folds the old standalone boxes away — no Transfer/Terminate/Blacklist cards, no old history table', () => {
+    // The const defs are deleted outright (New Event owns those flows via core/movement.ts).
+    expect(PAGE.includes('transferTerminateCards')).toBe(false);
+    expect(PAGE.includes('blacklistCard')).toBe(false);
+    expect(PAGE.includes('assignmentHistoryCard')).toBe(false);
+    // The Employment (job) tab keeps its master-data cards.
     const job = panelBody('job');
-    expect(job.includes('{assignmentHistoryCard}')).toBe(false);
-    expect(job.includes('{transferTerminateCards}')).toBe(false);
-    // Employment tab keeps the "how they work" master data (relocation only removed the lifecycle ones).
     expect(job.includes('{reportingLinesCard}')).toBe(true);
     expect(job.includes('{delegationsCard}')).toBe(true);
   });
 
-  it('preserves the relocated cards WHOLE — const defs + their server-action <form>s untouched', () => {
-    // Assignment history card is defined once and not admin-gated (visible to any viewer).
-    expect(PAGE.includes('const assignmentHistoryCard = (')).toBe(true);
-    // Transfer + Terminate card bundle: both effective-dated actions preserved with their events.
-    expect(PAGE.includes('const transferTerminateCards = !emp.terminatedOn ?')).toBe(true);
-    expect(PAGE.includes('transferAction')).toBe(true);
-    expect(PAGE.includes('terminateAction')).toBe(true);
-    // Anchor id for assignment history stays so deep-links keep working.
+  it('renames the header to Employment History WITHOUT a row count, and keeps the deep-link anchor', () => {
+    // SectionHeader without a count prop — the "(12)" style badge is gone by design.
+    expect(PAGE.includes("<SectionHeader title={t('movement.title')} />")).toBe(true);
+    // Anchor id preserved byte-identical so existing deep links keep working.
     expect(PAGE.includes('id="section-assignment-history"')).toBe(true);
   });
 
-  it('has the tabs.careerMovement label in all six locales (no raw key at runtime)', () => {
+  it('exposes the New Event entry point (hidden once terminated) and the key columns', () => {
+    expect(PAGE.includes("t('movement.newEvent')")).toBe(true);
+    expect(PAGE.includes('const canCreateMovement = admin && !emp.terminatedOn;')).toBe(true);
+    for (const col of ['eventType', 'effectiveDate', 'endDate', 'remarks', 'action']) {
+      expect(PAGE.includes(`t('movement.columns.${col}')`), `missing column ${col}`).toBe(true);
+    }
+    expect(PAGE.includes("t('movement.view')")).toBe(true);
+  });
+
+  it('labels event types through a STATIC key map with a humanized fallback (no dynamic t() keys)', () => {
+    for (const kind of [
+      'hired', 'transfer', 'promotion', 'demotion', 'increment', 'salaryAdjustment', 'confirmation',
+      'probationExtension', 'secondment', 'actingPosition', 'resignation', 'termination', 'blacklist',
+      'blacklistCleared', 'orgAssignmentChange', 'reportingLineChange', 'employmentTypeChange', 'gradeChange',
+    ]) {
+      expect(PAGE.includes(`t('movement.eventType.${kind}')`), `missing static label for ${kind}`).toBe(true);
+    }
+    // The fallback formatter for unknown/extensible kinds (never renders a raw key).
+    expect(/default: return kind\.replace/.test(PAGE)).toBe(true);
+    // No dynamic movement.eventType template anywhere.
+    expect(PAGE.includes('movement.eventType.${')).toBe(false);
+  });
+
+  it('detail view renders the before/after comparison fields', () => {
+    for (const f of ['company', 'businessUnit', 'department', 'position', 'grade', 'employmentType', 'manager', 'salary']) {
+      expect(PAGE.includes(`t('movement.field.${f}')`), `missing comparison field ${f}`).toBe(true);
+    }
+    expect(PAGE.includes("t('movement.detail.beforeChanges')")).toBe(true);
+    expect(PAGE.includes("t('movement.detail.afterChanges')")).toBe(true);
+    expect(PAGE.includes("t('movement.detail.firstRecord')")).toBe(true);
+  });
+
+  it('has the movement labels in all six locales (no raw key at runtime)', () => {
     for (const loc of LOCALES) {
       const msg = JSON.parse(
         fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'),
       );
-      const label = msg?.people?.detail?.tabs?.careerMovement;
-      expect(
-        typeof label,
-        `messages/${loc}.json missing people.detail.tabs.careerMovement`,
-      ).toBe('string');
-      expect(label.length, `messages/${loc}.json careerMovement label is empty`).toBeGreaterThan(0);
+      const detail = msg?.people?.detail;
+      for (const key of ['tabs.careerMovement', 'movement.title', 'movement.newEvent', 'movement.view']) {
+        const val = key.split('.').reduce((o: unknown, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), detail);
+        expect(typeof val, `messages/${loc}.json missing people.detail.${key}`).toBe('string');
+        expect((val as string).length, `messages/${loc}.json people.detail.${key} is empty`).toBeGreaterThan(0);
+      }
+      // Every shipped event-type label exists in every locale.
+      const types = detail?.movement?.eventType ?? {};
+      for (const kind of [
+        'hired', 'transfer', 'promotion', 'demotion', 'increment', 'salaryAdjustment', 'confirmation',
+        'probationExtension', 'secondment', 'actingPosition', 'resignation', 'termination', 'blacklist',
+        'blacklistCleared', 'orgAssignmentChange', 'reportingLineChange', 'employmentTypeChange', 'gradeChange',
+      ]) {
+        expect(typeof types[kind], `messages/${loc}.json missing movement.eventType.${kind}`).toBe('string');
+      }
     }
   });
 });
