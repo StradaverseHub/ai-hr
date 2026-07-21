@@ -136,6 +136,55 @@ describe('ADR-0072 — real auth (WorkOS AuthKit)', () => {
   });
 
   // (c) Invitation is single-use + expiring; two concurrent consumes → exactly one succeeds.
+  // (c0) REGRESSION (migration 0281): inviting a person who ALREADY has an app_user must REBIND that
+  // user's subject, not create a second identity.
+  //
+  // This branch was broken from 0151 until 0281 and no test reached it. app.consume_invitation is
+  // declared RETURNS TABLE (app_user_id uuid, tenant_id uuid); those OUT parameters are in scope for the
+  // whole body, so the unqualified `tenant_id` in its own lookup was ambiguous against app_user.tenant_id
+  // and Postgres refused to plan the statement. It only executes when person_id is set — and every other
+  // test here invites by email with no personId, so the branch was never planned and the suite stayed green.
+  //
+  // It is exactly the path a real-auth cutover depends on (binding a live WorkOS subject onto an existing
+  // seeded user), so it would have failed at the worst possible moment.
+  it('invitation targeting an existing person REBINDS that app_user (0281 regression)', async () => {
+    const admin: SessionContext = { tenantId: base.tenantId, userId: base.adminUserId, roles: ['hr_admin'] };
+    const emp = await hireEmployee(admin, {
+      person: { fullName: 'Rebind Target', primaryEmail: 'rebind@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+
+    // A pre-existing login carrying a PLACEHOLDER subject, exactly like the seeded demo users.
+    const [existing] = await owner.db
+      .insert(schema.appUser)
+      .values({ tenantId: base.tenantId, workosUserId: 'seed:rebind@acme.test', personId: emp.personId })
+      .returning({ id: schema.appUser.id });
+
+    const { token } = await inviteUser(
+      admin,
+      { email: 'rebind@acme.test', role: 'employee', personId: emp.personId },
+      fakeProvider(),
+    );
+    const accepted = await acceptInvitation({ token, subject: 'wos_real_rebind' });
+
+    // Same row, real subject — NOT a second app_user.
+    expect(accepted.userId).toBe(existing.id);
+    const rows = await owner.db
+      .select({ id: schema.appUser.id, subject: schema.appUser.workosUserId })
+      .from(schema.appUser)
+      .where(eq(schema.appUser.personId, emp.personId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].subject).toBe('wos_real_rebind');
+
+    // And the rebound subject resolves to a usable principal (this is what login does).
+    const session = await resolveWorkosPrincipal(subjectLookup, 'wos_real_rebind');
+    expect(session.userId).toBe(existing.id);
+    expect(session.tenantId).toBe(base.tenantId);
+  });
+
   it('invitation token is single-use, expiring, and atomic under concurrency', async () => {
     const admin: SessionContext = { tenantId: base.tenantId, userId: base.adminUserId, roles: ['hr_admin'] };
     const provider = fakeProvider();

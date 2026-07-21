@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { isAuthRoute } from '@/lib/auth-routes';
 
 /**
  * Demo access gate (see HOSTING.md). When SHARE_PASSWORD is set, the whole app sits behind HTTP Basic
@@ -29,6 +30,11 @@ function withPathname(req: NextRequest): NextResponse {
 }
 
 export function middleware(req: NextRequest) {
+  // Auth routes bypass the Basic-auth challenge but STILL run through here, so x-pathname is set.
+  // They used to be excluded in the matcher instead, which skipped this function entirely and left
+  // x-pathname unset on exactly the routes whose layout depends on it — see lib/auth-routes.ts.
+  if (isAuthRoute(req.nextUrl.pathname)) return withPathname(req);
+
   // The gate is a hosting protection only — never gate local `next dev`, even if SHARE_PASSWORD is set
   // in .env.local for hosting.
   if (process.env.NODE_ENV === 'development') return withPathname(req);
@@ -52,9 +58,15 @@ export function middleware(req: NextRequest) {
   });
 }
 
-// Gate everything except Next's static assets, the favicon, and the real auth routes (ADR-0072 —
-// /login, the WorkOS callback, invitation activation, and password reset must work even behind the
-// SHARE_PASSWORD demo gate).
+// Run on everything except Next's static assets and the favicon.
+//
+// The auth routes are deliberately NOT excluded here any more. They used to be, so that the
+// SHARE_PASSWORD gate could not trap them — but excluding a path from the matcher skips the whole
+// middleware, including withPathname(), so x-pathname went unset on exactly the routes whose layout
+// reads it to decide whether to render the bare shell. The layout then rendered the authenticated
+// shell and ran the session gate on /login itself: a redirect loop for anyone not already signed in.
+// The Basic-auth bypass now lives in the function body instead (see isAuthRoute above), which keeps
+// both guarantees.
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|login|callback|invite|reset-password).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

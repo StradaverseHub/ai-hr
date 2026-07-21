@@ -6134,7 +6134,10 @@
       "title": "You've been invited",
       "subtitle": "Activate your account and set a password to get started.",
       "activate": "Activate account",
-      "expiryNote": "This invitation link can only be used once and expires after a few days."
+      "expiryNote": "This invitation link can only be used once and expires after a few days.",
+      "devNote": "This is a development build — invitations are activated against the real sign-in service, which is not configured here.",
+      "invalidTitle": "This invitation is no longer valid",
+      "invalidBody": "It may have already been used, or it has expired. Ask your administrator to send you a new one."
     },
     "reset": {
       "title": "Reset your password",

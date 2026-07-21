@@ -19,6 +19,7 @@ import { OnboardingTour } from '@/components/onboarding-tour';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { AuthRequiredError } from '@/lib/auth-errors';
+import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
 import { canManagePayroll, canManagePerfComp, isAdmin } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled } from '@/lib/demo-mode';
@@ -40,13 +41,12 @@ export const metadata: Metadata = {
   description: 'AI-native HR platform',
 };
 
-// Auth routes (ADR-0072): rendered WITHOUT the authenticated app shell and WITHOUT the getSession
-// gate — otherwise the layout's redirect-to-/login would loop on /login itself.
-const AUTH_ROUTE_PREFIXES = ['/login', '/callback', '/invite', '/reset-password'];
-
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // Auth routes (ADR-0072) render WITHOUT the app shell and WITHOUT the getSession gate — otherwise
+  // the redirect-to-/login would loop on /login itself. The prefix list lives in lib/auth-routes.ts
+  // because middleware.ts needs the same list; keeping two copies is what let them drift apart.
   const pathname = (await headers()).get('x-pathname') ?? '';
-  const isAuthRoute = AUTH_ROUTE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  const isAuthRoute = isAuthRoutePath(pathname);
   const locale = await getLocale();
 
   if (isAuthRoute) {

@@ -6134,7 +6134,10 @@
       "title": "Anda telah dijemput",
       "subtitle": "Aktifkan akaun anda dan tetapkan kata laluan untuk bermula.",
       "activate": "Aktifkan akaun",
-      "expiryNote": "Pautan jemputan ini hanya boleh digunakan sekali dan tamat tempoh selepas beberapa hari."
+      "expiryNote": "Pautan jemputan ini hanya boleh digunakan sekali dan tamat tempoh selepas beberapa hari.",
+      "devNote": "Ini ialah binaan pembangunan — jemputan diaktifkan melalui perkhidmatan log masuk sebenar, yang tidak dikonfigurasikan di sini.",
+      "invalidTitle": "Jemputan ini tidak lagi sah",
+      "invalidBody": "Ia mungkin telah digunakan, atau telah tamat tempoh. Minta pentadbir anda menghantar jemputan baharu."
     },
     "reset": {
       "title": "Set semula kata laluan anda",

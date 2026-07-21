@@ -6134,7 +6134,10 @@
       "title": "Bạn đã được mời",
       "subtitle": "Kích hoạt tài khoản và đặt mật khẩu để bắt đầu.",
       "activate": "Kích hoạt tài khoản",
-      "expiryNote": "Liên kết lời mời này chỉ dùng được một lần và hết hạn sau vài ngày."
+      "expiryNote": "Liên kết lời mời này chỉ dùng được một lần và hết hạn sau vài ngày.",
+      "devNote": "Đây là bản dựng phát triển — lời mời được kích hoạt qua dịch vụ đăng nhập thật, hiện chưa được cấu hình ở đây.",
+      "invalidTitle": "Lời mời này không còn hiệu lực",
+      "invalidBody": "Có thể lời mời đã được sử dụng hoặc đã hết hạn. Hãy đề nghị quản trị viên gửi lời mời mới."
     },
     "reset": {
       "title": "Đặt lại mật khẩu của bạn",
