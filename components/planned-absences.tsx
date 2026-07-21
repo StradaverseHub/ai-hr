@@ -1,8 +1,5 @@
-import { type ReactNode } from 'react';
 import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
 import {
-  ArrowUpRight,
   Baby,
   CalendarDays,
   CircleSlash,
@@ -12,7 +9,10 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Card } from '@/components/ui';
-import { PlannedAbsencesGrid, type GridRow } from '@/components/planned-absences-grid';
+import { type GridRow } from '@/components/planned-absences-grid';
+import { PlannedAbsencesPanel } from '@/components/planned-absences-panel';
+import { APPROVAL_SECTION_ID, focusForCalendarPill } from '@/lib/approvals-focus';
+import type { CalendarView } from '@/lib/leave-calendar-range';
 
 type Leave = {
   id: string;
@@ -77,9 +77,17 @@ const durationVariantOf = (durationType?: string | null): DurationVariant => {
 export async function PlannedAbsences({
   rows,
   from,
+  to,
   days,
   todayIso,
-  controls,
+  // ee55f5fe: which range view the window was resolved for (drives the Week/Month switch + nav stepping),
+  // and whether the anchor is the default (no ?abs= — hides the "Today" reset).
+  calView = 'week',
+  isDefaultAnchor = true,
+  // eae550e9 step 3: the client panel owns the My/Team filter; the server only seeds it. `showViewSwitch`
+  // mirrors the old page-level "has direct reports" gate; `initialView` seeds from ?view=.
+  showViewSwitch = false,
+  initialView = 'my',
   // Partial Leave Cancellation from the calendar (ADR-0065): the viewer's personId gates the "own leave only"
   // rule, and cancelAction is the SAME server action the Leave page posts (requestLeaveCancellationAction).
   // Both optional — when either is absent the calendar simply renders no cancel affordance (read-only mode).
@@ -92,17 +100,26 @@ export async function PlannedAbsences({
   // Edit/cancel-by-status (item c9a19e34): the SAME cancelOwnLeaveAction the Leave page posts, for the viewer's
   // OWN PENDING leave (an immediate self-withdraw, no dates picker). Optional — absent ⇒ no affordance.
   selfCancelAction,
+  // 8cb7b089: when the viewer can decide approvals (manager/admin), pills awaiting a decision gain a
+  // deep-link arrow to the matching /approvals section. Own rows are excluded (the Approvals page filters
+  // the viewer's own cancellations out entirely, so linking there would be a dead end).
+  viewerCanApprove = false,
 }: {
   rows: Row[];
   from: string;
+  to: string;
   days: number;
   todayIso: string;
-  controls?: ReactNode;
+  calView?: CalendarView;
+  isDefaultAnchor?: boolean;
+  showViewSwitch?: boolean;
+  initialView?: 'my' | 'team';
   viewerPersonId?: string | null;
   cancelAction?: (fd: FormData) => void | Promise<void>;
   viewerIsAdmin?: boolean;
   adminCancelAction?: (fd: FormData) => void | Promise<void>;
   selfCancelAction?: (fd: FormData) => void | Promise<void>;
+  viewerCanApprove?: boolean;
 }) {
   const t = await getTranslations('components.plannedAbsences');
   const tLeave = await getTranslations('leave');
@@ -176,120 +193,127 @@ export async function PlannedAbsences({
     l.typeCode !== 'EMERGENCY' &&
     l.typeCode !== 'REPLACEMENT';
 
+  // 8cb7b089: which approvals section (if any) THIS pill deep-links to. Gated beside the sibling per-pill
+  // predicates above: only for a viewer who can decide (manager/admin) and never on the viewer's own rows.
+  const approvalFocusFor = (personId: string, l: Leave) =>
+    viewerCanApprove && personId !== viewerPersonId ? focusForCalendarPill(l) : null;
+
   // Translate per-pill titles + status labels server-side so the client grid stays i18n-free.
   const gridRows: GridRow[] = rows.map((emp) => ({
     id: emp.id,
     name: emp.name,
     employeeCode: emp.employeeCode ?? null,
     role: emp.role,
-    leaves: emp.leaves.map((l) => ({
-      id: l.id,
-      typeCode: l.typeCode,
-      typeName: l.typeName,
-      status: l.status,
-      startDate: l.startDate,
-      endDate: l.endDate,
-      statusLabel: l.status,
-      durationBadge: durationBadge(l.durationType, l.hours),
-      durationVariant: durationVariantOf(l.durationType),
-      // Leave Calendar Blocked View (c238010b): an hourly pill's hover tooltip shows its exact window; every
-      // other row keeps the date-span title. Times are Postgres `time` strings — trim to HH:MM (house style).
-      title:
-        l.durationType === 'hourly' && l.fromTime && l.toTime
-          ? t('pillTitleHourly', {
-              type: l.typeName,
-              start: l.startDate,
-              from: l.fromTime.slice(0, 5),
-              to: l.toTime.slice(0, 5),
-              status: l.status,
-            })
-          : t('pillTitle', { type: l.typeName, start: l.startDate, end: l.endDate, status: l.status }),
-      // Cancel affordance: only the fields the client grid needs to render CancelDatesDialog for THIS pill.
-      cancelEligible: cancelEligible(emp.id, l),
-      candidateCancelDates: cancelEligible(emp.id, l) ? (l.candidateCancelDates ?? []) : [],
-      // HR Admin Leave Cancellation (feedback 22e68ff0): whether an HR admin can immediately cancel THIS pill.
-      adminCancelEligible: adminCancelEligible(emp.id, l),
-      // Edit/cancel-by-status (item c9a19e34): whether the viewer can self-withdraw THIS pending own pill.
-      selfCancelEligible: selfCancelEligible(emp.id, l),
-    })),
+    leaves: emp.leaves.map((l) => {
+      const approvalFocus = approvalFocusFor(emp.id, l);
+      return {
+        id: l.id,
+        typeCode: l.typeCode,
+        typeName: l.typeName,
+        status: l.status,
+        startDate: l.startDate,
+        endDate: l.endDate,
+        statusLabel: l.status,
+        durationBadge: durationBadge(l.durationType, l.hours),
+        durationVariant: durationVariantOf(l.durationType),
+        // Leave Calendar Blocked View (c238010b): an hourly pill's hover tooltip shows its exact window; every
+        // other row keeps the date-span title. Times are Postgres `time` strings — trim to HH:MM (house style).
+        title:
+          l.durationType === 'hourly' && l.fromTime && l.toTime
+            ? t('pillTitleHourly', {
+                type: l.typeName,
+                start: l.startDate,
+                from: l.fromTime.slice(0, 5),
+                to: l.toTime.slice(0, 5),
+                status: l.status,
+              })
+            : t('pillTitle', { type: l.typeName, start: l.startDate, end: l.endDate, status: l.status }),
+        // Cancel affordance: only the fields the client grid needs to render CancelDatesDialog for THIS pill.
+        cancelEligible: cancelEligible(emp.id, l),
+        candidateCancelDates: cancelEligible(emp.id, l) ? (l.candidateCancelDates ?? []) : [],
+        // HR Admin Leave Cancellation (feedback 22e68ff0): whether an HR admin can immediately cancel THIS pill.
+        adminCancelEligible: adminCancelEligible(emp.id, l),
+        // Edit/cancel-by-status (item c9a19e34): whether the viewer can self-withdraw THIS pending own pill.
+        selfCancelEligible: selfCancelEligible(emp.id, l),
+        // 8cb7b089: hash deep-link into /approvals, built from the shared constant (never hand-rolled) so
+        // the drift test can hold the pill href and the page's section ids to the same source of truth.
+        approvalHref: approvalFocus ? `/approvals#${APPROVAL_SECTION_ID[approvalFocus]}` : null,
+      };
+    }),
   }));
+
+  const header = (
+    <div>
+      <h2 className="text-base font-semibold tracking-tight">{t('title')}</h2>
+      <p className="text-xs text-muted-foreground">
+        {dayArr[0]?.iso} &ndash; {dayArr[lastIdx]?.iso}
+      </p>
+    </div>
+  );
+
+  // Leave Calendar Blocked View (c238010b): legend explaining the four duration render patterns. Labels
+  // reuse leave.duration.* so the naming stays in lockstep with the Request-leave dropdown (c1e8d881).
+  // Rendered by the client panel only when the FILTERED view has rows (matches the old rows.length gate).
+  const legend = (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border px-5 py-2.5 text-xs text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden className="size-3 rounded-sm bg-foreground/20" />
+        {tLeave('duration.full_day')}
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span
+          aria-hidden
+          className="relative size-3 overflow-hidden rounded-sm ring-1 ring-inset ring-foreground/30"
+        >
+          <span className="absolute inset-y-0 left-0 w-1/2 bg-foreground/40" />
+        </span>
+        {tLeave('duration.half_day_am')}
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span
+          aria-hidden
+          className="relative size-3 overflow-hidden rounded-sm ring-1 ring-inset ring-foreground/30"
+        >
+          <span className="absolute inset-y-0 right-0 w-1/2 bg-foreground/40" />
+        </span>
+        {tLeave('duration.half_day_pm')}
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden className="size-3 rounded-sm ring-1 ring-inset ring-foreground/40" />
+        {tLeave('duration.hourly')}
+      </span>
+    </div>
+  );
 
   return (
     <Card className="h-full overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight">{t('title')}</h2>
-          <p className="text-xs text-muted-foreground">
-            {dayArr[0]?.iso} &ndash; {dayArr[lastIdx]?.iso}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {controls}
-          <Link
-            href="/leave"
-            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            {t('viewAll')}
-            <ArrowUpRight className="size-3.5" />
-          </Link>
-        </div>
-      </div>
-
-      {rows.length === 0 ? (
-        <p className="border-t border-border px-5 py-10 text-center text-sm text-muted-foreground">
-          {t('empty')}
-        </p>
-      ) : (
-        <PlannedAbsencesGrid
-          rows={gridRows}
-          dayArr={dayArr}
-          days={days}
-          fromMs={fromMs}
-          todayIso={todayIso}
-          employeesLabel={t('employees')}
-          showAllLabel={t('showAll', { count: rows.length })}
-          showLessLabel={t('showLess')}
-          cancelAction={cancelAction}
-          cancelPillLabel={tLeave('cancelPillAffordanceLabel')}
-          adminCancelAction={adminCancelAction}
-          adminCancelPillLabel={tLeave('adminCancelPillAffordanceLabel')}
-          selfCancelAction={selfCancelAction}
-          selfCancelPillLabel={tLeave('selfCancelPillAffordanceLabel')}
-        />
-      )}
-
-      {/* Leave Calendar Blocked View (c238010b): legend explaining the four duration render patterns. Labels
-          reuse leave.duration.* so the naming stays in lockstep with the Request-leave dropdown (c1e8d881). */}
-      {rows.length > 0 && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border px-5 py-2.5 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="size-3 rounded-sm bg-foreground/20" />
-            {tLeave('duration.full_day')}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span
-              aria-hidden
-              className="relative size-3 overflow-hidden rounded-sm ring-1 ring-inset ring-foreground/30"
-            >
-              <span className="absolute inset-y-0 left-0 w-1/2 bg-foreground/40" />
-            </span>
-            {tLeave('duration.half_day_am')}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span
-              aria-hidden
-              className="relative size-3 overflow-hidden rounded-sm ring-1 ring-inset ring-foreground/30"
-            >
-              <span className="absolute inset-y-0 right-0 w-1/2 bg-foreground/40" />
-            </span>
-            {tLeave('duration.half_day_pm')}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="size-3 rounded-sm ring-1 ring-inset ring-foreground/40" />
-            {tLeave('duration.hourly')}
-          </span>
-        </div>
-      )}
+      <PlannedAbsencesPanel
+        header={header}
+        legend={legend}
+        rows={gridRows}
+        dayArr={dayArr}
+        days={days}
+        fromMs={fromMs}
+        todayIso={todayIso}
+        from={from}
+        to={to}
+        isDefaultAnchor={isDefaultAnchor}
+        calView={calView}
+        viewerPersonId={viewerPersonId ?? null}
+        showViewSwitch={showViewSwitch}
+        initialView={initialView}
+        emptyLabel={t('empty')}
+        employeesLabel={t('employees')}
+        showAllLabel={t('showAll', { count: rows.length })}
+        showLessLabel={t('showLess')}
+        cancelAction={cancelAction}
+        cancelPillLabel={tLeave('cancelPillAffordanceLabel')}
+        adminCancelAction={adminCancelAction}
+        adminCancelPillLabel={tLeave('adminCancelPillAffordanceLabel')}
+        selfCancelAction={selfCancelAction}
+        selfCancelPillLabel={tLeave('selfCancelPillAffordanceLabel')}
+        approvalPillLabel={tLeave('approvalPillAffordanceLabel')}
+      />
     </Card>
   );
 }

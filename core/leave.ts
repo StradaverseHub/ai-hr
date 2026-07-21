@@ -3017,6 +3017,37 @@ export async function workingDatesForSpan(
   return eachDate(start, end).filter((d) => isDeductibleDay(d, sched, hols, inclusion));
 }
 
+/**
+ * Batched sibling of workingDatesForSpan (item ee55f5fe — the Month View N+1 fix). Resolves the
+ * employment's working-day roster ONCE and its holiday set ONCE over the UNION range (min start, max end)
+ * of all spans, then computes each span's working dates in memory — 2 round-trip groups per DISTINCT
+ * employment instead of 2 per LEAVE. Returned map is keyed `${start}|${end}`. The per-span result is
+ * byte-identical to workingDatesForSpan(tx, employmentId, start, end) with no inclusion vector (holidays
+ * inside a span are a subset of the union range's set), and the union range is the LEAVES' own spans —
+ * never the visible calendar window — so a leave straddling the window edge is never clipped.
+ * workingDatesForSpan itself is untouched: the service validation paths still call it per request.
+ */
+export async function workingDatesForSpans(
+  tx: Tx,
+  employmentId: string,
+  spans: { start: string; end: string }[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (spans.length === 0) return out;
+  let minStart = spans[0].start;
+  let maxEnd = spans[0].end;
+  for (const s of spans) {
+    if (s.start < minStart) minStart = s.start;
+    if (s.end > maxEnd) maxEnd = s.end;
+  }
+  const hols = await resolveHolidaySet(tx, employmentId, minStart, maxEnd);
+  const workingDaysIso = await resolveWorkingDaysIso(tx, employmentId);
+  for (const s of spans) {
+    out.set(`${s.start}|${s.end}`, eachDate(s.start, s.end).filter((d) => isWorkingDay(d, workingDaysIso, hols)));
+  }
+  return out;
+}
+
 /** ADR-0065 (R5 Build #2 — iterative cancellation). True when the parent_group_id names a CANCELLATION-SPLIT
  *  group (produced by decideLeaveCancellation), as opposed to an Emergency-Leave / per-date-approval group.
  *  A cancellation split ALWAYS leaves ≥1 sibling row with status='cancelled' sharing the group; an EL /

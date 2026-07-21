@@ -1,28 +1,28 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { User, Users } from 'lucide-react';
 
 /**
  * My/Team segmented switch for the dashboard Leave Calendar (item 8c739dda). "my" shows the viewer's own
- * leave only; "team" widens to the viewer's reporting team. Drives the `view` search param while preserving
- * the current `abs` week anchor, so switching views never jumps the calendar back to the current week.
+ * leave only; "team" widens to the viewer's reporting team.
+ *
+ * eae550e9 step 3: the switch is now CONTROLLED. Both views ship in the initial payload (the read is
+ * team-scoped), so toggling is a pure in-memory filter owned by PlannedAbsencesPanel — zero network,
+ * no server round-trip. The panel's onChange also syncs the `view` search param via
+ * history.replaceState so bookmarks and the back button keep working.
  */
-export function AbsenceViewSwitch({ view, abs }: { view: 'my' | 'team'; abs: string | null }) {
+export function AbsenceViewSwitch({
+  view,
+  onChange,
+}: {
+  view: 'my' | 'team';
+  onChange: (next: 'my' | 'team') => void;
+}) {
   const t = useTranslations('components.plannedAbsences');
-  const router = useRouter();
-  const searchParams = useSearchParams();
 
   const go = (next: 'my' | 'team') => {
-    if (next === view) return;
-    const params = new URLSearchParams(searchParams.toString());
-    // "my" is the default — drop the param so the URL stays clean; "team" is explicit.
-    if (next === 'team') params.set('view', 'team');
-    else params.delete('view');
-    if (abs) params.set('abs', abs);
-    const qs = params.toString();
-    router.push(qs ? `/?${qs}` : '/', { scroll: false });
+    if (next !== view) onChange(next);
   };
 
   const base =

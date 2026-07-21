@@ -1249,7 +1249,8 @@
     "selfCancelDialogDescription": "இது நிலுவையில் உள்ள உங்கள் விடுப்பு விண்ணப்பத்தைத் திரும்பப் பெறும். இதை மீட்டமைக்க முடியாது.",
     "selfCancelKeep": "வைத்திரு",
     "selfCancelConfirm": "விடுப்பை ரத்துசெய்",
-    "selfCancelPillAffordanceLabel": "இந்த விடுப்பை ரத்துசெய்"
+    "selfCancelPillAffordanceLabel": "இந்த விடுப்பை ரத்துசெய்",
+    "approvalPillAffordanceLabel": "ஒப்புதலுக்குச் செல்"
   },
   "attendance": {
     "title": "கலந்துகொள்வு",
@@ -4675,10 +4676,12 @@
   "components": {
     "plannedAbsences": {
       "title": "விடுப்பு நாட்காட்டி",
-      "viewAll": "அனைத்தையும் காண்",
       "viewMy": "எனது நாட்காட்டி",
       "viewTeam": "குழு நாட்காட்டி",
       "viewSwitchLabel": "விடுப்பு நாட்காட்டி காட்சி",
+      "viewWeek": "வார காட்சி",
+      "viewMonth": "மாதக் காட்சி",
+      "rangeSwitchLabel": "விடுப்பு நாட்காட்டி வரம்பு",
       "empty": "எல்லைக்குள் பணியாளர்கள் இல்லை.",
       "employees": "பணியாளர்கள்",
       "pillTitle": "{type} · {start} முதல் {end} வரை · {status}",
@@ -4694,6 +4697,7 @@
       "next": "அடுத்த {unit}",
       "unitDay": "நாள்",
       "unitWeek": "வாரம்",
+      "unitMonth": "மாதம்",
       "dateLabel": "தேதி",
       "windowStartLabel": "சாளரத் தொடக்கத் தேதி",
       "today": "இன்று"

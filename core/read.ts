@@ -12,6 +12,7 @@ import {
   resolveGradePolicy,
   serviceYearsAt,
   workingDatesForSpan,
+  workingDatesForSpans,
   type GradePolicyRow,
   type LeaveEligibility,
 } from './leave';
@@ -676,8 +677,18 @@ async function resolveLeaveWorkingDates<
 }
 
 /** Every leave request in scope (RLS additionally trims to what the viewer may see:
- *  admins everything, managers their reports, employees themselves). Recent first. */
-export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], limit = 200) {
+ *  admins everything, managers their reports, employees themselves). Recent first.
+ *
+ *  8cb7b089 pre-fix: `opts.status` narrows the read BEFORE the `limit` cap applies, so the Approvals
+ *  page can cap 200 PENDING rows rather than the 200 most recent rows of ANY status (where an older
+ *  still-pending request silently fell off the list on a large tenant). Omitting it is byte-identical
+ *  to today's behaviour, so every existing caller (/leave self-view, approvals-inbox count) is unaffected. */
+export function listLeaveRequests(
+  ctx: SessionContext,
+  companyIds?: string[],
+  limit = 200,
+  opts?: { status?: 'pending' | 'approved' | 'rejected' | 'cancelled' },
+) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select(leaveRequestSelection)
@@ -686,7 +697,10 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
       .where(
-        companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+        and(
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          opts?.status ? eq(leaveRequest.status, opts.status) : undefined,
+        ),
       )
       .orderBy(desc(leaveRequest.createdAt))
       .limit(limit);
@@ -930,13 +944,27 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
  *  Partial Leave Cancellation from the calendar (ADR-0065): pass `today` (tenant-local MYT, from the caller —
  *  keeps this a pure read) to seed each approved row's cancellable candidate dates (real working dates strictly
  *  after today), so the dashboard can offer the SAME "Cancel dates" affordance the Leave page does. Omitting
- *  `today` yields no candidate dates (candidateCancelDates=[]) — the affordance simply never renders. */
+ *  `today` yields no candidate dates (candidateCancelDates=[]) — the affordance simply never renders.
+ *
+ *  eae550e9 step 1: `opts.personIds` narrows the read to those PEOPLE (the dashboard passes the viewer +
+ *  direct reports instead of loading every active employee in the company). Scoped by PERSON id, not
+ *  employment id, so a person's concurrent second employment is never dropped from the merged row below.
+ *  Omitting the option is byte-identical to today's full-scope behaviour. NOTE the deliberate departure
+ *  from the neighbouring `companyIds && companyIds.length` idiom: an EMPTY personIds array must match
+ *  NOTHING (the caller resolved "no viewer person"), never degrade to the whole company. */
+const NEVER_MATCHING_PERSON_ID = '00000000-0000-0000-0000-000000000000';
 export function plannedAbsences(
   ctx: SessionContext,
   companyIds: string[] | undefined,
   range: { from: string; to: string },
   today?: string,
+  opts?: { personIds?: string[] },
 ) {
+  const personIds = opts?.personIds;
+  const personScope =
+    personIds === undefined
+      ? undefined
+      : inArray(employment.personId, personIds.length ? personIds : [NEVER_MATCHING_PERSON_ID]);
   return withTenant(ctx, async (tx) => {
     const emps = await tx
       .select({
@@ -963,6 +991,7 @@ export function plannedAbsences(
         and(
           isNull(employment.terminatedOn),
           companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          personScope,
         ),
       )
       .orderBy(person.fullName);
@@ -1007,6 +1036,9 @@ export function plannedAbsences(
           lte(leaveRequest.startDate, range.to),
           gte(leaveRequest.endDate, range.from),
           companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          // eae550e9: same person filter as the emps query (this one already innerJoins employment), so
+          // the two selections stay one scope.
+          personScope,
         ),
       )
       .orderBy(leaveRequest.startDate);
@@ -1051,19 +1083,34 @@ export function plannedAbsences(
     // (and, when `today` is omitted, all rows) get []. The service still re-validates every posted date.
     const candidateByReq = new Map<string, string[]>();
     if (today) {
-      await Promise.all(
-        leaves.map(async (l) => {
-          if (candidateByReq.has(l.id)) return; // one leaveRequest.id ⇒ one lookup
-          const eligibleShape =
-            l.status === 'approved' &&
-            l.durationType === 'full_day' &&
-            (l.parentGroupId == null || l.isCancellationSplit) &&
-            !l.pendingCancellationId;
-          if (!eligibleShape) {
-            candidateByReq.set(l.id, []);
-            return;
-          }
-          let working = await workingDatesForSpan(tx, l.employmentId, l.startDate, l.endDate);
+      // ee55f5fe step 2 — the per-leave N+1 fix that makes Month View viable. The old loop resolved the
+      // roster + holiday set PER LEAVE (2 sequential round-trips each — Promise.all does not parallelise
+      // on one tx). Group the ELIGIBLE leaves by employment and resolve each employment's roster + union-
+      // range holiday set ONCE via workingDatesForSpans: round-trips scale with the number of employments
+      // that have eligible leave, independent of leave count. Ineligible rows simply have no map entry —
+      // candidatesFor() already defaults them to []. Per-span results are byte-identical to the old
+      // workingDatesForSpan path; the per-date-approval filter + `d > today` cut apply after, unchanged.
+      const eligible = leaves.filter(
+        (l) =>
+          l.status === 'approved' &&
+          l.durationType === 'full_day' &&
+          (l.parentGroupId == null || l.isCancellationSplit) &&
+          !l.pendingCancellationId,
+      );
+      const byEmployment = new Map<string, typeof eligible>();
+      for (const l of eligible) {
+        const arr = byEmployment.get(l.employmentId);
+        if (arr) arr.push(l);
+        else byEmployment.set(l.employmentId, [l]);
+      }
+      for (const [employmentId, empLeaves] of byEmployment) {
+        const spanDates = await workingDatesForSpans(
+          tx,
+          employmentId,
+          empLeaves.map((l) => ({ start: l.startDate, end: l.endDate })),
+        );
+        for (const l of empLeaves) {
+          let working = spanDates.get(`${l.startDate}|${l.endDate}`) ?? [];
           // Per-date-approval request (has date rows): restrict to the APPROVED interior dates only.
           if (hasDateRows.has(l.id)) {
             const approvedSet = new Set(approvedDatesByReq.get(l.id) ?? []);
@@ -1073,8 +1120,8 @@ export function plannedAbsences(
             l.id,
             working.filter((d) => d > today),
           );
-        }),
-      );
+        }
+      }
     }
     const candidatesFor = (id: string): string[] => candidateByReq.get(id) ?? [];
 
@@ -1130,6 +1177,50 @@ export function plannedAbsences(
       }
     }
     return [...byPerson.values()];
+  });
+}
+
+/**
+ * eae550e9 step 2 — the dedicated narrow count behind the manager "Team Away Today" card. Replaces the
+ * second full plannedAbsences projection (which existed only to guarantee a window covering today):
+ * count DISTINCT persons — excluding the viewer — with an APPROVED leave covering `todayIso` on an
+ * ACTIVE employment in scope. Population matches what teamAwayToday(lib/dashboard-cards.ts) counted
+ * over the company-scoped strip rows bit-for-bit, including the per-date-approval nuance: a request
+ * with per-date rows only covers today when TODAY's date row is itself approved (mirrors the
+ * approved-run expansion in plannedAbsences above). RLS additionally trims rows exactly as it does
+ * for the strip read, so the figure cannot widen past what the viewer could already see.
+ */
+export function awayTodayCount(
+  ctx: SessionContext,
+  companyIds: string[] | undefined,
+  todayIso: string,
+  excludePersonId?: string | null,
+): Promise<number> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ n: sql<number>`count(distinct ${employment.personId})::int` })
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .where(
+        and(
+          eq(leaveRequest.status, 'approved'),
+          lte(leaveRequest.startDate, todayIso),
+          gte(leaveRequest.endDate, todayIso),
+          isNull(employment.terminatedOn),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          excludePersonId ? sql`${employment.personId} <> ${excludePersonId}` : undefined,
+          // ADR-0068 §4A parity: a per-date-approval request (has date rows) covers today only when
+          // today's own date row is approved — a mid-span rejected date is not an absence.
+          sql`(
+            not exists (select 1 from leave_request_date d where d.leave_request_id = ${leaveRequest.id})
+            or exists (
+              select 1 from leave_request_date d
+              where d.leave_request_id = ${leaveRequest.id} and d.leave_date = ${todayIso} and d.status = 'approved'
+            )
+          )`,
+        ),
+      );
+    return row?.n ?? 0;
   });
 }
 
@@ -2065,6 +2156,8 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string) {
         id: reportingLine.id,
         lineType: reportingLine.lineType,
         employmentId: reportingLine.managerEmploymentId,
+        // eae550e9: the person behind the edge (both queries already innerJoin person — one extra column).
+        personId: employment.personId,
         name: person.fullName,
       })
       .from(reportingLine)
@@ -2084,6 +2177,8 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string) {
         id: reportingLine.id,
         lineType: reportingLine.lineType,
         employmentId: reportingLine.subordinateEmploymentId,
+        // eae550e9: the person behind the edge — feeds the dashboard calendar's person-scoped read.
+        personId: employment.personId,
         name: person.fullName,
       })
       .from(reportingLine)

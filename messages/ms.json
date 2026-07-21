@@ -1249,7 +1249,8 @@
     "selfCancelDialogDescription": "Ini akan menarik balik permohonan cuti anda yang belum diluluskan. Tindakan ini tidak boleh dibatalkan.",
     "selfCancelKeep": "Kekalkan",
     "selfCancelConfirm": "Batal cuti",
-    "selfCancelPillAffordanceLabel": "Batalkan cuti ini"
+    "selfCancelPillAffordanceLabel": "Batalkan cuti ini",
+    "approvalPillAffordanceLabel": "Pergi ke kelulusan"
   },
   "attendance": {
     "title": "Kehadiran",
@@ -4675,10 +4676,12 @@
   "components": {
     "plannedAbsences": {
       "title": "Kalendar Cuti",
-      "viewAll": "Lihat semua",
       "viewMy": "Kalendar Saya",
       "viewTeam": "Kalendar Pasukan",
       "viewSwitchLabel": "Paparan kalendar cuti",
+      "viewWeek": "Paparan Minggu",
+      "viewMonth": "Paparan Bulan",
+      "rangeSwitchLabel": "Julat kalendar cuti",
       "empty": "Tiada pekerja dalam skop.",
       "employees": "Pekerja",
       "pillTitle": "{type} · {start} hingga {end} · {status}",
@@ -4694,6 +4697,7 @@
       "next": "{unit} berikutnya",
       "unitDay": "hari",
       "unitWeek": "minggu",
+      "unitMonth": "bulan",
       "dateLabel": "Tarikh",
       "windowStartLabel": "Tarikh mula tetingkap",
       "today": "Hari ini"
