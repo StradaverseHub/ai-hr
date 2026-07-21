@@ -4632,6 +4632,8 @@
       "editEntitlementTitle": "Sunting kelayakan cuti",
       "deleteEntitlementConfirmTitle": "Padam kelayakan cuti ini?",
       "deleteEntitlementConfirmDescription": "Hari kelayakan jenis cuti ini akan dibuang daripada skim ini. Tindakan ini tidak boleh dibatalkan.",
+      "deleteSchemeConfirmTitle": "Padam skim manfaat ini?",
+      "deleteSchemeConfirmDescription": "Skim \"{name}\" akan dipadamkan bersama {count} kelayakan cuti yang dikonfigurasi di bawahnya. Pekerja yang ditetapkan kepada skim ini akan kembali dipadankan secara automatik. Tindakan ini tidak boleh dibatalkan.",
       "colTotalLimit": "Had Jumlah (hari)",
       "dragHint": "Seret satu baris ke atas baris lain untuk mengumpulkan jenis cuti di bawah satu had jumlah kongsi. Lepaskan baris ke atas kumpulan untuk memindahkannya ke situ.",
       "dragHandleAria": "Seret untuk kumpulkan",

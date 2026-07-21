@@ -4632,6 +4632,8 @@
       "editEntitlementTitle": "Chỉnh sửa quyền nghỉ phép",
       "deleteEntitlementConfirmTitle": "Xóa quyền nghỉ phép này?",
       "deleteEntitlementConfirmDescription": "Số ngày quyền lợi của loại nghỉ này sẽ bị xóa khỏi chương trình. Hành động này không thể hoàn tác.",
+      "deleteSchemeConfirmTitle": "Xóa chương trình phúc lợi này?",
+      "deleteSchemeConfirmDescription": "Chương trình \"{name}\" sẽ bị xóa cùng với {count} quyền nghỉ phép được thiết lập trong đó. Nhân viên được gán vào chương trình này sẽ quay lại ghép tự động. Hành động này không thể hoàn tác.",
       "colTotalLimit": "Giới hạn tổng (ngày)",
       "dragHint": "Kéo một hàng thả lên hàng khác để nhóm các loại nghỉ dưới một giới hạn tổng dùng chung. Thả hàng lên một nhóm để chuyển vào nhóm đó.",
       "dragHandleAria": "Kéo để nhóm",

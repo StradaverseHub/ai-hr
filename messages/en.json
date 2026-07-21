@@ -4632,6 +4632,8 @@
       "editEntitlementTitle": "Edit leave entitlement",
       "deleteEntitlementConfirmTitle": "Delete this leave entitlement?",
       "deleteEntitlementConfirmDescription": "This removes the leave type's entitlement days from this scheme. This cannot be undone.",
+      "deleteSchemeConfirmTitle": "Delete this benefit scheme?",
+      "deleteSchemeConfirmDescription": "This deletes \"{name}\" and also removes {count, plural, =0 {no leave entitlements} one {the # leave entitlement} other {all # leave entitlements}} configured under it. Employees assigned to this scheme return to automatic matching. This cannot be undone.",
       "colTotalLimit": "Total Limit (days)",
       "dragHint": "Drag a row onto another to group leave types under one shared total limit. Drop a row onto a group to move it there.",
       "dragHandleAria": "Drag to group",
