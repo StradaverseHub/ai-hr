@@ -3970,7 +3970,7 @@
     "users": {
       "title": "用户与角色",
       "userCount": "{count, plural, one {# 名用户} other {# 名用户}}",
-      "provisioningNote": "新登录账号仅通过邀请创建 — 不支持公开注册。管理员通过电子邮件发出邀请，随后由 <strong>WorkOS</strong> 发送一次性链接，受邀者自行设置密码。只有<strong>集团管理员</strong>可以发出邀请。此处您管理现有用户的角色。公司范围适用于 <strong>HR Admin</strong> 授权 — 即该公司<em>及其子公司</em>；其他角色为全集团范围。",
+      "provisioningNote": "新登录账号仅通过邀请创建 — 不支持公开注册。管理员通过电子邮件邀请<strong>已有员工</strong>，随后由 <strong>WorkOS</strong> 发送一次性链接，受邀者自行设置密码。只有<strong>集团管理员</strong>可以邀请、归档或恢复登录账号。归档会阻止访问但不删除任何数据；当该员工的<em>所有</em>雇佣记录都已结束时，登录账号将被自动阻止。公司范围适用于 <strong>HR Admin</strong> 授权 — 该公司<em>及其子公司</em>；其他角色为集团范围。",
       "sectionUsers": "用户",
       "scopedTo": "范围限定为 {company} 及其子公司",
       "revokeRole": "撤销角色",
@@ -3993,7 +3993,6 @@
       "inviteRole": "角色",
       "inviteScope": "公司范围",
       "inviteSubmit": "发送邀请",
-      "pendingInvitations": "待处理邀请",
       "revokeInvitation": "撤销",
       "sectionFunctionAccess": "功能访问",
       "functionAccessCaption": "哪个角色可以进入每个屏幕。此处反映系统实际执行的访问权限，仅为参考视图，并非编辑器——执行规则在角色守卫和数据库策略中更改。",
@@ -4017,7 +4016,23 @@
         "leaveApproval": "经理和管理员；显示内容取决于你实际的汇报线。",
         "payrollConfig": "所有人都可打开；只有公司的管理员才能更改。",
         "delegations": "HR 和管理员可见所有委托；您只能看到自己委托或代理的委托。"
-      }
+      },
+      "status": {
+        "active": "启用",
+        "invited": "已邀请",
+        "archived": "已归档"
+      },
+      "statusColumn": "状态",
+      "archive": "归档",
+      "restore": "恢复",
+      "showArchived": "显示已归档",
+      "hideArchived": "隐藏已归档",
+      "archivedCount": "已隐藏 {count} 项",
+      "archivedCauseLeft": "已离职",
+      "archivedCauseManual": "由管理员归档",
+      "invitePerson": "员工",
+      "invitePersonPlaceholder": "选择员工",
+      "unlinkedLogin": "未关联的登录账号 {id}"
     },
     "audit": {
       "title": "审计日志",

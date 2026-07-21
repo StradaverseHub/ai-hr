@@ -3970,7 +3970,7 @@
     "users": {
       "title": "Người dùng & vai trò",
       "userCount": "{count, plural, one {# người dùng} other {# người dùng}}",
-      "provisioningNote": "Các đăng nhập mới chỉ được tạo bằng lời mời — không có đăng ký mở. Quản trị viên gửi lời mời qua email, sau đó <strong>WorkOS</strong> gửi liên kết dùng một lần và người được mời tự đặt mật khẩu. Chỉ <strong>quản trị viên tập đoàn</strong> mới có thể mời. Tại đây bạn quản lý vai trò cho người dùng hiện có. Phạm vi công ty áp dụng cho các quyền <strong>HR Admin</strong> — công ty đó <em>và các công ty con của nó</em>; các vai trò khác áp dụng toàn tập đoàn.",
+      "provisioningNote": "Các đăng nhập mới chỉ được tạo bằng lời mời — không có đăng ký mở. Quản trị viên mời <strong>nhân viên hiện có</strong> qua email, sau đó <strong>WorkOS</strong> gửi liên kết dùng một lần và người được mời tự đặt mật khẩu. Chỉ <strong>quản trị viên nhóm</strong> mới có thể mời, lưu trữ hoặc khôi phục một đăng nhập. Lưu trữ sẽ chặn quyền truy cập mà không xóa bất kỳ dữ liệu nào, và đăng nhập bị chặn tự động khi <em>mọi</em> hợp đồng lao động của người đó đã kết thúc. Phạm vi công ty áp dụng cho quyền <strong>HR Admin</strong> — công ty đó <em>và các công ty con</em>; các vai trò khác áp dụng toàn nhóm.",
       "sectionUsers": "Người dùng",
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "revokeRole": "Thu hồi vai trò",
@@ -3993,7 +3993,6 @@
       "inviteRole": "Vai trò",
       "inviteScope": "Phạm vi công ty",
       "inviteSubmit": "Gửi lời mời",
-      "pendingInvitations": "Lời mời đang chờ",
       "revokeInvitation": "Thu hồi",
       "sectionFunctionAccess": "Quyền truy cập chức năng",
       "functionAccessCaption": "Vai trò nào có thể mở từng màn hình. Điều này phản ánh quyền truy cập mà hệ thống thực thi; đây là chế độ xem tham chiếu, không phải trình chỉnh sửa — việc thực thi được thay đổi trong các bộ bảo vệ vai trò và chính sách cơ sở dữ liệu.",
@@ -4017,7 +4016,23 @@
         "leaveApproval": "Quản lý và quản trị viên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "payrollConfig": "Mọi người đều có thể mở; chỉ quản trị viên của công ty mới có thể thay đổi.",
         "delegations": "HR và quản trị viên thấy mọi ủy quyền; bạn chỉ thấy những ủy quyền do bạn tạo hoặc đảm nhận."
-      }
+      },
+      "status": {
+        "active": "Đang hoạt động",
+        "invited": "Đã mời",
+        "archived": "Đã lưu trữ"
+      },
+      "statusColumn": "Trạng thái",
+      "archive": "Lưu trữ",
+      "restore": "Khôi phục",
+      "showArchived": "Hiện mục đã lưu trữ",
+      "hideArchived": "Ẩn mục đã lưu trữ",
+      "archivedCount": "Đang ẩn {count}",
+      "archivedCauseLeft": "Đã nghỉ việc",
+      "archivedCauseManual": "Được quản trị viên lưu trữ",
+      "invitePerson": "Nhân viên",
+      "invitePersonPlaceholder": "Chọn nhân viên",
+      "unlinkedLogin": "Đăng nhập chưa liên kết {id}"
     },
     "audit": {
       "title": "Nhật ký kiểm toán",

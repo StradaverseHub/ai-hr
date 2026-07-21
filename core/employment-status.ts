@@ -92,3 +92,50 @@ export function deriveEmploymentStatus(
   // 5. Active — past confirmation (or no confirmation date recorded), no resignation, not blacklisted.
   return 'active';
 }
+
+// ───────────────────────── Login lifecycle (0279) ─────────────────────────
+
+/**
+ * Has this employment ENDED as of `today`? Blacklisted wins outright; otherwise the lifecycle is over
+ * once today is STRICTLY PAST the earliest recorded end date.
+ *
+ * DELIBERATE DIVERGENCE from deriveEmploymentStatus, which flips the label to 'resigned' at
+ * `today >= ended`. This uses `today > ended`, so on the final working day the person already reads
+ * "Resigned" on every screen while their LOGIN still works for that whole day — which is what handover
+ * requires. The same note is in db/migrations/0279_user_archive_and_login_block.sql; the two must stay
+ * in step, and test/user-lifecycle.test.ts asserts the SQL and this helper agree across a matrix.
+ */
+export function isEmploymentEnded(
+  emp: EmploymentStatusInput,
+  today: string = new Date().toISOString().slice(0, 10),
+): boolean {
+  if (emp.blacklistedAt) return true;
+  const ended = earliest(emp.resignationDate, emp.lastWorkingDate, emp.terminatedOn);
+  return ended !== null && today > ended;
+}
+
+/** The inputs app.login_blocked() reads, in TypeScript form. */
+export type LoginBlockInput = {
+  /** Non-null ⇒ manually archived by an administrator. */
+  archivedAt?: string | Date | null;
+  /** Every employment of the login's person. EMPTY for a person_id-null (unlinked/external) login. */
+  employments: readonly EmploymentStatusInput[];
+};
+
+/**
+ * Is this login switched off? The TypeScript mirror of app.login_blocked() — the screen and the auth
+ * function must never disagree, so the rule is written once per language and pinned by a test.
+ *
+ * Blocked when the login is manually archived, OR when the person has AT LEAST ONE employment and
+ * EVERY one of them has ended. A login with no employment row at all (an external IT admin) is never
+ * auto-blocked; only a manual archive touches it. Someone holding two jobs in the group keeps access
+ * until the last of them ends.
+ */
+export function isLoginBlocked(
+  input: LoginBlockInput,
+  today: string = new Date().toISOString().slice(0, 10),
+): boolean {
+  if (input.archivedAt) return true;
+  if (input.employments.length === 0) return false;
+  return input.employments.every((e) => isEmploymentEnded(e, today));
+}

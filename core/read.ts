@@ -69,6 +69,9 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
         name: person.fullName,
         email: person.primaryEmail,
         employeeCode: employment.employeeCode,
+        // The person behind the employment — the invite form (0279) binds an invitation to a PERSON,
+        // not an employment, so it needs this id. Additive; existing callers ignore it.
+        personId: employment.personId,
         status: assignment.status,
         department: department.name,
         // Current-assignment department id — the Individual Transaction wizard uses it (client-side) to

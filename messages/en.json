@@ -3970,7 +3970,7 @@
     "users": {
       "title": "Users & roles",
       "userCount": "{count, plural, one {# user} other {# users}}",
-      "provisioningNote": "New logins are created by invitation only — there is no open sign-up. An admin invites by email, then <strong>WorkOS</strong> sends the one-time link and the invitee sets their own password. Only <strong>group admins</strong> can invite. Here you manage roles for existing users. Company scope applies to <strong>HR Admin</strong> grants — that company <em>and its sub-companies</em>; other roles are group-wide.",
+      "provisioningNote": "New logins are created by invitation only — there is no open sign-up. An admin invites an <strong>existing employee</strong> by email, then <strong>WorkOS</strong> sends the one-time link and the invitee sets their own password. Only <strong>group admins</strong> can invite, archive or restore a login. Archiving blocks access without deleting anything, and a login is blocked automatically once <em>every</em> employment of that person has ended. Company scope applies to <strong>HR Admin</strong> grants — that company <em>and its sub-companies</em>; other roles are group-wide.",
       "sectionUsers": "Users",
       "scopedTo": "Scoped to {company} and its sub-companies",
       "revokeRole": "Revoke role",
@@ -3993,7 +3993,6 @@
       "inviteRole": "Role",
       "inviteScope": "Company scope",
       "inviteSubmit": "Send invitation",
-      "pendingInvitations": "Pending invitations",
       "revokeInvitation": "Revoke",
       "sectionFunctionAccess": "Function access",
       "functionAccessCaption": "Which role can reach each screen. This mirrors the access the system enforces; it is a reference view, not an editor — changing enforcement lives in the role guards and database policies.",
@@ -4017,7 +4016,23 @@
         "leaveApproval": "Managers and admins; what appears follows your actual reporting lines.",
         "payrollConfig": "Everyone can open this; only admins for the company can change it.",
         "delegations": "HR and admins see every delegation; you see only ones you delegated or cover."
-      }
+      },
+      "status": {
+        "active": "Active",
+        "invited": "Invited",
+        "archived": "Archived"
+      },
+      "statusColumn": "Status",
+      "archive": "Archive",
+      "restore": "Restore",
+      "showArchived": "Show archived",
+      "hideArchived": "Hide archived",
+      "archivedCount": "{count} hidden",
+      "archivedCauseLeft": "Left the company",
+      "archivedCauseManual": "Archived by an administrator",
+      "invitePerson": "Employee",
+      "invitePersonPlaceholder": "Select an employee",
+      "unlinkedLogin": "Unlinked login {id}"
     },
     "audit": {
       "title": "Audit trail",

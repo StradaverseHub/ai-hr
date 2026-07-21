@@ -110,9 +110,35 @@ describe('function-access registry (lib/permissions)', () => {
         expect(typeof note, `scope admin.users.scope.${screen.screenKey}`).toBe('string');
       }
     }
-    // section-level strings the page renders
-    for (const k of ['sectionFunctionAccess', 'functionAccessCaption', 'accessible', 'notAccessible', 'screenColumn']) {
+    // Section-level strings the page renders. This is the ONE pinning site for /admin/users strings:
+    // the page calls getTranslations twice ('admin.users' + 'nav'), which makes it a multi-namespace
+    // file that i18n-coverage check C skips ENTIRELY — static keys included. So a typo in any key
+    // below would render a raw key with a fully green suite unless it is listed here.
+    for (const k of [
+      'sectionFunctionAccess',
+      'functionAccessCaption',
+      'accessible',
+      'notAccessible',
+      'screenColumn',
+      // Login lifecycle (0279) — merged Active/Invited/Archived list, archive/restore, invite-by-person.
+      'status.active',
+      'status.invited',
+      'status.archived',
+      'statusColumn',
+      'archive',
+      'restore',
+      'showArchived',
+      'hideArchived',
+      'archivedCount',
+      'archivedCauseLeft',
+      'archivedCauseManual',
+      'invitePerson',
+      'invitePersonPlaceholder',
+      'unlinkedLogin',
+    ]) {
       expect(typeof getPath(en, `admin.users.${k}`), k).toBe('string');
     }
+    // Orphaned by the merged list — the separate "Pending invitations" card no longer exists.
+    expect(getPath(en, 'admin.users.pendingInvitations')).toBeUndefined();
   });
 });

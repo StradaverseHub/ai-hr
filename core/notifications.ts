@@ -23,7 +23,17 @@ import {
 
 /** All HR-admin employments in the same company as `employmentId` (0110, employment-review fan-out).
  *  Resolves via role_assignment (hr_admin/super_admin) → app_user → person → that company's employment.
- *  super_admin grants are group-wide; an hr_admin grant may be group-wide (company_id null) or scoped. */
+ *  super_admin grants are group-wide; an hr_admin grant may be group-wide (company_id null) or scoped.
+ *
+ *  Switched-off logins are excluded (0279): with NOTIFICATIONS_ENABLED this path SENDS EMAIL, so an
+ *  archived admin or one who has left the company would keep receiving HR notifications after losing
+ *  access to the product. app.login_blocked() is the same predicate the auth path enforces.
+ *
+ *  PER-SITE DECISION, do not generalise: the actor-attribution and creator-filter reads (core/read.ts
+ *  ~2496/2558/2611/2657, core/payroll-view.ts ~262/325) are deliberately NOT filtered. Showing an
+ *  archived user's name as the author of a past action is CORRECT; filtering there would blank out
+ *  history. Only recipient resolution — where a switched-off login would receive something new — is
+ *  filtered. */
 export async function hrAdminsForCompany(tx: Tx, employmentId: string): Promise<string[]> {
   const [emp] = await tx
     .select({ companyId: employment.companyId })
@@ -42,6 +52,8 @@ export async function hrAdminsForCompany(tx: Tx, employmentId: string): Promise<
         eq(employment.companyId, emp.companyId),
         // group-wide grant (null company) OR scoped to this company
         or(isNull(roleAssignment.companyId), eq(roleAssignment.companyId, emp.companyId)),
+        // archived, or every employment ended — see the header note on why only recipients are filtered
+        sql`not app.login_blocked(${appUser.id})`,
       ),
     );
   return [...new Set(rows.map((r) => r.employmentId))];
