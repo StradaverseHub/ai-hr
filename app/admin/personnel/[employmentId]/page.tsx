@@ -36,7 +36,7 @@ import {
   setComplianceFieldsAction,
   setContactAddressAction,
   setEmergencyContactAction,
-  setEmploymentAssignmentAction,
+  setOrganisationAssignmentAction,
   setPaymentMethodAction,
   setEmploymentComponentAction,
   setEmploymentInfoAction,
@@ -1465,7 +1465,7 @@ export default async function EmployeePage({
   // grade-scoped leave entitlement). Its own dedicated form + thin server action (setEmploymentGradeAction)
   // so a Personal Details save can no longer wipe the seniority grade. Same select/options (grades) and
   // default (emp.gradeId) as before — pure relocation. Grade also stays editable on the Employment Info card
-  // (setEmploymentAssignmentAction), unchanged.
+  // (the consolidated setOrganisationAssignmentAction), unchanged.
   const gradeCard = admin ? (
     <Card id="section-grade">
       <SectionHeader title={t('gradeCardTitle')} />
@@ -2299,12 +2299,23 @@ export default async function EmployeePage({
   // NEW fields (probation/notice periods, confirmation & resignation dates, org dimensions, category, +
   // editable Hire Date) are captured here.
   //
-  // 594323a6 — the five organisation fields (Department, Position, Job Grade, Employment Type, Employee
-  // Status) are now EDITABLE from this tab via a dedicated sibling <form> → setEmploymentAssignmentAction.
-  // Department/Position/Employment Type/Employee Status are effective-dated (CLOSE+INSERT on `assignment`,
-  // preserving history + an audited event); Job Grade routes to setEmploymentGrade (owns employment.gradeId).
-  // Company stays read-only (moving companies is a distinct lifecycle event, not an inline edit). Two sibling
-  // forms in one Card is intentional — HTML forms can't nest, so the assignment editor is its own <form>.
+  // 594323a6 — the organisation fields are EDITABLE from this tab. Department/Position/Business Unit/
+  // Employment Type are effective-dated (CLOSE+INSERT on `assignment`, preserving history + an audited event);
+  // Job Grade routes to setEmploymentGrade (owns employment.gradeId). Company stays read-only (moving
+  // companies is a distinct lifecycle event, not an inline edit).
+  //
+  // c5ac75fa — the former standalone "Organisation" fieldset (Division / Branch / Region / Line / Section /
+  // Team / Base / Category) was MERGED into the Organisation Assignment section: one heading, one grid, ONE
+  // Save. The previous round grouped the two blocks visually but left two Saves, because those eight are flat
+  // non-dated columns on `employment` while the block above is effective-dated on `assignment`, and HTML forms
+  // cannot nest. That is resolved by consolidating at the ACTION layer instead of the markup layer — the eight
+  // inputs now live in this form and setOrganisationAssignmentAction fans them back out to the same three core
+  // writers, in one transaction. Storage is unchanged: nothing became effective-dated, nothing moved column.
+  // Because the single Save puts the effective date beside fields it does not govern, helper text under the
+  // date states exactly which fields it applies to (the mitigation this consolidation was approved with).
+  //
+  // Employment Dates keeps its OWN sibling <form> (it shared the old organisation form). It is a separate
+  // concern with a separate Save, and its action no longer touches the eight org columns.
   const EMPLOYMENT_TYPE_OPTIONS: readonly string[] = ['full_time', 'part_time', 'contract', 'intern'];
   // 955c7de4 — period unit dropdown options for the redesigned Employment Dates card.
   const PERIOD_UNIT_OPTIONS: readonly string[] = ['month', 'week', 'day'];
@@ -2321,8 +2332,9 @@ export default async function EmployeePage({
   const employmentInfoCard = admin ? (
     <Card id="section-employment-info">
       <SectionHeader title={t('employmentInfo.title')} />
-      {/* 594323a6 — editable organisation assignment. Effective-dated fields + Job Grade in one Save. */}
-      <form action={setEmploymentAssignmentAction} className="space-y-3 border-b border-border p-4">
+      {/* c5ac75fa — the consolidated Organisation Assignment section: every organisation dimension in one
+          grid under one heading, saved by one button. */}
+      <form action={setOrganisationAssignmentAction} className="space-y-3 border-b border-border p-4">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('employmentInfo.assignmentGroup')}</div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -2384,122 +2396,118 @@ export default async function EmployeePage({
               The same derived value already renders TWICE above the fold: on the PageHeader actions slot and
               on the employee summary Card. A third copy inside the form added noise without adding
               information. Blacklisting (the one manual override) now has its own Card on the Movement tab. */}
-          {/* R46 b272ab6b — the Effective Date label is scoped to this assignment sub-group. It applies ONLY
-              to the effective-dated Department / Position / Business Unit / Employment Type change saved by
-              setEmploymentAssignmentAction — NOT to the flat organisation fields below, which have no
-              history. The generic `effectiveDate` label read as if it governed the whole card. */}
+          {/* R46 b272ab6b / c5ac75fa — the Effective Date is scoped to the effective-dated Business Unit /
+              Department / Position / Employment Type change only. Now that the flat organisation fields share
+              this one form and one Save, that scoping can no longer be inferred from the layout, so it is
+              stated explicitly underneath: without it a user could reasonably assume dating a Division change
+              behaves like dating a Department change, and it does not. */}
           <Field label={t('employmentInfo.assignmentEffectiveDate')}>
             <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
+            <p className="text-xs text-muted-foreground">{t('employmentInfo.assignmentEffectiveDateHelp')}</p>
           </Field>
         </div>
+
+        {/* c5ac75fa — the eight formerly-separate Organisation fields, relocated INTO this form so the
+            section has a single Save. They remain flat, non-dated columns on `employment` (written by
+            setEmploymentInfo inside the consolidated action's transaction) — the move changed which form
+            submits them, not how or where they are stored. No sub-heading: one section, one grid.
+
+            1001ff61 — these are System-Labels dropdowns (profile_option categories) rather than free text,
+            preventing duplicate/misspelled values. Division is rendered FIRST per the requested Organisation
+            hierarchy. Legacy free-text values stay valid (ProfileOptionSelect renders any off-catalog stored
+            value pre-selected). An empty catalog imposes no constraint yet. */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+          <Field label={t('employmentInfo.division')}>
+            <ProfileOptionSelect
+              name="orgDivision"
+              value={emp.orgDivision}
+              options={profileOptions.division}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
+          </Field>
+          <Field label={t('employmentInfo.branch')}>
+            <ProfileOptionSelect
+              name="orgBranch"
+              value={emp.orgBranch}
+              options={profileOptions.branch}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
+          </Field>
+          <Field label={t('employmentInfo.region')}>
+            <ProfileOptionSelect
+              name="orgRegion"
+              value={emp.orgRegion}
+              options={profileOptions.region}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
+          </Field>
+          <Field label={t('employmentInfo.line')}>
+            <ProfileOptionSelect
+              name="orgLine"
+              value={emp.orgLine}
+              options={profileOptions.line}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
+          </Field>
+          <Field label={t('employmentInfo.section')}>
+            <ProfileOptionSelect
+              name="orgSection"
+              value={emp.orgSection}
+              options={profileOptions.section}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
+          </Field>
+          <Field label={t('employmentInfo.team')}>
+            <ProfileOptionSelect
+              name="orgTeam"
+              value={emp.orgTeam}
+              options={profileOptions.team}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
+          </Field>
+          <Field label={t('employmentInfo.base')}>
+            <ProfileOptionSelect
+              name="orgBase"
+              value={emp.orgBase}
+              options={profileOptions.base}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
+          </Field>
+          {/* R46 b272ab6b — Category folded in from the former standalone "Job" fieldset, whose only field it
+              was. It is the same flat catalog-backed column; only its visual home moved, so the one-field
+              group no longer fragments the organisation block. */}
+          <Field label={t('employmentInfo.category')}>
+            {/* 1001ff61 — Category is now a System-Labels dropdown (profile_option category `category`). */}
+            <ProfileOptionSelect
+              name="employmentCategory"
+              value={emp.employmentCategory}
+              options={profileOptions.category}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
+          </Field>
+        </div>
+
         <p className="text-xs text-muted-foreground">{t('employmentInfo.assignmentNote')}</p>
         <div className="flex justify-end">
           <button className={btnPrimary}>{t('employmentInfo.saveAssignment')}</button>
         </div>
       </form>
 
+      {/* c5ac75fa — Employment Dates is now its own sibling form. It previously shared a form with the
+          Organisation fieldset above; that fieldset moved into the assignment form, leaving the dates as the
+          sole remaining concern here. setEmploymentInfoAction no longer submits the eight org fields, and its
+          helper maps an absent field to `undefined` (untouched) rather than null (clear), so saving dates
+          cannot disturb the organisation values. */}
       <form action={setEmploymentInfoAction} className="space-y-6 p-4">
         <input type="hidden" name="employmentId" value={emp.employmentId} />
-
-        {/* ── Organisation (continued) ── R46 b272ab6b: relocated from the BOTTOM of this form to the TOP so it
-            sits directly beneath the Organisation Assignment sub-group above, putting every organisation
-            dimension — Company / Business Unit / Department / Position / Grade / Type, then Division / Branch /
-            Region / Line / Section / Team / Base / Category — in one contiguous block.
-
-            DECISION 1 (approved: keep both Saves): these eight fields are FLAT, non-dated columns on
-            `employment` and are saved by setEmploymentInfoAction, whereas the sub-group above is
-            EFFECTIVE-DATED on `assignment` and saved by setEmploymentAssignmentAction. HTML forms cannot
-            nest, so re-parenting these inputs into the assignment form would mean widening that action and
-            making these fields date-effective — a data-model change that was explicitly NOT approved. The
-            grouping here is therefore purely visual: the inputs stay in their original <form>, the two
-            server actions are untouched, and no field changed its persistence semantics. */}
-        <fieldset className="space-y-3">
-          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t('employmentInfo.orgGroup')}
-          </legend>
-          {/* 1001ff61 — the org fields are now System-Labels dropdowns (profile_option categories) instead of
-              free text, preventing duplicate/misspelled values. Division is rendered FIRST per the requested
-              Organisation hierarchy. Legacy free-text values stay valid (ProfileOptionSelect renders any
-              off-catalog stored value pre-selected). An empty catalog imposes no constraint yet. */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <Field label={t('employmentInfo.division')}>
-              <ProfileOptionSelect
-                name="orgDivision"
-                value={emp.orgDivision}
-                options={profileOptions.division}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.branch')}>
-              <ProfileOptionSelect
-                name="orgBranch"
-                value={emp.orgBranch}
-                options={profileOptions.branch}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.region')}>
-              <ProfileOptionSelect
-                name="orgRegion"
-                value={emp.orgRegion}
-                options={profileOptions.region}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.line')}>
-              <ProfileOptionSelect
-                name="orgLine"
-                value={emp.orgLine}
-                options={profileOptions.line}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.section')}>
-              <ProfileOptionSelect
-                name="orgSection"
-                value={emp.orgSection}
-                options={profileOptions.section}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.team')}>
-              <ProfileOptionSelect
-                name="orgTeam"
-                value={emp.orgTeam}
-                options={profileOptions.team}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            <Field label={t('employmentInfo.base')}>
-              <ProfileOptionSelect
-                name="orgBase"
-                value={emp.orgBase}
-                options={profileOptions.base}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-            {/* R46 b272ab6b — Category folded in from the former standalone "Job" fieldset, whose only field it
-                was. It is the same flat catalog-backed column on the same form/action; only its visual home
-                moved, so the one-field group no longer fragments the organisation block. */}
-            <Field label={t('employmentInfo.category')}>
-              {/* 1001ff61 — Category is now a System-Labels dropdown (profile_option category `category`). */}
-              <ProfileOptionSelect
-                name="employmentCategory"
-                value={emp.employmentCategory}
-                options={profileOptions.category}
-                placeholder={t('optionNotSet')}
-                legacySuffix={t('optionLegacySuffix')}
-              />
-            </Field>
-          </div>
-        </fieldset>
 
         {/* ── Employment Dates (redesigned 955c7de4) ── explicit period UNITS + full lifecycle dates, grouped
             into Joining / Probation / Notice / Resignation sub-sections. Each period is a value + unit dropdown

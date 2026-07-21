@@ -718,6 +718,7 @@
         "save": "保存雇佣信息",
         "assignmentGroup": "组织分配",
         "assignmentEffectiveDate": "分配生效日期",
+        "assignmentEffectiveDateHelp": "生效日期仅适用于业务单位、部门、职位和雇佣类型，这些字段会保留带日期的历史记录。职级、事业部、分公司、区域、线别、科别、团队、基地和类别仅保存为当前值，不保留历史。",
         "saveAssignment": "保存组织分配",
         "assignmentNote": "对部门、职位和雇佣类型的更改会记录生效日期并保存在任职历史中，以保持过往记录的准确性。职级会保存到员工档案。",
         "positionNone": "无",
