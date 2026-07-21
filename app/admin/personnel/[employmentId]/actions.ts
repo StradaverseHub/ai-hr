@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
+// c5ac75fa — the consolidated Organisation Assignment save composes three core writers in ONE transaction.
+import { withTenant } from '@/db/client';
 import { endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentBlacklist, setEmploymentGrade, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
 import { createMovementEvent, MOVEMENT_KINDS, type MovementKind } from '@/core/movement';
@@ -758,11 +760,16 @@ export async function setComplianceFieldsAction(formData: FormData) {
 export async function setEmploymentInfoAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
-  // Helper: a present-but-blank field is an explicit clear (null); an absent field is untouched. Every
-  // input on this single form is always rendered, so "" → null is the intended clear semantic here.
-  const str = (name: string): string | null => {
+  // Helper: a present-but-blank field is an explicit clear (null); an ABSENT field is untouched (undefined).
+  //
+  // c5ac75fa — the absent → `undefined` leg is load-bearing now. This form used to carry the eight flat org
+  // columns (orgDivision … employmentCategory) as well as the dates; the Organisation Assignment merge moved
+  // them onto the consolidated assignment form, so they no longer appear in THIS submission. setEmploymentInfo
+  // reads `undefined` as "leave as-is" but `null` as "clear to NULL", so returning null for an absent field
+  // would make every Employment Dates save silently wipe all eight org values.
+  const str = (name: string): string | null | undefined => {
     const v = formData.get(name);
-    if (v == null) return null;
+    if (v == null) return undefined;
     const t = String(v).trim();
     return t === '' ? null : t;
   };
@@ -771,35 +778,31 @@ export async function setEmploymentInfoAction(formData: FormData) {
       employmentId,
       hiredOn: str('hiredOn') ?? undefined, // hiredOn is NOT NULL — a blank submit must not clear it.
       joinDate: str('joinDate'), // nullable current-company Join Date; blank clears it.
-      probationMonths: str('probationMonths') as string | null,
-      probationDays: str('probationDays') as string | null,
+      probationMonths: str('probationMonths'),
+      probationDays: str('probationDays'),
       confirmationDate: str('confirmationDate'),
-      resignationNoticeMonths: str('resignationNoticeMonths') as string | null,
-      resignationNoticeDays: str('resignationNoticeDays') as string | null,
+      resignationNoticeMonths: str('resignationNoticeMonths'),
+      resignationNoticeDays: str('resignationNoticeDays'),
       resignationDate: str('resignationDate'),
-      shortNoticeMonths: str('shortNoticeMonths') as string | null,
-      shortNoticeDays: str('shortNoticeDays') as string | null,
+      shortNoticeMonths: str('shortNoticeMonths'),
+      shortNoticeDays: str('shortNoticeDays'),
       // 955c7de4 — redesigned value+unit periods + new lifecycle dates. finalConfirmationDate is derived
       // server-side, never submitted.
-      probationValue: str('probationValue') as string | null,
+      probationValue: str('probationValue'),
       probationUnit: str('probationUnit'),
-      extendedProbationValue: str('extendedProbationValue') as string | null,
+      extendedProbationValue: str('extendedProbationValue'),
       extendedProbationUnit: str('extendedProbationUnit'),
-      noticeBeforeConfirmationValue: str('noticeBeforeConfirmationValue') as string | null,
+      noticeBeforeConfirmationValue: str('noticeBeforeConfirmationValue'),
       noticeBeforeConfirmationUnit: str('noticeBeforeConfirmationUnit'),
-      noticeAfterConfirmationValue: str('noticeAfterConfirmationValue') as string | null,
+      noticeAfterConfirmationValue: str('noticeAfterConfirmationValue'),
       noticeAfterConfirmationUnit: str('noticeAfterConfirmationUnit'),
       extendedConfirmationDate: str('extendedConfirmationDate'),
       tenderResignationDate: str('tenderResignationDate'),
       lastWorkingDate: str('lastWorkingDate'),
-      orgBranch: str('orgBranch'),
-      orgDivision: str('orgDivision'),
-      orgRegion: str('orgRegion'),
-      orgLine: str('orgLine'),
-      orgSection: str('orgSection'),
-      orgTeam: str('orgTeam'),
-      orgBase: str('orgBase'),
-      employmentCategory: str('employmentCategory'),
+      // c5ac75fa — the eight flat org columns (orgDivision/orgBranch/orgRegion/orgLine/orgSection/orgTeam/
+      // orgBase/employmentCategory) are NO LONGER written here. They moved onto the consolidated Organisation
+      // Assignment form and are owned by setOrganisationAssignmentAction below, so there is exactly one writer
+      // for them. This action now covers the Employment Dates group only.
     });
     // R45 7527ea5f — hire date + confirmation date drive service-band + probation-eligibility entitlement;
     // recompute the current cycle when they change.
@@ -813,15 +816,36 @@ export async function setEmploymentInfoAction(formData: FormData) {
 
 const EMPLOYMENT_TYPES: readonly EmploymentTypeValue[] = ['full_time', 'part_time', 'contract', 'intern'];
 
+/* c5ac75fa — setEmploymentAssignmentAction (feedback 594323a6) was REPLACED by
+ * setOrganisationAssignmentAction below. The Organisation card was merged into the Organisation Assignment
+ * section, so the section's single Save must now carry the eight flat org columns too. Rather than leave the
+ * superseded action exported — every exported `use server` function is a live RPC endpoint, and a dead one
+ * that writes assignments without the org fields is a trap for the next caller — its logic was folded into
+ * the consolidated action, which additionally runs its writers in one transaction. */
+
 /**
- * Employment tab org-info edit (feedback 594323a6) — the single Save for the five organisation fields HR
- * maintains on the Personnel Employment tab: Department, Position, Employment Type, Employee Status (all
- * effective-dated through setEmploymentAssignment: CLOSE+INSERT so history is preserved + an audited
- * `employment.assignment.changed` event) and Job Grade (routed to setEmploymentGrade, which owns
- * employment.gradeId). Enum values are validated here (defence-in-depth over the DB column types); an
- * out-of-catalog department/position id is FK-rejected by Postgres and surfaced via ?error=. Admin-gated.
+ * c5ac75fa — the ONE Save behind the consolidated "Organisation Assignment" section on the Personnel (Admin)
+ * Employment tab. The former standalone "Organisation" card was merged into that section, so a single submit
+ * now carries three different kinds of field:
+ *
+ *   • effective-dated  — Business Unit / Department / Position / Employment Type → setEmploymentAssignment
+ *                        (CLOSE + INSERT on `assignment`, history preserved, `employment.assignment.changed`)
+ *   • flat, audited    — Job Grade → setEmploymentGrade (owns employment.gradeId, `employment.grade.changed`)
+ *   • flat, audited    — Division / Branch / Region / Line / Section / Team / Base / Category
+ *                        → setEmploymentInfo (flat columns on `employment`, `employment.info.updated`)
+ *
+ * STORAGE IS UNCHANGED by the merge: every field still lands in exactly the column it did before, with the
+ * same history semantics. Only the form that submits them was consolidated. The eight flat fields did NOT
+ * become effective-dated (that was Option C and is explicitly out of scope) — which is why the UI carries
+ * helper text under the date spelling out which fields it actually governs.
+ *
+ * All three writers run inside ONE withTenant transaction via their `outerTx` parameter, so a validation
+ * failure in any leg (e.g. an off-catalog Division, an effective date before the current assignment start)
+ * rolls the whole save back. Without that, a partial commit could leave the dated assignment row and the flat
+ * columns describing two different org placements. Each writer appends its OWN DomainEvent — this action adds
+ * none of its own, so the audit trail is exactly what it was before the merge (no duplicated events).
  */
-export async function setEmploymentAssignmentAction(formData: FormData) {
+export async function setOrganisationAssignmentAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   const t = await getTranslations('people.detail');
@@ -834,24 +858,53 @@ export async function setEmploymentAssignmentAction(formData: FormData) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(t('employmentInfo.invalidValue'))}`));
   }
   const effectiveDate = String(formData.get('effectiveDate') ?? '').trim();
+  // Absent → undefined (untouched); present-but-blank → null (explicit clear). Same contract as
+  // setEmploymentInfoAction's helper; all eight are always rendered on this form, so blank means clear.
+  const str = (name: string): string | null | undefined => {
+    const v = formData.get(name);
+    if (v == null) return undefined;
+    const trimmed = String(v).trim();
+    return trimmed === '' ? null : trimmed;
+  };
   try {
-    // Job Grade lives on `employment` — its own audited writer (no-ops when unchanged).
-    await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null });
-    // Department / Position / Employment Type — effective-dated assignment change. Employee Status is NO
-    // LONGER written here (R43 c26c3ce5): it is system-derived from the lifecycle dates. `status` is left
-    // undefined so setEmploymentAssignment carries the existing stored value forward (kept for history +
-    // the analytics/performance readers that still key off it), never mutated from this form.
-    await setEmploymentAssignment(s, {
-      employmentId,
-      effectiveDate,
-      departmentId: (formData.get('departmentId') as string) || undefined,
-      positionId: (formData.get('positionId') as string) || null,
-      // 1001ff61 — Business Unit on the assignment (blank = clear). Company scope + liveness validated in core.
-      businessUnitId: (formData.get('businessUnitId') as string) || null,
-      employmentType,
+    await withTenant(s, async (tx) => {
+      // Job Grade lives on `employment` — its own audited writer (no-ops when unchanged).
+      await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null }, tx);
+      // Department / Position / Business Unit / Employment Type — effective-dated assignment change.
+      // Employee Status is NOT written here (R43 c26c3ce5): it is system-derived from the lifecycle dates,
+      // so `status` is left undefined and setEmploymentAssignment carries the stored value forward.
+      await setEmploymentAssignment(
+        s,
+        {
+          employmentId,
+          effectiveDate,
+          departmentId: (formData.get('departmentId') as string) || undefined,
+          positionId: (formData.get('positionId') as string) || null,
+          businessUnitId: (formData.get('businessUnitId') as string) || null,
+          employmentType,
+        },
+        tx,
+      );
+      // The eight relocated flat columns. ONLY these are passed — every date/period key stays `undefined`
+      // so this save can never disturb the Employment Dates group, which keeps its own separate form.
+      await setEmploymentInfo(
+        s,
+        {
+          employmentId,
+          orgDivision: str('orgDivision'),
+          orgBranch: str('orgBranch'),
+          orgRegion: str('orgRegion'),
+          orgLine: str('orgLine'),
+          orgSection: str('orgSection'),
+          orgTeam: str('orgTeam'),
+          orgBase: str('orgBase'),
+          employmentCategory: str('employmentCategory'),
+        },
+        tx,
+      );
     });
-    // R45 7527ea5f — grade + employment type feed benefit-scheme / grade-scoped entitlement resolution;
-    // recompute the current cycle after this assignment change.
+    // R45 7527ea5f — grade + employment type feed benefit-scheme / grade-scoped entitlement resolution.
+    // Runs AFTER the transaction commits (it opens its own) and is best-effort by design.
     await recomputeEntitlement(s, employmentId, 'employment_changed');
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));

@@ -718,6 +718,7 @@
         "save": "Lưu thông tin việc làm",
         "assignmentGroup": "Phân công tổ chức",
         "assignmentEffectiveDate": "Ngày hiệu lực phân công",
+        "assignmentEffectiveDateHelp": "Ngày hiệu lực chỉ áp dụng cho Đơn vị kinh doanh, Phòng ban, Chức vụ và Loại hình lao động — những trường có lưu lịch sử theo ngày. Bậc lương, Bộ phận, Chi nhánh, Khu vực, Tuyến, Phân khu, Nhóm, Cơ sở và Danh mục chỉ được lưu dưới dạng giá trị hiện tại.",
         "saveAssignment": "Lưu phân công tổ chức",
         "assignmentNote": "Các thay đổi về Phòng ban, Chức vụ và Loại hình việc làm được ghi nhận kèm ngày hiệu lực và lưu trong lịch sử phân công, để hồ sơ quá khứ luôn chính xác. Bậc công việc được lưu vào hồ sơ nhân viên.",
         "positionNone": "Không có",

@@ -1623,7 +1623,16 @@ const EMPLOYMENT_INFO_DATE_FIELDS = [
   'lastWorkingDate',
 ] as const;
 
-export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoInput) {
+export async function setEmploymentInfo(
+  ctx: SessionContext,
+  p: EmploymentInfoInput,
+  /** c5ac75fa — optional caller transaction (the same run(outerTx) pattern setEmploymentGrade and
+   *  setEmploymentAssignment already use). The consolidated Organisation Assignment save on the Personnel
+   *  Employment tab drives grade + effective-dated assignment + these flat org columns from ONE button, so
+   *  all three must commit or roll back together — a half-save would leave the dated assignment history and
+   *  the flat columns disagreeing with each other. */
+  outerTx?: Tx,
+) {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error('Only an admin can edit employment information.');
@@ -1678,7 +1687,7 @@ export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoIn
 
   if (Object.keys(set).length === 0) throw new Error('Nothing to change.');
 
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const [before] = await tx
       .select({
         hiredOn: employment.hiredOn,
@@ -1802,7 +1811,8 @@ export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoIn
       payload: { fields: Object.keys(set), before, after, ...(p.movement ? { movement: p.movement } : {}) },
     });
     return { id: p.employmentId };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 /**
