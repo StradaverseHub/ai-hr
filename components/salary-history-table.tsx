@@ -5,12 +5,14 @@ import { useTranslations } from 'next-intl';
 import { Badge } from './ui/badge';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { inputCls } from './ui';
-import { editCompensationAction } from '@/app/admin/personnel/[employmentId]/actions';
+import { editCompensationAction, supersedeCompensationAction } from '@/app/admin/personnel/[employmentId]/actions';
 
 export type SalaryStatus = 'active' | 'future' | 'historical';
 
 /** One salary-history row, fully derived server-side (increment/status computed there) and serialized
- *  for the client island so filtering/sorting/exporting stay interactive without any client data fetch. */
+ *  for the client island so filtering/sorting/exporting stay interactive without any client data fetch.
+ *  Audit detail (created/updated by/on) is deliberately NOT here (7c7c2f80) — it lives in the Audit
+ *  Trail, keeping this table to salary information only. */
 export type SalaryRowView = {
   id: string;
   employmentId: string;
@@ -22,12 +24,10 @@ export type SalaryRowView = {
   incrementPct: number | null;
   status: SalaryStatus;
   remarks: string | null;
-  createdByName: string | null;
-  createdOn: string;
-  updatedByName: string | null;
-  updatedOn: string | null;
   /** Only the open row (latest active OR future-effective) is editable — historical rows are immutable. */
   editable: boolean;
+  /** Deletable = not yet relied on by a CLOSED payroll run (server-derived; the service re-enforces). */
+  deletable: boolean;
 };
 
 type SortKey = 'effectiveDate' | 'basic' | 'increment';
@@ -39,10 +39,12 @@ const STATUS_VARIANT: Record<SalaryStatus, 'success' | 'warning' | 'default'> = 
 };
 
 /**
- * Basic Salary history table (feedback 87c82b18, section 7). A client island that renders the salary
- * history with SEARCH, STATUS FILTER, column SORTING, CSV EXPORT, and an inline EDIT flow for the open
- * (latest/future) record. All salary math is derived server-side and passed in `rows`; this component
- * only presents + filters/sorts/exports, so it lives inside the server-rendered Payroll panel (f2904eeb).
+ * Basic Salary history table (feedback 87c82b18, redesigned under 7c7c2f80). A client island that
+ * renders the salary history with SEARCH, STATUS FILTER, column SORTING, CSV EXPORT, an inline EDIT
+ * flow (amount, remarks AND effective date) for the open (latest/future) record, and a
+ * confirmation-gated DELETE for records not yet used by a closed payroll run. All salary math is
+ * derived server-side and passed in `rows`; this component only presents + filters/sorts/exports, so
+ * it lives inside the server-rendered Payroll panel (f2904eeb).
  */
 export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
   const t = useTranslations('people.detail');
@@ -70,8 +72,6 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
         r.incrementPct != null ? `${r.incrementPct.toFixed(2)}%` : '',
         statusLabel(r.status),
         r.remarks ?? '',
-        r.createdByName ?? '',
-        r.updatedByName ?? '',
       ]
         .join(' ')
         .toLowerCase();
@@ -106,10 +106,6 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
       t('salaryColIncrementPct'),
       t('status'),
       t('salaryColRemarks'),
-      t('salaryColCreatedBy'),
-      t('salaryColCreatedOn'),
-      t('salaryColLastUpdatedBy'),
-      t('salaryColLastUpdatedOn'),
     ];
     const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
     const lines = [headers.map(esc).join(',')];
@@ -123,10 +119,6 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
           r.incrementPct != null ? `${r.incrementPct.toFixed(2)}%` : '',
           statusLabel(r.status),
           r.remarks ?? '',
-          r.createdByName ?? '',
-          r.createdOn,
-          r.updatedByName ?? '',
-          r.updatedOn ?? '',
         ]
           .map((v) => esc(String(v)))
           .join(','),
@@ -202,17 +194,13 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
               <th className="px-4 py-2 text-right font-medium">{t('salaryColIncrementPct')}</th>
               <th className="px-4 py-2 font-medium">{t('status')}</th>
               <th className="px-4 py-2 font-medium">{t('salaryColRemarks')}</th>
-              <th className="px-4 py-2 font-medium">{t('salaryColCreatedBy')}</th>
-              <th className="px-4 py-2 font-medium">{t('salaryColCreatedOn')}</th>
-              <th className="px-4 py-2 font-medium">{t('salaryColLastUpdatedBy')}</th>
-              <th className="px-4 py-2 font-medium">{t('salaryColLastUpdatedOn')}</th>
               <th className="px-4 py-2 font-medium"></th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={12} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                <td colSpan={8} className="px-4 py-6 text-center text-sm text-muted-foreground">
                   {t('salaryNoResults')}
                 </td>
               </tr>
@@ -237,28 +225,54 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
                       <Badge variant={STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</Badge>
                     </td>
                     <td className="px-4 py-2 text-muted-foreground">{r.remarks || '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">{r.createdByName || '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-2 tabular-nums text-muted-foreground">{r.createdOn}</td>
-                    <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">{r.updatedByName || '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-2 tabular-nums text-muted-foreground">{r.updatedOn || '—'}</td>
                     <td className="whitespace-nowrap px-4 py-2 text-right">
-                      {r.editable && (
-                        <button
-                          type="button"
-                          onClick={() => setEditingId((id) => (id === r.id ? null : r.id))}
-                          className="text-sm font-medium text-primary hover:underline"
-                        >
-                          {t('salaryEdit')}
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-3">
+                        {r.editable && (
+                          <button
+                            type="button"
+                            onClick={() => setEditingId((id) => (id === r.id ? null : r.id))}
+                            className="text-sm font-medium text-primary hover:underline"
+                          >
+                            {t('salaryEdit')}
+                          </button>
+                        )}
+                        {r.deletable && (
+                          /* Soft delete (7c7c2f80): confirmation-gated; the service refuses records a
+                             CLOSED payroll run relied on (this flag pre-hides those). */
+                          <form action={supersedeCompensationAction} className="inline-flex">
+                            <input type="hidden" name="employmentId" value={r.employmentId} />
+                            <input type="hidden" name="compensationId" value={r.id} />
+                            <ConfirmSubmit
+                              variant="ghost"
+                              size="sm"
+                              className="h-auto px-0 py-0 text-sm font-medium text-red-700 hover:bg-transparent hover:underline dark:text-red-400"
+                              title={t('salaryDeleteConfirmTitle')}
+                              description={t('salaryDeleteConfirmDescription')}
+                              confirmLabel={t('salaryDelete')}
+                            >
+                              {t('salaryDelete')}
+                            </ConfirmSubmit>
+                          </form>
+                        )}
+                      </div>
                     </td>
                   </tr>
                   {r.editable && editingId === r.id && (
                     <tr className="border-b border-border/60 bg-muted/40">
-                      <td colSpan={12} className="px-4 py-4">
+                      <td colSpan={8} className="px-4 py-4">
                         <form action={editCompensationAction} className="flex flex-wrap items-end gap-3">
                           <input type="hidden" name="employmentId" value={r.employmentId} />
                           <input type="hidden" name="compensationId" value={r.id} />
+                          <label className="flex flex-col gap-1.5">
+                            <span className="text-xs font-medium text-muted-foreground">{t('effectiveDate')}</span>
+                            <input
+                              name="effectiveFrom"
+                              type="date"
+                              required
+                              defaultValue={r.effectiveDate}
+                              className={`${inputCls} w-40`}
+                            />
+                          </label>
                           <label className="flex flex-col gap-1.5">
                             <span className="text-xs font-medium text-muted-foreground">{t('basicSalaryMyr')}</span>
                             <input

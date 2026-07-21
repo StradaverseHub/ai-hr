@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentBlacklist, setEmploymentGrade, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
-import { setCompensation, updateCompensation } from '@/core/comp';
+import { setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
 import { reprojectEntitlementForEmployment } from '@/core/leave';
 import { assignEmployeeShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
@@ -427,9 +427,11 @@ export async function setCompensationAction(formData: FormData) {
 }
 
 /**
- * Edit Salary Record (feedback 87c82b18, flow #4). Corrects the basic salary / remarks of an existing
- * OPEN salary row (latest active or future-effective). The service enforces immutability of historical
- * rows and appends the compensation.updated audit event; the screen re-derives increment/status.
+ * Edit Salary Record (feedback 87c82b18, flow #4; widened for 7c7c2f80). Corrects the basic salary,
+ * remarks and/or EFFECTIVE DATE of an existing OPEN salary row (latest active or future-effective).
+ * The service enforces immutability of historical rows, the no-overlap and closed-payroll-period rules
+ * for date moves, and appends the compensation.updated audit event; the screen re-derives
+ * increment/status.
  */
 export async function editCompensationAction(formData: FormData) {
   const s = await requireAdmin();
@@ -437,12 +439,36 @@ export async function editCompensationAction(formData: FormData) {
   try {
     const rawBasic = formData.get('basicSalary');
     const rawBasicStr = String(rawBasic ?? '').trim();
+    const rawFrom = String(formData.get('effectiveFrom') ?? '').trim();
     await updateCompensation(s, {
       compensationId: String(formData.get('compensationId')),
       employmentId,
       basicSalary: rawBasicStr !== '' ? Number(rawBasicStr) : undefined,
       // Remarks always submitted (possibly empty → cleared to NULL).
       remarks: String(formData.get('remarks') ?? '').trim() || null,
+      // Effective date (7c7c2f80): submitted by the edit form; the service no-ops when unchanged.
+      validFrom: rawFrom !== '' ? rawFrom : undefined,
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Delete Salary Record (7c7c2f80) — SOFT delete via supersedeCompensation: the row is hidden from the
+ * screen and from payroll resolution (the previous record reopens), never physically erased, so a
+ * closed payslip's justification survives for audit. The service (and the 0277 DB trigger) refuse when
+ * the record's window overlaps a CLOSED payroll run for this employee. Confirmation-gated in the UI.
+ */
+export async function supersedeCompensationAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await supersedeCompensation(s, {
+      compensationId: String(formData.get('compensationId')),
+      employmentId,
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));

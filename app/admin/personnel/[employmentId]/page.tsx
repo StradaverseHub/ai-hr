@@ -58,7 +58,12 @@ import {
 } from './actions';
 import { serviceYearsMonthsAt } from '@/core/leave';
 import { deriveEmploymentStatus } from '@/core/employment-status';
-import { compensationHistoryDetailed, type CompensationHistoryRow } from '@/core/comp';
+import {
+  closedPayrollPeriodsFor,
+  compensationHistoryDetailed,
+  overlapsClosedPeriod,
+  type CompensationHistoryRow,
+} from '@/core/comp';
 import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
 import { listCp38 } from '@/core/cp38';
@@ -193,6 +198,9 @@ export default async function EmployeePage({
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
   const salaryHistory = admin ? await compensationHistoryDetailed(s, employmentId) : [];
+  // 7c7c2f80 — periods of CLOSED payroll runs that paid this employee: drives the per-row "deletable"
+  // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
+  const closedPayrollPeriods = admin ? await closedPayrollPeriodsFor(s, employmentId) : [];
   const statutory = admin ? await getStatutoryProfileMY(s, emp.personId) : null;
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
   const holidayGroups = admin ? await listHolidayGroups(s) : [];
@@ -1356,12 +1364,14 @@ export default async function EmployeePage({
     </Card>
   ) : null;
 
-  // Basic Salary card (feedback 87c82b18 — "Compensation" renamed & rebuilt as salary history). The
-  // salary engine (effective-dated CLOSE+INSERT, payroll picks the row in effect per period) already
-  // exists in core/comp.ts; this surfaces the FULL history: summary, increment maths, status colours,
-  // remarks, and who created each record. Kept in its old Payroll slot; `section-compensation` anchor
-  // stays for fragment-URL safety. Stays a server-rendered <Card>/<form> (f2904eeb) — the only
-  // interactivity (live increment preview + confirm) is the SalaryRevisionConfirm client island.
+  // Basic Salary card (feedback 87c82b18 — "Compensation" renamed & rebuilt as salary history; audit
+  // columns removed + edit/delete widened under 7c7c2f80). The salary engine (effective-dated
+  // CLOSE+INSERT) lives in core/comp.ts. NOTE on payroll: generatePayslips resolves the CURRENT OPEN
+  // row (validTo IS NULL), NOT the row in force during the period being paid — only the opt-in
+  // salary-increment proration block is period-aware (core/payroll.ts). That is why removing or
+  // re-dating records is blocked against closed payroll periods. Kept in its old Payroll slot;
+  // `section-compensation` anchor stays for fragment-URL safety. Stays a server-rendered
+  // <Card>/<form> (f2904eeb) — interactivity lives in the SalaryRevisionConfirm / history-table islands.
   const fmtMoney = (n: number) =>
     n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   // salaryHistory is newest-first. previous = the next-older row's basic; status is derived from the dates.
@@ -1378,10 +1388,16 @@ export default async function EmployeePage({
     // Only the OPEN row (validTo null; already non-superseded from the query) is editable — the latest
     // active OR a future-effective record. Historical (closed) rows stay immutable (Edit flow #4).
     const editable = !emp.terminatedOn && row.validTo == null;
-    return { row, basic, previous, incrementAmount, incrementPct, status, editable };
+    // Deletable (7c7c2f80): soft delete is offered only for records whose window no CLOSED payroll run
+    // relied on — same rule the service + 0277 trigger enforce, pre-derived so the button can hide.
+    const deletable =
+      !emp.terminatedOn && !overlapsClosedPeriod(closedPayrollPeriods, row.validFrom, row.validTo);
+    return { row, basic, previous, incrementAmount, incrementPct, status, editable, deletable };
   });
-  // Serialized rows for the client history table (search / filter / sort / export / edit). Salary math is
-  // derived here on the server; the island only presents + filters (f2904eeb-safe, no client fetch).
+  // Serialized rows for the client history table (search / filter / sort / export / edit / delete).
+  // Salary math is derived here on the server; the island only presents + filters (f2904eeb-safe, no
+  // client fetch). Audit detail (created/updated by/on) is no longer serialized — it belongs to the
+  // Audit Trail, not this screen (7c7c2f80).
   const salaryRowViews: SalaryRowView[] = salaryRows.map((r) => ({
     id: r.row.id,
     employmentId: emp.employmentId,
@@ -1393,11 +1409,8 @@ export default async function EmployeePage({
     incrementPct: r.incrementPct,
     status: r.status,
     remarks: r.row.remarks,
-    createdByName: r.row.createdByName,
-    createdOn: new Date(r.row.recordedAt).toISOString().slice(0, 10),
-    updatedByName: r.row.updatedByName,
-    updatedOn: r.row.updatedAt ? new Date(r.row.updatedAt).toISOString().slice(0, 10) : null,
     editable: r.editable,
+    deletable: r.deletable,
   }));
   // The summary shows the row in effect TODAY (active) — NOT the open row, which may be a future revision.
   const activeDerived = salaryRows.find((r) => r.status === 'active') ?? null;
