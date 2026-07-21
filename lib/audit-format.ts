@@ -199,6 +199,10 @@ const SENSITIVE = new Set([
   'ic_number',
   'basicSalary',
   'basic_salary',
+  // ADR-0078 — the per-day/per-hour rate is money and masks alongside basicSalary. payMode / paymentTerm
+  // are non-sensitive enum names and deliberately render in clear.
+  'rateAmount',
+  'rate_amount',
   'monthlyAllowance',
   'netPay',
   'grossPay',

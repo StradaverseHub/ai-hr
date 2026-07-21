@@ -66,13 +66,13 @@ import {
 } from '@/core/comp';
 import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
+import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
 import { listDependents, eligibleChildReliefCount, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
-import { listAssignablePolicies, resolvedPolicyForEmployment } from '@/core/payroll-policy';
+import { listAssignablePolicies } from '@/core/payroll-policy';
 import { PAYMENT_METHODS } from '@/core/org';
-import { payrollFrequencyOf } from '@/core/payroll-policy-config';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { listShiftsForTenant } from '@/core/roster';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
@@ -236,9 +236,8 @@ export default async function EmployeePage({
   // and Payment Term read-only. Resolving rather than reading emp.payrollPolicyId matters: an employee with
   // no direct assignment still computes under the company default, and an assigned-but-inactive policy
   // silently falls back to monthly — both cases would be misreported by the raw column.
-  const resolvedPolicy = admin ? await resolvedPolicyForEmployment(s, employmentId) : null;
-  const resolvedPayMode = resolvedPolicy?.policyType ?? 'monthly';
-  const resolvedPaymentTerm = payrollFrequencyOf(resolvedPolicy?.config ?? null);
+  // ADR-0078 — the R46 resolvedPolicyForEmployment read is gone from this page: Pay Mode / Payment Term
+  // now live on the employee's own compensation rows (salaryHistory below carries them per revision).
   // R33 f21d6eee — Default shift picker options: the SHARED tenant-wide shift library (a template may now be
   // assigned to any employee regardless of company). Loaded WITH archived rows so a currently-assigned-but-
   // later-archived shift still renders as the selected option (instead of silently showing "None"), then
@@ -1408,6 +1407,10 @@ export default async function EmployeePage({
     incrementAmount: r.incrementAmount,
     incrementPct: r.incrementPct,
     status: r.status,
+    // ADR-0078 — per-revision salary structure, shown as table columns and editable on the open row.
+    payMode: r.row.payMode,
+    paymentTerm: r.row.paymentTerm,
+    rateAmount: r.row.rateAmount,
     remarks: r.row.remarks,
     editable: r.editable,
     deletable: r.deletable,
@@ -1415,6 +1418,9 @@ export default async function EmployeePage({
   // The summary shows the row in effect TODAY (active) — NOT the open row, which may be a future revision.
   const activeDerived = salaryRows.find((r) => r.status === 'active') ?? null;
   const hasFuture = salaryRows.some((r) => r.status === 'future');
+  // ADR-0078 — the OPEN row (validTo null) is what payroll reads; its pay structure prefills the
+  // add-revision form so an untouched save carries the structure forward visibly.
+  const openSalaryRow = salaryHistory.find((r: CompensationHistoryRow) => r.validTo == null) ?? null;
   const compensationCard = admin ? (
     <Card id="section-compensation">
       <SectionHeader title={t('compensation')} />
@@ -1487,8 +1493,18 @@ export default async function EmployeePage({
                 className={inputCls}
               />
             </Field>
+            {/* ADR-0078 (642ecc55) — Pay Mode, Payment Term and the conditional Rate box are saved WITH the
+                revision (effective-dated, historical rows keep their own settings). Defaults come from the
+                open row so an untouched save carries the structure forward. The service enforces the
+                period-boundary rule for pay-mode changes and requires a rate for daily/hourly. */}
+            <PayStructureFields
+              defaultPayMode={(openSalaryRow?.payMode ?? 'monthly') as PayModeOption}
+              defaultPaymentTerm={openSalaryRow?.paymentTerm ?? 'monthly'}
+              defaultRateAmount={openSalaryRow?.rateAmount ?? null}
+            />
           </div>
           <p className="text-xs text-muted-foreground">{t('salaryAllowanceMovedHint')}</p>
+          <p className="text-xs text-muted-foreground">{t('payModeBoundaryHint')}</p>
           <SalaryRevisionConfirm
             currentBasic={activeDerived ? activeDerived.basic : null}
             currency={activeDerived ? activeDerived.row.currency : 'MYR'}
@@ -1496,39 +1512,21 @@ export default async function EmployeePage({
         </form>
       )}
 
-      {/* ── R46 79eb7151 — How this employee is paid ──────────────────────────────────────────────────────
-          The reporter asked for Pay Mode, Payment Term and Payment Method on the Payroll tab, believing all
-          three were missing. Two of them already existed; they were just invisible from here, because the
-          Payroll Policy card rendered at the very BOTTOM of the tab while Basic Salary sits at the top. That
-          distance is the actual defect, and it is fixed two ways: payrollPolicyCard now renders immediately
-          after this card, and the resolved values appear right here.
-
-          DECISION (approved option 1: surface, do NOT duplicate). Pay Mode ≡ payroll_policy.policy_type and
-          Payment Term ≡ PayrollPolicyConfig.frequency. Both are properties of the reusable POLICY, which is
-          the single input the payroll kernel reads. They are rendered READ-ONLY with a link to edit the
-          policy. Per-employee override columns were explicitly rejected: they would shadow the policy, give
-          the kernel two disagreeing sources of truth for one input, and require a precedence rule in
-          core/payroll.ts. Payment Method is different — it had no home anywhere in the system — so it IS a
-          real per-employee field, with its own column, event and save.
-
-          These are the RESOLVED values (assignment → company default → monthly), i.e. what will actually
-          compute this person's pay, not the raw assigned column. */}
+      {/* ── R46 79eb7151, SUPERSEDED by ADR-0078 (642ecc55) — How this employee is paid ─────────────────────
+          The R46 decision ("surface, do NOT duplicate": Pay Mode ≡ payroll_policy.policy_type and Payment
+          Term ≡ PayrollPolicyConfig.frequency, rendered read-only here with a link to the policy) is
+          REVERSED: the salary structure now lives on the employee's own effective-dated compensation row
+          (pay_mode / payment_term / rate_amount, NOT NULL, no policy fallback), edited via the Basic Salary
+          form above and shown per-revision in the history table. The read-only pair this block used to
+          render is gone; there is still exactly ONE source of truth per period, so the R46 objection (two
+          disagreeing sources + a precedence rule) does not recur. Payment Method was per-employee all along
+          and stays exactly where it was, with its own column, event and save. */}
       <div className="space-y-3 border-t border-border p-4">
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t('payMethodGroup')}
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field label={t('payMode')}>
-            <div className="flex h-9 items-center text-sm">
-              {t(`payMode_${resolvedPayMode}` as 'payMode_monthly')}
-            </div>
-          </Field>
-          <Field label={t('paymentTerm')}>
-            <div className="flex h-9 items-center text-sm">
-              {t(`paymentTerm_${resolvedPaymentTerm}` as 'paymentTerm_monthly')}
-            </div>
-          </Field>
-          {/* Payment Method — the one genuinely new setting, so it gets a real control and its own Save.
+          {/* Payment Method — a genuinely per-employee setting with a real control and its own Save.
               Bank Transfer is validated server-side against the employee's bank name + account number
               (setEmploymentPaymentMethod); a missing destination is rejected with an explanatory toast
               rather than saved as an unpayable row. */}
@@ -1553,16 +1551,6 @@ export default async function EmployeePage({
             </div>
           </form>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {t.rich('payPolicySourceNote', {
-            policy: resolvedPolicy?.name ?? t('payPolicyDefaultName'),
-            link: (chunks) => (
-              <Link href="/admin/payroll-policy" className="underline underline-offset-2 hover:text-foreground">
-                {chunks}
-              </Link>
-            ),
-          })}
-        </p>
         <p className="text-xs text-muted-foreground">{t('paymentMethodBankHint')}</p>
       </div>
     </Card>

@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentBlacklist, setEmploymentGrade, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
-import { setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
+import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
 import { reprojectEntitlementForEmployment } from '@/core/leave';
 import { assignEmployeeShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
@@ -407,20 +407,40 @@ export async function endDelegationAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
+/** ADR-0078 — a pay-mode change off a period boundary maps to the localized message (the service throws a
+ *  typed error so the toast is not raw English for the one rule an admin will actually hit). */
+async function payModeErrorMessage(e: unknown): Promise<string> {
+  if (e instanceof PayModePeriodBoundaryError || (e as Error)?.name === 'PayModePeriodBoundaryError') {
+    const t = await getTranslations('people.detail');
+    return t('payModeBoundaryError');
+  }
+  return (e as Error).message;
+}
+
 export async function setCompensationAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
+    // ADR-0078 — the salary structure rides the same revision form. The three fields are always posted by
+    // the redesigned form; older/partial posts (absent keys) fall through to the service's carry-forward.
+    const payModeRaw = String(formData.get('payMode') ?? '').trim();
+    const paymentTermRaw = String(formData.get('paymentTerm') ?? '').trim();
+    const rateRaw = String(formData.get('rateAmount') ?? '').trim();
     await setCompensation(s, {
       employmentId,
       basicSalary: Number(formData.get('basicSalary')),
       // Allowance is no longer maintained on the Basic Salary screen (feedback 87c82b18) — allowances
       // belong to Pay Components. Omitting it CARRIES the existing figure forward (never wipes it).
       remarks: String(formData.get('remarks') ?? '').trim() || undefined,
+      payMode: payModeRaw || undefined,
+      paymentTerm: paymentTermRaw || undefined,
+      // A posted-but-empty rate on a non-monthly mode must NOT silently carry the old rate forward — the
+      // admin cleared it, so pass null and let the service validate the mode/rate pair.
+      rateAmount: payModeRaw ? (rateRaw !== '' ? Number(rateRaw) : null) : undefined,
       effectiveFrom: String(formData.get('effectiveFrom')),
     });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await payModeErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -440,17 +460,26 @@ export async function editCompensationAction(formData: FormData) {
     const rawBasic = formData.get('basicSalary');
     const rawBasicStr = String(rawBasic ?? '').trim();
     const rawFrom = String(formData.get('effectiveFrom') ?? '').trim();
+    // ADR-0078 — the edit form posts the pay structure too; the service records only real changes and
+    // enforces the period-boundary + processed-period rules on a pay-mode change.
+    const payModeRaw = String(formData.get('payMode') ?? '').trim();
+    const paymentTermRaw = String(formData.get('paymentTerm') ?? '').trim();
+    const rateRaw = String(formData.get('rateAmount') ?? '').trim();
     await updateCompensation(s, {
       compensationId: String(formData.get('compensationId')),
       employmentId,
       basicSalary: rawBasicStr !== '' ? Number(rawBasicStr) : undefined,
       // Remarks always submitted (possibly empty → cleared to NULL).
       remarks: String(formData.get('remarks') ?? '').trim() || null,
+      payMode: payModeRaw || undefined,
+      paymentTerm: paymentTermRaw || undefined,
+      // Cleared rate posts as null (the service rejects a null rate on a daily/hourly row).
+      rateAmount: payModeRaw ? (rateRaw !== '' ? Number(rateRaw) : null) : undefined,
       // Effective date (7c7c2f80): submitted by the edit form; the service no-ops when unchanged.
       validFrom: rawFrom !== '' ? rawFrom : undefined,
     });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await payModeErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));

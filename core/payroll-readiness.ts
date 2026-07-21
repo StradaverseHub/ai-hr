@@ -28,6 +28,7 @@ import {
   payrollCycle,
   payrollIndividualTxn,
   payrollPolicy,
+  person,
 } from '../db/schema';
 import { daysInMonth } from './payroll';
 
@@ -41,6 +42,7 @@ export type ReadinessCheckKey =
   | 'payrollCycle' // Payroll Cycle Available
   | 'payrollSchedule' // Payroll Schedule Available (pay-day)
   | 'payrollPolicy' // Payroll Policy Assigned
+  | 'payModes' // ADR-0078 — no employee on a pay mode with no calculation (custom_period)
   | 'transactions'; // Payroll Transactions Completed
 
 export type ReadinessCheck = {
@@ -48,6 +50,9 @@ export type ReadinessCheck = {
   status: ReadinessStatus;
   /** Machine-readable numbers the UI localises (never raw English). */
   detail: Record<string, number>;
+  /** ADR-0078 — the affected employees BY NAME, for blockers that must name who is unpayable
+   *  (payModes). Optional; absent for every count-only check. */
+  names?: string[];
   /** Deep-link the operator follows to close the gap. */
   href: string;
 };
@@ -191,6 +196,36 @@ export function payrollReadiness(
       href: '/admin/payroll-policy',
     };
 
+    // ── payModes ── ADR-0078 (642ecc55): any period-active employee whose OPEN compensation row carries
+    // pay_mode='custom_period' BLOCKS the run — that mode has no calculation behind it, and letting the run
+    // proceed would quietly pay the monthly-equivalent basic for a structure explicitly marked not-monthly.
+    // Named per employee (the feedback's decision 4: "naming the employee"). Hourly is NOT blocked: per_hour
+    // is a real, kernel-resolved calculation against attendance hours, live now that the rate is per-employee.
+    const payModeRows = await tx
+      .select({ name: person.fullName })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(
+        compensation,
+        and(eq(compensation.employmentId, employment.id), isNull(compensation.validTo), isNull(compensation.supersededAt)),
+      )
+      .where(
+        and(
+          eq(employment.companyId, p.companyId),
+          eq(compensation.payMode, 'custom_period'),
+          lte(employment.hiredOn, periodEnd),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+        ),
+      )
+      .orderBy(person.fullName);
+    const payModes: ReadinessCheck = {
+      key: 'payModes',
+      status: payModeRows.length > 0 ? 'blocker' : 'ok',
+      detail: { unpayable: payModeRows.length },
+      ...(payModeRows.length > 0 ? { names: payModeRows.map((r) => r.name) } : {}),
+      href: '/people',
+    };
+
     // ── transactions ── an informational signpost (never blocks): how many individual (one-off) txns are
     // already keyed for this company+month — attached to a run OR unattached (batch_id NULL, pre-run). The
     // reporter's "enter transactions before you process" reminder; entering none is a legitimate month.
@@ -213,6 +248,7 @@ export function payrollReadiness(
       payrollCycleCheck,
       payrollSchedule,
       payrollPolicyCheck,
+      payModes,
       transactions,
     ];
     const blockers = checks.filter((c) => c.status === 'blocker').length;

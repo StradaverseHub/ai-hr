@@ -72,9 +72,16 @@ export async function hireAction(formData: FormData) {
     // Seed the first salary-history record (validated above) with the JOIN DATE as its effective date.
     // The service CLOSEs/INSERTs, appends the compensation.set event, and marks it active — no extra
     // plumbing (feedback 87c82b18, Create Initial Basic Salary flow #2).
+    // ADR-0078 — the hire form MAY carry the salary structure so a new employee gets their pay mode on
+    // day one (not on a second revision). Absent fields fall through to the service defaults
+    // (monthly / monthly / no rate); the service rejects daily/hourly without a positive rate.
+    const rateRaw = str('rateAmount');
     await setCompensation(session, {
       employmentId,
       basicSalary: initialBasicSalary,
+      payMode: str('payMode'),
+      paymentTerm: str('paymentTerm'),
+      rateAmount: rateRaw !== undefined ? Number(rateRaw) : undefined,
       effectiveFrom: hiredOn,
       remarks: str('initialSalaryRemarks'),
     });

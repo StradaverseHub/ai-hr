@@ -63,6 +63,11 @@ type ResolvedRow = {
   };
   basicSalary: number;
   monthlyAllowance: number;
+  // ADR-0078 — optional employee-specific salary structure (undefined ⇒ the setCompensation defaults:
+  // monthly / monthly / no rate). A mixed-workforce customer onboards by CSV, so this path is in scope.
+  payMode?: 'monthly' | 'daily' | 'hourly' | 'custom_period';
+  paymentTerm?: 'monthly' | 'weekly' | 'biweekly';
+  rateAmount?: number;
   effectiveFrom: string;
 };
 
@@ -240,6 +245,37 @@ async function analyze(
     const bankAccountNo = norm(rec.bank_account_no) || undefined;
     if (!!bankName !== !!bankAccountNo) errors.push('bank_name and bank_account_no must be provided together');
 
+    // ADR-0078 — employee-specific salary structure (all optional; blank = monthly / monthly / no rate,
+    // the setCompensation defaults). Mirrors the service validation so a bad row fails the DRY RUN, not
+    // the commit: daily/hourly require a positive rate_amount.
+    const payMode = ((): 'monthly' | 'daily' | 'hourly' | 'custom_period' | undefined => {
+      const m = lc(rec.pay_mode).replace(/[\s-]+/g, '_');
+      if (!m) return undefined;
+      if (['monthly', 'daily', 'hourly', 'custom_period'].includes(m)) return m as 'monthly';
+      errors.push(`Invalid pay_mode "${rec.pay_mode}" (use monthly / daily / hourly / custom_period)`);
+      return undefined;
+    })();
+    const paymentTerm = ((): 'monthly' | 'weekly' | 'biweekly' | undefined => {
+      const f = lc(rec.payment_term).replace(/[\s-]+/g, '_');
+      if (!f) return undefined;
+      if (f === 'bi_weekly' || f === 'biweekly') return 'biweekly';
+      if (f === 'monthly' || f === 'weekly') return f;
+      errors.push(`Invalid payment_term "${rec.payment_term}" (use monthly / weekly / biweekly)`);
+      return undefined;
+    })();
+    let rateAmount: number | undefined;
+    const rateRaw = norm(rec.rate_amount).replace(/[,_]/g, '');
+    if (rateRaw) {
+      rateAmount = Number(rateRaw);
+      if (!Number.isFinite(rateAmount) || rateAmount < 0) {
+        errors.push(`Invalid rate_amount "${rec.rate_amount}"`);
+        rateAmount = undefined;
+      }
+    }
+    if ((payMode === 'daily' || payMode === 'hourly') && !(rateAmount !== undefined && rateAmount > 0)) {
+      errors.push(`pay_mode "${payMode}" requires a positive rate_amount`);
+    }
+
     const ok = errors.length === 0;
     const result: RowResult = { rowNum: idx + 1, fullName, email, ok, errors, warnings };
     resolved.push({
@@ -271,6 +307,9 @@ async function analyze(
       },
       basicSalary,
       monthlyAllowance,
+      payMode,
+      paymentTerm,
+      rateAmount,
       effectiveFrom: hiredOn,
     });
   });
@@ -314,6 +353,10 @@ export async function commitEmployeeImport(
         employmentId,
         basicSalary: row.basicSalary,
         monthlyAllowance: row.monthlyAllowance,
+        // ADR-0078 — undefined falls through to the service defaults (monthly / monthly / no rate).
+        payMode: row.payMode,
+        paymentTerm: row.paymentTerm,
+        rateAmount: row.rateAmount,
         effectiveFrom: row.effectiveFrom,
       });
       imported++;

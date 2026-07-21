@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Badge } from './ui/badge';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { inputCls } from './ui';
+import { PayStructureFields, type PayModeOption } from './pay-structure-fields';
 import { editCompensationAction, supersedeCompensationAction } from '@/app/admin/personnel/[employmentId]/actions';
 
 export type SalaryStatus = 'active' | 'future' | 'historical';
@@ -23,6 +24,10 @@ export type SalaryRowView = {
   incrementAmount: number | null;
   incrementPct: number | null;
   status: SalaryStatus;
+  /** ADR-0078 — the salary structure recorded WITH this revision (each row keeps its own settings). */
+  payMode: PayModeOption;
+  paymentTerm: string;
+  rateAmount: string | null;
   remarks: string | null;
   /** Only the open row (latest active OR future-effective) is editable — historical rows are immutable. */
   editable: boolean;
@@ -59,6 +64,11 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
   const statusLabel = (s: SalaryStatus) =>
     s === 'active' ? t('salaryStatusActive') : s === 'future' ? t('salaryStatusFuture') : t('salaryStatusHistorical');
 
+  // ADR-0078 — localized labels for the per-revision salary structure (keys shipped with R46 79eb7151).
+  const payModeLabel = (m: PayModeOption) => t(`payMode_${m}` as 'payMode_monthly');
+  const paymentTermLabel = (f: string) =>
+    f === 'weekly' || f === 'biweekly' || f === 'monthly' ? t(`paymentTerm_${f}` as 'paymentTerm_monthly') : f;
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     let out = rows.filter((r) => {
@@ -70,6 +80,8 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
         r.previous != null ? fmt(r.previous) : '',
         r.incrementAmount != null ? fmt(r.incrementAmount) : '',
         r.incrementPct != null ? `${r.incrementPct.toFixed(2)}%` : '',
+        payModeLabel(r.payMode),
+        paymentTermLabel(r.paymentTerm),
         statusLabel(r.status),
         r.remarks ?? '',
       ]
@@ -98,12 +110,17 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
   const sortMark = (key: SortKey) => (sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
 
   const exportCsv = () => {
+    // ADR-0078 — Pay Mode / Payment Term appear in BOTH this export header array and the visible table
+    // header below (editing only one would silently omit them from the other surface).
     const headers = [
       t('effectiveDate'),
       t('basicSalaryMyr'),
       t('salaryColPrevious'),
       t('salaryColIncrement'),
       t('salaryColIncrementPct'),
+      t('payMode'),
+      t('paymentTerm'),
+      t('rateAmount'),
       t('status'),
       t('salaryColRemarks'),
     ];
@@ -117,6 +134,9 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
           r.previous != null ? `${r.currency} ${fmt(r.previous)}` : '',
           r.incrementAmount != null ? fmt(r.incrementAmount) : '',
           r.incrementPct != null ? `${r.incrementPct.toFixed(2)}%` : '',
+          payModeLabel(r.payMode),
+          paymentTermLabel(r.paymentTerm),
+          r.rateAmount != null ? `${r.currency} ${fmt(Number(r.rateAmount))}` : '',
           statusLabel(r.status),
           r.remarks ?? '',
         ]
@@ -192,6 +212,9 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
                 </button>
               </th>
               <th className="px-4 py-2 text-right font-medium">{t('salaryColIncrementPct')}</th>
+              {/* ADR-0078 — per-revision salary structure; mirrored in the CSV export header above. */}
+              <th className="px-4 py-2 font-medium">{t('payMode')}</th>
+              <th className="px-4 py-2 font-medium">{t('paymentTerm')}</th>
               <th className="px-4 py-2 font-medium">{t('status')}</th>
               <th className="px-4 py-2 font-medium">{t('salaryColRemarks')}</th>
               <th className="px-4 py-2 font-medium"></th>
@@ -200,7 +223,7 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                <td colSpan={10} className="px-4 py-6 text-center text-sm text-muted-foreground">
                   {t('salaryNoResults')}
                 </td>
               </tr>
@@ -221,6 +244,17 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
                     <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-muted-foreground">
                       {r.incrementPct != null ? `${r.incrementPct.toFixed(2)}%` : '—'}
                     </td>
+                    {/* ADR-0078 — the structure recorded with THIS revision; a daily/hourly row also shows
+                        its rate under the mode so the paying figure is visible in history. */}
+                    <td className="whitespace-nowrap px-4 py-2">
+                      {payModeLabel(r.payMode)}
+                      {r.rateAmount != null && (
+                        <span className="ml-1 text-xs text-muted-foreground tabular-nums">
+                          ({r.currency} {fmt(Number(r.rateAmount))})
+                        </span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">{paymentTermLabel(r.paymentTerm)}</td>
                     <td className="px-4 py-2">
                       <Badge variant={STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</Badge>
                     </td>
@@ -259,7 +293,7 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
                   </tr>
                   {r.editable && editingId === r.id && (
                     <tr className="border-b border-border/60 bg-muted/40">
-                      <td colSpan={8} className="px-4 py-4">
+                      <td colSpan={10} className="px-4 py-4">
                         <form action={editCompensationAction} className="flex flex-wrap items-end gap-3">
                           <input type="hidden" name="employmentId" value={r.employmentId} />
                           <input type="hidden" name="compensationId" value={r.id} />
@@ -285,6 +319,13 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
                               className={`${inputCls} w-40`}
                             />
                           </label>
+                          {/* ADR-0078 — edit the open row's salary structure in place. The service enforces
+                              the period-boundary rule and refuses a mode change on a processed period. */}
+                          <PayStructureFields
+                            defaultPayMode={r.payMode}
+                            defaultPaymentTerm={r.paymentTerm}
+                            defaultRateAmount={r.rateAmount}
+                          />
                           <label className="flex min-w-[16rem] flex-1 flex-col gap-1.5">
                             <span className="text-xs font-medium text-muted-foreground">{t('salaryColRemarks')}</span>
                             <input

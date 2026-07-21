@@ -50,5 +50,10 @@ export const IMPORT_COLUMNS = {
     'eis_eligible',
     'is_resident',
     'epf_citizenship',
+    // ADR-0078 (642ecc55) — employee-specific salary structure. All optional: blank = monthly / monthly /
+    // no rate (the setCompensation defaults). pay_mode daily|hourly REQUIRES a positive rate_amount.
+    'pay_mode',
+    'payment_term',
+    'rate_amount',
   ],
 } as const;

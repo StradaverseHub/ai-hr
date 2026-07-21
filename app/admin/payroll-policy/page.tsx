@@ -82,6 +82,13 @@ export default async function PayrollPolicyPage({
         {t('previewNotice')}
       </p>
 
+      {/* ADR-0078 (642ecc55) — policy_type / frequency are TEMPLATE DEFAULTS for new assignments; an
+          existing employee's Pay Mode and Payment Term live on their own Basic Salary record. One hint
+          string, fields untouched (policy-wizard.tsx is deliberately out of scope). */}
+      <p className="rounded-[1.25rem] border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+        {t('typeDefaultHint')}
+      </p>
+
       {companies.length === 0 ? (
         <Card>
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('emptyScope')}</p>
