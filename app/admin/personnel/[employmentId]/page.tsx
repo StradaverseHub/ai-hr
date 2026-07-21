@@ -37,7 +37,6 @@ import {
   setContactAddressAction,
   setEmergencyContactAction,
   setEmploymentAssignmentAction,
-  setEmploymentBlacklistAction,
   setPaymentMethodAction,
   setEmploymentComponentAction,
   setEmploymentInfoAction,
@@ -53,9 +52,10 @@ import {
   setIcAction,
   setPassportAction,
   setTaxAction,
-  terminateAction,
-  transferAction,
 } from './actions';
+// Movement tab redesign (78853b97): Employment History projection + New Event dispatcher.
+import { movementHistory, movementDetail } from '@/core/movement';
+import { MovementNewEvent } from './movement-new-event';
 import { serviceYearsMonthsAt } from '@/core/leave';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import {
@@ -130,6 +130,10 @@ export default async function EmployeePage({
     asOf?: string;
     encashmentError?: string;
     tab?: string;
+    // Movement tab redesign (78853b97): `movement=<domainEventId|hired>` opens the detail view;
+    // `newEvent=1` opens the New Event form. Both render inside the careerMovement panel.
+    movement?: string;
+    newEvent?: string;
     // R46 47146ea3 — Children (PCB Relief) auto-sync feedback. `childReliefSynced` = the count moved
     // quietly (to this value); `childReliefAlert` = it moved while a payroll batch for that 'YYYY-MM'
     // period was still open, which is the case HR must actually see (rail (d): alert, never block).
@@ -152,6 +156,8 @@ export default async function EmployeePage({
     asOf: spAsOf,
     encashmentError,
     tab,
+    movement: spMovement,
+    newEvent: spNewEvent,
     childReliefSynced,
     childReliefAlert,
     childReliefTo,
@@ -254,6 +260,11 @@ export default async function EmployeePage({
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
   const changeHistory = admin ? await employeeAudit(s, employmentId) : [];
+  // Movement tab redesign (78853b97): Employment History is a read-model projection over the
+  // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
+  // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
+  const movements = admin ? await movementHistory(s, employmentId) : [];
+  const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
   // 7d309da7 — configurable profile-field dropdown catalogs (religion / race / nationality / state /
   // country / relationship). Active options only for the pickers; the ProfileOptionSelect renders any
   // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
@@ -315,12 +326,11 @@ export default async function EmployeePage({
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
     { key: 'job', label: t('tabs.job') },
-    // Career Movement (feedback 5296d984): employment lifecycle events — Assignment History, Transfer
-    // (Effective-Dated) and Terminate — relocated OUT of the Employment tab into a dedicated home. The
-    // Employment tab keeps the "how they work" master data (reporting lines, delegations); the lifecycle
-    // "events that change employment over time" now live here. Same cards, same server actions
-    // (transferAction / terminateAction keep their existing DomainEvents), only regrouped. Positioned
-    // right after Employment so the person's static setup sits next to the actions that move them.
+    // Movement (5296d984, redesigned by 78853b97): the Employment History timeline — a Hired-first
+    // projection over the domain_event ledger — plus a single New Event entry point that folds in the
+    // former Transfer / Terminate / Blacklist boxes (their audited services are reused via
+    // core/movement.ts). The Employment tab keeps the "how they work" master data (reporting lines,
+    // delegations); the "events that change employment over time" live here, right after Employment.
     { key: 'careerMovement', label: t('tabs.careerMovement') },
     // Attendance Information (feedback 1fbe9891): consolidates the attendance-related master data that
     // was previously split across Employment (Work Location + Shift Arrangement) and Others (Clocking
@@ -1872,38 +1882,200 @@ export default async function EmployeePage({
 
   // ── JOB / CAREER MOVEMENT ───────────────────────────────────────────────────
   // Cards defined here feed two tabs: reporting lines + approval delegations stay on the Employment
-  // ("job") tab, while assignmentHistoryCard and transferTerminateCards now render on the Career
-  // Movement tab (feedback 5296d984). Location + default shift moved to Attendance (feedback 1fbe9891).
-  // Assignment history is not admin-gated (visible to any viewer); transfer/terminate are admin actions.
-  const assignmentHistoryCard = (
+  // ("job") tab. Movement tab redesign (78853b97): the old Assignment history table is replaced by
+  // employmentHistoryCard — a Hired-first Employment History timeline projected from the domain_event
+  // ledger, with per-row View detail and a single New Event entry point that folds in the former
+  // Transfer / Terminate / Blacklist boxes. The anchor id stays byte-identical for deep links.
+
+  // Event-type labels via a STATIC key map (never a dynamic t() template) with a humanized fallback for
+  // unknown/extensible kinds — nothing can render a raw i18n key in any locale.
+  const movementKindLabel = (kind: string): string => {
+    switch (kind) {
+      case 'hired': return t('movement.eventType.hired');
+      case 'transfer': return t('movement.eventType.transfer');
+      case 'promotion': return t('movement.eventType.promotion');
+      case 'demotion': return t('movement.eventType.demotion');
+      case 'increment': return t('movement.eventType.increment');
+      case 'salaryAdjustment': return t('movement.eventType.salaryAdjustment');
+      case 'confirmation': return t('movement.eventType.confirmation');
+      case 'probationExtension': return t('movement.eventType.probationExtension');
+      case 'secondment': return t('movement.eventType.secondment');
+      case 'actingPosition': return t('movement.eventType.actingPosition');
+      case 'resignation': return t('movement.eventType.resignation');
+      case 'termination': return t('movement.eventType.termination');
+      case 'blacklist': return t('movement.eventType.blacklist');
+      case 'blacklistCleared': return t('movement.eventType.blacklistCleared');
+      case 'orgAssignmentChange': return t('movement.eventType.orgAssignmentChange');
+      case 'reportingLineChange': return t('movement.eventType.reportingLineChange');
+      case 'employmentTypeChange': return t('movement.eventType.employmentTypeChange');
+      case 'gradeChange': return t('movement.eventType.gradeChange');
+      default: return kind.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
+    }
+  };
+  const movementEmpTypeLabel = (v: string | null): string | null =>
+    v ? t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time') : null;
+
+  // New Event is hidden once terminated (the same gate that hid the old Transfer form); the history
+  // itself stays viewable. Rehire is a future, separate piece.
+  const canCreateMovement = admin && !emp.terminatedOn;
+
+  const employmentHistoryCard = (
     <Card id="section-assignment-history" className="overflow-hidden">
-      <SectionHeader title={t('assignmentHistory')} count={history.length} />
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-4 py-2 font-medium">{t('periodValidTime')}</th>
-              <th className="px-4 py-2 font-medium">{t('department')}</th>
-              <th className="px-4 py-2 font-medium">{t('position')}</th>
-              <th className="px-4 py-2 font-medium">{t('status')}</th>
+      <SectionHeader title={t('movement.title')} />
+      {canCreateMovement && (
+        <div className="flex justify-end border-b border-border px-4 py-2">
+          <Link
+            href={`/admin/personnel/${employmentId}?tab=careerMovement&newEvent=1`}
+            className={btnPrimary}
+          >
+            {t('movement.newEvent')}
+          </Link>
+        </div>
+      )}
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+          <tr>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.eventType')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.effectiveDate')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.endDate')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.remarks')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.action')}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {movements.map((m) => (
+            <tr key={m.id}>
+              <td className="px-4 py-2.5 font-medium text-foreground">{movementKindLabel(m.kind)}</td>
+              <td className="px-4 py-2.5 font-mono text-xs">{m.effectiveDate}</td>
+              <td className="px-4 py-2.5 font-mono text-xs">{m.endDate ?? '—'}</td>
+              <td className="px-4 py-2.5 text-muted-foreground">{m.remarks ?? '—'}</td>
+              <td className="px-4 py-2.5">
+                <Link
+                  href={`/admin/personnel/${employmentId}?tab=careerMovement&movement=${m.id}`}
+                  className="text-primary hover:underline"
+                >
+                  {t('movement.view')}
+                </Link>
+              </td>
             </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {history.map((h) => (
-              <tr key={h.id} className={!h.validTo ? 'bg-primary/5' : ''}>
-                <td className="px-4 py-2.5 font-mono text-xs">
-                  {h.validFrom} → {h.validTo ?? t('present')}
-                </td>
-                <td className="px-4 py-2.5 text-foreground">{h.department ?? '—'}</td>
-                <td className="px-4 py-2.5 text-muted-foreground">{h.position ?? '—'}</td>
-                <td className="px-4 py-2.5">
-                  <StatusBadge status={h.status} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          ))}
+        </tbody>
+      </table>
     </Card>
   );
+
+  // Detail view (?movement=<id>): event information + a side-by-side Before/After comparison built by
+  // as-of reconstruction at the effective date (ids resolved to labels at read time). Salary is shown —
+  // this page is admin-only (requireAdmin), so no widening of pay visibility.
+  const movementComparisonRows = movementDetailData
+    ? [
+        { key: 'company', label: t('movement.field.company'), before: movementDetailData.before?.company, after: movementDetailData.after.company },
+        { key: 'businessUnit', label: t('movement.field.businessUnit'), before: movementDetailData.before?.businessUnit, after: movementDetailData.after.businessUnit },
+        { key: 'department', label: t('movement.field.department'), before: movementDetailData.before?.department, after: movementDetailData.after.department },
+        { key: 'position', label: t('movement.field.position'), before: movementDetailData.before?.position, after: movementDetailData.after.position },
+        { key: 'grade', label: t('movement.field.grade'), before: movementDetailData.before?.grade, after: movementDetailData.after.grade },
+        { key: 'employmentType', label: t('movement.field.employmentType'), before: movementEmpTypeLabel(movementDetailData.before?.employmentType ?? null), after: movementEmpTypeLabel(movementDetailData.after.employmentType) },
+        { key: 'manager', label: t('movement.field.manager'), before: movementDetailData.before?.manager, after: movementDetailData.after.manager },
+        { key: 'salary', label: t('movement.field.salary'), before: movementDetailData.before?.salary, after: movementDetailData.after.salary },
+      ]
+    : [];
+  const movementDetailCard = movementDetailData ? (
+    <Card id="section-movement-detail" className="overflow-hidden">
+      <SectionHeader title={t('movement.detail.eventInformation')} />
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-3">
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('movement.columns.eventType')}</dt>
+          <dd className="font-medium text-foreground">{movementKindLabel(movementDetailData.row.kind)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('movement.columns.effectiveDate')}</dt>
+          <dd className="font-medium text-foreground">{movementDetailData.row.effectiveDate}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('movement.columns.endDate')}</dt>
+          <dd className="font-medium text-foreground">{movementDetailData.row.endDate ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('movement.detail.recordedBy')}</dt>
+          <dd className="font-medium text-foreground">
+            {movementDetailData.actorName ?? t('movement.detail.system')}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('movement.detail.recordedAt')}</dt>
+          <dd className="font-medium text-foreground">
+            {movementDetailData.occurredAt
+              ? movementDetailData.occurredAt.toISOString().slice(0, 16).replace('T', ' ')
+              : '—'}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('movement.columns.remarks')}</dt>
+          <dd className="font-medium text-foreground">{movementDetailData.row.remarks ?? '—'}</dd>
+        </div>
+      </dl>
+      <table className="w-full border-t border-border text-sm">
+        <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+          <tr>
+            <th className="px-4 py-2 font-medium">{t('movement.detail.field')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.detail.beforeChanges')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.detail.afterChanges')}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {movementComparisonRows.map((r) => (
+            <tr key={r.key}>
+              <td className="px-4 py-2.5 text-muted-foreground">{r.label}</td>
+              <td className="px-4 py-2.5 text-foreground">
+                {movementDetailData.before ? (r.before ?? '—') : t('movement.detail.firstRecord')}
+              </td>
+              <td className="px-4 py-2.5 font-medium text-foreground">{r.after ?? '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="p-4">
+        <Link href={`/admin/personnel/${employmentId}?tab=careerMovement`} className={btnGhost}>
+          {t('movement.detail.backToHistory')}
+        </Link>
+      </div>
+    </Card>
+  ) : null;
+
+  // New Event (?newEvent=1): one entry point for every movement, replacing the separate Transfer /
+  // Terminate / Blacklist boxes. Option lists reuse the data this page already loads; employment-type
+  // and termination-type labels are pre-translated here (parent namespace) and passed down.
+  const newEventCard = canCreateMovement && spNewEvent ? (
+    <Card id="section-movement-new-event">
+      <SectionHeader title={t('movement.newEvent')} />
+      <MovementNewEvent
+        employmentId={emp.employmentId}
+        today={today}
+        isBlacklisted={!!emp.blacklistedAt}
+        defaultGradeId={emp.gradeId ?? ''}
+        departments={departments.map((d) => ({ id: d.id, name: d.name }))}
+        positions={positions.map((pos) => ({ id: pos.id, name: pos.title }))}
+        businessUnits={businessUnits.map((bu) => ({ id: bu.id, name: bu.name }))}
+        grades={grades.map((g) => ({ id: g.id, name: g.name }))}
+        locations={locations.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` }))}
+        managers={others.map((o) => ({ id: o.employmentId, name: o.name }))}
+        employmentTypes={(['full_time', 'part_time', 'contract', 'intern'] as const).map((v) => ({
+          value: v,
+          label: t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time'),
+        }))}
+        terminationTypes={[
+          { value: '', label: t('terminationTypeUnspecified') },
+          { value: 'voluntary', label: t('terminationVoluntary') },
+          { value: 'involuntary', label: t('terminationInvoluntary') },
+          { value: 'retired', label: t('terminationRetired') },
+          { value: 'contract_end', label: t('terminationContractEnd') },
+          { value: 'death', label: t('terminationDeath') },
+          { value: 'other', label: t('terminationOther') },
+        ]}
+        cancelHref={`/admin/personnel/${employmentId}?tab=careerMovement`}
+      />
+    </Card>
+  ) : null;
 
   const changeHistoryCard = admin ? (
     <Card id="section-change-history" className="overflow-hidden">
@@ -2250,53 +2422,9 @@ export default async function EmployeePage({
     </Card>
   ) : null;
 
-  /* R46 b272ab6b — Blacklist lifted OUT of employmentInfoCard into its own Card, rendered on the Career
-     Movement tab alongside the other lifecycle actions (Transfer, Terminate, Assignment History). It was
-     already its own <form> (HTML forms can't nest), so this is a pure relocation: setEmploymentBlacklistAction,
-     the employment.blacklisted_at / blacklist_reason columns and the audit event it emits are all untouched.
-     Blacklist is a lifecycle state change, not employment master data — it belongs with the other lifecycle
-     actions, not buried between the organisation assignment and the employment dates.
-
-     NOTE (deliberate scope boundary): a dedicated "Blacklist History" list is NOT built here. No such UI
-     exists today — blacklist changes surface generically through changeHistoryCard on the Others tab — so
-     it would be new work rather than a relocation. It stays out of this item. */
-  const blacklistCard = admin ? (
-    <Card id="section-blacklist">
-      <SectionHeader title={t('employmentInfo.blacklistTitle')} />
-      <form action={setEmploymentBlacklistAction} className="space-y-3 p-4">
-        <input type="hidden" name="employmentId" value={emp.employmentId} />
-        {emp.blacklistedAt ? (
-          <>
-            <input type="hidden" name="blacklisted" value="false" />
-            <p className="text-sm text-rose-700 dark:text-rose-400">
-              {t('employmentInfo.blacklistActiveNote')}
-              {emp.blacklistReason ? ` — ${emp.blacklistReason}` : ''}
-            </p>
-            <div className="flex justify-end">
-              <button className={btnGhost}>{t('employmentInfo.blacklistClearAction')}</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <input type="hidden" name="blacklisted" value="true" />
-            <p className="text-xs text-muted-foreground">{t('employmentInfo.blacklistNote')}</p>
-            <Field label={t('employmentInfo.blacklistReasonLabel')}>
-              <input
-                name="reason"
-                className={inputCls}
-                placeholder={t('employmentInfo.blacklistReasonPlaceholder')}
-              />
-            </Field>
-            <div className="flex justify-end">
-              <button className={`${btnGhost} border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-400 dark:hover:bg-rose-500/10`}>
-                {t('employmentInfo.blacklistAction')}
-              </button>
-            </div>
-          </>
-        )}
-      </form>
-    </Card>
-  ) : null;
+  /* Movement tab redesign (78853b97): the former standalone Blacklist card (R46 b272ab6b) is folded
+     into the New Event form — kind "Blacklist" routes to the same audited setEmploymentBlacklist
+     service (set AND clear), so nothing about the columns or events changed. */
 
   const reportingLinesCard = (
     <Card id="section-reporting-lines">
@@ -2517,65 +2645,10 @@ export default async function EmployeePage({
     </Card>
   ) : null;
 
-  const transferTerminateCards = !emp.terminatedOn ? (
-    <div id="section-transfer-terminate" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Card>
-            <SectionHeader title={t('transferTitle')} />
-            <form action={transferAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-2">
-              <input type="hidden" name="employmentId" value={emp.employmentId} />
-              <Field label={t('newDepartment')}>
-                <select name="departmentId" required className={inputCls}>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('effectiveDate')}>
-                <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
-              </Field>
-              <div className="sm:col-span-2">
-                <button className={btnPrimary}>{t('transfer')}</button>
-              </div>
-            </form>
-          </Card>
-
-          <Card>
-            <SectionHeader title={t('terminate')} />
-            <form action={terminateAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-2">
-              <input type="hidden" name="employmentId" value={emp.employmentId} />
-              <Field label={t('terminationDate')}>
-                <input name="terminationDate" type="date" required defaultValue={today} className={inputCls} />
-              </Field>
-              <Field label={t('terminationType')}>
-                <select name="terminationType" defaultValue="" className={inputCls}>
-                  <option value="">{t('terminationTypeUnspecified')}</option>
-                  <option value="voluntary">{t('terminationVoluntary')}</option>
-                  <option value="involuntary">{t('terminationInvoluntary')}</option>
-                  <option value="retired">{t('terminationRetired')}</option>
-                  <option value="contract_end">{t('terminationContractEnd')}</option>
-                  <option value="death">{t('terminationDeath')}</option>
-                  <option value="other">{t('terminationOther')}</option>
-                </select>
-              </Field>
-              <Field label={t('terminationReason')}>
-                <input name="terminationReason" maxLength={200} placeholder={t('terminationReasonHint')} className={`${inputCls} sm:col-span-2`} />
-              </Field>
-              <div className="sm:col-span-2">
-                <ConfirmSubmit
-                  title={t('terminateConfirmTitle')}
-                  description={t('terminateConfirmDescription', { name: emp.name })}
-                  confirmLabel={t('terminate')}
-                  size="sm"
-                >
-                  {t('terminateEmployment')}
-                </ConfirmSubmit>
-              </div>
-            </form>
-          </Card>
-    </div>
-  ) : null;
+  /* Movement tab redesign (78853b97): the former Transfer + Terminate cards are folded into the New
+     Event form — kinds "Transfer" (via transferEmployee, so location/cost-centre carry) and
+     "Termination" (via terminateEmployment, confirmation-gated in the island) reuse the same audited
+     services and DomainEvents; only the entry point changed. */
 
   const leaveRequestsCard = (
     <Card id="section-leave-requests" className="overflow-hidden">
@@ -2626,22 +2699,16 @@ export default async function EmployeePage({
         {delegationsCard}
       </>
     ),
-    // Career Movement (feedback 5296d984): the employment-lifecycle cards relocated WHOLE out of the
-    // Employment tab. assignmentHistoryCard (position/department history) and transferTerminateCards —
-    // which already bundles BOTH the Transfer (Effective-Dated) form and the Terminate form — move here
-    // unchanged. The const definitions (assignmentHistoryCard / transferTerminateCards, still defined in
-    // the "── JOB ──" section) are untouched: only their render location moved, so transferAction /
-    // terminateAction keep their existing effective-date rules and DomainEvents and no data is affected.
-    // Order mirrors the lifecycle: past movements (history) first, then the actions that create the next.
-    // R46 b272ab6b — blacklistCard joins them: Blacklist is a lifecycle state change (like transfer and
-    // termination), not employment master data, so it moved off the Employment tab to sit with its peers.
-    // Rendered LAST — it is the exceptional, rarely-used action, and should not compete with the routine
-    // movement actions above it.
+    // Movement tab redesign (78853b97): ONE clean screen — the Employment History timeline (a
+    // Hired-first projection over the domain_event ledger) with a single New Event button that folds in
+    // the former Transfer / Terminate / Blacklist boxes (their audited services are reused, not
+    // rewritten). The detail view (?movement=<id>) and the New Event form (?newEvent=1) render ABOVE
+    // the history so opening either never loses the timeline context.
     careerMovement: (
       <>
-        {assignmentHistoryCard}
-        {transferTerminateCards}
-        {blacklistCard}
+        {movementDetailCard}
+        {newEventCard}
+        {employmentHistoryCard}
       </>
     ),
     // Attendance Information (feedback 1fbe9891): the four attendance-related section cards relocated

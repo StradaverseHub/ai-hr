@@ -6,6 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentBlacklist, setEmploymentGrade, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import { setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
+import { createMovementEvent, MOVEMENT_KINDS, type MovementKind } from '@/core/movement';
 import { reprojectEntitlementForEmployment } from '@/core/leave';
 import { assignEmployeeShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
@@ -331,6 +332,59 @@ export async function terminateAction(formData: FormData) {
       terminationType,
       terminationReason: (formData.get('terminationReason') as string) || undefined,
     });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Movement tab redesign (78853b97) — the single "New Event" save. Parses the movement kind + its
+ * type-specific fields and hands them to core/movement.ts createMovementEvent, which delegates to the
+ * existing audited writers (so DomainEvents, RLS and downstream payroll/leave sync are all inherited).
+ * The leave-entitlement recompute mirrors what the existing per-card actions already do after a grade /
+ * employment-type / confirmation change (R45 7527ea5f parity — best-effort, never fails the save).
+ */
+export async function createMovementEventAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const kindRaw = String(formData.get('kind') ?? '').trim();
+  try {
+    if (!(MOVEMENT_KINDS as readonly string[]).includes(kindRaw)) throw new Error('Select an event type.');
+    const kind = kindRaw as MovementKind;
+    const rawSalary = String(formData.get('basicSalary') ?? '').trim();
+    const rawTermType = String(formData.get('terminationType') ?? '').trim();
+    const terminationType = (
+      ['voluntary', 'involuntary', 'retired', 'contract_end', 'death', 'other'] as const
+    ).includes(rawTermType as never)
+      ? (rawTermType as 'voluntary' | 'involuntary' | 'retired' | 'contract_end' | 'death' | 'other')
+      : undefined;
+    const rawEmpType = String(formData.get('employmentType') ?? '').trim();
+    const employmentType = EMPLOYMENT_TYPES.includes(rawEmpType as EmploymentTypeValue)
+      ? (rawEmpType as EmploymentTypeValue)
+      : undefined;
+    await createMovementEvent(s, {
+      employmentId,
+      kind,
+      effectiveDate: String(formData.get('effectiveDate') ?? '').trim(),
+      endDate: orNull(formData.get('endDate')),
+      remarks: orNull(formData.get('remarks')),
+      departmentId: orNull(formData.get('departmentId')),
+      positionId: orNull(formData.get('positionId')),
+      businessUnitId: orNull(formData.get('businessUnitId')),
+      locationId: orNull(formData.get('locationId')),
+      // gradeId: absent field = grade side untouched; present-but-blank = clear.
+      gradeId: formData.get('gradeId') == null ? undefined : String(formData.get('gradeId')),
+      employmentType,
+      managerEmploymentId: orNull(formData.get('managerEmploymentId')),
+      basicSalary: rawSalary === '' ? undefined : Number(rawSalary),
+      terminationType,
+      blacklisted: String(formData.get('blacklisted') ?? 'true') !== 'false',
+    });
+    if (['promotion', 'demotion', 'employmentTypeChange', 'confirmation', 'probationExtension'].includes(kind)) {
+      await recomputeEntitlement(s, employmentId, 'movement_recorded');
+    }
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
