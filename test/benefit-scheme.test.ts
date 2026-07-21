@@ -125,7 +125,7 @@ describe('scheme entitlement drives openLeaveYear grant', () => {
       companyId: b.companyId,
       employmentType: 'full_time',
       gradeGroupId: group.id,
-      name: `Permanent - Grade H ${randomUUID().slice(0, 4)}`,
+      name: `Permanent - Grade H ${randomUUID().slice(0, 8)}`,
       status: 'active',
     });
     await upsertSchemeEntitlement(ctx, {

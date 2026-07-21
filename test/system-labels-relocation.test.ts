@@ -290,13 +290,13 @@ describe('System Labels — server actions redirect to the System Labels path (r
       },
       (fd: FormData) => {
         fd.set('companyId', b.companyId);
-        fd.set('code', `C${randomUUID().slice(0, 4)}`);
+        fd.set('code', `C${randomUUID().slice(0, 8)}`);
         fd.set('name', 'Cc');
         return createCostCenterAction(fd);
       },
       (fd: FormData) => {
         fd.set('companyId', b.companyId);
-        fd.set('code', `B${randomUUID().slice(0, 4)}`);
+        fd.set('code', `B${randomUUID().slice(0, 8)}`);
         fd.set('name', 'Bu');
         return createBusinessUnitAction(fd);
       },

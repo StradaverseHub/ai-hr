@@ -18,7 +18,7 @@ let shiftId: string;
 async function makeEmp() {
   const [p] = await owner.db
     .insert(schema.person)
-    .values({ tenantId: b.tenantId, fullName: `W ${randomUUID().slice(0, 4)}`, primaryEmail: `w_${randomUUID()}@t.local` })
+    .values({ tenantId: b.tenantId, fullName: `W ${randomUUID().slice(0, 8)}`, primaryEmail: `w_${randomUUID()}@t.local` })
     .returning({ id: schema.person.id });
   const [e] = await owner.db
     .insert(schema.employment)

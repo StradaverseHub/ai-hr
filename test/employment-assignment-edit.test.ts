@@ -169,7 +169,7 @@ describe('setEmploymentAssignment — effective-dated org edit', () => {
 
   it('Job Grade edits through its own audited writer (employment.gradeId)', async () => {
     const hire = await hireOne();
-    const grade = await createJobGrade(adminCtx(b), { code: `G${randomUUID().slice(0, 4).toUpperCase()}`, name: `Grade ${randomUUID().slice(0, 5)}`, rank: 1 });
+    const grade = await createJobGrade(adminCtx(b), { code: `G${randomUUID().slice(0, 8).toUpperCase()}`, name: `Grade ${randomUUID().slice(0, 5)}`, rank: 1 });
     await setEmploymentGrade(adminCtx(b), { employmentId: hire.employmentId, gradeId: grade.id });
     const [emp] = await owner.db
       .select({ gradeId: schema.employment.gradeId })

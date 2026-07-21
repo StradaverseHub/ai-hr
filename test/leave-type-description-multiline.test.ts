@@ -46,7 +46,7 @@ describe('leave type description — multiline preservation (fbcadc71)', () => {
     // Simulate the textarea value with surrounding whitespace the service .trim()s off.
     const { id } = await createLeaveType(ctx, {
       code: uniqCode(),
-      name: `Multiline ${randomUUID().slice(0, 4)}`,
+      name: `Multiline ${randomUUID().slice(0, 8)}`,
       description: `  ${MULTILINE}  `,
     });
     expect(await descOf(id)).toBe(MULTILINE);
@@ -54,7 +54,7 @@ describe('leave type description — multiline preservation (fbcadc71)', () => {
 
   it('updateLeaveType round-trips newlines on rename/edit', async () => {
     const ctx = adminCtx(b);
-    const name = `Edit me ${randomUUID().slice(0, 4)}`;
+    const name = `Edit me ${randomUUID().slice(0, 8)}`;
     const { id } = await createLeaveType(ctx, {
       code: uniqCode(),
       name,

@@ -99,7 +99,7 @@ describe('1001ff61 — catalog wiring', () => {
 describe('1001ff61 (A) — Business Unit on the assignment', () => {
   it('persists a BU, audits before/after, and surfaces it in assignmentHistory', async () => {
     const hire = await hireOne();
-    const bu = await createBusinessUnit(adminCtx(b), { companyId: b.companyId, code: `BU${randomUUID().slice(0, 4).toUpperCase()}`, name: 'Retail Division' });
+    const bu = await createBusinessUnit(adminCtx(b), { companyId: b.companyId, code: `BU${randomUUID().slice(0, 8).toUpperCase()}`, name: 'Retail Division' });
 
     const before = await openRow(hire.employmentId);
     expect(before.businessUnitId).toBeNull();
@@ -128,7 +128,7 @@ describe('1001ff61 (A) — Business Unit on the assignment', () => {
 
   it('carries the BU forward on an unrelated edit (status only)', async () => {
     const hire = await hireOne();
-    const bu = await createBusinessUnit(adminCtx(b), { companyId: b.companyId, code: `BU${randomUUID().slice(0, 4).toUpperCase()}`, name: 'Ops BU' });
+    const bu = await createBusinessUnit(adminCtx(b), { companyId: b.companyId, code: `BU${randomUUID().slice(0, 8).toUpperCase()}`, name: 'Ops BU' });
     await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-03-01', businessUnitId: bu.id });
     await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-04-01', status: 'on_leave' });
     const open = await openRow(hire.employmentId);
@@ -138,7 +138,7 @@ describe('1001ff61 (A) — Business Unit on the assignment', () => {
 
   it('is a no-op when the BU is unchanged', async () => {
     const hire = await hireOne();
-    const bu = await createBusinessUnit(adminCtx(b), { companyId: b.companyId, code: `BU${randomUUID().slice(0, 4).toUpperCase()}`, name: 'Stable BU' });
+    const bu = await createBusinessUnit(adminCtx(b), { companyId: b.companyId, code: `BU${randomUUID().slice(0, 8).toUpperCase()}`, name: 'Stable BU' });
     await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-02-01', businessUnitId: bu.id });
     const res = await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-05-01', businessUnitId: bu.id });
     expect(res.changed).toBe(false);
@@ -146,7 +146,7 @@ describe('1001ff61 (A) — Business Unit on the assignment', () => {
 
   it('clears the BU when passed null', async () => {
     const hire = await hireOne();
-    const bu = await createBusinessUnit(adminCtx(b), { companyId: b.companyId, code: `BU${randomUUID().slice(0, 4).toUpperCase()}`, name: 'Clearable BU' });
+    const bu = await createBusinessUnit(adminCtx(b), { companyId: b.companyId, code: `BU${randomUUID().slice(0, 8).toUpperCase()}`, name: 'Clearable BU' });
     await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-02-01', businessUnitId: bu.id });
     const res = await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-05-01', businessUnitId: null });
     expect(res.changed).toBe(true);
@@ -156,7 +156,7 @@ describe('1001ff61 (A) — Business Unit on the assignment', () => {
 
   it('rejects an archived BU', async () => {
     const hire = await hireOne();
-    const bu = await createBusinessUnit(adminCtx(b), { companyId: b.companyId, code: `BU${randomUUID().slice(0, 4).toUpperCase()}`, name: 'Dead BU' });
+    const bu = await createBusinessUnit(adminCtx(b), { companyId: b.companyId, code: `BU${randomUUID().slice(0, 8).toUpperCase()}`, name: 'Dead BU' });
     await archiveBusinessUnit(adminCtx(b), { id: bu.id, archived: true });
     await expect(
       setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-06-01', businessUnitId: bu.id }),
@@ -170,7 +170,7 @@ describe('1001ff61 (A) — Business Unit on the assignment', () => {
       .insert(schema.company)
       .values({ tenantId: b.tenantId, legalName: 'Other Co Sdn Bhd' })
       .returning({ id: schema.company.id });
-    const foreignBu = await createBusinessUnit(adminCtx(b), { companyId: c2.id, code: `BU${randomUUID().slice(0, 4).toUpperCase()}`, name: 'Foreign BU' });
+    const foreignBu = await createBusinessUnit(adminCtx(b), { companyId: c2.id, code: `BU${randomUUID().slice(0, 8).toUpperCase()}`, name: 'Foreign BU' });
     await expect(
       setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-06-01', businessUnitId: foreignBu.id }),
     ).rejects.toThrow(/not a valid option/i);

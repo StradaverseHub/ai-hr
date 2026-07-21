@@ -84,7 +84,7 @@ async function fixture() {
     companyId: b.companyId,
     employmentType: 'full_time',
     gradeGroupId: null,
-    name: `Pool scheme ${randomUUID().slice(0, 4)}`,
+    name: `Pool scheme ${randomUUID().slice(0, 8)}`,
     status: 'active',
   });
   const [ltA, ltB] = [await leaveType(), await leaveType()];

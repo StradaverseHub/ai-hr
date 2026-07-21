@@ -131,7 +131,7 @@ describe('Item 52a30630 — Holiday Calendar → Attendance, Grade → Leave', (
   it('(3) setEmploymentGradeAction saves the grade + fires employment.grade.changed', async () => {
     const hire = await hireOne('Grade Save');
     const grade = await createJobGrade(adminCtx(base), {
-      code: `G${randomUUID().slice(0, 4).toUpperCase()}`,
+      code: `G${randomUUID().slice(0, 8).toUpperCase()}`,
       name: `Grade ${randomUUID().slice(0, 5)}`,
       rank: 1,
     });
@@ -150,7 +150,7 @@ describe('Item 52a30630 — Holiday Calendar → Attendance, Grade → Leave', (
     const hire = await hireOne('Personal Save');
     // Pre-set both employment-level fields via their (now relocated) services.
     const grade = await createJobGrade(adminCtx(base), {
-      code: `G${randomUUID().slice(0, 4).toUpperCase()}`,
+      code: `G${randomUUID().slice(0, 8).toUpperCase()}`,
       name: `Grade ${randomUUID().slice(0, 5)}`,
       rank: 2,
     });
