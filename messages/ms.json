@@ -5730,7 +5730,18 @@
     "saveConfirmBody": "Adakah anda pasti mahu menyimpan konfigurasi aliran kerja kelulusan ini?",
     "saveConfirm": "Simpan perubahan",
     "workflowTypeDefaultBadge": "Lalai",
-    "workflowTypeCustomBadge": "Tersuai"
+    "workflowTypeCustomBadge": "Tersuai",
+    "escalationTitle": "Tetapan Eskalasi Kelulusan",
+    "escalationHint": "Susuli permohonan cuti yang terlalu lama menunggu pelulus.",
+    "escalationEnable": "Aktifkan eskalasi kelulusan",
+    "escalateAfter": "Eskalasi selepas",
+    "workingDaysUnit": "hari bekerja",
+    "escalationLevel": "Eskalasi kepada",
+    "escalationNextLevel": "Peringkat kelulusan seterusnya (lalai)",
+    "escalationSpecificRole": "Peranan kelulusan tertentu",
+    "escalationRole": "Peranan kelulusan",
+    "escalationNotifyNote": "Makluman eskalasi dihantar ke loceng pemberitahuan.",
+    "escalationUnavailableSingleApprover": "Eskalasi kelulusan hanya tersedia untuk syarikat yang menggunakan rantaian kelulusan berbilang peringkat."
   },
   "feedback": {
     "title": "Maklum Balas",

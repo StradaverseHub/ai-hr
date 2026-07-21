@@ -5730,7 +5730,18 @@
     "saveConfirmBody": "Bạn có chắc muốn lưu cấu hình quy trình phê duyệt này không?",
     "saveConfirm": "Lưu thay đổi",
     "workflowTypeDefaultBadge": "Mặc định",
-    "workflowTypeCustomBadge": "Tùy chỉnh"
+    "workflowTypeCustomBadge": "Tùy chỉnh",
+    "escalationTitle": "Cài đặt leo thang phê duyệt",
+    "escalationHint": "Nhắc lại yêu cầu nghỉ phép đã chờ người phê duyệt quá lâu.",
+    "escalationEnable": "Bật leo thang phê duyệt",
+    "escalateAfter": "Leo thang sau",
+    "workingDaysUnit": "ngày làm việc",
+    "escalationLevel": "Leo thang tới",
+    "escalationNextLevel": "Cấp phê duyệt tiếp theo (mặc định)",
+    "escalationSpecificRole": "Một vai trò phê duyệt cụ thể",
+    "escalationRole": "Vai trò phê duyệt",
+    "escalationNotifyNote": "Cảnh báo leo thang được gửi tới chuông thông báo.",
+    "escalationUnavailableSingleApprover": "Leo thang phê duyệt chỉ khả dụng cho các công ty dùng chuỗi phê duyệt nhiều bước."
   },
   "feedback": {
     "title": "Phản hồi",

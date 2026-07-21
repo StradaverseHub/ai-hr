@@ -192,6 +192,18 @@ export const company = pgTable(
     // today for every existing customer until an admin both marks a day Half AND turns this on. Full working
     // days are never affected either way.
     leaveHalfDayFullDeduction: boolean('leave_half_day_full_deduction').notNull().default(false),
+    // R51 722904dc/71b9143a — leave approval ESCALATION settings (migration 0287). When enabled, the nightly
+    // review-sweep chases a leave approval step that has sat pending past `escalateAfterDays` WORKING days
+    // with a bell notification to the configured target ('next_level' = the next approver in the chain,
+    // default; 'specific_role' = a named LEVEL_KINDS role in escalationTargetRole — TEXT + CHECK, not a
+    // pgEnum, the 0275 lesson). escalationUpdatedAt is a DEDICATED save stamp (never company.updated_at,
+    // which moves on unrelated edits): requests whose waiting clock started before it are grandfathered so
+    // flipping the switch on cannot fire a day-one burst. All nullable/defaulted — existing rows untouched.
+    escalationEnabled: boolean('escalation_enabled').notNull().default(false),
+    escalateAfterDays: integer('escalate_after_days'),
+    escalationTarget: text('escalation_target').notNull().default('next_level'),
+    escalationTargetRole: text('escalation_target_role'),
+    escalationUpdatedAt: timestamp('escalation_updated_at', { withTimezone: true }),
     // Shared System Labels (ADR-0073, feedback d356dec8): OFF-by-default flag gating the multi-company
     // system-labels resolver. With it false, labelsForCompany() returns ORIGIN-only rows — byte-identical
     // to today. Only when an admin flips it on does a label shared into this company (via the junction or
@@ -205,6 +217,7 @@ export const company = pgTable(
   (t) => [
     index('company_tenant_idx').on(t.tenantId),
     index('company_parent_idx').on(t.parentCompanyId),
+    check('company_escalation_target_check', sql`${t.escalationTarget} IN ('next_level', 'specific_role')`),
   ],
 );
 

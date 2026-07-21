@@ -5,10 +5,13 @@
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import type { SessionContext } from '../db/client';
-import { hireEmployee } from '../core/org';
+import { hireEmployee, setReportingLine } from '../core/org';
+import { requestLeave } from '../core/leave';
+import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import {
   dispatchNotifications,
   listNotifications,
@@ -202,5 +205,104 @@ describe('notification dispatch + reads (ADR-0034 34-2)', () => {
     expect((await dispatchNotifications(adminCtx(b), {})).created).toBe(2); // one per employee in the batch
     expect((await listNotifications(A.ctx, A.employmentId))[0].kind).toBe('payslip.ready');
     expect((await listNotifications(B.ctx, B.employmentId))[0].kind).toBe('payslip.ready');
+  });
+});
+
+// ── R51 722904dc/71b9143a: leave approval escalation — dispatch-time freshness re-check + fan-out ──
+describe('leave-request.escalation-due (R51)', () => {
+  /** A pending request with a generated approval chain, for a subject with an administrative manager. */
+  async function stuckRequest(levels: string[]) {
+    const subject = await makeEmployee();
+    const manager = await makeEmployee();
+    await setReportingLine(adminCtx(b), {
+      subordinateEmploymentId: subject.employmentId,
+      managerEmploymentId: manager.employmentId,
+      lineType: 'administrative',
+      validFrom: '2024-01-01',
+    });
+    await setLeaveApprovalPolicy(adminCtx(b), { companyId: b.companyId, enabled: true, levels });
+    const { leaveRequestId } = await requestLeave(adminCtx(b), {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-08-03',
+      endDate: '2026-08-04',
+    });
+    return { subject, manager, leaveRequestId };
+  }
+
+  /** The event shape the sweep (core/leave-escalation.ts) appends. */
+  const escalationEvent = (
+    subjectEmploymentId: string,
+    leaveRequestId: string,
+    targetKind: string | null,
+    stepIndex = 0,
+  ) =>
+    event('leave-request.escalation-due', subjectEmploymentId, {
+      groupKey: leaveRequestId,
+      leaveRequestId,
+      stepIndex,
+      currentKind: 'direct_manager',
+      nextKind: targetKind,
+      targetKind,
+      daysWaiting: 3,
+      leaveTypeName: 'Annual Leave',
+      startDate: '2026-08-03',
+      endDate: '2026-08-04',
+    });
+
+  const escalationNotifs = () =>
+    owner.db
+      .select({
+        recipient: schema.notification.recipientEmploymentId,
+        linkPath: schema.notification.linkPath,
+        severity: schema.notification.severity,
+        body: schema.notification.body,
+      })
+      .from(schema.notification)
+      .where(and(eq(schema.notification.tenantId, b.tenantId), eq(schema.notification.kind, 'leave.escalation')));
+
+  it('fans out to the resolved target approver and never to the requester', async () => {
+    const { subject, manager, leaveRequestId } = await stuckRequest(['hr_admin', 'direct_manager']);
+    await owner.db
+      .insert(schema.domainEvent)
+      .values(escalationEvent(subject.employmentId, leaveRequestId, 'direct_manager'));
+    expect((await dispatchNotifications(adminCtx(b), {})).created).toBe(1);
+    const rows = await escalationNotifs();
+    expect(rows.map((r) => r.recipient)).toEqual([manager.employmentId]);
+    expect(rows[0].linkPath).toBe('/approvals');
+    expect(rows[0].severity).toBe('action');
+    expect(rows[0].body).toContain('working day');
+    expect(rows.some((r) => r.recipient === subject.employmentId)).toBe(false);
+  });
+
+  it('freshness re-check: a step decided between sweep and dispatch produces NO notification', async () => {
+    const { subject, leaveRequestId } = await stuckRequest(['direct_manager', 'hr_admin']);
+    await owner.db.insert(schema.domainEvent).values(escalationEvent(subject.employmentId, leaveRequestId, 'hr_admin'));
+    // The approver acted in the meantime — the step is no longer pending.
+    await owner.db
+      .update(schema.leaveApprovalStep)
+      .set({ status: 'approved', decidedAt: new Date() })
+      .where(and(eq(schema.leaveApprovalStep.leaveRequestId, leaveRequestId), eq(schema.leaveApprovalStep.stepIndex, 0)));
+    expect((await dispatchNotifications(adminCtx(b), {})).created).toBe(0);
+    expect(await escalationNotifs()).toHaveLength(0);
+  });
+
+  it('a target that resolves to nobody (unset department head) falls back to HR admins, never silently vanishing', async () => {
+    const { subject, leaveRequestId } = await stuckRequest(['direct_manager', 'hr_admin']);
+    // An HR admin WITH an employment in the company (the seed admin user has none).
+    const hrEmp = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'HR Admin', primaryEmail: uniqEmail() },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2024-01-01',
+    });
+    await createAppUser(b.tenantId, hrEmp.personId, 'hr_admin');
+    // deptA has no head_employment_id ⇒ the department_head branch resolves to [] ⇒ HR fallback.
+    await owner.db
+      .insert(schema.domainEvent)
+      .values(escalationEvent(subject.employmentId, leaveRequestId, 'department_head'));
+    expect((await dispatchNotifications(adminCtx(b), {})).created).toBe(1);
+    expect((await escalationNotifs()).map((r) => r.recipient)).toEqual([hrEmp.employmentId]);
   });
 });

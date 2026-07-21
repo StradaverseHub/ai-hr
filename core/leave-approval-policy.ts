@@ -615,6 +615,126 @@ export async function listLeaveApprovalRules(
   });
 }
 
+// ──────────────────────────── R51 722904dc — approval escalation settings ────────────────────────────
+
+export const ESCALATION_TARGETS = ['next_level', 'specific_role'] as const;
+export type LeaveEscalationTarget = (typeof ESCALATION_TARGETS)[number];
+
+export type LeaveEscalationPolicy = {
+  enabled: boolean;
+  /** Working days a step may sit pending before escalation. Null while disabled. */
+  escalateAfterDays: number | null;
+  /** 'next_level' (default) = the next approver in the chain; 'specific_role' = a named LEVEL_KINDS role. */
+  target: LeaveEscalationTarget;
+  targetRole: LeaveLevelKind | null;
+};
+
+/** A company's approval-escalation settings, for the admin editor and the nightly sweep. */
+export async function getLeaveEscalationPolicy(
+  ctx: SessionContext,
+  companyId: string,
+): Promise<LeaveEscalationPolicy> {
+  return withTenant(ctx, async (tx) => {
+    const [co] = await tx
+      .select({
+        enabled: company.escalationEnabled,
+        escalateAfterDays: company.escalateAfterDays,
+        target: company.escalationTarget,
+        targetRole: company.escalationTargetRole,
+      })
+      .from(company)
+      .where(eq(company.id, companyId))
+      .limit(1);
+    const target: LeaveEscalationTarget =
+      co?.target === 'specific_role' ? 'specific_role' : 'next_level';
+    const targetRole = (LEVEL_KINDS as readonly string[]).includes(co?.targetRole ?? '')
+      ? (co?.targetRole as LeaveLevelKind)
+      : null;
+    return {
+      enabled: co?.enabled ?? false,
+      escalateAfterDays: co?.escalateAfterDays ?? null,
+      target,
+      targetRole,
+    };
+  });
+}
+
+/** Save a company's approval-escalation settings (modelled on setLeaveMultiApproval, not the rule matrix —
+ *  escalation is one number + one target per company, ADR-0071's matrix is deliberately NOT its home).
+ *  Sets escalation_updated_at = now() on EVERY save: the sweep grandfathers any request whose waiting clock
+ *  started before that stamp, so turning escalation on (or shortening the days) never fires a day-one burst
+ *  for requests that were already old. Admin-only (company RLS). */
+export async function setLeaveEscalationPolicy(
+  ctx: SessionContext,
+  p: {
+    companyId: string;
+    enabled: boolean;
+    escalateAfterDays?: number | null;
+    target?: string | null;
+    targetRole?: string | null;
+    reason?: string | null;
+  },
+) {
+  const target: LeaveEscalationTarget = p.target === 'specific_role' ? 'specific_role' : 'next_level';
+  const days = p.escalateAfterDays ?? null;
+  if (p.enabled) {
+    if (days == null || !Number.isInteger(days) || days < 1 || days > 90) {
+      throw new Error('Escalation needs a working-day threshold between 1 and 90');
+    }
+  }
+  let targetRole: LeaveLevelKind | null = null;
+  if (target === 'specific_role') {
+    if (!(LEVEL_KINDS as readonly string[]).includes(p.targetRole ?? '')) {
+      throw new Error('Escalating to a specific role needs a valid approval level');
+    }
+    targetRole = p.targetRole as LeaveLevelKind;
+  }
+  const reason = normalizeReason(p.reason);
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({
+        enabled: company.escalationEnabled,
+        escalateAfterDays: company.escalateAfterDays,
+        target: company.escalationTarget,
+        targetRole: company.escalationTargetRole,
+      })
+      .from(company)
+      .where(eq(company.id, p.companyId))
+      .limit(1);
+    await tx
+      .update(company)
+      .set({
+        escalationEnabled: p.enabled,
+        escalateAfterDays: p.enabled ? days : null,
+        escalationTarget: target,
+        escalationTargetRole: targetRole,
+        escalationUpdatedAt: sql`now()`,
+      })
+      .where(eq(company.id, p.companyId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: p.companyId,
+      eventType: 'leave-escalation-policy.updated',
+      actor: actorOf(ctx),
+      payload: {
+        companyId: p.companyId,
+        before: before
+          ? {
+              enabled: before.enabled,
+              escalateAfterDays: before.escalateAfterDays,
+              target: before.target,
+              targetRole: before.targetRole,
+            }
+          : null,
+        after: { enabled: p.enabled, escalateAfterDays: p.enabled ? days : null, target, targetRole },
+        ...(reason ? { reason } : {}),
+      },
+    });
+    return { id: p.companyId };
+  });
+}
+
 /** 6fadb036 — flip a company's multi-step-approval opt-in WITHOUT touching its default chain. The
  *  assignment screen surfaces this: a template assignment only fires when the company has multi-step
  *  approval on (core/leave.ts), so HR must be able to enable it inline. Admin-only (company RLS). */

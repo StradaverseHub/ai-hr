@@ -5730,7 +5730,18 @@
     "saveConfirmBody": "确定要保存此审批工作流配置吗？",
     "saveConfirm": "保存更改",
     "workflowTypeDefaultBadge": "默认",
-    "workflowTypeCustomBadge": "自定义"
+    "workflowTypeCustomBadge": "自定义",
+    "escalationTitle": "审批升级设置",
+    "escalationHint": "跟进在审批人处停留过久的请假申请。",
+    "escalationEnable": "启用审批升级",
+    "escalateAfter": "升级前等待",
+    "workingDaysUnit": "个工作日",
+    "escalationLevel": "升级至",
+    "escalationNextLevel": "下一审批级别（默认）",
+    "escalationSpecificRole": "指定审批角色",
+    "escalationRole": "审批角色",
+    "escalationNotifyNote": "升级提醒将发送到通知铃铛。",
+    "escalationUnavailableSingleApprover": "审批升级仅适用于使用多级审批链的公司。"
   },
   "feedback": {
     "title": "反馈",

@@ -6,13 +6,15 @@
  * resolver and are deferred. A notification is a derived projection with its own table acting as its audit,
  * so dispatch does NOT append a DomainEvent (per CLAUDE.md — that would be an event storm + a derivation loop).
  */
-import { and, asc, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   appUser,
   domainEvent,
   employment,
   employmentReview,
+  leaveApprovalStep,
+  leaveRequest,
   notification,
   notificationCursor,
   payslip,
@@ -20,6 +22,7 @@ import {
   roleAssignment,
   type NotificationSeverity,
 } from '../db/schema';
+import { resolveSubjectHead } from './leave';
 
 /** All HR-admin employments in the same company as `employmentId` (0110, employment-review fan-out).
  *  Resolves via role_assignment (hr_admin/super_admin) → app_user → person → that company's employment.
@@ -70,6 +73,73 @@ export async function delegateRecipient(tx: Tx, reportingLineId: string): Promis
   return row?.delegate ? [row.delegate] : [];
 }
 
+/** R51 722904dc — the employments holding a leave approval LEVEL KIND for `subjectEmploymentId`, used by
+ *  the escalation fan-out. Assembly of existing snippets, not new logic:
+ *  - direct_manager uses THE CHAIN'S reporting-line predicate (generateApprovalSteps: administrative,
+ *    validFrom <= current_date, validTo null-or-future). This deliberately differs from the self-cancelled
+ *    resolver above (validTo IS NULL AND supersededAt IS NULL, no validFrom check) — escalation must agree
+ *    with whoever the CHAIN says the approver is. That divergence between the two existing predicates is
+ *    pre-existing and NOT unified here.
+ *  - department_head / business_unit_head reuse resolveSubjectHead (core/leave.ts) — never a second copy.
+ *  - hr_admin / hr_manager / custom_role resolve to HR authority (hrAdminsForCompany), matching
+ *    assertCanDecideLeaveStep's decision-time gates.
+ *  - payroll is the role_assignment payroll_partner check from assertCanDecideLeaveStep, lifted here. */
+export async function approverEmploymentsForKind(
+  tx: Tx,
+  subjectEmploymentId: string,
+  kind: string,
+): Promise<string[]> {
+  switch (kind) {
+    case 'direct_manager': {
+      const rows = await tx
+        .select({ id: reportingLine.managerEmploymentId })
+        .from(reportingLine)
+        .where(
+          and(
+            eq(reportingLine.subordinateEmploymentId, subjectEmploymentId),
+            eq(reportingLine.lineType, 'administrative'),
+            lte(reportingLine.validFrom, sql`current_date`),
+            or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+          ),
+        );
+      return [...new Set(rows.map((r) => r.id))];
+    }
+    case 'department_head':
+    case 'business_unit_head': {
+      const head = await resolveSubjectHead(tx, subjectEmploymentId, kind);
+      return head ? [head] : [];
+    }
+    case 'hr_admin':
+    case 'hr_manager':
+    case 'custom_role':
+      return hrAdminsForCompany(tx, subjectEmploymentId);
+    case 'payroll': {
+      const [emp] = await tx
+        .select({ companyId: employment.companyId })
+        .from(employment)
+        .where(eq(employment.id, subjectEmploymentId))
+        .limit(1);
+      if (!emp) return [];
+      const rows = await tx
+        .select({ employmentId: employment.id })
+        .from(roleAssignment)
+        .innerJoin(appUser, eq(appUser.id, roleAssignment.appUserId))
+        .innerJoin(employment, eq(employment.personId, appUser.personId))
+        .where(
+          and(
+            eq(roleAssignment.role, 'payroll_partner'),
+            eq(employment.companyId, emp.companyId),
+            or(isNull(roleAssignment.companyId), eq(roleAssignment.companyId, emp.companyId)),
+            sql`not app.login_blocked(${appUser.id})`,
+          ),
+        );
+      return [...new Set(rows.map((r) => r.employmentId))];
+    }
+    default:
+      return [];
+  }
+}
+
 const enabled = () => process.env.NOTIFICATIONS_ENABLED === 'true';
 
 type Rendered = { severity: NotificationSeverity; title: string; body: string; linkPath: string };
@@ -81,8 +151,9 @@ type Spec = {
    *  for a recipient-specific deep-link (e.g. the HR issue-letter task links to the subject's profile). */
   render: (payload: Record<string, unknown> | null, ev: EventRef) => Rendered;
   /** Fan-out resolver. When present, recipients come from here (e.g. every employee in a closed payroll
-   *  batch) instead of the event's single subjectEmploymentId. */
-  recipients?: (tx: Tx, ev: EventRef) => Promise<string[]>;
+   *  batch) instead of the event's single subjectEmploymentId. `payload` (R51 722904dc) is the event's
+   *  payload — a two-parameter resolver is still assignable, so existing resolvers compile unchanged. */
+  recipients?: (tx: Tx, ev: EventRef, payload: Record<string, unknown> | null) => Promise<string[]>;
 };
 
 // eventType → notification (or SEVERAL — 6522d26a: one event may fan out to different audiences with
@@ -359,6 +430,52 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     }),
     recipients: (tx, ev) => delegateRecipient(tx, ev.aggregateId),
   },
+  // R51 722904dc/71b9143a — a leave approval step sat pending past the company's escalation threshold
+  // (core/leave-escalation.ts, carried by the nightly review-sweep). WHO to chase rides in the payload
+  // (targetKind, snapshotted at sweep time); WHETHER to chase is re-decided HERE, because dispatch is
+  // cursor-driven and may run hours after the sweep (opportunistically on admin page render): if the step
+  // — or the request — has since been decided, no notification is created. That re-check is what makes
+  // "if the approver acts in time, nothing is sent" actually hold. English-only strings, the registry
+  // convention (notification bodies are rendered once and STORED — there is no per-language version).
+  'leave-request.escalation-due': {
+    kind: 'leave.escalation',
+    category: 'leave',
+    render: (p) => ({
+      severity: 'action',
+      title: 'Leave approval overdue',
+      body: `A ${p?.leaveTypeName ?? 'leave'} request (${p?.startDate ?? ''} → ${p?.endDate ?? ''}) has been waiting for approval for ${p?.daysWaiting ?? ''} working day(s) and needs attention.`,
+      linkPath: '/approvals',
+    }),
+    recipients: async (tx, ev, payload) => {
+      const p = payload ?? {};
+      const leaveRequestId = typeof p.leaveRequestId === 'string' ? p.leaveRequestId : null;
+      const stepIndex = typeof p.stepIndex === 'number' ? p.stepIndex : null;
+      if (!leaveRequestId || stepIndex == null || !ev.subjectEmploymentId) return [];
+      // Freshness re-check: the step AND its parent request must still be pending.
+      const [req] = await tx
+        .select({ status: leaveRequest.status })
+        .from(leaveRequest)
+        .where(eq(leaveRequest.id, leaveRequestId))
+        .limit(1);
+      if (req?.status !== 'pending') return [];
+      const [step] = await tx
+        .select({ status: leaveApprovalStep.status })
+        .from(leaveApprovalStep)
+        .where(and(eq(leaveApprovalStep.leaveRequestId, leaveRequestId), eq(leaveApprovalStep.stepIndex, stepIndex)))
+        .limit(1);
+      if (step?.status !== 'pending') return [];
+      // Fan-out: the snapshotted target kind (next chain level, or the configured role). A null target
+      // (the stuck step was the LAST one) — or a branch that resolves to nobody (e.g. a department head
+      // is unset) — falls back to the company's HR admins, so an escalation never silently disappears.
+      const targetKind = typeof p.targetKind === 'string' ? p.targetKind : null;
+      let out = targetKind ? await approverEmploymentsForKind(tx, ev.subjectEmploymentId, targetKind) : [];
+      out = out.filter((id) => id !== ev.subjectEmploymentId); // never chase the requester
+      if (out.length === 0) {
+        out = (await hrAdminsForCompany(tx, ev.subjectEmploymentId)).filter((id) => id !== ev.subjectEmploymentId);
+      }
+      return [...new Set(out)];
+    },
+  },
   // The batch event has no single subject — fan out to every employee with a payslip in the closed batch.
   'payroll-batch.closed': {
     kind: 'payslip.ready',
@@ -407,7 +524,7 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
       for (const spec of Array.isArray(entry) ? entry : [entry]) {
         // Recipients: a fan-out resolver (e.g. all payslips in a batch), else the event's single subject.
         const recipients = spec.recipients
-          ? await spec.recipients(tx, evRef)
+          ? await spec.recipients(tx, evRef, (ev.payload as Record<string, unknown> | null) ?? null)
           : ev.subjectEmploymentId
             ? [ev.subjectEmploymentId]
             : [];
