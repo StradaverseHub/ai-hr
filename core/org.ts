@@ -567,6 +567,31 @@ export async function hasDownline(ctx: SessionContext, employmentId: string, asO
   return withTenant(ctx, (tx) => hasDownlineTx(tx, employmentId, asOf));
 }
 
+// R51 (baf56348) — the approver-level ladder: the HIGHEST duty an employment holds, business_unit_head >
+// department_head > manager (an active administrative downline) > none. Derived live from headship +
+// reporting lines (no new data entry; stays correct as people change roles).
+export type ApproverLevel = 'business_unit_head' | 'department_head' | 'manager' | 'none';
+
+/** Wraps app.approver_level (SECURITY DEFINER — it must read headship/downlines of employments the caller's
+ *  RLS session cannot see, e.g. the delegation RECIPIENT). Runs in the caller's tx. */
+export async function approverLevelOfTx(tx: Tx, employmentId: string, asOf: string): Promise<ApproverLevel> {
+  const res = await tx.execute(sql`SELECT app.approver_level(${employmentId}, ${asOf}) AS level`);
+  return ((res as unknown as { level: string }[])[0]?.level ?? 'none') as ApproverLevel;
+}
+
+/** Session-scoped wrapper for `approverLevelOfTx` (opens its own tx). */
+export async function approverLevelOf(ctx: SessionContext, employmentId: string, asOf: string): Promise<ApproverLevel> {
+  return withTenant(ctx, (tx) => approverLevelOfTx(tx, employmentId, asOf));
+}
+
+/** R51 (baf56348) — org COVERAGE of a delegation: company → business unit → department, each nullable.
+ *  All three null = unrestricted (the meaning of every legacy row). */
+export type DelegationOrgScope = {
+  companyId: string | null;
+  businessUnitId: string | null;
+  departmentId: string | null;
+};
+
 /**
  * The delegate-edge insert, extracted so both `setReportingLine` (lineType 'delegate') and `editDelegation`
  * (supersede + recreate) share ONE overlap guard + insert + event pair. subordinate = delegator,
@@ -587,11 +612,70 @@ async function insertDelegateLineTx(
     // the per-module/task scope. An EMPTY/absent scope list = whole-scope (all approvals) — back-compat.
     reason?: string | null;
     scopes?: { module: string; taskType: string | null }[];
+    // R51 (baf56348): org COVERAGE (company → BU → department). Absent/all-null = unrestricted.
+    orgScope?: DelegationOrgScope | null;
+    // R51: editDelegation sets this when the recipient is UNCHANGED, so a date-only edit of a legacy row
+    // whose recipient no longer (or never) shared the delegator's level still goes through. Every path that
+    // picks a NEW recipient runs the guard.
+    skipSameLevelGuard?: boolean;
   },
 ): Promise<{ reportingLineId: string }> {
   if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
   if (p.validTo != null && p.validTo < p.validFrom) {
     throw new DelegationError('The end date must be on or after the start date');
+  }
+  // R51 same-level guard: the recipient's HIGHEST approval level must EQUAL the delegator's — equality on
+  // the ladder, NOT set intersection (intersection would let an HOD who also manages a team delegate down
+  // to a plain manager). Engine-level so the HR form, the command-bar modal and a crafted POST all hit the
+  // same rule. Deliberate: level is checked at WRITE time only — decide time re-validates window, live
+  // delegator, admin-edge/headship, active employment, module scope and org scope, not level drift.
+  if (!p.skipSameLevelGuard) {
+    const [delegatorLevel, recipientLevel] = await Promise.all([
+      approverLevelOfTx(tx, p.subordinateEmploymentId, p.validFrom),
+      approverLevelOfTx(tx, p.managerEmploymentId, p.validFrom),
+    ]);
+    if (delegatorLevel !== recipientLevel) {
+      throw new DelegationError('The stand-in must hold the same approval level as the person delegating');
+    }
+  }
+  // R51 org-scope parent-chain consistency (write-time; client filtering is not a source of truth). The
+  // shared-labels resolver validates company membership (origin ∪ shared-in ∪ global); the department↔BU
+  // link is checked directly (a department with no BU link is usable under every BU — hire-form precedent).
+  const orgScope: DelegationOrgScope = {
+    companyId: p.orgScope?.companyId ?? null,
+    businessUnitId: p.orgScope?.businessUnitId ?? null,
+    departmentId: p.orgScope?.departmentId ?? null,
+  };
+  if (orgScope.businessUnitId) {
+    const [bu] = await tx
+      .select({ id: businessUnit.id, companyId: businessUnit.companyId })
+      .from(businessUnit)
+      .where(eq(businessUnit.id, orgScope.businessUnitId))
+      .limit(1);
+    if (!bu) throw new DelegationError('The selected business unit no longer exists');
+    if (
+      orgScope.companyId &&
+      !(await labelUsableByCompany(tx, ctx.tenantId, 'business_unit', bu.id, orgScope.companyId))
+    ) {
+      throw new DelegationError('The selected business unit does not belong to the selected company');
+    }
+  }
+  if (orgScope.departmentId) {
+    const [dept] = await tx
+      .select({ id: department.id, companyId: department.companyId, businessUnitId: department.businessUnitId })
+      .from(department)
+      .where(eq(department.id, orgScope.departmentId))
+      .limit(1);
+    if (!dept) throw new DelegationError('The selected department no longer exists');
+    if (
+      orgScope.companyId &&
+      !(await labelUsableByCompany(tx, ctx.tenantId, 'department', dept.id, orgScope.companyId))
+    ) {
+      throw new DelegationError('The selected department does not belong to the selected company');
+    }
+    if (orgScope.businessUnitId && dept.businessUnitId && dept.businessUnitId !== orgScope.businessUnitId) {
+      throw new DelegationError('The selected department does not belong to the selected business unit');
+    }
   }
   const existing = await tx
     .select({ id: reportingLine.id, validFrom: reportingLine.validFrom, validTo: reportingLine.validTo })
@@ -625,6 +709,9 @@ async function insertDelegateLineTx(
       validFrom: p.validFrom,
       validTo: p.validTo ?? null,
       reason,
+      scopeCompanyId: orgScope.companyId,
+      scopeBusinessUnitId: orgScope.businessUnitId,
+      scopeDepartmentId: orgScope.departmentId,
     })
     .returning({ id: reportingLine.id });
   if (scopes.length > 0) {
@@ -644,7 +731,9 @@ async function insertDelegateLineTx(
     eventType: 'reporting-line.set',
     actor: actorOf(ctx),
     subjectEmploymentId: p.subordinateEmploymentId,
-    payload: { ...p, lineType: 'delegate', reason, scopes },
+    // R51: orgScope in the payload mirrors how 0230 evented the module scope (skipSameLevelGuard is an
+    // internal control flag, not state — kept out of the audit record).
+    payload: { ...p, skipSameLevelGuard: undefined, lineType: 'delegate', reason, scopes, orgScope },
   });
   // Global Delegation (Phase 1) — a SECOND, delegation-specific event so notifications can target the
   // stand-in WITHOUT overloading the structural reporting-line.set (which fires for every line type).
@@ -662,6 +751,7 @@ async function insertDelegateLineTx(
       validTo: p.validTo ?? null,
       reason,
       scopes,
+      orgScope,
     },
   });
   return { reportingLineId: row.id };
@@ -687,6 +777,8 @@ export async function editDelegation(
     // supersede keeps the row; but the new edge starts from the values passed here, which the edit form fills).
     reason?: string | null;
     scopes?: { module: string; taskType: string | null }[];
+    // R51 (baf56348): the (possibly changed) org coverage. Absent/all-null = unrestricted.
+    orgScope?: DelegationOrgScope | null;
   },
 ) {
   return withTenant(ctx, async (tx) => {
@@ -721,6 +813,10 @@ export async function editDelegation(
       validTo: p.validTo,
       reason: p.reason ?? null,
       scopes: p.scopes ?? [],
+      orgScope: p.orgScope ?? null,
+      // R51 grandfathering: the same-level rule applies only when a NEW stand-in is being chosen. A
+      // date-only (or scope-only) edit of a legacy row keeps its recipient and must never fail the guard.
+      skipSameLevelGuard: p.managerEmploymentId === old.manager,
     });
   });
 }
@@ -739,6 +835,8 @@ export async function setReportingLine(
     // hand-over. Ignored for structural line types. Empty scope list = whole-scope (all approvals).
     reason?: string | null;
     scopes?: { module: string; taskType: string | null }[];
+    // R51 (baf56348): org coverage — `delegate` lines only. Absent/all-null = unrestricted.
+    orgScope?: DelegationOrgScope | null;
   },
 ) {
   return withTenant(ctx, async (tx) => {
@@ -761,6 +859,7 @@ export async function setReportingLine(
         validTo: p.validTo ?? null,
         reason: p.reason ?? null,
         scopes: p.scopes ?? [],
+        orgScope: p.orgScope ?? null,
       });
     }
     // A subordinate has at most one *active* line per type (one admin manager, one functional, …).

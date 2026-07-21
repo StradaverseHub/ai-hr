@@ -67,14 +67,52 @@ export async function assertCanDecide(
   // employment under RLS (no visibility inheritance), so an in-statement join through `employment` would
   // be wrongly filtered — the definer helper resolves it without leaking visibility. The self-ban above
   // already blocked a delegate who is the subject.
+  //
+  // R51 (baf56348, migration 0286): ALWAYS the 3-arg overload. NULL module/task = no module filter
+  // (byte-identical to the old 1-arg decide behaviour), so the legacy scope-less callers (travel, profile,
+  // performance, offboarding, employment review) keep their whole-scope semantics — while the new ORG gate
+  // inside the function now applies to every decide path through this one chokepoint.
   if (ctx.personId) {
     const res = scope
       ? await tx.execute(
           sql`SELECT app.can_decide_via_delegation(${subjectEmploymentId}, ${scope.module}, ${scope.taskType}) AS ok`,
         )
-      : await tx.execute(sql`SELECT app.can_decide_via_delegation(${subjectEmploymentId}) AS ok`);
+      : await tx.execute(sql`SELECT app.can_decide_via_delegation(${subjectEmploymentId}, NULL, NULL) AS ok`);
     const ok = (res as unknown as { ok: boolean }[])[0]?.ok;
     if (ok) return;
   }
   throw new Error(`Only an admin or the administrative manager can decide this ${label}`);
+}
+
+/**
+ * R51 (baf56348) — org-scope filter for the DELEGATE-facing pending lists (leave / attendance corrections /
+ * claims). RLS row visibility deliberately stays unchanged (the 1-arg visibility form is untouched — 0230's
+ * precedent of authority being narrower than visibility), so a delegation-routed row is still READABLE; this
+ * app-level predicate keeps it OUT of the approver's to-do list when the subject sits outside the
+ * delegation's org coverage, so the stand-in is never teased with items they cannot act on. Rows the caller
+ * can see in their OWN right (self / admin downline / admin role) always pass. The decide-time guard remains
+ * the backstop for a raced decide.
+ */
+export async function filterDelegationOrgScopeTx<T>(
+  tx: Tx,
+  ctx: SessionContext,
+  rows: T[],
+  subjectOf: (row: T) => string,
+): Promise<T[]> {
+  const roles = ctx.roles ?? [];
+  if (rows.length === 0 || roles.includes('hr_admin') || roles.includes('super_admin')) return rows;
+  const ids = [...new Set(rows.map(subjectOf))];
+  // One round trip; each id bound as its own parameter (VALUES list — no array-binding dependency).
+  const res = await tx.execute(sql`
+    SELECT s.id AS id,
+           app.can_see_employment(s.id) AS visible,
+           app.can_decide_via_delegation(s.id, NULL, NULL) AS del_ok
+    FROM (VALUES ${sql.join(ids.map((i) => sql`(${i}::uuid)`), sql`, `)}) AS s(id)
+  `);
+  const allowed = new Set(
+    (res as unknown as { id: string; visible: boolean; del_ok: boolean }[])
+      .filter((r) => r.visible || r.del_ok)
+      .map((r) => r.id),
+  );
+  return rows.filter((r) => allowed.has(subjectOf(r)));
 }

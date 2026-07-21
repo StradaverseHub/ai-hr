@@ -4,15 +4,30 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
-import { editDelegation, endReportingLine, hasDownline, setReportingLine } from '@/core/org';
-import { delegationsScoped, employmentPickerList, myEmployments } from '@/core/read';
+import { approverLevelOf, editDelegation, endReportingLine, hasDownline, setReportingLine, type DelegationOrgScope } from '@/core/org';
+import { delegationsScoped, eligibleDelegates, employmentPickerList, myEmployments, type EligibleDelegateRow } from '@/core/read';
 import { todayInKualaLumpur } from '@/core/leave';
-import { isDelegationModule, isDelegationTaskType, moduleOfTask, type DelegationTaskType } from '@/lib/delegation-scope';
+import {
+  expandScopeTasks,
+  isDelegationModule,
+  isDelegationScopeGroup,
+  isDelegationTaskType,
+  moduleOfTask,
+  type DelegationScopeGroupId,
+  type DelegationTaskType,
+} from '@/lib/delegation-scope';
 
 /**
  * R44 delegation (Phase 2) — parse the scope picker's form fields into (reason, scope rows). A checked
  * module with no checked task = the WHOLE module (taskType null); with tasks = those tasks; ZERO modules =
  * whole-scope (empty list). Reason is required (the UI marks it *, this is the server-side guard).
+ *
+ * R51 (20f09fc3): `scopeGroup` values are TRANSIENT — each group expands to its LEAF task ids here
+ * (expandScopeTasks: a bare group covers ALL its leaves; submitted leaves narrow it), then the existing
+ * per-module branch runs unchanged over the expanded leaf list. Group ids are never stored: a forged/stale
+ * `scopeTask` carrying a group id is dropped by isDelegationTaskType (group ids are not in the task set),
+ * and a submitted group whose module checkbox is unticked is inert (the module loop keeps only tasks of
+ * checked modules).
  */
 function parseScopeAndReason(formData: FormData): {
   reason: string;
@@ -20,7 +35,9 @@ function parseScopeAndReason(formData: FormData): {
 } {
   const reason = String(formData.get('reason') ?? '').trim();
   const modules = formData.getAll('scopeModule').map(String).filter(isDelegationModule);
-  const tasks = formData.getAll('scopeTask').map(String).filter(isDelegationTaskType) as DelegationTaskType[];
+  const groups = formData.getAll('scopeGroup').map(String).filter(isDelegationScopeGroup) as DelegationScopeGroupId[];
+  const rawTasks = formData.getAll('scopeTask').map(String).filter(isDelegationTaskType) as DelegationTaskType[];
+  const tasks = expandScopeTasks(groups, rawTasks);
   const scopes: { module: string; taskType: string | null }[] = [];
   for (const m of modules) {
     const mtasks = tasks.filter((tk) => moduleOfTask[tk] === m);
@@ -28,6 +45,23 @@ function parseScopeAndReason(formData: FormData): {
     else scopes.push({ module: m, taskType: null });
   }
   return { reason, scopes };
+}
+
+/**
+ * R51 (baf56348) — parse the Delegation Coverage cascade (company → business unit → department). Blank at a
+ * level = everything under the level above; all blank = unrestricted. The ids are re-validated server-side
+ * by the engine (parent-chain consistency in insertDelegateLineTx) — client filtering is not trusted.
+ */
+function parseOrgScope(formData: FormData): DelegationOrgScope {
+  const pick = (name: string) => {
+    const v = String(formData.get(name) ?? '').trim();
+    return v ? v : null;
+  };
+  return {
+    companyId: pick('scopeCompanyId'),
+    businessUnitId: pick('scopeBusinessUnitId'),
+    departmentId: pick('scopeDepartmentId'),
+  };
 }
 
 /**
@@ -75,19 +109,24 @@ export async function loadSelfDelegationContextAction(): Promise<{
   const s = await getSession();
   const today = todayInKualaLumpur();
   const mine = await myEmployments(s);
-  const myIds = new Set(mine.map((m) => m.employmentId));
-  let canSelfDelegate = false;
+  // R51 (baf56348): the gate is hasDownline OR an approver level (a pure department/BU head with no
+  // administrative reports clearly holds approval duties, so they can now set up cover too).
+  let delegator: string | null = null;
   for (const m of mine) {
-    if (await hasDownline(s, m.employmentId, today)) {
-      canSelfDelegate = true;
+    if (
+      (await hasDownline(s, m.employmentId, today)) ||
+      (await approverLevelOf(s, m.employmentId, today)) !== 'none'
+    ) {
+      delegator = m.employmentId;
       break;
     }
   }
-  if (!canSelfDelegate) return { canSelfDelegate: false, options: [] };
-  const picker = await employmentPickerList(s);
-  const options = picker
-    .filter((p) => !myIds.has(p.employmentId))
-    .map((p) => ({ employmentId: p.employmentId, name: p.name, employeeCode: p.employeeCode }));
+  if (!delegator) return { canSelfDelegate: false, options: [] };
+  // R51: the quick modal obeys the same-level rule — candidates come from the SECURITY-DEFINER eligible
+  // list (same-rank approvers across the org), not the raw employee picker, so the shortcut is no side door.
+  // (The engine-level guard in setReportingLine backstops it regardless.)
+  const candidates = await eligibleDelegates(s, delegator);
+  const options = candidates.map((p) => ({ employmentId: p.employmentId, name: p.name, employeeCode: null }));
   return { canSelfDelegate: true, options };
 }
 
@@ -101,16 +140,20 @@ export async function createSelfDelegationAction(formData: FormData) {
     if (!delegateEmploymentId) throw new Error('Choose who will stand in for you.');
     const mine = await myEmploymentIds();
     if (mine.length === 0) throw new Error('You have no active employment to delegate from.');
-    // The delegator is the caller's OWN employment that actually has a downline (an approver duty to hand
-    // over). Pick the first such — self-service is only offered to managers (the create form is gated on it).
+    // The delegator is the caller's OWN employment that actually holds an approver duty to hand over: a
+    // downline OR (R51) a department/BU headship — a pure head with no administrative reports can now
+    // delegate. Picked server-side (never a form field), so an employee cannot delegate on someone's behalf.
     let delegator: string | null = null;
     for (const id of mine) {
-      if (await hasDownline(s, id, validFrom)) {
+      if (
+        (await hasDownline(s, id, validFrom)) ||
+        (await approverLevelOf(s, id, todayInKualaLumpur())) !== 'none'
+      ) {
         delegator = id;
         break;
       }
     }
-    if (!delegator) throw new Error('Only a manager with direct reports can delegate approvals.');
+    if (!delegator) throw new Error('Only an approver (a manager or a department/business unit head) can delegate approvals.');
     // Reject self-delegation, including to another of the caller's own concurrent employments.
     if (mine.includes(delegateEmploymentId)) throw new Error('You cannot delegate approvals to yourself.');
     const { reason, scopes } = parseScopeAndReason(formData);
@@ -123,6 +166,7 @@ export async function createSelfDelegationAction(formData: FormData) {
       validTo,
       reason,
       scopes,
+      orgScope: parseOrgScope(formData),
     });
   } catch (e) {
     fail((e as Error).message);
@@ -156,6 +200,19 @@ async function requireAdminSession() {
   return s;
 }
 
+/**
+ * R51 (baf56348) — stand-in candidates for the HR create form, fired once when HR picks the delegator (NOT
+ * on coverage changes — the cascade filters client-side). Re-checks the admin role; the SECURITY-DEFINER
+ * eligible list additionally self-guards, so this cannot become a directory-enumeration side door.
+ */
+export async function loadEligibleDelegatesAction(delegatorEmploymentId: string): Promise<EligibleDelegateRow[]> {
+  const s = await getSession();
+  if (!isAdmin(s)) return [];
+  const id = String(delegatorEmploymentId ?? '').trim();
+  if (!id) return [];
+  return eligibleDelegates(s, id);
+}
+
 export async function hrCreateDelegationAction(formData: FormData) {
   const s = await requireAdminSession();
   const today = todayInKualaLumpur();
@@ -177,6 +234,7 @@ export async function hrCreateDelegationAction(formData: FormData) {
       validTo,
       reason,
       scopes,
+      orgScope: parseOrgScope(formData),
     });
   } catch (e) {
     fail((e as Error).message);
@@ -195,7 +253,15 @@ export async function hrEditDelegationAction(formData: FormData) {
     if (!delegateEmploymentId) throw new Error('Choose the stand-in approver.');
     const { reason, scopes } = parseScopeAndReason(formData);
     if (!reason) throw new Error('Please give a reason for the delegation.');
-    await editDelegation(s, { reportingLineId, managerEmploymentId: delegateEmploymentId, validFrom, validTo, reason, scopes });
+    await editDelegation(s, {
+      reportingLineId,
+      managerEmploymentId: delegateEmploymentId,
+      validFrom,
+      validTo,
+      reason,
+      scopes,
+      orgScope: parseOrgScope(formData),
+    });
   } catch (e) {
     fail((e as Error).message);
   }

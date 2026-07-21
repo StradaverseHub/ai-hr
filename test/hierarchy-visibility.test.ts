@@ -227,7 +227,12 @@ describe('ADR-0052 — delegation (approver-routing only)', () => {
     const mgr = await hire('LMgr', b.companyId, b.deptA);
     const sub = await hire('LSub', b.companyId, b.deptA);
     await adminLine(sub.employmentId, mgr.employmentId);
-    const stand = await hire('Stand', b.companyId, b.deptA); // the delegate
+    // The delegate sits in deptB with their own report: same approval level as the delegator (R51 rule)
+    // WITHOUT becoming a derived head of deptA (heads_department_of would otherwise grant them the very
+    // department visibility 8c pins as absent).
+    const stand = await hire('Stand', b.companyId, b.deptB); // the delegate
+    const standSub = await hire('StandSub', b.companyId, b.deptB);
+    await adminLine(standSub.employmentId, stand.employmentId);
     // Multi-step chain (direct_manager → hr_admin) so the delegate clears the direct_manager step and the
     // request ADVANCES (no finalize / ledger debit) — this isolates "delegate can clear a direct_manager
     // step" per the plan, independent of the subject's leave balance.
@@ -291,6 +296,10 @@ describe('ADR-0052 — delegation (approver-routing only)', () => {
     const mgr = await hire('SelfMgr', b.companyId, b.deptA);
     const subject = await hire('SelfSubj', b.companyId, b.deptA);
     await adminLine(subject.employmentId, mgr.employmentId);
+    // R51 same-level rule: the subject-delegate must match the manager's level for the CREATE to succeed —
+    // the point here is that the SELF-approval ban still blocks the decide.
+    const subjSub = await hire('SelfSubjSub', b.companyId, b.deptA);
+    await adminLine(subjSub.employmentId, subject.employmentId);
     const { leaveRequestId } = await requestLeave(A(b), {
       employmentId: subject.employmentId,
       leaveTypeId: b.annualLeaveTypeId,

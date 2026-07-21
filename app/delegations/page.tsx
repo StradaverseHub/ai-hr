@@ -1,15 +1,16 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { delegationsScoped, employmentPickerList, myEmployments } from '@/core/read';
-import { hasDownline } from '@/core/org';
+import { delegationsScoped, eligibleDelegates, employmentPickerList, listCompanies, listDepartments, myEmployments } from '@/core/read';
+import { listBusinessUnits } from '@/core/admin';
+import { approverLevelOf, hasDownline } from '@/core/org';
 import { todayInKualaLumpur } from '@/core/leave';
 import { Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls, btnPrimary } from '@/components/ui';
 import { delegationStatus, formatDelegationScope, isRevocable } from '@/lib/delegation-format';
 import { DelegationScopePicker } from '@/components/delegation-scope-picker';
+import { DelegationCreateForm, type DelegateCandidate } from '@/components/delegation-create-form';
+import { DelegationOrgScopePicker, type OrgScopeMasters } from '@/components/delegation-org-scope-picker';
 import {
-  createSelfDelegationAction,
-  hrCreateDelegationAction,
   hrEditDelegationAction,
   hrRevokeDelegationAction,
   revokeSelfDelegationAction,
@@ -37,24 +38,44 @@ export default async function DelegationsPage({
   const today = todayInKualaLumpur();
   const history = admin && historyParam === '1';
 
-  const [rows, pickerRaw, mine] = await Promise.all([
+  const [rows, pickerRaw, mine, companiesRaw, businessUnitsRaw, departmentsRaw] = await Promise.all([
     delegationsScoped(s, { isAdmin: admin, history, asOf: today }),
     employmentPickerList(s),
     admin ? Promise.resolve([]) : myEmployments(s),
+    // R51 (baf56348): coverage cascade masters (tenant-readable under RLS, so self-service works too).
+    listCompanies(s),
+    listBusinessUnits(s),
+    listDepartments(s),
   ]);
   const myIds = new Set(mine.map((m) => m.employmentId));
-  // Self-service create is offered only to a manager (a caller employment with a downline).
-  let selfCanDelegate = false;
+  const masters: OrgScopeMasters = {
+    companies: companiesRaw.map((c) => ({ id: c.id, name: c.name })),
+    businessUnits: businessUnitsRaw.map((b) => ({ id: b.id, name: b.name, companyId: b.companyId })),
+    departments: departmentsRaw.map((d) => ({
+      id: d.id,
+      name: d.name,
+      companyId: d.companyId,
+      businessUnitId: d.businessUnitId,
+    })),
+  };
+  // Self-service create is offered to an APPROVER: a caller employment with a downline OR (R51) a
+  // department/BU headship — a pure head with no administrative reports clearly holds approval duties.
+  let selfDelegator: string | null = null;
   if (!admin) {
     for (const m of mine) {
-      if (await hasDownline(s, m.employmentId, today)) {
-        selfCanDelegate = true;
+      if (
+        (await hasDownline(s, m.employmentId, today)) ||
+        (await approverLevelOf(s, m.employmentId, today)) !== 'none'
+      ) {
+        selfDelegator = m.employmentId;
         break;
       }
     }
   }
-  // The stand-in picker excludes the caller's own employments (no self-delegation).
-  const delegateOptions = pickerRaw.filter((p) => !myIds.has(p.employmentId));
+  const selfCanDelegate = selfDelegator != null;
+  // R51: the "delegate to" list is RANK-aware — same-level candidates from the SECURITY-DEFINER eligible
+  // list (siblings across the org the caller cannot see under plain RLS), computed at page render.
+  const selfCandidates: DelegateCandidate[] = selfDelegator ? await eligibleDelegates(s, selfDelegator) : [];
 
   const statusLabel = (status: 'active' | 'scheduled' | 'ended') =>
     status === 'active' ? t('statusActive') : status === 'scheduled' ? t('statusScheduled') : t('statusEnded');
@@ -75,75 +96,14 @@ export default async function DelegationsPage({
       <Card>
         <SectionHeader title={t('createTitle')} />
         {admin ? (
-          <form action={hrCreateDelegationAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-5">
-            <Field label={t('colFrom')}>
-              <select name="delegatorEmploymentId" required className={inputCls} defaultValue="">
-                <option value="" disabled>
-                  {t('choose')}
-                </option>
-                {pickerRaw.map((p) => (
-                  <option key={p.employmentId} value={p.employmentId}>
-                    {p.name}
-                    {p.employeeCode ? ` (${p.employeeCode})` : ''}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('colTo')}>
-              <select name="delegateEmploymentId" required className={inputCls} defaultValue="">
-                <option value="" disabled>
-                  {t('choose')}
-                </option>
-                {pickerRaw.map((p) => (
-                  <option key={p.employmentId} value={p.employmentId}>
-                    {p.name}
-                    {p.employeeCode ? ` (${p.employeeCode})` : ''}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('start')}>
-              <input name="validFrom" type="date" required defaultValue={today} className={inputCls} />
-            </Field>
-            <Field label={t('end')}>
-              <input name="validTo" type="date" className={inputCls} />
-            </Field>
-            <div className="sm:col-span-5">
-              <DelegationScopePicker />
-            </div>
-            <div className="sm:col-span-5">
-              <button className={btnPrimary}>{t('create')}</button>
-            </div>
-          </form>
+          <DelegationCreateForm mode="hr" today={today} masters={masters} delegatorOptions={pickerRaw} />
         ) : selfCanDelegate ? (
-          <form action={createSelfDelegationAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
-            <p className="text-sm text-muted-foreground sm:col-span-4">{t('selfHint')}</p>
-            <Field label={t('delegateTo')}>
-              <select name="delegateEmploymentId" required className={inputCls} defaultValue="">
-                <option value="" disabled>
-                  {t('choose')}
-                </option>
-                {delegateOptions.map((p) => (
-                  <option key={p.employmentId} value={p.employmentId}>
-                    {p.name}
-                    {p.employeeCode ? ` (${p.employeeCode})` : ''}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('start')}>
-              <input name="validFrom" type="date" required defaultValue={today} className={inputCls} />
-            </Field>
-            <Field label={t('end')}>
-              <input name="validTo" type="date" className={inputCls} />
-            </Field>
-            <div className="sm:col-span-4">
-              <DelegationScopePicker />
-            </div>
-            <div className="sm:col-span-4">
-              <button className={btnPrimary}>{t('create')}</button>
-            </div>
-          </form>
+          <DelegationCreateForm
+            mode="self"
+            today={today}
+            masters={masters}
+            initialCandidates={selfCandidates.filter((c) => !myIds.has(c.employmentId))}
+          />
         ) : (
           <div className="p-4 text-sm text-muted-foreground">{t('noDownline')}</div>
         )}
@@ -225,6 +185,17 @@ export default async function DelegationsPage({
                                 <Field label={t('end')}>
                                   <input name="validTo" type="date" defaultValue={r.validTo ?? ''} className={inputCls} />
                                 </Field>
+                                <div className="sm:col-span-2">
+                                  {/* R51: coverage defaults come from the stored row (delegationsScoped). */}
+                                  <DelegationOrgScopePicker
+                                    masters={masters}
+                                    defaultScope={{
+                                      companyId: r.orgScope.companyId,
+                                      businessUnitId: r.orgScope.businessUnitId,
+                                      departmentId: r.orgScope.departmentId,
+                                    }}
+                                  />
+                                </div>
                                 <div className="sm:col-span-2">
                                   <DelegationScopePicker defaultReason={r.reason ?? ''} defaultScopes={r.scopes} />
                                 </div>

@@ -6522,8 +6522,25 @@
       "leaveApplication": "Kelulusan Permohonan Cuti",
       "leaveCancellation": "Kelulusan Pembatalan Cuti",
       "attendanceCorrection": "Kelulusan Pembetulan Kehadiran",
-      "claimsClaim": "Kelulusan Tuntutan"
-    }
+      "claimsClaim": "Kelulusan Tuntutan",
+      "leaveRequestCreation": "Penciptaan Permohonan Cuti",
+      "leaveAmendmentRequest": "Permohonan Pindaan Cuti",
+      "leaveCancellationRequest": "Permohonan Pembatalan Cuti"
+    },
+    "groupLabel": {
+      "leaveRequest": "Permohonan Cuti",
+      "leaveCancellation": "Pembatalan Cuti"
+    },
+    "coverageTitle": "Liputan Perwakilan",
+    "coverageHint": "Pilih bahagian organisasi yang diliputi oleh pengganti. Biarkan sesuatu peringkat kosong untuk meliputi semuanya di bawah peringkat sebelumnya.",
+    "coverageCompany": "Syarikat",
+    "coverageBusinessUnit": "Unit Perniagaan",
+    "coverageDepartment": "Jabatan",
+    "coverageAllCompanies": "Semua syarikat",
+    "coverageAllBusinessUnits": "Semua unit perniagaan",
+    "coverageAllDepartments": "Semua jabatan",
+    "eligibleHint": "Hanya pelulus yang setaraf dengan orang yang mewakilkan disenaraikan.",
+    "loadingCandidates": "Memuatkan…"
   },
   "dashboardCardConfig": {
     "title": "Persediaan Kad Papan Pemuka",

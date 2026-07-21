@@ -30,11 +30,11 @@ let b: Base;
 const A = (base: Base) => adminCtx(base);
 const uniq = () => `${randomUUID().slice(0, 8)}@t.local`;
 
-async function hire(name: string) {
+async function hire(name: string, departmentId?: string) {
   return hireEmployee(A(b), {
     person: { fullName: name, primaryEmail: uniq() },
     companyId: b.companyId,
-    departmentId: b.deptA,
+    departmentId: departmentId ?? b.deptA,
     employmentType: 'full_time',
     hiredOn: '2024-01-01',
   });
@@ -108,6 +108,9 @@ describe('Global Delegation (Phase 1)', () => {
     const sub = await hire('LSub');
     await adminLine(sub.employmentId, mgr.employmentId);
     const stand = await hire('Stand');
+    // R51 same-level rule: the stand-in must hold the delegator's approval level (manager ⇒ a downline).
+    const standSub = await hire('StandSub');
+    await adminLine(standSub.employmentId, stand.employmentId);
     // Multi-step chain so the stand-in clears the direct_manager step (advances, no ledger debit).
     await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
     const { leaveRequestId } = await requestLeave(A(b), {
@@ -152,6 +155,9 @@ describe('Global Delegation (Phase 1)', () => {
     const otherSub = await hire('OtherSub');
     await adminLine(otherSub.employmentId, other.employmentId);
     const stand = await hire('Stand3');
+    // Same level as `other` (manager), so RLS — not the R51 level guard — is what rejects below.
+    const standSub3 = await hire('StandSub3');
+    await adminLine(standSub3.employmentId, stand.employmentId);
     const rogue = await hire('Rogue');
     const rogueCtx = await userCtx(rogue.personId, 'manager');
     // Rogue tries to delegate OTHER's approver duty (subordinate = other, not rogue) → RLS WITH CHECK blocks.
@@ -235,6 +241,9 @@ describe('Global Delegation (Phase 2 — module/task scope)', () => {
     const sub = await hire('USub');
     await adminLine(sub.employmentId, mgr.employmentId);
     const stand = await hire('UStand');
+    // R51 same-level rule: match the delegator's manager level.
+    const UStandSub = await hire('UStandSub');
+    await adminLine(UStandSub.employmentId, stand.employmentId);
     await setReportingLine(A(b), {
       subordinateEmploymentId: mgr.employmentId,
       managerEmploymentId: stand.employmentId,
@@ -253,6 +262,9 @@ describe('Global Delegation (Phase 2 — module/task scope)', () => {
     const sub = await hire('LSSub');
     await adminLine(sub.employmentId, mgr.employmentId);
     const stand = await hire('LSStand');
+    // R51 same-level rule: match the delegator's manager level.
+    const LSStandSub = await hire('LSStandSub');
+    await adminLine(LSStandSub.employmentId, stand.employmentId);
     await setReportingLine(A(b), {
       subordinateEmploymentId: mgr.employmentId,
       managerEmploymentId: stand.employmentId,
@@ -274,6 +286,9 @@ describe('Global Delegation (Phase 2 — module/task scope)', () => {
     const sub = await hire('TSSub');
     await adminLine(sub.employmentId, mgr.employmentId);
     const stand = await hire('TSStand');
+    // R51 same-level rule: match the delegator's manager level.
+    const TSStandSub = await hire('TSStandSub');
+    await adminLine(TSStandSub.employmentId, stand.employmentId);
     await setReportingLine(A(b), {
       subordinateEmploymentId: mgr.employmentId,
       managerEmploymentId: stand.employmentId,
@@ -293,6 +308,9 @@ describe('Global Delegation (Phase 2 — module/task scope)', () => {
     const sub = await hire('E2ESub');
     await adminLine(sub.employmentId, mgr.employmentId);
     const stand = await hire('E2EStand');
+    // R51 same-level rule: match the delegator's manager level.
+    const E2EStandSub = await hire('E2EStandSub');
+    await adminLine(E2EStandSub.employmentId, stand.employmentId);
     await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
     const { leaveRequestId } = await requestLeave(A(b), {
       employmentId: sub.employmentId,
@@ -325,6 +343,82 @@ describe('Global Delegation (Phase 2 — module/task scope)', () => {
     const res = await decideLeave(standCtx, { leaveRequestId, decision: 'approved' });
     expect(res.status).toBe('pending');
     expect((res as { advancedTo?: string }).advancedTo).toBe('hr_admin');
+  });
+});
+
+describe('R51 (20f09fc3) — request-side leaf task types grant zero approval authority', () => {
+  async function canDecide(ctx: SessionContext, subject: string, module: string, task: string): Promise<boolean> {
+    return withTenant(ctx, async (tx) => {
+      const res = await tx.execute(
+        sql`SELECT app.can_decide_via_delegation(${subject}, ${module}, ${task}) AS ok`,
+      );
+      return (res as unknown as { ok: boolean }[])[0]?.ok ?? false;
+    });
+  }
+
+  async function requestSideSetup(scopes: { module: string; taskType: string | null }[]) {
+    const mgr = await hire('RQMgr');
+    const sub = await hire('RQSub');
+    await adminLine(sub.employmentId, mgr.employmentId);
+    // The stand-in + their report live in deptB: same approval level as mgr (R51 rule) WITHOUT the derived
+    // department-head visibility of deptA — so the visibility pin below exercises ONLY the delegation route.
+    const stand = await hire('RQStand', b.deptB);
+    const standSub = await hire('RQStandSub', b.deptB);
+    await adminLine(standSub.employmentId, stand.employmentId); // same-level rule
+    await setReportingLine(A(b), {
+      subordinateEmploymentId: mgr.employmentId,
+      managerEmploymentId: stand.employmentId,
+      lineType: 'delegate',
+      validFrom: '2024-01-01',
+      validTo: null,
+      reason: 'Request-side duties only',
+      scopes,
+    });
+    return { mgr, sub, stand };
+  }
+
+  it('an edge scoped only to leave.request.creation is rejected for BOTH approval tasks and by decideLeave', async () => {
+    const { sub, stand } = await requestSideSetup([{ module: 'leave', taskType: 'leave.request.creation' }]);
+    const standCtx = await userCtx(stand.personId, 'manager');
+    expect(await canDecide(standCtx, sub.employmentId, 'leave', 'leave.application')).toBe(false);
+    expect(await canDecide(standCtx, sub.employmentId, 'leave', 'leave.cancellation')).toBe(false);
+    const { leaveRequestId } = await requestLeave(A(b), {
+      employmentId: sub.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-07-01',
+      endDate: '2026-07-01',
+    });
+    await expect(decideLeave(standCtx, { leaveRequestId, decision: 'approved' })).rejects.toThrow();
+  });
+
+  it('leave.cancellation_request.creation does NOT authorize leave.cancellation (exact match on prefix-adjacent ids)', async () => {
+    const { sub, stand } = await requestSideSetup([
+      { module: 'leave', taskType: 'leave.cancellation_request.creation' },
+    ]);
+    const standCtx = await userCtx(stand.personId, 'manager');
+    expect(await canDecide(standCtx, sub.employmentId, 'leave', 'leave.cancellation')).toBe(false);
+    expect(await canDecide(standCtx, sub.employmentId, 'leave', 'leave.cancellation_request.creation')).toBe(true);
+  });
+
+  it('a request-only delegate still SEES the delegator\'s downline pending leave row (disclosed visibility behaviour)', async () => {
+    const { sub, stand } = await requestSideSetup([{ module: 'leave', taskType: 'leave.request.creation' }]);
+    const { leaveRequestId } = await requestLeave(A(b), {
+      employmentId: sub.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-07-01',
+      endDate: '2026-07-01',
+    });
+    // Row-level visibility flows through the scope-blind 1-arg app.can_decide_via_delegation (0109) — the
+    // delegate can READ the routed request even though every decide button refuses. Pinned so a future
+    // "hide what cannot be acted on" change is deliberate, not accidental.
+    const standCtx = await userCtx(stand.personId, 'manager');
+    const visible = await withTenant(standCtx, (tx) =>
+      tx
+        .select({ id: schema.leaveRequest.id })
+        .from(schema.leaveRequest)
+        .where(eq(schema.leaveRequest.id, leaveRequestId)),
+    );
+    expect(visible).toHaveLength(1);
   });
 });
 

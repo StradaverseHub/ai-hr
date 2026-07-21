@@ -51,6 +51,7 @@ import {
   toilAccrual,
 } from '../db/schema';
 import { daysInMonth } from './payroll';
+import { filterDelegationOrgScopeTx } from './approvals';
 import { payslipReleaseAt } from './payroll-policy-config';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
 import { visibleLabelIdsCondition } from './system-labels';
@@ -690,7 +691,10 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
       )
       .orderBy(desc(leaveRequest.createdAt))
       .limit(limit);
-    return resolveLeaveWorkingDates(tx, rows);
+    // R51 (baf56348): keep delegation-routed rows whose subject sits OUTSIDE the delegation's org coverage
+    // out of the approver-facing list (row visibility itself is unchanged — see filterDelegationOrgScopeTx).
+    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    return resolveLeaveWorkingDates(tx, scoped);
   });
 }
 
@@ -902,7 +906,9 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
         ),
       )
       .orderBy(desc(leaveCancellationRequest.createdAt));
-    return rows.map(({ i18n, cancelDates, ...r }) => {
+    // R51 (baf56348): same org-coverage trim as listLeaveRequests (a cancellation is a leave pending item).
+    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    return scoped.map(({ i18n, cancelDates, ...r }) => {
       const cancel = (cancelDates as string[]) ?? [];
       const cancelSet = new Set(cancel);
       // The original full date span (every calendar day inclusive); remaining = original minus cancelled.
@@ -2142,6 +2148,16 @@ export type DelegationScopedRow = {
   // approvals). Both are attached post-query (attachDelegationScopeInfo) for admin + self-service alike.
   reason: string | null;
   scopes: { module: string; taskType: string | null }[];
+  // R51 (baf56348): org coverage ids + display names — consumed ONLY by the HR edit-form defaults (the
+  // list-table coverage column was deliberately cut). All-null = unrestricted.
+  orgScope: {
+    companyId: string | null;
+    companyName: string | null;
+    businessUnitId: string | null;
+    businessUnitName: string | null;
+    departmentId: string | null;
+    departmentName: string | null;
+  };
 };
 
 type DelegationRawRow = {
@@ -2169,6 +2185,14 @@ function shapeDelegationRow(r: DelegationRawRow, asOf: string): DelegationScoped
     ended: r.supersededAt != null || (r.validTo != null && r.validTo <= asOf),
     reason: null,
     scopes: [],
+    orgScope: {
+      companyId: null,
+      companyName: null,
+      businessUnitId: null,
+      businessUnitName: null,
+      departmentId: null,
+      departmentName: null,
+    },
   };
 }
 
@@ -2181,7 +2205,24 @@ async function attachDelegationScopeInfo(tx: Tx, rows: DelegationScopedRow[]): P
   if (rows.length === 0) return rows;
   const ids = rows.map((r) => r.id);
   const [reasons, scopeRows] = await Promise.all([
-    tx.select({ id: reportingLine.id, reason: reportingLine.reason }).from(reportingLine).where(inArray(reportingLine.id, ids)),
+    tx
+      .select({
+        id: reportingLine.id,
+        reason: reportingLine.reason,
+        // R51 (baf56348): org coverage ids + names in ONE left-joined pass (company/BU/department SELECT is
+        // tenant-wide under RLS, so this resolves for self-service viewers too).
+        scopeCompanyId: reportingLine.scopeCompanyId,
+        scopeCompanyName: company.legalName,
+        scopeBusinessUnitId: reportingLine.scopeBusinessUnitId,
+        scopeBusinessUnitName: businessUnit.name,
+        scopeDepartmentId: reportingLine.scopeDepartmentId,
+        scopeDepartmentName: department.name,
+      })
+      .from(reportingLine)
+      .leftJoin(company, eq(company.id, reportingLine.scopeCompanyId))
+      .leftJoin(businessUnit, eq(businessUnit.id, reportingLine.scopeBusinessUnitId))
+      .leftJoin(department, eq(department.id, reportingLine.scopeDepartmentId))
+      .where(inArray(reportingLine.id, ids)),
     tx
       .select({
         rid: reportingLineScope.reportingLineId,
@@ -2191,14 +2232,29 @@ async function attachDelegationScopeInfo(tx: Tx, rows: DelegationScopedRow[]): P
       .from(reportingLineScope)
       .where(inArray(reportingLineScope.reportingLineId, ids)),
   ]);
-  const reasonById = new Map(reasons.map((r) => [r.id, r.reason]));
+  const infoById = new Map(reasons.map((r) => [r.id, r]));
   const scopesById = new Map<string, { module: string; taskType: string | null }[]>();
   for (const s of scopeRows) {
     const list = scopesById.get(s.rid) ?? [];
     list.push({ module: s.module, taskType: s.taskType });
     scopesById.set(s.rid, list);
   }
-  return rows.map((r) => ({ ...r, reason: reasonById.get(r.id) ?? null, scopes: scopesById.get(r.id) ?? [] }));
+  return rows.map((r) => {
+    const info = infoById.get(r.id);
+    return {
+      ...r,
+      reason: info?.reason ?? null,
+      scopes: scopesById.get(r.id) ?? [],
+      orgScope: {
+        companyId: info?.scopeCompanyId ?? null,
+        companyName: info?.scopeCompanyName ?? null,
+        businessUnitId: info?.scopeBusinessUnitId ?? null,
+        businessUnitName: info?.scopeBusinessUnitName ?? null,
+        departmentId: info?.scopeDepartmentId ?? null,
+        departmentName: info?.scopeDepartmentName ?? null,
+      },
+    };
+  });
 }
 
 /**
@@ -2303,6 +2359,46 @@ export function employmentPickerList(ctx: SessionContext, companyIds?: string[])
       )
       .orderBy(person.fullName),
   );
+}
+
+/** R51 (baf56348) — one same-level stand-in candidate for the delegation "delegate to" picker. Org ids ride
+ *  along so the coverage cascade can narrow the list CLIENT-side (no per-scope-change server round-trip). */
+export type EligibleDelegateRow = {
+  employmentId: string;
+  name: string;
+  companyId: string;
+  businessUnitId: string | null;
+  departmentId: string | null;
+  level: string;
+};
+
+/**
+ * R51 (baf56348) — same-level stand-in candidates for a delegator, via app.eligible_delegates (SECURITY
+ * DEFINER, migration 0286). The definer boundary is required: employment RLS hides sibling approvers from a
+ * self-service head, so a plain scoped query here would return a near-empty list. The function itself guards
+ * authorisation (caller owns the delegator employment or is an admin — otherwise EMPTY) and filters to
+ * active, non-self employments whose HIGHEST approver level equals the delegator's. Read-only.
+ */
+export function eligibleDelegates(ctx: SessionContext, delegatorEmploymentId: string): Promise<EligibleDelegateRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const res = await tx.execute(sql`SELECT * FROM app.eligible_delegates(${delegatorEmploymentId})`);
+    const rows = res as unknown as {
+      employment_id: string;
+      full_name: string;
+      company_id: string;
+      business_unit_id: string | null;
+      department_id: string | null;
+      approver_level: string;
+    }[];
+    return rows.map((r) => ({
+      employmentId: r.employment_id,
+      name: r.full_name,
+      companyId: r.company_id,
+      businessUnitId: r.business_unit_id,
+      departmentId: r.department_id,
+      level: r.approver_level,
+    }));
+  });
 }
 
 /** Active employees + current administrative reporting edges, for the org chart. */
