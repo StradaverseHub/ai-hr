@@ -97,6 +97,9 @@ export async function addDependentAction(formData: FormData) {
       employerAddress: str(formData.get('employerAddress')) ?? null,
       isStudent: formData.get('isStudent__present') !== null ? formData.get('isStudent') != null : null,
       schoolName: str(formData.get('schoolName')) ?? null,
+      // Item 5988053a — child education detail.
+      studyLevel: str(formData.get('studyLevel')) ?? null,
+      studyCountry: str(formData.get('studyCountry')) ?? null,
       // Item 6c635212 — Malaysia Income Tax child-relief config.
       childReliefCategory: str(formData.get('childReliefCategory')) ?? null,
       childTaxRelief:
@@ -138,6 +141,9 @@ export async function editDependentAction(formData: FormData) {
       employerAddress: editStr(formData, 'employerAddress'),
       isStudent: editBool(formData, 'isStudent'),
       schoolName: editStr(formData, 'schoolName'),
+      // Item 5988053a — child education detail.
+      studyLevel: editStr(formData, 'studyLevel'),
+      studyCountry: editStr(formData, 'studyCountry'),
       // Item 6c635212 — Malaysia Income Tax child-relief config.
       childReliefCategory: editStr(formData, 'childReliefCategory'),
       childTaxRelief: editBool(formData, 'childTaxRelief'),

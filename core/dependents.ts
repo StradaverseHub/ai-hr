@@ -101,6 +101,9 @@ export type DependentRow = {
   employerAddress: string | null;
   isStudent: boolean | null;
   schoolName: string | null;
+  // Item 5988053a — child education detail (free text, child-gated like schoolName).
+  studyLevel: string | null;
+  studyCountry: string | null;
   // Item 6c635212 — Malaysia Income Tax child-relief config (child records only).
   childReliefCategory: string | null;
   childTaxRelief: boolean | null;
@@ -125,6 +128,10 @@ export type DependentExtraInput = {
   employerAddress?: string | null;
   isStudent?: boolean | null;
   schoolName?: string | null;
+  // Item 5988053a — child education detail. Free text via trimOrNull, exactly like schoolName; studyCountry
+  // is catalog-backed in the UI (profile_option country) but legacy-tolerant at this layer.
+  studyLevel?: string | null;
+  studyCountry?: string | null;
   // Item 6c635212 — Malaysia Income Tax child-relief config (child records only; validate-or-ignore otherwise).
   childReliefCategory?: string | null;
   childTaxRelief?: boolean | null;
@@ -152,30 +159,58 @@ function isRelationship(v: string): v is DependentRelationship {
  * the suggestion behaviour are unchanged. The 100|50 relief SHARE affects the relief AMOUNT, not the head
  * count, so a 50%-shared eligible child is still one eligible child here (num_children is a whole count).
  */
+/** The row shape the eligibility rule needs (a subset of DependentRow, so page rows qualify too). */
+export type ChildReliefEligibilityRow = Pick<
+  DependentRow,
+  'relationship' | 'dateOfBirth' | 'isStudent' | 'isDeceased' | 'archivedAt'
+> & {
+  // Optional so legacy callers (that don't carry the R45 per-child flag) still type-check; an absent flag
+  // (undefined) falls through to the DOB/student inference exactly like a null.
+  childTaxRelief?: boolean | null;
+};
+
+/**
+ * Item 5988053a — whole-year age from a DOB string as of `asOf`. Pure (no DB, no 'use client'); this is the
+ * ONE age rule in the codebase: the detail page's Age column/field and the eligibility predicate below both
+ * use it (formerly a private dobAgeYears copy on page.tsx). Null when no/invalid DOB. The 365.25-day divisor
+ * is preserved as-is from the original implementations; changing it is a separate behavioural change.
+ */
+export function childAgeYears(dob: string | null | undefined, asOf: Date = new Date()): number | null {
+  if (!dob) return null;
+  const ms = Date.parse(`${dob}T00:00:00Z`);
+  if (Number.isNaN(ms)) return null;
+  return Math.floor((asOf.getTime() - ms) / (365.25 * 24 * 60 * 60 * 1000));
+}
+
+/**
+ * Item 5988053a — the per-row eligibility predicate, extracted from eligibleChildReliefCount so there is
+ * exactly ONE eligibility rule shared by the payroll-facing count and the Family tab's "Counts toward tax
+ * relief" column (they can never diverge). Behaviour is identical to the original inline filter:
+ *   - relationship must be 'child'; deceased and archived rows are excluded;
+ *   - an EXPLICIT per-child decision (childTaxRelief non-null) wins over inference, both directions;
+ *   - a full-time student is eligible regardless of exact age (the 18+ in-education case);
+ *   - otherwise eligible only when under 18; no/invalid DOB ⇒ cannot confirm age ⇒ not auto-counted.
+ * (childAgeYears floors to whole years; for the under-18 test `floor(age) < 18 ⇔ age < 18`, so the floor
+ * changes nothing against the original fractional comparison.)
+ */
+export function isChildReliefEligible(r: ChildReliefEligibilityRow, asOf: Date = new Date()): boolean {
+  if (r.relationship !== 'child') return false;
+  if (r.isDeceased) return false;
+  if (r.archivedAt) return false;
+  // Explicit per-child decision wins over inference (both directions).
+  if (r.childTaxRelief != null) return r.childTaxRelief;
+  // Full-time student ⇒ eligible regardless of exact age (covers the 18+ in-education case).
+  if (r.isStudent) return true;
+  // Otherwise eligible only when under 18. No DOB ⇒ cannot confirm age ⇒ not auto-counted (HR keys it).
+  const age = childAgeYears(r.dateOfBirth, asOf);
+  return age != null && age < 18;
+}
+
 export function eligibleChildReliefCount(
-  rows: (Pick<DependentRow, 'relationship' | 'dateOfBirth' | 'isStudent' | 'isDeceased' | 'archivedAt'> & {
-    // Optional so legacy callers (that don't carry the R45 per-child flag) still type-check; an absent flag
-    // (undefined) falls through to the DOB/student inference exactly like a null.
-    childTaxRelief?: boolean | null;
-  })[],
+  rows: ChildReliefEligibilityRow[],
   asOf: Date = new Date(),
 ): number {
-  const asOfMs = asOf.getTime();
-  return rows.filter((r) => {
-    if (r.relationship !== 'child') return false;
-    if (r.isDeceased) return false;
-    if (r.archivedAt) return false;
-    // Explicit per-child decision wins over inference (both directions).
-    if (r.childTaxRelief != null) return r.childTaxRelief;
-    // Full-time student ⇒ eligible regardless of exact age (covers the 18+ in-education case).
-    if (r.isStudent) return true;
-    // Otherwise eligible only when under 18. No DOB ⇒ cannot confirm age ⇒ not auto-counted (HR keys it).
-    if (!r.dateOfBirth) return false;
-    const dob = Date.parse(`${r.dateOfBirth}T00:00:00Z`);
-    if (Number.isNaN(dob)) return false;
-    const age = (asOfMs - dob) / (365.25 * 24 * 60 * 60 * 1000);
-    return age < 18;
-  }).length;
+  return rows.filter((r) => isChildReliefEligible(r, asOf)).length;
 }
 
 /**
@@ -378,6 +413,9 @@ function extraColumnsForAdd(relationship: string, x: DependentExtraInput) {
     employerAddress: isSpouse ? trimOrNull(x.employerAddress) : null,
     isStudent: isChild ? (x.isStudent ?? null) : null,
     schoolName: isChild ? trimOrNull(x.schoolName) : null,
+    // Item 5988053a — education detail, child-gated exactly like schoolName.
+    studyLevel: isChild ? trimOrNull(x.studyLevel) : null,
+    studyCountry: isChild ? trimOrNull(x.studyCountry) : null,
     // Item 6c635212 — PCB child-relief config, child-gated (validate-or-ignore for non-children).
     childReliefCategory: isChild ? normChildReliefCategory(x.childReliefCategory) : null,
     childTaxRelief: isChild ? (x.childTaxRelief ?? null) : null,
@@ -418,6 +456,8 @@ export function listDependents(
         employerAddress: employeeDependent.employerAddress,
         isStudent: employeeDependent.isStudent,
         schoolName: employeeDependent.schoolName,
+        studyLevel: employeeDependent.studyLevel,
+        studyCountry: employeeDependent.studyCountry,
         childReliefCategory: employeeDependent.childReliefCategory,
         childTaxRelief: employeeDependent.childTaxRelief,
         childReliefPercentage: employeeDependent.childReliefPercentage,
@@ -584,6 +624,9 @@ export async function updateDependent(
     if (isChild) {
       if (p.isStudent !== undefined) patch.isStudent = p.isStudent;
       if (p.schoolName !== undefined) patch.schoolName = trimOrNull(p.schoolName);
+      // Item 5988053a — education detail.
+      if (p.studyLevel !== undefined) patch.studyLevel = trimOrNull(p.studyLevel);
+      if (p.studyCountry !== undefined) patch.studyCountry = trimOrNull(p.studyCountry);
       // Item 6c635212 — PCB child-relief config.
       if (p.childReliefCategory !== undefined) patch.childReliefCategory = normChildReliefCategory(p.childReliefCategory);
       if (p.childTaxRelief !== undefined) patch.childTaxRelief = p.childTaxRelief;
@@ -591,6 +634,8 @@ export async function updateDependent(
     } else if (relChanged) {
       patch.isStudent = null;
       patch.schoolName = null;
+      patch.studyLevel = null;
+      patch.studyCountry = null;
       patch.childReliefCategory = null;
       patch.childTaxRelief = null;
       patch.childReliefPercentage = null;

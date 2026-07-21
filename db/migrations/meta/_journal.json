@@ -1702,6 +1702,13 @@
       "when": 1781862390000,
       "tag": "0290_compensation_pay_mode_term",
       "breakpoints": true
+    },
+    {
+      "idx": 293,
+      "version": "7",
+      "when": 1781862393000,
+      "tag": "0293_dependent_education_fields",
+      "breakpoints": true
     }
   ]
 }
