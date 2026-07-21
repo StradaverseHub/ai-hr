@@ -137,7 +137,8 @@
     "reportPerformance": "绩效",
     "profileOptions": "档案选项",
     "delegations": "委托",
-    "dashboardCardConfig": "仪表板卡片"
+    "dashboardCardConfig": "仪表板卡片",
+    "scheduledActions": "计划任务"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -6609,6 +6610,56 @@
     },
     "errors": {
       "duplicateKey": "已存在使用此键的仪表板卡片"
+    }
+  },
+  "scheduledActions": {
+    "title": "计划任务",
+    "description": "夜间自动执行的维护任务：上次运行时间及其变更内容。",
+    "readOnlyNote": "此页面为只读。执行计划在服务器上设置，无法在此更改。",
+    "scheduleLabel": "执行计划",
+    "neverRun": "从未运行",
+    "emptyJob": "此任务尚未运行。",
+    "historyTitle": "近期运行记录",
+    "failedSuffix": "失败",
+    "unitMs": "毫秒",
+    "unitSeconds": "秒",
+    "unitMinutes": "分钟",
+    "colLastRun": "上次运行",
+    "colDuration": "耗时",
+    "colChanged": "变更内容",
+    "colTenants": "已处理公司",
+    "colRanAt": "运行时间",
+    "colOutcome": "结果",
+    "colError": "错误",
+    "outcome": {
+      "success": "成功",
+      "partial": "部分成功",
+      "failed": "失败"
+    },
+    "counters": {
+      "granted": "发放天数",
+      "opened": "已开启考核",
+      "reminders": "已发送提醒",
+      "swept": "已处理记录",
+      "forfeited": "作废天数"
+    },
+    "jobs": {
+      "leave-accrue": {
+        "name": "应计假期发放",
+        "description": "发放员工截至目前已累积的假期天数。"
+      },
+      "review-sweep": {
+        "name": "试用期与合约考核",
+        "description": "开启到期的考核并发送相关提醒。"
+      },
+      "leave-expire-aged": {
+        "name": "超期假期作废",
+        "description": "作废已超过有效期限的应计假期。"
+      },
+      "leave-expire-carry": {
+        "name": "结转假期到期",
+        "description": "作废已过到期日的结转假期天数。"
+      }
     }
   }
 }

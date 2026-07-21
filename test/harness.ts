@@ -68,6 +68,10 @@ const ALL_TABLES = [
   // from company, but list them explicitly: a leaked row would trip the one-primary-per-company partial
   // unique index / the (company, authority) unique index across test files.
   'company_bank_profile', 'company_statutory_authority',
+  // 0280 — scheduled-actions run log. GLOBAL (no tenant_id) and never seeded, so nothing CASCADEs it
+  // away: without this entry a run row written by one test file would survive into every later file
+  // that calls resetDb, exactly the ADR-0071 isolation bug documented above.
+  'job_run',
 ];
 
 /**
