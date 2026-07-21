@@ -11,6 +11,23 @@ if (!process.env.TEST_DATABASE_URL || !process.env.TEST_MIGRATION_DATABASE_URL) 
   throw new Error('TEST_DATABASE_URL / TEST_MIGRATION_DATABASE_URL must be set for tests');
 }
 
+// Point this worker at its OWN database (stamped from the template in test/global-setup.ts) so files can
+// run in parallel without sharing tables. Rewriting the env here — before any test file imports the
+// harness — is what keeps the change invisible to the 247 files that already call into test/harness.ts.
+//
+// Escape hatch: WORKER_DB=0 keeps the old single shared database, for debugging a suspected isolation bug.
+const poolId = process.env.VITEST_POOL_ID ?? process.env.VITEST_WORKER_ID;
+if (poolId && process.env.WORKER_DB !== '0') {
+  const workerDb = `ai_hr_test_w${poolId}`;
+  const swap = (url: string) => {
+    const u = new URL(url);
+    u.pathname = `/${workerDb}`;
+    return u.toString();
+  };
+  process.env.TEST_DATABASE_URL = swap(process.env.TEST_DATABASE_URL);
+  process.env.TEST_MIGRATION_DATABASE_URL = swap(process.env.TEST_MIGRATION_DATABASE_URL);
+}
+
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 process.env.MIGRATION_DATABASE_URL = process.env.TEST_MIGRATION_DATABASE_URL;
 

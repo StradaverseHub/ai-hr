@@ -10,7 +10,8 @@
  * needs the user's sudo (deploy.sh declines it by design).
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { markDeployed } from './remote';
 
 const HOST = process.env.IMPROVE_SSH_HOST ?? '10.20.30.20';
@@ -35,10 +36,33 @@ export async function releaseBuiltItem(p: {
   }
 
   // 1. FINAL GATE — re-verify green in the worktree before anything leaves this machine.
+  //
+  // tsc always runs (seconds). The full suite only runs when we can't prove it already passed on THIS exact
+  // commit: cleanroom-verify.sh writes .gate-receipt.json with the sha it validated. Without that check the
+  // suite ran twice per round on an identical tree — ~13 minutes for zero extra information. A missing,
+  // stale, or unreadable receipt falls through to running it, so the safe path is the default.
   console.log('→ final gate: npx tsc --noEmit');
   run('npx', ['tsc', '--noEmit'], p.worktree);
-  console.log('→ final gate: pnpm vitest run');
-  run('pnpm', ['vitest', 'run'], p.worktree);
+
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: p.worktree, encoding: 'utf8' }).trim();
+  let receiptSha: string | null = null;
+  try {
+    const receipt = JSON.parse(readFileSync(join(p.worktree, '.gate-receipt.json'), 'utf8')) as {
+      sha?: string;
+      result?: string;
+    };
+    if (receipt.result === 'PASS' && receipt.sha) receiptSha = receipt.sha;
+  } catch {
+    // no receipt (or unreadable) → fall through and run the suite
+  }
+
+  if (receiptSha === head) {
+    console.log(`→ final gate: vitest SKIPPED — clean-room receipt already covers ${head.slice(0, 7)}`);
+  } else {
+    const why = receiptSha ? `receipt is for ${receiptSha.slice(0, 7)}, HEAD is ${head.slice(0, 7)}` : 'no receipt';
+    console.log(`→ final gate: pnpm vitest run (${why})`);
+    run('pnpm', ['vitest', 'run'], p.worktree);
+  }
 
   // 2. rsync the worktree → server (same excludes as deploy; .env.production preserved on the box).
   const src = p.worktree.replace(/\/?$/, '/');

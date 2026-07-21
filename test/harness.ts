@@ -70,8 +70,17 @@ const ALL_TABLES = [
   'company_bank_profile', 'company_statutory_authority',
 ];
 
+/**
+ * No-op since the template-database switch (test/global-setup.ts): this worker's database was stamped from
+ * an already-migrated template, so there is nothing left to apply.
+ *
+ * Kept as an exported function because 247 test files call it in `beforeAll`. Those calls used to re-read
+ * and hash all ~233 migrations apiece just to discover they had no work to do, which was the single largest
+ * cost in the suite. Deleting the call sites would be a 247-file diff for no behavioural gain, so the
+ * function stays and simply returns.
+ */
 export async function migrateTestDb() {
-  await migrate(owner.db, { migrationsFolder: 'db/migrations' });
+  // Intentionally empty — see the note above.
 }
 
 export async function resetDb() {

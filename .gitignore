@@ -56,3 +56,6 @@ AI-HR-Consultant-Feedback-Template.xlsx
 
 # improvement-loop runtime (logs, patches) — local only
 .improve/
+
+# Clean-room gate receipt (local, per-machine — consumed by improve:release to skip a duplicate suite run)
+.gate-receipt.json

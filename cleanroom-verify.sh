@@ -14,6 +14,26 @@ SQL
   ) & WPID=$!; ( sleep 25; kill -9 $WPID >/dev/null 2>&1 ) & GUARD=$!; wait $WPID 2>/dev/null; kill $GUARD >/dev/null 2>&1
 }
 trap cleanup EXIT
+
+# == contention guard ==
+# Cost this rule twice: R46 and R47 both produced a RED gate (deadlocks / 120s hook timeouts) that had
+# nothing to do with the code under test. The cause was other clients on this Postgres instance — a running
+# dev server, or a sibling build agent's focused vitest — competing for the same tables. R47's first run
+# took 59 minutes and reported 3 phantom failures; with the instance quiet it passed in 13.
+# A gate that can be poisoned by an unrelated process is not a gate, so refuse to start instead.
+BUSY=$(psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d postgres -tAc \
+  "SELECT count(*) FROM pg_stat_activity WHERE datname NOT IN ('postgres') AND pid <> pg_backend_pid() AND backend_type='client backend'" 2>/dev/null || echo 0)
+if [ "${BUSY:-0}" -gt 0 ]; then
+  echo "REFUSING TO RUN: $BUSY other client connection(s) to $PGHOST:$PGPORT."
+  psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d postgres -tAc \
+    "SELECT '  - '||datname||' ('||count(*)||' conn) '||coalesce(application_name,'?') FROM pg_stat_activity
+     WHERE datname NOT IN ('postgres') AND pid <> pg_backend_pid() AND backend_type='client backend'
+     GROUP BY datname, application_name" 2>/dev/null
+  echo "Stop the dev server / other test runs first (they poison the gate — see R46/R47), then re-run."
+  echo "CLEANROOM_RESULT=FAIL (contention)"
+  exit 1
+fi
+
 echo "== (re)create empty $CLEANDB =="
 psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d postgres -v ON_ERROR_STOP=1 <<SQL || { echo "CLEANROOM_RESULT=FAIL (create)"; exit 1; }
 SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$CLEANDB' AND pid<>pg_backend_pid();
@@ -40,4 +60,14 @@ echo "== full vitest as $APPROLE under RLS =="
 # hookTimeout bumped to 120s: each file's beforeAll applies ~190 migrations; under load the default 30s flakes.
 pnpm exec vitest run --hookTimeout=120000 --testTimeout=60000 2>&1 | tail -40; VT=${PIPESTATUS[0]}
 [ "$VT" -ne 0 ] && { echo "CLEANROOM_RESULT=FAIL (vitest)"; exit 1; }
+
+# == gate receipt ==
+# Record WHICH commit just passed, so `improve:release` can skip re-running an identical suite. Before this,
+# every round ran the full suite twice on the same tree — once here, once in release.ts's final gate — for
+# no extra information. release.ts re-runs the suite itself whenever this sha doesn't match HEAD.
+SHA=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+cat > "$ROOT/.gate-receipt.json" <<JSON
+{"sha":"$SHA","result":"PASS","at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","suite":"cleanroom-verify.sh"}
+JSON
+echo "wrote .gate-receipt.json for $SHA"
 echo "CLEANROOM_RESULT=PASS"
