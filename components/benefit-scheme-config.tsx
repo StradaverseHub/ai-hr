@@ -123,7 +123,9 @@ export function BenefitSchemeConfig({
   const empTypeLabel = (v: string) => t(`empType_${v}` as `empType_${(typeof EMPLOYMENT_TYPES)[number]}`);
 
   // R44 02a7082b: group the flat scheme list by company into collapsible per-company sections (companies
-  // ordered A–Z; schemes already asc(name) from the loader). Presentation only — no data change.
+  // ordered A–Z; schemes already asc(name) from the loader). Sections default to COLLAPSED (feedback
+  // bca94601) so the tab opens on a titles-only overview — name + scheme count, details one click away.
+  // Presentation only — no data change.
   const schemesByCompany = useMemo(() => {
     const map = new Map<string, Scheme[]>();
     for (const s of schemes) {
@@ -150,7 +152,9 @@ export function BenefitSchemeConfig({
   }, [entitlements]);
 
   // R44 8d422204: client-side A–Z / Z–A sort of the entitlements table by leave-type name. Display-order
-  // only — re-sorts automatically on add/update/delete via re-render. Default ascending.
+  // only — re-sorts automatically on add/update/delete via re-render. Default ascending. Feedback
+  // c4014f5a: the standalone Sort dropdown is gone — direction now toggles from the Leave Type column
+  // header inside EntitlementDndTable (same pattern as leave-balance-table), state still owned here.
   const [entSort, setEntSort] = useState<'asc' | 'desc'>('asc');
   const sortedEnts = useMemo(() => {
     const copy = [...selectedEnts];
@@ -192,7 +196,7 @@ export function BenefitSchemeConfig({
                     </span>
                   </span>
                 </summary>
-                <div className="mt-3 space-y-3">
+                <div className="mt-3">
                   <form action={actions.updateGradeGroup} className="space-y-3">
                     <input type="hidden" name="id" value={g.id} />
                     <Field label={t('groupNameLabel')}>
@@ -218,11 +222,20 @@ export function BenefitSchemeConfig({
                     </div>
                     <div className="flex items-center gap-2">
                       <Button type="submit" size="sm">{t('save')}</Button>
+                      {/* 9054e31c: Delete shares the Save row — a second submit button posting
+                          deleteGradeGroup via formAction (same pattern as the holidays page and the TP1
+                          form). The action reads only the hidden id; the extra name/gradeIds fields are
+                          ignored. formNoValidate so a cleared required name input cannot block Delete. */}
+                      <Button
+                        type="submit"
+                        variant="ghost"
+                        size="sm"
+                        formAction={actions.deleteGradeGroup}
+                        formNoValidate
+                      >
+                        {t('delete')}
+                      </Button>
                     </div>
-                  </form>
-                  <form action={actions.deleteGradeGroup}>
-                    <input type="hidden" name="id" value={g.id} />
-                    <Button type="submit" variant="ghost" size="sm">{t('delete')}</Button>
                   </form>
                 </div>
               </details>
@@ -262,7 +275,7 @@ export function BenefitSchemeConfig({
         ) : (
           <div className="space-y-3">
             {schemesByCompany.map((group) => (
-              <details key={group.companyId} open className="overflow-hidden rounded-lg border border-border">
+              <details key={group.companyId} className="overflow-hidden rounded-lg border border-border">
                 <summary className="flex cursor-pointer items-center justify-between gap-2 bg-muted/40 px-3 py-2">
                   <span className="text-sm font-semibold text-foreground">{group.name}</span>
                   <span className="text-xs font-normal text-muted-foreground">
@@ -368,16 +381,6 @@ export function BenefitSchemeConfig({
                 </select>
               </Field>
               <div className="flex items-end gap-3">
-                <Field label={t('entSortLabel')}>
-                  <select
-                    value={entSort}
-                    onChange={(e) => setEntSort(e.target.value as 'asc' | 'desc')}
-                    className={`${inputCls} w-48`}
-                  >
-                    <option value="asc">{t('entSortAsc')}</option>
-                    <option value="desc">{t('entSortDesc')}</option>
-                  </select>
-                </Field>
                 {/* R44 ba494b21 — copy another scheme's entitlements into this one (skip-existing). */}
                 <CopyEntitlementsDialog
                   targetSchemeId={selectedSchemeId}
@@ -393,6 +396,8 @@ export function BenefitSchemeConfig({
             <EntitlementDndTable
               schemeId={selectedSchemeId}
               ents={sortedEnts}
+              sortDir={entSort}
+              onToggleSort={() => setEntSort((d) => (d === 'asc' ? 'desc' : 'asc'))}
               pools={combinedLimits.filter((cl) => cl.benefitSchemeId === selectedSchemeId)}
               headerTiers={headerTiers}
               actions={actions}
@@ -421,19 +426,26 @@ export function BenefitSchemeConfig({
  * render banded + contiguous with an inline-renameable name and a shared editable Total Limit column
  * (scheme_leave_combined_limit.total_limit_days). Ungroup per row (moveCombinedLimitMember with a blank
  * target) and per group (deleteCombinedLimit). Enforcement (core/leave.ts) reads the same tables and is
- * untouched.
+ * untouched. Feedback c4014f5a: the A–Z/Z–A direction toggles from the Leave Type column header (caret +
+ * aria-sort, copied from leave-balance-table) instead of the old standalone Sort dropdown.
  */
 function EntitlementDndTable({
   schemeId,
   ents,
+  sortDir,
+  onToggleSort,
   pools,
   headerTiers,
   actions,
   t,
 }: {
   schemeId: string;
-  /** The selected scheme's entitlements, ALREADY sorted by the A–Z/Z–A toggle. */
+  /** The selected scheme's entitlements, ALREADY sorted by the Leave Type column-header toggle. */
   ents: Entitlement[];
+  /** Current sort direction of `ents` — drives the header caret + aria-sort. */
+  sortDir: 'asc' | 'desc';
+  /** Flips the parent-owned sort direction (asc ↔ desc). */
+  onToggleSort: () => void;
   pools: CombinedLimit[];
   headerTiers: { n1: number; n2: number };
   actions: Actions;
@@ -536,7 +548,20 @@ function EntitlementDndTable({
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-3 py-2 font-medium">{t('colLeaveType')}</th>
+                {/* c4014f5a: sortable header (leave-balance-table pattern). This table is always sorted by
+                    leave type, so aria-sort is permanently ascending/descending — never 'none' — and the
+                    caret always shows the current direction. Row-level DnD sensors cannot start here. */}
+                <th scope="col" aria-sort={sortDir === 'asc' ? 'ascending' : 'descending'} className="px-3 py-2 font-medium">
+                  <button
+                    type="button"
+                    onClick={onToggleSort}
+                    aria-label={t('sortBy', { column: t('colLeaveType') })}
+                    className="inline-flex items-center font-medium hover:text-foreground"
+                  >
+                    {t('colLeaveType')}
+                    <span aria-hidden>{sortDir === 'asc' ? ' ↑' : ' ↓'}</span>
+                  </button>
+                </th>
                 <th className="px-3 py-2 font-medium">{t('tierUnder', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
                 <th className="px-3 py-2 font-medium">{t('tierMid', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
                 <th className="px-3 py-2 font-medium">{t('tierOver', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
