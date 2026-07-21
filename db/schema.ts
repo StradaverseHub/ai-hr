@@ -3330,6 +3330,12 @@ export const employeeDependent = pgTable(
     // Children-specific
     isStudent: boolean('is_student'),
     schoolName: text('school_name'),
+    // Item 5988053a (migration 0293) — child education detail alongside school_name. Free text, both
+    // nullable → legacy rows unaffected. Child-gated in core/dependents.ts (stored NULL for non-children),
+    // not by CHECK. study_country is backed by the profile_option country catalog in the UI but stays
+    // legacy-tolerant here (imports / renamed options never trip a constraint).
+    studyLevel: text('study_level'),
+    studyCountry: text('study_country'),
     // Item 6c635212 (R45, migration 0250) — Malaysia Income Tax (PCB / TP1) child-relief config, per child.
     // SEPARATE from the approval-gated employee_statutory_my.num_children figure (benefits-vs-tax firewall):
     // these capture the LHDN per-child detail (relief category / claim flag / 100|50 share) and only SURFACE

@@ -68,8 +68,9 @@ import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
-import { listDependents, eligibleChildReliefCount, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
+import { listDependents, eligibleChildReliefCount, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
+import { FamilyFormDialog } from '@/components/family-form-dialog';
 import { listAssignablePolicies, resolvedPolicyForEmployment } from '@/core/payroll-policy';
 import { PAYMENT_METHODS } from '@/core/org';
 import { payrollFrequencyOf } from '@/core/payroll-policy-config';
@@ -893,10 +894,13 @@ export default async function EmployeePage({
 
   // ── FAMILY ─────────────────────────────────────────────────────────────────
   // Personnel — Family & Dependents. 4535b733 enhancement: the flat register is partitioned server-side
-  // into three logical, collapsible sections — Spouse / Children / Other Dependants — each with a
-  // full-field Add + Edit + Remove UI. Admin-maintained (RLS is_admin write); does NOT feed the tax
-  // num_children figure and is distinct from the emergency contact. Spouse-only (marriage / spouse
-  // employment) and child-only (student status / school) fields render only in their own section.
+  // into three logical sections — Spouse / Children / Other Dependants. Spouse and Other Dependants keep
+  // the collapsible full-field Add + Edit + Remove cards; item 5988053a replaced the Children section with
+  // a table view plus Add/Edit dialogs (FamilyFormDialog) and Delete-with-confirmation. Admin-maintained
+  // (RLS is_admin write) and distinct from the emergency contact. Since R46 47146ea3, child rows DO feed
+  // employee_statutory_my.num_children when child_relief_mode === 'auto' (syncChildReliefFromFamily);
+  // 'manual' persons keep full human control. Spouse-only (marriage / spouse employment) and child-only
+  // (education / relief) fields render only in their own section.
   const spouseDeps = dependents.filter((d) => d.relationship === 'spouse');
   const childDeps = dependents.filter((d) => d.relationship === 'child');
   const otherDeps = dependents.filter((d) => d.relationship !== 'spouse' && d.relationship !== 'child');
@@ -914,157 +918,223 @@ export default async function EmployeePage({
     </label>
   );
 
-  // Item 6c635212 — whole-year age from a DOB string (server-side, read-only), used to suggest the right PCB
-  // child-relief category. Null when no/invalid DOB (e.g. the Add form before a date is keyed).
-  const dobAgeYears = (dob: string | null | undefined): number | null => {
-    if (!dob) return null;
-    const ms = Date.parse(`${dob}T00:00:00Z`);
-    if (Number.isNaN(ms)) return null;
-    return Math.floor((Date.now() - ms) / (365.25 * 24 * 60 * 60 * 1000));
-  };
+  // Item 5988053a — whole-year age comes from the ONE shared rule in core/dependents.ts (childAgeYears),
+  // also used by the isChildReliefEligible predicate, so the form, the table and payroll can never disagree
+  // on a child's age. (Formerly a private dobAgeYears copy here.)
+
+  // Dialog fieldset chrome (child Add/Edit dialog only).
+  const fieldsetCls = 'rounded-lg border border-border p-3';
+  const legendCls = 'px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
   // Shared field inputs for one dependent form. `section` selects which grouped fields appear; `d` is the
-  // existing row (null on the Add form). Every control is named exactly as its server-side field.
-  const dependentFields = (section: FamilySection, d: DependentRow | null) => (
-    <>
+  // existing row (null on the Add form). Every control is named exactly as its server-side field — the
+  // names (and the `__present` tri-state markers) are load-bearing for dependent-actions.ts.
+  // Item 5988053a — the CHILD section is regrouped into three labelled fieldsets (Personal / Education /
+  // Tax Relief) rendered inside the Add/Edit dialog; the spouse and other sections keep the original flat
+  // two-column grid untouched.
+  const dependentFields = (section: FamilySection, d: DependentRow | null) => {
+    const nameField = (
       <Field label={t('family.name')}>
         <input name="fullName" required defaultValue={d?.fullName ?? ''} placeholder={t('family.namePlaceholder')} className={inputCls} />
       </Field>
-      {section === 'other' ? (
-        <Field label={t('family.relationship')}>
-          <select name="relationship" required defaultValue={d?.relationship ?? 'other'} className={inputCls}>
-            {(['parent', 'sibling', 'other'] as const).map((r) => (
-              <option key={r} value={r}>{relationshipLabel(r)}</option>
-            ))}
-          </select>
-        </Field>
-      ) : (
-        <input type="hidden" name="relationship" value={section} />
-      )}
+    );
+    const relationshipField = section === 'other' ? (
+      <Field label={t('family.relationship')}>
+        <select name="relationship" required defaultValue={d?.relationship ?? 'other'} className={inputCls}>
+          {(['parent', 'sibling', 'other'] as const).map((r) => (
+            <option key={r} value={r}>{relationshipLabel(r)}</option>
+          ))}
+        </select>
+      </Field>
+    ) : (
+      <input type="hidden" name="relationship" value={section} />
+    );
+    const genderField = (
       <Field label={t('family.genderLabel')}>
         <select name="gender" defaultValue={d?.gender ?? ''} className={inputCls}>
           <option value="">{t('family.genderUnset')}</option>
           {DEPENDENT_GENDERS.map((g) => (<option key={g} value={g}>{genderLabel(g)}</option>))}
         </select>
       </Field>
+    );
+    const dobField = (
       <Field label={t('family.dateOfBirth')}>
         <input name="dateOfBirth" type="date" defaultValue={d?.dateOfBirth ?? ''} className={inputCls} />
       </Field>
+    );
+    const phoneField = (
       <Field label={t('family.contactNumber')}>
         <input name="phone" type="tel" defaultValue={d?.phone ?? ''} className={inputCls} />
       </Field>
+    );
+    const icField = (
       <Field label={section === 'child' ? t('family.icOrBirthCert') : t('family.newIc')}>
         <input name="icOrPassport" defaultValue={d?.icOrPassport ?? ''} className={inputCls} />
       </Field>
-      {section !== 'child' && (
+    );
+    const remarksField = (
+      <Field label={t('family.remarks')}>
+        <input name="remarks" type="text" defaultValue={d?.remarks ?? ''} placeholder={t('family.remarksPlaceholder')} className={inputCls} />
+      </Field>
+    );
+
+    if (section === 'child') {
+      return (
+        <>
+          <fieldset className={fieldsetCls}>
+            <legend className={legendCls}>{t('family.sectionPersonal')}</legend>
+            <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+              {nameField}
+              {relationshipField}
+              {genderField}
+              {dobField}
+              {phoneField}
+              {icField}
+              {remarksField}
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
+                {familyCheckbox('isBeneficiary', d?.isBeneficiary ?? false, t('family.beneficiary'))}
+                {familyCheckbox('isDeceased', d?.isDeceased ?? false, t('family.deceasedStatus'))}
+              </div>
+            </div>
+          </fieldset>
+          <fieldset className={fieldsetCls}>
+            <legend className={legendCls}>{t('family.sectionEducation')}</legend>
+            <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+              <Field label={t('family.schoolName')}>
+                <input name="schoolName" defaultValue={d?.schoolName ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('family.studyLevel')}>
+                <input name="studyLevel" defaultValue={d?.studyLevel ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('family.studyCountry')}>
+                <ProfileOptionSelect
+                  name="studyCountry"
+                  value={d?.studyCountry}
+                  options={profileOptions.country}
+                  placeholder={t('family.genderUnset')}
+                  legacySuffix={t('optionLegacySuffix')}
+                />
+              </Field>
+              <div className="flex items-end pb-1">
+                {familyCheckbox('isStudent', d?.isStudent ?? false, t('family.studentStatus'))}
+              </div>
+            </div>
+          </fieldset>
+          {/* Item 6c635212 → R46 47146ea3 — Malaysia Income Tax Child Relief (PCB / TP1). Per-child relief
+              category, claim flag and 100|50 share. Age is derived read-only from DOB to guide the category
+              choice (the FamilyFormDialog island refreshes it live while a DOB is typed; the note is static
+              guidance and the category is NEVER auto-filled from an age-based guess). Since R46 removed the
+              "Use {count}" approval button, when employee_statutory_my.child_relief_mode === 'auto' the
+              derived eligible-child head count DOES flow straight into num_children on save (see
+              syncChildReliefFromFamily in core/dependents.ts and its four rails); on 'manual' the tax figure
+              stays fully human-controlled. */}
+          <fieldset className={fieldsetCls}>
+            <legend className={legendCls}>
+              <span className="inline-flex items-center gap-1.5">
+                {t('family.sectionTaxRelief')}
+                <span
+                  className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground"
+                  title={t('family.childReliefGuidance')}
+                  aria-label={t('family.childReliefGuidance')}
+                >
+                  i
+                </span>
+              </span>
+            </legend>
+            <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+              <Field label={t('family.childReliefCategory')}>
+                <select name="childReliefCategory" defaultValue={d?.childReliefCategory ?? ''} className={inputCls}>
+                  <option value="">{t('family.childReliefCategoryUnset')}</option>
+                  {CHILD_RELIEF_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>{t(`family.childReliefCat_${c}`)}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('family.childReliefPercentage')}>
+                <select
+                  name="childReliefPercentage"
+                  defaultValue={d?.childReliefPercentage != null ? String(d.childReliefPercentage) : ''}
+                  className={inputCls}
+                >
+                  <option value="">{t('family.childReliefCategoryUnset')}</option>
+                  <option value="100">{t('family.childReliefPct_100')}</option>
+                  <option value="50">{t('family.childReliefPct_50')}</option>
+                </select>
+              </Field>
+              <Field label={t('family.childAge')}>
+                <input
+                  readOnly
+                  disabled
+                  data-child-age=""
+                  value={childAgeYears(d?.dateOfBirth) ?? '—'}
+                  className={`${inputCls} bg-muted/50`}
+                />
+              </Field>
+              <div className="flex items-end pb-1">
+                {familyCheckbox('childTaxRelief', d?.childTaxRelief ?? false, t('family.childTaxRelief'))}
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">{t('family.ageHint')}</p>
+          </fieldset>
+        </>
+      );
+    }
+
+    // Spouse / Other — the original flat two-column grid, unchanged.
+    return (
+      <>
+        {nameField}
+        {relationshipField}
+        {genderField}
+        {dobField}
+        {phoneField}
+        {icField}
         <Field label={t('family.passportNumber')}>
           <input name="passportNumber" defaultValue={d?.passportNumber ?? ''} className={inputCls} />
         </Field>
-      )}
-      {section !== 'child' && (
         <div className="sm:col-span-2">
           <Field label={t('family.residentialAddress')}>
             <textarea name="residentialAddress" rows={2} defaultValue={d?.residentialAddress ?? ''} className={taCls} />
           </Field>
         </div>
-      )}
-      {section === 'spouse' && (
-        <>
-          <Field label={t('family.marriageDate')}>
-            <input name="marriageDate" type="date" defaultValue={d?.marriageDate ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('family.marriageStatusLabel')}>
-            <select name="marriageStatus" defaultValue={d?.marriageStatus ?? ''} className={inputCls}>
-              <option value="">{t('family.genderUnset')}</option>
-              {DEPENDENT_MARRIAGE_STATUSES.map((m) => (<option key={m} value={m}>{marriageStatusLabel(m)}</option>))}
-            </select>
-          </Field>
+        {section === 'spouse' && (
+          <>
+            <Field label={t('family.marriageDate')}>
+              <input name="marriageDate" type="date" defaultValue={d?.marriageDate ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('family.marriageStatusLabel')}>
+              <select name="marriageStatus" defaultValue={d?.marriageStatus ?? ''} className={inputCls}>
+                <option value="">{t('family.genderUnset')}</option>
+                {DEPENDENT_MARRIAGE_STATUSES.map((m) => (<option key={m} value={m}>{marriageStatusLabel(m)}</option>))}
+              </select>
+            </Field>
+            <Field label={t('family.occupation')}>
+              <input name="occupation" defaultValue={d?.occupation ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('family.companyName')}>
+              <input name="companyName" defaultValue={d?.companyName ?? ''} className={inputCls} />
+            </Field>
+            <div className="sm:col-span-2">
+              <Field label={t('family.employerAddress')}>
+                <textarea name="employerAddress" rows={2} defaultValue={d?.employerAddress ?? ''} className={taCls} />
+              </Field>
+            </div>
+          </>
+        )}
+        {section === 'other' && (
           <Field label={t('family.occupation')}>
             <input name="occupation" defaultValue={d?.occupation ?? ''} className={inputCls} />
           </Field>
-          <Field label={t('family.companyName')}>
-            <input name="companyName" defaultValue={d?.companyName ?? ''} className={inputCls} />
-          </Field>
-          <div className="sm:col-span-2">
-            <Field label={t('family.employerAddress')}>
-              <textarea name="employerAddress" rows={2} defaultValue={d?.employerAddress ?? ''} className={taCls} />
-            </Field>
-          </div>
-        </>
-      )}
-      {section === 'other' && (
-        <Field label={t('family.occupation')}>
-          <input name="occupation" defaultValue={d?.occupation ?? ''} className={inputCls} />
-        </Field>
-      )}
-      {section === 'child' && (
-        <Field label={t('family.schoolName')}>
-          <input name="schoolName" defaultValue={d?.schoolName ?? ''} className={inputCls} />
-        </Field>
-      )}
-      {/* Item 6c635212 — Malaysia Income Tax Child Relief (PCB / TP1). Per-child relief category, claim flag and
-          100|50 share. Age is derived read-only from DOB to guide the category choice. This is the Family-register
-          side of the benefits-vs-tax firewall: it feeds a SUGGESTED relief total the IdentityTaxCard surfaces for
-          HR to confirm into num_children — it never silently drives the approval-gated tax figure. */}
-      {section === 'child' && (
-        <div className="rounded-lg border border-border bg-muted/30 p-3 sm:col-span-2">
-          <div className="mb-3 flex items-center gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {t('family.childReliefSection')}
-            </span>
-            <span
-              className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground"
-              title={t('family.childReliefGuidance')}
-              aria-label={t('family.childReliefGuidance')}
-            >
-              i
-            </span>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={t('family.childReliefCategory')}>
-              <select name="childReliefCategory" defaultValue={d?.childReliefCategory ?? ''} className={inputCls}>
-                <option value="">{t('family.childReliefCategoryUnset')}</option>
-                {CHILD_RELIEF_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{t(`family.childReliefCat_${c}`)}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('family.childReliefPercentage')}>
-              <select
-                name="childReliefPercentage"
-                defaultValue={d?.childReliefPercentage != null ? String(d.childReliefPercentage) : ''}
-                className={inputCls}
-              >
-                <option value="">{t('family.childReliefCategoryUnset')}</option>
-                <option value="100">{t('family.childReliefPct_100')}</option>
-                <option value="50">{t('family.childReliefPct_50')}</option>
-              </select>
-            </Field>
-            <Field label={t('family.childAge')}>
-              <input
-                readOnly
-                disabled
-                value={dobAgeYears(d?.dateOfBirth) ?? '—'}
-                className={`${inputCls} bg-muted/50`}
-              />
-            </Field>
-            <div className="flex items-end pb-1">
-              {familyCheckbox('childTaxRelief', d?.childTaxRelief ?? false, t('family.childTaxRelief'))}
-            </div>
-          </div>
+        )}
+        {remarksField}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
+          {familyCheckbox('isBeneficiary', d?.isBeneficiary ?? false, t('family.beneficiary'))}
+          {section === 'spouse' && familyCheckbox('spouseWorking', d?.spouseWorking ?? false, t('family.currentlyWorking'))}
+          {familyCheckbox('isDeceased', d?.isDeceased ?? false, t('family.deceasedStatus'))}
         </div>
-      )}
-      <Field label={t('family.remarks')}>
-        <input name="remarks" type="text" defaultValue={d?.remarks ?? ''} placeholder={t('family.remarksPlaceholder')} className={inputCls} />
-      </Field>
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
-        {familyCheckbox('isBeneficiary', d?.isBeneficiary ?? false, t('family.beneficiary'))}
-        {section === 'spouse' && familyCheckbox('spouseWorking', d?.spouseWorking ?? false, t('family.currentlyWorking'))}
-        {section === 'child' && familyCheckbox('isStudent', d?.isStudent ?? false, t('family.studentStatus'))}
-        {familyCheckbox('isDeceased', d?.isDeceased ?? false, t('family.deceasedStatus'))}
-      </div>
-    </>
-  );
+      </>
+    );
+  };
 
   // One existing record: a collapsible card whose body is the full-field edit form + a Remove form.
   const familyEditCard = (section: FamilySection, d: DependentRow) => (
@@ -1112,6 +1182,146 @@ export default async function EmployeePage({
     </details>
   );
 
+  // Item 5988053a — Children section: table view + Add/Edit dialog. Static label switches (not dynamic
+  // templates) so i18n coverage stays checkable — see relationshipLabel above.
+  const childReliefCategoryLabel = (c: string | null) => {
+    switch (c) {
+      case 'under_18': return t('family.childReliefCat_under_18');
+      case 'study_preu': return t('family.childReliefCat_study_preu');
+      case 'study_tertiary': return t('family.childReliefCat_study_tertiary');
+      case 'disabled': return t('family.childReliefCat_disabled');
+      case 'disabled_study': return t('family.childReliefCat_disabled_study');
+      default: return '—';
+    }
+  };
+  const childReliefShareLabel = (p: number | null) =>
+    p === 100 ? t('family.childReliefPct_100') : p === 50 ? t('family.childReliefPct_50') : null;
+
+  // One dialog form (Add when d is null, Edit otherwise), posting to the SAME server actions as before.
+  // TAB RETENTION (feedback bd2f0bb2): Dialog.Portal reparents this form to document.body — OUTSIDE the
+  // PersonnelTabs shell — so the shell's capture-phase submit listener never sees it (shell.contains(form)
+  // is false) and would never inject the hidden `tab` field; without the STATIC hidden input below, every
+  // dialog save would redirect back to the Profile tab. Giving it data-tab-tracker means that if this form
+  // ever does sit inside the shell, the listener finds and reuses this input instead of appending a
+  // duplicate `tab` field.
+  const childDialogForm = (d: DependentRow | null) => (
+    <form action={d ? editDependentAction : addDependentAction} className="space-y-4">
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      {d ? (
+        <input type="hidden" name="id" value={d.id} />
+      ) : (
+        <input type="hidden" name="personId" value={emp.personId} />
+      )}
+      <input type="hidden" name="tab" value="family" data-tab-tracker="" />
+      {dependentFields('child', d)}
+      <div className="flex justify-end">
+        <button className={btnPrimary}>{d ? t('family.save') : t('family.add')}</button>
+      </div>
+    </form>
+  );
+
+  // The children table replaces the details-based section (rows stay in listDependents' fixed oldest-first
+  // order; no search / sorting / view dialog at these row counts — the whole table is server JSX).
+  const familyChildrenSection = (
+    <section className="border-t border-border">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+        <h3 className="text-sm font-semibold">
+          {t('family.childrenSection')}{' '}
+          <span className="font-normal text-muted-foreground">({childDeps.length})</span>
+        </h3>
+        <FamilyFormDialog triggerLabel={t('family.addChild')} title={t('family.addTitle')}>
+          {childDialogForm(null)}
+        </FamilyFormDialog>
+      </div>
+      {childDeps.length === 0 ? (
+        <p className="px-4 pb-4 text-sm text-muted-foreground">{t('family.emptyTable')}</p>
+      ) : (
+        <div className="overflow-x-auto px-4 pb-4">
+          <table className="w-full min-w-[64rem] text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="py-2 pr-3 font-medium">{t('family.name')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.genderLabel')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.dateOfBirth')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.childAge')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.icOrBirthCert')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.sectionEducation')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.childReliefCategory')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.countsTowardRelief')}</th>
+                <th className="py-2 text-right font-medium">{t('family.actions')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {childDeps.map((d) => (
+                <tr key={d.id} className="border-b border-border/60 align-top">
+                  <td className="py-2 pr-3 font-medium">
+                    <span className="inline-flex items-center gap-2">
+                      {d.fullName}
+                      {d.isDeceased && <Badge variant="default">{t('family.statusInactive')}</Badge>}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-3">{genderLabel(d.gender)}</td>
+                  <td className="whitespace-nowrap py-2 pr-3">{d.dateOfBirth ?? '—'}</td>
+                  {/* Age is SERVER-derived (childAgeYears): a client derivation would run Date.now() once at
+                      SSR and again at hydration, which can differ across midnight or a timezone offset. */}
+                  <td className="py-2 pr-3">{childAgeYears(d.dateOfBirth) ?? '—'}</td>
+                  <td className="py-2 pr-3">{d.icOrPassport ?? '—'}</td>
+                  <td className="py-2 pr-3">
+                    {d.isStudent ? t('family.yes') : t('family.no')}
+                    {(d.schoolName || d.studyLevel) && (
+                      <span className="block text-xs text-muted-foreground">
+                        {[d.schoolName, d.studyLevel].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2 pr-3">
+                    {childReliefCategoryLabel(d.childReliefCategory)}
+                    {childReliefShareLabel(d.childReliefPercentage) && (
+                      <span className="block text-xs text-muted-foreground">
+                        {childReliefShareLabel(d.childReliefPercentage)}
+                      </span>
+                    )}
+                  </td>
+                  {/* The column that reflects the number actually reaching payroll: the SAME per-row
+                      predicate eligibleChildReliefCount counts (core/dependents.ts isChildReliefEligible),
+                      so the record-keeping category above can never be confused with what drives tax. */}
+                  <td className="py-2 pr-3">{isChildReliefEligible(d) ? t('family.yes') : t('family.no')}</td>
+                  <td className="py-2">
+                    <div className="flex items-center justify-end gap-2">
+                      <FamilyFormDialog
+                        triggerLabel={t('family.editTitle')}
+                        triggerVariant="outline"
+                        title={t('family.editTitle')}
+                      >
+                        {childDialogForm(d)}
+                      </FamilyFormDialog>
+                      {/* Delete keeps tab retention with no extra work: this form lives INSIDE the tab
+                          shell, and ConfirmSubmit's confirm calls requestSubmit() on it, firing a bubbling
+                          submit event the shell's capture listener does see. */}
+                      <form action={archiveDependentAction}>
+                        <input type="hidden" name="employmentId" value={emp.employmentId} />
+                        <input type="hidden" name="id" value={d.id} />
+                        <ConfirmSubmit
+                          size="sm"
+                          variant="destructive"
+                          title={t('family.deleteConfirmTitle')}
+                          description={t('family.deleteConfirmBody')}
+                          confirmLabel={t('family.delete')}
+                        >
+                          {t('family.delete')}
+                        </ConfirmSubmit>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+
   const familySection = (
     titleKey: string,
     emptyKey: string,
@@ -1140,7 +1350,7 @@ export default async function EmployeePage({
       </p>
       <div className="mt-3">
         {familySection('family.spouseSection', 'family.noSpouse', 'family.addSpouse', 'spouse', spouseDeps)}
-        {familySection('family.childrenSection', 'family.noChildren', 'family.addChild', 'child', childDeps)}
+        {familyChildrenSection}
         {familySection('family.otherSection', 'family.noOther', 'family.addDependant', 'other', otherDeps)}
       </div>
       <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('family.hint')}</p>

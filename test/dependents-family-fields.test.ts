@@ -13,7 +13,10 @@ import {
   listDependents,
   addDependent,
   updateDependent,
+  childAgeYears,
+  isChildReliefEligible,
   DependentValidationError,
+  type ChildReliefEligibilityRow,
   type DependentRow,
 } from '../core/dependents';
 import { erasePersonPii } from '../core/pdpa';
@@ -193,6 +196,78 @@ describe('Personnel — Family Information enhancement (4535b733)', () => {
     expect(blob).not.toContain('SECRET-ADDR');
   });
 
+  // Item 5988053a — the two additive education fields (study level + study country, migration 0293).
+  it('child: studyLevel/studyCountry round-trip on add and edit, child-gated like schoolName', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Fam Edu');
+    const { id } = await addDependent(a, {
+      personId: e.personId,
+      fullName: 'Scholar',
+      relationship: 'child',
+      isStudent: true,
+      schoolName: 'Sunway University',
+      studyLevel: 'Degree',
+      studyCountry: 'Malaysia',
+    });
+    let d = only(await listDependents(a, { personId: e.personId }), id);
+    expect(d.studyLevel).toBe('Degree');
+    expect(d.studyCountry).toBe('Malaysia');
+
+    // Edit round-trip: change one, clear the other (blank ⇒ null via trimOrNull).
+    await updateDependent(a, { id, studyLevel: 'Masters', studyCountry: '  ' });
+    d = only(await listDependents(a, { personId: e.personId }), id);
+    expect(d.studyLevel).toBe('Masters');
+    expect(d.studyCountry).toBeNull();
+
+    // Child-gated on ADD: for a non-child the values are validate-or-IGNOREd (stored NULL).
+    const p2 = await addDependent(a, {
+      personId: e.personId,
+      fullName: 'Parent NotStudent',
+      relationship: 'parent',
+      studyLevel: 'ShouldNotStick',
+      studyCountry: 'Nowhere',
+    });
+    const dp = only(await listDependents(a, { personId: e.personId }), p2.id);
+    expect(dp.studyLevel).toBeNull();
+    expect(dp.studyCountry).toBeNull();
+  });
+
+  it('changing a child’s relationship to other nulls both education columns', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Fam EduRel');
+    const { id } = await addDependent(a, {
+      personId: e.personId,
+      fullName: 'Was Child',
+      relationship: 'child',
+      schoolName: 'SMK Subang',
+      studyLevel: 'SPM',
+      studyCountry: 'Malaysia',
+    });
+    await updateDependent(a, { id, relationship: 'other' });
+    const d = only(await listDependents(a, { personId: e.personId }), id);
+    expect(d.relationship).toBe('other');
+    expect(d.schoolName).toBeNull();
+    expect(d.studyLevel).toBeNull();
+    expect(d.studyCountry).toBeNull();
+  });
+
+  it('dependent.updated diff carries the education field NAMES only — never the values', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Fam EduEvent');
+    const { id } = await addDependent(a, {
+      personId: e.personId,
+      fullName: 'Edu Event',
+      relationship: 'child',
+    });
+    await updateDependent(a, { id, studyLevel: 'SECRET-LEVEL', studyCountry: 'SECRET-COUNTRY' });
+    const payload = await latestEventPayload(base.tenantId, id, 'dependent.updated');
+    const blob = JSON.stringify(payload ?? {});
+    expect(blob).toContain('studyLevel');
+    expect(blob).toContain('studyCountry');
+    expect(blob).not.toContain('SECRET-LEVEL');
+    expect(blob).not.toContain('SECRET-COUNTRY');
+  });
+
   it('PDPA: erases the new dependent PII across the person’s rows (contact + identity scopes)', async () => {
     const a = adminCtx(base);
     const e = await hire(a, base, 'Fam Erase');
@@ -239,5 +314,67 @@ describe('Personnel — Family Information enhancement (4535b733)', () => {
     // Non-PII fields (name/relationship) are retained.
     expect(d.fullName).toBe('Spouse PII');
     expect(d.relationship).toBe('spouse');
+  });
+});
+
+// Item 5988053a — the per-row eligibility predicate extracted from eligibleChildReliefCount (pure, DB-free).
+// These pin the shared rule the Family tab's "Counts toward tax relief" column AND the payroll head count
+// both read; test/dependents.test.ts must keep passing UNCHANGED as proof the extraction is
+// behaviour-preserving for the aggregate count.
+describe('isChildReliefEligible / childAgeYears (5988053a, pure)', () => {
+  const asOf = new Date('2026-07-21T00:00:00Z');
+  const child = (over: Partial<ChildReliefEligibilityRow>): ChildReliefEligibilityRow => ({
+    relationship: 'child',
+    dateOfBirth: null,
+    isStudent: null,
+    isDeceased: false,
+    archivedAt: null,
+    childTaxRelief: null,
+    ...over,
+  });
+
+  it('under 18 (by DOB) is eligible', () => {
+    expect(isChildReliefEligible(child({ dateOfBirth: '2015-01-01' }), asOf)).toBe(true);
+  });
+
+  it('18-plus student is eligible; 18-plus non-student is not', () => {
+    expect(isChildReliefEligible(child({ dateOfBirth: '2005-01-01', isStudent: true }), asOf)).toBe(true);
+    expect(isChildReliefEligible(child({ dateOfBirth: '2005-01-01', isStudent: false }), asOf)).toBe(false);
+  });
+
+  it('an explicit childTaxRelief decision overrides the inference in BOTH directions', () => {
+    // true: an 18-plus non-student still counts.
+    expect(
+      isChildReliefEligible(child({ dateOfBirth: '2000-01-01', isStudent: false, childTaxRelief: true }), asOf),
+    ).toBe(true);
+    // false: an under-18 child is explicitly opted out.
+    expect(
+      isChildReliefEligible(child({ dateOfBirth: '2020-01-01', childTaxRelief: false }), asOf),
+    ).toBe(false);
+  });
+
+  it('deceased and archived children are excluded, and only child rows count at all', () => {
+    expect(isChildReliefEligible(child({ dateOfBirth: '2020-01-01', isDeceased: true }), asOf)).toBe(false);
+    expect(
+      isChildReliefEligible(child({ dateOfBirth: '2020-01-01', archivedAt: new Date('2025-01-01') }), asOf),
+    ).toBe(false);
+    expect(
+      isChildReliefEligible(child({ relationship: 'spouse', dateOfBirth: '2020-01-01' }), asOf),
+    ).toBe(false);
+  });
+
+  it('missing or invalid DOB cannot confirm the age, so it is not auto-counted', () => {
+    expect(isChildReliefEligible(child({ dateOfBirth: null }), asOf)).toBe(false);
+    expect(isChildReliefEligible(child({ dateOfBirth: 'not-a-date' }), asOf)).toBe(false);
+    // ...but a student without a DOB still counts (the 18+ in-education case needs no age).
+    expect(isChildReliefEligible(child({ dateOfBirth: null, isStudent: true }), asOf)).toBe(true);
+  });
+
+  it('childAgeYears floors to whole years and is null for no/invalid DOB', () => {
+    expect(childAgeYears('2015-07-22', asOf)).toBe(10); // 11th birthday is tomorrow as of asOf
+    expect(childAgeYears('2008-07-01', asOf)).toBe(18);
+    expect(childAgeYears(null, asOf)).toBeNull();
+    expect(childAgeYears(undefined, asOf)).toBeNull();
+    expect(childAgeYears('nonsense', asOf)).toBeNull();
   });
 });
