@@ -6,7 +6,7 @@
 //   0 2 1 * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/accrue-earned.ts
 import { createDb } from '../db/client';
 import { tenant } from '../db/schema';
-import { accrueEarnedLeave } from '../core/leave';
+import { accrueEarnedLeave, todayInKualaLumpur } from '../core/leave';
 
 async function main() {
   const ownerUrl = process.env.MIGRATION_DATABASE_URL;
@@ -14,7 +14,10 @@ async function main() {
     console.error('leave:accrue requires MIGRATION_DATABASE_URL (the owner role) to enumerate tenants.');
     process.exit(1);
   }
-  const asOf = new Date().toISOString().slice(0, 10);
+  // MYT, not UTC. This is scheduled for 02:00 local on the 1st; toISOString() resolves to the previous
+  // UTC day there — the last day of the PREVIOUS month — which would accrue against the wrong period.
+  // The admin "Run earned accrual" button already uses this helper (app/admin/actions.ts).
+  const asOf = todayInKualaLumpur();
   const owner = createDb(ownerUrl);
   const tenants = await owner.db.select({ id: tenant.id, name: tenant.name }).from(tenant);
   console.log(`leave:accrue — ${tenants.length} tenant(s), asOf ${asOf}`);

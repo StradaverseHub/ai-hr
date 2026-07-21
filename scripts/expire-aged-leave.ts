@@ -6,7 +6,7 @@
 //   30 3 * * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/expire-aged-leave.ts
 import { createDb } from '../db/client';
 import { tenant } from '../db/schema';
-import { expireAgedLeave } from '../core/leave';
+import { expireAgedLeave, todayInKualaLumpur } from '../core/leave';
 
 async function main() {
   const ownerUrl = process.env.MIGRATION_DATABASE_URL;
@@ -14,7 +14,8 @@ async function main() {
     console.error('leave:expire-aged requires MIGRATION_DATABASE_URL (the owner role) to enumerate tenants.');
     process.exit(1);
   }
-  const today = new Date().toISOString().slice(0, 10);
+  // MYT, not UTC — see accrue-earned.ts. Scheduled 03:30 local, which is the previous day in UTC.
+  const today = todayInKualaLumpur();
   const owner = createDb(ownerUrl);
   const tenants = await owner.db.select({ id: tenant.id, name: tenant.name }).from(tenant);
   console.log(`leave:expire-aged — ${tenants.length} tenant(s), today ${today}`);

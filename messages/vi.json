@@ -3970,7 +3970,7 @@
     "users": {
       "title": "Người dùng & vai trò",
       "userCount": "{count, plural, one {# người dùng} other {# người dùng}}",
-      "provisioningNote": "Các đăng nhập mới được cấp qua <strong>WorkOS</strong> (SSO / mời) trong một giai đoạn sau. Tại đây bạn quản lý vai trò cho người dùng hiện có. Phạm vi công ty áp dụng cho các quyền <strong>HR Admin</strong> — công ty đó <em>và các công ty con của nó</em>; các vai trò khác áp dụng toàn tập đoàn.",
+      "provisioningNote": "Các đăng nhập mới chỉ được tạo bằng lời mời — không có đăng ký mở. Quản trị viên gửi lời mời qua email, sau đó <strong>WorkOS</strong> gửi liên kết dùng một lần và người được mời tự đặt mật khẩu. Chỉ <strong>quản trị viên tập đoàn</strong> mới có thể mời. Tại đây bạn quản lý vai trò cho người dùng hiện có. Phạm vi công ty áp dụng cho các quyền <strong>HR Admin</strong> — công ty đó <em>và các công ty con của nó</em>; các vai trò khác áp dụng toàn tập đoàn.",
       "sectionUsers": "Người dùng",
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "revokeRole": "Thu hồi vai trò",

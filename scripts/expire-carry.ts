@@ -6,7 +6,7 @@
 //   0 3 1 4 *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/expire-carry.ts
 import { createDb } from '../db/client';
 import { tenant } from '../db/schema';
-import { expireCarriedLeave } from '../core/leave';
+import { expireCarriedLeave, todayInKualaLumpur } from '../core/leave';
 
 async function main() {
   const ownerUrl = process.env.MIGRATION_DATABASE_URL;
@@ -14,7 +14,9 @@ async function main() {
     console.error('leave:expire-carry requires MIGRATION_DATABASE_URL (the owner role) to enumerate tenants.');
     process.exit(1);
   }
-  const today = new Date().toISOString().slice(0, 10);
+  // MYT, not UTC — see accrue-earned.ts. Scheduled 03:00 local on 1 Apr; toISOString() would resolve to
+  // 31 Mar, i.e. ON the expiry date rather than after it, and forfeit nothing.
+  const today = todayInKualaLumpur();
   const owner = createDb(ownerUrl);
   const tenants = await owner.db.select({ id: tenant.id, name: tenant.name }).from(tenant);
   console.log(`leave:expire-carry — ${tenants.length} tenant(s), today ${today}`);

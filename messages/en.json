@@ -3970,7 +3970,7 @@
     "users": {
       "title": "Users & roles",
       "userCount": "{count, plural, one {# user} other {# users}}",
-      "provisioningNote": "New logins are provisioned via <strong>WorkOS</strong> (SSO / invite) in a later slice. Here you manage roles for existing users. Company scope applies to <strong>HR Admin</strong> grants — that company <em>and its sub-companies</em>; other roles are group-wide.",
+      "provisioningNote": "New logins are created by invitation only — there is no open sign-up. An admin invites by email, then <strong>WorkOS</strong> sends the one-time link and the invitee sets their own password. Only <strong>group admins</strong> can invite. Here you manage roles for existing users. Company scope applies to <strong>HR Admin</strong> grants — that company <em>and its sub-companies</em>; other roles are group-wide.",
       "sectionUsers": "Users",
       "scopedTo": "Scoped to {company} and its sub-companies",
       "revokeRole": "Revoke role",

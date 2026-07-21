@@ -3970,7 +3970,7 @@
     "users": {
       "title": "Pengguna & peranan",
       "userCount": "{count, plural, one {# pengguna} other {# pengguna}}",
-      "provisioningNote": "Log masuk baharu disediakan melalui <strong>WorkOS</strong> (SSO / jemputan) dalam hirisan kemudian. Di sini anda menguruskan peranan untuk pengguna sedia ada. Skop syarikat terpakai pada pemberian <strong>HR Admin</strong> — syarikat itu <em>dan anak syarikatnya</em>; peranan lain adalah seluruh kumpulan.",
+      "provisioningNote": "Log masuk baharu dicipta melalui jemputan sahaja — tiada pendaftaran terbuka. Pentadbir menjemput melalui e-mel, kemudian <strong>WorkOS</strong> menghantar pautan sekali guna dan penerima jemputan menetapkan kata laluan mereka sendiri. Hanya <strong>pentadbir kumpulan</strong> boleh menjemput. Di sini anda menguruskan peranan untuk pengguna sedia ada. Skop syarikat terpakai pada pemberian <strong>HR Admin</strong> — syarikat itu <em>dan anak syarikatnya</em>; peranan lain adalah seluruh kumpulan.",
       "sectionUsers": "Pengguna",
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "revokeRole": "Tarik balik peranan",

@@ -3970,7 +3970,7 @@
     "users": {
       "title": "用户与角色",
       "userCount": "{count, plural, one {# 名用户} other {# 名用户}}",
-      "provisioningNote": "新登录账号将在后续切片中通过 <strong>WorkOS</strong>（SSO / 邀请）开通。此处您管理现有用户的角色。公司范围适用于 <strong>HR Admin</strong> 授权 — 即该公司<em>及其子公司</em>；其他角色为全集团范围。",
+      "provisioningNote": "新登录账号仅通过邀请创建 — 不支持公开注册。管理员通过电子邮件发出邀请，随后由 <strong>WorkOS</strong> 发送一次性链接，受邀者自行设置密码。只有<strong>集团管理员</strong>可以发出邀请。此处您管理现有用户的角色。公司范围适用于 <strong>HR Admin</strong> 授权 — 即该公司<em>及其子公司</em>；其他角色为全集团范围。",
       "sectionUsers": "用户",
       "scopedTo": "范围限定为 {company} 及其子公司",
       "revokeRole": "撤销角色",
