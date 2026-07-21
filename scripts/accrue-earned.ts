@@ -7,8 +7,10 @@
 import { createDb } from '../db/client';
 import { tenant } from '../db/schema';
 import { accrueEarnedLeave, todayInKualaLumpur } from '../core/leave';
+import { recordJobRun } from '../core/job-run';
 
 async function main() {
+  const startedAt = Date.now();
   const ownerUrl = process.env.MIGRATION_DATABASE_URL;
   if (!ownerUrl) {
     console.error('leave:accrue requires MIGRATION_DATABASE_URL (the owner role) to enumerate tenants.');
@@ -39,6 +41,19 @@ async function main() {
   console.log(
     `leave:accrue done — ${totalGranted} ledger grant(s) across ${tenants.length} tenant(s), ${failures} failure(s).`,
   );
+  // 0280 run log. In its OWN try/catch: this is an audit record, and failing to write it must never
+  // turn a run that did its real work into a non-zero exit. The exit code below is unchanged.
+  try {
+    await recordJobRun(owner.db, {
+      jobKey: 'leave.accrue',
+      startedAt,
+      tenantsProcessed: tenants.length,
+      tenantsFailed: failures,
+      result: { granted: totalGranted },
+    });
+  } catch (e) {
+    console.error(`leave:accrue — could not write the run log: ${(e as Error).message}`);
+  }
   await owner.client.end();
   process.exit(failures > 0 ? 1 : 0);
 }

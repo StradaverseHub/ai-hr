@@ -137,7 +137,8 @@
     "reportPerformance": "Prestasi",
     "profileOptions": "Pilihan Profil",
     "delegations": "Perwakilan",
-    "dashboardCardConfig": "Kad papan pemuka"
+    "dashboardCardConfig": "Kad papan pemuka",
+    "scheduledActions": "Tugas Berjadual"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -6594,6 +6595,56 @@
     },
     "errors": {
       "duplicateKey": "Kad papan pemuka dengan kunci ini sudah wujud"
+    }
+  },
+  "scheduledActions": {
+    "title": "Tugas Berjadual",
+    "description": "Tugas penyelenggaraan malam: bila setiap satu terakhir berjalan dan apa yang diubahnya.",
+    "readOnlyNote": "Skrin ini baca sahaja. Jadual ditetapkan pada pelayan dan tidak boleh diubah di sini.",
+    "scheduleLabel": "Jadual",
+    "neverRun": "Tidak pernah berjalan",
+    "emptyJob": "Tugas ini belum pernah berjalan.",
+    "historyTitle": "Larian terkini",
+    "failedSuffix": "gagal",
+    "unitMs": "ms",
+    "unitSeconds": "s",
+    "unitMinutes": "min",
+    "colLastRun": "Larian terakhir",
+    "colDuration": "Tempoh",
+    "colChanged": "Apa yang diubah",
+    "colTenants": "Syarikat diproses",
+    "colRanAt": "Masa larian",
+    "colOutcome": "Keputusan",
+    "colError": "Ralat",
+    "outcome": {
+      "success": "Berjaya",
+      "partial": "Separa",
+      "failed": "Gagal"
+    },
+    "counters": {
+      "granted": "Hari diberikan",
+      "opened": "Penilaian dibuka",
+      "reminders": "Peringatan dihantar",
+      "swept": "Rekod disapu",
+      "forfeited": "Hari dilucutkan"
+    },
+    "jobs": {
+      "leave-accrue": {
+        "name": "Tambahan cuti terkumpul",
+        "description": "Menambah hari cuti yang telah dikumpul pekerja setakat ini."
+      },
+      "review-sweep": {
+        "name": "Penilaian percubaan dan kontrak",
+        "description": "Membuka penilaian yang tiba tempoh dan menghantar peringatan berkaitan."
+      },
+      "leave-expire-aged": {
+        "name": "Pelucutan cuti lampau tempoh",
+        "description": "Melucutkan cuti terkumpul yang telah melepasi had tempoh sahnya."
+      },
+      "leave-expire-carry": {
+        "name": "Luput cuti bawa ke hadapan",
+        "description": "Melucutkan hari bawa ke hadapan yang tarikh luputnya telah berlalu."
+      }
     }
   }
 }

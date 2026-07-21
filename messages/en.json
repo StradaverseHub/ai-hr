@@ -137,7 +137,8 @@
     "reportPerformance": "Performance",
     "profileOptions": "Profile Options",
     "delegations": "Delegations",
-    "dashboardCardConfig": "Dashboard cards"
+    "dashboardCardConfig": "Dashboard cards",
+    "scheduledActions": "Scheduled actions"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -6594,6 +6595,56 @@
     },
     "errors": {
       "duplicateKey": "A dashboard card with this key already exists"
+    }
+  },
+  "scheduledActions": {
+    "title": "Scheduled actions",
+    "description": "The overnight housekeeping tasks, when each last ran and what it changed.",
+    "readOnlyNote": "This screen is read-only. Schedules are set on the server and cannot be changed here.",
+    "scheduleLabel": "Schedule",
+    "neverRun": "Never run",
+    "emptyJob": "This task has not run yet.",
+    "historyTitle": "Recent runs",
+    "failedSuffix": "failed",
+    "unitMs": "ms",
+    "unitSeconds": "s",
+    "unitMinutes": "min",
+    "colLastRun": "Last run",
+    "colDuration": "Duration",
+    "colChanged": "What it changed",
+    "colTenants": "Companies processed",
+    "colRanAt": "Ran at",
+    "colOutcome": "Outcome",
+    "colError": "Error",
+    "outcome": {
+      "success": "Success",
+      "partial": "Partial",
+      "failed": "Failed"
+    },
+    "counters": {
+      "granted": "Days granted",
+      "opened": "Reviews opened",
+      "reminders": "Reminders sent",
+      "swept": "Records swept",
+      "forfeited": "Days forfeited"
+    },
+    "jobs": {
+      "leave-accrue": {
+        "name": "Earned leave top-up",
+        "description": "Adds the leave days employees have earned so far."
+      },
+      "review-sweep": {
+        "name": "Probation and contract reviews",
+        "description": "Opens reviews that are due and sends the related reminders."
+      },
+      "leave-expire-aged": {
+        "name": "Aged leave forfeiture",
+        "description": "Forfeits earned leave that has passed its expiry age."
+      },
+      "leave-expire-carry": {
+        "name": "Carried-forward leave expiry",
+        "description": "Forfeits carried-forward days whose expiry date has passed."
+      }
     }
   }
 }

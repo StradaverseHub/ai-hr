@@ -7,8 +7,10 @@
 import { createDb } from '../db/client';
 import { tenant } from '../db/schema';
 import { expireAgedLeave, todayInKualaLumpur } from '../core/leave';
+import { recordJobRun } from '../core/job-run';
 
 async function main() {
+  const startedAt = Date.now();
   const ownerUrl = process.env.MIGRATION_DATABASE_URL;
   if (!ownerUrl) {
     console.error('leave:expire-aged requires MIGRATION_DATABASE_URL (the owner role) to enumerate tenants.');
@@ -39,6 +41,18 @@ async function main() {
   console.log(
     `leave:expire-aged done — ${totalSwept} sweep(s), ${totalForfeited} day(s) forfeited across ${tenants.length} tenant(s), ${failures} failure(s).`,
   );
+  // 0280 run log, in its OWN try/catch — see accrue-earned.ts. `forfeited` is a fractional DAY count.
+  try {
+    await recordJobRun(owner.db, {
+      jobKey: 'leave.expire-aged',
+      startedAt,
+      tenantsProcessed: tenants.length,
+      tenantsFailed: failures,
+      result: { swept: totalSwept, forfeited: totalForfeited },
+    });
+  } catch (e) {
+    console.error(`leave:expire-aged — could not write the run log: ${(e as Error).message}`);
+  }
   await owner.client.end();
   process.exit(failures > 0 ? 1 : 0);
 }

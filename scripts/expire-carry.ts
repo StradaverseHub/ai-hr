@@ -7,8 +7,10 @@
 import { createDb } from '../db/client';
 import { tenant } from '../db/schema';
 import { expireCarriedLeave, todayInKualaLumpur } from '../core/leave';
+import { recordJobRun } from '../core/job-run';
 
 async function main() {
+  const startedAt = Date.now();
   const ownerUrl = process.env.MIGRATION_DATABASE_URL;
   if (!ownerUrl) {
     console.error('leave:expire-carry requires MIGRATION_DATABASE_URL (the owner role) to enumerate tenants.');
@@ -40,6 +42,19 @@ async function main() {
   console.log(
     `leave:expire-carry done — ${totalSwept} sweep(s), ${totalForfeited} day(s) forfeited across ${tenants.length} tenant(s), ${failures} failure(s).`,
   );
+  // 0280 run log, in its OWN try/catch — see accrue-earned.ts. `forfeited` is a DAY count and may be
+  // fractional (e.g. 12.5); it goes into jsonb as a float and must never be rounded to an integer.
+  try {
+    await recordJobRun(owner.db, {
+      jobKey: 'leave.expire-carry',
+      startedAt,
+      tenantsProcessed: tenants.length,
+      tenantsFailed: failures,
+      result: { swept: totalSwept, forfeited: totalForfeited },
+    });
+  } catch (e) {
+    console.error(`leave:expire-carry — could not write the run log: ${(e as Error).message}`);
+  }
   await owner.client.end();
   process.exit(failures > 0 ? 1 : 0);
 }

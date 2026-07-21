@@ -4983,3 +4983,31 @@ export const leaveEncashmentSnapshot = pgTable(
       .where(sql`status = 'frozen'`),
   ],
 );
+
+// ─────────────────── Scheduled-actions run log (job_run, migration 0280) ───────────────────
+// The operator-tier record of the four out-of-band sweeps (leave.accrue / review.sweep /
+// leave.expire-carry / leave.expire-aged). Modelled on statutoryPackSyncLog above: GLOBAL (no
+// tenantId — one run fans out across every tenant), written ONLY by the scripts under the owner role
+// (MIGRATION_DATABASE_URL), read-only in the app. 0280 REVOKEs INSERT/UPDATE/DELETE from ai_hr_app
+// and gates SELECT on app.is_group_admin(); there is deliberately no write seam, because
+// is_group_admin() has no tenant dimension and would let one customer forge another's job history.
+//
+// `outcome` is text, not a pgEnum (the 0275 widening lesson) — 'success' | 'partial' | 'failed',
+// controlled in code by core/job-run.ts. `result` is jsonb holding CROSS-TENANT AGGREGATE counters
+// only (no per-tenant breakdown — any tenant's group admin can read this table), and must never be
+// coerced to integers: expire-carry / expire-aged aggregate forfeited days as a rounded FLOAT.
+export const jobRun = pgTable(
+  'job_run',
+  {
+    id: id(),
+    jobKey: text('job_key').notNull(),
+    ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
+    durationMs: integer('duration_ms'),
+    outcome: text('outcome').notNull(),
+    tenantsProcessed: integer('tenants_processed').notNull().default(0),
+    tenantsFailed: integer('tenants_failed').notNull().default(0),
+    result: jsonb('result').$type<Record<string, number>>(),
+    error: text('error'),
+  },
+  (t) => [index('job_run_key_ran_at_idx').on(t.jobKey, t.ranAt.desc())],
+);

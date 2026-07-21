@@ -137,7 +137,8 @@
     "reportPerformance": "Hiệu suất",
     "profileOptions": "Tùy chọn hồ sơ",
     "delegations": "Ủy quyền",
-    "dashboardCardConfig": "Thẻ bảng điều khiển"
+    "dashboardCardConfig": "Thẻ bảng điều khiển",
+    "scheduledActions": "Tác vụ theo lịch"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -6594,6 +6595,56 @@
     },
     "errors": {
       "duplicateKey": "Đã tồn tại thẻ bảng điều khiển với khóa này"
+    }
+  },
+  "scheduledActions": {
+    "title": "Tác vụ theo lịch",
+    "description": "Các tác vụ bảo trì ban đêm: lần chạy gần nhất và những thay đổi đã thực hiện.",
+    "readOnlyNote": "Màn hình này chỉ để xem. Lịch chạy được đặt trên máy chủ và không thể thay đổi tại đây.",
+    "scheduleLabel": "Lịch chạy",
+    "neverRun": "Chưa từng chạy",
+    "emptyJob": "Tác vụ này chưa từng chạy.",
+    "historyTitle": "Các lần chạy gần đây",
+    "failedSuffix": "thất bại",
+    "unitMs": "ms",
+    "unitSeconds": "giây",
+    "unitMinutes": "phút",
+    "colLastRun": "Lần chạy gần nhất",
+    "colDuration": "Thời lượng",
+    "colChanged": "Thay đổi",
+    "colTenants": "Công ty đã xử lý",
+    "colRanAt": "Thời điểm chạy",
+    "colOutcome": "Kết quả",
+    "colError": "Lỗi",
+    "outcome": {
+      "success": "Thành công",
+      "partial": "Một phần",
+      "failed": "Thất bại"
+    },
+    "counters": {
+      "granted": "Số ngày đã cấp",
+      "opened": "Đánh giá đã mở",
+      "reminders": "Nhắc nhở đã gửi",
+      "swept": "Bản ghi đã xử lý",
+      "forfeited": "Số ngày bị hủy"
+    },
+    "jobs": {
+      "leave-accrue": {
+        "name": "Cộng dồn phép năm",
+        "description": "Cộng thêm số ngày phép nhân viên đã tích lũy đến hiện tại."
+      },
+      "review-sweep": {
+        "name": "Đánh giá thử việc và hợp đồng",
+        "description": "Mở các đánh giá đến hạn và gửi nhắc nhở tương ứng."
+      },
+      "leave-expire-aged": {
+        "name": "Hủy phép quá hạn",
+        "description": "Hủy số ngày phép tích lũy đã quá thời hạn sử dụng."
+      },
+      "leave-expire-carry": {
+        "name": "Hết hạn phép chuyển tiếp",
+        "description": "Hủy số ngày chuyển tiếp đã qua ngày hết hạn."
+      }
     }
   }
 }
