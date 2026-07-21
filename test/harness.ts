@@ -72,6 +72,10 @@ const ALL_TABLES = [
   // away: without this entry a run row written by one test file would survive into every later file
   // that calls resetDb, exactly the ADR-0071 isolation bug documented above.
   'job_run',
+  // 0295 — operator console provisioning queue. GLOBAL (no tenant_id); its tenant_id column is a RESULT
+  // FK, so truncating `tenant` would cascade it away, but list it explicitly per the convention above:
+  // a request row leaking between test files would be counted by the RLS/claim assertions.
+  'tenant_provision_request',
 ];
 
 /**

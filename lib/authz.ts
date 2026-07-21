@@ -14,6 +14,22 @@ export function isGroupAdmin(s: SessionContext): boolean {
 }
 
 /**
+ * Operator tier (0294/0295) — the INSTALLATION-level identity that provisions new customers. Mirrors
+ * app.is_operator(), which is the authoritative gate (RLS on tenant_provision_request + the
+ * app.claim_activation_url definer function both call it). This TS mirror is the fail-fast UX gate.
+ *
+ * Read `s.grants` directly rather than `s.roles`: unlike every other predicate here, operator is NOT a
+ * customer role, so it must never be inferred from the flattened role list of a tenant session.
+ *
+ * NOTE what this deliberately does NOT do: it does not imply isAdmin() or isGroupAdmin(). An operator
+ * reaches the provisioning console and nothing else — no customer admin screen, no customer data. That
+ * separation is the point of a separate tier, and app/operator/page.tsx is its only consumer.
+ */
+export function isOperator(s: SessionContext): boolean {
+  return !!s.grants?.some((g) => g.role === 'operator');
+}
+
+/**
  * Company-scoped grant predicate (ADR-0049). True if the session holds `role` via a grant that
  * covers `companyId`: group-wide (grant.companyId == null) OR the exact company. NOTE: this resolves
  * against `s.grants` (which carries companyId), NOT the flattened `s.roles` (which drops it) — gating

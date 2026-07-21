@@ -14,13 +14,14 @@ import { createLeavePolicy, createJobGrade } from '../core/admin';
 import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../core/performance';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { myPack } from '../localization/my';
-import { MY_STATE_HOLIDAYS_2026 } from '../localization/my/holidays';
 import { seedGuides } from './seed-guides';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
-import { seedProfileOptions } from '../core/profile-options';
+import { createAdminChain, seedCompanyCatalogs, seedTenantCatalogs } from './provision';
 
 const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 const DEV_ADMIN_USER_ID = '22222222-2222-2222-2222-222222222222';
+/** The dedicated OPERATOR dev identity (0295) — separate login, separate tier, never the HR admin. */
+const DEV_OPERATOR_USER_ID = '33333333-3333-3333-3333-333333333333';
 
 const owner = createDb(process.env.MIGRATION_DATABASE_URL!);
 
@@ -30,7 +31,7 @@ const TABLES = [
   'leave_request', 'resignation_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
   'attendance', 'attendance_policy', 'payroll_batch', 'payslip', 'company_statutory_my',
-  'location', 'kb_document',
+  'location', 'kb_document', 'tenant_provision_request',
 ];
 
 async function main() {
@@ -91,15 +92,23 @@ async function main() {
   await owner.db
     .insert(schema.costCenter)
     .values({ tenantId: DEV_TENANT_ID, companyId: company.id, code: 'HQ', name: 'Headquarters' });
-  // Leave types + public holidays from the Malaysia pack (ADR-0008).
-  const leaveTypeIds: Record<string, string> = {};
-  for (const lt of myPack.leave.types) {
-    const [row] = await owner.db
-      .insert(schema.leaveType)
-      .values({ tenantId: DEV_TENANT_ID, code: lt.code, name: lt.name, paid: lt.paid, counting: lt.counting, eligibility: lt.eligibility ?? null, requiresDocument: lt.requiresDocument ?? false, sendToPayroll: lt.sendToPayroll ?? !lt.paid, i18n: lt.i18n ?? null })
-      .returning({ id: schema.leaveType.id });
-    leaveTypeIds[lt.code] = row.id;
-  }
+  // ── Starter catalogs: THE SHARED LAYER (db/provision.ts) ──────────────────────────────────────
+  // Leave types, public holidays and the profile-option catalogs (tenant-wide), then the per-company
+  // attendance policy + payroll cycle catalog. These are the SAME functions a real customer is
+  // provisioned with, which is the point: the demo and real onboarding cannot drift apart on starter
+  // settings, because there is only one definition of them.
+  //
+  // Scope of the sharing is deliberately the CATALOG layer only — the demo's two-company ADR-0009
+  // structure, approval policies, sample people and transactions stay here and are never pulled into
+  // provisioning. `holding` takes the payroll cycle catalog but NOT an attendance policy, exactly as
+  // before this refactor (only the operating company has ever had one, and the demo's attendance
+  // fixtures are built on that).
+  const leaveTypeIds = await owner.db.transaction(async (tx) => {
+    const ids = await seedTenantCatalogs(tx, DEV_TENANT_ID);
+    await seedCompanyCatalogs(tx, DEV_TENANT_ID, company.id);
+    await seedPayrollCycleCatalog({ tenantId: DEV_TENANT_ID }, holding.id, tx);
+    return ids;
+  });
   const annual = { id: leaveTypeIds.ANNUAL };
   // Partial Leave Approval demo (ADR-0068): opt ANNUAL into per-date approval so a tester can actually reach
   // the feature. ANNUAL is full-day + working_days-counted, which the gate requires. The primary demo
@@ -119,17 +128,7 @@ async function main() {
     { id: leaveTypeIds.SICK, code: 'SICK' },
     { id: leaveTypeIds.HOSPITALIZATION, code: 'HOSPITALIZATION' },
   ];
-  for (const h of myPack.holidays) {
-    await owner.db
-      .insert(schema.holiday)
-      .values({ tenantId: DEV_TENANT_ID, country: 'MY', state: null, holidayDate: h.date, name: h.name });
-  }
-  // 2C (ADR-0038): state-specific holidays (sourced fixed-date subset) — only apply in their state.
-  for (const h of MY_STATE_HOLIDAYS_2026) {
-    await owner.db
-      .insert(schema.holiday)
-      .values({ tenantId: DEV_TENANT_ID, country: 'MY', state: h.state ?? null, holidayDate: h.date, name: h.name });
-  }
+  // (National + state public holidays are seeded by seedTenantCatalogs above — see the shared-layer note.)
   // Holiday grouping: one illustrative multi-state group (no holiday re-tagging). Assigned to a demo
   // employee below so the group path resolving e.g. Sarawak Day / Pesta Kaamatan is demonstrable.
   const [eastMalaysiaGroup] = await owner.db
@@ -147,28 +146,53 @@ async function main() {
     .insert(schema.location)
     .values({ tenantId: DEV_TENANT_ID, companyId: company.id, code: 'KCH', name: 'Kuching Office', country: 'MY', state: 'Sarawak' })
     .returning({ id: schema.location.id });
-  // The dev admin is a real principal in the audit trail: link it to a person so its actions
-  // resolve to a name ("HR Admin") instead of the bare actor type. No employment, so it never
-  // appears in People / org / headcount — it's a back-office identity, not an employee.
-  const [adminPerson] = await owner.db
-    .insert(schema.person)
-    .values({ tenantId: DEV_TENANT_ID, fullName: 'HR Admin', primaryEmail: 'admin@demo.test' })
-    .returning({ id: schema.person.id });
-  await owner.db
-    .insert(schema.appUser)
-    .values({ id: DEV_ADMIN_USER_ID, tenantId: DEV_TENANT_ID, workosUserId: 'user_dev_admin', personId: adminPerson.id });
-  await owner.db
-    .insert(schema.roleAssignment)
-    .values({ tenantId: DEV_TENANT_ID, appUserId: DEV_ADMIN_USER_ID, role: 'hr_admin', companyId: null });
+  // The dev admin is a real principal in the audit trail: link it to a person so its actions resolve to
+  // a name ("HR Admin") instead of the bare actor type. No employment, so it never appears in People /
+  // org / headcount — it's a back-office identity, not an employee.
+  //
+  // Built by the SHARED createAdminChain (db/provision.ts), the same function that makes a real
+  // customer's first admin — so the two cannot drift on the person → app_user → grant shape. Two
+  // demo-only pins: the fixed app_user id the dev switcher resolves, and the 'user_dev_admin'
+  // placeholder subject. And withRoleAssignment: TRUE, which is the inverse of provisioning — the demo
+  // mints no invitation, so nothing else would ever grant the role, whereas a provisioned admin gets
+  // exactly one grant from app.consume_invitation when they activate.
+  await owner.db.transaction(async (tx) => {
+    await createAdminChain(tx, DEV_TENANT_ID, {
+      email: 'admin@demo.test',
+      fullName: 'HR Admin',
+      appUserId: DEV_ADMIN_USER_ID,
+      workosUserId: 'user_dev_admin',
+      withRoleAssignment: true,
+    });
+  });
+
+  // ── The operator identity (0295) ──────────────────────────────────────────────────────────────
+  // A SEPARATE login from the HR admin above, on purpose: operator is an installation tier, not a
+  // customer role, and bundling the two grants onto one identity would make it impossible to see in the
+  // dev switcher whether a screen is reachable as a plain admin. It gets no employment and no hr_admin
+  // grant, so it reaches /operator and nothing else.
+  //
+  // WITHHELD ON THE GATED DEMO. That deployment runs ALLOW_DEMO_SESSION=true with the switcher live
+  // behind SHARE_PASSWORD, so a seeded operator identity would be one dropdown click away for any
+  // consultant kicking the tyres. core/operator.ts refuses on that deployment anyway
+  // (isDemoDeployment) — this is the second lock, not the only one.
+  const operatorGranted = process.env.ALLOW_DEMO_SESSION !== 'true';
+  await owner.db.transaction(async (tx) => {
+    await createAdminChain(tx, DEV_TENANT_ID, {
+      email: 'operator@demo.test',
+      fullName: 'Platform Operator',
+      appUserId: DEV_OPERATOR_USER_ID,
+      workosUserId: 'user_dev_operator',
+      withRoleAssignment: false,
+    });
+    if (operatorGranted) {
+      await tx
+        .insert(schema.roleAssignment)
+        .values({ tenantId: DEV_TENANT_ID, appUserId: DEV_OPERATOR_USER_ID, role: 'operator', companyId: null });
+    }
+  });
 
   const admin: SessionContext = { tenantId: DEV_TENANT_ID, userId: DEV_ADMIN_USER_ID, roles: ['hr_admin'] };
-  // ADR-0069: seed the default Payroll Cycle catalog per company (the 4 behavioural cycles + 2 off_cycle
-  // presets the wizard offered before this feature) so the "Payroll Cycle" dropdown is populated on demo.
-  await seedPayrollCycleCatalog(admin, company.id);
-  await seedPayrollCycleCatalog(admin, holding.id);
-  // 7d309da7: seed the default Personnel-profile dropdown catalogs (religion / race / nationality / state /
-  // country / relationship) so the Profile-tab selects are populated on demo. Idempotent + tenant-scoped.
-  await seedProfileOptions(admin);
   // ADR-0040 (2D): demo ANNUAL *accrues monthly* (earned), not as a lump on hire — so balances grow
   // through the year. Entitlement is max(EA floor 8, policy 12) = 12 → 1 day/month; the hire grant skips
   // earned types and accrueEarnedLeave (run after hiring, below) tops each employee up to today's share.
@@ -347,9 +371,9 @@ async function main() {
   await setCompensation(admin, { employmentId: nurul.employmentId, basicSalary: 3200, effectiveFrom: '2026-06-04' });
   await setCompensation(admin, { employmentId: weijie.employmentId, basicSalary: 3800, effectiveFrom: '2026-05-22' });
 
-  // Attendance policy + live demo punches around the real "today" (ADR-0011: hours/OT derive
-  // from the schedule; Aisyah stays rowless today so the approved-leave context pill shows).
-  await owner.db.insert(schema.attendancePolicy).values({ tenantId: DEV_TENANT_ID, companyId: company.id });
+  // Live demo punches around the real "today" (ADR-0011: hours/OT derive from the schedule; Aisyah
+  // stays rowless today so the approved-leave context pill shows). The attendance policy this reads is
+  // seeded by seedCompanyCatalogs above — same default 09:00-18:00 Mon-Fri row as before.
   const seedToday = new Date().toISOString().slice(0, 10);
   const seedYesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
   // Yesterday: two completed days — Arjun with 90m OT, Wei Jie a clean standard day.

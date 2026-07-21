@@ -28,7 +28,11 @@ import { roleEnum } from '../db/schema';
 
 export type Role = (typeof roleEnum.enumValues)[number];
 
-/** The 6 role identities, in a stable display order (rows of the grid). */
+/**
+ * The role identities, in a stable display order (rows of the grid). Must stay EXACTLY the roleEnum set
+ * — test/function-access.test.ts pins that, so a new role forces a new grid row rather than silently
+ * vanishing from a screen whose whole job is transparency.
+ */
 export const MATRIX_ROLES: readonly Role[] = [
   'employee',
   'manager',
@@ -36,6 +40,11 @@ export const MATRIX_ROLES: readonly Role[] = [
   'super_admin',
   'payroll_partner',
   'performance_comp_partner',
+  // Operator (0294) — the installation tier, listed here for completeness of the transparency grid.
+  // It reaches no requireAdmin/scopedAdmin screen (it is not an admin role), and the only screen it
+  // DOES reach — /operator — is gated in-page and therefore not a matrix column, exactly like
+  // /admin/scheduled-actions.
+  'operator',
 ] as const;
 
 /** The page guard each screen is gated by — the single source of the access truth for that screen. */

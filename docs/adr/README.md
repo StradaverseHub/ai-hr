@@ -33,5 +33,6 @@ decision, add a new ADR that supersedes the old one.
 | [0056](0056-individual-payroll-transaction.md) | Individual (one-off) payroll transactions: dated, batch-scoped ledger (5 kinds), draft-gated, RLS | Accepted |
 | [0062](0062-maternity-allowance-s37.md) | Maternity: separate the unconditional 98-day leave from the conditional paid allowance (EA s.37 qualifying-service + 5th-child); per-request override drives unpaid | Accepted |
 | [0070](0070-clocking-locations-geofencing.md) | Clocking locations & geofencing: separate `clocking_location` catalog, tenant-catalog RLS, blocked attempts as domain events (not attendance rows) | Accepted |
+| [0079](0079-operator-console-tenant-provisioning.md) | Operator console: request-queue tenant provisioning (owner-role runner), `operator` tier, reveal-once activation link | Accepted |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).

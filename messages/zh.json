@@ -4085,7 +4085,8 @@
         "hr_admin": "HR 管理员",
         "super_admin": "超级管理员",
         "payroll_partner": "薪资合作伙伴",
-        "performance_comp_partner": "绩效与薪酬合作伙伴"
+        "performance_comp_partner": "绩效与薪酬合作伙伴",
+        "operator": "运营方"
       },
       "inviteTitle": "邀请用户",
       "inviteHint": "新账户仅通过邀请创建——不设公开注册。受邀者会收到一次性电子邮件链接以设置密码。",
@@ -6652,7 +6653,8 @@
       "hr_admin": "HR 管理员",
       "super_admin": "超级管理员",
       "payroll_partner": "薪资合作伙伴",
-      "performance_comp_partner": "绩效/薪酬合作伙伴"
+      "performance_comp_partner": "绩效/薪酬合作伙伴",
+      "operator": "运营方"
     }
   },
   "commandBar": {
@@ -6870,6 +6872,45 @@
         "name": "结转假期到期",
         "description": "作废已过到期日的结转假期天数。"
       }
+    }
+  },
+  "operator": {
+    "title": "客户",
+    "description": "创建新客户并签发其首位管理员登录凭证。",
+    "newCustomer": "新客户",
+    "customerName": "客户名称",
+    "customerNamePlaceholder": "例如 Nusantara Foods Sdn Bhd",
+    "adminEmail": "首位管理员邮箱",
+    "adminEmailPlaceholder": "name@company.com",
+    "create": "创建客户",
+    "formNote": "设置在后台运行，通常一分钟内完成。本页面会自动更新。",
+    "requestsTitle": "请求",
+    "empty": "尚未创建任何客户。",
+    "runningNote": "正在设置。通常不到一分钟。",
+    "failedAt": "失败于",
+    "retry": "重试",
+    "reveal": "显示激活链接",
+    "revealWarning": "该链接仅显示一次。请在离开本页前复制。",
+    "copy": "复制",
+    "copied": "已复制",
+    "shownOnce": "此链接不会再次显示。如果丢失，请签发新链接。",
+    "alreadyRevealed": "此链接已显示过。请签发新链接以获取新的链接。",
+    "reissue": "签发新链接",
+    "reissueNote": "当前链接将失效。链接丢失或已过期时使用。",
+    "reissuePending": "已请求新链接，稍后将显示在此处。",
+    "status": {
+      "pending": "排队中",
+      "running": "设置中",
+      "failed": "失败",
+      "done": "就绪"
+    },
+    "steps": {
+      "tenant": "创建客户账户",
+      "company": "创建公司",
+      "catalogs": "添加休假类型、公共假期和薪资设置",
+      "guides": "添加帮助指南",
+      "admin": "创建管理员登录",
+      "invitation": "签发激活链接"
     }
   }
 }

@@ -4085,7 +4085,8 @@
         "hr_admin": "hr admin",
         "super_admin": "super admin",
         "payroll_partner": "Đối tác Bảng lương",
-        "performance_comp_partner": "Đối tác Hiệu suất & Lương thưởng"
+        "performance_comp_partner": "Đối tác Hiệu suất & Lương thưởng",
+        "operator": "Người vận hành"
       },
       "inviteTitle": "Mời người dùng",
       "inviteHint": "Tài khoản mới chỉ được tạo bằng lời mời — không có đăng ký mở. Người đó sẽ nhận được liên kết email dùng một lần để đặt mật khẩu.",
@@ -6652,7 +6653,8 @@
       "hr_admin": "Quản trị HR",
       "super_admin": "Quản trị viên cấp cao",
       "payroll_partner": "Đối tác Lương",
-      "performance_comp_partner": "Đối tác Hiệu suất/Lương thưởng"
+      "performance_comp_partner": "Đối tác Hiệu suất/Lương thưởng",
+      "operator": "Người vận hành"
     }
   },
   "commandBar": {
@@ -6870,6 +6872,45 @@
         "name": "Hết hạn phép chuyển tiếp",
         "description": "Hủy số ngày chuyển tiếp đã qua ngày hết hạn."
       }
+    }
+  },
+  "operator": {
+    "title": "Khách hàng",
+    "description": "Tạo khách hàng mới và cấp thông tin đăng nhập cho quản trị viên đầu tiên của họ.",
+    "newCustomer": "Khách hàng mới",
+    "customerName": "Tên khách hàng",
+    "customerNamePlaceholder": "ví dụ Nusantara Foods Sdn Bhd",
+    "adminEmail": "Email quản trị viên đầu tiên",
+    "adminEmailPlaceholder": "ten@congty.com",
+    "create": "Tạo khách hàng",
+    "formNote": "Việc thiết lập chạy nền và thường hoàn tất trong vòng một phút. Trang này sẽ tự cập nhật.",
+    "requestsTitle": "Yêu cầu",
+    "empty": "Chưa có khách hàng nào được tạo.",
+    "runningNote": "Đang thiết lập. Thường mất chưa đến một phút.",
+    "failedAt": "Thất bại tại",
+    "retry": "Thử lại",
+    "reveal": "Hiện liên kết kích hoạt",
+    "revealWarning": "Liên kết chỉ hiển thị một lần. Hãy sao chép trước khi rời khỏi trang này.",
+    "copy": "Sao chép",
+    "copied": "Đã sao chép",
+    "shownOnce": "Liên kết này sẽ không hiển thị lại. Nếu mất, hãy cấp liên kết mới.",
+    "alreadyRevealed": "Liên kết này đã được hiển thị. Hãy cấp liên kết mới để nhận liên kết khác.",
+    "reissue": "Cấp liên kết mới",
+    "reissueNote": "Liên kết hiện tại sẽ ngừng hoạt động. Dùng khi liên kết bị mất hoặc đã hết hạn.",
+    "reissuePending": "Đã yêu cầu liên kết mới và sẽ sớm xuất hiện ở đây.",
+    "status": {
+      "pending": "Đang chờ",
+      "running": "Đang thiết lập",
+      "failed": "Thất bại",
+      "done": "Sẵn sàng"
+    },
+    "steps": {
+      "tenant": "Tạo tài khoản khách hàng",
+      "company": "Tạo công ty",
+      "catalogs": "Thêm loại nghỉ phép, ngày lễ và cài đặt lương",
+      "guides": "Thêm hướng dẫn trợ giúp",
+      "admin": "Tạo tài khoản quản trị viên",
+      "invitation": "Cấp liên kết kích hoạt"
     }
   }
 }

@@ -99,9 +99,23 @@ export const DEFAULT_PAYROLL_CYCLES: { name: string; runType: PayrollCycleRunTyp
 /**
  * Idempotently seed the default cycle catalog for one company (by name). Safe to re-run: an existing live
  * name is left untouched. Appends a single catalog-level event. Admin-only via RLS.
+ *
+ * TRANSACTION INJECTION (`handle`) — added for tenant provisioning (db/provision.ts), following the
+ * seedGuides precedent of taking a caller-supplied handle:
+ *
+ *   • omitted (every pre-existing caller)  → unchanged: opens its own withTenant transaction on the app
+ *     singleton, with RLS enforcing admin-only writes exactly as before. Zero behaviour change.
+ *   • supplied                             → runs INSIDE the caller's transaction, on the caller's
+ *     connection and role.
+ *
+ * The second mode is not a convenience, it is a correctness requirement. Provisioning a customer must be
+ * all-or-nothing, which means every row it writes has to land in ONE transaction on the OWNER connection.
+ * Bound to the app singleton as it was, this function opened a separate transaction on a different
+ * connection and role — it could not join the owner's transaction and could not even see its uncommitted
+ * company row, so the FK insert below would fail. Hence the parameter rather than a copied seeder.
  */
-export function seedPayrollCycleCatalog(ctx: SessionContext, companyId: string) {
-  return withTenant(ctx, async (tx) => {
+export function seedPayrollCycleCatalog(ctx: SessionContext, companyId: string, handle?: Tx) {
+  const run = async (tx: Tx) => {
     const existing = await tx
       .select({ name: payrollCycle.name })
       .from(payrollCycle)
@@ -130,7 +144,8 @@ export function seedPayrollCycleCatalog(ctx: SessionContext, companyId: string) 
       payload: { total: DEFAULT_PAYROLL_CYCLES.length, created },
     });
     return { total: DEFAULT_PAYROLL_CYCLES.length, created };
-  });
+  };
+  return handle ? run(handle) : withTenant(ctx, run);
 }
 
 export type PayrollCycleRow = {
