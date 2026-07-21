@@ -10,7 +10,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createDb } from './client';
+import { createDb, type Tx } from './client';
 import { kbDocument } from './schema';
 import type { KbAudience } from '../core/knowledge-base';
 import { locales, defaultLocale } from '../i18n/config';
@@ -57,9 +57,16 @@ export function loadGuides(): { meta: GuideMeta; body: string; i18n: GuideI18n }
     });
 }
 
-/** Upsert all guide articles for one tenant. `db` must be an owner connection (RLS-bypassing). */
+/**
+ * Upsert all guide articles for one tenant. `db` must be an owner handle (RLS-bypassing).
+ *
+ * Accepts an open TRANSACTION as well as a connection, so tenant provisioning (db/provision.ts) can
+ * seed the guides inside its single all-or-nothing owner transaction rather than committing them
+ * separately — a customer whose creation rolled back must not be left holding a knowledge base.
+ * Existing callers (db/seed.ts, pnpm kb:seed) pass a plain db handle and are unaffected.
+ */
 export async function seedGuides(
-  db: ReturnType<typeof createDb>['db'],
+  db: ReturnType<typeof createDb>['db'] | Tx,
   tenantId: string,
 ): Promise<number> {
   const guides = loadGuides();

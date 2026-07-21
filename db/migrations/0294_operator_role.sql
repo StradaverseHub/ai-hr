@@ -1,0 +1,28 @@
+-- Operator tier, part 1 of 2: THE ENUM VALUE, AND NOTHING ELSE.
+--
+-- WHY THIS FILE CONTAINS ONE STATEMENT
+-- -----------------------------------
+-- drizzle wraps each migration file in ONE transaction. Postgres lets `ALTER TYPE ... ADD VALUE` run
+-- inside a transaction block, but the newly added label CANNOT BE USED (compared against, cast to, or
+-- inserted) in that same transaction — it is not visible to the snapshot that added it. So every
+-- statement that mentions 'operator' as a role value has to live in a LATER file (0295), which runs in
+-- its own transaction after this one has committed.
+--
+-- 0099 took the opposite route on purpose and documented why (its header, lines 11-15): it added two
+-- values and then referenced them ONLY as text literals through app.has_role_for(text), never as ::role
+-- casts, so co-locating was safe there. We cannot do that here because 0295 has to tighten
+-- role_assignment_write, a policy on a column whose type IS the enum. 0295 therefore compares
+-- `role::text = 'operator'` (cast the COLUMN to text, never the LITERAL to the enum) — the same
+-- text-literal discipline, applied across a transaction boundary rather than inside one.
+--
+-- WHAT 'operator' IS
+-- ------------------
+-- The installation-level identity that provisions new customers, distinct from every CUSTOMER role.
+-- It is deliberately NOT an admin role: app.is_admin() / app.is_group_admin() do not admit it and
+-- lib/authz isAdmin() does not either, so an operator reaches no customer admin screen. Conversely a
+-- customer's group admin can never mint one — 0295 removes that path at the policy level, and
+-- core/auth.ts inviteUser() has never listed it among the invitable roles. Operator grants are
+-- inserted by ai_hr_owner only (the seed for dev, by hand on a deployment).
+--
+-- IF THIS MIGRATION IS EVER RE-RUN: IF NOT EXISTS makes it a no-op rather than an error.
+ALTER TYPE "role" ADD VALUE IF NOT EXISTS 'operator';

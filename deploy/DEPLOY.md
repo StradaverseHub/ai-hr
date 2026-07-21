@@ -177,6 +177,43 @@ A reboot spanning a trigger means cron skips that run — it does not catch up. 
 jobs that is worth guarding with systemd timers (`OnCalendar` + `Persistent=true`) instead, which needs
 root and additional `aihr-sudoers` entries for `daemon-reload` and `enable`.
 
+### The provisioning runner (REQUIRED if you use the operator console)
+
+`scripts/provision-runner.ts` is the out-of-band half of the `/operator` console (ADR-0079). Without it,
+clicking **Create customer** queues a request that stays "Queued" forever — the web tier deliberately
+cannot provision a tenant itself, and that is the point, not a limitation to work around.
+
+```cron
+* * * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/provision-runner.ts >> /home/ubuntu/aihr-cron-logs/provision.log 2>&1
+```
+
+**Env contract: `MIGRATION_DATABASE_URL` only.** It runs as the table owner, which is exactly why it is a
+separate process — the credentials that can create a tenant are kept out of the application. It does not
+read `DATABASE_URL`; no app-role service is called. `NEXT_PUBLIC_APP_URL` is read if set, to build an
+absolute activation URL (without it the link is stored path-only).
+
+One minute is the intended cadence and one request is handled per tick; a new customer is therefore ready
+within about a minute of the click. Overlapping ticks are safe (`FOR UPDATE SKIP LOCKED` plus a status
+recheck), and a runner killed mid-flight is reclaimed after 10 minutes rather than leaving a stuck row.
+
+The log is safe to keep: the activation URL is **never** written to it.
+
+Verify:
+
+```bash
+tail -f /home/ubuntu/aihr-cron-logs/provision.log   # "· nothing to do" once a minute when idle
+```
+
+Grant the operator role by hand, as the DB owner — there is deliberately no UI or invitation path for it
+(a customer's group admin cannot mint one; migration 0295 forbids it):
+
+```sql
+INSERT INTO role_assignment (tenant_id, app_user_id, company_id, role)
+VALUES ('<tenant-uuid>', '<app-user-uuid>', NULL, 'operator');
+```
+
+Note: **suspending or deleting a customer is not implemented** (ADR-0079, deferred).
+
 ## 6. Open the firewall + share
 
 ```bash

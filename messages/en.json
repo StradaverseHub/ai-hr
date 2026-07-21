@@ -4084,7 +4084,8 @@
         "hr_admin": "hr admin",
         "super_admin": "super admin",
         "payroll_partner": "Payroll Partner",
-        "performance_comp_partner": "Performance & Comp Partner"
+        "performance_comp_partner": "Performance & Comp Partner",
+        "operator": "Operator"
       },
       "inviteTitle": "Invite a user",
       "inviteHint": "New accounts are created by invitation only — there is no open sign-up. The person receives a one-time email link to set their password.",
@@ -6651,7 +6652,8 @@
       "hr_admin": "HR Admin",
       "super_admin": "Super Admin",
       "payroll_partner": "Payroll Partner",
-      "performance_comp_partner": "Perf/Comp Partner"
+      "performance_comp_partner": "Perf/Comp Partner",
+      "operator": "Operator"
     }
   },
   "commandBar": {
@@ -6869,6 +6871,45 @@
         "name": "Carried-forward leave expiry",
         "description": "Forfeits carried-forward days whose expiry date has passed."
       }
+    }
+  },
+  "operator": {
+    "title": "Customers",
+    "description": "Create a new customer and issue their first administrator login.",
+    "newCustomer": "New customer",
+    "customerName": "Customer name",
+    "customerNamePlaceholder": "e.g. Nusantara Foods Sdn Bhd",
+    "adminEmail": "First administrator email",
+    "adminEmailPlaceholder": "name@company.com",
+    "create": "Create customer",
+    "formNote": "Setup runs in the background and usually finishes within a minute. This page updates itself.",
+    "requestsTitle": "Requests",
+    "empty": "No customers have been created yet.",
+    "runningNote": "Setting up. This normally takes under a minute.",
+    "failedAt": "Failed at",
+    "retry": "Try again",
+    "reveal": "Reveal activation link",
+    "revealWarning": "The link is shown once. Copy it before leaving this page.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "shownOnce": "This link will not be shown again. If you lose it, issue a new one.",
+    "alreadyRevealed": "This link has already been revealed. Issue a new one to get a fresh link.",
+    "reissue": "Issue a new link",
+    "reissueNote": "The current link stops working. Use this if the link was lost or has expired.",
+    "reissuePending": "A new link has been requested and will appear here shortly.",
+    "status": {
+      "pending": "Queued",
+      "running": "Setting up",
+      "failed": "Failed",
+      "done": "Ready"
+    },
+    "steps": {
+      "tenant": "Create the customer account",
+      "company": "Create the company",
+      "catalogs": "Add leave types, holidays and payroll settings",
+      "guides": "Add the help guides",
+      "admin": "Create the administrator login",
+      "invitation": "Issue the activation link"
     }
   }
 }

@@ -87,8 +87,12 @@ describe('function-access registry (lib/permissions)', () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it('access is guard-derived and honest: admin/scopedAdmin → 2 admin roles, scopedSession → all 6', () => {
-    const guardExpect: Record<Guard, number> = { requireAdmin: 2, scopedAdmin: 2, scopedSession: 6 };
+  // The scopedSession count tracks MATRIX_ROLES (that guard gates nothing at the page boundary, so every
+  // authenticated role reaches it) and moved 6 → 7 when the operator tier was added in 0294. The two
+  // ADMIN counts stay pinned at 2, which is the assertion that matters: operator is NOT an admin role,
+  // so the loop below now also proves an operator reaches no requireAdmin/scopedAdmin screen.
+  it('access is guard-derived and honest: admin/scopedAdmin → 2 admin roles, scopedSession → all 7', () => {
+    const guardExpect: Record<Guard, number> = { requireAdmin: 2, scopedAdmin: 2, scopedSession: 7 };
     for (const g of Object.keys(guardExpect) as Guard[]) {
       expect(rolesForGuard(g).size, g).toBe(guardExpect[g]);
     }

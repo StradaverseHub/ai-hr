@@ -259,8 +259,11 @@ export async function listAllProfileOptions(
  * index — a re-run inserts nothing. Existing tenants are seeded by the migration; this covers new tenants /
  * tests. Appends a single catalog event ONLY when it actually created rows (a no-op re-seed is silent).
  */
-export function seedProfileOptions(ctx: SessionContext): Promise<{ total: number; created: number }> {
-  return withTenant(ctx, async (tx) => {
+export function seedProfileOptions(
+  ctx: SessionContext,
+  handle?: Tx,
+): Promise<{ total: number; created: number }> {
+  const run = async (tx: Tx) => {
     const inserted = await tx
       .insert(profileOption)
       .values(
@@ -285,7 +288,8 @@ export function seedProfileOptions(ctx: SessionContext): Promise<{ total: number
       });
     }
     return { total: DEFAULT_PROFILE_OPTIONS.length, created: inserted.length };
-  });
+  };
+  return handle ? run(handle) : withTenant(ctx, run);
 }
 
 export async function createProfileOption(

@@ -55,6 +55,12 @@ export const roleEnum = pgEnum('role', [
   'super_admin',
   'payroll_partner',
   'performance_comp_partner',
+  // Operator tier (0294) — the INSTALLATION-level identity that provisions new customers. Not a
+  // customer role and NOT an admin role: isAdmin()/is_group_admin() do not admit it, so it reaches no
+  // customer admin screen. It cannot be granted from the web tier at all — 0295's role_assignment_write
+  // policy forbids it for every branch, and core/auth.ts inviteUser() does not list it as invitable.
+  // Only ai_hr_owner (seed / by hand on a deployment) creates an operator grant.
+  'operator',
 ]);
 export const employmentTypeEnum = pgEnum('employment_type', [
   'full_time',
@@ -5062,4 +5068,44 @@ export const jobRun = pgTable(
     error: text('error'),
   },
   (t) => [index('job_run_key_ran_at_idx').on(t.jobKey, t.ranAt.desc())],
+);
+
+/**
+ * tenant_provision_request (0295) — the operator console's REQUEST QUEUE for creating a new customer.
+ *
+ * GLOBAL, no tenant_id scope column (the job_run precedent): a request exists BEFORE the tenant it
+ * creates, so it cannot be scoped by one. `tenantId` below is the RESULT of a successful run.
+ *
+ * ⚠ `activationUrl` IS NOT SELECTABLE BY THE APP ROLE. 0295 grants column-limited SELECT that omits it
+ * precisely so "the link is revealed exactly once" is a database privilege rather than app-layer
+ * discipline. Two consequences for anyone writing a query here:
+ *   1. An unqualified `.select()` on this table FAILS at runtime (drizzle expands it to every column,
+ *      including the withheld one). Always name the columns — see core/operator.ts.
+ *   2. The ONLY way to obtain the URL is app.claim_activation_url(), which nulls it in the same
+ *      statement that returns it. The column is declared here so the OWNER-role runner can write it.
+ */
+export const tenantProvisionRequest = pgTable(
+  'tenant_provision_request',
+  {
+    id: id(),
+    customerName: text('customer_name').notNull(),
+    adminEmail: text('admin_email').notNull(),
+    // 'pending' | 'running' | 'failed' | 'done' — plain text, not a pgEnum (the 0275 widening lesson).
+    // The vocabulary is owned by core/operator.ts ProvisionStatus.
+    status: text('status').notNull().default('pending'),
+    // Written ONLY on failure, from the code-side PROVISION_STEPS descriptors.
+    currentStep: text('current_step'),
+    error: text('error'),
+    tenantId: uuid('tenant_id').references(() => tenant.id),
+    /** See the ⚠ above — withheld from the app role's SELECT grant on purpose. */
+    activationUrl: text('activation_url'),
+    /** The RUNNER's claim stamp (status → 'running'), read by the stale-reclaim sweep. */
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    reissueRequestedAt: timestamp('reissue_requested_at', { withTimezone: true }),
+    /** The operator's app_user id. No FK by design — a global row must not depend on a tenant table. */
+    requestedBy: uuid('requested_by'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('tenant_provision_request_status_idx').on(t.status, t.createdAt)],
 );

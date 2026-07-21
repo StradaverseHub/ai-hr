@@ -4084,7 +4084,8 @@
         "hr_admin": "hr admin",
         "super_admin": "super admin",
         "payroll_partner": "Rakan Penggajian",
-        "performance_comp_partner": "Rakan Prestasi & Pampasan"
+        "performance_comp_partner": "Rakan Prestasi & Pampasan",
+        "operator": "Operator"
       },
       "inviteTitle": "Jemput pengguna",
       "inviteHint": "Akaun baharu dicipta melalui jemputan sahaja — tiada pendaftaran terbuka. Orang itu menerima pautan e-mel sekali guna untuk menetapkan kata laluan mereka.",
@@ -6651,7 +6652,8 @@
       "hr_admin": "Pentadbir HR",
       "super_admin": "Pentadbir Super",
       "payroll_partner": "Rakan Gaji",
-      "performance_comp_partner": "Rakan Prestasi/Pampasan"
+      "performance_comp_partner": "Rakan Prestasi/Pampasan",
+      "operator": "Operator"
     }
   },
   "commandBar": {
@@ -6869,6 +6871,45 @@
         "name": "Luput cuti bawa ke hadapan",
         "description": "Melucutkan hari bawa ke hadapan yang tarikh luputnya telah berlalu."
       }
+    }
+  },
+  "operator": {
+    "title": "Pelanggan",
+    "description": "Cipta pelanggan baharu dan keluarkan log masuk pentadbir pertama mereka.",
+    "newCustomer": "Pelanggan baharu",
+    "customerName": "Nama pelanggan",
+    "customerNamePlaceholder": "cth. Nusantara Foods Sdn Bhd",
+    "adminEmail": "E-mel pentadbir pertama",
+    "adminEmailPlaceholder": "nama@syarikat.com",
+    "create": "Cipta pelanggan",
+    "formNote": "Persediaan berjalan di latar belakang dan biasanya siap dalam satu minit. Halaman ini akan dikemas kini sendiri.",
+    "requestsTitle": "Permintaan",
+    "empty": "Tiada pelanggan dicipta lagi.",
+    "runningNote": "Sedang disediakan. Biasanya mengambil masa kurang satu minit.",
+    "failedAt": "Gagal pada",
+    "retry": "Cuba lagi",
+    "reveal": "Papar pautan pengaktifan",
+    "revealWarning": "Pautan ini dipaparkan sekali sahaja. Salin sebelum meninggalkan halaman ini.",
+    "copy": "Salin",
+    "copied": "Disalin",
+    "shownOnce": "Pautan ini tidak akan dipaparkan lagi. Jika hilang, keluarkan pautan baharu.",
+    "alreadyRevealed": "Pautan ini telah dipaparkan. Keluarkan pautan baharu untuk mendapatkan pautan segar.",
+    "reissue": "Keluarkan pautan baharu",
+    "reissueNote": "Pautan semasa akan berhenti berfungsi. Gunakan ini jika pautan hilang atau telah luput.",
+    "reissuePending": "Pautan baharu telah diminta dan akan muncul di sini sebentar lagi.",
+    "status": {
+      "pending": "Dalam giliran",
+      "running": "Sedang disediakan",
+      "failed": "Gagal",
+      "done": "Sedia"
+    },
+    "steps": {
+      "tenant": "Cipta akaun pelanggan",
+      "company": "Cipta syarikat",
+      "catalogs": "Tambah jenis cuti, cuti umum dan tetapan penggajian",
+      "guides": "Tambah panduan bantuan",
+      "admin": "Cipta log masuk pentadbir",
+      "invitation": "Keluarkan pautan pengaktifan"
     }
   }
 }

@@ -1709,6 +1709,20 @@
       "when": 1781862393000,
       "tag": "0293_dependent_education_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 294,
+      "version": "7",
+      "when": 1781862394000,
+      "tag": "0294_operator_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 295,
+      "version": "7",
+      "when": 1781862395000,
+      "tag": "0295_operator_console",
+      "breakpoints": true
     }
   ]
 }
