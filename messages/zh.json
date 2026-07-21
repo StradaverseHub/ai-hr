@@ -1267,7 +1267,8 @@
     "selfCancelDialogDescription": "这将撤回您待审批的请假申请，此操作无法撤销。",
     "selfCancelKeep": "保留",
     "selfCancelConfirm": "取消请假",
-    "selfCancelPillAffordanceLabel": "取消此请假"
+    "selfCancelPillAffordanceLabel": "取消此请假",
+    "approvalPillAffordanceLabel": "前往审批"
   },
   "attendance": {
     "title": "考勤",
@@ -4692,10 +4693,12 @@
   "components": {
     "plannedAbsences": {
       "title": "请假日历",
-      "viewAll": "查看全部",
       "viewMy": "我的日历",
       "viewTeam": "团队日历",
       "viewSwitchLabel": "请假日历视图",
+      "viewWeek": "周视图",
+      "viewMonth": "月视图",
+      "rangeSwitchLabel": "请假日历范围",
       "empty": "范围内无员工。",
       "employees": "员工",
       "pillTitle": "{type} · {start} 至 {end} · {status}",
@@ -4711,6 +4714,7 @@
       "next": "下一{unit}",
       "unitDay": "天",
       "unitWeek": "周",
+      "unitMonth": "月",
       "dateLabel": "日期",
       "windowStartLabel": "窗口开始日期",
       "today": "今天"

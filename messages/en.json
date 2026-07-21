@@ -1267,7 +1267,8 @@
     "selfCancelDialogDescription": "This will withdraw your pending leave application. This cannot be undone.",
     "selfCancelKeep": "Keep",
     "selfCancelConfirm": "Cancel leave",
-    "selfCancelPillAffordanceLabel": "Cancel this leave"
+    "selfCancelPillAffordanceLabel": "Cancel this leave",
+    "approvalPillAffordanceLabel": "Go to approval"
   },
   "attendance": {
     "title": "Attendance",
@@ -4692,10 +4693,12 @@
   "components": {
     "plannedAbsences": {
       "title": "Leave Calendar",
-      "viewAll": "View all",
       "viewMy": "My Calendar",
       "viewTeam": "Team Calendar",
       "viewSwitchLabel": "Leave calendar view",
+      "viewWeek": "Week View",
+      "viewMonth": "Month View",
+      "rangeSwitchLabel": "Leave calendar range",
       "empty": "No employees in scope.",
       "employees": "Employees",
       "pillTitle": "{type} · {start} to {end} · {status}",
@@ -4711,6 +4714,7 @@
       "next": "Next {unit}",
       "unitDay": "day",
       "unitWeek": "week",
+      "unitMonth": "month",
       "dateLabel": "Date",
       "windowStartLabel": "Window start date",
       "today": "Today"

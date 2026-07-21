@@ -1,7 +1,8 @@
 'use client';
 
 import { Fragment, useState } from 'react';
-import { CheckCircle2, ChevronDown, Clock, XCircle } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowUpRight, CheckCircle2, ChevronDown, Clock, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { styleFor } from '@/components/planned-absences';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
@@ -54,6 +55,9 @@ export type GridLeave = {
   /** item c9a19e34: true when the viewer may self-withdraw THIS pending own pill (gated server-side:
    *  own + pending + plain + non-EL/REPLACEMENT). */
   selfCancelEligible?: boolean;
+  /** 8cb7b089: hash deep-link into the matching /approvals section for a pill awaiting the viewer's
+   *  decision (built server-side from APPROVAL_SECTION_ID); null ⇒ no arrow renders. */
+  approvalHref?: string | null;
 };
 export type GridRow = { id: string; name: string; employeeCode?: string | null; role: string | null; leaves: GridLeave[] };
 export type GridDay = { iso: string; weekday: string; dayNum: number; isWeekend: boolean };
@@ -87,6 +91,8 @@ export function PlannedAbsencesGrid({
   // item c9a19e34: the SAME cancelOwnLeaveAction the Leave page posts, for the viewer's own PENDING pill.
   selfCancelAction,
   selfCancelPillLabel,
+  // 8cb7b089: aria-label for the per-pill "go to approval" deep-link arrow.
+  approvalPillLabel,
 }: {
   rows: GridRow[];
   dayArr: GridDay[];
@@ -102,6 +108,7 @@ export function PlannedAbsencesGrid({
   adminCancelPillLabel?: string;
   selfCancelAction?: (fd: FormData) => void | Promise<void>;
   selfCancelPillLabel?: string;
+  approvalPillLabel?: string;
 }) {
   const [showAll, setShowAll] = useState(false);
   const lastIdx = days - 1;
@@ -152,8 +159,9 @@ export function PlannedAbsencesGrid({
                   {initials(emp.name)}
                 </span>
                 <div className="min-w-0">
-                  {/* Employee ID left-of-name (feedback 38668d9b) */}
-                  <EmployeeName code={emp.employeeCode} name={emp.name} className="truncate text-[13px] font-medium leading-tight" />
+                  {/* 546db76e: no Employee ID on the calendar's name column — EmployeeName without `code`
+                      renders the name alone (EmployeeCode's null-render contract), byte-identical box. */}
+                  <EmployeeName name={emp.name} className="truncate text-[13px] font-medium leading-tight" />
                   {emp.role && <div className="truncate text-xs text-muted-foreground">{emp.role}</div>}
                 </div>
               </div>
@@ -201,7 +209,10 @@ export function PlannedAbsencesGrid({
                 const showSelfCancel = !!selfCancelAction && !!l.selfCancelEligible;
                 return (
                   <div
-                    key={l.id}
+                    // 8cb7b089 (6c): a per-date-approval request expands to one pill PER contiguous approved
+                    // run, all sharing l.id — key by id+startDate so siblings can't collide now that the pill
+                    // hosts a focusable link (an unstable key could move focus unpredictably).
+                    key={`${l.id}-${l.startDate}`}
                     style={{
                       gridColumn: `${cs + 2} / ${ce + 3}`,
                       gridRow: r + 2,
@@ -292,6 +303,23 @@ export function PlannedAbsencesGrid({
                           </button>
                         }
                       />
+                    )}
+                    {/* 8cb7b089: deep-link arrow to the matching /approvals section for a pill awaiting the
+                        viewer's decision. Same trailing icon-slot vocabulary as the cancel buttons (never the
+                        whole bar — the dialogs above must keep their click targets). scroll=false: the arrival
+                        island owns scrolling. prefetch=false: the Approvals page is heavy — don't pay for it
+                        from the dashboard. NO title attr: the wrapping div's title (hourly window, c238010b)
+                        must keep winning. */}
+                    {l.approvalHref && (
+                      <Link
+                        href={l.approvalHref}
+                        prefetch={false}
+                        scroll={false}
+                        aria-label={approvalPillLabel}
+                        className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
+                      >
+                        <ArrowUpRight className="size-3.5" />
+                      </Link>
                     )}
                   </div>
                 );

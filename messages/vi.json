@@ -1267,7 +1267,8 @@
     "selfCancelDialogDescription": "Thao tác này sẽ rút lại đơn xin nghỉ đang chờ duyệt của bạn. Không thể hoàn tác.",
     "selfCancelKeep": "Giữ lại",
     "selfCancelConfirm": "Hủy nghỉ phép",
-    "selfCancelPillAffordanceLabel": "Hủy đơn nghỉ này"
+    "selfCancelPillAffordanceLabel": "Hủy đơn nghỉ này",
+    "approvalPillAffordanceLabel": "Đi đến phê duyệt"
   },
   "attendance": {
     "title": "Chấm công",
@@ -4692,10 +4693,12 @@
   "components": {
     "plannedAbsences": {
       "title": "Lịch nghỉ phép",
-      "viewAll": "Xem tất cả",
       "viewMy": "Lịch của tôi",
       "viewTeam": "Lịch nhóm",
       "viewSwitchLabel": "Chế độ xem lịch nghỉ phép",
+      "viewWeek": "Xem theo tuần",
+      "viewMonth": "Xem theo tháng",
+      "rangeSwitchLabel": "Phạm vi lịch nghỉ phép",
       "empty": "Không có nhân viên trong phạm vi.",
       "employees": "Nhân viên",
       "pillTitle": "{type} · {start} đến {end} · {status}",
@@ -4711,6 +4714,7 @@
       "next": "{unit} sau",
       "unitDay": "ngày",
       "unitWeek": "tuần",
+      "unitMonth": "tháng",
       "dateLabel": "Ngày",
       "windowStartLabel": "Ngày bắt đầu khung thời gian",
       "today": "Hôm nay"

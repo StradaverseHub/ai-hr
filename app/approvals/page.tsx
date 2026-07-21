@@ -25,7 +25,9 @@ import {
 import { ReviewDecideForm } from './review-decide-form';
 import { LeaveDateBreakdown } from './leave-date-breakdown';
 import { ApprovalsSortControl } from './sort-control';
+import { AttentionOnArrival } from './attention-on-arrival';
 import { parseApprovalSort, sortApprovalRows, type ApprovalSort } from '@/lib/approvals-sort';
+import { APPROVAL_SECTION_ID } from '@/lib/approvals-focus';
 import {
   BulkSelectionProvider,
   BulkSelectAllToggle,
@@ -147,7 +149,10 @@ export default async function ApprovalsPage({
   } satisfies { sortBy: string } & Record<ApprovalSort, string>;
 
   const [leave, leaveCancellations, corrections, travel, profileChanges, claims, resignations] = await Promise.all([
-    listLeaveRequests(s, scopeIds),
+    // 8cb7b089 pre-fix: cap the 200-row limit over PENDING rows only. Without the status filter, a pending
+    // request older than the 200 most recent rows of ANY status silently never reached this inbox — quietly
+    // incomplete before, actively misleading once calendar pills deep-link straight to this section.
+    listLeaveRequests(s, scopeIds, 200, { status: 'pending' }),
     listPendingLeaveCancellations(s, scopeIds),
     listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
     // ADR-0069 Travel Request: same inbox, same decide flow.
@@ -256,6 +261,9 @@ export default async function ApprovalsPage({
   return (
     <BulkSelectionProvider rows={bulkRows} sort={sortParam ?? ''}>
     <div className={`mx-auto max-w-5xl space-y-6${bulkRows.length > 0 ? ' pb-24' : ''}`}>
+      {/* 8cb7b089: on arrival at /approvals#approvals-leave(-cancellation) — the calendar pill deep-links —
+          scroll to, focus, and briefly highlight the target section. Renders nothing itself. */}
+      <AttentionOnArrival />
       <div data-tour="approvals-intro">
         <PageHeader
           title={t('title')}
@@ -272,7 +280,15 @@ export default async function ApprovalsPage({
       </div>
       <ErrorBanner message={error} />
 
-      <Card className="overflow-hidden" data-tour="approvals-leave">
+      {/* 8cb7b089: stable section id (from the shared APPROVAL_SECTION_ID constant — the calendar pill href
+          is built from the same source), scroll-mt for the floating shell, tabIndex so the arrival island
+          can move focus here. data-tour stays — it drives the onboarding tour. */}
+      <Card
+        id={APPROVAL_SECTION_ID.leave}
+        tabIndex={-1}
+        className="scroll-mt-24 overflow-hidden"
+        data-tour="approvals-leave"
+      >
         <SectionHeader title={t('leaveRequests')} count={pendingLeave.length} />
         {pendingLeave.length > 0 && (
           // R23: quick path to the team's planned absences, so an approver can check for clashes.
@@ -422,7 +438,7 @@ export default async function ApprovalsPage({
       {/* Partial Leave Cancellation (ADR-0065): pending employee requests to give back a subset of approved
           leave dates. Each card shows the ORIGINAL dates, the date(s) to cancel (highlighted), the remaining
           dates, days, and reason, with Approve/Reject. Self-requests are excluded above (self-approval ban). */}
-      <Card className="overflow-hidden">
+      <Card id={APPROVAL_SECTION_ID.leaveCancellation} tabIndex={-1} className="scroll-mt-24 overflow-hidden">
         <SectionHeader title={t('leaveCancellationTitle')} count={pendingCancellations.length} />
         {pendingCancellations.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingCancellations')}</p>

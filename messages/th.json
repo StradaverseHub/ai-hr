@@ -1267,7 +1267,8 @@
     "selfCancelDialogDescription": "การดำเนินการนี้จะถอนใบลาที่รออนุมัติของคุณ และไม่สามารถย้อนกลับได้",
     "selfCancelKeep": "เก็บไว้",
     "selfCancelConfirm": "ยกเลิกการลา",
-    "selfCancelPillAffordanceLabel": "ยกเลิกการลานี้"
+    "selfCancelPillAffordanceLabel": "ยกเลิกการลานี้",
+    "approvalPillAffordanceLabel": "ไปที่การอนุมัติ"
   },
   "attendance": {
     "title": "การเข้างาน",
@@ -4692,10 +4693,12 @@
   "components": {
     "plannedAbsences": {
       "title": "ปฏิทินการลา",
-      "viewAll": "ดูทั้งหมด",
       "viewMy": "ปฏิทินของฉัน",
       "viewTeam": "ปฏิทินทีม",
       "viewSwitchLabel": "มุมมองปฏิทินการลา",
+      "viewWeek": "มุมมองสัปดาห์",
+      "viewMonth": "มุมมองเดือน",
+      "rangeSwitchLabel": "ช่วงปฏิทินการลา",
       "empty": "ไม่มีพนักงานในขอบเขต",
       "employees": "พนักงาน",
       "pillTitle": "{type} · {start} ถึง {end} · {status}",
@@ -4711,6 +4714,7 @@
       "next": "{unit}ถัดไป",
       "unitDay": "วัน",
       "unitWeek": "สัปดาห์",
+      "unitMonth": "เดือน",
       "dateLabel": "วันที่",
       "windowStartLabel": "วันที่เริ่มของช่วง",
       "today": "วันนี้"

@@ -87,6 +87,19 @@ describe('teamAwayToday', () => {
     ];
     expect(teamAwayToday(rows, today, 'viewer')).toBe(2);
   });
+
+  it('pins the ?abs=FUTURE-week hazard (eae550e9 step 2): only leaves COVERING today count', () => {
+    // Rows as fetched for a strip window a week in the future: a long leave straddling today is still
+    // present (window-overlap fetch) and must count; a future-week-only leave is visible on the strip
+    // but is NOT an absence today. This is the case the old second plannedAbsences fetch existed to
+    // protect and the case the dedicated awayTodayCount read (core/read.ts) must keep matching —
+    // test/planned-absences-scope.test.ts asserts that equivalence against the database.
+    const rows = [
+      { id: 'p1', leaves: [approved('2026-07-01', '2026-07-20')] }, // straddles today → away
+      { id: 'p2', leaves: [approved('2026-07-14', '2026-07-16')] }, // future-week only → not away
+    ];
+    expect(teamAwayToday(rows, today, 'viewer')).toBe(1);
+  });
 });
 
 describe('pendingTasksCount', () => {
