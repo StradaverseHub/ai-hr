@@ -3813,6 +3813,9 @@
       "deleteLeaveYearConfirmBody": "คุณกำลังจะลบปีการลา {year} การกระทำนี้ไม่สามารถย้อนกลับได้",
       "deleteLeaveYearBlockedOpened": "ลบได้เฉพาะปีการลาที่เป็นฉบับร่างเท่านั้น",
       "deleteLeaveYearBlockedRecords": "ปีการลานี้มีบันทึกการลาแล้ว จึงไม่สามารถลบได้",
+      "deleteLeaveYearBlockedRequests": "ไม่สามารถลบปีการลานี้ได้ เนื่องจากมีคำขอลาอ้างอิงถึงอยู่แล้ว",
+      "deleteLeaveYearNotFound": "ปีการลานี้ไม่มีอยู่แล้ว",
+      "leaveYearSavedToast": "บันทึกปีการลาแล้ว",
       "closeLeaveYear": "ปิด",
       "reopenLeaveYear": "เปิดใหม่",
       "noLeaveYears": "ยังไม่ได้กำหนดค่าปีการลา",
@@ -3826,7 +3829,6 @@
       "openingUnitDays": "วัน",
       "openingUnitWeeks": "สัปดาห์",
       "openingUnitMonths": "เดือน",
-      "effectiveLeaveYearLabel": "ปีการลาที่มีผล",
       "openingRuleSummary": "ปีการลา {year}: เปิด {amount} {unit} ก่อนเริ่ม → {date}",
       "visibility": {
         "sectionTitle": "การมองเห็นของพนักงาน",

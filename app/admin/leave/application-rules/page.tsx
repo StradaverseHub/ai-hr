@@ -1,10 +1,12 @@
 import { getTranslations } from 'next-intl/server';
+import { Pencil } from 'lucide-react';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listLeaveYearConfigs, leaveYearsWithRecords } from '@/core/leave';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { LeaveTabs } from '@/components/leave-tabs';
+import { LeaveYearRuleDialog } from '@/components/leave/leave-year-rule-dialog';
 import {
   setLeaveHalfDayFullDeductionAction,
   upsertLeaveYearConfigAction,
@@ -51,12 +53,12 @@ export default async function LeaveApplicationRulesPage({
   const configuredYears = new Set(leaveYearConfigs.map((c) => c.year));
   const yearOptions = Array.from({ length: 7 }, (_, i) => new Date().getUTCFullYear() + i);
   const defaultNewYear = yearOptions.find((y) => !configuredYears.has(y)) ?? nextYear;
-  // Future Leave Year Opening Rule (d9e41725): prefill the rule sub-form from the default year's existing rule.
-  const defaultRule = leaveYearConfigs.find((c) => c.year === defaultNewYear) ?? null;
   const leaveYearStatusVariant = (status: string) =>
     status === 'open' ? ('success' as const) : status === 'closed' ? ('default' as const) : ('warning' as const);
   // R45 fd71fa38 — a leave year is deletable only when it is still a DRAFT AND no leave records reference it
-  // (the service guard is authoritative; this drives the pre-emptive enabled/disabled + tooltip in the row).
+  // (the service guard is authoritative; this drives the pre-emptive enabled/disabled state + the visible
+  // inline reason beside the row — dcd8e32f replaced the hover-only tooltip, which touch devices and screen
+  // readers never saw).
   const leaveYearRecordYearSet = new Set(leaveYearRecordYears);
 
   return (
@@ -108,21 +110,40 @@ export default async function LeaveApplicationRulesPage({
                     className={`${inputCls} w-40`}
                   />
                 </Field>
-                <Button type="submit" variant="outline" size="sm">
-                  {t('save')}
+                {/* dcd8e32f — the row save is a recognisable EDIT action (pencil + "Edit"), not a bare "Save". */}
+                <Button type="submit" variant="outline" size="sm" className="gap-1.5">
+                  <Pencil className="size-3.5" />
+                  {t('edit')}
                 </Button>
               </form>
               {/* Lifecycle action. Draft → Open runs the grant sweep; Open → Closed is an informational badge
                   flip (v1); Closed → Draft reopens for corrections. */}
-              <div className="flex items-end">
+              <div className="flex items-end gap-2">
                 {cfg.status === 'draft' && (
-                  <form action={setLeaveYearStatusAction}>
-                    <input type="hidden" name="year" value={cfg.year} />
-                    <input type="hidden" name="status" value="open" />
-                    <Button type="submit" size="sm">
-                      {t('openLeaveYear')}
-                    </Button>
-                  </form>
+                  <>
+                    {/* 37088a65 — per-row "Advanced leave year rules" dialog (replaces the old shared
+                        bottom-of-page panel). Draft-only, matching the lifecycle Open button: an ungated
+                        trigger would let HR stamp open_leave_year_date onto an open/closed year. Rendered as
+                        a SIBLING of the row's date form — the trigger Button is type="button", so it can
+                        never submit a surrounding form. */}
+                    <LeaveYearRuleDialog
+                      year={cfg.year}
+                      current={{
+                        openingRuleEnabled: cfg.openingRuleEnabled,
+                        openBeforeAmount: cfg.openBeforeAmount,
+                        openBeforeUnit: cfg.openBeforeUnit,
+                        openLeaveYearDate: cfg.openLeaveYearDate,
+                      }}
+                      saveAction={saveFutureOpeningRuleAction}
+                    />
+                    <form action={setLeaveYearStatusAction}>
+                      <input type="hidden" name="year" value={cfg.year} />
+                      <input type="hidden" name="status" value="open" />
+                      <Button type="submit" size="sm">
+                        {t('openLeaveYear')}
+                      </Button>
+                    </form>
+                  </>
                 )}
                 {cfg.status === 'open' && (
                   <form action={setLeaveYearStatusAction}>
@@ -143,22 +164,23 @@ export default async function LeaveApplicationRulesPage({
                   </form>
                 )}
                 {/* R45 fd71fa38 — Delete. Enabled only for a DRAFT year with no leave records referencing it;
-                    otherwise a disabled button with an explanatory tooltip. The confirm dialog guards the
-                    click, and the service re-checks the guard (authoritative) before removing the row. */}
+                    otherwise a disabled button with the reason as VISIBLE inline text (dcd8e32f — the old
+                    title-attribute tooltip did not exist on touch devices and was never announced by screen
+                    readers). The confirm dialog guards the click, and the service re-checks the guard
+                    (authoritative) before removing the row. */}
                 {(() => {
                   const referenced = leaveYearRecordYearSet.has(cfg.year);
                   const deletable = cfg.status === 'draft' && !referenced;
                   if (!deletable) {
                     return (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled
-                        title={cfg.status !== 'draft' ? t('deleteLeaveYearBlockedOpened') : t('deleteLeaveYearBlockedRecords')}
-                      >
-                        {t('deleteLeaveYear')}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="ghost" size="sm" disabled>
+                          {t('deleteLeaveYear')}
+                        </Button>
+                        <span className="max-w-56 text-xs text-muted-foreground">
+                          {cfg.status !== 'draft' ? t('deleteLeaveYearBlockedOpened') : t('deleteLeaveYearBlockedRecords')}
+                        </span>
+                      </div>
                     );
                   }
                   return (
@@ -203,103 +225,12 @@ export default async function LeaveApplicationRulesPage({
           <button className={btnPrimary}>{t('addLeaveYear')}</button>
         </form>
 
-        {/* R45 4822de27 — Separate leave-year creation from the future auto-opening RULE. Everything above
-            (records list + the create form with the two control dates + the lifecycle Open/Close actions) is
-            the everyday, primary flow. The auto-opening rule below is OPTIONAL automation that HR often
-            mistook for mandatory, so it now lives in a collapsed-by-default "Advanced" disclosure. Purely a
-            layout split — fields, actions and behaviour are unchanged.
-
-            Future Leave Year Opening Rule (d9e41725). HR Admin defines an advance-opening window ("open the
-            year N Days/Weeks/Months before it starts") for a chosen Effective Leave Year; on save the system
-            COMPUTES open_leave_year_date = 1-Jan-of-year minus that window (UTC-correct calendar math) and
-            stamps it on that year's record. v1 is compute-only — enabling the rule sets the date; an automatic
-            open-the-year cron is deferred. The hidden `ruleSubmitted` marker + checkbox `enable` follow the
-            tri-state sub-form convention so an unchecked box reliably disables the rule. Prefilled from the
-            default (next uncofigured) year's existing rule, if any. */}
-        <details className="group border-t border-border">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 [&::-webkit-details-marker]:hidden">
-            <span>
-              <span className="text-sm font-semibold text-foreground">{t('leaveYearAdvancedTitle')}</span>
-              <span className="block text-xs text-muted-foreground">{t('leaveYearAdvancedHelp')}</span>
-            </span>
-            <span className="text-xs text-muted-foreground group-open:rotate-180">▾</span>
-          </summary>
-          <div className="px-4 pb-3">
-          <h3 className="text-sm font-semibold text-foreground">{t('openingRuleTitle')}</h3>
-          <p className="mt-1 max-w-2xl text-xs text-muted-foreground">{t('openingRuleHelp')}</p>
-          <form action={saveFutureOpeningRuleAction} className="mt-3 flex flex-wrap items-end gap-3">
-            {/* tri-state marker: this sub-form owns the rule columns; its presence means "apply the rule state
-                below" (checkbox absent ⇒ disable, not "leave untouched"). */}
-            <input type="hidden" name="ruleSubmitted" value="1" />
-            <label className="flex items-center gap-2 self-center pt-5 text-sm">
-              <input
-                type="checkbox"
-                name="enable"
-                defaultChecked={defaultRule?.openingRuleEnabled ?? false}
-                className="size-4 rounded"
-              />
-              {t('openingRuleEnableLabel')}
-            </label>
-            <Field label={t('openBeforeAmountLabel')}>
-              <input
-                type="number"
-                name="openBeforeAmount"
-                min={1}
-                step={1}
-                defaultValue={defaultRule?.openBeforeAmount ?? ''}
-                placeholder="14"
-                className={`${inputCls} w-24`}
-              />
-            </Field>
-            <Field label={t('openBeforeUnitLabel')}>
-              <select
-                name="openBeforeUnit"
-                defaultValue={defaultRule?.openBeforeUnit ?? 'days'}
-                className={`${inputCls} w-32`}
-              >
-                <option value="days">{t('openingUnitDays')}</option>
-                <option value="weeks">{t('openingUnitWeeks')}</option>
-                <option value="months">{t('openingUnitMonths')}</option>
-              </select>
-            </Field>
-            <Field label={t('effectiveLeaveYearLabel')}>
-              <select name="year" defaultValue={String(defaultNewYear)} className={`${inputCls} w-28`}>
-                {yearOptions.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Button type="submit" variant="outline" size="sm">
-              {t('save')}
-            </Button>
-          </form>
-          {/* Show the currently-persisted rules so HR sees the computed opening dates at a glance. */}
-          {leaveYearConfigs.some((c) => c.openingRuleEnabled) && (
-            <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
-              {leaveYearConfigs
-                .filter((c) => c.openingRuleEnabled)
-                .map((c) => (
-                  <li key={`rule-${c.id}`}>
-                    {t('openingRuleSummary', {
-                      year: c.year,
-                      amount: c.openBeforeAmount ?? 0,
-                      unit: t(
-                        c.openBeforeUnit === 'weeks'
-                          ? 'openingUnitWeeks'
-                          : c.openBeforeUnit === 'months'
-                            ? 'openingUnitMonths'
-                            : 'openingUnitDays',
-                      ),
-                      date: c.openLeaveYearDate ?? '—',
-                    })}
-                  </li>
-                ))}
-            </ul>
-          )}
-          </div>
-        </details>
+        {/* 37088a65 — the Future Leave Year Opening Rule (d9e41725) moved OUT of this page. It used to be a
+            shared "Advanced leave year rules" disclosure down here, with its own Effective-Leave-Year
+            dropdown — picking the wrong year silently wrote the rule onto the wrong record. Each DRAFT row
+            above now opens its own LeaveYearRuleDialog, pinned to that row's year. One deliberate loss: the
+            old dropdown could target a not-yet-configured future year (the save upserted it as draft); HR now
+            clicks "Add leave year" first, then sets the rules on the new row. */}
       </Card>
 
       {/* Feedback request 31474452: per-company half-day leave-deduction toggle. */}
