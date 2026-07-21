@@ -112,9 +112,9 @@ Confirm the switcher is gone and `/login` redirects to WorkOS. You should still 
 From **Admin → Users** in the app. Invite each remaining person **by their person record**, so their
 existing `app_user` is rebound rather than a duplicate identity being created.
 
-> Inviting an existing person was broken from migration 0151 until **0277** — `app.consume_invitation`
+> Inviting an existing person was broken from migration 0151 until **0278** — `app.consume_invitation`
 > had an ambiguous `tenant_id` reference that only surfaced on that branch, and no test covered it.
-> Make sure the deployment includes 0277 or this step fails.
+> Make sure the deployment includes 0278 or this step fails.
 
 ## Rollback
 

@@ -139,6 +139,16 @@ export function BenefitSchemeConfig({
   const [selectedSchemeId, setSelectedSchemeId] = useState<string>(schemes[0]?.id ?? '');
   const selectedEnts = entitlements.filter((e) => e.benefitSchemeId === selectedSchemeId);
 
+  // Feedback b7d04d7d: per-scheme entitlement count for the row-level delete confirmation. Deleting a
+  // scheme CASCADES to its scheme_leave_entitlement rows (FK ON DELETE CASCADE), so the confirm dialog
+  // must name what is actually about to be lost. Derived from the already-loaded entitlement list —
+  // no extra query.
+  const entCountByScheme = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of entitlements) m.set(e.benefitSchemeId, (m.get(e.benefitSchemeId) ?? 0) + 1);
+    return m;
+  }, [entitlements]);
+
   // R44 8d422204: client-side A–Z / Z–A sort of the entitlements table by leave-type name. Display-order
   // only — re-sorts automatically on add/update/delete via re-render. Default ascending.
   const [entSort, setEntSort] = useState<'asc' | 'desc'>('asc');
@@ -282,15 +292,36 @@ export function BenefitSchemeConfig({
                             </Badge>
                           </td>
                           <td className="px-3 py-2">
-                            <SchemeEditDialog
-                              scheme={s}
-                              companies={companies}
-                              groups={activeGroups}
-                              empTypeLabel={empTypeLabel}
-                              updateScheme={actions.updateScheme}
-                              deleteScheme={actions.deleteScheme}
-                              t={t}
-                            />
+                            {/* Feedback b7d04d7d: Delete moved OUT of the edit dialog onto the row, next to
+                                Edit, and now confirms first (the in-dialog delete was one unconfirmed click
+                                that also cascaded away every entitlement under the scheme). Same server
+                                action + hidden-id FormData contract, matching the entitlement row pattern. */}
+                            <div className="inline-flex items-center gap-2">
+                              <SchemeEditDialog
+                                scheme={s}
+                                companies={companies}
+                                groups={activeGroups}
+                                empTypeLabel={empTypeLabel}
+                                updateScheme={actions.updateScheme}
+                                t={t}
+                              />
+                              <form action={actions.deleteScheme} className="inline">
+                                <input type="hidden" name="id" value={s.id} />
+                                <ConfirmSubmit
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-destructive hover:text-destructive"
+                                  title={t('deleteSchemeConfirmTitle')}
+                                  description={t('deleteSchemeConfirmDescription', {
+                                    name: s.name,
+                                    count: entCountByScheme.get(s.id) ?? 0,
+                                  })}
+                                  confirmLabel={t('delete')}
+                                >
+                                  {t('delete')}
+                                </ConfirmSubmit>
+                              </form>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -842,6 +873,18 @@ function CreateGroupDialog({
   );
 }
 
+/**
+ * SchemeForm grid per host (item 0ad01560). Static class lookup — Tailwind cannot JIT a runtime-interpolated
+ * class string (same discipline as the dashboard-customizer GRID_COLS fix).
+ *  - 'inline': the full-width add-scheme row under the list — six columns across at lg fit comfortably there.
+ *  - 'dialog': the Edit popup (max-w-3xl) — six columns squeezed every dropdown to ~100px and truncated long
+ *    company / grade-group / scheme names, so the dialog gets two comfortable columns instead.
+ */
+const SCHEME_FORM_GRID: Record<'inline' | 'dialog', string> = {
+  inline: 'grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6 lg:items-end',
+  dialog: 'grid grid-cols-1 gap-2 sm:grid-cols-2',
+};
+
 function SchemeForm({
   action,
   companies,
@@ -849,6 +892,7 @@ function SchemeForm({
   empTypeLabel,
   t,
   scheme,
+  layout = 'inline',
 }: {
   action: (fd: FormData) => void | Promise<void>;
   companies: Company[];
@@ -856,9 +900,12 @@ function SchemeForm({
   empTypeLabel: (v: string) => string;
   t: ReturnType<typeof useTranslations>;
   scheme: Scheme | null;
+  /** Which host renders the form — defaults to 'inline' so the add-scheme row is untouched by construction. */
+  layout?: 'inline' | 'dialog';
 }) {
+  const inDialog = layout === 'dialog';
   return (
-    <form action={action} className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
+    <form action={action} className={SCHEME_FORM_GRID[layout]}>
       {scheme && <input type="hidden" name="id" value={scheme.id} />}
       <Field label={t('colCompany')}>
         <select name="companyId" defaultValue={scheme?.companyId ?? ''} required className={inputCls}>
@@ -889,7 +936,7 @@ function SchemeForm({
           legacySuffix={t('legacyValueSuffix')}
         />
       </Field>
-      <Field label={t('colName')}>
+      <Field label={t('colName')} className={inDialog ? 'sm:col-span-2' : undefined}>
         <input name="name" defaultValue={scheme?.name ?? ''} required placeholder={t('schemeNamePlaceholder')} className={inputCls} />
       </Field>
       <Field label={t('colStatus')}>
@@ -898,7 +945,13 @@ function SchemeForm({
           <option value="inactive">{t('statusInactive')}</option>
         </select>
       </Field>
-      <Button type="submit" size="sm">{scheme ? t('save') : t('addScheme')}</Button>
+      {inDialog ? (
+        <div className="flex justify-end sm:col-span-2">
+          <Button type="submit" size="sm">{scheme ? t('save') : t('addScheme')}</Button>
+        </div>
+      ) : (
+        <Button type="submit" size="sm">{scheme ? t('save') : t('addScheme')}</Button>
+      )}
     </form>
   );
 }
@@ -906,8 +959,10 @@ function SchemeForm({
 /**
  * SchemeEditDialog (R44 4a97f681) — the scheme Edit form now opens in a centred Radix Dialog modal instead of
  * the cramped right-side <details> disclosure, giving the fields room to breathe. Presentation only: it hosts
- * the SAME SchemeForm + updateScheme server action and the delete form. On Save it closes immediately and the
- * action's revalidate refreshes the list (staying on the page). Cancel / overlay / Esc close without saving.
+ * the SAME SchemeForm + updateScheme server action. On Save it closes immediately and the action's revalidate
+ * refreshes the list (staying on the page). Cancel / overlay / Esc close without saving.
+ * Feedback b7d04d7d: the delete form moved OUT of this dialog onto the scheme row (with a confirmation) —
+ * the dialog is now purely for editing, so its footer is just Cancel.
  */
 function SchemeEditDialog({
   scheme,
@@ -915,7 +970,6 @@ function SchemeEditDialog({
   groups,
   empTypeLabel,
   updateScheme,
-  deleteScheme,
   t,
 }: {
   scheme: Scheme;
@@ -923,7 +977,6 @@ function SchemeEditDialog({
   groups: GradeGroup[];
   empTypeLabel: (v: string) => string;
   updateScheme: (fd: FormData) => void | Promise<void>;
-  deleteScheme: (fd: FormData) => void | Promise<void>;
   t: ReturnType<typeof useTranslations>;
 }) {
   const [open, setOpen] = useState(false);
@@ -936,7 +989,9 @@ function SchemeEditDialog({
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-5 text-popover-foreground shadow-lg">
+        {/* max-w-3xl (item 0ad01560): a touch wider than the old max-w-2xl so long company / grade-group
+            names fit; max-h + overflow-y kept so the taller two-column form scrolls rather than overflows. */}
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-5 text-popover-foreground shadow-lg">
           <Dialog.Title className="text-base font-semibold">{t('editSchemeTitle')}</Dialog.Title>
           <div className="mt-4 space-y-3">
             <SchemeForm
@@ -949,12 +1004,9 @@ function SchemeEditDialog({
               empTypeLabel={empTypeLabel}
               t={t}
               scheme={scheme}
+              layout="dialog"
             />
-            <div className="flex items-center justify-between border-t border-border pt-3">
-              <form action={deleteScheme}>
-                <input type="hidden" name="id" value={scheme.id} />
-                <Button type="submit" variant="ghost" size="sm">{t('delete')}</Button>
-              </form>
+            <div className="flex justify-end border-t border-border pt-3">
               <Dialog.Close asChild>
                 <Button type="button" size="sm" variant="outline">{t('cancel')}</Button>
               </Dialog.Close>

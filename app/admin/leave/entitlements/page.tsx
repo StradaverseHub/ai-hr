@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
@@ -47,6 +48,10 @@ import {
   groupSchemeLeaveTypesAction,
 } from '../../actions';
 import { GradeCatalog } from '@/components/grade-catalog';
+import { CollapsibleCardSection } from '@/components/collapsible-card-section';
+
+/** Cookie persisting the Grades section's open/closed fold (feedback 03557e76). */
+const GRADES_OPEN_COOKIE = 'leave_grades_open';
 
 /**
  * Leave Settings — Entitlements tab.
@@ -69,6 +74,10 @@ export default async function LeaveEntitlementsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
+  // Feedback 03557e76 — Grades section fold. SSR-read the persisted choice (cookie absent ⇒ closed,
+  // the reported problem) so the first paint is already correct — no closed-then-restored flash.
+  const cookieStore = await cookies();
+  const gradesOpen = cookieStore.get(GRADES_OPEN_COOKIE)?.value === '1';
   const [types, policies, companies, grades, adHocGrants, leaveYearConfigs, gradeGroups, benefitSchemes, schemeEntitlements, schemeCombinedLimits] =
     await Promise.all([
       listLeaveTypes(s, { includeArchived: true }),
@@ -335,26 +344,37 @@ export default async function LeaveEntitlementsPage({
       </Card>
 
       {/* ADR-0041 2E + Grade Management (728a7db6): the grade master — Code | Name | Rank | Status | Action
-          table with Edit / Archive↔Unarchive / Delete. Grade-scoped leave policies reference these grades. */}
+          table with Edit / Archive↔Unarchive / Delete. Grade-scoped leave policies reference these grades.
+          Feedback 03557e76: the whole section folds via its heading (details/summary, like the Application
+          Rules tab's Advanced disclosure). Starts CLOSED so a long grade list no longer forces scrolling past
+          it; the count stays visible on the heading, and the choice persists per-browser via cookie. Purely
+          presentational — GradeCatalog and its actions are untouched. */}
       <Card>
-        <SectionHeader title={t('gradesTitle')} count={grades.length} />
-        <p className="px-4 pt-3 pb-1 text-xs text-muted-foreground">{t('gradesHelp')}</p>
-        <GradeCatalog
-          grades={grades.map((g) => ({
-            id: g.id,
-            code: g.code,
-            name: g.name,
-            rank: g.rank,
-            archived: g.archivedAt != null,
-            inUse: g.inUse,
-          }))}
-          actions={{
-            create: createJobGradeAction,
-            update: updateJobGradeAction,
-            archive: archiveJobGradeAction,
-            delete: deleteJobGradeAction,
-          }}
-        />
+        <CollapsibleCardSection
+          title={t('gradesTitle')}
+          count={grades.length}
+          toggleLabel={t('gradesToggle')}
+          cookieKey={GRADES_OPEN_COOKIE}
+          defaultOpen={gradesOpen}
+        >
+          <p className="px-4 pt-3 pb-1 text-xs text-muted-foreground">{t('gradesHelp')}</p>
+          <GradeCatalog
+            grades={grades.map((g) => ({
+              id: g.id,
+              code: g.code,
+              name: g.name,
+              rank: g.rank,
+              archived: g.archivedAt != null,
+              inUse: g.inUse,
+            }))}
+            actions={{
+              create: createJobGradeAction,
+              update: updateJobGradeAction,
+              archive: archiveJobGradeAction,
+              delete: deleteJobGradeAction,
+            }}
+          />
+        </CollapsibleCardSection>
       </Card>
 
       {/* Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b): a friendlier configuration

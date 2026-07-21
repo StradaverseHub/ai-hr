@@ -1637,7 +1637,14 @@
       "idx": 277,
       "version": "7",
       "when": 1781862377000,
-      "tag": "0277_fix_consume_invitation_ambiguous",
+      "tag": "0277_compensation_delete_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 278,
+      "version": "7",
+      "when": 1781862378000,
+      "tag": "0278_fix_consume_invitation_ambiguous",
       "breakpoints": true
     }
   ]

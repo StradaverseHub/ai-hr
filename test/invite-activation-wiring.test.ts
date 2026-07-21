@@ -6,7 +6,7 @@
  * The invitation flow was, for a long time, three correct pieces with nothing joining them:
  *
  *   • core/auth.ts acceptInvitation — implemented, and covered by test/auth.test.ts
- *   • app.consume_invitation — implemented (though broken on the person branch until 0277)
+ *   • app.consume_invitation — implemented (though broken on the person branch until 0278)
  *   • /invite/[token] — a landing page whose button pointed at /callback?invite=…
  *
  * …but app/callback/route.ts never read that parameter, and NOTHING in app/ ever called
