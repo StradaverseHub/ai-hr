@@ -2,12 +2,13 @@ import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies, listDepartments, listJobGrades, listLeaveTypes } from '@/core/read';
 import { listBusinessUnits, listPositions } from '@/core/admin';
-import { getLeaveApprovalPolicy, listLeaveApprovalRules } from '@/core/leave-approval-policy';
+import { getLeaveApprovalPolicy, getLeaveEscalationPolicy, listLeaveApprovalRules } from '@/core/leave-approval-policy';
 import { listApprovalTemplates, listTemplateAssignments } from '@/core/leave-approval-template';
 import { listGradeGroups } from '@/core/benefit-scheme';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveApprovalEditor } from '../../leave-approval/editor';
+import { LeaveEscalationEditor, type EscalationLabels } from '../../leave-approval/escalation-editor';
 import { ApprovalTemplateManager, type TemplateManagerLabels } from '../../leave-approval/template-manager';
 import { WorkflowMatrix, type WorkflowMatrixLabels } from '../../leave-approval/workflow-matrix';
 import {
@@ -18,6 +19,7 @@ import {
   saveApprovalTemplateAction,
   saveLeaveApprovalPolicyAction,
   saveLeaveApprovalRuleAction,
+  saveLeaveEscalationPolicyAction,
   setApprovalTemplateActiveAction,
   setLeaveMultiApprovalAction,
   setTenantDefaultTemplateAction,
@@ -61,6 +63,8 @@ export default async function LeaveApprovalTabPage({
       company: c,
       pol: await getLeaveApprovalPolicy(s, c.id),
       rules: await listLeaveApprovalRules(s, c.id),
+      // R51 722904dc — per-company Approval Escalation Settings (shown only when multi-step approval is on).
+      esc: await getLeaveEscalationPolicy(s, c.id),
     })),
   );
 
@@ -94,6 +98,31 @@ export default async function LeaveApprovalTabPage({
     save: t('save'),
     reason: t('reason'),
     reasonPlaceholder: t('reasonPlaceholder'),
+  };
+  // R51 722904dc — Approval Escalation Settings card labels; role labels reuse the chain vocabulary.
+  const escalationLabels: EscalationLabels = {
+    title: t('escalationTitle'),
+    hint: t('escalationHint'),
+    enable: t('escalationEnable'),
+    escalateAfter: t('escalateAfter'),
+    workingDaysUnit: t('workingDaysUnit'),
+    level: t('escalationLevel'),
+    nextLevel: t('escalationNextLevel'),
+    specificRole: t('escalationSpecificRole'),
+    role: t('escalationRole'),
+    notifyNote: t('escalationNotifyNote'),
+    save: t('save'),
+    reason: t('reason'),
+    reasonPlaceholder: t('reasonPlaceholder'),
+    roleLabels: {
+      direct_manager: t('manager'),
+      department_head: t('departmentHead'),
+      business_unit_head: t('businessUnitHead'),
+      hr_admin: t('hr'),
+      hr_manager: t('hrManager'),
+      payroll: t('payroll'),
+      custom_role: t('customRole'),
+    },
   };
   const templateLabels: TemplateManagerLabels = {
     templatesTitle: t('templatesTitle'),
@@ -300,7 +329,7 @@ export default async function LeaveApprovalTabPage({
           />
 
           {/* Company defaults: the base chain + multi-step-approval on/off gate for each company. */}
-          {rows.map(({ company, pol }) => (
+          {rows.map(({ company, pol, esc }) => (
             <Card key={company.id}>
               <SectionHeader title={company.name} />
               <LeaveApprovalEditor
@@ -310,6 +339,26 @@ export default async function LeaveApprovalTabPage({
                 initialLevels={pol.levels}
                 labels={labels}
               />
+              {/* R51 722904dc — Approval Escalation Settings, below the chain. Hidden for single-approver
+                  companies (no multi-step chain ⇒ no next level to escalate to; the sole approver is very
+                  often the HR admin the escalation would notify). */}
+              {pol.enabled ? (
+                <LeaveEscalationEditor
+                  companyId={company.id}
+                  action={saveLeaveEscalationPolicyAction}
+                  initial={{
+                    enabled: esc.enabled,
+                    escalateAfterDays: esc.escalateAfterDays,
+                    target: esc.target,
+                    targetRole: esc.targetRole,
+                  }}
+                  labels={escalationLabels}
+                />
+              ) : (
+                <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
+                  {t('escalationUnavailableSingleApprover')}
+                </p>
+              )}
             </Card>
           ))}
         </>

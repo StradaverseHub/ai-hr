@@ -6,6 +6,7 @@ import {
   archiveLeaveApprovalRule,
   createLeaveApprovalRule,
   setLeaveApprovalPolicy,
+  setLeaveEscalationPolicy,
   setLeaveMultiApproval,
   updateLeaveApprovalRule,
   type LeaveApprovalRuleInput,
@@ -41,6 +42,25 @@ export async function saveLeaveApprovalPolicyAction(formData: FormData) {
     redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
   redirect(`${PAGE}?toast=${encodeURIComponent('Approval chain saved')}`);
+}
+
+/** R51 722904dc — save a company's Approval Escalation Settings (enable + working-day threshold +
+ *  recipient rule). Auth guard stays the page's scopedSession/getSession posture like every other action
+ *  here — deliberately NOT requireAdmin(). */
+export async function saveLeaveEscalationPolicyAction(formData: FormData) {
+  const s = await getSession();
+  const companyId = String(formData.get('companyId') ?? '');
+  const enabled = String(formData.get('enabled') ?? '0') === '1';
+  const escalateAfterDays = numOrNull(formData.get('escalateAfterDays'));
+  const target = String(formData.get('target') ?? 'next_level');
+  const targetRole = str(formData.get('targetRole'));
+  const reason = str(formData.get('reason')); // 4ec5a940 — optional "why" for the audit trail
+  try {
+    await setLeaveEscalationPolicy(s, { companyId, enabled, escalateAfterDays, target, targetRole, reason });
+  } catch (e) {
+    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  redirect(`${PAGE}?toast=${encodeURIComponent('Escalation settings saved')}`);
 }
 
 /** Create or update a scoped approval rule (ADR-0071). A ruleId in the form switches to update. */

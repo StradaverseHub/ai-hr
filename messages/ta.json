@@ -5732,7 +5732,18 @@
     "saveConfirmBody": "இந்த ஒப்புதல் பணிப்பாய்வு கட்டமைப்பைச் சேமிக்க விரும்புகிறீர்களா?",
     "saveConfirm": "மாற்றங்களைச் சேமி",
     "workflowTypeDefaultBadge": "இயல்புநிலை",
-    "workflowTypeCustomBadge": "தனிப்பயன்"
+    "workflowTypeCustomBadge": "தனிப்பயன்",
+    "escalationTitle": "ஒப்புதல் விரிவாக்க அமைப்புகள்",
+    "escalationHint": "ஒப்புதலாளரிடம் நீண்ட நேரம் காத்திருக்கும் விடுப்பு விண்ணப்பத்தை நினைவூட்டவும்.",
+    "escalationEnable": "ஒப்புதல் விரிவாக்கத்தை இயக்கு",
+    "escalateAfter": "இத்தனை நாட்களுக்குப் பிறகு விரிவாக்கு",
+    "workingDaysUnit": "வேலை நாட்கள்",
+    "escalationLevel": "யாருக்கு விரிவாக்குவது",
+    "escalationNextLevel": "அடுத்த ஒப்புதல் நிலை (இயல்பு)",
+    "escalationSpecificRole": "குறிப்பிட்ட ஒப்புதல் பங்கு",
+    "escalationRole": "ஒப்புதல் பங்கு",
+    "escalationNotifyNote": "விரிவாக்க அறிவிப்புகள் அறிவிப்பு மணிக்கு அனுப்பப்படும்.",
+    "escalationUnavailableSingleApprover": "பல-படி ஒப்புதல் சங்கிலியைப் பயன்படுத்தும் நிறுவனங்களுக்கு மட்டுமே ஒப்புதல் விரிவாக்கம் கிடைக்கும்."
   },
   "feedback": {
     "title": "கருத்து",

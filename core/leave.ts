@@ -1036,14 +1036,14 @@ function eachDate(start: string, end: string): string[] {
 /** True when `date` is a working day (Full OR Half) for the given ISO working-day roster (1=Mon … 7=Sun) and
  *  is not a holiday. Resolves rest days from the SAME source the attendance engine uses (audit H#3), never a
  *  hardcoded Sat/Sun. List/membership semantics only — for the DEDUCTED AMOUNT on a date use dayWeight. */
-function isWorkingDay(date: string, workingDaysIso: number[], holidays: Set<string>): boolean {
+export function isWorkingDay(date: string, workingDaysIso: number[], holidays: Set<string>): boolean {
   return workingDaysIso.includes(isoWeekday(date)) && !holidays.has(date);
 }
 
 /** Working days in [start, end]: counts only days on the employee's configured working-day roster (ISO
  *  weekdays, default Mon–Fri, Full ∪ Half) that are not holidays. List/membership semantics — for the
  *  WEIGHTED (fractional half-day) total use workingDaysWeighted. */
-function workingDays(start: string, end: string, holidays: Set<string>, workingDaysIso: number[]): number {
+export function workingDays(start: string, end: string, holidays: Set<string>, workingDaysIso: number[]): number {
   let n = 0;
   for (const d of eachDate(start, end)) {
     if (isWorkingDay(d, workingDaysIso, holidays)) n++;
@@ -1056,7 +1056,7 @@ function workingDays(start: string, end: string, holidays: Set<string>, workingD
  *  Mon–Fri default when no policy row exists, so existing single-company behaviour is unchanged (audit H#3).
  *  Kept as a thin wrapper over resolveSchedule for callers that only need list/membership semantics
  *  (Full ∪ Half, no weighting). */
-async function resolveWorkingDaysIso(tx: Tx, employmentId: string): Promise<number[]> {
+export async function resolveWorkingDaysIso(tx: Tx, employmentId: string): Promise<number[]> {
   const sched = await resolveSchedule(tx, employmentId);
   return [...new Set([...sched.workingDaysIso, ...sched.halfDaysIso])];
 }
@@ -2456,7 +2456,7 @@ async function assertCanDecideLeaveStep(
 
 /** Resolve the subject's current department-head or business-unit-head employment id (null when unset).
  *  Uses the subject's CURRENT assignment (validTo/supersededAt null), the same predicate as elsewhere. */
-async function resolveSubjectHead(
+export async function resolveSubjectHead(
   tx: Tx,
   subjectEmploymentId: string,
   kind: 'department_head' | 'business_unit_head',

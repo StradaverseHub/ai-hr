@@ -1674,6 +1674,13 @@
       "when": 1781862386000,
       "tag": "0286_delegation_org_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 287,
+      "version": "7",
+      "when": 1781862387000,
+      "tag": "0287_leave_approval_escalation",
+      "breakpoints": true
     }
   ]
 }

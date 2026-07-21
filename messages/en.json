@@ -5732,7 +5732,18 @@
     "saveConfirmBody": "Are you sure you want to save this approval workflow configuration?",
     "saveConfirm": "Save changes",
     "workflowTypeDefaultBadge": "Default",
-    "workflowTypeCustomBadge": "Custom"
+    "workflowTypeCustomBadge": "Custom",
+    "escalationTitle": "Approval Escalation Settings",
+    "escalationHint": "Chase a leave request that has sat with an approver for too long.",
+    "escalationEnable": "Enable approval escalation",
+    "escalateAfter": "Escalate after",
+    "workingDaysUnit": "working days",
+    "escalationLevel": "Escalate to",
+    "escalationNextLevel": "Next approval level (default)",
+    "escalationSpecificRole": "A specific approval role",
+    "escalationRole": "Approval role",
+    "escalationNotifyNote": "Escalation alerts are delivered to the notification bell.",
+    "escalationUnavailableSingleApprover": "Approval escalation is available only for companies using a multi-step approval chain."
   },
   "feedback": {
     "title": "Feedback",

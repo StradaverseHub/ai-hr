@@ -5732,7 +5732,18 @@
     "saveConfirmBody": "คุณแน่ใจหรือไม่ว่าต้องการบันทึกการกำหนดค่าเวิร์กโฟลว์การอนุมัตินี้?",
     "saveConfirm": "บันทึกการเปลี่ยนแปลง",
     "workflowTypeDefaultBadge": "เริ่มต้น",
-    "workflowTypeCustomBadge": "กำหนดเอง"
+    "workflowTypeCustomBadge": "กำหนดเอง",
+    "escalationTitle": "การตั้งค่าการยกระดับการอนุมัติ",
+    "escalationHint": "ติดตามคำขอลาที่ค้างอยู่กับผู้อนุมัตินานเกินไป",
+    "escalationEnable": "เปิดใช้การยกระดับการอนุมัติ",
+    "escalateAfter": "ยกระดับหลังจาก",
+    "workingDaysUnit": "วันทำงาน",
+    "escalationLevel": "ยกระดับไปยัง",
+    "escalationNextLevel": "ระดับการอนุมัติถัดไป (ค่าเริ่มต้น)",
+    "escalationSpecificRole": "บทบาทการอนุมัติที่ระบุ",
+    "escalationRole": "บทบาทการอนุมัติ",
+    "escalationNotifyNote": "การแจ้งเตือนการยกระดับจะส่งไปยังกระดิ่งแจ้งเตือน",
+    "escalationUnavailableSingleApprover": "การยกระดับการอนุมัติใช้ได้เฉพาะบริษัทที่ใช้สายการอนุมัติแบบหลายขั้นตอนเท่านั้น"
   },
   "feedback": {
     "title": "ข้อเสนอแนะ",
