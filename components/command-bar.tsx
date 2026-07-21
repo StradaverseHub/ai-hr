@@ -88,14 +88,17 @@ export function CommandBar() {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Trigger asChild>
+        {/* Search-field-looking trigger: fills the header's centre track on sm+ (w-full), collapses to a
+            compact icon below sm. aria-label uses the visible text (placeholder) so the accessible name
+            contains the label (WCAG 2.5.3); below sm the trigger is icon-only and still needs it. */}
         <button
           type="button"
-          aria-label={t('open')}
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-card px-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          aria-label={t('placeholder')}
+          className="inline-flex h-10 w-auto min-w-0 items-center gap-2 rounded-md border border-input bg-card px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground sm:w-full"
         >
-          <Search className="size-4" />
-          <span className="hidden sm:inline">{t('open')}</span>
-          <kbd className="hidden rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium sm:inline">
+          <Search className="size-4 shrink-0" />
+          <span className="hidden truncate sm:inline">{t('placeholder')}</span>
+          <kbd className="ml-auto hidden shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium sm:inline">
             ⌘K
           </kbd>
         </button>
