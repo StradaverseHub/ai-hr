@@ -55,6 +55,7 @@ import {
   setLeaveYearStatus,
   saveFutureOpeningRule,
   deleteLeaveYear,
+  LeaveYearDeleteError,
   isLeaveYearStatus,
   accrueEarnedLeave,
   asOfForLeaveYear,
@@ -132,6 +133,13 @@ function fail(path: string, e: unknown): never {
 function ok(path: string): never {
   revalidatePath(path);
   redirect(path);
+}
+/** Cluster dcd8e32f — like ok(), but also surfaces an ALREADY-LOCALISED success message through the
+ *  globally mounted ToastFromQuery (app/layout.tsx reads ?toast= via useSearchParams). Localise the text
+ *  before calling — ToastFromQuery renders the raw string, so never pass an i18n key/code in the URL. */
+function okToast(path: string, msg: string): never {
+  revalidatePath(path);
+  redirect(`${path}?toast=${encodeURIComponent(msg)}`);
 }
 
 export async function createCompanyAction(formData: FormData) {
@@ -929,8 +937,10 @@ export async function openLeaveYearAction(formData: FormData) {
 
 // Leave Year Configuration (9aa894a4): create/edit a managed leave-year record's two control dates. Status
 // is NOT changed here (setLeaveYearStatusAction moves the lifecycle). Empty date inputs post '' → cleared.
+// dcd8e32f: a successful save now confirms via okToast (localised HERE) so the admin knows the edit took.
 export async function upsertLeaveYearConfigAction(formData: FormData) {
   const s = await getSession();
+  const t = await getTranslations('admin.leave');
   try {
     await upsertLeaveYearConfig(s, {
       year: Number(formData.get('year')),
@@ -940,7 +950,7 @@ export async function upsertLeaveYearConfigAction(formData: FormData) {
   } catch (e) {
     fail(APPLICATION_RULES, e);
   }
-  ok(APPLICATION_RULES);
+  okToast(APPLICATION_RULES, t('leaveYearSavedToast'));
 }
 
 // Leave Year Configuration (9aa894a4): transition a managed leave-year's status. →open runs the existing
@@ -970,10 +980,11 @@ export async function setLeaveYearStatusAction(formData: FormData) {
   );
 }
 
-// Future Leave Year Opening Rule (d9e41725): persist the advance-opening policy for the chosen Effective Leave
-// Year. The sub-form posts a hidden `ruleSubmitted=1` marker (tri-state convention) so the checkbox's absence
-// reads as "disable", not "untouched" — `enable` is present only when checked. When enabled, the service
-// computes + stamps open_leave_year_date = Jan-1-minus-window (v1 is COMPUTE-ONLY; no auto-open cron).
+// Future Leave Year Opening Rule (d9e41725): persist the advance-opening policy for a leave year. Posted by
+// the per-row "Advanced leave year rules" dialog (37088a65), whose hidden `year` input pins the save to the
+// clicked record. `enable` is a plain checkbox — present when checked, absent ⇒ disable the rule (no marker
+// field exists; disabling works purely from the checkbox's absence). When enabled, the service computes +
+// stamps open_leave_year_date = Jan-1-minus-window (v1 is COMPUTE-ONLY; no auto-open cron).
 export async function saveFutureOpeningRuleAction(formData: FormData) {
   const s = await getSession();
   try {
@@ -992,15 +1003,31 @@ export async function saveFutureOpeningRuleAction(formData: FormData) {
 }
 
 // R45 fd71fa38 — delete a mistakenly-created DRAFT leave-year record. The service enforces the guard (draft
-// only + no leave ledger/requests referencing the year) and throws LeaveYearDeleteError, whose message the
-// ErrorBanner surfaces. The actor threads through getSession() (an admin), so the leave-year.deleted event
-// carries a real user, not SYSTEM.
+// only + no leave ledger / live requests referencing the year) and throws LeaveYearDeleteError. dcd8e32f:
+// admin-gated with requireAdmin() (getSession() left ordinary members through to a service with no admin
+// assertion), and the refusal reason is LOCALISED here from the error's stable code before fail() redirects
+// (ErrorBanner renders the raw string — never pass a code in the URL; app/admin/payroll-cycle/actions.ts
+// documents the same convention). The actor threads through the admin session, so the leave-year.deleted
+// event carries a real user, not SYSTEM.
 export async function deleteLeaveYearAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
+  const t = await getTranslations('admin.leave');
   try {
     await deleteLeaveYear(s, { year: Number(formData.get('year')) });
   } catch (e) {
-    fail(APPLICATION_RULES, e);
+    const localised =
+      e instanceof LeaveYearDeleteError
+        ? e.code === 'leaveYearNotFound'
+          ? t('deleteLeaveYearNotFound')
+          : e.code === 'leaveYearNotDraft'
+            ? t('deleteLeaveYearBlockedOpened')
+            : e.code === 'leaveYearHasLedger'
+              ? t('deleteLeaveYearBlockedRecords')
+              : e.code === 'leaveYearHasRequests'
+                ? t('deleteLeaveYearBlockedRequests')
+                : null
+        : null;
+    fail(APPLICATION_RULES, localised ? new Error(localised) : e);
   }
   ok(APPLICATION_RULES);
 }

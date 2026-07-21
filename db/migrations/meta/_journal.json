@@ -1660,6 +1660,13 @@
       "when": 1781862381000,
       "tag": "0281_fix_consume_invitation_ambiguous",
       "breakpoints": true
+    },
+    {
+      "idx": 282,
+      "version": "7",
+      "when": 1781862382000,
+      "tag": "0282_leave_year_delete_guard",
+      "breakpoints": true
     }
   ]
 }

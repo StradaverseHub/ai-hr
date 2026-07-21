@@ -3813,6 +3813,9 @@
       "deleteLeaveYearConfirmBody": "Bạn sắp xóa Năm nghỉ phép {year}. Hành động này không thể hoàn tác.",
       "deleteLeaveYearBlockedOpened": "Chỉ có thể xóa năm nghỉ phép ở trạng thái nháp.",
       "deleteLeaveYearBlockedRecords": "Năm nghỉ phép này đã có bản ghi nghỉ phép nên không thể xóa.",
+      "deleteLeaveYearBlockedRequests": "Không thể xóa năm nghỉ phép này vì đã có đơn xin nghỉ phép tham chiếu đến nó.",
+      "deleteLeaveYearNotFound": "Năm nghỉ phép này không còn tồn tại.",
+      "leaveYearSavedToast": "Đã lưu năm nghỉ phép.",
       "closeLeaveYear": "Đóng",
       "reopenLeaveYear": "Mở lại",
       "noLeaveYears": "Chưa cấu hình năm nghỉ phép nào.",
@@ -3826,7 +3829,6 @@
       "openingUnitDays": "Ngày",
       "openingUnitWeeks": "Tuần",
       "openingUnitMonths": "Tháng",
-      "effectiveLeaveYearLabel": "Năm nghỉ phép hiệu lực",
       "openingRuleSummary": "Năm nghỉ phép {year}: mở {amount} {unit} trước khi bắt đầu → {date}",
       "visibility": {
         "sectionTitle": "Khả năng hiển thị với nhân viên",

@@ -7,6 +7,11 @@
  * app-start date and each status; status→open running openLeaveYear idempotently + stamping opened_at/by +
  * emitting substrate events; and the request-path gate (future-year rejection for employees, admin override
  * stamped, current-year back-compat unchanged, on/after app-start passes).
+ *
+ * Cluster dcd8e32f appended the delete block: admin-only delete (service assertAdmin + 0282 RESTRICTIVE
+ * FOR DELETE RLS), every guard branch by stable code, the rejected/cancelled carve-out, the
+ * leaveYearsWithRecords ⇄ deleteLeaveYear consistency contract, audit events (plain + hash-chained), and
+ * the open→close→reopen→delete sequence.
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
@@ -19,9 +24,11 @@ import {
   upsertLeaveYearConfig,
   setLeaveYearStatus,
   listLeaveYearConfigs,
+  deleteLeaveYear,
+  leaveYearsWithRecords,
   LeaveYearNotOpenError,
 } from '../core/leave';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import {
   adminCtx,
   closeAll,
@@ -291,5 +298,192 @@ describe('requestLeave — future leave-year gate', () => {
     const payload = await latestEventPayload(b.tenantId, res.leaveRequestId, 'leave-request.submitted');
     expect(payload?.leaveYearNotOpenOverride).toBeUndefined();
     expect(payload?.targetLeaveYear).toBeUndefined();
+  });
+});
+
+// ── Delete + blocked-set consistency (cluster dcd8e32f) ──────────────────────
+// The delete path had ZERO coverage before this block — which is exactly how the 0190 FOR ALL policy's
+// missing DELETE guard (WITH CHECK applies to INSERT/UPDATE only) went unnoticed. Covers: the non-admin
+// refusal (service assertAdmin + the 0282 RESTRICTIVE FOR DELETE RLS backstop), every guard branch with
+// its stable error code, the rejected/cancelled carve-out, the leaveYearsWithRecords ⇄ deleteLeaveYear
+// lockstep (the UI's blocked set and the service guard were previously two divergent implementations),
+// the audit event (plain + hash-chained), and the open→close→reopen→delete sequence.
+describe('deleteLeaveYear + leaveYearsWithRecords (dcd8e32f)', () => {
+  async function insertLedgerRow(employmentId: string, effectiveOn: string) {
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId,
+      employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      entryType: 'adjustment',
+      days: '1.00',
+      effectiveOn,
+    });
+  }
+  async function insertRequest(
+    employmentId: string,
+    startDate: string,
+    endDate: string,
+    status: 'pending' | 'approved' | 'rejected' | 'cancelled',
+  ) {
+    await owner.db.insert(schema.leaveRequest).values({
+      tenantId: b.tenantId,
+      employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate,
+      endDate,
+      days: '1.00',
+      status,
+    });
+  }
+
+  it('a non-admin member is refused by the service AND by RLS on a raw DELETE (0282)', async () => {
+    const a = adminCtx(b);
+    await upsertLeaveYearConfig(a, { year: 2031 });
+    const { ctx: empCtx } = await hireEmployeeCtx();
+
+    // Service layer: assertAdmin fires before any query. FAILED before this cluster (no admin check).
+    await expect(deleteLeaveYear(empCtx, { year: 2031 })).rejects.toMatchObject({
+      name: 'LeaveYearDeleteError',
+      code: 'leaveYearNotAdmin',
+    });
+
+    // DB backstop: the 0282 RESTRICTIVE FOR DELETE policy filters the row out for a member issuing raw
+    // SQL — 0 rows affected, no error, row survives. (RLS USING on DELETE filters; it does not throw.)
+    await withTenant(empCtx, (tx) =>
+      tx
+        .delete(schema.leaveYearConfig)
+        .where(and(eq(schema.leaveYearConfig.tenantId, b.tenantId), eq(schema.leaveYearConfig.year, 2031))),
+    );
+    expect(await configRow(2031)).toBeTruthy();
+
+    // The admin branch still passes the restrictive policy.
+    await deleteLeaveYear(a, { year: 2031 });
+    expect(await configRow(2031)).toBeUndefined();
+  });
+
+  it('a pristine draft year deletes and appends leave-year.deleted (audit survives the row delete)', async () => {
+    const a = adminCtx(b);
+    const { id } = await upsertLeaveYearConfig(a, { year: 2027, openLeaveYearDate: '2026-12-18' });
+    const res = await deleteLeaveYear(a, { year: 2027 });
+    expect(res).toEqual({ deleted: true, year: 2027 });
+    expect(await configRow(2027)).toBeUndefined();
+    // domain_event.aggregate_id carries no FK to leave_year_config, so appending with the just-deleted
+    // row's id inside the same transaction must hold — the audit trail outlives the record.
+    const payload = await latestEventPayload(b.tenantId, id, 'leave-year.deleted');
+    expect(payload?.year).toBe(2027);
+    expect((payload?.before as { status?: string } | null)?.status).toBe('draft');
+  });
+
+  it('an opened year is refused (leaveYearNotDraft)', async () => {
+    const a = adminCtx(b);
+    await upsertLeaveYearConfig(a, { year: 2027 });
+    await setLeaveYearStatus(a, { year: 2027, status: 'open' });
+    await expect(deleteLeaveYear(a, { year: 2027 })).rejects.toMatchObject({ code: 'leaveYearNotDraft' });
+    expect(await configRow(2027)).toBeTruthy();
+  });
+
+  it('a ledger row dated inside the year blocks deletion (leaveYearHasLedger)', async () => {
+    const a = adminCtx(b);
+    const { employmentId } = await hireEmployeeCtx();
+    await upsertLeaveYearConfig(a, { year: 2027 });
+    await insertLedgerRow(employmentId, '2027-06-01');
+    await expect(deleteLeaveYear(a, { year: 2027 })).rejects.toMatchObject({ code: 'leaveYearHasLedger' });
+  });
+
+  it('an overlapping PENDING or APPROVED request blocks deletion (leaveYearHasRequests)', async () => {
+    const a = adminCtx(b);
+    const { employmentId } = await hireEmployeeCtx();
+    await upsertLeaveYearConfig(a, { year: 2027 });
+    await upsertLeaveYearConfig(a, { year: 2028 });
+    await insertRequest(employmentId, '2027-02-10', '2027-02-11', 'pending');
+    await insertRequest(employmentId, '2028-03-05', '2028-03-05', 'approved');
+    await expect(deleteLeaveYear(a, { year: 2027 })).rejects.toMatchObject({ code: 'leaveYearHasRequests' });
+    await expect(deleteLeaveYear(a, { year: 2028 })).rejects.toMatchObject({ code: 'leaveYearHasRequests' });
+  });
+
+  it('REJECTED / CANCELLED-only requests do NOT block deletion (the Step-7 carve-out, tested both ways)', async () => {
+    const a = adminCtx(b);
+    const { employmentId } = await hireEmployeeCtx();
+    await upsertLeaveYearConfig(a, { year: 2029 });
+    await insertRequest(employmentId, '2029-04-01', '2029-04-02', 'rejected');
+    await insertRequest(employmentId, '2029-07-01', '2029-07-01', 'cancelled');
+    // A dead application must not permanently pin an otherwise pristine draft year.
+    const res = await deleteLeaveYear(a, { year: 2029 });
+    expect(res.deleted).toBe(true);
+    expect(await configRow(2029)).toBeUndefined();
+  });
+
+  it('deleting a year with no record hits the not-found branch (leaveYearNotFound)', async () => {
+    await expect(deleteLeaveYear(adminCtx(b), { year: 2077 })).rejects.toMatchObject({
+      code: 'leaveYearNotFound',
+    });
+  });
+
+  it('CONSISTENCY: leaveYearsWithRecords equals exactly the set deleteLeaveYear refuses', async () => {
+    const a = adminCtx(b);
+    const { employmentId } = await hireEmployeeCtx();
+    // All years draft, so refusal ⇔ records exist — the two implementations must agree per record kind:
+    //   2027 clean · 2028 ledger row · 2029 pending request · 2030 rejected-only (must NOT block) ·
+    //   2032 covered only by the MIDDLE of a multi-year request (the old EXTRACT(YEAR) start/end
+    //   derivation missed exactly this year while the service still refused it).
+    for (const year of [2027, 2028, 2029, 2030, 2032]) await upsertLeaveYearConfig(a, { year });
+    await insertLedgerRow(employmentId, '2028-03-01');
+    await insertRequest(employmentId, '2029-05-05', '2029-05-06', 'pending');
+    await insertRequest(employmentId, '2030-02-02', '2030-02-03', 'rejected');
+    await insertRequest(employmentId, '2031-12-30', '2033-01-02', 'pending');
+
+    const blockedList = (await leaveYearsWithRecords(a)).sort();
+    const refused: number[] = [];
+    for (const year of [2027, 2028, 2029, 2030, 2032]) {
+      try {
+        await deleteLeaveYear(a, { year });
+      } catch {
+        refused.push(year);
+      }
+    }
+    expect(blockedList).toEqual([2028, 2029, 2032]);
+    expect(refused).toEqual(blockedList);
+  });
+
+  it('AUDIT_HASH_CHAIN_ENABLED: leave-year.deleted joins the tenant hash chain', async () => {
+    const a = adminCtx(b);
+    const { id } = await upsertLeaveYearConfig(a, { year: 2034 });
+    const saved = process.env.AUDIT_HASH_CHAIN_ENABLED;
+    process.env.AUDIT_HASH_CHAIN_ENABLED = '1';
+    try {
+      await deleteLeaveYear(a, { year: 2034 });
+    } finally {
+      if (saved === undefined) delete process.env.AUDIT_HASH_CHAIN_ENABLED;
+      else process.env.AUDIT_HASH_CHAIN_ENABLED = saved;
+    }
+    const rows = await owner.db
+      .select({ hash: schema.domainEvent.hash, chainSeq: schema.domainEvent.chainSeq })
+      .from(schema.domainEvent)
+      .where(
+        and(
+          eq(schema.domainEvent.tenantId, b.tenantId),
+          eq(schema.domainEvent.aggregateId, id),
+          eq(schema.domainEvent.eventType, 'leave-year.deleted'),
+        ),
+      );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(rows[0].chainSeq).not.toBeNull();
+  });
+
+  it('open → close → reopen: Guard 1 (ledger) still blocks deleting the re-drafted year', async () => {
+    const a = adminCtx(b);
+    await hireEmployeeCtx(); // pre-2027 hire ⇒ opening 2027 posts a grant at 2027-01-01
+    await upsertLeaveYearConfig(a, { year: 2027 });
+    await setLeaveYearStatus(a, { year: 2027, status: 'open' });
+    await setLeaveYearStatus(a, { year: 2027, status: 'closed' });
+    await setLeaveYearStatus(a, { year: 2027, status: 'draft' }); // the row's "Reopen" action
+    // The reopened year passes the STATUS check again, so its safety rests ENTIRELY on Guard 1 finding
+    // the grant-sweep ledger rows. openLeaveYear posts grants at effectiveOn = 1-Jan-of-year, so the
+    // guard holds today — but if a future grant path (pro-rated joiner, advance-window automation) ever
+    // dates a row OUTSIDE the calendar year, this guard silently opens and deleting the year orphans
+    // those grants with no FK to catch it. That is why this sequence is pinned here.
+    await expect(deleteLeaveYear(a, { year: 2027 })).rejects.toMatchObject({ code: 'leaveYearHasLedger' });
+    expect(await configRow(2027)).toBeTruthy();
   });
 });

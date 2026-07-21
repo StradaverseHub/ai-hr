@@ -4109,30 +4109,59 @@ export async function listLeaveYearConfigs(ctx: SessionContext): Promise<LeaveYe
   });
 }
 
-/** R45 fd71fa38 — the set of calendar years that already have leave RECORDS (any leave_ledger row dated in
- *  the year, or any leave_request overlapping it). The Leave-Year table uses this to DISABLE the row Delete
- *  button for a referenced year (the service `deleteLeaveYear` guard is the authoritative block; this only
- *  drives the pre-emptive UI affordance). Read-only, no events. */
+/** R45 fd71fa38 — the set of CONFIGURED leave years that already have leave RECORDS. The Leave-Year table
+ *  uses this to DISABLE the row Delete button (with a visible inline reason) for a referenced year; the
+ *  service `deleteLeaveYear` guard stays authoritative.
+ *
+ *  Cluster dcd8e32f rewrote this to use the SAME predicates as `deleteLeaveYear` — previously it derived
+ *  blocked years from EXTRACT(YEAR) of start/end dates separately (so a 2024→2026 request left 2025 out of
+ *  the UI's blocked set while the service still refused it) and ran three unbounded GROUP BY scans on every
+ *  page render. Now it walks only the configured leave_year_config years and, per year, runs the guard's own
+ *  two indexed EXISTS probes: a leave_ledger row dated inside the year, or a genuinely-live (pending /
+ *  approved — rejected and cancelled do not block, matching Guard 2) request overlapping it.
+ *  Read-only, no events. */
 export async function leaveYearsWithRecords(ctx: SessionContext): Promise<number[]> {
   return withTenant(ctx, async (tx) => {
-    const ledgerYears = await tx
-      .select({ yr: sql<number>`EXTRACT(YEAR FROM ${leaveLedger.effectiveOn})::int` })
-      .from(leaveLedger)
-      .where(eq(leaveLedger.tenantId, ctx.tenantId))
-      .groupBy(sql`1`);
-    const startYears = await tx
-      .select({ yr: sql<number>`EXTRACT(YEAR FROM ${leaveRequest.startDate})::int` })
-      .from(leaveRequest)
-      .where(eq(leaveRequest.tenantId, ctx.tenantId))
-      .groupBy(sql`1`);
-    const endYears = await tx
-      .select({ yr: sql<number>`EXTRACT(YEAR FROM ${leaveRequest.endDate})::int` })
-      .from(leaveRequest)
-      .where(eq(leaveRequest.tenantId, ctx.tenantId))
-      .groupBy(sql`1`);
-    const years = new Set<number>();
-    for (const r of [...ledgerYears, ...startYears, ...endYears]) years.add(Number(r.yr));
-    return [...years];
+    const configured = await tx
+      .select({ year: leaveYearConfig.year })
+      .from(leaveYearConfig)
+      .where(eq(leaveYearConfig.tenantId, ctx.tenantId));
+    const referenced: number[] = [];
+    for (const { year } of configured) {
+      const yearStart = `${year}-01-01`;
+      const yearEnd = `${year}-12-31`;
+      // Same predicate as deleteLeaveYear Guard 1.
+      const [ledgerHit] = await tx
+        .select({ id: leaveLedger.id })
+        .from(leaveLedger)
+        .where(
+          and(
+            eq(leaveLedger.tenantId, ctx.tenantId),
+            gte(leaveLedger.effectiveOn, yearStart),
+            lte(leaveLedger.effectiveOn, yearEnd),
+          ),
+        )
+        .limit(1);
+      if (ledgerHit) {
+        referenced.push(year);
+        continue;
+      }
+      // Same predicate as deleteLeaveYear Guard 2 (true date overlap + live statuses only).
+      const [requestHit] = await tx
+        .select({ id: leaveRequest.id })
+        .from(leaveRequest)
+        .where(
+          and(
+            eq(leaveRequest.tenantId, ctx.tenantId),
+            lte(leaveRequest.startDate, yearEnd),
+            gte(leaveRequest.endDate, yearStart),
+            inArray(leaveRequest.status, ['pending', 'approved']),
+          ),
+        )
+        .limit(1);
+      if (requestHit) referenced.push(year);
+    }
+    return referenced;
   });
 }
 
@@ -4377,12 +4406,25 @@ export async function saveFutureOpeningRule(
   });
 }
 
+/** Cluster dcd8e32f — the machine-readable reason a leave-year delete was refused. The action layer maps
+ *  each code to a localised message key (the English `.message` is a service-level fallback only — never
+ *  surface it to the admin verbatim, five of the six locales would see English). */
+export type LeaveYearDeleteErrorCode =
+  | 'leaveYearNotAdmin'
+  | 'leaveYearNotFound'
+  | 'leaveYearNotDraft'
+  | 'leaveYearHasLedger'
+  | 'leaveYearHasRequests';
+
 /** R45 fd71fa38 — a typed error the delete-leave-year path throws when the guard blocks removal (year not
- *  draft, or leave records already reference it). The action layer surfaces `.message` to the admin. */
+ *  draft, or leave records already reference it). Carries a stable `code` (dcd8e32f) so the action layer
+ *  can localise the refusal before redirecting. */
 export class LeaveYearDeleteError extends Error {
-  constructor(message: string) {
+  readonly code: LeaveYearDeleteErrorCode;
+  constructor(code: LeaveYearDeleteErrorCode, message: string) {
     super(message);
     this.name = 'LeaveYearDeleteError';
+    this.code = code;
   }
 }
 
@@ -4395,8 +4437,16 @@ export class LeaveYearDeleteError extends Error {
  *   - AND zero leave_request rows overlap the calendar year (no applications reference it).
  * Any violation throws LeaveYearDeleteError (the reporter's "cannot delete — records exist"). On success the
  * row is removed and a `leave-year.deleted` DomainEvent is appended (substrate: the delete write → event).
+ *
+ * Cluster dcd8e32f: admin-only, asserted HERE as well as at the action layer (requireAdmin) and in the DB
+ * (0282 RESTRICTIVE FOR DELETE policy) — the 0190 FOR ALL policy's WITH CHECK never applied to DELETE, so
+ * before 0282 any tenant member could remove a leave-year row. Guard 2 now ignores rejected / cancelled
+ * requests: only genuinely-live (pending / approved) applications block deletion.
  */
 export async function deleteLeaveYear(ctx: SessionContext, p: { year: number }) {
+  if (!isAdmin(ctx)) {
+    throw new LeaveYearDeleteError('leaveYearNotAdmin', 'Only an admin can delete a leave year.');
+  }
   if (!Number.isInteger(p.year)) throw new Error('Invalid leave year');
   const yearStart = `${p.year}-01-01`;
   const yearEnd = `${p.year}-12-31`;
@@ -4406,9 +4456,10 @@ export async function deleteLeaveYear(ctx: SessionContext, p: { year: number }) 
       .from(leaveYearConfig)
       .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.year, p.year)))
       .limit(1);
-    if (!before) throw new LeaveYearDeleteError('This leave year no longer exists.');
+    if (!before) throw new LeaveYearDeleteError('leaveYearNotFound', 'This leave year no longer exists.');
     if (before.status !== 'draft') {
       throw new LeaveYearDeleteError(
+        'leaveYearNotDraft',
         'This leave year cannot be deleted because it has been opened. Only a draft year can be removed.',
       );
     }
@@ -4426,10 +4477,13 @@ export async function deleteLeaveYear(ctx: SessionContext, p: { year: number }) 
       .limit(1);
     if (ledgerHit) {
       throw new LeaveYearDeleteError(
+        'leaveYearHasLedger',
         'This leave year cannot be deleted because leave records already exist for it.',
       );
     }
-    // Guard 2: any leave_request overlapping the calendar year ⇒ applications reference it.
+    // Guard 2: any LIVE (pending / approved) leave_request overlapping the calendar year ⇒ applications
+    // reference it. Rejected / cancelled requests deliberately do NOT block (dcd8e32f): a lone rejected
+    // application must not permanently pin an otherwise pristine draft year.
     const [requestHit] = await tx
       .select({ id: leaveRequest.id })
       .from(leaveRequest)
@@ -4438,11 +4492,13 @@ export async function deleteLeaveYear(ctx: SessionContext, p: { year: number }) 
           eq(leaveRequest.tenantId, ctx.tenantId),
           lte(leaveRequest.startDate, yearEnd),
           gte(leaveRequest.endDate, yearStart),
+          inArray(leaveRequest.status, ['pending', 'approved']),
         ),
       )
       .limit(1);
     if (requestHit) {
       throw new LeaveYearDeleteError(
+        'leaveYearHasRequests',
         'This leave year cannot be deleted because leave applications already reference it.',
       );
     }

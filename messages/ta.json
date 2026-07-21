@@ -3813,6 +3813,9 @@
       "deleteLeaveYearConfirmBody": "நீங்கள் விடுப்பு ஆண்டு {year} ஐ நீக்கப் போகிறீர்கள். இந்தச் செயலை மீட்டெடுக்க முடியாது.",
       "deleteLeaveYearBlockedOpened": "வரைவு விடுப்பு ஆண்டை மட்டுமே நீக்க முடியும்.",
       "deleteLeaveYearBlockedRecords": "இந்த விடுப்பு ஆண்டில் விடுப்புப் பதிவுகள் உள்ளதால் நீக்க முடியாது.",
+      "deleteLeaveYearBlockedRequests": "விடுப்பு விண்ணப்பங்கள் ஏற்கனவே இந்த விடுப்பு ஆண்டைக் குறிப்பிடுவதால் அதை நீக்க முடியாது.",
+      "deleteLeaveYearNotFound": "இந்த விடுப்பு ஆண்டு இப்போது இல்லை.",
+      "leaveYearSavedToast": "விடுப்பு ஆண்டு சேமிக்கப்பட்டது.",
       "closeLeaveYear": "மூடு",
       "reopenLeaveYear": "மீண்டும் திற",
       "noLeaveYears": "இன்னும் விடுப்பு ஆண்டு எதுவும் அமைக்கப்படவில்லை.",
@@ -3826,7 +3829,6 @@
       "openingUnitDays": "நாட்கள்",
       "openingUnitWeeks": "வாரங்கள்",
       "openingUnitMonths": "மாதங்கள்",
-      "effectiveLeaveYearLabel": "அமலுக்கு வரும் விடுப்பு ஆண்டு",
       "openingRuleSummary": "விடுப்பு ஆண்டு {year}: தொடங்குவதற்கு {amount} {unit} முன் திறக்கும் → {date}",
       "visibility": {
         "sectionTitle": "ஊழியர் தெரிவுநிலை",

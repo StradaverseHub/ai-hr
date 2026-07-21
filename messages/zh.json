@@ -3813,6 +3813,9 @@
       "deleteLeaveYearConfirmBody": "您即将删除假期年度 {year}。此操作无法撤销。",
       "deleteLeaveYearBlockedOpened": "只有草稿状态的假期年度才能删除。",
       "deleteLeaveYearBlockedRecords": "此假期年度已有假期记录，无法删除。",
+      "deleteLeaveYearBlockedRequests": "此假期年度已有休假申请引用，无法删除。",
+      "deleteLeaveYearNotFound": "此假期年度已不存在。",
+      "leaveYearSavedToast": "假期年度已保存。",
       "closeLeaveYear": "关闭",
       "reopenLeaveYear": "重新开放",
       "noLeaveYears": "尚未配置任何假期年度。",
@@ -3826,7 +3829,6 @@
       "openingUnitDays": "天",
       "openingUnitWeeks": "周",
       "openingUnitMonths": "月",
-      "effectiveLeaveYearLabel": "生效假期年度",
       "openingRuleSummary": "假期年度 {year}：在开始前 {amount} {unit} 开启 → {date}",
       "visibility": {
         "sectionTitle": "员工可见性",

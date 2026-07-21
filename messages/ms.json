@@ -3813,6 +3813,9 @@
       "deleteLeaveYearConfirmBody": "Anda akan memadam Tahun Cuti {year}. Tindakan ini tidak boleh dibatalkan.",
       "deleteLeaveYearBlockedOpened": "Hanya tahun cuti draf boleh dipadam.",
       "deleteLeaveYearBlockedRecords": "Tahun cuti ini mempunyai rekod cuti dan tidak boleh dipadam.",
+      "deleteLeaveYearBlockedRequests": "Tahun cuti ini tidak boleh dipadam kerana sudah ada permohonan cuti yang merujuk kepadanya.",
+      "deleteLeaveYearNotFound": "Tahun cuti ini sudah tidak wujud.",
+      "leaveYearSavedToast": "Tahun cuti disimpan.",
       "closeLeaveYear": "Tutup",
       "reopenLeaveYear": "Buka semula",
       "noLeaveYears": "Belum ada tahun cuti dikonfigurasikan.",
@@ -3826,7 +3829,6 @@
       "openingUnitDays": "Hari",
       "openingUnitWeeks": "Minggu",
       "openingUnitMonths": "Bulan",
-      "effectiveLeaveYearLabel": "Tahun cuti berkuat kuasa",
       "openingRuleSummary": "Tahun cuti {year}: dibuka {amount} {unit} sebelum permulaan → {date}",
       "visibility": {
         "sectionTitle": "Keterlihatan Pekerja",
