@@ -9,7 +9,8 @@
  *   - container: grid, 1 col → 2 (sm) → 4 (lg)
  *   - every field input goes w-full (no fixed w-40 / w-52 / w-64)
  *   - Description spans the full row and flows fluid (col-span-full + w-full, keeps resize-y)
- *   - Paid checkbox is pushed to the far-right cell (justify-self-end), no longer between text inputs
+ *   - Leave Unit and Paid share ONE grid cell (a flex row, 13ec5d3b) so Paid sits immediately beside the
+ *     unit select instead of wrapping onto an orphaned row
  *   - Save/Cancel live in their own full-width cell
  *
  * No field, name attr, marker, server action or substrate changed — so this guards the layout invariants
@@ -83,12 +84,30 @@ describe('Leave Type edit form layout (6ef6e355) — responsive grid', () => {
     void ta;
   });
 
-  it('pushes the Paid checkbox to the far-right cell so it is no longer wedged between inputs', () => {
+  it('keeps Leave Unit and Paid together in one cell (13ec5d3b)', () => {
+    const unitLabelIdx = form.indexOf("t('leaveUnitLabel')");
     const paidLabelIdx = form.indexOf("t('paidLabel')");
+    const descLabelIdx = form.indexOf("t('descriptionLabel')");
+    expect(unitLabelIdx).toBeGreaterThan(-1);
     expect(paidLabelIdx).toBeGreaterThan(-1);
-    const fieldTagStart = form.lastIndexOf('<Field', paidLabelIdx);
-    const fieldTag = form.slice(fieldTagStart, form.indexOf('>', fieldTagStart));
-    expect(fieldTag).toMatch(/justify-self-end/);
+    expect(descLabelIdx).toBeGreaterThan(-1);
+    // The shared-cell wrapper is the flex div immediately preceding the Leave Unit Field. Anchor/order-based
+    // on purpose: the Paid Field nests its own inner div, so slicing wrapper-open → first </div> would cut
+    // BEFORE t('paidLabel') and silently weaken the assertion.
+    const wrapperOpen = form.lastIndexOf('<div', unitLabelIdx);
+    expect(wrapperOpen).toBeGreaterThan(-1);
+    const wrapperTag = form.slice(wrapperOpen, form.indexOf('>', wrapperOpen));
+    // A flex row with a gap; items-end vs items-start is a visual equivalence we deliberately do not pin.
+    expect(wrapperTag).toMatch(/\bflex\b/);
+    expect(wrapperTag).toMatch(/gap-/);
+    // Order: wrapper opens, then Leave Unit, then Paid — both before Description, i.e. inside the same cell.
+    expect(wrapperOpen).toBeLessThan(unitLabelIdx);
+    expect(unitLabelIdx).toBeLessThan(paidLabelIdx);
+    expect(paidLabelIdx).toBeLessThan(descLabelIdx);
+    // The old far-right push is gone from the Paid Field tag.
+    const paidFieldStart = form.lastIndexOf('<Field', paidLabelIdx);
+    const paidFieldTag = form.slice(paidFieldStart, form.indexOf('>', paidFieldStart));
+    expect(paidFieldTag).not.toMatch(/justify-self-end/);
     // Paid must come AFTER the compact text inputs (name, reason) so it is not squeezed between them.
     expect(form.indexOf("t('nameLabel')")).toBeLessThan(paidLabelIdx);
     expect(form.indexOf("t('reasonLabel')")).toBeLessThan(paidLabelIdx);
