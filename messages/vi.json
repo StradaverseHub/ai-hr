@@ -138,7 +138,8 @@
     "profileOptions": "Tùy chọn hồ sơ",
     "delegations": "Ủy quyền",
     "dashboardCardConfig": "Thẻ bảng điều khiển",
-    "scheduledActions": "Tác vụ theo lịch"
+    "scheduledActions": "Tác vụ theo lịch",
+    "systemSettings": "Cài đặt hệ thống"
   },
   "dashboard": {
     "title": "Bảng điều khiển",

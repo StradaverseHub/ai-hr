@@ -86,6 +86,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const openGroups = {
     nav_attendance_open: cookieStore.get('nav_attendance_open')?.value === '1',
     nav_reports_open: cookieStore.get('nav_reports_open')?.value === '1',
+    nav_system_settings_open: cookieStore.get('nav_system_settings_open')?.value === '1',
   };
   const onboarded = await getOnboardingStatus(session);
   const tours = toursForRoles(session.roles);

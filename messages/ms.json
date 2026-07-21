@@ -138,7 +138,8 @@
     "profileOptions": "Pilihan Profil",
     "delegations": "Perwakilan",
     "dashboardCardConfig": "Kad papan pemuka",
-    "scheduledActions": "Tugas Berjadual"
+    "scheduledActions": "Tugas Berjadual",
+    "systemSettings": "Tetapan Sistem"
   },
   "dashboard": {
     "title": "Papan pemuka",

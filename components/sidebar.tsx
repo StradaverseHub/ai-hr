@@ -28,6 +28,7 @@ import {
   Receipt,
   Lock,
   ScrollText,
+  Settings2,
   Timer,
   ShieldCheck,
   Smartphone,
@@ -110,6 +111,31 @@ const REPORTS_NODE: CollapsibleGroupItem = {
   ],
 };
 
+// System Settings node (a4e49748) — consolidates the three system-wide setup screens that used to sit
+// as loose rows in the flat Administration list, under one collapsible parent (same machinery as the
+// Attendance and Reports nodes). Nav-only: hrefs, icons and route guards are carried over verbatim.
+// Future config screens (numbering rules, notification settings, email templates, …) slot in here
+// when they are actually requested; none are built by a4e49748.
+// Per-child adminOnly flags are REDUNDANT today (the admin group is gated adminOnly wholesale before
+// per-child filtering runs); they are kept purely for consistency with REPORTS_NODE and are deliberately
+// not asserted in test/sidebar-system-settings-group.test.ts so a future cleanup can drop them.
+const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
+  collapsible: true,
+  labelKey: 'systemSettings',
+  icon: Settings2,
+  cookieKey: 'nav_system_settings_open',
+  children: [
+    // Employee ID Auto Running Number Setup (feedback 3d0031e6): configurable auto-numbered employee codes.
+    { href: '/admin/settings/employee-id', labelKey: 'employeeIdConfig', icon: Hash, adminOnly: true },
+    // HR-Admin Dashboard Card Master (feedback 1586d2f5): configurable employee-dashboard card catalog.
+    { href: '/admin/settings/dashboard', labelKey: 'dashboardCardConfig', icon: LayoutDashboard, adminOnly: true },
+    // fbdeee87: Profile Options was folded into the System Labels surface as a tab, so the two adjacent
+    // admin entries collapse into this single "System Labels" entry (profile options now live at
+    // /admin/settings/system-labels/profile-options).
+    { href: '/admin/settings/system-labels', labelKey: 'systemLabels', icon: Tags, adminOnly: true },
+  ],
+};
+
 const GROUPS: Group[] = [
   {
     items: [
@@ -143,14 +169,9 @@ const GROUPS: Group[] = [
     items: [
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users },
-      // Employee ID Auto Running Number Setup (feedback 3d0031e6): configurable auto-numbered employee codes.
-      { href: '/admin/settings/employee-id', labelKey: 'employeeIdConfig', icon: Hash },
-      // HR-Admin Dashboard Card Master (feedback 1586d2f5): configurable employee-dashboard card catalog.
-      { href: '/admin/settings/dashboard', labelKey: 'dashboardCardConfig', icon: LayoutDashboard },
-      // fbdeee87: Profile Options was folded into the System Labels surface as a tab, so the two adjacent
-      // admin entries collapse into this single "System Labels" entry (profile options now live at
-      // /admin/settings/system-labels/profile-options).
-      { href: '/admin/settings/system-labels', labelKey: 'systemLabels', icon: Tags },
+      // a4e49748: the three system-wide setup rows (Employee ID numbering / Dashboard cards / System
+      // Labels) collapsed into the single System Settings node above.
+      SYSTEM_SETTINGS_NODE,
       // 0d147b78: Leave config is now a tabbed surface; the former standalone "Approval chain" entry
       // was absorbed into its Approval Workflow tab (/admin/leave/approval), so it's removed here.
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
