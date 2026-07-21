@@ -97,7 +97,7 @@ import {
   moveCombinedLimitMember,
   groupSchemeLeaveTypes,
 } from '@/core/benefit-scheme';
-import { inviteUser, revokeInvitation } from '@/core/auth';
+import { inviteUser, revokeInvitation, setAppUserArchived } from '@/core/auth';
 import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
 import { setEncashmentPolicy } from '@/core/leave-encashment';
 import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
@@ -1040,10 +1040,30 @@ export async function revokeRoleAction(formData: FormData) {
 export async function inviteUserAction(formData: FormData) {
   const s = await getSession();
   try {
+    // personId is REQUIRED (0279). It was previously dropped here even though app_invitation.personId
+    // exists and inviteUser accepts it, which is how nameless, unattached logins got created. ADR-0072
+    // is invitation-only with no self sign-up, so the invitee always already has a person row.
+    const personId = String(formData.get('personId') ?? '').trim();
+    if (!personId) throw new Error('Select the employee this invitation is for.');
     await inviteUser(s, {
       email: String(formData.get('email') ?? '').trim(),
       role: String(formData.get('role') ?? 'employee'),
       companyId: (formData.get('companyId') as string) || null,
+      personId,
+    });
+  } catch (e) {
+    fail(USERS, e);
+  }
+  ok(USERS);
+}
+
+/** Archive (switch off) or restore a login — group-admin only, guarded in the service, RLS backstop. */
+export async function archiveUserAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await setAppUserArchived(s, {
+      appUserId: String(formData.get('appUserId')),
+      archived: archived(formData),
     });
   } catch (e) {
     fail(USERS, e);

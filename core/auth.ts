@@ -15,10 +15,10 @@
  */
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, ne } from 'drizzle-orm';
 import { client, withTenant, type SessionContext } from '../db/client';
-import { appInvitation } from '../db/schema';
-import { appendEvent, actorOf } from '../db/events';
+import { appInvitation, appUser, roleAssignment } from '../db/schema';
+import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { InvalidInvitationError } from '../lib/auth-errors';
 
 /** The WorkOS surface auth services need — injectable so tests never hit the real SDK. */
@@ -170,6 +170,87 @@ export function listPendingInvitations(ctx: SessionContext) {
       .where(eq(appInvitation.status, 'pending'))
       .orderBy(appInvitation.createdAt),
   );
+}
+
+// ─────────────────────────── Admin: login lifecycle (0279) ───────────────────────────
+
+/**
+ * Archive (switch off) or restore a login. Archiving sets app_user.archived_at, which makes
+ * app.principal_by_subject refuse to resolve the subject — so the login is genuinely refused at
+ * sign-in and on the next page load of an already-open session, not merely hidden from the list.
+ *
+ * Role assignments are left completely untouched, so Restore puts the user back exactly as they were.
+ *
+ * Two guards, both about not locking the group out of its own admin screen:
+ *   • You cannot archive YOURSELF (an admin cannot accidentally lock themselves out).
+ *   • You cannot archive the LAST login holding a group-wide super_admin / hr_admin grant that is not
+ *     already blocked. This covers the manual path only. The DERIVED path (the last admin's employment
+ *     being ended) cannot be guarded here — that needs a check at the point of termination, which is a
+ *     separate change; the break-glass SQL is documented in the 0279 migration header.
+ */
+export async function setAppUserArchived(
+  ctx: SessionContext,
+  input: { appUserId: string; archived: boolean },
+): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    assertGroupAdmin(ctx);
+    if (ctx.userId && input.appUserId === ctx.userId) {
+      throw new Error('You cannot archive your own login.');
+    }
+    if (input.archived) {
+      // Any OTHER group-wide admin who is not already blocked keeps the screen reachable.
+      const [remaining] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(roleAssignment)
+        .innerJoin(appUser, eq(appUser.id, roleAssignment.appUserId))
+        .where(
+          and(
+            isNull(roleAssignment.companyId),
+            sql`${roleAssignment.role} in ('super_admin','hr_admin')`,
+            ne(roleAssignment.appUserId, input.appUserId),
+            sql`not app.login_blocked(${appUser.id})`,
+          ),
+        );
+      if (!remaining || remaining.n === 0) {
+        throw new Error('This is the last group administrator — archiving it would lock everyone out.');
+      }
+    }
+    const [row] = await tx
+      .update(appUser)
+      .set({ archivedAt: input.archived ? sql`now()` : null })
+      .where(eq(appUser.id, input.appUserId))
+      .returning({ id: appUser.id, personId: appUser.personId });
+    if (!row) throw new Error('User not found.');
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'app-user',
+      aggregateId: row.id,
+      eventType: input.archived ? 'app-user.archived' : 'app-user.restored',
+      actor: actorOf(ctx),
+      // Scope to the person's own employment so this reads on their timeline, not admin-only (ADR-0015).
+      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, row.personId),
+      // The human reason lives here rather than in a column — no archived_reason to drift or to key
+      // an i18n message off (next-intl throws on a missing message).
+      payload: { reason: input.archived ? 'archived-by-administrator' : 'restored-by-administrator' },
+    });
+  });
+}
+
+/**
+ * Auth-audit for a login that presented VALID credentials but resolved to no app_user — archived, or
+ * the person has left. Without this the rejection vanishes into app/callback's bare catch. Pre-auth
+ * (no tenant, no user) → system tenant, admin-only to read, same writer as recordLoginFailed.
+ */
+export async function recordLoginBlocked(input: { subject: string }): Promise<void> {
+  await appendAuthEvent({
+    tenantId: null,
+    aggregateType: 'app-user',
+    aggregateId: randomUUID(),
+    eventType: 'app-user.login-blocked',
+    actorType: 'external',
+    actorId: null,
+    payload: { subject: input.subject },
+  });
 }
 
 /** Admin-only: revoke a still-pending invitation (single conditional update; RLS gates the row). */

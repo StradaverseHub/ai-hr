@@ -12,6 +12,7 @@ import { isEssViewComponentKey, type EssViewConfig } from './ess-view';
 import { normalizeLeaveFormulaConfig, type LeaveFormulaConfig } from './leave-formula';
 import { isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual';
 import { visibleLabelIdsCondition } from './system-labels';
+import { isLoginBlocked } from './employment-status';
 import {
   isValidMonthDay,
   isWellFormedBands,
@@ -2240,7 +2241,25 @@ export function listGroupEffectiveHolidays(ctx: SessionContext, p: { groupId: st
   });
 }
 
-export function listUsers(ctx: SessionContext) {
+/**
+ * The logins on the Users & roles screen (0279). Hidden-by-default lifecycle, matching the
+ * `includeArchived` shape listCompanies/listJobGrades use in core/read.ts.
+ *
+ * Two ways a row is "switched off", surfaced as one status but distinguished by cause:
+ *   • archivedAt set          → "Archived by an administrator", and Restore is offered.
+ *   • blockedByTermination    → "Left the company". No Restore: the unwind is clearing the end dates
+ *                               on the employment record, which restores access by itself.
+ *
+ * blockedByTermination is derived here through isLoginBlocked(), the SAME rule app.login_blocked()
+ * enforces in SQL, so the screen can never claim someone has access that the auth path refuses (or
+ * vice versa). test/user-lifecycle.test.ts pins the two against each other across a matrix.
+ *
+ * `name`/`email` come only from the joined person. Deliberately NOT falling back to the invitation
+ * email: test/pdpa-erasure.test.ts erases person rows, and surfacing a retained invitation email for
+ * an erased person would re-expose exactly what erasure removed. Such a row renders as an unlinked
+ * login instead.
+ */
+export function listUsers(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
   return withTenant(ctx, async (tx) => {
     const users = await tx
       .select({
@@ -2249,6 +2268,7 @@ export function listUsers(ctx: SessionContext) {
         personId: appUser.personId,
         name: person.fullName,
         email: person.primaryEmail,
+        archivedAt: appUser.archivedAt,
       })
       .from(appUser)
       .leftJoin(person, eq(person.id, appUser.personId))
@@ -2263,7 +2283,35 @@ export function listUsers(ctx: SessionContext) {
       })
       .from(roleAssignment)
       .leftJoin(company, eq(company.id, roleAssignment.companyId));
-    return users.map((u) => ({ ...u, roles: roles.filter((r) => r.appUserId === u.id) }));
+    // Every employment of every linked person, in one read, so the block predicate runs in TS.
+    const personIds = users.map((u) => u.personId).filter((v): v is string => Boolean(v));
+    const emps = personIds.length
+      ? await tx
+          .select({
+            personId: employment.personId,
+            resignationDate: employment.resignationDate,
+            lastWorkingDate: employment.lastWorkingDate,
+            terminatedOn: employment.terminatedOn,
+            blacklistedAt: employment.blacklistedAt,
+          })
+          .from(employment)
+          .where(inArray(employment.personId, personIds))
+      : [];
+    const rows = users.map((u) => {
+      const mine = u.personId ? emps.filter((e) => e.personId === u.personId) : [];
+      return {
+        ...u,
+        roles: roles.filter((r) => r.appUserId === u.id),
+        // Blocked purely by the employment dates — archivedAt is reported separately so the UI can
+        // tell the two causes apart and only offer Restore for the manual one.
+        blockedByTermination: isLoginBlocked({ archivedAt: null, employments: mine }),
+      };
+    });
+    const visible = opts.includeArchived
+      ? rows
+      : rows.filter((r) => !r.archivedAt && !r.blockedByTermination);
+    // The count of rows the default view omits, so the screen never silently drops a set.
+    return { users: visible, hiddenCount: rows.length - visible.length };
   });
 }
 

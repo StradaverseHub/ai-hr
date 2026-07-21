@@ -11,14 +11,19 @@ import { createDb } from '../db/client';
 import { tenant } from '../db/schema';
 import { sweepDueReviews, sweepReviewReminders } from '../core/employment-review';
 import { dispatchNotifications } from '../core/notifications';
+import { todayInKualaLumpur } from '../core/leave';
+import { recordJobRun } from '../core/job-run';
 
 async function main() {
+  const startedAt = Date.now();
   const ownerUrl = process.env.MIGRATION_DATABASE_URL;
   if (!ownerUrl) {
     console.error('review:sweep requires MIGRATION_DATABASE_URL (the owner role) to enumerate tenants.');
     process.exit(1);
   }
-  const today = new Date().toISOString().slice(0, 10);
+  // MYT, not UTC — see accrue-earned.ts. Scheduled 03:00 local, which is the previous day in UTC, so a
+  // review due today would be missed by a day.
+  const today = todayInKualaLumpur();
   const owner = createDb(ownerUrl);
   const tenants = await owner.db.select({ id: tenant.id, name: tenant.name }).from(tenant);
   console.log(`review:sweep — ${tenants.length} tenant(s), today ${today}`);
@@ -49,6 +54,20 @@ async function main() {
   console.log(
     `review:sweep done — ${totalOpened} review(s) opened, ${totalReminders} reminder(s) across ${tenants.length} tenant(s), ${failures} failure(s).`,
   );
+  // 0280 run log, in its OWN try/catch — see accrue-earned.ts. NOTE for anyone reading the screen: a
+  // 'success' here does NOT prove mail was sent. dispatchNotifications is gated by NOTIFICATIONS_ENABLED
+  // and no-ops when it is off, while the run still records success.
+  try {
+    await recordJobRun(owner.db, {
+      jobKey: 'review.sweep',
+      startedAt,
+      tenantsProcessed: tenants.length,
+      tenantsFailed: failures,
+      result: { opened: totalOpened, reminders: totalReminders },
+    });
+  } catch (e) {
+    console.error(`review:sweep — could not write the run log: ${(e as Error).message}`);
+  }
   await owner.client.end();
   process.exit(failures > 0 ? 1 : 0);
 }

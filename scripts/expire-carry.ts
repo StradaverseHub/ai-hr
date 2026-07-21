@@ -6,15 +6,19 @@
 //   0 3 1 4 *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/expire-carry.ts
 import { createDb } from '../db/client';
 import { tenant } from '../db/schema';
-import { expireCarriedLeave } from '../core/leave';
+import { expireCarriedLeave, todayInKualaLumpur } from '../core/leave';
+import { recordJobRun } from '../core/job-run';
 
 async function main() {
+  const startedAt = Date.now();
   const ownerUrl = process.env.MIGRATION_DATABASE_URL;
   if (!ownerUrl) {
     console.error('leave:expire-carry requires MIGRATION_DATABASE_URL (the owner role) to enumerate tenants.');
     process.exit(1);
   }
-  const today = new Date().toISOString().slice(0, 10);
+  // MYT, not UTC — see accrue-earned.ts. Scheduled 03:00 local on 1 Apr; toISOString() would resolve to
+  // 31 Mar, i.e. ON the expiry date rather than after it, and forfeit nothing.
+  const today = todayInKualaLumpur();
   const owner = createDb(ownerUrl);
   const tenants = await owner.db.select({ id: tenant.id, name: tenant.name }).from(tenant);
   console.log(`leave:expire-carry — ${tenants.length} tenant(s), today ${today}`);
@@ -38,6 +42,19 @@ async function main() {
   console.log(
     `leave:expire-carry done — ${totalSwept} sweep(s), ${totalForfeited} day(s) forfeited across ${tenants.length} tenant(s), ${failures} failure(s).`,
   );
+  // 0280 run log, in its OWN try/catch — see accrue-earned.ts. `forfeited` is a DAY count and may be
+  // fractional (e.g. 12.5); it goes into jsonb as a float and must never be rounded to an integer.
+  try {
+    await recordJobRun(owner.db, {
+      jobKey: 'leave.expire-carry',
+      startedAt,
+      tenantsProcessed: tenants.length,
+      tenantsFailed: failures,
+      result: { swept: totalSwept, forfeited: totalForfeited },
+    });
+  } catch (e) {
+    console.error(`leave:expire-carry — could not write the run log: ${(e as Error).message}`);
+  }
   await owner.client.end();
   process.exit(failures > 0 ? 1 : 0);
 }

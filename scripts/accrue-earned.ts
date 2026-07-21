@@ -6,15 +6,20 @@
 //   0 2 1 * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/accrue-earned.ts
 import { createDb } from '../db/client';
 import { tenant } from '../db/schema';
-import { accrueEarnedLeave } from '../core/leave';
+import { accrueEarnedLeave, todayInKualaLumpur } from '../core/leave';
+import { recordJobRun } from '../core/job-run';
 
 async function main() {
+  const startedAt = Date.now();
   const ownerUrl = process.env.MIGRATION_DATABASE_URL;
   if (!ownerUrl) {
     console.error('leave:accrue requires MIGRATION_DATABASE_URL (the owner role) to enumerate tenants.');
     process.exit(1);
   }
-  const asOf = new Date().toISOString().slice(0, 10);
+  // MYT, not UTC. This is scheduled for 02:00 local on the 1st; toISOString() resolves to the previous
+  // UTC day there — the last day of the PREVIOUS month — which would accrue against the wrong period.
+  // The admin "Run earned accrual" button already uses this helper (app/admin/actions.ts).
+  const asOf = todayInKualaLumpur();
   const owner = createDb(ownerUrl);
   const tenants = await owner.db.select({ id: tenant.id, name: tenant.name }).from(tenant);
   console.log(`leave:accrue — ${tenants.length} tenant(s), asOf ${asOf}`);
@@ -36,6 +41,19 @@ async function main() {
   console.log(
     `leave:accrue done — ${totalGranted} ledger grant(s) across ${tenants.length} tenant(s), ${failures} failure(s).`,
   );
+  // 0280 run log. In its OWN try/catch: this is an audit record, and failing to write it must never
+  // turn a run that did its real work into a non-zero exit. The exit code below is unchanged.
+  try {
+    await recordJobRun(owner.db, {
+      jobKey: 'leave.accrue',
+      startedAt,
+      tenantsProcessed: tenants.length,
+      tenantsFailed: failures,
+      result: { granted: totalGranted },
+    });
+  } catch (e) {
+    console.error(`leave:accrue — could not write the run log: ${(e as Error).message}`);
+  }
   await owner.client.end();
   process.exit(failures > 0 ? 1 : 0);
 }

@@ -136,10 +136,10 @@ describe('ADR-0072 — real auth (WorkOS AuthKit)', () => {
   });
 
   // (c) Invitation is single-use + expiring; two concurrent consumes → exactly one succeeds.
-  // (c0) REGRESSION (migration 0278): inviting a person who ALREADY has an app_user must REBIND that
+  // (c0) REGRESSION (migration 0281): inviting a person who ALREADY has an app_user must REBIND that
   // user's subject, not create a second identity.
   //
-  // This branch was broken from 0151 until 0278 and no test reached it. app.consume_invitation is
+  // This branch was broken from 0151 until 0281 and no test reached it. app.consume_invitation is
   // declared RETURNS TABLE (app_user_id uuid, tenant_id uuid); those OUT parameters are in scope for the
   // whole body, so the unqualified `tenant_id` in its own lookup was ambiguous against app_user.tenant_id
   // and Postgres refused to plan the statement. It only executes when person_id is set — and every other
@@ -147,7 +147,7 @@ describe('ADR-0072 — real auth (WorkOS AuthKit)', () => {
   //
   // It is exactly the path a real-auth cutover depends on (binding a live WorkOS subject onto an existing
   // seeded user), so it would have failed at the worst possible moment.
-  it('invitation targeting an existing person REBINDS that app_user (0278 regression)', async () => {
+  it('invitation targeting an existing person REBINDS that app_user (0281 regression)', async () => {
     const admin: SessionContext = { tenantId: base.tenantId, userId: base.adminUserId, roles: ['hr_admin'] };
     const emp = await hireEmployee(admin, {
       person: { fullName: 'Rebind Target', primaryEmail: 'rebind@acme.test' },

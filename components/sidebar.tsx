@@ -28,6 +28,7 @@ import {
   Receipt,
   Lock,
   ScrollText,
+  Timer,
   ShieldCheck,
   Smartphone,
   Tags,
@@ -159,6 +160,11 @@ const GROUPS: Group[] = [
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
       REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
+      // 0280 — read-only log of the four overnight sweeps. Uses the group's existing adminOnly gate
+      // rather than a new groupAdminOnly flag: ChildItem, Group and the two filter expressions below are
+      // separate, so such a flag would type-check here and still render for every admin. The page itself
+      // redirects a non-group admin (and RLS returns zero rows), which is how the rest of the app gates.
+      { href: '/admin/scheduled-actions', labelKey: 'scheduledActions', icon: Timer },
       { href: '/admin/privacy', labelKey: 'dataPrivacy', icon: Lock },
       { href: '/admin/ai', labelKey: 'aiConfig', icon: Sparkles },
       { href: '/admin/users', labelKey: 'securityPermission', icon: ShieldCheck },

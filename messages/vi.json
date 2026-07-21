@@ -137,7 +137,8 @@
     "reportPerformance": "Hiệu suất",
     "profileOptions": "Tùy chọn hồ sơ",
     "delegations": "Ủy quyền",
-    "dashboardCardConfig": "Thẻ bảng điều khiển"
+    "dashboardCardConfig": "Thẻ bảng điều khiển",
+    "scheduledActions": "Tác vụ theo lịch"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -3970,7 +3971,7 @@
     "users": {
       "title": "Người dùng & vai trò",
       "userCount": "{count, plural, one {# người dùng} other {# người dùng}}",
-      "provisioningNote": "Các đăng nhập mới được cấp qua <strong>WorkOS</strong> (SSO / mời) trong một giai đoạn sau. Tại đây bạn quản lý vai trò cho người dùng hiện có. Phạm vi công ty áp dụng cho các quyền <strong>HR Admin</strong> — công ty đó <em>và các công ty con của nó</em>; các vai trò khác áp dụng toàn tập đoàn.",
+      "provisioningNote": "Các đăng nhập mới chỉ được tạo bằng lời mời — không có đăng ký mở. Quản trị viên mời <strong>nhân viên hiện có</strong> qua email, sau đó <strong>WorkOS</strong> gửi liên kết dùng một lần và người được mời tự đặt mật khẩu. Chỉ <strong>quản trị viên nhóm</strong> mới có thể mời, lưu trữ hoặc khôi phục một đăng nhập. Lưu trữ sẽ chặn quyền truy cập mà không xóa bất kỳ dữ liệu nào, và đăng nhập bị chặn tự động khi <em>mọi</em> hợp đồng lao động của người đó đã kết thúc. Phạm vi công ty áp dụng cho quyền <strong>HR Admin</strong> — công ty đó <em>và các công ty con</em>; các vai trò khác áp dụng toàn nhóm.",
       "sectionUsers": "Người dùng",
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "revokeRole": "Thu hồi vai trò",
@@ -3993,7 +3994,6 @@
       "inviteRole": "Vai trò",
       "inviteScope": "Phạm vi công ty",
       "inviteSubmit": "Gửi lời mời",
-      "pendingInvitations": "Lời mời đang chờ",
       "revokeInvitation": "Thu hồi",
       "sectionFunctionAccess": "Quyền truy cập chức năng",
       "functionAccessCaption": "Vai trò nào có thể mở từng màn hình. Điều này phản ánh quyền truy cập mà hệ thống thực thi; đây là chế độ xem tham chiếu, không phải trình chỉnh sửa — việc thực thi được thay đổi trong các bộ bảo vệ vai trò và chính sách cơ sở dữ liệu.",
@@ -4017,7 +4017,23 @@
         "leaveApproval": "Quản lý và quản trị viên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "payrollConfig": "Mọi người đều có thể mở; chỉ quản trị viên của công ty mới có thể thay đổi.",
         "delegations": "HR và quản trị viên thấy mọi ủy quyền; bạn chỉ thấy những ủy quyền do bạn tạo hoặc đảm nhận."
-      }
+      },
+      "status": {
+        "active": "Đang hoạt động",
+        "invited": "Đã mời",
+        "archived": "Đã lưu trữ"
+      },
+      "statusColumn": "Trạng thái",
+      "archive": "Lưu trữ",
+      "restore": "Khôi phục",
+      "showArchived": "Hiện mục đã lưu trữ",
+      "hideArchived": "Ẩn mục đã lưu trữ",
+      "archivedCount": "Đang ẩn {count}",
+      "archivedCauseLeft": "Đã nghỉ việc",
+      "archivedCauseManual": "Được quản trị viên lưu trữ",
+      "invitePerson": "Nhân viên",
+      "invitePersonPlaceholder": "Chọn nhân viên",
+      "unlinkedLogin": "Đăng nhập chưa liên kết {id}"
     },
     "audit": {
       "title": "Nhật ký kiểm toán",
@@ -6597,6 +6613,56 @@
     },
     "errors": {
       "duplicateKey": "Đã tồn tại thẻ bảng điều khiển với khóa này"
+    }
+  },
+  "scheduledActions": {
+    "title": "Tác vụ theo lịch",
+    "description": "Các tác vụ bảo trì ban đêm: lần chạy gần nhất và những thay đổi đã thực hiện.",
+    "readOnlyNote": "Màn hình này chỉ để xem. Lịch chạy được đặt trên máy chủ và không thể thay đổi tại đây.",
+    "scheduleLabel": "Lịch chạy",
+    "neverRun": "Chưa từng chạy",
+    "emptyJob": "Tác vụ này chưa từng chạy.",
+    "historyTitle": "Các lần chạy gần đây",
+    "failedSuffix": "thất bại",
+    "unitMs": "ms",
+    "unitSeconds": "giây",
+    "unitMinutes": "phút",
+    "colLastRun": "Lần chạy gần nhất",
+    "colDuration": "Thời lượng",
+    "colChanged": "Thay đổi",
+    "colTenants": "Công ty đã xử lý",
+    "colRanAt": "Thời điểm chạy",
+    "colOutcome": "Kết quả",
+    "colError": "Lỗi",
+    "outcome": {
+      "success": "Thành công",
+      "partial": "Một phần",
+      "failed": "Thất bại"
+    },
+    "counters": {
+      "granted": "Số ngày đã cấp",
+      "opened": "Đánh giá đã mở",
+      "reminders": "Nhắc nhở đã gửi",
+      "swept": "Bản ghi đã xử lý",
+      "forfeited": "Số ngày bị hủy"
+    },
+    "jobs": {
+      "leave-accrue": {
+        "name": "Cộng dồn phép năm",
+        "description": "Cộng thêm số ngày phép nhân viên đã tích lũy đến hiện tại."
+      },
+      "review-sweep": {
+        "name": "Đánh giá thử việc và hợp đồng",
+        "description": "Mở các đánh giá đến hạn và gửi nhắc nhở tương ứng."
+      },
+      "leave-expire-aged": {
+        "name": "Hủy phép quá hạn",
+        "description": "Hủy số ngày phép tích lũy đã quá thời hạn sử dụng."
+      },
+      "leave-expire-carry": {
+        "name": "Hết hạn phép chuyển tiếp",
+        "description": "Hủy số ngày chuyển tiếp đã qua ngày hết hạn."
+      }
     }
   }
 }

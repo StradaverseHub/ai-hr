@@ -137,7 +137,8 @@
     "reportPerformance": "Prestasi",
     "profileOptions": "Pilihan Profil",
     "delegations": "Perwakilan",
-    "dashboardCardConfig": "Kad papan pemuka"
+    "dashboardCardConfig": "Kad papan pemuka",
+    "scheduledActions": "Tugas Berjadual"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -3970,7 +3971,7 @@
     "users": {
       "title": "Pengguna & peranan",
       "userCount": "{count, plural, one {# pengguna} other {# pengguna}}",
-      "provisioningNote": "Log masuk baharu disediakan melalui <strong>WorkOS</strong> (SSO / jemputan) dalam hirisan kemudian. Di sini anda menguruskan peranan untuk pengguna sedia ada. Skop syarikat terpakai pada pemberian <strong>HR Admin</strong> — syarikat itu <em>dan anak syarikatnya</em>; peranan lain adalah seluruh kumpulan.",
+      "provisioningNote": "Log masuk baharu dicipta melalui jemputan sahaja — tiada pendaftaran terbuka. Pentadbir menjemput <strong>pekerja sedia ada</strong> melalui e-mel, kemudian <strong>WorkOS</strong> menghantar pautan sekali guna dan penerima menetapkan kata laluan sendiri. Hanya <strong>pentadbir kumpulan</strong> boleh menjemput, mengarkibkan atau memulihkan log masuk. Pengarkiban menyekat akses tanpa memadam apa-apa, dan log masuk disekat secara automatik apabila <em>setiap</em> pekerjaan orang itu telah berakhir. Skop syarikat terpakai kepada geran <strong>HR Admin</strong> — syarikat itu <em>dan sub-syarikatnya</em>; peranan lain adalah seluruh kumpulan.",
       "sectionUsers": "Pengguna",
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "revokeRole": "Tarik balik peranan",
@@ -3993,7 +3994,6 @@
       "inviteRole": "Peranan",
       "inviteScope": "Skop syarikat",
       "inviteSubmit": "Hantar jemputan",
-      "pendingInvitations": "Jemputan belum selesai",
       "revokeInvitation": "Batalkan",
       "sectionFunctionAccess": "Akses fungsi",
       "functionAccessCaption": "Peranan mana boleh mencapai setiap skrin. Ini mencerminkan akses yang dikuatkuasakan sistem; ia paparan rujukan, bukan penyunting — penguatkuasaan diubah dalam pengawal peranan dan dasar pangkalan data.",
@@ -4017,7 +4017,23 @@
         "leaveApproval": "Pengurus dan pentadbir; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "payrollConfig": "Semua orang boleh membukanya; hanya pentadbir syarikat boleh mengubahnya.",
         "delegations": "HR dan pentadbir melihat semua perwakilan; anda hanya melihat yang anda wakilkan atau gantikan."
-      }
+      },
+      "status": {
+        "active": "Aktif",
+        "invited": "Dijemput",
+        "archived": "Diarkibkan"
+      },
+      "statusColumn": "Status",
+      "archive": "Arkibkan",
+      "restore": "Pulihkan",
+      "showArchived": "Tunjuk yang diarkibkan",
+      "hideArchived": "Sembunyikan yang diarkibkan",
+      "archivedCount": "{count} disembunyikan",
+      "archivedCauseLeft": "Telah meninggalkan syarikat",
+      "archivedCauseManual": "Diarkibkan oleh pentadbir",
+      "invitePerson": "Pekerja",
+      "invitePersonPlaceholder": "Pilih pekerja",
+      "unlinkedLogin": "Log masuk tidak berpaut {id}"
     },
     "audit": {
       "title": "Jejak audit",
@@ -6597,6 +6613,56 @@
     },
     "errors": {
       "duplicateKey": "Kad papan pemuka dengan kunci ini sudah wujud"
+    }
+  },
+  "scheduledActions": {
+    "title": "Tugas Berjadual",
+    "description": "Tugas penyelenggaraan malam: bila setiap satu terakhir berjalan dan apa yang diubahnya.",
+    "readOnlyNote": "Skrin ini baca sahaja. Jadual ditetapkan pada pelayan dan tidak boleh diubah di sini.",
+    "scheduleLabel": "Jadual",
+    "neverRun": "Tidak pernah berjalan",
+    "emptyJob": "Tugas ini belum pernah berjalan.",
+    "historyTitle": "Larian terkini",
+    "failedSuffix": "gagal",
+    "unitMs": "ms",
+    "unitSeconds": "s",
+    "unitMinutes": "min",
+    "colLastRun": "Larian terakhir",
+    "colDuration": "Tempoh",
+    "colChanged": "Apa yang diubah",
+    "colTenants": "Syarikat diproses",
+    "colRanAt": "Masa larian",
+    "colOutcome": "Keputusan",
+    "colError": "Ralat",
+    "outcome": {
+      "success": "Berjaya",
+      "partial": "Separa",
+      "failed": "Gagal"
+    },
+    "counters": {
+      "granted": "Hari diberikan",
+      "opened": "Penilaian dibuka",
+      "reminders": "Peringatan dihantar",
+      "swept": "Rekod disapu",
+      "forfeited": "Hari dilucutkan"
+    },
+    "jobs": {
+      "leave-accrue": {
+        "name": "Tambahan cuti terkumpul",
+        "description": "Menambah hari cuti yang telah dikumpul pekerja setakat ini."
+      },
+      "review-sweep": {
+        "name": "Penilaian percubaan dan kontrak",
+        "description": "Membuka penilaian yang tiba tempoh dan menghantar peringatan berkaitan."
+      },
+      "leave-expire-aged": {
+        "name": "Pelucutan cuti lampau tempoh",
+        "description": "Melucutkan cuti terkumpul yang telah melepasi had tempoh sahnya."
+      },
+      "leave-expire-carry": {
+        "name": "Luput cuti bawa ke hadapan",
+        "description": "Melucutkan hari bawa ke hadapan yang tarikh luputnya telah berlalu."
+      }
     }
   }
 }
