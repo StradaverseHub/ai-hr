@@ -4632,6 +4632,8 @@
       "editEntitlementTitle": "编辑休假额度",
       "deleteEntitlementConfirmTitle": "删除此休假额度？",
       "deleteEntitlementConfirmDescription": "该假期类型在本方案中的额度天数将被移除。此操作无法撤销。",
+      "deleteSchemeConfirmTitle": "删除此福利方案？",
+      "deleteSchemeConfirmDescription": "将删除“{name}”方案及其下配置的 {count} 项休假额度。指定使用此方案的员工将恢复自动匹配。此操作无法撤销。",
       "colTotalLimit": "总上限（天）",
       "dragHint": "将一行拖到另一行上，可把假期类型归入一个共享总上限组；将行拖到组上则移入该组。",
       "dragHandleAria": "拖动以分组",
