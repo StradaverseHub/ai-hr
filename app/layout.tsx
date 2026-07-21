@@ -135,7 +135,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               openGroups={openGroups}
             />
             <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">
-              <header className="flex h-16 shrink-0 items-center justify-between gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)]">
+              {/* Three-zone grid: equal minmax(0,1fr) side tracks keep the centre search geometrically
+                  centred regardless of what each cluster contains (dev switcher hidden in production,
+                  bell variants, …). The centre track is minmax(0,28rem) on sm+ so the w-full trigger has
+                  a real track to fill — a bare `auto` track would size to content and never widen it. */}
+              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,28rem)_minmax(0,1fr)]">
                 <div className="flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground">
                   <span className="font-medium text-foreground/80">Demo Group</span>
                   {showDevSwitcher && (
@@ -150,8 +154,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                     </>
                   )}
                 </div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex min-w-0 items-center justify-center">
                   <CommandBar />
+                </div>
+                <div className="flex min-w-0 items-center justify-end gap-2.5">
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
                   <div className="h-5 w-px bg-border" />
                   {notifEnabled ? (
