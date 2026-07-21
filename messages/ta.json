@@ -6520,8 +6520,25 @@
       "leaveApplication": "விடுப்பு விண்ணப்ப ஒப்புதல்",
       "leaveCancellation": "விடுப்பு ரத்து ஒப்புதல்",
       "attendanceCorrection": "வருகை திருத்த ஒப்புதல்",
-      "claimsClaim": "உரிமைகோரல் ஒப்புதல்"
-    }
+      "claimsClaim": "உரிமைகோரல் ஒப்புதல்",
+      "leaveRequestCreation": "விடுப்பு விண்ணப்பம் உருவாக்கம்",
+      "leaveAmendmentRequest": "விடுப்பு திருத்தக் கோரிக்கை",
+      "leaveCancellationRequest": "விடுப்பு ரத்து கோரிக்கை"
+    },
+    "groupLabel": {
+      "leaveRequest": "விடுப்பு கோரிக்கை",
+      "leaveCancellation": "விடுப்பு ரத்து"
+    },
+    "coverageTitle": "பிரதிநிதித்துவ வரம்பு",
+    "coverageHint": "மாற்று நபர் பொறுப்பேற்கும் நிறுவனப் பகுதியைத் தேர்ந்தெடுக்கவும். ஒரு நிலையை காலியாக விட்டால் மேல் நிலைக்குக் கீழ் உள்ள அனைத்தும் உள்ளடங்கும்.",
+    "coverageCompany": "நிறுவனம்",
+    "coverageBusinessUnit": "வணிகப் பிரிவு",
+    "coverageDepartment": "துறை",
+    "coverageAllCompanies": "எல்லா நிறுவனங்களும்",
+    "coverageAllBusinessUnits": "எல்லா வணிகப் பிரிவுகளும்",
+    "coverageAllDepartments": "எல்லா துறைகளும்",
+    "eligibleHint": "பணி ஒப்படைப்பவருடன் சம நிலையிலுள்ள ஒப்புதலாளர்கள் மட்டுமே பட்டியலிடப்படுவர்.",
+    "loadingCandidates": "ஏற்றுகிறது…"
   },
   "dashboardCardConfig": {
     "title": "டாஷ்போர்டு அட்டை அமைப்பு",

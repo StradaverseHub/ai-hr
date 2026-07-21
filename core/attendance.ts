@@ -11,7 +11,7 @@ import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { assertCanDecide } from './approvals';
+import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './attendance-rule';
 import { holidayDatesFor } from './holidays';
@@ -1915,8 +1915,8 @@ export function listAttendanceCorrections(
   ctx: SessionContext,
   opts: { companyIds?: string[]; status?: 'pending' | 'approved' | 'rejected' } = {},
 ) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
       .select({
         id: attendanceCorrection.id,
         employmentId: attendanceCorrection.employmentId,
@@ -1959,8 +1959,11 @@ export function listAttendanceCorrections(
         ),
       )
       .orderBy(desc(attendanceCorrection.createdAt))
-      .limit(100),
-  );
+      .limit(100);
+    // R51 (baf56348): trim delegation-routed rows whose subject is outside the delegation's org coverage
+    // from the approver-facing list (a no-op for rows the caller sees in their own right).
+    return filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+  });
 }
 
 /** An employee's own recent corrections (the /me history). */

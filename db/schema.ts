@@ -868,6 +868,13 @@ export const reportingLine = pgTable(
     // R44 delegation (Phase 2): free-text reason for a `delegate` edge (why the hand-over). Nullable —
     // legacy rows + all structural line types keep NULL; the UI requires it only for new delegations.
     reason: text('reason'),
+    // R51 (baf56348, migration 0286): ORG COVERAGE of a `delegate` edge — company → business unit →
+    // department, each nullable. All three NULL = unrestricted (every legacy row). A single 0..1 selection,
+    // so it widens reporting_line instead of reusing the 0..N reporting_line_scope child table (0230).
+    // Enforced in app.can_decide_via_delegation / _from (org gate); structural line types keep NULL.
+    scopeCompanyId: uuid('scope_company_id').references(() => company.id),
+    scopeBusinessUnitId: uuid('scope_business_unit_id').references(() => businessUnit.id),
+    scopeDepartmentId: uuid('scope_department_id').references(() => department.id),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     createdAt: createdAt(),

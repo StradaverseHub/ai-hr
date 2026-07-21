@@ -2424,13 +2424,29 @@ async function assertCanDecideLeaveStep(
       if (isAdminRole) return; // HR/super clears it (guaranteed visibility)
       const head = await resolveSubjectHead(tx, subjectEmploymentId, kind);
       const roleLabel = kind === 'department_head' ? 'department head' : 'business unit head';
+      if (head != null) {
+        const [h] = await tx
+          .select({ personId: employment.personId })
+          .from(employment)
+          .where(eq(employment.id, head))
+          .limit(1);
+        if (ctx.personId != null && h?.personId === ctx.personId) return;
+      }
+      // R51 (baf56348, migration 0286) — head-step HANDOVER: an active delegate OF THE RESOLVED HEAD may
+      // clear the head's step. This is the piece that actually transfers head-level authority — the
+      // admin-manager-anchored delegation branch (assertCanDecide) never reaches these branches, so before
+      // this a HOD-to-HOD delegation handed over nothing at head steps. The head is re-resolved INSIDE the
+      // definer boundary (app.subject_head): RLS hides the subject's assignment from a delegate, so the
+      // RLS-scoped resolveSubjectHead above returns null under the delegate's session. The definer helper
+      // re-validates window / live delegator / module scope / org scope at decision time; the self-ban
+      // above still applies to the delegate.
+      if (ctx.personId != null) {
+        const res = await tx.execute(
+          sql`SELECT app.can_decide_via_delegation_from(app.subject_head(${subjectEmploymentId}, ${kind}), ${subjectEmploymentId}, 'leave', 'leave.application') AS ok`,
+        );
+        if ((res as unknown as { ok: boolean }[])[0]?.ok) return;
+      }
       if (head == null) throw new Error(`No ${roleLabel} is set for this employee — an admin must decide or assign one`);
-      const [h] = await tx
-        .select({ personId: employment.personId })
-        .from(employment)
-        .where(eq(employment.id, head))
-        .limit(1);
-      if (ctx.personId != null && h?.personId === ctx.personId) return;
       throw new Error(`Only the ${roleLabel} or HR can decide this ${label}`);
     }
     default:

@@ -6520,8 +6520,25 @@
       "leaveApplication": "Leave Application Approval",
       "leaveCancellation": "Leave Cancellation Approval",
       "attendanceCorrection": "Attendance Correction Approval",
-      "claimsClaim": "Claim Approval"
-    }
+      "claimsClaim": "Claim Approval",
+      "leaveRequestCreation": "Leave Request Creation",
+      "leaveAmendmentRequest": "Leave Amendment Request",
+      "leaveCancellationRequest": "Leave Cancellation Request"
+    },
+    "groupLabel": {
+      "leaveRequest": "Leave Request",
+      "leaveCancellation": "Leave Cancellation"
+    },
+    "coverageTitle": "Delegation Coverage",
+    "coverageHint": "Choose which part of the organisation the stand-in covers. Leave a level blank to cover everything under the level above.",
+    "coverageCompany": "Company",
+    "coverageBusinessUnit": "Business Unit",
+    "coverageDepartment": "Department",
+    "coverageAllCompanies": "All companies",
+    "coverageAllBusinessUnits": "All business units",
+    "coverageAllDepartments": "All departments",
+    "eligibleHint": "Only approvers of the same level as the person delegating are listed.",
+    "loadingCandidates": "Loading…"
   },
   "dashboardCardConfig": {
     "title": "Dashboard Card Setup",

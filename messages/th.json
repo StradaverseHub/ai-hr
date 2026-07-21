@@ -6520,8 +6520,25 @@
       "leaveApplication": "การอนุมัติคำขอลา",
       "leaveCancellation": "การอนุมัติยกเลิกการลา",
       "attendanceCorrection": "การอนุมัติแก้ไขการเข้างาน",
-      "claimsClaim": "การอนุมัติการเบิกจ่าย"
-    }
+      "claimsClaim": "การอนุมัติการเบิกจ่าย",
+      "leaveRequestCreation": "การสร้างคำขอลา",
+      "leaveAmendmentRequest": "คำขอแก้ไขการลา",
+      "leaveCancellationRequest": "คำขอยกเลิกการลา"
+    },
+    "groupLabel": {
+      "leaveRequest": "คำขอลา",
+      "leaveCancellation": "การยกเลิกการลา"
+    },
+    "coverageTitle": "ขอบเขตการมอบหมาย",
+    "coverageHint": "เลือกส่วนขององค์กรที่ผู้ทำการแทนรับผิดชอบ เว้นว่างระดับใดเพื่อครอบคลุมทั้งหมดภายใต้ระดับก่อนหน้า",
+    "coverageCompany": "บริษัท",
+    "coverageBusinessUnit": "หน่วยธุรกิจ",
+    "coverageDepartment": "แผนก",
+    "coverageAllCompanies": "ทุกบริษัท",
+    "coverageAllBusinessUnits": "ทุกหน่วยธุรกิจ",
+    "coverageAllDepartments": "ทุกแผนก",
+    "eligibleHint": "แสดงเฉพาะผู้อนุมัติที่มีระดับเดียวกับผู้มอบหมายเท่านั้น",
+    "loadingCandidates": "กำลังโหลด…"
   },
   "dashboardCardConfig": {
     "title": "การตั้งค่าการ์ดแดชบอร์ด",

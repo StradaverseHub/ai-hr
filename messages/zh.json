@@ -6520,8 +6520,25 @@
       "leaveApplication": "请假申请审批",
       "leaveCancellation": "请假取消审批",
       "attendanceCorrection": "考勤更正审批",
-      "claimsClaim": "报销审批"
-    }
+      "claimsClaim": "报销审批",
+      "leaveRequestCreation": "请假申请提交",
+      "leaveAmendmentRequest": "请假修改申请",
+      "leaveCancellationRequest": "请假取消申请"
+    },
+    "groupLabel": {
+      "leaveRequest": "请假申请",
+      "leaveCancellation": "请假取消"
+    },
+    "coverageTitle": "委托覆盖范围",
+    "coverageHint": "选择代理人负责的组织范围。某一级留空即覆盖上一级以下的全部。",
+    "coverageCompany": "公司",
+    "coverageBusinessUnit": "业务单元",
+    "coverageDepartment": "部门",
+    "coverageAllCompanies": "所有公司",
+    "coverageAllBusinessUnits": "所有业务单元",
+    "coverageAllDepartments": "所有部门",
+    "eligibleHint": "仅列出与委托人同级别的审批人。",
+    "loadingCandidates": "加载中…"
   },
   "dashboardCardConfig": {
     "title": "仪表板卡片设置",

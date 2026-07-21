@@ -6520,8 +6520,25 @@
       "leaveApplication": "Phê duyệt Đơn xin nghỉ",
       "leaveCancellation": "Phê duyệt Hủy nghỉ",
       "attendanceCorrection": "Phê duyệt Điều chỉnh chấm công",
-      "claimsClaim": "Phê duyệt Yêu cầu bồi hoàn"
-    }
+      "claimsClaim": "Phê duyệt Yêu cầu bồi hoàn",
+      "leaveRequestCreation": "Tạo đơn xin nghỉ phép",
+      "leaveAmendmentRequest": "Yêu cầu sửa đơn nghỉ phép",
+      "leaveCancellationRequest": "Yêu cầu hủy nghỉ phép"
+    },
+    "groupLabel": {
+      "leaveRequest": "Đơn xin nghỉ phép",
+      "leaveCancellation": "Hủy nghỉ phép"
+    },
+    "coverageTitle": "Phạm vi ủy quyền",
+    "coverageHint": "Chọn phần tổ chức mà người thay thế phụ trách. Để trống một cấp để bao gồm toàn bộ dưới cấp trước đó.",
+    "coverageCompany": "Công ty",
+    "coverageBusinessUnit": "Đơn vị kinh doanh",
+    "coverageDepartment": "Phòng ban",
+    "coverageAllCompanies": "Tất cả công ty",
+    "coverageAllBusinessUnits": "Tất cả đơn vị kinh doanh",
+    "coverageAllDepartments": "Tất cả phòng ban",
+    "eligibleHint": "Chỉ liệt kê những người phê duyệt cùng cấp với người ủy quyền.",
+    "loadingCandidates": "Đang tải…"
   },
   "dashboardCardConfig": {
     "title": "Thiết lập thẻ bảng điều khiển",

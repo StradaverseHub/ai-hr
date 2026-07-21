@@ -24,7 +24,7 @@ import {
 
 export type { ClaimRateConfig };
 import { toCsv } from '../lib/csv';
-import { assertCanDecide } from './approvals';
+import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
 import { calendarWindowFor } from './payroll-policy-config';
@@ -1177,8 +1177,10 @@ export async function listPendingClaims(ctx: SessionContext): Promise<ClaimRow[]
       .innerJoin(person, eq(person.id, employment.personId))
       .where(eq(claimRequest.status, 'pending'))
       .orderBy(desc(claimRequest.createdAt));
-    const atts = await attachmentsByClaim(tx, rows.map((r) => r.id));
-    return rows.map((r) => toRow(r, atts));
+    // R51 (baf56348): trim delegation-routed rows whose subject is outside the delegation's org coverage.
+    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    const atts = await attachmentsByClaim(tx, scoped.map((r) => r.id));
+    return scoped.map((r) => toRow(r, atts));
   });
 }
 
