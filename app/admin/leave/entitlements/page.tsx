@@ -49,6 +49,7 @@ import {
 } from '../../actions';
 import { GradeCatalog } from '@/components/grade-catalog';
 import { CollapsibleCardSection } from '@/components/collapsible-card-section';
+import { LeaveRulePreview } from '@/components/leave-rule-preview';
 
 /** Cookie persisting the Grades section's open/closed fold (feedback 03557e76). */
 const GRADES_OPEN_COOKIE = 'leave_grades_open';
@@ -109,6 +110,14 @@ export default async function LeaveEntitlementsPage({
   const activeTypeOptions = types.filter((t) => !t.archivedAt).map((t) => ({ id: t.id, name: t.name }));
   const companyNameById = new Map(companies.map((c) => [c.id, c.name]));
   const typeNameById = new Map(types.map((t) => [t.id, t.name]));
+  const typeCodeById = new Map(types.map((t) => [t.id, t.code]));
+  // Feedback 26e76a9f — "preview a scenario" relocated here from the Types tab (its read-only "Entitlement
+  // rules" card was removed as a duplicate configuration point). Same inputs as before: the ACTIVE policy
+  // rows from the already-loaded listLeavePolicies result — display-only, no data or logic change.
+  const previewPolicies = policies
+    .filter((p) => !p.validTo)
+    .map((p) => ({ leaveTypeId: p.leaveTypeId, gradeId: p.gradeId, companyId: p.companyId, accrual: p.accrual }));
+  const previewCompanies = companies.map((c) => ({ id: c.id, name: c.name, country: c.country }));
   const recentGrants: FestiveGrantRow[] = adHocGrants.map((g) => ({
     occurredAt: g.occurredAt.toISOString(),
     companyName: g.companyId ? (companyNameById.get(g.companyId) ?? null) : null,
@@ -482,6 +491,24 @@ export default async function LeaveEntitlementsPage({
           />
         </div>
       </Card>
+
+      {/* Feedback 26e76a9f — "Preview a scenario": the live entitlement checker relocated from the Types
+          tab when its read-only Entitlement rules card was removed. Sits with the entitlement configuration
+          it previews (near the Benefit Schemes card). Runs the same pure resolver the server engines use
+          (components/leave-rule-preview.tsx) — read-only, writes nothing. */}
+      {activeTypeOptions.length > 0 && companyOptions.length > 0 && (
+        <Card>
+          <SectionHeader title={t('previewTitle')} />
+          <div className="p-4">
+            <LeaveRulePreview
+              leaveTypes={activeTypeOptions.map((o) => ({ id: o.id, name: o.name, code: typeCodeById.get(o.id) ?? '' }))}
+              companies={previewCompanies}
+              grades={gradeOptions}
+              policies={previewPolicies}
+            />
+          </div>
+        </Card>
+      )}
 
       {/* Leave Data Import & Migration Tool — bulk-load opening balances / carry-forward / historical leave. */}
       <Card>
