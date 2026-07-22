@@ -115,12 +115,14 @@ export function PlannedAbsencesPanel({
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
         {header}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col items-end gap-2">
           {showViewSwitch && <AbsenceViewSwitch view={effectiveView} onChange={changeView} />}
-          <CalendarRangeSwitch view={calView} from={from} to={to} todayIso={todayIso} />
-          <TimelineNav from={displayFrom} isDefault={isDefaultAnchor} mode={calView} onGo={goDate} />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <TimelineNav from={displayFrom} isDefault={isDefaultAnchor} mode={calView} onGo={goDate} />
+            <CalendarRangeSwitch view={calView} from={from} to={to} todayIso={todayIso} />
+          </div>
         </div>
       </div>
 
