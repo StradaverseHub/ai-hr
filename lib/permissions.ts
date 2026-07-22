@@ -103,9 +103,11 @@ export const SCREENS: readonly ScreenEntry[] = [
   },
   { screenKey: 'orgChart', href: '/org', labelKey: 'nav.orgChart', guard: 'scopedSession', routes: ['/org'] },
   {
+    // a7cbd895: the /leave screen is now labelled "My Absence" in the sidebar — the matrix column
+    // follows the nav label. screenKey stays 'leave' (it may key stored role configs); label-only.
     screenKey: 'leave',
     href: '/leave',
-    labelKey: 'nav.leave',
+    labelKey: 'nav.myAbsence',
     guard: 'scopedSession',
     routes: ['/leave'],
     hasScopeNote: true,

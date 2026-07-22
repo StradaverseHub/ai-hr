@@ -143,7 +143,9 @@ const GROUPS: Group[] = [
       { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
       { href: '/me', labelKey: 'myWorkspace', icon: UserRound, tour: 'nav-me' },
       { href: '/org', labelKey: 'orgChart', icon: Network },
-      { href: '/leave', labelKey: 'leave', icon: CalendarDays },
+      // a7cbd895: renamed from "Leave" to "My Absence" — the first-level home for ALL leave self-service
+      // after the /me Leave tab merged into /leave. Same href, same icon; label-only change.
+      { href: '/leave', labelKey: 'myAbsence', icon: CalendarDays },
       ATTENDANCE_NODE,
       { href: '/claims', labelKey: 'claims', icon: Receipt },
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },

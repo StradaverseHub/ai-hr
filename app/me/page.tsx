@@ -1,12 +1,8 @@
 import Link from 'next/link';
-import { getLocale, getTranslations } from 'next-intl/server';
+import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
-  leaveBalances,
-  leaveEntitlementBreakdown,
-  leaveRequestDateBreakdown,
-  leaveRequestsFor,
-  listEligibleLeaveTypesFor,
   myAttendance,
   myEmployment,
   myEmploymentIdsAll,
@@ -25,21 +21,8 @@ import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/core/perfo
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { AttendanceClockButton, LocationNotice } from './attendance-clock';
 import { ClientTabs } from '@/components/personnel-tabs';
-import { LeaveDurationFields } from '@/components/leave-duration-fields';
-import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
-import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
-import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
-import { todayInKualaLumpur } from '@/core/leave';
-import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
-import { deriveSummaryBalance } from '@/components/leave/entitlement-panel-config';
-// deriveBalanceRow is imported from the server-safe module (NOT the 'use client' table) so this RSC can
-// call it at render time — importing it from the client module crashed all of /me (b7d84266).
-import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
-import { LeaveCards, type LeaveCardEntry } from '@/components/leave/leave-cards';
-import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
-import { durationLabel } from '@/lib/leave-duration';
-import { leaveVisual } from '@/lib/leave-visual';
-import { PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup } from '@/lib/leave-groups';
+// a7cbd895: the Leave tab (and its dialogs/forms/reads) moved wholesale to /leave — "My Absence" in the
+// left nav. /me is purely profile now; ?tab=leave deep-links are forwarded (see the redirect below).
 import {
   myCheckIn,
   myCheckOut,
@@ -48,11 +31,6 @@ import {
   myRequestCorrection,
   myRequestOvertime,
   myRequestTravel,
-  myRequestLeave,
-  myEditLeave,
-  myCancelLeave,
-  myRequestLeaveCancellation,
-  myPreviewLeaveDeduction,
   myRequestProfileChange,
   mySubmitPeerFeedback,
   mySubmitResignation,
@@ -61,10 +39,11 @@ import {
   myWithdrawResignation,
 } from './actions';
 
-// 311ad7ba: the six ESS tabs, ordered per the reporter's expected_function enumeration. A `?tab=` query
-// param deep-links / survives the native GET reloads (payslip month selector, leave as-at date).
-type MeTabKey = 'overview' | 'profile' | 'pay' | 'performance' | 'documents' | 'leave';
-const ME_TAB_KEYS: readonly MeTabKey[] = ['overview', 'profile', 'pay', 'performance', 'documents', 'leave'];
+// 311ad7ba: the ESS tabs, ordered per the reporter's expected_function enumeration. A `?tab=` query
+// param deep-links / survives the native GET reloads (payslip month selector). a7cbd895 removed the
+// Leave tab — leave self-service lives on /leave ("My Absence"); ?tab=leave now redirects there.
+type MeTabKey = 'overview' | 'profile' | 'pay' | 'performance' | 'documents';
+const ME_TAB_KEYS: readonly MeTabKey[] = ['overview', 'profile', 'pay', 'performance', 'documents'];
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -73,9 +52,6 @@ const LEAVE_STATUS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   rejected: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
-  // R17 600be8ac ask #4: derived display for an approved request that had some dates rejected — amber, distinct
-  // from a clean green "Approved". The DB status stays 'approved'; this is display-only.
-  partial: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
 };
 const ATT_STATUS: Record<string, string> = {
   present: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
@@ -122,10 +98,21 @@ export default async function MePage({
   searchParams: Promise<{ error?: string; month?: string; cycle?: string; asOf?: string; tab?: string }>;
 }) {
   const t = await getTranslations('me');
-  const tLeave = await getTranslations('leave'); // ADR-0048 — duration labels in history
   const tRun = await getTranslations('payroll.list.runType'); // Wave 2C — shared run-type labels
   const s = await getSession();
   const { error, month: spMonth, cycle: spCycle, asOf: spAsOf, tab: spTab } = await searchParams;
+
+  // My Absence (a7cbd895): the Leave tab moved to the first-level /leave page. Keep every old
+  // /me?tab=leave deep-link (bookmarks, notification links, stale forms) working by forwarding it —
+  // with its leave-relevant params — to the new home.
+  if (spTab === 'leave') {
+    const qs = new URLSearchParams();
+    if (error) qs.set('error', error);
+    if (spAsOf) qs.set('asOf', spAsOf);
+    const q = qs.toString();
+    redirect(`/leave${q ? `?${q}` : ''}`);
+  }
+
   const me = await myEmployment(s);
 
   if (!me) {
@@ -143,13 +130,8 @@ export default async function MePage({
   // My Payroll TP1 is leaver-safe: resolve ids by person, including terminated employments, so a resigned
   // employee can still retrieve the relief history they need to file taxes (payslip RLS still gates rows).
   const taxReliefEmploymentIds = await myTaxReliefEmploymentIds(s);
-  const locale = await getLocale(); // R37: render leave-type names in the employee's language
-  const [balances, requests, leaveTypes, payslips, taxRelief, attendance, corrections, travelRequests, profile, profileRequests, reviews, goals, checkins, feedbackRequests, resignation, myLoans] =
+  const [payslips, taxRelief, attendance, corrections, travelRequests, profile, profileRequests, reviews, goals, checkins, feedbackRequests, resignation, myLoans] =
     await Promise.all([
-      leaveBalances(s, me.employmentId, locale),
-      leaveRequestsFor(s, me.employmentId, locale),
-      // #25: only the types this employee is eligible for — they never see a type they can't request.
-      listEligibleLeaveTypesFor(s, me.employmentId, locale),
       myPayslips(s, employments.map((e) => e.employmentId)),
       myTaxRelief(s, taxReliefEmploymentIds),
       myAttendance(s, me.employmentId, 14),
@@ -176,88 +158,8 @@ export default async function MePage({
   const today = new Date().toISOString().slice(0, 10);
   const todayRow = attendance.find((a) => a.date === today);
 
-  // Leave entitlement breakdown (read-only ledger reconstruction). One ?asOf= drives the whole leave
-  // section; an invalid/empty param falls back to today (the breakdown looks backwards accurately, never
-  // projects a future year). We fetch a breakdown per tracked balance type so each row can expand.
-  const breakdownAsOf = spAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spAsOf) ? spAsOf : today;
-  const breakdowns = await Promise.all(
-    balances.map((b) => leaveEntitlementBreakdown(s, me.employmentId, b.leaveTypeId, breakdownAsOf, locale)),
-  );
-  const breakdownByType = new Map(breakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
-
-  // Leave View Dashboard (6d78f373): partition the (already ESS-gated) balances into PRIMARY summary cards and
-  // SECONDARY collapsible groups, DROPPING any type resolved to 'hidden'. leaveBalances already dropped
-  // visible_to_employee=false types (7b11f1c1); the code-keyed default-hidden set (Prolonged Illness /
-  // Suspension / Unrecorded / Unpaid Medical) still arrives with placement='hidden' and is filtered here. This
-  // is presentation only — deriveBalanceRow (R24) supplies the ESS-gated remaining figure; no calc change.
-  type Balance = (typeof balances)[number];
-  // Build the plain side-panel envelope for a balance row — null when the breakdown is absent OR the
-  // Entitlement Calculation Breakdown component is ESS-hidden for this type (65dec703), so a card/row with
-  // nothing to open stays a static tile / plain figure rather than opening an empty panel.
-  const buildPanel = (b: Balance) => {
-    const bd = breakdownByType.get(b.leaveTypeId);
-    if (b.essView.entitlementCalcBreakdown === false || !bd) return null;
-    return {
-      data: bd,
-      // §1 Balance (877f2f37): reconciled remaining figure derived from parts already loaded (balance row + bd).
-      summary: { available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) },
-      // §5 Upcoming Approved Leave — approved + future requests for THIS type (matched by localized name).
-      upcoming: requests
-        .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-        .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType })),
-      visual: { color: b.color, icon: b.icon, code: b.code },
-      asOf: breakdownAsOf,
-    };
-  };
-  // ESS-gated remaining figure for a card/row (deriveBalanceRow returns null when Available is HR-hidden).
-  const remainingOf = (b: Balance) => deriveBalanceRow(b, breakdownByType.get(b.leaveTypeId) ?? null).available;
-
-  const primaryCards: LeaveCardEntry[] = balances
-    .filter((b) => b.placement === 'primary')
-    .map((b) => ({
-      leaveTypeId: b.leaveTypeId,
-      leaveType: b.leaveType,
-      color: b.color,
-      icon: b.icon,
-      code: b.code,
-      remaining: remainingOf(b),
-      panel: buildPanel(b),
-    }));
-  // Order the card row by the canonical PRIMARY_CODES sequence (Annual, Medical, Hospitalisation, Emergency,
-  // Replacement), then any other HR-promoted primaries alphabetically, so it reads in the reporter's order.
-  const primaryRank = (code: string | null) => {
-    const i = code ? (PRIMARY_CODES as readonly string[]).indexOf(code.toUpperCase()) : -1;
-    return i === -1 ? PRIMARY_CODES.length : i;
-  };
-  primaryCards.sort((a, b) => primaryRank(a.code) - primaryRank(b.code) || a.leaveType.localeCompare(b.leaveType));
-
-  // Secondary types bucketed into the three labelled groups (empty groups are omitted).
-  const secondaryGroups = SECONDARY_GROUPS.map((group) => ({
-    group,
-    types: balances.filter((b) => b.placement === 'secondary' && resolveSecondaryGroup(b.code) === group),
-  })).filter((g) => g.types.length > 0);
-
-  // Detailed balance table (R24 483fa7c3, demoted to an optional toggle) — every NON-hidden type.
-
-  // R17 600be8ac ask #6: for each request shown in the list, fetch its per-date rows (if any) so the employee
-  // sees the same date-by-date outcome — which dates were approved / rejected and why — that the approver
-  // decided. RLS self-branch (can_see_employment) admits the subject to their own date rows. Empty ⇒ ordinary
-  // whole-request row (no expander rendered).
-  const shownRequests = requests.slice(0, 5);
-  // Edit/cancel-by-status (item c9a19e34): the leave-type options the Edit dialog's <select> prefills from,
-  // and the MYT "today" the approved give-back candidate list is filtered against (strictly-after-today).
-  const editTypeOptions = leaveTypes.map((lt) => ({
-    id: lt.id,
-    label: lt.name,
-    durations: lt.durations ?? null,
-    code: lt.code,
-  }));
-  const mytToday = todayInKualaLumpur();
-  const requestDateBreakdowns = new Map(
-    await Promise.all(
-      shownRequests.map(async (r) => [r.id, await leaveRequestDateBreakdown(s, r.id)] as const),
-    ),
-  );
+  // Leave balances / entitlement breakdowns / request history / apply form: all relocated to /leave
+  // ("My Absence", a7cbd895) — /me carries no leave reads or leave UI anymore.
 
   // EA (annual tax statement) rows — derived from the principal's REAL payslips across ALL their
   // employments incl. terminated ones (leavers must reach their prior employer's EA). `myEmploymentIdsAll`
@@ -337,7 +239,6 @@ export default async function MePage({
           { key: 'pay', label: t('secPay') },
           { key: 'performance', label: t('secPerformance') },
           { key: 'documents', label: t('secDocuments') },
-          { key: 'leave', label: t('secLeave') },
         ]}
         panels={{
           overview: (
@@ -1250,260 +1151,6 @@ export default async function MePage({
         )}
       </Card>
             </>
-          ),
-          leave: (
-            <div className="space-y-6">
-              {/* Full-width "My Leave" summary cards (6d78f373): PRIMARY leave types as clickable, colour-coded
-                  cards. Clicking a card highlights it and opens THAT type's details in the existing right-side
-                  slide-out panel with no page refresh (LeaveCards drives LeaveDetailsPanel in controlled mode).
-                  Reuses deriveBalanceRow (R24) for the ESS-gated remaining figure. Empty ⇒ card row omitted. */}
-              {primaryCards.length > 0 && (
-                <Card className="p-5" data-tour="me-leave">
-                  <LeaveCards entries={primaryCards} />
-                </Card>
-              )}
-
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                {/* Left column: SECONDARY leave-type groups + request history + the demoted detailed table. */}
-                <Card className="p-5">
-                {/* Secondary types in collapsible groups (Family & Personal / Education / Other). Each row keeps
-                    the existing "View Breakdown" link → same right-side panel (reporter §2). Empty groups omitted. */}
-                {secondaryGroups.length > 0 && (
-                  <div className="space-y-2">
-                    <h2 className="text-sm font-semibold">{t('otherLeaveHeading')}</h2>
-                    {secondaryGroups.map(({ group, types }) => (
-                      <details key={group} className="group rounded-lg border border-border" open>
-                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium">
-                          <span>
-                            {t(`leaveGroups.${group}`)} ({types.length})
-                          </span>
-                          <span className="text-muted-foreground transition group-open:rotate-180" aria-hidden>
-                            ▾
-                          </span>
-                        </summary>
-                        <ul className="divide-y divide-border border-t border-border">
-                          {types.map((b) => {
-                            const v = leaveVisual({ color: b.color, icon: b.icon, code: b.code });
-                            const Icon = v.Icon;
-                            const bd = breakdownByType.get(b.leaveTypeId);
-                            const showBreakdown = b.essView.entitlementCalcBreakdown !== false;
-                            const remaining = remainingOf(b);
-                            return (
-                              <li key={b.leaveTypeId} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                                <span className="flex min-w-0 items-center gap-2 text-sm">
-                                  <span className={v.hasColor ? `rounded p-0.5 ${v.chipClass}` : undefined}>
-                                    <Icon className="size-3.5 shrink-0" aria-hidden />
-                                  </span>
-                                  <span className="truncate font-medium text-foreground">{b.leaveType}</span>
-                                </span>
-                                <span className="flex shrink-0 flex-col items-end">
-                                  <span className="tabular-nums text-sm text-foreground">
-                                    {remaining == null ? '—' : remaining.toFixed(2)}
-                                  </span>
-                                  {showBreakdown && bd && (
-                                    <EntitlementBreakdown
-                                      data={bd}
-                                      summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) }}
-                                      // §5 Upcoming Approved Leave — approved + future requests for THIS type
-                                      // (matched by localized name; both sides resolve via the same pickName + locale).
-                                      upcoming={requests
-                                        .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-                                        .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
-                                      visual={{ color: b.color, icon: b.icon, code: b.code }}
-                                      asOf={breakdownAsOf}
-                                      action="/me"
-                                      hiddenParams={{ tab: 'leave' }}
-                                      applyEssConfig
-                                    />
-                                  )}
-                                </span>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </details>
-                    ))}
-                  </div>
-                )}
-
-                <div className={secondaryGroups.length > 0 ? 'mt-4 border-t border-border pt-4' : ''}>
-                  <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {t('requests')}
-                  </div>
-                  <ul className="space-y-1.5 text-sm">
-                    {shownRequests.map((r) => {
-                      // R17 600be8ac ask #4: an approved request with ≥1 rejected date renders the amber
-                      // "Partially approved" badge instead of a flat green "Approved" (display-derived, no status enum).
-                      const isPartial = r.status === 'approved' && r.hasRejectedDates;
-                      const pillStatus = isPartial ? 'partial' : r.status;
-                      const pillLabel = isPartial ? t('leaveStatus.partiallyApproved') : t(`leaveStatus.${r.status}`);
-                      const dateRows = requestDateBreakdowns.get(r.id) ?? [];
-                      return (
-                      <li key={r.id} className="flex flex-col gap-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <span className="block truncate text-muted-foreground">
-                            {r.leaveType} · {r.startDate}
-                            {durationLabel(tLeave, r.durationType, r.hours) && (
-                              <span className="ml-1 text-xs font-medium uppercase text-foreground/70">
-                                {durationLabel(tLeave, r.durationType, r.hours)}
-                              </span>
-                            )}
-                            {/* Hourly-leave time window (0129): the employee's own window on hourly rows; slice-
-                                guarded for the Postgres seconds, gated so non-hourly rows never render a stray time. */}
-                            {r.durationType === 'hourly' && r.fromTime && r.toTime && (
-                              <span className="ml-1 text-xs font-medium text-foreground/60">
-                                {r.fromTime.slice(0, 5)}–{r.toTime.slice(0, 5)}
-                              </span>
-                            )}
-                            {/* Emergency Leave (0106): the two ANNUAL/UNPAID child rows of one EL submission share
-                                a parent_group_id — tag each so the applicant sees them as one Emergency Leave. */}
-                            {r.parentGroupId && (
-                              <span className="ml-1 text-[10px] font-medium uppercase text-foreground/60">
-                                {tLeave('emergency.groupLabel')}
-                              </span>
-                            )}
-                          </span>
-                          {r.status === 'pending' && r.stepCount > 0 && (
-                            <span className="text-xs text-muted-foreground/80">
-                              {r.currentStepKind === 'direct_manager' ? t('stageManager') : t('stageHr')}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          {r.hasDocument && (
-                            <a
-                              href={`/me/leave/attachment/${r.id}?inline=1`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-primary underline-offset-2 hover:underline"
-                            >
-                              {t('viewDocument')}
-                            </a>
-                          )}
-                          <Pill status={pillStatus} map={LEAVE_STATUS} label={pillLabel} />
-                        </div>
-                      </div>
-                      {/* Edit/cancel-by-status (item c9a19e34): status-gated self-service actions on the
-                          employee's OWN leave. PENDING plain rows → Edit + Cancel (immediate withdraw);
-                          APPROVED full-day plain/split rows → Cancel (manager-approved give-back, Option A);
-                          REJECTED/cancelled → none. Emergency/grouped/per-date rows are deferred (v1). The
-                          server re-asserts every gate authoritatively. */}
-                      {(() => {
-                        const isPlain = r.parentGroupId == null;
-                        const isGroupable = r.typeCode === 'EMERGENCY' || r.typeCode === 'REPLACEMENT';
-                        if (r.status === 'pending' && isPlain && !isGroupable) {
-                          return (
-                            <div className="flex flex-wrap gap-2">
-                              <EditLeaveDialog
-                                leaveRequestId={r.id}
-                                types={editTypeOptions}
-                                current={{
-                                  leaveTypeId: r.leaveTypeId,
-                                  durationType: (r.durationType ?? 'full_day') as
-                                    | 'full_day'
-                                    | 'half_day_am'
-                                    | 'half_day_pm'
-                                    | 'hourly',
-                                  startDate: r.startDate,
-                                  endDate: r.endDate,
-                                  fromTime: r.fromTime,
-                                  toTime: r.toTime,
-                                  reason: r.reason,
-                                  employeeRemark: r.employeeRemark,
-                                }}
-                                submitAction={myEditLeave}
-                              />
-                              <CancelLeaveDialog leaveRequestId={r.id} submitAction={myCancelLeave} />
-                            </div>
-                          );
-                        }
-                        if (r.status === 'approved') {
-                          const cancellableShape =
-                            r.durationType === 'full_day' && (r.parentGroupId == null || r.isCancellationSplit);
-                          const candidates = (r.workingDates ?? []).filter((d) => d > mytToday);
-                          if (cancellableShape && !r.pendingCancellationId && candidates.length > 0) {
-                            return (
-                              <div className="flex flex-wrap gap-2">
-                                <CancelDatesDialog
-                                  leaveRequestId={r.id}
-                                  candidateDates={candidates}
-                                  submitAction={myRequestLeaveCancellation}
-                                />
-                              </div>
-                            );
-                          }
-                        }
-                        return null;
-                      })()}
-                      {dateRows.length > 0 && (
-                        <LeaveDateOutcome
-                          dates={dateRows}
-                          locale={locale}
-                          labels={{
-                            title: t('dateBreakdown.title'),
-                            approved: t('dateBreakdown.approved'),
-                            rejected: t('dateBreakdown.rejected'),
-                            pending: t('dateBreakdown.pending'),
-                            reason: t('dateBreakdown.reason'),
-                          }}
-                        />
-                      )}
-                      </li>
-                      );
-                    })}
-                    {requests.length === 0 && <li className="text-muted-foreground">{t('noRequests')}</li>}
-                  </ul>
-                </div>
-
-                {/* Detailed balance table relocated to the dedicated Leave page (/leave · R37 e5a158d3).
-                    The /me Leave tab keeps the primary summary cards + upcoming/pending list; the dense
-                    Workday-style comparison table + its as-at-date form now live where people look for
-                    leave. Same source, same figures — see app/leave/page.tsx. */}
-              </Card>
-
-              {/* Right column: leave application form incl. supporting-document upload. */}
-              <Card className="p-5">
-                <h2 className="text-sm font-semibold">{t('requestLeave')}</h2>
-                <form action={myRequestLeave} className="mt-4 space-y-3">
-                  <LeaveDurationFields
-                    layout="stack"
-                    types={leaveTypes.map((lt) => ({
-                      id: lt.id,
-                      label: lt.requiresDocument ? `${lt.name} · ${t('documentRequired')}` : lt.name,
-                      durations: lt.durations ?? null,
-                      code: lt.code,
-                      // Feedback 9d8cf621: HR-authored apply-time notice for this leave type (shown under the select).
-                      applyNotice: (lt.customMessages as Record<string, string> | null)?.applyNotice ?? null,
-                    }))}
-                    action={myPreviewLeaveDeduction}
-                  />
-                  <Field label={t('documentLabel')}>
-                    <input
-                      type="file"
-                      name="document"
-                      accept="image/jpeg,image/png,application/pdf"
-                      className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70"
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">{t('documentHint')}</p>
-                  </Field>
-                  {/* Supporting-document config: employee remark. Always rendered; required-ness is enforced
-                      server-side per the selected leave type's employeeRemarkRequired flag. */}
-                  <Field label={t('employeeRemarkLabel')}>
-                    <textarea name="employeeRemark" rows={2} className={inputCls} />
-                    <p className="mt-1 text-xs text-muted-foreground">{t('employeeRemarkRequiredHint')}</p>
-                  </Field>
-                  {/* Emergency Leave (0106): neutral, balance-safe hint — EL auto-decomposes into Annual (first)
-                      then Unpaid for any remainder. Always shown so the applicant understands the cascade before
-                      picking the type; it never promises pay (true even when Annual is zero). */}
-                  <p className="text-xs text-muted-foreground">{tLeave('emergency.formHint')}</p>
-                  <Button type="submit" size="sm">
-                    {t('requestLeave')}
-                  </Button>
-                </form>
-              </Card>
-              </div>
-            </div>
           ),
         }}
       />

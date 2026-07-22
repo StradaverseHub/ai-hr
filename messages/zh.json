@@ -89,7 +89,7 @@
     "myWorkspace": "我的资料",
     "people": "员工",
     "orgChart": "组织架构图",
-    "leave": "休假",
+    "myAbsence": "我的休假",
     "attendance": "考勤",
     "manage": "管理",
     "approvals": "审批",
@@ -1099,6 +1099,7 @@
     }
   },
   "leave": {
+    "myAbsenceTitle": "我的休假",
     "title": "休假",
     "description": "查看您的假期余额、申请休假并跟踪您的请求。",
     "chipRequested": "已申请",
@@ -1800,7 +1801,6 @@
     "otReasonPlaceholder": "需要加班的原因",
     "resignationDocumentLabel": "证明文件",
     "resignationDocumentHint": "可选。附上您的辞职信或相关文件（PDF、JPG 或 PNG，每个最大 10 MB）。可附上多个文件。",
-    "secLeave": "假期",
     "personalEmailLabel": "个人邮箱",
     "addressLine1Label": "地址行 1",
     "addressLine2Label": "地址行 2",

@@ -89,7 +89,7 @@
     "myWorkspace": "My Profile",
     "people": "Personnel",
     "orgChart": "Org chart",
-    "leave": "Leave",
+    "myAbsence": "My Absence",
     "attendance": "Attendance",
     "manage": "Manage",
     "approvals": "Approvals",
@@ -1099,6 +1099,7 @@
     }
   },
   "leave": {
+    "myAbsenceTitle": "My Absence",
     "title": "Leave",
     "description": "Check your balance, apply for leave, and track your requests.",
     "chipRequested": "Requested",
@@ -1800,7 +1801,6 @@
     "otReasonPlaceholder": "Why the overtime was needed",
     "resignationDocumentLabel": "Supporting document",
     "resignationDocumentHint": "Optional. Attach your resignation letter or supporting files (PDF, JPG or PNG, up to 10 MB each). You can attach more than one.",
-    "secLeave": "Leave",
     "personalEmailLabel": "Personal email",
     "addressLine1Label": "Address line 1",
     "addressLine2Label": "Address line 2",

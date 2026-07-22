@@ -3,7 +3,8 @@
 /**
  * "My Leave" summary cards (Leave View Dashboard 6d78f373).
  *
- * The full-width row of PRIMARY leave-type cards at the top of the employee /me Leave tab. Each card shows the
+ * The full-width row of PRIMARY leave-type cards at the top of the My Absence page (/leave — relocated from
+ * the /me Leave tab by a7cbd895, nav-only move). Each card shows the
  * per-type icon, the remaining balance, and the leave-type name over a colour-coded background (reusing the
  * shared lib/leave-visual resolver so cards speak the same visual language as the side-sheet header + chips).
  *
@@ -108,8 +109,9 @@ export function LeaveCards({ entries }: { entries: LeaveCardEntry[] }) {
           upcoming={selected.panel.upcoming}
           visual={selected.panel.visual}
           asOf={selected.panel.asOf}
-          action="/me"
-          hiddenParams={{ tab: 'leave' }}
+          // a7cbd895: the cards live on /leave (My Absence) now — the panel's as-at GET form posts back
+          // there (no ?tab= needed; /leave is not tabbed).
+          action="/leave"
           applyEssConfig
         />
       )}

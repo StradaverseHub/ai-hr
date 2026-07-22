@@ -89,7 +89,7 @@
     "myWorkspace": "โปรไฟล์ของฉัน",
     "people": "พนักงาน",
     "orgChart": "ผังองค์กร",
-    "leave": "การลา",
+    "myAbsence": "การลาของฉัน",
     "attendance": "การเข้างาน",
     "manage": "จัดการ",
     "approvals": "การอนุมัติ",
@@ -1099,6 +1099,7 @@
     }
   },
   "leave": {
+    "myAbsenceTitle": "การลาของฉัน",
     "title": "การลา",
     "description": "ตรวจสอบยอดวันลา ยื่นลา และติดตามคำขอของคุณ",
     "chipRequested": "ขอแล้ว",
@@ -1800,7 +1801,6 @@
     "otReasonPlaceholder": "เหตุผลที่ต้องทำงานล่วงเวลา",
     "resignationDocumentLabel": "เอกสารประกอบ",
     "resignationDocumentHint": "ไม่บังคับ แนบจดหมายลาออกหรือไฟล์ประกอบของคุณ (PDF, JPG หรือ PNG ไม่เกิน 10 MB ต่อไฟล์) สามารถแนบได้มากกว่าหนึ่งไฟล์",
-    "secLeave": "การลา",
     "personalEmailLabel": "อีเมลส่วนตัว",
     "addressLine1Label": "ที่อยู่บรรทัด 1",
     "addressLine2Label": "ที่อยู่บรรทัด 2",

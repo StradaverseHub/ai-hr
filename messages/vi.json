@@ -89,7 +89,7 @@
     "myWorkspace": "Hồ sơ của tôi",
     "people": "Nhân sự",
     "orgChart": "Sơ đồ tổ chức",
-    "leave": "Nghỉ phép",
+    "myAbsence": "Nghỉ phép của tôi",
     "attendance": "Chấm công",
     "manage": "Quản lý",
     "approvals": "Phê duyệt",
@@ -1099,6 +1099,7 @@
     }
   },
   "leave": {
+    "myAbsenceTitle": "Nghỉ phép của tôi",
     "title": "Nghỉ phép",
     "description": "Kiểm tra số dư phép, xin nghỉ và theo dõi các yêu cầu của bạn.",
     "chipRequested": "Đã yêu cầu",
@@ -1800,7 +1801,6 @@
     "otReasonPlaceholder": "Lý do cần tăng ca",
     "resignationDocumentLabel": "Tài liệu hỗ trợ",
     "resignationDocumentHint": "Tùy chọn. Đính kèm đơn xin nghỉ việc hoặc các tệp hỗ trợ của bạn (PDF, JPG hoặc PNG, tối đa 10 MB mỗi tệp). Bạn có thể đính kèm nhiều tệp.",
-    "secLeave": "Nghỉ phép",
     "personalEmailLabel": "Email cá nhân",
     "addressLine1Label": "Địa chỉ dòng 1",
     "addressLine2Label": "Địa chỉ dòng 2",

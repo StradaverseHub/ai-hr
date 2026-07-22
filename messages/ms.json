@@ -89,7 +89,7 @@
     "myWorkspace": "Profil Saya",
     "people": "Kakitangan",
     "orgChart": "Carta organisasi",
-    "leave": "Cuti",
+    "myAbsence": "Ketidakhadiran Saya",
     "attendance": "Kehadiran",
     "manage": "Urus",
     "approvals": "Kelulusan",
@@ -1099,6 +1099,7 @@
     }
   },
   "leave": {
+    "myAbsenceTitle": "Ketidakhadiran Saya",
     "title": "Cuti",
     "description": "Semak baki cuti anda, mohon cuti, dan jejaki permohonan anda.",
     "chipRequested": "Dimohon",
@@ -1800,7 +1801,6 @@
     "otReasonPlaceholder": "Sebab kerja lebih masa diperlukan",
     "resignationDocumentLabel": "Dokumen sokongan",
     "resignationDocumentHint": "Pilihan. Lampirkan surat peletakan jawatan atau fail sokongan anda (PDF, JPG atau PNG, sehingga 10 MB setiap satu). Anda boleh melampirkan lebih daripada satu.",
-    "secLeave": "Cuti",
     "personalEmailLabel": "E-mel peribadi",
     "addressLine1Label": "Alamat baris 1",
     "addressLine2Label": "Alamat baris 2",
