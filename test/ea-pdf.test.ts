@@ -27,6 +27,7 @@ const labels: EaPdfLabels = {
   grossSalary: '1(a) Gross salary / wages (incl. overtime)',
   bonus: '1(b) Bonus',
   allowancesPerquisites: '1(c) Allowances / perquisites',
+  exemptAllowances: 'Tax-exempt allowances (included above)',
   benefitsInKind: '3 Benefits in kind',
   livingAccommodation: '4 Value of living accommodation',
   notTracked: 'not tracked',

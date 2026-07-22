@@ -9,7 +9,12 @@
  * Retrieved: 2026-06-06.
  */
 
-export const MY_STATUTORY_VERSION = '2026.4';
+export const MY_STATUTORY_VERSION = '2026.5';
+// 2026.5 (2026-07-22): PCB pay-code classification tables (feedback 09b554e9, LHDN "Spesifikasi Pengiraan
+//   PCB 2026 Menggunakan Pengiraan Berkomputer"): pcbExemptions gains the PCB_* exemption codes (annual caps;
+//   -1 = fully exempt, 0 = fully taxable) for Normal/Additional remuneration and the 24 LP_* optional-
+//   deduction codes (TP1-style monthly-tax deductions). Optional on the ruleset — pre-2026.5 overrides omit
+//   it and the kernel falls back to the built-ins, so existing DB overrides stay byte-identical.
 // 2026.4 (2026-07-04): OT ruleset gains two configurable EXCESS-hours factors —
 //   ot.restDayExcessMultiplier (2.0, s.60(3)(c)) and ot.holidayExcessMultiplier (3.0, s.60D(3)(aa)).
 //   Both optional with EA-value fallbacks, so older DB overrides carrying only ot.wageCeiling stay
@@ -458,6 +463,70 @@ export const MY_OT_HOLIDAY_EXCESS = 3.0;
 export type HrdfStatus = 'not_registered' | 'mandatory' | 'optional';
 export const MY_HRDF = { mandatoryRate: 0.01, optionalRate: 0.005 } as const;
 
+// ──────────────── PCB pay-code classification (feedback 09b554e9, LHDN PCB 2026) ────────────────
+// Source: LHDN "Spesifikasi Pengiraan PCB 2026 Menggunakan Pengiraan Berkomputer" — the exemption
+// categories for Normal/Additional remuneration and the optional-deduction (LP) list, each with its
+// yearly limit (RM). Transcribed verbatim from the feedback's LHDN-derived lists (2026-07-22).
+// Cap semantics: -1 = fully exempt (no cap); 0 = fully taxable (no exemption); 9999999 = the LHDN
+// uncapped sentinel (practically unlimited). Caps are ANNUAL, tracked per employee per code via the
+// payslip-ledger replay in core/payroll.ts (like the PCB accumulators).
+
+/** How a pay code is treated in the PCB computerised calculation (drives the exemption-code list). */
+export const PCB_REMUNERATION_TYPES = ['normal', 'additional', 'optional_deduction'] as const;
+export type PcbRemunerationType = (typeof PCB_REMUNERATION_TYPES)[number];
+
+/** Exemption / optional-deduction code → annual cap (RM). */
+export type PcbExemptionTable = Record<string, number>;
+
+/** PCB exemption codes available for Normal AND Additional remuneration (same list for both). */
+export const MY_PCB_EXEMPTION_CODES: PcbExemptionTable = {
+  PCB_CHILD_CARE: 3000,
+  PCB_COMPANY_PROD: 1000,
+  'PCB_NON-TAXABLE': -1,
+  PCB_PERQUISITE: 2000,
+  PCB_TAXABLE: 0,
+  PCB_TRA_BUSINESS: 6000,
+  PCB_TRA_HOLIDAY: 3000,
+};
+
+/** LHDN optional-deduction (LP) codes — Remuneration Type = Optional Deduction only. */
+export const MY_LP_OPTIONAL_DEDUCTION_CODES: PcbExemptionTable = {
+  LP_ALIMONY: 4000,
+  LP_ANNUITY: 3000,
+  LP_BREASTFEEDING_EQUIPMENT: 1000,
+  LP_CHILD_CARE_KINDERGARDEN: 3000,
+  LP_DENTAL: 1000,
+  LP_DOMESTIC_TOURISM: 1000,
+  LP_EDU_SSPN: 8000,
+  LP_ELECTRIC_VEHICLE: 2500,
+  LP_FIRSTHOUSE_LOAN1: 7000,
+  LP_FIRSTHOUSE_LOAN2: 5000,
+  LP_LEARNING_DISABILITY: 10000,
+  LP_LIFESTYLE: 2500,
+  LP_MED_CHECKUP: 1000,
+  LP_MED_CHECKUP_PARENT: 1000,
+  LP_MED_CRITICAL_ILL: 10000,
+  LP_MED_OWN_PARENT: 8000,
+  LP_OPTIONAL_REBATE: 9999999,
+  LP_SELF_HIGH_EDU: 7000,
+  LP_SOCSO: 350,
+  LP_SPORT_EQUIPMENT: 1000,
+  LP_SUPP_EDQUIPMENT: 6000,
+  LP_UPSKILL: 2000,
+  LP_VACCINATION: 1000,
+  LP_VOLUNTARY_EPF: 7000,
+};
+
+/** The exemption-code list valid for a remuneration type (Normal/Additional share the PCB_* list;
+ *  Optional Deduction uses the LP_* list). Pure — shared by the form island, the service validator
+ *  and the kernel. `tables` lets the kernel pass the pack-resolved ruleset tables. */
+export function pcbExemptionCodesFor(
+  type: PcbRemunerationType,
+  tables: { pcb: PcbExemptionTable; lp: PcbExemptionTable } = { pcb: MY_PCB_EXEMPTION_CODES, lp: MY_LP_OPTIONAL_DEDUCTION_CODES },
+): PcbExemptionTable {
+  return type === 'optional_deduction' ? tables.lp : tables.pcb;
+}
+
 // ─────────────────────────── Aggregate ruleset (ADR-0019) ───────────────────────────
 // All figures above, gathered into one injectable object. The calculators take this as a
 // parameter that defaults to DEFAULT_MY_STATUTORY, so a DB override (statutory_ruleset) can
@@ -508,6 +577,10 @@ export type StatutoryRuleset = {
   /** HRD Corp levy rates (#6, ADR-0037). Optional: overrides/packs predating 2026.4 omit it and
    *  `hrdfLevy` falls back to the built-in MY_HRDF. A first-class versioned body via the overlay. */
   hrdf?: { mandatoryRate: number; optionalRate: number };
+  /** PCB pay-code exemption tables (feedback 09b554e9, LHDN PCB 2026): the PCB_* exemption codes
+   *  (normal/additional remuneration) + the LP_* optional-deduction codes, each with its annual cap (RM).
+   *  Optional: overrides/packs predating 2026.5 omit it and the kernel falls back to the built-ins. */
+  pcbExemptions?: { pcb: PcbExemptionTable; lp: PcbExemptionTable };
 };
 
 /** The statutory bodies that version independently via the per-body overlay (ADR-0037). */
@@ -533,4 +606,5 @@ export const DEFAULT_MY_STATUTORY: StatutoryRuleset = {
     holidayExcessMultiplier: MY_OT_HOLIDAY_EXCESS,
   },
   hrdf: MY_HRDF,
+  pcbExemptions: { pcb: MY_PCB_EXEMPTION_CODES, lp: MY_LP_OPTIONAL_DEDUCTION_CODES },
 };

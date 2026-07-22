@@ -147,6 +147,9 @@ export default async function EaStatementPage({
           <Row label={t('grossSalary')} value={rm(ea.partB.grossSalary)} amended={ovByField.has('grossSalary')} amendedLabel={amendedBadge} />
           <Row label={t('bonus')} value={rm(ea.partB.bonus)} amended={ovByField.has('bonus')} amendedLabel={amendedBadge} />
           <Row label={t('allowancesPerquisites')} value={rm(ea.partB.allowances)} amended={ovByField.has('allowances')} amendedLabel={amendedBadge} />
+          {/* Feedback 09b554e9 — the year's tax-exempt allowance portions (informational: already inside
+              the allowances line; LHDN's EA reports exempt allowances in their own section). */}
+          <Row label={t('exemptAllowances')} value={rm(ea.partB.exemptAllowances ?? 0)} muted />
           <Row label={t('benefitsInKind')} value={t('notTracked')} muted />
           <Row label={t('livingAccommodation')} value={t('notTracked')} muted />
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">

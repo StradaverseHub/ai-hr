@@ -1730,6 +1730,13 @@
       "when": 1781862396000,
       "tag": "0296_employee_dashboard_fixed_row",
       "breakpoints": true
+    },
+    {
+      "idx": 297,
+      "version": "7",
+      "when": 1781862397000,
+      "tag": "0297_pay_component_pcb_classification",
+      "breakpoints": true
     }
   ]
 }

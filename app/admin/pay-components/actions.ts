@@ -10,10 +10,12 @@ import {
   deletePayComponent,
   PayComponentCodeExistsError,
   PayComponentInUseError,
+  PayComponentStatutoryConfigError,
   PayRuleInvalidError,
   seedPayComponentCatalog,
   upsertPayComponent,
   type PayComponentInput,
+  type PcbRemunerationType,
 } from '@/core/pay-components';
 import { draftPayRule, PayRuleDraftError } from '@/core/pay-rule-ai';
 import type { PayRule } from '@/core/pay-rule';
@@ -76,6 +78,12 @@ function componentFields(formData: FormData): PayComponentInput {
     eaFormLine: String(formData.get('eaFormLine') ?? '') || null,
     roundingMethod: String(formData.get('roundingMethod') ?? 'none'),
     rule: parseRule(String(formData.get('rule') ?? '')),
+    // Feedback 09b554e9 — LHDN PCB 2026 classification. The form ALWAYS supplies these (nulls when the
+    // panels hide them), so the service's mandatory-pair / wrong-list / epf-bonus-without-epf validation is
+    // authoritative on every save (PayComponentStatutoryConfigError → localised message below).
+    epfBonus2012: bool(formData, 'epfBonus2012'),
+    pcbRemunerationType: (String(formData.get('pcbRemunerationType') ?? '') || null) as PcbRemunerationType | null,
+    pcbExemptionCode: String(formData.get('pcbExemptionCode') ?? '') || null,
   };
 }
 
@@ -89,6 +97,11 @@ async function messageOf(e: unknown, t: Awaited<ReturnType<typeof getTranslation
   // Duplicate code on create ⇒ one message for an active hit, another for "deactivated — reactivate it".
   if (e instanceof PayComponentCodeExistsError) {
     return e.archived ? t('errorCodeDuplicateArchived', { code: e.code }) : t('errorCodeDuplicate', { code: e.code });
+  }
+  // Feedback 09b554e9 — incomplete/inconsistent statutory classification (mandatory PCB pair, wrong-list
+  // exemption code, EPF Bonus 2012 without EPF). Stable code → localised message, like PayRuleInvalidError.
+  if (e instanceof PayComponentStatutoryConfigError) {
+    return t(`errorStatutory_${e.code}`);
   }
   return (e as Error).message;
 }

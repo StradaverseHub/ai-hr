@@ -21,7 +21,9 @@ export type EaPdfData = {
     hiredOn: string;
     terminatedOn: string | null;
   };
-  partB: { grossSalary: number; bonus: number; allowances: number; gross: number };
+  /** exemptAllowances (feedback 09b554e9): the year's tax-exempt PCB_* allowance portions — optional +
+   *  additive (older callers omit it and the row renders as 0.00). */
+  partB: { grossSalary: number; bonus: number; allowances: number; gross: number; exemptAllowances?: number };
   partD: { mtd: number };
   partE: { epf: number; socso: number; eis: number };
   statutoryVersion: string;
@@ -51,6 +53,7 @@ export type EaPdfLabels = {
   grossSalary: string;
   bonus: string;
   allowancesPerquisites: string;
+  exemptAllowances: string;
   benefitsInKind: string;
   livingAccommodation: string;
   notTracked: string;
@@ -142,6 +145,9 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   row(t.grossSalary, rm(d.partB.grossSalary));
   row(t.bonus, rm(d.partB.bonus));
   row(t.allowancesPerquisites, rm(d.partB.allowances));
+  // Feedback 09b554e9 — the year's tax-exempt allowance portions (informational: already inside the
+  // allowances figure above; LHDN's EA reports exempt allowances in their own section).
+  row(t.exemptAllowances, rm(d.partB.exemptAllowances ?? 0), { color: muted });
   row(t.benefitsInKind, t.notTracked, { color: muted });
   row(t.livingAccommodation, t.notTracked, { color: muted });
   hr(y + 9);
