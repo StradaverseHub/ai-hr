@@ -309,6 +309,7 @@
       "businessUnit": "Business unit",
       "businessUnitNone": "— None —",
       "departmentSelectPrompt": "— Select a department —",
+      "orgLabelsEmptyForCompany": "No organization labels are configured for the selected company.",
       "colCode": "Code",
       "filter": "Filter",
       "applyFilters": "Apply filters",

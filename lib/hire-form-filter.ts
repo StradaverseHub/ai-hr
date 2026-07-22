@@ -82,6 +82,11 @@ export function hireOptionVisible(args: HireOptionVisibleArgs): boolean {
  * auto-picking the new company's first department (Scenario 2 of feedback 570e3311). Options
  * without a `data-companies` stamp (the placeholders) are never re-stamped, so the Department
  * placeholder keeps its markup `disabled` state.
+ *
+ * Zero-visible-options empty state (feedback d61f0ff2): when a select ends up with NO visible
+ * stamped options for the selected company, the sibling message element `<select id>-empty`
+ * ("No organization labels are configured for the selected company", server-rendered per locale in
+ * app/admin/personnel/page.tsx) is unhidden — an explained empty list instead of a bare placeholder.
  */
 export const HIRE_ORG_FILTER_SCRIPT = `(function(){
   var visible=${hireOptionVisible.toString()};
@@ -93,6 +98,7 @@ export const HIRE_ORG_FILTER_SCRIPT = `(function(){
   if(!company||!dept)return;
   function applySelect(sel,useBu){
     if(!sel)return;
+    var visCount=0;
     for(var i=0;i<sel.options.length;i++){
       var o=sel.options[i];
       if(!o.getAttribute('data-companies'))continue;
@@ -104,9 +110,12 @@ export const HIRE_ORG_FILTER_SCRIPT = `(function(){
         selectedBusinessUnit:useBu&&bu?bu.value:''
       });
       o.hidden=!show;o.disabled=!show;
+      if(show)visCount++;
     }
     var cur=sel.options[sel.selectedIndex];
     if(!cur||cur.hidden){sel.value='';}
+    var empty=document.getElementById(sel.id+'-empty');
+    if(empty)empty.hidden=visCount>0;
   }
   function applyAll(){
     applySelect(bu,false);

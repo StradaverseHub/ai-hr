@@ -309,6 +309,7 @@
       "businessUnit": "வணிகப் பிரிவு",
       "businessUnitNone": "— எதுவுமில்லை —",
       "departmentSelectPrompt": "— துறையைத் தேர்ந்தெடுக்கவும் —",
+      "orgLabelsEmptyForCompany": "தேர்ந்தெடுக்கப்பட்ட நிறுவனத்திற்கு எந்த அமைப்பு லேபிள்களும் கட்டமைக்கப்படவில்லை.",
       "colCode": "குறியீடு",
       "filter": "வடிகட்டு",
       "applyFilters": "வடிப்பான்களைப் பயன்படுத்து",

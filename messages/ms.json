@@ -309,6 +309,7 @@
       "businessUnit": "Unit perniagaan",
       "businessUnitNone": "— Tiada —",
       "departmentSelectPrompt": "— Pilih jabatan —",
+      "orgLabelsEmptyForCompany": "Tiada label organisasi dikonfigurasikan untuk syarikat yang dipilih.",
       "colCode": "Kod",
       "filter": "Tapis",
       "applyFilters": "Guna penapis",

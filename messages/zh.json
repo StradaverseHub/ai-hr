@@ -309,6 +309,7 @@
       "businessUnit": "业务单位",
       "businessUnitNone": "— 无 —",
       "departmentSelectPrompt": "— 请选择部门 —",
+      "orgLabelsEmptyForCompany": "所选公司未配置任何组织标签。",
       "colCode": "编号",
       "filter": "筛选",
       "applyFilters": "应用筛选",

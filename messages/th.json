@@ -309,6 +309,7 @@
       "businessUnit": "หน่วยธุรกิจ",
       "businessUnitNone": "— ไม่มี —",
       "departmentSelectPrompt": "— เลือกแผนก —",
+      "orgLabelsEmptyForCompany": "ไม่มีป้ายกำกับองค์กรที่กำหนดค่าไว้สำหรับบริษัทที่เลือก",
       "colCode": "รหัส",
       "filter": "กรอง",
       "applyFilters": "ใช้ตัวกรอง",

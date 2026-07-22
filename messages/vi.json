@@ -309,6 +309,7 @@
       "businessUnit": "Đơn vị kinh doanh",
       "businessUnitNone": "— Không có —",
       "departmentSelectPrompt": "— Chọn phòng ban —",
+      "orgLabelsEmptyForCompany": "Chưa có nhãn tổ chức nào được cấu hình cho công ty đã chọn.",
       "colCode": "Mã",
       "filter": "Lọc",
       "applyFilters": "Áp dụng bộ lọc",
