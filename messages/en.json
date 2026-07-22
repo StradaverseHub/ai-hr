@@ -3515,6 +3515,7 @@
       "reopenLeaveYear": "Reopen",
       "noLeaveYears": "No leave years configured yet.",
       "leaveYearAdvancedTitle": "Advance Rules",
+      "editLeaveYearTitle": "Edit leave year",
       "leaveYearAdvancedHelp": "Optional automation — not required to open a leave year.",
       "openingRuleTitle": "Future leave year opening rule",
       "openingRuleHelp": "Automatically decide when an upcoming leave year opens. Pick how far before the year start to open it — the system computes the opening date (1 January minus the window) and stamps it on that year. Different companies can set different windows.",

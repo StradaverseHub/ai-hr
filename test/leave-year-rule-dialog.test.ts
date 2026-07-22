@@ -56,16 +56,15 @@ describe('leave-year rule dialog (37088a65)', () => {
     expect(page.match(/<LeaveYearRuleDialog/g)).toHaveLength(1);
   });
 
-  it('feedback 4f4d9cff — row order: Advance Rules dialog, then Start, then Edit (form-attribute wired), then Delete', () => {
-    // The Edit button posts the row's date form from OUTSIDE it via the `form` attribute
-    // (same pattern as the per-row edit forms in app/admin/holidays/page.tsx).
-    expect(page).toContain('id={`ly-edit-${cfg.year}`}');
-    expect(page).toContain('form={`ly-edit-${cfg.year}`}');
+  it('feedback 4f4d9cff — row order: Advance Rules dialog, then Start, then Edit, then Delete', () => {
+    // 7903c197 replaced the always-open inline date form (and its form-attribute Edit submit) with
+    // LeaveYearEditDialog: Edit now opens a prefilled pop-up instead of saving immediately, but it
+    // keeps its 4f4d9cff slot between Start and Delete in the action group.
     // Within the row block, the render order is: dialog trigger → draft lifecycle (Start) form → Edit → Delete.
     const row = page.slice(page.indexOf('leaveYearConfigs.map((cfg)'), page.indexOf('Create / configure'));
     const dialogIdx = row.indexOf('<LeaveYearRuleDialog');
     const startIdx = row.indexOf('name="status" value="open"');
-    const editIdx = row.indexOf('form={`ly-edit-${cfg.year}`}');
+    const editIdx = row.indexOf('<LeaveYearEditDialog');
     const deleteIdx = row.indexOf('deleteLeaveYearAction');
     expect(dialogIdx).toBeGreaterThan(-1);
     expect(startIdx).toBeGreaterThan(dialogIdx);

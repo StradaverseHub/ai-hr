@@ -1,5 +1,4 @@
 import { getTranslations } from 'next-intl/server';
-import { Pencil } from 'lucide-react';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listLeaveYearConfigs, leaveYearsWithRecords } from '@/core/leave';
@@ -7,6 +6,7 @@ import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btn
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveYearRuleDialog } from '@/components/leave/leave-year-rule-dialog';
+import { LeaveYearEditDialog } from '@/components/leave/leave-year-edit-dialog';
 import {
   setLeaveHalfDayFullDeductionAction,
   upsertLeaveYearConfigAction,
@@ -91,43 +91,31 @@ export default async function LeaveApplicationRulesPage({
                 <span className="w-14 text-sm font-semibold text-foreground">{cfg.year}</span>
                 <Badge variant={leaveYearStatusVariant(cfg.status)}>{t(`leaveYearStatus_${cfg.status}`)}</Badge>
               </div>
-              {/* Edit the two control dates (status unchanged here — the lifecycle action does that).
-                  Feedback 4f4d9cff — the row reads in the order HR works: dates, then "Advance Rules"
-                  right beside the Employee-application-start-date field, then (after the justify-between
-                  gap) Start / Edit / Delete. The Edit submit lives in the right-hand action group and
-                  posts this form via the `form` attribute (same pattern as app/admin/holidays/page.tsx),
-                  keyed by `ly-edit-<year>` — year is unique per tenant via listLeaveYearConfigs. */}
-              <div className="flex flex-wrap items-end gap-2">
-                <form
-                  id={`ly-edit-${cfg.year}`}
-                  action={upsertLeaveYearConfigAction}
-                  className="flex flex-wrap items-end gap-2"
-                >
-                  <input type="hidden" name="year" value={cfg.year} />
-                  <Field label={t('openLeaveYearDateLabel')}>
-                    <input
-                      type="date"
-                      name="openLeaveYearDate"
-                      defaultValue={cfg.openLeaveYearDate ?? ''}
-                      className={`${inputCls} w-40`}
-                    />
-                  </Field>
-                  <Field label={t('employeeApplicationStartDateLabel')}>
-                    <input
-                      type="date"
-                      name="employeeApplicationStartDate"
-                      defaultValue={cfg.employeeApplicationStartDate ?? ''}
-                      className={`${inputCls} w-40`}
-                    />
-                  </Field>
-                </form>
+              {/* The two control dates, read-only (7903c197). Editing moved into LeaveYearEditDialog:
+                  the old inline form saved IMMEDIATELY on clicking its Edit-labelled submit button
+                  ("Leave year saved." with no review step). Edit now opens a prefilled pop-up; the save
+                  + toast only fire from the Save button inside it. Feedback 4f4d9cff's row order is
+                  kept: dates, then "Advance Rules" right beside the Employee-application-start-date
+                  value, then (after the justify-between gap) Start / Edit / Delete. */}
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="w-40">
+                  <span className="block text-xs font-medium text-muted-foreground">
+                    {t('openLeaveYearDateLabel')}
+                  </span>
+                  <span className="text-sm text-foreground">{cfg.openLeaveYearDate ?? '—'}</span>
+                </div>
+                <div className="w-40">
+                  <span className="block text-xs font-medium text-muted-foreground">
+                    {t('employeeApplicationStartDateLabel')}
+                  </span>
+                  <span className="text-sm text-foreground">{cfg.employeeApplicationStartDate ?? '—'}</span>
+                </div>
                 {cfg.status === 'draft' && (
                   /* 37088a65 — per-row "Advance Rules" dialog (replaces the old shared bottom-of-page
                      panel). Draft-only, matching the lifecycle Start button: an ungated trigger would let
-                     HR stamp open_leave_year_date onto an open/closed year. Rendered as a SIBLING of the
-                     row's date form — the trigger Button is type="button", so it can never submit a
-                     surrounding form. Feedback 4f4d9cff placed it here, immediately after the
-                     Employee-application-start-date field. */
+                     HR stamp open_leave_year_date onto an open/closed year. The trigger Button is
+                     type="button", so it can never submit an adjacent row form. Feedback 4f4d9cff placed
+                     it here, immediately after the Employee-application-start-date value. */
                   <LeaveYearRuleDialog
                     year={cfg.year}
                     current={{
@@ -172,13 +160,19 @@ export default async function LeaveApplicationRulesPage({
                     </Button>
                   </form>
                 )}
-                {/* dcd8e32f — the row save is a recognisable EDIT action (pencil + "Edit"), not a bare
-                    "Save". Feedback 4f4d9cff moved it here (label unchanged): it submits the row's date
-                    form from outside it via the `form` attribute, sitting between Start and Delete. */}
-                <Button type="submit" form={`ly-edit-${cfg.year}`} variant="outline" size="sm" className="gap-1.5">
-                  <Pencil className="size-3.5" />
-                  {t('edit')}
-                </Button>
+                {/* dcd8e32f — the row edit is a recognisable EDIT action (pencil + "Edit"), sitting
+                    between Start and Delete per feedback 4f4d9cff. 7903c197 — it now opens a prefilled
+                    pop-up (LeaveYearEditDialog) instead of submitting an inline form; available on EVERY
+                    row whatever its status — HR must stay able to correct dates on an open or closed
+                    year. Nothing is saved until Save is pressed inside the dialog. */}
+                <LeaveYearEditDialog
+                  year={cfg.year}
+                  current={{
+                    openLeaveYearDate: cfg.openLeaveYearDate,
+                    employeeApplicationStartDate: cfg.employeeApplicationStartDate,
+                  }}
+                  saveAction={upsertLeaveYearConfigAction}
+                />
                 {/* R45 fd71fa38 — Delete. Enabled only for a DRAFT year with no leave records referencing it;
                     otherwise a disabled button with the reason as VISIBLE inline text (dcd8e32f — the old
                     title-attribute tooltip did not exist on touch devices and was never announced by screen
