@@ -1,5 +1,7 @@
 /**
  * Item 5988053a — Family tab: child records as a table + Add/Edit dialog + delete confirmation.
+ * Item 33a5ce41 — Spouse and Other Dependants rebuilt in the identical table + dialog pattern, and the
+ * read-only View dialog (disabled fieldset, no form) added to all three sections.
  *
  * Source-static guard (precedent: test/personnel-bank-statutory-tab.test.ts, test/identity-tax-controls.test.ts,
  * test/statutory-my-layout.test.ts) over the employee-detail page. The dialog forms post the SAME field names
@@ -71,10 +73,14 @@ describe('Personnel — Family children table + dialog (5988053a)', () => {
   });
 
   it('renders the children section as a table + dialogs, not the old details cards', () => {
-    // The child call of familySection is gone (spouse/other keep theirs)...
+    // Item 33a5ce41 — the details-card machinery is gone entirely: no familySection calls for any
+    // section, and the familySection / familyEditCard / familyAddCard helpers no longer exist.
     expect(PAGE.includes("familySection('family.childrenSection'")).toBe(false);
-    expect(PAGE.includes("familySection('family.spouseSection'")).toBe(true);
-    expect(PAGE.includes("familySection('family.otherSection'")).toBe(true);
+    expect(PAGE.includes("familySection('family.spouseSection'")).toBe(false);
+    expect(PAGE.includes("familySection('family.otherSection'")).toBe(false);
+    expect(PAGE.includes('familySection')).toBe(false);
+    expect(PAGE.includes('familyEditCard')).toBe(false);
+    expect(PAGE.includes('familyAddCard')).toBe(false);
     // ...replaced by the server-JSX table inside the dialog island, with the payroll-facing column driven
     // by the SAME shared predicate the head count uses.
     expect(PAGE.includes('{familyChildrenSection}')).toBe(true);
@@ -91,6 +97,52 @@ describe('Personnel — Family children table + dialog (5988053a)', () => {
     expect(PAGE.includes("title={t('family.deleteConfirmTitle')}")).toBe(true);
   });
 
+  it('renders spouse and other sections in the identical table + dialog pattern (33a5ce41)', () => {
+    // The two new server-JSX sections exist and are mounted in the panel.
+    expect(PAGE.includes('const familySpouseSection')).toBe(true);
+    expect(PAGE.includes('const familyOtherSection')).toBe(true);
+    expect(PAGE.includes('{familySpouseSection}')).toBe(true);
+    expect(PAGE.includes('{familyOtherSection}')).toBe(true);
+    // Each has its own Add dialog (label doubles as the dialog title)...
+    expect(PAGE.includes("triggerLabel={t('family.addSpouse')} title={t('family.addSpouse')}")).toBe(true);
+    expect(PAGE.includes("triggerLabel={t('family.addDependant')} title={t('family.addDependant')}")).toBe(true);
+    // ...the generalized dialog form for every section (add + edit)...
+    expect(PAGE.includes("{dialogForm('spouse', null)}")).toBe(true);
+    expect(PAGE.includes("{dialogForm('spouse', d)}")).toBe(true);
+    expect(PAGE.includes("{dialogForm('other', null)}")).toBe(true);
+    expect(PAGE.includes("{dialogForm('other', d)}")).toBe(true);
+    expect(PAGE.includes("{dialogForm('child', null)}")).toBe(true);
+    expect(PAGE.includes("{dialogForm('child', d)}")).toBe(true);
+    // ...per-section Edit dialog titles...
+    expect(PAGE.includes("title={t('family.editSpouseTitle')}")).toBe(true);
+    expect(PAGE.includes("title={t('family.editOtherTitle')}")).toBe(true);
+    // ...and Delete via ConfirmSubmit around the untouched archive action with per-section copy.
+    expect(PAGE.includes("title={t('family.deleteSpouseConfirmTitle')}")).toBe(true);
+    expect(PAGE.includes("description={t('family.deleteSpouseConfirmBody')}")).toBe(true);
+    expect(PAGE.includes("title={t('family.deleteOtherConfirmTitle')}")).toBe(true);
+    expect(PAGE.includes("description={t('family.deleteOtherConfirmBody')}")).toBe(true);
+    // Empty states reuse the existing per-section keys.
+    expect(PAGE.includes("t('family.noSpouse')")).toBe(true);
+    expect(PAGE.includes("t('family.noOther')")).toBe(true);
+  });
+
+  it('offers the read-only View dialog in all three sections as a disabled fieldset, never a form', () => {
+    // View renders EXACTLY the Edit fields inside <fieldset disabled> — no <form>, no submit button —
+    // so it can never drift from the form and can never post.
+    expect(PAGE.includes('<fieldset disabled>')).toBe(true);
+    expect(PAGE.includes("{viewDialogBody('spouse', d)}")).toBe(true);
+    expect(PAGE.includes("{viewDialogBody('child', d)}")).toBe(true);
+    expect(PAGE.includes("{viewDialogBody('other', d)}")).toBe(true);
+    expect(PAGE.includes("title={t('family.viewSpouseTitle')}")).toBe(true);
+    expect(PAGE.includes("title={t('family.viewChildTitle')}")).toBe(true);
+    expect(PAGE.includes("title={t('family.viewOtherTitle')}")).toBe(true);
+    // The helper body carries no form element or action post.
+    const viewBody = PAGE.slice(PAGE.indexOf('const viewDialogBody'), PAGE.indexOf('const familyChildrenSection'));
+    expect(viewBody.length).toBeGreaterThan(0);
+    expect(viewBody.includes('<form')).toBe(false);
+    expect(viewBody.includes('action=')).toBe(false);
+  });
+
   it('groups the child dialog form into the three labelled fieldsets', () => {
     for (const legend of ['sectionPersonal', 'sectionEducation', 'sectionTaxRelief']) {
       expect(PAGE.includes(`t('family.${legend}')`), `missing fieldset legend family.${legend}`).toBe(true);
@@ -105,7 +157,7 @@ describe('Personnel — Family children table + dialog (5988053a)', () => {
     expect(DIALOG.includes('onSubmit={() => setOpen(false)}')).toBe(false);
   });
 
-  it('has all 13 new family keys in all six locales (no raw key at runtime)', () => {
+  it('has all 23 family keys (13 from 5988053a + 10 from 33a5ce41) in all six locales', () => {
     const keys = [
       'addTitle',
       'editTitle',
@@ -120,6 +172,17 @@ describe('Personnel — Family children table + dialog (5988053a)', () => {
       'deleteConfirmBody',
       'emptyTable',
       'ageHint',
+      // Item 33a5ce41 — spouse/other tables + the View trio.
+      'view',
+      'viewSpouseTitle',
+      'viewChildTitle',
+      'viewOtherTitle',
+      'editSpouseTitle',
+      'editOtherTitle',
+      'deleteSpouseConfirmTitle',
+      'deleteSpouseConfirmBody',
+      'deleteOtherConfirmTitle',
+      'deleteOtherConfirmBody',
     ];
     for (const loc of LOCALES) {
       const msg = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));

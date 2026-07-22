@@ -903,9 +903,10 @@ export default async function EmployeePage({
 
   // ── FAMILY ─────────────────────────────────────────────────────────────────
   // Personnel — Family & Dependents. 4535b733 enhancement: the flat register is partitioned server-side
-  // into three logical sections — Spouse / Children / Other Dependants. Spouse and Other Dependants keep
-  // the collapsible full-field Add + Edit + Remove cards; item 5988053a replaced the Children section with
-  // a table view plus Add/Edit dialogs (FamilyFormDialog) and Delete-with-confirmation. Admin-maintained
+  // into three logical sections — Spouse / Children / Other Dependants. Item 5988053a replaced the
+  // Children section with a table view plus Add/Edit dialogs (FamilyFormDialog) and
+  // Delete-with-confirmation; item 33a5ce41 brought Spouse and Other Dependants onto the identical
+  // table + dialog pattern and added the read-only View dialog to all three sections. Admin-maintained
   // (RLS is_admin write) and distinct from the emergency contact. Since R46 47146ea3, child rows DO feed
   // employee_statutory_my.num_children when child_relief_mode === 'auto' (syncChildReliefFromFamily);
   // 'manual' persons keep full human control. Spouse-only (marriage / spouse employment) and child-only
@@ -1145,52 +1146,6 @@ export default async function EmployeePage({
     );
   };
 
-  // One existing record: a collapsible card whose body is the full-field edit form + a Remove form.
-  const familyEditCard = (section: FamilySection, d: DependentRow) => (
-    <details key={d.id} className="rounded-md border border-border">
-      <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-medium">
-        <span>{d.fullName}</span>
-        <span className="text-xs text-muted-foreground">{relationshipLabel(d.relationship)}</span>
-        {d.isBeneficiary && <Badge variant="success">{t('family.beneficiary')}</Badge>}
-        {d.isDeceased && <Badge variant="default">{t('family.deceased')}</Badge>}
-      </summary>
-      <div className="border-t border-border p-3">
-        <form action={editDependentAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
-          <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <input type="hidden" name="id" value={d.id} />
-          {dependentFields(section, d)}
-          <div className="sm:col-span-2 flex items-center gap-4">
-            <button className={btnPrimary}>{t('family.save')}</button>
-          </div>
-        </form>
-        <form action={archiveDependentAction} className="mt-2">
-          <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <input type="hidden" name="id" value={d.id} />
-          <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
-            {t('family.delete')}
-          </button>
-        </form>
-      </div>
-    </details>
-  );
-
-  // The Add form for a section (collapsed by default).
-  const familyAddCard = (section: FamilySection, addLabel: string) => (
-    <details className="rounded-md border border-dashed border-border">
-      <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-primary">{addLabel}</summary>
-      <div className="border-t border-border p-3">
-        <form action={addDependentAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
-          <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <input type="hidden" name="personId" value={emp.personId} />
-          {dependentFields(section, null)}
-          <div className="sm:col-span-2">
-            <button className={btnPrimary}>{t('family.add')}</button>
-          </div>
-        </form>
-      </div>
-    </details>
-  );
-
   // Item 5988053a — Children section: table view + Add/Edit dialog. Static label switches (not dynamic
   // templates) so i18n coverage stays checkable — see relationshipLabel above.
   const childReliefCategoryLabel = (c: string | null) => {
@@ -1206,15 +1161,20 @@ export default async function EmployeePage({
   const childReliefShareLabel = (p: number | null) =>
     p === 100 ? t('family.childReliefPct_100') : p === 50 ? t('family.childReliefPct_50') : null;
 
-  // One dialog form (Add when d is null, Edit otherwise), posting to the SAME server actions as before.
+  // One dialog form for ANY section (Add when d is null, Edit otherwise), posting to the SAME server
+  // actions as before. The child fields arrive pre-grouped in fieldsets (space-y flow); spouse/other keep
+  // their original flat two-column grid, so the form itself supplies the grid container.
   // TAB RETENTION (feedback bd2f0bb2): Dialog.Portal reparents this form to document.body — OUTSIDE the
   // PersonnelTabs shell — so the shell's capture-phase submit listener never sees it (shell.contains(form)
   // is false) and would never inject the hidden `tab` field; without the STATIC hidden input below, every
   // dialog save would redirect back to the Profile tab. Giving it data-tab-tracker means that if this form
   // ever does sit inside the shell, the listener finds and reuses this input instead of appending a
   // duplicate `tab` field.
-  const childDialogForm = (d: DependentRow | null) => (
-    <form action={d ? editDependentAction : addDependentAction} className="space-y-4">
+  const dialogForm = (section: FamilySection, d: DependentRow | null) => (
+    <form
+      action={d ? editDependentAction : addDependentAction}
+      className={section === 'child' ? 'space-y-4' : 'grid grid-cols-1 items-end gap-3 sm:grid-cols-2'}
+    >
       <input type="hidden" name="employmentId" value={emp.employmentId} />
       {d ? (
         <input type="hidden" name="id" value={d.id} />
@@ -1222,11 +1182,23 @@ export default async function EmployeePage({
         <input type="hidden" name="personId" value={emp.personId} />
       )}
       <input type="hidden" name="tab" value="family" data-tab-tracker="" />
-      {dependentFields('child', d)}
-      <div className="flex justify-end">
+      {dependentFields(section, d)}
+      <div className={section === 'child' ? 'flex justify-end' : 'sm:col-span-2 flex justify-end'}>
         <button className={btnPrimary}>{d ? t('family.save') : t('family.add')}</button>
       </div>
     </form>
+  );
+
+  // Item 33a5ce41 — View: the SAME server-rendered fields, disabled inside a fieldset, with NO <form>
+  // element and no submit button. Rendering exactly the Edit layout means the read-only view can never
+  // drift from the form — and with no form it can never post. (The fieldset only carries `disabled`; the
+  // layout container is the inner div, since fieldset flex/grid support is historically unreliable.)
+  const viewDialogBody = (section: FamilySection, d: DependentRow) => (
+    <fieldset disabled>
+      <div className={section === 'child' ? 'space-y-4' : 'grid grid-cols-1 items-end gap-3 sm:grid-cols-2'}>
+        {dependentFields(section, d)}
+      </div>
+    </fieldset>
   );
 
   // The children table replaces the details-based section (rows stay in listDependents' fixed oldest-first
@@ -1239,7 +1211,7 @@ export default async function EmployeePage({
           <span className="font-normal text-muted-foreground">({childDeps.length})</span>
         </h3>
         <FamilyFormDialog triggerLabel={t('family.addChild')} title={t('family.addTitle')}>
-          {childDialogForm(null)}
+          {dialogForm('child', null)}
         </FamilyFormDialog>
       </div>
       {childDeps.length === 0 ? (
@@ -1298,11 +1270,18 @@ export default async function EmployeePage({
                   <td className="py-2">
                     <div className="flex items-center justify-end gap-2">
                       <FamilyFormDialog
+                        triggerLabel={t('family.view')}
+                        triggerVariant="outline"
+                        title={t('family.viewChildTitle')}
+                      >
+                        {viewDialogBody('child', d)}
+                      </FamilyFormDialog>
+                      <FamilyFormDialog
                         triggerLabel={t('family.editTitle')}
                         triggerVariant="outline"
                         title={t('family.editTitle')}
                       >
-                        {childDialogForm(d)}
+                        {dialogForm('child', d)}
                       </FamilyFormDialog>
                       {/* Delete keeps tab retention with no extra work: this form lives INSIDE the tab
                           shell, and ConfirmSubmit's confirm calls requestSubmit() on it, firing a bubbling
@@ -1331,24 +1310,172 @@ export default async function EmployeePage({
     </section>
   );
 
-  const familySection = (
-    titleKey: string,
-    emptyKey: string,
-    addLabelKey: string,
-    section: FamilySection,
-    rows: DependentRow[],
-  ) => (
-    <details open className="border-t border-border">
-      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
-        {t(titleKey)} <span className="font-normal text-muted-foreground">({rows.length})</span>
-      </summary>
-      <div className="space-y-2 px-4 pb-4">
-        {rows.length > 0
-          ? rows.map((d) => familyEditCard(section, d))
-          : <p className="text-sm text-muted-foreground">{t(emptyKey)}</p>}
-        {familyAddCard(section, t(addLabelKey))}
+  // Item 33a5ce41 — Spouse section in the identical table + dialog pattern as the children section
+  // (rows keep listDependents' fixed oldest-first order; narrower min-w than the 64rem children table
+  // because there are fewer columns).
+  const familySpouseSection = (
+    <section className="border-t border-border">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+        <h3 className="text-sm font-semibold">
+          {t('family.spouseSection')}{' '}
+          <span className="font-normal text-muted-foreground">({spouseDeps.length})</span>
+        </h3>
+        <FamilyFormDialog triggerLabel={t('family.addSpouse')} title={t('family.addSpouse')}>
+          {dialogForm('spouse', null)}
+        </FamilyFormDialog>
       </div>
-    </details>
+      {spouseDeps.length === 0 ? (
+        <p className="px-4 pb-4 text-sm text-muted-foreground">{t('family.noSpouse')}</p>
+      ) : (
+        <div className="overflow-x-auto px-4 pb-4">
+          <table className="w-full min-w-[46rem] text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="py-2 pr-3 font-medium">{t('family.name')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.newIc')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.dateOfBirth')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.occupation')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.companyName')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.contactNumber')}</th>
+                <th className="py-2 text-right font-medium">{t('family.actions')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {spouseDeps.map((d) => (
+                <tr key={d.id} className="border-b border-border/60 align-top">
+                  <td className="py-2 pr-3 font-medium">
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      {d.fullName}
+                      {d.isBeneficiary && <Badge variant="success">{t('family.beneficiary')}</Badge>}
+                      {d.isDeceased && <Badge variant="default">{t('family.deceased')}</Badge>}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-3">{d.icOrPassport ?? '—'}</td>
+                  <td className="whitespace-nowrap py-2 pr-3">{d.dateOfBirth ?? '—'}</td>
+                  <td className="py-2 pr-3">{d.occupation ?? '—'}</td>
+                  <td className="py-2 pr-3">{d.companyName ?? '—'}</td>
+                  <td className="py-2 pr-3">{d.phone ?? '—'}</td>
+                  <td className="py-2">
+                    <div className="flex items-center justify-end gap-2">
+                      <FamilyFormDialog
+                        triggerLabel={t('family.view')}
+                        triggerVariant="outline"
+                        title={t('family.viewSpouseTitle')}
+                      >
+                        {viewDialogBody('spouse', d)}
+                      </FamilyFormDialog>
+                      <FamilyFormDialog
+                        triggerLabel={t('family.editSpouseTitle')}
+                        triggerVariant="outline"
+                        title={t('family.editSpouseTitle')}
+                      >
+                        {dialogForm('spouse', d)}
+                      </FamilyFormDialog>
+                      {/* This delete form lives INSIDE the tab shell (not portalled), so the shell's
+                          capture-phase submit listener handles tab retention — same as children deletes. */}
+                      <form action={archiveDependentAction}>
+                        <input type="hidden" name="employmentId" value={emp.employmentId} />
+                        <input type="hidden" name="id" value={d.id} />
+                        <ConfirmSubmit
+                          size="sm"
+                          variant="destructive"
+                          title={t('family.deleteSpouseConfirmTitle')}
+                          description={t('family.deleteSpouseConfirmBody')}
+                          confirmLabel={t('family.delete')}
+                        >
+                          {t('family.delete')}
+                        </ConfirmSubmit>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+
+  // Item 33a5ce41 — Other Dependants in the same table + dialog pattern.
+  const familyOtherSection = (
+    <section className="border-t border-border">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+        <h3 className="text-sm font-semibold">
+          {t('family.otherSection')}{' '}
+          <span className="font-normal text-muted-foreground">({otherDeps.length})</span>
+        </h3>
+        <FamilyFormDialog triggerLabel={t('family.addDependant')} title={t('family.addDependant')}>
+          {dialogForm('other', null)}
+        </FamilyFormDialog>
+      </div>
+      {otherDeps.length === 0 ? (
+        <p className="px-4 pb-4 text-sm text-muted-foreground">{t('family.noOther')}</p>
+      ) : (
+        <div className="overflow-x-auto px-4 pb-4">
+          <table className="w-full min-w-[44rem] text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="py-2 pr-3 font-medium">{t('family.name')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.relationship')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.newIc')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.dateOfBirth')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.contactNumber')}</th>
+                <th className="py-2 text-right font-medium">{t('family.actions')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {otherDeps.map((d) => (
+                <tr key={d.id} className="border-b border-border/60 align-top">
+                  <td className="py-2 pr-3 font-medium">
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      {d.fullName}
+                      {d.isBeneficiary && <Badge variant="success">{t('family.beneficiary')}</Badge>}
+                      {d.isDeceased && <Badge variant="default">{t('family.deceased')}</Badge>}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-3">{relationshipLabel(d.relationship)}</td>
+                  <td className="py-2 pr-3">{d.icOrPassport ?? '—'}</td>
+                  <td className="whitespace-nowrap py-2 pr-3">{d.dateOfBirth ?? '—'}</td>
+                  <td className="py-2 pr-3">{d.phone ?? '—'}</td>
+                  <td className="py-2">
+                    <div className="flex items-center justify-end gap-2">
+                      <FamilyFormDialog
+                        triggerLabel={t('family.view')}
+                        triggerVariant="outline"
+                        title={t('family.viewOtherTitle')}
+                      >
+                        {viewDialogBody('other', d)}
+                      </FamilyFormDialog>
+                      <FamilyFormDialog
+                        triggerLabel={t('family.editOtherTitle')}
+                        triggerVariant="outline"
+                        title={t('family.editOtherTitle')}
+                      >
+                        {dialogForm('other', d)}
+                      </FamilyFormDialog>
+                      <form action={archiveDependentAction}>
+                        <input type="hidden" name="employmentId" value={emp.employmentId} />
+                        <input type="hidden" name="id" value={d.id} />
+                        <ConfirmSubmit
+                          size="sm"
+                          variant="destructive"
+                          title={t('family.deleteOtherConfirmTitle')}
+                          description={t('family.deleteOtherConfirmBody')}
+                          confirmLabel={t('family.delete')}
+                        >
+                          {t('family.delete')}
+                        </ConfirmSubmit>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 
   const familyPanel = admin ? (
@@ -1358,9 +1485,9 @@ export default async function EmployeePage({
         {t('family.note')}
       </p>
       <div className="mt-3">
-        {familySection('family.spouseSection', 'family.noSpouse', 'family.addSpouse', 'spouse', spouseDeps)}
+        {familySpouseSection}
         {familyChildrenSection}
-        {familySection('family.otherSection', 'family.noOther', 'family.addDependant', 'other', otherDeps)}
+        {familyOtherSection}
       </div>
       <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('family.hint')}</p>
     </Card>
