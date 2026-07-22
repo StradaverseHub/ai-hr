@@ -1485,6 +1485,9 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
         positionId: assignment.positionId,
         // 1001ff61 — Business Unit on the assignment (nullable). Drives the Form A BU dropdown's default.
         businessUnitId: assignment.businessUnitId,
+        // 570e3311 — BU display name (additive), so the detail page can label a pinned-current BU that is
+        // no longer in the company-scoped option list (legacy / later-unshared data).
+        businessUnit: businessUnit.name,
         status: assignment.status,
         employmentType: assignment.employmentType,
         validFrom: assignment.validFrom,
@@ -1493,6 +1496,7 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
       .from(assignment)
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
       .where(and(eq(assignment.employmentId, employmentId), isNull(assignment.supersededAt)))
       .orderBy(desc(assignment.validFrom)),
   );

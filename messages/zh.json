@@ -308,6 +308,7 @@
       "provisionalEndHint": "全职为试用期结束（默认 +3 个月）；否则为合同或实习结束日期。如无则留空。",
       "businessUnit": "业务单位",
       "businessUnitNone": "— 无 —",
+      "departmentSelectPrompt": "— 请选择部门 —",
       "colCode": "编号",
       "filter": "筛选",
       "applyFilters": "应用筛选",

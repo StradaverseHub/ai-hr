@@ -308,6 +308,7 @@
       "provisionalEndHint": "Kết thúc thử việc cho toàn thời gian (mặc định +3 tháng); nếu không là ngày kết thúc hợp đồng hoặc thực tập. Để trống nếu không có.",
       "businessUnit": "Đơn vị kinh doanh",
       "businessUnitNone": "— Không có —",
+      "departmentSelectPrompt": "— Chọn phòng ban —",
       "colCode": "Mã",
       "filter": "Lọc",
       "applyFilters": "Áp dụng bộ lọc",

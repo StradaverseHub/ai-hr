@@ -185,7 +185,10 @@ export default async function EmployeePage({
     assignmentHistory(s, employmentId),
     leaveBalances(s, employmentId),
     leaveRequestsFor(s, employmentId),
-    listDepartments(s),
+    // 570e3311 — departments scoped to THIS employee's company (origin ∪ shared-in ∪ global via the
+    // System Labels resolver), matching the Position/BU/Location pickers. Feeds exactly two places:
+    // the Organisation Assignment department select and the MovementNewEvent departments prop.
+    listDepartments(s, { companyIds: [emp.companyId] }),
     reportingLinesFor(s, employmentId),
     listEmployees(s),
     listJobGrades(s),
@@ -2469,10 +2472,20 @@ export default async function EmployeePage({
             <input value={emp.company} disabled className={inputCls} aria-readonly="true" />
           </Field>
           {/* 1001ff61 — Business Unit, positioned immediately after Company per the requested Organisation
-              hierarchy (Company → Business Unit → Division → Department → …). Company-scoped options. */}
+              hierarchy (Company → Business Unit → Division → Department → …). Company-scoped options.
+
+              570e3311 — pinned-current options: when the stored BU / Department / Position is no longer in
+              its company-scoped option list (legacy imported data, or sharing that was later switched off),
+              render ONE extra option for it, selected, labelled from assignmentHistory. Without the pin the
+              select silently falls to its first option AND — because setOrganisationAssignmentAction maps a
+              blank position/BU to an explicit clear — the next unrelated Save would silently drop the held
+              value. The changed-only server guard accepts re-supplying the current value. */}
           <Field label={t('employmentInfo.businessUnit')}>
             <select name="businessUnitId" defaultValue={current?.businessUnitId ?? ''} className={inputCls}>
               <option value="">{t('employmentInfo.positionNone')}</option>
+              {current?.businessUnitId && !businessUnits.some((bu) => bu.id === current.businessUnitId) && (
+                <option value={current.businessUnitId}>{current.businessUnit ?? current.businessUnitId}</option>
+              )}
               {businessUnits.map((bu) => (
                 <option key={bu.id} value={bu.id}>
                   {bu.name}
@@ -2483,6 +2496,9 @@ export default async function EmployeePage({
           <Field label={t('employmentInfo.department')}>
             <select name="departmentId" defaultValue={current?.departmentId ?? ''} className={inputCls}>
               <option value="">{t('employmentInfo.positionNone')}</option>
+              {current?.departmentId && !departments.some((d) => d.id === current.departmentId) && (
+                <option value={current.departmentId}>{current.department ?? current.departmentId}</option>
+              )}
               {departments.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -2493,6 +2509,9 @@ export default async function EmployeePage({
           <Field label={t('employmentInfo.position')}>
             <select name="positionId" defaultValue={current?.positionId ?? ''} className={inputCls}>
               <option value="">{t('employmentInfo.positionNone')}</option>
+              {current?.positionId && !positions.some((pos) => pos.id === current.positionId) && (
+                <option value={current.positionId}>{current.position ?? current.positionId}</option>
+              )}
               {positions.map((pos) => (
                 <option key={pos.id} value={pos.id}>
                   {pos.title}

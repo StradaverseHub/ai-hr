@@ -27,7 +27,8 @@ import {
   type Base,
 } from './harness';
 import { hireEmployee, setEmploymentAssignment, setEmploymentInfo } from '../core/org';
-import { createBusinessUnit, archiveBusinessUnit } from '../core/admin';
+import { createBusinessUnit, archiveBusinessUnit, setCompanySharedLabels } from '../core/admin';
+import { assignLabelToCompanies } from '../core/system-labels';
 import { assignmentHistory } from '../core/read';
 import {
   PROFILE_OPTION_CATEGORIES,
@@ -174,6 +175,32 @@ describe('1001ff61 (A) — Business Unit on the assignment', () => {
     await expect(
       setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-06-01', businessUnitId: foreignBu.id }),
     ).rejects.toThrow(/not a valid option/i);
+  });
+
+  it("accepts a shared-in BU when the target company's flag is ON (570e3311)", async () => {
+    const hire = await hireOne();
+    const [c2] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: b.tenantId, legalName: 'BU Sharing Co Sdn Bhd' })
+      .returning({ id: schema.company.id });
+    const sharedBu = await createBusinessUnit(adminCtx(b), { companyId: c2.id, code: `BU${randomUUID().slice(0, 8).toUpperCase()}`, name: 'Shared-In BU' });
+    await assignLabelToCompanies(adminCtx(b), { kind: 'business_unit', labelId: sharedBu.id, companyIds: [b.companyId] });
+    // Flag ON for the employee's company → the resolver surfaces the shared-in BU as a valid option.
+    await setCompanySharedLabels(adminCtx(b), { companyId: b.companyId, enabled: true });
+    try {
+      const res = await setEmploymentAssignment(adminCtx(b), {
+        employmentId: hire.employmentId,
+        effectiveDate: '2026-06-01',
+        businessUnitId: sharedBu.id,
+      });
+      expect(res.changed).toBe(true);
+      const open = await openRow(hire.employmentId);
+      expect(open.businessUnitId).toBe(sharedBu.id);
+    } finally {
+      // Restore the flag: this suite seeds once (beforeAll), so later strict-scope tests must not
+      // observe the opt-in.
+      await setCompanySharedLabels(adminCtx(b), { companyId: b.companyId, enabled: false });
+    }
   });
 });
 

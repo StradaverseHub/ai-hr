@@ -308,6 +308,7 @@
       "provisionalEndHint": "Tamat percubaan untuk sepenuh masa (lalai +3 bulan); jika tidak, tamat kontrak atau latihan. Biarkan kosong jika tiada.",
       "businessUnit": "Unit perniagaan",
       "businessUnitNone": "— Tiada —",
+      "departmentSelectPrompt": "— Pilih jabatan —",
       "colCode": "Kod",
       "filter": "Tapis",
       "applyFilters": "Guna penapis",

@@ -308,6 +308,7 @@
       "provisionalEndHint": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none.",
       "businessUnit": "Business unit",
       "businessUnitNone": "— None —",
+      "departmentSelectPrompt": "— Select a department —",
       "colCode": "Code",
       "filter": "Filter",
       "applyFilters": "Apply filters",

@@ -308,6 +308,7 @@
       "provisionalEndHint": "สิ้นสุดทดลองงานสำหรับงานเต็มเวลา (ค่าเริ่มต้น +3 เดือน); มิฉะนั้นเป็นวันสิ้นสุดสัญญาหรือการฝึกงาน เว้นว่างหากไม่มี",
       "businessUnit": "หน่วยธุรกิจ",
       "businessUnitNone": "— ไม่มี —",
+      "departmentSelectPrompt": "— เลือกแผนก —",
       "colCode": "รหัส",
       "filter": "กรอง",
       "applyFilters": "ใช้ตัวกรอง",
