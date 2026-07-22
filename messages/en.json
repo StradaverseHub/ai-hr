@@ -5441,7 +5441,23 @@
     "empty": "You're all caught up",
     "aria": "Notifications, {count} unread",
     "tabNotifications": "Notifications",
-    "tabHistory": "History"
+    "tabHistory": "History",
+    "tabTasks": "Tasks",
+    "tasksEmpty": "Nothing needs your action",
+    "historyEmpty": "No history yet",
+    "historySearch": "Search history",
+    "ariaBell": "Notifications, {unread} unread, {tasks} open tasks",
+    "task": {
+      "leave": "Approve leave request",
+      "leaveCancellation": "Approve leave cancellation",
+      "attendance": "Review attendance correction",
+      "travel": "Approve travel request",
+      "profile": "Verify profile change",
+      "claim": "Approve expense claim",
+      "resignation": "Decide resignation request",
+      "managerReview": "Complete employment review",
+      "hrReview": "Record HR review decision"
+    }
   },
   "approvalHistory": {
     "title": "Approval History",

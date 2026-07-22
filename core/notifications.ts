@@ -6,7 +6,7 @@
  * resolver and are deferred. A notification is a derived projection with its own table acting as its audit,
  * so dispatch does NOT append a DomainEvent (per CLAUDE.md — that would be an event storm + a derivation loop).
  */
-import { and, asc, desc, eq, gt, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   appUser,
@@ -561,12 +561,27 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
 
 // ─── recipient reads (RLS scopes every query to the caller's own notifications, across all the person's
 // employments; pass employmentId only to narrow to one) ──────────────────────────────────────────────
-export function unreadNotificationCount(ctx: SessionContext, employmentId?: string): Promise<number> {
+
+/** 3-tab bell (feedback 1514d366): `action` splits the severity-'action' task notices ("do something")
+ *  from the informational rest — true ⇒ only action, false ⇒ only non-action, undefined ⇒ all (the
+ *  pre-existing behaviour, so every current caller is unchanged). */
+export function unreadNotificationCount(
+  ctx: SessionContext,
+  employmentId?: string,
+  opts: { action?: boolean } = {},
+): Promise<number> {
   return withTenant(ctx, async (tx) => {
     const [r] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(notification)
-      .where(and(isNull(notification.readAt), employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined));
+      .where(
+        and(
+          isNull(notification.readAt),
+          employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined,
+          opts.action === true ? eq(notification.severity, 'action') : undefined,
+          opts.action === false ? ne(notification.severity, 'action') : undefined,
+        ),
+      );
     return r?.n ?? 0;
   });
 }
@@ -582,7 +597,14 @@ export type NotificationRow = {
   createdAt: Date;
 };
 
-export function listNotifications(ctx: SessionContext, employmentId?: string, opts: { limit?: number } = {}): Promise<NotificationRow[]> {
+/** 3-tab bell (feedback 1514d366): `read` filters by readAt (true ⇒ only read — the History tab;
+ *  false ⇒ only unread) and `action` by severity (see unreadNotificationCount). Both undefined ⇒
+ *  the pre-existing unfiltered read, so current callers are byte-identical. */
+export function listNotifications(
+  ctx: SessionContext,
+  employmentId?: string,
+  opts: { limit?: number; read?: boolean; action?: boolean } = {},
+): Promise<NotificationRow[]> {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -596,7 +618,15 @@ export function listNotifications(ctx: SessionContext, employmentId?: string, op
         createdAt: notification.createdAt,
       })
       .from(notification)
-      .where(employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined)
+      .where(
+        and(
+          employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined,
+          opts.read === true ? isNotNull(notification.readAt) : undefined,
+          opts.read === false ? isNull(notification.readAt) : undefined,
+          opts.action === true ? eq(notification.severity, 'action') : undefined,
+          opts.action === false ? ne(notification.severity, 'action') : undefined,
+        ),
+      )
       .orderBy(desc(notification.createdAt))
       .limit(Math.min(Math.max(opts.limit ?? 20, 1), 100)),
   );

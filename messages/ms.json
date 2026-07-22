@@ -5441,7 +5441,23 @@
     "empty": "Tiada pemberitahuan baharu",
     "aria": "Pemberitahuan, {count} belum dibaca",
     "tabNotifications": "Pemberitahuan",
-    "tabHistory": "Sejarah"
+    "tabHistory": "Sejarah",
+    "tabTasks": "Tugasan",
+    "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
+    "historyEmpty": "Tiada sejarah lagi",
+    "historySearch": "Cari sejarah",
+    "ariaBell": "Pemberitahuan, {unread} belum dibaca, {tasks} tugasan terbuka",
+    "task": {
+      "leave": "Luluskan permohonan cuti",
+      "leaveCancellation": "Luluskan pembatalan cuti",
+      "attendance": "Semak pembetulan kehadiran",
+      "travel": "Luluskan permohonan perjalanan",
+      "profile": "Sahkan perubahan profil",
+      "claim": "Luluskan tuntutan perbelanjaan",
+      "resignation": "Putuskan permohonan peletakan jawatan",
+      "managerReview": "Lengkapkan penilaian pekerjaan",
+      "hrReview": "Rekod keputusan semakan HR"
+    }
   },
   "approvalHistory": {
     "title": "Sejarah Kelulusan",

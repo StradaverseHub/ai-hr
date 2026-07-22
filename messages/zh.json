@@ -5441,7 +5441,23 @@
     "empty": "没有新通知",
     "aria": "通知，{count} 条未读",
     "tabNotifications": "通知",
-    "tabHistory": "历史"
+    "tabHistory": "历史",
+    "tabTasks": "任务",
+    "tasksEmpty": "没有需要您处理的事项",
+    "historyEmpty": "暂无历史记录",
+    "historySearch": "搜索历史",
+    "ariaBell": "通知，{unread} 条未读，{tasks} 项待办任务",
+    "task": {
+      "leave": "审批请假申请",
+      "leaveCancellation": "审批销假申请",
+      "attendance": "审核考勤更正",
+      "travel": "审批出差申请",
+      "profile": "核实资料变更",
+      "claim": "审批费用报销",
+      "resignation": "决定辞职申请",
+      "managerReview": "完成雇佣评估",
+      "hrReview": "记录 HR 评估决定"
+    }
   },
   "approvalHistory": {
     "title": "审批历史",

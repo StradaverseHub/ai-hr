@@ -5441,7 +5441,23 @@
     "empty": "Không có thông báo mới",
     "aria": "Thông báo, {count} chưa đọc",
     "tabNotifications": "Thông báo",
-    "tabHistory": "Lịch sử"
+    "tabHistory": "Lịch sử",
+    "tabTasks": "Công việc",
+    "tasksEmpty": "Không có mục nào cần bạn xử lý",
+    "historyEmpty": "Chưa có lịch sử",
+    "historySearch": "Tìm kiếm lịch sử",
+    "ariaBell": "Thông báo, {unread} chưa đọc, {tasks} công việc đang chờ",
+    "task": {
+      "leave": "Phê duyệt đơn xin nghỉ",
+      "leaveCancellation": "Phê duyệt hủy nghỉ phép",
+      "attendance": "Xem xét điều chỉnh chấm công",
+      "travel": "Phê duyệt yêu cầu công tác",
+      "profile": "Xác minh thay đổi hồ sơ",
+      "claim": "Phê duyệt yêu cầu hoàn phí",
+      "resignation": "Quyết định đơn xin nghỉ việc",
+      "managerReview": "Hoàn thành đánh giá nhân viên",
+      "hrReview": "Ghi nhận quyết định đánh giá của HR"
+    }
   },
   "approvalHistory": {
     "title": "Lịch sử phê duyệt",
