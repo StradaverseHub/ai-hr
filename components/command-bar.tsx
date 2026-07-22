@@ -4,20 +4,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Search, ArrowRight, UserCog } from 'lucide-react';
-import { inputCls, btnPrimary } from '@/components/ui';
-import { DelegationScopePicker } from '@/components/delegation-scope-picker';
-import {
-  createSelfDelegationAction,
-  loadSelfDelegationContextAction,
-} from '@/app/delegations/actions';
+import { DelegationManager } from '@/components/delegation-manager';
+import { loadDelegationContextAction, type DelegationContext } from '@/app/delegations/actions';
 
 /**
  * R44 delegation (Phase 1) — the product's FIRST global command bar. There was no search / cmdk primitive
  * anywhere, so this is built from scratch: a topbar trigger + a Cmd/Ctrl-K listener open a Radix Dialog with
  * a text box that substring-matches a small in-code registry of quick actions. It is deliberately generic
- * (add entries to COMMAND_ITEMS) — v1 ships one action, "Approval Delegation", which opens an inline quick
- * modal that posts to the existing self-service create action so a manager can hand over approvals from any
- * screen without hunting through admin menus.
+ * (add entries to COMMAND_ITEMS) — v1 ships one action, "Approval Delegation".
+ *
+ * Popup parity (feedback 29fe2d45): the delegation quick panel renders the SAME DelegationManager as the
+ * /delegations page — coverage cascade, existing-delegation list, edit/revoke, history toggle, HR
+ * on-behalf create — so the entire setup completes inside the popup; the full page is just a larger
+ * workspace. Saving stays in the dialog (uniform action results, no redirect), and a loader failure shows
+ * an error + retry instead of wrongly telling an approver they cannot delegate.
  */
 
 type CommandItemId = 'delegation';
@@ -42,8 +42,6 @@ const COMMAND_ITEMS: CommandItem[] = [
     keywords: ['delegation', 'delegate', 'approval', 'cover', 'stand-in', 'standin', 'away', 'leave cover'],
   },
 ];
-
-type PickerOption = { employmentId: string; name: string; employeeCode: string | null };
 
 export function CommandBar() {
   const t = useTranslations('commandBar');
@@ -105,7 +103,13 @@ export function CommandBar() {
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-[12vh] z-50 max-h-[76vh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg">
+        {/* The delegation panel needs a full workspace (list table + edit forms), so the dialog widens
+            ONLY while it is active; the search list keeps its compact max-w-lg. */}
+        <Dialog.Content
+          className={`fixed left-1/2 top-[12vh] z-50 max-h-[76vh] w-[calc(100%-2rem)] ${
+            active === 'delegation' ? 'max-w-3xl' : 'max-w-lg'
+          } -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg`}
+        >
           <Dialog.Title className="sr-only">{t('open')}</Dialog.Title>
           <Dialog.Description className="sr-only">{t('placeholder')}</Dialog.Description>
           {active === null ? (
@@ -160,92 +164,64 @@ export function CommandBar() {
 }
 
 /**
- * The quick "Approval Delegation" panel inside the command bar. Loads the caller's self-delegation context
- * lazily on mount (can they delegate + the stand-in picker) and renders the create form, which posts to the
- * existing self-service action (delegator forced to the caller server-side). Non-managers see an explanatory
- * message + a link to the full screen instead of the form.
+ * The quick "Approval Delegation" panel inside the command bar — now a thin SHELL (popup parity, feedback
+ * 29fe2d45): back link, open-full link, a loading state, an error-with-retry state, and the shared
+ * DelegationManager (the exact component the /delegations page renders). The context loads lazily on mount
+ * via loadDelegationContextAction; the manager itself refetches after every save and history toggle.
+ * A transient loader failure shows a retry — it is NEVER mapped to "you cannot delegate" anymore.
  */
 function DelegationQuickPanel({ onClose, onBack }: { onClose: () => void; onBack: () => void }) {
   const t = useTranslations('commandBar');
-  const td = useTranslations('delegations');
-  const [state, setState] = useState<{ loading: boolean; canDelegate: boolean; options: PickerOption[] }>({
-    loading: true,
-    canDelegate: false,
-    options: [],
-  });
-  const today = new Date().toISOString().slice(0, 10);
+  const [state, setState] = useState<
+    { status: 'loading' } | { status: 'error' } | { status: 'ready'; ctx: DelegationContext }
+  >({ status: 'loading' });
+
+  // The fetch itself never sets state synchronously (only in the promise callbacks), so the mount effect
+  // stays cascade-free; the retry handler flips back to 'loading' first — fine in an event handler.
+  const fetchCtx = useCallback(() => {
+    loadDelegationContextAction(false)
+      .then((ctx) => setState({ status: 'ready', ctx }))
+      .catch(() => setState({ status: 'error' }));
+  }, []);
 
   useEffect(() => {
-    let alive = true;
-    loadSelfDelegationContextAction()
-      .then((ctx) => {
-        if (alive) setState({ loading: false, canDelegate: ctx.canSelfDelegate, options: ctx.options });
-      })
-      .catch(() => {
-        if (alive) setState({ loading: false, canDelegate: false, options: [] });
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+    fetchCtx();
+  }, [fetchCtx]);
+
+  const retry = () => {
+    setState({ status: 'loading' });
+    fetchCtx();
+  };
 
   return (
     <div className="max-h-[76vh] overflow-y-auto p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          ← {t('back')}
-        </button>
-        <span className="text-sm font-semibold">{t('delegationTitle')}</span>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            ← {t('back')}
+          </button>
+          <span className="text-sm font-semibold">{t('delegationTitle')}</span>
+        </div>
+        <a href="/delegations" className="text-xs text-muted-foreground hover:underline" onClick={onClose}>
+          {t('openFull')}
+        </a>
       </div>
 
-      {state.loading ? (
+      {state.status === 'loading' ? (
         <div className="py-6 text-center text-sm text-muted-foreground">{t('loading')}</div>
-      ) : !state.canDelegate ? (
+      ) : state.status === 'error' ? (
         <div className="space-y-3 py-2 text-sm text-muted-foreground">
-          <p>{td('noDownline')}</p>
-          <a href="/delegations" className="inline-block text-primary hover:underline" onClick={onClose}>
-            {t('openFull')}
-          </a>
+          <p>{t('loadError')}</p>
+          <button type="button" onClick={retry} className="text-sm text-primary hover:underline">
+            {t('retry')}
+          </button>
         </div>
       ) : (
-        <form action={createSelfDelegationAction} className="space-y-3" onSubmit={onClose}>
-          <p className="text-xs text-muted-foreground">{td('selfHint')}</p>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{td('delegateTo')}</span>
-            <select name="delegateEmploymentId" required className={inputCls} defaultValue="">
-              <option value="" disabled>
-                {td('choose')}
-              </option>
-              {state.options.map((p) => (
-                <option key={p.employmentId} value={p.employmentId}>
-                  {p.name}
-                  {p.employeeCode ? ` (${p.employeeCode})` : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">{td('start')}</span>
-              <input name="validFrom" type="date" required defaultValue={today} className={inputCls} />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">{td('end')}</span>
-              <input name="validTo" type="date" className={inputCls} />
-            </label>
-          </div>
-          <DelegationScopePicker />
-          <div className="flex items-center justify-between pt-1">
-            <a href="/delegations" className="text-xs text-muted-foreground hover:underline" onClick={onClose}>
-              {t('openFull')}
-            </a>
-            <button className={btnPrimary}>{td('create')}</button>
-          </div>
-        </form>
+        <DelegationManager surface="popup" initialContext={state.ctx} />
       )}
     </div>
   );

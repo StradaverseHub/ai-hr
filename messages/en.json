@@ -6675,7 +6675,9 @@
     "loading": "Loading…",
     "openFull": "Open full page",
     "delegationTitle": "Approval Delegation",
-    "delegationSubtitle": "Delegate your approval tasks to another user"
+    "delegationSubtitle": "Delegate your approval tasks to another user",
+    "loadError": "Something went wrong while loading. Please try again.",
+    "retry": "Try again"
   },
   "delegations": {
     "title": "Delegation Management",
@@ -6740,7 +6742,8 @@
     "coverageAllBusinessUnits": "All business units",
     "coverageAllDepartments": "All departments",
     "eligibleHint": "Only approvers of the same level as the person delegating are listed.",
-    "loadingCandidates": "Loading…"
+    "loadingCandidates": "Loading…",
+    "saved": "Saved."
   },
   "dashboardCardConfig": {
     "title": "Dashboard Card Setup",

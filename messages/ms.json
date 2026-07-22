@@ -6675,7 +6675,9 @@
     "loading": "Memuatkan…",
     "openFull": "Buka halaman penuh",
     "delegationTitle": "Perwakilan Kelulusan",
-    "delegationSubtitle": "Wakilkan tugas kelulusan anda kepada pengguna lain"
+    "delegationSubtitle": "Wakilkan tugas kelulusan anda kepada pengguna lain",
+    "loadError": "Berlaku masalah semasa memuatkan. Sila cuba lagi.",
+    "retry": "Cuba lagi"
   },
   "delegations": {
     "title": "Pengurusan Perwakilan",
@@ -6740,7 +6742,8 @@
     "coverageAllBusinessUnits": "Semua unit perniagaan",
     "coverageAllDepartments": "Semua jabatan",
     "eligibleHint": "Hanya pelulus yang setaraf dengan orang yang mewakilkan disenaraikan.",
-    "loadingCandidates": "Memuatkan…"
+    "loadingCandidates": "Memuatkan…",
+    "saved": "Disimpan."
   },
   "dashboardCardConfig": {
     "title": "Persediaan Kad Papan Pemuka",

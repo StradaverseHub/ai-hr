@@ -6675,7 +6675,9 @@
     "loading": "กำลังโหลด…",
     "openFull": "เปิดหน้าเต็ม",
     "delegationTitle": "การมอบหมายการอนุมัติ",
-    "delegationSubtitle": "มอบหมายงานอนุมัติของคุณให้ผู้ใช้อื่น"
+    "delegationSubtitle": "มอบหมายงานอนุมัติของคุณให้ผู้ใช้อื่น",
+    "loadError": "เกิดข้อผิดพลาดขณะโหลด กรุณาลองใหม่",
+    "retry": "ลองอีกครั้ง"
   },
   "delegations": {
     "title": "การจัดการการมอบหมาย",
@@ -6740,7 +6742,8 @@
     "coverageAllBusinessUnits": "ทุกหน่วยธุรกิจ",
     "coverageAllDepartments": "ทุกแผนก",
     "eligibleHint": "แสดงเฉพาะผู้อนุมัติที่มีระดับเดียวกับผู้มอบหมายเท่านั้น",
-    "loadingCandidates": "กำลังโหลด…"
+    "loadingCandidates": "กำลังโหลด…",
+    "saved": "บันทึกแล้ว"
   },
   "dashboardCardConfig": {
     "title": "การตั้งค่าการ์ดแดชบอร์ด",

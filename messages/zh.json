@@ -6675,7 +6675,9 @@
     "loading": "加载中…",
     "openFull": "打开完整页面",
     "delegationTitle": "审批委托",
-    "delegationSubtitle": "将您的审批任务委托给其他用户"
+    "delegationSubtitle": "将您的审批任务委托给其他用户",
+    "loadError": "加载时出现问题，请重试。",
+    "retry": "重试"
   },
   "delegations": {
     "title": "委托管理",
@@ -6740,7 +6742,8 @@
     "coverageAllBusinessUnits": "所有业务单元",
     "coverageAllDepartments": "所有部门",
     "eligibleHint": "仅列出与委托人同级别的审批人。",
-    "loadingCandidates": "加载中…"
+    "loadingCandidates": "加载中…",
+    "saved": "已保存。"
   },
   "dashboardCardConfig": {
     "title": "仪表板卡片设置",

@@ -6675,7 +6675,9 @@
     "loading": "Đang tải…",
     "openFull": "Mở trang đầy đủ",
     "delegationTitle": "Ủy quyền phê duyệt",
-    "delegationSubtitle": "Ủy quyền các nhiệm vụ phê duyệt của bạn cho người dùng khác"
+    "delegationSubtitle": "Ủy quyền các nhiệm vụ phê duyệt của bạn cho người dùng khác",
+    "loadError": "Đã xảy ra lỗi khi tải. Vui lòng thử lại.",
+    "retry": "Thử lại"
   },
   "delegations": {
     "title": "Quản lý ủy quyền",
@@ -6740,7 +6742,8 @@
     "coverageAllBusinessUnits": "Tất cả đơn vị kinh doanh",
     "coverageAllDepartments": "Tất cả phòng ban",
     "eligibleHint": "Chỉ liệt kê những người phê duyệt cùng cấp với người ủy quyền.",
-    "loadingCandidates": "Đang tải…"
+    "loadingCandidates": "Đang tải…",
+    "saved": "Đã lưu."
   },
   "dashboardCardConfig": {
     "title": "Thiết lập thẻ bảng điều khiển",
