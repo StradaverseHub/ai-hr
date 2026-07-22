@@ -354,7 +354,8 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/pay-components',
     labelKey: 'admin.users.screen.payComponents',
     guard: 'requireAdmin',
-    routes: ['/admin/pay-components'],
+    // 911b2886 — the Create/Edit maintenance form moved to dedicated routes (attendance-rule shape).
+    routes: ['/admin/pay-components', '/admin/pay-components/new', '/admin/pay-components/[code]'],
   },
   {
     // Granular payroll permission overrides (feedback 9bc442bc) — configurable per company/tenant RBAC.

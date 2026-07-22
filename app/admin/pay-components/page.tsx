@@ -1,15 +1,14 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { listPayComponents, ROUNDING_METHODS } from '@/core/pay-components';
-import { isAiConfigured } from '@/core/ai-config';
+import { listPayComponents } from '@/core/pay-components';
 import type { PayRule } from '@/core/pay-rule';
-import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DownloadCsv } from '@/components/download-csv';
-import { PayRuleEditor } from './pay-rule-editor';
-import { archiveComponentAction, deleteComponentAction, seedCatalogAction, upsertComponentAction } from './actions';
+import { archiveComponentAction, deleteComponentAction, seedCatalogAction } from './actions';
 
 const PAGE = '/admin/pay-components';
 type Status = 'active' | 'inactive' | 'all';
@@ -20,12 +19,11 @@ const inputTypeOf = (rule: unknown): 'fixed' | 'percent_of' | 'per_day' | 'per_h
   (rule as PayRule | null)?.kind ?? 'fixed';
 
 /**
- * Pay Items (feedback 4994a48f) — list-first maintenance screen. The catalog is the page; the
- * create/edit form only appears when explicitly opened (?new=1 or ?edit=CODE — the searchParam gate,
- * NOT a modal: the PayRuleEditor island and the redirect-based error path both keep working unchanged,
- * and the master-data house precedent — components/system-labels-grid.tsx — deliberately avoids pop-ups).
- * The EA-form-line control is REMOVED from this screen (a hidden passthrough preserves stored mappings);
- * deactivated pay codes are listed under the status filter and can be REACTIVATED.
+ * Pay Items (feedback 911b2886) — LIST-ONLY page. The Create / Edit maintenance form moved to dedicated
+ * full-page routes (./new and ./[code], sharing component-form.tsx — the attendance-rule precedent), so
+ * this page is purely for browsing and managing the catalog: toolbar (create, search, status filter,
+ * export) + table with Edit / Activate / Deactivate / Delete row actions. Deactivated pay codes are
+ * listed under the status filter and can be REACTIVATED (feedback 4994a48f, unchanged).
  */
 export default async function PayComponentsPage({
   searchParams,
@@ -34,15 +32,16 @@ export default async function PayComponentsPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payComponents');
+  const sp = await searchParams;
+  // Back-compat: the pre-split UI minted ?new=1 / ?edit=CODE links (bookmarks, browser history) — send
+  // them to the dedicated maintenance routes instead of rendering an inline form here.
+  if (sp.new === '1') redirect(`${PAGE}/new`);
+  if (sp.edit) redirect(`${PAGE}/${encodeURIComponent(sp.edit)}`);
   // includeArchived is LOAD-BEARING: the page does its own Active/Inactive/All filtering. Without it a
   // deactivated row would vanish from the list with no UI path back to reactivate it.
   const components = await listPayComponents(s, { includeArchived: true });
-  const aiEnabled = await isAiConfigured(s);
-  const sp = await searchParams;
   const q = (sp.q ?? '').trim();
   const status: Status = sp.status === 'inactive' || sp.status === 'all' ? sp.status : 'active';
-  const editing = sp.edit ? components.find((c) => c.code === sp.edit) ?? null : null;
-  const showForm = sp.new === '1' || !!editing;
 
   const needle = q.toLowerCase();
   const rows = components.filter((c) => {
@@ -107,9 +106,9 @@ export default async function PayComponentsPage({
           )}
         </div>
 
-        {/* Toolbar — create (primary), search, status filter, export. */}
+        {/* Toolbar — create (primary, opens the dedicated maintenance screen), search, status filter, export. */}
         <div className="flex flex-wrap items-center gap-3 px-4 pb-3">
-          <Link href={`${PAGE}?new=1`} className={btnPrimary}>
+          <Link href={`${PAGE}/new`} className={btnPrimary}>
             {t('createNew')}
           </Link>
           <form action={PAGE} method="get" className="flex items-center gap-2">
@@ -156,7 +155,7 @@ export default async function PayComponentsPage({
             </thead>
             <tbody className="divide-y divide-border">
               {rows.map((c) => (
-                <tr key={c.id} className={editing?.id === c.id ? 'bg-primary/5' : undefined}>
+                <tr key={c.id}>
                   <td className="px-4 py-2.5 font-mono text-xs">{c.code}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{c.label ?? '—'}</td>
                   <td className="px-4 py-2.5">{c.name}</td>
@@ -182,7 +181,7 @@ export default async function PayComponentsPage({
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center justify-end gap-3">
-                      <Link href={`${PAGE}?edit=${c.code}`} className="text-xs font-medium text-primary hover:underline">
+                      <Link href={`${PAGE}/${encodeURIComponent(c.code)}`} className="text-xs font-medium text-primary hover:underline">
                         {t('edit')}
                       </Link>
                       {c.archivedAt ? (
@@ -230,101 +229,6 @@ export default async function PayComponentsPage({
           </table>
         </div>
       </Card>
-
-      {/* Maintenance view — only when the admin chooses to create (?new=1) or edit (?edit=CODE). */}
-      {showForm && (
-        <Card>
-          <SectionHeader title={editing ? t('editTitle', { code: editing.code }) : t('createNew')} />
-          {/* key forces the uncontrolled form to re-init its defaults when the edit target changes */}
-          <form key={editing?.id ?? 'new'} action={upsertComponentAction} className="space-y-1 p-4">
-            <input type="hidden" name="mode" value={editing ? 'edit' : 'create'} />
-            {/* EA-form-line passthrough: the control left this screen (dedicated statutory module later);
-                re-submitting the stored value keeps existing mappings intact on every save. */}
-            <input type="hidden" name="eaFormLine" value={editing?.eaFormLine ?? ''} />
-
-            <h3 className="text-sm font-semibold">{t('sectionBasic')}</h3>
-            <div className="grid grid-cols-1 gap-3 pb-4 pt-2 sm:grid-cols-3">
-              <Field label={t('colCode')}>
-                <input
-                  name="code"
-                  required
-                  readOnly={!!editing}
-                  defaultValue={editing?.code ?? ''}
-                  placeholder="HOUSING"
-                  pattern="[A-Za-z0-9_]+"
-                  className={`${inputCls} font-mono uppercase ${editing ? 'opacity-60' : ''}`}
-                />
-              </Field>
-              <Field label={t('colLabel')}>
-                <input name="label" defaultValue={editing?.label ?? ''} placeholder={t('labelPlaceholder')} className={inputCls} />
-              </Field>
-              <Field label={t('colName')}>
-                <input name="name" required defaultValue={editing?.name ?? ''} placeholder={t('namePlaceholder')} className={inputCls} />
-              </Field>
-              <Field label={t('colKind')}>
-                <select name="kind" defaultValue={editing?.kind ?? 'allowance'} className={inputCls}>
-                  <option value="allowance">{t('kind_allowance')}</option>
-                  <option value="deduction">{t('kind_deduction')}</option>
-                  <option value="contribution">{t('kind_contribution')}</option>
-                  <option value="non_payable">{t('kind_non_payable')}</option>
-                </select>
-              </Field>
-              <Field label={t('colInputType')}>
-                {/* Read-only, derived from the pay rule below — configure it via the rule editor. */}
-                <input readOnly value={t(`inputType_${inputTypeOf(editing?.rule ?? null)}`)} className={`${inputCls} opacity-60`} />
-              </Field>
-              <Field label={t('colStatus')}>
-                <input
-                  readOnly
-                  value={editing?.archivedAt ? t('statusInactive') : t('statusActive')}
-                  className={`${inputCls} opacity-60`}
-                />
-              </Field>
-            </div>
-
-            <h3 className="text-sm font-semibold">{t('sectionAdditional')}</h3>
-            <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-3">
-              <Field label={t('colRounding')}>
-                <select name="roundingMethod" defaultValue={editing?.roundingMethod ?? 'none'} className={inputCls}>
-                  {ROUNDING_METHODS.map((m) => (
-                    <option key={m} value={m}>{t(`rounding_${m}`)}</option>
-                  ))}
-                </select>
-              </Field>
-              <div className="flex flex-wrap items-center gap-4 sm:col-span-3">
-                {(
-                  [
-                    ['includedInEpf', 'EPF', editing?.includedInEpf ?? true],
-                    ['includedInSocsoEis', 'SOCSO/EIS', editing?.includedInSocsoEis ?? true],
-                    ['includedInPcb', 'PCB', editing?.includedInPcb ?? true],
-                    ['includedInHrdfBase', 'HRDF', editing?.includedInHrdfBase ?? false],
-                  ] as const
-                ).map(([name, label, def]) => (
-                  <label key={name} className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" name={name} defaultChecked={def} className="size-4 rounded" />
-                    {label}
-                  </label>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground sm:col-span-3">{t('flagsHint')}</p>
-              {/* Payroll Setup — configurable pay-rule + AI assist. The Prorates checkbox lives inside this island
-                  (it interacts with per-day/per-hour rules) and is submitted as the form's `prorates` field. */}
-              <PayRuleEditor
-                code={editing?.code ?? ''}
-                prorates={editing?.prorates ?? true}
-                rule={(editing?.rule ?? null) as PayRule | null}
-                aiEnabled={aiEnabled}
-              />
-              <div className="flex items-center gap-3 sm:col-span-3">
-                <button className={btnPrimary}>{editing ? t('saveChanges') : t('saveComponent')}</button>
-                <Link href={PAGE} className="text-sm font-medium text-muted-foreground hover:text-foreground">
-                  {t('cancelEdit')}
-                </Link>
-              </div>
-            </div>
-          </form>
-        </Card>
-      )}
     </div>
   );
 }

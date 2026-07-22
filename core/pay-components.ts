@@ -226,6 +226,33 @@ export function lookupPayComponentByCode(ctx: SessionContext, code: string) {
   });
 }
 
+/**
+ * Pay Code maintenance split-screen (feedback 911b2886) — thrown when a CREATE collides with an existing
+ * code. Carries the code plus whether the colliding row is archived, so the UI can distinguish "already
+ * exists" from "exists but deactivated — reactivate it instead" (the silent black-hole case: upsert-by-code
+ * would update the invisible archived row without ever clearing archivedAt). Mirrors PayComponentInUseError.
+ */
+export class PayComponentCodeExistsError extends Error {
+  constructor(public readonly code: string, public readonly archived: boolean) {
+    super(`pay-component-code-exists:${code}`);
+    this.name = 'PayComponentCodeExistsError';
+  }
+}
+
+/**
+ * Create a NEW catalog component (feedback 911b2886). upsertPayComponent is deliberately upsert-by-code
+ * (the seed depends on that idempotency) with NO uniqueness rejection — so the dedicated create screen,
+ * where the catalog list is no longer visible beside the form, must refuse a collision instead of silently
+ * overwriting the existing row's statutory configuration. Looks the code up across ALL rows INCLUDING
+ * archived, throws PayComponentCodeExistsError on a hit, else delegates to upsertPayComponent unchanged
+ * (single validation/event path — the insert branch emits pay-component.created).
+ */
+export async function createPayComponent(ctx: SessionContext, p: PayComponentInput) {
+  const hit = await lookupPayComponentByCode(ctx, p.code);
+  if (hit) throw new PayComponentCodeExistsError(p.code, hit.archivedAt != null);
+  return upsertPayComponent(ctx, p);
+}
+
 // The diffable catalog fields for the trimmed audit payload (changed field NAMES only — no values:
 // app/admin/audit/page.tsx never renders payloads, and free-text name/label in the immutable event
 // stream would violate the payload discipline the comment below enforces).
