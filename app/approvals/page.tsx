@@ -27,7 +27,7 @@ import { LeaveDateBreakdown } from './leave-date-breakdown';
 import { ApprovalsSortControl } from './sort-control';
 import { AttentionOnArrival } from './attention-on-arrival';
 import { parseApprovalSort, sortApprovalRows, type ApprovalSort } from '@/lib/approvals-sort';
-import { APPROVAL_SECTION_ID } from '@/lib/approvals-focus';
+import { APPROVAL_SECTION_ID, approvalRowDomId } from '@/lib/approvals-focus';
 import {
   BulkSelectionProvider,
   BulkSelectAllToggle,
@@ -319,7 +319,9 @@ export default async function ApprovalsPage({
             </thead>
             <tbody className="divide-y divide-border">
               {sortedLeave.map((r) => (
-                <tr key={r.id}>
+                // a34eedde: stable per-row DOM id so the arrival island can flash the exact request
+                // a calendar pill deep-linked to (hash `approvals-leave--<id>`).
+                <tr key={r.id} id={approvalRowDomId(r.id)}>
                   <td className="px-4 py-2.5">{leaveBulkActionable(r) && <BulkRowCheckbox id={r.id} type="leave" />}</td>
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={r.employeeCode} />
@@ -461,7 +463,9 @@ export default async function ApprovalsPage({
             </thead>
             <tbody className="divide-y divide-border">
               {sortedCancellations.map((c) => (
-                <tr key={c.id}>
+                // a34eedde: same per-row DOM id convention for cancellation rows (hash
+                // `approvals-leave-cancellation--<cancellationId>`).
+                <tr key={c.id} id={approvalRowDomId(c.id)}>
                   <td className="px-4 py-2.5">
                     <BulkRowCheckbox id={c.id} type="leaveCancellation" />
                   </td>

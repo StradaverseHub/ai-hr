@@ -32,3 +32,39 @@ export function focusForCalendarPill(l: {
   if (l.status === 'approved' && l.pendingCancellationId) return 'leaveCancellation';
   return null;
 }
+
+/**
+ * DOM id for a single approval row (a34eedde) — used for BOTH leave-request rows and cancellation
+ * rows on /approvals. The `approval-row-` prefix cannot collide with the section ids (or any other
+ * id on the page), and it namespaces getElementById lookups so a junk rowId riding in the hash is
+ * harmless: the lookup simply misses and arrival degrades to section-only.
+ */
+export function approvalRowDomId(id: string): string {
+  return `approval-row-${id}`;
+}
+
+/**
+ * Composite attention hash (a34eedde), WITHOUT the leading `#`: `<sectionId>--<rowId>` when a row
+ * id is present, else the bare section id. The `--` separator is unambiguous because section ids
+ * only ever contain SINGLE hyphens (including `approvals-leave-cancellation`), never a double one.
+ */
+export function buildApprovalAttentionHash(focus: ApprovalFocus, rowId?: string | null): string {
+  const sectionId = APPROVAL_SECTION_ID[focus];
+  return rowId ? `${sectionId}--${rowId}` : sectionId;
+}
+
+/**
+ * Parse a hash ALREADY stripped of `#` (the arrival island strips it) back into its parts. Splits
+ * on the FIRST `--`; the section half must be a known section id, else null. No rowId validation:
+ * a garbage rowId only ever reaches a namespaced getElementById (see approvalRowDomId), which
+ * returns null and degrades to section-only attention.
+ */
+export function parseApprovalAttentionHash(
+  raw: string,
+): { sectionId: string; rowId: string | null } | null {
+  const sep = raw.indexOf('--');
+  const sectionId = sep === -1 ? raw : raw.slice(0, sep);
+  if (!(Object.values(APPROVAL_SECTION_ID) as string[]).includes(sectionId)) return null;
+  const rest = sep === -1 ? '' : raw.slice(sep + 2);
+  return { sectionId, rowId: rest.length > 0 ? rest : null };
+}
