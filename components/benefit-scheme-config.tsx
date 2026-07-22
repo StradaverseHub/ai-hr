@@ -1194,6 +1194,82 @@ function EntitlementEditDialog({
   );
 }
 
+/**
+ * Restructure Leave Type Configuration Tabs (feedback 123c1e76) — the per-leave-type "Entitlement" card's
+ * read-and-edit view of this type's benefit-scheme entitlement rows. One row per scheme that configures the
+ * type: Scheme | the three service-tier day figures | Edit. Edit reuses EntitlementEditDialog — the SAME
+ * upsertSchemeEntitlement action the shared Benefit Schemes table posts, so the two surfaces can never
+ * diverge (both read scheme_leave_entitlement live). Scheme-wide management — adding/removing entitlements,
+ * copying between schemes and combined-limit (shared-cap) grouping — deliberately stays on the Benefit
+ * Schemes section of the Entitlements tab; a row inside a combined pool shows its shared cap read-only here.
+ */
+export type LeaveTypeSchemeEntitlement = Entitlement & {
+  /** Owning scheme's display name — the per-type table's first column. */
+  schemeName: string;
+  /** Combined-limit pool this leave type belongs to within that scheme; null = not pooled. Read-only here. */
+  poolName: string | null;
+  poolTotalLimitDays: number | null;
+};
+
+export function LeaveTypeEntitlementTable({
+  ents,
+  upsertEntitlement,
+}: {
+  ents: LeaveTypeSchemeEntitlement[];
+  upsertEntitlement: (fd: FormData) => void | Promise<void>;
+}) {
+  const t = useTranslations('admin.benefitScheme');
+  if (ents.length === 0) {
+    return <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">{t('perTypeEmpty')}</p>;
+  }
+  // Shared tier headers derive from the first row (the per-scheme table's exact compromise — tiersFromBands
+  // is defensive, odd shapes fall back to 2/5); each row's day VALUES always read its own stored bands.
+  const headerTiers = tiersFromBands(ents[0].serviceBands);
+  return (
+    <div className="space-y-1.5">
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full min-w-[640px] text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs text-muted-foreground">
+              <th className="px-3 py-2 font-medium">{t('perTypeColScheme')}</th>
+              <th className="px-3 py-2 font-medium">{t('tierUnder', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
+              <th className="px-3 py-2 font-medium">{t('tierMid', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
+              <th className="px-3 py-2 font-medium">{t('tierOver', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
+              <th className="px-3 py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {ents.map((e) => {
+              const ti = tiersFromBands(e.serviceBands);
+              return (
+                <tr key={e.id} className="border-b border-border last:border-0">
+                  <td className="px-3 py-2 font-medium">
+                    <span className="flex flex-col">
+                      {e.schemeName}
+                      {e.poolName != null && e.poolTotalLimitDays != null && (
+                        <span className="text-xs font-normal text-muted-foreground">
+                          {t('perTypeSharedPool', { name: e.poolName, days: e.poolTotalLimitDays })}
+                        </span>
+                      )}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">{ti.d0 || '0'}</td>
+                  <td className="px-3 py-2">{ti.d1 || '0'}</td>
+                  <td className="px-3 py-2">{ti.d2 || '0'}</td>
+                  <td className="px-3 py-2 text-right">
+                    <EntitlementEditDialog entitlement={e} action={upsertEntitlement} t={t} />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-muted-foreground">{t('perTypeManageNote')}</p>
+    </div>
+  );
+}
+
 function EntitlementForm({
   action,
   schemeId,

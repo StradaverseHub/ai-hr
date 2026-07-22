@@ -45,7 +45,7 @@
       {
         "id": "leave",
         "target": "[data-tour=\"me-leave\"]",
-        "route": "/me",
+        "route": "/leave",
         "titleKey": "tour.me.leave.title",
         "bodyKey": "tour.me.leave.body",
         "placement": "left"

@@ -56,6 +56,22 @@ describe('leave-year rule dialog (37088a65)', () => {
     expect(page.match(/<LeaveYearRuleDialog/g)).toHaveLength(1);
   });
 
+  it('feedback 4f4d9cff — row order: Advance Rules dialog, then Start, then Edit, then Delete', () => {
+    // 7903c197 replaced the always-open inline date form (and its form-attribute Edit submit) with
+    // LeaveYearEditDialog: Edit now opens a prefilled pop-up instead of saving immediately, but it
+    // keeps its 4f4d9cff slot between Start and Delete in the action group.
+    // Within the row block, the render order is: dialog trigger → draft lifecycle (Start) form → Edit → Delete.
+    const row = page.slice(page.indexOf('leaveYearConfigs.map((cfg)'), page.indexOf('Create / configure'));
+    const dialogIdx = row.indexOf('<LeaveYearRuleDialog');
+    const startIdx = row.indexOf('name="status" value="open"');
+    const editIdx = row.indexOf('<LeaveYearEditDialog');
+    const deleteIdx = row.indexOf('deleteLeaveYearAction');
+    expect(dialogIdx).toBeGreaterThan(-1);
+    expect(startIdx).toBeGreaterThan(dialogIdx);
+    expect(editIdx).toBeGreaterThan(startIdx);
+    expect(deleteIdx).toBeGreaterThan(editIdx);
+  });
+
   it('amount `required` is bound to the enable checkbox state, never unconditional', () => {
     expect(dialog).toContain('required={enabled}');
     expect(dialog).toMatch(/useState\(current\.openingRuleEnabled\)/);

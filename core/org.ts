@@ -358,14 +358,16 @@ export async function transferEmployee(
       )
       .limit(1);
     if (!cur) throw new Error('No open assignment to transfer');
+    // 570e3311 — the employment's company is needed by both the location guard and the changed-only
+    // label guards below, so it is fetched once up front.
+    const [emp] = await tx
+      .select({ companyId: employment.companyId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
 
     const nextLocationId = p.locationId === undefined ? cur.locationId : p.locationId;
     if (nextLocationId) {
-      const [emp] = await tx
-        .select({ companyId: employment.companyId })
-        .from(employment)
-        .where(eq(employment.id, p.employmentId))
-        .limit(1);
       const [loc] = await tx
         .select({ companyId: location.companyId })
         .from(location)
@@ -375,6 +377,38 @@ export async function transferEmployee(
       if (!emp || loc.companyId !== emp.companyId) {
         throw new CrossCompanyError('location');
       }
+    }
+
+    // 570e3311 — changed-only org-label guards (previously unvalidated on this path): a transfer naming
+    // a department / position / cost centre must name a label the employment's company MAY use under the
+    // Shared System Labels resolver (origin ∪ shared-in ∪ global, flag-gated — labelUsableByCompany) and
+    // that is not archived (the resolver deliberately does not check archived_at, so each guard reads it
+    // alongside). Only values DIFFERENT from the current version are checked, so re-supplying a stored
+    // legacy value keeps working.
+    const guardLabel = async (
+      kind: 'department' | 'position' | 'cost_center',
+      table: typeof department | typeof position | typeof costCenter,
+      labelId: string,
+      entity: 'department' | 'position' | 'cost-center',
+    ) => {
+      if (!emp || !(await labelUsableByCompany(tx, ctx.tenantId, kind, labelId, emp.companyId))) {
+        throw new CrossCompanyError(entity);
+      }
+      const [row] = await tx
+        .select({ archivedAt: table.archivedAt })
+        .from(table)
+        .where(and(eq(table.tenantId, ctx.tenantId), eq(table.id, labelId)))
+        .limit(1);
+      if (!row || row.archivedAt) throw new CrossCompanyError(entity);
+    };
+    if (p.departmentId && p.departmentId !== cur.departmentId) {
+      await guardLabel('department', department, p.departmentId, 'department');
+    }
+    if (p.positionId && p.positionId !== cur.positionId) {
+      await guardLabel('position', position, p.positionId, 'position');
+    }
+    if (p.costCenterId && p.costCenterId !== cur.costCenterId) {
+      await guardLabel('cost_center', costCenter, p.costCenterId, 'cost-center');
     }
 
     // CLOSE current (set valid_to), then INSERT the new version — ranges don't overlap.
@@ -1430,22 +1464,65 @@ export async function setEmploymentAssignment(
     const nextEmploymentType = p.employmentType ?? cur.employmentType;
     const nextStatus = p.status ?? cur.status;
 
-    // 1001ff61 — referential integrity + company scope for a newly-selected BU: it must exist, be un-archived,
-    // and belong to this employment's company. (An unchanged/cleared BU skips the check.) Defence-in-depth
-    // over the nullable FK, matching the "prevent invalid dropdown selections" requirement.
-    if (nextBusinessUnitId && nextBusinessUnitId !== cur.businessUnitId) {
+    // 1001ff61 / 570e3311 — referential integrity + company scope for a newly-selected BU / Department /
+    // Position: it must exist, be un-archived, and be a label this employment's company MAY use under the
+    // Shared System Labels resolver (origin ∪ shared-in ∪ global, flag-gated — labelUsableByCompany; with
+    // the flag OFF this collapses to the old strict same-company check). Unchanged/cleared values skip
+    // the check, so re-supplying a stored legacy value never blocks an unrelated save. Defence-in-depth
+    // over the nullable FKs, matching the "prevent invalid dropdown selections" requirement.
+    const buChanged = nextBusinessUnitId && nextBusinessUnitId !== cur.businessUnitId;
+    const deptChanged = nextDepartmentId && nextDepartmentId !== cur.departmentId;
+    const posChanged = nextPositionId && nextPositionId !== cur.positionId;
+    if (buChanged || deptChanged || posChanged) {
       const [emp] = await tx
         .select({ companyId: employment.companyId })
         .from(employment)
         .where(eq(employment.id, p.employmentId))
         .limit(1);
-      const [bu] = await tx
-        .select({ id: businessUnit.id, companyId: businessUnit.companyId, archivedAt: businessUnit.archivedAt })
-        .from(businessUnit)
-        .where(eq(businessUnit.id, nextBusinessUnitId))
-        .limit(1);
-      if (!bu || bu.archivedAt || !emp || bu.companyId !== emp.companyId) {
-        throw new Error('Selected Business Unit is not a valid option for this employee.');
+      if (buChanged) {
+        const [bu] = await tx
+          .select({ archivedAt: businessUnit.archivedAt })
+          .from(businessUnit)
+          .where(eq(businessUnit.id, nextBusinessUnitId))
+          .limit(1);
+        if (
+          !bu ||
+          bu.archivedAt ||
+          !emp ||
+          !(await labelUsableByCompany(tx, ctx.tenantId, 'business_unit', nextBusinessUnitId, emp.companyId))
+        ) {
+          throw new Error('Selected Business Unit is not a valid option for this employee.');
+        }
+      }
+      if (deptChanged) {
+        const [dep] = await tx
+          .select({ archivedAt: department.archivedAt })
+          .from(department)
+          .where(eq(department.id, nextDepartmentId))
+          .limit(1);
+        if (
+          !dep ||
+          dep.archivedAt ||
+          !emp ||
+          !(await labelUsableByCompany(tx, ctx.tenantId, 'department', nextDepartmentId, emp.companyId))
+        ) {
+          throw new Error('Selected Department is not a valid option for this employee.');
+        }
+      }
+      if (posChanged) {
+        const [pos] = await tx
+          .select({ archivedAt: position.archivedAt })
+          .from(position)
+          .where(eq(position.id, nextPositionId))
+          .limit(1);
+        if (
+          !pos ||
+          pos.archivedAt ||
+          !emp ||
+          !(await labelUsableByCompany(tx, ctx.tenantId, 'position', nextPositionId, emp.companyId))
+        ) {
+          throw new Error('Selected Position is not a valid option for this employee.');
+        }
       }
     }
 

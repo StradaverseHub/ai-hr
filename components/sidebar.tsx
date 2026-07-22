@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   BarChart3,
@@ -41,20 +41,24 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { NavCollapsibleGroup, type CollapsibleChild } from '@/components/nav-collapsible-group';
+import {
+  NavFlyout,
+  NavFlyoutPanel,
+  isHrefActive,
+  isParentActive,
+  type FlyoutChild,
+} from '@/components/nav-flyout';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
 // `tour` (optional) marks the element as an onboarding-tour anchor (ADR-0018).
 type Item = { href: string; labelKey: string; icon: LucideIcon; tour?: string };
-// A collapsible parent node (b3dc0f78): one level of nesting only. Each child carries its own
-// visibility flag so filtering is per-child (the new capability vs. today's whole-group gating).
+// A flyout parent node (b3dc0f78, flyout redesign fdc20776): one level of nesting only. Each child
+// carries its own visibility flag so filtering is per-child (vs. whole-group gating).
 type ChildItem = Item & { adminOnly?: boolean; managerUp?: boolean };
 type CollapsibleGroupItem = {
   collapsible: true;
   labelKey: string;
   icon: LucideIcon;
-  /** Cookie key that persists this node's open/closed choice (SSR-read in the layout). */
-  cookieKey: string;
   children: ChildItem[];
 };
 type Row = ChildItem | CollapsibleGroupItem;
@@ -63,7 +67,7 @@ type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; item
 
 // Consolidated Attendance node (b3dc0f78). Groups the previously-scattered attendance rows —
 // Records (was in the top group), Policy/Allowance/Clocking Location/Time-off-in-lieu (were in
-// the admin group), Roster (was in the manage group) and Import — under one collapsible parent
+// the admin group), Roster (was in the manage group) and Import — under one parent node
 // with per-child role visibility. Holidays moved here from the admin group per 5cb199b3, which
 // confirmed the relocation b3dc0f78 had deferred as contested (ticket order: Holidays → Policy
 // → Allowance → Locations → TOIL). Reserved (do not create): an "Overtime Configuration" child
@@ -75,7 +79,6 @@ const ATTENDANCE_NODE: CollapsibleGroupItem = {
   collapsible: true,
   labelKey: 'attendance',
   icon: Clock,
-  cookieKey: 'nav_attendance_open',
   children: [
     { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
     { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
@@ -100,7 +103,6 @@ const REPORTS_NODE: CollapsibleGroupItem = {
   collapsible: true,
   labelKey: 'reports',
   icon: FileBarChart,
-  cookieKey: 'nav_reports_open',
   children: [
     { href: '/reports?cat=master', labelKey: 'reportMaster', icon: Users, adminOnly: true },
     { href: '/reports?cat=attendance', labelKey: 'reportAttendance', icon: Clock, adminOnly: true },
@@ -112,7 +114,7 @@ const REPORTS_NODE: CollapsibleGroupItem = {
 };
 
 // System Settings node (a4e49748) — consolidates the three system-wide setup screens that used to sit
-// as loose rows in the flat Administration list, under one collapsible parent (same machinery as the
+// as loose rows in the flat Administration list, under one parent (same machinery as the
 // Attendance and Reports nodes). Nav-only: hrefs, icons and route guards are carried over verbatim.
 // Future config screens (numbering rules, notification settings, email templates, …) slot in here
 // when they are actually requested; none are built by a4e49748.
@@ -123,7 +125,6 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
   collapsible: true,
   labelKey: 'systemSettings',
   icon: Settings2,
-  cookieKey: 'nav_system_settings_open',
   children: [
     // Employee ID Auto Running Number Setup (feedback 3d0031e6): configurable auto-numbered employee codes.
     { href: '/admin/settings/employee-id', labelKey: 'employeeIdConfig', icon: Hash, adminOnly: true },
@@ -142,7 +143,9 @@ const GROUPS: Group[] = [
       { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
       { href: '/me', labelKey: 'myWorkspace', icon: UserRound, tour: 'nav-me' },
       { href: '/org', labelKey: 'orgChart', icon: Network },
-      { href: '/leave', labelKey: 'leave', icon: CalendarDays },
+      // a7cbd895: renamed from "Leave" to "My Absence" — the first-level home for ALL leave self-service
+      // after the /me Leave tab merged into /leave. Same href, same icon; label-only change.
+      { href: '/leave', labelKey: 'myAbsence', icon: CalendarDays },
       ATTENDANCE_NODE,
       { href: '/claims', labelKey: 'claims', icon: Receipt },
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
@@ -193,30 +196,42 @@ const GROUPS: Group[] = [
   },
 ];
 
-const isActive = (pathname: string, href: string) =>
-  href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
-
 /** Detached rail that floats on the canvas. Collapses to an icon-only strip; expands
  *  to icon + label. The choice persists via the `rail_collapsed` cookie (read SSR-side
- *  in the layout, so there's no flash and no hydration mismatch). Collapsible sub-groups
- *  (b3dc0f78) persist their own open/closed state the same way, via `openGroups`. */
+ *  in the layout, so there's no flash and no hydration mismatch). Modules with sub-items
+ *  (fdc20776) open a flyout panel BESIDE the rail instead of expanding in place, so the
+ *  rail keeps a constant height however many sub-items exist. */
 export function Sidebar({
   isAdmin,
   canApprove = false,
   defaultCollapsed,
-  openGroups = {},
 }: {
   isAdmin: boolean;
   /** Manager-and-up: shows the Approvals inbox. */
   canApprove?: boolean;
   defaultCollapsed: boolean;
-  /** SSR-read open state per collapsible-group cookie key (e.g. `nav_attendance_open`). */
-  openGroups?: Record<string, boolean>;
 }) {
   const pathname = usePathname();
+  // Query-aware active matching (fdc20776): usePathname excludes the query string, so the six
+  // Reports children (/reports?cat=…) need the search params to light up. Safe without a Suspense
+  // boundary here: the root layout awaits cookies()/headers(), so every route is dynamically
+  // rendered (see node_modules/next/dist/docs — the boundary is only mandatory on static pages).
+  const searchParams = useSearchParams();
+  const search = searchParams.toString();
   const t = useTranslations('nav');
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
-  // Per-child visibility for collapsible nodes (the new capability vs. whole-group gating).
+  // Single-open flyout state (fdc20776): the labelKey of the open module, or null. Clicking a
+  // parent sets it (replacing any other open module); clicking the same parent again closes.
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  // Escape returns focus to the trigger that opened the panel.
+  const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  // Safety net for back/forward navigation only — picking a sub-item closes via its onClick
+  // (mandatory: the Reports children share one pathname and differ only in the query, so this
+  // effect never fires when switching report categories).
+  useEffect(() => {
+    setOpenKey(null);
+  }, [pathname]);
+  // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating).
   const canSeeChild = (c: ChildItem) =>
     c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true;
   const groups = GROUPS
@@ -231,6 +246,13 @@ export function Sidebar({
     // Drop a group that has become empty for this viewer (no stray divider in the collapsed rail).
     .filter((g) => g.items.length > 0);
 
+  const isActive = (href: string) => isHrefActive(pathname, search, href);
+  // The open module's node (permission-filtered children), resolved from the visible groups so a
+  // stale openKey (e.g. after a role change) simply renders no panel.
+  const openNode = openKey
+    ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey) ?? null
+    : null;
+
   const toggle = () =>
     setCollapsed((c) => {
       const next = !c;
@@ -242,118 +264,148 @@ export function Sidebar({
     'group flex items-center rounded-2xl transition duration-150 ease-snappy active:scale-[0.98]';
 
   return (
-    <aside
-      className={cn(
-        'hidden h-full shrink-0 flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar py-4 shadow-[var(--shadow-card)] transition-[width] duration-200 ease-snappy sm:flex',
-        collapsed ? 'w-[66px] items-center px-3' : 'w-[232px] px-3',
-      )}
-    >
-      <Link
-        href="/"
-        aria-label={t('home')}
+    // Wrapper (fdc20776): the aside is overflow-hidden, so the flyout panel cannot live inside it —
+    // it anchors to this relative wrapper instead, which takes over the aside's responsive/flex-item
+    // classes (a bare wrapper would stay a visible zero-width flex item below sm and add a phantom
+    // layout gutter, and the aside's h-full needs the wrapper to have height). While a panel is open
+    // the wrapper is raised to z-50 so the rail rows stay clickable above the z-40 backdrop (module
+    // swap in one click); the raise is conditional so onboarding-tour stacking is unaffected otherwise.
+    <div className={cn('relative hidden h-full shrink-0 sm:block', openNode && 'z-50')}>
+      <aside
         className={cn(
-          'flex items-center gap-2.5 rounded-2xl transition duration-150 ease-snappy active:scale-95',
-          collapsed ? 'justify-center' : 'px-1 py-0.5',
+          'flex h-full flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar py-4 shadow-[var(--shadow-card)] transition-[width] duration-200 ease-snappy',
+          collapsed ? 'w-[66px] items-center px-3' : 'w-[232px] px-3',
+          // Above the panel's backdrop, so every rail row stays clickable while a panel is open.
+          openNode && 'relative z-50',
         )}
       >
-        <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-primary text-[13px] font-bold text-primary-foreground shadow-[var(--shadow-sm)]">
-          HR
-        </span>
-        {!collapsed && (
-          <span className="whitespace-nowrap text-[15px] font-semibold tracking-tight text-foreground">
-            AI HR
+        <Link
+          href="/"
+          aria-label={t('home')}
+          className={cn(
+            'flex items-center gap-2.5 rounded-2xl transition duration-150 ease-snappy active:scale-95',
+            collapsed ? 'justify-center' : 'px-1 py-0.5',
+          )}
+        >
+          <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-primary text-[13px] font-bold text-primary-foreground shadow-[var(--shadow-sm)]">
+            HR
           </span>
-        )}
-      </Link>
+          {!collapsed && (
+            <span className="whitespace-nowrap text-[15px] font-semibold tracking-tight text-foreground">
+              AI HR
+            </span>
+          )}
+        </Link>
 
-      {/* `relative` for the same reason as <main> in app/layout.tsx: absolute descendants
-          (sr-only labels) must not escape this scroll container and create viewport overflow. */}
-      <nav
-        data-tour="nav"
-        className="relative flex w-full flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden py-3"
-      >
-        {groups.map((group, gi) => (
-          <div key={gi} className={cn('flex w-full flex-col gap-1', collapsed && 'items-center')}>
-            {gi > 0 &&
-              (collapsed ? (
-                <span className="my-1.5 h-px w-7 rounded-full bg-border" aria-hidden />
-              ) : (
-                group.labelKey && (
-                  <div className="px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-                    {t(group.labelKey)}
-                  </div>
-                )
-              ))}
-            {group.items.map((item) => {
-              if (isCollapsible(item)) {
-                const children = item.children.filter(canSeeChild);
-                // Hide the whole parent if the viewer can see none of its children.
-                if (children.length === 0) return null;
+        {/* `relative` for the same reason as <main> in app/layout.tsx: absolute descendants
+            (sr-only labels) must not escape this scroll container and create viewport overflow. */}
+        <nav
+          data-tour="nav"
+          className="relative flex w-full flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden py-3"
+        >
+          {groups.map((group, gi) => (
+            <div key={gi} className={cn('flex w-full flex-col gap-1', collapsed && 'items-center')}>
+              {gi > 0 &&
+                (collapsed ? (
+                  <span className="my-1.5 h-px w-7 rounded-full bg-border" aria-hidden />
+                ) : (
+                  group.labelKey && (
+                    <div className="px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                      {t(group.labelKey)}
+                    </div>
+                  )
+                ))}
+              {group.items.map((item) => {
+                if (isCollapsible(item)) {
+                  const children = item.children.filter(canSeeChild);
+                  // Hide the whole parent if the viewer can see none of its children.
+                  if (children.length === 0) return null;
+                  return (
+                    <NavFlyout
+                      key={item.labelKey}
+                      labelKey={item.labelKey}
+                      icon={item.icon}
+                      open={openKey === item.labelKey}
+                      active={isParentActive(pathname, children.map((c) => c.href))}
+                      collapsed={collapsed}
+                      rowBase={rowBase}
+                      panelId={`nav-flyout-${item.labelKey}`}
+                      onToggle={() =>
+                        setOpenKey((k) => (k === item.labelKey ? null : item.labelKey))
+                      }
+                      triggerRef={(el) => {
+                        triggerRefs.current[item.labelKey] = el;
+                      }}
+                    />
+                  );
+                }
+                const active = isActive(item.href);
+                const Icon = item.icon;
+                const label = t(item.labelKey);
                 return (
-                  <NavCollapsibleGroup
-                    key={item.labelKey}
-                    labelKey={item.labelKey}
-                    icon={item.icon}
-                    items={children as CollapsibleChild[]}
-                    defaultOpen={openGroups[item.cookieKey] ?? false}
-                    collapsed={collapsed}
-                    isActive={(href) => isActive(pathname, href)}
-                    cookieKey={item.cookieKey}
-                    rowBase={rowBase}
-                  />
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    data-tour={item.tour}
+                    title={collapsed ? label : undefined}
+                    aria-label={label}
+                    aria-current={active ? 'page' : undefined}
+                    className={cn(
+                      rowBase,
+                      collapsed ? 'size-11 justify-center' : 'w-full gap-3 px-3 py-2',
+                      active
+                        ? 'bg-accent font-medium text-accent-foreground'
+                        : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                    )}
+                  >
+                    <Icon
+                      className={cn('size-[20px] shrink-0', active && 'text-primary')}
+                      strokeWidth={2}
+                    />
+                    {!collapsed && <span className="truncate text-sm">{label}</span>}
+                  </Link>
                 );
-              }
-              const active = isActive(pathname, item.href);
-              const Icon = item.icon;
-              const label = t(item.labelKey);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  data-tour={item.tour}
-                  title={collapsed ? label : undefined}
-                  aria-label={label}
-                  aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    rowBase,
-                    collapsed ? 'size-11 justify-center' : 'w-full gap-3 px-3 py-2',
-                    active
-                      ? 'bg-accent font-medium text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
-                  )}
-                >
-                  <Icon
-                    className={cn('size-[20px] shrink-0', active && 'text-primary')}
-                    strokeWidth={2}
-                  />
-                  {!collapsed && <span className="truncate text-sm">{label}</span>}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
+              })}
+            </div>
+          ))}
+        </nav>
 
-      <button
-        type="button"
-        onClick={toggle}
-        aria-label={collapsed ? t('expand') : t('collapse')}
-        title={collapsed ? t('expand') : t('collapse')}
-        className={cn(
-          rowBase,
-          'mt-2 text-muted-foreground hover:bg-accent/60 hover:text-foreground',
-          collapsed ? 'size-11 justify-center' : 'w-full gap-3 px-3 py-2',
-        )}
-      >
-        {collapsed ? (
-          <PanelLeftOpen className="size-[20px] shrink-0" strokeWidth={2} />
-        ) : (
-          <>
-            <PanelLeftClose className="size-[20px] shrink-0" strokeWidth={2} />
-            <span className="truncate text-sm">{t('collapse')}</span>
-          </>
-        )}
-      </button>
-    </aside>
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={collapsed ? t('expand') : t('collapse')}
+          title={collapsed ? t('expand') : t('collapse')}
+          className={cn(
+            rowBase,
+            'mt-2 text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+            collapsed ? 'size-11 justify-center' : 'w-full gap-3 px-3 py-2',
+          )}
+        >
+          {collapsed ? (
+            <PanelLeftOpen className="size-[20px] shrink-0" strokeWidth={2} />
+          ) : (
+            <>
+              <PanelLeftClose className="size-[20px] shrink-0" strokeWidth={2} />
+              <span className="truncate text-sm">{t('collapse')}</span>
+            </>
+          )}
+        </button>
+      </aside>
+
+      {openNode && (
+        <NavFlyoutPanel
+          labelKey={openNode.labelKey}
+          items={openNode.children.filter(canSeeChild) as FlyoutChild[]}
+          isActive={isActive}
+          rowBase={rowBase}
+          panelId={`nav-flyout-${openNode.labelKey}`}
+          onClose={() => setOpenKey(null)}
+          onEscape={() => {
+            setOpenKey(null);
+            triggerRefs.current[openNode.labelKey]?.focus();
+          }}
+        />
+      )}
+    </div>
   );
 }

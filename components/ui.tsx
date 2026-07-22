@@ -16,6 +16,15 @@ export const btnPrimary =
 export const btnGhost =
   'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-input px-3 py-1.5 text-sm font-medium transition duration-150 ease-snappy hover:bg-accent hover:text-accent-foreground active:scale-[0.98]';
 
+// The house table look (the txn-grid convention) as shared constants, so admin tables can adopt the ONE
+// standard styling instead of hand-copying the class strings — which is exactly how System Labels drifted
+// out of sync in the first place. Use: wrapper div → tableWrapCls, <thead> → theadCls, each <th> → thCls,
+// <tbody> → tbodyCls.
+export const tableWrapCls = 'overflow-x-auto rounded-md border border-border';
+export const theadCls = 'bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground';
+export const thCls = 'px-3 py-2 font-medium';
+export const tbodyCls = 'divide-y divide-border';
+
 export function Field({
   label,
   children,

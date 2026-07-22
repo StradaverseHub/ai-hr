@@ -11,7 +11,7 @@ import {
   listSchemeEntitlements,
   listSchemeCombinedLimits,
 } from '@/core/benefit-scheme';
-import { BenefitSchemeConfig } from '@/components/benefit-scheme-config';
+import { BenefitSchemeConfig, type LeaveTypeSchemeEntitlement } from '@/components/benefit-scheme-config';
 import type { ServiceBand } from '@/core/leave-compute';
 import { entitlement } from '@/localization/my/leave';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
@@ -49,6 +49,7 @@ import {
 } from '../../actions';
 import { GradeCatalog } from '@/components/grade-catalog';
 import { CollapsibleCardSection } from '@/components/collapsible-card-section';
+import { LeaveRulePreview } from '@/components/leave-rule-preview';
 
 /** Cookie persisting the Grades section's open/closed fold (feedback 03557e76). */
 const GRADES_OPEN_COOKIE = 'leave_grades_open';
@@ -109,6 +110,14 @@ export default async function LeaveEntitlementsPage({
   const activeTypeOptions = types.filter((t) => !t.archivedAt).map((t) => ({ id: t.id, name: t.name }));
   const companyNameById = new Map(companies.map((c) => [c.id, c.name]));
   const typeNameById = new Map(types.map((t) => [t.id, t.name]));
+  const typeCodeById = new Map(types.map((t) => [t.id, t.code]));
+  // Feedback 26e76a9f — "preview a scenario" relocated here from the Types tab (its read-only "Entitlement
+  // rules" card was removed as a duplicate configuration point). Same inputs as before: the ACTIVE policy
+  // rows from the already-loaded listLeavePolicies result — display-only, no data or logic change.
+  const previewPolicies = policies
+    .filter((p) => !p.validTo)
+    .map((p) => ({ leaveTypeId: p.leaveTypeId, gradeId: p.gradeId, companyId: p.companyId, accrual: p.accrual }));
+  const previewCompanies = companies.map((c) => ({ id: c.id, name: c.name, country: c.country }));
   const recentGrants: FestiveGrantRow[] = adHocGrants.map((g) => ({
     occurredAt: g.occurredAt.toISOString(),
     companyName: g.companyId ? (companyNameById.get(g.companyId) ?? null) : null,
@@ -179,6 +188,37 @@ export default async function LeaveEntitlementsPage({
   }
   for (const arr of polByType.values()) arr.sort((a, b) => b.validFrom.localeCompare(a.validFrom));
 
+  // Restructure (123c1e76): per-type Entitlement card data — each leave type's benefit-scheme entitlement
+  // rows, joined with the owning scheme's name and (read-only) any combined-limit pool the type belongs to
+  // in that scheme. The SAME already-loaded rows the Benefit Schemes section renders below — filtered by
+  // leave type, never duplicated — and the panel's Edit dialog posts the SAME upsert action, so the two
+  // surfaces cannot drift.
+  const schemeNameById = new Map(benefitSchemes.map((sc) => [sc.id, sc.name]));
+  const poolBySchemeType = new Map<string, { name: string; totalLimitDays: number }>();
+  for (const cl of schemeCombinedLimits) {
+    for (const ltId of cl.leaveTypeIds) {
+      poolBySchemeType.set(`${cl.benefitSchemeId}:${ltId}`, { name: cl.name, totalLimitDays: cl.totalLimitDays });
+    }
+  }
+  const schemeEntsByType = new Map<string, LeaveTypeSchemeEntitlement[]>();
+  for (const e of schemeEntitlements) {
+    const pool = poolBySchemeType.get(`${e.benefitSchemeId}:${e.leaveTypeId}`) ?? null;
+    const row: LeaveTypeSchemeEntitlement = {
+      id: e.id,
+      benefitSchemeId: e.benefitSchemeId,
+      schemeName: schemeNameById.get(e.benefitSchemeId) ?? '—',
+      leaveTypeId: e.leaveTypeId,
+      leaveTypeName: e.leaveTypeName,
+      serviceBands: e.serviceBands,
+      poolName: pool?.name ?? null,
+      poolTotalLimitDays: pool?.totalLimitDays ?? null,
+    };
+    const arr = schemeEntsByType.get(e.leaveTypeId);
+    if (arr) arr.push(row);
+    else schemeEntsByType.set(e.leaveTypeId, [row]);
+  }
+  for (const arr of schemeEntsByType.values()) arr.sort((a, b) => a.schemeName.localeCompare(b.schemeName));
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
@@ -235,6 +275,7 @@ export default async function LeaveEntitlementsPage({
               policies={polByType.get(lt.id) ?? []}
               grades={gradeOptions}
               companies={companyOptions}
+              schemeEntitlements={schemeEntsByType.get(lt.id) ?? []}
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}
@@ -242,6 +283,7 @@ export default async function LeaveEntitlementsPage({
               updatePolicyAction={updateLeavePolicyAction}
               deletePolicyAction={deleteLeavePolicyAction}
               countInScopeAction={countEmployeesInScopeAction}
+              upsertSchemeEntitlementAction={upsertSchemeEntitlementAction}
             />
           ))}
         </ul>
@@ -449,6 +491,24 @@ export default async function LeaveEntitlementsPage({
           />
         </div>
       </Card>
+
+      {/* Feedback 26e76a9f — "Preview a scenario": the live entitlement checker relocated from the Types
+          tab when its read-only Entitlement rules card was removed. Sits with the entitlement configuration
+          it previews (near the Benefit Schemes card). Runs the same pure resolver the server engines use
+          (components/leave-rule-preview.tsx) — read-only, writes nothing. */}
+      {activeTypeOptions.length > 0 && companyOptions.length > 0 && (
+        <Card>
+          <SectionHeader title={t('previewTitle')} />
+          <div className="p-4">
+            <LeaveRulePreview
+              leaveTypes={activeTypeOptions.map((o) => ({ id: o.id, name: o.name, code: typeCodeById.get(o.id) ?? '' }))}
+              companies={previewCompanies}
+              grades={gradeOptions}
+              policies={previewPolicies}
+            />
+          </div>
+        </Card>
+      )}
 
       {/* Leave Data Import & Migration Tool — bulk-load opening balances / carry-forward / historical leave. */}
       <Card>

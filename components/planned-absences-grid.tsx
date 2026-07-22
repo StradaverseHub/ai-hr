@@ -264,7 +264,7 @@ export function PlannedAbsencesGrid({
                             type="button"
                             aria-label={cancelPillLabel}
                             title={cancelPillLabel}
-                            className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
+                            className="relative z-10 grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
                           >
                             <XCircle className="size-3.5" />
                           </button>
@@ -281,7 +281,7 @@ export function PlannedAbsencesGrid({
                             type="button"
                             aria-label={adminCancelPillLabel}
                             title={adminCancelPillLabel}
-                            className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
+                            className="relative z-10 grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
                           >
                             <XCircle className="size-3.5" />
                           </button>
@@ -297,7 +297,7 @@ export function PlannedAbsencesGrid({
                             type="button"
                             aria-label={selfCancelPillLabel}
                             title={selfCancelPillLabel}
-                            className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
+                            className="relative z-10 grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
                           >
                             <XCircle className="size-3.5" />
                           </button>
@@ -305,18 +305,23 @@ export function PlannedAbsencesGrid({
                       />
                     )}
                     {/* 8cb7b089: deep-link arrow to the matching /approvals section for a pill awaiting the
-                        viewer's decision. Same trailing icon-slot vocabulary as the cancel buttons (never the
-                        whole bar — the dialogs above must keep their click targets). scroll=false: the arrival
-                        island owns scrolling. prefetch=false: the Approvals page is heavy — don't pay for it
-                        from the dashboard. NO title attr: the wrapping div's title (hourly window, c238010b)
-                        must keep winning. */}
+                        viewer's decision. scroll=false: the arrival island owns scrolling. prefetch=false: the
+                        Approvals page is heavy — don't pay for it from the dashboard. NO title attr: the
+                        wrapping div's title (hourly window, c238010b) must keep winning.
+                        a34eedde: the link's ::after overlay STRETCHES over the whole pill (nearest positioned
+                        ancestor = the `relative` pill div), so clicking anywhere on the pill body navigates as
+                        a real anchor — modifier/middle clicks, defaultPrevented, and drag all behave natively,
+                        and the portaled cancel dialogs (React SIBLINGS of this link) can never bubble into it.
+                        The hover ring must be INSET (overflow-hidden would clip an outset ring); ring-current
+                        picks up each variant's own text color. The dialog triggers above carry `relative z-10`
+                        so they paint over the overlay and keep their clicks. */}
                     {l.approvalHref && (
                       <Link
                         href={l.approvalHref}
                         prefetch={false}
                         scroll={false}
                         aria-label={approvalPillLabel}
-                        className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
+                        className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity after:absolute after:inset-0 after:rounded-full after:ring-inset after:transition-shadow hover:text-current hover:opacity-100 hover:after:ring-2 hover:after:ring-current/50"
                       >
                         <ArrowUpRight className="size-3.5" />
                       </Link>

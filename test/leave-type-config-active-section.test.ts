@@ -1,7 +1,8 @@
 /**
- * Leave-type config: active-section indicator on the seven category headers (feedback 27136ea6).
+ * Leave-type config: active-section indicator on the category headers (feedback 27136ea6; card list
+ * restructured to five by 123c1e76 — General / Eligibility / Entitlement / Condition / Custom).
  *
- * All seven collapsible category headers in components/leave-type-panel.tsx used to look identical whether
+ * The collapsible category headers in components/leave-type-panel.tsx used to look identical whether
  * open or closed (the rotating chevron was the only cue). Now `cardHeaderBtn` is a function of the card's
  * open state: an OPEN header gets the accent wash (bg-accent), a slightly indented title (pl-6) and a bolder
  * CardTitle ([&_h3]:font-semibold). "Active" means EXPANDED — the cards are independent accordions by design,
@@ -20,12 +21,12 @@ import { describe, expect, it } from 'vitest';
 const here = dirname(fileURLToPath(import.meta.url));
 const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
 
-const CARD_KEYS = ['general', 'eligibility', 'ess', 'approval', 'display', 'calculation', 'custom'] as const;
+const CARD_KEYS = ['general', 'eligibility', 'entitlement', 'ess', 'custom'] as const;
 
 describe('27136ea6 · active (expanded) category headers are visually distinguished', () => {
-  it('each of the 7 header buttons derives its classes from its OWN openCards key', () => {
-    // The genuine bug class across seven near-identical call sites is a copy-paste key mismatch
-    // (e.g. the approval button styling off openCards.display).
+  it('each of the 5 header buttons derives its classes from its OWN openCards key', () => {
+    // The genuine bug class across near-identical call sites is a copy-paste key mismatch
+    // (e.g. the entitlement button styling off openCards.ess).
     for (const key of CARD_KEYS) {
       const re = new RegExp(
         `toggleCard\\('${key}'\\)[^\\n]*className=\\{cardHeaderBtn\\(!!openCards\\.${key}\\)\\}`,

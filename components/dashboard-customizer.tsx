@@ -9,9 +9,11 @@
  * component; it never calls a function out of a 'use client' module).
  *
  * Normal mode: render the employee's selected cards in their saved order + a "Customize Dashboard" button.
- * Customize mode (feedback dashgrid): a @dnd-kit 2-D grid — the first row is the employee's draggable
- *   widget grid (max 4 across on desktop, extra cards wrap); a fixed second row pins the shortcut/action
- *   cards + Planned Absences so the everyday actions always have a home. The live render IS the preview, plus
+ * Customize mode (feedback dashgrid → 2806443b): a @dnd-kit 2-D grid in THREE areas — a draggable top row
+ *   of up to 4 cards, a fixed full-width second row holding ONLY the Leave Calendar (FIXED_ROW_KEYS), and
+ *   a flexible third area below the calendar for every remaining selected card (also draggable — the top
+ *   row and third area share one flat order; the 4-card slice decides which grid a card lands in).
+ *   The live render IS the preview, plus
  *   • Add Card — a menu of employee-selectable cards not currently shown.
  *   • Remove (×) on each optional card; mandatory cards refuse removal with a shake + the message
  *     "This dashboard card is mandatory and cannot be removed."
@@ -46,7 +48,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ArrowUpRight, GripVertical, Pin, Plus, X } from 'lucide-react';
 import { Button, Card } from '@/components/ui';
-import { MAX_FIRST_ROW, partitionDashboardRows, type DashboardLayout } from '@/lib/dashboard-layout';
+import { isFixedRowKey, partitionDashboardRows, type DashboardLayout } from '@/lib/dashboard-layout';
 
 /**
  * Column classes derived from the ACTUAL number of cards in a row (feedback 84d1233d step 1), so two
@@ -219,35 +221,35 @@ export function DashboardCustomizer({
 
   const addable = cards.filter((c) => c.employeeSelectable && !visible.includes(c.key));
 
-  // Row assignment (feedback dashgrid) is DERIVED from the card config, never persisted: shortcut/action
-  // cards + Planned Absences are pinned to the fixed second row; everything else selected is a draggable
-  // first-row widget. See lib/dashboard-layout.partitionDashboardRows / the design-tension note there.
-  const isPinned = (key: string): boolean => {
-    const c = byKey.get(key);
-    if (!c) return false;
-    return c.cardType === 'shortcut' || c.cardType === 'action' || key === 'plannedAbsences';
-  };
-  const pinnedKeys = useMemo(() => new Set(visible.filter(isPinned)), [visible, byKey]);
-  const { row1: sortableKeys, row2: fixedKeys } = partitionDashboardRows(
+  // Row assignment (feedback dashgrid → 2806443b) is DERIVED, never persisted: ONLY the Leave Calendar
+  // (lib/dashboard-layout FIXED_ROW_KEYS) is pinned to the full-width second row. Shortcut/action cards
+  // (incl. Pending Tasks) are ordinary draggable/removable cards; a card HR marked mandatory still refuses
+  // removal with the shake. See lib/dashboard-layout.partitionDashboardRows.
+  const isPinned = (key: string): boolean => isFixedRowKey(key);
+  const pinnedKeys = useMemo(() => new Set(visible.filter((k) => isFixedRowKey(k))), [visible]);
+  const { row1: row1Keys, row2: fixedKeys, row3: row3Keys } = partitionDashboardRows(
     { selected: visible, order: visible },
     pinnedKeys,
   );
+  // The flat draggable order shared by the top row and the third area — row membership re-derives from the
+  // MAX_FIRST_ROW slice, so a drag between the two grids is just a move within this flat sequence.
+  const sortableKeys = [...row1Keys, ...row3Keys];
 
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     setVisible((cur) => {
-      // 2-D grid reorder: dnd-kit's rectSortingStrategy maps the grid geometry onto the flat first-row
-      // order, so a straight arrayMove over the (non-pinned) row-1 keys is the correct L/R + up/down move.
-      const row1 = cur.filter((k) => !isPinned(k));
-      const row2 = cur.filter((k) => isPinned(k));
-      const from = row1.indexOf(active.id as string);
-      const to = row1.indexOf(over.id as string);
+      // 2-D grid reorder: dnd-kit's rectSortingStrategy maps the grid geometry onto the flat non-pinned
+      // order (top row + third area), so a straight arrayMove over it is the correct L/R + up/down move —
+      // including a drag between the two grids, which simply crosses the MAX_FIRST_ROW slice boundary.
+      const nonPinned = cur.filter((k) => !isPinned(k));
+      const pinned = cur.filter((k) => isPinned(k));
+      const from = nonPinned.indexOf(active.id as string);
+      const to = nonPinned.indexOf(over.id as string);
       if (from < 0 || to < 0) return cur; // over a pinned/absent target → spring back (no-op)
-      const nextRow1 = arrayMove(row1, from, to);
-      // Max-4 first row is enforced by the MAX_FIRST_ROW-column grid (extra cards wrap below); a reorder
-      // never changes the count, so this stays within the cap. Rebuild visible as row1-then-fixed.
-      return [...nextRow1, ...row2];
+      const nextNonPinned = arrayMove(nonPinned, from, to);
+      // Rebuild visible as the flat non-pinned order followed by the fixed-row cards.
+      return [...nextNonPinned, ...pinned];
     });
   };
 
@@ -417,11 +419,14 @@ export function DashboardCustomizer({
 
       {customizing ? (
         <div className="space-y-6">
-          {/* Row 1 — the draggable widget grid (max MAX_FIRST_ROW=4 across on desktop; extra cards wrap). */}
+          {/* One DndContext + SortableContext over the FLAT non-pinned order: row 1 (first 4) renders
+              above the fixed calendar row, row 3 (the rest) below it. A drag between the two grids is a
+              plain move within the flat order — the MAX_FIRST_ROW slice re-derives the grids. */}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={sortableKeys} strategy={rectSortingStrategy}>
-              <div className={`grid gap-4 ${gridColsFor(sortableKeys.length)}`}>
-                {sortableKeys.map((key) => (
+              {/* Row 1 — the draggable top-row grid (up to 4 across on desktop). */}
+              <div className={`grid gap-4 ${gridColsFor(row1Keys.length)}`}>
+                {row1Keys.map((key) => (
                   <SortableCard
                     key={key}
                     id={key}
@@ -434,42 +439,68 @@ export function DashboardCustomizer({
                     {nodeFor(key)}
                   </SortableCard>
                 ))}
-                {sortableKeys.length === 0 && (
+                {row1Keys.length === 0 && (
                   <p className="col-span-full rounded-2xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground">
                     {t('emptyDashboardHint')}
                   </p>
                 )}
               </div>
+              {/* Row 2 — the fixed full-width Leave Calendar row (not draggable, not removable). */}
+              {fixedKeys.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">{t('pinnedRowHint')}</p>
+                  <div className={`grid gap-4 ${gridColsFor(fixedKeys.length)}`}>
+                    {fixedKeys.map((key) => (
+                      <FixedCard key={key} label={labelFor(key)}>
+                        {nodeFor(key)}
+                      </FixedCard>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Row 3 — the flexible area below the calendar (5th+ non-pinned cards, still draggable). */}
+              {row3Keys.length > 0 && (
+                <div className={`grid gap-4 ${gridColsFor(row3Keys.length)}`}>
+                  {row3Keys.map((key) => (
+                    <SortableCard
+                      key={key}
+                      id={key}
+                      label={labelFor(key)}
+                      mandatory={byKey.get(key)?.mandatory ?? false}
+                      shaking={shakeKey === key}
+                      mandatoryMessage={t('mandatoryCardMessage')}
+                      onRemove={requestRemove}
+                    >
+                      {nodeFor(key)}
+                    </SortableCard>
+                  ))}
+                </div>
+              )}
             </SortableContext>
           </DndContext>
-          {/* Row 2 — the fixed row of pinned shortcut/action cards + Planned Absences (not draggable). */}
-          {fixedKeys.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">{t('pinnedRowHint')}</p>
-              <div className={`grid gap-4 ${gridColsFor(fixedKeys.length)}`}>
-                {fixedKeys.map((key) => (
-                  <FixedCard key={key} label={labelFor(key)}>
-                    {nodeFor(key)}
-                  </FixedCard>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Row 1 — the employee's arranged widget grid. */}
-          {sortableKeys.length > 0 && (
-            <div className={`grid gap-6 ${gridColsFor(sortableKeys.length)}`}>
-              {sortableKeys.map((key) => (
+          {/* Row 1 — the employee's arranged top-row grid (up to 4 cards). */}
+          {row1Keys.length > 0 && (
+            <div className={`grid gap-6 ${gridColsFor(row1Keys.length)}`}>
+              {row1Keys.map((key) => (
                 <div key={key} className="h-full">{nodeFor(key)}</div>
               ))}
             </div>
           )}
-          {/* Row 2 — the fixed pinned row. */}
+          {/* Row 2 — the fixed full-width Leave Calendar row. */}
           {fixedKeys.length > 0 && (
             <div className={`grid gap-6 ${gridColsFor(fixedKeys.length)}`}>
               {fixedKeys.map((key) => (
+                <div key={key} className="h-full">{nodeFor(key)}</div>
+              ))}
+            </div>
+          )}
+          {/* Row 3 — everything else, below the calendar. */}
+          {row3Keys.length > 0 && (
+            <div className={`grid gap-6 ${gridColsFor(row3Keys.length)}`}>
+              {row3Keys.map((key) => (
                 <div key={key} className="h-full">{nodeFor(key)}</div>
               ))}
             </div>

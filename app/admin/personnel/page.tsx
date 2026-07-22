@@ -23,6 +23,7 @@ import {
   HireFormCancelButton,
 } from '@/components/hire-employee';
 import { HIRE_ORG_FILTER_SCRIPT, hireOptionVisible } from '@/lib/hire-form-filter';
+import { labelIdsForCompany } from '@/core/system-labels';
 import { decideProfileChangeAction, hireAction } from './actions';
 
 /** Render a pay-affecting change bundle as human-readable "field → value" pairs. */
@@ -116,17 +117,47 @@ export default async function PeoplePage({
       : 3;
   const fullTimeProvisionalDefault =
     computeProvisionalEndOn(today, 'full_time', defaultProbationMonths) ?? today;
+  // Shared System Labels (feedback 570e3311): the stamp source for the hire form's `data-companies`
+  // CSVs. For each hire-picker kind, resolve labelIdsForCompany (the tested SQL resolver — origin ∪
+  // shared-in ∪ global, flag-gated; core/system-labels.ts) once per company, then INVERT the answers
+  // into Map(labelId → sorted company-id CSV). The resolver stays the single source of truth for the
+  // flag semantics — no JS reimplementation here; a label missing from the map (e.g. its origin
+  // company is archived out of the companies list) falls back to its origin company id at the stamp.
+  const labelCompanyCsv = async (kind: string): Promise<Map<string, string>> => {
+    const perCompany = await Promise.all(
+      companies.map(async (c) => ({ companyId: c.id, ids: await labelIdsForCompany(session, kind, c.id) })),
+    );
+    const byLabel = new Map<string, string[]>();
+    for (const { companyId, ids } of perCompany) {
+      for (const id of ids) {
+        const arr = byLabel.get(id);
+        if (arr) arr.push(companyId);
+        else byLabel.set(id, [companyId]);
+      }
+    }
+    return new Map(Array.from(byLabel, ([id, cos]) => [id, cos.sort().join(',')] as const));
+  };
+  const [buCompaniesCsv, deptCompaniesCsv, posCompaniesCsv, ccCompaniesCsv] = isAdmin
+    ? await Promise.all([
+        labelCompanyCsv('business_unit'),
+        labelCompanyCsv('department'),
+        labelCompanyCsv('position'),
+        labelCompanyCsv('cost_center'),
+      ])
+    : [new Map<string, string>(), new Map<string, string>(), new Map<string, string>(), new Map<string, string>()];
   // Server-rendered initial state of the hire form's org-picker cascade. The company <select> has no
   // placeholder, so the browser auto-selects companies[0]; HIRE_ORG_FILTER_SCRIPT then runs at parse
   // time (before hydration) and stamps hidden/disabled on every option the same hireOptionVisible
   // rule rejects. Rendering that SAME initial state here makes the script's first pass a no-op and
   // keeps server HTML identical to React's output — omit this and every non-companies[0] option
   // hydrates with a mismatch warning. BU dimension: the BU select defaults to '' (None), and '' as
-  // selectedBusinessUnit passes every department, so only the company rule bites initially.
-  const hireInitiallyHidden = (optCompany: string) =>
+  // selectedBusinessUnit passes every department, so only the company (CSV-membership) rule bites
+  // initially — which is why optBuCompanies can stay '' here without diverging from the script.
+  const hireInitiallyHidden = (optCompanies: string) =>
     !hireOptionVisible({
-      optCompany,
+      optCompanies,
       optBusinessUnit: null,
+      optBuCompanies: '',
       selectedCompany: defaultCompanyId ?? '',
       selectedBusinessUnit: '',
     });
@@ -299,53 +330,68 @@ export default async function PeoplePage({
                       className={inputCls}
                     >
                       <option value="">{t('businessUnitNone')}</option>
-                      {businessUnits.map((bu) => (
-                        <option
-                          key={bu.id}
-                          value={bu.id}
-                          data-company={bu.companyId}
-                          hidden={hireInitiallyHidden(bu.companyId)}
-                          disabled={hireInitiallyHidden(bu.companyId)}
-                        >
-                          {bu.code} — {bu.name}
-                        </option>
-                      ))}
+                      {businessUnits.map((bu) => {
+                        const csv = buCompaniesCsv.get(bu.id) ?? bu.companyId;
+                        return (
+                          <option
+                            key={bu.id}
+                            value={bu.id}
+                            data-companies={csv}
+                            hidden={hireInitiallyHidden(csv)}
+                            disabled={hireInitiallyHidden(csv)}
+                          >
+                            {bu.code} — {bu.name}
+                          </option>
+                        );
+                      })}
                     </select>
                   </Field>
                   <Field label={t('department')}>
-                    {/* Each department option carries its company id and its BU id (empty = unassigned).
-                        A tiny inline script narrows this list to the chosen Company's departments and,
-                        within that, to the chosen BU's; unassigned (NULL-BU) departments stay visible
-                        under every BU choice (the day-one common case). */}
-                    <select name="departmentId" id="hire-department" required className={inputCls}>
-                      {departments.map((d) => (
-                        <option
-                          key={d.id}
-                          value={d.id}
-                          data-company={d.companyId}
-                          data-business-unit={d.businessUnitId ?? ''}
-                          hidden={hireInitiallyHidden(d.companyId)}
-                          disabled={hireInitiallyHidden(d.companyId)}
-                        >
-                          {d.name}
-                        </option>
-                      ))}
+                    {/* Each department option carries the CSV of companies that may use it (resolver
+                        output) and its BU id (empty = unassigned). A tiny inline script narrows this
+                        list to the chosen Company's departments and, within that, to the chosen BU's;
+                        unassigned (NULL-BU) departments stay visible under every BU choice. The
+                        disabled '' placeholder is the self-heal target: switching Company CLEARS a
+                        stale pick back to this prompt (required still blocks submit until a real pick). */}
+                    <select name="departmentId" id="hire-department" required defaultValue="" className={inputCls}>
+                      <option value="" disabled>
+                        {t('departmentSelectPrompt')}
+                      </option>
+                      {departments.map((d) => {
+                        const csv = deptCompaniesCsv.get(d.id) ?? d.companyId;
+                        return (
+                          <option
+                            key={d.id}
+                            value={d.id}
+                            data-companies={csv}
+                            data-business-unit={d.businessUnitId ?? ''}
+                            data-bu-companies={d.businessUnitId ? (buCompaniesCsv.get(d.businessUnitId) ?? '') : ''}
+                            hidden={hireInitiallyHidden(csv)}
+                            disabled={hireInitiallyHidden(csv)}
+                          >
+                            {d.name}
+                          </option>
+                        );
+                      })}
                     </select>
                   </Field>
                   <Field label={t('position')}>
                     <select name="positionId" id="hire-position" className={inputCls}>
                       <option value="">{t('positionNone')}</option>
-                      {positions.map((pos) => (
-                        <option
-                          key={pos.id}
-                          value={pos.id}
-                          data-company={pos.companyId}
-                          hidden={hireInitiallyHidden(pos.companyId)}
-                          disabled={hireInitiallyHidden(pos.companyId)}
-                        >
-                          {pos.title}
-                        </option>
-                      ))}
+                      {positions.map((pos) => {
+                        const csv = posCompaniesCsv.get(pos.id) ?? pos.companyId;
+                        return (
+                          <option
+                            key={pos.id}
+                            value={pos.id}
+                            data-companies={csv}
+                            hidden={hireInitiallyHidden(csv)}
+                            disabled={hireInitiallyHidden(csv)}
+                          >
+                            {pos.title}
+                          </option>
+                        );
+                      })}
                     </select>
                   </Field>
                   <Field label={t('jobGrade')}>
@@ -372,17 +418,20 @@ export default async function PeoplePage({
                   <Field label={t('costCenter')}>
                     <select name="costCenterId" id="hire-cost-center" className={inputCls}>
                       <option value="">{t('costCenterNone')}</option>
-                      {costCenters.map((cc) => (
-                        <option
-                          key={cc.id}
-                          value={cc.id}
-                          data-company={cc.companyId}
-                          hidden={hireInitiallyHidden(cc.companyId)}
-                          disabled={hireInitiallyHidden(cc.companyId)}
-                        >
-                          {cc.code} — {cc.name}
-                        </option>
-                      ))}
+                      {costCenters.map((cc) => {
+                        const csv = ccCompaniesCsv.get(cc.id) ?? cc.companyId;
+                        return (
+                          <option
+                            key={cc.id}
+                            value={cc.id}
+                            data-companies={csv}
+                            hidden={hireInitiallyHidden(csv)}
+                            disabled={hireInitiallyHidden(csv)}
+                          >
+                            {cc.code} — {cc.name}
+                          </option>
+                        );
+                      })}
                     </select>
                   </Field>
                 </div>
@@ -441,10 +490,12 @@ export default async function PeoplePage({
               </div>
             </form>
             {/* Org-picker cascading filter (no React client island): the chosen Company narrows the
-                Business Unit / Department / Position / Cost Centre lists to that company's options, and
-                the chosen Business Unit further narrows Departments (unassigned, empty-BU departments
-                stay visible under every BU). Selections that become hidden self-heal — required selects
-                fall back to the first visible option, optional ones to their "None" placeholder. The
+                Business Unit / Department / Position / Cost Centre lists to the labels that company MAY
+                use (data-companies CSV — origin ∪ shared-in ∪ global per the System Labels resolver),
+                and the chosen Business Unit further narrows Departments (unassigned, empty-BU
+                departments stay visible under every BU). Selections that become hidden self-heal to
+                the '' placeholder — the Department prompt included, so a company switch CLEARS the
+                previous pick instead of silently auto-picking the first visible option. The
                 Reporting Manager (cross-company allowed by design, core/org.ts) and Job Grade
                 (tenant-wide) selects are deliberately NOT filtered. Pure DOM, server-rendered-safe;
                 visibility rule shared with test/hire-form-filter.test.ts via lib/hire-form-filter.ts.

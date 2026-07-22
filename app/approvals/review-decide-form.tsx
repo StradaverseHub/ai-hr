@@ -24,7 +24,14 @@ import {
   type ReviewDecision,
 } from './review-decide-fields';
 
-export function ReviewDecideForm({ reviewId }: { reviewId: string }) {
+export function ReviewDecideForm({
+  reviewId,
+  nav,
+}: {
+  reviewId: string;
+  /** Category-panel return params (2dec6406): posted so the action's redirect keeps the filtered view. */
+  nav?: { category: string; sort: string };
+}) {
   const t = useTranslations('review');
   const [decision, setDecision] = useState<ReviewDecision>('confirm');
   const fields = fieldsForDecision(decision);
@@ -32,6 +39,12 @@ export function ReviewDecideForm({ reviewId }: { reviewId: string }) {
   return (
     <form action={decideReviewAction} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="id" value={reviewId} />
+      {nav && (
+        <>
+          <input type="hidden" name="category" value={nav.category} />
+          <input type="hidden" name="sort" value={nav.sort} />
+        </>
+      )}
       <label className="text-xs text-muted-foreground">
         {t('decision.label')}
         <select

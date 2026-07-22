@@ -50,6 +50,16 @@ export function bulkRowKey(r: { type: BulkDecideType; id: string }): string {
   return `${r.type}:${r.id}`;
 }
 
+/**
+ * THE single Attendance-vs-Overtime split rule (feedback 2dec6406 — Approval category panel): an
+ * attendance-correction row that carries `requestedOtMinutes` is an OVERTIME request; otherwise it is a
+ * clock-time correction. The approvals page's bulkRows, the category module's row filter and the decided-
+ * count service all import THIS predicate, so the rule can never fork.
+ */
+export function isOvertimeCorrection(row: { requestedOtMinutes: number | null }): boolean {
+  return row.requestedOtMinutes != null;
+}
+
 /** By-type counts for a selection, in BULK_CATEGORY_ORDER, omitting empty buckets. */
 export function computeBulkBreakdown(rows: BulkRow[]): { category: BulkCategory; count: number }[] {
   const counts = new Map<BulkCategory, number>();

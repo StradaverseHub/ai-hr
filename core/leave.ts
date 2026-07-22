@@ -4461,7 +4461,13 @@ export type LeaveYearDeleteErrorCode =
   | 'leaveYearNotFound'
   | 'leaveYearNotDraft'
   | 'leaveYearHasLedger'
-  | 'leaveYearHasRequests';
+  | 'leaveYearHasRequests'
+  | 'leaveYearReasonsRequired';
+
+/** Feedback f1701466 — the allow-listed deletion-reason codes the two-step confirm dialog offers. Stored
+ *  verbatim (deduped) in the `leave-year.deleted` payload; `lib/audit-format.ts` maps them back to the
+ *  human labels for the audit tab + its exports. */
+const LEAVE_YEAR_DELETE_REASONS = new Set(['wrongly_created', 'duplicate']);
 
 /** R45 fd71fa38 — a typed error the delete-leave-year path throws when the guard blocks removal (year not
  *  draft, or leave records already reference it). Carries a stable `code` (dcd8e32f) so the action layer
@@ -4489,12 +4495,20 @@ export class LeaveYearDeleteError extends Error {
  * (0282 RESTRICTIVE FOR DELETE policy) — the 0190 FOR ALL policy's WITH CHECK never applied to DELETE, so
  * before 0282 any tenant member could remove a leave-year row. Guard 2 now ignores rejected / cancelled
  * requests: only genuinely-live (pending / approved) applications block deletion.
+ *
+ * Feedback f1701466: every delete now requires at least one allow-listed reason ('wrongly_created' /
+ * 'duplicate'), recorded (deduped) on the leave-year.deleted event. Validation runs LAST, after all the
+ * block guards — the guard ORDER is load-bearing: a genuinely blocked year must always report its true
+ * block message even on a forged/reason-less POST, and a stale blocked-rendered button that posts against
+ * a now-deletable year hits the reasons error instead of silently deleting. The UI's disabled Confirm
+ * button is not authority; the service is.
  */
-export async function deleteLeaveYear(ctx: SessionContext, p: { year: number }) {
+export async function deleteLeaveYear(ctx: SessionContext, p: { year: number; reasons: string[] }) {
   if (!isAdmin(ctx)) {
     throw new LeaveYearDeleteError('leaveYearNotAdmin', 'Only an admin can delete a leave year.');
   }
   if (!Number.isInteger(p.year)) throw new Error('Invalid leave year');
+  const reasons = Array.from(new Set(p.reasons));
   const yearStart = `${p.year}-01-01`;
   const yearEnd = `${p.year}-12-31`;
   return withTenant(ctx, async (tx) => {
@@ -4507,7 +4521,7 @@ export async function deleteLeaveYear(ctx: SessionContext, p: { year: number }) 
     if (before.status !== 'draft') {
       throw new LeaveYearDeleteError(
         'leaveYearNotDraft',
-        'This leave year cannot be deleted because it has been opened. Only a draft year can be removed.',
+        'This leave year cannot be deleted because it has been opened or closed. Only a draft year can be removed.',
       );
     }
     // Guard 1: any leave_ledger row dated inside the calendar year ⇒ entitlement/transactions exist.
@@ -4549,6 +4563,10 @@ export async function deleteLeaveYear(ctx: SessionContext, p: { year: number }) 
         'This leave year cannot be deleted because leave applications already reference it.',
       );
     }
+    // Reasons validation LAST (f1701466) — see the guard-order note in the doc comment above.
+    if (reasons.length === 0 || reasons.some((r) => !LEAVE_YEAR_DELETE_REASONS.has(r))) {
+      throw new LeaveYearDeleteError('leaveYearReasonsRequired', 'Select at least one deletion reason.');
+    }
 
     await tx
       .delete(leaveYearConfig)
@@ -4561,6 +4579,7 @@ export async function deleteLeaveYear(ctx: SessionContext, p: { year: number }) 
       actor: actorOf(ctx),
       payload: {
         year: p.year,
+        reasons,
         before: {
           status: before.status,
           openLeaveYearDate: before.openLeaveYearDate ?? null,

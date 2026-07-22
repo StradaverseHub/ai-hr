@@ -106,16 +106,17 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
     expect(leave, 'SYSTEM_SETTINGS_NODE sits before the /admin/leave row').toBeGreaterThan(nodeRef);
   });
 
-  // Generic invariant, not a one-off string: asserting only the new key would leave a fourth group
-  // free to reintroduce the same silent always-closed bug (a cookieKey written by the component but
-  // never SSR-read by the layout renders the group closed on first paint regardless of the cookie).
-  it('every collapsible cookieKey in sidebar.tsx has a matching SSR cookie read in app/layout.tsx', () => {
+  // fdc20776 (flyout redesign) removed per-group open/closed persistence entirely: panels are
+  // show-on-demand, so there are no cookieKeys in sidebar.tsx and no nav_*_open SSR cookie reads
+  // in app/layout.tsx any more. The former cookieKey↔layout-read invariant is therefore obsolete;
+  // this guard keeps the machinery from silently coming back half-wired (a reintroduced cookieKey
+  // with no SSR read was the original always-closed bug).
+  it('per-group nav cookies stay fully removed (no cookieKey without an SSR read coming back)', () => {
     const keys = [...SIDEBAR.matchAll(/cookieKey: '([^']+)'/g)].map((m) => m[1]);
-    expect(keys, 'the new nav_system_settings_open cookieKey exists').toContain('nav_system_settings_open');
     for (const key of keys) {
       expect(
         LAYOUT.includes(`cookieStore.get('${key}')`),
-        `app/layout.tsx SSR-reads the '${key}' cookie into openGroups`,
+        `app/layout.tsx SSR-reads the '${key}' cookie`,
       ).toBe(true);
     }
   });

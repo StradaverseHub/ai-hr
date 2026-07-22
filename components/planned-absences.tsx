@@ -11,7 +11,7 @@ import {
 import { Card } from '@/components/ui';
 import { type GridRow } from '@/components/planned-absences-grid';
 import { PlannedAbsencesPanel } from '@/components/planned-absences-panel';
-import { APPROVAL_SECTION_ID, focusForCalendarPill } from '@/lib/approvals-focus';
+import { buildApprovalAttentionHash, focusForCalendarPill } from '@/lib/approvals-focus';
 import type { CalendarView } from '@/lib/leave-calendar-range';
 
 type Leave = {
@@ -235,9 +235,16 @@ export async function PlannedAbsences({
         adminCancelEligible: adminCancelEligible(emp.id, l),
         // Edit/cancel-by-status (item c9a19e34): whether the viewer can self-withdraw THIS pending own pill.
         selfCancelEligible: selfCancelEligible(emp.id, l),
-        // 8cb7b089: hash deep-link into /approvals, built from the shared constant (never hand-rolled) so
+        // 8cb7b089: hash deep-link into /approvals, built from the shared builder (never hand-rolled) so
         // the drift test can hold the pill href and the page's section ids to the same source of truth.
-        approvalHref: approvalFocus ? `/approvals#${APPROVAL_SECTION_ID[approvalFocus]}` : null,
+        // a34eedde: the hash now also carries the exact row to flash on arrival — the pending
+        // CANCELLATION id when the focus is the Leave Cancellation section, else the leave id.
+        approvalHref: approvalFocus
+          ? `/approvals#${buildApprovalAttentionHash(
+              approvalFocus,
+              approvalFocus === 'leaveCancellation' ? l.pendingCancellationId : l.id,
+            )}`
+          : null,
       };
     }),
   }));

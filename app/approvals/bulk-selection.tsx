@@ -44,11 +44,14 @@ function useBulk(): Ctx {
 export function BulkSelectionProvider({
   rows,
   sort,
+  category,
   children,
 }: {
   rows: BulkRow[];
   /** Current ?sort= value — threaded into the bulk POST so the redirect preserves the chosen order. */
   sort?: string;
+  /** Current ?category= value (2dec6406) — threaded exactly like sort so the redirect keeps the filter. */
+  category?: string;
   children: React.ReactNode;
 }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -93,7 +96,7 @@ export function BulkSelectionProvider({
   return (
     <BulkCtx.Provider value={value}>
       {children}
-      <BulkActionBar sort={sort} />
+      <BulkActionBar sort={sort} category={category} />
     </BulkCtx.Provider>
   );
 }
@@ -186,7 +189,7 @@ const CATEGORY_LABEL_KEY: Record<BulkCategory, string> = {
 };
 
 /** Sticky bar + confirmation dialog. Rendered once by the provider; returns null when nothing is selected. */
-function BulkActionBar({ sort }: { sort?: string }) {
+function BulkActionBar({ sort, category }: { sort?: string; category?: string }) {
   const { selectedRows, clearAll } = useBulk();
   const t = useTranslations('approvals');
   const [decision, setDecision] = useState<'approved' | 'rejected' | null>(null);
@@ -288,6 +291,7 @@ function BulkActionBar({ sort }: { sort?: string }) {
                 <input type="hidden" name="decision" value={decision ?? 'approved'} />
                 <input type="hidden" name="rejectReason" value={reason} />
                 <input type="hidden" name="sort" value={sort ?? ''} />
+                <input type="hidden" name="category" value={category ?? ''} />
                 <Button type="submit" size="sm" disabled={missingReason}>
                   {t('bulkConfirm')}
                 </Button>

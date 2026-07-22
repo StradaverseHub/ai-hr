@@ -1,11 +1,14 @@
 /**
  * 311ad7ba — ESS "My Workspace" (/me) became a real tabbed page (Overview / Profile / Pay / Performance
- * / Documents / Leave) via the client-state `ClientTabs` shell, replacing the old anchor jump-nav. This
- * is a pure JSX relocation: every server-action <form> that worked on the long-scroll page must still be
- * bound after the move, the new Leave tab must be wired, the native GET reloads must carry a `tab` param
- * so a full-document round-trip lands back on the right tab, and the retired SectionJumpNav must be gone.
- * A source-static test (precedent: test/ea-pdf-i18n-keys.test.ts) is the cheapest guard against a future
- * refactor silently dropping one of these.
+ * / Documents) via the client-state `ClientTabs` shell, replacing the old anchor jump-nav. This is a
+ * pure JSX relocation: every server-action <form> that worked on the long-scroll page must still be
+ * bound after the move, the native GET reloads must carry a `tab` param so a full-document round-trip
+ * lands back on the right tab, and the retired SectionJumpNav must be gone. A source-static test
+ * (precedent: test/ea-pdf-i18n-keys.test.ts) is the cheapest guard against a future refactor silently
+ * dropping one of these.
+ *
+ * a7cbd895 (My Absence): the Leave tab moved wholesale to /leave — /me no longer wires a leave tab or
+ * binds the leave actions, and ?tab=leave redirects to /leave (guarded by test/my-absence-nav.test.ts).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -21,8 +24,9 @@ const ACTIONS = [
   'myRequestCorrection',
   'myRequestOvertime',
   'myRequestTravel',
-  'myRequestLeave',
-  'myPreviewLeaveDeduction',
+  // myRequestLeave / myPreviewLeaveDeduction left this list with the Leave tab (a7cbd895) — the apply
+  // capability lives on /leave (RequestLeaveDialog → requestLeaveAction), guarded by
+  // test/leave-request-relocation.test.ts.
   'myUpdateContact',
   'myRequestProfileChange',
   'myUpdateGoalProgress',
@@ -40,20 +44,19 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
     }
   });
 
-  it('wires all six tab keys including the new Leave tab', () => {
-    for (const key of ['overview', 'profile', 'pay', 'performance', 'documents', 'leave']) {
+  it('wires the five profile tab keys and no Leave tab (moved to /leave · a7cbd895)', () => {
+    for (const key of ['overview', 'profile', 'pay', 'performance', 'documents']) {
       expect(PAGE.includes(`key: '${key}'`), `missing tab key '${key}'`).toBe(true);
     }
-    // The Leave tab must actually render leave content (application form lives there now).
-    expect(PAGE.includes('leave: (')).toBe(true);
-    expect(PAGE.includes('action={myRequestLeave}')).toBe(true);
+    // The Leave tab is gone — leave self-service lives on /leave ("My Absence").
+    expect(PAGE.includes("key: 'leave'")).toBe(false);
+    expect(PAGE.includes('leave: (')).toBe(false);
+    expect(PAGE.includes('action={myRequestLeave}')).toBe(false);
   });
 
   it('deep-links reloads back to their tab (native GET forms carry ?tab=)', () => {
     // Payslip month/cycle selector — a GET <form> that reloads the whole document.
     expect(PAGE.includes('name="tab" value="pay"')).toBe(true);
-    // Leave entitlement as-at date form re-renders via the breakdown component with tab preserved.
-    expect(PAGE.includes("hiddenParams={{ tab: 'leave' }}")).toBe(true);
     // The server validates ?tab= and feeds it to the shell as defaultTab.
     expect(PAGE.includes('defaultTab={activeTab}')).toBe(true);
   });

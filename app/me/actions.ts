@@ -170,6 +170,8 @@ export async function myRequestLeave(formData: FormData) {
 // ADR-0065); a REJECTED request has no action. Every action resolves the caller's own employment server-side
 // (never a form field) — the same trust boundary as myRequestLeave — and the core service re-asserts
 // subject-only + status authoritatively, so a stale form can't act on someone else's or a non-pending row.
+// a7cbd895: the Leave tab moved from /me to /leave ("My Absence"), so these actions now land back on
+// /leave — the services they call are unchanged. (The old /me leave-tab address also redirects there.)
 
 /** Edit a PENDING own leave in place (stays pending). Mirrors myRequestLeave's field parsing; the service
  *  re-runs every validation gate against the new details. */
@@ -202,10 +204,10 @@ export async function myEditLeave(formData: FormData) {
       today: todayInKualaLumpur(),
     });
   } catch (e) {
-    redirect(`/me?tab=leave&error=${encodeURIComponent(await localizeLeaveError(e, selected?.name))}`);
+    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e, selected?.name))}`);
   }
-  revalidatePath('/me');
-  redirect('/me?tab=leave&toast=Leave+updated');
+  revalidatePath('/leave');
+  redirect('/leave?toast=leaveUpdated');
 }
 
 /** Withdraw a PENDING own leave immediately (→ cancelled). */
@@ -215,10 +217,10 @@ export async function myCancelLeave(formData: FormData) {
   try {
     await cancelOwnLeave(s, { leaveRequestId });
   } catch (e) {
-    redirect(`/me?tab=leave&error=${encodeURIComponent(await localizeLeaveError(e))}`);
+    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e))}`);
   }
-  revalidatePath('/me');
-  redirect('/me?tab=leave&toast=Leave+cancelled');
+  revalidatePath('/leave');
+  redirect('/leave?toast=leaveCancelled');
 }
 
 /** Request cancellation (give-back) of an APPROVED own leave — the manager-approved flow (Option A / ADR-0065).
@@ -231,11 +233,11 @@ export async function myRequestLeaveCancellation(formData: FormData) {
   try {
     await requestLeaveCancellation(s, { leaveRequestId, cancelDates, reason, today: todayInKualaLumpur() });
   } catch (e) {
-    redirect(`/me?tab=leave&error=${encodeURIComponent(await localizeLeaveError(e))}`);
+    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e))}`);
   }
-  revalidatePath('/me');
+  revalidatePath('/leave');
   revalidatePath('/approvals');
-  redirect('/me?tab=leave&toast=Cancellation+requested');
+  redirect('/leave?toast=cancellationRequested');
 }
 
 /** Supporting-document config: re-localize the structured service/validation errors into the viewer's

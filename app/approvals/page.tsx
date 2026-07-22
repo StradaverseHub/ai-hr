@@ -26,26 +26,49 @@ import { ReviewDecideForm } from './review-decide-form';
 import { LeaveDateBreakdown } from './leave-date-breakdown';
 import { ApprovalsSortControl } from './sort-control';
 import { AttentionOnArrival } from './attention-on-arrival';
+import { CategoryPanel } from './category-panel';
 import { parseApprovalSort, sortApprovalRows, type ApprovalSort } from '@/lib/approvals-sort';
-import { APPROVAL_SECTION_ID } from '@/lib/approvals-focus';
+import {
+  correctionsRowFilter,
+  parseApprovalCategory,
+  sectionVisible,
+  type ApprovalSection,
+} from '@/lib/approvals-categories';
+import { decidedStatusCounts } from '@/core/approvals-summary';
+import { APPROVAL_SECTION_ID, approvalRowDomId } from '@/lib/approvals-focus';
 import {
   BulkSelectionProvider,
   BulkSelectAllToggle,
   BulkSectionSelectAll,
   BulkRowCheckbox,
 } from './bulk-selection';
-import type { BulkRow, BulkCategory } from '@/lib/approvals-bulk';
+import { isOvertimeCorrection, type BulkRow, type BulkCategory } from '@/lib/approvals-bulk';
+
+/** Category-panel return params (2dec6406): every decide form carries the current category + sort so the
+ *  action's redirect lands back on the SAME filtered view (success and error paths alike). */
+type NavParams = { category: string; sort: string };
+
+function NavFields({ nav }: { nav: NavParams }) {
+  return (
+    <>
+      <input type="hidden" name="category" value={nav.category} />
+      <input type="hidden" name="sort" value={nav.sort} />
+    </>
+  );
+}
 
 function DecideButtons({
   action,
   id,
   disabled,
   labels,
+  nav,
 }: {
   action: (fd: FormData) => void | Promise<void>;
   id: string;
   disabled?: boolean;
   labels: { yourRequest: string; approve: string; reject: string };
+  nav: NavParams;
 }) {
   if (disabled) {
     return <span className="text-xs text-muted-foreground">{labels.yourRequest}</span>;
@@ -55,6 +78,7 @@ function DecideButtons({
       <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="decision" value="approved" />
+        <NavFields nav={nav} />
         <Button type="submit" size="sm">
           {labels.approve}
         </Button>
@@ -62,6 +86,7 @@ function DecideButtons({
       <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="decision" value="rejected" />
+        <NavFields nav={nav} />
         <Button type="submit" size="sm" variant="outline">
           {labels.reject}
         </Button>
@@ -78,16 +103,19 @@ function LeaveDecideButtons({
   action,
   id,
   labels,
+  nav,
 }: {
   action: (fd: FormData) => void | Promise<void>;
   id: string;
   labels: { approve: string; reject: string; rejectReason: string };
+  nav: NavParams;
 }) {
   return (
     <div className="flex flex-col items-end gap-2">
       <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="decision" value="approved" />
+        <NavFields nav={nav} />
         <Button type="submit" size="sm">
           {labels.approve}
         </Button>
@@ -95,6 +123,7 @@ function LeaveDecideButtons({
       <form action={action} className="flex flex-col items-end gap-1">
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="decision" value="rejected" />
+        <NavFields nav={nav} />
         <textarea
           name="rejectReason"
           required
@@ -116,16 +145,19 @@ function LeaveDecideButtons({
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; sort?: string }>;
+  searchParams: Promise<{ error?: string; sort?: string; category?: string }>;
 }) {
   const { s, scopeIds } = await scopedSession();
   const admin = isAdmin(s);
   const manager = (s.roles ?? []).includes('manager');
   if (!admin && !manager) redirect('/');
-  const { error, sort: sortParam } = await searchParams;
+  const { error, sort: sortParam, category: categoryParam } = await searchParams;
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
   // selection. Default (latest-first) matches every loader's existing desc(createdAt).
   const sort = parseApprovalSort(sortParam);
+  // Category panel (2dec6406): the selected approval area. Unknown values AND admin-only categories for a
+  // non-admin viewer coerce to 'all' (the full inbox — today's page, unchanged).
+  const category = parseApprovalCategory(categoryParam, { admin });
   const t = await getTranslations('approvals');
   const tLeave = await getTranslations('leave'); // Emergency Leave (0106) — group label for EL child rows
   const decideLabels = {
@@ -211,15 +243,36 @@ export default async function ApprovalsPage({
     kind === 'direct_manager' ? t('stageManager') : t('stageHr');
   // ADR-0069: travel can be self-filed, so self-exclude the viewer's own from the actionable count.
   const pendingTravel = travel.filter((tr) => !mine(tr.personId));
-  const total =
-    pendingLeave.length +
-    pendingCancellations.length +
-    corrections.length +
-    pendingTravel.length +
-    profileChanges.length +
-    claims.length +
-    resignations.length;
   const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
+
+  // Category panel (2dec6406) — ONE population per category, taken from the SAME in-memory lists the
+  // sections render (no SQL pending count anywhere), so panel badge = Pending card = section heading by
+  // construction. Attendance vs Overtime is a ROW split of the one corrections list via the shared
+  // isOvertimeCorrection predicate.
+  const pendingCounts = {
+    leave: pendingLeave.length,
+    leaveCancellation: pendingCancellations.length,
+    attendance: corrections.filter((c) => !isOvertimeCorrection(c)).length,
+    overtime: corrections.filter(isOvertimeCorrection).length,
+    claim: claims.length,
+    travel: pendingTravel.length,
+    profileChanges: profileChanges.length,
+    resignations: resignations.length,
+    managerReviews: managerReviews.length,
+    hrReviews: hrReviews.length,
+  };
+  // The All badge / unfiltered header total — now INCLUDING the two review queues, so header, All badge
+  // and the All Pending card are one number.
+  const allPending = Object.values(pendingCounts).reduce((a, b) => a + b, 0);
+
+  // Which sections render under the selected category; the corrections section additionally row-filters.
+  const visible = (section: ApprovalSection) => sectionVisible(category, section);
+  const rowFilter = correctionsRowFilter(category);
+
+  // The three DECIDED buckets for the summary cards (approved / rejected / cancelled). Pending never comes
+  // from SQL — it is the sum of the visible sections' in-memory counts below. null → the card shows a dash
+  // (categories without that state, and both review queues which decide confirm/extend instead).
+  const decided = await decidedStatusCounts(s, scopeIds, category);
 
   // Approvals sort (09cda965): order EACH per-type section's already-loaded rows in the render layer
   // (no loader ORDER BY rewrite). Sort is stable + keyed on request id, so counts/permissions/visible
@@ -235,32 +288,80 @@ export default async function ApprovalsPage({
   const sortedManagerReviews = sortApprovalRows(managerReviews, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
   const sortedHrReviews = sortApprovalRows(hrReviews, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
 
+  // Category panel (2dec6406): the corrections section is ONE shared Card, so attendance vs overtime is a
+  // ROW-level filter of its already-sorted rows. Its SectionHeader count reads the filtered array so the
+  // heading always equals the panel badge.
+  const visibleCorrections = sortedCorrections.filter(rowFilter);
+
+  // The header total = the sum of the VISIBLE sections' counts (the current view's pending workload). On
+  // the unfiltered view this equals allPending — header, All badge and All Pending card are one number.
+  const total =
+    (visible('leave') ? pendingLeave.length : 0) +
+    (visible('leaveCancellation') ? pendingCancellations.length : 0) +
+    (visible('claims') ? claims.length : 0) +
+    (visible('corrections') ? visibleCorrections.length : 0) +
+    (visible('travel') ? pendingTravel.length : 0) +
+    (visible('profileChanges') ? profileChanges.length : 0) +
+    (visible('resignations') ? resignations.length : 0) +
+    (visible('managerReviews') ? managerReviews.length : 0) +
+    (visible('hrReviews') ? hrReviews.length : 0);
+
+  // Return params every decide form posts back, so the redirect keeps the selected category + sort.
+  const nav: NavParams = { category: category === 'all' ? '' : category, sort: sortParam ?? '' };
+
   // Bulk approval (fb99474b): which pending rows are BULK-selectable. Exactly the rows that today show a
   // single one-click approve/reject — i.e. NOT the viewer's own request, NOT a leave step gated to an
   // admin the viewer isn't, and NOT a per-date leave request (that one needs the per-date modal). Reviews,
   // profile changes and resignations are out of v1 scope (richer per-item decide flows) — no checkbox. Every
   // id here is re-checked server-side through assertCanDecide, so this is the UI filter, not the guard.
+  // 2dec6406: rows come from the VISIBLE, row-FILTERED sections only — BulkSectionSelectAll keys off the
+  // provider rows by type, so a filtered select-all can never touch hidden rows of the other sub-type.
   const leaveBulkActionable = (r: (typeof sortedLeave)[number]) =>
     !mine(r.personId) &&
     !(r.currentStepKind && r.currentStepKind !== 'direct_manager' && !admin) &&
     (breakdowns.get(r.id)?.length ?? 0) === 0;
   const bulkRows: BulkRow[] = [
-    ...sortedLeave.filter(leaveBulkActionable).map((r) => ({ id: r.id, type: 'leave' as const, category: 'leave' as const })),
-    ...sortedCancellations.map((c) => ({ id: c.id, type: 'leaveCancellation' as const, category: 'leaveCancellation' as const })),
-    ...sortedClaims.filter((c) => !mine(c.personId)).map((c) => ({ id: c.id, type: 'claim' as const, category: 'claim' as const })),
-    ...sortedCorrections
-      .filter((c) => !mine(c.personId))
-      .map((c) => ({
-        id: c.id,
-        type: 'attendance' as const,
-        category: (c.requestedOtMinutes != null ? 'overtime' : 'attendance') as BulkCategory,
-      })),
-    ...sortedTravel.map((tr) => ({ id: tr.id, type: 'travel' as const, category: 'travel' as const })),
+    ...(visible('leave')
+      ? sortedLeave.filter(leaveBulkActionable).map((r) => ({ id: r.id, type: 'leave' as const, category: 'leave' as const }))
+      : []),
+    ...(visible('leaveCancellation')
+      ? sortedCancellations.map((c) => ({ id: c.id, type: 'leaveCancellation' as const, category: 'leaveCancellation' as const }))
+      : []),
+    ...(visible('claims')
+      ? sortedClaims.filter((c) => !mine(c.personId)).map((c) => ({ id: c.id, type: 'claim' as const, category: 'claim' as const }))
+      : []),
+    ...(visible('corrections')
+      ? visibleCorrections
+          .filter((c) => !mine(c.personId))
+          .map((c) => ({
+            id: c.id,
+            type: 'attendance' as const,
+            category: (isOvertimeCorrection(c) ? 'overtime' : 'attendance') as BulkCategory,
+          }))
+      : []),
+    ...(visible('travel')
+      ? sortedTravel.map((tr) => ({ id: tr.id, type: 'travel' as const, category: 'travel' as const }))
+      : []),
+  ];
+
+  // Summary card (2dec6406): dash for buckets the selected category does not have.
+  const bucket = (n: number | null) => (n == null ? '—' : n);
+  const summaryCards: { key: string; label: string; value: number | string }[] = [
+    { key: 'pending', label: t('summaryPending'), value: total },
+    { key: 'approved', label: t('summaryApproved'), value: bucket(decided.approved) },
+    { key: 'rejected', label: t('summaryRejected'), value: bucket(decided.rejected) },
+    { key: 'cancelled', label: t('summaryCancelled'), value: bucket(decided.cancelled) },
   ];
 
   return (
-    <BulkSelectionProvider rows={bulkRows} sort={sortParam ?? ''}>
-    <div className={`mx-auto max-w-5xl space-y-6${bulkRows.length > 0 ? ' pb-24' : ''}`}>
+    <BulkSelectionProvider rows={bulkRows} sort={sortParam ?? ''} category={nav.category}>
+    <div className={`mx-auto flex max-w-7xl flex-col gap-6 lg:flex-row lg:items-start${bulkRows.length > 0 ? ' pb-24' : ''}`}>
+      {/* 2dec6406: internal approval-task panel — INSIDE the page, between the main sidebar and the content.
+          Sticky + independently scrollable on lg; below lg the same markup stacks above the content. */}
+      <aside className="w-full shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:w-60 lg:overflow-y-auto">
+        <CategoryPanel category={category} sort={sortParam} counts={pendingCounts} allCount={allPending} admin={admin} />
+      </aside>
+    <div className="min-w-0 flex-1 space-y-6">
       {/* 8cb7b089: on arrival at /approvals#approvals-leave(-cancellation) — the calendar pill deep-links —
           scroll to, focus, and briefly highlight the target section. Renders nothing itself. */}
       <AttentionOnArrival />
@@ -280,9 +381,21 @@ export default async function ApprovalsPage({
       </div>
       <ErrorBanner message={error} />
 
+      {/* 2dec6406: the four summary cards — Pending from the same in-memory lists as the badges/headings;
+          Approved / Rejected / Cancelled from decidedStatusCounts, updating with the selected category. */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {summaryCards.map((c) => (
+          <Card key={c.key} className="p-5">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{c.label}</div>
+            <div className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{c.value}</div>
+          </Card>
+        ))}
+      </div>
+
       {/* 8cb7b089: stable section id (from the shared APPROVAL_SECTION_ID constant — the calendar pill href
           is built from the same source), scroll-mt for the floating shell, tabIndex so the arrival island
           can move focus here. data-tour stays — it drives the onboarding tour. */}
+      {visible('leave') && (
       <Card
         id={APPROVAL_SECTION_ID.leave}
         tabIndex={-1}
@@ -319,7 +432,9 @@ export default async function ApprovalsPage({
             </thead>
             <tbody className="divide-y divide-border">
               {sortedLeave.map((r) => (
-                <tr key={r.id}>
+                // a34eedde: stable per-row DOM id so the arrival island can flash the exact request
+                // a calendar pill deep-linked to (hash `approvals-leave--<id>`).
+                <tr key={r.id} id={approvalRowDomId(r.id)}>
                   <td className="px-4 py-2.5">{leaveBulkActionable(r) && <BulkRowCheckbox id={r.id} type="leave" />}</td>
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={r.employeeCode} />
@@ -421,11 +536,12 @@ export default async function ApprovalsPage({
                           locale={locale}
                           remark={r.employeeRemark || r.reason}
                           labels={dateBreakdownLabels}
+                          nav={nav}
                         />
                       </div>
                     ) : (
                       // Ordinary request (no per-date rows): one approve/reject control (reject requires a reason).
-                      <LeaveDecideButtons action={approveLeaveAction} id={r.id} labels={leaveDecideLabels} />
+                      <LeaveDecideButtons action={approveLeaveAction} id={r.id} labels={leaveDecideLabels} nav={nav} />
                     )}
                   </td>
                 </tr>
@@ -434,10 +550,12 @@ export default async function ApprovalsPage({
           </table>
         )}
       </Card>
+      )}
 
       {/* Partial Leave Cancellation (ADR-0065): pending employee requests to give back a subset of approved
           leave dates. Each card shows the ORIGINAL dates, the date(s) to cancel (highlighted), the remaining
           dates, days, and reason, with Approve/Reject. Self-requests are excluded above (self-approval ban). */}
+      {visible('leaveCancellation') && (
       <Card id={APPROVAL_SECTION_ID.leaveCancellation} tabIndex={-1} className="scroll-mt-24 overflow-hidden">
         <SectionHeader title={t('leaveCancellationTitle')} count={pendingCancellations.length} />
         {pendingCancellations.length === 0 ? (
@@ -461,7 +579,9 @@ export default async function ApprovalsPage({
             </thead>
             <tbody className="divide-y divide-border">
               {sortedCancellations.map((c) => (
-                <tr key={c.id}>
+                // a34eedde: same per-row DOM id convention for cancellation rows (hash
+                // `approvals-leave-cancellation--<cancellationId>`).
+                <tr key={c.id} id={approvalRowDomId(c.id)}>
                   <td className="px-4 py-2.5">
                     <BulkRowCheckbox id={c.id} type="leaveCancellation" />
                   </td>
@@ -491,7 +611,7 @@ export default async function ApprovalsPage({
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{Number(c.requestedDays)}</td>
                   <td className="px-4 py-2.5">
-                    <DecideButtons action={decideLeaveCancellationAction} id={c.id} labels={decideLabels} />
+                    <DecideButtons action={decideLeaveCancellationAction} id={c.id} labels={decideLabels} nav={nav} />
                   </td>
                 </tr>
               ))}
@@ -499,7 +619,9 @@ export default async function ApprovalsPage({
           </table>
         )}
       </Card>
+      )}
 
+      {visible('claims') && (
       <Card className="overflow-hidden">
         <SectionHeader title={t('claims')} count={claims.length} />
         {claims.length === 0 ? (
@@ -538,7 +660,7 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5 text-right tabular-nums">{rm(c.amount)}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.incurredOn}</td>
                   <td className="px-4 py-2.5">
-                    <DecideButtons action={approveClaimAction} id={c.id} disabled={mine(c.personId)} labels={decideLabels} />
+                    <DecideButtons action={approveClaimAction} id={c.id} disabled={mine(c.personId)} labels={decideLabels} nav={nav} />
                   </td>
                 </tr>
               ))}
@@ -546,10 +668,15 @@ export default async function ApprovalsPage({
           </table>
         )}
       </Card>
+      )}
 
+      {/* 2dec6406: ONE shared section for clock-time corrections AND overtime — the attendance / overtime
+          panel entries row-filter it (visibleCorrections), and the heading count reads the filtered array
+          so heading = badge. */}
+      {visible('corrections') && (
       <Card className="overflow-hidden" data-tour="approvals-corrections">
-        <SectionHeader title={t('attendanceCorrections')} count={corrections.length} />
-        {corrections.length === 0 ? (
+        <SectionHeader title={t('attendanceCorrections')} count={visibleCorrections.length} />
+        {visibleCorrections.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingCorrections')}</p>
         ) : (
           <table className="w-full text-sm">
@@ -567,7 +694,7 @@ export default async function ApprovalsPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {sortedCorrections.map((c) => (
+              {visibleCorrections.map((c) => (
                 <tr key={c.id}>
                   <td className="px-4 py-2.5">{!mine(c.personId) && <BulkRowCheckbox id={c.id} type="attendance" />}</td>
                   <td className="px-4 py-2.5">
@@ -590,6 +717,7 @@ export default async function ApprovalsPage({
                       id={c.id}
                       disabled={mine(c.personId)}
                       labels={decideLabels}
+                      nav={nav}
                     />
                   </td>
                 </tr>
@@ -598,8 +726,10 @@ export default async function ApprovalsPage({
           </table>
         )}
       </Card>
+      )}
 
       {/* ADR-0069 Travel Requests */}
+      {visible('travel') && (
       <Card className="overflow-hidden" data-tour="approvals-travel">
         <SectionHeader title={t('travelRequests')} count={pendingTravel.length} />
         {pendingTravel.length === 0 ? (
@@ -638,6 +768,7 @@ export default async function ApprovalsPage({
                       id={tr.id}
                       disabled={mine(tr.personId)}
                       labels={decideLabels}
+                      nav={nav}
                     />
                   </td>
                 </tr>
@@ -646,8 +777,9 @@ export default async function ApprovalsPage({
           </table>
         )}
       </Card>
+      )}
 
-      {admin && (
+      {admin && visible('profileChanges') && (
         <Card className="overflow-hidden">
           <SectionHeader title={t('profileChanges')} count={profileChanges.length} />
           {profileChanges.length === 0 ? (
@@ -673,6 +805,7 @@ export default async function ApprovalsPage({
                     id={r.id}
                     disabled={mine(r.personId)}
                     labels={decideLabels}
+                    nav={nav}
                   />
                 </li>
               ))}
@@ -681,7 +814,7 @@ export default async function ApprovalsPage({
         </Card>
       )}
 
-      {admin && (
+      {admin && visible('resignations') && (
         <Card className="overflow-hidden">
           <SectionHeader title={t('resignations')} count={resignations.length} />
           {resignations.length === 0 ? (
@@ -739,6 +872,7 @@ export default async function ApprovalsPage({
                         id={r.id}
                         disabled={mine(r.personId)}
                         labels={decideLabels}
+                        nav={nav}
                       />
                     </td>
                   </tr>
@@ -751,6 +885,7 @@ export default async function ApprovalsPage({
 
       {/* Employment review — manager stage (0110). Visible to the assigned Direct Manager (even without
           the `manager` platform role) and to admins. */}
+      {visible('managerReviews') && (
       <Card className="overflow-hidden">
         <SectionHeader title={tReview('managerStage')} count={managerReviews.length} />
         {managerReviews.length === 0 ? (
@@ -773,6 +908,7 @@ export default async function ApprovalsPage({
                 </div>
                 <form action={submitManagerEvaluationAction} className="flex flex-wrap items-end gap-2">
                   <input type="hidden" name="id" value={r.id} />
+                  <NavFields nav={nav} />
                   <label className="text-xs text-muted-foreground">
                     {tReview('recommendation.label')}
                     <select name="recommendation" required className={`${inputCls} mt-1`}>
@@ -791,9 +927,10 @@ export default async function ApprovalsPage({
           </ul>
         )}
       </Card>
+      )}
 
       {/* Employment review — HR decision stage (0110, admin-only). */}
-      {admin && (
+      {admin && visible('hrReviews') && (
         <Card className="overflow-hidden">
           <SectionHeader title={tReview('hrStage')} count={hrReviews.length} />
           {hrReviews.length === 0 ? (
@@ -822,13 +959,14 @@ export default async function ApprovalsPage({
                   )}
                   {/* R4 Build #4: progressive-disclosure HR-decision form — selecting Confirm / Extend /
                       Terminate reveals only that decision's fields. Advisory (records decision + letter). */}
-                  <ReviewDecideForm reviewId={r.id} />
+                  <ReviewDecideForm reviewId={r.id} nav={nav} />
                 </li>
               ))}
             </ul>
           )}
         </Card>
       )}
+    </div>
     </div>
     </BulkSelectionProvider>
   );

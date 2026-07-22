@@ -16,12 +16,29 @@ export type ReasonField = {
   required?: boolean;
 };
 
+/** Feedback f1701466 — opt-in two-step confirmation. Step 1 shows title/subtitle/description with
+ *  No / Yes; Yes ADVANCES to step 2 (it must never close the dialog), which shows `warning`, a mandatory
+ *  checkbox list under `reasonLegend`, and the final Confirm (disabled until ≥1 box is ticked). Each
+ *  checked value is mirrored as a hidden input `name` INSIDE the enclosing <form> (same Portal caveat as
+ *  `reasonField`), so the server action reads them via formData.getAll(name). */
+export type TwoStep = {
+  warning: string;
+  reasonLegend: string;
+  reasonOptions: { value: string; label: string }[];
+  name: string;
+  yesLabel: string;
+  noLabel: string;
+};
+
 type Props = {
   children: React.ReactNode;
   title?: string;
+  /** Optional line between title and description (e.g. "Leave Year 2027" — WHICH record is targeted). */
+  subtitle?: string;
   description?: string;
   confirmLabel?: string;
   reasonField?: ReasonField;
+  twoStep?: TwoStep;
 } & Omit<ButtonProps, 'type'>;
 
 /**
@@ -30,13 +47,18 @@ type Props = {
  *
  * Pass `reasonField` to collect a short free-text reason inside the dialog — the value posts under
  * `reasonField.name` via a hidden input kept in the form (the dialog content is portalled out of it).
+ *
+ * Pass `twoStep` for the Yes/No → reason-checkboxes → Confirm flow (f1701466). Backward-compatible:
+ * without it the dialog behaves exactly as before.
  */
 export function ConfirmSubmit({
   children,
   title,
+  subtitle,
   description,
   confirmLabel,
   reasonField,
+  twoStep,
   variant = 'destructive',
   ...props
 }: Props) {
@@ -45,12 +67,27 @@ export function ConfirmSubmit({
   const resolvedConfirmLabel = confirmLabel ?? t('confirm');
   const ref = React.useRef<HTMLButtonElement>(null);
   const [reason, setReason] = React.useState('');
-  const confirmDisabled = !!reasonField?.required && reason.trim().length === 0;
+  const [step, setStep] = React.useState<1 | 2>(1);
+  const [checked, setChecked] = React.useState<string[]>([]);
+  const onStep2 = !!twoStep && step === 2;
+  const confirmDisabled =
+    (!!reasonField?.required && reason.trim().length === 0) || (!!twoStep && checked.length === 0);
   return (
-    <AlertDialog.Root onOpenChange={(open) => { if (!open) setReason(''); }}>
-      {/* Hidden mirror lives inside the enclosing <form> (unlike the portalled textarea) so the reason
-          is included in the submitted FormData. */}
+    <AlertDialog.Root
+      onOpenChange={(open) => {
+        if (!open) {
+          setReason('');
+          setStep(1);
+          setChecked([]);
+        }
+      }}
+    >
+      {/* Hidden mirrors live inside the enclosing <form> (unlike the portalled dialog body) so the
+          reason text / checked reason codes are included in the submitted FormData. */}
       {reasonField ? <input type="hidden" name={reasonField.name} value={reason} /> : null}
+      {twoStep
+        ? checked.map((v) => <input key={v} type="hidden" name={twoStep.name} value={v} />)
+        : null}
       <AlertDialog.Trigger asChild>
         <Button ref={ref} type="button" variant={variant} {...props}>
           {children}
@@ -60,10 +97,36 @@ export function ConfirmSubmit({
         <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
         <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
           <AlertDialog.Title className="text-base font-semibold">{resolvedTitle}</AlertDialog.Title>
-          {description ? (
+          {subtitle ? <p className="mt-1 text-sm font-medium text-foreground">{subtitle}</p> : null}
+          {description && !onStep2 ? (
             <AlertDialog.Description className="mt-1.5 text-sm text-muted-foreground">
               {description}
             </AlertDialog.Description>
+          ) : null}
+          {onStep2 ? (
+            <>
+              <p className="mt-1.5 text-sm text-muted-foreground">{twoStep.warning}</p>
+              <fieldset className="mt-4">
+                <legend className="mb-1 block text-xs font-medium text-foreground">
+                  {twoStep.reasonLegend}
+                </legend>
+                {twoStep.reasonOptions.map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2 py-1 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      className="size-4 rounded"
+                      checked={checked.includes(opt.value)}
+                      onChange={(e) =>
+                        setChecked((prev) =>
+                          e.target.checked ? [...prev, opt.value] : prev.filter((v) => v !== opt.value),
+                        )
+                      }
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </fieldset>
+            </>
           ) : null}
           {reasonField ? (
             <label className="mt-4 block">
@@ -80,20 +143,28 @@ export function ConfirmSubmit({
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Cancel asChild>
               <Button type="button" variant="outline" size="sm">
-                {t('cancel')}
+                {twoStep && !onStep2 ? twoStep.noLabel : t('cancel')}
               </Button>
             </AlertDialog.Cancel>
-            <AlertDialog.Action asChild>
-              <Button
-                type="button"
-                variant={variant}
-                size="sm"
-                disabled={confirmDisabled}
-                onClick={() => ref.current?.closest('form')?.requestSubmit()}
-              >
-                {resolvedConfirmLabel}
+            {twoStep && !onStep2 ? (
+              /* Step-1 "Yes" ADVANCES the dialog — deliberately a plain Button, NOT AlertDialog.Action
+                 or Cancel (both close the dialog on click; known Radix footgun). */
+              <Button type="button" variant={variant} size="sm" onClick={() => setStep(2)}>
+                {twoStep.yesLabel}
               </Button>
-            </AlertDialog.Action>
+            ) : (
+              <AlertDialog.Action asChild>
+                <Button
+                  type="button"
+                  variant={variant}
+                  size="sm"
+                  disabled={confirmDisabled}
+                  onClick={() => ref.current?.closest('form')?.requestSubmit()}
+                >
+                  {resolvedConfirmLabel}
+                </Button>
+              </AlertDialog.Action>
+            )}
           </div>
         </AlertDialog.Content>
       </AlertDialog.Portal>

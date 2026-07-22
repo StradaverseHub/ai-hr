@@ -20,6 +20,7 @@ import { Button, Field, inputCls } from './ui';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { ChipMultiSelect } from './ui/chip-multi-select';
+import { LeaveTypeEntitlementTable, type LeaveTypeSchemeEntitlement } from './benefit-scheme-config';
 
 export type EntitlementPolicy = {
   id: string;
@@ -555,6 +556,7 @@ export function LeaveTypePanel({
   policies,
   grades,
   companies,
+  schemeEntitlements,
   updateTypeAction,
   archiveTypeAction,
   deleteTypeAction,
@@ -562,6 +564,7 @@ export function LeaveTypePanel({
   updatePolicyAction,
   deletePolicyAction,
   countInScopeAction,
+  upsertSchemeEntitlementAction,
 }: {
   id: string;
   name: string;
@@ -654,6 +657,10 @@ export function LeaveTypePanel({
   grades: GradeOption[];
   /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
   companies: CompanyOption[];
+  /** Restructure (123c1e76): THIS leave type's benefit-scheme entitlement rows (scheme name + service-tier
+   *  days + read-only combined-pool cap), rendered in the per-type Entitlement card. The SAME live rows the
+   *  shared Benefit Schemes table shows — filtered by leave type, never duplicated. */
+  schemeEntitlements: LeaveTypeSchemeEntitlement[];
   updateTypeAction: Action;
   archiveTypeAction: Action;
   deleteTypeAction: Action;
@@ -663,6 +670,9 @@ export function LeaveTypePanel({
   /** Feedback 9d8cf621: server action returning the count of active employees the selected
    *  companies/grades cover — drives the live "entitled employees" figure next to the chips. */
   countInScopeAction: (p: { companyIds: string[]; gradeIds: string[] }) => Promise<number>;
+  /** Restructure (123c1e76): the SAME upsertSchemeEntitlement action the Benefit Schemes table posts —
+   *  the per-type Entitlement card's Edit dialog writes through it, so nothing forks. */
+  upsertSchemeEntitlementAction: Action;
 }) {
   const t = useTranslations('admin.leave');
   // Leave Type Employee Visibility (7b11f1c1): statutory-entitlement codes can never have employee
@@ -717,10 +727,13 @@ export function LeaveTypePanel({
     return () => window.removeEventListener('hashchange', openIfTargeted);
   }, [id]);
 
-  // Collapsible category panels (f623d50a): each of the 7 category cards inside the expanded row is an
-  // independent accordion. Open/closed state is per-card client state, keyed by the leave-type id so two open
-  // rows don't share it. It is persisted to localStorage so it SURVIVES the stay-on-save redirect (b9dac2d1
-  // keystone re-mounts the panel on the entitlements tab) — the section HR was editing stays open after Save.
+  // Collapsible category panels (f623d50a → restructured by 123c1e76 into 5 cards: General / Eligibility /
+  // Entitlement / Condition / Custom): each category card inside the expanded row is an independent
+  // accordion. Open/closed state is per-card client state, keyed by the leave-type id so two open rows don't
+  // share it. It is persisted to localStorage so it SURVIVES the stay-on-save redirect (b9dac2d1 keystone
+  // re-mounts the panel on the entitlements tab) — the section HR was editing stays open after Save. The
+  // storage keys of the surviving cards ('general'/'eligibility'/'ess'/'custom') are deliberately UNCHANGED
+  // so admins' open-card state outlives the restructure; retired keys in old stored JSON are simply ignored.
   // Default = all collapsed for the compact view; hydrate from storage in an effect (client-only ⇒ no SSR
   // hydration mismatch; a brief closed→restored flash is acceptable).
   const [openCards, setOpenCards] = useState<Record<string, boolean>>({});
@@ -744,12 +757,12 @@ export function LeaveTypePanel({
     });
   // Active-section indicator (27136ea6): an OPEN card's header gets the accent wash + a bolder, slightly
   // indented title so HR can tell at a glance which section(s) they are editing — the treatment the sidebar's
-  // active nav item already uses (nav-collapsible-group.tsx). "Active" means EXPANDED: the seven cards are
+  // active nav item already uses (nav-collapsible-group.tsx). "Active" means EXPANDED: the five cards are
   // independent accordions by design, so several headers can be highlighted at once. Notes:
   //   - horizontal padding lives in each branch (pl-6 pr-4 vs px-4) — no tailwind-merge subtlety; pl-6 is what
   //     nudges the title right (the chevron stays pinned by justify-between).
   //   - [&_h3]:font-semibold bolds the CardTitle h3 from the button (specificity beats its own font-medium)
-  //     without touching the seven CardTitle anchors leave-type-config-categories.test.ts slices on.
+  //     without touching the five CardTitle anchors leave-type-config-categories.test.ts slices on.
   //   - rounded-t-[1.25rem] mirrors Card's rounded-[1.25rem]: Card has no overflow-hidden, so an opaque header
   //     background would otherwise paint square over the top corners.
   //   - hover:bg-accent/80 keeps a visible hover cue that an open header is still clickable to collapse.
@@ -1071,6 +1084,49 @@ export function LeaveTypePanel({
           {/* Leave Unit Configuration (e4980382) — the Day/Hour unit moved into the identity/rename form above
               (bd063176) so it sits beside Reason and saves in one action; the standalone always-on sub-form
               that lived here was removed. */}
+          {/* Partial Leave Approval (ADR-0068 · re-added ac6c2025 · moved into General Setting by 123c1e76 —
+              the Approval Rules card it was the sole occupant of is gone). Its own sub-form (own tri-state)
+              posts `partialApproval=1`, so a rename / eligibility / durations / document / payroll /
+              backdating edit that omits the marker leaves per_date_approval untouched. This is the HR-facing
+              enable switch for the per-date approval modal that is already live on the approvals inbox.
+              Backend wiring (app/admin/actions.ts touchPartial + core/admin.ts) is untouched by the move.
+              The feature only fires for FULL-DAY, WORKING-DAYS-counted, non-REPLACEMENT types in a company
+              whose leave approval chain is single-step; when the type can never satisfy that, we still let
+              the admin set the flag but show a greyed note explaining it won't apply (not a silent no-op). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('partialApprovalSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the per_date_approval column (tri-state guard) */}
+              <input type="hidden" name="partialApproval" value="1" />
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="perDateApproval"
+                  defaultChecked={perDateApproval}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('perDateApprovalLabel')}
+              </label>
+              {/* Greyed note: the type is structurally ineligible (REPLACEMENT or calendar-counted), so the
+                  flag has no effect even when set. Mirrors ADR-0068 §4C's gate rather than silently ignoring. */}
+              {(code === 'REPLACEMENT' || counting !== 'working_days') && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  {code === 'REPLACEMENT'
+                    ? t('perDateApprovalNoteReplacement')
+                    : t('perDateApprovalNoteCounting')}
+                </p>
+              )}
+              {/* Discoverability note (item 4): the load-bearing explanation of the multi-step interaction. */}
+              <p className="text-xs text-muted-foreground">{t('perDateApprovalMultiStepNote')}</p>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
+          </div>
             </CardContent>
             )}
           </Card>
@@ -1642,6 +1698,24 @@ export function LeaveTypePanel({
           </Card>
           <Card>
             <CardHeader className="p-0">
+              <button type="button" onClick={() => toggleCard('entitlement')} aria-expanded={!!openCards.entitlement} aria-controls={`cat-entitlement-${id}`} className={cardHeaderBtn(!!openCards.entitlement)}>
+                <CardTitle>{t('categoryEntitlement')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.entitlement && 'rotate-90')} />
+              </button>
+            </CardHeader>
+            {openCards.entitlement && (
+            <CardContent id={`cat-entitlement-${id}`} className="space-y-3">
+          {/* Restructure (123c1e76): the per-type Entitlement card — THIS leave type's benefit-scheme
+              entitlement table (the days each scheme grants per service tier), which previously appeared only
+              in the shared Benefit Schemes area. Read-and-edit over the SAME live rows via the SAME upsert
+              action (no duplication, nothing can drift); scheme-wide management — adding/removing rows,
+              copying between schemes, combined-limit grouping — stays in the Benefit Schemes section. */}
+          <LeaveTypeEntitlementTable ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction} />
+            </CardContent>
+            )}
+          </Card>
+          <Card>
+            <CardHeader className="p-0">
               <button type="button" onClick={() => toggleCard('ess')} aria-expanded={!!openCards.ess} aria-controls={`cat-ess-${id}`} className={cardHeaderBtn(!!openCards.ess)}>
                 <CardTitle>{t('categoryEssPolicy')}</CardTitle>
                 <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.ess && 'rotate-90')} />
@@ -1929,73 +2003,76 @@ export function LeaveTypePanel({
             </form>
             <p className="text-xs text-muted-foreground">{t('duplicatePolicyHelp')}</p>
           </div>
-            </CardContent>
-            )}
-          </Card>
-          <Card>
-            <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('approval')} aria-expanded={!!openCards.approval} aria-controls={`cat-approval-${id}`} className={cardHeaderBtn(!!openCards.approval)}>
-                <CardTitle>{t('categoryApproval')}</CardTitle>
-                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.approval && 'rotate-90')} />
-              </button>
-            </CardHeader>
-            {openCards.approval && (
-            <CardContent id={`cat-approval-${id}`} className="space-y-3">
-          {/* Partial Leave Approval (ADR-0068 · re-added ac6c2025). Its own sub-form (own tri-state) posts
-              `partialApproval=1`, so a rename / eligibility / durations / document / payroll / backdating edit
-              that omits the marker leaves per_date_approval untouched. This is the HR-facing enable switch for
-              the per-date approval modal that is already live on the approvals inbox — previously removable only
-              via seed data after feedback 9d8cf621 dropped this toggle. Backend wiring (app/admin/actions.ts
-              touchPartial + core/admin.ts) was left intact; this restores the surface that drives it.
-              The feature only fires for FULL-DAY, WORKING-DAYS-counted, non-REPLACEMENT types in a company whose
-              leave approval chain is single-step; when the type can never satisfy that, we still let the admin
-              set the flag but show a greyed note explaining it won't apply (rather than silently no-op). */}
+          {/* Day Type Inclusion (feedback ef6d7146 · moved into the Condition card by 123c1e76 — the Leave
+              Calculation Rules card it was the sole occupant of is gone). Five independent toggles deciding
+              which day types are counted when calculating a leave's duration. Its own self-contained <form> +
+              `dayTypeInclusion=1` tri-state marker so an unrelated save never resets it; the counting rules
+              themselves (core/leave.ts) are untouched by the move. */}
           <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('partialApprovalSectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the per_date_approval column (tri-state guard) */}
-              <input type="hidden" name="partialApproval" value="1" />
-              <label className="flex items-center gap-2 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  name="perDateApproval"
-                  defaultChecked={perDateApproval}
-                  className="size-3.5 rounded border-border"
-                />
-                {t('perDateApprovalLabel')}
-              </label>
-              {/* Greyed note: the type is structurally ineligible (REPLACEMENT or calendar-counted), so the
-                  flag has no effect even when set. Mirrors ADR-0068 §4C's gate rather than silently ignoring. */}
-              {(code === 'REPLACEMENT' || counting !== 'working_days') && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  {code === 'REPLACEMENT'
-                    ? t('perDateApprovalNoteReplacement')
-                    : t('perDateApprovalNoteCounting')}
-                </p>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-muted-foreground">{t('dayTypeInclusion.sectionTitle')}</span>
+              {!editingDayTypes && (
+                <Button type="button" size="sm" variant="ghost" onClick={() => setEditingDayTypes(true)}>
+                  {t('eligibilityEdit')}
+                </Button>
               )}
-              {/* Discoverability note (item 4): the load-bearing explanation of the multi-step interaction. */}
-              <p className="text-xs text-muted-foreground">{t('perDateApprovalMultiStepNote')}</p>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
+            </div>
+            {editingDayTypes ? (
+              <form
+                action={updateTypeAction}
+                className="space-y-2 rounded-lg bg-background p-3"
+                onSubmit={() => setEditingDayTypes(false)}
+              >
+                <input type="hidden" name="id" value={id} />
+                {/* preserve the name — this form does not edit it */}
+                <input type="hidden" name="name" value={name} />
+                {/* marker: tells the action to touch the day_type_inclusion column (tri-state guard) */}
+                <input type="hidden" name="dayTypeInclusion" value="1" />
+                <div className="flex flex-col gap-1.5">
+                  {DAY_TYPE_INCLUSION_OPTIONS.map((k) => (
+                    <label key={k} className="flex items-center gap-2 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        name={`dayType_${k}`}
+                        defaultChecked={dayTypeInclusion?.[k] === true}
+                        className="size-4 accent-primary"
+                      />
+                      {dayTypeLabel(k)}
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Button type="submit" size="sm">
+                    {t('save')}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setEditingDayTypes(false)}>
+                    {t('cancel')}
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="rounded-lg bg-background px-3 py-2 text-xs text-foreground">
+                {dayTypeInclusionSummary()}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.help')}</p>
+            <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.statutoryNote')}</p>
           </div>
             </CardContent>
             )}
           </Card>
           <Card>
             <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('display')} aria-expanded={!!openCards.display} aria-controls={`cat-display-${id}`} className={cardHeaderBtn(!!openCards.display)}>
-                <CardTitle>{t('categoryDisplay')}</CardTitle>
-                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.display && 'rotate-90')} />
+              <button type="button" onClick={() => toggleCard('custom')} aria-expanded={!!openCards.custom} aria-controls={`cat-custom-${id}`} className={cardHeaderBtn(!!openCards.custom)}>
+                <CardTitle>{t('categoryCustom')}</CardTitle>
+                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.custom && 'rotate-90')} />
               </button>
             </CardHeader>
-            {openCards.display && (
-            <CardContent id={`cat-display-${id}`} className="space-y-3">
+            {openCards.custom && (
+            <CardContent id={`cat-custom-${id}`} className="space-y-3">
+          {/* Restructure (123c1e76): the former "Leave Information Display" card's four sub-forms (ESS view
+              checklist, formula explanations, employee visibility, ESS placement) now live INSIDE the Custom
+              Settings card — every sub-form below is byte-identical, only the card wrapper changed. */}
           {/* Employee Leave View Configuration (65dec703 / dup 1fedb473). Its own self-contained sub-form
               (own tri-state) posts `essView=1` — a checklist of the breakdown components an employee sees in
               My Profile → Leave for THIS leave type. An unchecked box does not post; the action rebuilds the
@@ -2169,84 +2246,6 @@ export function LeaveTypePanel({
             </form>
             <p className="text-xs text-muted-foreground">{t('placement.help')}</p>
           </div>
-            </CardContent>
-            )}
-          </Card>
-          <Card>
-            <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('calculation')} aria-expanded={!!openCards.calculation} aria-controls={`cat-calculation-${id}`} className={cardHeaderBtn(!!openCards.calculation)}>
-                <CardTitle>{t('categoryCalculation')}</CardTitle>
-                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.calculation && 'rotate-90')} />
-              </button>
-            </CardHeader>
-            {openCards.calculation && (
-            <CardContent id={`cat-calculation-${id}`} className="space-y-3">
-          {/* Day Type Inclusion (feedback ef6d7146) — five independent toggles deciding which day types are
-              counted when calculating a leave's duration. Lives inside Eligibility Rules (reporter's request),
-              its own self-contained <form> + `dayTypeInclusion=1` tri-state marker so an unrelated save never
-              resets it. Simple toggle list — no matrix — matching the reporter's UX ask. */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-muted-foreground">{t('dayTypeInclusion.sectionTitle')}</span>
-              {!editingDayTypes && (
-                <Button type="button" size="sm" variant="ghost" onClick={() => setEditingDayTypes(true)}>
-                  {t('eligibilityEdit')}
-                </Button>
-              )}
-            </div>
-            {editingDayTypes ? (
-              <form
-                action={updateTypeAction}
-                className="space-y-2 rounded-lg bg-background p-3"
-                onSubmit={() => setEditingDayTypes(false)}
-              >
-                <input type="hidden" name="id" value={id} />
-                {/* preserve the name — this form does not edit it */}
-                <input type="hidden" name="name" value={name} />
-                {/* marker: tells the action to touch the day_type_inclusion column (tri-state guard) */}
-                <input type="hidden" name="dayTypeInclusion" value="1" />
-                <div className="flex flex-col gap-1.5">
-                  {DAY_TYPE_INCLUSION_OPTIONS.map((k) => (
-                    <label key={k} className="flex items-center gap-2 text-sm text-foreground">
-                      <input
-                        type="checkbox"
-                        name={`dayType_${k}`}
-                        defaultChecked={dayTypeInclusion?.[k] === true}
-                        className="size-4 accent-primary"
-                      />
-                      {dayTypeLabel(k)}
-                    </label>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <Button type="submit" size="sm">
-                    {t('save')}
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setEditingDayTypes(false)}>
-                    {t('cancel')}
-                  </Button>
-                </div>
-              </form>
-            ) : (
-              <div className="rounded-lg bg-background px-3 py-2 text-xs text-foreground">
-                {dayTypeInclusionSummary()}
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.help')}</p>
-            <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.statutoryNote')}</p>
-          </div>
-            </CardContent>
-            )}
-          </Card>
-          <Card>
-            <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('custom')} aria-expanded={!!openCards.custom} aria-controls={`cat-custom-${id}`} className={cardHeaderBtn(!!openCards.custom)}>
-                <CardTitle>{t('categoryCustom')}</CardTitle>
-                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.custom && 'rotate-90')} />
-              </button>
-            </CardHeader>
-            {openCards.custom && (
-            <CardContent id={`cat-custom-${id}`} className="space-y-3">
           {/* Feedback 9d8cf621 — custom apply-time message. Own sub-form + tri-state marker `applyNotice=1`.
               An "Enable custom message" checkbox reveals the textarea; unchecked ⇒ textarea hidden and an empty
               value posts ⇒ the applyNotice key clears (message disabled). Shown to employees on the apply form. */}

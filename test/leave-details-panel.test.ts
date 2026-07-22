@@ -240,7 +240,9 @@ describe('Leave Details panel: the inline expand became a Radix right side-sheet
 });
 
 describe('Leave Details panel: both call sites feed §1 summary / §5 upcoming / visual', () => {
-  const PAGES = ['/app/me/page.tsx', '/app/admin/personnel/[employmentId]/page.tsx'] as const;
+  // a7cbd895 (My Absence): the /me Leave tab (cards + secondary rows) moved to /leave, so the ESS call
+  // site is now app/leave/page.tsx; the admin personnel page is unchanged.
+  const PAGES = ['/app/leave/page.tsx', '/app/admin/personnel/[employmentId]/page.tsx'] as const;
   for (const p of PAGES) {
     const src = read(p);
     it(`${p} passes summary + upcoming + visual to EntitlementBreakdown`, () => {

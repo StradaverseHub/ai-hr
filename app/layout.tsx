@@ -26,8 +26,7 @@ import { demoSwitcherEnabled } from '@/lib/demo-mode';
 import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
-import { pendingApprovalsCount } from '@/core/approvals-inbox';
-import { NotificationBell } from '@/components/notification-bell';
+import { listPendingTasks } from '@/core/approvals-inbox';
 import { NotificationCenter } from '@/components/notification-center';
 import { CommandBar } from '@/components/command-bar';
 import { dispatchNotifications, listNotifications, unreadNotificationCount } from '@/core/notifications';
@@ -84,35 +83,38 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
   const cookieStore = await cookies();
   const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
-  // Per-group open state for collapsible nav sections (b3dc0f78); read SSR-side to avoid a flash.
-  const openGroups = {
-    nav_attendance_open: cookieStore.get('nav_attendance_open')?.value === '1',
-    nav_reports_open: cookieStore.get('nav_reports_open')?.value === '1',
-    nav_system_settings_open: cookieStore.get('nav_system_settings_open')?.value === '1',
-  };
+  // fdc20776: the per-group nav_*_open cookies are gone — flyout panels are show-on-demand, so
+  // there is no open/closed state to persist (stale cookies in existing browsers are unused and
+  // harmless). rail_collapsed handling is unchanged.
   const onboarded = await getOnboardingStatus(session);
   const tours = toursForRoles(session.roles);
-  // Notification bell shows the approvals queue — only managers/admins have one.
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
-  const pendingApprovals = canApprove ? await pendingApprovalsCount(session, scopeIds) : 0;
   // ADR-0034 34-3: when notifications are on, the bell shows the viewer's own notifications (everyone), not
   // just the approvals queue. Opportunistic catch-up — an admin loading any page dispatches the tenant's new
   // events (a cron is the production path, 34-4); non-admins can't dispatch (RLS), they read what exists.
   const notifEnabled = process.env.NOTIFICATIONS_ENABLED === 'true';
   if (notifEnabled && isAdmin(session)) await dispatchNotifications(session).catch(() => {});
-  const notifUnread = notifEnabled ? await unreadNotificationCount(session) : 0;
-  const notifItems = notifEnabled ? await listNotifications(session, undefined, { limit: 12 }) : [];
-  // Approval history tab (44a89810): recent team decisions for the bell's History tab. Fetched ONLY when
-  // the bell is on AND the viewer can approve — no dead query for regular employees or in flag-off mode.
-  const approvalHistory =
-    notifEnabled && canApprove
-      ? shapeApprovalHistoryItems(
-          await listApprovalHistory(session, {
-            from: new Date(Date.now() - 90 * 86400000).toISOString(),
-            limit: 10,
-          }),
-        )
-      : [];
+  // 3-tab bell (feedback 1514d366) — one notification framework for every role, role-scoped by the reads:
+  //   • Notification tab: unread informational (non-action) notifications + their unread badge.
+  //   • Task tab: the live approvals queue (listPendingTasks — replaces the retired count-only legacy
+  //     bell; self-short-circuits to [] for plain employees) + unread severity-'action' notifications.
+  //   • History tab: read notifications + recent approval decisions (canApprove only) — never counted.
+  const pendingTasks = await listPendingTasks(session, scopeIds);
+  const notifUnread = notifEnabled ? await unreadNotificationCount(session, undefined, { action: false }) : 0;
+  const taskNotifCount = notifEnabled ? await unreadNotificationCount(session, undefined, { action: true }) : 0;
+  const notifItems = notifEnabled ? await listNotifications(session, undefined, { limit: 12, read: false, action: false }) : [];
+  const taskNotifs = notifEnabled ? await listNotifications(session, undefined, { limit: 12, read: false, action: true }) : [];
+  const readNotifs = notifEnabled ? await listNotifications(session, undefined, { limit: 12, read: true }) : [];
+  // Approval history (44a89810): recent team decisions for the bell's History tab — canApprove only,
+  // no dead query for regular employees.
+  const approvalHistory = canApprove
+    ? shapeApprovalHistoryItems(
+        await listApprovalHistory(session, {
+          from: new Date(Date.now() - 90 * 86400000).toISOString(),
+          limit: 10,
+        }),
+      )
+    : [];
   return (
     <html
       lang={locale}
@@ -133,7 +135,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}
               defaultCollapsed={railCollapsed}
-              openGroups={openGroups}
             />
             <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">
               {/* Three-zone grid: equal minmax(0,1fr) side tracks keep the centre search geometrically
@@ -161,16 +162,19 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 <div className="flex min-w-0 items-center justify-end gap-2.5">
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
                   <div className="h-5 w-px bg-border" />
-                  {notifEnabled ? (
-                    <NotificationCenter
-                      unread={notifUnread}
-                      items={notifItems}
-                      history={approvalHistory}
-                      canApprove={canApprove}
-                    />
-                  ) : (
-                    canApprove && <NotificationBell count={pendingApprovals} />
-                  )}
+                  {/* 3-tab bell for EVERY role (1514d366). The legacy count-only bell is retired — the
+                      Task tab covers its purpose (and works even with NOTIFICATIONS_ENABLED off, where
+                      only the notification reads are dark). */}
+                  <NotificationCenter
+                    unread={notifUnread}
+                    items={notifItems}
+                    tasks={pendingTasks}
+                    taskNotifications={taskNotifs}
+                    taskCount={pendingTasks.length + taskNotifCount}
+                    readItems={readNotifs}
+                    history={approvalHistory}
+                    canApprove={canApprove}
+                  />
                   <span data-tour="language">
                     <LanguageSwitcher />
                   </span>

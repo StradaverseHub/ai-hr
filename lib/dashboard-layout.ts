@@ -86,47 +86,68 @@ export type DashboardCardChoice = {
 /** The persisted per-user layout: which cards are shown, and the full ordering of available cards. */
 export type DashboardLayout = { selected: string[]; order: string[] };
 
-// ───────────────────────── Two-dimensional widget grid (feedback dashgrid) ─────────────────────────
+// ───────────────────────── Two-dimensional widget grid (feedback dashgrid → 2806443b) ─────────────────────────
 //
-// v3 turns the single-column customiser into a 2-D grid: the employee's chosen cards flow into a
-// draggable FIRST ROW (`row1`) capped at MAX_FIRST_ROW columns, with a FIXED SECOND ROW (`row2`) that
-// pins the standard shortcut/action cards + Planned Absences so the everyday actions always have a home.
+// v3 turned the single-column customiser into a 2-D grid; feedback 2806443b reshapes it into THREE areas:
+// a draggable FIRST ROW (`row1`) of up to MAX_FIRST_ROW summary cards, a FIXED SECOND ROW (`row2`) that
+// holds ONLY the Leave Calendar (plannedAbsences) stretched full width, and a flexible THIRD AREA (`row3`)
+// below the calendar where every remaining selected card lands. Shortcut/action cards (incl. pendingTasks)
+// are no longer pinned — they are ordinary removable/arrangeable cards.
 //
-// Row membership is DERIVED from the live card config (card type + the plannedAbsences key), NOT persisted
-// — so the stored shape stays `{ selected, order }` and every existing saved layout keeps loading
-// unchanged (back-compat: a legacy layout simply partitions into the same two rows on read). The DESIGN
-// TENSION (pinning conflicts with these cards' removable/HR-configurable status) is resolved per the
-// reporter's option 1: while in the fixed row they are shown but not individually removed. Grey drop-zone
-// outlines + widget auto-resize are DEFERRED.
+// Row membership is DERIVED from FIXED_ROW_KEYS, NOT persisted — the stored shape stays `{ selected,
+// order }` and every existing saved layout keeps loading unchanged (back-compat: a legacy layout simply
+// partitions into the three areas on read). DESIGN DECISION: pinning (position) is deliberately NOT
+// derived from the `mandatory` flag — mandatory is per-tenant HR-editable policy governing REMOVABILITY,
+// and HR flagging a summary card mandatory must not yank it out of row 1 into the full-width row. If HR
+// unsets plannedAbsences' mandatory flag the card stays in the fixed row with no remove control, so
+// employees still cannot remove it in the UI — acceptable and intended. Grey drop-zone outlines + widget
+// auto-resize are DEFERRED.
 
-/** Maximum widgets across the draggable first row (the "top row"); extra selected cards wrap below it. */
+/** Maximum widgets across the draggable first row (the "top row"); extra selected cards land in row 3. */
 export const MAX_FIRST_ROW = 4;
 
-/** A layout split into the draggable first row and the fixed (pinned) second row. */
-export type DashboardRows = { row1: string[]; row2: string[] };
+/**
+ * The cardKeys pinned to the full-width fixed second row (feedback 2806443b): the Leave Calendar only.
+ * The single pin rule consumed by BOTH the employee customizer and the admin settings page — position is
+ * a product rule keyed on the cardKey; removability is the separate per-tenant `mandatory` flag.
+ */
+export const FIXED_ROW_KEYS = ['plannedAbsences'] as const;
+const FIXED_ROW = new Set<string>(FIXED_ROW_KEYS);
+
+/** Is `key` pinned to the full-width fixed second row? */
+export function isFixedRowKey(key: string): boolean {
+  return FIXED_ROW.has(key);
+}
+
+/** A layout split into the draggable first row, the fixed (pinned) second row, and the third area below. */
+export type DashboardRows = { row1: string[]; row2: string[]; row3: string[] };
 
 /**
- * Split a normalised layout's SELECTED cards into the draggable first-row grid (`row1`) and the fixed
- * second row (`row2`), preserving the layout's order. `pinned` names the cards that belong to the fixed
- * row (shortcut/action cards + Planned Absences); every other selected card falls into `row1`. Pure /
- * framework-free so both the server page and the client customize island can call it.
+ * Split a normalised layout's SELECTED cards three ways, preserving the layout's order: `row1` = the
+ * first MAX_FIRST_ROW non-pinned selected cards, `row2` = the pinned cards (`pinned` names them — the
+ * Leave Calendar per FIXED_ROW_KEYS), `row3` = every remaining non-pinned selected card, rendered below
+ * the calendar. Pure / framework-free so both the server page and the client customize island can call it.
  */
 export function partitionDashboardRows(layout: DashboardLayout, pinned: Iterable<string>): DashboardRows {
   const pinnedSet = new Set(pinned);
   const row1: string[] = [];
   const row2: string[] = [];
+  const row3: string[] = [];
   for (const key of layout.selected) {
-    (pinnedSet.has(key) ? row2 : row1).push(key);
+    if (pinnedSet.has(key)) row2.push(key);
+    else if (row1.length < MAX_FIRST_ROW) row1.push(key);
+    else row3.push(key);
   }
-  return { row1, row2 };
+  return { row1, row2, row3 };
 }
 
 /**
  * Built-in default card catalog — the flattened R39 set, used as a safe fallback when a tenant has NO
  * dashboard_card_config rows yet (e.g. a tenant provisioned after the 1586d2f5 seed migration ran). This
- * guarantees the employee dashboard never renders blank: without HR config it behaves exactly like the
- * pre-578a2fcf dashboard (all seven cards shown, freely reorderable, none mandatory). Mirrors the seed in
- * migration 0212. `name`/`cardType`/`href` are English defaults (card names are HR-authored master data,
+ * guarantees the employee dashboard never renders blank: without HR config all seven cards show, freely
+ * arrangeable except the Leave Calendar, which is mandatory + pinned full width (feedback 2806443b).
+ * Mirrors the seed in migration 0212 as amended by the 0296 data migration (plannedAbsences mandatory,
+ * upcomingEvents/recentlyJoined display-order swap). `name`/`cardType`/`href` are English defaults (card names are HR-authored master data,
  * single-language — like leave-type names — so they are not i18n message keys).
  */
 export type BuiltinDashboardCard = DashboardCardChoice & {
@@ -139,9 +160,12 @@ export const BUILTIN_DASHBOARD_CARDS: BuiltinDashboardCard[] = [
   { cardKey: 'leaveBalance', name: 'Leave Balance', cardType: 'information', href: '/leave', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 1 },
   { cardKey: 'nextHoliday', name: 'Upcoming Holidays', cardType: 'information', href: '#upcoming-events', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 2 },
   { cardKey: 'pendingTasks', name: 'Pending Tasks', cardType: 'action', href: '/me', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 3 },
-  { cardKey: 'plannedAbsences', name: 'Leave Calendar', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 4 },
-  { cardKey: 'recentlyJoined', name: 'Recently Joined', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 5 },
-  { cardKey: 'upcomingEvents', name: 'Upcoming Events', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 6 },
+  // 2806443b: the Leave Calendar is MANDATORY (employees cannot remove it) and pinned full width (FIXED_ROW_KEYS).
+  { cardKey: 'plannedAbsences', name: 'Leave Calendar', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: true, displayOrder: 4 },
+  // 2806443b: upcomingEvents (5) / recentlyJoined (6) swapped so the default row 1 is
+  // leaveBalance · nextHoliday · pendingTasks · upcomingEvents, with recentlyJoined below the calendar.
+  { cardKey: 'upcomingEvents', name: 'Upcoming Events', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 5 },
+  { cardKey: 'recentlyJoined', name: 'Recently Joined', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 6 },
   { cardKey: 'recentActivity', name: 'Recent Activity', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 7 },
 ];
 

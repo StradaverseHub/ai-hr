@@ -215,12 +215,24 @@ function truncate(s: string): string {
   return s.length > MAX_VALUE_LEN ? `${s.slice(0, MAX_VALUE_LEN - 1)}…` : s;
 }
 
+/** Feedback f1701466 — human labels for the leave-year deletion-reason codes recorded on the
+ *  `leave-year.deleted` payload, so the audit tab and its CSV/XLSX/PDF exports read "Wrongly Created"
+ *  instead of ["wrongly_created"]. English only, like the rest of audit formatting. Unknown codes pass
+ *  through raw. */
+const REASON_CODE_LABEL: Record<string, string> = {
+  wrongly_created: 'Wrongly Created',
+  duplicate: 'Duplicate Leave Year Configuration',
+};
+
 /** Render a payload value for the audit detail, masking sensitive fields. */
 export function maskValue(key: string, value: unknown): string {
   if (value == null) return '—';
   if (SENSITIVE.has(key)) {
     const s = String(value);
     return s.length > 4 ? `•••• ${s.slice(-4)}` : '••••';
+  }
+  if (key === 'reasons' && Array.isArray(value)) {
+    return truncate(value.map((v) => REASON_CODE_LABEL[String(v)] ?? String(v)).join(', '));
   }
   if (typeof value === 'object') return truncate(JSON.stringify(value));
   return truncate(String(value));

@@ -195,6 +195,26 @@ body {
   }
 }
 
+/* Row-level companion to .approvals-attention (a34eedde): when the calendar pill's hash also names a
+   row (#approvals-leave--<id>), the arrival island stamps this on the exact approval row so the eye
+   lands on the right REQUEST, not just the right section. Same reduce-motion convention as above: the
+   BASE signal is a STATIC tint — no animation — that survives the global reduce-motion reset for the
+   full window; the flash is layered sugar the reset collapses. Do NOT add rules for this inside
+   either reduce-motion block. */
+.approvals-row-attention {
+  background-color: color-mix(in srgb, var(--ring) 14%, transparent);
+  animation: approvals-row-attention-flash 1.5s ease-in-out 3;
+}
+@keyframes approvals-row-attention-flash {
+  0%,
+  100% {
+    background-color: color-mix(in srgb, var(--ring) 14%, transparent);
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--ring) 30%, transparent);
+  }
+}
+
 /* Clean print output for statutory documents (EA statement, etc.) — hide app
    chrome and flatten the floating shell so the full document prints. */
 @media print {

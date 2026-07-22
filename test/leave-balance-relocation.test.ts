@@ -46,9 +46,10 @@ describe('R37 e5a158d3: same source, scoped to the viewer (no data change)', () 
     // /leave uses the VIEWER's own employment — the self-service detailed view, not the admin pivot.
     expect(leavePage).toMatch(/leaveBalances\(session, me\.employmentId, locale\)/);
     expect(leavePage).toMatch(/leaveEntitlementBreakdown\(session, me\.employmentId, b\.leaveTypeId, breakdownAsOf, locale\)/);
-    // /me still reads the identical source for its (now summary-only) leave view.
-    expect(mePage).toMatch(/leaveBalances\(s, me\.employmentId, locale\)/);
-    expect(mePage).toMatch(/leaveEntitlementBreakdown\(s, me\.employmentId, b\.leaveTypeId, breakdownAsOf, locale\)/);
+    // a7cbd895 (My Absence): the ENTIRE /me Leave tab has since moved to /leave, so /me reads no leave
+    // sources at all anymore — the /leave reads above are now the single self-service source.
+    expect(mePage.includes('leaveBalances(')).toBe(false);
+    expect(mePage.includes('leaveEntitlementBreakdown(')).toBe(false);
   });
 
   it('drops the old all-employee pivot balance view (leaveBalancesAll) from /leave', () => {

@@ -62,6 +62,11 @@ export function OnboardingTour({
   useEffect(() => {
     if (!open || !step?.route) return;
     if (pathname !== step.route) router.push(step.route);
+    // 2dec6406: tour anchors live on the UNFILTERED page. If we're already on the route but with query
+    // params (e.g. /approvals?category=leave hides sections whose anchors a later step targets), reset to
+    // the bare route so every anchor exists. window.location is fine here — effects run client-side only,
+    // and reading it directly avoids a useSearchParams Suspense boundary in the layout.
+    else if (window.location.search) router.push(step.route);
   }, [open, step, pathname, router]);
 
   // Locate + measure the target, retrying so it survives a route change / async render.

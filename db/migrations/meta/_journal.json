@@ -1723,6 +1723,13 @@
       "when": 1781862395000,
       "tag": "0295_operator_console",
       "breakpoints": true
+    },
+    {
+      "idx": 296,
+      "version": "7",
+      "when": 1781862396000,
+      "tag": "0296_employee_dashboard_fixed_row",
+      "breakpoints": true
     }
   ]
 }
