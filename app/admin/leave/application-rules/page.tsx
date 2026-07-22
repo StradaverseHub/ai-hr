@@ -91,59 +91,68 @@ export default async function LeaveApplicationRulesPage({
                 <span className="w-14 text-sm font-semibold text-foreground">{cfg.year}</span>
                 <Badge variant={leaveYearStatusVariant(cfg.status)}>{t(`leaveYearStatus_${cfg.status}`)}</Badge>
               </div>
-              {/* Edit the two control dates (status unchanged here — the lifecycle action does that). */}
-              <form action={upsertLeaveYearConfigAction} className="flex flex-wrap items-end gap-2">
-                <input type="hidden" name="year" value={cfg.year} />
-                <Field label={t('openLeaveYearDateLabel')}>
-                  <input
-                    type="date"
-                    name="openLeaveYearDate"
-                    defaultValue={cfg.openLeaveYearDate ?? ''}
-                    className={`${inputCls} w-40`}
+              {/* Edit the two control dates (status unchanged here — the lifecycle action does that).
+                  Feedback 4f4d9cff — the row reads in the order HR works: dates, then "Advance Rules"
+                  right beside the Employee-application-start-date field, then (after the justify-between
+                  gap) Start / Edit / Delete. The Edit submit lives in the right-hand action group and
+                  posts this form via the `form` attribute (same pattern as app/admin/holidays/page.tsx),
+                  keyed by `ly-edit-<year>` — year is unique per tenant via listLeaveYearConfigs. */}
+              <div className="flex flex-wrap items-end gap-2">
+                <form
+                  id={`ly-edit-${cfg.year}`}
+                  action={upsertLeaveYearConfigAction}
+                  className="flex flex-wrap items-end gap-2"
+                >
+                  <input type="hidden" name="year" value={cfg.year} />
+                  <Field label={t('openLeaveYearDateLabel')}>
+                    <input
+                      type="date"
+                      name="openLeaveYearDate"
+                      defaultValue={cfg.openLeaveYearDate ?? ''}
+                      className={`${inputCls} w-40`}
+                    />
+                  </Field>
+                  <Field label={t('employeeApplicationStartDateLabel')}>
+                    <input
+                      type="date"
+                      name="employeeApplicationStartDate"
+                      defaultValue={cfg.employeeApplicationStartDate ?? ''}
+                      className={`${inputCls} w-40`}
+                    />
+                  </Field>
+                </form>
+                {cfg.status === 'draft' && (
+                  /* 37088a65 — per-row "Advance Rules" dialog (replaces the old shared bottom-of-page
+                     panel). Draft-only, matching the lifecycle Start button: an ungated trigger would let
+                     HR stamp open_leave_year_date onto an open/closed year. Rendered as a SIBLING of the
+                     row's date form — the trigger Button is type="button", so it can never submit a
+                     surrounding form. Feedback 4f4d9cff placed it here, immediately after the
+                     Employee-application-start-date field. */
+                  <LeaveYearRuleDialog
+                    year={cfg.year}
+                    current={{
+                      openingRuleEnabled: cfg.openingRuleEnabled,
+                      openBeforeAmount: cfg.openBeforeAmount,
+                      openBeforeUnit: cfg.openBeforeUnit,
+                      openLeaveYearDate: cfg.openLeaveYearDate,
+                    }}
+                    saveAction={saveFutureOpeningRuleAction}
                   />
-                </Field>
-                <Field label={t('employeeApplicationStartDateLabel')}>
-                  <input
-                    type="date"
-                    name="employeeApplicationStartDate"
-                    defaultValue={cfg.employeeApplicationStartDate ?? ''}
-                    className={`${inputCls} w-40`}
-                  />
-                </Field>
-                {/* dcd8e32f — the row save is a recognisable EDIT action (pencil + "Edit"), not a bare "Save". */}
-                <Button type="submit" variant="outline" size="sm" className="gap-1.5">
-                  <Pencil className="size-3.5" />
-                  {t('edit')}
-                </Button>
-              </form>
-              {/* Lifecycle action. Draft → Open runs the grant sweep; Open → Closed is an informational badge
-                  flip (v1); Closed → Draft reopens for corrections. */}
+                )}
+              </div>
+              {/* Action group, ordered per feedback 4f4d9cff: lifecycle (Start on a draft; Close / Reopen
+                  keep that slot on open / closed years), then Edit, then Delete last. Draft → Open runs
+                  the grant sweep; Open → Closed is an informational badge flip (v1); Closed → Draft
+                  reopens for corrections. */}
               <div className="flex items-end gap-2">
                 {cfg.status === 'draft' && (
-                  <>
-                    {/* 37088a65 — per-row "Advanced leave year rules" dialog (replaces the old shared
-                        bottom-of-page panel). Draft-only, matching the lifecycle Open button: an ungated
-                        trigger would let HR stamp open_leave_year_date onto an open/closed year. Rendered as
-                        a SIBLING of the row's date form — the trigger Button is type="button", so it can
-                        never submit a surrounding form. */}
-                    <LeaveYearRuleDialog
-                      year={cfg.year}
-                      current={{
-                        openingRuleEnabled: cfg.openingRuleEnabled,
-                        openBeforeAmount: cfg.openBeforeAmount,
-                        openBeforeUnit: cfg.openBeforeUnit,
-                        openLeaveYearDate: cfg.openLeaveYearDate,
-                      }}
-                      saveAction={saveFutureOpeningRuleAction}
-                    />
-                    <form action={setLeaveYearStatusAction}>
-                      <input type="hidden" name="year" value={cfg.year} />
-                      <input type="hidden" name="status" value="open" />
-                      <Button type="submit" size="sm">
-                        {t('openLeaveYear')}
-                      </Button>
-                    </form>
-                  </>
+                  <form action={setLeaveYearStatusAction}>
+                    <input type="hidden" name="year" value={cfg.year} />
+                    <input type="hidden" name="status" value="open" />
+                    <Button type="submit" size="sm">
+                      {t('openLeaveYear')}
+                    </Button>
+                  </form>
                 )}
                 {cfg.status === 'open' && (
                   <form action={setLeaveYearStatusAction}>
@@ -163,6 +172,13 @@ export default async function LeaveApplicationRulesPage({
                     </Button>
                   </form>
                 )}
+                {/* dcd8e32f — the row save is a recognisable EDIT action (pencil + "Edit"), not a bare
+                    "Save". Feedback 4f4d9cff moved it here (label unchanged): it submits the row's date
+                    form from outside it via the `form` attribute, sitting between Start and Delete. */}
+                <Button type="submit" form={`ly-edit-${cfg.year}`} variant="outline" size="sm" className="gap-1.5">
+                  <Pencil className="size-3.5" />
+                  {t('edit')}
+                </Button>
                 {/* R45 fd71fa38 — Delete. Enabled only for a DRAFT year with no leave records referencing it;
                     otherwise a disabled button with the reason as VISIBLE inline text (dcd8e32f — the old
                     title-attribute tooltip did not exist on touch devices and was never announced by screen
