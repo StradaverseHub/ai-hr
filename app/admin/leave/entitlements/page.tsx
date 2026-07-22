@@ -11,7 +11,7 @@ import {
   listSchemeEntitlements,
   listSchemeCombinedLimits,
 } from '@/core/benefit-scheme';
-import { BenefitSchemeConfig } from '@/components/benefit-scheme-config';
+import { BenefitSchemeConfig, type LeaveTypeSchemeEntitlement } from '@/components/benefit-scheme-config';
 import type { ServiceBand } from '@/core/leave-compute';
 import { entitlement } from '@/localization/my/leave';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
@@ -179,6 +179,37 @@ export default async function LeaveEntitlementsPage({
   }
   for (const arr of polByType.values()) arr.sort((a, b) => b.validFrom.localeCompare(a.validFrom));
 
+  // Restructure (123c1e76): per-type Entitlement card data — each leave type's benefit-scheme entitlement
+  // rows, joined with the owning scheme's name and (read-only) any combined-limit pool the type belongs to
+  // in that scheme. The SAME already-loaded rows the Benefit Schemes section renders below — filtered by
+  // leave type, never duplicated — and the panel's Edit dialog posts the SAME upsert action, so the two
+  // surfaces cannot drift.
+  const schemeNameById = new Map(benefitSchemes.map((sc) => [sc.id, sc.name]));
+  const poolBySchemeType = new Map<string, { name: string; totalLimitDays: number }>();
+  for (const cl of schemeCombinedLimits) {
+    for (const ltId of cl.leaveTypeIds) {
+      poolBySchemeType.set(`${cl.benefitSchemeId}:${ltId}`, { name: cl.name, totalLimitDays: cl.totalLimitDays });
+    }
+  }
+  const schemeEntsByType = new Map<string, LeaveTypeSchemeEntitlement[]>();
+  for (const e of schemeEntitlements) {
+    const pool = poolBySchemeType.get(`${e.benefitSchemeId}:${e.leaveTypeId}`) ?? null;
+    const row: LeaveTypeSchemeEntitlement = {
+      id: e.id,
+      benefitSchemeId: e.benefitSchemeId,
+      schemeName: schemeNameById.get(e.benefitSchemeId) ?? '—',
+      leaveTypeId: e.leaveTypeId,
+      leaveTypeName: e.leaveTypeName,
+      serviceBands: e.serviceBands,
+      poolName: pool?.name ?? null,
+      poolTotalLimitDays: pool?.totalLimitDays ?? null,
+    };
+    const arr = schemeEntsByType.get(e.leaveTypeId);
+    if (arr) arr.push(row);
+    else schemeEntsByType.set(e.leaveTypeId, [row]);
+  }
+  for (const arr of schemeEntsByType.values()) arr.sort((a, b) => a.schemeName.localeCompare(b.schemeName));
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
@@ -235,6 +266,7 @@ export default async function LeaveEntitlementsPage({
               policies={polByType.get(lt.id) ?? []}
               grades={gradeOptions}
               companies={companyOptions}
+              schemeEntitlements={schemeEntsByType.get(lt.id) ?? []}
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}
@@ -242,6 +274,7 @@ export default async function LeaveEntitlementsPage({
               updatePolicyAction={updateLeavePolicyAction}
               deletePolicyAction={deleteLeavePolicyAction}
               countInScopeAction={countEmployeesInScopeAction}
+              upsertSchemeEntitlementAction={upsertSchemeEntitlementAction}
             />
           ))}
         </ul>
