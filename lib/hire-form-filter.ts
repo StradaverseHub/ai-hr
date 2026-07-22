@@ -50,10 +50,10 @@ export interface HireOptionVisibleArgs {
 export function hireOptionVisible(args: HireOptionVisibleArgs): boolean {
   // Inlined csv-contains helper (the body must stay self-contained — it is serialised into the
   // page's inline script via Function.prototype.toString).
-  var csvHas = function (csv: string, id: string): boolean {
+  const csvHas = function (csv: string, id: string): boolean {
     if (!csv || !id) return false;
-    var parts = csv.split(',');
-    for (var i = 0; i < parts.length; i++) if (parts[i] === id) return true;
+    const parts = csv.split(',');
+    for (let i = 0; i < parts.length; i++) if (parts[i] === id) return true;
     return false;
   };
   // Placeholder options ("None"/"Select…" entries carry no data-companies) are always visible.
@@ -66,7 +66,7 @@ export function hireOptionVisible(args: HireOptionVisibleArgs): boolean {
   // whose BU stayed origin-only must not vanish once any BU is picked).
   if (args.optBusinessUnit === null) return true;
   if (!args.selectedBusinessUnit) return true;
-  var effectiveBu =
+  const effectiveBu =
     args.optBusinessUnit && csvHas(args.optBuCompanies, args.selectedCompany)
       ? args.optBusinessUnit
       : '';

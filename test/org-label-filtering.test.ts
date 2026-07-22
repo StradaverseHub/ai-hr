@@ -18,6 +18,8 @@
  * Conventions mirror test/shared-system-labels.test.ts (per-test seed via beforeEach).
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import { and, eq, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
@@ -218,8 +220,6 @@ describe('570e3311 — setEmploymentAssignment changed-only department / positio
  * unscoped read (or dropping a pin) fails here.
  */
 describe('570e3311 — employee detail page wiring pins', () => {
-  const fs = require('node:fs') as typeof import('node:fs');
-  const path = require('node:path') as typeof import('node:path');
   const PAGE = fs.readFileSync(
     path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
     'utf8',
