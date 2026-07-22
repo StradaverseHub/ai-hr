@@ -84,12 +84,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
   const cookieStore = await cookies();
   const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
-  // Per-group open state for collapsible nav sections (b3dc0f78); read SSR-side to avoid a flash.
-  const openGroups = {
-    nav_attendance_open: cookieStore.get('nav_attendance_open')?.value === '1',
-    nav_reports_open: cookieStore.get('nav_reports_open')?.value === '1',
-    nav_system_settings_open: cookieStore.get('nav_system_settings_open')?.value === '1',
-  };
+  // fdc20776: the per-group nav_*_open cookies are gone — flyout panels are show-on-demand, so
+  // there is no open/closed state to persist (stale cookies in existing browsers are unused and
+  // harmless). rail_collapsed handling is unchanged.
   const onboarded = await getOnboardingStatus(session);
   const tours = toursForRoles(session.roles);
   // Notification bell shows the approvals queue — only managers/admins have one.
@@ -133,7 +130,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}
               defaultCollapsed={railCollapsed}
-              openGroups={openGroups}
             />
             <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">
               {/* Three-zone grid: equal minmax(0,1fr) side tracks keep the centre search geometrically
