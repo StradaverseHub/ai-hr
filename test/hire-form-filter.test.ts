@@ -104,3 +104,35 @@ describe('HIRE_ORG_FILTER_SCRIPT — inline script embeds the tested rule', () =
     }
   });
 });
+
+/**
+ * Hydration parity (spawned from the 2026-07-22 hydration-mismatch report): HIRE_ORG_FILTER_SCRIPT
+ * runs at parse time — BEFORE React hydrates — and stamps hidden/disabled from the current company
+ * selection. The company select has no placeholder, so the browser auto-selects companies[0]; the
+ * page must therefore server-render that SAME initial state (via hireInitiallyHidden →
+ * hireOptionVisible) on every filtered option, or each non-companies[0] option hydrates with a
+ * mismatch warning. These assertions pin the parity wiring in the page source.
+ */
+describe('hire form — server-rendered initial visibility matches the inline script', () => {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const path = require('node:path') as typeof import('node:path');
+  const PAGE = fs.readFileSync(path.resolve(__dirname, '../app/admin/personnel/page.tsx'), 'utf8');
+
+  it('derives the initial state from the same pure rule the script embeds', () => {
+    expect(PAGE).toContain('hireOptionVisible');
+    expect(PAGE).toContain('const hireInitiallyHidden');
+    // Must key off the SAME company the browser auto-selects (companies[0], no placeholder).
+    expect(PAGE).toMatch(/selectedCompany:\s*defaultCompanyId \?\? ''/);
+  });
+
+  it('stamps hidden AND disabled on every company-filtered option (4 selects)', () => {
+    const stamps = PAGE.match(/hidden=\{hireInitiallyHidden\((\w+)\.companyId\)\}\s*\n\s*disabled=\{hireInitiallyHidden\(\1\.companyId\)\}/g);
+    expect(stamps).toHaveLength(4); // business unit, department, position, cost centre
+  });
+
+  it('the company select still has no placeholder (companies[0] IS the initial selection)', () => {
+    // If a placeholder option is ever added, the initial selectedCompany becomes '' and
+    // hireInitiallyHidden must be re-derived — this assertion forces that reconsideration.
+    expect(PAGE).toMatch(/<select name="companyId" id="hire-company" required/);
+  });
+});

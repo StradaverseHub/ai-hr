@@ -22,7 +22,7 @@ import {
   HireFormPanel,
   HireFormCancelButton,
 } from '@/components/hire-employee';
-import { HIRE_ORG_FILTER_SCRIPT } from '@/lib/hire-form-filter';
+import { HIRE_ORG_FILTER_SCRIPT, hireOptionVisible } from '@/lib/hire-form-filter';
 import { decideProfileChangeAction, hireAction } from './actions';
 
 /** Render a pay-affecting change bundle as human-readable "field → value" pairs. */
@@ -116,6 +116,20 @@ export default async function PeoplePage({
       : 3;
   const fullTimeProvisionalDefault =
     computeProvisionalEndOn(today, 'full_time', defaultProbationMonths) ?? today;
+  // Server-rendered initial state of the hire form's org-picker cascade. The company <select> has no
+  // placeholder, so the browser auto-selects companies[0]; HIRE_ORG_FILTER_SCRIPT then runs at parse
+  // time (before hydration) and stamps hidden/disabled on every option the same hireOptionVisible
+  // rule rejects. Rendering that SAME initial state here makes the script's first pass a no-op and
+  // keeps server HTML identical to React's output — omit this and every non-companies[0] option
+  // hydrates with a mismatch warning. BU dimension: the BU select defaults to '' (None), and '' as
+  // selectedBusinessUnit passes every department, so only the company rule bites initially.
+  const hireInitiallyHidden = (optCompany: string) =>
+    !hireOptionVisible({
+      optCompany,
+      optBusinessUnit: null,
+      selectedCompany: defaultCompanyId ?? '',
+      selectedBusinessUnit: '',
+    });
   const hasNext = (page + 1) * PAGE < total;
   const qs = (over: Record<string, string | number | undefined>) => {
     const merged: Record<string, string | number | undefined> = { q, company, dept, status, type, page: pageParam, ...over };
@@ -286,7 +300,13 @@ export default async function PeoplePage({
                     >
                       <option value="">{t('businessUnitNone')}</option>
                       {businessUnits.map((bu) => (
-                        <option key={bu.id} value={bu.id} data-company={bu.companyId}>
+                        <option
+                          key={bu.id}
+                          value={bu.id}
+                          data-company={bu.companyId}
+                          hidden={hireInitiallyHidden(bu.companyId)}
+                          disabled={hireInitiallyHidden(bu.companyId)}
+                        >
                           {bu.code} — {bu.name}
                         </option>
                       ))}
@@ -304,6 +324,8 @@ export default async function PeoplePage({
                           value={d.id}
                           data-company={d.companyId}
                           data-business-unit={d.businessUnitId ?? ''}
+                          hidden={hireInitiallyHidden(d.companyId)}
+                          disabled={hireInitiallyHidden(d.companyId)}
                         >
                           {d.name}
                         </option>
@@ -314,7 +336,13 @@ export default async function PeoplePage({
                     <select name="positionId" id="hire-position" className={inputCls}>
                       <option value="">{t('positionNone')}</option>
                       {positions.map((pos) => (
-                        <option key={pos.id} value={pos.id} data-company={pos.companyId}>
+                        <option
+                          key={pos.id}
+                          value={pos.id}
+                          data-company={pos.companyId}
+                          hidden={hireInitiallyHidden(pos.companyId)}
+                          disabled={hireInitiallyHidden(pos.companyId)}
+                        >
                           {pos.title}
                         </option>
                       ))}
@@ -345,7 +373,13 @@ export default async function PeoplePage({
                     <select name="costCenterId" id="hire-cost-center" className={inputCls}>
                       <option value="">{t('costCenterNone')}</option>
                       {costCenters.map((cc) => (
-                        <option key={cc.id} value={cc.id} data-company={cc.companyId}>
+                        <option
+                          key={cc.id}
+                          value={cc.id}
+                          data-company={cc.companyId}
+                          hidden={hireInitiallyHidden(cc.companyId)}
+                          disabled={hireInitiallyHidden(cc.companyId)}
+                        >
                           {cc.code} — {cc.name}
                         </option>
                       ))}
