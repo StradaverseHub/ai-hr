@@ -161,6 +161,16 @@ export default async function PeoplePage({
       selectedCompany: defaultCompanyId ?? '',
       selectedBusinessUnit: '',
     });
+  // Zero-visible-options empty state (feedback d61f0ff2): when the selected company may use NONE of a
+  // select's options, the inline script unhides that select's `<id>-empty` message ("No organization
+  // labels are configured for the selected company") instead of leaving an unexplained empty dropdown.
+  // Server-render the SAME initial state (default company = companies[0]) for hydration parity, exactly
+  // like the hidden/disabled option stamps above — the script's parse-time pass must be a no-op.
+  const buCsvs = businessUnits.map((bu) => buCompaniesCsv.get(bu.id) ?? bu.companyId);
+  const deptCsvs = departments.map((d) => deptCompaniesCsv.get(d.id) ?? d.companyId);
+  const posCsvs = positions.map((pos) => posCompaniesCsv.get(pos.id) ?? pos.companyId);
+  const ccCsvs = costCenters.map((cc) => ccCompaniesCsv.get(cc.id) ?? cc.companyId);
+  const hireInitiallyEmpty = (csvs: string[]) => csvs.every((csv) => hireInitiallyHidden(csv));
   const hasNext = (page + 1) * PAGE < total;
   const qs = (over: Record<string, string | number | undefined>) => {
     const merged: Record<string, string | number | undefined> = { q, company, dept, status, type, page: pageParam, ...over };
@@ -345,6 +355,13 @@ export default async function PeoplePage({
                         );
                       })}
                     </select>
+                    <p
+                      id="hire-business-unit-empty"
+                      hidden={!hireInitiallyEmpty(buCsvs)}
+                      className="mt-1 text-xs text-muted-foreground"
+                    >
+                      {t('orgLabelsEmptyForCompany')}
+                    </p>
                   </Field>
                   <Field label={t('department')}>
                     {/* Each department option carries the CSV of companies that may use it (resolver
@@ -374,6 +391,13 @@ export default async function PeoplePage({
                         );
                       })}
                     </select>
+                    <p
+                      id="hire-department-empty"
+                      hidden={!hireInitiallyEmpty(deptCsvs)}
+                      className="mt-1 text-xs text-muted-foreground"
+                    >
+                      {t('orgLabelsEmptyForCompany')}
+                    </p>
                   </Field>
                   <Field label={t('position')}>
                     <select name="positionId" id="hire-position" className={inputCls}>
@@ -393,6 +417,13 @@ export default async function PeoplePage({
                         );
                       })}
                     </select>
+                    <p
+                      id="hire-position-empty"
+                      hidden={!hireInitiallyEmpty(posCsvs)}
+                      className="mt-1 text-xs text-muted-foreground"
+                    >
+                      {t('orgLabelsEmptyForCompany')}
+                    </p>
                   </Field>
                   <Field label={t('jobGrade')}>
                     <select name="gradeId" className={inputCls}>
@@ -433,6 +464,13 @@ export default async function PeoplePage({
                         );
                       })}
                     </select>
+                    <p
+                      id="hire-cost-center-empty"
+                      hidden={!hireInitiallyEmpty(ccCsvs)}
+                      className="mt-1 text-xs text-muted-foreground"
+                    >
+                      {t('orgLabelsEmptyForCompany')}
+                    </p>
                   </Field>
                 </div>
               </fieldset>

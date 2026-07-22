@@ -101,13 +101,14 @@ describe('Shared System Labels — backfill + flag gating', () => {
     expect(companies).toContain(b.companyId);
   });
 
-  it('flag OFF ⇒ labelIdsForCompany is ORIGIN-ONLY even when the label is assigned into the company', async () => {
+  it('explicit OPT-OUT ⇒ labelIdsForCompany is ORIGIN-ONLY even when the label is assigned into the company', async () => {
     const a = adminCtx(b);
     const coB = await secondCompany();
     const { id } = await createDepartment(a, { companyId: b.companyId, name: 'Shared Dept' });
     await assignLabelToCompanies(a, { kind: 'department', labelId: id, companyIds: [coB] });
 
-    // coB has NOT opted in → the assigned label must NOT surface there (byte-identical to today).
+    // d61f0ff2: assigning auto-enabled coB's flag; the flag is now an explicit OPT-OUT. Opted out,
+    // the assigned label must NOT surface there (origin-only, byte-identical to the pre-share world).
     await setSharedFlag(coB, false);
     const idsOff = await labelIdsForCompany(a, 'department', coB);
     expect(idsOff).not.toContain(id);

@@ -12,6 +12,12 @@
  * what keeps Phase 2 shippable ahead of the Phase 4 grid UI: nothing changes for any consumer until the flag
  * is flipped per company.
  *
+ * d61f0ff2 UPDATE: the OFF-by-default flag silently swallowed Criteria assignments made while it was off
+ * (the reported empty-dropdown bug), so every Criteria write now AUTO-ENABLES the flag for its target
+ * companies in the same transaction (assignLabelToCompanies / setLabelGlobal — see autoEnableSharedLabels).
+ * The flag remains an explicit per-company OPT-OUT via the Sharing settings UI; migration 0298 backfills it
+ * ON for companies with pre-existing junction rows / global-label tenants.
+ *
  * SUBSTRATE: every write appends a DomainEvent (ADR-0006). These are company/tenant-level events with no
  * single employee subject, so subjectEmploymentId is left undefined (admin-only reads — correct, fail-closed).
  */
@@ -306,8 +312,47 @@ export function listLabelAssignments(ctx: SessionContext, kind: string): Promise
 }
 
 /**
+ * Auto-enable a company set's shared_system_labels flag (d61f0ff2). The resolver gates the junction +
+ * global branches behind the flag (OFF by default, 0157), so a Criteria assignment made while it was
+ * off used to be silently ignored — the reported empty-dropdown bug. Every Criteria write now enables
+ * the flag for its target companies IN THE SAME TRANSACTION; the flag itself stays as an explicit
+ * per-company OPT-OUT (System Labels → Sharing settings), so switching it off afterwards still returns
+ * that company to origin-only. Appends the same company event the manual toggle does (substrate),
+ * only for companies whose flag actually flipped.
+ */
+async function autoEnableSharedLabels(
+  tx: Tx,
+  ctx: SessionContext,
+  companyIds: string[] | null, // null = every company of the tenant (the global-label case)
+  via: string,
+): Promise<void> {
+  const conds = [eq(company.tenantId, ctx.tenantId), eq(company.sharedSystemLabels, false)];
+  if (companyIds) {
+    if (companyIds.length === 0) return;
+    conds.push(inArray(company.id, companyIds));
+  }
+  const enabled = await tx
+    .update(company)
+    .set({ sharedSystemLabels: true })
+    .where(and(...conds))
+    .returning({ id: company.id });
+  for (const c of enabled) {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: c.id,
+      eventType: 'company.shared-labels.enabled',
+      actor: actorOf(ctx),
+      payload: { enabled: true, auto: via },
+    });
+  }
+}
+
+/**
  * Assign a label to one or more companies (multi-company). Idempotent per company (ON CONFLICT DO NOTHING).
  * The label's origin company is always implicitly assigned; passing it again is a harmless no-op.
+ * d61f0ff2: auto-enables shared_system_labels for each target company (same transaction) so the
+ * assignment takes effect immediately — see autoEnableSharedLabels.
  */
 export function assignLabelToCompanies(
   ctx: SessionContext,
@@ -323,6 +368,7 @@ export function assignLabelToCompanies(
       .insert(labelCompanyAssignment)
       .values(companyIds.map((companyId) => ({ tenantId: ctx.tenantId, labelKind: kind, labelId: p.labelId, companyId })))
       .onConflictDoNothing();
+    await autoEnableSharedLabels(tx, ctx, companyIds, 'label-company-assignment');
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: aggForKind(kind),
@@ -420,6 +466,11 @@ export function setLabelGlobal(
       .update(table)
       .set({ isGlobal: p.isGlobal })
       .where(and(eq(table.tenantId, ctx.tenantId), eq(table.id, p.labelId)));
+    // d61f0ff2: "All Companies" is Criteria configuration too — making a label global auto-enables the
+    // sharing flag for every company of the tenant so the label actually surfaces everywhere it was
+    // promised to. Runs AFTER the is_global write so the group-admin trigger guard fires first (a
+    // rejected caller rolls the whole transaction back, flags included). Clearing global changes no flags.
+    if (p.isGlobal) await autoEnableSharedLabels(tx, ctx, null, 'label-global');
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: aggForKind(kind),
