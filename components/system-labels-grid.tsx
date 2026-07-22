@@ -17,7 +17,19 @@
 
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
-import { inputCls } from './ui';
+import { toast } from 'sonner';
+import {
+  ArchiveRestore,
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Filter,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { Button, ErrorBanner, StatusBadge, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from './ui';
 
 export type GridKind = 'department' | 'position' | 'cost_center' | 'business_unit';
 
@@ -173,7 +185,9 @@ export function SystemLabelsGrid({
   const [sortField, setSortField] = useState<keyof GridRecord | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [rowErrors, setRowErrors] = useState<Record<string, { field?: string; message: string }>>({});
-  const [banner, setBanner] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  // Split messaging (house pattern): errors stay persistent and in-page via the shared ErrorBanner until
+  // resolved; success confirmations are the transient corner toast (sonner), same as other admin screens.
+  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [newRowCompany, setNewRowCompany] = useState(companies[0]?.id ?? '');
   const [scopePopover, setScopePopover] = useState<string | null>(null);
@@ -220,11 +234,11 @@ export function SystemLabelsGrid({
   function discard() {
     patchRows(data[kind].map((r) => ({ ...r, key: r.id, isNew: false, dirty: false })));
     setRowErrors({});
-    setBanner(null);
+    setError(null);
   }
 
   function save() {
-    setBanner(null);
+    setError(null);
     const k = kind; // capture: the async result must reconcile the kind that was saved.
     const creates = drafts.map((r) => ({
       key: r.key,
@@ -279,12 +293,12 @@ export function SystemLabelsGrid({
             return updatedKeys.has(r.key) ? { ...r, dirty: false } : r;
           }),
         }));
-        setBanner({ kind: 'ok', text: t('saved', { created: res.created, updated: res.updated }) });
+        toast.success(t('saved', { created: res.created, updated: res.updated }));
       } else {
         const map: Record<string, { field?: string; message: string }> = {};
         for (const e of res.rowErrors) map[e.key] = { field: e.field, message: e.message };
         setRowErrors(map);
-        setBanner({ kind: 'err', text: res.message ?? t('saveFailed') });
+        setError(res.message ?? t('saveFailed'));
       }
     });
   }
@@ -293,8 +307,8 @@ export function SystemLabelsGrid({
   function runScope(fn: () => Promise<{ ok: true } | { ok: false; message: string }>) {
     startTransition(async () => {
       const r = await fn();
-      if (!r.ok) setBanner({ kind: 'err', text: r.message });
-      else setBanner(null);
+      if (!r.ok) setError(r.message);
+      else setError(null);
     });
   }
   // Patch a persisted row's fields WITHOUT marking it dirty — scope edits are already committed on the
@@ -309,10 +323,10 @@ export function SystemLabelsGrid({
     startTransition(async () => {
       const res = await actions.setGlobal(k, r.id, next);
       if (!res.ok) {
-        setBanner({ kind: 'err', text: res.message });
+        setError(res.message);
         return;
       }
-      setBanner(null);
+      setError(null);
       // Reflect the new scope locally so the Scope pill updates immediately (revalidatePath does not
       // re-seed the grid) and a later text-edit Save reads the correct isGlobal.
       patchRowClean(k, r.key, { isGlobal: next });
@@ -327,13 +341,13 @@ export function SystemLabelsGrid({
     startTransition(async () => {
       if (toAssign.length) {
         const a = await actions.assign(k, r.id, toAssign);
-        if (!a.ok) return setBanner({ kind: 'err', text: a.message });
+        if (!a.ok) return setError(a.message);
       }
       if (toRemove.length) {
         const u = await actions.unassign(k, r.id, toRemove);
-        if (!u.ok) return setBanner({ kind: 'err', text: u.message });
+        if (!u.ok) return setError(u.message);
       }
-      setBanner(null);
+      setError(null);
       setScopePopover(null);
       // Reflect the new company assignments locally so the Scope pill updates without a hard reload.
       patchRowClean(k, r.key, { assignedCompanyIds: nextIds });
@@ -438,7 +452,9 @@ export function SystemLabelsGrid({
     return c;
   }, [rowsByKind]);
 
-  const headerCls = 'cursor-pointer select-none px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground';
+  // House table header (theadCls carries the shared type/colour treatment); sortable columns add the
+  // pointer + hover affordance on top of the standard th padding.
+  const sortableThCls = `${thCls} cursor-pointer select-none hover:text-foreground`;
   const cellInput = `${inputCls} h-8`;
 
   return (
@@ -456,7 +472,7 @@ export function SystemLabelsGrid({
                     setKind(k);
                     setSelected(new Set());
                     setRowErrors({});
-                    setBanner(null);
+                    setError(null);
                   }}
                   className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
                     kind === k ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
@@ -513,10 +529,10 @@ export function SystemLabelsGrid({
                 : 'border-input hover:bg-accent hover:text-accent-foreground'
             }`}
           >
-            <span aria-hidden>⛃</span>
+            <Filter className="size-3.5" aria-hidden />
             {t('filter')}
             {activeFilterCount > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground tabular-nums">{activeFilterCount}</span>}
-            <span aria-hidden>{showFilters ? '▴' : '▾'}</span>
+            {showFilters ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
           </button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <select value={newRowCompany} onChange={(e) => setNewRowCompany(e.target.value)} className={`${inputCls} h-8 w-auto`} title={t('addToCompany')}>
@@ -526,22 +542,21 @@ export function SystemLabelsGrid({
                 </option>
               ))}
             </select>
-            <ToolbarButton onClick={addRow}>{t('addRow')}</ToolbarButton>
-            <ToolbarButton onClick={() => setCopyOpen((v) => !v)} disabled={selected.size === 0}>
+            <Button type="button" variant="outline" size="sm" onClick={addRow}>
+              {t('addRow')}
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setCopyOpen((v) => !v)} disabled={selected.size === 0}>
               {t('copyToCompaniesSelected')}
-            </ToolbarButton>
-            <ToolbarButton onClick={exportCsv}>{t('exportCsv')}</ToolbarButton>
-            <button
-              type="button"
-              onClick={save}
-              disabled={!hasChanges || pending}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-            >
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={exportCsv}>
+              {t('exportCsv')}
+            </Button>
+            <Button type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
               {t('saveAll')}
-            </button>
-            <ToolbarButton onClick={discard} disabled={!hasChanges || pending}>
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={discard} disabled={!hasChanges || pending}>
               {t('discard')}
-            </ToolbarButton>
+            </Button>
           </div>
         </div>
 
@@ -596,31 +611,26 @@ export function SystemLabelsGrid({
           />
         )}
 
-        {banner && (
-          <div
-            className={`rounded-lg px-3 py-2 text-sm ${
-              banner.kind === 'ok'
-                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                : 'bg-destructive/10 text-destructive'
-            }`}
-          >
-            {banner.text}
-          </div>
-        )}
+        {error && <ErrorBanner message={error} />}
         {hasChanges && <p className="text-xs text-amber-600 dark:text-amber-400">{t('unsavedChanges')}</p>}
 
         {/* 797e3523: responsive full-width grid — no forced min-width so it fits the container without
             excessive horizontal scrolling; long values wrap / tooltip instead. */}
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full border-collapse text-sm" onPaste={onGridPaste}>
-            <thead className="bg-muted/40">
+        <div className={tableWrapCls}>
+          <table className="w-full text-sm" onPaste={onGridPaste}>
+            <thead className={theadCls}>
               <tr>
-                <th className="w-8 px-2 py-1.5"></th>
+                <th className="w-8 px-2 py-2"></th>
                 {TEXT_COLS[kind].map((c) => (
-                  <th key={String(c.field)} className={headerCls} onClick={() => toggleSort(c.field)}>
+                  <th key={String(c.field)} className={sortableThCls} onClick={() => toggleSort(c.field)}>
                     {t(`col.${c.headerKey}`)}
                     {c.required ? ' *' : ''}
-                    {sortField === c.field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                    {sortField === c.field &&
+                      (sortDir === 'asc' ? (
+                        <ArrowUp className="ml-1 inline size-3.5" aria-hidden />
+                      ) : (
+                        <ArrowDown className="ml-1 inline size-3.5" aria-hidden />
+                      ))}
                   </th>
                 ))}
                 {/* 71bacb95: Business Unit column removed from the Department config — the BU link is now
@@ -628,13 +638,13 @@ export function SystemLabelsGrid({
                     department.businessUnitId column + its hire-form / payroll cascade are unchanged; the grid
                     simply re-sends each row's loaded value unedited (see save() below). */}
                 {/* 797e3523: Head column removed from the System Labels surface. */}
-                <th className="px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('col.scope')}</th>
-                <th className={headerCls} onClick={() => toggleSort('archived')}>{t('col.status')}</th>
+                <th className={thCls}>{t('col.scope')}</th>
+                <th className={sortableThCls} onClick={() => toggleSort('archived')}>{t('col.status')}</th>
                 {/* 797e3523: Last-updated column removed — history lives in the Audit Trail. */}
-                <th className="px-2 py-1.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('col.actions')}</th>
+                <th className={`${thCls} text-right`}>{t('col.actions')}</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className={tbodyCls}>
               {view.length === 0 && (
                 <tr>
                   <td colSpan={12} className="px-3 py-8 text-center text-sm text-muted-foreground">
@@ -645,8 +655,8 @@ export function SystemLabelsGrid({
               {view.map((r, rowIdx) => {
                 const err = rowErrors[r.key];
                 return (
-                  <tr key={r.key} className={`border-t border-border/60 ${r.archived ? 'opacity-50' : ''} ${err ? 'bg-destructive/5' : ''}`}>
-                    <td className="px-2 py-1 align-middle">
+                  <tr key={r.key} className={`${r.archived ? 'opacity-50' : ''} ${err ? 'bg-destructive/5' : ''}`}>
+                    <td className="px-2 py-1.5 align-middle">
                       <input
                         type="checkbox"
                         checked={selected.has(r.key)}
@@ -662,7 +672,7 @@ export function SystemLabelsGrid({
                       />
                     </td>
                     {TEXT_COLS[kind].map((c) => (
-                      <td key={String(c.field)} className="px-1.5 py-1">
+                      <td key={String(c.field)} className="px-3 py-1.5">
                         <input
                           data-cell={`${String(c.field)}:${rowIdx}`}
                           value={String(r[c.field] ?? '')}
@@ -678,7 +688,7 @@ export function SystemLabelsGrid({
                         carried on the row and re-sent unchanged by save(), so existing links are preserved. */}
                     {/* 797e3523: Head column removed from the System Labels surface. */}
                     {/* Criteria (scope) */}
-                    <td className="relative px-1.5 py-1">
+                    <td className="relative px-3 py-1.5">
                       {r.isNew ? (
                         <span className="text-xs text-muted-foreground">{t('saveFirst')}</span>
                       ) : (
@@ -690,7 +700,7 @@ export function SystemLabelsGrid({
                           }`}
                         >
                           {scopeLabel(r)}
-                          <span aria-hidden>▾</span>
+                          <ChevronDown className="size-3.5 shrink-0" aria-hidden />
                         </button>
                       )}
                       {scopePopover === r.key && !r.isNew && (
@@ -705,22 +715,28 @@ export function SystemLabelsGrid({
                         />
                       )}
                     </td>
-                    {/* Status */}
-                    <td className="px-1.5 py-1">
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${r.archived ? 'bg-muted text-muted-foreground' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>
-                        {r.archived ? t('statusArchived') : t('statusActive')}
-                      </span>
+                    {/* Status — the standard StatusBadge: `active` keys the emerald style, `archived`
+                        falls through to the neutral muted default. */}
+                    <td className="px-3 py-1.5">
+                      <StatusBadge
+                        status={r.archived ? 'archived' : 'active'}
+                        label={r.archived ? t('statusArchived') : t('statusActive')}
+                      />
                     </td>
                     {/* 797e3523: Last-updated cell removed — change history lives in the Audit Trail. */}
                     {/* Row actions */}
-                    <td className="px-1.5 py-1 text-right">
+                    <td className="px-3 py-1.5 text-right">
                       <div className="inline-flex gap-1">
-                        <RowIconButton title={t('duplicateRow')} onClick={() => duplicateRow(r)}>⧉</RowIconButton>
+                        <RowIconButton title={t('duplicateRow')} onClick={() => duplicateRow(r)}>
+                          <Copy className="size-3.5" aria-hidden />
+                        </RowIconButton>
                         {r.isNew ? (
-                          <RowIconButton title={t('deleteRow')} onClick={() => removeDraft(r.key)}>✕</RowIconButton>
+                          <RowIconButton title={t('deleteRow')} onClick={() => removeDraft(r.key)}>
+                            <X className="size-3.5" aria-hidden />
+                          </RowIconButton>
                         ) : (
                           <RowIconButton title={r.archived ? t('unarchive') : t('archive')} onClick={() => toggleArchive(r.key)} disabled={r.inUse && !r.archived}>
-                            {r.archived ? '↩' : '🗑'}
+                            {r.archived ? <ArchiveRestore className="size-3.5" aria-hidden /> : <Trash2 className="size-3.5" aria-hidden />}
                           </RowIconButton>
                         )}
                       </div>
@@ -737,19 +753,9 @@ export function SystemLabelsGrid({
   );
 }
 
-function ToolbarButton({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex h-8 items-center rounded-md border border-input px-3 text-sm font-medium transition hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
-    >
-      {children}
-    </button>
-  );
-}
-
+// Toolbar buttons use the shared <Button> primitive (variant outline / default, size sm). Row actions keep
+// this local size-7 icon button: Button's `size="icon"` is 36px (breaks the h-8 row rhythm) and its
+// disabled:pointer-events-none would suppress the explanatory title tooltip on the disabled archive case.
 function RowIconButton({ children, title, onClick, disabled }: { children: React.ReactNode; title: string; onClick: () => void; disabled?: boolean }) {
   return (
     <button

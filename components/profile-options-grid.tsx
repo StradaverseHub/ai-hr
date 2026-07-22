@@ -19,7 +19,9 @@
 
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
-import { inputCls } from './ui';
+import { toast } from 'sonner';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Trash2, X } from 'lucide-react';
+import { Button, ErrorBanner, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from './ui';
 import { ConfirmDialog } from './ui/confirm-submit';
 
 export type ProfileGridCategory = string;
@@ -93,7 +95,9 @@ export function ProfileOptionsGrid({
   const [sortField, setSortField] = useState<'value' | 'label' | 'description' | 'sortOrder' | 'isActive' | null>('sortOrder');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
-  const [banner, setBanner] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  // Split messaging (house pattern): errors stay persistent and in-page via the shared ErrorBanner until
+  // resolved; success confirmations are the transient corner toast (sonner), same as other admin screens.
+  const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<RowState | null>(null);
   const [pending, startTransition] = useTransition();
   const draftSeq = useRef(0);
@@ -142,7 +146,7 @@ export function ProfileOptionsGrid({
   function discard() {
     patchRows((data[category] ?? []).map(toRow));
     setRowErrors({});
-    setBanner(null);
+    setError(null);
   }
 
   function deleteExisting(row: RowState) {
@@ -152,15 +156,15 @@ export function ProfileOptionsGrid({
       if (res.ok) {
         // Drop it from BOTH the working set and the pristine baseline so a later Discard can't resurrect it.
         setRowsByCat((prev) => ({ ...prev, [category]: (prev[category] ?? []).filter((r) => r.key !== row.key) }));
-        setBanner(null);
+        setError(null);
       } else {
-        setBanner({ kind: 'err', text: res.message });
+        setError(res.message);
       }
     });
   }
 
   function save() {
-    setBanner(null);
+    setError(null);
     const cat = category;
     const creates = drafts.map((r) => ({
       key: r.key,
@@ -188,7 +192,7 @@ export function ProfileOptionsGrid({
     for (const u of updates) if (!u.label) localErrors[u.key] = t('labelRequired');
     if (Object.keys(localErrors).length > 0) {
       setRowErrors(localErrors);
-      setBanner({ kind: 'err', text: t('saveFailed') });
+      setError(t('saveFailed'));
       return;
     }
     const updatedKeys = new Set(updates.map((u) => u.key));
@@ -207,12 +211,12 @@ export function ProfileOptionsGrid({
             return updatedKeys.has(r.key) ? { ...r, dirty: false } : r;
           }),
         }));
-        setBanner({ kind: 'ok', text: t('saved', { created: res.created, updated: res.updated }) });
+        toast.success(t('saved', { created: res.created, updated: res.updated }));
       } else {
         const map: Record<string, string> = {};
         for (const e of res.rowErrors) map[e.key] = e.message;
         setRowErrors(map);
-        setBanner({ kind: 'err', text: res.message ?? t('saveFailed') });
+        setError(res.message ?? t('saveFailed'));
       }
     });
   }
@@ -265,9 +269,10 @@ export function ProfileOptionsGrid({
     return c;
   }, [rowsByCat, categories]);
 
-  const headerCls = 'cursor-pointer select-none px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground';
+  // House table header (theadCls carries the shared type/colour treatment); sortable columns add the
+  // pointer + hover affordance on top of the standard th padding.
+  const sortableThCls = `${thCls} cursor-pointer select-none hover:text-foreground`;
   const cellInput = `${inputCls} h-8`;
-  const sortMark = (f: typeof sortField) => (sortField === f ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
@@ -283,7 +288,7 @@ export function ProfileOptionsGrid({
                   onClick={() => {
                     setCategory(k);
                     setRowErrors({});
-                    setBanner(null);
+                    setError(null);
                   }}
                   className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
                     category === k ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
@@ -316,21 +321,18 @@ export function ProfileOptionsGrid({
             {activeFilterCount > 0 && (
               <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground tabular-nums">{activeFilterCount}</span>
             )}
-            <span aria-hidden>{showFilters ? '▴' : '▾'}</span>
+            {showFilters ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
           </button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <ToolbarButton onClick={addRow}>{t('addRow')}</ToolbarButton>
-            <button
-              type="button"
-              onClick={save}
-              disabled={!hasChanges || pending}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-            >
+            <Button type="button" variant="outline" size="sm" onClick={addRow}>
+              {t('addRow')}
+            </Button>
+            <Button type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
               {t('saveAll')}
-            </button>
-            <ToolbarButton onClick={discard} disabled={!hasChanges || pending}>
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={discard} disabled={!hasChanges || pending}>
               {t('discard')}
-            </ToolbarButton>
+            </Button>
           </div>
         </div>
 
@@ -362,44 +364,44 @@ export function ProfileOptionsGrid({
           </div>
         )}
 
-        {banner && (
-          <div
-            className={`rounded-lg px-3 py-2 text-sm ${
-              banner.kind === 'ok' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-destructive/10 text-destructive'
-            }`}
-          >
-            {banner.text}
-          </div>
-        )}
+        {error && <ErrorBanner message={error} />}
         {hasChanges && <p className="text-xs text-amber-600 dark:text-amber-400">{t('unsavedChanges')}</p>}
 
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full border-collapse text-sm">
-            <thead className="sticky top-0 z-10 bg-muted/40 backdrop-blur">
+        <div className={tableWrapCls}>
+          <table className="w-full text-sm">
+            {/* Sticky header keeps backdrop-blur on top of the shared thead colours — theadCls's 50%-alpha
+                background alone would let scrolled rows bleed through, worst in dark mode. */}
+            <thead className={`${theadCls} sticky top-0 z-10 backdrop-blur`}>
               <tr>
-                <th className={headerCls} onClick={() => toggleSort('value')}>
+                <th className={sortableThCls} onClick={() => toggleSort('value')}>
                   {t('col.code')}
-                  {sortMark('value')}
+                  {sortField === 'value' &&
+                    (sortDir === 'asc' ? <ArrowUp className="ml-1 inline size-3.5" aria-hidden /> : <ArrowDown className="ml-1 inline size-3.5" aria-hidden />)}
                 </th>
-                <th className={headerCls} onClick={() => toggleSort('label')}>
-                  {t('col.label')} *{sortMark('label')}
+                <th className={sortableThCls} onClick={() => toggleSort('label')}>
+                  {t('col.label')} *
+                  {sortField === 'label' &&
+                    (sortDir === 'asc' ? <ArrowUp className="ml-1 inline size-3.5" aria-hidden /> : <ArrowDown className="ml-1 inline size-3.5" aria-hidden />)}
                 </th>
-                <th className={headerCls} onClick={() => toggleSort('description')}>
+                <th className={sortableThCls} onClick={() => toggleSort('description')}>
                   {t('col.description')}
-                  {sortMark('description')}
+                  {sortField === 'description' &&
+                    (sortDir === 'asc' ? <ArrowUp className="ml-1 inline size-3.5" aria-hidden /> : <ArrowDown className="ml-1 inline size-3.5" aria-hidden />)}
                 </th>
-                <th className={`${headerCls} w-20`} onClick={() => toggleSort('sortOrder')}>
+                <th className={`${sortableThCls} w-20`} onClick={() => toggleSort('sortOrder')}>
                   {t('sortOrderLabel')}
-                  {sortMark('sortOrder')}
+                  {sortField === 'sortOrder' &&
+                    (sortDir === 'asc' ? <ArrowUp className="ml-1 inline size-3.5" aria-hidden /> : <ArrowDown className="ml-1 inline size-3.5" aria-hidden />)}
                 </th>
-                <th className={headerCls} onClick={() => toggleSort('isActive')}>
+                <th className={sortableThCls} onClick={() => toggleSort('isActive')}>
                   {t('col.status')}
-                  {sortMark('isActive')}
+                  {sortField === 'isActive' &&
+                    (sortDir === 'asc' ? <ArrowUp className="ml-1 inline size-3.5" aria-hidden /> : <ArrowDown className="ml-1 inline size-3.5" aria-hidden />)}
                 </th>
-                <th className="px-2 py-1.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('col.action')}</th>
+                <th className={`${thCls} text-right`}>{t('col.action')}</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className={tbodyCls}>
               {view.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">
@@ -410,9 +412,9 @@ export function ProfileOptionsGrid({
               {view.map((r, rowIdx) => {
                 const err = rowErrors[r.key];
                 return (
-                  <tr key={r.key} className={`border-t border-border/60 ${r.isActive ? '' : 'opacity-60'} ${err ? 'bg-destructive/5' : ''}`}>
+                  <tr key={r.key} className={`${r.isActive ? '' : 'opacity-60'} ${err ? 'bg-destructive/5' : ''}`}>
                     {/* Code = immutable value; editable only while the row is a new draft. */}
-                    <td className="px-1.5 py-1">
+                    <td className="px-3 py-1.5">
                       {r.isNew ? (
                         <input
                           data-cell={`value:${rowIdx}`}
@@ -428,7 +430,7 @@ export function ProfileOptionsGrid({
                         </span>
                       )}
                     </td>
-                    <td className="px-1.5 py-1">
+                    <td className="px-3 py-1.5">
                       <input
                         data-cell={`label:${rowIdx}`}
                         value={r.label}
@@ -438,7 +440,7 @@ export function ProfileOptionsGrid({
                         className={`${cellInput} w-full min-w-0 ${err ? 'border-destructive' : ''}`}
                       />
                     </td>
-                    <td className="px-1.5 py-1">
+                    <td className="px-3 py-1.5">
                       <input
                         data-cell={`description:${rowIdx}`}
                         value={r.description}
@@ -448,7 +450,7 @@ export function ProfileOptionsGrid({
                         className={`${cellInput} w-full min-w-0`}
                       />
                     </td>
-                    <td className="px-1.5 py-1">
+                    <td className="px-3 py-1.5">
                       <input
                         data-cell={`sortOrder:${rowIdx}`}
                         type="number"
@@ -460,13 +462,15 @@ export function ProfileOptionsGrid({
                         className={`${cellInput} w-16`}
                       />
                     </td>
-                    <td className="px-1.5 py-1">
+                    <td className="px-3 py-1.5">
+                      {/* Functional toggle (the ONLY activate/deactivate control — save() only sends changes
+                          made through it), restyled to StatusBadge's exact look while staying a button. */}
                       <button
                         type="button"
                         onClick={() => toggleActive(r.key)}
-                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
                           r.isActive
-                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
                             : 'bg-muted text-muted-foreground'
                         }`}
                         title={r.isActive ? t('deactivate') : t('activate')}
@@ -474,14 +478,14 @@ export function ProfileOptionsGrid({
                         {r.isActive ? t('statusActive') : t('statusInactive')}
                       </button>
                     </td>
-                    <td className="px-1.5 py-1 text-right">
+                    <td className="px-3 py-1.5 text-right">
                       {r.isNew ? (
                         <RowIconButton title={t('delete')} onClick={() => removeDraft(r.key)}>
-                          ✕
+                          <X className="size-3.5" aria-hidden />
                         </RowIconButton>
                       ) : (
                         <RowIconButton title={t('delete')} onClick={() => setConfirmDelete(r)}>
-                          🗑
+                          <Trash2 className="size-3.5" aria-hidden />
                         </RowIconButton>
                       )}
                     </td>
@@ -507,19 +511,9 @@ export function ProfileOptionsGrid({
   );
 }
 
-function ToolbarButton({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex h-8 items-center rounded-md border border-input px-3 text-sm font-medium transition hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
-    >
-      {children}
-    </button>
-  );
-}
-
+// Toolbar buttons use the shared <Button> primitive (variant outline / default, size sm). Row actions keep
+// this local size-7 icon button: Button's `size="icon"` is 36px (breaks the h-8 row rhythm) and its
+// disabled:pointer-events-none would suppress the explanatory title tooltip when disabled.
 function RowIconButton({ children, title, onClick, disabled }: { children: React.ReactNode; title: string; onClick: () => void; disabled?: boolean }) {
   return (
     <button
