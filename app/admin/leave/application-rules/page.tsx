@@ -173,20 +173,26 @@ export default async function LeaveApplicationRulesPage({
                   }}
                   saveAction={upsertLeaveYearConfigAction}
                 />
-                {/* R45 fd71fa38 — Delete. Enabled only for a DRAFT year with no leave records referencing it;
-                    otherwise a disabled button with the reason as VISIBLE inline text (dcd8e32f — the old
-                    title-attribute tooltip did not exist on touch devices and was never announced by screen
-                    readers). The confirm dialog guards the click, and the service re-checks the guard
-                    (authoritative) before removing the row. */}
+                {/* R45 fd71fa38 / f1701466 — Delete is ALWAYS clickable. A blocked row (not draft, or leave
+                    records reference the year) renders a plain submit button — clicking posts and the
+                    SERVICE guard refuses, its localized message landing in the ErrorBanner + error toast
+                    (the message can never drift from the real guard); the inline text stays as a pre-click
+                    hint. A deletable row opens the two-step confirm (Yes/No → mandatory deletion reason
+                    checkboxes → Confirm Delete). leaveYearsWithRecords is purely the UX pre-check for which
+                    button to render; the service stays authoritative — a stale render (year opened / an
+                    application filed mid-flow) lands on the ErrorBanner with the exact service message. */}
                 {(() => {
                   const referenced = leaveYearRecordYearSet.has(cfg.year);
                   const deletable = cfg.status === 'draft' && !referenced;
                   if (!deletable) {
                     return (
                       <div className="flex items-center gap-2">
-                        <Button type="button" variant="ghost" size="sm" disabled>
-                          {t('deleteLeaveYear')}
-                        </Button>
+                        <form action={deleteLeaveYearAction}>
+                          <input type="hidden" name="year" value={cfg.year} />
+                          <Button type="submit" variant="ghost" size="sm">
+                            {t('deleteLeaveYear')}
+                          </Button>
+                        </form>
                         <span className="max-w-56 text-xs text-muted-foreground">
                           {cfg.status !== 'draft' ? t('deleteLeaveYearBlockedOpened') : t('deleteLeaveYearBlockedRecords')}
                         </span>
@@ -199,9 +205,21 @@ export default async function LeaveApplicationRulesPage({
                       <ConfirmSubmit
                         size="sm"
                         variant="ghost"
-                        title={t('deleteLeaveYearConfirmTitle', { year: cfg.year })}
-                        description={t('deleteLeaveYearConfirmBody', { year: cfg.year })}
-                        confirmLabel={t('deleteLeaveYear')}
+                        title={t('deleteLeaveYearConfirmTitle')}
+                        subtitle={t('deleteLeaveYearTarget', { year: cfg.year })}
+                        description={t('deleteLeaveYearConfirmBody')}
+                        confirmLabel={t('deleteLeaveYearConfirmButton')}
+                        twoStep={{
+                          warning: t('deleteLeaveYearWarning'),
+                          reasonLegend: t('deleteLeaveYearReasonLegend'),
+                          reasonOptions: [
+                            { value: 'wrongly_created', label: t('deleteLeaveYearReasonWronglyCreated') },
+                            { value: 'duplicate', label: t('deleteLeaveYearReasonDuplicate') },
+                          ],
+                          name: 'reasons',
+                          yesLabel: t('deleteLeaveYearYes'),
+                          noLabel: t('deleteLeaveYearNo'),
+                        }}
                       >
                         {t('deleteLeaveYear')}
                       </ConfirmSubmit>

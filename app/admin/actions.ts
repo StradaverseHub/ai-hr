@@ -1012,8 +1012,13 @@ export async function saveFutureOpeningRuleAction(formData: FormData) {
 export async function deleteLeaveYearAction(formData: FormData) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
+  const year = Number(formData.get('year'));
+  // f1701466 — the two-step confirm dialog mirrors each checked deletion reason as a hidden input named
+  // `reasons`; getAll collects them all (filter guards stray empty values — the companyIds convention).
+  // The service validates against its allowlist LAST, after the block guards (UI disable is not authority).
+  const reasons = formData.getAll('reasons').map(String).filter(Boolean);
   try {
-    await deleteLeaveYear(s, { year: Number(formData.get('year')) });
+    await deleteLeaveYear(s, { year, reasons });
   } catch (e) {
     const localised =
       e instanceof LeaveYearDeleteError
@@ -1029,7 +1034,8 @@ export async function deleteLeaveYearAction(formData: FormData) {
         : null;
     fail(APPLICATION_RULES, localised ? new Error(localised) : e);
   }
-  ok(APPLICATION_RULES);
+  // Success toast stays plain English by this file's convention (mirrors setLeaveYearStatusAction).
+  okToast(APPLICATION_RULES, `Leave year ${year} deleted`);
 }
 
 export async function assignRoleAction(formData: FormData) {

@@ -342,7 +342,7 @@ describe('deleteLeaveYear + leaveYearsWithRecords (dcd8e32f)', () => {
     const { ctx: empCtx } = await hireEmployeeCtx();
 
     // Service layer: assertAdmin fires before any query. FAILED before this cluster (no admin check).
-    await expect(deleteLeaveYear(empCtx, { year: 2031 })).rejects.toMatchObject({
+    await expect(deleteLeaveYear(empCtx, { year: 2031, reasons: ['wrongly_created'] })).rejects.toMatchObject({
       name: 'LeaveYearDeleteError',
       code: 'leaveYearNotAdmin',
     });
@@ -357,20 +357,21 @@ describe('deleteLeaveYear + leaveYearsWithRecords (dcd8e32f)', () => {
     expect(await configRow(2031)).toBeTruthy();
 
     // The admin branch still passes the restrictive policy.
-    await deleteLeaveYear(a, { year: 2031 });
+    await deleteLeaveYear(a, { year: 2031, reasons: ['wrongly_created'] });
     expect(await configRow(2031)).toBeUndefined();
   });
 
   it('a pristine draft year deletes and appends leave-year.deleted (audit survives the row delete)', async () => {
     const a = adminCtx(b);
     const { id } = await upsertLeaveYearConfig(a, { year: 2027, openLeaveYearDate: '2026-12-18' });
-    const res = await deleteLeaveYear(a, { year: 2027 });
+    const res = await deleteLeaveYear(a, { year: 2027, reasons: ['wrongly_created'] });
     expect(res).toEqual({ deleted: true, year: 2027 });
     expect(await configRow(2027)).toBeUndefined();
     // domain_event.aggregate_id carries no FK to leave_year_config, so appending with the just-deleted
     // row's id inside the same transaction must hold — the audit trail outlives the record.
     const payload = await latestEventPayload(b.tenantId, id, 'leave-year.deleted');
     expect(payload?.year).toBe(2027);
+    expect(payload?.reasons).toEqual(['wrongly_created']);
     expect((payload?.before as { status?: string } | null)?.status).toBe('draft');
   });
 
@@ -378,7 +379,9 @@ describe('deleteLeaveYear + leaveYearsWithRecords (dcd8e32f)', () => {
     const a = adminCtx(b);
     await upsertLeaveYearConfig(a, { year: 2027 });
     await setLeaveYearStatus(a, { year: 2027, status: 'open' });
-    await expect(deleteLeaveYear(a, { year: 2027 })).rejects.toMatchObject({ code: 'leaveYearNotDraft' });
+    await expect(deleteLeaveYear(a, { year: 2027, reasons: ['wrongly_created'] })).rejects.toMatchObject({
+      code: 'leaveYearNotDraft',
+    });
     expect(await configRow(2027)).toBeTruthy();
   });
 
@@ -387,7 +390,9 @@ describe('deleteLeaveYear + leaveYearsWithRecords (dcd8e32f)', () => {
     const { employmentId } = await hireEmployeeCtx();
     await upsertLeaveYearConfig(a, { year: 2027 });
     await insertLedgerRow(employmentId, '2027-06-01');
-    await expect(deleteLeaveYear(a, { year: 2027 })).rejects.toMatchObject({ code: 'leaveYearHasLedger' });
+    await expect(deleteLeaveYear(a, { year: 2027, reasons: ['wrongly_created'] })).rejects.toMatchObject({
+      code: 'leaveYearHasLedger',
+    });
   });
 
   it('an overlapping PENDING or APPROVED request blocks deletion (leaveYearHasRequests)', async () => {
@@ -397,8 +402,12 @@ describe('deleteLeaveYear + leaveYearsWithRecords (dcd8e32f)', () => {
     await upsertLeaveYearConfig(a, { year: 2028 });
     await insertRequest(employmentId, '2027-02-10', '2027-02-11', 'pending');
     await insertRequest(employmentId, '2028-03-05', '2028-03-05', 'approved');
-    await expect(deleteLeaveYear(a, { year: 2027 })).rejects.toMatchObject({ code: 'leaveYearHasRequests' });
-    await expect(deleteLeaveYear(a, { year: 2028 })).rejects.toMatchObject({ code: 'leaveYearHasRequests' });
+    await expect(deleteLeaveYear(a, { year: 2027, reasons: ['wrongly_created'] })).rejects.toMatchObject({
+      code: 'leaveYearHasRequests',
+    });
+    await expect(deleteLeaveYear(a, { year: 2028, reasons: ['wrongly_created'] })).rejects.toMatchObject({
+      code: 'leaveYearHasRequests',
+    });
   });
 
   it('REJECTED / CANCELLED-only requests do NOT block deletion (the Step-7 carve-out, tested both ways)', async () => {
@@ -408,14 +417,15 @@ describe('deleteLeaveYear + leaveYearsWithRecords (dcd8e32f)', () => {
     await insertRequest(employmentId, '2029-04-01', '2029-04-02', 'rejected');
     await insertRequest(employmentId, '2029-07-01', '2029-07-01', 'cancelled');
     // A dead application must not permanently pin an otherwise pristine draft year.
-    const res = await deleteLeaveYear(a, { year: 2029 });
+    const res = await deleteLeaveYear(a, { year: 2029, reasons: ['wrongly_created'] });
     expect(res.deleted).toBe(true);
     expect(await configRow(2029)).toBeUndefined();
   });
 
-  it('deleting a year with no record hits the not-found branch (leaveYearNotFound)', async () => {
-    await expect(deleteLeaveYear(adminCtx(b), { year: 2077 })).rejects.toMatchObject({
+  it('deleting a year with no record hits the not-found branch (leaveYearNotFound — the double-delete race)', async () => {
+    await expect(deleteLeaveYear(adminCtx(b), { year: 2077, reasons: ['wrongly_created'] })).rejects.toMatchObject({
       code: 'leaveYearNotFound',
+      message: 'This leave year no longer exists.',
     });
   });
 
@@ -436,7 +446,7 @@ describe('deleteLeaveYear + leaveYearsWithRecords (dcd8e32f)', () => {
     const refused: number[] = [];
     for (const year of [2027, 2028, 2029, 2030, 2032]) {
       try {
-        await deleteLeaveYear(a, { year });
+        await deleteLeaveYear(a, { year, reasons: ['wrongly_created'] });
       } catch {
         refused.push(year);
       }
@@ -451,7 +461,7 @@ describe('deleteLeaveYear + leaveYearsWithRecords (dcd8e32f)', () => {
     const saved = process.env.AUDIT_HASH_CHAIN_ENABLED;
     process.env.AUDIT_HASH_CHAIN_ENABLED = '1';
     try {
-      await deleteLeaveYear(a, { year: 2034 });
+      await deleteLeaveYear(a, { year: 2034, reasons: ['duplicate'] });
     } finally {
       if (saved === undefined) delete process.env.AUDIT_HASH_CHAIN_ENABLED;
       else process.env.AUDIT_HASH_CHAIN_ENABLED = saved;
@@ -483,7 +493,92 @@ describe('deleteLeaveYear + leaveYearsWithRecords (dcd8e32f)', () => {
     // guard holds today — but if a future grant path (pro-rated joiner, advance-window automation) ever
     // dates a row OUTSIDE the calendar year, this guard silently opens and deleting the year orphans
     // those grants with no FK to catch it. That is why this sequence is pinned here.
-    await expect(deleteLeaveYear(a, { year: 2027 })).rejects.toMatchObject({ code: 'leaveYearHasLedger' });
+    await expect(deleteLeaveYear(a, { year: 2027, reasons: ['wrongly_created'] })).rejects.toMatchObject({
+      code: 'leaveYearHasLedger',
+    });
     expect(await configRow(2027)).toBeTruthy();
+  });
+});
+
+// ── Deletion reasons (feedback f1701466) ─────────────────────────────────────
+// Every delete now requires ≥1 allow-listed reason ('wrongly_created' / 'duplicate'), validated LAST —
+// after the block guards — so a genuinely blocked year always reports its true block message even on a
+// forged/reason-less POST, and a stale blocked-rendered button that posts against a now-deletable year
+// hits the reasons error instead of silently deleting. The deduped reasons are recorded on the
+// leave-year.deleted event (deleted-by + timestamp already ride the DomainEvent actor/createdAt).
+describe('deleteLeaveYear — deletion reasons (f1701466)', () => {
+  it('a far-future draft year deletes with a valid reason; payload carries reasons + before-state; actor is the admin', async () => {
+    const a = adminCtx(b);
+    // 2098: Guard 1 scans the tenant's ENTIRE calendar year (not scoped to the config row), so a
+    // far-future year keeps the happy path clear of any ledger rows other setup might seed.
+    const { id } = await upsertLeaveYearConfig(a, { year: 2098 });
+    const res = await deleteLeaveYear(a, { year: 2098, reasons: ['wrongly_created'] });
+    expect(res).toEqual({ deleted: true, year: 2098 });
+    expect(await configRow(2098)).toBeUndefined();
+    const payload = await latestEventPayload(b.tenantId, id, 'leave-year.deleted');
+    expect(payload?.reasons).toEqual(['wrongly_created']);
+    expect((payload?.before as { status?: string } | null)?.status).toBe('draft');
+    // Audit trail: deleted-by is the acting admin (not SYSTEM), timestamp rides created_at.
+    const [ev] = await owner.db
+      .select({ actorType: schema.domainEvent.actorType, actorId: schema.domainEvent.actorId })
+      .from(schema.domainEvent)
+      .where(
+        and(
+          eq(schema.domainEvent.tenantId, b.tenantId),
+          eq(schema.domainEvent.aggregateId, id),
+          eq(schema.domainEvent.eventType, 'leave-year.deleted'),
+        ),
+      );
+    expect(ev.actorType).toBe('user');
+    expect(ev.actorId).toBe(b.adminUserId);
+  });
+
+  it('empty reasons are refused (leaveYearReasonsRequired) and the row survives', async () => {
+    const a = adminCtx(b);
+    await upsertLeaveYearConfig(a, { year: 2098 });
+    await expect(deleteLeaveYear(a, { year: 2098, reasons: [] })).rejects.toMatchObject({
+      name: 'LeaveYearDeleteError',
+      code: 'leaveYearReasonsRequired',
+      message: 'Select at least one deletion reason.',
+    });
+    expect(await configRow(2098)).toBeTruthy();
+  });
+
+  it('a non-allowlist reason is refused; a duplicated reason dedupes to one in the payload', async () => {
+    const a = adminCtx(b);
+    const { id } = await upsertLeaveYearConfig(a, { year: 2098 });
+    await expect(deleteLeaveYear(a, { year: 2098, reasons: ['bogus'] })).rejects.toMatchObject({
+      code: 'leaveYearReasonsRequired',
+    });
+    expect(await configRow(2098)).toBeTruthy();
+    // Dedupe: the same reason posted twice (forged form) records once.
+    await deleteLeaveYear(a, { year: 2098, reasons: ['wrongly_created', 'wrongly_created'] });
+    const payload = await latestEventPayload(b.tenantId, id, 'leave-year.deleted');
+    expect(payload?.reasons).toEqual(['wrongly_created']);
+  });
+
+  it('an OPEN and a CLOSED year are both refused with the reworded not-draft message', async () => {
+    const a = adminCtx(b);
+    await upsertLeaveYearConfig(a, { year: 2098 });
+    await upsertLeaveYearConfig(a, { year: 2099 });
+    await setLeaveYearStatus(a, { year: 2098, status: 'open' });
+    await setLeaveYearStatus(a, { year: 2099, status: 'open' });
+    await setLeaveYearStatus(a, { year: 2099, status: 'closed' });
+    const expected = {
+      code: 'leaveYearNotDraft',
+      message:
+        'This leave year cannot be deleted because it has been opened or closed. Only a draft year can be removed.',
+    };
+    await expect(deleteLeaveYear(a, { year: 2098, reasons: ['wrongly_created'] })).rejects.toMatchObject(expected);
+    await expect(deleteLeaveYear(a, { year: 2099, reasons: ['duplicate'] })).rejects.toMatchObject(expected);
+  });
+
+  it('GUARD ORDER: an open year + empty reasons reports the open-block message, not the reasons error', async () => {
+    const a = adminCtx(b);
+    await upsertLeaveYearConfig(a, { year: 2098 });
+    await setLeaveYearStatus(a, { year: 2098, status: 'open' });
+    await expect(deleteLeaveYear(a, { year: 2098, reasons: [] })).rejects.toMatchObject({
+      code: 'leaveYearNotDraft',
+    });
   });
 });
