@@ -261,10 +261,12 @@ export default async function LeaveEntitlementsPage({
           <Field label={t('nameLabel')}>
             <input name="name" required placeholder={t('namePlaceholder')} className={inputCls} />
           </Field>
-          <Field label={t('descriptionLabel')}>
+          <Field label={t('descriptionLabel')} className="sm:col-span-3">
             {/* Multiline (fbcadc71): textarea so Enter inserts a newline instead of submitting; h-auto/min-h/resize-y
                 overrides inputCls's fixed h-9 so it shows ~3 lines, grows via the drag handle, and scrolls on overflow.
-                Persistence already stores text with newlines (action only .trim()s the ends). */}
+                Persistence already stores text with newlines (action only .trim()s the ends).
+                Width (750732c3): the Field spans 3 of the 6 sm+ columns so Description is 3x the other boxes —
+                row 1 = Code + Name + Description(3) + Status; inputCls's w-full lets the textarea fill the wider cell. */}
             <textarea
               name="description"
               rows={3}
@@ -296,7 +298,10 @@ export default async function LeaveEntitlementsPage({
               <input type="checkbox" name="paid" defaultChecked aria-label={t('paidLabel')} className="size-4 rounded" />
             </div>
           </Field>
-          <button className={btnPrimary}>{t('addType')}</button>
+          {/* 750732c3: right-anchor the primary action — with Description spanning 3 columns, Leave Unit and Paid
+              open row 2, and sm:col-start-6 pins Add under Status at the row's right edge instead of leaving the
+              rest of the row empty. On mobile (grid-cols-1) col-start has no effect; everything stacks unchanged. */}
+          <button className={`${btnPrimary} sm:col-start-6`}>{t('addType')}</button>
         </form>
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
           {t.rich('typesHelp', { strong: (chunks) => <span className="font-medium">{chunks}</span> })}
