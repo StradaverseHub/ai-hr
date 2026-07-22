@@ -181,7 +181,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <LogoutButton />
                 </div>
               </header>
-              <main className="min-w-0 flex-1 overflow-y-auto pb-1">{children}</main>
+              {/* `relative` is load-bearing: sr-only helpers are position:absolute, and with no
+                  positioned ancestor they escape main's scroll clipping and pile up scrollable
+                  overflow on <html> itself. body's overflow-hidden propagates to the viewport, which
+                  still allows PROGRAMMATIC scrolling — so any focus/scrollIntoView deep in a long
+                  page shifted the whole canvas (header + sidebar off-screen) with no wheel recovery.
+                  Making main the containing block keeps that overflow inside the scroller. */}
+              <main className="relative min-w-0 flex-1 overflow-y-auto pb-1">{children}</main>
             </div>
           </div>
           <OnboardingTour tours={tours} autoStartTourId={onboarded ? null : WELCOME_TOUR_ID} />

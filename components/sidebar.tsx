@@ -266,9 +266,11 @@ export function Sidebar({
         )}
       </Link>
 
+      {/* `relative` for the same reason as <main> in app/layout.tsx: absolute descendants
+          (sr-only labels) must not escape this scroll container and create viewport overflow. */}
       <nav
         data-tour="nav"
-        className="flex w-full flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden py-3"
+        className="relative flex w-full flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden py-3"
       >
         {groups.map((group, gi) => (
           <div key={gi} className={cn('flex w-full flex-col gap-1', collapsed && 'items-center')}>
