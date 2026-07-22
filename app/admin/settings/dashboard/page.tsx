@@ -7,7 +7,7 @@ import {
   type DashboardCardRow,
   type DashboardCardType,
 } from '@/core/dashboard-card-config';
-import { MAX_FIRST_ROW } from '@/lib/dashboard-layout';
+import { MAX_FIRST_ROW, isFixedRowKey } from '@/lib/dashboard-layout';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -64,11 +64,10 @@ export default async function DashboardCardConfigPage({
       (!statusFilter || c.status === statusFilter),
   );
 
-  // Derived fixed-row template (R44): a card is pinned to the fixed second row when it is a shortcut/action
-  // card OR the Leave Calendar (plannedAbsences). Mirrors dashboard-customizer.tsx:208-213 exactly, so the
-  // Templates explainer and the Preview show the SAME partition employees actually get.
-  const isPinned = (c: DashboardCardRow) =>
-    c.cardType === 'shortcut' || c.cardType === 'action' || c.cardKey === 'plannedAbsences';
+  // Derived fixed-row template (R44 → 2806443b): a card is pinned to the full-width fixed second row ONLY
+  // when it is the Leave Calendar (lib/dashboard-layout FIXED_ROW_KEYS) — the same shared rule the employee
+  // customizer uses, so the Templates explainer and the Preview show the SAME partition employees get.
+  const isPinned = (c: DashboardCardRow) => isFixedRowKey(c.cardKey);
   const activeDefault = cards
     .filter((c) => c.status === 'active' && c.defaultDisplay)
     .sort((a, b) => a.displayOrder - b.displayOrder);

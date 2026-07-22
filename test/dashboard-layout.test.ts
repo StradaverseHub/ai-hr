@@ -103,8 +103,9 @@ describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
     const selected = ['recentActivity', 'leaveBalance', 'upcomingEvents'];
     await setDashboardLayout(ctx, { selected, order: selected }, CARDS);
     const saved = await getDashboardLayout(ctx, CARDS);
-    // selected preserved (order-preserving); order covers every available card exactly once.
-    expect(saved.selected).toEqual(selected);
+    // selected preserved (order-preserving) + the mandatory Leave Calendar force-included (2806443b);
+    // order covers every available card exactly once.
+    expect(saved.selected).toEqual([...selected, 'plannedAbsences']);
     expect(new Set(saved.order)).toEqual(new Set(ALL_KEYS));
     expect(saved.order.slice(0, 3)).toEqual(selected);
   });
@@ -128,7 +129,8 @@ describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
   it('Reset to Default clears the saved layout back to the HR default', async () => {
     const ctx = await newEmployeeCtx();
     await setDashboardLayout(ctx, { selected: ['recentActivity'], order: ['recentActivity'] }, CARDS);
-    expect((await getDashboardLayout(ctx, CARDS)).selected).toEqual(['recentActivity']);
+    // The mandatory Leave Calendar (2806443b) is force-included alongside the chosen card.
+    expect((await getDashboardLayout(ctx, CARDS)).selected).toEqual(['recentActivity', 'plannedAbsences']);
     await resetDashboardLayout(ctx);
     expect(new Set((await getDashboardLayout(ctx, CARDS)).selected)).toEqual(new Set(ALL_KEYS));
   });
@@ -138,12 +140,13 @@ describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
     const c = await newEmployeeCtx();
     const selA = ['recentActivity', 'leaveBalance'];
     await setDashboardLayout(a, { selected: selA, order: selA }, CARDS);
-    // C has saved nothing → still HR default; and saving C must not disturb A.
+    // C has saved nothing → still HR default; and saving C must not disturb A. The mandatory Leave
+    // Calendar (2806443b) rides along in every saved selection.
     expect(new Set((await getDashboardLayout(c, CARDS)).selected)).toEqual(new Set(ALL_KEYS));
     const selC = ['upcomingEvents', 'recentlyJoined'];
     await setDashboardLayout(c, { selected: selC, order: selC }, CARDS);
-    expect((await getDashboardLayout(a, CARDS)).selected).toEqual(selA);
-    expect((await getDashboardLayout(c, CARDS)).selected).toEqual(selC);
+    expect((await getDashboardLayout(a, CARDS)).selected).toEqual([...selA, 'plannedAbsences']);
+    expect((await getDashboardLayout(c, CARDS)).selected).toEqual([...selC, 'plannedAbsences']);
   });
 
   it('appends NO domain event (deliberate substrate carve-out for a cosmetic UI pref)', async () => {
