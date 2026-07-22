@@ -1923,7 +1923,18 @@
     "bulkApprovedAll": "{done, plural, other {已成功批准 # 项申请。}}",
     "bulkApprovedPartial": "已批准 {done} 项，跳过 {skipped} 项（超出您的审批权限）。",
     "bulkRejectedAll": "{done, plural, other {已成功拒绝 # 项申请。}}",
-    "bulkRejectedPartial": "已拒绝 {done} 项，跳过 {skipped} 项（超出您的审批权限）。"
+    "bulkRejectedPartial": "已拒绝 {done} 项，跳过 {skipped} 项（超出您的审批权限）。",
+    "categoryAll": "全部审批",
+    "categoryGroupLeave": "休假",
+    "categoryGroupAttendance": "考勤",
+    "categoryGroupTravel": "出差",
+    "categoryGroupClaims": "报销",
+    "categoryGroupPeople": "人事",
+    "categoryOvertime": "加班",
+    "summaryPending": "待处理",
+    "summaryApproved": "已批准",
+    "summaryRejected": "已驳回",
+    "summaryCancelled": "已取消"
   },
   "performance": {
     "list": {

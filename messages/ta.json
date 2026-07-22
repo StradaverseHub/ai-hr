@@ -1923,7 +1923,18 @@
     "bulkApprovedAll": "{done, plural, other {# கோரிக்கைகள் வெற்றிகரமாக அங்கீகரிக்கப்பட்டன.}}",
     "bulkApprovedPartial": "{done} அங்கீகரிக்கப்பட்டது, {skipped} தவிர்க்கப்பட்டது (உங்கள் அங்கீகார அதிகாரத்திற்கு வெளியே).",
     "bulkRejectedAll": "{done, plural, other {# கோரிக்கைகள் வெற்றிகரமாக நிராகரிக்கப்பட்டன.}}",
-    "bulkRejectedPartial": "{done} நிராகரிக்கப்பட்டது, {skipped} தவிர்க்கப்பட்டது (உங்கள் அங்கீகார அதிகாரத்திற்கு வெளியே)."
+    "bulkRejectedPartial": "{done} நிராகரிக்கப்பட்டது, {skipped} தவிர்க்கப்பட்டது (உங்கள் அங்கீகார அதிகாரத்திற்கு வெளியே).",
+    "categoryAll": "அனைத்து ஒப்புதல்கள்",
+    "categoryGroupLeave": "விடுப்பு",
+    "categoryGroupAttendance": "வருகை",
+    "categoryGroupTravel": "பயணம்",
+    "categoryGroupClaims": "கோரிக்கைகள்",
+    "categoryGroupPeople": "பணியாளர்கள்",
+    "categoryOvertime": "கூடுதல் நேரம்",
+    "summaryPending": "நிலுவையில்",
+    "summaryApproved": "அங்கீகரிக்கப்பட்டது",
+    "summaryRejected": "நிராகரிக்கப்பட்டது",
+    "summaryCancelled": "ரத்துசெய்யப்பட்டது"
   },
   "performance": {
     "list": {

@@ -1923,7 +1923,18 @@
     "bulkApprovedAll": "{done, plural, other {# permohonan berjaya diluluskan.}}",
     "bulkApprovedPartial": "{done} diluluskan, {skipped} dilangkau (di luar kuasa kelulusan anda).",
     "bulkRejectedAll": "{done, plural, other {# permohonan berjaya ditolak.}}",
-    "bulkRejectedPartial": "{done} ditolak, {skipped} dilangkau (di luar kuasa kelulusan anda)."
+    "bulkRejectedPartial": "{done} ditolak, {skipped} dilangkau (di luar kuasa kelulusan anda).",
+    "categoryAll": "Semua kelulusan",
+    "categoryGroupLeave": "Cuti",
+    "categoryGroupAttendance": "Kehadiran",
+    "categoryGroupTravel": "Perjalanan",
+    "categoryGroupClaims": "Tuntutan",
+    "categoryGroupPeople": "Kakitangan",
+    "categoryOvertime": "Kerja lebih masa",
+    "summaryPending": "Menunggu",
+    "summaryApproved": "Diluluskan",
+    "summaryRejected": "Ditolak",
+    "summaryCancelled": "Dibatalkan"
   },
   "performance": {
     "list": {

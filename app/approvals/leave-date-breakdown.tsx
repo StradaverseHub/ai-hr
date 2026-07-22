@@ -49,12 +49,15 @@ export function LeaveDateBreakdown({
   locale,
   remark,
   labels,
+  nav,
 }: {
   requestId: string;
   dates: LeaveDateRow[];
   locale: string;
   remark?: string | null;
   labels: Labels;
+  /** Category-panel return params (2dec6406): posted so the action's redirect keeps the filtered view. */
+  nav?: { category: string; sort: string };
 }) {
   const pendingDates = useMemo(() => dates.filter((d) => d.status === 'pending'), [dates]);
   // Per pending date: the staged decision + reason. Defaults to Approve (the common case) with an empty reason.
@@ -213,6 +216,12 @@ export function LeaveDateBreakdown({
               <form action={decideLeaveDatesAction} onSubmit={() => setOpen(false)}>
                 <input type="hidden" name="id" value={requestId} />
                 <input type="hidden" name="decisions" value={JSON.stringify(payload)} />
+                {nav && (
+                  <>
+                    <input type="hidden" name="category" value={nav.category} />
+                    <input type="hidden" name="sort" value={nav.sort} />
+                  </>
+                )}
                 <Button type="submit" size="sm" disabled={missingReason}>
                   {labels.submitDecisions}
                 </Button>

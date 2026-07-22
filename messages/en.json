@@ -1923,7 +1923,18 @@
     "bulkApprovedAll": "{done, plural, one {# request approved successfully.} other {# requests approved successfully.}}",
     "bulkApprovedPartial": "{done} approved, {skipped} skipped (outside your approval authority).",
     "bulkRejectedAll": "{done, plural, one {# request rejected successfully.} other {# requests rejected successfully.}}",
-    "bulkRejectedPartial": "{done} rejected, {skipped} skipped (outside your approval authority)."
+    "bulkRejectedPartial": "{done} rejected, {skipped} skipped (outside your approval authority).",
+    "categoryAll": "All approvals",
+    "categoryGroupLeave": "Leave",
+    "categoryGroupAttendance": "Attendance",
+    "categoryGroupTravel": "Travel",
+    "categoryGroupClaims": "Claims",
+    "categoryGroupPeople": "People",
+    "categoryOvertime": "Overtime",
+    "summaryPending": "Pending",
+    "summaryApproved": "Approved",
+    "summaryRejected": "Rejected",
+    "summaryCancelled": "Cancelled"
   },
   "performance": {
     "list": {

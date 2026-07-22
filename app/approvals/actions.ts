@@ -6,6 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { decideLeave, decideLeaveDate, decideLeaveDates, decideLeaveCancellation } from '@/core/leave';
 import { parseBulkItems, runBulkDecide, type BulkDecideItem } from '@/lib/approvals-bulk';
+import { approvalsReturnUrl } from '@/lib/approvals-categories';
 import { localizeLeaveError } from '@/app/me/actions';
 import { decideAttendanceCorrection } from '@/core/attendance';
 import { decideTravelRequest } from '@/core/travel-request';
@@ -24,16 +25,27 @@ import { myEmployment } from '@/core/read';
 // services: assertCanDecide / admin-only) — these just land back on /approvals.
 
 const back = '/approvals';
-function done(toast: string): never {
-  revalidatePath(back);
-  redirect(`${back}?toast=${encodeURIComponent(toast)}`);
+// Category panel (2dec6406): every decide form posts its current category + sort, and BOTH the success and
+// the error redirect preserve them (via the shared approvalsReturnUrl builder) — so a decision never dumps
+// the approver back on the unfiltered, default-sorted inbox.
+type Nav = { category?: string; sort?: string };
+function navOf(formData: FormData): Nav {
+  return {
+    category: String(formData.get('category') || '') || undefined,
+    sort: String(formData.get('sort') || '') || undefined,
+  };
 }
-function fail(e: unknown): never {
-  redirect(`${back}?error=${encodeURIComponent((e as Error).message)}`);
+function done(toast: string, nav: Nav = {}): never {
+  revalidatePath(back);
+  redirect(approvalsReturnUrl({ ...nav, toast }));
+}
+function fail(e: unknown, nav: Nav = {}): never {
+  redirect(approvalsReturnUrl({ ...nav, error: (e as Error).message }));
 }
 
 export async function approveLeaveAction(formData: FormData) {
   const s = await getSession();
+  const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   // Partial Leave Approval (0131): the reject-reason textarea (required when rejecting). Threaded through so
   // decideLeave can enforce the mandatory reason and stamp it onto the leave-request.rejected event.
@@ -43,15 +55,16 @@ export async function approveLeaveAction(formData: FormData) {
   } catch (e) {
     // Partial Leave Approval (0131): re-localize the new MissingRejectReasonError (and the existing typed
     // leave errors) into the viewer's language, like the /me + leave-tab flows do.
-    fail(new Error(await localizeLeaveError(e)));
+    fail(new Error(await localizeLeaveError(e)), nav);
   }
-  done(`Leave ${decision}`);
+  done(`Leave ${decision}`, nav);
 }
 
 // Partial Leave Approval — single-request model (ADR-0068 §4D): decide ONE requested date of a per-date
 // request from the detail-view expander. Reject requires a reason (MissingRejectReasonError, re-localized).
 export async function decideLeaveDateAction(formData: FormData) {
   const s = await getSession();
+  const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   const rejectReason = String(formData.get('rejectReason') || '') || undefined;
   try {
@@ -64,9 +77,9 @@ export async function decideLeaveDateAction(formData: FormData) {
       rejectReason,
     });
   } catch (e) {
-    fail(new Error(await localizeLeaveError(e)));
+    fail(new Error(await localizeLeaveError(e)), nav);
   }
-  done(`Date ${decision}`);
+  done(`Date ${decision}`, nav);
 }
 
 // Partial Leave Approval — single-request model (R17 600be8ac): decide MANY requested dates in ONE submit
@@ -74,6 +87,7 @@ export async function decideLeaveDateAction(formData: FormData) {
 // the service validates (reject ⇒ reason) and finalizes once. Reject reasons are re-localized on failure.
 export async function decideLeaveDatesAction(formData: FormData) {
   const s = await getSession();
+  const nav = navOf(formData);
   let decisions: { leaveDate: string; decision: 'approved' | 'rejected'; rejectReason?: string }[] = [];
   try {
     const raw = JSON.parse(String(formData.get('decisions') || '[]'));
@@ -88,7 +102,7 @@ export async function decideLeaveDatesAction(formData: FormData) {
       };
     });
   } catch (e) {
-    fail(e);
+    fail(e, nav);
   }
   try {
     const me = await myEmployment(s);
@@ -98,9 +112,9 @@ export async function decideLeaveDatesAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId,
     });
   } catch (e) {
-    fail(new Error(await localizeLeaveError(e)));
+    fail(new Error(await localizeLeaveError(e)), nav);
   }
-  done('Leave decided');
+  done('Leave decided', nav);
 }
 
 // Partial Leave Cancellation (ADR-0065): manager approves/rejects an employee's request to give back a
@@ -108,6 +122,7 @@ export async function decideLeaveDatesAction(formData: FormData) {
 // + requires manager/admin). Resolve the decider employment like the claim/resignation actions.
 export async function decideLeaveCancellationAction(formData: FormData) {
   const s = await getSession();
+  const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   try {
     const me = await myEmployment(s);
@@ -117,46 +132,50 @@ export async function decideLeaveCancellationAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId,
     });
   } catch (e) {
-    fail(new Error(await localizeLeaveError(e)));
+    fail(new Error(await localizeLeaveError(e)), nav);
   }
-  done(`Cancellation ${decision}`);
+  done(`Cancellation ${decision}`, nav);
 }
 
 export async function approveCorrectionAction(formData: FormData) {
   const s = await getSession();
+  const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   try {
     await decideAttendanceCorrection(s, { correctionId: String(formData.get('id')), decision });
   } catch (e) {
-    fail(e);
+    fail(e, nav);
   }
-  done(`Correction ${decision}`);
+  done(`Correction ${decision}`, nav);
 }
 
 export async function approveTravelAction(formData: FormData) {
   const s = await getSession();
+  const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   try {
     await decideTravelRequest(s, { travelRequestId: String(formData.get('id')), decision });
   } catch (e) {
-    fail(e);
+    fail(e, nav);
   }
-  done(`Travel ${decision}`);
+  done(`Travel ${decision}`, nav);
 }
 
 export async function approveProfileChangeAction(formData: FormData) {
   const s = await getSession();
+  const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   try {
     await decideProfileChange(s, { requestId: String(formData.get('id')), decision });
   } catch (e) {
-    fail(e);
+    fail(e, nav);
   }
-  done(`Change ${decision}`);
+  done(`Change ${decision}`, nav);
 }
 
 export async function decideResignationAction(formData: FormData) {
   const s = await getSession();
+  const nav = navOf(formData);
   const accepted = String(formData.get('decision')) === 'approved';
   try {
     const me = await myEmployment(s);
@@ -166,13 +185,14 @@ export async function decideResignationAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId,
     });
   } catch (e) {
-    fail(e);
+    fail(e, nav);
   }
-  done(`Resignation ${accepted ? 'accepted' : 'rejected'}`);
+  done(`Resignation ${accepted ? 'accepted' : 'rejected'}`, nav);
 }
 
 export async function submitManagerEvaluationAction(formData: FormData) {
   const s = await getSession();
+  const nav = navOf(formData);
   try {
     await submitManagerEvaluation(s, {
       reviewId: String(formData.get('id')),
@@ -180,13 +200,14 @@ export async function submitManagerEvaluationAction(formData: FormData) {
       comments: String(formData.get('comments') || '') || null,
     });
   } catch (e) {
-    fail(e);
+    fail(e, nav);
   }
-  done('Evaluation submitted');
+  done('Evaluation submitted', nav);
 }
 
 export async function decideReviewAction(formData: FormData) {
   const s = await getSession();
+  const nav = navOf(formData);
   const decision = String(formData.get('decision')) as ReviewDecision;
   try {
     const me = await myEmployment(s);
@@ -198,9 +219,9 @@ export async function decideReviewAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId ?? null,
     });
   } catch (e) {
-    fail(e);
+    fail(e, nav);
   }
-  done('Decision recorded');
+  done('Decision recorded', nav);
 }
 
 // Bulk approve/reject (feedback fb99474b). Accepts a JSON `items` list of {type,id} the approver selected
@@ -246,11 +267,12 @@ export async function bulkDecideAction(formData: FormData) {
   const s = await getSession();
   const decision = String(formData.get('decision')) === 'rejected' ? 'rejected' : 'approved';
   const rejectReason = String(formData.get('rejectReason') || '').trim() || undefined;
-  const sort = String(formData.get('sort') || '');
+  // 2dec6406: category threaded exactly like sort — hidden field in the bulk form, preserved on redirect.
+  const nav = navOf(formData);
   const items = parseBulkItems(String(formData.get('items') || '[]'));
 
   const t = await getTranslations('approvals');
-  if (items.length === 0) redirect(`${back}${sort ? `?sort=${encodeURIComponent(sort)}` : ''}`);
+  if (items.length === 0) redirect(approvalsReturnUrl(nav));
 
   const me = await myEmployment(s);
   const deciderEmploymentId = me?.employmentId ?? undefined;
@@ -271,14 +293,12 @@ export async function bulkDecideAction(formData: FormData) {
       : skipped > 0
         ? t('bulkApprovedPartial', { done: approved, skipped })
         : t('bulkApprovedAll', { done: approved });
-  const qs = new URLSearchParams();
-  if (sort) qs.set('sort', sort);
-  qs.set('toast', summary);
-  redirect(`${back}?${qs.toString()}`);
+  redirect(approvalsReturnUrl({ ...nav, toast: summary }));
 }
 
 export async function approveClaimAction(formData: FormData) {
   const s = await getSession();
+  const nav = navOf(formData);
   const approved = String(formData.get('decision')) === 'approved';
   try {
     const me = await myEmployment(s);
@@ -288,7 +308,7 @@ export async function approveClaimAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId ?? null,
     });
   } catch (e) {
-    fail(e);
+    fail(e, nav);
   }
-  done(`Claim ${approved ? 'approved' : 'rejected'}`);
+  done(`Claim ${approved ? 'approved' : 'rejected'}`, nav);
 }

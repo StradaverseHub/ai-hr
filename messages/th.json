@@ -1923,7 +1923,18 @@
     "bulkApprovedAll": "{done, plural, other {อนุมัติ # คำขอเรียบร้อยแล้ว}}",
     "bulkApprovedPartial": "อนุมัติ {done} รายการ ข้าม {skipped} รายการ (นอกเหนืออำนาจอนุมัติของคุณ)",
     "bulkRejectedAll": "{done, plural, other {ปฏิเสธ # คำขอเรียบร้อยแล้ว}}",
-    "bulkRejectedPartial": "ปฏิเสธ {done} รายการ ข้าม {skipped} รายการ (นอกเหนืออำนาจอนุมัติของคุณ)"
+    "bulkRejectedPartial": "ปฏิเสธ {done} รายการ ข้าม {skipped} รายการ (นอกเหนืออำนาจอนุมัติของคุณ)",
+    "categoryAll": "การอนุมัติทั้งหมด",
+    "categoryGroupLeave": "การลา",
+    "categoryGroupAttendance": "การเข้างาน",
+    "categoryGroupTravel": "การเดินทาง",
+    "categoryGroupClaims": "การเบิก",
+    "categoryGroupPeople": "บุคลากร",
+    "categoryOvertime": "ล่วงเวลา",
+    "summaryPending": "รอดำเนินการ",
+    "summaryApproved": "อนุมัติแล้ว",
+    "summaryRejected": "ปฏิเสธแล้ว",
+    "summaryCancelled": "ยกเลิกแล้ว"
   },
   "performance": {
     "list": {
