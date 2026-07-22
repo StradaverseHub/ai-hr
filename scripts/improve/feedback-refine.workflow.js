@@ -20,7 +20,7 @@ const PLAN_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    plan: { type: 'string', description: 'A numbered, ordered implementation plan in PLAIN TEXT (no Markdown — the /feedback UI shows it raw).' },
+    plan: { type: 'string', description: 'Implementation plan in PLAIN TEXT (no Markdown — the /feedback UI shows it raw). At the Refine stage this MUST follow the feedback-plan skill skeleton: VERDICT/SIZE line, business sections, a dashed separator, then a BUILD NOTES trailer.' },
     files: { type: 'array', items: { type: 'string' }, description: 'Key files/dirs the change touches.' },
     risks: { type: 'array', items: { type: 'string' } },
   },
@@ -96,20 +96,25 @@ phase('Refine');
 const refined = await agent(
   `Refine the implementation plan below to address EVERY valid critique from the panel. Where a critique is ` +
     `wrong, briefly note why you are not changing that part. Cut anything flagged as scope-creep.\n\n` +
-    `FORMAT (CRITICAL) — the /feedback review screen shows this text RAW; it does NOT render Markdown, and the ` +
-    `reviewer is a business stakeholder, NOT an engineer. So write the WHOLE plan as clean PLAIN TEXT: NO ` +
-    `Markdown syntax at all — no ** bold, no # headers, no backticks, no tables, no > quotes. Use only ` +
-    `plain-text structure: an UPPERCASE label on its own line for each section, "- " for bullets, and blank ` +
-    `lines to separate. Structure it for THEM first:\n` +
-    `  • Lead with a "SUMMARY (FOR REVIEW)" section in plain business language: the problem in everyday ` +
-    `terms, what will change for the user, the visible outcome/benefit, a rough effort (small / medium / large) ` +
-    `+ risk read, and explicitly call out anything that ALREADY exists today. NO file paths, line numbers, ` +
-    `table/column names, migration numbers, or framework jargon (RSC, RLS, etc.) in this section — a ` +
-    `non-technical reader must be able to approve or push back on it.\n` +
-    `  • THEN a "TECHNICAL DETAIL (FOR THE BUILD TEAM)" section (separate it with a plain line of dashes) ` +
-    `carrying ALL the specifics (files, schema/migrations, ordered steps, tests, edge cases) the build agent ` +
-    `needs — still as plain text, writing file/function names plainly without backticks. Reviewer reads the ` +
-    `top; build agent reads the bottom — keep both, concrete + verifiable.\n\n` +
+    `FORMAT (CRITICAL) — the /feedback review screen shows this text RAW (no Markdown rendering) and the ` +
+    `reviewer is a non-technical business consultant. Follow the feedback-plan skill's skeleton EXACTLY, ` +
+    `plain text only:\n` +
+    `  Line 1: VERDICT: <Not built yet | Partly there already | Already works>   ·   SIZE: <Quick | ` +
+    `Moderate | Large> — exactly these two vocabularies; never small/medium/large, S/M/L, hours, or points.\n` +
+    `  Then UPPERCASE sections with a blank line between each: THE SITUATION TODAY (2-4 plain sentences on ` +
+    `what the user experiences right now); WHAT WE'LL CHANGE (one "- " bullet per change the user would ` +
+    `notice); WHAT YOU'LL GET (1-3 sentences on the outcome in the reporter's terms); GOOD TO KNOW (only ` +
+    `if relevant — already-partly-works, dependencies, timing).\n` +
+    `  Then a plain line of dashes, then: BUILD NOTES (technical - skip this if you are reviewing the ` +
+    `request) — ALL the engineering specifics (files, data changes, ordered steps, tests, edge cases), ` +
+    `file/function names written plainly WITHOUT backticks. Technical terms are allowed ONLY here.\n` +
+    `  Hard rules: NO Markdown characters anywhere (no ** or #, no backticks, no | tables, no > quotes; ` +
+    `bullets are "- "). Above the dashes: zero developer terms — banned: migration, schema, RLS, enum, ` +
+    `endpoint, API, component, boolean, null, backend, cron, service, plus any file path, function name, ` +
+    `or line number. NEVER end the plan asking the reporter to pick an option — approving on the board ` +
+    `sends no message back, so a plan that waits on a choice strands the item. If there is a real fork, ` +
+    `choose the best option and state it as what WILL be built; note the alternative in GOOD TO KNOW as a ` +
+    `possible follow-up.\n\n` +
     `ORIGINAL PLAN:\n${draft.plan}\n\nPANEL CRITIQUES:\n${critiqueText}`,
   { schema: PLAN_SCHEMA, phase: 'Refine', label: 'refine-plan', effort: 'xhigh' },
 );
