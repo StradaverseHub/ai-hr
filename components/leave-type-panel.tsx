@@ -1113,24 +1113,25 @@ export function LeaveTypePanel({
                     Clear-all and collapsed "All selected" / "{n} selected" summary props are deliberately NOT
                     passed here — these two lists are short, so the checklist reads clean and the chips (with
                     their remove buttons) are always visible. */}
-                <Field label={t('eligibilityGenderLabel')}>
-                  <ChipMultiSelect
-                    name="gender"
-                    options={ELIGIBILITY_GENDER_OPTIONS.map((g) => ({ value: g, label: genderLabel(g) ?? g }))}
-                    defaultSelected={asEligList(eligibility?.gender)}
-                    addPlaceholder={t('eligibilityChipAddPlaceholder')}
-                    removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
-                  />
-                </Field>
-                <Field label={t('eligibilityMaritalLabel')}>
-                  <ChipMultiSelect
-                    name="maritalStatus"
-                    options={ELIGIBILITY_MARITAL_OPTIONS.map((m) => ({ value: m, label: maritalLabel(m) ?? m }))}
-                    defaultSelected={asEligList(eligibility?.maritalStatus)}
-                    addPlaceholder={t('eligibilityChipAddPlaceholder')}
-                    removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
-                  />
-                </Field>
+                {/* No <Field> wrapper on these two (b9c30be0): ChipMultiSelect owns its caption via the
+                    label prop, so no <label> element exists to re-activate the trigger after an outside
+                    click closes the popover (the 2449fbb7 label-activation bug). */}
+                <ChipMultiSelect
+                  name="gender"
+                  label={t('eligibilityGenderLabel')}
+                  options={ELIGIBILITY_GENDER_OPTIONS.map((g) => ({ value: g, label: genderLabel(g) ?? g }))}
+                  defaultSelected={asEligList(eligibility?.gender)}
+                  addPlaceholder={t('eligibilityChipAddPlaceholder')}
+                  removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
+                />
+                <ChipMultiSelect
+                  name="maritalStatus"
+                  label={t('eligibilityMaritalLabel')}
+                  options={ELIGIBILITY_MARITAL_OPTIONS.map((m) => ({ value: m, label: maritalLabel(m) ?? m }))}
+                  defaultSelected={asEligList(eligibility?.maritalStatus)}
+                  addPlaceholder={t('eligibilityChipAddPlaceholder')}
+                  removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
+                />
                 <Field label={t('eligibilityMinServiceLabel')}>
                   {/* Min-service unit (#f88f0a63): duration input + a unit select (Months / Days) beside it,
                       mirroring the expiry {value, unit} field. Absent stored unit ⇒ 'months' default so a

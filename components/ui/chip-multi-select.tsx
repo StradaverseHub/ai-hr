@@ -2,7 +2,7 @@
 
 /**
  * Checkbox-popover multi-select for plain form posts (1a6ed9e6 contest resolution: eligibility pickers;
- * 0af0729d: popover checkbox list).
+ * 0af0729d: popover checkbox list; b9c30be0: standardized auto-close + component-owned caption).
  *
  * The trigger button opens a popover listing EVERY option with a checkbox indicator — options already in the
  * selection appear pre-checked; clicking a row toggles that one value. (This replaced the 2cc30077 → d6bdbd55
@@ -10,22 +10,32 @@
  * entries and collapsed to an "All selected" summary — the arrangement feedback 0af0729d reported as hard to
  * read.) Picking exactly one value is single-select; picking several is multi-select — one control covers both.
  *
- * Form contract (UNCHANGED): emits one hidden <input name={name} value={v}> per selected value, so it posts
- * the exact FormData shape of the native <select multiple> it replaced — server actions reading
+ * Form contract (UNCHANGED): emits one hidden <input name={name} value={v}> per selected value, rendered
+ * OUTSIDE the `open` conditional so the posted values survive the panel closing before submit — it posts
+ * the exact FormData shape of the native <select multiple> it replaced, and server actions reading
  * formData.getAll(name) keep working unchanged. Do NOT change this without checking every action that
  * consumes the field. Nothing inside the popover may carry a `name` attribute: the rows are <button
  * type="button" role="checkbox">s (NOT real checkbox inputs, which would pollute getAll(); and NOT <label>
- * rows, which would nest invalid <label>-in-<label> markup since call sites wrap this control in <Field>,
- * itself a label). Every button is type="button" — the pickers sit inside live <form>s, and a default-type
- * button would submit the form the moment the popover is opened.
+ * rows, which would nest invalid <label>-in-<label> markup at call sites that wrap this control in <Field>,
+ * itself a label — see the labeling modes below). Every button is type="button" — the pickers sit inside
+ * live <form>s, and a default-type button would submit the form the moment the popover is opened.
  *
- * Presentation-only: all copy arrives translated via props (addPlaceholder, removeLabelFor) so t() lookups
- * stay static at the call site for the i18n coverage test.
+ * Labeling — two modes (b9c30be0, mirroring components/ui/multi-select-popover.tsx):
+ * - `label` prop (the leave eligibility pickers): the component owns its caption — a plain <span> with a
+ *   useId id, referenced by aria-labelledby on the trigger. No <label> element exists, so an outside click
+ *   that lands on the caption can never re-activate the trigger and undo the close. The aria-labelledby is
+ *   deliberately CONDITIONAL on the prop: an unconditional reference to a nonexistent id would compute an
+ *   empty accessible name and override the implicit <Field> label in the other mode.
+ * - <Field> wrapper, no `label` prop (the /performance new-cycle pickers): the control keeps its implicit
+ *   label association. The no-label-rows rule and the trigger-first DOM-order rationale exist for this mode.
  *
- * DOM order note: hidden inputs, then the trigger, then the chips — on purpose. Call sites wrap this in
- * <Field>, which is a <label> — the label activates its first labelable descendant, and the chips' remove
- * <button>s are labelable. Trigger-first keeps a click on the field label opening the popover instead of
- * pressing (and firing) the first chip's remove button.
+ * Presentation-only: all copy arrives translated via props (label, addPlaceholder, removeLabelFor) so t()
+ * lookups stay static at the call site for the i18n coverage test.
+ *
+ * DOM order note: caption (when `label` is passed), hidden inputs, then the trigger, then the chips — on
+ * purpose. Call sites in <Field> mode wrap this in a <label>, which activates its first labelable
+ * descendant, and the chips' remove <button>s are labelable. Trigger-first keeps a click on the field label
+ * opening the popover instead of pressing (and firing) the first chip's remove button.
  *
  * Bulk controls & collapsed summary (feedback 2cc30077, opt-in): when selectAllLabel / clearAllLabel are
  * passed, "Select all" / "Clear all" render as two small buttons pinned at the top of the popover (0af0729d
@@ -34,10 +44,16 @@
  * "{n} selected" past summaryThreshold). All are additive — omit them (as the leave eligibility pickers now
  * do) and the popover shows a plain checklist while the chips always render with their remove buttons.
  *
- * Keyboard: rows are buttons, so Tab/Enter/Space work natively; Escape closes the popover and returns focus
- * to the trigger; the fixed inset-0 overlay handles outside-click dismissal.
+ * Dismissal & keyboard (b9c30be0 — the 2449fbb7 standardize-dropdown idiom, same as combobox.tsx and
+ * multi-select-popover.tsx): while open, a document `mousedown` listener closes the popover when the event
+ * target is outside the root ref. There is no full-viewport backdrop, so a click on any other control acts
+ * immediately (Save closes-and-submits in one click; a neighbouring picker's trigger opens on the same
+ * click). Rows are buttons, so Tab/Enter/Space work natively; Escape is handled on the ROOT div — key
+ * events bubble from both the trigger and the panel rows, so it closes the popover the moment it is open
+ * (even with focus still on the trigger, the normal state right after opening by mouse) and returns focus
+ * to the trigger.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { inputCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
@@ -48,6 +64,7 @@ export function ChipMultiSelect({
   addPlaceholder,
   removeLabelFor,
   defaultSelected = [],
+  label,
   selectAllLabel,
   clearAllLabel,
   allSelectedLabel,
@@ -61,6 +78,8 @@ export function ChipMultiSelect({
   /** Translated aria-label for a chip's remove button, e.g. (label) => t('chipRemoveLabel', { value: label }). */
   removeLabelFor: (label: string) => string;
   defaultSelected?: string[];
+  /** Opt-in: translated caption rendered above the trigger (component-owned — do NOT also wrap in <Field>). */
+  label?: string;
   /** Opt-in: translated label for the "select every option" button. Omit to hide it. */
   selectAllLabel?: string;
   /** Opt-in: translated label for the "clear all" button. Omit to hide it. */
@@ -77,8 +96,21 @@ export function ChipMultiSelect({
     defaultSelected.filter((v) => options.some((o) => o.value === v)),
   );
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const captionId = useId();
   const labelOf = new Map(options.map((o) => [o.value, o.label]));
+
+  // Close on outside click — document mousedown against the root ref (combobox.tsx idiom). No backdrop
+  // element exists, so no <label> wrapper can ever re-activate the trigger and undo the close.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
 
   const toggleValue = (v: string) =>
     setSelected((cur) => (cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]));
@@ -90,7 +122,22 @@ export function ChipMultiSelect({
   const showCountSummary = !showAllSummary && countLabelFor != null && selected.length > summaryThreshold;
 
   return (
-    <div className="space-y-1.5">
+    <div
+      ref={rootRef}
+      className="space-y-1.5"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && open) {
+          e.stopPropagation();
+          setOpen(false);
+          triggerRef.current?.focus();
+        }
+      }}
+    >
+      {label != null && (
+        <span id={captionId} className="block text-xs font-medium text-muted-foreground">
+          {label}
+        </span>
+      )}
       {selected.map((v) => (
         <input key={v} type="hidden" name={name} value={v} />
       ))}
@@ -101,6 +148,7 @@ export function ChipMultiSelect({
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-haspopup="true"
+          aria-labelledby={label != null ? captionId : undefined}
           className={cn(inputCls, 'flex items-center justify-between gap-2 text-left')}
         >
           <span className="truncate text-muted-foreground">{addPlaceholder}</span>
@@ -110,72 +158,59 @@ export function ChipMultiSelect({
           />
         </button>
         {open && (
-          <>
-            {/* Outside-click dismissal. */}
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <div
-              className="absolute left-0 z-50 mt-1 w-56 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg"
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.stopPropagation();
-                  setOpen(false);
-                  triggerRef.current?.focus();
-                }
-              }}
-            >
-              {(selectAllLabel != null || clearAllLabel != null) && (
-                <div className="mb-1 flex items-center gap-3 border-b border-border px-1.5 pb-1.5 pt-0.5 text-xs">
-                  {selectAllLabel != null && (
-                    <button
-                      type="button"
-                      onClick={() => setSelected(options.map((o) => o.value))}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {selectAllLabel}
-                    </button>
-                  )}
-                  {clearAllLabel != null && (
-                    <button
-                      type="button"
-                      onClick={() => setSelected([])}
-                      className="font-medium text-muted-foreground hover:underline"
-                    >
-                      {clearAllLabel}
-                    </button>
-                  )}
-                </div>
-              )}
-              <div className="max-h-56 overflow-y-auto">
-                {options.map((o) => (
+          <div className="absolute left-0 z-50 mt-1 w-56 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+            {(selectAllLabel != null || clearAllLabel != null) && (
+              <div className="mb-1 flex items-center gap-3 border-b border-border px-1.5 pb-1.5 pt-0.5 text-xs">
+                {selectAllLabel != null && (
                   <button
-                    key={o.value}
                     type="button"
-                    role="checkbox"
-                    aria-checked={selected.includes(o.value)}
-                    onClick={() => toggleValue(o.value)}
-                    className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted"
+                    onClick={() => setSelected(options.map((o) => o.value))}
+                    className="font-medium text-primary hover:underline"
                   >
-                    <span
-                      aria-hidden
-                      className={cn(
-                        'grid size-4 shrink-0 place-items-center rounded border transition-colors',
-                        selected.includes(o.value)
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-input bg-card',
-                      )}
-                    >
-                      {selected.includes(o.value) && (
-                        <svg viewBox="0 0 12 12" className="size-3" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                          <path d="M2.5 6.5l2.5 2.5 4.5-5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </span>
-                    <span className="truncate">{o.label}</span>
+                    {selectAllLabel}
                   </button>
-                ))}
+                )}
+                {clearAllLabel != null && (
+                  <button
+                    type="button"
+                    onClick={() => setSelected([])}
+                    className="font-medium text-muted-foreground hover:underline"
+                  >
+                    {clearAllLabel}
+                  </button>
+                )}
               </div>
+            )}
+            <div className="max-h-56 overflow-y-auto">
+              {options.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={selected.includes(o.value)}
+                  onClick={() => toggleValue(o.value)}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted"
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'grid size-4 shrink-0 place-items-center rounded border transition-colors',
+                      selected.includes(o.value)
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-input bg-card',
+                    )}
+                  >
+                    {selected.includes(o.value) && (
+                      <svg viewBox="0 0 12 12" className="size-3" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                        <path d="M2.5 6.5l2.5 2.5 4.5-5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </span>
+                  <span className="truncate">{o.label}</span>
+                </button>
+              ))}
             </div>
-          </>
+          </div>
         )}
       </div>
       {selected.length > 0 &&
@@ -186,17 +221,17 @@ export function ChipMultiSelect({
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {selected.map((v) => {
-              const label = labelOf.get(v) ?? v;
+              const chipLabel = labelOf.get(v) ?? v;
               return (
                 <span
                   key={v}
                   className="inline-flex items-center gap-1 rounded-full bg-primary/10 py-0.5 pl-2.5 pr-1 text-xs font-medium text-primary"
                 >
-                  {label}
+                  {chipLabel}
                   <button
                     type="button"
-                    aria-label={removeLabelFor(label)}
-                    title={removeLabelFor(label)}
+                    aria-label={removeLabelFor(chipLabel)}
+                    title={removeLabelFor(chipLabel)}
                     onClick={() => setSelected((cur) => cur.filter((x) => x !== v))}
                     className="grid size-4 shrink-0 place-items-center rounded-full text-primary/70 transition-colors hover:bg-primary/20 hover:text-primary"
                   >
