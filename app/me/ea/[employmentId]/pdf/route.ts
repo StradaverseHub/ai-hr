@@ -57,6 +57,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
     grossSalary: t('grossSalary'),
     bonus: t('bonus'),
     allowancesPerquisites: t('allowancesPerquisites'),
+    exemptAllowances: t('exemptAllowances'),
     benefitsInKind: t('benefitsInKind'),
     livingAccommodation: t('livingAccommodation'),
     notTracked: t('notTracked'),

@@ -1,0 +1,324 @@
+/**
+ * Feedback 09b554e9 — Pay Code PCB classification per the LHDN "Spesifikasi Pengiraan PCB 2026 Menggunakan
+ * Pengiraan Berkomputer" + EPF Bonus 2012.
+ *
+ *  - Schema/service round-trip: epf_bonus_2012 / pcb_remuneration_type / pcb_exemption_code persist, and
+ *    the save-time guard enforces the mandatory PCB pair, wrong-list rejection and epf-bonus-without-epf
+ *    (only when the input SUPPLIES the fields — legacy callers stay untouched).
+ *  - Engine: a DECLARED remuneration type overrides the epf/socso flag inference (normal → Y1 wage stream,
+ *    additional → Yt bonus stream); an optional-deduction pay code reduces PCB exactly like an approved TP1
+ *    deduction; per-code annual exemption caps apply with YTD carry across months (under / at / over);
+ *    EPF Bonus 2012 routes an epf+socso code down the additional-remuneration EPF path; a legacy
+ *    null-classification row calculates exactly as before, and the fail-closed guard still fires for a
+ *    PCB-ticked code LACKING classification (but no longer for a classified one).
+ *  - EA: the exempt PCB_* portions accumulate to the EA exempt-allowances figure.
+ *  - Statutory pack: the bundled MY pack carries the new exemption tables (version 2026.5 round-trip).
+ */
+import fs from 'node:fs';
+import path from 'node:path';
+import { eq } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import * as schema from '../db/schema';
+import type { SessionContext } from '../db/client';
+import { hireEmployee } from '../core/org';
+import { setCompensation } from '../core/comp';
+import { setStatutoryProfileMY } from '../localization/my/statutory';
+import { createBatch, generatePayslips, setPayrollInput, UnsupportedPayComponentError } from '../core/payroll';
+import {
+  listPayComponents,
+  PayComponentStatutoryConfigError,
+  seedPayComponentCatalog,
+  setEmploymentPayComponent,
+  upsertPayComponent,
+  validateStatutoryClassification,
+  type PayComponentInput,
+} from '../core/pay-components';
+import { DEFAULT_MY_STATUTORY, MY_STATUTORY_VERSION } from '../localization/my/statutory-tables';
+import { validateStatutoryRuleset } from '../localization/my/statutory-config';
+import { eaStatement } from '../localization/my/reports';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+
+let base: Base;
+let a: SessionContext;
+
+const input = (code: string, over: Partial<PayComponentInput> = {}): PayComponentInput => ({
+  code,
+  name: `${code} component`,
+  kind: 'allowance',
+  includedInEpf: true,
+  includedInSocsoEis: true,
+  includedInPcb: true,
+  includedInHrdfBase: false,
+  isNonPayable: false,
+  prorates: true,
+  ...over,
+});
+
+const idByCode = async (code: string) =>
+  (await listPayComponents(a, { includeArchived: true })).find((c) => c.code === code)!.id;
+
+/** Hire + statutory profile + compensation + BASIC recurring component (the typed-path roster shape). */
+async function hire(email: string, ic: string, basic = 4000) {
+  const e = await hireEmployee(a, {
+    person: { fullName: email.split('@')[0], primaryEmail: email },
+    companyId: base.companyId,
+    departmentId: base.deptA,
+    employmentType: 'full_time',
+    hiredOn: '2026-01-01',
+  });
+  await setStatutoryProfileMY(a, { personId: e.personId, icNumber: ic });
+  await setCompensation(a, { employmentId: e.employmentId, basicSalary: basic, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+  await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('BASIC'), amount: basic, effectiveFrom: '2026-01-01' });
+  return e;
+}
+
+async function slipOf(batchId: string, employmentId: string) {
+  const rows = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+  return rows.find((r) => r.employmentId === employmentId)!;
+}
+
+beforeAll(async () => {
+  await migrateTestDb();
+});
+beforeEach(async () => {
+  await resetDb();
+  base = await seedBase();
+  a = adminCtx(base);
+  delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+});
+afterEach(() => {
+  delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+});
+afterAll(async () => {
+  await closeAll();
+});
+
+describe('09b554e9 — classification round-trip + save-time validation', () => {
+  it('persists epfBonus2012 / pcbRemunerationType / pcbExemptionCode and clears them when PCB is unticked', async () => {
+    await upsertPayComponent(a, input('CHILDCARE', {
+      epfBonus2012: false, pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_CHILD_CARE',
+    }));
+    let row = (await listPayComponents(a)).find((c) => c.code === 'CHILDCARE')!;
+    expect(row.pcbRemunerationType).toBe('normal');
+    expect(row.pcbExemptionCode).toBe('PCB_CHILD_CARE');
+    expect(row.epfBonus2012).toBe(false);
+
+    // EPF Bonus 2012 sticks with EPF ticked.
+    await upsertPayComponent(a, input('CHILDCARE', {
+      epfBonus2012: true, pcbRemunerationType: 'additional', pcbExemptionCode: 'PCB_TAXABLE',
+    }));
+    row = (await listPayComponents(a)).find((c) => c.code === 'CHILDCARE')!;
+    expect(row.epfBonus2012).toBe(true);
+    expect(row.pcbRemunerationType).toBe('additional');
+
+    // Unticking PCB clears the classification pair (an untaxed code carries none).
+    await upsertPayComponent(a, input('CHILDCARE', {
+      includedInPcb: false, epfBonus2012: true, pcbRemunerationType: 'additional', pcbExemptionCode: 'PCB_TAXABLE',
+    }));
+    row = (await listPayComponents(a)).find((c) => c.code === 'CHILDCARE')!;
+    expect(row.pcbRemunerationType).toBeNull();
+    expect(row.pcbExemptionCode).toBeNull();
+  });
+
+  it('enforces the mandatory PCB pair, wrong-list rejection and epf-bonus-without-epf', async () => {
+    // PCB ticked + fields supplied but empty ⇒ remuneration type mandatory.
+    let err = await upsertPayComponent(a, input('X1', { pcbRemunerationType: null, pcbExemptionCode: null })).catch((e) => e);
+    expect(err).toBeInstanceOf(PayComponentStatutoryConfigError);
+    expect(err.code).toBe('pcbRemunerationTypeRequired');
+
+    // Type without exemption code ⇒ exemption mandatory.
+    err = await upsertPayComponent(a, input('X2', { pcbRemunerationType: 'normal', pcbExemptionCode: null })).catch((e) => e);
+    expect(err).toBeInstanceOf(PayComponentStatutoryConfigError);
+    expect(err.code).toBe('pcbExemptionTypeRequired');
+
+    // Wrong list both ways (LP code under normal; PCB code under optional deduction).
+    err = await upsertPayComponent(a, input('X3', { pcbRemunerationType: 'normal', pcbExemptionCode: 'LP_LIFESTYLE' })).catch((e) => e);
+    expect(err.code).toBe('pcbExemptionTypeInvalid');
+    err = await upsertPayComponent(a, input('X4', { pcbRemunerationType: 'optional_deduction', pcbExemptionCode: 'PCB_TAXABLE' })).catch((e) => e);
+    expect(err.code).toBe('pcbExemptionTypeInvalid');
+
+    // EPF Bonus 2012 without EPF ⇒ refused.
+    err = await upsertPayComponent(a, input('X5', { includedInEpf: false, epfBonus2012: true, pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE' })).catch((e) => e);
+    expect(err.code).toBe('epfBonusRequiresEpf');
+
+    // Nothing was persisted by the refused saves.
+    expect((await listPayComponents(a)).map((c) => c.code)).not.toContain('X1');
+  });
+
+  it('legacy callers that do not supply the fields keep saving (seed regression) and skip the guard', async () => {
+    await expect(seedPayComponentCatalog(a)).resolves.toMatchObject({ created: expect.any(Number) });
+    // A PCB-ticked upsert with NO classification fields (the pre-feature shape) still saves.
+    await expect(upsertPayComponent(a, input('LEGACY'))).resolves.toMatchObject({ id: expect.any(String) });
+    const row = (await listPayComponents(a)).find((c) => c.code === 'LEGACY')!;
+    expect(row.pcbRemunerationType).toBeNull();
+    // The pure validator mirrors the same contract.
+    expect(validateStatutoryClassification({ includedInEpf: true, includedInPcb: true })).toEqual({ ok: true });
+    expect(validateStatutoryClassification({ includedInEpf: true, includedInPcb: true, pcbRemunerationType: null, pcbExemptionCode: null })).toEqual({ ok: false, code: 'pcbRemunerationTypeRequired' });
+  });
+});
+
+describe('09b554e9 — engine: declared classification drives the PCB/EPF streams', () => {
+  it('declared additional overrides the epf+socso inference (Yt stream); declared normal overrides the bonus inference (Y1 stream)', async () => {
+    await seedPayComponentCatalog(a);
+    // TRAVEL: flags say wage-bucket (epf+socso) but the declaration says ADDITIONAL remuneration.
+    await upsertPayComponent(a, input('TRAVEL', { pcbRemunerationType: 'additional', pcbExemptionCode: 'PCB_TAXABLE' }));
+    // FIXEDPAY: flags say bonus-bucket (epf, no socso) but the declaration says NORMAL remuneration.
+    await upsertPayComponent(a, input('FIXEDPAY', { includedInSocsoEis: false, pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE' }));
+    // LEGBONUS: same epf-only flags, NO declaration — the legacy inference must stay byte-identical (bonus).
+    await upsertPayComponent(a, input('LEGBONUS', { includedInSocsoEis: false }));
+
+    const e1 = await hire('travel@acme.test', '900101015001');
+    await setEmploymentPayComponent(a, { employmentId: e1.employmentId, componentId: await idByCode('TRAVEL'), amount: 1000, effectiveFrom: '2026-01-01' });
+    const e2 = await hire('fixedpay@acme.test', '900101015002');
+    await setEmploymentPayComponent(a, { employmentId: e2.employmentId, componentId: await idByCode('FIXEDPAY'), amount: 500, effectiveFrom: '2026-01-01' });
+    const e3 = await hire('legbonus@acme.test', '900101015003');
+    await setEmploymentPayComponent(a, { employmentId: e3.employmentId, componentId: await idByCode('LEGBONUS'), amount: 500, effectiveFrom: '2026-01-01' });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await generatePayslips(a, { batchId });
+
+    const s1 = await slipOf(batchId, e1.employmentId);
+    expect(Number(s1.bonus)).toBeCloseTo(1000, 2); // declared additional ⇒ Yt stream
+    expect(Number(s1.allowance)).toBeCloseTo(0, 2);
+
+    const s2 = await slipOf(batchId, e2.employmentId);
+    expect(Number(s2.allowance)).toBeCloseTo(500, 2); // declared normal ⇒ Y1 stream
+    expect(Number(s2.bonus)).toBeCloseTo(0, 2);
+
+    const s3 = await slipOf(batchId, e3.employmentId);
+    expect(Number(s3.bonus)).toBeCloseTo(500, 2); // legacy inference unchanged (regression)
+    expect(Number(s3.allowance)).toBeCloseTo(0, 2);
+  });
+
+  it('an optional-deduction pay code reduces PCB exactly like an approved TP1 deduction (annual LP cap, YTD carry)', async () => {
+    await seedPayComponentCatalog(a);
+    // LP_SOCSO cap is RM350/year: a RM300 monthly claim is fully claimable in Jan, capped to RM50 in Feb.
+    await upsertPayComponent(a, input('LPSOCSO', {
+      kind: 'deduction', includedInEpf: false, includedInSocsoEis: false,
+      pcbRemunerationType: 'optional_deduction', pcbExemptionCode: 'LP_SOCSO',
+    }));
+
+    const lpEmp = await hire('lp@acme.test', '900101015011', 5000);
+    await setEmploymentPayComponent(a, { employmentId: lpEmp.employmentId, componentId: await idByCode('LPSOCSO'), amount: 300, effectiveFrom: '2026-01-01' });
+    const tp1Emp = await hire('tp1@acme.test', '900101015012', 5000);
+    const ctlEmp = await hire('ctl@acme.test', '900101015013', 5000);
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-01' });
+    await setPayrollInput(a, { batchId, employmentId: tp1Emp.employmentId, overtimeAmount: 0, tp1Deduction: 300 });
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await generatePayslips(a, { batchId });
+
+    const lpSlip = await slipOf(batchId, lpEmp.employmentId);
+    const tp1Slip = await slipOf(batchId, tp1Emp.employmentId);
+    const ctlSlip = await slipOf(batchId, ctlEmp.employmentId);
+    const pcbOf = (s: { statutory: unknown }) => Number((s.statutory as { pcb: number }).pcb);
+    const lpOf = (s: { statutory: unknown }) => Number((s.statutory as { lp?: number }).lp ?? 0);
+
+    expect(lpOf(lpSlip)).toBeCloseTo(300, 2); // the declared LP claim feeds LP₁
+    expect(pcbOf(lpSlip)).toBeCloseTo(pcbOf(tp1Slip), 2); // …and reduces PCB exactly like TP1
+    expect(pcbOf(lpSlip)).toBeLessThan(pcbOf(ctlSlip)); // …which is genuinely less than no relief
+    // Cash-wise the deduction still leaves net (kind: deduction).
+    expect(Number(lpSlip.otherDeductions)).toBeCloseTo(300, 2);
+    // Slip carries the per-code usage for the YTD replay.
+    expect((lpSlip.statutory as { exemptionUsed?: Record<string, number> }).exemptionUsed).toEqual({ LP_SOCSO: 300 });
+
+    // February: only RM50 of headroom remains under the RM350 annual cap.
+    const feb = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-02' });
+    await generatePayslips(a, { batchId: feb.batchId });
+    const lpFeb = await slipOf(feb.batchId, lpEmp.employmentId);
+    expect(lpOf(lpFeb)).toBeCloseTo(50, 2);
+    expect((lpFeb.statutory as { exemptionUsed?: Record<string, number> }).exemptionUsed).toEqual({ LP_SOCSO: 50 });
+  });
+
+  it('PCB_* exemption caps: under in Jan, over in Feb (YTD carry) — the exempt slice is paid but leaves the statutory bases; EA accumulates it', async () => {
+    await seedPayComponentCatalog(a);
+    // PCB_CHILD_CARE cap RM3,000/year; RM2,000/month ⇒ Jan fully exempt, Feb 1,000 exempt + 1,000 taxable.
+    await upsertPayComponent(a, input('CHILDCARE', { pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_CHILD_CARE' }));
+    const e = await hire('cc@acme.test', '900101015021', 4000);
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('CHILDCARE'), amount: 2000, effectiveFrom: '2026-01-01' });
+
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    const jan = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-01' });
+    await generatePayslips(a, { batchId: jan.batchId });
+    const sJan = await slipOf(jan.batchId, e.employmentId);
+    // Paid in full…
+    expect(Number(sJan.allowance)).toBeCloseTo(2000, 2);
+    // …but fully exempt: EPF sees the RM4,000 basic only (Third Schedule band ⇒ RM440 employee).
+    expect(Number((sJan.statutory as { epfEmployee: number }).epfEmployee)).toBe(440);
+    expect((sJan.statutory as { exemptionUsed?: Record<string, number> }).exemptionUsed).toEqual({ PCB_CHILD_CARE: 2000 });
+
+    const feb = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-02' });
+    await generatePayslips(a, { batchId: feb.batchId });
+    const sFeb = await slipOf(feb.batchId, e.employmentId);
+    expect(Number(sFeb.allowance)).toBeCloseTo(2000, 2); // still paid in full
+    // Only RM1,000 headroom left ⇒ RM1,000 taxable rides the wage: EPF on RM5,000 ⇒ RM550 employee.
+    expect(Number((sFeb.statutory as { epfEmployee: number }).epfEmployee)).toBe(550);
+    expect((sFeb.statutory as { exemptionUsed?: Record<string, number> }).exemptionUsed).toEqual({ PCB_CHILD_CARE: 1000 });
+
+    // EA: the exempt portions accumulate to the exempt-allowances figure (2,000 + 1,000).
+    const ea = await eaStatement(a, { employmentId: e.employmentId, year: '2026' });
+    expect(ea?.partB.exemptAllowances).toBeCloseTo(3000, 2);
+  });
+
+  it('EPF Bonus 2012 on an epf+socso code routes the amount down the additional-remuneration EPF path', async () => {
+    await seedPayComponentCatalog(a);
+    await upsertPayComponent(a, input('BON2012', {
+      epfBonus2012: true, pcbRemunerationType: 'additional', pcbExemptionCode: 'PCB_TAXABLE',
+    }));
+    const e = await hire('bon@acme.test', '900101015031', 4000);
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('BON2012'), amount: 3000, effectiveFrom: '2026-01-01' });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await generatePayslips(a, { batchId });
+    const s = await slipOf(batchId, e.employmentId);
+    const st = s.statutory as { epfEmployee: number; epfEmployer: number; socsoEmployee: number };
+
+    expect(Number(s.bonus)).toBeCloseTo(3000, 2); // bonus payment, Yt stream
+    // EPF: normal wage RM4,000 band (440/520) + bonus at the NORMAL-wage-band rates (11% / 13% — the
+    // ≤RM5,000 employer rate STAYS 13% even though wages + bonus exceed RM5,000: the EPF Bonus rule).
+    expect(st.epfEmployee).toBe(440 + Math.ceil(0.11 * 3000)); // 440 + 330 = 770
+    expect(st.epfEmployer).toBe(520 + Math.ceil(0.13 * 3000)); // 520 + 390 = 910
+    // SOCSO excludes the bonus (Act 4 wages): the RM4,000 band employee share.
+    expect(st.socsoEmployee).toBeCloseTo(19.75, 2);
+  });
+
+  it('fail-closed guard: an unclassified PCB-only earning still throws; a classified one computes', async () => {
+    await seedPayComponentCatalog(a);
+    await upsertPayComponent(a, input('PCBONLY', { includedInEpf: false, includedInSocsoEis: false }));
+    const e = await hire('guard@acme.test', '900101015041');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('PCBONLY'), amount: 100, effectiveFrom: '2026-01-01' });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await expect(generatePayslips(a, { batchId })).rejects.toBeInstanceOf(UnsupportedPayComponentError);
+
+    // Declaring the classification makes the same code computable (routed by the declaration).
+    await upsertPayComponent(a, input('PCBONLY', {
+      includedInEpf: false, includedInSocsoEis: false,
+      pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE',
+    }));
+    await expect(generatePayslips(a, { batchId })).resolves.toBeTruthy();
+    const s = await slipOf(batchId, e.employmentId);
+    expect(Number(s.allowance)).toBeCloseTo(100, 2); // normal ⇒ Y1 wage stream
+  });
+});
+
+describe('09b554e9 — statutory pack round-trip', () => {
+  it('DEFAULT_MY_STATUTORY validates and the bundled pack carries the 2026.5 exemption tables', () => {
+    expect(MY_STATUTORY_VERSION).toBe('2026.5');
+    expect(validateStatutoryRuleset(DEFAULT_MY_STATUTORY)).toEqual([]);
+    expect(Object.keys(DEFAULT_MY_STATUTORY.pcbExemptions!.pcb)).toHaveLength(7);
+    expect(Object.keys(DEFAULT_MY_STATUTORY.pcbExemptions!.lp)).toHaveLength(24);
+    expect(DEFAULT_MY_STATUTORY.pcbExemptions!.pcb['PCB_NON-TAXABLE']).toBe(-1);
+    expect(DEFAULT_MY_STATUTORY.pcbExemptions!.lp.LP_OPTIONAL_REBATE).toBe(9999999);
+
+    const envelope = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '../localization/statutory-pack/bundled/my-2026.01.01.pack.json'), 'utf8'),
+    ) as { payload: string };
+    const payload = JSON.parse(envelope.payload) as { rulesets: { version: string; data: typeof DEFAULT_MY_STATUTORY }[] };
+    expect(payload.rulesets[0].version).toBe('2026.5');
+    expect(payload.rulesets[0].data.pcbExemptions).toEqual(DEFAULT_MY_STATUTORY.pcbExemptions);
+  });
+});

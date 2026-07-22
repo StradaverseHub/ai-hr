@@ -508,8 +508,11 @@ export type EaStatement = {
     hiredOn: string;
     terminatedOn: string | null;
   };
-  /** Part B — employment income (cash). Untracked items (BIK, VOLA, ESOS, gratuity) are out of scope. */
-  partB: { grossSalary: number; bonus: number; allowances: number; gross: number };
+  /** Part B — employment income (cash). Untracked items (BIK, VOLA, ESOS, gratuity) are out of scope.
+   *  `exemptAllowances` (feedback 09b554e9) — the year's TAX-EXEMPT allowance portions (the PCB_* exemption
+   *  amounts each slip stamps as statutory.exemptionUsed), reported in the EA's exempt-allowances section.
+   *  Optional + additive; the general EA line-mapping (ea_form_line consumption) remains a follow-up. */
+  partB: { grossSalary: number; bonus: number; allowances: number; gross: number; exemptAllowances?: number };
   partD: { mtd: number; zakat: number }; // total deduction — MTD/PCB + the year's zakat-via-salary (Z)
   partE: { epf: number; socso: number; eis: number }; // employee's share of EPF + SOCSO/EIS
   statutoryVersion: string;
@@ -572,8 +575,9 @@ export async function eaStatement(
     let epf = 0;
     let socso = 0;
     let eis = 0;
+    let exemptAllowances = 0;
     for (const s of slips) {
-      const st = (s.statutory ?? {}) as Stat;
+      const st = (s.statutory ?? {}) as Stat & { exemptionUsed?: Record<string, number> };
       grossSalary += num(s.basic) + num(s.overtime);
       bonus += num(s.bonus);
       allowances += num(s.allowance);
@@ -584,6 +588,13 @@ export async function eaStatement(
       epf += num(st.epfEmployee);
       socso += num(st.socsoEmployee);
       eis += num(st.eisEmployee);
+      // Feedback 09b554e9 — the exempt PCB_* allowance portions accumulate to the EA exempt-allowances
+      // figure (LP_* codes are optional DEDUCTIONS, not exempt income, so they are excluded here).
+      if (st.exemptionUsed) {
+        for (const [code, amt] of Object.entries(st.exemptionUsed)) {
+          if (code.startsWith('PCB_')) exemptAllowances += num(amt);
+        }
+      }
     }
     // ── 1.2.6 EA Data Overwrite — overlay HR's EA-only amendments onto the payroll-derived figures ──
     // EA-ONLY: nothing above touched payroll; this only rewrites the figures the EA form renders. Read the
@@ -632,7 +643,7 @@ export async function eaStatement(
         hiredOn: info.hiredOn,
         terminatedOn: info.terminatedOn,
       },
-      partB: { grossSalary: merged.grossSalary, bonus: merged.bonus, allowances: merged.allowances, gross: merged.gross },
+      partB: { grossSalary: merged.grossSalary, bonus: merged.bonus, allowances: merged.allowances, gross: merged.gross, exemptAllowances: round2(exemptAllowances) },
       partD: { mtd: merged.mtd, zakat: round2(zakat) },
       partE: { epf: merged.epf, socso: merged.socso, eis: merged.eis },
       statutoryVersion: versionOf(slips.map((s) => s.statutory)),

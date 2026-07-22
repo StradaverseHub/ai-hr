@@ -18,8 +18,17 @@ import {
   person,
 } from '../db/schema';
 import { MY_DEFAULT_PAY_COMPONENTS, BACKFILL_COMPONENT_CODES, type PayComponentSeed } from '../localization/my/pay-components';
+import {
+  PCB_REMUNERATION_TYPES,
+  pcbExemptionCodesFor,
+  type PcbRemunerationType,
+} from '../localization/my/statutory-tables';
 import { parseCsvRecords } from '../lib/csv';
 import { validatePayRule, type PayRule, type PayRuleErrorCode } from './pay-rule';
+
+// Re-export the LHDN PCB 2026 classification vocabulary (feedback 09b554e9) so service-side callers keep a
+// single import point; the client form island imports the pure statutory-tables module directly (db-free).
+export { PCB_REMUNERATION_TYPES, pcbExemptionCodesFor, type PcbRemunerationType };
 
 const money = (v: number) => Number(v).toFixed(2);
 
@@ -185,7 +194,59 @@ export type PayComponentInput = {
   roundingMethod?: string;
   // Configurable pay-rule (Payroll Setup). null / undefined / { kind: 'fixed' } ⇒ legacy fixed-amount behaviour.
   rule?: PayRule | null;
+  // LHDN PCB 2026 classification (feedback 09b554e9). ALL THREE undefined ⇒ "not supplied" — legacy callers
+  // (seed, backfills, pre-existing tests) leave the stored classification untouched and skip the mandatory
+  // validation below. The maintenance form ALWAYS supplies them, so the guard is server-authoritative for
+  // every UI save. epfBonus2012 requires includedInEpf; with includedInPcb, both PCB fields are mandatory
+  // and the code must belong to the selected remuneration type's list.
+  epfBonus2012?: boolean;
+  pcbRemunerationType?: PcbRemunerationType | null;
+  pcbExemptionCode?: string | null;
 };
+
+// ── LHDN PCB 2026 classification validation (feedback 09b554e9) ──
+
+export type PayComponentStatutoryErrorCode =
+  | 'pcbRemunerationTypeRequired'
+  | 'pcbExemptionTypeRequired'
+  | 'pcbExemptionTypeInvalid'
+  | 'epfBonusRequiresEpf';
+
+/** Thrown when a save carries an incomplete/inconsistent statutory classification. Carries the stable error
+ *  CODE so the UI maps it to a localised payComponents.errorStatutory_* message (mirrors PayRuleInvalidError). */
+export class PayComponentStatutoryConfigError extends Error {
+  constructor(public readonly code: PayComponentStatutoryErrorCode) {
+    super(`pay-component-statutory-config:${code}`);
+    this.name = 'PayComponentStatutoryConfigError';
+  }
+}
+
+/** Coerce any input to a valid remuneration type or null (URL/form tamper never persists). */
+const cleanRemunerationType = (v: unknown): PcbRemunerationType | null =>
+  PCB_REMUNERATION_TYPES.includes(v as PcbRemunerationType) ? (v as PcbRemunerationType) : null;
+
+/**
+ * PURE classification validator (server-authoritative; the form island mirrors it client-side by
+ * construction). Only enforced when the input SUPPLIES the classification fields — legacy callers that
+ * predate them (seed/backfill/tests) pass undefined and keep their stored values untouched.
+ */
+export function validateStatutoryClassification(p: {
+  includedInEpf: boolean;
+  includedInPcb: boolean;
+  epfBonus2012?: boolean;
+  pcbRemunerationType?: PcbRemunerationType | null;
+  pcbExemptionCode?: string | null;
+}): { ok: true } | { ok: false; code: PayComponentStatutoryErrorCode } {
+  if (p.epfBonus2012 && !p.includedInEpf) return { ok: false, code: 'epfBonusRequiresEpf' };
+  const supplied = p.pcbRemunerationType !== undefined || p.pcbExemptionCode !== undefined;
+  if (!supplied || !p.includedInPcb) return { ok: true };
+  const remType = cleanRemunerationType(p.pcbRemunerationType);
+  if (!remType) return { ok: false, code: 'pcbRemunerationTypeRequired' };
+  const code = p.pcbExemptionCode ?? null;
+  if (!code) return { ok: false, code: 'pcbExemptionTypeRequired' };
+  if (!(code in pcbExemptionCodesFor(remType))) return { ok: false, code: 'pcbExemptionTypeInvalid' };
+  return { ok: true };
+}
 
 /**
  * Thrown when an upserted component carries a structurally-invalid rule (out-of-enum kind, out-of-bounds
@@ -201,6 +262,17 @@ export class PayRuleInvalidError extends Error {
 }
 
 const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod) });
+// LHDN PCB 2026 classification storage (feedback 09b554e9): all three undefined ⇒ "not supplied" ⇒ leave the
+// stored values untouched (legacy caller). Supplied: EPF Bonus 2012 only sticks with EPF ticked, and the two
+// PCB fields are cleared to null when PCB itself is unticked (an untaxed code carries no PCB classification).
+const classificationOf = (p: PayComponentInput) =>
+  p.epfBonus2012 === undefined && p.pcbRemunerationType === undefined && p.pcbExemptionCode === undefined
+    ? {}
+    : {
+        epfBonus2012: (p.epfBonus2012 ?? false) && p.includedInEpf,
+        pcbRemunerationType: p.includedInPcb ? cleanRemunerationType(p.pcbRemunerationType) : null,
+        pcbExemptionCode: p.includedInPcb ? (p.pcbExemptionCode ?? null) : null,
+      };
 // Label normalisation: undefined ⇒ "not supplied" (leave as-is on update / null on insert); trimmed-blank ⇒ null.
 const cleanLabel = (v: string | null | undefined): string | null | undefined =>
   v === undefined ? undefined : (v?.trim() || null);
@@ -256,7 +328,7 @@ export async function createPayComponent(ctx: SessionContext, p: PayComponentInp
 // The diffable catalog fields for the trimmed audit payload (changed field NAMES only — no values:
 // app/admin/audit/page.tsx never renders payloads, and free-text name/label in the immutable event
 // stream would violate the payload discipline the comment below enforces).
-const DIFF_FIELDS = ['name', 'label', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule'] as const;
+const DIFF_FIELDS = ['name', 'label', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode'] as const;
 
 /** Admin upsert of a single catalog component (by code). Validates the rule against the component's
  *  proration flag before any write (throws PayRuleInvalidError on failure — same proration/sign/bounds
@@ -266,6 +338,10 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
     const rule = ruleOf(p);
     const v = validatePayRule(rule, p.prorates);
     if (!v.ok) throw new PayRuleInvalidError(v.code);
+    // LHDN PCB 2026 classification guard (feedback 09b554e9) — no-op for legacy callers that don't supply
+    // the fields; server-authoritative for every form save (create delegates here — single path).
+    const cls = validateStatutoryClassification(p);
+    if (!cls.ok) throw new PayComponentStatutoryConfigError(cls.code);
     const label = cleanLabel(p.label);
     // Full row (not just the id) so the event can carry the changed-field-name list + archived state
     // without a second SELECT.
@@ -277,7 +353,7 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
     let id: string;
     let changed: string[] = [];
     if (existing) {
-      const next = { name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), rule, ...(label !== undefined ? { label } : {}) };
+      const next = { name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), rule, ...(label !== undefined ? { label } : {}) };
       changed = DIFF_FIELDS.filter((f) => {
         if (!(f in next)) return false; // label omitted ⇒ untouched ⇒ not a change
         const a = (next as Record<string, unknown>)[f];
@@ -289,7 +365,7 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
     } else {
       const [row] = await tx
         .insert(payComponent)
-        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), rule })
+        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), rule })
         .returning({ id: payComponent.id });
       id = row.id;
     }
@@ -683,9 +759,12 @@ export class UnsupportedBatchComponentError extends Error {
   }
 }
 
-/** The kernel's fail-closed condition (core/payroll.ts earningsOf), evaluated on a catalog row's flags. */
-const isUnsupportedTaxableComponent = (c: { includedInEpf: boolean; includedInSocsoEis: boolean; includedInPcb: boolean; isNonPayable: boolean }) =>
-  c.includedInPcb && (c.isNonPayable || (!c.includedInEpf && !c.includedInSocsoEis));
+/** The kernel's fail-closed condition (core/payroll.ts earningsOf), evaluated on a catalog row's flags.
+ *  Feedback 09b554e9: a pay code carrying a DECLARED pcb_remuneration_type is no longer "unsupported" —
+ *  the kernel routes it by the declared classification, so the guard only fires for PCB-ticked codes
+ *  LACKING classification (legacy rows keep the legacy fail-closed behaviour). */
+const isUnsupportedTaxableComponent = (c: { includedInEpf: boolean; includedInSocsoEis: boolean; includedInPcb: boolean; isNonPayable: boolean; pcbRemunerationType?: string | null }) =>
+  c.includedInPcb && c.pcbRemunerationType == null && (c.isNonPayable || (!c.includedInEpf && !c.includedInSocsoEis));
 
 /** Upsert a one-off component value for an employee on a draft batch (by batch+employment+component). */
 export function setPayrollBatchComponent(
@@ -703,6 +782,7 @@ export function setPayrollBatchComponent(
         includedInSocsoEis: payComponent.includedInSocsoEis,
         includedInPcb: payComponent.includedInPcb,
         isNonPayable: payComponent.isNonPayable,
+        pcbRemunerationType: payComponent.pcbRemunerationType,
       })
       .from(payComponent)
       .where(eq(payComponent.id, p.componentId))
@@ -841,6 +921,7 @@ export async function importBatchComponents(
         includedInSocsoEis: payComponent.includedInSocsoEis,
         includedInPcb: payComponent.includedInPcb,
         isNonPayable: payComponent.isNonPayable,
+        pcbRemunerationType: payComponent.pcbRemunerationType,
       })
       .from(payComponent)
       .where(and(eq(payComponent.tenantId, ctx.tenantId), isNull(payComponent.archivedAt)));

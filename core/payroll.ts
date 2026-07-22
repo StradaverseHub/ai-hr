@@ -52,6 +52,10 @@ import {
   tp1Relief,
 } from '../db/schema';
 import { setPayrollBatchComponent } from './pay-components';
+// LHDN PCB 2026 pay-code classification (feedback 09b554e9) — the built-in exemption tables are the
+// FALLBACK for a resolved ruleset predating 2026.5 (rules.pcbExemptions absent), mirroring the
+// hrdf/partA optional-body fallbacks. Pure data import (no MY runtime coupling beyond what packFor carries).
+import { MY_LP_OPTIONAL_DEDUCTION_CODES, MY_PCB_EXEMPTION_CODES } from '../localization/my/statutory-tables';
 import { cp38ForPeriod } from './cp38';
 import { applyLoansForBatch } from './loans';
 import { warnIfHolidaysIncomplete, holidayDatesFor, type HolidayCompletenessWarning } from './holidays';
@@ -2436,16 +2440,27 @@ export async function generatePayslips(
         lpAccumulated: 0,
       });
     }
+    // LHDN PCB 2026 (feedback 09b554e9) — per-code YTD exemption usage, DERIVED like the PCB accumulators:
+    // each slip stamps the month's per-code exempt/claimed amounts as statutory.exemptionUsed, and the
+    // replay sums them so the annual caps carry across months (no mutable balance table).
+    const exemptUsedByEmp = new Map<string, Record<string, number>>();
     for (const s of priorSlips) {
       const acc = accByEmp.get(s.employmentId);
       if (!acc) continue;
-      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; lp?: number; zakat?: number };
+      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; lp?: number; zakat?: number; exemptionUsed?: Record<string, number> };
       const claimed = Math.min(Number(st.epfEmployee ?? 0), Math.max(0, EPF_RELIEF_CAP - acc.epfClaimed));
       acc.netRemuneration = round2(acc.netRemuneration + Number(s.gross) - claimed);
       acc.epfClaimed = round2(acc.epfClaimed + claimed);
       acc.pcbPaid = round2(acc.pcbPaid + Number(st.pcb ?? 0));
       acc.zakatPaid = round2(acc.zakatPaid + Number(st.zakat ?? 0)); // §E.5: full zakat accrues to Z
       acc.lpAccumulated = round2(acc.lpAccumulated + Number(st.lp ?? 0));
+      if (st.exemptionUsed) {
+        const used = exemptUsedByEmp.get(s.employmentId) ?? {};
+        for (const [code, amt] of Object.entries(st.exemptionUsed)) {
+          used[code] = round2((used[code] ?? 0) + Number(amt ?? 0));
+        }
+        exemptUsedByEmp.set(s.employmentId, used);
+      }
     }
 
     // ── Multi-cycle (Wave 2C, ADR-0024) ──
@@ -2487,6 +2502,13 @@ export async function generatePayslips(
       // one-off batch component has no override, so this is null there too (⇒ catalog flag, unchanged).
       prorateOverride: boolean | null;
       rule: PayRule | null; // Payroll Setup — configurable pay-rule; null ⇒ stored amount (legacy behaviour).
+      // LHDN PCB 2026 classification (feedback 09b554e9). epfBonus2012 routes the amount down the
+      // additional-remuneration EPF path regardless of the SOCSO flag; pcbRemunerationType (when declared)
+      // overrides the epf/socso stream inference; pcbExemptionCode selects the annual exemption cap.
+      // All null/false on legacy rows ⇒ byte-identical legacy fold.
+      epfBonus2012: boolean;
+      pcbRemunerationType: 'normal' | 'additional' | 'optional_deduction' | null;
+      pcbExemptionCode: string | null;
     };
     const recurringByEmp = new Map<string, CompRow[]>();
     const batchCompByEmp = new Map<string, CompRow[]>();
@@ -2505,6 +2527,10 @@ export async function generatePayslips(
         prorates: payComponent.prorates,
         rounding: payComponent.roundingMethod,
         rule: payComponent.rule, // Payroll Setup — read for the resolver (null on every legacy row).
+        // LHDN PCB 2026 classification (feedback 09b554e9) — null/false on every legacy row.
+        epfBonus2012: payComponent.epfBonus2012,
+        pcbRemunerationType: payComponent.pcbRemunerationType,
+        pcbExemptionCode: payComponent.pcbExemptionCode,
       };
       const push = (map: Map<string, CompRow[]>, r: { employmentId: string; amount: string; prorateOverride?: boolean | null } & Omit<CompRow, 'amount' | 'prorateOverride'>) => {
         const list = map.get(r.employmentId) ?? [];
@@ -2592,6 +2618,9 @@ export async function generatePayslips(
           compNonPayable: payComponent.isNonPayable,
           compProrates: payComponent.prorates,
           compRounding: payComponent.roundingMethod,
+          compEpfBonus2012: payComponent.epfBonus2012,
+          compPcbRemunerationType: payComponent.pcbRemunerationType,
+          compPcbExemptionCode: payComponent.pcbExemptionCode,
         })
         .from(payrollIndividualTxn)
         .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
@@ -2638,10 +2667,14 @@ export async function generatePayslips(
                 prorates: t.compProrates ?? false,
                 prorateOverride: null,
                 rule: null, // keyed amount is authoritative — never re-derive via a catalog rule
+                // LHDN PCB 2026 classification rides the catalog row (feedback 09b554e9).
+                epfBonus2012: t.compEpfBonus2012 ?? false,
+                pcbRemunerationType: t.compPcbRemunerationType ?? null,
+                pcbExemptionCode: t.compPcbExemptionCode ?? null,
               }
             : t.kind === 'earning'
-              ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null }
-              : { code: 'TXN_DEDUCTION', name: t.notes ?? 'One-off deduction', kind: 'deduction', amount: amt, rounding: 'none', epf: false, socso: false, pcb: false, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null };
+              ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null }
+              : { code: 'TXN_DEDUCTION', name: t.notes ?? 'One-off deduction', kind: 'deduction', amount: amt, rounding: 'none', epf: false, socso: false, pcb: false, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null };
         const list = batchCompByEmp.get(t.employmentId) ?? [];
         list.push(row);
         batchCompByEmp.set(t.employmentId, list);
@@ -2698,8 +2731,14 @@ export async function generatePayslips(
       hourlyPayByEmp.set(e.employmentId, { rate, hours, basic: round2(rate * hours) });
     }
 
+    // LHDN PCB 2026 (feedback 09b554e9) — the exemption tables ride the resolved statutory ruleset (a
+    // pack/override predating 2026.5 omits them and falls back to the verified built-ins, mirroring hrdf).
+    const exemptionTables = rules.pcbExemptions ?? { pcb: MY_PCB_EXEMPTION_CODES, lp: MY_LP_OPTIONAL_DEDUCTION_CODES };
+
     /** Per-employee earnings, from the typed components (flag on) or the legacy comp+input (flag off).
-     *  Returns the exact variables the loop already used so the rest of the kernel is unchanged. */
+     *  Returns the exact variables the loop already used so the rest of the kernel is unchanged.
+     *  Feedback 09b554e9 adds `lpDeclared` (this month's optional-deduction claims, fed into LP₁ beside
+     *  TP1) and `exemptionUsed` (per-code exempt/claimed amounts, stamped onto the slip for the YTD replay). */
     const earningsOf = (
       e: { employmentId: string; basic: unknown; allowance: unknown },
       factor: number,
@@ -2707,6 +2746,7 @@ export async function generatePayslips(
       basicRaw: number; basicGross: number; allowanceApplied: number; hrdfAllowApplied: number;
       overtime: number; bonus: number; reimburse: number; deduct: number;
       recordLines: { code: string; name: string; amount: number }[];
+      lpDeclared: number; exemptionUsed: Record<string, number>;
     } => {
       if (!typedComponents) {
         const basicRaw = Number(e.basic);
@@ -2722,10 +2762,25 @@ export async function generatePayslips(
           reimburse: 0,
           deduct: 0,
           recordLines: [],
+          lpDeclared: 0,
+          exemptionUsed: {},
         };
       }
       let basicRaw = 0, basicGross = 0, wageAllow = 0, hrdfAllow = 0, ot = 0, bonusAmt = 0, reimburse = 0, deduct = 0;
       const recordLines: { code: string; name: string; amount: number }[] = [];
+      // LHDN PCB 2026 (feedback 09b554e9) — this month's optional-deduction (LP) claims and per-code
+      // exemption usage. `priorUsed` is the YTD usage replayed from the year's earlier slips; `exemptionUsed`
+      // accumulates THIS month's usage (so two components sharing a code share the remaining cap headroom).
+      let lpDeclared = 0;
+      const exemptionUsed: Record<string, number> = {};
+      const priorUsed = exemptUsedByEmp.get(e.employmentId) ?? {};
+      /** Remaining annual headroom for a code under `cap` (cap < 0 = fully exempt sentinel ⇒ unlimited). */
+      const roomFor = (code: string, cap: number): number =>
+        cap < 0 ? Number.POSITIVE_INFINITY : Math.max(0, round2(cap - (priorUsed[code] ?? 0) - (exemptionUsed[code] ?? 0)));
+      const useRoom = (code: string, amount: number) => {
+        if (amount <= 0) return;
+        exemptionUsed[code] = round2((exemptionUsed[code] ?? 0) + amount);
+      };
       const comps = [...(recurringByEmp.get(e.employmentId) ?? []), ...(batchCompByEmp.get(e.employmentId) ?? [])];
 
       // Payroll Setup — pay-rule scope (shared by all components). `daysWorked` reflects the partial period
@@ -2766,25 +2821,72 @@ export async function generatePayslips(
         // factor (prorate ON = proportional for a mid-period joiner/resigner, OFF = full amount).
         const prorate = c.prorateOverride ?? c.prorates;
         const applied = roundAmount(prorate ? resolved * factor : resolved, c.rounding);
+        // ── LHDN PCB 2026 declared classification (feedback 09b554e9) ──
+        // Optional Deduction: the amount reduces this month's PCB exactly like an approved TP1 deduction
+        // (fed into LP₁ below), capped by the LP code's remaining ANNUAL headroom (YTD replay). Cash-wise
+        // the component keeps its kind: a deduction deducts from net (e.g. LP_VOLUNTARY_EPF via salary), a
+        // non-payable records only, and any other kind is paid untaxed (it is a relief claim, not remuneration).
+        if (c.pcbRemunerationType === 'optional_deduction') {
+          const cap = c.pcbExemptionCode != null ? (exemptionTables.lp[c.pcbExemptionCode] ?? 0) : 0;
+          const claim = c.pcbExemptionCode != null ? round2(Math.min(applied, roomFor(c.pcbExemptionCode, cap))) : 0;
+          if (claim > 0) {
+            lpDeclared = round2(lpDeclared + claim);
+            useRoom(c.pcbExemptionCode!, claim);
+          }
+          if (c.kind === 'deduction') { deduct = round2(deduct + applied); continue; }
+          if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied }); continue; }
+          reimburse = round2(reimburse + applied);
+          continue;
+        }
         if (c.kind === 'deduction') { deduct = round2(deduct + applied); continue; }
         // FAIL-CLOSED (ADR-0025 §5): a PCB-taxable non-payable/BIK, or a PCB-only earning (not EPF and not
         // SOCSO), would be SILENTLY under-taxed — v1 does not compute the tax, so reject rather than produce
         // a wrong payslip. (Write-time guards in core/pay-components.ts now reject the same at entry/import.)
         // PRECEDENCE: the flag check runs on the resolved value — a rule does not let an unsupported
         // component through (an unsupported-PCB component still throws regardless of what its rule resolves to).
-        if (c.pcb && (c.nonPayable || (!c.epf && !c.socso))) {
+        // Feedback 09b554e9: a DECLARED pcb_remuneration_type makes the code computable (the kernel routes it
+        // by the declaration below), so the guard only fires for PCB-ticked codes LACKING classification.
+        if (c.pcb && c.pcbRemunerationType == null && (c.nonPayable || (!c.epf && !c.socso))) {
           throw new UnsupportedPayComponentError(c.code);
         }
         // A non-payable, non-taxable component (e.g. a record-only BIK) carries onto the payslip as an
         // INFORMATIONAL record line — it does NOT affect any cash bucket, gross, or net (ADR-0025 §5 / Option A).
         if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied }); continue; }
         if (c.code === 'BASIC') { basicRaw += resolved; basicGross = round2(basicGross + applied); continue; }
+        // ── Feedback 09b554e9: declared Normal/Additional remuneration, with per-code annual exemption ──
+        // The exempt portion (up to the PCB code's remaining annual headroom; cap -1 = fully exempt,
+        // cap 0 = fully taxable) is PAID but stays out of every statutory base (the reimburse bucket);
+        // the taxable remainder rides the declared stream: normal → the Y1 wage bucket, additional → the
+        // Yt bonus bucket. EPF Bonus 2012 forces the bonus (additional-remuneration EPF) routing regardless
+        // of the SOCSO flag — the amount is a bonus payment for EPF purposes (and bonuses sit outside
+        // SOCSO/EIS by law). Legacy rows (both null/false) fall through to the flag inference unchanged.
+        const stream = c.epfBonus2012 ? 'additional' : c.pcbRemunerationType;
+        if (stream === 'normal' || stream === 'additional') {
+          let taxable = applied;
+          const code = c.pcbExemptionCode; // optional_deduction already consumed above — always a PCB_* code here
+          if (code != null) {
+            const cap = exemptionTables.pcb[code] ?? 0;
+            const exempt = cap === 0 ? 0 : round2(Math.min(applied, roomFor(code, cap)));
+            if (exempt > 0) {
+              taxable = round2(applied - exempt);
+              reimburse = round2(reimburse + exempt);
+              useRoom(code, exempt);
+            }
+          }
+          if (stream === 'normal') {
+            wageAllow = round2(wageAllow + taxable);
+            if (c.hrdf) hrdfAllow = round2(hrdfAllow + taxable);
+          } else {
+            bonusAmt = round2(bonusAmt + taxable);
+          }
+          continue;
+        }
         if (c.epf && c.socso) { wageAllow = round2(wageAllow + applied); if (c.hrdf) hrdfAllow = round2(hrdfAllow + applied); }
         else if (!c.epf && c.socso) ot = round2(ot + applied);
         else if (c.epf && !c.socso) bonusAmt = round2(bonusAmt + applied);
         else reimburse = round2(reimburse + applied); // all-false earning: paid but untaxed (e.g. receipted reimbursement)
       }
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, recordLines };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, recordLines, lpDeclared, exemptionUsed };
     };
 
     /** Age at the period end; null when DOB is not captured (treated as < 60). */
@@ -2961,7 +3063,11 @@ export async function generatePayslips(
       // reimbursement is paid (in `allowance`/gross) but NOT in any statutory base.
       const wagesExOt = Math.max(0, round2(basic + en.allowanceApplied - unpaidDeduction));
       // Bonus is additional remuneration: EPF + PCB (difference method), excluded from SOCSO/EIS.
-      const lp = round2(tp1ByEmp.get(e.employmentId) ?? 0);
+      // LP₁ — this month's optional deductions: the approved TP1 amounts PLUS the declared
+      // optional-deduction pay codes (feedback 09b554e9; capped per LP code in earningsOf). Charged on the
+      // REGULAR run only, like cp38/hrdf — an additional run re-folds the same recurring components and
+      // would otherwise double-claim the month's LP.
+      const lp = round2((tp1ByEmp.get(e.employmentId) ?? 0) + (isAdditionalRun ? 0 : en.lpDeclared));
       const zakat = round2(zakatByEmp.get(e.employmentId) ?? 0);
       const age = ageAt(e.dateOfBirth);
       // HRD Corp levy (Wave 2A) — employer-only. Base = basic + FIXED (HRDF-flagged) allowance net of
@@ -3099,6 +3205,11 @@ export async function generatePayslips(
         ...(!isAdditionalRun && (en.recordLines.length || (txnRecordLinesByEmp.get(e.employmentId)?.length ?? 0))
           ? { recordLines: [...en.recordLines, ...(txnRecordLinesByEmp.get(e.employmentId) ?? [])] }
           : {}),
+        // Feedback 09b554e9 — per-code exemption/LP usage this month, replayed by future months' YTD
+        // accumulator (like st.lp) and summed into the EA exempt-allowances figure. Regular run only
+        // (an additional run re-folds the same recurring components; stamping again would double-count
+        // the replay). Key present only when at least one code was used — legacy slips are byte-identical.
+        ...(!isAdditionalRun && Object.keys(en.exemptionUsed).length ? { exemptionUsed: en.exemptionUsed } : {}),
       };
 
       // Item 5a461b99 — "Employer bears" reassignment. The contribution is still computed AND reported in

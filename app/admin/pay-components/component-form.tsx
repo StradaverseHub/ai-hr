@@ -5,6 +5,7 @@ import { ROUNDING_METHODS } from '@/core/pay-components';
 import type { PayRule } from '@/core/pay-rule';
 import { Card, ErrorBanner, Field, PageHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { PayRuleEditor } from './pay-rule-editor';
+import { StatutoryConfig } from './statutory-config';
 import { createComponentAction, updateComponentAction } from './actions';
 
 const LIST = '/admin/pay-components';
@@ -101,21 +102,19 @@ export async function ComponentForm({
         <Card className="space-y-3 p-4">
           <h2 className="text-sm font-semibold text-foreground">{t('sectionConfig')}</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="flex flex-wrap items-center gap-4 sm:col-span-3">
-              {(
-                [
-                  ['includedInEpf', 'EPF', component?.includedInEpf ?? true],
-                  ['includedInSocsoEis', 'SOCSO/EIS', component?.includedInSocsoEis ?? true],
-                  ['includedInPcb', 'PCB', component?.includedInPcb ?? true],
-                  ['includedInHrdfBase', 'HRDF', component?.includedInHrdfBase ?? false],
-                ] as const
-              ).map(([name, label, def]) => (
-                <label key={name} className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" name={name} defaultChecked={def} className="size-4 rounded" />
-                  {label}
-                </label>
-              ))}
-            </div>
+            {/* Feedback 09b554e9 — statutory flags grouped into EPF / PCB / Other panels. The PCB panel
+                reveals the mandatory Remuneration Type + dynamic Exemption Type dropdowns (LHDN PCB 2026);
+                EPF Bonus 2012 is only tickable with EPF itself. Client island: the exemption list filters
+                with the remuneration type without a round trip (server action re-validates). */}
+            <StatutoryConfig
+              includedInEpf={component?.includedInEpf ?? true}
+              epfBonus2012={component?.epfBonus2012 ?? false}
+              includedInSocsoEis={component?.includedInSocsoEis ?? true}
+              includedInPcb={component?.includedInPcb ?? true}
+              includedInHrdfBase={component?.includedInHrdfBase ?? false}
+              pcbRemunerationType={component?.pcbRemunerationType ?? null}
+              pcbExemptionCode={component?.pcbExemptionCode ?? null}
+            />
             <p className="text-xs text-muted-foreground sm:col-span-3">{t('flagsHint')}</p>
             {/* Payroll Setup — configurable pay-rule + AI assist. The Prorates checkbox lives inside this island
                 (it interacts with per-day/per-hour rules) and is submitted as the form's `prorates` field. */}

@@ -3728,6 +3728,20 @@ export const payComponent = pgTable(
     includedInHrdfBase: boolean('included_in_hrdf_base').notNull().default(false),
     // BIK/perquisite: taxable (PCB) but not paid in cash, so excluded from cash gross/net.
     isNonPayable: boolean('is_non_payable').notNull().default(false),
+    // LHDN PCB 2026 classification (feedback 09b554e9). epf_bonus_2012: the pay code is a BONUS payment for
+    // EPF purposes — the kernel routes it down the additional-remuneration EPF path (employer rate fixed by
+    // the NORMAL wage band per the EPF Bonus 2012 rules) regardless of the SOCSO flag. Only meaningful with
+    // included_in_epf; the service refuses the combination without it.
+    epfBonus2012: boolean('epf_bonus_2012').notNull().default(false),
+    // How the pay code is treated in the PCB computerised calculation: 'normal' → Y1 stream, 'additional' →
+    // Yt stream, 'optional_deduction' → LP (TP1-style) monthly-tax deduction. NULL = legacy row — the kernel
+    // keeps inferring the stream from the EPF/SOCSO flags exactly as before (no behaviour change on save-less
+    // rows). Constrained app-side to PCB_REMUNERATION_TYPES (core/pay-components.ts).
+    pcbRemunerationType: text('pcb_remuneration_type').$type<'normal' | 'additional' | 'optional_deduction' | null>(),
+    // The LHDN exemption / optional-deduction code (PCB_* for normal/additional, LP_* for optional
+    // deduction) with its annual cap in the versioned statutory tables (localization/my/statutory-tables.ts).
+    // Validated app-side against the selected remuneration type's list; NULL = legacy/unclassified.
+    pcbExemptionCode: text('pcb_exemption_code'),
     // Whether the amount prorates for a mid-period joiner/leaver.
     prorates: boolean('prorates').notNull().default(true),
     // Wave 1 (ADR-0035 1A): which annual EA-form (Borang EA / C.P.8A Part B) line this component maps to,
