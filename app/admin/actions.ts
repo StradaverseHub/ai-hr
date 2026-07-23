@@ -142,6 +142,17 @@ function okToast(path: string, msg: string): never {
   revalidatePath(path);
   redirect(`${path}?toast=${encodeURIComponent(msg)}`);
 }
+/** 9b0503ac — success return for entitlement-area saves (policy add/edit/remove, scheme-entitlement
+ *  upserts): stay on the Entitlements config panel with a success toast AND preserve the workspace's
+ *  #type-<id> selection anchor (the updateLeaveTypeAction / b9dac2d1 stay-on-page keystone), so HR lands
+ *  back on the exact leave type + step they were configuring instead of being bounced to /admin/leave.
+ *  The anchor rides AFTER the query string so ToastFromQuery still sees ?toast=; an empty leaveTypeId
+ *  (form didn't carry one) degrades to the bare Entitlements path — same route, so the workspace's client
+ *  selection state still survives the soft navigation. */
+function okEntitlements(msg: string, leaveTypeId: string): never {
+  revalidatePath(ENTITLEMENTS);
+  redirect(`${ENTITLEMENTS}?toast=${encodeURIComponent(msg)}${leaveTypeId ? `#type-${leaveTypeId}` : ''}`);
+}
 
 export async function createCompanyAction(formData: FormData) {
   const s = await getSession();
@@ -516,6 +527,7 @@ export async function createLeavePolicyAction(formData: FormData) {
  */
 export async function createLeavePoliciesMultiAction(formData: FormData) {
   const s = await getSession();
+  const leaveTypeId = String(formData.get('leaveTypeId') ?? '');
   const companyIds = formData.getAll('companyIds').map(String).filter(Boolean);
   const gradeIds = formData.getAll('gradeIds').map(String).filter(Boolean);
   const companies: (string | null)[] = companyIds.length ? companyIds : [null];
@@ -525,7 +537,7 @@ export async function createLeavePoliciesMultiAction(formData: FormData) {
     for (const companyId of companies) {
       for (const gradeId of grades) {
         await createLeavePolicy(s, {
-          leaveTypeId: String(formData.get('leaveTypeId')),
+          leaveTypeId,
           annualDays: Number(formData.get('annualDays')),
           carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
           carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
@@ -543,9 +555,15 @@ export async function createLeavePoliciesMultiAction(formData: FormData) {
       }
     }
   } catch (e) {
-    fail(LEAVE, e);
+    // 9b0503ac — the add-entitlement form lives inside a leave type's Entitlements config panel; a failed
+    // save must surface its error banner THERE, not bounce HR to /admin/leave (no #type anchor: fail()
+    // appends ?error=, and a fragment before the query string would swallow it — the b9dac2d1 precedent).
+    fail(ENTITLEMENTS, e);
   }
-  ok(LEAVE);
+  // 9b0503ac — stay on the same leave type's panel with the success toast (no re-navigation between
+  // adjustments); the form's hidden leaveTypeId is the workspace's selection anchor.
+  const t = await getTranslations('admin.leave');
+  okEntitlements(t('entitlementUpdatedToast'), leaveTypeId);
 }
 
 /**
@@ -589,14 +607,18 @@ export async function updateLeavePolicyAction(formData: FormData) {
       reason: String(formData.get('reason') || '') || null,
     });
   } catch (e) {
-    fail(LEAVE, e);
+    // 9b0503ac — every policy edit form (Eligibility inline edit + the Earning/Carry front doors) lives
+    // inside a type's Entitlements config panel; fail back THERE so the error banner is visible in place
+    // (no #type anchor: a fragment before ?error= would swallow it — the b9dac2d1 precedent).
+    fail(ENTITLEMENTS, e);
   }
-  revalidatePath(LEAVE);
+  // 9b0503ac — stay exactly where the admin was: the Entitlements panel, same leave type (the form's
+  // hidden leaveTypeId → #type-<id> anchor). The 49809272 blast-radius toast stays when employees were
+  // recalculated; the no-recalc case shows the reporter's requested plain success confirmation.
   const delta = `${recalc.totalDelta > 0 ? '+' : ''}${recalc.totalDelta}`;
-  redirect(
-    `${LEAVE}?toast=${encodeURIComponent(
-      recalc.affected > 0 ? t('recalcToast', { count: recalc.affected, delta }) : t('recalcNoneToast'),
-    )}`,
+  okEntitlements(
+    recalc.affected > 0 ? t('recalcToast', { count: recalc.affected, delta }) : t('entitlementUpdatedToast'),
+    String(formData.get('leaveTypeId') ?? ''),
   );
 }
 
@@ -795,9 +817,13 @@ export async function deleteLeavePolicyAction(formData: FormData) {
   try {
     await deleteLeavePolicy(s, { id: String(formData.get('id')) });
   } catch (e) {
-    fail(LEAVE, e);
+    // 9b0503ac — the remove button sits in the same Entitlements config panel; stay there on failure too.
+    fail(ENTITLEMENTS, e);
   }
-  ok(LEAVE);
+  // 9b0503ac — removing a dated entitlement row keeps the admin on the same type's panel (consistent with
+  // the neighbouring policy add/edit saves), with its own removal wording.
+  const t = await getTranslations('admin.leave');
+  okEntitlements(t('entitlementRemovedToast'), String(formData.get('leaveTypeId') ?? ''));
 }
 
 // ── Public holidays ──
@@ -1934,11 +1960,12 @@ export async function deleteBenefitSchemeAction(fd: FormData) {
 
 export async function upsertSchemeEntitlementAction(fd: FormData) {
   const s = await requireAdmin();
+  const leaveTypeId = String(fd.get('leaveTypeId') ?? '');
   try {
     const benefitSchemeId = String(fd.get('benefitSchemeId') ?? '');
     await upsertSchemeEntitlement(s, {
       benefitSchemeId,
-      leaveTypeId: String(fd.get('leaveTypeId') ?? ''),
+      leaveTypeId,
       serviceBands: parseBands(fd),
     });
     // ae5b84d5: band edits flow through to covered employees immediately — up AND down (a downward earned
@@ -1948,7 +1975,11 @@ export async function upsertSchemeEntitlementAction(fd: FormData) {
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }
-  ok(ENTITLEMENTS);
+  // 9b0503ac — the reporter's exact flow: saving the service-band day values (under 2 / 2–5 / over 5 yrs)
+  // must keep the admin on the same leave type's panel and confirm with a success toast. The form always
+  // posts leaveTypeId (hidden when editing, the select when adding) — it anchors the redirect.
+  const t = await getTranslations('admin.leave');
+  okEntitlements(t('entitlementUpdatedToast'), leaveTypeId);
 }
 
 export async function deleteSchemeEntitlementAction(fd: FormData) {

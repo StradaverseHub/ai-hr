@@ -313,11 +313,14 @@ function frontDoorScopeLabel(t: ReturnType<typeof useTranslations>, p: Entitleme
   return `${company} · ${grade} · ${t('validFrom', { from: p.validFrom })}`;
 }
 
-/** The hidden inputs BOTH front doors post to preserve the policy's identity + non-edited flat fields. */
-function FrontDoorIdentityFields({ p }: { p: EntitlementPolicy }) {
+/** The hidden inputs BOTH front doors post to preserve the policy's identity + non-edited flat fields.
+ *  9b0503ac: `leaveTypeId` (the hosting panel's type) rides along so the action's success redirect can
+ *  anchor back to this exact type's panel (#type-<id>) instead of bouncing off the page. */
+function FrontDoorIdentityFields({ p, leaveTypeId }: { p: EntitlementPolicy; leaveTypeId: string }) {
   return (
     <>
       <input type="hidden" name="id" value={p.id} />
+      <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
       <input type="hidden" name="annualDays" value={p.annualDays} />
       <input type="hidden" name="validFrom" value={p.validFrom} />
       <input type="hidden" name="gradeId" value={p.gradeId ?? ''} />
@@ -375,16 +378,18 @@ function EarningMethodForm({
   p,
   isAnnual,
   action,
+  leaveTypeId,
 }: {
   t: ReturnType<typeof useTranslations>;
   p: EntitlementPolicy;
   isAnnual: boolean;
   action: Action;
+  leaveTypeId: string;
 }) {
   const [choice, setChoice] = useState<EarningChoice>(earningChoiceOf(p.method));
   return (
     <form action={action} className="space-y-2 rounded-lg bg-background p-3">
-      <FrontDoorIdentityFields p={p} />
+      <FrontDoorIdentityFields p={p} leaveTypeId={leaveTypeId} />
       <FrontDoorPreservedCarry p={p} isAnnual={isAnnual} />
       {/* the mapped engine value — the select below speaks the reporter's vocabulary */}
       <input type="hidden" name="method" value={earningMethodOf(choice)} />
@@ -424,15 +429,17 @@ function CarryPolicyForm({
   t,
   p,
   action,
+  leaveTypeId,
 }: {
   t: ReturnType<typeof useTranslations>;
   p: EntitlementPolicy;
   action: Action;
+  leaveTypeId: string;
 }) {
   const [carryOn, setCarryOn] = useState<boolean>(carryRuleEnabled(p));
   return (
     <form action={action} className="space-y-2 rounded-lg bg-background p-3">
-      <FrontDoorIdentityFields p={p} />
+      <FrontDoorIdentityFields p={p} leaveTypeId={leaveTypeId} />
       {/* preserve the method — this front door only edits carry */}
       <input type="hidden" name="method" value={methodValue(p.method)} />
       <input type="hidden" name="carryBlockRendered" value="1" />
@@ -1598,7 +1605,9 @@ export function LeaveTypePanel({
             <PolicyFrontDoor
               t={t}
               policies={policies}
-              renderForm={(p) => <EarningMethodForm t={t} p={p} isAnnual={isAnnual} action={updatePolicyAction} />}
+              renderForm={(p) => (
+                <EarningMethodForm t={t} p={p} isAnnual={isAnnual} action={updatePolicyAction} leaveTypeId={id} />
+              )}
             />
             <p className="text-xs text-muted-foreground">{t('subStep.earningHelp')}</p>
           </div>
@@ -1614,7 +1623,7 @@ export function LeaveTypePanel({
               <PolicyFrontDoor
                 t={t}
                 policies={policies}
-                renderForm={(p) => <CarryPolicyForm t={t} p={p} action={updatePolicyAction} />}
+                renderForm={(p) => <CarryPolicyForm t={t} p={p} action={updatePolicyAction} leaveTypeId={id} />}
               />
             ) : (
               <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
@@ -1664,6 +1673,9 @@ export function LeaveTypePanel({
                   className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3"
                 >
                   <input type="hidden" name="id" value={p.id} />
+                  {/* 9b0503ac: the hosting type's id anchors the action's success redirect back to this
+                      panel (#type-<id>) — save-and-stay instead of bouncing to /admin/leave. */}
+                  <input type="hidden" name="leaveTypeId" value={id} />
                   {/* Feedback 49809272: editing IN PLACE recalculates affected employees' current-cycle
                       balances automatically — tell the admin before they save. */}
                   <p className="w-full text-[11px] text-muted-foreground">{t('recalcInPlaceHint')}</p>
@@ -1839,6 +1851,8 @@ export function LeaveTypePanel({
                     </Button>
                     <form action={deletePolicyAction}>
                       <input type="hidden" name="id" value={p.id} />
+                      {/* 9b0503ac: keep the admin on this type's panel after the remove (redirect anchor). */}
+                      <input type="hidden" name="leaveTypeId" value={id} />
                       <ConfirmSubmit
                         size="sm"
                         variant="ghost"
