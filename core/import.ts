@@ -17,7 +17,8 @@ import { person, employeeStatutoryMy, employment } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { hireEmployee } from './org';
 import { setCompensation } from './comp';
-import { setStatutoryProfileMY, isValidIC, normalizeIC } from '../localization/my/statutory';
+import { setPersonComplianceFields } from './profile';
+import { setStatutoryProfileMY, isValidIC, normalizeIC, dobFromIC } from '../localization/my/statutory';
 import { normalizeEmployeeCode, isValidEmployeeCode, EMPLOYEE_CODE_MAX_LEN } from '../lib/employee-code';
 import { listDepartments, listLeaveTypes } from './read';
 import { listPositions, listCostCenters } from './admin';
@@ -349,6 +350,19 @@ export async function commitEmployeeImport(
     try {
       const { employmentId, personId } = await hireEmployee(ctx, row.hire);
       await setStatutoryProfileMY(ctx, { personId, ...row.statutory });
+      // Feedback b9fd8fd5 — imports behave like manual entry (setIcAction, item 354a500d): a valid IC also
+      // persists the derived Date of Birth so the Profile tab's Age never reads "Not Available" for an
+      // imported employee. `dobOnlyIfEmpty` guarantees an existing DOB is never overwritten; an IC whose
+      // first six digits form no real calendar date derives nothing (null) and is skipped, not failed.
+      // Best-effort: the employee is already hired + statutory-saved, so a failure here must not fail the row.
+      const derivedDob = dobFromIC(row.statutory.icNumber);
+      if (derivedDob) {
+        try {
+          await setPersonComplianceFields(ctx, { employmentId, dateOfBirth: derivedDob, dobOnlyIfEmpty: true });
+        } catch {
+          // non-fatal — the DOB autofill is a convenience (mirrors setIcAction's safety net).
+        }
+      }
       await setCompensation(ctx, {
         employmentId,
         basicSalary: row.basicSalary,
