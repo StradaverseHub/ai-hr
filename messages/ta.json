@@ -866,6 +866,8 @@
       "race": "இனம்",
       "nationality": "தேசியம்",
       "birthDate": "பிறந்த தேதி",
+      "age": "வயது",
+      "ageYears": "{years, plural, one {# ஆண்டு} other {# ஆண்டுகள்}}",
       "workEmail": "பணி மின்னஞ்சல்",
       "contactAddressTitle": "தொடர்பு & முகவரி",
       "permanentAddressTitle": "நிரந்தர முகவரி",

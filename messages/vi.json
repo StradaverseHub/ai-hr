@@ -866,6 +866,8 @@
       "race": "Dân tộc",
       "nationality": "Quốc tịch",
       "birthDate": "Ngày sinh",
+      "age": "Tuổi",
+      "ageYears": "{years} tuổi",
       "workEmail": "Email công việc",
       "contactAddressTitle": "Liên hệ & địa chỉ",
       "permanentAddressTitle": "Địa chỉ thường trú",

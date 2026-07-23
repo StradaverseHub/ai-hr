@@ -866,6 +866,8 @@
       "race": "เชื้อชาติ",
       "nationality": "สัญชาติ",
       "birthDate": "วันเกิด",
+      "age": "อายุ",
+      "ageYears": "{years} ปี",
       "workEmail": "อีเมลที่ทำงาน",
       "contactAddressTitle": "การติดต่อและที่อยู่",
       "permanentAddressTitle": "ที่อยู่ถาวร",

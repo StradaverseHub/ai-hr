@@ -866,6 +866,8 @@
       "race": "Race",
       "nationality": "Nationality",
       "birthDate": "Date of birth",
+      "age": "Age",
+      "ageYears": "{years, plural, one {# Year} other {# Years}}",
       "workEmail": "Work email",
       "contactAddressTitle": "Contact & address",
       "permanentAddressTitle": "Permanent address",

@@ -866,6 +866,8 @@
       "race": "种族",
       "nationality": "国籍",
       "birthDate": "出生日期",
+      "age": "年龄",
+      "ageYears": "{years} 岁",
       "workEmail": "工作邮箱",
       "contactAddressTitle": "联系方式与地址",
       "permanentAddressTitle": "永久地址",

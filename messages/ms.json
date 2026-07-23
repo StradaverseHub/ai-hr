@@ -866,6 +866,8 @@
       "race": "Bangsa",
       "nationality": "Kewarganegaraan",
       "birthDate": "Tarikh lahir",
+      "age": "Umur",
+      "ageYears": "{years} Tahun",
       "workEmail": "E-mel kerja",
       "contactAddressTitle": "Hubungan & alamat",
       "permanentAddressTitle": "Alamat tetap",

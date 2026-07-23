@@ -57,6 +57,9 @@ import {
 import { movementHistory, movementDetail } from '@/core/movement';
 import { MovementNewEvent } from './movement-new-event';
 import { serviceYearsMonthsAt, serviceYearsMonthsDaysAt } from '@/core/leave';
+// 9d13221c — Age beside Date of Birth: shared completed-years helper (kept a separate import so the
+// cc681bd5 import line above stays byte-identical for its drift-guard test).
+import { completedYearsAt } from '@/core/leave';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import {
   closedPayrollPeriodsFor,
@@ -352,6 +355,14 @@ export default async function EmployeePage({
     { key: 'others', label: t('tabs.others') },
   ];
 
+  // 9d13221c — Age beside Date of Birth: completed whole years from the stored DOB to today, recomputed
+  // on every render so each profile open shows that day's exact age (it increments the day the birthday
+  // arrives — a 29-Feb birthday increments on 1 Mar in common years). Read-only + display-only: the age is
+  // never stored, never an input, and never audited (DOB edits keep their existing audit trail); a DOB save
+  // re-renders this page so the figure refreshes immediately. Blank DOB → "Not Available".
+  const ageYears = completedYearsAt(emp.dateOfBirth, today);
+  const ageLabel = ageYears === null ? null : t('ageYears', { years: ageYears });
+
   // ── PROFILE ────────────────────────────────────────────────────────────────
   // b4682879 — modular redesign: three organised cards (Personal Details, Contact & Address, Emergency
   // Contact) plus the existing gender/marital/DOB compliance card. Each card stays its OWN <form> (panels
@@ -459,6 +470,14 @@ export default async function EmployeePage({
           <input type="hidden" name="employmentId" value={emp.employmentId} />
           <Field label={t('birthDate')}>
             <input id="profile-dob-input" name="dateOfBirth" type="date" defaultValue={emp.dateOfBirth ?? ''} className={inputCls} />
+          </Field>
+          {/* 9d13221c — read-only Age beside Date of Birth: system-calculated (muted text, deliberately
+              NOT an input — nothing to type, nothing to save), derived fresh from the stored DOB on every
+              render. "Not Available" when no DOB is recorded (shares the cc681bd5 fallback key). */}
+          <Field label={t('age')}>
+            <p className="flex h-9 items-center text-sm text-muted-foreground">
+              {ageLabel ?? t('employmentInfo.notAvailable')}
+            </p>
           </Field>
           <Field label={t('gender')}>
             <select name="gender" defaultValue={emp.gender ?? ''} className={inputCls}>
