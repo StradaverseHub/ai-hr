@@ -22,6 +22,11 @@
  *   4. The renamed + new category titles exist in all six locales (en pins the exact reported wording).
  *   5. The per-type Entitlement table reuses the benefit-scheme row components + upsert action, and its
  *      strings exist in all six locales.
+ *
+ * Step flow (c979aa8b): the five cards are no longer independent accordions — they are the five STEPS of the
+ * leave-type workspace (one section visible at a time, chosen by the numbered step bar; see
+ * leave-type-workspace.test.ts). The invariants above are UNCHANGED: same five titles in the same source
+ * order, same content assignment, same storage keys (now persisting the active step instead of open flags).
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -144,14 +149,18 @@ describe('123c1e76 · leave-type config restructured into 5 category cards', () 
       expect(panelSrc.includes(`t('${key}')`), `${key} no longer referenced by the panel`).toBe(false);
     }
     for (const cardKey of ['approval', 'display', 'calculation']) {
-      expect(panelSrc.includes(`toggleCard('${cardKey}')`), `card '${cardKey}' gone`).toBe(false);
+      expect(panelSrc.includes(`'${cardKey}'`), `card key '${cardKey}' gone`).toBe(false);
     }
   });
 
-  it('keeps the surviving localStorage card keys stable (open-card state survives the restructure)', () => {
-    for (const cardKey of ['general', 'eligibility', 'entitlement', 'ess', 'custom']) {
-      expect(panelSrc.includes(`toggleCard('${cardKey}')`), `card '${cardKey}' present`).toBe(true);
-    }
+  it('keeps the localStorage step keys stable (per-type section state survives the step restructure)', () => {
+    // c979aa8b: the step keys ARE the old accordion card keys, declared in walk order — 'ess' deliberately
+    // stays Condition's historical key so persisted state carries over.
+    expect(panelSrc).toContain("const STEP_KEYS = ['general', 'eligibility', 'entitlement', 'ess', 'custom'] as const");
+    // Same per-type storage key shape as the accordion used…
+    expect(panelSrc).toContain('leaveTypeCards:${id}');
+    // …and an old accordion payload ({ key: boolean }) migrates (first open card wins), not discarded.
+    expect(panelSrc).toContain('parsed[k] === true');
   });
 
   it('pins the reported en titles: Eligibility, Condition, Entitlement', () => {

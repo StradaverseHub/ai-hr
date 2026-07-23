@@ -17,6 +17,7 @@ import { entitlement } from '@/localization/my/leave';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
+import { LeaveTypeWorkspace } from '@/components/leave-type-workspace';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
 import { EarnedAccrualCard } from '@/components/earned-accrual-card';
 import {
@@ -225,17 +226,28 @@ export default async function LeaveEntitlementsPage({
       <LeaveTabs active="entitlements" />
       <ErrorBanner message={error} />
 
-      {/* Feedback 9d8cf621 — per-type configuration + entitlements. "1 leave type, 1 full set of settings". */}
+      {/* Feedback 9d8cf621 — per-type configuration + entitlements. "1 leave type, 1 full set of settings".
+          Workspace shape (c979aa8b): the stacked collapsible rows became a two-pane workspace — an internal
+          left panel listing the types (Add Leave button at the bottom) and a right pane showing the SELECTED
+          type's five-step configuration flow (LeaveTypePanel's step bar). Each panel keeps the exact same
+          props/actions as before; the client workspace only decides which one is mounted. */}
       <Card data-tour="leave-config">
         <SectionHeader title={t('typesSectionTitle')} count={types.length} />
-        <ul className="divide-y divide-border">
-          {types.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveTypes')}</li>
-          )}
-          {types.map((lt) => (
-            <LeaveTypePanel
-              key={lt.id}
-              id={lt.id}
+        <LeaveTypeWorkspace
+          items={types.map((lt) => ({
+            id: lt.id,
+            name: lt.name,
+            code: lt.code,
+            archived: !!lt.archivedAt,
+            color: lt.color ?? null,
+            icon: lt.icon ?? null,
+          }))}
+          panels={Object.fromEntries(
+            types.map((lt) => [
+              lt.id,
+              <LeaveTypePanel
+                key={lt.id}
+                id={lt.id}
               name={lt.name}
               code={lt.code}
               description={lt.description ?? null}
@@ -284,14 +296,15 @@ export default async function LeaveEntitlementsPage({
               deletePolicyAction={deleteLeavePolicyAction}
               countInScopeAction={countEmployeesInScopeAction}
               upsertSchemeEntitlementAction={upsertSchemeEntitlementAction}
-            />
-          ))}
-        </ul>
-        {/* Layout (a9c5870a): three tiers. Mobile stacks (grid-cols-1). sm–lg keeps the six equal columns with
+              />,
+            ]),
+          )}
+          addForm={
+        /* Layout (a9c5870a): three tiers. Mobile stacks (grid-cols-1). sm–lg keeps the six equal columns with
             Description spanning 3, i.e. the tidy two-row split 750732c3 introduced. From lg an explicit
             grid-template packs all seven pieces onto ONE row: Code/Name/Status/Leave Unit are flexible minmax
             columns, Description gets the wide 3fr share, and Paid + Add are content-sized auto columns — so the
-            wider Description no longer spills Leave Unit/Paid/Add onto a half-empty second row. */}
+            wider Description no longer spills Leave Unit/Paid/Add onto a half-empty second row. */
         <form
           action={createLeaveTypeAction}
           className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-6 lg:[grid-template-columns:minmax(6.5rem,1fr)_minmax(8rem,1fr)_minmax(16rem,3fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_auto_auto]"
@@ -352,6 +365,8 @@ export default async function LeaveEntitlementsPage({
               (grid-cols-1) col-start has no effect; everything stacks unchanged. */}
           <button className={`${btnPrimary} sm:col-start-6 lg:col-start-auto`}>{t('addType')}</button>
         </form>
+          }
+        />
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
           {t.rich('typesHelp', { strong: (chunks) => <span className="font-medium">{chunks}</span> })}
         </p>

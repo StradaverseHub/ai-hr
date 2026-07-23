@@ -3490,6 +3490,8 @@
       "pageTitle": "Konfigurasi cuti",
       "pageDescription": "Jenis cuti dan dasar kelayakannya",
       "typesSectionTitle": "Tetapan jenis cuti",
+      "workspaceTypeListLabel": "Jenis cuti",
+      "workspaceStepsLabel": "Langkah konfigurasi",
       "noLeaveTypes": "Tiada jenis cuti.",
       "codeLabel": "Kod",
       "codeHint": "Huruf, digit atau garis bawah — disimpan huruf besar (cth. ANNUAL)",

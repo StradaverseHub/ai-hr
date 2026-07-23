@@ -1,17 +1,17 @@
 /**
- * Leave-type config: active-section indicator on the category headers (feedback 27136ea6; card list
- * restructured to five by 123c1e76 — General / Eligibility / Entitlement / Condition / Custom).
+ * Leave-type config: active-step indicator on the workspace step bar (feedback 27136ea6, restructured by
+ * c979aa8b — the five 123c1e76 accordion cards became the five steps of a horizontal step flow: General /
+ * Eligibility / Entitlement / Condition / Custom, ONE section visible at a time).
  *
- * The collapsible category headers in components/leave-type-panel.tsx used to look identical whether
- * open or closed (the rotating chevron was the only cue). Now `cardHeaderBtn` is a function of the card's
- * open state: an OPEN header gets the accent wash (bg-accent), a slightly indented title (pl-6) and a bolder
- * CardTitle ([&_h3]:font-semibold). "Active" means EXPANDED — the cards are independent accordions by design,
- * so SEVERAL headers may be highlighted at once; do not assert exclusivity.
+ * The 27136ea6 requirement — HR can tell at a glance which section they are editing — now lives on the step
+ * bar: the CURRENT step's pill carries the accent wash (bg-accent), a semibold label and aria-current="step";
+ * inactive steps stay muted. Unlike the accordion era, exactly ONE step is active at a time (the
+ * step-switcher invariant), and only that step's section renders.
  *
  * Static source guard (the repo convention for this DOM-runner-less component; see
  * leave-type-config-categories.test.ts / leave-type-edit-layout.test.ts). A static test CANNOT prove the
- * bolder title actually renders bolder, nor that the accent background follows the card's rounded corners —
- * those two are assigned to browser verification and that assignment is not optional.
+ * accent pill actually renders highlighted, nor that switching steps swaps the visible section — those are
+ * assigned to browser verification and that assignment is not optional.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -21,32 +21,35 @@ import { describe, expect, it } from 'vitest';
 const here = dirname(fileURLToPath(import.meta.url));
 const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
 
-const CARD_KEYS = ['general', 'eligibility', 'entitlement', 'ess', 'custom'] as const;
+const STEP_KEYS = ['general', 'eligibility', 'entitlement', 'ess', 'custom'] as const;
 
-describe('27136ea6 · active (expanded) category headers are visually distinguished', () => {
-  it('each of the 5 header buttons derives its classes from its OWN openCards key', () => {
-    // The genuine bug class across near-identical call sites is a copy-paste key mismatch
-    // (e.g. the entitlement button styling off openCards.ess).
-    for (const key of CARD_KEYS) {
-      const re = new RegExp(
-        `toggleCard\\('${key}'\\)[^\\n]*className=\\{cardHeaderBtn\\(!!openCards\\.${key}\\)\\}`,
-      );
-      expect(panelSrc, `header button for '${key}' passes its own key to cardHeaderBtn`).toMatch(re);
-    }
+describe('27136ea6 · c979aa8b · the active step is visually distinguished on the step bar', () => {
+  it('each step button derives highlight + aria-current from ITS OWN activeStep comparison', () => {
+    // The bar renders from one map over STEP_KEYS, so a single comparison drives every pill — pin the
+    // comparison and both consumers (semantic aria-current="step" + the styling call).
+    expect(panelSrc).toContain('const stepActive = activeStep === key');
+    expect(panelSrc).toMatch(/aria-current=\{stepActive \? 'step' : undefined\}/);
+    expect(panelSrc).toContain('className={stepBtn(stepActive)}');
   });
 
-  it('the active branch carries the highlight, the indent, and the bolder-title rule', () => {
-    const defStart = panelSrc.indexOf('const cardHeaderBtn');
+  it('the active branch carries the accent highlight and the bolder label', () => {
+    const defStart = panelSrc.indexOf('const stepBtn');
     expect(defStart).toBeGreaterThan(-1);
-    // The definition ends at the arrow function's closing `);` — slice generously to the first call site.
-    const def = panelSrc.slice(defStart, panelSrc.indexOf("toggleCard('general')"));
+    const def = panelSrc.slice(defStart, panelSrc.indexOf('return (', defStart));
     // Kept deliberately loose (substring, not exact literals): bg-accent still matches if a designer later
     // tunes to bg-accent/60 (the half-active treatment nav-collapsible-group.tsx already uses).
     expect(def).toContain('bg-accent');
-    expect(def).toContain('pl-6');
-    // The fragile piece: the descendant rule that bolds the CardTitle h3 from the button. If this is
-    // refactored into something that no-ops (e.g. an inherited weight on a wrapper), the requirement
-    // silently fails — hence it is pinned here.
-    expect(def).toContain('[&_h3]:font-semibold');
+    expect(def).toContain('font-semibold');
+  });
+
+  it('exactly one section renders at a time — each step gates its own card', () => {
+    for (const key of STEP_KEYS) {
+      expect(
+        panelSrc.includes(`{activeStep === '${key}' && (`),
+        `section for '${key}' gated by activeStep`,
+      ).toBe(true);
+    }
+    // The accordion's per-card open flags are gone — activeStep is the only visibility mechanism.
+    expect(panelSrc.includes('openCards')).toBe(false);
   });
 });

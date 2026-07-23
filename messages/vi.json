@@ -3490,6 +3490,8 @@
       "pageTitle": "Cấu hình nghỉ phép",
       "pageDescription": "Các loại nghỉ phép và chính sách hưởng phép của chúng",
       "typesSectionTitle": "Cài đặt loại nghỉ phép",
+      "workspaceTypeListLabel": "Loại nghỉ phép",
+      "workspaceStepsLabel": "Các bước cấu hình",
       "noLeaveTypes": "Không có loại nghỉ phép.",
       "codeLabel": "Mã",
       "codeHint": "Chữ cái, chữ số hoặc gạch dưới — lưu dạng chữ hoa (ví dụ ANNUAL)",

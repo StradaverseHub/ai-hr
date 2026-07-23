@@ -3490,6 +3490,8 @@
       "pageTitle": "Leave configuration",
       "pageDescription": "Leave types and their entitlement policies",
       "typesSectionTitle": "Leave type settings",
+      "workspaceTypeListLabel": "Leave types",
+      "workspaceStepsLabel": "Configuration steps",
       "noLeaveTypes": "No leave types.",
       "codeLabel": "Code",
       "codeHint": "Letters, digits or underscores — stored uppercase (e.g. ANNUAL)",

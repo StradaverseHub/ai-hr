@@ -3490,6 +3490,8 @@
       "pageTitle": "ตั้งค่าการลา",
       "pageDescription": "ประเภทการลาและนโยบายสิทธิ์",
       "typesSectionTitle": "การตั้งค่าประเภทการลา",
+      "workspaceTypeListLabel": "ประเภทการลา",
+      "workspaceStepsLabel": "ขั้นตอนการตั้งค่า",
       "noLeaveTypes": "ไม่มีประเภทการลา",
       "codeLabel": "รหัส",
       "codeHint": "ตัวอักษร ตัวเลข หรือขีดล่าง — เก็บเป็นตัวพิมพ์ใหญ่ (เช่น ANNUAL)",

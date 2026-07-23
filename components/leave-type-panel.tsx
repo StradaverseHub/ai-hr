@@ -6,7 +6,7 @@ import type { ServiceBand } from '@/core/leave-compute';
 import { ESS_VIEW_COMPONENT_KEYS } from '@/core/ess-view';
 import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
-import { Search, ChevronRight } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   LEAVE_COLORS,
@@ -92,6 +92,21 @@ const DOC_MIME_OPTIONS = [
   { mime: 'image/jpeg', label: 'fileTypeJpg' as const },
   { mime: 'image/png', label: 'fileTypePng' as const },
 ] as const;
+
+/** Step flow (c979aa8b): the five configuration steps, in walk order — 1 General Setting, 2 Eligibility,
+ *  3 Entitlement, 4 Condition, 5 Custom Settings. The keys are the SAME storage keys the pre-step accordion
+ *  used ('ess' is Condition's historical key — kept deliberately so persisted state survives, see the
+ *  leaveTypeCards migration in LeaveTypePanel). */
+const STEP_KEYS = ['general', 'eligibility', 'entitlement', 'ess', 'custom'] as const;
+type StepKey = (typeof STEP_KEYS)[number];
+/** Step → its admin.leave title key (the same category* keys the accordion cards used, all 6 locales). */
+const STEP_TITLE_KEY: Record<StepKey, string> = {
+  general: 'categoryGeneral',
+  eligibility: 'categoryEligibilityEntitlement',
+  entitlement: 'categoryEntitlement',
+  ess: 'categoryEssPolicy',
+  custom: 'categoryCustom',
+};
 
 const isEarned = (m?: string) => m === 'earned_monthly' || m === 'earned_quarterly';
 /** Normalise to a select value: earned methods pass through, everything else is the lump option. */
@@ -686,7 +701,6 @@ export function LeaveTypePanel({
   // rules off, so they stay LOCKED (read-only). Mirrors the service guard (STATUTORY_APPLY_CODES +
   // EMERGENCY_LEAVE_CODE in core/leave.ts) as a local literal so this client component never imports server code.
   const codeLocked = isStatutoryApply || code === 'EMERGENCY';
-  const [expanded, setExpanded] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [editingEligibility, setEditingEligibility] = useState(false);
   // Day Type Inclusion (ef6d7146): its own edit-mode toggle (a sub-form inside Eligibility Rules).
@@ -715,63 +729,48 @@ export function LeaveTypePanel({
   const toggleFrom = (list: string[], value: string) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
-  // Leave Type master page (feedback 097de541): the master table's Edit action links to #type-<id>; expand
-  // this row when the URL hash targets it (on mount and on later hashchange) so the edit surface is visible
-  // rather than scrolling to a collapsed row.
-  useEffect(() => {
-    const openIfTargeted = () => {
-      if (typeof window !== 'undefined' && window.location.hash === `#type-${id}`) setExpanded(true);
-    };
-    openIfTargeted();
-    window.addEventListener('hashchange', openIfTargeted);
-    return () => window.removeEventListener('hashchange', openIfTargeted);
-  }, [id]);
-
-  // Collapsible category panels (f623d50a → restructured by 123c1e76 into 5 cards: General / Eligibility /
-  // Entitlement / Condition / Custom): each category card inside the expanded row is an independent
-  // accordion. Open/closed state is per-card client state, keyed by the leave-type id so two open rows don't
-  // share it. It is persisted to localStorage so it SURVIVES the stay-on-save redirect (b9dac2d1 keystone
-  // re-mounts the panel on the entitlements tab) — the section HR was editing stays open after Save. The
-  // storage keys of the surviving cards ('general'/'eligibility'/'ess'/'custom') are deliberately UNCHANGED
-  // so admins' open-card state outlives the restructure; retired keys in old stored JSON are simply ignored.
-  // Default = all collapsed for the compact view; hydrate from storage in an effect (client-only ⇒ no SSR
-  // hydration mismatch; a brief closed→restored flash is acceptable).
-  const [openCards, setOpenCards] = useState<Record<string, boolean>>({});
+  // Step flow (c979aa8b — was the 123c1e76 five-card accordion): ONE section visible at a time, chosen by
+  // the numbered horizontal step bar (1 General … 5 Custom). The active step is per-type client state,
+  // persisted to the SAME localStorage key the accordion used (`leaveTypeCards:<id>`) so it SURVIVES the
+  // stay-on-save redirect (b9dac2d1 keystone re-mounts the panel) — the step HR was editing stays open after
+  // Save. Stored shape is now { activeStep }; an old accordion payload ({ key: boolean }) migrates gracefully:
+  // its first open card (in step order) becomes the active step. Default = step 1 (General Setting). Hydrate
+  // from storage in an effect (client-only ⇒ no SSR hydration mismatch; a brief step-1→restored flash is
+  // acceptable — the same trade-off the accordion made).
+  const [activeStep, setActiveStep] = useState<StepKey>('general');
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(`leaveTypeCards:${id}`);
-      if (raw) setOpenCards(JSON.parse(raw) as Record<string, boolean>);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Record<string, unknown> | null;
+      if (parsed && typeof parsed.activeStep === 'string' && (STEP_KEYS as readonly string[]).includes(parsed.activeStep)) {
+        setActiveStep(parsed.activeStep as StepKey);
+      } else if (parsed && typeof parsed === 'object') {
+        // migrate the pre-step accordion shape { key: boolean } — first open card wins
+        const firstOpen = STEP_KEYS.find((k) => parsed[k] === true);
+        if (firstOpen) setActiveStep(firstOpen);
+      }
     } catch {
-      /* storage unavailable / malformed ⇒ keep all collapsed */
+      /* storage unavailable / malformed ⇒ default step 1 */
     }
   }, [id]);
-  const toggleCard = (key: string) =>
-    setOpenCards((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      try {
-        window.localStorage.setItem(`leaveTypeCards:${id}`, JSON.stringify(next));
-      } catch {
-        /* storage write blocked ⇒ runtime toggle still works, just not persisted */
-      }
-      return next;
-    });
-  // Active-section indicator (27136ea6): an OPEN card's header gets the accent wash + a bolder, slightly
-  // indented title so HR can tell at a glance which section(s) they are editing — the treatment the sidebar's
-  // active nav item already uses (nav-collapsible-group.tsx). "Active" means EXPANDED: the five cards are
-  // independent accordions by design, so several headers can be highlighted at once. Notes:
-  //   - horizontal padding lives in each branch (pl-6 pr-4 vs px-4) — no tailwind-merge subtlety; pl-6 is what
-  //     nudges the title right (the chevron stays pinned by justify-between).
-  //   - [&_h3]:font-semibold bolds the CardTitle h3 from the button (specificity beats its own font-medium)
-  //     without touching the five CardTitle anchors leave-type-config-categories.test.ts slices on.
-  //   - rounded-t-[1.25rem] mirrors Card's rounded-[1.25rem]: Card has no overflow-hidden, so an opaque header
-  //     background would otherwise paint square over the top corners.
-  //   - hover:bg-accent/80 keeps a visible hover cue that an open header is still clickable to collapse.
-  const cardHeaderBtn = (active: boolean) =>
+  const selectStep = (key: StepKey) => {
+    setActiveStep(key);
+    try {
+      window.localStorage.setItem(`leaveTypeCards:${id}`, JSON.stringify({ activeStep: key }));
+    } catch {
+      /* storage write blocked ⇒ runtime switch still works, just not persisted */
+    }
+  };
+  // Active-step indicator (27136ea6's accent treatment, carried onto the step bar): the CURRENT step's pill
+  // gets the accent wash + semibold label — the same bg-accent language the sidebar's active nav item uses
+  // (components/sidebar.tsx). Exactly one step is active at a time (the step-switcher invariant).
+  const stepBtn = (active: boolean) =>
     cn(
-      'flex w-full items-center justify-between gap-2 py-3 text-left transition-colors',
+      'flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors',
       active
-        ? 'rounded-t-[1.25rem] bg-accent pl-6 pr-4 text-accent-foreground [&_h3]:font-semibold hover:bg-accent/80'
-        : 'px-4 hover:bg-muted/40',
+        ? 'border-transparent bg-accent font-semibold text-accent-foreground'
+        : 'border-border text-muted-foreground hover:bg-accent/60 hover:text-foreground',
     );
 
   // #25 visibility: a composable human summary of the eligibility rule (avoids a key-per-permutation
@@ -852,28 +851,15 @@ export function LeaveTypePanel({
   const thisYear = new Date().getUTCFullYear();
 
   return (
-    <li id={`type-${id}`} className={archived ? 'opacity-60' : ''}>
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          aria-expanded={expanded}
-        >
-          <svg
-            viewBox="0 0 20 20"
-            className={`size-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            aria-hidden
-          >
-            <path d="M7.5 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+    <div id={`type-${id}`} className={cn('space-y-3', archived && 'opacity-60')}>
+      {/* Workspace header: the selected type's identity + entitlement summary (formerly the collapsible row
+          header — the expand toggle is gone; the workspace's internal left panel now does the selecting). */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-sm font-medium text-foreground">{name}</span>
           <span className="text-xs text-muted-foreground">{code}</span>
           {archived && <span className={badge.muted}>{t('archivedBadge')}</span>}
-        </button>
+        </div>
 
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-xs tabular-nums text-muted-foreground">
@@ -892,16 +878,43 @@ export function LeaveTypePanel({
         </div>
       </div>
 
-      {expanded && (
-        <div className="space-y-3 border-t border-border/60 bg-muted/20 px-4 py-3">
-          <Card>
-            <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('general')} aria-expanded={!!openCards.general} aria-controls={`cat-general-${id}`} className={cardHeaderBtn(!!openCards.general)}>
-                <CardTitle>{t('categoryGeneral')}</CardTitle>
-                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.general && 'rotate-90')} />
+      {/* Step bar (c979aa8b): numbered 1–5, current step highlighted; clicking a step shows that section's
+          content in place — no page reload, no nested tabs. Labels reuse the category* title keys. */}
+      <ol aria-label={t('workspaceStepsLabel')} className="flex flex-wrap items-center gap-1.5">
+        {STEP_KEYS.map((key, i) => {
+          const stepActive = activeStep === key;
+          return (
+            <li key={key} className="flex items-center gap-1.5">
+              {i > 0 && <span aria-hidden className="hidden h-px w-3 bg-border sm:block" />}
+              <button
+                type="button"
+                onClick={() => selectStep(key)}
+                aria-current={stepActive ? 'step' : undefined}
+                aria-controls={stepActive ? `cat-${key}-${id}` : undefined}
+                className={stepBtn(stepActive)}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    'flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] tabular-nums',
+                    stepActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {i + 1}
+                </span>
+                {t(STEP_TITLE_KEY[key])}
               </button>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="space-y-3">
+          {activeStep === 'general' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('categoryGeneral')}</CardTitle>
             </CardHeader>
-            {openCards.general && (
             <CardContent id={`cat-general-${id}`} className="space-y-3">
           {/* type-level controls */}
           {editingName ? (
@@ -1128,16 +1141,13 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
           </div>
             </CardContent>
-            )}
           </Card>
+          )}
+          {activeStep === 'eligibility' && (
           <Card>
-            <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('eligibility')} aria-expanded={!!openCards.eligibility} aria-controls={`cat-eligibility-${id}`} className={cardHeaderBtn(!!openCards.eligibility)}>
-                <CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>
-                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.eligibility && 'rotate-90')} />
-              </button>
+            <CardHeader>
+              <CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>
             </CardHeader>
-            {openCards.eligibility && (
             <CardContent id={`cat-eligibility-${id}`} className="space-y-3">
           {/* #25 visibility — eligibility rules (who can see + apply) */}
           <div className="space-y-1.5">
@@ -1694,16 +1704,13 @@ export function LeaveTypePanel({
             </div>
           )}
             </CardContent>
-            )}
           </Card>
+          )}
+          {activeStep === 'entitlement' && (
           <Card>
-            <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('entitlement')} aria-expanded={!!openCards.entitlement} aria-controls={`cat-entitlement-${id}`} className={cardHeaderBtn(!!openCards.entitlement)}>
-                <CardTitle>{t('categoryEntitlement')}</CardTitle>
-                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.entitlement && 'rotate-90')} />
-              </button>
+            <CardHeader>
+              <CardTitle>{t('categoryEntitlement')}</CardTitle>
             </CardHeader>
-            {openCards.entitlement && (
             <CardContent id={`cat-entitlement-${id}`} className="space-y-3">
           {/* Restructure (123c1e76): the per-type Entitlement card — THIS leave type's benefit-scheme
               entitlement table (the days each scheme grants per service tier), which previously appeared only
@@ -1712,16 +1719,13 @@ export function LeaveTypePanel({
               copying between schemes, combined-limit grouping — stays in the Benefit Schemes section. */}
           <LeaveTypeEntitlementTable ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction} />
             </CardContent>
-            )}
           </Card>
+          )}
+          {activeStep === 'ess' && (
           <Card>
-            <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('ess')} aria-expanded={!!openCards.ess} aria-controls={`cat-ess-${id}`} className={cardHeaderBtn(!!openCards.ess)}>
-                <CardTitle>{t('categoryEssPolicy')}</CardTitle>
-                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.ess && 'rotate-90')} />
-              </button>
+            <CardHeader>
+              <CardTitle>{t('categoryEssPolicy')}</CardTitle>
             </CardHeader>
-            {openCards.ess && (
             <CardContent id={`cat-ess-${id}`} className="space-y-3">
           {/* Feedback 9d8cf621: the "Payroll impact" controls moved to the Payroll Related tab (per-type list
               there). Both were self-contained sub-forms, so moving/removing them here never touches any other
@@ -2059,16 +2063,13 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.statutoryNote')}</p>
           </div>
             </CardContent>
-            )}
           </Card>
+          )}
+          {activeStep === 'custom' && (
           <Card>
-            <CardHeader className="p-0">
-              <button type="button" onClick={() => toggleCard('custom')} aria-expanded={!!openCards.custom} aria-controls={`cat-custom-${id}`} className={cardHeaderBtn(!!openCards.custom)}>
-                <CardTitle>{t('categoryCustom')}</CardTitle>
-                <ChevronRight aria-hidden className={cn('size-4 shrink-0 text-muted-foreground transition-transform', openCards.custom && 'rotate-90')} />
-              </button>
+            <CardHeader>
+              <CardTitle>{t('categoryCustom')}</CardTitle>
             </CardHeader>
-            {openCards.custom && (
             <CardContent id={`cat-custom-${id}`} className="space-y-3">
           {/* Restructure (123c1e76): the former "Leave Information Display" card's four sub-forms (ESS view
               checklist, formula explanations, employee visibility, ESS placement) now live INSIDE the Custom
@@ -2289,10 +2290,9 @@ export function LeaveTypePanel({
               existing moves; both null ⇒ default styling (backward compatible). */}
           <LeaveVisualForm t={t} id={id} name={name} color={color} icon={icon} action={updateTypeAction} />
             </CardContent>
-            )}
           </Card>
-        </div>
-      )}
-    </li>
+          )}
+      </div>
+    </div>
   );
 }
