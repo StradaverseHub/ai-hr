@@ -2016,12 +2016,16 @@ export const employeeStatutoryMy = pgTable(
     // Item e3ce0d4d — NULLABLE (relaxed from NOT NULL by migration 0212): a Malaysian employee is identified
     // by their MyKad IC, a non-Malaysian by their passport (below), so a non-Malaysian identity row carries no IC.
     icNumber: text('ic_number'),
-    // Item e3ce0d4d — passport identification (non-Malaysian employees). All nullable/additive: Malaysian rows
-    // leave these blank and keep their IC. Foundation for future passport-expiry reminders / work-permit tracking.
+    // Item e3ce0d4d — passport identification. All nullable/additive. Item 55865c32 relaxed the either/or:
+    // EVERY employee (Malaysian included) may maintain a passport block alongside their NRIC; nationality only
+    // drives which document is mandatory. Foundation for passport-expiry reminders / work-permit tracking.
     passportNumber: text('passport_number'),
     passportIssueDate: date('passport_issue_date'),
     passportExpiryDate: date('passport_expiry_date'),
     passportRemark: text('passport_remark'),
+    // Item 55865c32 — the passport's issuing country (free text from the international country picker; the
+    // Combobox's legacy-value tolerance renders any stored value). Optional — not part of the mandatory trio.
+    passportIssuingCountry: text('passport_issuing_country'),
     epfNumber: text('epf_number'),
     socsoNumber: text('socso_number'),
     taxNumber: text('tax_number'),

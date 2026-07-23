@@ -5,7 +5,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
-import { employeeStatutoryMy } from '../../db/schema';
+import { employeeStatutoryMy, person } from '../../db/schema';
 import { DEFAULT_MY_STATUTORY } from './statutory-tables';
 import { MY_STATES } from './holidays';
 import type { EpfMode } from './payroll';
@@ -593,8 +593,14 @@ export class NoIcYetError extends Error {
  * IC is the SEED of the statutory row (it is the notNull identity), so unlike setTp3/setBank this UPSERTS: it
  * creates the row when the person has none yet. Validates the IC (12 digits) and appends `employee.ic.updated`.
  * Persisting to the SAME column keeps setStatutoryAction's IC-derived SOCSO/EIS + EPF-number defaults working.
+ *
+ * Item 55865c32 — the Identity No (NRIC) field now shows for EVERY employee (the NRIC form is no longer hidden
+ * for non-Malaysians), so a BLANK submit is reachable: it NO-OPS (`{ id: null }`) instead of throwing
+ * InvalidICError — the NRIC is optional for a non-Malaysian who has none. Any NON-blank value stays
+ * strict-MyKad: this field is specifically the Malaysian NRIC, not a free-form "other ID".
  */
 export async function setIcProfileMY(ctx: SessionContext, p: { personId: string; icNumber: string }) {
+  if (!(p.icNumber ?? '').trim()) return { id: null };
   if (!isValidIC(p.icNumber)) throw new InvalidICError();
   const ic = normalizeIC(p.icNumber);
   return withTenant(ctx, async (tx) => {
@@ -632,11 +638,13 @@ export async function setIcProfileMY(ctx: SessionContext, p: { personId: string;
   });
 }
 
-/** Item e3ce0d4d — a non-Malaysian identity save was missing a mandatory passport field (number / issue /
- *  expiry). The three are required for non-Malaysian employees; the remark is optional. Distinct message. */
+/** Item e3ce0d4d — an identity save was missing a mandatory passport field (number / issue / expiry). The
+ *  trio is required for non-Malaysian employees, and required TOGETHER whenever any passport detail is
+ *  entered (item 55865c32 — a partially-filled passport can never be saved); remark + issuing country are
+ *  optional. Distinct message. */
 export class PassportRequiredError extends Error {
   constructor() {
-    super('Passport number, issue date and expiry date are required for a non-Malaysian employee.');
+    super('Passport number, issue date and expiry date are required together (mandatory for a non-Malaysian employee).');
     this.name = 'PassportRequiredError';
   }
 }
@@ -647,31 +655,52 @@ export type PassportInput = {
   passportIssueDate?: string | null;
   passportExpiryDate?: string | null;
   passportRemark?: string | null;
+  // Item 55865c32 — the passport's issuing country (optional; free text from the international country picker).
+  passportIssuingCountry?: string | null;
 };
 
 /**
- * Item e3ce0d4d — save ONLY the passport identification columns on employee_statutory_my for a NON-Malaysian
- * employee. The counterpart to setIcProfileMY: a non-Malaysian has no MyKad, so identity is the passport
- * instead. Like the IC setter this UPSERTS (seeds the statutory row when the person has none), but SKIPS the
- * MyKad IC validation entirely and leaves ic_number null/untouched. Number + issue date + expiry date are
- * mandatory (PassportRequiredError otherwise); remark is optional. Appends `employee.passport.updated`
- * (before/after) — passport is a government identity document, mirroring the IC event's audit posture.
+ * Item e3ce0d4d — save ONLY the passport identification columns on employee_statutory_my. The counterpart to
+ * setIcProfileMY. Like the IC setter this UPSERTS (seeds the statutory row when the person has none), but
+ * SKIPS the MyKad IC validation entirely and leaves ic_number null/untouched. Appends
+ * `employee.passport.updated` (before/after) — passport is a government identity document, mirroring the IC
+ * event's audit posture.
+ *
+ * Item 55865c32 — the Passport Information section now shows for EVERY employee, so requiredness is derived
+ * from the person's stored nationality (SERVER-SIDE — the client's live selection is never trusted):
+ *   • non-Malaysian → number + issue + expiry stay mandatory (their primary identification, as before);
+ *   • Malaysian     → the passport is optional, but all-or-nothing: if ANY passport field is entered the trio
+ *     must be complete (PassportRequiredError otherwise). An all-blank save CLEARS an existing passport block
+ *     (audited before/after, same admin gate as every profile save) and NO-OPS (`{ id: null }`) when the
+ *     person has no statutory row yet — nothing to clear, no empty row seeded.
+ * Remark and issuing country are optional on every path.
  */
 export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput) {
-  const number = (p.passportNumber ?? '').trim();
+  const number = (p.passportNumber ?? '').trim() || null;
   const issue = (p.passportIssueDate ?? '').trim() || null;
   const expiry = (p.passportExpiryDate ?? '').trim() || null;
   const remark = (p.passportRemark ?? '').trim() || null;
-  // Non-Malaysian primary identification: number + issue + expiry are all mandatory (the request's validation
-  // rules). Remark is optional. No MyKad IC validation runs on this path.
-  if (!number || !issue || !expiry) throw new PassportRequiredError();
+  const issuingCountry = (p.passportIssuingCountry ?? '').trim() || null;
+  const anyFieldPresent = Boolean(number || issue || expiry || remark || issuingCountry);
+  const trioComplete = Boolean(number && issue && expiry);
   const values = {
     passportNumber: number,
     passportIssueDate: issue,
     passportExpiryDate: expiry,
     passportRemark: remark,
+    passportIssuingCountry: issuingCountry,
   };
   return withTenant(ctx, async (tx) => {
+    // Nationality is derived from the person RECORD inside the same RLS tx — never from the caller.
+    const [subject] = await tx
+      .select({ nationality: person.nationality })
+      .from(person)
+      .where(eq(person.id, p.personId))
+      .limit(1);
+    const isMY = isMalaysianNationality(subject?.nationality);
+    // Non-Malaysian primary identification: the trio is always mandatory. Malaysian: mandatory only when a
+    // partial passport was entered (all-or-nothing). No MyKad IC validation runs on this path.
+    if (!trioComplete && (!isMY || anyFieldPresent)) throw new PassportRequiredError();
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
@@ -679,10 +708,13 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
         passportIssueDate: employeeStatutoryMy.passportIssueDate,
         passportExpiryDate: employeeStatutoryMy.passportExpiryDate,
         passportRemark: employeeStatutoryMy.passportRemark,
+        passportIssuingCountry: employeeStatutoryMy.passportIssuingCountry,
       })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
       .limit(1);
+    // All-blank Malaysian save with no statutory row: nothing to clear — don't seed an empty row.
+    if (!existing && !anyFieldPresent) return { id: null as string | null };
     let id: string;
     if (existing) {
       await tx
@@ -692,7 +724,7 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
       id = existing.id;
     } else {
       // Seed the row with the passport identity and NO IC (ic_number stays null — the partial ic_uq lets many
-      // non-Malaysian rows coexist with a null IC).
+      // rows coexist with a null IC).
       const [row] = await tx
         .insert(employeeStatutoryMy)
         .values({ tenantId: ctx.tenantId, personId: p.personId, ...values })
@@ -716,12 +748,13 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
               passportIssueDate: existing.passportIssueDate,
               passportExpiryDate: existing.passportExpiryDate,
               passportRemark: existing.passportRemark,
+              passportIssuingCountry: existing.passportIssuingCountry,
             }
           : null,
         after: values,
       },
     });
-    return { id };
+    return { id: id as string | null };
   });
 }
 

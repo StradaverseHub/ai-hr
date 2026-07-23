@@ -144,13 +144,15 @@ describe('Passport identity — service + action behaviour (e3ce0d4d)', () => {
   it('(svc-1) a non-Malaysian passport save stores the block with a null IC and fires employee.passport.updated', async () => {
     const a = adminCtx(base);
     const e = await hire(a, 'Passport Foreigner');
-    const { id } = await setPassportProfileMY(a, {
+    // Item 55865c32 — the setter's id is now `string | null` (null = blank-Malaysian no-op); a full trio
+    // save always writes, so the id is a string here.
+    const { id } = (await setPassportProfileMY(a, {
       personId: e.personId,
       passportNumber: 'A12345678',
       passportIssueDate: '2022-03-01',
       passportExpiryDate: '2032-02-28',
       passportRemark: 'Issued in Singapore',
-    });
+    })) as { id: string };
 
     const row = await getStatutoryProfileMY(a, e.personId);
     expect(row?.passportNumber).toBe('A12345678');

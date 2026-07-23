@@ -504,11 +504,13 @@ export default async function EmployeePage({
           </div>
         </form>
 
-        {/* Item e3ce0d4d — nationality-conditional identification. IdentityFields (client) reads the live
-            nationality from IdentityProvider and renders the IC form (Malaysian: IcDobAutofill, IC mandatory,
-            DOB autofill preserved — item 354a500d/8b5334db) OR the passport form (non-Malaysian: number/issue/
-            expiry mandatory, remark optional; setPassportAction skips MyKad validation). Both server actions are
-            passed in as props (RSC→client pattern); only the relevant card shows so its required fields apply. */}
+        {/* Item e3ce0d4d / 55865c32 — Identity Information. IdentityFields (client) renders BOTH sections for
+            every employee: Identity No (NRIC) (IcDobAutofill, DOB autofill preserved — item 354a500d/8b5334db)
+            AND Passport Information (number/issue/expiry/issuing country/remark). The live nationality from
+            IdentityProvider only toggles which document is REQUIRED (Malaysian → NRIC; non-Malaysian → passport
+            trio) — the server re-derives this from the person record on save. Both server actions are passed in
+            as props (RSC→client pattern). countryOptions reuses the Nationality picker's catalog source for the
+            passport's Issuing Country dropdown. */}
         <IdentityFields
           employmentId={emp.employmentId}
           personId={emp.personId}
@@ -516,7 +518,9 @@ export default async function EmployeePage({
           passportNumber={statutory?.passportNumber ?? ''}
           passportIssueDate={statutory?.passportIssueDate ?? ''}
           passportExpiryDate={statutory?.passportExpiryDate ?? ''}
+          passportIssuingCountry={statutory?.passportIssuingCountry ?? ''}
           passportRemark={statutory?.passportRemark ?? ''}
+          countryOptions={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
           setIcAction={setIcAction}
           setPassportAction={setPassportAction}
         />
