@@ -48,11 +48,12 @@ export type NavNodeDescriptor = {
 /**
  * A STANDALONE (non-collapsible) sidebar row a module pack contributes, added at rung 3 for
  * Claims — a module whose nav is flat links, not a node: one everyone-visible row in the top
- * day-to-day group ('main') and one row in the Administration group ('admin'). The `group` tag
- * names which existing sidebar group renders the row; the row's POSITION within that group stays
- * the sidebar's concern (like group layout generally — packs contribute rows, not layout).
+ * day-to-day group ('main') and one row in the Administration group ('admin'); rung 4
+ * (Performance) added 'manage' for its single Manage-group row. The `group` tag names which
+ * existing sidebar group renders the row; the row's POSITION within that group stays the
+ * sidebar's concern (like group layout generally — packs contribute rows, not layout).
  */
-export type NavLinkDescriptor = NavChildDescriptor & { group: 'main' | 'admin' };
+export type NavLinkDescriptor = NavChildDescriptor & { group: 'main' | 'manage' | 'admin' };
 
 /** A pack-owned satellite table declaration (ADR-0080 D5/D11 — documentation, not DDL). */
 export type SatelliteTableDecl = { table: string; note?: string };

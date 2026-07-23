@@ -50,6 +50,9 @@ import '@/packs/attendance';
 // ADR-0080 rung 3: the Claims nav rows mount from the pack registry the same way — claims is flat
 // links (navLinks), not a collapsible node. packs/claims/index.ts is client-safe by design too.
 import '@/packs/claims';
+// ADR-0080 rung 4: the Performance nav row mounts from the pack registry the same way — a single
+// flat Manage-group row. packs/performance/index.ts is client-safe by design too.
+import '@/packs/performance';
 import { modulePackById } from '@/packs/registry';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
@@ -88,6 +91,12 @@ const ATTENDANCE_NODE: CollapsibleGroupItem = {
 const CLAIMS_LINKS = modulePackById('claims')!.navLinks!;
 const CLAIMS_ROW: ChildItem = CLAIMS_LINKS.find((l) => l.group === 'main')!;
 const CLAIMS_CONFIG_ROW: ChildItem = CLAIMS_LINKS.find((l) => l.group === 'admin')!;
+
+// Performance nav row (ADR-0080 rung 4): the single manager-up row the performance pack
+// contributes (packs/performance/index.ts, PERFORMANCE_NAV_LINKS — provenance comments moved with
+// it), placed at its pre-rung-4 position in the Manage group below, after Approvals. The `group`
+// tag is the pack's placement declaration; position WITHIN the group stays this file's concern.
+const PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage')!;
 
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
 // map to the reporter's categories; each opens the Reports hub filtered to that category, where the
@@ -156,7 +165,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/personnel', labelKey: 'people', icon: Users },
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
-      { href: '/performance', labelKey: 'performance', icon: Target, managerUp: true },
+      PERFORMANCE_ROW,
     ],
   },
   {

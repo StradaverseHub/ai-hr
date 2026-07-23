@@ -11,7 +11,7 @@ import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, requestAttendanceCorrection } from '../packs/attendance/service';
 import { requestLeave, decideLeave, addLeaveAttachment, accrueEarnedLeave } from '../core/leave';
 import { createLeavePolicy, createJobGrade } from '../core/admin';
-import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../core/performance';
+import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../packs/performance/service';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { myPack } from '../localization/my';
 import { seedGuides } from './seed-guides';

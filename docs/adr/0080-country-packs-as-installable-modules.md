@@ -9,7 +9,11 @@
   `PayrollInputContributor` kernel contract (D9) LANDED with it: the claims payout prefill was a real
   code path (`app/payroll/actions.ts` → `prefillClaimsForBatch`) and now rides the contract
   (`packs/contracts.ts` + `packs/claims/payroll.ts`), payroll output proven identical by the
-  golden payout tests
+  golden payout tests; rung 4 (Performance module pack: `packs/performance` declaration + service
+  facade, registry-mounted flat Manage-group nav row, ratchet seeded with one entry) landed
+  2026-07-23 — `core/employment-review.ts` audited as employment-spine (NOT the pack), and the
+  comp-enactment pay seam (`enactCompAction` → `setCompensation`/`setPayrollInput`) documented as
+  debt for the Payroll rung per one-seam-per-rung (no new contract this rung)
 - **Date:** 2026-07-23 (revised same day: generalized from country packs to a two-axis pack system, per
   operator discussion — functional modules become packs too, retrofitted one by one)
 - **Relates to:** ADR-0008 (localization packs — this ADR restores and hardens its seam), ADR-0077 (module

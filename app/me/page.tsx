@@ -17,7 +17,7 @@ import { listLoansForEmployment } from '@/core/loans';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
 import { myResignation } from '@/core/offboarding';
 import { MeReviewCard } from './review-card';
-import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/core/performance';
+import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/packs/performance/service';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { AttendanceClockButton, LocationNotice } from '@/components/attendance-clock-button';
 import { ClientTabs } from '@/components/personnel-tabs';
