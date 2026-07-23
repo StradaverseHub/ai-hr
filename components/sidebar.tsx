@@ -28,7 +28,6 @@ import {
   Smartphone,
   Tags,
   Target,
-  SlidersHorizontal,
   UserRound,
   Users,
   Wallet,
@@ -53,6 +52,10 @@ import '@/packs/claims';
 // ADR-0080 rung 4: the Performance nav row mounts from the pack registry the same way — a single
 // flat Manage-group row. packs/performance/index.ts is client-safe by design too.
 import '@/packs/performance';
+// ADR-0080 rung 6: the Leave nav rows mount from the pack registry the same way — leave is two flat
+// rows (navLinks), a My-Absence self-service row (top group) and a leave-config row (Admin group).
+// packs/leave/index.ts is client-safe by design too.
+import '@/packs/leave';
 import { modulePackById } from '@/packs/registry';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
@@ -97,6 +100,16 @@ const CLAIMS_CONFIG_ROW: ChildItem = CLAIMS_LINKS.find((l) => l.group === 'admin
 // it), placed at its pre-rung-4 position in the Manage group below, after Approvals. The `group`
 // tag is the pack's placement declaration; position WITHIN the group stays this file's concern.
 const PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage')!;
+
+// Leave nav rows (ADR-0080 rung 6): two flat rows the leave pack contributes (packs/leave/index.ts,
+// LEAVE_NAV_LINKS — provenance comments moved with them), placed at their pre-rung-6 positions below:
+// the "My Absence" row (/leave) in the top group (every employee), the "Leave configuration" row
+// (/admin/leave) in the Administration group (group-gated adminOnly, no per-row flag — unchanged).
+// The `group` tag is the pack's placement declaration; position WITHIN the group stays this file's
+// concern.
+const LEAVE_LINKS = modulePackById('leave')!.navLinks!;
+const LEAVE_ABSENCE_ROW: ChildItem = LEAVE_LINKS.find((l) => l.group === 'main')!;
+const LEAVE_CONFIG_ROW: ChildItem = LEAVE_LINKS.find((l) => l.group === 'admin')!;
 
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
 // map to the reporter's categories; each opens the Reports hub filtered to that category, where the
@@ -145,9 +158,10 @@ const GROUPS: Group[] = [
       { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
       { href: '/me', labelKey: 'myWorkspace', icon: UserRound, tour: 'nav-me' },
       { href: '/org', labelKey: 'orgChart', icon: Network },
-      // a7cbd895: renamed from "Leave" to "My Absence" — the first-level home for ALL leave self-service
-      // after the /me Leave tab merged into /leave. Same href, same icon; label-only change.
-      { href: '/leave', labelKey: 'myAbsence', icon: CalendarDays },
+      // a7cbd895: "My Absence" — the first-level home for ALL leave self-service after the /me Leave
+      // tab merged into /leave. Since ADR-0080 rung 6 the row lives on the leave pack and mounts here
+      // by const reference (LEAVE_ABSENCE_ROW).
+      LEAVE_ABSENCE_ROW,
       ATTENDANCE_NODE,
       CLAIMS_ROW,
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
@@ -177,9 +191,10 @@ const GROUPS: Group[] = [
       // a4e49748: the three system-wide setup rows (Employee ID numbering / Dashboard cards / System
       // Labels) collapsed into the single System Settings node above.
       SYSTEM_SETTINGS_NODE,
-      // 0d147b78: Leave config is now a tabbed surface; the former standalone "Approval chain" entry
-      // was absorbed into its Approval Workflow tab (/admin/leave/approval), so it's removed here.
-      { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
+      // 0d147b78: Leave config is a tabbed surface (the former "Approval chain" entry was absorbed
+      // into its Approval Workflow tab). Since ADR-0080 rung 6 the row lives on the leave pack and
+      // mounts here by const reference (LEAVE_CONFIG_ROW).
+      LEAVE_CONFIG_ROW,
       // Holidays lives under the Attendance node above (5cb199b3), not in the flat admin list.
       CLAIMS_CONFIG_ROW,
       { href: '/payroll', labelKey: 'payroll', icon: Wallet },
