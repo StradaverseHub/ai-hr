@@ -3614,6 +3614,7 @@
       "namePlaceholder": "Sick Leave",
       "paidLabel": "Paid",
       "addType": "+ Add leave type",
+      "addTypeDialogTitle": "Add Leave Type",
       "typesHelp": "Statutory minimums come from the country pack (EA 1955; bands are <2 / 2–5 / 5+ years of service) and are not configurable. Grants apply the <strong>greater</strong> of the floor and the company policy — a policy below the minimum is recorded but never applied. Entitlements are effective-dated: <strong>add</strong> one to change going forward, <strong>edit</strong> one to correct it. Annual leave pro-rates in the hire year; sick and hospitalization grant in full.",
       "leaveYearTitle": "Leave year",
       "leaveYearHelp": "Opening a year posts each active employee’s new entitlements at their <strong>current service band</strong> (so 2y/5y upgrades apply), resolved as max(statutory floor, policy). Unused annual leave carries up to the policy’s cap and the rest is forfeited (s.60E expects leave within the year); sick and hospitalization reset. Idempotent — already-opened employees are skipped; employees hired during the year are covered by their hire grant.",

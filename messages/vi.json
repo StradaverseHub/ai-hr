@@ -3614,6 +3614,7 @@
       "namePlaceholder": "Nghỉ ốm",
       "paidLabel": "Có lương",
       "addType": "+ Thêm loại nghỉ phép",
+      "addTypeDialogTitle": "Thêm loại nghỉ phép",
       "typesHelp": "Mức tối thiểu pháp định đến từ gói quốc gia (EA 1955; các bậc là <2 / 2–5 / 5+ năm thâm niên) và không thể cấu hình. Khi cấp phép, áp dụng mức <strong>lớn hơn</strong> giữa mức sàn và chính sách công ty — chính sách thấp hơn mức tối thiểu được ghi lại nhưng không bao giờ áp dụng. Mức hưởng theo ngày hiệu lực: <strong>thêm</strong> một mục để thay đổi về sau, <strong>chỉnh sửa</strong> một mục để sửa lại. Phép năm được tính theo tỷ lệ trong năm tuyển dụng; nghỉ ốm và nghỉ nằm viện được cấp đầy đủ.",
       "leaveYearTitle": "Năm phép",
       "leaveYearHelp": "Mở một năm sẽ ghi nhận mức hưởng mới của mỗi nhân viên đang làm việc tại <strong>bậc thâm niên hiện tại</strong> của họ (nên các nâng bậc 2 năm/5 năm được áp dụng), được tính là max(mức sàn pháp định, chính sách). Phép năm chưa dùng được chuyển sang đến mức trần của chính sách và phần còn lại bị mất (s.60E yêu cầu nghỉ phép trong năm); nghỉ ốm và nghỉ nằm viện được đặt lại. Có tính bất biến — nhân viên đã mở sẽ bị bỏ qua; nhân viên được tuyển trong năm được bao gồm qua mức cấp khi tuyển dụng.",

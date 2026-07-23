@@ -11,6 +11,11 @@
  * Deep-links keep working: the Leave Types tab's Edit links (#type-<id>, feedback 097de541) and the
  * stay-on-save redirect's anchor (app/admin/actions.ts) select the targeted type in the workspace.
  *
+ * 8cc268c4 (Add Leave Type pop-up): the Add Leave button no longer swaps the right pane to the create form
+ * (the old ADD-sentinel selection) — it opens a Radix Dialog titled "Add Leave Type" over the current view,
+ * whose body is the same server-rendered create form. Save's redirect carries #type-<new id> so the
+ * workspace selects the new type and closes the dialog; Cancel closes without saving.
+ *
  * Static source guard (repo convention for this DOM-runner-less feature area; see
  * leave-type-config-categories.test.ts). Browser verification covers the interactive behaviour.
  */
@@ -23,12 +28,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const workspaceSrc = readFileSync(resolve(here, '../components/leave-type-workspace.tsx'), 'utf8');
 const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
 const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
+const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 describe('c979aa8b · entitlements page renders the two-pane workspace', () => {
   it('the page mounts LeaveTypeWorkspace and feeds it the type list, the per-type panels and the add form', () => {
-    expect(pageSrc).toMatch(/import \{ LeaveTypeWorkspace \} from '@\/components\/leave-type-workspace'/);
+    // 8cc268c4: the page also imports AddLeaveTypeCancel for the dialog form's footer.
+    expect(pageSrc).toMatch(/import \{ AddLeaveTypeCancel, LeaveTypeWorkspace \} from '@\/components\/leave-type-workspace'/);
     expect(pageSrc).toContain('<LeaveTypeWorkspace');
     // Left-panel list entries carry the visual config (colour dot / icon) alongside identity.
     for (const field of ['color: lt.color ?? null', 'icon: lt.icon ?? null', 'archived: !!lt.archivedAt']) {
@@ -52,16 +59,69 @@ describe('c979aa8b · internal left panel: list + highlight + Add Leave + mobile
   });
 
   it('defaults to the first type and offers Add Leave from the bottom of the panel', () => {
-    expect(workspaceSrc).toContain("useState<string>(items[0]?.id ?? ADD)");
-    // The Add button swaps the right pane to the create form (the ADD sentinel selection).
-    expect(workspaceSrc).toMatch(/onClick=\{\(\) => select\(ADD\)\}/);
-    expect(workspaceSrc).toContain("selected === ADD ? (");
+    expect(workspaceSrc).toContain("useState<string>(items[0]?.id ?? '')");
+    // 8cc268c4: the Add button opens the Add Leave Type dialog instead of swapping the right pane.
+    expect(workspaceSrc).toMatch(/onClick=\{\(\) => setAddOpen\(true\)\}/);
   });
 
   it('collapses to a dropdown on mobile (the chosen small-screen treatment)', () => {
     // The <select> lives in the md:hidden block; the list nav is hidden until md.
     expect(workspaceSrc).toMatch(/md:hidden[\s\S]*?<select/);
     expect(workspaceSrc).toMatch(/hidden w-56[^"]*md:flex/);
+  });
+});
+
+describe('8cc268c4 · Add Leave opens the "Add Leave Type" pop-up (no right-pane swap)', () => {
+  it('replaces the ADD sentinel swap with a Radix Dialog wrapping the addForm slot', () => {
+    expect(workspaceSrc).toContain("import * as Dialog from '@radix-ui/react-dialog'");
+    // Controlled open state so BOTH triggers (desktop panel bottom + mobile beside the dropdown) share one
+    // dialog, and the post-save hash effect can dismiss it.
+    expect(workspaceSrc).toContain('const [addOpen, setAddOpen] = useState(false)');
+    expect(workspaceSrc).toMatch(/<Dialog\.Root open=\{addOpen\} onOpenChange=\{setAddOpen\}>/);
+    // Title + the untouched server-rendered form as the dialog body.
+    expect(workspaceSrc).toMatch(/<Dialog\.Title[^>]*>\{t\('addTypeDialogTitle'\)\}<\/Dialog\.Title>/);
+    expect(workspaceSrc).toMatch(/<div className="mt-4">\{addForm\}<\/div>/);
+    // The sentinel path is GONE: no ADD constant, no conditional right-pane swap — the right workspace
+    // always renders the selected type's panel.
+    expect(workspaceSrc.includes("const ADD")).toBe(false);
+    expect(workspaceSrc.includes('selected === ADD')).toBe(false);
+    // …and the mobile dropdown lists ONLY types (its old Add option became the adjacent trigger button).
+    expect(workspaceSrc).not.toMatch(/<option value=\{ADD\}/);
+  });
+
+  it('desktop and mobile both trigger the one dialog', () => {
+    const triggers = workspaceSrc.match(/onClick=\{\(\) => setAddOpen\(true\)\}/g) ?? [];
+    expect(triggers.length).toBe(2);
+  });
+
+  it('offers Cancel: the ✕ close plus the exported AddLeaveTypeCancel the form footer mounts', () => {
+    // The workspace exports the Dialog.Close wrapper so the SERVER-rendered form can carry the standard
+    // bottom-right Cancel/Save footer (Radix context resolves because the slot mounts inside the dialog).
+    expect(workspaceSrc).toMatch(/export function AddLeaveTypeCancel/);
+    expect(workspaceSrc).toMatch(/AddLeaveTypeCancel[\s\S]*?<Dialog\.Close asChild>/);
+    // The page's create form ends with Cancel then Save, bottom-right.
+    const formStart = pageSrc.indexOf('action={createLeaveTypeAction}');
+    const formEnd = pageSrc.indexOf('</form>', formStart);
+    const form = pageSrc.slice(formStart, formEnd);
+    const footerIdx = form.indexOf('flex justify-end gap-2');
+    expect(footerIdx).toBeGreaterThan(-1);
+    const cancelIdx = form.indexOf('<AddLeaveTypeCancel>', footerIdx);
+    const saveIdx = form.indexOf('btnPrimary', footerIdx);
+    expect(cancelIdx).toBeGreaterThan(footerIdx);
+    expect(saveIdx).toBeGreaterThan(cancelIdx);
+  });
+
+  it('save selects the new type: the action redirects to the Entitlements tab with #type-<new id>', () => {
+    // createLeaveTypeAction captures the created row and lands back on the workspace carrying the
+    // 097de541 deep-link anchor…
+    const actionIdx = actionsSrc.indexOf('export async function createLeaveTypeAction');
+    expect(actionIdx).toBeGreaterThan(-1);
+    const actionSlice = actionsSrc.slice(actionIdx, actionsSrc.indexOf('\n}\n', actionIdx));
+    expect(actionSlice).toContain('created = await createLeaveType(');
+    expect(actionSlice).toContain('redirect(`${ENTITLEMENTS}#type-${created.id}`)');
+    expect(actionSlice).toContain('fail(ENTITLEMENTS, e)');
+    // …and the workspace's hash effect both selects the targeted type AND dismisses the add dialog.
+    expect(workspaceSrc).toMatch(/setSelected\(m\[1\]\);\s*setAddOpen\(false\);/);
   });
 });
 
@@ -100,7 +160,7 @@ describe('c979aa8b · workspace strings exist in every locale', () => {
     for (const loc of LOCALES) {
       const msgs = JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'));
       const leave = msgs?.admin?.leave ?? {};
-      for (const key of ['workspaceTypeListLabel', 'workspaceStepsLabel']) {
+      for (const key of ['workspaceTypeListLabel', 'workspaceStepsLabel', 'addTypeDialogTitle']) {
         expect(typeof leave[key], `${loc}.admin.leave.${key}`).toBe('string');
         expect((leave[key] as string).length, `${loc}.admin.leave.${key} non-empty`).toBeGreaterThan(0);
       }

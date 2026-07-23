@@ -23,7 +23,7 @@ import { entitlement } from '@/localization/my/leave';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
-import { LeaveTypeWorkspace } from '@/components/leave-type-workspace';
+import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
 import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
 import { LeaveRulePreviewDialog } from '@/components/leave/leave-rule-preview-dialog';
@@ -685,15 +685,24 @@ export default async function LeaveEntitlementsPage({
             ]),
           )}
           addForm={
-        /* Layout (a9c5870a): three tiers. Mobile stacks (grid-cols-1). sm–lg keeps the six equal columns with
-            Description spanning 3, i.e. the tidy two-row split 750732c3 introduced. From lg an explicit
-            grid-template packs all seven pieces onto ONE row: Code/Name/Status/Leave Unit are flexible minmax
-            columns, Description gets the wide 3fr share, and Paid + Add are content-sized auto columns — so the
-            wider Description no longer spills Leave Unit/Paid/Add onto a half-empty second row. */
+        /* Add Leave Type pop-up (8cc268c4): this form now renders ONLY inside the workspace's "Add Leave Type"
+            dialog, never as a page row — so the a9c5870a one-row page grid (six sm columns + the explicit lg
+            template) gave way to a modal-width two-column layout: Code/Name share row 1, Description spans the
+            full width, Status/Leave Unit share the next row, then Paid, then the standard bottom-right
+            Cancel/Save footer. Every posted field (name attr, order, control type — dc3ec3c6's Leave Unit →
+            Paid order, fbcadc71's multiline textarea) is unchanged, as is the server action. */
         <form
           action={createLeaveTypeAction}
-          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-6 lg:[grid-template-columns:minmax(6.5rem,1fr)_minmax(8rem,1fr)_minmax(16rem,3fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_auto_auto]"
+          className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2"
         >
+          {/* In-dialog error surface: a failed save (duplicate code/name…) redirects back with ?error= while
+              the dialog is still open (client state survives the soft navigation), so the page-level banner
+              would sit hidden BEHIND the modal — mirror the message here where the admin is looking. */}
+          {error && (
+            <div className="col-span-full">
+              <ErrorBanner message={error} />
+            </div>
+          )}
           <Field label={t('codeLabel')}>
             <input
               name="code"
@@ -706,13 +715,11 @@ export default async function LeaveEntitlementsPage({
           <Field label={t('nameLabel')}>
             <input name="name" required placeholder={t('namePlaceholder')} className={inputCls} />
           </Field>
-          <Field label={t('descriptionLabel')} className="sm:col-span-3 lg:col-span-1">
+          <Field label={t('descriptionLabel')} className="sm:col-span-2">
             {/* Multiline (fbcadc71): textarea so Enter inserts a newline instead of submitting; h-auto/min-h/resize-y
                 overrides inputCls's fixed h-9 so it shows ~2 lines, grows via the drag handle, and scrolls on overflow.
-                Persistence already stores text with newlines (action only .trim()s the ends).
-                Width (750732c3 → a9c5870a): at sm the Field spans 3 of the 6 columns; from lg it occupies the wide
-                3fr slot of the explicit template (lg:col-span-1 resets the span so it sits in exactly that column).
-                rows={2} + trimmed min-h keep the single lg row visually balanced next to the h-9 fields. */}
+                Persistence already stores text with newlines (action only .trim()s the ends). In the dialog's
+                two-column grid it spans the full modal width (sm:col-span-2) — the widest slot available. */}
             <textarea
               name="description"
               rows={2}
@@ -726,29 +733,31 @@ export default async function LeaveEntitlementsPage({
               <option value="inactive">{t('statusInactive')}</option>
             </select>
           </Field>
-          {/* Leave Unit Configuration (e4980382 → dc3ec3c6): Day/Hour select sits BEFORE Paid in the final two
-              columns (Leave Unit column 5, Paid column 6), mirroring the edit form's Leave Unit → Paid order.
-              Default Day. */}
+          {/* Leave Unit Configuration (e4980382 → dc3ec3c6): Day/Hour select sits BEFORE Paid, mirroring the
+              edit form's Leave Unit → Paid order. Default Day. */}
           <Field label={t('leaveUnitLabel')}>
             <select name="leaveUnit" defaultValue="day" className={inputCls}>
               <option value="day">{t('leaveUnitDay')}</option>
               <option value="hour">{t('leaveUnitHour')}</option>
             </select>
           </Field>
-          {/* dc3ec3c6: Paid adopts the captioned Field + right-aligned checkbox pattern the edit form uses
-              (components/leave-type-panel.tsx), so it gets the same small grey caption as its neighbours and an
-              explicit aria-label instead of relying on the old bare wrapping <label>. defaultChecked stays —
-              dropping it would silently flip every new leave type's default from Paid to Unpaid. */}
-          <Field label={t('paidLabel')} className="justify-self-end">
+          {/* dc3ec3c6: Paid keeps the captioned Field + explicit aria-label pattern the edit form uses
+              (components/leave-type-panel.tsx). The old justify-self-end right-pin was a page-row concern
+              (it sat beside the Add button); in the dialog grid it aligns naturally with its neighbours.
+              defaultChecked stays — dropping it would silently flip every new type's default from Paid to
+              Unpaid. */}
+          <Field label={t('paidLabel')}>
             <div className="flex h-9 items-center">
               <input type="checkbox" name="paid" defaultChecked aria-label={t('paidLabel')} className="size-4 rounded" />
             </div>
           </Field>
-          {/* 750732c3 → a9c5870a: on the sm two-row split, sm:col-start-6 still pins Add at the right edge of
-              row 2 under Status. From lg the explicit template gives Add its own content-sized column at the end
-              of the single row, so lg:col-start-auto releases the pin and it just flows into place. On mobile
-              (grid-cols-1) col-start has no effect; everything stacks unchanged. */}
-          <button className={`${btnPrimary} sm:col-start-6 lg:col-start-auto`}>{t('addType')}</button>
+          {/* 8cc268c4: the standard modal footer — Cancel (closes the dialog without saving, via the
+              workspace-exported Dialog.Close wrapper) and Save (posts createLeaveTypeAction, whose redirect
+              carries #type-<new id> so the workspace selects the new type and dismisses the dialog). */}
+          <div className="col-span-full mt-1 flex justify-end gap-2">
+            <AddLeaveTypeCancel>{t('cancel')}</AddLeaveTypeCancel>
+            <button className={btnPrimary}>{t('save')}</button>
+          </div>
         </form>
           }
         />

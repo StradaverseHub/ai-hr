@@ -410,8 +410,9 @@ export async function createCostCenterAction(formData: FormData) {
 
 export async function createLeaveTypeAction(formData: FormData) {
   const s = await getSession();
+  let created: { id: string };
   try {
-    await createLeaveType(s, {
+    created = await createLeaveType(s, {
       code: String(formData.get('code') ?? '').trim().toUpperCase(),
       name: String(formData.get('name') ?? '').trim(),
       paid: formData.get('paid') === 'on',
@@ -424,9 +425,15 @@ export async function createLeaveTypeAction(formData: FormData) {
       leaveUnit: formData.get('leaveUnit') === 'hour' ? 'hour' : 'day',
     });
   } catch (e) {
-    fail(LEAVE, e);
+    // 8cc268c4: the add form lives in the Entitlements workspace's "Add Leave Type" dialog now, so both
+    // outcomes land back on the Entitlements tab (the old ok/fail(LEAVE) pointed at the read-only Types tab).
+    // The ?error= banner is mirrored inside the still-open dialog by the page.
+    fail(ENTITLEMENTS, e);
   }
-  ok(LEAVE);
+  // Success: carry the stay-on-save #type-<id> anchor (the 097de541 deep-link contract) so the workspace
+  // selects the just-created type and closes the add dialog.
+  revalidatePath(ENTITLEMENTS);
+  redirect(`${ENTITLEMENTS}#type-${created.id}`);
 }
 
 /** ADR-0038 carry-forward expiry: an empty month/day field means "no expiry" → null. */
