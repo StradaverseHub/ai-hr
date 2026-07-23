@@ -18,7 +18,14 @@ import {
   updateDependent,
   archiveDependent,
   DependentValidationError,
+  DEPENDENT_RELATIONSHIP_CATEGORY,
 } from '../core/dependents';
+import {
+  createProfileOption,
+  listProfileOptions,
+  seedProfileOptions,
+  setProfileOptionActive,
+} from '../core/profile-options';
 import {
   adminCtx,
   closeAll,
@@ -262,6 +269,108 @@ describe('Personnel — Family / Dependents (phase 1)', () => {
     expect(r.childReliefSync.changed).toBe(false);
     expect(r.childReliefSync.skipped).toBe('no_statutory_row');
     expect(await listDependents(a, { personId: e.personId })).toHaveLength(1);
+  });
+
+  // ─── ea36b7fa — Family & Dependents consolidation: configurable relationship types ──────────────────
+  // The Relationship dropdown is backed by the profile_option catalog (category dependentRelationship,
+  // DISTINCT from the emergency-contact 'relationship' category). The five built-ins stay ALWAYS valid;
+  // custom ACTIVE options are accepted and persist as their catalog value, treated as 'other' for the
+  // spouse-field / child-relief gating.
+
+  it('custom relationship: an ACTIVE catalog option round-trips, gated fields treated as other', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Dep Custom');
+    await createProfileOption(a, { category: DEPENDENT_RELATIONSHIP_CATEGORY, value: 'Grandparent', label: 'Grandparent' });
+
+    const { id } = await addDependent(a, {
+      personId: e.personId,
+      fullName: 'Nana Doe',
+      relationship: 'Grandparent',
+      dateOfBirth: '1950-03-03',
+      occupation: 'Retired',
+      // Spouse-only and child-only inputs must be IGNORED (NULLed) for a custom type — it behaves as 'other'.
+      marriageDate: '1970-01-01',
+      spouseWorking: true,
+      companyName: 'ShouldNotPersist',
+      isStudent: true,
+      schoolName: 'ShouldNotPersist',
+      childTaxRelief: true,
+    });
+    const rows = await listDependents(a, { personId: e.personId });
+    const r = rows.find((x) => x.id === id)!;
+    expect(r.relationship).toBe('Grandparent'); // persists as the catalog value
+    expect(r.occupation).toBe('Retired'); // general field applies to every relationship
+    expect(r.marriageDate).toBeNull();
+    expect(r.spouseWorking).toBeNull();
+    expect(r.companyName).toBeNull();
+    expect(r.isStudent).toBeNull();
+    expect(r.schoolName).toBeNull();
+    expect(r.childTaxRelief).toBeNull();
+
+    // Edit round-trip keeps the custom relationship (unchanged value re-validates without a catalog hit).
+    await updateDependent(a, { id, relationship: 'Grandparent', fullName: 'Nana Renamed' });
+    expect((await listDependents(a, { personId: e.personId })).find((x) => x.id === id)?.fullName).toBe('Nana Renamed');
+  });
+
+  it('custom relationship: unknown or INACTIVE values are rejected as new picks; unchanged re-save survives', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Dep CustomVal');
+    // Not in the catalog at all → rejected.
+    await expect(
+      addDependent(a, { personId: e.personId, fullName: 'X', relationship: 'Cousin' }),
+    ).rejects.toThrow(DependentValidationError);
+
+    // Active custom option accepted, then DEACTIVATED: existing rows keep saving (legacy tolerance)…
+    await createProfileOption(a, { category: DEPENDENT_RELATIONSHIP_CATEGORY, value: 'Guardian', label: 'Guardian' });
+    const { id } = await addDependent(a, { personId: e.personId, fullName: 'G', relationship: 'Guardian' });
+    const [opt] = (await listProfileOptions(a, DEPENDENT_RELATIONSHIP_CATEGORY)).filter((o) => o.value === 'Guardian');
+    await setProfileOptionActive(a, { id: opt.id, isActive: false });
+    await updateDependent(a, { id, relationship: 'Guardian', phone: '0123456789' }); // unchanged → allowed
+    // …but the deactivated value is rejected as a NEW pick (add, or changing another row to it).
+    await expect(
+      addDependent(a, { personId: e.personId, fullName: 'Y', relationship: 'Guardian' }),
+    ).rejects.toThrow(DependentValidationError);
+    const sib = await addDependent(a, { personId: e.personId, fullName: 'Z', relationship: 'sibling' });
+    await expect(updateDependent(a, { id: sib.id, relationship: 'Guardian' })).rejects.toThrow(
+      DependentValidationError,
+    );
+  });
+
+  it('built-ins stay ALWAYS valid server-side, even when deactivated in the catalog', async () => {
+    const a = adminCtx(base);
+    await seedProfileOptions(a); // seeds the five dependentRelationship built-ins
+    const e = await hire(a, base, 'Dep Builtin');
+    const [spouseOpt] = (await listProfileOptions(a, DEPENDENT_RELATIONSHIP_CATEGORY)).filter(
+      (o) => o.value === 'spouse',
+    );
+    expect(spouseOpt).toBeTruthy();
+    await setProfileOptionActive(a, { id: spouseOpt.id, isActive: false });
+    // Deactivation only hides the option from NEW picks in the UI — the service still accepts it (system
+    // logic keys off the built-ins, so they can never be configured away).
+    const { id } = await addDependent(a, { personId: e.personId, fullName: 'S', relationship: 'spouse' });
+    expect((await listDependents(a, { personId: e.personId })).find((x) => x.id === id)?.relationship).toBe('spouse');
+  });
+
+  it('auto child-relief: a custom-relationship member never moves the count; a child via the unified flow does', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Dep CustomTax');
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101019666', numChildren: 0 });
+    await setTaxProfileMY(a, { personId: e.personId, childReliefMode: 'auto', numChildren: 0 });
+    await createProfileOption(a, { category: DEPENDENT_RELATIONSHIP_CATEGORY, value: 'Grandchild', label: 'Grandchild' });
+
+    // A custom type — even an under-18 one — is NOT a 'child' row, so it can never reach the tax figure.
+    const g = await addDependent(a, {
+      personId: e.personId, fullName: 'GC', relationship: 'Grandchild', dateOfBirth: '2020-01-01',
+    });
+    expect(g.childReliefSync.changed).toBe(false);
+    expect((await getStatutoryProfileMY(a, e.personId))?.numChildren).toBe(0);
+
+    // The SAME unified add flow with relationship 'child' still syncs the count (regression pin).
+    const c = await addDependent(a, {
+      personId: e.personId, fullName: 'K', relationship: 'child', dateOfBirth: '2019-01-01',
+    });
+    expect(c.childReliefSync.changed).toBe(true);
+    expect((await getStatutoryProfileMY(a, e.personId))?.numChildren).toBe(1);
   });
 
   it('DomainEvents: appended on add/update/archive with NO PII (name/IC/DOB) in any payload', async () => {

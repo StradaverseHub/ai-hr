@@ -34,6 +34,8 @@ import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 // My Absence merge (a7cbd895): the /me Leave tab's primary summary cards + per-request extras now live here.
 import { LeaveCards, type LeaveCardEntry } from '@/components/leave/leave-cards';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
+// Compact card history + slide-out detail panel for the self-service view (feedback 657962ec).
+import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/leave-history-cards';
 // Restored old-Leave-page layout (feedback 56a0deb9): collapsible balance card + secondary-type groups.
 import { CollapsibleCardSection } from '@/components/collapsible-card-section';
 import { SecondaryLeaveGroups } from '@/components/leave/secondary-leave-groups';
@@ -72,6 +74,11 @@ const PENDING_STAGES = ['direct_manager', 'hr_admin'] as const;
 // open/closed choice in this cookie (SSR-read via cookies(), mirroring GRADES_OPEN_COOKIE on the leave
 // entitlements page). Cookie absent ⇒ CLOSED — the reporter wants the balance details collapsed by default.
 const BALANCE_OPEN_COOKIE = 'leave_balance_open';
+
+// Equal-height columns for the self-service breakdown + history pairing (feedback 657962ec): both columns
+// share this lg+ height cap and scroll WITHIN themselves, so neither stretches the row taller than the
+// other — they stay exactly side by side. On mobile the cards stack at natural height (no cap).
+const COLUMN_CAP = 'lg:max-h-[42rem]';
 
 // Self-service Leave page (consultant feedback #8/#10): Balance + History + Apply only. Team
 // availability lives on the Dashboard (the "Planned absences" timeline); approvals live in the
@@ -233,10 +240,7 @@ export default async function LeavePage({
     return {
       data: bd,
       summary: { available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) },
-      // §5 Upcoming Approved Leave — approved + future requests for THIS type (matched by localized name).
-      upcoming: selfRequests
-        .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-        .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType })),
+      // §5 Upcoming Approved Leave removed from the panel (feedback 11876072) — no upcoming list is built.
       visual: { color: b.color, icon: b.icon, code: b.code },
       asOf: breakdownAsOf,
     };
@@ -319,17 +323,124 @@ export default async function LeavePage({
         return { rows: mine, total: mine.length, companies: [], businessUnits: [], departments: [], locations: [], approvers: [] };
       })();
 
+  // Self-service history ordering (feedback 657962ec): cards render newest first BY LEAVE START DATE —
+  // explicit here (the read returns createdAt-desc, i.e. most recently APPLIED first, which is not the
+  // same thing). Admin history keeps its own sortable columns and is untouched.
+  const selfHistory = admin ? [] : [...history].sort((a, b) => b.startDate.localeCompare(a.startDate));
+
   // Per-date outcome rows for the viewer's OWN recent requests (My Absence merge · a7cbd895): the same
   // 5-most-recent window the /me Leave tab resolved (R17 600be8ac ask #6), so the employee still sees the
-  // date-by-date approved/rejected breakdown after the tab moved here. Admin history is untouched
+  // date-by-date approved/rejected breakdown after the tab moved here — now inside the detail panel
+  // (657962ec). The window follows the card order (5 newest by start date). Admin history is untouched
   // (approvers already get per-date detail on /approvals). RLS self-branch admits the subject to their rows.
   const dateBreakdownEntries: (readonly [string, Awaited<ReturnType<typeof leaveRequestDateBreakdown>>])[] =
     admin
       ? []
       : await Promise.all(
-          history.slice(0, 5).map(async (r) => [r.id, await leaveRequestDateBreakdown(session, r.id)] as const),
+          selfHistory.slice(0, 5).map(async (r) => [r.id, await leaveRequestDateBreakdown(session, r.id)] as const),
         );
   const requestDateBreakdowns = new Map(dateBreakdownEntries);
+
+  // ── Self-service history cards (feedback 657962ec) ───────────────────────────────────────────────────
+  // Each of the viewer's OWN records becomes a plain, pre-translated entry for the LeaveHistoryCards client
+  // island: the card shows type / dates / duration / status only, while the slide-out detail panel carries
+  // the session, stage, per-date outcomes, document link and the SAME action dialogs the old list rendered
+  // inline — same gates (item c9a19e34 edit/cancel-by-status, ADR-0065 cancel-dates), same server actions,
+  // services still re-assert subject/status authoritatively. Presentation-only: no data or permission change.
+  const historyEntries: LeaveHistoryEntry[] = selfHistory.map((r) => {
+    // "Partially approved" display badge (R17 600be8ac ask #4): display-derived; DB status stays 'approved'.
+    const isPartial = r.status === 'approved' && r.hasRejectedDates;
+    const dateRows = requestDateBreakdowns.get(r.id) ?? [];
+    // Session labelling: half-day/hourly rows get the ADR-0048 duration label (hourly shows its stored
+    // hours + 0129 time window, slice-guarded for the Postgres seconds); full-day rows read "Full day".
+    const sessionSuffix = durationLabel(t, r.durationType, r.hours);
+    const hourlyWindow =
+      r.durationType === 'hourly' && r.fromTime && r.toTime
+        ? ` (${r.fromTime.slice(0, 5)}–${r.toTime.slice(0, 5)})`
+        : '';
+    // Edit/cancel-by-status (item c9a19e34) + Cancel-dates (R5 Build #2): the same gates the old inline
+    // list applied — every row here is the viewer's OWN (see the `mine` filter above).
+    const actions =
+      r.status === 'pending' &&
+      r.parentGroupId == null &&
+      r.typeCode !== 'EMERGENCY' &&
+      r.typeCode !== 'REPLACEMENT' ? (
+        <>
+          <EditLeaveDialog
+            leaveRequestId={r.id}
+            types={leaveTypes.map((lt) => ({
+              id: lt.id,
+              label: lt.name,
+              durations: lt.durations ?? null,
+              code: lt.code,
+            }))}
+            current={{
+              leaveTypeId: r.leaveTypeId,
+              durationType: (r.durationType ?? 'full_day') as
+                | 'full_day'
+                | 'half_day_am'
+                | 'half_day_pm'
+                | 'hourly',
+              startDate: r.startDate,
+              endDate: r.endDate,
+              fromTime: r.fromTime,
+              toTime: r.toTime,
+              reason: r.reason,
+              employeeRemark: r.employeeRemark,
+            }}
+            submitAction={editLeaveAction}
+          />
+          <CancelLeaveDialog leaveRequestId={r.id} submitAction={cancelOwnLeaveAction} />
+        </>
+      ) : r.status === 'approved' &&
+        r.durationType === 'full_day' &&
+        (r.parentGroupId == null || r.isCancellationSplit) &&
+        !r.pendingCancellationId ? (
+        <CancelDatesDialog
+          leaveRequestId={r.id}
+          candidateDates={cancellableCandidates(r.workingDates)}
+          submitAction={requestLeaveCancellationAction}
+        />
+      ) : null;
+    return {
+      id: r.id,
+      leaveType: r.leaveType,
+      // Emergency Leave (0106): tag the ANNUAL/UNPAID children of one EL submission as one Emergency Leave.
+      groupLabel: r.parentGroupId ? t('emergency.groupLabel') : null,
+      startDate: r.startDate,
+      endDate: r.endDate,
+      days: Number(r.days),
+      sessionSuffix,
+      sessionLabel: `${sessionSuffix ?? t('duration.full_day')}${hourlyWindow}`,
+      statusKey: isPartial ? 'partial' : r.status,
+      statusLabel: isPartial ? tMe('leaveStatus.partiallyApproved') : t(`status.${r.status}`),
+      stageLabel:
+        r.status === 'pending' && r.stepCount > 0
+          ? r.currentStepKind === 'direct_manager'
+            ? tMe('stageManager')
+            : tMe('stageHr')
+          : null,
+      // Partial Leave Cancellation (ADR-0065): a pending give-back request shows a pill in the panel.
+      cancelPendingLabel: r.pendingCancellationId ? t('cancelPendingBadge') : null,
+      documentHref: r.hasDocument ? `/me/leave/attachment/${r.id}?inline=1` : null,
+      documentLabel: r.hasDocument ? tMe('viewDocument') : null,
+      actions,
+      dateOutcome:
+        dateRows.length > 0 ? (
+          <LeaveDateOutcome
+            dates={dateRows}
+            locale={locale}
+            labels={{
+              title: tMe('dateBreakdown.title'),
+              approved: tMe('dateBreakdown.approved'),
+              rejected: tMe('dateBreakdown.rejected'),
+              pending: tMe('dateBreakdown.pending'),
+              reason: tMe('dateBreakdown.reason'),
+            }}
+          />
+        ) : null,
+    };
+  });
 
   // ── Filter panel + query-string helpers (admin only; feedback 0773bda9) ──────────────────────────────
   // The active filter set WITHOUT sort/dir/page — the base for every generated link and the search-form's
@@ -541,10 +652,11 @@ export default async function LeavePage({
   // from the SAME derivations that feed the detailed balance table (deriveBalanceRow remaining + ESS-gated
   // EntitlementBreakdown side-sheet sharing the ?asOf= reload). Null when no secondary types exist — the
   // section is omitted exactly as on the old /me page. Rendered in BOTH branches below: beside the history
-  // for the personal view, full-width above the table for admins.
-  const secondaryBreakdownCard =
+  // for the personal view (with the shared equal-height column cap · 657962ec), full-width above the table
+  // for admins (no cap).
+  const secondaryBreakdownCard = (className = '') =>
     secondaryGroups.length > 0 ? (
-      <Card className="p-5">
+      <Card className={`p-5 ${className}`.trim()}>
         <SecondaryLeaveGroups
           heading={tMe('otherLeaveHeading')}
           groups={secondaryGroups.map(({ group, types }) => ({
@@ -565,9 +677,6 @@ export default async function LeavePage({
                     <EntitlementBreakdown
                       data={bd}
                       summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) }}
-                      upcoming={selfRequests
-                        .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-                        .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
                       visual={{ color: b.color, icon: b.icon, code: b.code }}
                       asOf={breakdownAsOf}
                       action="/leave"
@@ -729,9 +838,6 @@ export default async function LeavePage({
                       <EntitlementBreakdown
                         data={bd}
                         summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) }}
-                        upcoming={selfRequests
-                          .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-                          .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
                         visual={{ color: b.color, icon: b.icon, code: b.code }}
                         asOf={breakdownAsOf}
                         action="/leave"
@@ -746,156 +852,26 @@ export default async function LeavePage({
         </CollapsibleCardSection>
       </Card>
 
-      {/* Self-service view (feedback 56a0deb9): the restored arrangement of the old My Profile > Leave
-          page — the "Other leave" breakdown beside the request history, each in its own column on wide
-          screens, stacking on small ones. The history reuses the old compact list style (status pill,
-          stage line, document link, edit/cancel actions, per-date outcome expander) rather than squeezing
-          the 7-column admin table into a half column. Rows, actions, gates and data are all unchanged. */}
+      {/* Self-service view — compact card history (feedback 657962ec, replacing the 56a0deb9 list): the
+          "Other leave" breakdown beside the leave history, each in its own column on wide screens,
+          stacking on small ones. Each history record is now a clean card (type, dates, duration, status)
+          whose full detail + actions open in a slide-out panel — see LeaveHistoryCards. Both columns share
+          the COLUMN_CAP height on lg+ and scroll within themselves so they stay exactly side by side.
+          Rows, actions, gates and data are all unchanged. */}
       {!admin && (
         <div className={`grid grid-cols-1 gap-6 ${secondaryGroups.length > 0 ? 'lg:grid-cols-2' : ''}`}>
-          {secondaryBreakdownCard}
-          <Card className="overflow-hidden" data-tour="leave-requests">
-            <div className="border-b border-border px-4 py-3 text-sm font-medium">
-              {t('myRequestsTitle')}
-              <span className="ml-2 font-normal text-muted-foreground">{t('requestsCountTotal', { count: total })}</span>
+          {secondaryBreakdownCard(`${COLUMN_CAP} lg:overflow-y-auto`)}
+          <Card className={`flex flex-col overflow-hidden ${COLUMN_CAP}`} data-tour="leave-requests">
+            <div className="shrink-0 border-b border-border px-4 py-3 text-sm font-medium">
+              {t('historyCount', { count: total })}
             </div>
-            <ul className="space-y-1.5 p-4 text-sm">
-              {history.map((r) => {
-                // "Partially approved" display badge (R17 600be8ac ask #4): an approved request with ≥1
-                // rejected date shows amber, not a flat green Approved. Display-derived; DB stays 'approved'.
-                const isPartial = r.status === 'approved' && r.hasRejectedDates;
-                const dateRows = requestDateBreakdowns.get(r.id) ?? [];
-                return (
-                  <li key={r.id} className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <span className="block truncate text-muted-foreground">
-                          {r.leaveType} · {r.startDate} → {r.endDate}
-                          {durationLabel(t, r.durationType, r.hours) && (
-                            <span className="ml-1 text-xs font-medium uppercase text-foreground/70">
-                              {durationLabel(t, r.durationType, r.hours)}
-                            </span>
-                          )}
-                          {/* Hourly-leave time window (0129): the actual window on hourly rows, slice-guarded
-                              for the Postgres seconds, gated so non-hourly rows never render a stray time. */}
-                          {r.durationType === 'hourly' && r.fromTime && r.toTime && (
-                            <span className="ml-1 text-xs font-medium text-foreground/60">
-                              {r.fromTime.slice(0, 5)}–{r.toTime.slice(0, 5)}
-                            </span>
-                          )}
-                          {/* Emergency Leave (0106): the ANNUAL/UNPAID children of one EL submission share a
-                              parent_group_id — tag each so the applicant reads them as one Emergency Leave. */}
-                          {r.parentGroupId && (
-                            <span className="ml-1 text-[10px] font-medium uppercase text-foreground/60">
-                              {t('emergency.groupLabel')}
-                            </span>
-                          )}
-                        </span>
-                        {r.status === 'pending' && r.stepCount > 0 && (
-                          <span className="text-xs text-muted-foreground/80">
-                            {r.currentStepKind === 'direct_manager' ? tMe('stageManager') : tMe('stageHr')}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        {r.hasDocument && (
-                          <a
-                            href={`/me/leave/attachment/${r.id}?inline=1`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-primary underline-offset-2 hover:underline"
-                          >
-                            {tMe('viewDocument')}
-                          </a>
-                        )}
-                        {/* Partial Leave Cancellation (ADR-0065): a pending give-back request shows a pill. */}
-                        {r.pendingCancellationId && (
-                          <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                            {t('cancelPendingBadge')}
-                          </span>
-                        )}
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${REQ_STATUS[isPartial ? 'partial' : r.status] ?? 'bg-muted text-muted-foreground'}`}>
-                          {isPartial ? tMe('leaveStatus.partiallyApproved') : t(`status.${r.status}`)}
-                        </span>
-                      </div>
-                    </div>
-                    {/* Edit/cancel-by-status (item c9a19e34) + Cancel-dates (R5 Build #2): the same gates the
-                        table applied — every row here is the viewer's OWN (see the `mine` filter above); the
-                        services re-assert subject/status/shape authoritatively. */}
-                    {(() => {
-                      if (
-                        r.status === 'pending' &&
-                        r.parentGroupId == null &&
-                        r.typeCode !== 'EMERGENCY' &&
-                        r.typeCode !== 'REPLACEMENT'
-                      ) {
-                        return (
-                          <div className="flex flex-wrap gap-2">
-                            <EditLeaveDialog
-                              leaveRequestId={r.id}
-                              types={leaveTypes.map((lt) => ({
-                                id: lt.id,
-                                label: lt.name,
-                                durations: lt.durations ?? null,
-                                code: lt.code,
-                              }))}
-                              current={{
-                                leaveTypeId: r.leaveTypeId,
-                                durationType: (r.durationType ?? 'full_day') as
-                                  | 'full_day'
-                                  | 'half_day_am'
-                                  | 'half_day_pm'
-                                  | 'hourly',
-                                startDate: r.startDate,
-                                endDate: r.endDate,
-                                fromTime: r.fromTime,
-                                toTime: r.toTime,
-                                reason: r.reason,
-                                employeeRemark: r.employeeRemark,
-                              }}
-                              submitAction={editLeaveAction}
-                            />
-                            <CancelLeaveDialog leaveRequestId={r.id} submitAction={cancelOwnLeaveAction} />
-                          </div>
-                        );
-                      }
-                      const cancellableShape =
-                        r.status === 'approved' &&
-                        r.durationType === 'full_day' &&
-                        (r.parentGroupId == null || r.isCancellationSplit);
-                      if (cancellableShape && !r.pendingCancellationId) {
-                        return (
-                          <div className="flex flex-wrap gap-2">
-                            <CancelDatesDialog
-                              leaveRequestId={r.id}
-                              candidateDates={cancellableCandidates(r.workingDates)}
-                              submitAction={requestLeaveCancellationAction}
-                            />
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                    {/* Per-date outcome expander (R17 600be8ac ask #6): the date-by-date approved/rejected
-                        list with reasons, resolved for the 5 most recent requests (dateBreakdownEntries). */}
-                    {dateRows.length > 0 && (
-                      <LeaveDateOutcome
-                        dates={dateRows}
-                        locale={locale}
-                        labels={{
-                          title: tMe('dateBreakdown.title'),
-                          approved: tMe('dateBreakdown.approved'),
-                          rejected: tMe('dateBreakdown.rejected'),
-                          pending: tMe('dateBreakdown.pending'),
-                          reason: tMe('dateBreakdown.reason'),
-                        }}
-                      />
-                    )}
-                  </li>
-                );
-              })}
-              {history.length === 0 && <li className="text-muted-foreground">{t('requestsEmpty')}</li>}
-            </ul>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {historyEntries.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t('requestsEmpty')}</p>
+              ) : (
+                <LeaveHistoryCards entries={historyEntries} locale={locale} />
+              )}
+            </div>
           </Card>
         </div>
       )}
@@ -903,7 +879,7 @@ export default async function LeavePage({
       {/* HR admins: their own "Other leave" breakdown card renders full-width — their history below is the
           org-wide sortable/paginated table, which needs the room, so the side-by-side pairing above applies
           to the personal view only (feedback 56a0deb9). */}
-      {admin && secondaryBreakdownCard}
+      {admin && secondaryBreakdownCard()}
       {/* Admin request history — the full-width sortable/paginated table (feedback 0773bda9), unchanged. */}
       {admin && (
       <Card className="overflow-hidden" data-tour="leave-requests">

@@ -104,6 +104,16 @@ describe('resolveEssView — default & partial semantics', () => {
     // All known keys still resolve; the junk key simply does not appear.
     expect(Object.keys(v).sort()).toEqual([...ESS_VIEW_COMPONENT_KEYS].sort());
   });
+
+  it('11876072: the removed upcomingApprovedLeave toggle is a dead key — normalized away on read', () => {
+    // The §5 Upcoming Leave section left the employee panel, so its toggle left the closed allow-list.
+    expect(ESS_VIEW_COMPONENT_KEYS).not.toContain('upcomingApprovedLeave');
+    // A leave type that stored the toggle before the removal keeps working: the stored entry is simply
+    // ignored on read (no migration/backfill needed), and every live key still resolves to its default.
+    const v = resolveEssView({ upcomingApprovedLeave: false } as Record<string, boolean>);
+    expect(Object.keys(v).sort()).toEqual([...ESS_VIEW_COMPONENT_KEYS].sort());
+    for (const k of ESS_VIEW_COMPONENT_KEYS) expect(v[k]).toBe(true);
+  });
 });
 
 describe('migration 0178 — ess_view_config column', () => {

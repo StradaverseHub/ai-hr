@@ -21,8 +21,9 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const typesPage = read('/app/admin/leave/page.tsx');
 const entitlementsPage = read('/app/admin/leave/entitlements/page.tsx');
 const previewComponent = read('/components/leave-rule-preview.tsx');
-// R61 d778d2d3 — the checker lost its standalone section too: it now mounts inside a header-button
-// dialog. The relocation promise below follows it there.
+// R61 d778d2d3 — the checker lost its standalone section too: it now mounts inside a dialog (since
+// R64 7b945408/962077a8 opened from the Service Based Entitlements sub-step, not the header). The
+// relocation promise below follows it there.
 const previewDialog = read('/components/leave/leave-rule-preview-dialog.tsx');
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
@@ -84,8 +85,9 @@ describe('26e76a9f: the Types tab no longer renders the Entitlement rules card',
 
 describe('26e76a9f: the preview checker relocated to the Entitlements tab', () => {
   it('renders LeaveRulePreview on the Entitlements tab, dialog-mounted under the previewTitle heading (d778d2d3)', () => {
-    // The page opens the checker from its header "Preview Scenario" button; the dialog wraps the
-    // SAME LeaveRulePreview component and titles the pop-up with the same previewTitle key.
+    // The page opens the checker from its "Preview Scenario" dialog button (in the Service Based
+    // Entitlements sub-step since 962077a8); the dialog wraps the SAME LeaveRulePreview component
+    // and titles the pop-up with the same previewTitle key.
     expect(entitlementsPage).toMatch(/import \{ LeaveRulePreviewDialog \} from '@\/components\/leave\/leave-rule-preview-dialog'/);
     expect(entitlementsPage).toMatch(/<LeaveRulePreviewDialog/);
     expect(previewDialog).toMatch(/import \{\s*\n?\s*LeaveRulePreview,/);

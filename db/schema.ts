@@ -475,7 +475,10 @@ export const person = pgTable(
     // (notNull, never derived). first/last/preferred below are INDEPENDENT nullable name parts (b4682879).
     fullName: text('full_name').notNull(),
     primaryEmail: text('primary_email').notNull(), // login / work email (personalEmail is separate below)
+    // bf953339 — `phone` IS the Mobile Phone Number (rename was label-only, no data movement); homePhone
+    // is the optional residential line beside it on the Contact & Address card (migration 0304).
     phone: text('phone'),
+    homePhone: text('home_phone'),
     // Low-risk personal fields the employee self-maintains on /me (ADR-0012).
     // NOTE: `address` is the LEGACY free-text home address — retained for rollback / PDPA history but NO
     // LONGER rendered or written by the UI (b4682879 backfilled it into addressLine1); use the structured
@@ -528,6 +531,10 @@ export const person = pgTable(
     correspondenceCity: text('correspondence_city'),
     correspondenceState: text('correspondence_state'),
     correspondenceCountry: text('correspondence_country'),
+    // bf953339 — the Correspondence block's OWN phone pair (migration 0304): an employee's correspondence
+    // contact may differ from the main mobile/home pair above. Both nullable, optional.
+    correspondenceMobilePhone: text('correspondence_mobile_phone'),
+    correspondenceHomePhone: text('correspondence_home_phone'),
     // Extended emergency contact (name + phone above; relationship free text, second phone, address).
     emergencyContactRelationship: text('emergency_contact_relationship'),
     emergencyContactPhone2: text('emergency_contact_phone2'),
@@ -1102,6 +1109,18 @@ export const leaveType = pgTable('leave_type', {
   // hourly) and continues to drive deduction math; wiring leave_unit into apply/approve is a future item.
   // DEFAULT 'day' ⇒ every existing row reads Day (backward compatible, no backfill).
   leaveUnit: text('leave_unit').notNull().default('day'),
+  // Leave Year Type override (feedback e1a51aea, migration 0303): an OPTIONAL per-type override of the
+  // company leave cycle (company.leave_cycle, ADR-0040 2D-2), set from the General step's "Leave Year
+  // Type" sub-step. NULL (every existing row) = follow the company cycle exactly as today.
+  //   'a2a' — Anniversary to Anniversary: this type runs on the hire-month anniversary cycle (the existing
+  //           'anniversary' semantics) even when the company cycle is calendar.
+  //   'c2c' — Calendar to Calendar: this type runs on the calendar year (the existing 'calendar'
+  //           semantics) even when the company cycle is anniversary.
+  // The reporter's third option 'a2c' (Anniversary to Calendar hybrid) is rendered DISABLED in the UI and
+  // REJECTED by updateLeaveType — the engine has no hybrid-year semantics yet (its calculation work ships
+  // as its own item); the DB CHECK admits only the two live values. Cycle consumers resolve the effective
+  // cycle via resolveLeaveYearCycle (core/leave.ts): override wins where set, company cycle otherwise.
+  yearCycleOverride: text('year_cycle_override'),
   // Leave Type Employee Visibility (feedback 7b11f1c1): two additive, NULLABLE booleans that let HR control,
   // per leave type, whether an employee sees the type at all on their self-service Leave surface, and whether
   // they may submit an application for it. These are the SINGLE SOURCE OF TRUTH for employee-facing leave-type
@@ -1154,9 +1173,10 @@ export const leaveType = pgTable('leave_type', {
   // never read for entitlement / accrual / eligibility / payroll.
   allowNegativeBalance: boolean('allow_negative_balance').notNull().default(false),
   // Leave Entitlement Formula Management (feedback 79011509, migration 0241): HR-owned, per-leave-type
-  // plain-language EXPLANATIONS for each entitlement-breakdown component — keyed by the seven §7
-  // "Entitlement Calculation Breakdown" component keys (core/leave-formula.ts LEAVE_FORMULA_COMPONENT_KEYS),
-  // each an optional { description, formula, result } of free text. Purely an explanation layer surfaced to
+  // plain-language EXPLANATIONS for each leave-view component — keyed by the widened explanation key set
+  // (core/leave-formula.ts LEAVE_EXPLANATION_KEYS: the seven legacy §7 "Entitlement Calculation Breakdown"
+  // component keys ∪ every ess-view key, feedback 2bc2f2a3), each an optional { description, formula, result }
+  // of free text. Purely an explanation layer surfaced to
   // employees on the leave breakdown panel; NEVER read for entitlement / accrual / eligibility / workflow /
   // payroll — the days an employee is entitled to are unchanged. A missing key or a null column ⇒ no
   // explanation (the info icon is hidden for that row). JSONB extension point matching the serviceBands /

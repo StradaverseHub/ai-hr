@@ -29,6 +29,9 @@ import {
   type LeaveEligibility,
   type ProbationEligibility,
   PROBATION_ELIGIBILITY_VALUES,
+  // Leave Year Type override (e1a51aea): the closed { a2a, c2c } live-value set for year_cycle_override.
+  LEAVE_YEAR_CYCLE_OVERRIDES,
+  type LeaveYearCycleOverride,
   type ServiceBand,
 } from './leave';
 import { MY_STATES } from '../localization/my/holidays';
@@ -2838,13 +2841,15 @@ export async function updateLeaveType(
     // clear (revert to all-visible default). Every key MUST be in the closed allow-list (core/ess-view.ts);
     // an unknown key is rejected. Value false ⇒ hidden in ESS; missing/true ⇒ visible.
     essViewConfig?: EssViewConfig | null;
-    // Leave Entitlement Formula Management (feedback 79011509): HR-authored per-component explanation store.
-    // OWN tri-state (undefined = formula_explanations column untouched), mirroring essViewConfig — its own
-    // editor sub-form posts `formula=1` so an unrelated save never resets it. The full { key: entry } map is
-    // REPLACED wholesale (the editor always posts the complete component set). Each entry's free-text fields are
-    // trimmed; blank fields (and all-blank entries) are dropped; an empty result ⇒ null (clear). Every key MUST
-    // be in the closed component allow-list (core/leave-formula.ts); an unknown key is rejected. Explanation
-    // layer only — never read for entitlement / accrual / eligibility / workflow / payroll.
+    // Leave Entitlement Formula Management (feedback 79011509, consolidated by 2bc2f2a3): HR-authored
+    // per-component explanation store. OWN tri-state (undefined = formula_explanations column untouched),
+    // mirroring essViewConfig — the merged view-configuration sub-form posts `formula=1` (alongside
+    // `essView=1`) so an unrelated save never resets it. The full { key: entry } map is REPLACED wholesale
+    // (the editor always posts the complete key set). Each entry's free-text fields are trimmed; blank fields
+    // (and all-blank entries) are dropped; an empty result ⇒ null (clear). Every key MUST be in the closed
+    // allow-list (core/leave-formula.ts LEAVE_EXPLANATION_KEYS — the 7 legacy calc-breakdown keys ∪ every
+    // ess-view key); an unknown key is rejected. Explanation layer only — never read for entitlement /
+    // accrual / eligibility / workflow / payroll.
     formulaExplanations?: LeaveFormulaConfig | null;
     // Day Type Inclusion (feedback ef6d7146): the five-toggle re-inclusion vector { offDay, restDay,
     // publicHoliday, companyHoliday, shutdownDay }. OWN tri-state (undefined = day_type_inclusion column
@@ -2866,6 +2871,15 @@ export async function updateLeaveType(
     // sub-form posts `leaveUnit=1` so an unrelated save never resets it. Validated against { day, hour }.
     // Coarse labelling/reporting only — never read for entitlement / accrual / workflow / payroll.
     leaveUnit?: 'day' | 'hour';
+    // Leave Year Type override (e1a51aea): this type's per-type leave-cycle override — 'a2a' (Anniversary
+    // to Anniversary ⇒ the existing anniversary semantics) | 'c2c' (Calendar to Calendar ⇒ the existing
+    // calendar semantics) | null (clear ⇒ follow the company cycle, today's behaviour). OWN tri-state
+    // (undefined = year_cycle_override column untouched), mirroring leaveUnit — the "Leave Year Type"
+    // sub-step posts `yearCycle=1` so an unrelated save never resets it. The reporter's third option
+    // 'a2c' (Anniversary to Calendar hybrid) is REJECTED with a clear message: the engine has no hybrid-
+    // year calculation semantics yet — it ships as its own item (see the plan's GOOD TO KNOW). Validated
+    // against the closed live set (the DB CHECK from migration 0303 is defence-in-depth).
+    yearCycleOverride?: string | null;
     // Leave Type Employee Visibility (feedback 7b11f1c1): two INDEPENDENT tri-state booleans controlling, per
     // leave type, whether an employee sees it on the /me Leave surface and whether they may apply for it. Each
     // is its OWN tri-state (undefined = column untouched), mirroring perDateApproval — the visibility sub-form
@@ -2993,6 +3007,25 @@ export async function updateLeaveType(
     throw new Error('Leave unit must be day or hour.');
   }
   const leaveUnitSet = touchLeaveUnit ? { leaveUnit: p.leaveUnit } : {};
+  // Leave Year Type override (e1a51aea): OWN tri-state, mirroring touchLeaveUnit — the "Leave Year Type"
+  // sub-step posts `yearCycle=1`, any other save omits yearCycleOverride so year_cycle_override stays
+  // untouched. 'a2c' gets its own explicit rejection (the option renders disabled in the UI, but a hand-
+  // crafted POST must fail loudly, not store a value the engine cannot compute); anything else outside
+  // the closed { a2a, c2c } live set is rejected generically. null clears (⇒ company cycle).
+  const touchYearCycle = p.yearCycleOverride !== undefined;
+  if (touchYearCycle && p.yearCycleOverride != null) {
+    if (p.yearCycleOverride === 'a2c') {
+      throw new Error(
+        'Anniversary to Calendar is not available yet — engine support for the hybrid leave year ships as its own item.',
+      );
+    }
+    if (!(LEAVE_YEAR_CYCLE_OVERRIDES as readonly string[]).includes(p.yearCycleOverride)) {
+      throw new Error('Leave year type must be a2a (Anniversary to Anniversary), c2c (Calendar to Calendar), or the company default.');
+    }
+  }
+  const yearCycleSet = touchYearCycle
+    ? { yearCycleOverride: (p.yearCycleOverride ?? null) as LeaveYearCycleOverride | null }
+    : {};
   // Probation eligibility (d6bdbd55): OWN tri-state, mirroring touchLeaveUnit — posted with the eligibility
   // sub-form. undefined ⇒ column untouched; null ⇒ clear; else must be in the closed { confirmed_only,
   // probation_only } set (the DB CHECK is defence-in-depth).
@@ -3221,6 +3254,8 @@ export async function updateLeaveType(
         icon: leaveType.icon,
         // Leave Unit Configuration (e4980382): selected for the before/after audit diff.
         leaveUnit: leaveType.leaveUnit,
+        // Leave Year Type override (e1a51aea): selected for the before/after audit diff.
+        yearCycleOverride: leaveType.yearCycleOverride,
         // Duplicate Leave Application Restriction (d5e51c34): selected for the before/after audit diff.
         duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
         // Configurable Negative Leave Balance Validation (0ef0defd): selected for the before/after audit diff.
@@ -3340,6 +3375,7 @@ export async function updateLeaveType(
         ...(touchFormulaExplanations ? { formulaExplanations: nextFormulaExplanations } : {}),
         ...dayTypeInclusionSet,
         ...leaveUnitSet,
+        ...yearCycleSet,
         ...visibleToEmployeeSet,
         ...employeeCanApplySet,
         // Leave grouping visibility (b653ac1b): the stored placement column + the shared visibility flag it
@@ -3396,6 +3432,7 @@ export async function updateLeaveType(
           ...(touchDayTypeInclusion ? { dayTypeInclusion: before?.dayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: before?.color ?? null, icon: before?.icon ?? null } : {}),
           ...(touchLeaveUnit ? { leaveUnit: before?.leaveUnit ?? null } : {}),
+          ...(touchYearCycle ? { yearCycleOverride: before?.yearCycleOverride ?? null } : {}),
           ...(touchProbation ? { probationEligibility: before?.probationEligibility ?? null } : {}),
           ...(touchVisibleToEmployee ? { visibleToEmployee: before?.visibleToEmployee ?? null } : {}),
           ...(touchEmployeeCanApply ? { employeeCanApply: before?.employeeCanApply ?? null } : {}),
@@ -3441,6 +3478,7 @@ export async function updateLeaveType(
           ...(touchDayTypeInclusion ? { dayTypeInclusion: nextDayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: nextColor ?? null, icon: nextIcon ?? null } : {}),
           ...(touchLeaveUnit ? { leaveUnit: p.leaveUnit ?? before?.leaveUnit ?? null } : {}),
+          ...(touchYearCycle ? { yearCycleOverride: p.yearCycleOverride ?? null } : {}),
           ...(touchProbation ? { probationEligibility: p.probationEligibility ?? null } : {}),
           ...(touchVisibleToEmployee ? { visibleToEmployee: p.visibleToEmployee ?? null } : {}),
           ...(touchEmployeeCanApply ? { employeeCanApply: p.employeeCanApply ?? null } : {}),

@@ -13,8 +13,12 @@
 // components/leave-type-panel.tsx, and the ESS gating in app/me + components/leave/EntitlementBreakdown.
 
 /**
- * The 15 configurable component keys (union of 65dec703's 13 + 1fedb473's Transaction History + Entitlement
- * Calculation Breakdown). Order here drives the admin checklist order. i18n labels live under
+ * The 14 configurable component keys (union of 65dec703's 13 + 1fedb473's Transaction History + Entitlement
+ * Calculation Breakdown, minus 11876072's removed Upcoming Approved Leave — the §5 Upcoming section was
+ * dropped from the employee panel, so its toggle is gone too; a legacy stored `upcomingApprovedLeave` entry
+ * is simply ignored on read by resolveEssView, exactly like any other unknown key). The admin checklist no
+ * longer renders this list flat — it groups the keys by the employee panel's sections via
+ * ESS_VIEW_CHECKLIST_GROUPS (components/leave/entitlement-panel-config.ts). i18n labels live under
  * `admin.leave.essView.<key>`.
  */
 export const ESS_VIEW_COMPONENT_KEYS = [
@@ -30,7 +34,6 @@ export const ESS_VIEW_COMPONENT_KEYS = [
   'pendingApproval',
   'carryForwardExpiry',
   'forfeited',
-  'upcomingApprovedLeave',
   'transactionHistory',
   'entitlementCalcBreakdown',
 ] as const;

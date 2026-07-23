@@ -327,6 +327,33 @@ export type LeaveApprovalRule = {
   templateId: string | null;
 };
 
+/** A rule with EVERY scoping dimension null IS the company default (edited by LeaveApprovalEditor), so
+ *  rule-matrix surfaces hide it to avoid double-editing. Shared by the Approval tab and the per-type
+ *  Approval Workflow sub-step (e1a51aea) so the two filters can never drift. */
+export function isCompanyDefaultApprovalRule(r: {
+  leaveTypeId: string | null;
+  businessUnitId: string | null;
+  departmentId: string | null;
+  positionId: string | null;
+  gradeId: string | null;
+  gradeGroupId: string | null;
+  employmentType: string | null;
+  minDays: number | null;
+  maxDays: number | null;
+}): boolean {
+  return (
+    r.leaveTypeId == null &&
+    r.businessUnitId == null &&
+    r.departmentId == null &&
+    r.positionId == null &&
+    r.gradeId == null &&
+    r.gradeGroupId == null &&
+    r.employmentType == null &&
+    r.minDays == null &&
+    r.maxDays == null
+  );
+}
+
 /** The scoping + chain inputs shared by create/update. Every scoping dimension is nullable/wildcard. */
 export type LeaveApprovalRuleInput = {
   companyId: string;

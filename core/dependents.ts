@@ -34,12 +34,27 @@
 import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
-import { employeeDependent, employeeStatutoryMy, employment, payrollBatch } from '../db/schema';
+import { employeeDependent, employeeStatutoryMy, employment, payrollBatch, profileOption } from '../db/schema';
 import { setTaxProfileMY } from '../localization/my/statutory';
 
-/** Allowed relationship values (validated server-side; the UI renders each as a static i18n label). */
+/**
+ * The BUILT-IN relationship values (rendered as static i18n labels in the UI). ea36b7fa — these five are no
+ * longer the ONLY accepted values: the profile_option catalog category below lets a tenant add custom
+ * relationship types (Grandparent, Guardian, …), which persist as their catalog `value` and are treated as
+ * 'other' for all field/relief gating (spouse fields and child tax relief key off the built-ins only). The
+ * built-ins stay ALWAYS valid server-side — deactivating one in the catalog only hides it from NEW picks.
+ */
 export const DEPENDENT_RELATIONSHIPS = ['spouse', 'child', 'parent', 'sibling', 'other'] as const;
 export type DependentRelationship = (typeof DEPENDENT_RELATIONSHIPS)[number];
+
+/**
+ * ea36b7fa — the profile_option category backing the Family tab's Relationship dropdown (System Settings >
+ * System Labels > Profile Options). DELIBERATELY DISTINCT from the existing 'relationship' category, which
+ * governs person.emergencyContactRelationship — do NOT conflate the two. Defined here (not in
+ * core/profile-options.ts) because profile-options already imports from this module, keeping the dependency
+ * one-directional.
+ */
+export const DEPENDENT_RELATIONSHIP_CATEGORY = 'dependentRelationship' as const;
 
 /** Allowed gender values (optional). */
 export const DEPENDENT_GENDERS = ['male', 'female', 'undisclosed'] as const;
@@ -138,8 +153,33 @@ export type DependentExtraInput = {
   childReliefPercentage?: number | null;
 };
 
-function isRelationship(v: string): v is DependentRelationship {
+/** Is this one of the five built-in relationship values (the ones system logic keys off)? */
+export function isBuiltinDependentRelationship(v: string): v is DependentRelationship {
   return (DEPENDENT_RELATIONSHIPS as readonly string[]).includes(v);
+}
+
+/**
+ * ea36b7fa — relationship validation, catalog-aware. The five built-ins are ALWAYS accepted (spouse fields
+ * and child tax relief key off them, so they can never be configured away server-side); anything else must
+ * be an ACTIVE custom option in the dependentRelationship catalog. Runs inside the caller's tx so it
+ * participates in the same RLS session. A deactivated custom value is rejected as a NEW pick — the caller
+ * (updateDependent) skips this check when the relationship is unchanged, so existing rows keep saving
+ * (legacy-value tolerance, mirroring assertProfileValueAllowed).
+ */
+async function assertRelationshipAllowed(tx: Tx, v: string): Promise<void> {
+  if (isBuiltinDependentRelationship(v)) return;
+  const [row] = await tx
+    .select({ id: profileOption.id })
+    .from(profileOption)
+    .where(
+      and(
+        eq(profileOption.category, DEPENDENT_RELATIONSHIP_CATEGORY),
+        eq(profileOption.value, v),
+        eq(profileOption.isActive, true),
+      ),
+    )
+    .limit(1);
+  if (!row) throw new DependentValidationError('Dependent relationship is invalid.');
 }
 
 /**
@@ -496,9 +536,8 @@ export async function addDependent(
   const res = await withTenant(ctx, async (tx) => {
     const fullName = (p.fullName ?? '').trim();
     if (fullName === '') throw new DependentValidationError('Dependent name is required.');
-    if (!isRelationship(p.relationship)) {
-      throw new DependentValidationError('Dependent relationship is invalid.');
-    }
+    // ea36b7fa — built-ins always valid; custom types must be ACTIVE dependentRelationship catalog options.
+    await assertRelationshipAllowed(tx, p.relationship);
     const gender = normGender(p.gender);
     const [row] = await tx
       .insert(employeeDependent)
@@ -579,8 +618,11 @@ export async function updateDependent(
       patch.fullName = fullName;
     }
     if (p.relationship !== undefined) {
-      if (!isRelationship(p.relationship)) {
-        throw new DependentValidationError('Dependent relationship is invalid.');
+      // ea36b7fa — an UNCHANGED relationship is always accepted (legacy tolerance: re-saving a row whose
+      // custom type was later deactivated must not fail); a CHANGED one must be a built-in or an active
+      // custom catalog option.
+      if (p.relationship !== existing.relationship) {
+        await assertRelationshipAllowed(tx, p.relationship);
       }
       patch.relationship = p.relationship;
     }

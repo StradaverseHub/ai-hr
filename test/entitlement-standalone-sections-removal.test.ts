@@ -6,15 +6,20 @@
  *   2. Leave Cycle (per-company calendar-vs-anniversary forms posting setCompanyLeaveCycleAction),
  *   3. Preview a Scenario (LeaveRulePreview — the live entitlement-rule checker).
  * Each keeps its FUNCTION but loses its section:
- *   - Run Earned Accrual → a compact "Run Accrual" button in the PageHeader actions cluster opening
- *     the SAME EarnedAccrualCard in a wide dialog (components/leave/earned-accrual-dialog.tsx),
+ *   - Run Earned Accrual → a compact "Run Accrual" button opening the SAME EarnedAccrualCard in a wide
+ *     dialog (components/leave/earned-accrual-dialog.tsx),
  *   - Preview a Scenario → a "Preview Scenario" button, same pattern
  *     (components/leave/leave-rule-preview-dialog.tsx),
  *   - Leave Cycle → a Card on the Application Rules tab beside the Leave Year settings (both are
  *     company-level calendar rules); setCompanyLeaveCycleAction is unchanged, only rendering moved,
  *     and the action now redirects back to the Application Rules route (the R45 cc816207 precedent).
- * Header cluster order: Import, Run Accrual, Preview Scenario. No data, accrual behaviour or cycle
- * semantics change — the wrapped components are byte-identical tools in new frames.
+ * No data, accrual behaviour or cycle semantics change — the wrapped components are byte-identical
+ * tools in new frames.
+ *
+ * R64 962077a8 (after 7b945408): the two dialog buttons left the PageHeader again — they now open ONLY
+ * from the Entitlement step's sub-steps (Run Accrual in Adjustments, Preview Scenario in Service Based
+ * Entitlements). The header keeps just + Import. The dialogs, their wrapped tools and the page-level
+ * data prep pinned below are all unchanged — only the mount moved.
  *
  * DB-free source guard (the suite has no DOM runner): the RSC pages can't be rendered here, so we
  * assert the composition + wiring + i18n statically. Portal caveat note: neither wrapped component
@@ -66,26 +71,24 @@ describe('d778d2d3: the three standalone sections are gone from the Entitlements
   });
 });
 
-describe('d778d2d3: the two tools become PageHeader action buttons (Import, Run Accrual, Preview Scenario)', () => {
+describe('d778d2d3 → 962077a8: the two tools are dialog buttons — mounted in the sub-steps, not the header', () => {
   // The whole actions cluster: from actions={ to the closing of the PageHeader element.
   const headerStart = entitlementsPage.indexOf('<PageHeader');
   const headerEnd = entitlementsPage.indexOf('<LeaveTabs');
   const header = entitlementsPage.slice(headerStart, headerEnd);
 
-  it('renders all three actions inside the PageHeader actions slot', () => {
+  it('the PageHeader actions slot carries ONLY the + Import link (962077a8)', () => {
     expect(header).toMatch(/actions=\{/);
     expect(header).toMatch(/<Link href="\/admin\/leave\/import" className=\{btnPrimary\}>/);
-    expect(header).toMatch(/<EarnedAccrualDialog/);
-    expect(header).toMatch(/<LeaveRulePreviewDialog/);
+    expect(header.includes('<EarnedAccrualDialog')).toBe(false);
+    expect(header.includes('<LeaveRulePreviewDialog')).toBe(false);
   });
 
-  it('keeps the cluster order Import → Run Accrual → Preview Scenario', () => {
-    const importIdx = header.indexOf('href="/admin/leave/import"');
-    const accrualIdx = header.indexOf('<EarnedAccrualDialog');
-    const previewIdx = header.indexOf('<LeaveRulePreviewDialog');
-    expect(importIdx).toBeGreaterThan(-1);
-    expect(accrualIdx).toBeGreaterThan(importIdx);
-    expect(previewIdx).toBeGreaterThan(accrualIdx);
+  it('both dialogs stay mounted — once each, inside the Entitlement-step tool slots (never unreachable)', () => {
+    // leave-entitlement-substeps.test.ts pins WHERE the slots render (Adjustments / Service Based
+    // Entitlements); this guard pins that removing the header buttons left exactly one mount each.
+    expect(entitlementsPage.match(/<EarnedAccrualDialog/g)).toHaveLength(1);
+    expect(entitlementsPage.match(/<LeaveRulePreviewDialog/g)).toHaveLength(1);
   });
 
   it('still prepares the tools’ data at page level (leave-year options, preview policies)', () => {

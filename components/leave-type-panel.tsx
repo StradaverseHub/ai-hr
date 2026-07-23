@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
-import { ESS_VIEW_COMPONENT_KEYS } from '@/core/ess-view';
+import { ESS_VIEW_CHECKLIST_GROUPS } from '@/components/leave/entitlement-panel-config';
 import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
 import { Search } from 'lucide-react';
@@ -21,6 +21,7 @@ import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { ChipMultiSelect } from './ui/chip-multi-select';
 import { LeaveTypeEntitlementTable, type LeaveTypeSchemeEntitlement } from './benefit-scheme-config';
+import { SubStepBar } from './leave-sub-step-bar';
 
 export type EntitlementPolicy = {
   id: string;
@@ -111,6 +112,58 @@ const STEP_TITLE_KEY: Record<StepKey, string> = {
 const isEarned = (m?: string) => m === 'earned_monthly' || m === 'earned_quarterly';
 /** Normalise to a select value: earned methods pass through, everything else is the lump option. */
 const methodValue = (m?: string) => (isEarned(m) ? m! : 'grant_on_hire_prorated');
+
+/** General step sub-flow (e1a51aea): the five sub-steps of step 1, in walk order — 1 Details, 2 Leave Year
+ *  Type, 3 Earning Method, 4 Carry Forward Policy, 5 Approval Workflow. The keys are storage keys (persisted
+ *  as `generalSubStep` in the leaveTypeCards:<id> localStorage shape, next to activeStep) — 'workflow' is
+ *  deliberately NOT named after the retired accordion card keys (approval/display/calculation), which must
+ *  never reappear in this file (see leave-type-config-categories.test.ts). */
+const GENERAL_SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry', 'workflow'] as const;
+type GeneralSubStepKey = (typeof GENERAL_SUB_STEP_KEYS)[number];
+/** Sub-step → its admin.leave title key (all 6 locales). */
+const GENERAL_SUB_STEP_TITLE_KEY: Record<GeneralSubStepKey, string> = {
+  details: 'subStep.details',
+  yearType: 'subStep.yearType',
+  earning: 'subStep.earning',
+  carry: 'subStep.carry',
+  workflow: 'subStep.workflow',
+};
+
+/** Condition step sub-flow (08bc6841): the three sub-steps of step 4, in walk order — 1 Criteria (who
+ *  qualifies: the eligibility rules moved from the Eligibility step), 2 Leave Application Rules (the seven
+ *  existing rule groups as a card grid + the relocated company-wide Half-Day Deduction), 3 Expiry (the
+ *  age-from-earning expiry moved from Eligibility; Annual points at the General carry-forward flow).
+ *  Keys are storage keys (persisted as `essSubStep` in the leaveTypeCards:<id> localStorage shape, next to
+ *  activeStep / generalSubStep — the e1a51aea shape extended backward-compatibly). The step's OWN storage
+ *  key stays 'ess' (Condition's historical accordion key — see STEP_KEYS). Rendered by the SAME reusable
+ *  SubStepBar the General flow introduced (components/leave-sub-step-bar.tsx — the reuse contract). */
+const ESS_SUB_STEP_KEYS = ['criteria', 'rules', 'expiry'] as const;
+type EssSubStepKey = (typeof ESS_SUB_STEP_KEYS)[number];
+/** Sub-step → its admin.leave title key (all 6 locales). */
+const ESS_SUB_STEP_TITLE_KEY: Record<EssSubStepKey, string> = {
+  criteria: 'conditionStep.criteria',
+  rules: 'conditionStep.rules',
+  expiry: 'conditionStep.expiry',
+};
+
+/** Entitlement step sub-flow (7b945408): the three sub-steps of step 3, in walk order — 1 Benefit Schemes
+ *  (who receives which scheme: the Grades catalogue relocated from the page bottom + the type-scoped scheme
+ *  management, so the grade → grade-group → scheme relationship reads in one place), 2 Service Based
+ *  Entitlements (how entitlement is calculated: the per-type entitlement table + the Preview Scenario
+ *  checker), 3 Adjustments (what manual adjustments apply: the One-Off/Festive grant tool + the Run Accrual
+ *  action relocated from the page header — it processes earned entitlement, so it belongs with entitlement
+ *  adjustments). Keys are storage keys (persisted as `entitlementSubStep` in the leaveTypeCards:<id>
+ *  localStorage shape, next to activeStep / generalSubStep / essSubStep — the e1a51aea shape extended
+ *  backward-compatibly). Rendered by the SAME reusable SubStepBar the General flow introduced
+ *  (components/leave-sub-step-bar.tsx — the reuse contract). */
+const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'adjustments'] as const;
+type EntitlementSubStepKey = (typeof ENTITLEMENT_SUB_STEP_KEYS)[number];
+/** Sub-step → its admin.leave title key (all 6 locales). */
+const ENTITLEMENT_SUB_STEP_TITLE_KEY: Record<EntitlementSubStepKey, string> = {
+  schemes: 'entitlementStep.schemes',
+  service: 'entitlementStep.service',
+  adjustments: 'entitlementStep.adjustments',
+};
 
 type Action = (fd: FormData) => void | Promise<void>;
 
@@ -236,6 +289,251 @@ function CarryExpiryFields({
         </Field>
       )}
     </>
+  );
+}
+
+// ── General-step front doors (feedback e1a51aea) ──────────────────────────────────────────────────────
+// The Earning Method + Carry Forward Policy sub-steps are FRONT DOORS to the per-policy fields that
+// already exist under Eligibility: they read the CURRENT active policy row and, on save, post the SAME
+// updateLeavePolicyAction the policy edit form posts — no new storage, the effective-dated policy row
+// stays the single source of truth (the plan's "existing per-policy controls remain the underlying
+// truth"). Because that action rebuilds the policy's accrual JSONB wholesale from the posted fields, each
+// front door must re-post every field it is NOT editing as hidden inputs (id / annualDays / validFrom /
+// gradeId / companyId + the full carry block), or an earning-only save would silently wipe the carry
+// config (and vice versa). Service bands are deliberately NOT posted — omitting the serviceBandsRendered
+// marker preserves them (the tri-state in app/admin/actions.ts serviceBandsField).
+
+/** The active (open-ended) policy rows — the ones a front door may edit. */
+const activePoliciesOf = (policies: EntitlementPolicy[]) => policies.filter((p) => !p.validTo);
+
+/** Human label for one active policy row in the front-door scope picker (company · grade · from date). */
+function frontDoorScopeLabel(t: ReturnType<typeof useTranslations>, p: EntitlementPolicy): string {
+  const company = p.companyId && p.companyName ? p.companyName : t('policyCompanyGroupDefault');
+  const grade = p.gradeId && p.gradeName ? p.gradeName : t('gradeAll');
+  return `${company} · ${grade} · ${t('validFrom', { from: p.validFrom })}`;
+}
+
+/** The hidden inputs BOTH front doors post to preserve the policy's identity + non-edited flat fields. */
+function FrontDoorIdentityFields({ p }: { p: EntitlementPolicy }) {
+  return (
+    <>
+      <input type="hidden" name="id" value={p.id} />
+      <input type="hidden" name="annualDays" value={p.annualDays} />
+      <input type="hidden" name="validFrom" value={p.validFrom} />
+      <input type="hidden" name="gradeId" value={p.gradeId ?? ''} />
+      <input type="hidden" name="companyId" value={p.companyId ?? ''} />
+    </>
+  );
+}
+
+/** The hidden inputs the EARNING front door posts to preserve the policy's stored carry block untouched
+ *  (annual types; a non-annual policy mirrors the edit form's `carryForwardMax=0`). carryFlagField reads
+ *  `=== 'on'`, so an enabled flag is re-posted as a hidden value="on" input and a disabled one is simply
+ *  not rendered (marker present ⇒ absent reads as false, i.e. the stored value). */
+function FrontDoorPreservedCarry({ p, isAnnual }: { p: EntitlementPolicy; isAnnual: boolean }) {
+  if (!isAnnual) return <input type="hidden" name="carryForwardMax" value="0" />;
+  const mode = p.carryForwardExpiryMode === 'months' ? 'months' : 'date';
+  return (
+    <>
+      <input type="hidden" name="carryBlockRendered" value="1" />
+      {carryRuleEnabled(p) && <input type="hidden" name="carryForwardEnabled" value="on" />}
+      {!!p.carryForwardIncludeEarned && <input type="hidden" name="carryForwardIncludeEarned" value="on" />}
+      <input type="hidden" name="carryForwardMax" value={p.carryForwardMax} />
+      <input type="hidden" name="carryForwardExpiryMode" value={mode} />
+      {mode === 'months' ? (
+        <input type="hidden" name="carryForwardExpiryMonths" value={p.carryForwardExpiryMonths ?? ''} />
+      ) : (
+        <>
+          <input type="hidden" name="carryForwardExpiryMonth" value={p.carryForwardExpiryMonth ?? ''} />
+          <input type="hidden" name="carryForwardExpiryDay" value={p.carryForwardExpiryDay ?? ''} />
+        </>
+      )}
+    </>
+  );
+}
+
+/** The reporter's earning vocabulary → the engine's per-policy method (ADR-0040). Documented mapping:
+ *   - none        → grant_on_hire_prorated  (full entitlement up front — today's lump default)
+ *   - by_month    → earned_monthly          (the existing monthly earning machinery)
+ *   - by_year     → grant_on_hire_prorated  (an upfront ANNUAL grant *is* the lump path — "By Year"
+ *                                            semantically equals the full-year grant, NOT quarterly
+ *                                            earning; the helper text states this so HR isn't surprised
+ *                                            that None and By Year behave identically)
+ *   - by_quarter  → earned_quarterly        (not reporter vocabulary — shown only when a policy already
+ *                                            stores it, so the select can round-trip faithfully)
+ *   - resignation → DISABLED (engine support coming — no calculation semantics exist; follow-up item)
+ */
+type EarningChoice = 'none' | 'by_month' | 'by_year' | 'by_quarter';
+const earningChoiceOf = (m?: string): EarningChoice =>
+  m === 'earned_monthly' ? 'by_month' : m === 'earned_quarterly' ? 'by_quarter' : 'none';
+const earningMethodOf = (c: EarningChoice): string =>
+  c === 'by_month' ? 'earned_monthly' : c === 'by_quarter' ? 'earned_quarterly' : 'grant_on_hire_prorated';
+
+/** Earning Method sub-step (e1a51aea): a type-level front door to the active policy's `method`. */
+function EarningMethodForm({
+  t,
+  p,
+  isAnnual,
+  action,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  p: EntitlementPolicy;
+  isAnnual: boolean;
+  action: Action;
+}) {
+  const [choice, setChoice] = useState<EarningChoice>(earningChoiceOf(p.method));
+  return (
+    <form action={action} className="space-y-2 rounded-lg bg-background p-3">
+      <FrontDoorIdentityFields p={p} />
+      <FrontDoorPreservedCarry p={p} isAnnual={isAnnual} />
+      {/* the mapped engine value — the select below speaks the reporter's vocabulary */}
+      <input type="hidden" name="method" value={earningMethodOf(choice)} />
+      <Field label={t('subStep.earningMethodLabel')}>
+        <select
+          value={choice}
+          onChange={(e) => setChoice(e.target.value as EarningChoice)}
+          aria-label={t('subStep.earningMethodLabel')}
+          className={`${inputCls} w-72`}
+        >
+          <option value="none">{t('subStep.earningNone')}</option>
+          <option value="by_month">{t('subStep.earningByMonth')}</option>
+          <option value="by_year">{t('subStep.earningByYear')}</option>
+          {/* round-trip only: surfaced when the policy already stores quarterly earning */}
+          {earningChoiceOf(p.method) === 'by_quarter' && (
+            <option value="by_quarter">{t('methodEarnedQuarterly')}</option>
+          )}
+          {/* disabled pending engine work — no resignation-earning semantics exist yet */}
+          <option value="resignation" disabled title={t('subStep.pendingEngineNote')}>
+            {t('subStep.earningResignation')}
+          </option>
+        </select>
+      </Field>
+      <p className="text-xs text-muted-foreground">{t('subStep.earningMappingHelp')}</p>
+      <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.pendingEngineNote')}</p>
+      <Button type="submit" size="sm">
+        {t('save')}
+      </Button>
+    </form>
+  );
+}
+
+/** Carry Forward Policy sub-step (e1a51aea): a front door to the active policy's carry fields — None
+ *  (carry disabled) or Fixed Max (enable + X-days cap + the existing CarryExpiryFields days/months
+ *  mode switch). The stored cap/expiry survive a "None" save (only the enable flag turns off). */
+function CarryPolicyForm({
+  t,
+  p,
+  action,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  p: EntitlementPolicy;
+  action: Action;
+}) {
+  const [carryOn, setCarryOn] = useState<boolean>(carryRuleEnabled(p));
+  return (
+    <form action={action} className="space-y-2 rounded-lg bg-background p-3">
+      <FrontDoorIdentityFields p={p} />
+      {/* preserve the method — this front door only edits carry */}
+      <input type="hidden" name="method" value={methodValue(p.method)} />
+      <input type="hidden" name="carryBlockRendered" value="1" />
+      {carryOn && <input type="hidden" name="carryForwardEnabled" value="on" />}
+      {!!p.carryForwardIncludeEarned && <input type="hidden" name="carryForwardIncludeEarned" value="on" />}
+      <Field label={t('subStep.carryPolicyLabel')}>
+        <select
+          value={carryOn ? 'fixed_max' : 'none'}
+          onChange={(e) => setCarryOn(e.target.value === 'fixed_max')}
+          aria-label={t('subStep.carryPolicyLabel')}
+          className={`${inputCls} w-56`}
+        >
+          <option value="none">{t('subStep.carryNone')}</option>
+          <option value="fixed_max">{t('subStep.carryFixedMax')}</option>
+        </select>
+      </Field>
+      {carryOn ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label={t('carryCapLabel')}>
+            <input
+              name="carryForwardMax"
+              type="number"
+              min="0"
+              step="0.5"
+              defaultValue={p.carryForwardMax}
+              className={`${inputCls} w-24`}
+            />
+          </Field>
+          <CarryExpiryFields
+            t={t}
+            mode={p.carryForwardExpiryMode}
+            month={p.carryForwardExpiryMonth}
+            day={p.carryForwardExpiryDay}
+            months={p.carryForwardExpiryMonths}
+          />
+        </div>
+      ) : (
+        // None = disabled carry: keep the stored cap/expiry so switching back to Fixed Max restores them.
+        <>
+          <input type="hidden" name="carryForwardMax" value={p.carryForwardMax} />
+          <input
+            type="hidden"
+            name="carryForwardExpiryMode"
+            value={p.carryForwardExpiryMode === 'months' ? 'months' : 'date'}
+          />
+          {p.carryForwardExpiryMode === 'months' ? (
+            <input type="hidden" name="carryForwardExpiryMonths" value={p.carryForwardExpiryMonths ?? ''} />
+          ) : (
+            <>
+              <input type="hidden" name="carryForwardExpiryMonth" value={p.carryForwardExpiryMonth ?? ''} />
+              <input type="hidden" name="carryForwardExpiryDay" value={p.carryForwardExpiryDay ?? ''} />
+            </>
+          )}
+        </>
+      )}
+      <p className="text-xs text-muted-foreground">{t('subStep.carryHelp')}</p>
+      <Button type="submit" size="sm">
+        {t('save')}
+      </Button>
+    </form>
+  );
+}
+
+/** Shared shell for the two policy front doors: resolves the active policy rows, offers a scope picker
+ *  when more than one is active, and renders the given form for the selected row (keyed by policy id so
+ *  its local state re-seeds when HR switches scope). */
+function PolicyFrontDoor({
+  t,
+  policies,
+  renderForm,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  policies: EntitlementPolicy[];
+  renderForm: (p: EntitlementPolicy) => ReactNode;
+}) {
+  const active = activePoliciesOf(policies);
+  const [polId, setPolId] = useState<string>(active[0]?.id ?? '');
+  const selected = active.find((x) => x.id === polId) ?? active[0];
+  if (!selected) {
+    return <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">{t('subStep.noActivePolicy')}</p>;
+  }
+  return (
+    <div className="space-y-2">
+      {active.length > 1 && (
+        <Field label={t('subStep.frontDoorScopeLabel')}>
+          <select
+            value={selected.id}
+            onChange={(e) => setPolId(e.target.value)}
+            aria-label={t('subStep.frontDoorScopeLabel')}
+            className={`${inputCls} w-full max-w-md`}
+          >
+            {active.map((p) => (
+              <option key={p.id} value={p.id}>
+                {frontDoorScopeLabel(t, p)}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+      <div key={selected.id}>{renderForm(selected)}</div>
+    </div>
   );
 }
 
@@ -560,6 +858,7 @@ export function LeaveTypePanel({
   color,
   icon,
   leaveUnit,
+  yearCycleOverride,
   probationEligibility,
   visibleToEmployee,
   employeeCanApply,
@@ -574,6 +873,11 @@ export function LeaveTypePanel({
   schemeEntitlements,
   benefitSchemeSection,
   festiveGrantSection,
+  approvalWorkflowSection,
+  halfDaySection,
+  gradesSection,
+  previewScenarioSection,
+  accrualSection,
   updateTypeAction,
   archiveTypeAction,
   deleteTypeAction,
@@ -642,6 +946,10 @@ export function LeaveTypePanel({
   /** Leave Unit Configuration (e4980382): whether this type is managed in Days or Hours ('day' | 'hour'),
    *  threaded so the "Leave Unit" select round-trips its saved value. Coarse labelling/reporting only. */
   leaveUnit: string;
+  /** Leave Year Type override (e1a51aea): the stored per-type cycle override ('a2a' | 'c2c' | null),
+   *  threaded so the General step's "Leave Year Type" select round-trips its saved value. null ⇒ the type
+   *  follows its company's cycle (today's behaviour). */
+  yearCycleOverride: string | null;
   /** Probation eligibility (d6bdbd55): the stored probation gate ('confirmed_only' | 'probation_only' | null),
    *  threaded so the eligibility editor's Probation select round-trips its saved value. null ⇒ no restriction. */
   probationEligibility: string | null;
@@ -687,6 +995,30 @@ export function LeaveTypePanel({
    *  defaultLeaveTypeId={id}> slot, so the grant form arrives preset to THIS type. Slot-shaped like
    *  benefitSchemeSection: companies/grants data is prepared ONCE at page level (no N+1 per type). */
   festiveGrantSection?: ReactNode;
+  /** e1a51aea: the Approval Workflow sub-step's content — a server-composed slot (this type's WorkflowMatrix
+   *  scoped to its leaveTypeId, the read-only wildcard rules + per-company default-chain summary, and links
+   *  to the Approval tab). Slot-shaped like benefitSchemeSection so the approval data + label bags are
+   *  prepared ONCE at page level (no N+1 per type). */
+  approvalWorkflowSection?: ReactNode;
+  /** 08bc6841: the company-wide Half-Day Deduction card — a server-composed slot (the per-company toggle
+   *  rows posting the SAME setLeaveHalfDayFullDeductionAction the Application Rules tab used to host,
+   *  now embedded as one card of the Condition step's Leave Application Rules grid with an
+   *  applies-company-wide badge). Slot-shaped like benefitSchemeSection: the rows are per-COMPANY (not
+   *  per-type), so ONE node is prepared at page level and shared by every panel. */
+  halfDaySection?: ReactNode;
+  /** 7b945408: the Grades catalogue (tenant-wide master data), relocated from the standalone page-bottom
+   *  section into the Entitlement step's Benefit Schemes sub-step — a server-composed slot (the 03557e76
+   *  CollapsibleCardSection fold + GradeCatalog, marked with the company-wide badge convention). Grades are
+   *  per-TENANT (not per-type), so ONE node is prepared at page level and shared by every panel. */
+  gradesSection?: ReactNode;
+  /** 7b945408: the Preview Scenario checker (d778d2d3's LeaveRulePreviewDialog), joining the Service Based
+   *  Entitlements sub-step as its checking tool — a server-composed slot (page-level data prep, one shared
+   *  node). The PageHeader button is removed separately by item 962077a8; this slot is its new home. */
+  previewScenarioSection?: ReactNode;
+  /** 7b945408: the Run Accrual action (d778d2d3's EarnedAccrualDialog), relocated into the Adjustments
+   *  sub-step — it processes earned entitlement, so it belongs with entitlement adjustments. Server-composed
+   *  slot (page-level data prep, one shared node); the PageHeader button is removed by item 962077a8. */
+  accrualSection?: ReactNode;
   updateTypeAction: Action;
   archiveTypeAction: Action;
   deleteTypeAction: Action;
@@ -701,6 +1033,9 @@ export function LeaveTypePanel({
   upsertSchemeEntitlementAction: Action;
 }) {
   const t = useTranslations('admin.leave');
+  // Sync Employee Leave View Configuration (11876072): the view-config group headings reuse the employee
+  // panel's OWN section titles (leave.breakdown.section.*) so the admin screen reads as a preview of the
+  // panel — same words, same order. That translator now lives inside ViewConfigSection (2bc2f2a3).
   // Leave Type Employee Visibility (7b11f1c1): statutory-entitlement codes can never have employee
   // applications blocked (an employee must be able to exercise a lawful entitlement — EA 1955 s.60E/s.60F/
   // s.37/s.60FA). Mirrors STATUTORY_APPLY_CODES in core/leave.ts; kept as a local literal so this client
@@ -749,6 +1084,21 @@ export function LeaveTypePanel({
   // from storage in an effect (client-only ⇒ no SSR hydration mismatch; a brief step-1→restored flash is
   // acceptable — the same trade-off the accordion made).
   const [activeStep, setActiveStep] = useState<StepKey>('general');
+  // General sub-step (e1a51aea): the active sub-step of step 1, persisted ALONGSIDE activeStep in the SAME
+  // leaveTypeCards:<id> shape — now { activeStep, generalSubStep }. Backward-compatible migration: an older
+  // { activeStep }-only payload (and the pre-step accordion { key: boolean } shape) still hydrates —
+  // generalSubStep simply defaults to sub-step 1 (Details) when the key is absent/unknown.
+  const [generalSubStep, setGeneralSubStep] = useState<GeneralSubStepKey>('details');
+  // Condition sub-step (08bc6841): the active sub-step of step 4, persisted in the SAME shape — now
+  // { activeStep, generalSubStep, essSubStep }. Older payloads (activeStep-only, activeStep+generalSubStep,
+  // the pre-step accordion { key: boolean }) still hydrate — essSubStep simply defaults to sub-step 1
+  // (Criteria) when the key is absent/unknown.
+  const [essSubStep, setEssSubStep] = useState<EssSubStepKey>('criteria');
+  // Entitlement sub-step (7b945408): the active sub-step of step 3, persisted in the SAME shape — now
+  // { activeStep, generalSubStep, essSubStep, entitlementSubStep }. Older payloads (any earlier subset,
+  // the pre-step accordion { key: boolean }) still hydrate — entitlementSubStep simply defaults to
+  // sub-step 1 (Benefit Schemes) when the key is absent/unknown.
+  const [entitlementSubStep, setEntitlementSubStep] = useState<EntitlementSubStepKey>('schemes');
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(`leaveTypeCards:${id}`);
@@ -761,17 +1111,56 @@ export function LeaveTypePanel({
         const firstOpen = STEP_KEYS.find((k) => parsed[k] === true);
         if (firstOpen) setActiveStep(firstOpen);
       }
+      if (
+        parsed &&
+        typeof parsed.generalSubStep === 'string' &&
+        (GENERAL_SUB_STEP_KEYS as readonly string[]).includes(parsed.generalSubStep)
+      ) {
+        setGeneralSubStep(parsed.generalSubStep as GeneralSubStepKey);
+      }
+      if (
+        parsed &&
+        typeof parsed.essSubStep === 'string' &&
+        (ESS_SUB_STEP_KEYS as readonly string[]).includes(parsed.essSubStep)
+      ) {
+        setEssSubStep(parsed.essSubStep as EssSubStepKey);
+      }
+      if (
+        parsed &&
+        typeof parsed.entitlementSubStep === 'string' &&
+        (ENTITLEMENT_SUB_STEP_KEYS as readonly string[]).includes(parsed.entitlementSubStep)
+      ) {
+        setEntitlementSubStep(parsed.entitlementSubStep as EntitlementSubStepKey);
+      }
     } catch {
       /* storage unavailable / malformed ⇒ default step 1 */
     }
   }, [id]);
-  const selectStep = (key: StepKey) => {
-    setActiveStep(key);
+  const persistSteps = (step: StepKey, sub: GeneralSubStepKey, ess: EssSubStepKey, ent: EntitlementSubStepKey) => {
     try {
-      window.localStorage.setItem(`leaveTypeCards:${id}`, JSON.stringify({ activeStep: key }));
+      window.localStorage.setItem(
+        `leaveTypeCards:${id}`,
+        JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess, entitlementSubStep: ent }),
+      );
     } catch {
       /* storage write blocked ⇒ runtime switch still works, just not persisted */
     }
+  };
+  const selectStep = (key: StepKey) => {
+    setActiveStep(key);
+    persistSteps(key, generalSubStep, essSubStep, entitlementSubStep);
+  };
+  const selectGeneralSubStep = (key: GeneralSubStepKey) => {
+    setGeneralSubStep(key);
+    persistSteps(activeStep, key, essSubStep, entitlementSubStep);
+  };
+  const selectEssSubStep = (key: EssSubStepKey) => {
+    setEssSubStep(key);
+    persistSteps(activeStep, generalSubStep, key, entitlementSubStep);
+  };
+  const selectEntitlementSubStep = (key: EntitlementSubStepKey) => {
+    setEntitlementSubStep(key);
+    persistSteps(activeStep, generalSubStep, essSubStep, key);
   };
   // Active-step indicator (27136ea6's accent treatment, carried onto the step bar): the CURRENT step's pill
   // gets the accent wash + semibold label — the same bg-accent language the sidebar's active nav item uses
@@ -927,6 +1316,19 @@ export function LeaveTypePanel({
               <CardTitle>{t('categoryGeneral')}</CardTitle>
             </CardHeader>
             <CardContent id={`cat-general-${id}`} className="space-y-3">
+          {/* General sub-flow (e1a51aea): the reusable SubStepBar (components/leave-sub-step-bar.tsx —
+              the R61 step-bar mechanism generalized; later secondary flows MUST reuse it) walks the five
+              sub-steps 1 Details · 2 Leave Year Type · 3 Earning Method · 4 Carry Forward Policy ·
+              5 Approval Workflow. One sub-step visible at a time; the choice persists per type alongside
+              activeStep (leaveTypeCards:<id>). */}
+          <SubStepBar
+            steps={GENERAL_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(GENERAL_SUB_STEP_TITLE_KEY[k]) }))}
+            active={generalSubStep}
+            onSelect={(k) => selectGeneralSubStep(k as GeneralSubStepKey)}
+            ariaLabel={t('workspaceSubStepsLabel')}
+          />
+          {generalSubStep === 'details' && (
+          <>
           {/* type-level controls */}
           {editingName ? (
             <form
@@ -1151,6 +1553,92 @@ export function LeaveTypePanel({
             </form>
             <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
           </div>
+          </>
+          )}
+          {/* Sub-step 2 — Leave Year Type (e1a51aea): a per-TYPE cycle override of the company leave cycle
+              (Application Rules tab). Its own sub-form + `yearCycle=1` tri-state marker so an unrelated save
+              never resets it. Anniversary-to-Calendar is rendered DISABLED pending engine work (no hybrid-
+              year calculation semantics exist — see the plan's GOOD TO KNOW); the service rejects it too. */}
+          {generalSubStep === 'yearType' && (
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('subStep.yearType')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the year_cycle_override column (tri-state guard) */}
+              <input type="hidden" name="yearCycle" value="1" />
+              <Field label={t('subStep.yearTypeLabel')}>
+                <select
+                  name="yearCycleValue"
+                  defaultValue={yearCycleOverride === 'a2a' || yearCycleOverride === 'c2c' ? yearCycleOverride : ''}
+                  aria-label={t('subStep.yearTypeLabel')}
+                  className={`${inputCls} w-72`}
+                >
+                  <option value="">{t('subStep.yearTypeCompanyDefault')}</option>
+                  <option value="a2a">{t('subStep.yearTypeA2a')}</option>
+                  {/* disabled pending engine work — the hybrid year has no calculation semantics yet */}
+                  <option value="a2c" disabled title={t('subStep.pendingEngineNote')}>
+                    {t('subStep.yearTypeA2c')}
+                  </option>
+                  <option value="c2c">{t('subStep.yearTypeC2c')}</option>
+                </select>
+              </Field>
+              <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.pendingEngineNote')}</p>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('subStep.yearTypeHelp')}</p>
+          </div>
+          )}
+          {/* Sub-step 3 — Earning Method (e1a51aea): a front door to the ACTIVE policy's per-policy method
+              (posts the SAME updatePolicyAction as the Eligibility edit form — no new storage; the
+              per-policy selects there keep working, the policy row is the single source of truth). */}
+          {generalSubStep === 'earning' && (
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('subStep.earning')}</span>
+            <PolicyFrontDoor
+              t={t}
+              policies={policies}
+              renderForm={(p) => <EarningMethodForm t={t} p={p} isAnnual={isAnnual} action={updatePolicyAction} />}
+            />
+            <p className="text-xs text-muted-foreground">{t('subStep.earningHelp')}</p>
+          </div>
+          )}
+          {/* Sub-step 4 — Carry Forward Policy (e1a51aea): the same front-door pattern over the active
+              policy's carry fields (enable + cap + the existing CarryExpiryFields days/months switch).
+              Carry-forward is an ANNUAL-engine concept (expireCarriedLeave / openLeaveYear read it for the
+              ANNUAL code only), so non-annual types get an explanatory note instead of a dead form. */}
+          {generalSubStep === 'carry' && (
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('subStep.carry')}</span>
+            {isAnnual ? (
+              <PolicyFrontDoor
+                t={t}
+                policies={policies}
+                renderForm={(p) => <CarryPolicyForm t={t} p={p} action={updatePolicyAction} />}
+              />
+            ) : (
+              <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
+                {t('subStep.carryAnnualOnly')}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">{t('subStep.carryStepHelp')}</p>
+          </div>
+          )}
+          {/* Sub-step 5 — Approval Workflow (e1a51aea): this type's approval rules from the rule matrix,
+              editable right here (server-composed slot, scoped to this leaveTypeId), with company-wide
+              chains + templates one click away on the Approval tab. */}
+          {generalSubStep === 'workflow' && (
+          <div className="space-y-1.5">
+            {approvalWorkflowSection ?? (
+              <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
+                {t('subStep.workflowUnavailable')}
+              </p>
+            )}
+          </div>
+          )}
             </CardContent>
           </Card>
           )}
@@ -1160,107 +1648,9 @@ export function LeaveTypePanel({
               <CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>
             </CardHeader>
             <CardContent id={`cat-eligibility-${id}`} className="space-y-3">
-          {/* #25 visibility — eligibility rules (who can see + apply) */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-muted-foreground">{t('eligibilityTitle')}</span>
-              {!editingEligibility && (
-                <Button type="button" size="sm" variant="ghost" onClick={() => setEditingEligibility(true)}>
-                  {t('eligibilityEdit')}
-                </Button>
-              )}
-            </div>
-            {editingEligibility ? (
-              <form
-                action={updateTypeAction}
-                className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3"
-                onSubmit={() => setEditingEligibility(false)}
-              >
-                <input type="hidden" name="id" value={id} />
-                {/* preserve the name — this form does not edit it */}
-                <input type="hidden" name="name" value={name} />
-                {/* marker: tells the action to touch the eligibility column (tri-state guard) */}
-                <input type="hidden" name="eligibility" value="1" />
-                {/* Multi-select (#badc5966 → 2cc30077 → 0af0729d): ChipMultiSelect pickers per field, posting
-                    repeated name="gender" / name="maritalStatus" (one hidden input per value — identical
-                    FormData shape to the old checkbox group, so updateLeaveTypeAction's getAll() is unchanged).
-                    An employee qualifies if their attribute matches ANY selected value; select nothing ⇒ no
-                    restriction on that field (open to all). 0af0729d: the picker opens a popover listing the
-                    FULL option list with checkbox indicators (stored values pre-checked); the bulk Select-all /
-                    Clear-all and collapsed "All selected" / "{n} selected" summary props are deliberately NOT
-                    passed here — these two lists are short, so the checklist reads clean and the chips (with
-                    their remove buttons) are always visible. */}
-                {/* No <Field> wrapper on these two (b9c30be0): ChipMultiSelect owns its caption via the
-                    label prop, so no <label> element exists to re-activate the trigger after an outside
-                    click closes the popover (the 2449fbb7 label-activation bug). */}
-                <ChipMultiSelect
-                  name="gender"
-                  label={t('eligibilityGenderLabel')}
-                  options={ELIGIBILITY_GENDER_OPTIONS.map((g) => ({ value: g, label: genderLabel(g) ?? g }))}
-                  defaultSelected={asEligList(eligibility?.gender)}
-                  addPlaceholder={t('eligibilityChipAddPlaceholder')}
-                  removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
-                />
-                <ChipMultiSelect
-                  name="maritalStatus"
-                  label={t('eligibilityMaritalLabel')}
-                  options={ELIGIBILITY_MARITAL_OPTIONS.map((m) => ({ value: m, label: maritalLabel(m) ?? m }))}
-                  defaultSelected={asEligList(eligibility?.maritalStatus)}
-                  addPlaceholder={t('eligibilityChipAddPlaceholder')}
-                  removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
-                />
-                <Field label={t('eligibilityMinServiceLabel')}>
-                  {/* Min-service unit (#f88f0a63): duration input + a unit select (Months / Days) beside it,
-                      mirroring the expiry {value, unit} field. Absent stored unit ⇒ 'months' default so a
-                      legacy row shows exactly as before. */}
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      name="minServiceMonths"
-                      type="number"
-                      min="0"
-                      step="1"
-                      defaultValue={eligibility?.minServiceMonths ?? ''}
-                      className={`${inputCls} w-20`}
-                    />
-                    <select
-                      name="minServiceUnit"
-                      defaultValue={eligibility?.minServiceUnit ?? 'months'}
-                      aria-label={t('eligibilityMinServiceUnitLabel')}
-                      className={`${inputCls} w-28`}
-                    >
-                      <option value="months">{t('expiryUnitMonths')}</option>
-                      <option value="days">{t('expiryUnitDays')}</option>
-                    </select>
-                  </div>
-                </Field>
-                {/* Probation eligibility (d6bdbd55): restrict this type by the employee's probation status.
-                    Rides the same eligibility=1 marker; blank ⇒ no restriction. Stored in its own column. */}
-                <Field label={t('eligibilityProbationLabel')}>
-                  <select
-                    name="probation"
-                    defaultValue={probationEligibility ?? ''}
-                    aria-label={t('eligibilityProbationLabel')}
-                    className={`${inputCls} w-56`}
-                  >
-                    <option value="">{t('eligibilityProbationNone')}</option>
-                    <option value="confirmed_only">{t('eligibilityProbationConfirmedOnly')}</option>
-                    <option value="probation_only">{t('eligibilityProbationProbationOnly')}</option>
-                  </select>
-                </Field>
-                <p className="w-full text-xs text-muted-foreground">{t('eligibilityMultiHint')}</p>
-                <Button type="submit" size="sm">
-                  {t('save')}
-                </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => setEditingEligibility(false)}>
-                  {t('cancel')}
-                </Button>
-              </form>
-            ) : (
-              <div className="rounded-lg bg-background px-3 py-2 text-xs text-foreground">{eligibilitySummary()}</div>
-            )}
-            <p className="text-xs text-muted-foreground">{t('eligibilityHelp')}</p>
-            <p className="text-xs text-muted-foreground">{t('eligibilityUndisclosedNote')}</p>
-          </div>
+          {/* 08bc6841: the eligibility rules block (gender / marital / min service / probation) moved
+              to the Condition step's Criteria sub-step — this step now focuses purely on entitlement
+              policies (who gets how many days). */}
           {/* entitlement timeline */}
           <div className="space-y-1.5">
             <div className="text-xs font-medium text-muted-foreground">{t('companyEntitlements')}</div>
@@ -1677,43 +2067,8 @@ export function LeaveTypePanel({
               {t('addEntitlement')}
             </Button>
           )}
-          {/* Leave Type Expiry Field (fec49317). Its own sub-form (own tri-state) posts `expiry=1`.
-              Hidden for Annual — Annual already has per-policy carry-forward expiry (a second age-based
-              forfeit would double-count) — and for Emergency Leave, which carries no balance. Both inputs
-              blank ⇒ clears the expiry; a number + unit configures age-from-earning expiry. */}
-          {!isAnnual && code !== 'EMERGENCY' && (
-            <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">{t('expirySectionTitle')}</span>
-              <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
-                <input type="hidden" name="id" value={id} />
-                {/* preserve the name — this form does not edit it */}
-                <input type="hidden" name="name" value={name} />
-                {/* marker: tells the action to touch the expiry_value / expiry_unit columns (tri-state guard) */}
-                <input type="hidden" name="expiry" value="1" />
-                <Field label={t('expiryValueLabel')}>
-                  <input
-                    name="expiryValue"
-                    type="number"
-                    min="1"
-                    step="1"
-                    defaultValue={expiryValue ?? ''}
-                    placeholder={t('expiryValuePlaceholder')}
-                    className={`${inputCls} w-24`}
-                  />
-                </Field>
-                <Field label={t('expiryUnitLabel')}>
-                  <select name="expiryUnit" defaultValue={expiryUnit ?? 'months'} className={`${inputCls} w-32`}>
-                    <option value="months">{t('expiryUnitMonths')}</option>
-                    <option value="days">{t('expiryUnitDays')}</option>
-                  </select>
-                </Field>
-                <Button type="submit" size="sm">
-                  {t('save')}
-                </Button>
-              </form>
-              <p className="text-xs text-muted-foreground">{t('expirySectionHelp')}</p>
-            </div>
-          )}
+          {/* 08bc6841: the Leave Type Expiry configuration (fec49317) moved to the Condition step's
+              Expiry sub-step — same form, same expiry=1 tri-state marker, same non-Annual gate. */}
             </CardContent>
           </Card>
           )}
@@ -1723,21 +2078,57 @@ export function LeaveTypePanel({
               <CardTitle>{t('categoryEntitlement')}</CardTitle>
             </CardHeader>
             <CardContent id={`cat-entitlement-${id}`} className="space-y-3">
-          {/* Restructure (123c1e76): the per-type Entitlement card — THIS leave type's benefit-scheme
-              entitlement table (the days each scheme grants per service tier), which previously appeared only
+          {/* Entitlement sub-flow (7b945408): the SAME reusable SubStepBar the General flow introduced
+              (components/leave-sub-step-bar.tsx — the reuse contract) walks the three sub-steps
+              1 Benefit Schemes · 2 Service Based Entitlements · 3 Adjustments. One sub-step visible at a
+              time; the choice persists per type alongside activeStep/generalSubStep/essSubStep
+              (leaveTypeCards:<id>). The entitlement journey reads: who receives which scheme → how
+              entitlement is calculated → what manual adjustments apply. */}
+          <SubStepBar
+            steps={ENTITLEMENT_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(ENTITLEMENT_SUB_STEP_TITLE_KEY[k]) }))}
+            active={entitlementSubStep}
+            onSelect={(k) => selectEntitlementSubStep(k as EntitlementSubStepKey)}
+            ariaLabel={t('entitlementStepsLabel')}
+          />
+          {/* Sub-step 1 — Benefit Schemes (7b945408): who receives which scheme. The Grades catalogue
+              (tenant-wide master data, relocated from the standalone page-bottom section — gradesSection
+              slot) leads, then the type-scoped scheme management (6c775d68 — grade groups, schemes,
+              per-scheme entitlements, combined limits), so the grade → grade-group → scheme relationship
+              is finally visible in one place. Both are server-composed slots; see the prop docs. */}
+          {entitlementSubStep === 'schemes' && (
+          <>
+          {gradesSection}
+          {benefitSchemeSection}
+          </>
+          )}
+          {/* Sub-step 2 — Service Based Entitlements (7b945408): how entitlement is calculated. */}
+          {entitlementSubStep === 'service' && (
+          <>
+          {/* Restructure (123c1e76): the per-type Entitlement table — THIS leave type's benefit-scheme
+              entitlement rows (the days each scheme grants per service tier), which previously appeared only
               in the shared Benefit Schemes area. Read-and-edit over the SAME live rows via the SAME upsert
               action (no duplication, nothing can drift); scheme-wide management — adding/removing rows,
-              copying between schemes, combined-limit grouping — stays in the Benefit Schemes section. */}
+              copying between schemes, combined-limit grouping — stays in the Benefit Schemes sub-step. */}
           <LeaveTypeEntitlementTable ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction} />
-          {/* 6c775d68: the Benefit Schemes management area follows, scoped to this type — the standalone
-              page-bottom section moved here so step 3 is the ONE place for everything entitlement-related.
-              Server-composed slot; see the benefitSchemeSection prop doc. */}
-          {benefitSchemeSection}
-          {/* fd7c8e20: the One-Off / Festive Leave Grant tool follows, preset to this type — the standalone
-              page-bottom section moved here, completing step 3 as the one place for everything
-              entitlement-related (regular entitlement, schemes, one-off/festive grants). Server-composed
+          {/* 7b945408: the Preview Scenario checker joins this sub-step as its checking tool — the SAME
+              self-contained LeaveRulePreviewDialog (d778d2d3). Server-composed slot; see the
+              previewScenarioSection prop doc. */}
+          {previewScenarioSection}
+          </>
+          )}
+          {/* Sub-step 3 — Adjustments (7b945408): what manual adjustments apply. */}
+          {entitlementSubStep === 'adjustments' && (
+          <>
+          {/* fd7c8e20: the One-Off / Festive Leave Grant tool, preset to this type — the standalone
+              page-bottom section moved into this step (now its Adjustments sub-step). Server-composed
               slot; see the festiveGrantSection prop doc. */}
           {festiveGrantSection}
+          {/* 7b945408: the Run Accrual action relocated here from the page header — it processes earned
+              entitlement, so it belongs with entitlement adjustments. The SAME self-contained
+              EarnedAccrualDialog (d778d2d3). Server-composed slot; see the accrualSection prop doc. */}
+          {accrualSection}
+          </>
+          )}
             </CardContent>
           </Card>
           )}
@@ -1750,8 +2141,135 @@ export function LeaveTypePanel({
           {/* Feedback 9d8cf621: the "Payroll impact" controls moved to the Payroll Related tab (per-type list
               there). Both were self-contained sub-forms, so moving/removing them here never touches any other
               column on save. */}
-          {/* ADR-0048 — allowed leave durations (full day is always available) */}
+          {/* Condition sub-flow (08bc6841): the SAME reusable SubStepBar the General flow introduced
+              (components/leave-sub-step-bar.tsx — the reuse contract) walks the three sub-steps
+              1 Criteria · 2 Leave Application Rules · 3 Expiry. One sub-step visible at a time; the
+              choice persists per type alongside activeStep/generalSubStep (leaveTypeCards:<id>). */}
+          <SubStepBar
+            steps={ESS_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(ESS_SUB_STEP_TITLE_KEY[k]) }))}
+            active={essSubStep}
+            onSelect={(k) => selectEssSubStep(k as EssSubStepKey)}
+            ariaLabel={t('conditionStepsLabel')}
+          />
+          {/* Sub-step 1 — Criteria (08bc6841): the eligibility rules moved here from the main Eligibility
+              step — gender, marital status, minimum service period, probation requirement. Same form, same
+              fields, same eligibility=1 tri-state marker, same updateTypeAction — values untouched; only
+              the location changed. */}
+          {essSubStep === 'criteria' && (
+          <>
+          {/* #25 visibility — eligibility rules (who can see + apply) */}
           <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-muted-foreground">{t('eligibilityTitle')}</span>
+              {!editingEligibility && (
+                <Button type="button" size="sm" variant="ghost" onClick={() => setEditingEligibility(true)}>
+                  {t('eligibilityEdit')}
+                </Button>
+              )}
+            </div>
+            {editingEligibility ? (
+              <form
+                action={updateTypeAction}
+                className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3"
+                onSubmit={() => setEditingEligibility(false)}
+              >
+                <input type="hidden" name="id" value={id} />
+                {/* preserve the name — this form does not edit it */}
+                <input type="hidden" name="name" value={name} />
+                {/* marker: tells the action to touch the eligibility column (tri-state guard) */}
+                <input type="hidden" name="eligibility" value="1" />
+                {/* Multi-select (#badc5966 → 2cc30077 → 0af0729d): ChipMultiSelect pickers per field, posting
+                    repeated name="gender" / name="maritalStatus" (one hidden input per value — identical
+                    FormData shape to the old checkbox group, so updateLeaveTypeAction's getAll() is unchanged).
+                    An employee qualifies if their attribute matches ANY selected value; select nothing ⇒ no
+                    restriction on that field (open to all). 0af0729d: the picker opens a popover listing the
+                    FULL option list with checkbox indicators (stored values pre-checked); the bulk Select-all /
+                    Clear-all and collapsed "All selected" / "{n} selected" summary props are deliberately NOT
+                    passed here — these two lists are short, so the checklist reads clean and the chips (with
+                    their remove buttons) are always visible. */}
+                {/* No <Field> wrapper on these two (b9c30be0): ChipMultiSelect owns its caption via the
+                    label prop, so no <label> element exists to re-activate the trigger after an outside
+                    click closes the popover (the 2449fbb7 label-activation bug). */}
+                <ChipMultiSelect
+                  name="gender"
+                  label={t('eligibilityGenderLabel')}
+                  options={ELIGIBILITY_GENDER_OPTIONS.map((g) => ({ value: g, label: genderLabel(g) ?? g }))}
+                  defaultSelected={asEligList(eligibility?.gender)}
+                  addPlaceholder={t('eligibilityChipAddPlaceholder')}
+                  removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
+                />
+                <ChipMultiSelect
+                  name="maritalStatus"
+                  label={t('eligibilityMaritalLabel')}
+                  options={ELIGIBILITY_MARITAL_OPTIONS.map((m) => ({ value: m, label: maritalLabel(m) ?? m }))}
+                  defaultSelected={asEligList(eligibility?.maritalStatus)}
+                  addPlaceholder={t('eligibilityChipAddPlaceholder')}
+                  removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
+                />
+                <Field label={t('eligibilityMinServiceLabel')}>
+                  {/* Min-service unit (#f88f0a63): duration input + a unit select (Months / Days) beside it,
+                      mirroring the expiry {value, unit} field. Absent stored unit ⇒ 'months' default so a
+                      legacy row shows exactly as before. */}
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      name="minServiceMonths"
+                      type="number"
+                      min="0"
+                      step="1"
+                      defaultValue={eligibility?.minServiceMonths ?? ''}
+                      className={`${inputCls} w-20`}
+                    />
+                    <select
+                      name="minServiceUnit"
+                      defaultValue={eligibility?.minServiceUnit ?? 'months'}
+                      aria-label={t('eligibilityMinServiceUnitLabel')}
+                      className={`${inputCls} w-28`}
+                    >
+                      <option value="months">{t('expiryUnitMonths')}</option>
+                      <option value="days">{t('expiryUnitDays')}</option>
+                    </select>
+                  </div>
+                </Field>
+                {/* Probation eligibility (d6bdbd55): restrict this type by the employee's probation status.
+                    Rides the same eligibility=1 marker; blank ⇒ no restriction. Stored in its own column. */}
+                <Field label={t('eligibilityProbationLabel')}>
+                  <select
+                    name="probation"
+                    defaultValue={probationEligibility ?? ''}
+                    aria-label={t('eligibilityProbationLabel')}
+                    className={`${inputCls} w-56`}
+                  >
+                    <option value="">{t('eligibilityProbationNone')}</option>
+                    <option value="confirmed_only">{t('eligibilityProbationConfirmedOnly')}</option>
+                    <option value="probation_only">{t('eligibilityProbationProbationOnly')}</option>
+                  </select>
+                </Field>
+                <p className="w-full text-xs text-muted-foreground">{t('eligibilityMultiHint')}</p>
+                <Button type="submit" size="sm">
+                  {t('save')}
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setEditingEligibility(false)}>
+                  {t('cancel')}
+                </Button>
+              </form>
+            ) : (
+              <div className="rounded-lg bg-background px-3 py-2 text-xs text-foreground">{eligibilitySummary()}</div>
+            )}
+            <p className="text-xs text-muted-foreground">{t('eligibilityHelp')}</p>
+            <p className="text-xs text-muted-foreground">{t('eligibilityUndisclosedNote')}</p>
+          </div>
+          </>
+          )}
+          {/* Sub-step 2 — Leave Application Rules (08bc6841): the seven existing rule groups, re-laid as
+              a responsive card grid instead of the old vertical stack — every sub-form keeps its own edit
+              marker (durations=1, document=1, negativeBalance=1, backdating=1, minAdvance=1,
+              duplicatePolicy=1, dayTypeInclusion=1) so saves stay per-group, and the EMERGENCY gates on
+              backdating/advance-notice are intact. Nothing about the rules themselves changed. The
+              relocated company-wide Half-Day Deduction card (halfDaySection slot) completes the grid. */}
+          {essSubStep === 'rules' && (
+          <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {/* ADR-0048 — allowed leave durations (full day is always available) */}
+          <div className="space-y-1.5 rounded-lg border border-border p-3">
             <span className="text-xs font-medium text-muted-foreground">{t('allowedDurationsLabel')}</span>
             <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
               <input type="hidden" name="id" value={id} />
@@ -1782,7 +2300,7 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('allowedDurationsHelp')}</p>
           </div>
           {/* Supporting-document configuration */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 rounded-lg border border-border p-3">
             <span className="text-xs font-medium text-muted-foreground">{t('documentSectionTitle')}</span>
             <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
               <input type="hidden" name="id" value={id} />
@@ -1866,7 +2384,7 @@ export function LeaveTypePanel({
               whether an employee may submit (or edit) a leave application whose days exceed their available
               balance. Default 'No' = block over-application at submit + edit (core/leave.ts); 'Yes' permits
               going negative (the approval-time guard still applies). */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 rounded-lg border border-border p-3">
             <span className="text-xs font-medium text-muted-foreground">{t('negativeBalanceSectionTitle')}</span>
             <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
               <input type="hidden" name="id" value={id} />
@@ -1899,7 +2417,7 @@ export function LeaveTypePanel({
               `backdating=1`. Hidden for Emergency Leave — EL is inherently retroactive and is never guarded,
               so showing the field would let HR set a value that is silently ignored (the EL config-trap). */}
           {code !== 'EMERGENCY' && (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 rounded-lg border border-border p-3">
               <span className="text-xs font-medium text-muted-foreground">{t('backdatingSectionTitle')}</span>
               <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
                 <input type="hidden" name="id" value={id} />
@@ -1943,7 +2461,7 @@ export function LeaveTypePanel({
               precisely for short-notice absence and is never guarded (it decomposes before the gate), so
               showing the field would let HR set a value that is silently ignored (the EL config-trap). */}
           {code !== 'EMERGENCY' && (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 rounded-lg border border-border p-3">
               <span className="text-xs font-medium text-muted-foreground">{t('advanceNoticeSectionTitle')}</span>
               <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
                 <input type="hidden" name="id" value={id} />
@@ -1986,7 +2504,7 @@ export function LeaveTypePanel({
               tri-state marker so an unrelated save never resets it. A 3-option radio controls whether an employee
               may submit more than one leave application overlapping the same date. Default 'allow' = today's
               behaviour; the two restrict modes enforce at submit + edit (core/leave.ts). */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 rounded-lg border border-border p-3">
             <span className="text-xs font-medium text-muted-foreground">{t('duplicatePolicySectionTitle')}</span>
             <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
               <input type="hidden" name="id" value={id} />
@@ -2032,7 +2550,7 @@ export function LeaveTypePanel({
               which day types are counted when calculating a leave's duration. Its own self-contained <form> +
               `dayTypeInclusion=1` tri-state marker so an unrelated save never resets it; the counting rules
               themselves (core/leave.ts) are untouched by the move. */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 rounded-lg border border-border p-3">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-muted-foreground">{t('dayTypeInclusion.sectionTitle')}</span>
               {!editingDayTypes && (
@@ -2082,6 +2600,66 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.help')}</p>
             <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.statutoryNote')}</p>
           </div>
+          {/* 08bc6841: the relocated company-wide Half-Day Deduction card — see the halfDaySection prop. */}
+          {halfDaySection}
+          </div>
+          )}
+          {/* Sub-step 3 — Expiry (08bc6841): the leave expiry configuration moved here from Eligibility.
+              Annual types' carry-forward expiry stays with the Carry Forward Policy sub-step of the
+              General flow — the pointer below explains where; Emergency Leave carries no balance to
+              expire, so it gets an explanatory note instead of a dead form (the fec49317 config-trap
+              rationale, kept). */}
+          {essSubStep === 'expiry' && (
+          <>
+          {isAnnual && (
+            <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
+              {t('conditionStep.expiryAnnualPointer')}
+            </p>
+          )}
+          {!isAnnual && code === 'EMERGENCY' && (
+            <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
+              {t('conditionStep.expiryEmergencyNote')}
+            </p>
+          )}
+          {/* Leave Type Expiry Field (fec49317). Its own sub-form (own tri-state) posts `expiry=1`.
+              Hidden for Annual — Annual already has per-policy carry-forward expiry (a second age-based
+              forfeit would double-count) — and for Emergency Leave, which carries no balance. Both inputs
+              blank ⇒ clears the expiry; a number + unit configures age-from-earning expiry. */}
+          {!isAnnual && code !== 'EMERGENCY' && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">{t('expirySectionTitle')}</span>
+              <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
+                <input type="hidden" name="id" value={id} />
+                {/* preserve the name — this form does not edit it */}
+                <input type="hidden" name="name" value={name} />
+                {/* marker: tells the action to touch the expiry_value / expiry_unit columns (tri-state guard) */}
+                <input type="hidden" name="expiry" value="1" />
+                <Field label={t('expiryValueLabel')}>
+                  <input
+                    name="expiryValue"
+                    type="number"
+                    min="1"
+                    step="1"
+                    defaultValue={expiryValue ?? ''}
+                    placeholder={t('expiryValuePlaceholder')}
+                    className={`${inputCls} w-24`}
+                  />
+                </Field>
+                <Field label={t('expiryUnitLabel')}>
+                  <select name="expiryUnit" defaultValue={expiryUnit ?? 'months'} className={`${inputCls} w-32`}>
+                    <option value="months">{t('expiryUnitMonths')}</option>
+                    <option value="days">{t('expiryUnitDays')}</option>
+                  </select>
+                </Field>
+                <Button type="submit" size="sm">
+                  {t('save')}
+                </Button>
+              </form>
+              <p className="text-xs text-muted-foreground">{t('expirySectionHelp')}</p>
+            </div>
+          )}
+          </>
+          )}
             </CardContent>
           </Card>
           )}
@@ -2091,104 +2669,20 @@ export function LeaveTypePanel({
               <CardTitle>{t('categoryCustom')}</CardTitle>
             </CardHeader>
             <CardContent id={`cat-custom-${id}`} className="space-y-3">
-          {/* Restructure (123c1e76): the former "Leave Information Display" card's four sub-forms (ESS view
-              checklist, formula explanations, employee visibility, ESS placement) now live INSIDE the Custom
-              Settings card — every sub-form below is byte-identical, only the card wrapper changed. */}
-          {/* Employee Leave View Configuration (65dec703 / dup 1fedb473). Its own self-contained sub-form
-              (own tri-state) posts `essView=1` — a checklist of the breakdown components an employee sees in
-              My Profile → Leave for THIS leave type. An unchecked box does not post; the action rebuilds the
-              full { key: boolean } map from the closed key list, so unticked ⇒ hidden in ESS. Gating applies
-              to /me only — admin/HR always see everything. null/missing ⇒ visible (backward compatible). */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('essView.sectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the ess_view_config column (tri-state guard) */}
-              <input type="hidden" name="essView" value="1" />
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {ESS_VIEW_COMPONENT_KEYS.map((key) => (
-                  <label key={key} className="flex items-center gap-2 text-xs text-foreground">
-                    <input
-                      type="checkbox"
-                      name={`essView_${key}`}
-                      defaultChecked={essViewConfig?.[key] !== false}
-                      className="size-3.5 rounded border-border"
-                    />
-                    {t(`essView.${key}`)}
-                  </label>
-                ))}
-              </div>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('essView.help')}</p>
-          </div>
-          {/* Leave Entitlement Formula Management (79011509). Its own self-contained sub-form (own tri-state)
-              posts `formula=1` — an HR-owned, per-component plain-language explanation store surfaced to
-              employees on the leave breakdown panel (feedback b8b665ff shows it behind a per-row info icon).
-              Each of the seven §7 calculation components is an expand/collapse block with a short Description
-              and a free-text Formula explanation (plus an optional Result/date note). Explanation layer only —
-              editing these NEVER changes any entitlement figure. Empty fields are dropped by the service; an
-              all-blank map clears the column. */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('formula.sectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the formula_explanations column (tri-state guard) */}
-              <input type="hidden" name="formula" value="1" />
-              <div className="space-y-1.5">
-                {LEAVE_FORMULA_COMPONENT_KEYS.map((key) => {
-                  const entry = formulaExplanations?.[key];
-                  const configured = !!(entry && (entry.description || entry.formula || entry.result));
-                  return (
-                    <details key={key} open={configured} className="rounded-md border border-border">
-                      <summary className="flex cursor-pointer items-center justify-between gap-2 px-2.5 py-1.5 text-xs font-medium text-foreground">
-                        <span>{t(`formula.component.${key}`)}</span>
-                        {configured && <span className="text-[10px] font-normal text-primary">{t('formula.configured')}</span>}
-                      </summary>
-                      <div className="space-y-2 border-t border-border px-2.5 py-2">
-                        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                          {t('formula.descriptionLabel')}
-                          <textarea
-                            name={`formula_${key}_description`}
-                            defaultValue={entry?.description ?? ''}
-                            rows={2}
-                            className={`${inputCls} text-xs`}
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                          {t('formula.formulaLabel')}
-                          <textarea
-                            name={`formula_${key}_formula`}
-                            defaultValue={entry?.formula ?? ''}
-                            rows={2}
-                            className={`${inputCls} text-xs`}
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                          {t('formula.resultLabel')}
-                          <input
-                            name={`formula_${key}_result`}
-                            defaultValue={entry?.result ?? ''}
-                            className={`${inputCls} text-xs`}
-                          />
-                        </label>
-                      </div>
-                    </details>
-                  );
-                })}
-              </div>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('formula.help')}</p>
-          </div>
+          {/* Restructure (123c1e76): the former "Leave Information Display" card's sub-forms (view
+              configuration, employee visibility, ESS placement) live INSIDE the Custom Settings card. */}
+          {/* Consolidated Employee Leave View Configuration (2bc2f2a3): the 65dec703 checklist and the
+              79011509 formula-explanation editor are MERGED into one sub-form — tick an item and its
+              Description / Formula fields appear right beside it; one Save posts both markers. The
+              standalone "Leave Entitlement Formula Management" section is retired (same storage, so all
+              existing content carries over). See ViewConfigSection above for the full contract. */}
+          <ViewConfigSection
+            id={id}
+            name={name}
+            essViewConfig={essViewConfig}
+            formulaExplanations={formulaExplanations}
+            updateTypeAction={updateTypeAction}
+          />
           {/* Leave Type Employee Visibility (7b11f1c1). Its own self-contained sub-form (own tri-state) posts
               `visibility=1` — two checkboxes controlling whether an employee sees this leave type on their
               self-service Leave tab, and whether they may apply for it. Both switches are independent: a
@@ -2313,6 +2807,182 @@ export function LeaveTypePanel({
           </Card>
           )}
       </div>
+    </div>
+  );
+}
+
+// ─── Consolidated Employee Leave View Configuration (feedback 2bc2f2a3) ────────────────────────────────────
+//
+// ONE sub-form now owns both concerns the Custom step used to split across two sections: WHICH breakdown
+// items an employee sees (ess_view_config, feedback 65dec703) and HOW each item is explained
+// (formula_explanations, feedback 79011509 — the standalone "Leave Entitlement Formula Management" section is
+// retired). Ticking an item reveals its Description / Formula / Result fields inline; ONE Save posts BOTH
+// tri-state markers (`essView=1` + `formula=1`) so selections and explanations persist together — same two
+// storage targets as before, no content migration. Unticking an item HIDES its editor without unmounting it
+// (the `hidden` attribute), so the concealed inputs still post and stored explanations survive an
+// untick-then-save round-trip.
+//
+// Annotatable keys: the items of the four employee-panel sections. The grouped checklist mirrors the employee
+// panel (ESS_VIEW_CHECKLIST_GROUPS, feedback 11876072); for the panel-section groups each checkbox key IS the
+// employee row's field key, so its explanation is stored under that same key and the employee hover icon finds
+// it. The Entitlement Calculation Breakdown group is special: its single section-level checkbox reveals the
+// SEVEN legacy per-component editors (LEAVE_FORMULA_COMPONENT_KEYS — the §7 rows the employee actually sees),
+// preserving 79011509 content verbatim. The trailing "Other" group's keys gate non-panel surfaces (e.g. the
+// balance-table columns) that have no explanation render site — they stay plain checkboxes.
+
+/** The three inline explanation inputs for one annotatable item. Names follow the 79011509 FormData contract
+ *  (`formula_<key>_description|formula|result`) so the existing action/service path persists them unchanged. */
+function ViewConfigExplanationFields({
+  fieldKey,
+  entry,
+  t,
+}: {
+  fieldKey: string;
+  entry: LeaveFormulaEntry | undefined;
+  /** The parent's admin.leave translator (labels live under `admin.leave.formula.*`). */
+  t: (key: string) => string;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {t('formula.descriptionLabel')}
+        <textarea
+          name={`formula_${fieldKey}_description`}
+          defaultValue={entry?.description ?? ''}
+          rows={2}
+          className={`${inputCls} text-xs`}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {t('formula.formulaLabel')}
+        <textarea
+          name={`formula_${fieldKey}_formula`}
+          defaultValue={entry?.formula ?? ''}
+          rows={2}
+          className={`${inputCls} text-xs`}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {t('formula.resultLabel')}
+        <input name={`formula_${fieldKey}_result`} defaultValue={entry?.result ?? ''} className={`${inputCls} text-xs`} />
+      </label>
+    </div>
+  );
+}
+
+function ViewConfigSection({
+  id,
+  name,
+  essViewConfig,
+  formulaExplanations,
+  updateTypeAction,
+}: {
+  id: string;
+  name: string;
+  essViewConfig: Record<string, boolean> | null;
+  formulaExplanations: Record<string, LeaveFormulaEntry> | null;
+  updateTypeAction: Action;
+}) {
+  const t = useTranslations('admin.leave');
+  const tBreakdown = useTranslations('leave.breakdown');
+  // Client-island reveal state: checked ⇒ the item's inline explanation editor shows. Initialised from the
+  // stored config (missing ⇒ visible/ticked, the 65dec703 backward-compatible default).
+  const [checked, setChecked] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      ESS_VIEW_CHECKLIST_GROUPS.flatMap((g) => g.keys).map((key) => [key, essViewConfig?.[key] !== false]),
+    ),
+  );
+  const toggle = (key: string) => setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{t('essView.sectionTitle')}</span>
+      <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+        <input type="hidden" name="id" value={id} />
+        {/* preserve the name — this form does not edit it */}
+        <input type="hidden" name="name" value={name} />
+        {/* markers: ONE submit touches BOTH columns — the checkboxes land on ess_view_config, the inline
+            explanation fields on formula_explanations (each keeps its own tri-state guard in the action). */}
+        <input type="hidden" name="essView" value="1" />
+        <input type="hidden" name="formula" value="1" />
+        <div className="space-y-3">
+          {ESS_VIEW_CHECKLIST_GROUPS.map((group) => (
+            <fieldset key={group.key} className="space-y-1.5">
+              {/* Heading = the panel section's own title (leave.breakdown.section.*); the orphan group
+                  uses the admin-side "Other" label. */}
+              <legend className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {group.labelKey ? tBreakdown(group.labelKey) : t('essView.groupOther')}
+              </legend>
+              {group.labelKey == null ? (
+                // "Other" group: keys gating non-panel surfaces — no explanation render site, plain checkboxes.
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {group.keys.map((key) => (
+                    <label key={key} className="flex items-center gap-2 text-xs text-foreground">
+                      <input
+                        type="checkbox"
+                        name={`essView_${key}`}
+                        checked={checked[key] ?? true}
+                        onChange={() => toggle(key)}
+                        className="size-3.5 rounded border-border"
+                      />
+                      {t(`essView.${key}`)}
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {group.keys.map((key) => {
+                    const on = checked[key] ?? true;
+                    const isCalcSection = key === 'entitlementCalcBreakdown';
+                    return (
+                      <div key={key} className="rounded-md border border-border px-2.5 py-1.5">
+                        <label className="flex items-center gap-2 text-xs font-medium text-foreground">
+                          <input
+                            type="checkbox"
+                            name={`essView_${key}`}
+                            checked={on}
+                            onChange={() => toggle(key)}
+                            className="size-3.5 rounded border-border"
+                          />
+                          {t(`essView.${key}`)}
+                        </label>
+                        {/* hidden (not unmounted) when unticked: the inputs still post, so an untick+save
+                            never wipes the stored explanation. */}
+                        {isCalcSection ? (
+                          <div hidden={!on} className="mt-2 space-y-1.5 border-t border-border pt-2">
+                            {LEAVE_FORMULA_COMPONENT_KEYS.map((componentKey) => (
+                              <details key={componentKey} className="rounded-md border border-border">
+                                <summary className="cursor-pointer px-2.5 py-1.5 text-xs font-medium text-foreground">
+                                  {t(`formula.component.${componentKey}`)}
+                                </summary>
+                                <div className="border-t border-border px-2.5 py-2">
+                                  <ViewConfigExplanationFields
+                                    fieldKey={componentKey}
+                                    entry={formulaExplanations?.[componentKey]}
+                                    t={t}
+                                  />
+                                </div>
+                              </details>
+                            ))}
+                          </div>
+                        ) : (
+                          <div hidden={!on} className="mt-2 border-t border-border pt-2">
+                            <ViewConfigExplanationFields fieldKey={key} entry={formulaExplanations?.[key]} t={t} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </fieldset>
+          ))}
+        </div>
+        <Button type="submit" size="sm">
+          {t('save')}
+        </Button>
+      </form>
+      <p className="text-xs text-muted-foreground">{t('essView.help')}</p>
     </div>
   );
 }

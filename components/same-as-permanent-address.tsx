@@ -12,7 +12,10 @@ import { useEffect, useRef, useState } from 'react';
  * Correspondence field the box unticks so the two addresses can diverge. The hidden `addressCopyVia` input
  * carries 'copy-permanent' to the server action ONLY as an event marker — never any address value (PDPA).
  *
- * The seven address field suffixes; the page assigns id="perm-<suffix>" / id="corr-<suffix>" to each pair.
+ * The copied field suffixes; the page assigns id="perm-<suffix>" / id="corr-<suffix>" to each pair. The
+ * seven address fields plus (bf953339) the Mobile/Home phone pair — the perm- side of the phones aliases
+ * the main Contact & Address inputs (name="phone" / name="homePhone", which are not perm-* form names),
+ * so ticking the box copies the full contact picture: address AND both phone numbers.
  */
 const FIELD_SUFFIXES = [
   'addressLine1',
@@ -22,6 +25,8 @@ const FIELD_SUFFIXES = [
   'city',
   'state',
   'country',
+  'mobile-phone',
+  'home-phone',
 ] as const;
 
 export function SameAsPermanentAddress({

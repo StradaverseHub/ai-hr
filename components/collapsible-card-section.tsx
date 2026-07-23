@@ -30,8 +30,9 @@ export function CollapsibleCardSection({
   title: string;
   /** Optional record count shown beside the title, SectionHeader-style. */
   count?: number;
-  /** Optional pre-translated legend shown after the title/count (e.g. "available / entitled"). */
-  subtitle?: string;
+  /** Optional pre-translated legend shown after the title/count (e.g. "available / entitled"), or a
+   *  small node such as the company-wide badge pill (7b945408 — the relocated Grades catalogue). */
+  subtitle?: ReactNode;
   /** Pre-translated accessible name for the summary toggle. */
   toggleLabel: string;
   /** Cookie persisting the open/closed choice; the server page reads it to set `defaultOpen`. */

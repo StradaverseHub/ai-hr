@@ -4949,6 +4949,30 @@ export function earnedCycleStart(hiredOn: string, asOf: string, cycle: string | 
   return `${cycleYear}-${hireMonth}-01`;
 }
 
+/** Leave Year Type override (feedback e1a51aea): the two LIVE per-type override values. 'a2a' and 'c2c'
+ *  reuse the existing anniversary/calendar semantics; the reporter's hybrid 'a2c' is deliberately NOT in
+ *  this set — it renders disabled in the UI and is rejected by updateLeaveType until the engine's hybrid-
+ *  year calculation ships as its own item (no new payout mathematics inside a screen restructure). */
+export const LEAVE_YEAR_CYCLE_OVERRIDES = ['a2a', 'c2c'] as const;
+export type LeaveYearCycleOverride = (typeof LEAVE_YEAR_CYCLE_OVERRIDES)[number];
+
+/**
+ * Leave Year Type override (feedback e1a51aea): resolve the EFFECTIVE cycle for one (leave type, company)
+ * pair. A per-type override wins where set — 'a2a' maps to the existing 'anniversary' semantics, 'c2c' to
+ * 'calendar' — and null/undefined (every pre-existing type) falls back to the company cycle exactly as
+ * today, so behaviour is byte-identical until HR makes an explicit per-type choice. Every engine consumer
+ * of company.leave_cycle in a per-type computation resolves through this ONE function (accrueEarnedLeave,
+ * the two recalc kernels' callers, leaveEntitlementBreakdown) so the override cannot half-apply.
+ */
+export function resolveLeaveYearCycle(
+  override: string | null | undefined,
+  companyCycle: string | null | undefined,
+): string | null | undefined {
+  if (override === 'a2a') return 'anniversary';
+  if (override === 'c2c') return 'calendar';
+  return companyCycle;
+}
+
 // ── Grade-based policy resolution (ADR-0041 / 2E) — extracted to ./leave-compute (RSC-safe pure module,
 // see its header) and re-exported below via the `export {` block near the top of this file's imports so
 // every existing caller/test keeps importing GradePolicyRow / resolveGradePolicy / carryEnabled / etc. from
@@ -5004,7 +5028,9 @@ export function asOfForLeaveYear(year: number, today: string): string {
 /** ADR-0040: top every earned policy up to the amount accrued by `asOf`. Idempotent — only the
  *  shortfall is written — so it is safe to run repeatedly (admin button + monthly cron, 2D-2).
  *  The cycle is per company (`leave_cycle`): calendar (1 Jan, joiners pro-rate from their join month)
- *  or anniversary (each employee's cycle anchored to their hire-month anniversary). The full-cycle
+ *  or anniversary (each employee's cycle anchored to their hire-month anniversary). Leave Year Type
+ *  override (e1a51aea): a per-TYPE `year_cycle_override` ('a2a'/'c2c') wins over the company cycle for
+ *  that type (resolveLeaveYearCycle); null keeps the company cycle. The full-cycle
  *  total equals max(EA-floor, policy days), so the statutory floor still holds.
  *
  *  Feedback 2c7c6385 (Run Earned Accrual button): the manual admin trigger now carries an optional SCOPE
@@ -5030,7 +5056,9 @@ export async function accrueEarnedLeave(
   return withTenant(ctx, async (tx): Promise<EarnedAccrualResult> => {
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
     const types = await tx
-      .select({ id: leaveType.id, code: leaveType.code, name: leaveType.name })
+      // Leave Year Type override (e1a51aea): yearCycleOverride is selected so the per-type effective cycle
+      // can be resolved below (resolveLeaveYearCycle) — null on every pre-existing row ⇒ company cycle.
+      .select({ id: leaveType.id, code: leaveType.code, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride })
       .from(leaveType)
       .where(
         and(
@@ -5169,15 +5197,28 @@ export async function accrueEarnedLeave(
     // types, so this is where their carry-forward cap lands. Group employees by their cycle start (≤12
     // distinct month-starts for anniversary, 1 for calendar) so the prior-cycle balance + the "already
     // forfeited this cycle" guard stay bounded queries, not one-per-employee.
+    // Leave Year Type override (e1a51aea): the cycle start is now per (employee, TYPE) — a type-level
+    // 'a2a'/'c2c' override wins over the company cycle (resolveLeaveYearCycle). An employee therefore
+    // joins the group of EVERY distinct cycle start their earned types resolve to (at most two: the
+    // calendar year-open + their hire-month anniversary), and the prior-balance / boundary-forfeit maps
+    // are keyed cs|emp|type so two windows for the same (emp, type-set) can never clobber each other.
+    // Types without an override keep resolving to the company cycle — byte-identical grouping to before.
+    const earnedTypes = types.filter((t) => earnedTypeIds.includes(t.id));
+    const cycleFor = (typeId: string, companyCycle: string | null) =>
+      resolveLeaveYearCycle(earnedTypes.find((t) => t.id === typeId)?.yearCycleOverride, companyCycle);
     const byCycleStart = new Map<string, string[]>();
     for (const e of emps) {
-      const cs = earnedCycleStart(e.hiredOn, p.asOf, e.leaveCycle);
-      const arr = byCycleStart.get(cs);
-      if (arr) arr.push(e.employmentId);
-      else byCycleStart.set(cs, [e.employmentId]);
+      const csSet = new Set(
+        earnedTypes.map((t) => earnedCycleStart(e.hiredOn, p.asOf, resolveLeaveYearCycle(t.yearCycleOverride, e.leaveCycle))),
+      );
+      for (const cs of csSet) {
+        const arr = byCycleStart.get(cs);
+        if (arr) arr.push(e.employmentId);
+        else byCycleStart.set(cs, [e.employmentId]);
+      }
     }
-    const priorBalanceBy = new Map<string, number>(); // emp|type -> balance carried into the current cycle
-    const forfeited = new Set<string>(); // emp|type that already has a boundary forfeit at its cycle start
+    const priorBalanceBy = new Map<string, number>(); // cs|emp|type -> balance carried into that cycle window
+    const forfeited = new Set<string>(); // cs|emp|type that already has a boundary forfeit at that cycle start
     for (const [cs, ids] of byCycleStart) {
       const prior = await tx
         .select({
@@ -5194,7 +5235,7 @@ export async function accrueEarnedLeave(
           ),
         )
         .groupBy(leaveLedger.employmentId, leaveLedger.leaveTypeId);
-      for (const r of prior) priorBalanceBy.set(`${r.employmentId}|${r.leaveTypeId}`, Number(r.sum));
+      for (const r of prior) priorBalanceBy.set(`${cs}|${r.employmentId}|${r.leaveTypeId}`, Number(r.sum));
       // A boundary forfeit is an adjustment dated exactly at the cycle start; its presence means we've
       // already rolled this (emp, type) over (idempotency — also skips if a manual adjustment lands there).
       const adj = await tx
@@ -5208,7 +5249,7 @@ export async function accrueEarnedLeave(
             eq(leaveLedger.effectiveOn, cs),
           ),
         );
-      for (const r of adj) forfeited.add(`${r.employmentId}|${r.leaveTypeId}`);
+      for (const r of adj) forfeited.add(`${cs}|${r.employmentId}|${r.leaveTypeId}`);
     }
 
     // ADR-0069: skip (employment, leave type) pairs with an ACTIVE frozen encashment snapshot.
@@ -5219,20 +5260,23 @@ export async function accrueEarnedLeave(
     for (const e of emps) {
       const pack = packFor(e.country);
       if (!pack) continue;
-      // 2D-2: the cycle start anchors both the entitlement band (service years measured at it) and the
-      // accrual window. Calendar joiners still pro-rate from their join month; anniversary employees
-      // accrue from their own cycle start (which, for a joiner, is their hire month).
-      const cycleStart = earnedCycleStart(e.hiredOn, p.asOf, e.leaveCycle);
-      const years = serviceYearsAt(e.hiredOn, cycleStart);
       for (const typeId of earnedTypeIds) {
+        const type = types.find((t) => t.id === typeId);
+        if (!type) continue;
+        // 2D-2: the cycle start anchors both the entitlement band (service years measured at it) and the
+        // accrual window. Calendar joiners still pro-rate from their join month; anniversary employees
+        // accrue from their own cycle start (which, for a joiner, is their hire month).
+        // Leave Year Type override (e1a51aea): the effective cycle is per (employee, type) — a type-level
+        // 'a2a'/'c2c' override wins over the company cycle; null keeps the company cycle (byte-identical).
+        const cyc = cycleFor(typeId, e.leaveCycle);
+        const cycleStart = earnedCycleStart(e.hiredOn, p.asOf, cyc);
+        const years = serviceYearsAt(e.hiredOn, cycleStart);
         // 2E: this employee's grade may resolve to a lump (or no) policy even when the type is earned for
         // another grade — accrue only when THEIR resolved policy is earned. ADR-0066: scoped to the
         // employee's company so a company override drives their accrued amount.
         // Leave Entitlement Rules Engine: service measured at cycleStart (same as the 2D-2 comment above).
         const pol = resolveGradePolicy(policyByType.get(typeId) ?? [], e.gradeId, e.companyId, years);
         if (!isEarnedMethod(pol?.method)) continue;
-        const type = types.find((t) => t.id === typeId);
-        if (!type) continue;
         if (frozenSet.has(`${e.employmentId}|${typeId}`)) continue; // ADR-0069: balance frozen for encashment
         // Grouped preview accumulator (feedback 2c7c6385): this (employee, type) resolves an earned policy,
         // so it belongs to the Company×Grade×Type group. Count it here (regardless of `toGrant`) — the
@@ -5254,7 +5298,8 @@ export async function accrueEarnedLeave(
         group.count += 1;
         // 2D-3: cap what carries into the new cycle. ANNUAL carries up to its policy cap; other earned
         // types reset (cap 0). Posted once per cycle, dated at the cycle start (guarded by `forfeited`).
-        const carryKey = `${e.employmentId}|${typeId}`;
+        // Leave Year Type override (e1a51aea): the maps are keyed cs|emp|type — this (emp, type)'s window.
+        const carryKey = `${cycleStart}|${e.employmentId}|${typeId}`;
         const priorBalance = priorBalanceBy.get(carryKey) ?? 0;
         const baseCap = type.code === 'ANNUAL' ? pol!.carryMax : 0;
         // Feedback 9d8cf621 — Maximum Balance Days also bounds the earned carry cap: nothing more than the
@@ -5287,7 +5332,7 @@ export async function accrueEarnedLeave(
         if (entitlement <= 0) continue;
         const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
         const accrualStart =
-          e.leaveCycle === 'anniversary' || e.hiredOn <= cycleStart ? cycleStart : `${e.hiredOn.slice(0, 7)}-01`;
+          cyc === 'anniversary' || e.hiredOn <= cycleStart ? cycleStart : `${e.hiredOn.slice(0, 7)}-01`;
         const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, p.asOf, pol!.method!));
         let earnedToDate = Math.round((entitlement / totalPeriods) * elapsed * 100) / 100;
         // Feedback 9d8cf621 — Maximum Balance Days: cap the cumulative earned so retainedCarry + earned
@@ -5384,6 +5429,8 @@ export type PolicyScope = { gradeId: string | null; companyId: string | null };
  * the winner to an earned method (mixing windows) — the caller leaves that employee/type untouched.
  */
 export function projectExpectedEntitlement(
+  // Leave Year Type override (e1a51aea): `leaveCycle` is the EFFECTIVE cycle for the (type, company) pair —
+  // callers resolve it via resolveLeaveYearCycle(type.yearCycleOverride, company.leaveCycle) before calling.
   emp: { hiredOn: string; leaveCycle: string | null; gradeId: string | null; companyId: string },
   typeCode: string,
   policyRows: GradePolicyRow[],
@@ -5499,7 +5546,8 @@ export async function reprojectEntitlementForPolicy(
   if (p.validTo != null && p.validTo <= p.asOf) return none;
 
   const [type] = await tx
-    .select({ id: leaveType.id, code: leaveType.code })
+    // Leave Year Type override (e1a51aea): yearCycleOverride resolves the per-type effective cycle below.
+    .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride })
     .from(leaveType)
     .where(and(eq(leaveType.id, p.leaveTypeId), isNull(leaveType.archivedAt)))
     .limit(1);
@@ -5602,8 +5650,15 @@ export async function reprojectEntitlementForPolicy(
 
     // Resolve the employee's winner + project the current-cycle entitlement via the shared kernel (same
     // math the profile-triggered recalc uses). null ⇒ defensive skip (anniversary/earned window mix).
+    // Leave Year Type override (e1a51aea): the kernel receives the EFFECTIVE cycle for this (type,
+    // company) pair — a per-type 'a2a'/'c2c' override wins; null falls back to the company cycle.
     const projected = projectExpectedEntitlement(
-      { hiredOn: e.hiredOn, leaveCycle: e.leaveCycle, gradeId: e.gradeId, companyId: e.companyId },
+      {
+        hiredOn: e.hiredOn,
+        leaveCycle: resolveLeaveYearCycle(type.yearCycleOverride, e.leaveCycle) ?? null,
+        gradeId: e.gradeId,
+        companyId: e.companyId,
+      },
       type.code,
       policyRows,
       (c, y) => pack.leave.entitlement(c, y),
@@ -5716,8 +5771,9 @@ export async function reprojectEntitlementForEmployment(
     if (emp.terminatedOn != null && emp.terminatedOn < yearStart) return none;
 
     // 2. Active leave types (a type with no accrual row this cycle is skipped by the materialized guard).
+    // Leave Year Type override (e1a51aea): yearCycleOverride resolves each type's effective cycle below.
     const types = await tx
-      .select({ id: leaveType.id, code: leaveType.code })
+      .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride })
       .from(leaveType)
       .where(and(eq(leaveType.tenantId, ctx.tenantId), isNull(leaveType.archivedAt)));
     if (types.length === 0) return none;
@@ -5785,8 +5841,15 @@ export async function reprojectEntitlementForEmployment(
     let totalDelta = 0;
     for (const type of types) {
       if (frozenSet.has(`${p.employmentId}|${type.id}`)) continue;
+      // Leave Year Type override (e1a51aea): the kernel receives the EFFECTIVE cycle for this type — a
+      // per-type 'a2a'/'c2c' override wins; null falls back to the company cycle (byte-identical).
       const projected = projectExpectedEntitlement(
-        { hiredOn: emp.hiredOn, leaveCycle: emp.leaveCycle, gradeId: emp.gradeId, companyId: emp.companyId },
+        {
+          hiredOn: emp.hiredOn,
+          leaveCycle: resolveLeaveYearCycle(type.yearCycleOverride, emp.leaveCycle) ?? null,
+          gradeId: emp.gradeId,
+          companyId: emp.companyId,
+        },
         type.code,
         policyByType.get(type.id) ?? [],
         (c, y) => pack.leave.entitlement(c, y),

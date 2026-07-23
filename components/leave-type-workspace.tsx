@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { LEAVE_COLORS, LEAVE_ICONS, isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual';
@@ -17,15 +18,34 @@ export type LeaveTypeWorkspaceItem = {
   icon: string | null;
 };
 
-/** Sentinel selection value for the Add Leave form (leave-type ids are UUIDs, so no collision). */
-const ADD = 'add';
+/**
+ * Dialog-close wrapper for the Add Leave Type form's Cancel button (8cc268c4). Exported so the SERVER-rendered
+ * addForm slot (app/admin/leave/entitlements/page.tsx) can place a Cancel button beside its Save button —
+ * Radix context resolves at runtime because the slot mounts inside this workspace's Dialog.Content.
+ */
+export function AddLeaveTypeCancel({ children }: { children: ReactNode }) {
+  return (
+    <Dialog.Close asChild>
+      <Button type="button" variant="outline">
+        {children}
+      </Button>
+    </Dialog.Close>
+  );
+}
 
 /**
  * Leave Type configuration workspace (feedback c979aa8b): an internal LEFT PANEL listing every leave type
  * (colour dot / icon + name, selected one highlighted via the sidebar's aria-current + accent pattern,
  * components/sidebar.tsx) beside a RIGHT workspace showing the selected type's step-flow configuration
- * panel. The Add Leave button at the bottom of the panel swaps the workspace to the existing create form
- * (rendered server-side and passed in untouched via `addForm`, preserving its markup + tests).
+ * panel.
+ *
+ * Add Leave Type pop-up (feedback 8cc268c4): the + Add Leave button no longer swaps the right pane to the
+ * create form (the old ADD-sentinel selection) — it opens a modal Dialog titled "Add Leave Type" OVER the
+ * current view, so the admin never loses their place in the type they were configuring. The dialog body is
+ * the SAME server-rendered create form passed in via `addForm` (self-contained form + server action — no
+ * hidden-input bridging); Cancel (AddLeaveTypeCancel above) closes without saving, Save posts
+ * createLeaveTypeAction whose redirect carries #type-<new id> — the hash effect below then selects the new
+ * type AND closes the dialog.
  *
  * `panels` is a server-rendered slot map (id → that type's <LeaveTypePanel>, actions bound server-side) —
  * only the SELECTED panel mounts, so switching types is pure client state: no page reload, no nested tabs.
@@ -35,7 +55,8 @@ const ADD = 'add';
  * selects the targeted type on mount and on hashchange, and writes the hash back via history.replaceState
  * on selection so the current choice survives the stay-on-save redirect. Default selection: first type.
  *
- * Mobile: the left panel collapses to a dropdown (a <select> of the types + the Add option).
+ * Mobile: the left panel collapses to a dropdown (a <select> of the types) beside an Add button opening the
+ * same dialog.
  */
 export function LeaveTypeWorkspace({
   items,
@@ -47,16 +68,24 @@ export function LeaveTypeWorkspace({
   addForm: ReactNode;
 }) {
   const t = useTranslations('admin.leave');
-  const [selected, setSelected] = useState<string>(items[0]?.id ?? ADD);
+  const [selected, setSelected] = useState<string>(items[0]?.id ?? '');
+  // 8cc268c4 — the Add Leave Type dialog. Controlled state so BOTH triggers (desktop panel-bottom button +
+  // mobile button beside the dropdown) open the one dialog, and the hash effect can close it after a save.
+  const [addOpen, setAddOpen] = useState(false);
 
   // Hash deep-link (#type-<id>): select the targeted type on mount and on later hashchange, replacing the
-  // old per-row expand effect that lived in leave-type-panel.tsx.
+  // old per-row expand effect that lived in leave-type-panel.tsx. After a create, the action's redirect
+  // lands here with the NEW id — `items` gains the type, idsKey changes, the effect re-runs, and the new
+  // type is selected while the Add dialog closes (8cc268c4's "save selects the new type" promise).
   const idsKey = items.map((i) => i.id).join(',');
   useEffect(() => {
     const ids = idsKey === '' ? [] : idsKey.split(',');
     const applyHash = () => {
       const m = window.location.hash.match(/^#type-(.+)$/);
-      if (m && ids.includes(m[1])) setSelected(m[1]);
+      if (m && ids.includes(m[1])) {
+        setSelected(m[1]);
+        setAddOpen(false);
+      }
     };
     applyHash();
     window.addEventListener('hashchange', applyHash);
@@ -69,7 +98,7 @@ export function LeaveTypeWorkspace({
     // stay-on-save redirect land back on the same type.
     try {
       const url = new URL(window.location.href);
-      url.hash = next === ADD ? '' : `type-${next}`;
+      url.hash = `type-${next}`;
       window.history.replaceState(null, '', url.toString());
     } catch {
       /* URL/history unavailable ⇒ selection still works, just not deep-linkable */
@@ -78,23 +107,27 @@ export function LeaveTypeWorkspace({
 
   return (
     <div className="flex flex-col gap-4 p-4 md:flex-row">
-      {/* Mobile: the left panel collapses to a dropdown of the types + the Add option. */}
-      <label className="md:hidden">
-        <span className="sr-only">{t('workspaceTypeListLabel')}</span>
-        <select
-          value={selected}
-          onChange={(e) => select(e.target.value)}
-          aria-label={t('workspaceTypeListLabel')}
-          className={`${inputCls} w-full`}
-        >
-          {items.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
-          <option value={ADD}>{t('addType')}</option>
-        </select>
-      </label>
+      {/* Mobile: the left panel collapses to a dropdown of the types + the Add button opening the dialog. */}
+      <div className="flex items-center gap-2 md:hidden">
+        <label className="min-w-0 flex-1">
+          <span className="sr-only">{t('workspaceTypeListLabel')}</span>
+          <select
+            value={selected}
+            onChange={(e) => select(e.target.value)}
+            aria-label={t('workspaceTypeListLabel')}
+            className={`${inputCls} w-full`}
+          >
+            {items.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button type="button" size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+          {t('addType')}
+        </Button>
+      </div>
 
       {/* Desktop: the internal left panel — type list + the Add Leave button at the bottom. */}
       <nav
@@ -148,24 +181,44 @@ export function LeaveTypeWorkspace({
         <Button
           type="button"
           size="sm"
-          variant={selected === ADD ? 'default' : 'outline'}
+          variant="outline"
           className="mt-auto w-full"
-          onClick={() => select(ADD)}
+          onClick={() => setAddOpen(true)}
         >
           {t('addType')}
         </Button>
       </nav>
 
-      {/* Right workspace: the selected type's step-flow panel, or the Add Leave form. */}
+      {/* Right workspace: the selected type's step-flow panel — never swapped for the add form (8cc268c4). */}
       <div className="min-w-0 flex-1 md:border-l md:border-border md:pl-4">
-        {selected === ADD ? (
-          addForm
-        ) : (
-          (panels[selected] ?? (
-            <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveTypes')}</p>
-          ))
+        {panels[selected] ?? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveTypes')}</p>
         )}
       </div>
+
+      {/* 8cc268c4 — the Add Leave Type pop-up. Shell follows the house dialog pattern (family-form-dialog.tsx):
+          overlay + centred scrollable Content; the body is the untouched server-rendered create form, which
+          carries its own Cancel (AddLeaveTypeCancel) / Save footer. Radix provides the focus trap + Esc/overlay
+          dismissal; a successful save is dismissed by the redirect's #type-<id> via the hash effect above. */}
+      <Dialog.Root open={addOpen} onOpenChange={setAddOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+          <Dialog.Content
+            aria-describedby={undefined}
+            className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100vh-4rem)] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <Dialog.Title className="text-base font-semibold">{t('addTypeDialogTitle')}</Dialog.Title>
+              <Dialog.Close asChild>
+                <Button type="button" variant="ghost" size="sm" aria-label={t('cancel')}>
+                  ✕
+                </Button>
+              </Dialog.Close>
+            </div>
+            <div className="mt-4">{addForm}</div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

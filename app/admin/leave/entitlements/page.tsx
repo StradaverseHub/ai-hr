@@ -2,9 +2,15 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
-import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
-import { listAdHocLeaveGrants, listLeavePolicies } from '@/core/admin';
+import { listLeaveTypes, listCompanies, listJobGrades, listDepartments } from '@/core/read';
+import { listAdHocLeaveGrants, listLeavePolicies, listBusinessUnits, listPositions } from '@/core/admin';
 import { listLeaveYearConfigs } from '@/core/leave';
+// e1a51aea — the Approval Workflow sub-step's data + shared matrix labels (one source with the Approval tab).
+import { getLeaveApprovalPolicy, isCompanyDefaultApprovalRule, listLeaveApprovalRules } from '@/core/leave-approval-policy';
+import { listApprovalTemplates } from '@/core/leave-approval-template';
+import { WorkflowMatrix } from '@/app/admin/leave-approval/workflow-matrix';
+import { buildWorkflowMatrixLabels } from '@/app/admin/leave-approval/matrix-labels';
+import { archiveLeaveApprovalRuleAction, saveLeaveApprovalRuleAction } from '@/app/admin/leave-approval/actions';
 import {
   listGradeGroups,
   listBenefitSchemes,
@@ -14,16 +20,17 @@ import {
 import { BenefitSchemeConfig, type LeaveTypeSchemeEntitlement } from '@/components/benefit-scheme-config';
 import type { ServiceBand } from '@/core/leave-compute';
 import { entitlement } from '@/localization/my/leave';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
-import { LeaveTypeWorkspace } from '@/components/leave-type-workspace';
+import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
 import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
 import { LeaveRulePreviewDialog } from '@/components/leave/leave-rule-preview-dialog';
 import {
   archiveLeaveTypeAction,
   countEmployeesInScopeAction,
+  setLeaveHalfDayFullDeductionAction,
   createLeavePoliciesMultiAction,
   createLeaveTypeAction,
   deleteLeavePolicyAction,
@@ -51,7 +58,8 @@ import {
 import { GradeCatalog } from '@/components/grade-catalog';
 import { CollapsibleCardSection } from '@/components/collapsible-card-section';
 
-/** Cookie persisting the Grades section's open/closed fold (feedback 03557e76). */
+/** Cookie persisting the Grades catalogue's open/closed fold (feedback 03557e76; the fold — and this
+ *  cookie — moved WITH the catalogue into the Entitlement step's Benefit Schemes sub-step, 7b945408). */
 const GRADES_OPEN_COOKIE = 'leave_grades_open';
 
 /**
@@ -61,17 +69,27 @@ const GRADES_OPEN_COOKIE = 'leave_grades_open';
  * here — "one leave type, one full set of settings", exactly where HR expects it. Each `LeaveTypePanel`
  * carries leave-type identity, eligibility, allowed durations, supporting-document config, backdating limit,
  * advance-notice, expiry, the apply-time custom message AND that type's effective-dated entitlement policies
- * (the editable ranges table + the multi-company/grade "Employee Selection" chips). Beneath it only the
- * grade catalog remains. The three other standalone sections are gone (d778d2d3): Run Earned Accrual and
- * Preview a Scenario became compact PageHeader action buttons opening the SAME tools in dialogs
+ * (the editable ranges table + the multi-company/grade "Employee Selection" chips). The three other
+ * standalone sections are gone (d778d2d3): Run Earned Accrual and
+ * Preview a Scenario became compact action buttons opening the SAME tools in dialogs
  * (EarnedAccrualDialog / LeaveRulePreviewDialog — components wrapped unchanged), and the per-company Leave
  * Cycle card moved to the Application Rules tab beside the other company-level calendar rules (its
  * server action is untouched — only the rendering moved). Bulk import is a "+ Import" action
  * button in the page header (e8f2398f) — the standalone page-bottom Card that only linked to
  * /admin/leave/import is gone. The festive / one-off grant tool no longer
- * sits at the page bottom — fd7c8e20 moved it into each type's Entitlement step (below the Benefit Schemes
- * area), preset to the selected type. The whole `LeaveTypePanel` + add-type form moved wholesale from the
+ * sits at the page bottom — fd7c8e20 moved it into each type's Entitlement step, preset to the selected
+ * type. The whole `LeaveTypePanel` + add-type form moved wholesale from the
  * Types tab, so every sub-form keeps its tri-state marker + hidden `name` intact — no column is wiped on save.
+ *
+ * 7b945408 (Restructure Entitlements Secondary Workflow): the Entitlement step is now a three-sub-step walk
+ * — 1 Benefit Schemes · 2 Service Based Entitlements · 3 Adjustments (the SubStepBar reuse contract). The
+ * Grades catalogue moved off the page bottom into the Benefit Schemes sub-step (gradesSection slot — grades
+ * are tenant-wide master data, badged company-wide), Preview Scenario joins Service Based Entitlements as
+ * its checking tool, and Run Accrual joins Adjustments (it processes earned entitlement).
+ *
+ * 962077a8 (Remove Unnecessary Action Buttons): with the 7b945408 step homes in place, the PageHeader is
+ * down to the single page-level action — + Import. Run Accrual and Preview Scenario open ONLY from their
+ * sub-steps now (same dialogs, same page-level data prep — nothing duplicated, nothing unreachable).
  */
 export default async function LeaveEntitlementsPage({
   searchParams,
@@ -120,8 +138,9 @@ export default async function LeaveEntitlementsPage({
   // Feedback 26e76a9f — "preview a scenario" relocated here from the Types tab (its read-only "Entitlement
   // rules" card was removed as a duplicate configuration point). Same inputs as before: the ACTIVE policy
   // rows from the already-loaded listLeavePolicies result — display-only, no data or logic change.
-  // d778d2d3: the checker now opens from the header's "Preview Scenario" button (LeaveRulePreviewDialog);
-  // this page-level data prep is unchanged and simply feeds the dialog.
+  // d778d2d3: the checker became the "Preview Scenario" dialog button (LeaveRulePreviewDialog); since
+  // 7b945408/962077a8 it opens from the Service Based Entitlements sub-step — this page-level data prep
+  // is unchanged and simply feeds the dialog.
   const previewPolicies = policies
     .filter((p) => !p.validTo)
     .map((p) => ({ leaveTypeId: p.leaveTypeId, gradeId: p.gradeId, companyId: p.companyId, accrual: p.accrual }));
@@ -281,36 +300,213 @@ export default async function LeaveEntitlementsPage({
     },
   };
 
+  // ── Approval Workflow sub-step data (e1a51aea) ────────────────────────────────────────────────────
+  // The General step's 5th sub-step embeds the SAME WorkflowMatrix the Approval tab renders, scoped to the
+  // hosting leave type. All approval data + the label bag are prepared ONCE here (the benefitSchemeSection
+  // precedent — no N+1 per type); only the row filter + defaultLeaveTypeId vary per panel. Company-wide
+  // chains and templates stay on the Approval tab (linked from the sub-step) — the per-company default
+  // chain is summarised READ-ONLY here.
+  const ta = await getTranslations('leaveApproval');
+  const companyIds = companies.map((c) => c.id);
+  const [departmentsAll, positionsAll, businessUnitsAll, approvalTemplates, approvalPerCompany] = await Promise.all([
+    companyIds.length ? listDepartments(s, { companyIds }) : Promise.resolve([]),
+    companyIds.length ? listPositions(s, { companyIds }) : Promise.resolve([]),
+    companyIds.length ? listBusinessUnits(s, { companyIds }) : Promise.resolve([]),
+    listApprovalTemplates(s),
+    Promise.all(
+      companies.map(async (c) => ({
+        company: c,
+        pol: await getLeaveApprovalPolicy(s, c.id),
+        rules: await listLeaveApprovalRules(s, c.id),
+      })),
+    ),
+  ]);
+  // Every non-company-default rule across the in-scope companies, in the matrix's row shape. The per-type
+  // slot filters this ONE array — scoped rules (leaveTypeId === the type) render editable in the matrix;
+  // wildcard any-type rules (leaveTypeId === null) render read-only with an "applies to all types" badge.
+  const approvalRuleRows = approvalPerCompany.flatMap(({ rules }) =>
+    rules
+      .filter((r) => !isCompanyDefaultApprovalRule(r))
+      .map((r) => ({
+        id: r.id,
+        companyId: r.companyId,
+        ruleName: r.ruleName,
+        leaveTypeId: r.leaveTypeId,
+        gradeGroupId: r.gradeGroupId,
+        businessUnitId: r.businessUnitId,
+        departmentId: r.departmentId,
+        positionId: r.positionId,
+        gradeId: r.gradeId,
+        employmentType: r.employmentType,
+        minDays: r.minDays,
+        maxDays: r.maxDays,
+        levels: r.levels,
+        templateId: r.templateId,
+      })),
+  );
+  const wildcardApprovalRules = approvalRuleRows.filter((r) => r.leaveTypeId == null);
+  // Chain-role labels for the read-only default-chain summary (the Approval tab's vocabulary).
+  const approvalRoleLabel: Record<string, string> = {
+    direct_manager: ta('manager'),
+    department_head: ta('departmentHead'),
+    business_unit_head: ta('businessUnitHead'),
+    hr_admin: ta('hr'),
+    hr_manager: ta('hrManager'),
+    payroll: ta('payroll'),
+    custom_role: ta('customRole'),
+  };
+  const approvalMatrixShared = {
+    companies: companies.map((c) => ({ id: c.id, label: c.name })),
+    leaveTypes: types.map((x) => ({ id: x.id, label: x.name })),
+    gradeGroups: gradeGroups.filter((g) => !g.archived).map((g) => ({ id: g.id, label: g.name })),
+    grades: grades.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` })),
+    businessUnits: businessUnitsAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}`, companyId: x.companyId })),
+    departments: departmentsAll.map((x) => ({ id: x.id, label: x.name, companyId: x.companyId })),
+    positions: positionsAll.map((x) => ({ id: x.id, label: x.title, companyId: x.companyId })),
+    templates: approvalTemplates.filter((t2) => t2.active).map((t2) => ({ id: t2.id, label: t2.name })),
+    actions: { save: saveLeaveApprovalRuleAction, archive: archiveLeaveApprovalRuleAction },
+    labels: buildWorkflowMatrixLabels(ta),
+  };
+
+  // ── Half-Day Deduction card (08bc6841) ─────────────────────────────────────────────────────────────
+  // Relocated from the Application Rules tab (feedback 31474452's per-company toggle — this is its single
+  // home now): rendered as ONE card of the Condition step's Leave Application Rules grid. The rows are
+  // per-COMPANY (not per-type), so one node is composed here and shared by every panel (the slot
+  // precedent — benefitSchemeSection etc.); each row posts the SAME setLeaveHalfDayFullDeductionAction —
+  // only the rendering (and the action's redirect target) moved. The applies-company-wide badge flags
+  // that saving here affects every leave type and every application, not just the hosting type.
+  const halfDaySection = (
+    <div className="space-y-1.5 rounded-lg border border-border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">{t('halfDayDeductionTitle')}</span>
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {t('conditionStep.halfDayCompanyWideBadge')}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">{t('halfDayDeductionHelp')}</p>
+      <p className="text-xs text-muted-foreground">{t('halfDayDeductionFrozenNote')}</p>
+      <ul className="divide-y divide-border">
+        {companies.map((c) => (
+          <li key={c.id} className="py-2">
+            <form
+              action={setLeaveHalfDayFullDeductionAction}
+              className="flex flex-wrap items-center justify-between gap-3"
+            >
+              <input type="hidden" name="companyId" value={c.id} />
+              <div className="min-w-0">
+                <span className="block truncate text-sm font-medium text-foreground">{c.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {c.leaveHalfDayFullDeduction ? t('halfDayDeductionOn') : t('halfDayDeductionOff')}
+                </span>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="enabled"
+                  defaultChecked={!!c.leaveHalfDayFullDeduction}
+                  className="size-4 rounded"
+                />
+                {t('halfDayDeductionToggleLabel')}
+              </label>
+              <Button type="submit" variant="outline" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
+  // ── Grades catalogue → the Entitlement step's Benefit Schemes sub-step (7b945408) ────────────────
+  // The standalone page-bottom Grades section is gone: the grade master now opens the Benefit Schemes
+  // sub-step of every type's Entitlement step, so the grade → grade-group → scheme relationship reads in
+  // one place. Grades are TENANT-WIDE master data (not per-type), so ONE node is composed here and shared
+  // by every panel (the halfDaySection precedent), marked with the company-wide badge convention
+  // (08bc6841). The 03557e76 fold survives the move — CollapsibleCardSection + the SAME cookie keep a
+  // long grade list behind its heading, SSR-read so the first paint is already correct. GradeCatalog and
+  // its actions are untouched.
+  const gradesSection = (
+    <div className="rounded-lg border border-border">
+      <CollapsibleCardSection
+        title={t('gradesTitle')}
+        count={grades.length}
+        subtitle={
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            {t('entitlementStep.gradesCompanyWideBadge')}
+          </span>
+        }
+        toggleLabel={t('gradesToggle')}
+        cookieKey={GRADES_OPEN_COOKIE}
+        defaultOpen={gradesOpen}
+      >
+        <p className="px-4 pt-3 pb-1 text-xs text-muted-foreground">{t('gradesHelp')}</p>
+        <GradeCatalog
+          grades={grades.map((g) => ({
+            id: g.id,
+            code: g.code,
+            name: g.name,
+            rank: g.rank,
+            archived: g.archivedAt != null,
+            inUse: g.inUse,
+          }))}
+          actions={{
+            create: createJobGradeAction,
+            update: updateJobGradeAction,
+            archive: archiveJobGradeAction,
+            delete: deleteJobGradeAction,
+          }}
+        />
+      </CollapsibleCardSection>
+    </div>
+  );
+
+  // ── Entitlement-step tool slots (7b945408) ───────────────────────────────────────────────────────
+  // Preview Scenario joins the Service Based Entitlements sub-step as its checking tool, and Run Accrual
+  // joins Adjustments (it processes earned entitlement — it belongs with entitlement adjustments). Both
+  // mount the SAME self-contained dialogs the PageHeader cluster used to host (d778d2d3) — one shared node
+  // each, fed by the page-level data prep above (no N+1 per type). 962077a8 removed the header buttons, so
+  // these sub-step slots are the tools' only mounts now.
+  const previewScenarioSection =
+    activeTypeOptions.length > 0 && companyOptions.length > 0 ? (
+      <div className="space-y-1.5 border-t border-border pt-3">
+        <span className="text-xs font-medium text-muted-foreground">{t('previewTitle')}</span>
+        <p className="text-xs text-muted-foreground">{t('entitlementStep.previewHint')}</p>
+        <LeaveRulePreviewDialog
+          leaveTypes={activeTypeOptions.map((o) => ({ id: o.id, name: o.name, code: typeCodeById.get(o.id) ?? '' }))}
+          companies={previewCompanies}
+          grades={gradeOptions}
+          policies={previewPolicies}
+        />
+      </div>
+    ) : null;
+  const accrualSection = (
+    <div className="space-y-1.5 border-t border-border pt-3">
+      <span className="text-xs font-medium text-muted-foreground">{t('runEarnedAccrual')}</span>
+      <p className="text-xs text-muted-foreground">{t('entitlementStep.accrualHint')}</p>
+      <EarnedAccrualDialog
+        companies={festiveCompanies}
+        grades={gradeOptions}
+        leaveTypes={activeTypeOptions}
+        leaveYears={earnedLeaveYears}
+        defaultYear={earnedDefaultYear}
+      />
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
         title={t('pageTitle')}
         description={t('pageDescription')}
         actions={
-          /* e8f2398f: Import is a page-level action button (the standard top-right spot). d778d2d3 adds the
-             two occasional-use tools beside it — Run Accrual and Preview Scenario — as compact icon+label
-             buttons opening their dialogs; their standalone page-bottom sections are gone. Cluster order:
-             Import, Run Accrual, Preview Scenario. */
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href="/admin/leave/import" className={btnPrimary}>
-              {t('importAction')}
-            </Link>
-            <EarnedAccrualDialog
-              companies={festiveCompanies}
-              grades={gradeOptions}
-              leaveTypes={activeTypeOptions}
-              leaveYears={earnedLeaveYears}
-              defaultYear={earnedDefaultYear}
-            />
-            {activeTypeOptions.length > 0 && companyOptions.length > 0 && (
-              <LeaveRulePreviewDialog
-                leaveTypes={activeTypeOptions.map((o) => ({ id: o.id, name: o.name, code: typeCodeById.get(o.id) ?? '' }))}
-                companies={previewCompanies}
-                grades={gradeOptions}
-                policies={previewPolicies}
-              />
-            )}
-          </div>
+          /* e8f2398f: Import is a page-level action button (the standard top-right spot). 962077a8: it is
+             the ONLY header action now — the Run Accrual and Preview Scenario buttons d778d2d3 parked here
+             moved into the Entitlement step's sub-steps (7b945408's accrualSection / previewScenarioSection
+             slots above), where the related configuration lives. */
+          <Link href="/admin/leave/import" className={btnPrimary}>
+            {t('importAction')}
+          </Link>
         }
       />
       <LeaveTabs active="entitlements" />
@@ -366,6 +562,7 @@ export default async function LeaveEntitlementsPage({
               color={lt.color ?? null}
               icon={lt.icon ?? null}
               leaveUnit={lt.leaveUnit ?? 'day'}
+              yearCycleOverride={lt.yearCycleOverride ?? null}
               probationEligibility={lt.probationEligibility ?? null}
               visibleToEmployee={lt.visibleToEmployee ?? null}
               employeeCanApply={lt.employeeCanApply ?? null}
@@ -392,11 +589,11 @@ export default async function LeaveEntitlementsPage({
               }
               festiveGrantSection={
                 /* fd7c8e20 (ADR-0066): the One-Off / Festive Leave Grant tool, moved from the standalone
-                   page-bottom section into the Entitlement step below the Benefit Schemes area. Data prep
-                   (festiveCompanies, recentGrants) stays at page level and is shared by every panel — only
-                   the preselected leave type varies. -mx-4 lets the card's own px-4 gutters line up with
-                   the step's CardContent padding. */
-                <div className="space-y-1 border-t border-border pt-3">
+                   page-bottom section into the Entitlement step (since 7b945408 it HEADS the Adjustments
+                   sub-step, so no top divider). Data prep (festiveCompanies, recentGrants) stays at page
+                   level and is shared by every panel — only the preselected leave type varies. -mx-4 lets
+                   the card's own px-4 gutters line up with the step's CardContent padding. */
+                <div className="space-y-1">
                   <span className="text-xs font-medium text-muted-foreground">{t('festiveTitle')}</span>
                   <div className="-mx-4">
                     <FestiveGrantCard
@@ -410,6 +607,72 @@ export default async function LeaveEntitlementsPage({
                   </div>
                 </div>
               }
+              approvalWorkflowSection={
+                /* e1a51aea: the Approval Workflow sub-step — this type's rules from the SAME rule matrix
+                   the Approval tab renders (same actions, shared labels), scoped + seeded to this type;
+                   wildcard any-type rules and the per-company default chain are summarised read-only with
+                   the Approval tab one click away. */
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">{t('approvalStep.hint')}</p>
+                  <WorkflowMatrix
+                    rows={approvalRuleRows.filter((r) => r.leaveTypeId === lt.id)}
+                    defaultLeaveTypeId={lt.id}
+                    {...approvalMatrixShared}
+                  />
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">{t('approvalStep.wildcardTitle')}</span>
+                    {wildcardApprovalRules.length === 0 ? (
+                      <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
+                        {t('approvalStep.wildcardNone')}
+                      </p>
+                    ) : (
+                      wildcardApprovalRules.map((r) => (
+                        <div
+                          key={r.id}
+                          className="flex flex-wrap items-center gap-2 rounded-lg bg-background px-3 py-2 text-xs"
+                        >
+                          <span className="font-medium text-foreground">
+                            {companyNameById.get(r.companyId) ?? r.companyId}
+                          </span>
+                          {r.ruleName && <span className="text-muted-foreground">{r.ruleName}</span>}
+                          {/* read-only: an any-type rule is shared config — edited on the Approval tab */}
+                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            {t('approvalStep.wildcardBadge')}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {t('approvalStep.defaultChainTitle')}
+                    </span>
+                    {approvalPerCompany.map(({ company, pol }) => (
+                      <div
+                        key={company.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background px-3 py-2 text-xs"
+                      >
+                        <span className="font-medium text-foreground">{company.name}</span>
+                        <span className="text-muted-foreground">
+                          {pol.enabled
+                            ? pol.levels.map((lv) => approvalRoleLabel[lv] ?? lv).join(' → ')
+                            : t('approvalStep.defaultChainOff')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <Link
+                    href="/admin/leave/approval"
+                    className="inline-block text-xs font-medium text-primary underline-offset-2 hover:underline"
+                  >
+                    {t('approvalStep.openApprovalTab')}
+                  </Link>
+                </div>
+              }
+              halfDaySection={halfDaySection}
+              gradesSection={gradesSection}
+              previewScenarioSection={previewScenarioSection}
+              accrualSection={accrualSection}
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}
@@ -422,15 +685,24 @@ export default async function LeaveEntitlementsPage({
             ]),
           )}
           addForm={
-        /* Layout (a9c5870a): three tiers. Mobile stacks (grid-cols-1). sm–lg keeps the six equal columns with
-            Description spanning 3, i.e. the tidy two-row split 750732c3 introduced. From lg an explicit
-            grid-template packs all seven pieces onto ONE row: Code/Name/Status/Leave Unit are flexible minmax
-            columns, Description gets the wide 3fr share, and Paid + Add are content-sized auto columns — so the
-            wider Description no longer spills Leave Unit/Paid/Add onto a half-empty second row. */
+        /* Add Leave Type pop-up (8cc268c4): this form now renders ONLY inside the workspace's "Add Leave Type"
+            dialog, never as a page row — so the a9c5870a one-row page grid (six sm columns + the explicit lg
+            template) gave way to a modal-width two-column layout: Code/Name share row 1, Description spans the
+            full width, Status/Leave Unit share the next row, then Paid, then the standard bottom-right
+            Cancel/Save footer. Every posted field (name attr, order, control type — dc3ec3c6's Leave Unit →
+            Paid order, fbcadc71's multiline textarea) is unchanged, as is the server action. */
         <form
           action={createLeaveTypeAction}
-          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-6 lg:[grid-template-columns:minmax(6.5rem,1fr)_minmax(8rem,1fr)_minmax(16rem,3fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_auto_auto]"
+          className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2"
         >
+          {/* In-dialog error surface: a failed save (duplicate code/name…) redirects back with ?error= while
+              the dialog is still open (client state survives the soft navigation), so the page-level banner
+              would sit hidden BEHIND the modal — mirror the message here where the admin is looking. */}
+          {error && (
+            <div className="col-span-full">
+              <ErrorBanner message={error} />
+            </div>
+          )}
           <Field label={t('codeLabel')}>
             <input
               name="code"
@@ -443,13 +715,11 @@ export default async function LeaveEntitlementsPage({
           <Field label={t('nameLabel')}>
             <input name="name" required placeholder={t('namePlaceholder')} className={inputCls} />
           </Field>
-          <Field label={t('descriptionLabel')} className="sm:col-span-3 lg:col-span-1">
+          <Field label={t('descriptionLabel')} className="sm:col-span-2">
             {/* Multiline (fbcadc71): textarea so Enter inserts a newline instead of submitting; h-auto/min-h/resize-y
                 overrides inputCls's fixed h-9 so it shows ~2 lines, grows via the drag handle, and scrolls on overflow.
-                Persistence already stores text with newlines (action only .trim()s the ends).
-                Width (750732c3 → a9c5870a): at sm the Field spans 3 of the 6 columns; from lg it occupies the wide
-                3fr slot of the explicit template (lg:col-span-1 resets the span so it sits in exactly that column).
-                rows={2} + trimmed min-h keep the single lg row visually balanced next to the h-9 fields. */}
+                Persistence already stores text with newlines (action only .trim()s the ends). In the dialog's
+                two-column grid it spans the full modal width (sm:col-span-2) — the widest slot available. */}
             <textarea
               name="description"
               rows={2}
@@ -463,29 +733,31 @@ export default async function LeaveEntitlementsPage({
               <option value="inactive">{t('statusInactive')}</option>
             </select>
           </Field>
-          {/* Leave Unit Configuration (e4980382 → dc3ec3c6): Day/Hour select sits BEFORE Paid in the final two
-              columns (Leave Unit column 5, Paid column 6), mirroring the edit form's Leave Unit → Paid order.
-              Default Day. */}
+          {/* Leave Unit Configuration (e4980382 → dc3ec3c6): Day/Hour select sits BEFORE Paid, mirroring the
+              edit form's Leave Unit → Paid order. Default Day. */}
           <Field label={t('leaveUnitLabel')}>
             <select name="leaveUnit" defaultValue="day" className={inputCls}>
               <option value="day">{t('leaveUnitDay')}</option>
               <option value="hour">{t('leaveUnitHour')}</option>
             </select>
           </Field>
-          {/* dc3ec3c6: Paid adopts the captioned Field + right-aligned checkbox pattern the edit form uses
-              (components/leave-type-panel.tsx), so it gets the same small grey caption as its neighbours and an
-              explicit aria-label instead of relying on the old bare wrapping <label>. defaultChecked stays —
-              dropping it would silently flip every new leave type's default from Paid to Unpaid. */}
-          <Field label={t('paidLabel')} className="justify-self-end">
+          {/* dc3ec3c6: Paid keeps the captioned Field + explicit aria-label pattern the edit form uses
+              (components/leave-type-panel.tsx). The old justify-self-end right-pin was a page-row concern
+              (it sat beside the Add button); in the dialog grid it aligns naturally with its neighbours.
+              defaultChecked stays — dropping it would silently flip every new type's default from Paid to
+              Unpaid. */}
+          <Field label={t('paidLabel')}>
             <div className="flex h-9 items-center">
               <input type="checkbox" name="paid" defaultChecked aria-label={t('paidLabel')} className="size-4 rounded" />
             </div>
           </Field>
-          {/* 750732c3 → a9c5870a: on the sm two-row split, sm:col-start-6 still pins Add at the right edge of
-              row 2 under Status. From lg the explicit template gives Add its own content-sized column at the end
-              of the single row, so lg:col-start-auto releases the pin and it just flows into place. On mobile
-              (grid-cols-1) col-start has no effect; everything stacks unchanged. */}
-          <button className={`${btnPrimary} sm:col-start-6 lg:col-start-auto`}>{t('addType')}</button>
+          {/* 8cc268c4: the standard modal footer — Cancel (closes the dialog without saving, via the
+              workspace-exported Dialog.Close wrapper) and Save (posts createLeaveTypeAction, whose redirect
+              carries #type-<new id> so the workspace selects the new type and dismisses the dialog). */}
+          <div className="col-span-full mt-1 flex justify-end gap-2">
+            <AddLeaveTypeCancel>{t('cancel')}</AddLeaveTypeCancel>
+            <button className={btnPrimary}>{t('save')}</button>
+          </div>
         </form>
           }
         />
@@ -494,39 +766,10 @@ export default async function LeaveEntitlementsPage({
         </p>
       </Card>
 
-      {/* ADR-0041 2E + Grade Management (728a7db6): the grade master — Code | Name | Rank | Status | Action
-          table with Edit / Archive↔Unarchive / Delete. Grade-scoped leave policies reference these grades.
-          Feedback 03557e76: the whole section folds via its heading (details/summary, like the Application
-          Rules tab's Advanced disclosure). Starts CLOSED so a long grade list no longer forces scrolling past
-          it; the count stays visible on the heading, and the choice persists per-browser via cookie. Purely
-          presentational — GradeCatalog and its actions are untouched. */}
-      <Card>
-        <CollapsibleCardSection
-          title={t('gradesTitle')}
-          count={grades.length}
-          toggleLabel={t('gradesToggle')}
-          cookieKey={GRADES_OPEN_COOKIE}
-          defaultOpen={gradesOpen}
-        >
-          <p className="px-4 pt-3 pb-1 text-xs text-muted-foreground">{t('gradesHelp')}</p>
-          <GradeCatalog
-            grades={grades.map((g) => ({
-              id: g.id,
-              code: g.code,
-              name: g.name,
-              rank: g.rank,
-              archived: g.archivedAt != null,
-              inUse: g.inUse,
-            }))}
-            actions={{
-              create: createJobGradeAction,
-              update: updateJobGradeAction,
-              archive: archiveJobGradeAction,
-              delete: deleteJobGradeAction,
-            }}
-          />
-        </CollapsibleCardSection>
-      </Card>
+      {/* ADR-0041 2E + Grade Management (728a7db6): the grade master no longer sits here as a standalone
+          page-bottom section — 7b945408 moved it (fold, cookie and all) into each type's Entitlement step,
+          Benefit Schemes sub-step (the gradesSection slot above), joining the grade-group → scheme chain
+          it feeds. */}
     </div>
   );
 }

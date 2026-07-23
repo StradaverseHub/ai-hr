@@ -54,6 +54,11 @@ const PII_FIELDS: PiiField[] = [
   { key: 'correspondenceCity', table: 'person', statutoryLocked: false, scopes: ['contact'] },
   { key: 'correspondenceState', table: 'person', statutoryLocked: false, scopes: ['contact'] },
   { key: 'correspondenceCountry', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  // bf953339 — Home + Correspondence phone pair (migration 0304); contact PII, erasable immediately like
+  // the existing `phone` (mobile) column, never statutory-locked.
+  { key: 'homePhone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'correspondenceMobilePhone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'correspondenceHomePhone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
   { key: 'emergencyContactRelationship', table: 'person', statutoryLocked: false, scopes: ['contact'] },
   { key: 'emergencyContactPhone2', table: 'person', statutoryLocked: false, scopes: ['contact'] },
   { key: 'emergencyContactAddress', table: 'person', statutoryLocked: false, scopes: ['contact'] },

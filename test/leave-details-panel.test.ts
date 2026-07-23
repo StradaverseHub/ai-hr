@@ -2,20 +2,27 @@
  * Leave Details Side Panel (feedback 584edf44) — configurable Calculation-Breakdown-Display framework.
  *
  * DB-free / jsdom-free guard (the suite has no DOM runner). It proves the item's CORE property: the panel is
- * driven by a DECLARATIVE descriptor (entitlement-panel-config.ts) covering the reporter's seven sections in
+ * driven by a DECLARATIVE descriptor (entitlement-panel-config.ts) covering the reporter's sections in
  * order, each field either PICKING an already-computed value (no hardcoded formula) or — for a not-yet-mapped
  * label — carrying NO `select` so the panel renders a placeholder. Plus source guards that the inline expand
  * became a Radix right side-sheet, the ?asOf= form was preserved, ESS-view + visual behaviour survives, and
- * both call sites feed the new §1 summary / §5 upcoming / visual props.
+ * both call sites feed the new §1 summary / visual props.
+ *
+ * Sync Employee Leave View Configuration (feedback 11876072): the §5 Upcoming Leave section is REMOVED from
+ * the panel (and its `upcomingApprovedLeave` toggle from core/ess-view.ts), and the admin ESS-view checklist
+ * is now GROUPED by the panel's own sections via ESS_VIEW_CHECKLIST_GROUPS — the drift guards below assert
+ * the grouping is derived from ENTITLEMENT_PANEL_SECTIONS and covers every configurable key exactly once.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   ENTITLEMENT_PANEL_SECTIONS,
+  ESS_VIEW_CHECKLIST_GROUPS,
   deriveSummaryBalance,
   type PanelData,
 } from '../components/leave/entitlement-panel-config';
+import { ESS_VIEW_COMPONENT_KEYS } from '../core/ess-view';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -40,20 +47,18 @@ const DATA: PanelData = {
   },
   // §1 Balance (877f2f37) = (available 15 + carryForwardRemaining 3 + otherAdjustments 4) − taken 2 − forfeited 1 = 19.
   summary: { available: 15, taken: 2, pending: 1, ytdEntitled: 12, balance: 19 },
-  upcoming: [{ startDate: '2026-06-01', endDate: '2026-06-03', days: 3, durationType: 'full_day' }],
 };
 
-describe('entitlement-panel-config: sections in order (feedback 1dd4d827 removed §6 Transaction History)', () => {
-  it('no longer declares the §6 transactions or §2 entitlement sections; calcBreakdown promoted to order 2', () => {
+describe('entitlement-panel-config: sections in order (1dd4d827 removed §6, 11876072 removed §5)', () => {
+  it('no longer declares the §6 transactions, §2 entitlement or §5 upcoming sections; calcBreakdown at order 2', () => {
     const keys = ENTITLEMENT_PANEL_SECTIONS.map((s) => s.key);
-    // §6 Transaction History (1dd4d827) and §2 Entitlement Breakdown (e503f284) are both removed; the remaining
-    // five descriptor entries keep their declared order values (array order is unchanged: calcBreakdown was
-    // re-numbered from 7 to 2 in place).
+    // §6 Transaction History (1dd4d827), §2 Entitlement Breakdown (e503f284) and §5 Upcoming Leave (11876072)
+    // are all removed; the remaining four descriptor entries keep their declared order values (array order is
+    // unchanged: calcBreakdown was re-numbered from 7 to 2 in place).
     expect(keys).toEqual([
       'summary',
       'utilization',
       'adjustments',
-      'upcoming',
       'calcBreakdown',
     ]);
     // e503f284: §2 "Entitlement Breakdown" is gone and §7 "Entitlement Calculation Breakdown" now sorts to
@@ -62,19 +67,21 @@ describe('entitlement-panel-config: sections in order (feedback 1dd4d827 removed
     const byKey = Object.fromEntries(ENTITLEMENT_PANEL_SECTIONS.map((s) => [s.key, s]));
     expect(byKey.calcBreakdown.order).toBe(2);
     const sorted = [...ENTITLEMENT_PANEL_SECTIONS].sort((a, b) => a.order - b.order).map((s) => s.key);
-    expect(sorted).toEqual(['summary', 'calcBreakdown', 'utilization', 'adjustments', 'upcoming']);
-    // Universal removal: no leave type / ESS config can re-surface it — the descriptor entry is gone entirely.
+    expect(sorted).toEqual(['summary', 'calcBreakdown', 'utilization', 'adjustments']);
+    // Universal removals: no leave type / ESS config can re-surface either — the descriptor entries are gone.
     expect(keys).not.toContain('transactions');
-    expect(ENTITLEMENT_PANEL_SECTIONS.some((s) => s.kind === 'transactions')).toBe(false);
+    expect(keys).not.toContain('upcoming');
   });
 
-  it('maps the §5 upcoming section to its special render kind (transactions kind no longer used)', () => {
+  it('11876072: the Upcoming Leave toggle is gone from the closed ess-view key list too', () => {
+    // The §5 section AND its per-type toggle are removed together — a stored legacy `upcomingApprovedLeave`
+    // entry is ignored on read (resolveEssView drops unknown keys; asserted in leave-ess-view-config.test.ts).
+    expect(ESS_VIEW_COMPONENT_KEYS).not.toContain('upcomingApprovedLeave');
+    // The remaining section-level gate is unchanged.
     const byKey = Object.fromEntries(ENTITLEMENT_PANEL_SECTIONS.map((s) => [s.key, s]));
-    expect(byKey.upcoming.kind).toBe('upcoming');
-    // Every remaining section carries an ess-view gating key (the closed allow-list from core/ess-view.ts).
-    expect(byKey.upcoming.essKey).toBe('upcomingApprovedLeave');
     expect(byKey.calcBreakdown.essKey).toBe('entitlementCalcBreakdown');
     expect(byKey.transactions).toBeUndefined();
+    expect(byKey.upcoming).toBeUndefined();
   });
 
   it('a future breakdown line is one descriptor entry (fields carry key + labelKey, no JSX)', () => {
@@ -173,8 +180,6 @@ describe('Leave Details panel i18n: every descriptor label resolves in all 6 loc
     'explanationResult',
     'panelSubtitle',
     'close',
-    'noUpcoming',
-    'daysCount',
     'noExpiry',
     'viewBreakdown',
   ];
@@ -233,26 +238,86 @@ describe('Leave Details panel: the inline expand became a Radix right side-sheet
     // (data.transactions still powers the /leave Leave History table.)
   });
 
+  it('feedback 11876072: no longer renders an Upcoming Leave list (renderer + dispatch + prop removed)', () => {
+    // Presentation-only removal — the §5 renderer, its dispatch branch and the `upcoming` prop are gone.
+    expect(panel.includes('renderUpcoming')).toBe(false);
+    expect(panel).not.toMatch(/kind === 'upcoming'/);
+    expect(panel.includes('UpcomingLeaveItem')).toBe(false);
+    // The adapter no longer threads an upcoming list either.
+    expect(adapter.includes('upcoming')).toBe(false);
+    // Approved-future requests are untouched data — the /leave history list still shows them.
+  });
+
   it('EntitlementBreakdown adapter delegates to LeaveDetailsPanel + re-adds otherAdjustments', () => {
     expect(adapter.includes('LeaveDetailsPanel')).toBe(true);
     expect(adapter.includes('otherAdjustments')).toBe(true);
   });
 });
 
-describe('Leave Details panel: both call sites feed §1 summary / §5 upcoming / visual', () => {
+describe('Leave Details panel: both call sites feed §1 summary / visual (upcoming removed, 11876072)', () => {
   // a7cbd895 (My Absence): the /me Leave tab (cards + secondary rows) moved to /leave, so the ESS call
   // site is now app/leave/page.tsx; the admin personnel page is unchanged.
   const PAGES = ['/app/leave/page.tsx', '/app/admin/personnel/[employmentId]/page.tsx'] as const;
   for (const p of PAGES) {
     const src = read(p);
-    it(`${p} passes summary + upcoming + visual to EntitlementBreakdown`, () => {
+    it(`${p} passes summary + visual to EntitlementBreakdown — and no upcoming list (11876072)`, () => {
       expect(src.includes('summary={{')).toBe(true);
-      expect(src.includes('upcoming={')).toBe(true);
       expect(src.includes('visual={{')).toBe(true);
-    });
-    it(`${p} derives §5 upcoming as approved + future for this type`, () => {
-      expect(src).toMatch(/status === 'approved'/);
-      expect(src).toMatch(/startDate > today/);
+      // 11876072: the §5 Upcoming Leave section is removed, so no call site builds or passes an upcoming prop.
+      expect(src.includes('upcoming={')).toBe(false);
+      expect(src.includes('upcoming:')).toBe(false);
     });
   }
+});
+
+describe('Admin ESS-view checklist mirrors the employee panel sections (feedback 11876072)', () => {
+  it('ESS_VIEW_CHECKLIST_GROUPS covers every configurable key exactly once (drift guard)', () => {
+    const flat = ESS_VIEW_CHECKLIST_GROUPS.flatMap((g) => g.keys);
+    // Coverage: every key of the closed allow-list appears, and none appears twice — nothing orphaned,
+    // nothing double-listed, whatever future edits do to ENTITLEMENT_PANEL_SECTIONS.
+    expect([...flat].sort()).toEqual([...ESS_VIEW_COMPONENT_KEYS].sort());
+    expect(new Set(flat).size).toBe(flat.length);
+  });
+
+  it('groups derive from ENTITLEMENT_PANEL_SECTIONS: same sections, same order, orphans in a trailing Other', () => {
+    const sectionKeys = [...ENTITLEMENT_PANEL_SECTIONS]
+      .sort((a, b) => a.order - b.order)
+      .filter((s) => s.essKey != null || (s.fields ?? []).some((f) => f.essKey != null))
+      .map((s) => s.key);
+    const groupKeys = ESS_VIEW_CHECKLIST_GROUPS.map((g) => g.key);
+    expect(groupKeys).toEqual([...sectionKeys, 'other']);
+    // Section groups reuse the panel's OWN heading key; only the orphan group has none (admin-side label).
+    for (const g of ESS_VIEW_CHECKLIST_GROUPS) {
+      if (g.key === 'other') expect(g.labelKey).toBeNull();
+      else expect(g.labelKey).toBe(ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === g.key)!.labelKey);
+    }
+  });
+
+  it('current grouping reads exactly like the panel: summary → calcBreakdown → utilization → adjustments → other', () => {
+    expect(ESS_VIEW_CHECKLIST_GROUPS.map((g) => ({ key: g.key, keys: g.keys }))).toEqual([
+      { key: 'summary', keys: ['ytdEntitled', 'taken', 'pendingApproval', 'available'] },
+      { key: 'calcBreakdown', keys: ['entitlementCalcBreakdown'] },
+      { key: 'utilization', keys: ['unplanned', 'overutilized'] },
+      { key: 'adjustments', keys: ['adjustment'] },
+      // Keys no panel section references (they gate other surfaces, e.g. the balance-table columns) are kept
+      // configurable under "Other" so nothing is orphaned by the regrouping.
+      {
+        key: 'other',
+        keys: ['entitlementToDate', 'broughtForward', 'expiredBroughtForward', 'carryForwardExpiry', 'forfeited', 'transactionHistory'],
+      },
+    ]);
+  });
+
+  it('the admin checklist renders the GROUPS (with panel headings), not the flat key list', () => {
+    const src = read('/components/leave-type-panel.tsx');
+    expect(src.includes('ESS_VIEW_CHECKLIST_GROUPS')).toBe(true);
+    // The flat render over ESS_VIEW_COMPONENT_KEYS is gone from the checklist.
+    expect(src.includes('ESS_VIEW_COMPONENT_KEYS')).toBe(false);
+    // Headings reuse the employee panel's own section titles (leave.breakdown namespace) + the Other label.
+    expect(src.includes("useTranslations('leave.breakdown')")).toBe(true);
+    expect(src.includes("t('essView.groupOther')")).toBe(true);
+    // The persistence contract is untouched: same marker + per-key checkbox names.
+    expect(src.includes('name="essView"')).toBe(true);
+    expect(src.includes('essView_${key}')).toBe(true);
+  });
 });

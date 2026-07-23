@@ -20,9 +20,9 @@
 import { and, asc, eq, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { employment, person, profileOption } from '../db/schema';
+import { employeeDependent, employment, person, profileOption } from '../db/schema';
 import { MY_STATES } from '../localization/my/holidays';
-import { DEPENDENT_RELATIONSHIPS } from './dependents';
+import { DEPENDENT_RELATIONSHIP_CATEGORY, DEPENDENT_RELATIONSHIPS } from './dependents';
 
 export const PROFILE_OPTION_CATEGORIES = [
   'religion',
@@ -49,6 +49,12 @@ export const PROFILE_OPTION_CATEGORIES = [
   'team',
   'base',
   'category',
+  // ea36b7fa — Family & Dependents consolidation: the Family tab's Relationship dropdown becomes centrally
+  // maintainable here. DISTINCT from the 'relationship' category above (which governs the emergency-contact
+  // field on person) — this one governs employee_dependent.relationship. The five built-in values
+  // (DEPENDENT_RELATIONSHIPS) are seeded below and stay ALWAYS valid server-side; custom values behave like
+  // 'other' for field/relief logic. Existing tenants are topped up by migration 0303.
+  DEPENDENT_RELATIONSHIP_CATEGORY,
 ] as const;
 export type ProfileOptionCategory = (typeof PROFILE_OPTION_CATEGORIES)[number];
 
@@ -174,6 +180,12 @@ const CATEGORY_DEFAULTS: Record<ProfileOptionCategory, string[]> = {
   team: [],
   base: [],
   category: [],
+  // ea36b7fa — seeded FROM the built-in enum so catalog `value` (the contract with stored
+  // employee_dependent.relationship data) always matches the lowercase stored form. Kept BYTE-IDENTICAL
+  // with the 0305_dependent_relationship_options.sql top-up seed (this category post-dates the 0180 seed,
+  // so its seed site is 0303, not 0180). The Family tab renders the built-ins via static i18n labels, so
+  // the lowercase value doubling as the default label only shows in the System Labels grid (editable there).
+  dependentRelationship: [...DEPENDENT_RELATIONSHIPS],
 };
 
 /**
@@ -426,6 +438,16 @@ export async function deleteProfileOption(ctx: SessionContext, id: string): Prom
         .select({ n: sql<number>`count(*)::int` })
         .from(employment)
         .where(or(...empCols.map((c) => eq(employment[c] as never, opt.value))));
+      usedCount += Number(u?.n ?? 0);
+    }
+    // ea36b7fa — the dependentRelationship category governs employee_dependent.relationship (a third table
+    // leg). Archived rows still store the value, so they count too — deletion must never orphan a stored
+    // relationship from its catalog entry; deactivate instead.
+    if (opt.category === DEPENDENT_RELATIONSHIP_CATEGORY) {
+      const [u] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(employeeDependent)
+        .where(eq(employeeDependent.relationship, opt.value));
       usedCount += Number(u?.n ?? 0);
     }
     if (usedCount > 0) {

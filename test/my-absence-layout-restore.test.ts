@@ -1,19 +1,24 @@
 /**
- * My Absence layout restoration (feedback 56a0deb9) — static-source guard.
+ * My Absence layout restoration (feedback 56a0deb9) + Leave History card redesign (feedback 657962ec)
+ * — static-source guard.
  *
- * "Complete Migration of Leave Components from My Profile to My Absence." Layout-only change on /leave:
+ * 56a0deb9 pinned the restored /leave layout; 657962ec re-pins the SELF-SERVICE history half of it:
  *   1. the detailed Current Balance card folds behind its header (CollapsibleCardSection — CLOSED by
  *      default, cookie-persisted, SSR-read so the first paint is correct);
  *   2. the pre-R54 secondary-type "Other leave" grouped panels (Family & Personal / Education / Other)
  *      are restored, each row keeping its View Breakdown side-sheet link;
- *   3. for the SELF-SERVICE view that breakdown card and the request history sit side by side
- *      (grid lg:grid-cols-2, stacking on small screens), the history reusing the old /me compact list
- *      style; HR admins keep the full-width sortable/paginated table.
+ *   3. for the SELF-SERVICE view the breakdown card and the leave history sit side by side
+ *      (grid lg:grid-cols-2, stacking on small screens) — the history now a COMPACT CARD list
+ *      (657962ec): each record a card with type / date range / duration / status badge and a
+ *      "View details" trigger opening a slide-out panel that carries the session, stage, per-date
+ *      outcomes, document link and the Edit / Cancel / Cancel-dates actions. Cards order newest first
+ *      by leave start date; both columns share an equal-height lg cap and scroll within themselves.
+ *      HR admins keep the full-width sortable/paginated table.
  * NO leave business logic changes: balances, breakdown calculations, history records, filters, search
  * and permissions all flow from the same reads/actions as before.
  *
  * DB-free source guard (precedent: test/my-absence-nav.test.ts): the RSC page can't render in this
- * suite, so the fold wiring, the restored section, the grid split and the i18n keys are asserted
+ * suite, so the fold wiring, the restored section, the card/panel split and the i18n keys are asserted
  * statically.
  */
 import { readFileSync } from 'node:fs';
@@ -26,7 +31,15 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const leavePage = read('app/leave/page.tsx');
 const groupsCmp = read('components/leave/secondary-leave-groups.tsx');
 const section = read('components/collapsible-card-section.tsx');
+const historyCmp = read('components/leave/leave-history-cards.tsx');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
+
+/** The self-service render branch: breakdown + history columns. */
+const selfBranch = () =>
+  leavePage.slice(leavePage.indexOf('{!admin && ('), leavePage.indexOf('{admin && secondaryBreakdownCard()'));
+/** The RSC entries builder that feeds LeaveHistoryCards (pre-translated data + action/outcome nodes). */
+const entriesBuilder = () =>
+  leavePage.slice(leavePage.indexOf('const historyEntries'), leavePage.indexOf('{!admin && ('));
 
 describe('56a0deb9 §1: the Current Balance card is collapsible, closed by default, cookie-persisted', () => {
   it('wraps the balance card body in CollapsibleCardSection with the leave_balance_open cookie', () => {
@@ -115,16 +128,15 @@ describe('56a0deb9 §2: the secondary-type "Other leave" breakdown section is re
 
 describe('56a0deb9 §3: breakdown + history side by side for self-service; admin keeps the table', () => {
   it('the self-service branch pairs the two cards in a responsive lg:grid-cols-2 grid', () => {
-    const self = leavePage.slice(leavePage.indexOf('{!admin && ('), leavePage.indexOf('{admin && secondaryBreakdownCard}'));
+    const self = selfBranch();
     expect(self).toContain('lg:grid-cols-2');
-    expect(self).toContain('{secondaryBreakdownCard}');
+    expect(self).toContain('{secondaryBreakdownCard(');
     expect(self).toContain('data-tour="leave-requests"');
   });
 
-  it('the self-service history is the old compact list, keeping every ported affordance', () => {
-    const self = leavePage.slice(leavePage.indexOf('{!admin && ('), leavePage.indexOf('{admin && secondaryBreakdownCard}'));
+  it('the self-service history keeps every ported affordance — now via the card entries builder', () => {
+    const builder = entriesBuilder();
     for (const kept of [
-      "t('myRequestsTitle')",
       "tMe('leaveStatus.partiallyApproved')", // partial badge
       "tMe('stageManager')", // pending stage line
       "tMe('viewDocument')", // own attachment link
@@ -133,14 +145,14 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
       '<CancelLeaveDialog',
       '<CancelDatesDialog',
       '<LeaveDateOutcome',
-      "t('requestsEmpty')",
     ]) {
-      expect(self.includes(kept), kept).toBe(true);
+      expect(builder.includes(kept), kept).toBe(true);
     }
+    expect(selfBranch().includes("t('requestsEmpty')")).toBe(true);
   });
 
   it('the admin path keeps the full-width sortable/paginated table below its own breakdown card', () => {
-    const adminPart = leavePage.slice(leavePage.indexOf('{admin && secondaryBreakdownCard}'));
+    const adminPart = leavePage.slice(leavePage.indexOf('{admin && secondaryBreakdownCard()'));
     expect(adminPart).toContain('data-tour="leave-requests"');
     expect(adminPart).toContain("sortableTh('name'");
     expect(adminPart).toContain('<AdminCancelLeaveDialog');
@@ -150,5 +162,90 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
 
   it('both branches carry the leave-requests tour anchor (one renders per role)', () => {
     expect(leavePage.split('data-tour="leave-requests"').length - 1).toBe(2);
+  });
+});
+
+describe('657962ec §1: the self-service history renders as compact cards, newest first, with a count heading', () => {
+  it('replaces the dense list with the LeaveHistoryCards island fed by pre-built entries', () => {
+    const self = selfBranch();
+    expect(self).toContain('<LeaveHistoryCards entries={historyEntries} locale={locale} />');
+    // The count heading ("My leave history (N)") — i18n with {count}.
+    expect(self).toContain("t('historyCount', { count: total })");
+    // The old heading pair is gone.
+    expect(leavePage.includes("t('myRequestsTitle')")).toBe(false);
+  });
+
+  it('orders cards newest first by leave START date, explicitly (not the read’s createdAt order)', () => {
+    expect(leavePage).toMatch(
+      /const selfHistory = admin \? \[\] : \[\.\.\.history\]\.sort\(\(a, b\) => b\.startDate\.localeCompare\(a\.startDate\)\)/,
+    );
+    // The per-date outcome window follows the card order (5 newest by start date).
+    expect(leavePage).toMatch(/selfHistory\.slice\(0, 5\)\.map/);
+    expect(leavePage.includes('leaveRequestDateBreakdown(session, r.id)')).toBe(true);
+  });
+
+  it('the card face carries ONLY the essentials — actions, document link and outcomes are panel-only', () => {
+    const cardPart = historyCmp.slice(
+      historyCmp.indexOf('── Card list'),
+      historyCmp.indexOf('── Slide-out detail panel'),
+    );
+    expect(cardPart).toContain("t('viewDetails')");
+    expect(cardPart).toContain('statusLabel'); // status badge
+    expect(cardPart).toContain('durationLine'); // duration line
+    for (const absent of ['.actions', '.dateOutcome', '.documentHref', '.stageLabel', '.cancelPendingLabel']) {
+      expect(cardPart.includes(absent), `on card face: ${absent}`).toBe(false);
+    }
+  });
+
+  it('the detail panel is a slide-out side-sheet carrying the full record + the relocated actions', () => {
+    const panelPart = historyCmp.slice(historyCmp.indexOf('── Slide-out detail panel'));
+    // LeaveDetailsPanel pattern: right-anchored Radix side sheet.
+    expect(panelPart).toContain('inset-y-0 right-0');
+    expect(panelPart).toContain('<Dialog.Portal>');
+    for (const kept of [
+      "t('details.title')",
+      "t('details.leaveType')",
+      "t('details.duration')",
+      "t('details.session')",
+      "t('details.status')",
+      "t('details.attachment')",
+      'selected.stageLabel',
+      'selected.cancelPendingLabel',
+      'selected.documentHref',
+      'selected.dateOutcome',
+      'selected.actions',
+    ]) {
+      expect(panelPart.includes(kept), `in panel: ${kept}`).toBe(true);
+    }
+    // The RSC hands the panel the SAME action dialogs the old list rendered inline (same server actions).
+    const builder = entriesBuilder();
+    expect(builder).toContain('submitAction={editLeaveAction}');
+    expect(builder).toContain('submitAction={cancelOwnLeaveAction}');
+    expect(builder).toContain('submitAction={requestLeaveCancellationAction}');
+  });
+
+  it('both columns share the equal-height lg cap and scroll within themselves', () => {
+    expect(leavePage).toContain("const COLUMN_CAP = 'lg:max-h-[42rem]'");
+    const self = selfBranch();
+    // Breakdown column: capped card scrolling as one body.
+    expect(self).toContain('{secondaryBreakdownCard(`${COLUMN_CAP} lg:overflow-y-auto`)}');
+    // History column: capped flex card, header fixed, body scrolling.
+    expect(self).toContain('${COLUMN_CAP}`} data-tour="leave-requests"');
+    expect(self).toContain('min-h-0 flex-1 overflow-y-auto');
+  });
+
+  it('ships the card + detail-view keys in every locale', () => {
+    for (const loc of LOCALES) {
+      const leave = (JSON.parse(read(`messages/${loc}.json`)) as { leave: Record<string, unknown> }).leave;
+      expect(leave.historyCount, `${loc} leave.historyCount`).toContain('{count}');
+      expect(leave.viewDetails, `${loc} leave.viewDetails`).toBeTruthy();
+      expect(leave.durationLine, `${loc} leave.durationLine`).toContain('{count');
+      const details = leave.details as Record<string, unknown>;
+      for (const k of ['title', 'leaveType', 'duration', 'session', 'status', 'attachment']) {
+        expect(details?.[k], `${loc} leave.details.${k}`).toBeTruthy();
+      }
+      // The superseded heading key is gone everywhere (replaced by historyCount).
+      expect(leave.myRequestsTitle, `${loc} leave.myRequestsTitle removed`).toBeUndefined();
+    }
   });
 });

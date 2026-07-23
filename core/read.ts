@@ -13,6 +13,7 @@ import {
   POLICY_RECALC_REASON_PREFIX,
   earnedCycleStart,
   isEarnedMethod,
+  resolveLeaveYearCycle,
   isLeaveEligible,
   resolveCarryBreakdown,
   resolveGradePolicy,
@@ -481,6 +482,9 @@ export function listLeaveTypes(
         // Leave Unit Configuration (e4980382): feeds the admin panel's "Leave Unit" select + the create-form
         // default (MUST be projected or the select renders at its default on every reload). 'day' | 'hour'.
         leaveUnit: leaveType.leaveUnit,
+        // Leave Year Type override (e1a51aea): feeds the General step's "Leave Year Type" select (MUST be
+        // projected or the select renders at its company-default on every reload). null ⇒ company cycle.
+        yearCycleOverride: leaveType.yearCycleOverride,
         // Probation eligibility (d6bdbd55): feeds the admin panel's Probation select in the eligibility editor
         // (MUST be projected or the select renders at its default on every reload). null ⇒ no restriction.
         probationEligibility: leaveType.probationEligibility,
@@ -1348,6 +1352,11 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         correspondenceCity: person.correspondenceCity,
         correspondenceState: person.correspondenceState,
         correspondenceCountry: person.correspondenceCountry,
+        // bf953339 — Mobile + Home phone pair (migration 0304): `phone` above IS the mobile number;
+        // homePhone sits beside it, and the Correspondence block carries its own independent pair.
+        homePhone: person.homePhone,
+        correspondenceMobilePhone: person.correspondenceMobilePhone,
+        correspondenceHomePhone: person.correspondenceHomePhone,
         emergencyContactName: person.emergencyContactName,
         emergencyContactRelationship: person.emergencyContactRelationship,
         emergencyContactPhone: person.emergencyContactPhone,
@@ -1729,7 +1738,7 @@ export function leaveEntitlementBreakdown(
     // here (employment join returns nothing) → a defined empty state, never an error or a leak.
     const [[type], [emp]] = await Promise.all([
       tx
-        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations })
+        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations, yearCycleOverride: leaveType.yearCycleOverride })
         .from(leaveType)
         .where(eq(leaveType.id, leaveTypeId))
         .limit(1),
@@ -1742,7 +1751,9 @@ export function leaveEntitlementBreakdown(
     ]);
     if (!type || !emp) return null;
 
-    const cycleStart = earnedCycleStart(emp.hiredOn, asOf, emp.leaveCycle);
+    // Leave Year Type override (e1a51aea): this TYPE's effective cycle — a per-type 'a2a'/'c2c' override
+    // wins over the company cycle; null falls back to the company cycle (byte-identical to before).
+    const cycleStart = earnedCycleStart(emp.hiredOn, asOf, resolveLeaveYearCycle(type.yearCycleOverride, emp.leaveCycle));
 
     // Active ANNUAL/standing policy versions for this type as at asOf, resolved to the employee's grade.
     const policies = await tx

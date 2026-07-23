@@ -8,7 +8,6 @@ import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveYearRuleDialog } from '@/components/leave/leave-year-rule-dialog';
 import { LeaveYearEditDialog } from '@/components/leave/leave-year-edit-dialog';
 import {
-  setLeaveHalfDayFullDeductionAction,
   setCompanyLeaveCycleAction,
   upsertLeaveYearConfigAction,
   setLeaveYearStatusAction,
@@ -23,8 +22,13 @@ import {
  * (supporting-document requirements, backdated-leave limits) stay on the Leave Types tab inside
  * `LeaveTypePanel`, because they are configured per leave type and rely on that panel's tri-state
  * markers (`document=1`, `backdating=1`) — moving them would risk silently wiping a column on save.
- * The per-company half-day-deduction toggle re-homes here. No action/service change; `requireAdmin()`
- * guard preserved verbatim.
+ * No action/service change; `requireAdmin()` guard preserved verbatim.
+ *
+ * R64 08bc6841 — the per-company half-day-deduction toggle (which 0d147b78 re-homed HERE) RELOCATED again,
+ * into the Condition step's Leave Application Rules grid on the Entitlements tab (one card among the
+ * per-type rule groups, marked applies-company-wide). Single home: the card is GONE from this page; the
+ * setLeaveHalfDayFullDeduction write is unchanged, the action now redirects back to the Entitlements route
+ * (the R45 cc816207 / R61 d778d2d3 relocation precedent).
  *
  * R45 cc816207 — the Leave Year card RELOCATED here from the Entitlements tab. A leave year controls WHEN
  * employees may apply for an upcoming year, not how much entitlement they earn, so HR expects it next to the
@@ -297,42 +301,8 @@ export default async function LeaveApplicationRulesPage({
         </ul>
       </Card>
 
-      {/* Feedback request 31474452: per-company half-day leave-deduction toggle. */}
-      <Card>
-        <SectionHeader title={t('halfDayDeductionTitle')} count={companies.length} />
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('halfDayDeductionHelp')}</p>
-        <p className="px-4 pb-1 text-xs text-muted-foreground">{t('halfDayDeductionFrozenNote')}</p>
-        <ul className="divide-y divide-border">
-          {companies.map((c) => (
-            <li key={c.id} className="px-4 py-3">
-              <form
-                action={setLeaveHalfDayFullDeductionAction}
-                className="flex flex-wrap items-center justify-between gap-3"
-              >
-                <input type="hidden" name="companyId" value={c.id} />
-                <div className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-foreground">{c.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {c.leaveHalfDayFullDeduction ? t('halfDayDeductionOn') : t('halfDayDeductionOff')}
-                  </span>
-                </div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    name="enabled"
-                    defaultChecked={!!c.leaveHalfDayFullDeduction}
-                    className="size-4 rounded"
-                  />
-                  {t('halfDayDeductionToggleLabel')}
-                </label>
-                <Button type="submit" variant="outline" size="sm">
-                  {t('save')}
-                </Button>
-              </form>
-            </li>
-          ))}
-        </ul>
-      </Card>
+      {/* R64 08bc6841 — the per-company half-day-deduction Card (feedback 31474452) moved to the
+          Entitlements tab's Condition step (Leave Application Rules grid) — its single home now. */}
     </div>
   );
 }

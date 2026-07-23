@@ -80,7 +80,7 @@ import {
 } from '@/core/clocking-location';
 import { countEmployeesInScope } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
-import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaConfig } from '@/core/leave-formula';
+import { LEAVE_EXPLANATION_KEYS, type LeaveFormulaConfig } from '@/core/leave-formula';
 import { requireAdmin } from '@/lib/authz';
 import {
   createGradeGroup,
@@ -410,8 +410,9 @@ export async function createCostCenterAction(formData: FormData) {
 
 export async function createLeaveTypeAction(formData: FormData) {
   const s = await getSession();
+  let created: { id: string };
   try {
-    await createLeaveType(s, {
+    created = await createLeaveType(s, {
       code: String(formData.get('code') ?? '').trim().toUpperCase(),
       name: String(formData.get('name') ?? '').trim(),
       paid: formData.get('paid') === 'on',
@@ -424,9 +425,15 @@ export async function createLeaveTypeAction(formData: FormData) {
       leaveUnit: formData.get('leaveUnit') === 'hour' ? 'hour' : 'day',
     });
   } catch (e) {
-    fail(LEAVE, e);
+    // 8cc268c4: the add form lives in the Entitlements workspace's "Add Leave Type" dialog now, so both
+    // outcomes land back on the Entitlements tab (the old ok/fail(LEAVE) pointed at the read-only Types tab).
+    // The ?error= banner is mirrored inside the still-open dialog by the page.
+    fail(ENTITLEMENTS, e);
   }
-  ok(LEAVE);
+  // Success: carry the stay-on-save #type-<id> anchor (the 097de541 deep-link contract) so the workspace
+  // selects the just-created type and closes the add dialog.
+  revalidatePath(ENTITLEMENTS);
+  redirect(`${ENTITLEMENTS}#type-${created.id}`);
 }
 
 /** ADR-0038 carry-forward expiry: an empty month/day field means "no expiry" → null. */
@@ -714,6 +721,9 @@ export async function setCompanyLeaveCycleAction(formData: FormData) {
 
 /** Feedback request 31474452: set a company's half-day leave-deduction toggle (checkbox posts "on" or is
  *  absent — mirrors the existing checkbox-action convention in this file, e.g. autoAccrueOnApproval above). */
+// R64 08bc6841 — the half-day-deduction card's single home is now the Entitlements tab (the Condition
+// step's Leave Application Rules grid), so this action redirects THERE (the R45 cc816207 / R61 d778d2d3
+// relocation precedent). The setLeaveHalfDayFullDeduction write itself is unchanged.
 export async function setLeaveHalfDayFullDeductionAction(formData: FormData) {
   const s = await getSession();
   try {
@@ -722,9 +732,9 @@ export async function setLeaveHalfDayFullDeductionAction(formData: FormData) {
       enabled: formData.get('enabled') === 'on',
     });
   } catch (e) {
-    fail(LEAVE, e);
+    fail(ENTITLEMENTS, e);
   }
-  ok(LEAVE);
+  ok(ENTITLEMENTS);
 }
 
 /** ADR-0041 (2E): grade catalog — create + archive. */
@@ -1375,6 +1385,9 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // (marker) plus one checkbox per component (`essView_<key>`). An unchecked box does not post, so we build
   // the COMPLETE map from the closed key list (checked ⇒ true/visible, absent ⇒ false/hidden) and replace
   // the column wholesale. Any other sub-form save omits the marker ⇒ ess_view_config stays untouched.
+  // Consolidation (2bc2f2a3): the merged view-configuration sub-form posts BOTH markers (`essView=1` and
+  // `formula=1`) in ONE submit — selections land on ess_view_config, explanations on formula_explanations.
+  // The two tri-states stay independent so either marker alone still works.
   const touchEssView = fd.get('essView') === '1';
   const essViewFields = touchEssView
     ? {
@@ -1383,16 +1396,19 @@ export async function updateLeaveTypeAction(fd: FormData) {
         ) as EssViewConfig,
       }
     : {};
-  // Leave Entitlement Formula Management (79011509): the formula editor sub-form posts `formula=1` (marker)
-  // plus, per component, up to three free-text fields (`formula_<key>_description`, `formula_<key>_formula`,
-  // `formula_<key>_result`). We build the COMPLETE { key: entry } map from the closed component list and hand
-  // it to the service, which trims + drops blanks + normalises an all-blank map to null (clear). Any other
-  // sub-form save omits the marker ⇒ formula_explanations stays untouched (same tri-state guard as essView).
+  // Leave Entitlement Formula Management (79011509, consolidated by 2bc2f2a3): the merged view-configuration
+  // sub-form posts `formula=1` (marker) plus, per component, up to three free-text fields
+  // (`formula_<key>_description`, `formula_<key>_formula`, `formula_<key>_result`). We build the COMPLETE
+  // { key: entry } map from the closed key list — WIDENED (2bc2f2a3) from the 7 legacy calc-breakdown keys to
+  // LEAVE_EXPLANATION_KEYS (legacy 7 ∪ every ess-view key) so any configurable view item can be annotated; a
+  // key the form never rendered posts nothing ⇒ '' ⇒ dropped by the service, which trims + drops blanks +
+  // normalises an all-blank map to null (clear). Any other sub-form save omits the marker ⇒
+  // formula_explanations stays untouched (same tri-state guard as essView).
   const touchFormula = fd.get('formula') === '1';
   const formulaFields = touchFormula
     ? {
         formulaExplanations: Object.fromEntries(
-          LEAVE_FORMULA_COMPONENT_KEYS.map((key) => [
+          LEAVE_EXPLANATION_KEYS.map((key) => [
             key,
             {
               description: String(fd.get(`formula_${key}_description`) ?? ''),
@@ -1434,6 +1450,16 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const touchLeaveUnit = fd.get('leaveUnit') === '1';
   const leaveUnitFields = touchLeaveUnit
     ? { leaveUnit: (fd.get('leaveUnitValue') === 'hour' ? 'hour' : 'day') as 'day' | 'hour' }
+    : {};
+  // Leave Year Type override (e1a51aea): the General step's "Leave Year Type" sub-step posts `yearCycle=1`
+  // (marker) plus a `yearCycleValue` select ('' = company default ⇒ null | a2a | c2c; the a2c option is
+  // rendered disabled). The raw value is forwarded UNSANITISED so the service can reject 'a2c' (and any
+  // other unknown value) loudly with its specific "engine support coming" message — silently coercing here
+  // would store nothing and hide the error. Any other sub-form save omits the marker ⇒ tri-state untouched.
+  const touchYearCycle = fd.get('yearCycle') === '1';
+  const yearCycleRaw = String(fd.get('yearCycleValue') ?? '').trim();
+  const yearCycleFields = touchYearCycle
+    ? { yearCycleOverride: yearCycleRaw === '' ? null : yearCycleRaw }
     : {};
   // Leave Type Employee Visibility (7b11f1c1): its own sub-form posts `visibility=1` (marker) plus two
   // checkboxes — `visibleToEmployee` (whether the type shows on the /me Leave tab) and `employeeCanApply`
@@ -1508,6 +1534,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...dayTypeInclusionFields,
       ...visualFields,
       ...leaveUnitFields,
+      ...yearCycleFields,
       ...visibilityFields,
       ...placementFields,
       ...customMessageFields,

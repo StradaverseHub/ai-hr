@@ -72,9 +72,10 @@ import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-hist
 import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
-import { listDependents, eligibleChildReliefCount, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
+import { listDependents, eligibleChildReliefCount, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
 import { FamilyFormDialog } from '@/components/family-form-dialog';
+import { FamilyRelationshipFields } from '@/components/family-relationship-fields';
 import { listAssignablePolicies } from '@/core/payroll-policy';
 import { PAYMENT_METHODS } from '@/core/org';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
@@ -294,6 +295,8 @@ export default async function EmployeePage({
         team: [],
         base: [],
         category: [],
+        // ea36b7fa — Family tab Relationship catalog (admin-only surface; empty ⇒ built-in fallback).
+        dependentRelationship: [],
       } as Awaited<ReturnType<typeof listAllProfileOptions>>);
 
   // Family/Dependents (phase 1): render relationship/gender as STATIC literal i18n keys (a switch, not a
@@ -537,8 +540,15 @@ export default async function EmployeePage({
           <Field label={t('workEmail')}>
             <input name="primaryEmail" type="email" required defaultValue={emp.email} className={inputCls} />
           </Field>
+          {/* bf953339 — Phone renamed to Mobile Phone Number (label-only; the stored person.phone value is
+              untouched) with an optional Home Phone Number beside it. The Correspondence block below keeps
+              its OWN independent pair; the perm-/corr- prefixed ids let the "Same as Permanent Address"
+              island copy the pair alongside the seven address fields. */}
           <Field label={t('phone')}>
-            <input name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
+            <input id="perm-mobile-phone" name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
+          </Field>
+          <Field label={t('homePhone')}>
+            <input id="perm-home-phone" name="homePhone" defaultValue={emp.homePhone ?? ''} className={inputCls} />
           </Field>
           <Field label={t('personalEmail')}>
             <input name="personalEmail" type="email" defaultValue={emp.personalEmail ?? ''} className={inputCls} />
@@ -628,6 +638,15 @@ export default async function EmployeePage({
                 placeholder={t('optionNotSet')}
                 legacySuffix={t('optionLegacySuffix')}
               />
+            </Field>
+            {/* bf953339 — the Correspondence block's OWN Mobile/Home pair, independent of the main pair
+                above so the correspondence contact can differ. Copied by the "Same as Permanent Address"
+                island together with the address fields (perm-/corr- id pairs). */}
+            <Field label={t('phone')}>
+              <input id="corr-mobile-phone" name="correspondenceMobilePhone" defaultValue={emp.correspondenceMobilePhone ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('homePhone')}>
+              <input id="corr-home-phone" name="correspondenceHomePhone" defaultValue={emp.correspondenceHomePhone ?? ''} className={inputCls} />
             </Field>
           </div>
           <div className="sm:col-span-4 flex justify-end">
@@ -942,21 +961,52 @@ export default async function EmployeePage({
   ) : null;
 
   // ── FAMILY ─────────────────────────────────────────────────────────────────
-  // Personnel — Family & Dependents. 4535b733 enhancement: the flat register is partitioned server-side
-  // into three logical sections — Spouse / Children / Other Dependants. Item 5988053a replaced the
-  // Children section with a table view plus Add/Edit dialogs (FamilyFormDialog) and
-  // Delete-with-confirmation; item 33a5ce41 brought Spouse and Other Dependants onto the identical
-  // table + dialog pattern and added the read-only View dialog to all three sections. Admin-maintained
-  // (RLS is_admin write) and distinct from the emergency contact. Since R46 47146ea3, child rows DO feed
-  // employee_statutory_my.num_children when child_relief_mode === 'auto' (syncChildReliefFromFamily);
-  // 'manual' persons keep full human control. Spouse-only (marriage / spouse employment) and child-only
-  // (education / relief) fields render only in their own section.
-  const spouseDeps = dependents.filter((d) => d.relationship === 'spouse');
-  const childDeps = dependents.filter((d) => d.relationship === 'child');
-  const otherDeps = dependents.filter((d) => d.relationship !== 'spouse' && d.relationship !== 'child');
+  // Personnel — Family & Dependents Information. ea36b7fa: the three per-relationship sections (Spouse /
+  // Children / Other Dependants, from 4535b733 → 5988053a → 33a5ce41) are CONSOLIDATED into ONE card: a
+  // single table of every family member plus a single Add Family Member dialog where the Relationship is
+  // picked FIRST and the form adapts to it (FamilyRelationshipFields island swapping server-rendered field
+  // panels). Admin-maintained (RLS is_admin write) and distinct from the emergency contact. Since R46
+  // 47146ea3, child rows DO feed employee_statutory_my.num_children when child_relief_mode === 'auto'
+  // (syncChildReliefFromFamily); 'manual' persons keep full human control. Spouse-only (marriage / spouse
+  // employment) and child-only (education / relief) fields render only in their own panel; custom catalog
+  // relationship types get the standard panel (the server NULLs the gated columns for them anyway).
+  // Sort: spouse first, then children / parents / siblings, then other + custom types, then by
+  // relationship and name — one scannable list, stable across edits.
+  const relationshipRank = (r: string) =>
+    r === 'spouse' ? 0 : r === 'child' ? 1 : r === 'parent' ? 2 : r === 'sibling' ? 3 : 4;
+  const familyMembers = [...dependents].sort(
+    (x, y) =>
+      relationshipRank(x.relationship) - relationshipRank(y.relationship) ||
+      x.relationship.localeCompare(y.relationship) ||
+      x.fullName.localeCompare(y.fullName),
+  );
   // Multi-line inputs (residential / employer address) — same look as inputCls but taller, auto-height.
   const taCls = `${inputCls.replace('h-9', 'min-h-16')} py-2`;
   type FamilySection = 'spouse' | 'child' | 'other';
+  // Which field panel a relationship gets — mirrors core/dependents.ts extraColumnsForAdd: spouse and child
+  // have their own panels, EVERYTHING else (built-in or custom catalog type) gets the standard one.
+  const panelOf = (r: string): FamilySection => (r === 'spouse' ? 'spouse' : r === 'child' ? 'child' : 'other');
+  // ea36b7fa — the Relationship dropdown is catalog-backed (System Labels > Profile Options, category
+  // dependentRelationship). Built-in values keep their static i18n labels (6-locale coverage); custom
+  // values are data-labelled from the catalog. An unseeded/empty catalog falls back to the five built-ins,
+  // so the dropdown never goes blank. Deactivating an option hides it from NEW picks only — an edited row
+  // whose stored value is no longer active still renders (and re-saves) via the merge below.
+  const dependentRelationshipLabels = new Map(profileOptions.dependentRelationship.map((o) => [o.value, o.label]));
+  const familyRelationshipLabel = (r: string) =>
+    (DEPENDENT_RELATIONSHIPS as readonly string[]).includes(r)
+      ? relationshipLabel(r)
+      : (dependentRelationshipLabels.get(r) ?? r);
+  const activeRelationshipOptions =
+    profileOptions.dependentRelationship.length > 0
+      ? profileOptions.dependentRelationship.map((o) => ({
+          value: o.value,
+          label: (DEPENDENT_RELATIONSHIPS as readonly string[]).includes(o.value) ? relationshipLabel(o.value) : o.label,
+        }))
+      : DEPENDENT_RELATIONSHIPS.map((r) => ({ value: r, label: relationshipLabel(r) }));
+  const relationshipOptionsFor = (d: DependentRow | null) =>
+    d && !activeRelationshipOptions.some((o) => o.value === d.relationship)
+      ? [...activeRelationshipOptions, { value: d.relationship, label: familyRelationshipLabel(d.relationship) }]
+      : activeRelationshipOptions;
 
   // A tri-state checkbox: a hidden `${name}__present` marker lets the server tell "unticked" (posts
   // nothing) apart from "field absent on this section's form".
@@ -976,28 +1026,19 @@ export default async function EmployeePage({
   const fieldsetCls = 'rounded-lg border border-border p-3';
   const legendCls = 'px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
-  // Shared field inputs for one dependent form. `section` selects which grouped fields appear; `d` is the
-  // existing row (null on the Add form). Every control is named exactly as its server-side field — the
-  // names (and the `__present` tri-state markers) are load-bearing for dependent-actions.ts.
+  // Shared field inputs for one dependent form PANEL. `section` selects which grouped fields appear; `d`
+  // is the existing row (null on the Add form). Every control is named exactly as its server-side field —
+  // the names (and the `__present` tri-state markers) are load-bearing for dependent-actions.ts.
+  // ea36b7fa — the relationship control itself no longer lives here: the unified dialog's
+  // FamilyRelationshipFields island renders the single `name="relationship"` select FIRST and swaps these
+  // panels beneath it (inactive panels are disabled, so their duplicate field names never post).
   // Item 5988053a — the CHILD section is regrouped into three labelled fieldsets (Personal / Education /
-  // Tax Relief) rendered inside the Add/Edit dialog; the spouse and other sections keep the original flat
-  // two-column grid untouched.
+  // Tax Relief); the spouse and other sections keep the original flat two-column grid untouched.
   const dependentFields = (section: FamilySection, d: DependentRow | null) => {
     const nameField = (
       <Field label={t('family.name')}>
         <input name="fullName" required defaultValue={d?.fullName ?? ''} placeholder={t('family.namePlaceholder')} className={inputCls} />
       </Field>
-    );
-    const relationshipField = section === 'other' ? (
-      <Field label={t('family.relationship')}>
-        <select name="relationship" required defaultValue={d?.relationship ?? 'other'} className={inputCls}>
-          {(['parent', 'sibling', 'other'] as const).map((r) => (
-            <option key={r} value={r}>{relationshipLabel(r)}</option>
-          ))}
-        </select>
-      </Field>
-    ) : (
-      <input type="hidden" name="relationship" value={section} />
     );
     const genderField = (
       <Field label={t('family.genderLabel')}>
@@ -1035,7 +1076,6 @@ export default async function EmployeePage({
             <legend className={legendCls}>{t('family.sectionPersonal')}</legend>
             <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
               {nameField}
-              {relationshipField}
               {genderField}
               {dobField}
               {phoneField}
@@ -1134,7 +1174,6 @@ export default async function EmployeePage({
     return (
       <>
         {nameField}
-        {relationshipField}
         {genderField}
         {dobField}
         {phoneField}
@@ -1186,35 +1225,19 @@ export default async function EmployeePage({
     );
   };
 
-  // Item 5988053a — Children section: table view + Add/Edit dialog. Static label switches (not dynamic
-  // templates) so i18n coverage stays checkable — see relationshipLabel above.
-  const childReliefCategoryLabel = (c: string | null) => {
-    switch (c) {
-      case 'under_18': return t('family.childReliefCat_under_18');
-      case 'study_preu': return t('family.childReliefCat_study_preu');
-      case 'study_tertiary': return t('family.childReliefCat_study_tertiary');
-      case 'disabled': return t('family.childReliefCat_disabled');
-      case 'disabled_study': return t('family.childReliefCat_disabled_study');
-      default: return '—';
-    }
-  };
-  const childReliefShareLabel = (p: number | null) =>
-    p === 100 ? t('family.childReliefPct_100') : p === 50 ? t('family.childReliefPct_50') : null;
-
-  // One dialog form for ANY section (Add when d is null, Edit otherwise), posting to the SAME server
-  // actions as before. The child fields arrive pre-grouped in fieldsets (space-y flow); spouse/other keep
-  // their original flat two-column grid, so the form itself supplies the grid container.
+  // ea36b7fa — ONE dialog form for every family member (Add when d is null, Edit otherwise), posting to
+  // the SAME server actions as before. The FamilyRelationshipFields island renders the Relationship select
+  // FIRST, then swaps the three server-rendered field panels beneath it (spouse grid / child fieldsets /
+  // standard grid); inactive panels are disabled+hidden so their duplicate field names and `__present`
+  // markers never reach the post. On Add nothing shows until a relationship is chosen.
   // TAB RETENTION (feedback bd2f0bb2): Dialog.Portal reparents this form to document.body — OUTSIDE the
   // PersonnelTabs shell — so the shell's capture-phase submit listener never sees it (shell.contains(form)
   // is false) and would never inject the hidden `tab` field; without the STATIC hidden input below, every
   // dialog save would redirect back to the Profile tab. Giving it data-tab-tracker means that if this form
   // ever does sit inside the shell, the listener finds and reuses this input instead of appending a
   // duplicate `tab` field.
-  const dialogForm = (section: FamilySection, d: DependentRow | null) => (
-    <form
-      action={d ? editDependentAction : addDependentAction}
-      className={section === 'child' ? 'space-y-4' : 'grid grid-cols-1 items-end gap-3 sm:grid-cols-2'}
-    >
+  const dialogForm = (d: DependentRow | null) => (
+    <form action={d ? editDependentAction : addDependentAction} className="space-y-4">
       <input type="hidden" name="employmentId" value={emp.employmentId} />
       {d ? (
         <input type="hidden" name="id" value={d.id} />
@@ -1222,8 +1245,16 @@ export default async function EmployeePage({
         <input type="hidden" name="personId" value={emp.personId} />
       )}
       <input type="hidden" name="tab" value="family" data-tab-tracker="" />
-      {dependentFields(section, d)}
-      <div className={section === 'child' ? 'flex justify-end' : 'sm:col-span-2 flex justify-end'}>
+      <FamilyRelationshipFields
+        label={t('family.relationship')}
+        placeholder={t('family.relationshipPlaceholder')}
+        options={relationshipOptionsFor(d)}
+        initialValue={d?.relationship ?? ''}
+        spousePanel={<div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">{dependentFields('spouse', d)}</div>}
+        childPanel={<div className="space-y-4">{dependentFields('child', d)}</div>}
+        otherPanel={<div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">{dependentFields('other', d)}</div>}
+      />
+      <div className="flex justify-end">
         <button className={btnPrimary}>{d ? t('family.save') : t('family.add')}</button>
       </div>
     </form>
@@ -1233,95 +1264,86 @@ export default async function EmployeePage({
   // element and no submit button. Rendering exactly the Edit layout means the read-only view can never
   // drift from the form — and with no form it can never post. (The fieldset only carries `disabled`; the
   // layout container is the inner div, since fieldset flex/grid support is historically unreliable.)
-  const viewDialogBody = (section: FamilySection, d: DependentRow) => (
-    <fieldset disabled>
-      <div className={section === 'child' ? 'space-y-4' : 'grid grid-cols-1 items-end gap-3 sm:grid-cols-2'}>
-        {dependentFields(section, d)}
-      </div>
-    </fieldset>
-  );
+  // ea36b7fa — the stored relationship renders as a read-only input (catalog/i18n label), and only the
+  // matching panel is rendered, so no island is needed for a static view.
+  const viewDialogBody = (d: DependentRow) => {
+    const section = panelOf(d.relationship);
+    return (
+      <fieldset disabled>
+        <div className={section === 'child' ? 'space-y-4' : 'grid grid-cols-1 items-end gap-3 sm:grid-cols-2'}>
+          <Field label={t('family.relationship')}>
+            <input readOnly value={familyRelationshipLabel(d.relationship)} className={inputCls} />
+          </Field>
+          {dependentFields(section, d)}
+        </div>
+      </fieldset>
+    );
+  };
 
-  // The children table replaces the details-based section (rows stay in listDependents' fixed oldest-first
-  // order; no search / sorting / view dialog at these row counts — the whole table is server JSX).
-  const familyChildrenSection = (
+  // ea36b7fa — the ONE consolidated Family & Dependents Information table (replaces the three
+  // per-relationship sections). Columns per the request (Name / Relationship / Date of birth / Age /
+  // Contact / tax-relief flag / actions); rows are pre-sorted spouse-first (familyMembers above). The
+  // tax-relief column uses the SAME per-row predicate the payroll head count uses (core/dependents.ts
+  // isChildReliefEligible), so the display can never diverge from what drives tax; non-child rows show a
+  // dash. Age is SERVER-derived (childAgeYears): a client derivation would run Date.now() once at SSR and
+  // again at hydration, which can differ across midnight or a timezone offset. Per-relationship detail
+  // (occupation, education, IC, relief category, …) lives in the View dialog — the row itself stays
+  // scannable.
+  const familyMembersSection = (
     <section className="border-t border-border">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-        <h3 className="text-sm font-semibold">
-          {t('family.childrenSection')}{' '}
-          <span className="font-normal text-muted-foreground">({childDeps.length})</span>
-        </h3>
-        <FamilyFormDialog triggerLabel={t('family.addChild')} title={t('family.addTitle')}>
-          {dialogForm('child', null)}
+      <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+        <FamilyFormDialog triggerLabel={t('family.add')} title={t('family.addFamilyTitle')}>
+          {dialogForm(null)}
         </FamilyFormDialog>
       </div>
-      {childDeps.length === 0 ? (
-        <p className="px-4 pb-4 text-sm text-muted-foreground">{t('family.emptyTable')}</p>
+      {familyMembers.length === 0 ? (
+        <p className="px-4 pb-4 text-sm text-muted-foreground">{t('family.none')}</p>
       ) : (
         <div className="overflow-x-auto px-4 pb-4">
-          <table className="w-full min-w-[64rem] text-left text-sm">
+          <table className="w-full min-w-[52rem] text-left text-sm">
             <thead>
               <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="py-2 pr-3 font-medium">{t('family.name')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.genderLabel')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.relationship')}</th>
                 <th className="py-2 pr-3 font-medium">{t('family.dateOfBirth')}</th>
                 <th className="py-2 pr-3 font-medium">{t('family.childAge')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.icOrBirthCert')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.sectionEducation')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.childReliefCategory')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.contactNumber')}</th>
                 <th className="py-2 pr-3 font-medium">{t('family.countsTowardRelief')}</th>
                 <th className="py-2 text-right font-medium">{t('family.actions')}</th>
               </tr>
             </thead>
             <tbody>
-              {childDeps.map((d) => (
+              {familyMembers.map((d) => (
                 <tr key={d.id} className="border-b border-border/60 align-top">
                   <td className="py-2 pr-3 font-medium">
-                    <span className="inline-flex items-center gap-2">
+                    <span className="inline-flex flex-wrap items-center gap-2">
                       {d.fullName}
-                      {d.isDeceased && <Badge variant="default">{t('family.statusInactive')}</Badge>}
+                      {d.isBeneficiary && <Badge variant="success">{t('family.beneficiary')}</Badge>}
+                      {d.isDeceased && <Badge variant="default">{t('family.deceased')}</Badge>}
                     </span>
                   </td>
-                  <td className="py-2 pr-3">{genderLabel(d.gender)}</td>
+                  <td className="py-2 pr-3">{familyRelationshipLabel(d.relationship)}</td>
                   <td className="whitespace-nowrap py-2 pr-3">{d.dateOfBirth ?? '—'}</td>
-                  {/* Age is SERVER-derived (childAgeYears): a client derivation would run Date.now() once at
-                      SSR and again at hydration, which can differ across midnight or a timezone offset. */}
                   <td className="py-2 pr-3">{childAgeYears(d.dateOfBirth) ?? '—'}</td>
-                  <td className="py-2 pr-3">{d.icOrPassport ?? '—'}</td>
+                  <td className="py-2 pr-3">{d.phone ?? '—'}</td>
                   <td className="py-2 pr-3">
-                    {d.isStudent ? t('family.yes') : t('family.no')}
-                    {(d.schoolName || d.studyLevel) && (
-                      <span className="block text-xs text-muted-foreground">
-                        {[d.schoolName, d.studyLevel].filter(Boolean).join(' · ')}
-                      </span>
-                    )}
+                    {d.relationship === 'child' ? (isChildReliefEligible(d) ? t('family.yes') : t('family.no')) : '—'}
                   </td>
-                  <td className="py-2 pr-3">
-                    {childReliefCategoryLabel(d.childReliefCategory)}
-                    {childReliefShareLabel(d.childReliefPercentage) && (
-                      <span className="block text-xs text-muted-foreground">
-                        {childReliefShareLabel(d.childReliefPercentage)}
-                      </span>
-                    )}
-                  </td>
-                  {/* The column that reflects the number actually reaching payroll: the SAME per-row
-                      predicate eligibleChildReliefCount counts (core/dependents.ts isChildReliefEligible),
-                      so the record-keeping category above can never be confused with what drives tax. */}
-                  <td className="py-2 pr-3">{isChildReliefEligible(d) ? t('family.yes') : t('family.no')}</td>
                   <td className="py-2">
                     <div className="flex items-center justify-end gap-2">
                       <FamilyFormDialog
                         triggerLabel={t('family.view')}
                         triggerVariant="outline"
-                        title={t('family.viewChildTitle')}
+                        title={t('family.viewFamilyTitle')}
                       >
-                        {viewDialogBody('child', d)}
+                        {viewDialogBody(d)}
                       </FamilyFormDialog>
                       <FamilyFormDialog
-                        triggerLabel={t('family.editTitle')}
+                        triggerLabel={t('family.edit')}
                         triggerVariant="outline"
-                        title={t('family.editTitle')}
+                        title={t('family.editFamilyTitle')}
                       >
-                        {dialogForm('child', d)}
+                        {dialogForm(d)}
                       </FamilyFormDialog>
                       {/* Delete keeps tab retention with no extra work: this form lives INSIDE the tab
                           shell, and ConfirmSubmit's confirm calls requestSubmit() on it, firing a bubbling
@@ -1332,176 +1354,8 @@ export default async function EmployeePage({
                         <ConfirmSubmit
                           size="sm"
                           variant="destructive"
-                          title={t('family.deleteConfirmTitle')}
-                          description={t('family.deleteConfirmBody')}
-                          confirmLabel={t('family.delete')}
-                        >
-                          {t('family.delete')}
-                        </ConfirmSubmit>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  );
-
-  // Item 33a5ce41 — Spouse section in the identical table + dialog pattern as the children section
-  // (rows keep listDependents' fixed oldest-first order; narrower min-w than the 64rem children table
-  // because there are fewer columns).
-  const familySpouseSection = (
-    <section className="border-t border-border">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-        <h3 className="text-sm font-semibold">
-          {t('family.spouseSection')}{' '}
-          <span className="font-normal text-muted-foreground">({spouseDeps.length})</span>
-        </h3>
-        <FamilyFormDialog triggerLabel={t('family.addSpouse')} title={t('family.addSpouse')}>
-          {dialogForm('spouse', null)}
-        </FamilyFormDialog>
-      </div>
-      {spouseDeps.length === 0 ? (
-        <p className="px-4 pb-4 text-sm text-muted-foreground">{t('family.noSpouse')}</p>
-      ) : (
-        <div className="overflow-x-auto px-4 pb-4">
-          <table className="w-full min-w-[46rem] text-left text-sm">
-            <thead>
-              <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="py-2 pr-3 font-medium">{t('family.name')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.newIc')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.dateOfBirth')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.occupation')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.companyName')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.contactNumber')}</th>
-                <th className="py-2 text-right font-medium">{t('family.actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {spouseDeps.map((d) => (
-                <tr key={d.id} className="border-b border-border/60 align-top">
-                  <td className="py-2 pr-3 font-medium">
-                    <span className="inline-flex flex-wrap items-center gap-2">
-                      {d.fullName}
-                      {d.isBeneficiary && <Badge variant="success">{t('family.beneficiary')}</Badge>}
-                      {d.isDeceased && <Badge variant="default">{t('family.deceased')}</Badge>}
-                    </span>
-                  </td>
-                  <td className="py-2 pr-3">{d.icOrPassport ?? '—'}</td>
-                  <td className="whitespace-nowrap py-2 pr-3">{d.dateOfBirth ?? '—'}</td>
-                  <td className="py-2 pr-3">{d.occupation ?? '—'}</td>
-                  <td className="py-2 pr-3">{d.companyName ?? '—'}</td>
-                  <td className="py-2 pr-3">{d.phone ?? '—'}</td>
-                  <td className="py-2">
-                    <div className="flex items-center justify-end gap-2">
-                      <FamilyFormDialog
-                        triggerLabel={t('family.view')}
-                        triggerVariant="outline"
-                        title={t('family.viewSpouseTitle')}
-                      >
-                        {viewDialogBody('spouse', d)}
-                      </FamilyFormDialog>
-                      <FamilyFormDialog
-                        triggerLabel={t('family.editSpouseTitle')}
-                        triggerVariant="outline"
-                        title={t('family.editSpouseTitle')}
-                      >
-                        {dialogForm('spouse', d)}
-                      </FamilyFormDialog>
-                      {/* This delete form lives INSIDE the tab shell (not portalled), so the shell's
-                          capture-phase submit listener handles tab retention — same as children deletes. */}
-                      <form action={archiveDependentAction}>
-                        <input type="hidden" name="employmentId" value={emp.employmentId} />
-                        <input type="hidden" name="id" value={d.id} />
-                        <ConfirmSubmit
-                          size="sm"
-                          variant="destructive"
-                          title={t('family.deleteSpouseConfirmTitle')}
-                          description={t('family.deleteSpouseConfirmBody')}
-                          confirmLabel={t('family.delete')}
-                        >
-                          {t('family.delete')}
-                        </ConfirmSubmit>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  );
-
-  // Item 33a5ce41 — Other Dependants in the same table + dialog pattern.
-  const familyOtherSection = (
-    <section className="border-t border-border">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-        <h3 className="text-sm font-semibold">
-          {t('family.otherSection')}{' '}
-          <span className="font-normal text-muted-foreground">({otherDeps.length})</span>
-        </h3>
-        <FamilyFormDialog triggerLabel={t('family.addDependant')} title={t('family.addDependant')}>
-          {dialogForm('other', null)}
-        </FamilyFormDialog>
-      </div>
-      {otherDeps.length === 0 ? (
-        <p className="px-4 pb-4 text-sm text-muted-foreground">{t('family.noOther')}</p>
-      ) : (
-        <div className="overflow-x-auto px-4 pb-4">
-          <table className="w-full min-w-[44rem] text-left text-sm">
-            <thead>
-              <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="py-2 pr-3 font-medium">{t('family.name')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.relationship')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.newIc')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.dateOfBirth')}</th>
-                <th className="py-2 pr-3 font-medium">{t('family.contactNumber')}</th>
-                <th className="py-2 text-right font-medium">{t('family.actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {otherDeps.map((d) => (
-                <tr key={d.id} className="border-b border-border/60 align-top">
-                  <td className="py-2 pr-3 font-medium">
-                    <span className="inline-flex flex-wrap items-center gap-2">
-                      {d.fullName}
-                      {d.isBeneficiary && <Badge variant="success">{t('family.beneficiary')}</Badge>}
-                      {d.isDeceased && <Badge variant="default">{t('family.deceased')}</Badge>}
-                    </span>
-                  </td>
-                  <td className="py-2 pr-3">{relationshipLabel(d.relationship)}</td>
-                  <td className="py-2 pr-3">{d.icOrPassport ?? '—'}</td>
-                  <td className="whitespace-nowrap py-2 pr-3">{d.dateOfBirth ?? '—'}</td>
-                  <td className="py-2 pr-3">{d.phone ?? '—'}</td>
-                  <td className="py-2">
-                    <div className="flex items-center justify-end gap-2">
-                      <FamilyFormDialog
-                        triggerLabel={t('family.view')}
-                        triggerVariant="outline"
-                        title={t('family.viewOtherTitle')}
-                      >
-                        {viewDialogBody('other', d)}
-                      </FamilyFormDialog>
-                      <FamilyFormDialog
-                        triggerLabel={t('family.editOtherTitle')}
-                        triggerVariant="outline"
-                        title={t('family.editOtherTitle')}
-                      >
-                        {dialogForm('other', d)}
-                      </FamilyFormDialog>
-                      <form action={archiveDependentAction}>
-                        <input type="hidden" name="employmentId" value={emp.employmentId} />
-                        <input type="hidden" name="id" value={d.id} />
-                        <ConfirmSubmit
-                          size="sm"
-                          variant="destructive"
-                          title={t('family.deleteOtherConfirmTitle')}
-                          description={t('family.deleteOtherConfirmBody')}
+                          title={t('family.deleteFamilyConfirmTitle')}
+                          description={t('family.deleteFamilyConfirmBody')}
                           confirmLabel={t('family.delete')}
                         >
                           {t('family.delete')}
@@ -1525,9 +1379,7 @@ export default async function EmployeePage({
         {t('family.note')}
       </p>
       <div className="mt-3">
-        {familySpouseSection}
-        {familyChildrenSection}
-        {familyOtherSection}
+        {familyMembersSection}
       </div>
       <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('family.hint')}</p>
     </Card>
@@ -1681,10 +1533,7 @@ export default async function EmployeePage({
                 <EntitlementBreakdown
                   data={breakdownByType.get(b.leaveTypeId)!}
                   summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, breakdownByType.get(b.leaveTypeId)) }}
-                  // §5 Upcoming Approved Leave — approved + future requests for THIS type (name-matched).
-                  upcoming={requests
-                    .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-                    .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
+                  // §5 Upcoming Approved Leave removed from the panel (feedback 11876072).
                   visual={{ color: b.color, icon: b.icon, code: b.code }}
                   asOf={breakdownAsOf}
                   action={`/admin/personnel/${employmentId}`}
@@ -2502,6 +2351,8 @@ export default async function EmployeePage({
   // units only ("8 Months 15 Days" under a year, "25 Days" for a new joiner) while inner zeros stay
   // ("10 Years 0 Months 5 Days"); days always render (a same-day hire shows "0 Days"). Read-only,
   // display-only — leave bands keep reading serviceYearsAt / serviceYearsMonthsAt.
+  // b75b2a23 — the figure now renders on the TOP summary card (after Join Date), not on the Employment
+  // Information card; the computation stays here beside the other service figures it shares inputs with.
   const yearOfServiceLabel = ((): string | null => {
     if (!emp.hiredOn) return null;
     const s = serviceYearsMonthsDaysAt(emp.hiredOn, today);
@@ -2736,24 +2587,9 @@ export default async function EmployeePage({
             </Field>
           </div>
 
-          {/* cc681bd5 — Year of Service row: read-only Y/M/D figure with an i-badge tooltip (same
-              plain-CSS native-title pattern as the family tax-relief badge) carrying the underlying
-              Group Join Date and the as-of date. "Not Available" when no Group Join Date is recorded. */}
-          <p className="text-sm">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="text-muted-foreground">{t('employmentInfo.yearOfService')}:</span>
-              <span className="font-medium">{yearOfServiceLabel ?? t('employmentInfo.notAvailable')}</span>
-              {yearOfServiceTooltip && (
-                <span
-                  className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground"
-                  title={yearOfServiceTooltip}
-                  aria-label={yearOfServiceTooltip}
-                >
-                  i
-                </span>
-              )}
-            </span>
-          </p>
+          {/* b75b2a23 — the cc681bd5 Year of Service row moved from here onto the top summary card so the
+              figure is visible the moment a profile opens and lives in exactly one place. The label +
+              tooltip are still computed above (beside the other service figures) — only the render moved. */}
 
           {/* Probation Information */}
           <div className="space-y-3">
@@ -3330,6 +3166,29 @@ export default async function EmployeePage({
             <div>
               <dt className="text-xs text-muted-foreground">{t('headerJoinDate')}</dt>
               <dd className="font-medium text-foreground">{emp.hiredOn}</dd>
+            </div>
+            {/* b75b2a23 — Year of Service, moved here from the Employment tab so service length is visible
+                the moment a profile opens. Same read-only Y/M/D figure from the Group Join Date (computed
+                above with the other service figures), same i-badge tooltip carrying the underlying dates,
+                same "Not Available" fallback. Placed after Join Date — the two read together — and as the
+                8th pair it keeps the 2-column grid even. This is the figure's ONLY display; the Employment
+                Information card row was removed. */}
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('employmentInfo.yearOfService')}</dt>
+              <dd className="font-medium text-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <span>{yearOfServiceLabel ?? t('employmentInfo.notAvailable')}</span>
+                  {yearOfServiceTooltip && (
+                    <span
+                      className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground"
+                      title={yearOfServiceTooltip}
+                      aria-label={yearOfServiceTooltip}
+                    >
+                      i
+                    </span>
+                  )}
+                </span>
+              </dd>
             </div>
           </dl>
         </div>

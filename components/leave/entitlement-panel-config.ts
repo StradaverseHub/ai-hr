@@ -13,7 +13,7 @@
 // the panel honours the Employee Leave View Configuration on /me (admin/HR pass applyEssConfig=false and see
 // everything). The key set is the closed allow-list in core/ess-view.ts.
 
-import type { EssViewComponentKey } from '@/core/ess-view';
+import { ESS_VIEW_COMPONENT_KEYS, type EssViewComponentKey } from '@/core/ess-view';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
 
 /** §1 Leave Summary figures — sourced from the balance row (leaveBalances) the page already loaded. */
@@ -47,19 +47,10 @@ export function deriveSummaryBalance(
   return Math.round((available + carryForwardRemaining + otherAdjustments - taken - forfeited) * 100) / 100;
 }
 
-/** §5 Upcoming Leave — an approved request whose start is in the future, for THIS leave type. */
-export type UpcomingLeaveItem = {
-  startDate: string;
-  endDate: string;
-  days: number;
-  durationType: string | null;
-};
-
 /** The full data envelope a field's `select` reads from. DB-free: every value is already computed. */
 export type PanelData = {
   breakdown: EntitlementBreakdownData;
   summary: PanelSummary;
-  upcoming: UpcomingLeaveItem[];
 };
 
 export type PanelFieldValue = number | string | null;
@@ -94,8 +85,8 @@ export type PanelSection = {
   labelKey: string;
   /** Display order (ascending). A future line inserts by picking an order between two existing ones. */
   order: number;
-  /** 'fields' (default) = label/value rows; 'upcoming' = §5 approved-future list; 'transactions' = §6 ledger table. */
-  kind?: 'fields' | 'upcoming' | 'transactions';
+  // The `kind` discriminator ('upcoming' §5 list / 'transactions' §6 ledger) is GONE: with §6 removed
+  // (1dd4d827) and §5 removed (11876072), every remaining section is plain label/value field rows.
   /** Whole-section ESS gate (missing ⇒ visible). */
   essKey?: EssViewComponentKey;
   fields?: PanelField[];
@@ -111,7 +102,6 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
     key: 'summary',
     labelKey: 'section.summary',
     order: 1,
-    kind: 'fields',
     // Reordered (877f2f37) to read the way employees think — from what they were granted, through what they've
     // used, to what's left: YTD Entitled → Taken → Pending Approval → Available → Balance. Each row carries a
     // STATIC hover tooltip (tooltipKey; no HR config). Balance is the new reconciled remaining figure, PICKED
@@ -137,7 +127,6 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
     key: 'utilization',
     labelKey: 'section.utilization',
     order: 3,
-    kind: 'fields',
     fields: [
       { key: 'unplanned', labelKey: 'field.unplanned', essKey: 'unplanned' },
       { key: 'overutilized', labelKey: 'field.overutilized', essKey: 'overutilized' },
@@ -148,13 +137,15 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
     key: 'adjustments',
     labelKey: 'section.adjustments',
     order: 4,
-    kind: 'fields',
     fields: [
       { key: 'adjustment', labelKey: 'field.adjustment', essKey: 'adjustment', select: (d) => d.breakdown.otherAdjustments },
     ],
   },
-  // §5 Upcoming Leave (approved + future, this type)
-  { key: 'upcoming', labelKey: 'section.upcoming', order: 5, kind: 'upcoming', essKey: 'upcomingApprovedLeave' },
+  // §5 Upcoming Leave — REMOVED (feedback 11876072): the reporter asked for the Upcoming Leave subsection to
+  // be dropped from BOTH the admin Employee Leave View Configuration and the employee panel. The descriptor
+  // entry (and its `upcomingApprovedLeave` ess-view key, removed from core/ess-view.ts) is gone, so no leave
+  // type can re-surface it; a legacy stored toggle is ignored on read (resolveEssView drops unknown keys).
+  // Approved-future requests are untouched data — they still show in the /leave Leave History list.
   // §6 Transaction History — REMOVED (feedback 1dd4d827): universally hidden from the breakdown side-sheet to
   // keep the panel focused on balance/entitlement. Ledger data is untouched and stays visible in the /leave
   // Leave History table. The removal is deliberately universal, not the per-leave-type `transactionHistory` ESS
@@ -167,7 +158,6 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
     key: 'calcBreakdown',
     labelKey: 'section.calcBreakdown',
     order: 2,
-    kind: 'fields',
     essKey: 'entitlementCalcBreakdown',
     fields: [
       { key: 'currentYearEntitlement', labelKey: 'currentYearEntitlement', select: (d) => d.breakdown.currentYearEntitlement },
@@ -180,3 +170,47 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
     ],
   },
 ];
+
+// ─── Admin checklist grouping (feedback 11876072) ───────────────────────────────────────────────────────────
+//
+// The Employee Leave View Configuration checklist (components/leave-type-panel.tsx, Custom step) used to be a
+// FLAT grid over ESS_VIEW_COMPONENT_KEYS. It now mirrors the employee panel: the checkboxes are grouped into
+// the SAME sections, in the SAME order, the panel above renders — derived HERE from ENTITLEMENT_PANEL_SECTIONS
+// so the two can never drift (one source of grouping). Each checkbox keeps its exact key and therefore its
+// exact current effect; only the admin-side arrangement changed.
+
+/** One group of the admin ESS-view checklist: a panel section (heading = the section's own title) + the
+ *  ess-view keys it gates. `labelKey` is the section's i18n key under `leave.breakdown`; null ⇒ the trailing
+ *  "Other" group (admin-side heading `admin.leave.essView.groupOther`) collecting keys no section references
+ *  (legacy toggles that gate other surfaces, e.g. the balance-table columns) so nothing is orphaned. */
+export type EssViewChecklistGroup = {
+  key: string;
+  labelKey: string | null;
+  keys: EssViewComponentKey[];
+};
+
+export const ESS_VIEW_CHECKLIST_GROUPS: EssViewChecklistGroup[] = (() => {
+  const seen = new Set<EssViewComponentKey>();
+  const groups: EssViewChecklistGroup[] = [...ENTITLEMENT_PANEL_SECTIONS]
+    .sort((a, b) => a.order - b.order)
+    .map((s) => {
+      // A section-level gate (e.g. calcBreakdown's entitlementCalcBreakdown) lists first, then field gates in
+      // the section's own display order — the checklist reads exactly like the panel.
+      const keys: EssViewComponentKey[] = [];
+      if (s.essKey && !seen.has(s.essKey)) {
+        keys.push(s.essKey);
+        seen.add(s.essKey);
+      }
+      for (const f of s.fields ?? []) {
+        if (f.essKey && !seen.has(f.essKey)) {
+          keys.push(f.essKey);
+          seen.add(f.essKey);
+        }
+      }
+      return { key: s.key, labelKey: s.labelKey, keys };
+    })
+    .filter((g) => g.keys.length > 0);
+  const other = ESS_VIEW_COMPONENT_KEYS.filter((k) => !seen.has(k));
+  if (other.length > 0) groups.push({ key: 'other', labelKey: null, keys: other });
+  return groups;
+})();

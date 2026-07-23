@@ -15,14 +15,15 @@ import {
 
 /**
  * Preview Scenario dialog (R61 · feedback d778d2d3). The "Preview a scenario" checker lost its
- * standalone section on the Entitlements page: this compact "Preview Scenario" button now sits in
- * the PageHeader actions cluster (next to + Import and Run Accrual) and opens the SAME
- * LeaveRulePreview — leave type / company / grade / service-years inputs feeding the exact shared
+ * standalone section on the Entitlements page: this compact "Preview Scenario" button opens the SAME
+ * LeaveRulePreview. It first sat in the PageHeader actions cluster; since R64 (7b945408 + 962077a8)
+ * it mounts ONLY inside the Entitlement step's Service Based Entitlements sub-step, as that
+ * sub-step's checking tool — the dialog wraps LeaveRulePreview — leave type / company / grade / service-years inputs feeding the exact shared
  * resolver — inside a pop-up. The component is wrapped unchanged: it is read-only, purely local
  * state, no <form> and no server action, so nothing about the portal affects it. Structure mirrors
  * leave-year-edit-dialog.tsx (Dialog.Root + useState open, Radix portal).
  *
- * The trigger Button MUST be type="button" — the header cluster may sit inside other layouts and a
+ * The trigger Button MUST be type="button" — the trigger may sit inside other layouts and a
  * default-type button could submit an enclosing form.
  */
 export function LeaveRulePreviewDialog({
