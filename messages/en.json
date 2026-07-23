@@ -6840,6 +6840,7 @@
     "empty": "No dashboard cards yet. Create one to make it available on the employee dashboard.",
     "colName": "Card",
     "colType": "Type",
+    "colAudience": "Audience",
     "colStatus": "Status",
     "colSelectable": "Selectable",
     "colDefault": "Default",
@@ -6851,6 +6852,11 @@
       "information": "Information",
       "action": "Action",
       "shortcut": "Shortcut"
+    },
+    "audience": {
+      "employee": "Employee",
+      "manager": "Manager",
+      "hr_admin": "HR Admin"
     },
     "status": {
       "active": "Active",
@@ -6873,6 +6879,8 @@
     "fieldOrder": "Display order",
     "fieldHref": "Link (optional)",
     "fieldHrefHint": "Where the card links to when clicked (for action/shortcut cards).",
+    "fieldAudience": "Shown on dashboards",
+    "fieldAudienceHint": "Which role dashboards offer this card (Employee, Manager, HR Admin). Nothing checked defaults to Employee.",
     "fieldSelectable": "Available for employees to add during customization",
     "fieldDefault": "Show by default on the employee dashboard",
     "fieldMandatory": "Mandatory — employees cannot remove it",

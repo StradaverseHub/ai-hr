@@ -21,9 +21,13 @@ import {
 } from '../core/dashboard-prefs';
 import {
   BUILTIN_DASHBOARD_CARDS,
+  BUILTIN_ROLE_DASHBOARD_CARDS,
   DEFAULT_ORDER,
+  extractRoleLayout,
   isDefaultOrder,
+  mergeRoleLayout,
   normalizeDashboardOrder,
+  removeRoleLayout,
 } from '../lib/dashboard-layout';
 
 /** The tenant has no dashboard_card_config rows in this suite (created after the 0212 seed), so drive the
@@ -86,6 +90,47 @@ describe('dashboard-layout pure helpers', () => {
     expect(out.filter((x) => x === 'cards').length).toBe(1);
     expect(out).not.toContain('bogus');
     expect(new Set(out)).toEqual(new Set(DEFAULT_ORDER));
+  });
+});
+
+describe('per-role layout envelope (pure, 9606c59f)', () => {
+  const emp = { selected: ['leaveBalance'], order: ['leaveBalance'] };
+  const mgr = { selected: ['teamAwayToday'], order: ['teamAwayToday'] };
+
+  it('a LEGACY flat value is the employee slot; every other role reads "nothing saved"', () => {
+    expect(extractRoleLayout(['recentActivity', 'cards'], 'employee')).toEqual(['recentActivity', 'cards']);
+    expect(extractRoleLayout(['recentActivity', 'cards'], 'manager')).toBeNull();
+    expect(extractRoleLayout(emp, 'employee')).toEqual(emp);
+    expect(extractRoleLayout(emp, 'hr_admin')).toBeNull();
+    expect(extractRoleLayout(null, 'employee')).toBeNull();
+  });
+
+  it('a role-keyed envelope yields each slot independently', () => {
+    const raw = { employee: emp, manager: mgr };
+    expect(extractRoleLayout(raw, 'employee')).toEqual(emp);
+    expect(extractRoleLayout(raw, 'manager')).toEqual(mgr);
+    expect(extractRoleLayout(raw, 'hr_admin')).toBeNull();
+  });
+
+  it('mergeRoleLayout replaces one slot and preserves the others; a legacy flat migrates to employee', () => {
+    expect(mergeRoleLayout({ employee: emp }, 'manager', mgr)).toEqual({ employee: emp, manager: mgr });
+    // legacy flat + a manager save → the flat value becomes the employee slot, nothing lost
+    expect(mergeRoleLayout(emp, 'manager', mgr)).toEqual({ employee: emp, manager: mgr });
+    // saving the same role overwrites its slot only
+    const next = { selected: ['nextHoliday'], order: ['nextHoliday'] };
+    expect(mergeRoleLayout({ employee: emp, manager: mgr }, 'employee', next)).toEqual({
+      employee: next,
+      manager: mgr,
+    });
+  });
+
+  it('removeRoleLayout drops one slot, keeps the rest, and returns null when nothing remains', () => {
+    expect(removeRoleLayout({ employee: emp, manager: mgr }, 'manager')).toEqual({ employee: emp });
+    expect(removeRoleLayout({ employee: emp }, 'employee')).toBeNull();
+    // legacy flat reset by the employee → everything gone (the pre-9606c59f behaviour)
+    expect(removeRoleLayout(emp, 'employee')).toBeNull();
+    // legacy flat reset by a manager → the employee's flat layout survives
+    expect(removeRoleLayout(emp, 'manager')).toEqual({ employee: emp });
   });
 });
 
@@ -158,6 +203,60 @@ describe('dashboard-layout persistence (own-row SECURITY DEFINER seam)', () => {
           where tenant_id = ${b.tenantId} and aggregate_type = 'dashboard-layout'`,
     )) as unknown as { n: number }[];
     expect(rows[0]?.n ?? 0).toBe(0);
+  });
+
+  // ─────────────────────── per-ROLE layouts (9606c59f) ───────────────────────
+
+  const MGR_CARDS = BUILTIN_ROLE_DASHBOARD_CARDS.manager;
+
+  it('one person saves independent employee AND manager layouts (promoted keeps both hats)', async () => {
+    const ctx = await newEmployeeCtx();
+    const selEmp = ['recentActivity', 'leaveBalance'];
+    const selMgr = ['upcomingReminders', 'teamAwayToday'];
+    await setDashboardLayout(ctx, { selected: selEmp, order: selEmp }, CARDS, 'employee');
+    await setDashboardLayout(ctx, { selected: selMgr, order: selMgr }, MGR_CARDS, 'manager');
+    // Each role slot round-trips against its own catalog; the mandatory calendar rides along in both.
+    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual([...selEmp, 'plannedAbsences']);
+    expect((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected).toEqual([...selMgr, 'plannedAbsences']);
+    // The hr_admin slot was never saved → its HR default.
+    const adminCards = BUILTIN_ROLE_DASHBOARD_CARDS.hr_admin;
+    expect(new Set((await getDashboardLayout(ctx, adminCards, 'hr_admin')).selected)).toEqual(
+      new Set(adminCards.map((c) => c.cardKey)),
+    );
+  });
+
+  it('a LEGACY flat stored value reads as the EMPLOYEE layout; other roles get their default', async () => {
+    const ctx = await newEmployeeCtx();
+    await withRawSeam(ctx, { selected: ['recentActivity'], order: ['recentActivity'] }); // pre-9606c59f shape
+    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(['recentActivity', 'plannedAbsences']);
+    expect(new Set((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected)).toEqual(
+      new Set(MGR_CARDS.map((c) => c.cardKey)),
+    );
+  });
+
+  it('a manager save MIGRATES a legacy flat value into the envelope without losing the employee layout', async () => {
+    const ctx = await newEmployeeCtx();
+    await withRawSeam(ctx, { selected: ['recentActivity'], order: ['recentActivity'] });
+    const selMgr = ['approvalRequests'];
+    await setDashboardLayout(ctx, { selected: selMgr, order: selMgr }, MGR_CARDS, 'manager');
+    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(['recentActivity', 'plannedAbsences']);
+    expect((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected).toEqual(['approvalRequests', 'plannedAbsences']);
+  });
+
+  it('Reset is per-role: clearing the manager slot leaves the employee layout untouched (and vice versa)', async () => {
+    const ctx = await newEmployeeCtx();
+    const selEmp = ['recentActivity'];
+    const selMgr = ['teamAwayToday'];
+    await setDashboardLayout(ctx, { selected: selEmp, order: selEmp }, CARDS, 'employee');
+    await setDashboardLayout(ctx, { selected: selMgr, order: selMgr }, MGR_CARDS, 'manager');
+    await resetDashboardLayout(ctx, 'manager');
+    expect(new Set((await getDashboardLayout(ctx, MGR_CARDS, 'manager')).selected)).toEqual(
+      new Set(MGR_CARDS.map((c) => c.cardKey)), // back to the manager HR default
+    );
+    expect((await getDashboardLayout(ctx, CARDS, 'employee')).selected).toEqual(['recentActivity', 'plannedAbsences']);
+    // Resetting the last remaining slot stores NULL again (the pre-9606c59f reset).
+    await resetDashboardLayout(ctx, 'employee');
+    expect(new Set((await getDashboardLayout(ctx, CARDS, 'employee')).selected)).toEqual(new Set(ALL_KEYS));
   });
 });
 

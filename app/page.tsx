@@ -30,15 +30,14 @@ import {
   type DashboardCardId,
   pendingTasksCount,
   resolveDashboardRole,
-  ROLE_CARDS,
   upcomingRemindersCount,
 } from '@/lib/dashboard-cards';
 import { ACTOR_DOT, aggregateHref, aggregateLabel, humanizeEvent, relativeTime } from '@/lib/audit-format';
 import { getDashboardLayout } from '@/core/dashboard-prefs';
-import { listEmployeeDashboardCards, type EmployeeDashboardCard } from '@/core/dashboard-card-config';
+import { listDashboardCards, type EmployeeDashboardCard } from '@/core/dashboard-card-config';
 import { DashboardCustomizer, type CustomizerCard } from '@/components/dashboard-customizer';
 import { saveDashboardLayoutAction, resetDashboardLayoutAction } from '@/app/dashboard-layout-actions';
-import { BUILTIN_DASHBOARD_CARDS, type DashboardLayout } from '@/lib/dashboard-layout';
+import { BUILTIN_ROLE_DASHBOARD_CARDS, type DashboardLayout } from '@/lib/dashboard-layout';
 
 const rm = (n: unknown) =>
   n == null
@@ -202,18 +201,18 @@ export default async function DashboardPage({
   // All reads are self-scoped via RLS.
   let empBalances: { leaveTypeId: string; leaveType: string; available: number }[] = [];
   let empTaskCount = 0;
-  // Customizable dashboard layout (feedback 7d9d145d → add/remove/shortcut 578a2fcf): the employee's saved
-  // { selected, order } of cardKeys, normalised against the HR card master (feedback 1586d2f5). Employee
-  // role ONLY — manager/admin dashboards are untouched.
+  // Customizable dashboard layout (feedback 7d9d145d → add/remove/shortcut 578a2fcf → per-ROLE 9606c59f):
+  // EVERY role now renders through the customizer against its role-filtered catalog (audience column) and
+  // its own saved layout slot. The employee path keeps requiring an employment (unchanged behaviour);
+  // manager/admin need none. Fall back to the role's built-in set when a tenant has no config rows for the
+  // role so no dashboard ever renders blank.
   let savedLayout: DashboardLayout | null = null;
-  let employeeCards: EmployeeDashboardCard[] = [];
-  if (role === 'employee' && me) {
-    // The tenant's active dashboard-card catalog drives which cards the employee may show / add; fall back
-    // to the built-in set when a tenant has no config rows so the dashboard never renders blank.
-    const configured = await listEmployeeDashboardCards(s);
-    employeeCards = configured.length
+  let roleCards: EmployeeDashboardCard[] = [];
+  if (role !== 'employee' || me) {
+    const configured = await listDashboardCards(s, role);
+    roleCards = configured.length
       ? configured
-      : BUILTIN_DASHBOARD_CARDS.map((c) => ({
+      : BUILTIN_ROLE_DASHBOARD_CARDS[role].map((c) => ({
           cardKey: c.cardKey,
           name: c.name,
           cardType: c.cardType,
@@ -223,14 +222,17 @@ export default async function DashboardPage({
           mandatory: c.mandatory,
           displayOrder: c.displayOrder,
         }));
-    const [balances, feedbackRequests, layout] = await Promise.all([
+    // Own-row read via the SECURITY DEFINER seam, normalised to the role's config (legacy flat values are
+    // the employee slot, so existing saved employee layouts keep working exactly as they are).
+    savedLayout = await getDashboardLayout(s, roleCards, role);
+  }
+  if (role === 'employee' && me) {
+    const [balances, feedbackRequests] = await Promise.all([
       leaveBalances(s, me.employmentId, locale),
       myFeedbackRequests(s), // pending 360 peer-feedback the employee must submit
-      getDashboardLayout(s, employeeCards), // own-row read via the SECURITY DEFINER seam, normalised to config
     ]);
     empBalances = balances.map((b) => ({ leaveTypeId: b.leaveTypeId, leaveType: b.leaveType, available: b.available }));
     empTaskCount = pendingTasksCount([feedbackRequests.length]);
-    savedLayout = layout;
   }
 
   // Manager card data: team away today, the same approvals count as the bell, and the Upcoming Reminders
@@ -264,9 +266,9 @@ export default async function DashboardPage({
   const attTotal = att.present + att.late + att.halfDay + att.absent;
   const pct = (n: number) => (attTotal ? `${(n / attTotal) * 100}%` : '0%');
 
-  // Map a card id → its rendered card. Order comes from ROLE_CARDS[role]. `leaveBalance` renders the
-  // interactive client island; the rest are plain StatCards. Non-`#` hrefs navigate; `#…` scroll to
-  // an in-page anchor added below.
+  // Map a card id → its rendered card (the role summary cards; arrangement now comes from the per-role
+  // customizer layout, 9606c59f). `leaveBalance` renders the interactive client island; the rest are plain
+  // StatCards. Non-`#` hrefs navigate; `#…` scroll to an in-page anchor added below.
   const renderCard = (id: DashboardCardId): ReactNode => {
     switch (id) {
       case 'headcount':
@@ -315,16 +317,6 @@ export default async function DashboardPage({
         return <StatCard key={id} label={t('upcomingReminders')} value={mgrReminders} hint={t('reviewsAndHolidays')} href="#upcoming-events" />;
     }
   };
-
-  // Feedback 7d9d145d — the reorderable employee-dashboard sections, each pre-rendered here on the
-  // server and stacked in the employee's saved order by the <DashboardCustomizer> client island (v1 =
-  // vertical reorder of existing sections; the island only chooses ORDER, it reads no data). The exact
-  // same nodes render inline for manager/admin below, so those dashboards are byte-for-byte untouched.
-  const cardsGrid = (
-    // 84d1233d step 1: 1 col on phones (was 2-across even at 375px), 2 from sm, 4 from xl so a 1024px
-    // landscape tablet doesn't jump straight to 4-across.
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">{ROLE_CARDS[role].map(renderCard)}</div>
-  );
 
   // My/Team view (item 8c739dda → eae550e9 step 3): the read above is already team-scoped, so "team" is
   // simply every fetched row and "my" is the viewer's own person row — a pure in-memory filter the CLIENT
@@ -467,6 +459,101 @@ export default async function DashboardPage({
     </Card>
   );
 
+  // 9606c59f — the manager/admin dashboard sections card-wrapped so the customizer can arrange them.
+  // R17 semantics preserved: attendance breakdown is manager + hr_admin (audience-gated in the catalog);
+  // headcount-by-company and the latest-payroll-run detail are hr_admin-only.
+  const attendanceOverviewCard = (
+    <Card className="h-full p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold">{t('attendance')}</h2>
+        <span className="text-xs text-muted-foreground">{att.date ? t('asOf', { date: att.date }) : t('noRecords')}</span>
+      </div>
+      {attTotal === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">{t('noAttendance')}</p>
+      ) : (
+        <>
+          <div className="mt-4 grid grid-cols-4 gap-3">
+            {(
+              [
+                [t('present'), att.present, 'text-emerald-600 dark:text-emerald-400'],
+                [t('late'), att.late, 'text-amber-600 dark:text-amber-400'],
+                [t('halfDay'), att.halfDay, 'text-blue-600 dark:text-blue-400'],
+                [t('absent'), att.absent, 'text-rose-600 dark:text-rose-400'],
+              ] as const
+            ).map(([label, value, color]) => (
+              <div key={label}>
+                <div className={`text-2xl font-semibold tabular-nums ${color}`}>{value}</div>
+                <div className="text-xs text-muted-foreground">{label}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-muted">
+            <div className="bg-emerald-500" style={{ width: pct(att.present) }} />
+            <div className="bg-amber-500" style={{ width: pct(att.late) }} />
+            <div className="bg-blue-500" style={{ width: pct(att.halfDay) }} />
+            <div className="bg-rose-500" style={{ width: pct(att.absent) }} />
+          </div>
+        </>
+      )}
+    </Card>
+  );
+
+  const headcountByCompanyCard = (
+    <Card className="h-full overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3">
+        <h2 className="text-sm font-semibold">{t('headcountByCompany')}</h2>
+        <span className="text-xs text-muted-foreground">
+          {t('totalCount', { count: breakdown.reduce((sum, c) => sum + c.headcount, 0) })}
+        </span>
+      </div>
+      <table className="w-full text-sm">
+        <tbody className="divide-y divide-border border-t border-border">
+          {orderTree(breakdown).map(({ row, depth }) => (
+            <tr key={row.id} className="hover:bg-muted/40">
+              <td className="py-2 pr-4" style={{ paddingLeft: `${1 + depth * 1.5}rem` }}>
+                {row.name}
+              </td>
+              <td className="px-4 py-2 text-right tabular-nums">{row.headcount}</td>
+            </tr>
+          ))}
+          {breakdown.length === 0 && (
+            <tr>
+              <td className="px-4 py-6 text-center text-muted-foreground" colSpan={2}>
+                {t('noCompanies')}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </Card>
+  );
+
+  const latestPayrollRunCard = (
+    <Card className="h-full p-5">
+      <h2 className="text-sm font-semibold">{t('latestPayrollRun')}</h2>
+      {stats?.latestPayroll ? (
+        <div className="mt-3 flex items-center justify-between">
+          <div>
+            <div className="text-lg font-semibold">{stats.latestPayroll.payPeriod}</div>
+            <div className="text-xs text-muted-foreground">{t('net', { amount: rm(stats.latestPayroll.net) })}</div>
+          </div>
+          <span
+            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${PAYROLL_STATUS[stats.latestPayroll.status]}`}
+          >
+            {stats.latestPayroll.status}
+          </span>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">
+          {t('noPayrollRuns')}{' '}
+          <Link href="/payroll" className="text-primary hover:underline">
+            {t('createOne')}
+          </Link>
+        </p>
+      )}
+    </Card>
+  );
+
   const pageHeader = (
     <PageHeader
       title={t('title')}
@@ -478,160 +565,55 @@ export default async function DashboardPage({
     />
   );
 
-  // Employee dashboard: the fixed block set flattens into individually add/remove/reorderable cards
-  // (feedback 578a2fcf) driven by the HR card master. The three summary cards (leaveBalance / nextHoliday
-  // / pendingTasks) render via renderCard; the four section blocks render their existing nodes; any
-  // HR-configured shortcut/action card with no bespoke node renders as a clickable link inside the island.
-  // Manager/admin dashboards fall through to the fixed layout below — deliberately untouched.
+  // One customizer for EVERY role (feedback 9606c59f): the role-filtered catalog decides which cards are
+  // on the shelf; the bespoke information-card nodes are pre-rendered here keyed by cardKey. Only nodes
+  // whose data was loaded for this role are mapped — the audience column keeps the catalog and the node
+  // map in step, and a shortcut/action card with no node renders generically from its configured href.
+  const cardNodes: Record<string, ReactNode> = {
+    plannedAbsences: plannedAbsencesBlock,
+    recentlyJoined: recentlyJoinedCard,
+    upcomingEvents: upcomingEventsCard,
+    recentActivity: recentActivityCard,
+  };
   if (role === 'employee') {
-    // Pre-render the bespoke information-card nodes keyed by cardKey. Shortcut/action cards without a node
-    // here are rendered generically by the customizer from their configured href.
-    const cardNodes: Record<string, ReactNode> = {
-      leaveBalance: renderCard('leaveBalance'),
-      nextHoliday: renderCard('nextHoliday'),
-      pendingTasks: renderCard('pendingTasks'),
-      plannedAbsences: plannedAbsencesBlock,
-      recentlyJoined: recentlyJoinedCard,
-      upcomingEvents: upcomingEventsCard,
-      recentActivity: recentActivityCard,
-    };
-    const customizerCards: CustomizerCard[] = employeeCards.map((c) => ({
-      key: c.cardKey,
-      label: c.name,
-      cardType: c.cardType,
-      href: c.href,
-      mandatory: c.mandatory,
-      defaultDisplay: c.defaultDisplay,
-      employeeSelectable: c.employeeSelectable,
-    }));
-    return (
-      <div className="mx-auto max-w-6xl space-y-6">
-        {pageHeader}
-        <DashboardCustomizer
-          cards={customizerCards}
-          blocks={cardNodes}
-          layout={savedLayout ?? { selected: [], order: [] }}
-          saveAction={saveDashboardLayoutAction}
-          resetAction={resetDashboardLayoutAction}
-        />
-      </div>
-    );
+    cardNodes.leaveBalance = renderCard('leaveBalance');
+    cardNodes.nextHoliday = renderCard('nextHoliday');
+    cardNodes.pendingTasks = renderCard('pendingTasks');
+  } else if (role === 'manager') {
+    cardNodes.teamAwayToday = renderCard('teamAwayToday');
+    cardNodes.approvalRequests = renderCard('approvalRequests');
+    cardNodes.upcomingReminders = renderCard('upcomingReminders');
+    cardNodes.attendanceOverview = attendanceOverviewCard;
+  } else {
+    cardNodes.headcount = renderCard('headcount');
+    cardNodes.pendingLeave = renderCard('pendingLeave');
+    cardNodes.companies = renderCard('companies');
+    cardNodes.latestPayroll = renderCard('latestPayroll');
+    cardNodes.attendanceOverview = attendanceOverviewCard;
+    cardNodes.headcountByCompany = headcountByCompanyCard;
+    cardNodes.latestPayrollRun = latestPayrollRunCard;
   }
+
+  const customizerCards: CustomizerCard[] = roleCards.map((c) => ({
+    key: c.cardKey,
+    label: c.name,
+    cardType: c.cardType,
+    href: c.href,
+    mandatory: c.mandatory,
+    defaultDisplay: c.defaultDisplay,
+    employeeSelectable: c.employeeSelectable,
+  }));
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       {pageHeader}
-
-      {cardsGrid}
-
-      {plannedAbsencesBlock}
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {recentlyJoinedCard}
-        {upcomingEventsCard}
-      </div>
-
-      {/* R17: company-wide headcount breakdown is HR-only (data was admin-gated in the read anyway). */}
-      {role === 'hr_admin' && (
-        <Card className="overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3">
-            <h2 className="text-sm font-semibold">{t('headcountByCompany')}</h2>
-            <span className="text-xs text-muted-foreground">
-              {t('totalCount', { count: breakdown.reduce((sum, c) => sum + c.headcount, 0) })}
-            </span>
-          </div>
-          <table className="w-full text-sm">
-            <tbody className="divide-y divide-border border-t border-border">
-              {orderTree(breakdown).map(({ row, depth }) => (
-                <tr key={row.id} className="hover:bg-muted/40">
-                  <td className="py-2 pr-4" style={{ paddingLeft: `${1 + depth * 1.5}rem` }}>
-                    {row.name}
-                  </td>
-                  <td className="px-4 py-2 text-right tabular-nums">{row.headcount}</td>
-                </tr>
-              ))}
-              {breakdown.length === 0 && (
-                <tr>
-                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={2}>
-                    {t('noCompanies')}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
-          {/* R17: attendance breakdown for HR + managers (team attendance); an employee's single own
-              record already lives on /me's clock card. The employee role returns early above (its
-              dashboard is the reorderable block list), so this branch is always manager/hr_admin. */}
-          <Card className="p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">{t('attendance')}</h2>
-              <span className="text-xs text-muted-foreground">{att.date ? t('asOf', { date: att.date }) : t('noRecords')}</span>
-            </div>
-            {attTotal === 0 ? (
-              <p className="mt-4 text-sm text-muted-foreground">{t('noAttendance')}</p>
-            ) : (
-              <>
-                <div className="mt-4 grid grid-cols-4 gap-3">
-                  {(
-                    [
-                      [t('present'), att.present, 'text-emerald-600 dark:text-emerald-400'],
-                      [t('late'), att.late, 'text-amber-600 dark:text-amber-400'],
-                      [t('halfDay'), att.halfDay, 'text-blue-600 dark:text-blue-400'],
-                      [t('absent'), att.absent, 'text-rose-600 dark:text-rose-400'],
-                    ] as const
-                  ).map(([label, value, color]) => (
-                    <div key={label}>
-                      <div className={`text-2xl font-semibold tabular-nums ${color}`}>{value}</div>
-                      <div className="text-xs text-muted-foreground">{label}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-muted">
-                  <div className="bg-emerald-500" style={{ width: pct(att.present) }} />
-                  <div className="bg-amber-500" style={{ width: pct(att.late) }} />
-                  <div className="bg-blue-500" style={{ width: pct(att.halfDay) }} />
-                  <div className="bg-rose-500" style={{ width: pct(att.absent) }} />
-                </div>
-              </>
-            )}
-          </Card>
-
-          {/* R17: latest-payroll-run detail is HR-only — kills the misleading employee-facing
-              "No payroll runs yet · Create one →" prompt they can't act on. */}
-          {role === 'hr_admin' && (
-          <Card className="p-5">
-            <h2 className="text-sm font-semibold">{t('latestPayrollRun')}</h2>
-            {stats?.latestPayroll ? (
-              <div className="mt-3 flex items-center justify-between">
-                <div>
-                  <div className="text-lg font-semibold">{stats.latestPayroll.payPeriod}</div>
-                  <div className="text-xs text-muted-foreground">{t('net', { amount: rm(stats.latestPayroll.net) })}</div>
-                </div>
-                <span
-                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${PAYROLL_STATUS[stats.latestPayroll.status]}`}
-                >
-                  {stats.latestPayroll.status}
-                </span>
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-muted-foreground">
-                {t('noPayrollRuns')}{' '}
-                <Link href="/payroll" className="text-primary hover:underline">
-                  {t('createOne')}
-                </Link>
-              </p>
-            )}
-          </Card>
-          )}
-        </div>
-
-        {recentActivityCard}
-      </div>
+      <DashboardCustomizer
+        cards={customizerCards}
+        blocks={cardNodes}
+        layout={savedLayout ?? { selected: [], order: [] }}
+        saveAction={saveDashboardLayoutAction}
+        resetAction={resetDashboardLayoutAction}
+      />
     </div>
   );
 }

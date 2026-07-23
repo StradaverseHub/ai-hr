@@ -6840,6 +6840,7 @@
     "empty": "Chưa có thẻ bảng điều khiển. Tạo một thẻ để hiển thị trên bảng điều khiển của nhân viên.",
     "colName": "Thẻ",
     "colType": "Loại",
+    "colAudience": "Đối tượng",
     "colStatus": "Trạng thái",
     "colSelectable": "Có thể chọn",
     "colDefault": "Mặc định",
@@ -6851,6 +6852,11 @@
       "information": "Thông tin",
       "action": "Hành động",
       "shortcut": "Lối tắt"
+    },
+    "audience": {
+      "employee": "Nhân viên",
+      "manager": "Quản lý",
+      "hr_admin": "Quản trị HR"
     },
     "status": {
       "active": "Hoạt động",
@@ -6873,6 +6879,8 @@
     "fieldOrder": "Thứ tự hiển thị",
     "fieldHref": "Liên kết (tùy chọn)",
     "fieldHrefHint": "Nơi thẻ liên kết đến khi nhấp (cho thẻ hành động/lối tắt).",
+    "fieldAudience": "Hiển thị trên bảng điều khiển",
+    "fieldAudienceHint": "Bảng điều khiển của vai trò nào cung cấp thẻ này (Nhân viên, Quản lý, Quản trị HR). Không chọn gì sẽ mặc định là Nhân viên.",
     "fieldSelectable": "Có sẵn cho nhân viên thêm khi tùy chỉnh",
     "fieldDefault": "Hiển thị mặc định trên bảng điều khiển của nhân viên",
     "fieldMandatory": "Bắt buộc — nhân viên không thể xóa",

@@ -21,6 +21,9 @@ const boolOf = (fd: FormData, k: string): boolean => {
   return v === 'on' || v === 'true' || v === '1';
 };
 
+/** The checked audience roles (9606c59f). The service normalises + falls back to employee when empty. */
+const audienceOf = (fd: FormData): string[] => fd.getAll('audience').map((v) => String(v));
+
 /** Map a known service error to its localized message; fall back to the raw message otherwise. */
 async function errorMessage(e: unknown): Promise<string> {
   const t = await getTranslations('dashboardCardConfig.errors');
@@ -57,6 +60,7 @@ export async function createCardAction(formData: FormData) {
         mandatory: boolOf(formData, 'mandatory'),
         displayOrder: numOrUndef(formData, 'displayOrder'),
         href: String(formData.get('href') ?? ''),
+        audience: audienceOf(formData),
       }).then(() => undefined),
     'saved',
   );
@@ -78,6 +82,7 @@ export async function updateCardAction(formData: FormData) {
         mandatory: boolOf(formData, 'mandatory'),
         displayOrder: numOrUndef(formData, 'displayOrder'),
         href: String(formData.get('href') ?? ''),
+        audience: audienceOf(formData),
       }).then(() => undefined),
     'saved',
   );

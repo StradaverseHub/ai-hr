@@ -6840,6 +6840,7 @@
     "empty": "Tiada kad papan pemuka lagi. Cipta satu untuk menjadikannya tersedia pada papan pemuka pekerja.",
     "colName": "Kad",
     "colType": "Jenis",
+    "colAudience": "Audiens",
     "colStatus": "Status",
     "colSelectable": "Boleh dipilih",
     "colDefault": "Lalai",
@@ -6851,6 +6852,11 @@
       "information": "Maklumat",
       "action": "Tindakan",
       "shortcut": "Pintasan"
+    },
+    "audience": {
+      "employee": "Pekerja",
+      "manager": "Pengurus",
+      "hr_admin": "Pentadbir HR"
     },
     "status": {
       "active": "Aktif",
@@ -6873,6 +6879,8 @@
     "fieldOrder": "Susunan paparan",
     "fieldHref": "Pautan (pilihan)",
     "fieldHrefHint": "Ke mana kad memaut apabila diklik (untuk kad tindakan/pintasan).",
+    "fieldAudience": "Dipaparkan pada papan pemuka",
+    "fieldAudienceHint": "Papan pemuka peranan mana yang menawarkan kad ini (Pekerja, Pengurus, Pentadbir HR). Jika tiada dipilih, lalai kepada Pekerja.",
     "fieldSelectable": "Tersedia untuk pekerja tambah semasa penyesuaian",
     "fieldDefault": "Papar secara lalai pada papan pemuka pekerja",
     "fieldMandatory": "Wajib — pekerja tidak boleh mengalih keluarnya",

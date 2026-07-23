@@ -24,7 +24,7 @@ import {
   type DashboardCardChoice,
 } from '../lib/dashboard-layout';
 import { getDashboardLayout, setDashboardLayout } from '../core/dashboard-prefs';
-import { listEmployeeDashboardCards } from '../core/dashboard-card-config';
+import { listDashboardCards, listEmployeeDashboardCards } from '../core/dashboard-card-config';
 import { closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const choice = (cardKey: string, over: Partial<DashboardCardChoice> = {}): DashboardCardChoice => ({
@@ -199,5 +199,37 @@ describe('dashboard cards — end-to-end read + persistence', () => {
     const layout = await getDashboardLayout(ctx, cards);
     expect(layout.selected).toEqual(['leaveBalance']);
     expect(layout.selected).not.toContain('nextHoliday');
+  });
+
+  it('the role dimension (9606c59f) fences each catalog: a role only sees its audience', async () => {
+    await seedCards([
+      { cardKey: 'leaveBalance', name: 'Leave Balance', cardType: 'information', defaultDisplay: true, displayOrder: 1 }, // audience defaults to {employee}
+      { cardKey: 'teamAwayToday', name: 'Team Away Today', cardType: 'information', defaultDisplay: true, displayOrder: 2, audience: ['manager'] },
+      { cardKey: 'plannedAbsences', name: 'Leave Calendar', cardType: 'information', defaultDisplay: true, mandatory: true, displayOrder: 3, audience: ['employee', 'manager', 'hr_admin'] },
+      { cardKey: 'headcountByCompany', name: 'Headcount by Company', cardType: 'information', defaultDisplay: true, displayOrder: 4, audience: ['hr_admin'] },
+    ]);
+    const ctx = await newEmployeeCtx();
+    expect((await listDashboardCards(ctx, 'employee')).map((c) => c.cardKey)).toEqual([
+      'leaveBalance',
+      'plannedAbsences',
+    ]);
+    expect((await listDashboardCards(ctx, 'manager')).map((c) => c.cardKey)).toEqual([
+      'teamAwayToday',
+      'plannedAbsences',
+    ]);
+    expect((await listDashboardCards(ctx, 'hr_admin')).map((c) => c.cardKey)).toEqual([
+      'plannedAbsences',
+      'headcountByCompany',
+    ]);
+    // A save can never smuggle an out-of-role card in: normalisation against the role catalog drops it.
+    const mgrCards = await listDashboardCards(ctx, 'manager');
+    await setDashboardLayout(
+      ctx,
+      { selected: ['teamAwayToday', 'headcountByCompany'], order: ['teamAwayToday', 'headcountByCompany'] },
+      mgrCards,
+      'manager',
+    );
+    const layout = await getDashboardLayout(ctx, mgrCards, 'manager');
+    expect(layout.selected).toEqual(['teamAwayToday', 'plannedAbsences']); // hr_admin-only card dropped; mandatory calendar kept
   });
 });

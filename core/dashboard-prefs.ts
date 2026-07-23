@@ -1,14 +1,18 @@
 /**
- * Per-user employee dashboard layout (feedback 7d9d145d; add/remove/shortcut in 578a2fcf). The employee's
- * chosen dashboard cards + arrangement, persisted on app_user.dashboard_layout through the SECURITY DEFINER
- * app.dashboard_layout_* seam (own-row-only: a user can read/write only their own layout, so RLS stays
- * intact and one employee's arrangement never touches another's).
+ * Per-user dashboard layout (feedback 7d9d145d; add/remove/shortcut in 578a2fcf; per-ROLE in 9606c59f).
+ * The caller's chosen dashboard cards + arrangement, persisted on app_user.dashboard_layout through the
+ * SECURITY DEFINER app.dashboard_layout_* seam (own-row-only: a user can read/write only their own layout,
+ * so RLS stays intact and one person's arrangement never touches another's).
  *
  * The stored value evolved from a plain block-order array (7d9d145d) to `{ selected, order }` (578a2fcf,
- * driven by the HR-Admin Dashboard Card Master 1586d2f5). It is normalised on BOTH read and write against
- * the tenant's live card config, so a legacy order-only array, a partial/tampered value, or a config that
- * disabled a card can never leave the layout in an invalid state. Reads/writes take the tenant's active
- * cards (see core/dashboard-card-config.listEmployeeDashboardCards) so the pure normaliser stays DB-free.
+ * driven by the HR-Admin Dashboard Card Master 1586d2f5) to a per-ROLE envelope
+ * `{ employee?: {…}, manager?: {…}, hr_admin?: {…} }` (9606c59f — managers and HR admins customize too,
+ * and someone promoted between roles keeps a sensible dashboard in each hat). A LEGACY flat value reads as
+ * the EMPLOYEE slot, so every pre-existing saved employee layout keeps working unchanged. Each role's slot
+ * is normalised on BOTH read and write against the tenant's live ROLE-FILTERED card config, so a legacy
+ * value, a partial/tampered slot, or a config that disabled a card can never leave the layout in an
+ * invalid state. Reads/writes take the role's active cards (core/dashboard-card-config.listDashboardCards)
+ * so the pure normaliser stays DB-free.
  *
  * SUBSTRATE CARVE-OUT (deliberate DomainEvent skip): dashboard_layout is a personal, cosmetic UI
  * preference — the same class as app_user.onboarded_at / lastSeenAt. It changes only which cards render on
@@ -18,45 +22,77 @@
  * "When NOT to append" rule for per-user UI/pref writes). Do not add one.
  */
 import { sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
-import { normalizeDashboardLayout, type DashboardCardChoice, type DashboardLayout } from '../lib/dashboard-layout';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {
+  extractRoleLayout,
+  mergeRoleLayout,
+  normalizeDashboardLayout,
+  removeRoleLayout,
+  type DashboardCardChoice,
+  type DashboardLayout,
+  type DashboardLayoutRole,
+} from '../lib/dashboard-layout';
+
+/** Read the caller's raw stored dashboard_layout jsonb through the own-row seam. */
+async function readRawLayout(tx: Tx): Promise<unknown> {
+  const rows = (await tx.execute(
+    sql`select app.dashboard_layout_get() as layout`,
+  )) as unknown as { layout: unknown }[];
+  return rows[0]?.layout ?? null;
+}
 
 /**
- * The caller's saved, normalised layout against the given active card set. Always returns a valid layout
- * (never null): with no saved value it yields the HR default (mandatory + default-display cards shown). A
- * legacy order-only array is read as "everything shown, in that order".
+ * The caller's saved, normalised layout for `role` against the given active card set. Always returns a
+ * valid layout (never null): with no saved slot it yields the HR default (mandatory + default-display
+ * cards shown). A legacy flat value is the employee slot; a legacy order-only array reads as "everything
+ * shown, in that order".
  */
 export function getDashboardLayout(
   ctx: SessionContext,
   cards: readonly DashboardCardChoice[],
+  role: DashboardLayoutRole = 'employee',
 ): Promise<DashboardLayout> {
   if (!ctx.userId) return Promise.resolve(normalizeDashboardLayout(null, cards)); // no login identity → HR default
   return withTenant(ctx, async (tx) => {
-    const rows = (await tx.execute(
-      sql`select app.dashboard_layout_get() as layout`,
-    )) as unknown as { layout: unknown }[];
-    const raw = rows[0]?.layout ?? null;
-    return normalizeDashboardLayout(raw, cards);
+    const raw = await readRawLayout(tx);
+    return normalizeDashboardLayout(extractRoleLayout(raw, role), cards);
   });
 }
 
-/** Persist the caller's chosen cards + order (normalised against the live card config before write). */
+/**
+ * Persist the caller's chosen cards + order for `role` (normalised against the live role-filtered card
+ * config before write). Only the role's slot is replaced — the other roles' saved layouts are preserved.
+ */
 export function setDashboardLayout(
   ctx: SessionContext,
   layout: unknown,
   cards: readonly DashboardCardChoice[],
+  role: DashboardLayoutRole = 'employee',
 ): Promise<void> {
   const normalized = normalizeDashboardLayout(layout, cards);
   return withTenant(ctx, async (tx) => {
     // Deliberate DomainEvent skip — personal cosmetic UI pref (see file header).
-    await tx.execute(sql`select app.dashboard_layout_set(${JSON.stringify(normalized)}::jsonb)`);
+    const merged = mergeRoleLayout(await readRawLayout(tx), role, normalized);
+    await tx.execute(sql`select app.dashboard_layout_set(${JSON.stringify(merged)}::jsonb)`);
   });
 }
 
-/** Clear the caller's saved layout so the dashboard reverts to the HR default (mandatory + default cards). */
-export function resetDashboardLayout(ctx: SessionContext): Promise<void> {
+/**
+ * Clear the caller's saved layout for `role` so that dashboard reverts to the HR default (mandatory +
+ * default cards). Other roles' saved slots are preserved; when nothing remains the column goes back to
+ * NULL — exactly the pre-9606c59f reset.
+ */
+export function resetDashboardLayout(
+  ctx: SessionContext,
+  role: DashboardLayoutRole = 'employee',
+): Promise<void> {
   return withTenant(ctx, async (tx) => {
     // Deliberate DomainEvent skip — personal cosmetic UI pref (see file header).
-    await tx.execute(sql`select app.dashboard_layout_reset()`);
+    const remaining = removeRoleLayout(await readRawLayout(tx), role);
+    if (remaining == null) {
+      await tx.execute(sql`select app.dashboard_layout_reset()`);
+    } else {
+      await tx.execute(sql`select app.dashboard_layout_set(${JSON.stringify(remaining)}::jsonb)`);
+    }
   });
 }

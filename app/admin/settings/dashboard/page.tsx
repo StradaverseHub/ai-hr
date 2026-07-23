@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { scopedAdmin } from '@/lib/scope';
 import {
   listCards,
+  DASHBOARD_CARD_AUDIENCES,
   DASHBOARD_CARD_TYPES,
   type DashboardCardRow,
   type DashboardCardType,
@@ -68,8 +69,10 @@ export default async function DashboardCardConfigPage({
   // when it is the Leave Calendar (lib/dashboard-layout FIXED_ROW_KEYS) — the same shared rule the employee
   // customizer uses, so the Templates explainer and the Preview show the SAME partition employees get.
   const isPinned = (c: DashboardCardRow) => isFixedRowKey(c.cardKey);
+  // The Templates/Preview sections show the default EMPLOYEE dashboard (their long-standing meaning), so
+  // manager/hr_admin-only cards (audience, 9606c59f) are filtered out of the projection.
   const activeDefault = cards
-    .filter((c) => c.status === 'active' && c.defaultDisplay)
+    .filter((c) => c.status === 'active' && c.defaultDisplay && c.audience.includes('employee'))
     .sort((a, b) => a.displayOrder - b.displayOrder);
   const previewRow2 = activeDefault.filter(isPinned);
   const previewRow1All = activeDefault.filter((c) => !isPinned(c));
@@ -177,6 +180,7 @@ export default async function DashboardCardConfigPage({
                       <tr>
                         <th className="px-4 py-2 font-medium">{t('colName')}</th>
                         <th className="px-4 py-2 font-medium">{t('colType')}</th>
+                        <th className="px-4 py-2 font-medium">{t('colAudience')}</th>
                         <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
                         <th className="px-4 py-2 text-center font-medium">{t('colSelectable')}</th>
                         <th className="px-4 py-2 text-center font-medium">{t('colDefault')}</th>
@@ -194,6 +198,15 @@ export default async function DashboardCardConfigPage({
                           </td>
                           <td className="px-4 py-2.5">
                             <Badge variant="default">{t(`type.${c.cardType}`)}</Badge>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex flex-wrap gap-1">
+                              {c.audience.map((r) => (
+                                <Badge key={r} variant="default">
+                                  {t(`audience.${r}`)}
+                                </Badge>
+                              ))}
+                            </div>
                           </td>
                           <td className="px-4 py-2.5">
                             <Badge variant={c.status === 'active' ? 'success' : 'default'}>
@@ -240,7 +253,7 @@ export default async function DashboardCardConfigPage({
                       ))}
                       {filteredCards.length === 0 && (
                         <tr>
-                          <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                          <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                             {cards.length === 0 ? t('empty') : tm('filteredEmpty')}
                           </td>
                         </tr>
@@ -338,6 +351,27 @@ export default async function DashboardCardConfigPage({
                       />
                       <span className="text-xs text-muted-foreground">{t('fieldHrefHint')}</span>
                     </label>
+
+                    {/* Audience (9606c59f): which role dashboards offer this card. Unchecking everything
+                        falls back to Employee in the service (a card must target at least one role). */}
+                    <fieldset className="sm:col-span-2 flex flex-col gap-2">
+                      <span className="text-sm font-medium">{t('fieldAudience')}</span>
+                      <div className="flex flex-wrap gap-x-6 gap-y-2">
+                        {DASHBOARD_CARD_AUDIENCES.map((r) => (
+                          <label key={r} className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              name="audience"
+                              value={r}
+                              defaultChecked={(editing?.audience ?? ['employee']).includes(r)}
+                              className="h-4 w-4"
+                            />
+                            <span className="text-sm">{t(`audience.${r}`)}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <span className="text-xs text-muted-foreground">{t('fieldAudienceHint')}</span>
+                    </fieldset>
 
                     <label className="flex items-center gap-2 sm:col-span-2">
                       <input
