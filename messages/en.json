@@ -3999,7 +3999,7 @@
       "reasonPlaceholder": "Why is this being changed?",
       "essView": {
         "sectionTitle": "Employee Leave View Configuration",
-        "help": "Choose which entitlement and balance figures employees see for this leave type in My Profile → Leave. Unticked items are hidden in self-service only; HR always sees everything. Changes take effect immediately after saving.",
+        "help": "Choose which entitlement and balance figures employees see for this leave type in My Profile → Leave, and explain each one in the same place: tick an item and its Description and Formula fields appear beside it — employees see that text when they hover the item's info icon. Unticked items are hidden in self-service only; HR always sees everything. Explanations change wording only, never any leave figure.",
         "available": "Available",
         "taken": "Taken",
         "entitlementToDate": "Entitlement to Date",
@@ -4099,9 +4099,6 @@
       "categoryEssPolicy": "Condition",
       "categoryCustom": "Custom Settings",
       "formula": {
-        "sectionTitle": "Leave Entitlement Formula Management",
-        "help": "Write, in plain words, what each part of the entitlement calculation means and how it is worked out. Employees see this on their leave breakdown next to each figure. Leave a component blank to hide its info icon. This changes explanations only — never any leave figure.",
-        "configured": "Set",
         "descriptionLabel": "Description",
         "formulaLabel": "Formula explanation",
         "resultLabel": "Result / date (optional)",

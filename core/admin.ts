@@ -2841,13 +2841,15 @@ export async function updateLeaveType(
     // clear (revert to all-visible default). Every key MUST be in the closed allow-list (core/ess-view.ts);
     // an unknown key is rejected. Value false ⇒ hidden in ESS; missing/true ⇒ visible.
     essViewConfig?: EssViewConfig | null;
-    // Leave Entitlement Formula Management (feedback 79011509): HR-authored per-component explanation store.
-    // OWN tri-state (undefined = formula_explanations column untouched), mirroring essViewConfig — its own
-    // editor sub-form posts `formula=1` so an unrelated save never resets it. The full { key: entry } map is
-    // REPLACED wholesale (the editor always posts the complete component set). Each entry's free-text fields are
-    // trimmed; blank fields (and all-blank entries) are dropped; an empty result ⇒ null (clear). Every key MUST
-    // be in the closed component allow-list (core/leave-formula.ts); an unknown key is rejected. Explanation
-    // layer only — never read for entitlement / accrual / eligibility / workflow / payroll.
+    // Leave Entitlement Formula Management (feedback 79011509, consolidated by 2bc2f2a3): HR-authored
+    // per-component explanation store. OWN tri-state (undefined = formula_explanations column untouched),
+    // mirroring essViewConfig — the merged view-configuration sub-form posts `formula=1` (alongside
+    // `essView=1`) so an unrelated save never resets it. The full { key: entry } map is REPLACED wholesale
+    // (the editor always posts the complete key set). Each entry's free-text fields are trimmed; blank fields
+    // (and all-blank entries) are dropped; an empty result ⇒ null (clear). Every key MUST be in the closed
+    // allow-list (core/leave-formula.ts LEAVE_EXPLANATION_KEYS — the 7 legacy calc-breakdown keys ∪ every
+    // ess-view key); an unknown key is rejected. Explanation layer only — never read for entitlement /
+    // accrual / eligibility / workflow / payroll.
     formulaExplanations?: LeaveFormulaConfig | null;
     // Day Type Inclusion (feedback ef6d7146): the five-toggle re-inclusion vector { offDay, restDay,
     // publicHoliday, companyHoliday, shutdownDay }. OWN tri-state (undefined = day_type_inclusion column

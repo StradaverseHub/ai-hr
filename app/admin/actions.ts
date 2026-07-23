@@ -80,7 +80,7 @@ import {
 } from '@/core/clocking-location';
 import { countEmployeesInScope } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
-import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaConfig } from '@/core/leave-formula';
+import { LEAVE_EXPLANATION_KEYS, type LeaveFormulaConfig } from '@/core/leave-formula';
 import { requireAdmin } from '@/lib/authz';
 import {
   createGradeGroup,
@@ -1378,6 +1378,9 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // (marker) plus one checkbox per component (`essView_<key>`). An unchecked box does not post, so we build
   // the COMPLETE map from the closed key list (checked ⇒ true/visible, absent ⇒ false/hidden) and replace
   // the column wholesale. Any other sub-form save omits the marker ⇒ ess_view_config stays untouched.
+  // Consolidation (2bc2f2a3): the merged view-configuration sub-form posts BOTH markers (`essView=1` and
+  // `formula=1`) in ONE submit — selections land on ess_view_config, explanations on formula_explanations.
+  // The two tri-states stay independent so either marker alone still works.
   const touchEssView = fd.get('essView') === '1';
   const essViewFields = touchEssView
     ? {
@@ -1386,16 +1389,19 @@ export async function updateLeaveTypeAction(fd: FormData) {
         ) as EssViewConfig,
       }
     : {};
-  // Leave Entitlement Formula Management (79011509): the formula editor sub-form posts `formula=1` (marker)
-  // plus, per component, up to three free-text fields (`formula_<key>_description`, `formula_<key>_formula`,
-  // `formula_<key>_result`). We build the COMPLETE { key: entry } map from the closed component list and hand
-  // it to the service, which trims + drops blanks + normalises an all-blank map to null (clear). Any other
-  // sub-form save omits the marker ⇒ formula_explanations stays untouched (same tri-state guard as essView).
+  // Leave Entitlement Formula Management (79011509, consolidated by 2bc2f2a3): the merged view-configuration
+  // sub-form posts `formula=1` (marker) plus, per component, up to three free-text fields
+  // (`formula_<key>_description`, `formula_<key>_formula`, `formula_<key>_result`). We build the COMPLETE
+  // { key: entry } map from the closed key list — WIDENED (2bc2f2a3) from the 7 legacy calc-breakdown keys to
+  // LEAVE_EXPLANATION_KEYS (legacy 7 ∪ every ess-view key) so any configurable view item can be annotated; a
+  // key the form never rendered posts nothing ⇒ '' ⇒ dropped by the service, which trims + drops blanks +
+  // normalises an all-blank map to null (clear). Any other sub-form save omits the marker ⇒
+  // formula_explanations stays untouched (same tri-state guard as essView).
   const touchFormula = fd.get('formula') === '1';
   const formulaFields = touchFormula
     ? {
         formulaExplanations: Object.fromEntries(
-          LEAVE_FORMULA_COMPONENT_KEYS.map((key) => [
+          LEAVE_EXPLANATION_KEYS.map((key) => [
             key,
             {
               description: String(fd.get(`formula_${key}_description`) ?? ''),

@@ -1033,10 +1033,9 @@ export function LeaveTypePanel({
   upsertSchemeEntitlementAction: Action;
 }) {
   const t = useTranslations('admin.leave');
-  // Sync Employee Leave View Configuration (11876072): the ESS-view checklist group headings reuse the
-  // employee panel's OWN section titles (leave.breakdown.section.*) so the admin screen reads as a preview of
-  // the panel — same words, same order.
-  const tBreakdown = useTranslations('leave.breakdown');
+  // Sync Employee Leave View Configuration (11876072): the view-config group headings reuse the employee
+  // panel's OWN section titles (leave.breakdown.section.*) so the admin screen reads as a preview of the
+  // panel — same words, same order. That translator now lives inside ViewConfigSection (2bc2f2a3).
   // Leave Type Employee Visibility (7b11f1c1): statutory-entitlement codes can never have employee
   // applications blocked (an employee must be able to exercise a lawful entitlement — EA 1955 s.60E/s.60F/
   // s.37/s.60FA). Mirrors STATUTORY_APPLY_CODES in core/leave.ts; kept as a local literal so this client
@@ -2670,120 +2669,20 @@ export function LeaveTypePanel({
               <CardTitle>{t('categoryCustom')}</CardTitle>
             </CardHeader>
             <CardContent id={`cat-custom-${id}`} className="space-y-3">
-          {/* Restructure (123c1e76): the former "Leave Information Display" card's four sub-forms (ESS view
-              checklist, formula explanations, employee visibility, ESS placement) now live INSIDE the Custom
-              Settings card — every sub-form below is byte-identical, only the card wrapper changed. */}
-          {/* Employee Leave View Configuration (65dec703 / dup 1fedb473). Its own self-contained sub-form
-              (own tri-state) posts `essView=1` — a checklist of the breakdown components an employee sees in
-              My Profile → Leave for THIS leave type. An unchecked box does not post; the action rebuilds the
-              full { key: boolean } map from the closed key list, so unticked ⇒ hidden in ESS. Gating applies
-              to /me only — admin/HR always see everything. null/missing ⇒ visible (backward compatible).
-              Sync (11876072): the checkboxes are no longer a flat grid — they are GROUPED into the same
-              sections, in the same order, the employee breakdown panel shows (ESS_VIEW_CHECKLIST_GROUPS is
-              derived from ENTITLEMENT_PANEL_SECTIONS, the panel's own descriptor, so the two cannot drift).
-              Keys no panel section references land in a trailing "Other" group. Same keys, same effects —
-              only the arrangement changed. */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('essView.sectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the ess_view_config column (tri-state guard) */}
-              <input type="hidden" name="essView" value="1" />
-              <div className="space-y-3">
-                {ESS_VIEW_CHECKLIST_GROUPS.map((group) => (
-                  <fieldset key={group.key} className="space-y-1.5">
-                    {/* Heading = the panel section's own title (leave.breakdown.section.*); the orphan group
-                        uses the admin-side "Other" label. */}
-                    <legend className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {group.labelKey ? tBreakdown(group.labelKey) : t('essView.groupOther')}
-                    </legend>
-                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                      {group.keys.map((key) => (
-                        <label key={key} className="flex items-center gap-2 text-xs text-foreground">
-                          <input
-                            type="checkbox"
-                            name={`essView_${key}`}
-                            defaultChecked={essViewConfig?.[key] !== false}
-                            className="size-3.5 rounded border-border"
-                          />
-                          {t(`essView.${key}`)}
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
-                ))}
-              </div>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('essView.help')}</p>
-          </div>
-          {/* Leave Entitlement Formula Management (79011509). Its own self-contained sub-form (own tri-state)
-              posts `formula=1` — an HR-owned, per-component plain-language explanation store surfaced to
-              employees on the leave breakdown panel (feedback b8b665ff shows it behind a per-row info icon).
-              Each of the seven §7 calculation components is an expand/collapse block with a short Description
-              and a free-text Formula explanation (plus an optional Result/date note). Explanation layer only —
-              editing these NEVER changes any entitlement figure. Empty fields are dropped by the service; an
-              all-blank map clears the column. */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('formula.sectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the formula_explanations column (tri-state guard) */}
-              <input type="hidden" name="formula" value="1" />
-              <div className="space-y-1.5">
-                {LEAVE_FORMULA_COMPONENT_KEYS.map((key) => {
-                  const entry = formulaExplanations?.[key];
-                  const configured = !!(entry && (entry.description || entry.formula || entry.result));
-                  return (
-                    <details key={key} open={configured} className="rounded-md border border-border">
-                      <summary className="flex cursor-pointer items-center justify-between gap-2 px-2.5 py-1.5 text-xs font-medium text-foreground">
-                        <span>{t(`formula.component.${key}`)}</span>
-                        {configured && <span className="text-[10px] font-normal text-primary">{t('formula.configured')}</span>}
-                      </summary>
-                      <div className="space-y-2 border-t border-border px-2.5 py-2">
-                        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                          {t('formula.descriptionLabel')}
-                          <textarea
-                            name={`formula_${key}_description`}
-                            defaultValue={entry?.description ?? ''}
-                            rows={2}
-                            className={`${inputCls} text-xs`}
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                          {t('formula.formulaLabel')}
-                          <textarea
-                            name={`formula_${key}_formula`}
-                            defaultValue={entry?.formula ?? ''}
-                            rows={2}
-                            className={`${inputCls} text-xs`}
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                          {t('formula.resultLabel')}
-                          <input
-                            name={`formula_${key}_result`}
-                            defaultValue={entry?.result ?? ''}
-                            className={`${inputCls} text-xs`}
-                          />
-                        </label>
-                      </div>
-                    </details>
-                  );
-                })}
-              </div>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('formula.help')}</p>
-          </div>
+          {/* Restructure (123c1e76): the former "Leave Information Display" card's sub-forms (view
+              configuration, employee visibility, ESS placement) live INSIDE the Custom Settings card. */}
+          {/* Consolidated Employee Leave View Configuration (2bc2f2a3): the 65dec703 checklist and the
+              79011509 formula-explanation editor are MERGED into one sub-form — tick an item and its
+              Description / Formula fields appear right beside it; one Save posts both markers. The
+              standalone "Leave Entitlement Formula Management" section is retired (same storage, so all
+              existing content carries over). See ViewConfigSection above for the full contract. */}
+          <ViewConfigSection
+            id={id}
+            name={name}
+            essViewConfig={essViewConfig}
+            formulaExplanations={formulaExplanations}
+            updateTypeAction={updateTypeAction}
+          />
           {/* Leave Type Employee Visibility (7b11f1c1). Its own self-contained sub-form (own tri-state) posts
               `visibility=1` — two checkboxes controlling whether an employee sees this leave type on their
               self-service Leave tab, and whether they may apply for it. Both switches are independent: a
@@ -2908,6 +2807,182 @@ export function LeaveTypePanel({
           </Card>
           )}
       </div>
+    </div>
+  );
+}
+
+// ─── Consolidated Employee Leave View Configuration (feedback 2bc2f2a3) ────────────────────────────────────
+//
+// ONE sub-form now owns both concerns the Custom step used to split across two sections: WHICH breakdown
+// items an employee sees (ess_view_config, feedback 65dec703) and HOW each item is explained
+// (formula_explanations, feedback 79011509 — the standalone "Leave Entitlement Formula Management" section is
+// retired). Ticking an item reveals its Description / Formula / Result fields inline; ONE Save posts BOTH
+// tri-state markers (`essView=1` + `formula=1`) so selections and explanations persist together — same two
+// storage targets as before, no content migration. Unticking an item HIDES its editor without unmounting it
+// (the `hidden` attribute), so the concealed inputs still post and stored explanations survive an
+// untick-then-save round-trip.
+//
+// Annotatable keys: the items of the four employee-panel sections. The grouped checklist mirrors the employee
+// panel (ESS_VIEW_CHECKLIST_GROUPS, feedback 11876072); for the panel-section groups each checkbox key IS the
+// employee row's field key, so its explanation is stored under that same key and the employee hover icon finds
+// it. The Entitlement Calculation Breakdown group is special: its single section-level checkbox reveals the
+// SEVEN legacy per-component editors (LEAVE_FORMULA_COMPONENT_KEYS — the §7 rows the employee actually sees),
+// preserving 79011509 content verbatim. The trailing "Other" group's keys gate non-panel surfaces (e.g. the
+// balance-table columns) that have no explanation render site — they stay plain checkboxes.
+
+/** The three inline explanation inputs for one annotatable item. Names follow the 79011509 FormData contract
+ *  (`formula_<key>_description|formula|result`) so the existing action/service path persists them unchanged. */
+function ViewConfigExplanationFields({
+  fieldKey,
+  entry,
+  t,
+}: {
+  fieldKey: string;
+  entry: LeaveFormulaEntry | undefined;
+  /** The parent's admin.leave translator (labels live under `admin.leave.formula.*`). */
+  t: (key: string) => string;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {t('formula.descriptionLabel')}
+        <textarea
+          name={`formula_${fieldKey}_description`}
+          defaultValue={entry?.description ?? ''}
+          rows={2}
+          className={`${inputCls} text-xs`}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {t('formula.formulaLabel')}
+        <textarea
+          name={`formula_${fieldKey}_formula`}
+          defaultValue={entry?.formula ?? ''}
+          rows={2}
+          className={`${inputCls} text-xs`}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {t('formula.resultLabel')}
+        <input name={`formula_${fieldKey}_result`} defaultValue={entry?.result ?? ''} className={`${inputCls} text-xs`} />
+      </label>
+    </div>
+  );
+}
+
+function ViewConfigSection({
+  id,
+  name,
+  essViewConfig,
+  formulaExplanations,
+  updateTypeAction,
+}: {
+  id: string;
+  name: string;
+  essViewConfig: Record<string, boolean> | null;
+  formulaExplanations: Record<string, LeaveFormulaEntry> | null;
+  updateTypeAction: Action;
+}) {
+  const t = useTranslations('admin.leave');
+  const tBreakdown = useTranslations('leave.breakdown');
+  // Client-island reveal state: checked ⇒ the item's inline explanation editor shows. Initialised from the
+  // stored config (missing ⇒ visible/ticked, the 65dec703 backward-compatible default).
+  const [checked, setChecked] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      ESS_VIEW_CHECKLIST_GROUPS.flatMap((g) => g.keys).map((key) => [key, essViewConfig?.[key] !== false]),
+    ),
+  );
+  const toggle = (key: string) => setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{t('essView.sectionTitle')}</span>
+      <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+        <input type="hidden" name="id" value={id} />
+        {/* preserve the name — this form does not edit it */}
+        <input type="hidden" name="name" value={name} />
+        {/* markers: ONE submit touches BOTH columns — the checkboxes land on ess_view_config, the inline
+            explanation fields on formula_explanations (each keeps its own tri-state guard in the action). */}
+        <input type="hidden" name="essView" value="1" />
+        <input type="hidden" name="formula" value="1" />
+        <div className="space-y-3">
+          {ESS_VIEW_CHECKLIST_GROUPS.map((group) => (
+            <fieldset key={group.key} className="space-y-1.5">
+              {/* Heading = the panel section's own title (leave.breakdown.section.*); the orphan group
+                  uses the admin-side "Other" label. */}
+              <legend className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {group.labelKey ? tBreakdown(group.labelKey) : t('essView.groupOther')}
+              </legend>
+              {group.labelKey == null ? (
+                // "Other" group: keys gating non-panel surfaces — no explanation render site, plain checkboxes.
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {group.keys.map((key) => (
+                    <label key={key} className="flex items-center gap-2 text-xs text-foreground">
+                      <input
+                        type="checkbox"
+                        name={`essView_${key}`}
+                        checked={checked[key] ?? true}
+                        onChange={() => toggle(key)}
+                        className="size-3.5 rounded border-border"
+                      />
+                      {t(`essView.${key}`)}
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {group.keys.map((key) => {
+                    const on = checked[key] ?? true;
+                    const isCalcSection = key === 'entitlementCalcBreakdown';
+                    return (
+                      <div key={key} className="rounded-md border border-border px-2.5 py-1.5">
+                        <label className="flex items-center gap-2 text-xs font-medium text-foreground">
+                          <input
+                            type="checkbox"
+                            name={`essView_${key}`}
+                            checked={on}
+                            onChange={() => toggle(key)}
+                            className="size-3.5 rounded border-border"
+                          />
+                          {t(`essView.${key}`)}
+                        </label>
+                        {/* hidden (not unmounted) when unticked: the inputs still post, so an untick+save
+                            never wipes the stored explanation. */}
+                        {isCalcSection ? (
+                          <div hidden={!on} className="mt-2 space-y-1.5 border-t border-border pt-2">
+                            {LEAVE_FORMULA_COMPONENT_KEYS.map((componentKey) => (
+                              <details key={componentKey} className="rounded-md border border-border">
+                                <summary className="cursor-pointer px-2.5 py-1.5 text-xs font-medium text-foreground">
+                                  {t(`formula.component.${componentKey}`)}
+                                </summary>
+                                <div className="border-t border-border px-2.5 py-2">
+                                  <ViewConfigExplanationFields
+                                    fieldKey={componentKey}
+                                    entry={formulaExplanations?.[componentKey]}
+                                    t={t}
+                                  />
+                                </div>
+                              </details>
+                            ))}
+                          </div>
+                        ) : (
+                          <div hidden={!on} className="mt-2 border-t border-border pt-2">
+                            <ViewConfigExplanationFields fieldKey={key} entry={formulaExplanations?.[key]} t={t} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </fieldset>
+          ))}
+        </div>
+        <Button type="submit" size="sm">
+          {t('save')}
+        </Button>
+      </form>
+      <p className="text-xs text-muted-foreground">{t('essView.help')}</p>
     </div>
   );
 }

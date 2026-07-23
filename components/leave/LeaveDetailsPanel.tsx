@@ -65,14 +65,24 @@ export function LeaveDetailsPanel({
   const t = useTranslations('leave.breakdown');
   const fmtDays = (n: number) => n.toFixed(2);
 
-  // Info-icon per component (b8b665ff): which calculation rows are expanded, keyed by `${sectionKey}:${fieldKey}`.
-  // Several rows may stay open at once and toggling one never affects another (a Set, no single-open constraint).
-  const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(() => new Set());
+  // Info-icon per row (b8b665ff, reworked by 2bc2f2a3): the HR-authored explanation now shows as a HOVER
+  // tooltip (mouse hover / keyboard focus reveal it; a tap TOGGLES it for touch, keyed by
+  // `${sectionKey}:${fieldKey}`). `pinnedRows` holds tap-toggled rows (several may stay open at once);
+  // `hoverRow` is the transient hover/focus target.
+  const [pinnedRows, setPinnedRows] = useState<ReadonlySet<string>>(() => new Set());
+  const [hoverRow, setHoverRow] = useState<string | null>(null);
   const toggleRow = (rowKey: string) =>
-    setExpandedRows((prev) => {
+    setPinnedRows((prev) => {
       const next = new Set(prev);
       if (next.has(rowKey)) next.delete(rowKey);
       else next.add(rowKey);
+      return next;
+    });
+  const unpinRow = (rowKey: string) =>
+    setPinnedRows((prev) => {
+      if (!prev.has(rowKey)) return prev;
+      const next = new Set(prev);
+      next.delete(rowKey);
       return next;
     });
 
@@ -101,18 +111,19 @@ export function LeaveDetailsPanel({
       .map((f) => ({ f, value: fieldValue(f) }))
       .filter((r) => r.value !== null); // omitWhenNull drop
     if (rows.length === 0) return null;
-    // Info-icon explanations (b8b665ff): only the §7 "Entitlement Calculation Breakdown" rows carry the
-    // HR-authored explanations (79011509), keyed by the field key (= the formula component key). Other sections'
-    // field keys have no entry, so this is naturally scoped to the calculation rows; the icon is hidden entirely
-    // for any row HR left blank. Content is read-only presentation over 79011509's store — no persistence here.
-    const withFormula = section.key === 'calcBreakdown';
+    // Info-icon explanations (b8b665ff, extended by 2bc2f2a3): ANY row whose field key has an HR-authored
+    // explanation (79011509's store, widened to every configurable view item) shows the info icon — no longer
+    // only the §7 calculation rows. §7 rows keep resolving by their legacy component key; other sections' rows
+    // resolve by their own field key (= the ess-view key HR ticked in the merged admin screen). The icon is
+    // hidden entirely for any row HR left blank. Read-only presentation — no persistence here.
     return (
       <div className="divide-y divide-border">
         {rows.map(({ f, value }) => {
-          const explanation = withFormula ? (data.formulaExplanations?.[f.key] ?? null) : null;
+          const explanation = data.formulaExplanations?.[f.key] ?? null;
           const hasExpl = !!(explanation && (explanation.description || explanation.formula || explanation.result));
           const rowKey = `${section.key}:${f.key}`;
-          const isOpen = hasExpl && expandedRows.has(rowKey);
+          const isOpen = hasExpl && (hoverRow === rowKey || pinnedRows.has(rowKey));
+          const tooltipId = `leave-expl-${section.key}-${f.key}`;
           const muted = value === PLACEHOLDER || (f.format === 'date' && value === t('noExpiry'));
           return (
             <div key={f.key} className="py-1.5">
@@ -120,9 +131,9 @@ export function LeaveDetailsPanel({
                 <span className="flex items-center gap-1 text-muted-foreground">
                   {t(f.labelKey)}
                   {/* §1 Leave Summary (877f2f37): a STATIC hover tooltip on the row — fixed plain-English copy,
-                      no HR config, no expand. Native `title` gives the hover text; the aria-label names it for
-                      assistive tech. Distinct from the §7 click-to-expand formula icon below. */}
-                  {f.tooltipKey && (
+                      no HR config. Suppressed when HR authored a custom explanation for this row (2bc2f2a3:
+                      one icon per row — the HR content supersedes the generic copy). */}
+                  {f.tooltipKey && !hasExpl && (
                     <span
                       title={t(f.tooltipKey)}
                       aria-label={t(f.tooltipKey)}
@@ -131,44 +142,63 @@ export function LeaveDetailsPanel({
                       <Info className="size-3.5" aria-hidden />
                     </span>
                   )}
+                  {/* HR explanation (2bc2f2a3): hover/focus shows the tooltip, tap/click toggles it (touch),
+                      Escape dismisses. Description and Formula render on separate lines. */}
                   {hasExpl && (
-                    <button
-                      type="button"
-                      onClick={() => toggleRow(rowKey)}
-                      aria-expanded={isOpen}
-                      aria-label={isOpen ? t('explanationHide') : t('explanationShow')}
-                      className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground dark:hover:bg-muted/40"
-                    >
-                      <Info className="size-3.5" aria-hidden />
-                    </button>
+                    <span className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => toggleRow(rowKey)}
+                        onMouseEnter={() => setHoverRow(rowKey)}
+                        onMouseLeave={() => setHoverRow((cur) => (cur === rowKey ? null : cur))}
+                        onFocus={() => setHoverRow(rowKey)}
+                        onBlur={() => setHoverRow((cur) => (cur === rowKey ? null : cur))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setHoverRow((cur) => (cur === rowKey ? null : cur));
+                            unpinRow(rowKey);
+                          }
+                        }}
+                        aria-expanded={isOpen}
+                        aria-describedby={isOpen ? tooltipId : undefined}
+                        aria-label={isOpen ? t('explanationHide') : t('explanationShow')}
+                        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground dark:hover:bg-muted/40"
+                      >
+                        <Info className="size-3.5" aria-hidden />
+                      </button>
+                      {isOpen && (
+                        <div
+                          id={tooltipId}
+                          role="tooltip"
+                          className="absolute left-0 top-full z-20 mt-1 w-64 space-y-1 rounded-md border border-border bg-popover px-2.5 py-2 text-xs text-muted-foreground shadow-md"
+                        >
+                          {explanation!.description && (
+                            <p>
+                              <span className="font-medium text-foreground">{t('explanationDescription')}: </span>
+                              {explanation!.description}
+                            </p>
+                          )}
+                          {explanation!.formula && (
+                            <p>
+                              <span className="font-medium text-foreground">{t('explanationFormula')}: </span>
+                              {explanation!.formula}
+                            </p>
+                          )}
+                          {explanation!.result && (
+                            <p>
+                              <span className="font-medium text-foreground">{t('explanationResult')}: </span>
+                              {explanation!.result}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </span>
                   )}
                 </span>
                 <span className={`tabular-nums ${muted ? 'text-muted-foreground' : 'font-medium text-foreground'}`}>
                   {value}
                 </span>
               </div>
-              {isOpen && (
-                <div className="mt-1.5 space-y-1 rounded-md bg-muted/50 px-2.5 py-2 text-xs text-muted-foreground dark:bg-muted/30">
-                  {explanation!.description && (
-                    <p>
-                      <span className="font-medium text-foreground">{t('explanationDescription')}: </span>
-                      {explanation!.description}
-                    </p>
-                  )}
-                  {explanation!.formula && (
-                    <p>
-                      <span className="font-medium text-foreground">{t('explanationFormula')}: </span>
-                      {explanation!.formula}
-                    </p>
-                  )}
-                  {explanation!.result && (
-                    <p>
-                      <span className="font-medium text-foreground">{t('explanationResult')}: </span>
-                      {explanation!.result}
-                    </p>
-                  )}
-                </div>
-              )}
             </div>
           );
         })}

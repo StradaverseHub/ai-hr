@@ -37,10 +37,11 @@ export type EntitlementBreakdownData = {
   /** Employee Leave View Configuration (65dec703): per-component ESS visibility (missing key ⇒ visible).
    *  Only consulted when `applyEssConfig` is set — i.e. on /me; admin/HR pass it false and see every row. */
   essView?: Record<string, boolean>;
-  /** Leave Entitlement Formula Management (79011509): HR-authored per-component explanations, keyed by the §7
-   *  calcBreakdown field key. A key present with content ⇒ the breakdown row shows an info icon that expands to
-   *  the description + formula (feedback b8b665ff). Missing key / null ⇒ no icon. Structural mirror of
-   *  core/read.ts ResolvedLeaveFormula (kept db-free). */
+  /** Leave Entitlement Formula Management (79011509, widened by 2bc2f2a3): HR-authored per-component
+   *  explanations, keyed by the row's field key — the §7 calcBreakdown component keys plus every ess-view key
+   *  (core/leave-formula.ts LEAVE_EXPLANATION_KEYS). A key present with content ⇒ that row shows an info icon
+   *  whose hover tooltip carries the description + formula (feedback b8b665ff). Missing key / null ⇒ no icon.
+   *  Structural mirror of core/read.ts ResolvedLeaveFormula (kept db-free). */
   formulaExplanations?: Record<string, { description?: string; formula?: string; result?: string } | null>;
 };
 

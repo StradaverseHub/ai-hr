@@ -3962,7 +3962,7 @@
       "reasonPlaceholder": "Mengapa ini diubah?",
       "essView": {
         "sectionTitle": "Konfigurasi Paparan Cuti Pekerja",
-        "help": "Pilih angka kelayakan dan baki yang dilihat pekerja untuk jenis cuti ini di Profil Saya → Cuti. Item yang tidak ditanda disembunyikan dalam layan diri sahaja; HR sentiasa melihat semuanya. Perubahan berkuat kuasa serta-merta selepas disimpan.",
+        "help": "Pilih angka kelayakan dan baki yang dilihat pekerja untuk jenis cuti ini di Profil Saya → Cuti, dan terangkan setiap satu di tempat yang sama: tanda satu item dan medan Penerangan serta Formula akan muncul di sebelahnya — pekerja melihat teks itu apabila menuding ikon maklumat item tersebut. Item yang tidak ditanda disembunyikan dalam layan diri sahaja; HR sentiasa melihat semuanya. Penerangan hanya mengubah teks, bukan sebarang angka cuti.",
         "available": "Tersedia",
         "taken": "Diambil",
         "entitlementToDate": "Kelayakan Hingga Kini",
@@ -4099,9 +4099,6 @@
       "categoryEssPolicy": "Syarat",
       "categoryCustom": "Tetapan Tersuai",
       "formula": {
-        "sectionTitle": "Pengurusan Formula Kelayakan Cuti",
-        "help": "Tuliskan, dalam bahasa mudah, maksud setiap bahagian pengiraan kelayakan dan cara ia dikira. Pekerja melihatnya pada pecahan cuti di sebelah setiap angka. Biarkan komponen kosong untuk menyembunyikan ikon maklumatnya. Ini mengubah penerangan sahaja — bukan mana-mana angka cuti.",
-        "configured": "Ditetapkan",
         "descriptionLabel": "Penerangan",
         "formulaLabel": "Penerangan formula",
         "resultLabel": "Keputusan / tarikh (pilihan)",
