@@ -14,6 +14,17 @@
  * 8g: DB — the workingDatesForSpans batching (core/leave.ts) must produce candidateCancelDates
  *     IDENTICAL to the old per-leave workingDatesForSpan path, including for a leave straddling
  *     the visible window edge (the union range is the leaves' own spans, never the window).
+ * 8h (ed76f6b0): resolveCalendarFetchWindow — the month-covering superset the page now fetches so
+ *     the Week/Month toggle is a purely client-side re-slice. The CLOSURE property is the load-
+ *     bearing part: NO sequence of client-side toggles (reanchorForView + resolveCalendarRange)
+ *     may ever resolve a window outside the fetched range, or the calendar would silently render
+ *     day columns with missing data.
+ * 8i (ed76f6b0): source drift guards for the instant toggle + the unified header. The Week/Month
+ *     switch must stay a controlled, navigation-free tab pair (a reintroduced router.push brings
+ *     the full-dashboard reload back); the panel must own the replaceState/cookie/reanchor flow;
+ *     the page must feed the read from resolveCalendarFetchWindow; both segmented switches must
+ *     import the ONE shared class family (h-7 — the TimelineNav metric); and the header must
+ *     reserve the row-1 scope-switch slot so the layout is identical across roles.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,9 +39,11 @@ import {
   mondayOfIso,
   parseCalendarView,
   reanchorForView,
+  resolveCalendarFetchWindow,
   resolveCalendarRange,
   resolveViewPreference,
   shiftMonthIso,
+  type CalendarView,
 } from '../lib/leave-calendar-range';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -182,6 +195,107 @@ describe('8f. source guards on components/planned-absences.tsx', () => {
     const src = read('components/planned-absences.tsx');
     expect(src.includes('viewAll')).toBe(false);
     expect(src.includes('ArrowUpRight')).toBe(false);
+  });
+});
+
+describe('8h. resolveCalendarFetchWindow (the month-covering fetch superset — ed76f6b0)', () => {
+  const todayIso = '2026-07-21';
+
+  it('covers the current window AND its toggle counterpart', () => {
+    // Month view of September (today outside): counterpart week = the midpoint week, inside the month.
+    expect(resolveCalendarFetchWindow({ view: 'month', anchorIso: '2026-09-18', todayIso })).toEqual({
+      from: '2026-09-01',
+      to: '2026-09-30',
+    });
+  });
+
+  it('a week straddling two months fetches through BOTH the week and its re-anchor target month', () => {
+    // Week Mon 31 Aug – Sun 6 Sep; the toggle re-anchors to its midpoint (3 Sep) ⇒ month September.
+    // Clipping the fetch to either the week or the anchor's month would starve the other view of rows.
+    expect(resolveCalendarFetchWindow({ view: 'week', anchorIso: '2026-08-31', todayIso })).toEqual({
+      from: '2026-08-31',
+      to: '2026-09-30',
+    });
+  });
+
+  it('today-anchored windows are unioned in whenever today is reachable (today-week can straddle out of today-month)', () => {
+    // Fri 31 Jul: month view contains today, so the toggle drops the anchor and resolves TODAY's week
+    // (Mon 27 Jul – Sun 2 Aug) — which pokes past the month window into August. The fetch must cover it.
+    expect(resolveCalendarFetchWindow({ view: 'month', anchorIso: null, todayIso: '2026-07-31' })).toEqual({
+      from: '2026-07-01',
+      to: '2026-08-02',
+    });
+  });
+
+  it('CLOSURE: no sequence of client-side toggles ever resolves a window outside the fetched range', () => {
+    const seeds: { view: CalendarView; anchorIso: string | null; todayIso: string }[] = [
+      { view: 'week', anchorIso: '2026-08-31', todayIso }, // straddling week, today far away
+      { view: 'week', anchorIso: '2026-07-06', todayIso: '2026-07-01' }, // today outside the week but inside its month
+      { view: 'month', anchorIso: '2026-09-18', todayIso }, // plain future month
+      { view: 'month', anchorIso: null, todayIso: '2026-07-31' }, // today at a month edge
+      { view: 'week', anchorIso: null, todayIso: '2026-01-01' }, // default view at a year edge
+      { view: 'month', anchorIso: '2026-07-15', todayIso }, // month containing today
+    ];
+    for (const seed of seeds) {
+      const fetch = resolveCalendarFetchWindow(seed);
+      let view = seed.view;
+      let anchor = seed.anchorIso;
+      let win = resolveCalendarRange({ view, anchorIso: anchor, todayIso: seed.todayIso });
+      for (let i = 0; i < 6; i++) {
+        expect(win.from >= fetch.from, `${JSON.stringify(seed)} toggle ${i}: ${win.from} < ${fetch.from}`).toBe(true);
+        expect(win.to <= fetch.to, `${JSON.stringify(seed)} toggle ${i}: ${win.to} > ${fetch.to}`).toBe(true);
+        // One client-side toggle: re-anchor off the CURRENT window, then resolve the other view —
+        // exactly what PlannedAbsencesPanel.changeCalView does.
+        const next: CalendarView = view === 'week' ? 'month' : 'week';
+        anchor = reanchorForView({ fromView: view, toView: next, from: win.from, to: win.to, todayIso: seed.todayIso });
+        view = next;
+        win = resolveCalendarRange({ view, anchorIso: anchor, todayIso: seed.todayIso });
+      }
+    }
+  });
+});
+
+describe('8i. instant Week/Month toggle + unified header — source drift guards (ed76f6b0)', () => {
+  it('CalendarRangeSwitch is a controlled, navigation-free tab pair (no router, no cookie of its own)', () => {
+    const src = read('components/calendar-range-switch.tsx');
+    // A reintroduced router.push would bring back the full-dashboard reload on every toggle.
+    expect(src.includes('router.push')).toBe(false);
+    expect(src.includes('useRouter')).toBe(false);
+    expect(src.includes('document.cookie')).toBe(false);
+    expect(src).toContain('onChange');
+  });
+
+  it('the panel owns the toggle flow: replaceState + session cookie + reanchorForView', () => {
+    const panel = read('components/planned-absences-panel.tsx');
+    expect(panel).toContain('window.history.replaceState');
+    expect(panel).toContain('leave_calendar_view');
+    expect(panel).toContain('reanchorForView');
+    // Date NAVIGATION still round-trips with the busy pulse (new data needs the server).
+    expect(panel).toContain('useTransition');
+    expect(panel).toContain('aria-busy');
+  });
+
+  it('the page feeds the read from the month-covering fetch window', () => {
+    const page = read('app/page.tsx');
+    expect(page).toContain('resolveCalendarFetchWindow');
+  });
+
+  it('both switches share the ONE segmented family, sized to the TimelineNav h-7 metric', () => {
+    const shared = read('lib/segmented-control.ts');
+    expect(shared).toContain('h-7');
+    for (const f of ['components/absence-view-switch.tsx', 'components/calendar-range-switch.tsx']) {
+      const src = read(f);
+      expect(src, `${f} must import the shared segmented family`).toContain("from '@/lib/segmented-control'");
+    }
+  });
+
+  it('the header reserves the row-1 scope-switch slot so the structure is identical across roles', () => {
+    const panel = read('components/planned-absences-panel.tsx');
+    // The h-7 slot renders UNCONDITIONALLY; only the switch inside it is gated on showViewSwitch —
+    // an employee with no team gets an empty slot, never a reshaped layout.
+    expect(panel).toMatch(
+      /<div className="flex h-7 items-center justify-end">\s*\{showViewSwitch && <AbsenceViewSwitch/,
+    );
   });
 });
 

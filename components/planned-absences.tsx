@@ -37,10 +37,6 @@ type Leave = {
 };
 type Row = { id: string; name: string; employeeCode?: string | null; role: string | null; leaves: Leave[] };
 
-const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MS_DAY = 86_400_000;
-const ms = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
-
 // Solid, semantic chips (no glass), one per leave type, each with an icon.
 // Exported so the Leave page's requests table speaks the same color language.
 // Leave Calendar Blocked View (c238010b): `bg` / `text` are the split halves so the calendar's partial-day
@@ -76,14 +72,12 @@ const durationVariantOf = (durationType?: string | null): DurationVariant => {
 
 export async function PlannedAbsences({
   rows,
-  from,
-  to,
-  days,
   todayIso,
-  // ee55f5fe: which range view the window was resolved for (drives the Week/Month switch + nav stepping),
-  // and whether the anchor is the default (no ?abs= — hides the "Today" reset).
-  calView = 'week',
-  isDefaultAnchor = true,
+  // ed76f6b0: the validated ?abs= anchor (null ⇒ today) and the initial Week/Month view. The rows above
+  // cover the full month-covering FETCH window (resolveCalendarFetchWindow); the client panel resolves
+  // the display window locally so the Week/Month toggle is instant — no server round trip.
+  anchorIso = null,
+  initialCalView = 'week',
   // eae550e9 step 3: the client panel owns the My/Team filter; the server only seeds it. `showViewSwitch`
   // mirrors the old page-level "has direct reports" gate; `initialView` seeds from ?view=.
   showViewSwitch = false,
@@ -106,12 +100,9 @@ export async function PlannedAbsences({
   viewerCanApprove = false,
 }: {
   rows: Row[];
-  from: string;
-  to: string;
-  days: number;
   todayIso: string;
-  calView?: CalendarView;
-  isDefaultAnchor?: boolean;
+  anchorIso?: string | null;
+  initialCalView?: CalendarView;
   showViewSwitch?: boolean;
   initialView?: 'my' | 'team';
   viewerPersonId?: string | null;
@@ -123,18 +114,6 @@ export async function PlannedAbsences({
 }) {
   const t = await getTranslations('components.plannedAbsences');
   const tLeave = await getTranslations('leave');
-  const fromMs = ms(from);
-  const dayArr = Array.from({ length: days }, (_, i) => {
-    const d = new Date(fromMs + i * MS_DAY);
-    const dow = d.getUTCDay();
-    return {
-      iso: d.toISOString().slice(0, 10),
-      weekday: WEEKDAY[dow],
-      dayNum: d.getUTCDate(),
-      isWeekend: dow === 0 || dow === 6,
-    };
-  });
-  const lastIdx = days - 1;
 
   // ADR-0048: a short duration badge for non-full-day leave ("½ AM", "½ PM", "2h"). Translated/formatted
   // server-side so the client grid stays i18n-free; null for full-day leave (no badge, full-width tile).
@@ -249,15 +228,6 @@ export async function PlannedAbsences({
     }),
   }));
 
-  const header = (
-    <div>
-      <h2 className="text-base font-semibold tracking-tight">{t('title')}</h2>
-      <p className="text-xs text-muted-foreground">
-        {dayArr[0]?.iso} &ndash; {dayArr[lastIdx]?.iso}
-      </p>
-    </div>
-  );
-
   // Leave Calendar Blocked View (c238010b): legend explaining the four duration render patterns. Labels
   // reuse leave.duration.* so the naming stays in lockstep with the Request-leave dropdown (c1e8d881).
   // Rendered by the client panel only when the FILTERED view has rows (matches the old rows.length gate).
@@ -295,17 +265,12 @@ export async function PlannedAbsences({
   return (
     <Card className="h-full overflow-hidden">
       <PlannedAbsencesPanel
-        header={header}
+        title={t('title')}
         legend={legend}
         rows={gridRows}
-        dayArr={dayArr}
-        days={days}
-        fromMs={fromMs}
         todayIso={todayIso}
-        from={from}
-        to={to}
-        isDefaultAnchor={isDefaultAnchor}
-        calView={calView}
+        anchorIso={anchorIso}
+        initialCalView={initialCalView}
         viewerPersonId={viewerPersonId ?? null}
         showViewSwitch={showViewSwitch}
         initialView={initialView}

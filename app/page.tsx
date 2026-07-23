@@ -25,7 +25,7 @@ import { Card, PageHeader, StatusBadge } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
 import { LeaveBalanceCard } from '@/components/leave-balance-card';
 import { requestLeaveCancellationAction, adminCancelLeaveAction, cancelOwnLeaveAction } from '@/app/leave/actions';
-import { resolveCalendarRange, resolveViewPreference } from '@/lib/leave-calendar-range';
+import { resolveCalendarFetchWindow, resolveViewPreference } from '@/lib/leave-calendar-range';
 import {
   type DashboardCardId,
   pendingTasksCount,
@@ -126,10 +126,11 @@ export default async function DashboardPage({
   const locale = await getLocale(); // R37: render leave-type names in the viewer's language
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
-  // Leave Calendar window (item 8c739dda → ee55f5fe): a Monday–Sunday week OR a whole calendar month.
-  // ?abs=YYYY-MM-DD (from the timeline nav / date picker) anchors the window; ?cal=month — falling back to
-  // the session cookie the range switch writes — picks the view. Week resolves the anchor to its Monday
-  // (byte-identical to before); month resolves to the 1st..last of the anchor's month.
+  // Leave Calendar window (item 8c739dda → ee55f5fe → ed76f6b0): ?abs=YYYY-MM-DD (from the timeline nav
+  // / date picker) anchors the window; ?cal=month — falling back to the session cookie the range switch
+  // writes — picks the initial view. The READ now always fetches the month-covering superset window
+  // (resolveCalendarFetchWindow) so the client's Week/Month toggle is a purely client-side re-slice —
+  // zero network, no dashboard re-render. The panel resolves the DISPLAY window from the same anchor.
   const now = new Date();
   const nowMs = now.getTime();
   const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -139,7 +140,7 @@ export default async function DashboardPage({
     param: sp.cal,
     cookie: (await cookies()).get('leave_calendar_view')?.value,
   });
-  const { from: absFrom, to: absTo, days: absDays } = resolveCalendarRange({
+  const { from: absFrom, to: absTo } = resolveCalendarFetchWindow({
     view: calView,
     anchorIso: absParam,
     todayIso,
@@ -336,12 +337,9 @@ export default async function DashboardPage({
     <div id="planned-absences" className="h-full scroll-mt-4">
       <PlannedAbsences
         rows={absences}
-        from={absFrom}
-        to={absTo}
-        days={absDays}
         todayIso={todayIso}
-        calView={calView}
-        isDefaultAnchor={!absParam}
+        anchorIso={absParam}
+        initialCalView={calView}
         showViewSwitch={showAbsViewSwitch}
         initialView={effectiveAbsView}
         // Partial Leave Cancellation from the calendar (ADR-0065): the viewer gates "own leave only"; the action

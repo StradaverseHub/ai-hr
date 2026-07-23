@@ -1,67 +1,47 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { CalendarDays, CalendarRange } from 'lucide-react';
-import { reanchorForView, type CalendarView } from '@/lib/leave-calendar-range';
+import type { CalendarView } from '@/lib/leave-calendar-range';
+import {
+  SEGMENTED_BTN,
+  SEGMENTED_BTN_ACTIVE,
+  SEGMENTED_BTN_INACTIVE,
+  SEGMENTED_GROUP,
+} from '@/lib/segmented-control';
 
 /**
- * Week View / Month View segmented switch for the dashboard Leave Calendar (item ee55f5fe). Same
- * grammar and mechanism as its sibling AbsenceViewSwitch: role=tablist, the same segmented container
- * classes, and a router.push({ scroll: false }) — no server action, no redirect, no scroll jump.
+ * Week View / Month View segmented switch for the dashboard Leave Calendar (item ee55f5fe).
  *
- * Param handling: `cal=month` for month; the param is DELETED for week (the default), keeping URLs
- * clean. A session cookie (`leave_calendar_view`, no max-age so it dies with the browser) remembers
- * the choice across in-session navigations. Before pushing, the CURRENT window is re-anchored via
- * reanchorForView so month → week → month never drifts into the previous month: a window containing
- * today drops ?abs entirely (re-enabling the "Today" reset); otherwise ?abs pins the window midpoint.
+ * ed76f6b0: now CONTROLLED, exactly like its sibling AbsenceViewSwitch — the page fetches the full
+ * month-covering window up front (resolveCalendarFetchWindow), so toggling is a purely client-side
+ * re-slice owned by PlannedAbsencesPanel: zero network, no router navigation, no dashboard reload.
+ * The panel's onChange re-anchors via reanchorForView, syncs ?cal/?abs with history.replaceState,
+ * and keeps the `leave_calendar_view` session-cookie write — this component only renders the tabs.
+ * Classes come from the shared segmented-control family so both switches and the date navigation
+ * stay one visual unit (same h-7 height, rounding, hover feel).
  */
 export function CalendarRangeSwitch({
   view,
-  from,
-  to,
-  todayIso,
+  onChange,
 }: {
   view: CalendarView;
-  from: string;
-  to: string;
-  todayIso: string;
+  onChange: (next: CalendarView) => void;
 }) {
   const t = useTranslations('components.plannedAbsences');
-  const router = useRouter();
-  const searchParams = useSearchParams();
 
   const go = (next: CalendarView) => {
-    if (next === view) return;
-    const params = new URLSearchParams(searchParams.toString());
-    if (next === 'month') params.set('cal', 'month');
-    else params.delete('cal');
-    const anchor = reanchorForView({ fromView: view, toView: next, from, to, todayIso });
-    if (anchor === null) params.delete('abs');
-    else params.set('abs', anchor);
-    // Session memory: cosmetic preference, client-written (NOT httpOnly), no max-age ⇒ session-scoped.
-    document.cookie = `leave_calendar_view=${next}; path=/; samesite=lax`;
-    const qs = params.toString();
-    router.push(qs ? `/?${qs}` : '/', { scroll: false });
+    if (next !== view) onChange(next);
   };
 
-  const base =
-    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors';
-  const active = 'bg-card text-foreground shadow-sm';
-  const inactive = 'text-muted-foreground hover:text-foreground';
-
   return (
-    <div
-      role="tablist"
-      aria-label={t('rangeSwitchLabel')}
-      className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted/50 p-0.5"
-    >
+    <div role="tablist" aria-label={t('rangeSwitchLabel')} className={SEGMENTED_GROUP}>
       <button
         type="button"
         role="tab"
         aria-selected={view === 'week'}
         onClick={() => go('week')}
-        className={`${base} ${view === 'week' ? active : inactive}`}
+        className={`${SEGMENTED_BTN} ${view === 'week' ? SEGMENTED_BTN_ACTIVE : SEGMENTED_BTN_INACTIVE}`}
       >
         <CalendarRange className="size-3.5" />
         {t('viewWeek')}
@@ -71,7 +51,7 @@ export function CalendarRangeSwitch({
         role="tab"
         aria-selected={view === 'month'}
         onClick={() => go('month')}
-        className={`${base} ${view === 'month' ? active : inactive}`}
+        className={`${SEGMENTED_BTN} ${view === 'month' ? SEGMENTED_BTN_ACTIVE : SEGMENTED_BTN_INACTIVE}`}
       >
         <CalendarDays className="size-3.5" />
         {t('viewMonth')}
