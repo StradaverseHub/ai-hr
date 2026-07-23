@@ -3751,10 +3751,7 @@
       "encashmentSave": "Simpan",
       "encashmentEligibleTypesFixed": "Cuti yang layak: Cuti Tahunan sahaja.",
       "encashmentRoundingFixed": "Pembundaran: kurang daripada 0.5 hari dibundarkan turun kepada 0; 0.5 hari atau lebih dibundarkan naik kepada hari penuh seterusnya. Angka ini tidak akan kurang daripada 0.",
-      "importTitle": "Import data cuti",
-      "importHelp": "Muat naik pukal baki pembukaan, bawa hadapan, cuti sejarah dan kredit ad-hoc daripada CSV yang ditampal. Baki dikemas kini serta-merta.",
-      "importLink": "Buka pengimport",
-      "importAction": "Import",
+      "importAction": "+ Import",
       "import": {
         "title": "Import data cuti",
         "description": "Tampal transaksi cuti (baki pembukaan, bawa hadapan, cuti sejarah, kredit ad-hoc), pratonton setiap baris, kemudian import hanya baris yang sah.",

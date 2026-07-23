@@ -3788,10 +3788,7 @@
       "encashmentSave": "Save",
       "encashmentEligibleTypesFixed": "Eligible leave: Annual Leave only.",
       "encashmentRoundingFixed": "Rounding: less than 0.5 day rounds down to 0; 0.5 day or more rounds up to the next whole day. The figure never goes below 0.",
-      "importTitle": "Import leave data",
-      "importHelp": "Bulk-load opening balances, carry-forward, historical leave taken and ad-hoc credits from a pasted CSV. Balances update immediately.",
-      "importLink": "Open importer",
-      "importAction": "Import",
+      "importAction": "+ Import",
       "import": {
         "title": "Import leave data",
         "description": "Upload a CSV or Excel file of leave transactions (opening balances, carry-forward, historical leave, ad-hoc credits) — or paste them — preview each row, then import only the valid ones.",

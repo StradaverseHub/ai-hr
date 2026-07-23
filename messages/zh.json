@@ -3751,10 +3751,7 @@
       "encashmentSave": "保存",
       "encashmentEligibleTypesFixed": "合资格假期：仅限年假。",
       "encashmentRoundingFixed": "四舍五入规则：不足0.5天的部分舍去为0；达到0.5天或以上的部分进位为下一个整天。该数值永远不会低于0。",
-      "importTitle": "导入休假数据",
-      "importHelp": "从粘贴的 CSV 批量导入期初余额、结转、历史休假和临时额度。余额会立即更新。",
-      "importLink": "打开导入工具",
-      "importAction": "导入",
+      "importAction": "+ 导入",
       "import": {
         "title": "导入休假数据",
         "description": "粘贴休假交易（期初余额、结转、历史休假、临时额度），预览每一行，然后仅导入有效的行。",

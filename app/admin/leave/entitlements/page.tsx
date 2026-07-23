@@ -64,7 +64,9 @@ const GRADES_OPEN_COOKIE = 'leave_grades_open';
  * advance-notice, expiry, the apply-time custom message AND that type's effective-dated entitlement policies
  * (the editable ranges table + the multi-company/grade "Employee Selection" chips). Beneath it are the
  * company-level entitlement operations re-homed here earlier (0d147b78): leave-year opener + earned-accrual
- * runner, per-company accrual cycle, grade catalog, bulk import. The festive / one-off grant tool no longer
+ * runner, per-company accrual cycle, grade catalog. Bulk import is a "+ Import" action button in the page
+ * header (e8f2398f) — the standalone page-bottom Card that only linked to /admin/leave/import is gone.
+ * The festive / one-off grant tool no longer
  * sits at the page bottom — fd7c8e20 moved it into each type's Entitlement step (below the Benefit Schemes
  * area), preset to the selected type. The whole `LeaveTypePanel` + add-type form moved wholesale from the
  * Types tab, so every sub-form keeps its tri-state marker + hidden `name` intact — no column is wiped on save.
@@ -277,7 +279,17 @@ export default async function LeaveEntitlementsPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <PageHeader
+        title={t('pageTitle')}
+        description={t('pageDescription')}
+        actions={
+          /* e8f2398f: Import is a page-level action button now (the standard top-right spot), replacing the
+             standalone page-bottom Card that only held this link. Same destination, same import flow. */
+          <Link href="/admin/leave/import" className={btnPrimary}>
+            {t('importAction')}
+          </Link>
+        }
+      />
       <LeaveTabs active="entitlements" />
       <ErrorBanner message={error} />
 
@@ -558,17 +570,6 @@ export default async function LeaveEntitlementsPage({
           </div>
         </Card>
       )}
-
-      {/* Leave Data Import & Migration Tool — bulk-load opening balances / carry-forward / historical leave. */}
-      <Card>
-        <SectionHeader title={t('importTitle')} />
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
-          <p className="max-w-md text-xs text-muted-foreground">{t('importHelp')}</p>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/admin/leave/import">{t('importLink')}</Link>
-          </Button>
-        </div>
-      </Card>
     </div>
   );
 }
