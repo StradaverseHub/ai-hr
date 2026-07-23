@@ -4,7 +4,12 @@
   rung 2 (Attendance module pack: `packs/attendance` declaration + service facade, registry-mounted
   sidebar node, boundary ratchet seeded with the audited kernel-contract debt) landed 2026-07-23 —
   D11 criteria 1–4 met, criterion 5 (entitlement gate) documented as a hook point pending ADR-0077's
-  `tenant_module`/`isModuleEnabled()`
+  `tenant_module`/`isModuleEnabled()`; rung 3 (Claims module pack: `packs/claims` declaration +
+  service facade, registry-mounted flat nav rows, ratchet seeded) landed 2026-07-23 — and the
+  `PayrollInputContributor` kernel contract (D9) LANDED with it: the claims payout prefill was a real
+  code path (`app/payroll/actions.ts` → `prefillClaimsForBatch`) and now rides the contract
+  (`packs/contracts.ts` + `packs/claims/payroll.ts`), payroll output proven identical by the
+  golden payout tests
 - **Date:** 2026-07-23 (revised same day: generalized from country packs to a two-axis pack system, per
   operator discussion — functional modules become packs too, retrofitted one by one)
 - **Relates to:** ADR-0008 (localization packs — this ADR restores and hardens its seam), ADR-0077 (module

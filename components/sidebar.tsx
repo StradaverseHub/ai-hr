@@ -47,6 +47,9 @@ import {
 // `modulePackById('attendance')` below is guaranteed to resolve. packs/attendance/index.ts is
 // client-safe by design (flat descriptors + lucide refs only; the service facade lives elsewhere).
 import '@/packs/attendance';
+// ADR-0080 rung 3: the Claims nav rows mount from the pack registry the same way — claims is flat
+// links (navLinks), not a collapsible node. packs/claims/index.ts is client-safe by design too.
+import '@/packs/claims';
 import { modulePackById } from '@/packs/registry';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
@@ -76,6 +79,15 @@ const ATTENDANCE_NODE: CollapsibleGroupItem = {
   collapsible: true,
   ...modulePackById('attendance')!.nav!,
 };
+
+// Claims nav rows (ADR-0080 rung 3): two flat rows the claims pack contributes
+// (packs/claims/index.ts, CLAIMS_NAV_LINKS — provenance comments moved with them), placed at
+// their pre-rung-3 positions below: "/claims" in the top group (every employee), "/admin/claims"
+// in the Administration group (group-gated adminOnly, no per-row flag — unchanged). The `group`
+// tag is the pack's placement declaration; position WITHIN the group stays this file's concern.
+const CLAIMS_LINKS = modulePackById('claims')!.navLinks!;
+const CLAIMS_ROW: ChildItem = CLAIMS_LINKS.find((l) => l.group === 'main')!;
+const CLAIMS_CONFIG_ROW: ChildItem = CLAIMS_LINKS.find((l) => l.group === 'admin')!;
 
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
 // map to the reporter's categories; each opens the Reports hub filtered to that category, where the
@@ -128,7 +140,7 @@ const GROUPS: Group[] = [
       // after the /me Leave tab merged into /leave. Same href, same icon; label-only change.
       { href: '/leave', labelKey: 'myAbsence', icon: CalendarDays },
       ATTENDANCE_NODE,
-      { href: '/claims', labelKey: 'claims', icon: Receipt },
+      CLAIMS_ROW,
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
       // ca2f2fef: standalone design-preview of the future mobile app (visible to all roles).
@@ -160,7 +172,7 @@ const GROUPS: Group[] = [
       // was absorbed into its Approval Workflow tab (/admin/leave/approval), so it's removed here.
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
       // Holidays lives under the Attendance node above (5cb199b3), not in the flat admin list.
-      { href: '/admin/claims', labelKey: 'claimsConfig', icon: Receipt },
+      CLAIMS_CONFIG_ROW,
       { href: '/payroll', labelKey: 'payroll', icon: Wallet },
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
       REPORTS_NODE,

@@ -25,7 +25,12 @@ import {
   setPayrollInput,
   unlockClosedBatch,
 } from '@/core/payroll';
-import { prefillClaimsForBatch } from '@/core/claims';
+// ADR-0080 rung 3 (D9): the claims payout path rides the PayrollInputContributor kernel contract
+// instead of a direct core/claims import. The side-effect import evaluates the claims pack's
+// contributor wiring (static registration at module load — the D8 convention), so the by-id
+// resolution in prefillClaimsAction is guaranteed to succeed.
+import '@/packs/claims/payroll';
+import { payrollInputContributorById } from '@/packs/contracts';
 import { prefillLoansForBatch } from '@/core/loans';
 import { transferAllowancesToBatch } from '@/core/attendance-allowance';
 
@@ -156,7 +161,10 @@ export async function prefillClaimsAction(formData: FormData) {
   let claims = 0;
   let total = 0;
   try {
-    ({ applied, claims, total } = await prefillClaimsForBatch(s, { batchId }));
+    // Registered by the static side-effect import above, so the non-null assertion cannot fire
+    // (same reasoning as the sidebar's registry lookups). `sourceCount` is the contract's word for
+    // what claims calls `claims` — the toast copy below is unchanged.
+    ({ applied, sourceCount: claims, total } = await payrollInputContributorById('claims')!.contribute(s, { batchId }));
   } catch (e) {
     redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
   }

@@ -36,14 +36,15 @@ const TICKET_HREFS = [
  * The admin group's FULL flat-row href list, in order. Splicing three rows out of the middle of a
  * long array literal is exactly where an adjacent row gets clipped (the /admin/leave row that
  * follows carries a multi-line comment, 0d147b78), so assert the whole list — a dropped or
- * reordered sibling fails loudly. Collapsible nodes (SYSTEM_SETTINGS_NODE, REPORTS_NODE) are
- * referenced by const name, not href, so they are asserted separately by position.
+ * reordered sibling fails loudly. Rows referenced by const name, not href — the collapsible nodes
+ * (SYSTEM_SETTINGS_NODE, REPORTS_NODE) and, since ADR-0080 rung 3, the registry-mounted
+ * CLAIMS_CONFIG_ROW (/admin/claims now lives on packs/claims/index.ts) — are asserted separately
+ * by position.
  */
 const ADMIN_GROUP_FLAT_HREFS = [
   '/admin/organization',
   '/admin/personnel',
   '/admin/leave',
-  '/admin/claims',
   '/payroll',
   '/analytics',
   '/admin/audit',
@@ -94,6 +95,19 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
     const block = adminGroupBlock();
     const hrefs = [...block.matchAll(/href: '([^']+)'/g)].map((m) => m[1]);
     expect(hrefs).toEqual([...ADMIN_GROUP_FLAT_HREFS]);
+  });
+
+  // ADR-0080 rung 3: the /admin/claims row moved onto the claims pack and mounts by const
+  // reference (CLAIMS_CONFIG_ROW), like the collapsible nodes — so it is asserted by position
+  // here, keeping the anti-clipping guard whole. Row content parity is test/claims-pack.test.ts.
+  it('keeps the claims-config row (CLAIMS_CONFIG_ROW) between /admin/leave and /payroll', () => {
+    const block = adminGroupBlock();
+    const leave = block.indexOf(`'/admin/leave'`);
+    const claimsRef = block.indexOf('CLAIMS_CONFIG_ROW');
+    const payroll = block.indexOf(`'/payroll'`);
+    expect(leave, '/admin/leave row exists').toBeGreaterThan(-1);
+    expect(claimsRef, 'CLAIMS_CONFIG_ROW is referenced after /admin/leave').toBeGreaterThan(leave);
+    expect(payroll, 'CLAIMS_CONFIG_ROW sits before the /payroll row').toBeGreaterThan(claimsRef);
   });
 
   it('places SYSTEM_SETTINGS_NODE immediately after the /admin/personnel row (before /admin/leave)', () => {
