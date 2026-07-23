@@ -68,7 +68,7 @@ export type HireParams = {
   employmentType: EmploymentType;
   hiredOn: string; // 'YYYY-MM-DD'
   /** Employee ID keyed in by HR (feedback 38668d9b). The hire form and the bulk import both REQUIRE a
-   *  value; it is validated (alphanumeric + dash, max 9 chars) and must be unique within the tenant. Left
+   *  value; it is validated (alphanumeric + dash, max 30 chars — de2823cc) and must be unique within the tenant. Left
    *  optional on the type only so the demo seed and the large test corpus keep compiling — when omitted the
    *  system falls back to the auto counter (EMP-####). Every HR-facing path passes an explicit code, so HR
    *  owns the ID in production. */
@@ -1239,7 +1239,7 @@ function isEmployeeCodeUniqueViolation(e: unknown): boolean {
 /**
  * Set / correct an employment's Employee ID (feedback 38668d9b). HR keys the company's real staff ID on
  * the admin detail page; legacy null rows get filled in here. Validates + normalizes (alphanumeric + dash,
- * max 9), pre-checks tenant-uniqueness (excluding this employment), and catches the DB unique violation as
+ * max 30 — de2823cc), pre-checks tenant-uniqueness (excluding this employment), and catches the DB unique violation as
  * the race net. No-ops when the value is unchanged so a Save that didn't touch the ID emits no event.
  * Substrate discipline: appends `employment.employee-code.set` with a before/after payload.
  */

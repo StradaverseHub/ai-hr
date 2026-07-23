@@ -324,7 +324,7 @@
       "salaryRemarksPlaceholder": "cth. kenaikan tahunan",
       "employeeIdLabel": "ID Pekerja",
       "employeeIdPlaceholder": "cth. EMP-0001",
-      "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 9 aksara."
+      "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 30 aksara."
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -5607,7 +5607,7 @@
     "fieldScope": "Skop",
     "fieldScopeHint": "Global berkongsi satu jujukan merentas semua syarikat; khusus syarikat mengekalkan jujukan berasingan bagi setiap syarikat.",
     "fieldPrefix": "Awalan",
-    "fieldPrefixHint": "Huruf, nombor dan sengkang. Awalan + digit mesti tidak melebihi 9 aksara.",
+    "fieldPrefixHint": "Huruf, nombor dan sengkang. Awalan + digit + akhiran bersama mesti tidak melebihi 30 aksara.",
     "fieldStart": "Nombor permulaan",
     "fieldLength": "Bilangan digit",
     "fieldIncrement": "Tokokan",
@@ -5625,7 +5625,7 @@
     "errors": {
       "duplicateActive": "Persediaan ID Pekerja yang aktif sudah wujud untuk skop ini",
       "prefixCollision": "Persediaan aktif lain sudah menggunakan awalan ini",
-      "tooLong": "Awalan dan panjang nombor mesti tidak melebihi 9 aksara"
+      "tooLong": "Awalan, panjang nombor dan akhiran bersama mesti tidak melebihi 30 aksara"
     },
     "colTemplate": "Templat",
     "colSuffix": "Akhiran",
@@ -5640,7 +5640,8 @@
     "fieldSuffixHint": "Teks pilihan selepas nombor, cth. MY → EMP0001MY. Huruf, nombor dan sengkang.",
     "fieldLengthHint": "Sifar hadapan: nombor diisi kepada bilangan digit ini.",
     "fieldAllowManualOverride": "Benarkan ubah suai ID Pekerja secara manual",
-    "fieldAllowManualOverrideHint": "Apabila dihidupkan, HR boleh menaip ID Pekerja (disemak keunikan) dan bukannya menjananya secara automatik."
+    "fieldAllowManualOverrideHint": "Apabila dihidupkan, HR boleh menaip ID Pekerja (disemak keunikan) dan bukannya menjananya secara automatik.",
+    "cp39LengthNote": "Nota: ID Pekerja melebihi 10 aksara tidak muat dalam fail penghantaran CP39 LHDN — penjanaan CP39 akan menyenaraikan pekerja terlibat dan bukannya memotong ID. ID yang lebih panjang kekal boleh digunakan sepenuhnya di tempat lain."
   },
   "payrollPolicy": {
     "title": "Dasar gaji",

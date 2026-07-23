@@ -4,7 +4,10 @@
  *  - COMPANY-SPECIFIC config wins over GLOBAL; two companies keep independent sequences
  *  - a MANUAL code still bypasses the generator
  *  - NO active config → legacy EMP-#### fallback (seed/test byte-identical)
- *  - validation: prefix+length > 9 rejected; two active per scope rejected; colliding prefixes rejected
+ *  - validation: prefix+length+suffix > 30 rejected (de2823cc lifted the old 9-char cap); two active per
+ *    scope rejected; colliding prefixes rejected; long real-world formats (CHINHIN-HQ-000001-MY) generate
+ *  - CP39 guard (de2823cc): templates composing > 10 chars flag the non-blocking note; the CP39 file
+ *    builder REFUSES an over-long employee no (listing the employee) instead of silently truncating
  *  - deactivating the config falls the hire back to the legacy counter
  *  - update currentRunningNumber then the next hire continues from it; CRUD emits employee-id-config.* events
  */
@@ -18,6 +21,7 @@ import {
   deleteConfig,
   DuplicateActiveConfigError,
   EmployeeCodeTooLongError,
+  exceedsCp39EmployeeNoLength,
   formatEmployeeCode,
   getConfig,
   listConfigs,
@@ -25,6 +29,7 @@ import {
   setStatus,
   updateConfig,
 } from '../core/employee-id-config';
+import { buildCp39File } from '../localization/my/cp39-file';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -145,13 +150,35 @@ describe('Employee ID Auto Running Number Setup — generation', () => {
     await updateConfig(a, { id, currentRunningNumber: 100 });
     expect(await hireAndCode('One')).toBe('E00101');
   });
+
+  it('a LONG real-world format (de2823cc) — prefix CHINHIN-HQ-, 6 digits, suffix -MY — generates at hire', async () => {
+    const a = adminCtx(b);
+    await createConfig(a, {
+      companyId: null,
+      prefix: 'CHINHIN-HQ-',
+      suffix: '-MY',
+      startNumber: 1,
+      numberLength: 6,
+      increment: 1,
+    });
+    expect(await hireAndCode('Long One')).toBe('CHINHIN-HQ-000001-MY'); // 20 chars — over the old 9 cap
+    expect(await hireAndCode('Long Two')).toBe('CHINHIN-HQ-000002-MY');
+  });
 });
 
 describe('Employee ID Auto Running Number Setup — validation + substrate', () => {
-  it('rejects prefix + number length > 9 characters', async () => {
+  it('accepts prefix + number length over the OLD 9-char cap (de2823cc removed it)', async () => {
     const a = adminCtx(b);
     await expect(
       createConfig(a, { companyId: null, prefix: 'STAFFX', startNumber: 1, numberLength: 6, increment: 1 }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+  });
+
+  it('rejects prefix + number length + suffix > 30 characters (the practical ceiling)', async () => {
+    const a = adminCtx(b);
+    await expect(
+      // 27-char prefix + 4 digits = 31 > 30.
+      createConfig(a, { companyId: null, prefix: 'A'.repeat(27), startNumber: 1, numberLength: 4, increment: 1 }),
     ).rejects.toBeInstanceOf(EmployeeCodeTooLongError);
   });
 
@@ -218,8 +245,41 @@ describe('formatEmployeeCode', () => {
     expect(formatEmployeeCode('EMP', 1, 4)).toBe('EMP0001');
     expect(formatEmployeeCode('KL', 42, 4)).toBe('KL0042');
   });
-  it('throws when the formatted code would exceed 9 characters', () => {
-    // width-4 sequence reaching 5 digits with a 6-char prefix overflows the 9-char cap.
-    expect(() => formatEmployeeCode('STAFFX', 10000, 4)).toThrow(EmployeeCodeTooLongError);
+  it('formats codes over the OLD 9-char cap (de2823cc): a width overflow no longer throws under 30', () => {
+    expect(formatEmployeeCode('STAFFX', 10000, 4)).toBe('STAFFX10000'); // 11 chars — fine now
+    expect(formatEmployeeCode('CHINHIN-HQ-', 125, 6, '-MY')).toBe('CHINHIN-HQ-000125-MY');
+  });
+  it('throws when the formatted code would exceed the 30-char ceiling', () => {
+    // 28-char prefix + 4 digits = 32 > 30.
+    expect(() => formatEmployeeCode('A'.repeat(28), 1, 4)).toThrow(EmployeeCodeTooLongError);
+  });
+});
+
+describe('CP39 guard for long Employee IDs (de2823cc)', () => {
+  it('exceedsCp39EmployeeNoLength flags templates composing more than 10 characters', () => {
+    expect(exceedsCp39EmployeeNoLength('EMP', 4)).toBe(false); // 7
+    expect(exceedsCp39EmployeeNoLength('EMP', 7)).toBe(false); // exactly 10 — fits
+    expect(exceedsCp39EmployeeNoLength('EMP', 8)).toBe(true); // 11
+    expect(exceedsCp39EmployeeNoLength('CHINHIN-HQ-', 6, '-MY')).toBe(true); // 20
+  });
+
+  const cp39Row = (employeeNo: string) => ({
+    tin: '12345678901',
+    name: 'Long Code Lee',
+    mtd: 110,
+    employeeNo,
+  });
+
+  it('buildCp39File REFUSES an employee no over the 10-char field, listing the employee (no silent truncation)', () => {
+    expect(() =>
+      buildCp39File({ employerNo: '908915-10', year: 2026, month: 1, rows: [cp39Row('CHINHIN-HQ-000001-MY')] }),
+    ).toThrow(/10-character CP39 field.*Long Code Lee \(CHINHIN-HQ-000001-MY\)/);
+  });
+
+  it('buildCp39File still accepts a 10-char employee no (at the field limit) untruncated', () => {
+    const f = buildCp39File({ employerNo: '908915-10', year: 2026, month: 1, rows: [cp39Row('EMP1234567')] });
+    const detail = f.content.split('\r\n')[1];
+    expect(detail).toHaveLength(136);
+    expect(detail.endsWith('EMP1234567')).toBe(true);
   });
 });

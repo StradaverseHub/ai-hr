@@ -375,7 +375,7 @@ export default async function EmployeePage({
             <input
               name="employeeCode"
               required
-              maxLength={9}
+              maxLength={30}
               defaultValue={emp.employeeCode ?? ''}
               placeholder={t('employeeIdPlaceholder')}
               className={inputCls}

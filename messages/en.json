@@ -324,7 +324,7 @@
       "salaryRemarksPlaceholder": "e.g. annual increment",
       "employeeIdLabel": "Employee ID",
       "employeeIdPlaceholder": "e.g. EMP-0001",
-      "employeeIdHint": "Letters, numbers and dashes; up to 9 characters."
+      "employeeIdHint": "Letters, numbers and dashes; up to 30 characters."
     },
     "detail": {
       "backToPeople": "People",
@@ -5607,7 +5607,7 @@
     "fieldScope": "Scope",
     "fieldScopeHint": "Global shares one sequence across all companies; company-specific keeps a separate sequence per company.",
     "fieldPrefix": "Prefix",
-    "fieldPrefixHint": "Letters, numbers and dashes. Prefix + digits must be at most 9 characters.",
+    "fieldPrefixHint": "Letters, numbers and dashes. Prefix + digits + suffix together must be at most 30 characters.",
     "fieldStart": "Starting number",
     "fieldLength": "Number of digits",
     "fieldIncrement": "Increment",
@@ -5625,7 +5625,7 @@
     "errors": {
       "duplicateActive": "An active Employee ID setup already exists for this scope",
       "prefixCollision": "Another active setup already uses this prefix",
-      "tooLong": "Prefix plus number length must be at most 9 characters"
+      "tooLong": "Prefix, number length and suffix together must be at most 30 characters"
     },
     "colTemplate": "Template",
     "colSuffix": "Suffix",
@@ -5640,7 +5640,8 @@
     "fieldSuffixHint": "Optional text after the number, e.g. MY → EMP0001MY. Letters, numbers and dashes.",
     "fieldLengthHint": "Leading zeroes: the number is padded to this many digits.",
     "fieldAllowManualOverride": "Allow manual Employee ID override",
-    "fieldAllowManualOverrideHint": "When on, HR may hand-key an Employee ID (checked for uniqueness) instead of auto-generating it."
+    "fieldAllowManualOverrideHint": "When on, HR may hand-key an Employee ID (checked for uniqueness) instead of auto-generating it.",
+    "cp39LengthNote": "Note: Employee IDs longer than 10 characters do not fit the LHDN CP39 submission file — CP39 generation will list the affected employees instead of truncating. Longer IDs remain fully usable everywhere else."
   },
   "payrollPolicy": {
     "title": "Payroll policies",

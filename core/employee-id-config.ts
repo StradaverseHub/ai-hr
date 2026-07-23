@@ -56,12 +56,25 @@ export class PrefixCollisionError extends Error {
   }
 }
 
-/** Thrown when prefix length + number length exceeds the 9-character employee_code cap. */
+/** Thrown when prefix + number length + suffix exceeds the practical employee_code ceiling (feedback
+ *  de2823cc — 30 chars, was 9). */
 export class EmployeeCodeTooLongError extends Error {
-  constructor(message = `Prefix + number length must be at most ${EMPLOYEE_CODE_MAX_LEN} characters`) {
+  constructor(message = `Prefix, number length and suffix combined must be at most ${EMPLOYEE_CODE_MAX_LEN} characters`) {
     super(message);
     this.name = 'EmployeeCodeTooLongError';
   }
+}
+
+/** LHDN CP39 detail field "employee no" is 10 chars (Exhibit 4) — kept in sync with the field width in
+ *  localization/my/cp39-file.ts. Codes longer than this are fully usable everywhere else in the product,
+ *  but CP39 generation refuses (fail-loud) rather than silently truncating them. */
+export const CP39_EMPLOYEE_NO_MAX_LEN = 10;
+
+/** True when a template's composed shape (prefix + zero-padded number + suffix) would generate Employee IDs
+ *  longer than the CP39 employee-no field — the setup screen surfaces a NON-BLOCKING note (feedback
+ *  de2823cc) so administrators choose long formats with their eyes open. Pure, so the page can call it. */
+export function exceedsCp39EmployeeNoLength(prefix: string, numberLength: number, suffix = ''): boolean {
+  return prefix.length + numberLength + suffix.length > CP39_EMPLOYEE_NO_MAX_LEN;
 }
 
 /** Postgres unique-violation (the partial active-scope indexes). Walk the cause chain for code 23505. */
@@ -110,9 +123,9 @@ function normalizeStatus(v: string | undefined): EmployeeIdConfigStatus {
   return v === 'inactive' ? 'inactive' : 'active';
 }
 
-/** prefix.length + numberLength + suffix.length must fit inside the 9-char employee_code cap (R45 7bf025f0 —
- *  the suffix now shares that budget; the tenant-wide employee_code contract is 9 chars, so an unlimited
- *  prefix/suffix would break EMPLOYEE_CODE_RE + downstream validation and is intentionally NOT permitted here). */
+/** prefix.length + numberLength + suffix.length must fit inside the practical employee_code ceiling
+ *  (feedback de2823cc — 30 chars, was 9; the suffix shares the budget per R45 7bf025f0). The ceiling exists
+ *  only so generated IDs keep fitting on payslips, reports and screens — not as a business rule. */
 function assertFits(prefix: string, numberLength: number, suffix = ''): void {
   if (prefix.length + numberLength + suffix.length > EMPLOYEE_CODE_MAX_LEN) throw new EmployeeCodeTooLongError();
 }
@@ -323,10 +336,10 @@ export async function deleteConfig(ctx: SessionContext, p: { id: string }): Prom
 
 // ─────────────────────────── Generation ───────────────────────────
 
-/** Format an issued number: prefix + zero-padded number + optional suffix (R45 7bf025f0), guarding the 9-char
- *  employee_code cap (an overflowed numberLength, e.g. width 4 reaching 10000, or a suffix pushing past 9,
- *  would exceed the cap — throw rather than issue an invalid code). `suffix` defaults to '' so existing
- *  three-argument callers are unaffected. */
+/** Format an issued number: prefix + zero-padded number + optional suffix (R45 7bf025f0), guarding the
+ *  30-char employee_code ceiling (feedback de2823cc — an overflowed numberLength or a suffix pushing past
+ *  the ceiling would exceed it — throw rather than issue an invalid code). `suffix` defaults to '' so
+ *  existing three-argument callers are unaffected. */
 export function formatEmployeeCode(prefix: string, n: number, numberLength: number, suffix = ''): string {
   const code = `${prefix}${String(n).padStart(numberLength, '0')}${suffix}`;
   if (code.length > EMPLOYEE_CODE_MAX_LEN) {

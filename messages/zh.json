@@ -324,7 +324,7 @@
       "salaryRemarksPlaceholder": "例如：年度加薪",
       "employeeIdLabel": "员工编号",
       "employeeIdPlaceholder": "例如 EMP-0001",
-      "employeeIdHint": "字母、数字和连字符；最多 9 个字符。"
+      "employeeIdHint": "字母、数字和连字符；最多 30 个字符。"
     },
     "detail": {
       "backToPeople": "员工",
@@ -5607,7 +5607,7 @@
     "fieldScope": "范围",
     "fieldScopeHint": "全局在所有公司间共用一个序列；按公司则为每家公司保留独立序列。",
     "fieldPrefix": "前缀",
-    "fieldPrefixHint": "字母、数字和短横线。前缀加位数最多 9 个字符。",
+    "fieldPrefixHint": "字母、数字和短横线。前缀、位数与后缀合计最多 30 个字符。",
     "fieldStart": "起始号码",
     "fieldLength": "位数",
     "fieldIncrement": "递增值",
@@ -5625,7 +5625,7 @@
     "errors": {
       "duplicateActive": "此范围已存在一个启用中的员工编号设置",
       "prefixCollision": "另一个启用中的设置已使用该前缀",
-      "tooLong": "前缀加号码位数最多 9 个字符"
+      "tooLong": "前缀、号码位数与后缀合计最多 30 个字符"
     },
     "colTemplate": "模板",
     "colSuffix": "后缀",
@@ -5640,7 +5640,8 @@
     "fieldSuffixHint": "编号后的可选文本，例如 MY → EMP0001MY。字母、数字和连字符。",
     "fieldLengthHint": "前导零：编号补齐到该位数。",
     "fieldAllowManualOverride": "允许手动覆盖员工编号",
-    "fieldAllowManualOverrideHint": "启用后，HR 可手动输入员工编号（检查唯一性），而非自动生成。"
+    "fieldAllowManualOverrideHint": "启用后，HR 可手动输入员工编号（检查唯一性），而非自动生成。",
+    "cp39LengthNote": "注意：超过 10 个字符的员工编号无法放入 LHDN CP39 申报文件——生成 CP39 时会列出受影响的员工而不是截断编号。较长的编号在系统其他所有位置仍可正常使用。"
   },
   "payrollPolicy": {
     "title": "薪资政策",

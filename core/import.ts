@@ -130,7 +130,7 @@ async function analyze(
 
     // Employee ID (feedback 38668d9b): HR MAY supply one — the feature is manual-entry ABILITY, not an
     // obligation. Blank or absent → hireEmployee auto-generates via nextEmployeeCode, exactly like a
-    // hand hire without an ID. When supplied: alphanumeric + dash max 9, unique in the file and across
+    // hand hire without an ID. When supplied: alphanumeric + dash max 30 (de2823cc), unique in the file and across
     // the tenant; the normalized (uppercased) value is what gets stored + hired with.
     const codeRaw = norm(rec.employee_code);
     const codeNorm = normalizeEmployeeCode(codeRaw);

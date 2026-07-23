@@ -324,7 +324,7 @@
       "salaryRemarksPlaceholder": "vd. tăng lương hàng năm",
       "employeeIdLabel": "Mã nhân viên",
       "employeeIdPlaceholder": "vd. EMP-0001",
-      "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 9 ký tự."
+      "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 30 ký tự."
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -5607,7 +5607,7 @@
     "fieldScope": "Phạm vi",
     "fieldScopeHint": "Toàn cục dùng chung một dãy số cho tất cả công ty; theo công ty giữ dãy số riêng cho mỗi công ty.",
     "fieldPrefix": "Tiền tố",
-    "fieldPrefixHint": "Chữ cái, số và dấu gạch ngang. Tiền tố + số chữ số tối đa 9 ký tự.",
+    "fieldPrefixHint": "Chữ cái, số và dấu gạch ngang. Tiền tố + số chữ số + hậu tố cộng lại tối đa 30 ký tự.",
     "fieldStart": "Số bắt đầu",
     "fieldLength": "Số chữ số",
     "fieldIncrement": "Bước tăng",
@@ -5625,7 +5625,7 @@
     "errors": {
       "duplicateActive": "Đã tồn tại một thiết lập Mã nhân viên đang hoạt động cho phạm vi này",
       "prefixCollision": "Một thiết lập đang hoạt động khác đã dùng tiền tố này",
-      "tooLong": "Tiền tố cộng số chữ số tối đa 9 ký tự"
+      "tooLong": "Tiền tố, số chữ số và hậu tố cộng lại tối đa 30 ký tự"
     },
     "colTemplate": "Mẫu",
     "colSuffix": "Hậu tố",
@@ -5640,7 +5640,8 @@
     "fieldSuffixHint": "Văn bản tùy chọn sau số, ví dụ: MY → EMP0001MY. Chữ cái, số và dấu gạch ngang.",
     "fieldLengthHint": "Số 0 đứng đầu: số được đệm đến số chữ số này.",
     "fieldAllowManualOverride": "Cho phép ghi đè Mã nhân viên thủ công",
-    "fieldAllowManualOverrideHint": "Khi bật, HR có thể tự nhập Mã nhân viên (được kiểm tra tính duy nhất) thay vì tạo tự động."
+    "fieldAllowManualOverrideHint": "Khi bật, HR có thể tự nhập Mã nhân viên (được kiểm tra tính duy nhất) thay vì tạo tự động.",
+    "cp39LengthNote": "Lưu ý: Mã nhân viên dài hơn 10 ký tự không vừa với tệp nộp CP39 của LHDN — khi tạo CP39 hệ thống sẽ liệt kê các nhân viên bị ảnh hưởng thay vì cắt bớt mã. Mã dài hơn vẫn dùng được đầy đủ ở mọi nơi khác."
   },
   "payrollPolicy": {
     "title": "Chính sách lương",

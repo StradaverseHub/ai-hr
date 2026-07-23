@@ -303,7 +303,7 @@ export default async function PeoplePage({
                   <input
                     name="employeeCode"
                     required
-                    maxLength={9}
+                    maxLength={30}
                     className={inputCls}
                     placeholder={t('employeeIdPlaceholder')}
                   />
