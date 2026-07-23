@@ -8,8 +8,11 @@
  *
  * The label is resolved through app/payroll/setup/back.ts (which reads payroll.setup.title) so the
  * back prop carries href: '/payroll/setup'. We assert on that href string being wired to the header.
- * The configuration page has THREE PageHeader render sites (no-pack / edit-mode / view-mode) and all
- * three must carry the back link, so we assert at least three back={...} occurrences there.
+ * The configuration page has TWO PageHeader render sites (edit-mode / view-mode) and both must carry
+ * the back link, so we assert at least two back={...} occurrences there. (ADR-0080 rung 5c removed the
+ * former third "no-pack" header: the page now resolves the acting company's country pack through
+ * requireConfigSection(), which notFound()s when no pack declares the section instead of rendering a
+ * no-pack banner in-page — so the no-pack render site no longer exists to carry a back link.)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,12 +46,13 @@ describe('payroll settings back link', () => {
     });
   }
 
-  it('app/payroll/configuration/page.tsx carries the back link on all THREE headers', () => {
+  it('app/payroll/configuration/page.tsx carries the back link on both headers', () => {
     const src = read('app/payroll/configuration/page.tsx');
     expect(src).toContain("import { settingsBack } from '@/app/payroll/setup/back'");
-    // back is resolved once and passed to every header (no-pack / edit-mode / view-mode).
+    // back is resolved once and passed to every header (edit-mode / view-mode). The no-pack header was
+    // retired in ADR-0080 rung 5c — requireConfigSection() notFound()s instead of rendering in-page.
     expect(src).toContain('const back = await settingsBack();');
     const backProps = src.match(/back=\{back\}/g) ?? [];
-    expect(backProps.length).toBeGreaterThanOrEqual(3);
+    expect(backProps.length).toBeGreaterThanOrEqual(2);
   });
 });
