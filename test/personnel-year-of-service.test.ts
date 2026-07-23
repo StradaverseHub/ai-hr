@@ -1,5 +1,10 @@
 /**
- * Personnel (Admin) — "Year of Service" on the Employee Information card (feedback cc681bd5).
+ * Personnel (Admin) — "Year of Service" on the top Employee Information (summary) card.
+ *
+ * cc681bd5 introduced the figure on the Employment Information card inside the Employment tab;
+ * b75b2a23 moved it onto the TOP summary card (photo / Employee ID / Status / Department / Position /
+ * Direct Superior / Company / Join Date) so it is visible the moment any profile opens, and removed the
+ * Employment-tab row so the figure has exactly one authoritative display.
  *
  * The card shows a read-only, day-precise service duration computed from the Group Join Date (hired_on —
  * the date that stays fixed through internal transfers; join_date is deliberately ignored) to today,
@@ -12,8 +17,9 @@
  *      plural (1 Month 19 Days), and all 6 locales resolve every new key with its tokens.
  *   3. Source drift guards (the convention of test/approvals-calendar-deeplink.test.ts): the page builds
  *      the label with exactly the drop-rule conditions mirrored in check 2, falls back to Not Available
- *      on a missing Group Join Date, and wires the i-badge tooltip (native title + aria-label) with the
- *      Group Join Date and as-of date.
+ *      on a missing Group Join Date, wires the i-badge tooltip (native title + aria-label) with the
+ *      Group Join Date and as-of date, renders the row as a dt/dd pair on the top summary-card grid
+ *      immediately after Join Date, and no longer duplicates it on the Employment Information card.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -155,7 +161,30 @@ describe('drift guards (source assertions)', () => {
     expect(src).toContain('aria-label={yearOfServiceTooltip}');
   });
 
-  it('the row renders the Year of Service label on the Employee Information card', () => {
-    expect(src).toContain("{t('employmentInfo.yearOfService')}");
+  it('renders as a dt/dd pair on the top summary card, immediately after Join Date (b75b2a23)', () => {
+    // The summary-card <dl> lists Employee ID … Company, then Join Date, then Year of Service. Pin the
+    // label into a <dt> (the grid's term/definition pattern), positioned after the Join Date pair and
+    // before that grid's closing </dl>.
+    expect(src).toContain('<dt className="text-xs text-muted-foreground">{t(\'employmentInfo.yearOfService\')}</dt>');
+    const joinDateAt = src.indexOf("t('headerJoinDate')");
+    const yearOfServiceAt = src.indexOf("<dt className=\"text-xs text-muted-foreground\">{t('employmentInfo.yearOfService')}</dt>");
+    expect(joinDateAt).toBeGreaterThan(-1);
+    expect(yearOfServiceAt).toBeGreaterThan(joinDateAt);
+    const dlCloseAt = src.indexOf('</dl>', joinDateAt);
+    expect(dlCloseAt).toBeGreaterThan(-1);
+    expect(yearOfServiceAt).toBeLessThan(dlCloseAt);
+  });
+
+  it('the Employment Information card no longer duplicates the row (single authoritative display)', () => {
+    // Exactly ONE render of the label in the whole page — and it sits in the summary-card grid pinned
+    // above, not inside the Employment Information card (#section-employment-info).
+    const renders = src.split("{t('employmentInfo.yearOfService')}").length - 1;
+    expect(renders).toBe(1);
+    const employmentCardAt = src.indexOf('id="section-employment-info"');
+    const summaryGridAt = src.indexOf('<dl className="grid flex-1 grid-cols-2');
+    const yearOfServiceAt = src.indexOf("{t('employmentInfo.yearOfService')}");
+    expect(employmentCardAt).toBeGreaterThan(-1);
+    expect(summaryGridAt).toBeGreaterThan(employmentCardAt); // the summary grid JSX sits after the card const
+    expect(yearOfServiceAt).toBeGreaterThan(summaryGridAt);
   });
 });

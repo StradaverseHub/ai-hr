@@ -2499,6 +2499,8 @@ export default async function EmployeePage({
   // units only ("8 Months 15 Days" under a year, "25 Days" for a new joiner) while inner zeros stay
   // ("10 Years 0 Months 5 Days"); days always render (a same-day hire shows "0 Days"). Read-only,
   // display-only — leave bands keep reading serviceYearsAt / serviceYearsMonthsAt.
+  // b75b2a23 — the figure now renders on the TOP summary card (after Join Date), not on the Employment
+  // Information card; the computation stays here beside the other service figures it shares inputs with.
   const yearOfServiceLabel = ((): string | null => {
     if (!emp.hiredOn) return null;
     const s = serviceYearsMonthsDaysAt(emp.hiredOn, today);
@@ -2733,24 +2735,9 @@ export default async function EmployeePage({
             </Field>
           </div>
 
-          {/* cc681bd5 — Year of Service row: read-only Y/M/D figure with an i-badge tooltip (same
-              plain-CSS native-title pattern as the family tax-relief badge) carrying the underlying
-              Group Join Date and the as-of date. "Not Available" when no Group Join Date is recorded. */}
-          <p className="text-sm">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="text-muted-foreground">{t('employmentInfo.yearOfService')}:</span>
-              <span className="font-medium">{yearOfServiceLabel ?? t('employmentInfo.notAvailable')}</span>
-              {yearOfServiceTooltip && (
-                <span
-                  className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground"
-                  title={yearOfServiceTooltip}
-                  aria-label={yearOfServiceTooltip}
-                >
-                  i
-                </span>
-              )}
-            </span>
-          </p>
+          {/* b75b2a23 — the cc681bd5 Year of Service row moved from here onto the top summary card so the
+              figure is visible the moment a profile opens and lives in exactly one place. The label +
+              tooltip are still computed above (beside the other service figures) — only the render moved. */}
 
           {/* Probation Information */}
           <div className="space-y-3">
@@ -3327,6 +3314,29 @@ export default async function EmployeePage({
             <div>
               <dt className="text-xs text-muted-foreground">{t('headerJoinDate')}</dt>
               <dd className="font-medium text-foreground">{emp.hiredOn}</dd>
+            </div>
+            {/* b75b2a23 — Year of Service, moved here from the Employment tab so service length is visible
+                the moment a profile opens. Same read-only Y/M/D figure from the Group Join Date (computed
+                above with the other service figures), same i-badge tooltip carrying the underlying dates,
+                same "Not Available" fallback. Placed after Join Date — the two read together — and as the
+                8th pair it keeps the 2-column grid even. This is the figure's ONLY display; the Employment
+                Information card row was removed. */}
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('employmentInfo.yearOfService')}</dt>
+              <dd className="font-medium text-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <span>{yearOfServiceLabel ?? t('employmentInfo.notAvailable')}</span>
+                  {yearOfServiceTooltip && (
+                    <span
+                      className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground"
+                      title={yearOfServiceTooltip}
+                      aria-label={yearOfServiceTooltip}
+                    >
+                      i
+                    </span>
+                  )}
+                </span>
+              </dd>
             </div>
           </dl>
         </div>
