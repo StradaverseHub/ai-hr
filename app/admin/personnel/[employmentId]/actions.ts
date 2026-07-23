@@ -394,31 +394,34 @@ export async function createMovementEventAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
-export async function addReportingLineAction(formData: FormData) {
+/** Direct Superior (dce55aff) — the Reporting Lines management UI is replaced by ONE field. Saving
+ *  writes the administrative reporting line through the existing service path: setReportingLine
+ *  supersedes (CLOSE + INSERT) any prior active admin line, refuses self-assignment and cycles
+ *  (ReportingCycleError), and appends the reporting-line.set / .superseded DomainEvents — so the full
+ *  audit trail (previous superior, new superior, actor, timestamp) is preserved without effort.
+ *  Effective-dating stays internal: validFrom is always "today". An EMPTY selection clears the
+ *  current superior (the employee becomes a hierarchy top) via endReportingLine. Line types
+ *  functional/project/dotted are no longer maintainable from this screen. */
+export async function setDirectSuperiorAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  const superiorEmploymentId = String(formData.get('superiorEmploymentId') ?? '').trim();
+  const currentSuperiorEmploymentId = String(formData.get('currentSuperiorEmploymentId') ?? '').trim();
+  const currentLineId = String(formData.get('currentLineId') ?? '').trim();
+  const today = new Date().toISOString().slice(0, 10);
   try {
-    await setReportingLine(s, {
-      subordinateEmploymentId: employmentId,
-      managerEmploymentId: String(formData.get('managerEmploymentId')),
-      lineType: String(formData.get('lineType')) as 'administrative' | 'functional' | 'project' | 'dotted',
-      validFrom: String(formData.get('validFrom')),
-    });
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
-}
-
-export async function endReportingLineAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  try {
-    await endReportingLine(s, {
-      reportingLineId: String(formData.get('reportingLineId')),
-      endDate: String(formData.get('endDate')),
-    });
+    if (superiorEmploymentId === currentSuperiorEmploymentId) {
+      // No change — skip the write so the audit trail records only genuine superior moves.
+    } else if (superiorEmploymentId === '') {
+      if (currentLineId) await endReportingLine(s, { reportingLineId: currentLineId, endDate: today });
+    } else {
+      await setReportingLine(s, {
+        subordinateEmploymentId: employmentId,
+        managerEmploymentId: superiorEmploymentId,
+        lineType: 'administrative',
+        validFrom: today,
+      });
+    }
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }

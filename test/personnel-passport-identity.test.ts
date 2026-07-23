@@ -75,7 +75,11 @@ describe('Passport identity — leaf helper + static wiring (e3ce0d4d)', () => {
     expect(PAGE.includes('setPassportAction={setPassportAction}')).toBe(true);
     // The old direct island usages moved into the client wrapper.
     expect(PAGE.includes('<IcDobAutofill')).toBe(false);
-    expect(PAGE.includes('<Combobox')).toBe(false);
+    // Re-pinned for dce55aff: the page's ONLY direct <Combobox> is the Direct Superior picker — the
+    // nationality combobox must stay inside the NationalityField client wrapper (the original intent
+    // of the blanket "no <Combobox on the page" check written before any other combobox existed).
+    expect((PAGE.match(/<Combobox\b/g) ?? []).length).toBe(1);
+    expect(/<Combobox\s+name="superiorEmploymentId"/.test(PAGE)).toBe(true);
   });
 
   it('(ui) Combobox exposes onValueChange and the identity wrapper drives IC vs passport by nationality', () => {

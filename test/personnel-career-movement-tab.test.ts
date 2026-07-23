@@ -54,9 +54,10 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     expect(PAGE.includes('transferTerminateCards')).toBe(false);
     expect(PAGE.includes('blacklistCard')).toBe(false);
     expect(PAGE.includes('assignmentHistoryCard')).toBe(false);
-    // The Employment (job) tab keeps its master-data cards.
+    // The Employment (job) tab keeps its master-data cards. (Feedback dce55aff replaced the
+    // Reporting Lines card with the Direct Superior card.)
     const job = panelBody('job');
-    expect(job.includes('{reportingLinesCard}')).toBe(true);
+    expect(job.includes('{directSuperiorCard}')).toBe(true);
     expect(job.includes('{delegationsCard}')).toBe(true);
   });
 

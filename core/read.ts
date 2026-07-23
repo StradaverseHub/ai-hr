@@ -2197,6 +2197,9 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string) {
         // eae550e9: the person behind the edge (both queries already innerJoin person — one extra column).
         personId: employment.personId,
         name: person.fullName,
+        // Direct Superior (dce55aff): the manager's Employee ID, so the card/header can render
+        // "EMP-0008 – John Tan". Additive — existing callers ignore it.
+        employeeCode: employment.employeeCode,
       })
       .from(reportingLine)
       .innerJoin(employment, eq(employment.id, reportingLine.managerEmploymentId))
@@ -2232,6 +2235,37 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string) {
       )
       .orderBy(person.fullName);
     return { managers, reports };
+  });
+}
+
+/** Direct Superior history (dce55aff): the CLOSED administrative reporting lines for an employment —
+ *  every prior direct superior with the window they held the role. Read-only feed for the compact
+ *  history disclosure on the Personnel Employment tab; the effective-dating stays internal (the screen
+ *  no longer asks admins to manage dates), but the audit visibility is preserved here. Excludes the
+ *  open line (that is the CURRENT superior, rendered separately) and superseded corrections. */
+export function directSuperiorHistoryFor(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, async (tx) => {
+    return tx
+      .select({
+        id: reportingLine.id,
+        managerEmploymentId: reportingLine.managerEmploymentId,
+        employeeCode: employment.employeeCode,
+        name: person.fullName,
+        validFrom: reportingLine.validFrom,
+        validTo: reportingLine.validTo,
+      })
+      .from(reportingLine)
+      .innerJoin(employment, eq(employment.id, reportingLine.managerEmploymentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          eq(reportingLine.subordinateEmploymentId, employmentId),
+          eq(reportingLine.lineType, 'administrative'),
+          isNotNull(reportingLine.validTo),
+          isNull(reportingLine.supersededAt),
+        ),
+      )
+      .orderBy(desc(reportingLine.validFrom), desc(reportingLine.validTo));
   });
 }
 

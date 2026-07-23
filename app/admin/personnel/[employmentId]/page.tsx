@@ -5,6 +5,7 @@ import { isAdmin, requireAdmin } from '@/lib/authz';
 import {
   assignmentHistory,
   delegationsFor,
+  directSuperiorHistoryFor,
   employeeAudit,
   employeeDetail,
   leaveBalances,
@@ -23,16 +24,18 @@ import { deriveSummaryBalance } from '@/components/leave/entitlement-panel-confi
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
+// Direct Superior (dce55aff): the searchable employee picker reuses the shared Combobox — its label
+// carries "EMP-0008 – John Tan" so type-ahead matches Employee ID and name alike.
+import { Combobox } from '@/components/ui/combobox';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
 import { SameAsPermanentAddress } from '@/components/same-as-permanent-address';
 import {
   addDelegationAction,
-  addReportingLineAction,
   endDelegationAction,
-  endReportingLineAction,
   setCompensationAction,
+  setDirectSuperiorAction,
   setComplianceFieldsAction,
   setContactAddressAction,
   setEmergencyContactAction,
@@ -116,14 +119,6 @@ function LeaveStatus({ status, label }: { status: string; label: string }) {
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${LEAVE_STATUS[status] ?? ''}`}>
       {label}
-    </span>
-  );
-}
-
-function LineTypeBadge({ type, dottedLabel }: { type: string; dottedLabel: string }) {
-  return (
-    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-      {type === 'dotted' ? dottedLabel : type}
     </span>
   );
 }
@@ -276,6 +271,22 @@ export default async function EmployeePage({
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
+  // Direct Superior (dce55aff): the CURRENT superior is the active administrative reporting line (the
+  // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
+  // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
+  const currentSuperior = reporting.managers.find((m) => m.lineType === 'administrative') ?? null;
+  const superiorHistory = admin ? await directSuperiorHistoryFor(s, employmentId) : [];
+  // "EMP-0008 – John Tan" labels: the Combobox filters on the label, so one picker searches Employee ID
+  // and name alike. Active employees only (`others` already excludes self + terminated); the current
+  // superior is prepended if no longer in that set (e.g. terminated) so the field never shows a raw id.
+  const superiorLabel = (code: string | null, name: string) => (code ? `${code} – ${name}` : name);
+  const superiorOptions = others.map((o) => ({ value: o.employmentId, label: superiorLabel(o.employeeCode, o.name) }));
+  if (currentSuperior && !superiorOptions.some((o) => o.value === currentSuperior.employmentId)) {
+    superiorOptions.unshift({
+      value: currentSuperior.employmentId,
+      label: superiorLabel(currentSuperior.employeeCode, currentSuperior.name),
+    });
+  }
   const changeHistory = admin ? await employeeAudit(s, employmentId) : [];
   // Movement tab redesign (78853b97): Employment History is a read-model projection over the
   // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
@@ -2730,92 +2741,74 @@ export default async function EmployeePage({
      into the New Event form — kind "Blacklist" routes to the same audited setEmploymentBlacklist
      service (set AND clear), so nothing about the columns or events changed. */
 
-  const reportingLinesCard = (
-    <Card id="section-reporting-lines">
-      <SectionHeader title={t('reportingLines')} />
-        <div className="grid grid-cols-1 divide-border sm:grid-cols-2 sm:divide-x">
-          <div className="p-4">
-            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('reportsTo')}</div>
-            {reporting.managers.length === 0 ? (
-              <div className="text-sm text-muted-foreground">{t('noManagers')}</div>
-            ) : (
-              <ul className="space-y-2">
-                {reporting.managers.map((m) => (
-                  <li key={m.id} className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2">
-                      <Link
-                        href={`/admin/personnel/${m.employmentId}`}
-                        className="text-foreground hover:text-primary"
-                      >
-                        {m.name}
-                      </Link>
-                      <LineTypeBadge type={m.lineType} dottedLabel={t('lineTypeDottedBadge')} />
-                    </span>
-                    <form action={endReportingLineAction}>
-                      <input type="hidden" name="employmentId" value={emp.employmentId} />
-                      <input type="hidden" name="reportingLineId" value={m.id} />
-                      <input type="hidden" name="endDate" value={today} />
-                      <button type="submit" title={t('endReportingLine')} className="text-muted-foreground transition-colors hover:text-red-500">
-                        ×
-                      </button>
-                    </form>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="p-4">
-            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('directReports')}</div>
-            {reporting.reports.length === 0 ? (
-              <div className="text-sm text-muted-foreground">{t('noDirectReports')}</div>
-            ) : (
-              <ul className="space-y-2">
-                {reporting.reports.map((r) => (
-                  <li key={r.id} className="flex items-center gap-2 text-sm">
-                    <Link
-                      href={`/admin/personnel/${r.employmentId}`}
-                      className="text-foreground hover:text-primary"
-                    >
-                      {r.name}
-                    </Link>
-                    <LineTypeBadge type={r.lineType} dottedLabel={t('lineTypeDottedBadge')} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+  /* Direct Superior (dce55aff) — replaces the Reporting Lines card. ONE searchable field (Employee ID
+     or name) answers the one question the system actually asks: who does this person report to. Saving
+     writes the administrative reporting line via setDirectSuperiorAction → setReportingLine (CLOSE +
+     INSERT supersede, validFrom = today, cycle + self-assignment refusal, DomainEvents) — the same
+     engine every approval/visibility consumer already follows, so the change takes effect everywhere
+     immediately. Manager / Line Type / Effective From / multi-line management are gone from the UI;
+     existing functional/project/dotted rows remain in the data (org chart still renders them — their
+     retirement is a follow-up decision, not decided here). Prior superiors stay visible read-only in
+     the compact history disclosure below the field. */
+  const directSuperiorCard = (
+    <Card id="section-direct-superior">
+      <SectionHeader title={t('directSuperiorTitle')} />
+      <div className="space-y-4 p-4">
+        <div className="text-sm">
+          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('directSuperiorCurrent')}</div>
+          {currentSuperior ? (
+            <Link href={`/admin/personnel/${currentSuperior.employmentId}`} className="font-medium text-foreground hover:text-primary">
+              {superiorLabel(currentSuperior.employeeCode, currentSuperior.name)}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">{t('directSuperiorNone')}</span>
+          )}
         </div>
         {!emp.terminatedOn && others.length > 0 && (
-          <form
-            action={addReportingLineAction}
-            className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
-          >
+          <form action={setDirectSuperiorAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <Field label={t('manager')}>
-              <select name="managerEmploymentId" required className={inputCls}>
-                {others.map((o) => (
-                  <option key={o.employmentId} value={o.employmentId}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('lineType')}>
-              <select name="lineType" defaultValue="administrative" className={inputCls}>
-                <option value="administrative">{t('lineTypeAdministrative')}</option>
-                <option value="functional">{t('lineTypeFunctional')}</option>
-                <option value="project">{t('lineTypeProject')}</option>
-                <option value="dotted">{t('lineTypeDotted')}</option>
-              </select>
-            </Field>
-            <Field label={t('reportingLineEffectiveFrom')}>
-              <input name="validFrom" type="date" required defaultValue={today} className={inputCls} />
-            </Field>
+            {/* The no-change guard + the "clear → end current line" path both need the current state. */}
+            <input type="hidden" name="currentSuperiorEmploymentId" value={currentSuperior?.employmentId ?? ''} />
+            <input type="hidden" name="currentLineId" value={currentSuperior?.id ?? ''} />
+            <div className="sm:col-span-2">
+              <Field label={t('directSuperiorLabel')}>
+                <Combobox
+                  name="superiorEmploymentId"
+                  value={currentSuperior?.employmentId ?? ''}
+                  options={superiorOptions}
+                  placeholder={t('directSuperiorNone')}
+                  searchPlaceholder={t('directSuperiorSearch')}
+                  noResultsLabel={t('directSuperiorNoResults')}
+                  legacySuffix=""
+                />
+              </Field>
+            </div>
             <div>
-              <button className={btnPrimary}>{t('addReportingLine')}</button>
+              <button className={btnPrimary}>{t('directSuperiorSave')}</button>
             </div>
           </form>
         )}
+        {superiorHistory.length > 0 && (
+          <details className="text-sm">
+            <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t('directSuperiorHistory')}
+            </summary>
+            <ul className="mt-2 space-y-1">
+              {superiorHistory.map((h) => (
+                <li key={h.id} className="flex items-center justify-between gap-3">
+                  <Link href={`/admin/personnel/${h.managerEmploymentId}`} className="text-foreground hover:text-primary">
+                    {superiorLabel(h.employeeCode, h.name)}
+                  </Link>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {h.validFrom} → {h.validTo}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        <p className="text-xs text-muted-foreground">{t('directSuperiorHint')}</p>
+      </div>
     </Card>
   );
 
@@ -2999,7 +2992,7 @@ export default async function EmployeePage({
     job: (
       <>
         {employmentInfoCard}
-        {reportingLinesCard}
+        {directSuperiorCard}
         {delegationsCard}
       </>
     ),
@@ -3197,11 +3190,12 @@ export default async function EmployeePage({
             </div>
             {/* Item 7a504619 — Direct Superior read straight from the active administrative reporting line
                 (already loaded via reportingLinesFor). Read-only mirror of the Employment tab; a change there
-                shows here automatically. Dash when no manager is assigned. */}
+                shows here automatically. Dash when no manager is assigned. dce55aff: shows the superior's
+                Employee ID alongside the full name ("EMP-0008 – John Tan"). */}
             <div>
               <dt className="text-xs text-muted-foreground">{t('headerSuperior')}</dt>
               <dd className="font-medium text-foreground">
-                {reporting.managers.find((m) => m.lineType === 'administrative')?.name ?? '—'}
+                {currentSuperior ? superiorLabel(currentSuperior.employeeCode, currentSuperior.name) : '—'}
               </dd>
             </div>
             <div>
