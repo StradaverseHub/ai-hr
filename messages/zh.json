@@ -1536,7 +1536,12 @@
       "otherDevicesNote": "您共有 {count, plural, one {# 台已注册设备} other {# 台已注册设备}}。",
       "outsideGeofence": "您目前不在授权的打卡地点范围内。请前往指定的工作地点后再进行签到或签退。",
       "outsideGeofenceDistance": "您不在授权的打卡地点范围内——距最近的批准地点约 {distance} 米（允许半径 {radius} 米）。",
-      "locationRequired": "在此工作地点签到或签退需要您的位置信息。请允许位置访问权限后重试。"
+      "locationRequired": "在此工作地点签到或签退需要您的位置信息。请允许位置访问权限后重试。",
+      "switchShift": "切换",
+      "shiftEndsAt": "本班次将于 {time} 结束",
+      "clockedInAt": "已于 {time} 打卡上班",
+      "sessionsToday": "{count, plural, one {今日已完成 # 个时段} other {今日已完成 # 个时段}}",
+      "locationUnknown": "打卡时将匹配您的工作地点"
     }
   },
   "org": {

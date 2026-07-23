@@ -1536,7 +1536,12 @@
       "otherDevicesNote": "Bạn có tổng cộng {count, plural, one {# thiết bị đã đăng ký} other {# thiết bị đã đăng ký}}.",
       "outsideGeofence": "Bạn hiện đang ở ngoài vị trí chấm công được ủy quyền. Vui lòng di chuyển đến địa điểm làm việc được chỉ định trước khi chấm công vào/ra.",
       "outsideGeofenceDistance": "Bạn đang ở ngoài vị trí chấm công được ủy quyền — cách địa điểm được phê duyệt gần nhất khoảng {distance} m (bán kính cho phép {radius} m).",
-      "locationRequired": "Vị trí của bạn là bắt buộc để chấm công vào/ra tại nơi làm việc này. Vui lòng cho phép truy cập vị trí và thử lại."
+      "locationRequired": "Vị trí của bạn là bắt buộc để chấm công vào/ra tại nơi làm việc này. Vui lòng cho phép truy cập vị trí và thử lại.",
+      "switchShift": "Chuyển",
+      "shiftEndsAt": "Ca này kết thúc lúc {time}",
+      "clockedInAt": "Đã chấm công vào lúc {time}",
+      "sessionsToday": "{count, plural, one {# phiên hoàn thành hôm nay} other {# phiên hoàn thành hôm nay}}",
+      "locationUnknown": "Địa điểm làm việc của bạn được xác định khi bạn chấm công vào"
     }
   },
   "org": {

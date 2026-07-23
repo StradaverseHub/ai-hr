@@ -1352,8 +1352,18 @@ export function attendanceForEmploymentRange(
   });
 }
 
-/** R45 92bdf77a — one punch (a single clock-in or clock-out) of a multi-clocking day. */
-export type AttendancePunchRow = { attendanceId: string; punchAt: string; direction: 'in' | 'out' };
+/** R45 92bdf77a — one punch (a single clock-in or clock-out) of a multi-clocking day. Feedback af552c5d
+ *  (Clock In/Out redesign) added the punch's captured coordinates + the MATCHED clocking-location name
+ *  (from the geofence resolution frozen on the punch row) so the clock screen can show where the punch
+ *  was verified — all nullable: a punch written while geofencing was off carries no match. */
+export type AttendancePunchRow = {
+  attendanceId: string;
+  punchAt: string;
+  direction: 'in' | 'out';
+  lat: number | null;
+  lng: number | null;
+  locationName: string | null;
+};
 
 /**
  * R45 92bdf77a — every punch for a SINGLE employment across [from, to], grouped by their day's attendanceId,
@@ -1374,8 +1384,13 @@ export function attendancePunchesForRange(
         attendanceId: attendancePunch.attendanceId,
         punchAt: attendancePunch.punchAt,
         direction: attendancePunch.direction,
+        // af552c5d — per-punch capture + matched-site name for the clock screen's location display.
+        lat: attendancePunch.lat,
+        lng: attendancePunch.lng,
+        locationName: clockingLocation.name,
       })
       .from(attendancePunch)
+      .leftJoin(clockingLocation, eq(clockingLocation.id, attendancePunch.clockingLocationId))
       .where(
         and(
           eq(attendancePunch.employmentId, employmentId),

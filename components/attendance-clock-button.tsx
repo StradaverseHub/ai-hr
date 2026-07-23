@@ -13,20 +13,25 @@
  * lib/device-token.ts) in a hidden field. The SERVER decides whether a token is required
  * (attendance_policy.require_registered_device) — never the client; with the policy OFF the field is
  * simply ignored.
+ *
+ * Feedback af552c5d (Clock In/Out redesign): the capture FORM is split out as ClockCaptureForm (a
+ * render-prop wrapper owning the hidden fields + geolocation flow) so the redesigned circular button
+ * and the /me card's plain button both ride the SAME capture path — still one implementation.
  */
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui';
 import { getStoredDeviceToken } from '@/lib/device-token';
 
-type Props = {
+type CaptureFormProps = {
   action: (formData: FormData) => void;
-  label: string;
-  variant?: 'default' | 'secondary';
+  /** Renders the submit control; `capturing` is true while the browser is resolving geolocation. */
+  children: (capturing: boolean) => React.ReactNode;
 };
 
-export function AttendanceClockButton({ action, label, variant = 'default' }: Props) {
-  const t = useTranslations('me');
+/** The ONE geolocation + device-token capture form (see the header comment). Presentation-free: the
+ *  caller renders whatever submit control it wants via the render prop. */
+export function ClockCaptureForm({ action, children }: CaptureFormProps) {
   const [capturing, setCapturing] = React.useState(false);
   const formRef = React.useRef<HTMLFormElement>(null);
   const latRef = React.useRef<HTMLInputElement>(null);
@@ -63,10 +68,27 @@ export function AttendanceClockButton({ action, label, variant = 'default' }: Pr
       <input ref={latRef} type="hidden" name="lat" />
       <input ref={lngRef} type="hidden" name="lng" />
       <input ref={tokenRef} type="hidden" name="deviceToken" />
-      <Button type="submit" variant={variant} className="w-full" disabled={capturing}>
-        {capturing ? t('capturingLocation') : label}
-      </Button>
+      {children(capturing)}
     </form>
+  );
+}
+
+type Props = {
+  action: (formData: FormData) => void;
+  label: string;
+  variant?: 'default' | 'secondary';
+};
+
+export function AttendanceClockButton({ action, label, variant = 'default' }: Props) {
+  const t = useTranslations('me');
+  return (
+    <ClockCaptureForm action={action}>
+      {(capturing) => (
+        <Button type="submit" variant={variant} className="w-full" disabled={capturing}>
+          {capturing ? t('capturingLocation') : label}
+        </Button>
+      )}
+    </ClockCaptureForm>
   );
 }
 

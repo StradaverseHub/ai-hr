@@ -1536,7 +1536,12 @@
       "otherDevicesNote": "You have {count, plural, one {# registered device} other {# registered devices}} in total.",
       "outsideGeofence": "You are currently outside your authorized clocking location. Please proceed to your assigned work location before clocking in or out.",
       "outsideGeofenceDistance": "You are outside your authorized clocking location — about {distance} m from the nearest approved site (allowed radius {radius} m).",
-      "locationRequired": "Your location is required to clock in or out at this workplace. Please allow location access and try again."
+      "locationRequired": "Your location is required to clock in or out at this workplace. Please allow location access and try again.",
+      "switchShift": "Switch",
+      "shiftEndsAt": "This shift ends at {time}",
+      "clockedInAt": "Clocked in at {time}",
+      "sessionsToday": "{count, plural, one {# completed session today} other {# completed sessions today}}",
+      "locationUnknown": "Your work location is matched when you clock in"
     }
   },
   "org": {

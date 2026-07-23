@@ -1536,7 +1536,12 @@
       "otherDevicesNote": "Anda mempunyai {count, plural, one {# peranti berdaftar} other {# peranti berdaftar}} kesemuanya.",
       "outsideGeofence": "Anda kini berada di luar lokasi daftar masuk yang dibenarkan. Sila pergi ke lokasi kerja yang ditetapkan sebelum daftar masuk atau daftar keluar.",
       "outsideGeofenceDistance": "Anda berada di luar lokasi daftar masuk yang dibenarkan — kira-kira {distance} m dari tapak diluluskan terdekat (radius dibenarkan {radius} m).",
-      "locationRequired": "Lokasi anda diperlukan untuk daftar masuk atau keluar di tempat kerja ini. Sila benarkan akses lokasi dan cuba lagi."
+      "locationRequired": "Lokasi anda diperlukan untuk daftar masuk atau keluar di tempat kerja ini. Sila benarkan akses lokasi dan cuba lagi.",
+      "switchShift": "Tukar",
+      "shiftEndsAt": "Syif ini tamat pada {time}",
+      "clockedInAt": "Daftar masuk pada {time}",
+      "sessionsToday": "{count, plural, one {# sesi selesai hari ini} other {# sesi selesai hari ini}}",
+      "locationUnknown": "Lokasi kerja anda dipadankan semasa anda daftar masuk"
     }
   },
   "org": {
