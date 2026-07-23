@@ -11,6 +11,7 @@ import { assertCanDecide } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
 import { resolveApprovalChain } from './leave-approval-policy';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { consumeReplacementLeaveTx } from './toil';
 import {
   holidayDatesFor,
@@ -690,11 +691,10 @@ function daysBetween(start: string, end: string): number {
 
 /** "Today" in the tenant's local (Asia/Kuala_Lumpur) calendar as ISO yyyy-mm-dd. Used so the backdating
  *  boundary is not UTC-skewed for a late-night request near MYT midnight (this is a Malaysia product). The
- *  action layer computes this and passes it into requestLeave; core defaults to it when a caller omits it. */
-export function todayInKualaLumpur(now: Date = new Date()): string {
-  // en-CA yields yyyy-mm-dd; the timeZone shifts the wall-clock date to MYT before formatting.
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur' }).format(now);
-}
+ *  action layer computes this and passes it into requestLeave; core defaults to it when a caller omits it.
+ *  Canonical implementation lives in lib/hr-date.ts (shared with employment-status); re-exported here so
+ *  the many existing importers keep their import path. */
+export { todayInKualaLumpur };
 
 /** Configurable backdated-leave restriction (0133). True when `startDate` is backdated beyond `limitDays`
  *  from `today` (both ISO yyyy-mm-dd). limitDays null ⇒ never blocked (existing behaviour). limitDays 0 ⇒

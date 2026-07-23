@@ -24,6 +24,7 @@ import {
   requestLeave,
   requestLeaveCancellation,
   splitSpanForCancellation,
+  todayInKualaLumpur,
   LeaveCancellationNotAllowedError,
   LeaveCancellationTooLateError,
   LeaveCancellationDateInvalidError,
@@ -415,9 +416,11 @@ describe('Partial Leave Cancellation — gates', () => {
     // Build an approved leave directly spanning [today-10 … today+10] with its own ledger debit (the shape
     // finalizeLeaveApproval produces). Then pick a genuinely PAST working day and a genuinely FUTURE working
     // day from that window, regardless of when the test runs.
+    // Anchor on the MYT calendar day: the cancellation gate compares against todayInKualaLumpur(), so a
+    // UTC anchor flipped "past"/"future" picks between 00:00 and 08:00 MYT and failed this test nightly.
     const iso = (d: Date) => d.toISOString().slice(0, 10);
     const shift = (delta: number) => {
-      const d = new Date();
+      const d = new Date(`${todayInKualaLumpur()}T12:00:00Z`);
       d.setUTCDate(d.getUTCDate() + delta);
       return d;
     };
