@@ -12,6 +12,7 @@
  * exactly the test that would let that ship green.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { client, withTenant, type Grant, type SessionContext } from '../db/client';
@@ -41,8 +42,11 @@ async function sqlBlocked(appUserId: string): Promise<boolean> {
   return Boolean(row.blocked);
 }
 
+// Anchor on the MYT calendar day, not UTC: app.login_blocked() compares against SQL current_date in an
+// Asia/Kuala_Lumpur database, and isLoginBlocked() now mirrors that (lib/hr-date.ts). A UTC anchor made
+// this suite fail every night between 00:00 and 08:00 MYT, when the two calendars name different days.
 const iso = (offsetDays: number) => {
-  const d = new Date();
+  const d = new Date(`${todayInKualaLumpur()}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + offsetDays);
   return d.toISOString().slice(0, 10);
 };

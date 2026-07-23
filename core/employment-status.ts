@@ -23,6 +23,8 @@
  * not wired yet) — see the R43 plan. Not represented here.
  */
 
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 export type EmploymentStatus =
   | 'probation'
   | 'active'
@@ -72,7 +74,8 @@ function earliest(...dates: (string | null | undefined)[]): string | null {
  */
 export function deriveEmploymentStatus(
   emp: EmploymentStatusInput,
-  today: string = new Date().toISOString().slice(0, 10),
+  // MYT, not UTC: mirrors SQL current_date in the Asia/Kuala_Lumpur database — see lib/hr-date.ts.
+  today: string = todayInKualaLumpur(),
 ): EmploymentStatus {
   // 1. Blacklist — a deliberate HR override wins over every date-derived bucket.
   if (emp.blacklistedAt) return 'blacklisted';
@@ -107,7 +110,8 @@ export function deriveEmploymentStatus(
  */
 export function isEmploymentEnded(
   emp: EmploymentStatusInput,
-  today: string = new Date().toISOString().slice(0, 10),
+  // MYT, not UTC: mirrors SQL current_date in the Asia/Kuala_Lumpur database — see lib/hr-date.ts.
+  today: string = todayInKualaLumpur(),
 ): boolean {
   if (emp.blacklistedAt) return true;
   const ended = earliest(emp.resignationDate, emp.lastWorkingDate, emp.terminatedOn);
@@ -133,7 +137,8 @@ export type LoginBlockInput = {
  */
 export function isLoginBlocked(
   input: LoginBlockInput,
-  today: string = new Date().toISOString().slice(0, 10),
+  // MYT, not UTC: mirrors SQL current_date in the Asia/Kuala_Lumpur database — see lib/hr-date.ts.
+  today: string = todayInKualaLumpur(),
 ): boolean {
   if (input.archivedAt) return true;
   if (input.employments.length === 0) return false;
