@@ -1158,7 +1158,17 @@
     "fieldReason": "Sebab (pilihan)",
     "reasonPlaceholder": "Perjalanan keluarga",
     "submitRequest": "Hantar permohonan",
-    "myRequestsTitle": "Sejarah cuti saya",
+    "historyCount": "Sejarah cuti saya ({count})",
+    "viewDetails": "Lihat butiran",
+    "durationLine": "Tempoh: {count} hari",
+    "details": {
+      "title": "Butiran cuti",
+      "leaveType": "Jenis cuti",
+      "duration": "Tempoh",
+      "session": "Sesi",
+      "status": "Status",
+      "attachment": "Lampiran"
+    },
     "cancelDatesToggle": "Batal tarikh",
     "cancelDatesHint": "Tandakan hari yang anda mahu pulangkan. Hanya hari yang belum bermula boleh dibatalkan.",
     "cancelPendingBadge": "Pembatalan menunggu",

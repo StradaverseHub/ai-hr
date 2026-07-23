@@ -1158,7 +1158,17 @@
     "fieldReason": "காரணம் (விருப்பத்தேர்வு)",
     "reasonPlaceholder": "குடும்பப் பயணம்",
     "submitRequest": "கோரிக்கையைச் சமர்ப்பி",
-    "myRequestsTitle": "எனது விடுப்பு வரலாறு",
+    "historyCount": "எனது விடுப்பு வரலாறு ({count})",
+    "viewDetails": "விவரங்களைக் காண்க",
+    "durationLine": "காலம்: {count, plural, one {# நாள்} other {# நாட்கள்}}",
+    "details": {
+      "title": "விடுப்பு விவரங்கள்",
+      "leaveType": "விடுப்பு வகை",
+      "duration": "காலம்",
+      "session": "அமர்வு",
+      "status": "நிலை",
+      "attachment": "இணைப்பு"
+    },
     "cancelDatesToggle": "தேதி(களை) ரத்துசெய்",
     "cancelDatesHint": "திரும்பத் தர விரும்பும் நாள்(களை)த் தேர்ந்தெடுக்கவும். தொடங்காத நாட்களை மட்டுமே ரத்துசெய்ய முடியும்.",
     "cancelPendingBadge": "ரத்து நிலுவையில்",

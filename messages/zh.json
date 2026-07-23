@@ -1158,7 +1158,17 @@
     "fieldReason": "原因（选填）",
     "reasonPlaceholder": "家庭出游",
     "submitRequest": "提交申请",
-    "myRequestsTitle": "我的请假记录",
+    "historyCount": "我的请假记录（{count}）",
+    "viewDetails": "查看详情",
+    "durationLine": "时长：{count} 天",
+    "details": {
+      "title": "请假详情",
+      "leaveType": "休假类型",
+      "duration": "时长",
+      "session": "时段",
+      "status": "状态",
+      "attachment": "附件"
+    },
     "cancelDatesToggle": "取消日期",
     "cancelDatesHint": "勾选您想归还的日期。只有尚未开始的日期才能取消。",
     "cancelPendingBadge": "取消待审",

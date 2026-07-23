@@ -1158,7 +1158,17 @@
     "fieldReason": "เหตุผล (ไม่บังคับ)",
     "reasonPlaceholder": "ไปเที่ยวกับครอบครัว",
     "submitRequest": "ส่งคำขอ",
-    "myRequestsTitle": "ประวัติการลาของฉัน",
+    "historyCount": "ประวัติการลาของฉัน ({count})",
+    "viewDetails": "ดูรายละเอียด",
+    "durationLine": "ระยะเวลา: {count} วัน",
+    "details": {
+      "title": "รายละเอียดการลา",
+      "leaveType": "ประเภทการลา",
+      "duration": "ระยะเวลา",
+      "session": "ช่วงเวลา",
+      "status": "สถานะ",
+      "attachment": "เอกสารแนบ"
+    },
     "cancelDatesToggle": "ยกเลิกวันที่",
     "cancelDatesHint": "ติ๊กวันที่คุณต้องการคืน เฉพาะวันที่ยังไม่เริ่มเท่านั้นที่ยกเลิกได้",
     "cancelPendingBadge": "รอยกเลิก",

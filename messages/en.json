@@ -1158,7 +1158,17 @@
     "fieldReason": "Reason (optional)",
     "reasonPlaceholder": "Family trip",
     "submitRequest": "Submit request",
-    "myRequestsTitle": "My leave history",
+    "historyCount": "My leave history ({count})",
+    "viewDetails": "View details",
+    "durationLine": "Duration: {count, plural, one {# day} other {# days}}",
+    "details": {
+      "title": "Leave details",
+      "leaveType": "Leave type",
+      "duration": "Duration",
+      "session": "Session",
+      "status": "Status",
+      "attachment": "Attachment"
+    },
     "cancelDatesToggle": "Cancel date(s)",
     "cancelDatesHint": "Tick the day(s) you want to give back. Only days that haven't started yet can be cancelled.",
     "cancelPendingBadge": "Cancellation pending",
