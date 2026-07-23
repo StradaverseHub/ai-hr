@@ -1,5 +1,15 @@
 {
-  "//": "ADR-0080 D7 drift-guard ratchet allowlists, keyed by pack boundary. Seeded from the audited imports on 2026-07-23 (43 files; the ADR's ~47 included comment-only mentions). Entries may ONLY be removed — adding one fails the guard by design. See test/country-pack-drift.test.ts and docs/adr/0080-country-packs-as-installable-modules.md.",
+  "//": "ADR-0080 D7/D9 drift-guard ratchet allowlists, keyed by pack boundary. Entries may ONLY be removed — adding one fails the guard by design. 'localization/my' seeded from the audited imports on 2026-07-23 (43 files; the ADR's ~47 included comment-only mentions; guard: test/country-pack-drift.test.ts). 'attendance' seeded at rung 2 (2026-07-23) with the audited kernel-contract debt — cross-module consumers that become kernel contracts at later rungs, documented in packs/attendance/index.ts (guard: test/attendance-pack-drift.test.ts). See docs/adr/0080-country-packs-as-installable-modules.md.",
+  "attendance": [
+    "app/approvals/actions.ts",
+    "app/approvals/page.tsx",
+    "app/payroll/actions.ts",
+    "core/approvals-inbox.ts",
+    "core/leave.ts",
+    "core/read.ts",
+    "core/reporting.ts",
+    "core/roster.ts"
+  ],
   "localization/my": [
     "app/admin/attendance-policy/page.tsx",
     "app/admin/leave/entitlements/page.tsx",

@@ -8,19 +8,13 @@ import {
   BarChart3,
   BookOpen,
   Building2,
-  CalendarClock,
   CalendarDays,
-  CalendarRange,
   Clock,
   FileBarChart,
-  FileUp,
-  HandCoins,
   Hash,
-  Hourglass,
   Sparkles,
   LayoutDashboard,
   ListChecks,
-  MapPin,
   MessageSquareText,
   Network,
   PanelLeftClose,
@@ -48,6 +42,12 @@ import {
   isParentActive,
   type FlyoutChild,
 } from '@/components/nav-flyout';
+// ADR-0080 rung 2: the Attendance nav node mounts from the pack registry. The side-effect import
+// evaluates the pack's wiring file (static `registerPack` at module load — the D8 convention), so
+// `modulePackById('attendance')` below is guaranteed to resolve. packs/attendance/index.ts is
+// client-safe by design (flat descriptors + lucide refs only; the service facade lives elsewhere).
+import '@/packs/attendance';
+import { modulePackById } from '@/packs/registry';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
 // `tour` (optional) marks the element as an onboarding-tour anchor (ADR-0018).
@@ -65,39 +65,16 @@ type Row = ChildItem | CollapsibleGroupItem;
 const isCollapsible = (r: Row): r is CollapsibleGroupItem => 'collapsible' in r && r.collapsible;
 type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; items: Row[] };
 
-// Consolidated Attendance node (b3dc0f78). Groups the previously-scattered attendance rows —
-// Records (was in the top group), Policy/Allowance/Clocking Location/Time-off-in-lieu (were in
-// the admin group), Roster (was in the manage group) and Import — under one parent node
-// with per-child role visibility. Holidays moved here from the admin group per 5cb199b3, which
-// confirmed the relocation b3dc0f78 had deferred as contested (ticket order: Holidays → Policy
-// → Allowance → Locations → TOIL). Reserved (do not create): an "Overtime Configuration" child
-// is owned by item e776d17d; when its route lands it inserts itself here after Clocking Location.
-// Child order (f60cd403): day-to-day Records first, then the admin-config screens, and the
-// administrative bulk-upload Import ALWAYS last — it is used far less than daily attendance ops.
-// hrefs / icons / visibility flags are unchanged by that reorder; only row position moved.
+// Consolidated Attendance node (b3dc0f78 / 5cb199b3 / f60cd403 / 5249d43f). Since ADR-0080 rung 2
+// its rows live on the attendance pack (packs/attendance/index.ts, ATTENDANCE_NAV — provenance
+// comments moved with them) and mount here through the registry: labels, hrefs, icons, ordering
+// and per-child visibility flags are the pack's verbatim; only the mounting moved. The pack is
+// registered by the static side-effect import above, so the non-null assertions cannot fire.
+// NavChildDescriptor mirrors ChildItem by construction (packs/registry.ts), so the spread
+// type-checks against the sidebar's own Row machinery unchanged.
 const ATTENDANCE_NODE: CollapsibleGroupItem = {
   collapsible: true,
-  labelKey: 'attendance',
-  icon: Clock,
-  children: [
-    // Feedback 5249d43f: "Clock in/out" — the employee-facing clocking page — is the PRIMARY day-to-day
-    // action, so it sits FIRST, above Records (the node's documented day-to-day-first ordering, f60cd403).
-    // Visible to every employee (self-service, like /me).
-    { href: '/attendance/clock', labelKey: 'attendanceClock', icon: Clock },
-    { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
-    { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
-    // R33 f21d6eee: "Shift settings" (/admin/attendance) is now the shared shift library; the per-company
-    // working-hours + overtime-rates config moved to its own "Attendance policy" screen.
-    { href: '/admin/attendance', labelKey: 'attendancePolicy', icon: CalendarClock, adminOnly: true },
-    { href: '/admin/attendance-policy', labelKey: 'attendancePolicyConfig', icon: SlidersHorizontal, adminOnly: true },
-    { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
-    { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
-    // e776d17d reserves the "Overtime Configuration" child slot here (after Clocking Location, before Import).
-    { href: '/admin/toil', labelKey: 'toilPolicy', icon: Hourglass, adminOnly: true },
-    { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
-    // Import stays last: administrative bulk-upload, used less than daily attendance (f60cd403).
-    { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
-  ],
+  ...modulePackById('attendance')!.nav!,
 };
 
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children

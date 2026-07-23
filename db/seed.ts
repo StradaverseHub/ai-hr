@@ -8,7 +8,7 @@ import { createDb, type SessionContext } from './client';
 import * as schema from './schema';
 import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { checkIn, checkOut, requestAttendanceCorrection } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection } from '../packs/attendance/service';
 import { requestLeave, decideLeave, addLeaveAttachment, accrueEarnedLeave } from '../core/leave';
 import { createLeavePolicy, createJobGrade } from '../core/admin';
 import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../core/performance';

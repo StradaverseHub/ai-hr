@@ -7,22 +7,43 @@
  *   identity to match its ADR-0077 commercial identity: nav/UI descriptors, satellite-table
  *   declarations, and the extension points country packs plug into.
  *
- * Rung 1 scaffolding: the registry registers exactly ONE pack (country-my, wired from
- * `localization/registry.ts`) and ZERO module packs — the first module retrofit (Attendance,
- * ladder rung 2) fleshes out `ModulePack`. Descriptor types are deliberately FLAT (label + href,
- * plain declarations) per the ADR's anti-framework warning: no components, no render hooks, no
- * plugin lifecycle. Add fields only when a retrofit rung actually consumes them.
+ * Rung 1 registered exactly ONE pack (country-my, wired from `localization/registry.ts`); rung 2
+ * (Attendance — the first module retrofit) fleshed out `ModulePack` to what the sidebar actually
+ * consumes: a collapsible nav node whose rows mirror the sidebar's own data shape (labelKey into
+ * the `nav` message namespace, href, lucide icon ref, per-row visibility flags). Descriptor types
+ * stay deliberately FLAT per the ADR's anti-framework warning: plain data, no components, no
+ * render hooks, no plugin lifecycle. Add fields only when a retrofit rung actually consumes them.
  *
  * All packs compile into the one deployment; registration happens at module load (a static
  * `registerPack` call in each pack's wiring file), never at runtime from tenant data. What varies
  * per tenant is *activation* (ADR-0077 entitlements — wired at each rung), not what is registered.
  */
+import type { LucideIcon } from 'lucide-react';
 import type { CountryPack } from '../localization/country-pack';
 
 export type PackKind = 'module' | 'country';
 
-/** A sidebar/nav entry a module pack contributes. Flat on purpose (ADR-0080 D8 anti-framework). */
-export type NavEntryDescriptor = { label: string; href: string };
+/**
+ * A child nav row a module pack contributes — mirrors `components/sidebar.tsx`'s `ChildItem` shape
+ * so the sidebar can spread a pack's node verbatim. Flat on purpose (ADR-0080 D8 anti-framework):
+ * `labelKey` indexes the global `nav` message namespace (resolved at render via useTranslations),
+ * `icon` is a lucide component REF (data, not a render hook), and visibility is the sidebar's own
+ * two flags — adminOnly wins over managerUp (admins or approvers), absent ⇒ every employee.
+ */
+export type NavChildDescriptor = {
+  href: string;
+  labelKey: string;
+  icon: LucideIcon;
+  adminOnly?: boolean;
+  managerUp?: boolean;
+};
+
+/** A module's collapsible sidebar node: parent label/icon + its child rows, in render order. */
+export type NavNodeDescriptor = {
+  labelKey: string;
+  icon: LucideIcon;
+  children: NavChildDescriptor[];
+};
 
 /** A pack-owned satellite table declaration (ADR-0080 D5/D11 — documentation, not DDL). */
 export type SatelliteTableDecl = { table: string; note?: string };
@@ -35,20 +56,33 @@ export type SatelliteTableDecl = { table: string; note?: string };
 export type ExtensionPointDecl = { id: string; note?: string };
 
 /**
- * A functional module with code identity (ADR-0080 D8). Skeleton — rung 2 (Attendance) is the
- * first implementor and the arbiter of what actually belongs here. Everything beyond `id`/`kind`
- * stays optional until a retrofit rung consumes it.
+ * A functional module with code identity (ADR-0080 D8). Rung 2 (Attendance,
+ * `packs/attendance/index.ts`) is the first implementor and the arbiter of what belongs here.
+ * Everything beyond `id`/`kind` stays optional until a retrofit rung consumes it.
  */
 export interface ModulePack {
-  /** Module code — matches the ADR-0077 catalog row (e.g. 'attendance'). */
+  /**
+   * Module code — matches the future ADR-0077 catalog row (e.g. 'attendance'). Entitlement hook
+   * point (D11 criterion 5): when ADR-0077's `tenant_module` + `isModuleEnabled()` land, the gate
+   * resolves this pack by this id (fail-closed like D3). Not wired yet — those primitives do not
+   * exist; do NOT build entitlement machinery here.
+   */
   id: string;
   kind: 'module';
-  /** Nav entries the sidebar renders for entitled tenants (ADR-0080 D8; closes ADR-0077 gap #6). */
-  nav?: NavEntryDescriptor[];
+  /** The module's sidebar node, rendered via the registry (ADR-0080 D8; closes ADR-0077 gap #6). */
+  nav?: NavNodeDescriptor;
   /** Tables this pack owns (ADR-0080 D11 criterion 2). */
   satelliteTables?: SatelliteTableDecl[];
   /** Extension points country packs fill (ADR-0080 D8). */
   extensionPoints?: ExtensionPointDecl[];
+  /**
+   * Repo-relative module path of the pack's service facade — the ONLY module outside-the-pack
+   * callers import for the pack's services (ADR-0080 D11 criterion 3, enforced by the pack's
+   * ratchet). A documentation pointer, deliberately not a loader: no runtime plugin machinery, and
+   * keeping the facade OFF this object keeps pack registration client-safe (the sidebar imports
+   * the wiring; the facade would drag db/client into the client bundle).
+   */
+  serviceFacade?: string;
 }
 
 /** A registered country pack: the `country-<cc>` module identity (ADR-0080 D2) around the D1 contract. */
@@ -74,6 +108,12 @@ export function registerPack(pack: RegisteredPack): void {
 
 export function packById(id: string): RegisteredPack | undefined {
   return REGISTRY.get(id);
+}
+
+/** Kind-narrowed lookup for module packs (nav mounting, future ADR-0077 entitlement resolution). */
+export function modulePackById(id: string): ModulePack | undefined {
+  const pack = REGISTRY.get(id);
+  return pack?.kind === 'module' ? pack : undefined;
 }
 
 export function listPacks(kind?: PackKind): RegisteredPack[] {

@@ -11,7 +11,7 @@ import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, upd
 import { createMovementEvent, MOVEMENT_KINDS, type MovementKind } from '@/core/movement';
 import { reprojectEntitlementForEmployment } from '@/core/leave';
 import { assignEmployeeShift } from '@/core/roster';
-import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
+import { setEmployeeClockingLocations, setGeofencing } from '@/packs/attendance/service';
 import { FixedTransactionAmountError, FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
 import { setReviewEndDate, startReview, uploadReviewDocument, type ReviewType } from '@/core/employment-review';
 import {

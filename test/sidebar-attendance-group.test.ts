@@ -6,10 +6,12 @@
  * must all live under the single collapsible "Attendance" parent (built by b3dc0f78), in that
  * relative order, each admin-gated, and none of them duplicated elsewhere in the rail.
  *
- * `GROUPS` / `ATTENDANCE_NODE` are module-private consts in a `'use client'` component, so —
- * per the approved plan's alternative — this is a lightweight source-text check on
- * components/sidebar.tsx rather than an import (no behavior change to the component, and no
- * need to render next-intl/lucide in a node test).
+ * Since ADR-0080 rung 2 the node's rows live on the attendance PACK (packs/attendance/index.ts,
+ * `ATTENDANCE_NAV`) and mount into components/sidebar.tsx through the pack registry, so the node
+ * checks read the pack source and the no-duplicate checks span BOTH files (a row must appear
+ * exactly once across the rail's combined sources). Every assertion below is the pre-rung-2 guard
+ * unchanged; only where the node's source text lives moved. Nav parity of the mounting itself is
+ * covered in test/attendance-pack.test.ts.
  *
  * Deliberately order-of-SUBSEQUENCE, not adjacency: item e776d17d reserves an "Overtime
  * Configuration" child slot between Clocking Location and TOIL, and future children may be
@@ -19,7 +21,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const SRC = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
+const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
+const PACK = fs.readFileSync(path.resolve(__dirname, '../packs/attendance/index.ts'), 'utf8');
+/** The rail's combined nav sources: hardcoded groups + the registry-mounted attendance node. */
+const SRC = SIDEBAR + PACK;
 
 /** The ticket's five relocated screens, in its required relative order. */
 const TICKET_HREFS = [
@@ -30,13 +35,13 @@ const TICKET_HREFS = [
   '/admin/toil',
 ] as const;
 
-/** The ATTENDANCE_NODE literal: from its declaration to the closing `};`. */
+/** The ATTENDANCE_NAV literal (packs/attendance/index.ts): declaration to the closing `};`. */
 function attendanceNodeBlock(): string {
-  const start = SRC.indexOf('const ATTENDANCE_NODE');
-  expect(start, 'ATTENDANCE_NODE declaration exists in sidebar.tsx').toBeGreaterThan(-1);
-  const end = SRC.indexOf('\n};', start);
-  expect(end, 'ATTENDANCE_NODE literal is terminated').toBeGreaterThan(start);
-  return SRC.slice(start, end);
+  const start = PACK.indexOf('const ATTENDANCE_NAV');
+  expect(start, 'ATTENDANCE_NAV declaration exists in packs/attendance/index.ts').toBeGreaterThan(-1);
+  const end = PACK.indexOf('\n};', start);
+  expect(end, 'ATTENDANCE_NAV literal is terminated').toBeGreaterThan(start);
+  return PACK.slice(start, end);
 }
 
 /** Count occurrences of the QUOTED href so '/admin/attendance' does not match its '-allowance' sibling. */
@@ -68,9 +73,9 @@ describe('sidebar Attendance group (5cb199b3 consolidation)', () => {
     }
   });
 
-  it('lists each of the five hrefs exactly once across the whole sidebar (no duplicate rows left behind)', () => {
+  it('lists each of the five hrefs exactly once across the rail sources (no duplicate rows left behind)', () => {
     for (const href of TICKET_HREFS) {
-      expect(countQuoted(SRC, href), `${href} appears exactly once in sidebar.tsx`).toBe(1);
+      expect(countQuoted(SRC, href), `${href} appears exactly once across sidebar.tsx + packs/attendance/index.ts`).toBe(1);
     }
   });
 
@@ -128,7 +133,7 @@ describe('sidebar Attendance group — Clock in/out first (5249d43f)', () => {
     expect(line, 'Clock in/out carries no visibility gate').not.toMatch(/adminOnly|managerUp/);
   });
 
-  it('appears exactly once across the whole sidebar', () => {
+  it('appears exactly once across the rail sources', () => {
     expect(countQuoted(SRC, '/attendance/clock')).toBe(1);
   });
 
