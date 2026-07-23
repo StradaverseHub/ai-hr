@@ -21,6 +21,7 @@ import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { ChipMultiSelect } from './ui/chip-multi-select';
 import { LeaveTypeEntitlementTable, type LeaveTypeSchemeEntitlement } from './benefit-scheme-config';
+import { SubStepBar } from './leave-sub-step-bar';
 
 export type EntitlementPolicy = {
   id: string;
@@ -111,6 +112,22 @@ const STEP_TITLE_KEY: Record<StepKey, string> = {
 const isEarned = (m?: string) => m === 'earned_monthly' || m === 'earned_quarterly';
 /** Normalise to a select value: earned methods pass through, everything else is the lump option. */
 const methodValue = (m?: string) => (isEarned(m) ? m! : 'grant_on_hire_prorated');
+
+/** General step sub-flow (e1a51aea): the five sub-steps of step 1, in walk order — 1 Details, 2 Leave Year
+ *  Type, 3 Earning Method, 4 Carry Forward Policy, 5 Approval Workflow. The keys are storage keys (persisted
+ *  as `generalSubStep` in the leaveTypeCards:<id> localStorage shape, next to activeStep) — 'workflow' is
+ *  deliberately NOT named after the retired accordion card keys (approval/display/calculation), which must
+ *  never reappear in this file (see leave-type-config-categories.test.ts). */
+const GENERAL_SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry', 'workflow'] as const;
+type GeneralSubStepKey = (typeof GENERAL_SUB_STEP_KEYS)[number];
+/** Sub-step → its admin.leave title key (all 6 locales). */
+const GENERAL_SUB_STEP_TITLE_KEY: Record<GeneralSubStepKey, string> = {
+  details: 'subStep.details',
+  yearType: 'subStep.yearType',
+  earning: 'subStep.earning',
+  carry: 'subStep.carry',
+  workflow: 'subStep.workflow',
+};
 
 type Action = (fd: FormData) => void | Promise<void>;
 
@@ -236,6 +253,251 @@ function CarryExpiryFields({
         </Field>
       )}
     </>
+  );
+}
+
+// ── General-step front doors (feedback e1a51aea) ──────────────────────────────────────────────────────
+// The Earning Method + Carry Forward Policy sub-steps are FRONT DOORS to the per-policy fields that
+// already exist under Eligibility: they read the CURRENT active policy row and, on save, post the SAME
+// updateLeavePolicyAction the policy edit form posts — no new storage, the effective-dated policy row
+// stays the single source of truth (the plan's "existing per-policy controls remain the underlying
+// truth"). Because that action rebuilds the policy's accrual JSONB wholesale from the posted fields, each
+// front door must re-post every field it is NOT editing as hidden inputs (id / annualDays / validFrom /
+// gradeId / companyId + the full carry block), or an earning-only save would silently wipe the carry
+// config (and vice versa). Service bands are deliberately NOT posted — omitting the serviceBandsRendered
+// marker preserves them (the tri-state in app/admin/actions.ts serviceBandsField).
+
+/** The active (open-ended) policy rows — the ones a front door may edit. */
+const activePoliciesOf = (policies: EntitlementPolicy[]) => policies.filter((p) => !p.validTo);
+
+/** Human label for one active policy row in the front-door scope picker (company · grade · from date). */
+function frontDoorScopeLabel(t: ReturnType<typeof useTranslations>, p: EntitlementPolicy): string {
+  const company = p.companyId && p.companyName ? p.companyName : t('policyCompanyGroupDefault');
+  const grade = p.gradeId && p.gradeName ? p.gradeName : t('gradeAll');
+  return `${company} · ${grade} · ${t('validFrom', { from: p.validFrom })}`;
+}
+
+/** The hidden inputs BOTH front doors post to preserve the policy's identity + non-edited flat fields. */
+function FrontDoorIdentityFields({ p }: { p: EntitlementPolicy }) {
+  return (
+    <>
+      <input type="hidden" name="id" value={p.id} />
+      <input type="hidden" name="annualDays" value={p.annualDays} />
+      <input type="hidden" name="validFrom" value={p.validFrom} />
+      <input type="hidden" name="gradeId" value={p.gradeId ?? ''} />
+      <input type="hidden" name="companyId" value={p.companyId ?? ''} />
+    </>
+  );
+}
+
+/** The hidden inputs the EARNING front door posts to preserve the policy's stored carry block untouched
+ *  (annual types; a non-annual policy mirrors the edit form's `carryForwardMax=0`). carryFlagField reads
+ *  `=== 'on'`, so an enabled flag is re-posted as a hidden value="on" input and a disabled one is simply
+ *  not rendered (marker present ⇒ absent reads as false, i.e. the stored value). */
+function FrontDoorPreservedCarry({ p, isAnnual }: { p: EntitlementPolicy; isAnnual: boolean }) {
+  if (!isAnnual) return <input type="hidden" name="carryForwardMax" value="0" />;
+  const mode = p.carryForwardExpiryMode === 'months' ? 'months' : 'date';
+  return (
+    <>
+      <input type="hidden" name="carryBlockRendered" value="1" />
+      {carryRuleEnabled(p) && <input type="hidden" name="carryForwardEnabled" value="on" />}
+      {!!p.carryForwardIncludeEarned && <input type="hidden" name="carryForwardIncludeEarned" value="on" />}
+      <input type="hidden" name="carryForwardMax" value={p.carryForwardMax} />
+      <input type="hidden" name="carryForwardExpiryMode" value={mode} />
+      {mode === 'months' ? (
+        <input type="hidden" name="carryForwardExpiryMonths" value={p.carryForwardExpiryMonths ?? ''} />
+      ) : (
+        <>
+          <input type="hidden" name="carryForwardExpiryMonth" value={p.carryForwardExpiryMonth ?? ''} />
+          <input type="hidden" name="carryForwardExpiryDay" value={p.carryForwardExpiryDay ?? ''} />
+        </>
+      )}
+    </>
+  );
+}
+
+/** The reporter's earning vocabulary → the engine's per-policy method (ADR-0040). Documented mapping:
+ *   - none        → grant_on_hire_prorated  (full entitlement up front — today's lump default)
+ *   - by_month    → earned_monthly          (the existing monthly earning machinery)
+ *   - by_year     → grant_on_hire_prorated  (an upfront ANNUAL grant *is* the lump path — "By Year"
+ *                                            semantically equals the full-year grant, NOT quarterly
+ *                                            earning; the helper text states this so HR isn't surprised
+ *                                            that None and By Year behave identically)
+ *   - by_quarter  → earned_quarterly        (not reporter vocabulary — shown only when a policy already
+ *                                            stores it, so the select can round-trip faithfully)
+ *   - resignation → DISABLED (engine support coming — no calculation semantics exist; follow-up item)
+ */
+type EarningChoice = 'none' | 'by_month' | 'by_year' | 'by_quarter';
+const earningChoiceOf = (m?: string): EarningChoice =>
+  m === 'earned_monthly' ? 'by_month' : m === 'earned_quarterly' ? 'by_quarter' : 'none';
+const earningMethodOf = (c: EarningChoice): string =>
+  c === 'by_month' ? 'earned_monthly' : c === 'by_quarter' ? 'earned_quarterly' : 'grant_on_hire_prorated';
+
+/** Earning Method sub-step (e1a51aea): a type-level front door to the active policy's `method`. */
+function EarningMethodForm({
+  t,
+  p,
+  isAnnual,
+  action,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  p: EntitlementPolicy;
+  isAnnual: boolean;
+  action: Action;
+}) {
+  const [choice, setChoice] = useState<EarningChoice>(earningChoiceOf(p.method));
+  return (
+    <form action={action} className="space-y-2 rounded-lg bg-background p-3">
+      <FrontDoorIdentityFields p={p} />
+      <FrontDoorPreservedCarry p={p} isAnnual={isAnnual} />
+      {/* the mapped engine value — the select below speaks the reporter's vocabulary */}
+      <input type="hidden" name="method" value={earningMethodOf(choice)} />
+      <Field label={t('subStep.earningMethodLabel')}>
+        <select
+          value={choice}
+          onChange={(e) => setChoice(e.target.value as EarningChoice)}
+          aria-label={t('subStep.earningMethodLabel')}
+          className={`${inputCls} w-72`}
+        >
+          <option value="none">{t('subStep.earningNone')}</option>
+          <option value="by_month">{t('subStep.earningByMonth')}</option>
+          <option value="by_year">{t('subStep.earningByYear')}</option>
+          {/* round-trip only: surfaced when the policy already stores quarterly earning */}
+          {earningChoiceOf(p.method) === 'by_quarter' && (
+            <option value="by_quarter">{t('methodEarnedQuarterly')}</option>
+          )}
+          {/* disabled pending engine work — no resignation-earning semantics exist yet */}
+          <option value="resignation" disabled title={t('subStep.pendingEngineNote')}>
+            {t('subStep.earningResignation')}
+          </option>
+        </select>
+      </Field>
+      <p className="text-xs text-muted-foreground">{t('subStep.earningMappingHelp')}</p>
+      <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.pendingEngineNote')}</p>
+      <Button type="submit" size="sm">
+        {t('save')}
+      </Button>
+    </form>
+  );
+}
+
+/** Carry Forward Policy sub-step (e1a51aea): a front door to the active policy's carry fields — None
+ *  (carry disabled) or Fixed Max (enable + X-days cap + the existing CarryExpiryFields days/months
+ *  mode switch). The stored cap/expiry survive a "None" save (only the enable flag turns off). */
+function CarryPolicyForm({
+  t,
+  p,
+  action,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  p: EntitlementPolicy;
+  action: Action;
+}) {
+  const [carryOn, setCarryOn] = useState<boolean>(carryRuleEnabled(p));
+  return (
+    <form action={action} className="space-y-2 rounded-lg bg-background p-3">
+      <FrontDoorIdentityFields p={p} />
+      {/* preserve the method — this front door only edits carry */}
+      <input type="hidden" name="method" value={methodValue(p.method)} />
+      <input type="hidden" name="carryBlockRendered" value="1" />
+      {carryOn && <input type="hidden" name="carryForwardEnabled" value="on" />}
+      {!!p.carryForwardIncludeEarned && <input type="hidden" name="carryForwardIncludeEarned" value="on" />}
+      <Field label={t('subStep.carryPolicyLabel')}>
+        <select
+          value={carryOn ? 'fixed_max' : 'none'}
+          onChange={(e) => setCarryOn(e.target.value === 'fixed_max')}
+          aria-label={t('subStep.carryPolicyLabel')}
+          className={`${inputCls} w-56`}
+        >
+          <option value="none">{t('subStep.carryNone')}</option>
+          <option value="fixed_max">{t('subStep.carryFixedMax')}</option>
+        </select>
+      </Field>
+      {carryOn ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label={t('carryCapLabel')}>
+            <input
+              name="carryForwardMax"
+              type="number"
+              min="0"
+              step="0.5"
+              defaultValue={p.carryForwardMax}
+              className={`${inputCls} w-24`}
+            />
+          </Field>
+          <CarryExpiryFields
+            t={t}
+            mode={p.carryForwardExpiryMode}
+            month={p.carryForwardExpiryMonth}
+            day={p.carryForwardExpiryDay}
+            months={p.carryForwardExpiryMonths}
+          />
+        </div>
+      ) : (
+        // None = disabled carry: keep the stored cap/expiry so switching back to Fixed Max restores them.
+        <>
+          <input type="hidden" name="carryForwardMax" value={p.carryForwardMax} />
+          <input
+            type="hidden"
+            name="carryForwardExpiryMode"
+            value={p.carryForwardExpiryMode === 'months' ? 'months' : 'date'}
+          />
+          {p.carryForwardExpiryMode === 'months' ? (
+            <input type="hidden" name="carryForwardExpiryMonths" value={p.carryForwardExpiryMonths ?? ''} />
+          ) : (
+            <>
+              <input type="hidden" name="carryForwardExpiryMonth" value={p.carryForwardExpiryMonth ?? ''} />
+              <input type="hidden" name="carryForwardExpiryDay" value={p.carryForwardExpiryDay ?? ''} />
+            </>
+          )}
+        </>
+      )}
+      <p className="text-xs text-muted-foreground">{t('subStep.carryHelp')}</p>
+      <Button type="submit" size="sm">
+        {t('save')}
+      </Button>
+    </form>
+  );
+}
+
+/** Shared shell for the two policy front doors: resolves the active policy rows, offers a scope picker
+ *  when more than one is active, and renders the given form for the selected row (keyed by policy id so
+ *  its local state re-seeds when HR switches scope). */
+function PolicyFrontDoor({
+  t,
+  policies,
+  renderForm,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  policies: EntitlementPolicy[];
+  renderForm: (p: EntitlementPolicy) => ReactNode;
+}) {
+  const active = activePoliciesOf(policies);
+  const [polId, setPolId] = useState<string>(active[0]?.id ?? '');
+  const selected = active.find((x) => x.id === polId) ?? active[0];
+  if (!selected) {
+    return <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">{t('subStep.noActivePolicy')}</p>;
+  }
+  return (
+    <div className="space-y-2">
+      {active.length > 1 && (
+        <Field label={t('subStep.frontDoorScopeLabel')}>
+          <select
+            value={selected.id}
+            onChange={(e) => setPolId(e.target.value)}
+            aria-label={t('subStep.frontDoorScopeLabel')}
+            className={`${inputCls} w-full max-w-md`}
+          >
+            {active.map((p) => (
+              <option key={p.id} value={p.id}>
+                {frontDoorScopeLabel(t, p)}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+      <div key={selected.id}>{renderForm(selected)}</div>
+    </div>
   );
 }
 
@@ -560,6 +822,7 @@ export function LeaveTypePanel({
   color,
   icon,
   leaveUnit,
+  yearCycleOverride,
   probationEligibility,
   visibleToEmployee,
   employeeCanApply,
@@ -574,6 +837,7 @@ export function LeaveTypePanel({
   schemeEntitlements,
   benefitSchemeSection,
   festiveGrantSection,
+  approvalWorkflowSection,
   updateTypeAction,
   archiveTypeAction,
   deleteTypeAction,
@@ -642,6 +906,10 @@ export function LeaveTypePanel({
   /** Leave Unit Configuration (e4980382): whether this type is managed in Days or Hours ('day' | 'hour'),
    *  threaded so the "Leave Unit" select round-trips its saved value. Coarse labelling/reporting only. */
   leaveUnit: string;
+  /** Leave Year Type override (e1a51aea): the stored per-type cycle override ('a2a' | 'c2c' | null),
+   *  threaded so the General step's "Leave Year Type" select round-trips its saved value. null ⇒ the type
+   *  follows its company's cycle (today's behaviour). */
+  yearCycleOverride: string | null;
   /** Probation eligibility (d6bdbd55): the stored probation gate ('confirmed_only' | 'probation_only' | null),
    *  threaded so the eligibility editor's Probation select round-trips its saved value. null ⇒ no restriction. */
   probationEligibility: string | null;
@@ -687,6 +955,11 @@ export function LeaveTypePanel({
    *  defaultLeaveTypeId={id}> slot, so the grant form arrives preset to THIS type. Slot-shaped like
    *  benefitSchemeSection: companies/grants data is prepared ONCE at page level (no N+1 per type). */
   festiveGrantSection?: ReactNode;
+  /** e1a51aea: the Approval Workflow sub-step's content — a server-composed slot (this type's WorkflowMatrix
+   *  scoped to its leaveTypeId, the read-only wildcard rules + per-company default-chain summary, and links
+   *  to the Approval tab). Slot-shaped like benefitSchemeSection so the approval data + label bags are
+   *  prepared ONCE at page level (no N+1 per type). */
+  approvalWorkflowSection?: ReactNode;
   updateTypeAction: Action;
   archiveTypeAction: Action;
   deleteTypeAction: Action;
@@ -749,6 +1022,11 @@ export function LeaveTypePanel({
   // from storage in an effect (client-only ⇒ no SSR hydration mismatch; a brief step-1→restored flash is
   // acceptable — the same trade-off the accordion made).
   const [activeStep, setActiveStep] = useState<StepKey>('general');
+  // General sub-step (e1a51aea): the active sub-step of step 1, persisted ALONGSIDE activeStep in the SAME
+  // leaveTypeCards:<id> shape — now { activeStep, generalSubStep }. Backward-compatible migration: an older
+  // { activeStep }-only payload (and the pre-step accordion { key: boolean } shape) still hydrates —
+  // generalSubStep simply defaults to sub-step 1 (Details) when the key is absent/unknown.
+  const [generalSubStep, setGeneralSubStep] = useState<GeneralSubStepKey>('details');
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(`leaveTypeCards:${id}`);
@@ -761,17 +1039,31 @@ export function LeaveTypePanel({
         const firstOpen = STEP_KEYS.find((k) => parsed[k] === true);
         if (firstOpen) setActiveStep(firstOpen);
       }
+      if (
+        parsed &&
+        typeof parsed.generalSubStep === 'string' &&
+        (GENERAL_SUB_STEP_KEYS as readonly string[]).includes(parsed.generalSubStep)
+      ) {
+        setGeneralSubStep(parsed.generalSubStep as GeneralSubStepKey);
+      }
     } catch {
       /* storage unavailable / malformed ⇒ default step 1 */
     }
   }, [id]);
-  const selectStep = (key: StepKey) => {
-    setActiveStep(key);
+  const persistSteps = (step: StepKey, sub: GeneralSubStepKey) => {
     try {
-      window.localStorage.setItem(`leaveTypeCards:${id}`, JSON.stringify({ activeStep: key }));
+      window.localStorage.setItem(`leaveTypeCards:${id}`, JSON.stringify({ activeStep: step, generalSubStep: sub }));
     } catch {
       /* storage write blocked ⇒ runtime switch still works, just not persisted */
     }
+  };
+  const selectStep = (key: StepKey) => {
+    setActiveStep(key);
+    persistSteps(key, generalSubStep);
+  };
+  const selectGeneralSubStep = (key: GeneralSubStepKey) => {
+    setGeneralSubStep(key);
+    persistSteps(activeStep, key);
   };
   // Active-step indicator (27136ea6's accent treatment, carried onto the step bar): the CURRENT step's pill
   // gets the accent wash + semibold label — the same bg-accent language the sidebar's active nav item uses
@@ -927,6 +1219,19 @@ export function LeaveTypePanel({
               <CardTitle>{t('categoryGeneral')}</CardTitle>
             </CardHeader>
             <CardContent id={`cat-general-${id}`} className="space-y-3">
+          {/* General sub-flow (e1a51aea): the reusable SubStepBar (components/leave-sub-step-bar.tsx —
+              the R61 step-bar mechanism generalized; later secondary flows MUST reuse it) walks the five
+              sub-steps 1 Details · 2 Leave Year Type · 3 Earning Method · 4 Carry Forward Policy ·
+              5 Approval Workflow. One sub-step visible at a time; the choice persists per type alongside
+              activeStep (leaveTypeCards:<id>). */}
+          <SubStepBar
+            steps={GENERAL_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(GENERAL_SUB_STEP_TITLE_KEY[k]) }))}
+            active={generalSubStep}
+            onSelect={(k) => selectGeneralSubStep(k as GeneralSubStepKey)}
+            ariaLabel={t('workspaceSubStepsLabel')}
+          />
+          {generalSubStep === 'details' && (
+          <>
           {/* type-level controls */}
           {editingName ? (
             <form
@@ -1151,6 +1456,92 @@ export function LeaveTypePanel({
             </form>
             <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
           </div>
+          </>
+          )}
+          {/* Sub-step 2 — Leave Year Type (e1a51aea): a per-TYPE cycle override of the company leave cycle
+              (Application Rules tab). Its own sub-form + `yearCycle=1` tri-state marker so an unrelated save
+              never resets it. Anniversary-to-Calendar is rendered DISABLED pending engine work (no hybrid-
+              year calculation semantics exist — see the plan's GOOD TO KNOW); the service rejects it too. */}
+          {generalSubStep === 'yearType' && (
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('subStep.yearType')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the year_cycle_override column (tri-state guard) */}
+              <input type="hidden" name="yearCycle" value="1" />
+              <Field label={t('subStep.yearTypeLabel')}>
+                <select
+                  name="yearCycleValue"
+                  defaultValue={yearCycleOverride === 'a2a' || yearCycleOverride === 'c2c' ? yearCycleOverride : ''}
+                  aria-label={t('subStep.yearTypeLabel')}
+                  className={`${inputCls} w-72`}
+                >
+                  <option value="">{t('subStep.yearTypeCompanyDefault')}</option>
+                  <option value="a2a">{t('subStep.yearTypeA2a')}</option>
+                  {/* disabled pending engine work — the hybrid year has no calculation semantics yet */}
+                  <option value="a2c" disabled title={t('subStep.pendingEngineNote')}>
+                    {t('subStep.yearTypeA2c')}
+                  </option>
+                  <option value="c2c">{t('subStep.yearTypeC2c')}</option>
+                </select>
+              </Field>
+              <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.pendingEngineNote')}</p>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('subStep.yearTypeHelp')}</p>
+          </div>
+          )}
+          {/* Sub-step 3 — Earning Method (e1a51aea): a front door to the ACTIVE policy's per-policy method
+              (posts the SAME updatePolicyAction as the Eligibility edit form — no new storage; the
+              per-policy selects there keep working, the policy row is the single source of truth). */}
+          {generalSubStep === 'earning' && (
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('subStep.earning')}</span>
+            <PolicyFrontDoor
+              t={t}
+              policies={policies}
+              renderForm={(p) => <EarningMethodForm t={t} p={p} isAnnual={isAnnual} action={updatePolicyAction} />}
+            />
+            <p className="text-xs text-muted-foreground">{t('subStep.earningHelp')}</p>
+          </div>
+          )}
+          {/* Sub-step 4 — Carry Forward Policy (e1a51aea): the same front-door pattern over the active
+              policy's carry fields (enable + cap + the existing CarryExpiryFields days/months switch).
+              Carry-forward is an ANNUAL-engine concept (expireCarriedLeave / openLeaveYear read it for the
+              ANNUAL code only), so non-annual types get an explanatory note instead of a dead form. */}
+          {generalSubStep === 'carry' && (
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('subStep.carry')}</span>
+            {isAnnual ? (
+              <PolicyFrontDoor
+                t={t}
+                policies={policies}
+                renderForm={(p) => <CarryPolicyForm t={t} p={p} action={updatePolicyAction} />}
+              />
+            ) : (
+              <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
+                {t('subStep.carryAnnualOnly')}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">{t('subStep.carryStepHelp')}</p>
+          </div>
+          )}
+          {/* Sub-step 5 — Approval Workflow (e1a51aea): this type's approval rules from the rule matrix,
+              editable right here (server-composed slot, scoped to this leaveTypeId), with company-wide
+              chains + templates one click away on the Approval tab. */}
+          {generalSubStep === 'workflow' && (
+          <div className="space-y-1.5">
+            {approvalWorkflowSection ?? (
+              <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
+                {t('subStep.workflowUnavailable')}
+              </p>
+            )}
+          </div>
+          )}
             </CardContent>
           </Card>
           )}

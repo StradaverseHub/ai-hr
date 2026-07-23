@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies, listDepartments, listJobGrades, listLeaveTypes } from '@/core/read';
 import { listBusinessUnits, listPositions } from '@/core/admin';
-import { getLeaveApprovalPolicy, getLeaveEscalationPolicy, listLeaveApprovalRules } from '@/core/leave-approval-policy';
+import { getLeaveApprovalPolicy, getLeaveEscalationPolicy, isCompanyDefaultApprovalRule, listLeaveApprovalRules } from '@/core/leave-approval-policy';
 import { listApprovalTemplates, listTemplateAssignments } from '@/core/leave-approval-template';
 import { listGradeGroups } from '@/core/benefit-scheme';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
@@ -10,7 +10,8 @@ import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveApprovalEditor } from '../../leave-approval/editor';
 import { LeaveEscalationEditor, type EscalationLabels } from '../../leave-approval/escalation-editor';
 import { ApprovalTemplateManager, type TemplateManagerLabels } from '../../leave-approval/template-manager';
-import { WorkflowMatrix, type WorkflowMatrixLabels } from '../../leave-approval/workflow-matrix';
+import { WorkflowMatrix } from '../../leave-approval/workflow-matrix';
+import { buildWorkflowMatrixLabels } from '../../leave-approval/matrix-labels';
 import {
   archiveLeaveApprovalRuleAction,
   assignApprovalTemplateAction,
@@ -177,86 +178,10 @@ export default async function LeaveApprovalTabPage({
     remove: t('remove'),
     dragToReorder: t('dragToReorder'),
   };
-  const stepLabels = {
-    chain: t('chain'),
-    empty: t('empty'),
-    manager: t('manager'),
-    departmentHead: t('departmentHead'),
-    businessUnitHead: t('businessUnitHead'),
-    hr: t('hr'),
-    hrManager: t('hrManager'),
-    payroll: t('payroll'),
-    customRole: t('customRole'),
-    add: t('add'),
-    moveUp: t('moveUp'),
-    moveDown: t('moveDown'),
-    remove: t('remove'),
-    dragToReorder: t('dragToReorder'),
-  };
-  const workflowLabels: WorkflowMatrixLabels = {
-    workflowsTitle: t('workflowsTitle'),
-    workflowsHint: t('workflowsHint'),
-    addWorkflow: t('addWorkflow'),
-    colCompany: t('company'),
-    colLeaveType: t('leaveType'),
-    colGradeGroup: t('gradeGroup'),
-    colWorkflowType: t('workflowType'),
-    colConditions: t('conditions'),
-    view: t('viewWorkflow'),
-    edit: t('editRule'),
-    delete: t('archiveRule'),
-    deleteConfirm: t('archiveConfirm'),
-    noWorkflows: t('noWorkflows'),
-    anyScope: t('anyScope'),
-    editTitle: t('editWorkflowTitle'),
-    addTitle: t('addWorkflowTitle'),
-    basicInfo: t('basicInfo'),
-    sectionWorkflowType: t('workflowType'),
-    sectionConditions: t('conditions'),
-    workflowTypeAuto: t('workflowTypeAuto'),
-    workflowTypeAutoHint: t('workflowTypeAutoHint'),
-    workflowTypeAutoBadge: t('workflowTypeAutoBadge'),
-    advancedOverride: t('advancedOverride'),
-    advancedOverrideHint: t('advancedOverrideHint'),
-    workflowTypeDefault: t('workflowTypeDefault'),
-    workflowTypeCustom: t('workflowTypeCustom'),
-    workflowTypeDefaultHint: t('workflowTypeDefaultHint'),
-    workflowTypeCustomHint: t('workflowTypeCustomHint'),
-    selectTemplate: t('selectTemplate'),
-    noActiveTemplates: t('noActiveTemplates'),
-    addCondition: t('addCondition'),
-    conditionField: t('conditionField'),
-    conditionOperator: t('conditionOperator'),
-    conditionValue: t('conditionValue'),
-    leaveDuration: t('leaveDuration'),
-    opGreaterThan: t('opGreaterThan'),
-    opLessThan: t('opLessThan'),
-    opBetween: t('opBetween'),
-    valueDays: t('valueDays'),
-    advancedScope: t('advancedScope'),
-    company: t('company'),
-    ruleName: t('ruleName'),
-    ruleNamePlaceholder: t('ruleNamePlaceholder'),
-    leaveType: t('leaveType'),
-    gradeGroup: t('gradeGroup'),
-    businessUnit: t('businessUnit'),
-    department: t('department'),
-    position: t('position'),
-    jobGrade: t('jobGrade'),
-    employmentType: t('employmentType'),
-    save: t('save'),
-    cancel: t('cancel'),
-    saveConfirmTitle: t('saveConfirmTitle'),
-    saveConfirmBody: t('saveConfirmBody'),
-    saveConfirm: t('saveConfirm'),
-    workflowTypeDefaultBadge: t('workflowTypeDefaultBadge'),
-    workflowTypeCustomBadge: t('workflowTypeCustomBadge'),
-    fullTime: t('employmentType_full_time'),
-    partTime: t('employmentType_part_time'),
-    contract: t('employmentType_contract'),
-    intern: t('employmentType_intern'),
-    step: stepLabels,
-  };
+  // e1a51aea: the matrix label bag (incl. its nested step-list labels) is built by the shared helper
+  // (matrix-labels.ts) so the per-type Approval Workflow sub-step on the Entitlements page renders the
+  // IDENTICAL matrix — one label source, no drift. Byte-identical to the inline bag this page used to build.
+  const workflowLabels = buildWorkflowMatrixLabels(t);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -298,7 +223,7 @@ export default async function LeaveApprovalTabPage({
           <WorkflowMatrix
             rows={rows.flatMap(({ rules }) =>
               rules
-                .filter((r) => !isCompanyDefault(r))
+                .filter((r) => !isCompanyDefaultApprovalRule(r))
                 .map((r) => ({
                   id: r.id,
                   companyId: r.companyId,
@@ -367,28 +292,5 @@ export default async function LeaveApprovalTabPage({
   );
 }
 
-/** A rule with every scoping dimension null IS the company default (edited by LeaveApprovalEditor above),
- *  so the rule builder hides it to avoid double-editing. */
-function isCompanyDefault(r: {
-  leaveTypeId: string | null;
-  businessUnitId: string | null;
-  departmentId: string | null;
-  positionId: string | null;
-  gradeId: string | null;
-  gradeGroupId: string | null;
-  employmentType: string | null;
-  minDays: number | null;
-  maxDays: number | null;
-}): boolean {
-  return (
-    r.leaveTypeId == null &&
-    r.businessUnitId == null &&
-    r.departmentId == null &&
-    r.positionId == null &&
-    r.gradeId == null &&
-    r.gradeGroupId == null &&
-    r.employmentType == null &&
-    r.minDays == null &&
-    r.maxDays == null
-  );
-}
+// e1a51aea: the company-default rule detector moved to core/leave-approval-policy.ts
+// (isCompanyDefaultApprovalRule) so this page and the per-type Approval Workflow sub-step share ONE filter.

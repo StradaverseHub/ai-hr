@@ -1102,6 +1102,18 @@ export const leaveType = pgTable('leave_type', {
   // hourly) and continues to drive deduction math; wiring leave_unit into apply/approve is a future item.
   // DEFAULT 'day' ⇒ every existing row reads Day (backward compatible, no backfill).
   leaveUnit: text('leave_unit').notNull().default('day'),
+  // Leave Year Type override (feedback e1a51aea, migration 0303): an OPTIONAL per-type override of the
+  // company leave cycle (company.leave_cycle, ADR-0040 2D-2), set from the General step's "Leave Year
+  // Type" sub-step. NULL (every existing row) = follow the company cycle exactly as today.
+  //   'a2a' — Anniversary to Anniversary: this type runs on the hire-month anniversary cycle (the existing
+  //           'anniversary' semantics) even when the company cycle is calendar.
+  //   'c2c' — Calendar to Calendar: this type runs on the calendar year (the existing 'calendar'
+  //           semantics) even when the company cycle is anniversary.
+  // The reporter's third option 'a2c' (Anniversary to Calendar hybrid) is rendered DISABLED in the UI and
+  // REJECTED by updateLeaveType — the engine has no hybrid-year semantics yet (its calculation work ships
+  // as its own item); the DB CHECK admits only the two live values. Cycle consumers resolve the effective
+  // cycle via resolveLeaveYearCycle (core/leave.ts): override wins where set, company cycle otherwise.
+  yearCycleOverride: text('year_cycle_override'),
   // Leave Type Employee Visibility (feedback 7b11f1c1): two additive, NULLABLE booleans that let HR control,
   // per leave type, whether an employee sees the type at all on their self-service Leave surface, and whether
   // they may submit an application for it. These are the SINGLE SOURCE OF TRUTH for employee-facing leave-type

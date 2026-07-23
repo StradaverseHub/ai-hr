@@ -1435,6 +1435,16 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const leaveUnitFields = touchLeaveUnit
     ? { leaveUnit: (fd.get('leaveUnitValue') === 'hour' ? 'hour' : 'day') as 'day' | 'hour' }
     : {};
+  // Leave Year Type override (e1a51aea): the General step's "Leave Year Type" sub-step posts `yearCycle=1`
+  // (marker) plus a `yearCycleValue` select ('' = company default ⇒ null | a2a | c2c; the a2c option is
+  // rendered disabled). The raw value is forwarded UNSANITISED so the service can reject 'a2c' (and any
+  // other unknown value) loudly with its specific "engine support coming" message — silently coercing here
+  // would store nothing and hide the error. Any other sub-form save omits the marker ⇒ tri-state untouched.
+  const touchYearCycle = fd.get('yearCycle') === '1';
+  const yearCycleRaw = String(fd.get('yearCycleValue') ?? '').trim();
+  const yearCycleFields = touchYearCycle
+    ? { yearCycleOverride: yearCycleRaw === '' ? null : yearCycleRaw }
+    : {};
   // Leave Type Employee Visibility (7b11f1c1): its own sub-form posts `visibility=1` (marker) plus two
   // checkboxes — `visibleToEmployee` (whether the type shows on the /me Leave tab) and `employeeCanApply`
   // (whether employees may apply for it). A checked box posts 'on', an unchecked box does not post, so with
@@ -1508,6 +1518,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...dayTypeInclusionFields,
       ...visualFields,
       ...leaveUnitFields,
+      ...yearCycleFields,
       ...visibilityFields,
       ...placementFields,
       ...customMessageFields,

@@ -2,9 +2,15 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
-import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
-import { listAdHocLeaveGrants, listLeavePolicies } from '@/core/admin';
+import { listLeaveTypes, listCompanies, listJobGrades, listDepartments } from '@/core/read';
+import { listAdHocLeaveGrants, listLeavePolicies, listBusinessUnits, listPositions } from '@/core/admin';
 import { listLeaveYearConfigs } from '@/core/leave';
+// e1a51aea — the Approval Workflow sub-step's data + shared matrix labels (one source with the Approval tab).
+import { getLeaveApprovalPolicy, isCompanyDefaultApprovalRule, listLeaveApprovalRules } from '@/core/leave-approval-policy';
+import { listApprovalTemplates } from '@/core/leave-approval-template';
+import { WorkflowMatrix } from '@/app/admin/leave-approval/workflow-matrix';
+import { buildWorkflowMatrixLabels } from '@/app/admin/leave-approval/matrix-labels';
+import { archiveLeaveApprovalRuleAction, saveLeaveApprovalRuleAction } from '@/app/admin/leave-approval/actions';
 import {
   listGradeGroups,
   listBenefitSchemes,
@@ -281,6 +287,74 @@ export default async function LeaveEntitlementsPage({
     },
   };
 
+  // ── Approval Workflow sub-step data (e1a51aea) ────────────────────────────────────────────────────
+  // The General step's 5th sub-step embeds the SAME WorkflowMatrix the Approval tab renders, scoped to the
+  // hosting leave type. All approval data + the label bag are prepared ONCE here (the benefitSchemeSection
+  // precedent — no N+1 per type); only the row filter + defaultLeaveTypeId vary per panel. Company-wide
+  // chains and templates stay on the Approval tab (linked from the sub-step) — the per-company default
+  // chain is summarised READ-ONLY here.
+  const ta = await getTranslations('leaveApproval');
+  const companyIds = companies.map((c) => c.id);
+  const [departmentsAll, positionsAll, businessUnitsAll, approvalTemplates, approvalPerCompany] = await Promise.all([
+    companyIds.length ? listDepartments(s, { companyIds }) : Promise.resolve([]),
+    companyIds.length ? listPositions(s, { companyIds }) : Promise.resolve([]),
+    companyIds.length ? listBusinessUnits(s, { companyIds }) : Promise.resolve([]),
+    listApprovalTemplates(s),
+    Promise.all(
+      companies.map(async (c) => ({
+        company: c,
+        pol: await getLeaveApprovalPolicy(s, c.id),
+        rules: await listLeaveApprovalRules(s, c.id),
+      })),
+    ),
+  ]);
+  // Every non-company-default rule across the in-scope companies, in the matrix's row shape. The per-type
+  // slot filters this ONE array — scoped rules (leaveTypeId === the type) render editable in the matrix;
+  // wildcard any-type rules (leaveTypeId === null) render read-only with an "applies to all types" badge.
+  const approvalRuleRows = approvalPerCompany.flatMap(({ rules }) =>
+    rules
+      .filter((r) => !isCompanyDefaultApprovalRule(r))
+      .map((r) => ({
+        id: r.id,
+        companyId: r.companyId,
+        ruleName: r.ruleName,
+        leaveTypeId: r.leaveTypeId,
+        gradeGroupId: r.gradeGroupId,
+        businessUnitId: r.businessUnitId,
+        departmentId: r.departmentId,
+        positionId: r.positionId,
+        gradeId: r.gradeId,
+        employmentType: r.employmentType,
+        minDays: r.minDays,
+        maxDays: r.maxDays,
+        levels: r.levels,
+        templateId: r.templateId,
+      })),
+  );
+  const wildcardApprovalRules = approvalRuleRows.filter((r) => r.leaveTypeId == null);
+  // Chain-role labels for the read-only default-chain summary (the Approval tab's vocabulary).
+  const approvalRoleLabel: Record<string, string> = {
+    direct_manager: ta('manager'),
+    department_head: ta('departmentHead'),
+    business_unit_head: ta('businessUnitHead'),
+    hr_admin: ta('hr'),
+    hr_manager: ta('hrManager'),
+    payroll: ta('payroll'),
+    custom_role: ta('customRole'),
+  };
+  const approvalMatrixShared = {
+    companies: companies.map((c) => ({ id: c.id, label: c.name })),
+    leaveTypes: types.map((x) => ({ id: x.id, label: x.name })),
+    gradeGroups: gradeGroups.filter((g) => !g.archived).map((g) => ({ id: g.id, label: g.name })),
+    grades: grades.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` })),
+    businessUnits: businessUnitsAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}`, companyId: x.companyId })),
+    departments: departmentsAll.map((x) => ({ id: x.id, label: x.name, companyId: x.companyId })),
+    positions: positionsAll.map((x) => ({ id: x.id, label: x.title, companyId: x.companyId })),
+    templates: approvalTemplates.filter((t2) => t2.active).map((t2) => ({ id: t2.id, label: t2.name })),
+    actions: { save: saveLeaveApprovalRuleAction, archive: archiveLeaveApprovalRuleAction },
+    labels: buildWorkflowMatrixLabels(ta),
+  };
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
@@ -366,6 +440,7 @@ export default async function LeaveEntitlementsPage({
               color={lt.color ?? null}
               icon={lt.icon ?? null}
               leaveUnit={lt.leaveUnit ?? 'day'}
+              yearCycleOverride={lt.yearCycleOverride ?? null}
               probationEligibility={lt.probationEligibility ?? null}
               visibleToEmployee={lt.visibleToEmployee ?? null}
               employeeCanApply={lt.employeeCanApply ?? null}
@@ -408,6 +483,68 @@ export default async function LeaveEntitlementsPage({
                       defaultLeaveTypeId={lt.id}
                     />
                   </div>
+                </div>
+              }
+              approvalWorkflowSection={
+                /* e1a51aea: the Approval Workflow sub-step — this type's rules from the SAME rule matrix
+                   the Approval tab renders (same actions, shared labels), scoped + seeded to this type;
+                   wildcard any-type rules and the per-company default chain are summarised read-only with
+                   the Approval tab one click away. */
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">{t('approvalStep.hint')}</p>
+                  <WorkflowMatrix
+                    rows={approvalRuleRows.filter((r) => r.leaveTypeId === lt.id)}
+                    defaultLeaveTypeId={lt.id}
+                    {...approvalMatrixShared}
+                  />
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">{t('approvalStep.wildcardTitle')}</span>
+                    {wildcardApprovalRules.length === 0 ? (
+                      <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
+                        {t('approvalStep.wildcardNone')}
+                      </p>
+                    ) : (
+                      wildcardApprovalRules.map((r) => (
+                        <div
+                          key={r.id}
+                          className="flex flex-wrap items-center gap-2 rounded-lg bg-background px-3 py-2 text-xs"
+                        >
+                          <span className="font-medium text-foreground">
+                            {companyNameById.get(r.companyId) ?? r.companyId}
+                          </span>
+                          {r.ruleName && <span className="text-muted-foreground">{r.ruleName}</span>}
+                          {/* read-only: an any-type rule is shared config — edited on the Approval tab */}
+                          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            {t('approvalStep.wildcardBadge')}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {t('approvalStep.defaultChainTitle')}
+                    </span>
+                    {approvalPerCompany.map(({ company, pol }) => (
+                      <div
+                        key={company.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background px-3 py-2 text-xs"
+                      >
+                        <span className="font-medium text-foreground">{company.name}</span>
+                        <span className="text-muted-foreground">
+                          {pol.enabled
+                            ? pol.levels.map((lv) => approvalRoleLabel[lv] ?? lv).join(' → ')
+                            : t('approvalStep.defaultChainOff')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <Link
+                    href="/admin/leave/approval"
+                    className="inline-block text-xs font-medium text-primary underline-offset-2 hover:underline"
+                  >
+                    {t('approvalStep.openApprovalTab')}
+                  </Link>
                 </div>
               }
               updateTypeAction={updateLeaveTypeAction}

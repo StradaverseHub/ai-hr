@@ -137,6 +137,7 @@ export function WorkflowMatrix({
   templates,
   actions,
   labels,
+  defaultLeaveTypeId,
 }: {
   rows: WorkflowRow[];
   companies: Option[];
@@ -149,6 +150,10 @@ export function WorkflowMatrix({
   templates: Option[]; // active templates only { id, label:name }
   actions: Actions;
   labels: WorkflowMatrixLabels;
+  /** e1a51aea: when the matrix is embedded scoped to ONE leave type (the General step's Approval Workflow
+   *  sub-step), a NEW rule's Leave Type scope select seeds to this type instead of "any". Editing an
+   *  existing rule keeps its own stored scope. Absent (the Approval tab) ⇒ unchanged "any" default. */
+  defaultLeaveTypeId?: string | null;
 }) {
   const [editing, setEditing] = useState<WorkflowRow | 'new' | null>(null);
 
@@ -240,6 +245,7 @@ export function WorkflowMatrix({
         <WorkflowDialog
           key={editing === 'new' ? 'new' : editing.id}
           row={editing === 'new' ? null : editing}
+          defaultLeaveTypeId={defaultLeaveTypeId ?? null}
           companies={companies}
           leaveTypes={leaveTypes}
           gradeGroups={gradeGroups}
@@ -259,6 +265,7 @@ export function WorkflowMatrix({
 
 function WorkflowDialog({
   row,
+  defaultLeaveTypeId,
   companies,
   leaveTypes,
   gradeGroups,
@@ -272,6 +279,8 @@ function WorkflowDialog({
   onClose,
 }: {
   row: WorkflowRow | null;
+  /** e1a51aea: seed for a NEW rule's Leave Type scope when the matrix is embedded per-type. */
+  defaultLeaveTypeId: string | null;
   companies: Option[];
   leaveTypes: Option[];
   gradeGroups: Option[];
@@ -382,7 +391,14 @@ function WorkflowDialog({
               </label>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Scope name="leaveTypeId" label={labels.leaveType} opts={leaveTypes} initial={row?.leaveTypeId ?? null} />
+                {/* e1a51aea: a NEW rule opened from the per-type embed seeds to that type ("any" on the
+                    Approval tab, where defaultLeaveTypeId is absent); an existing rule keeps its scope. */}
+                <Scope
+                  name="leaveTypeId"
+                  label={labels.leaveType}
+                  opts={leaveTypes}
+                  initial={row ? row.leaveTypeId : defaultLeaveTypeId}
+                />
                 <Scope name="gradeGroupId" label={labels.gradeGroup} opts={gradeGroups} initial={row?.gradeGroupId ?? null} />
               </div>
 
