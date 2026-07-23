@@ -2661,17 +2661,14 @@ export default async function EmployeePage({
                 </div>
               </Field>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {/* d27961e3 — Extended Confirmation Date and Final Confirmation Date were REMOVED from this card.
+                Probation extensions are managed exclusively through the Movement tab (New Event → Probation
+                Extension), which records the effective date + remarks in the movement history and remains the
+                single mutator of the underlying extended/final columns (kept — they still drive the derived
+                probation status). Only the standard Confirmation Date stays editable here. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label={t('employmentInfo.confirmationDate')}>
                 <input name="confirmationDate" type="date" defaultValue={emp.confirmationDate ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('employmentInfo.extendedConfirmationDate')}>
-                <input name="extendedConfirmationDate" type="date" defaultValue={emp.extendedConfirmationDate ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('employmentInfo.finalConfirmationDate')}>
-                {/* Derived (= extended ?? normal), recomputed + audited on save; read-only, not submitted. */}
-                <input type="date" disabled value={emp.finalConfirmationDate ?? emp.extendedConfirmationDate ?? emp.confirmationDate ?? ''} className={inputCls} aria-label={t('employmentInfo.finalConfirmationDate')} />
-                <p className="text-xs text-muted-foreground">{t('employmentInfo.finalConfirmationNote')}</p>
               </Field>
             </div>
           </div>

@@ -796,6 +796,10 @@ export async function setEmploymentInfoAction(formData: FormData) {
       shortNoticeDays: str('shortNoticeDays'),
       // 955c7de4 — redesigned value+unit periods + new lifecycle dates. finalConfirmationDate is derived
       // server-side, never submitted.
+      // d27961e3 — extendedConfirmationDate is deliberately NOT read from the form: Extended/Final
+      // Confirmation Date left the Employment Dates card, and probation extensions are managed exclusively
+      // through the Movement module (createMovementEventAction → 'probationExtension'). A forged form field
+      // by that name is ignored here AND by setEmploymentInfo (movement-tag gated).
       probationValue: str('probationValue'),
       probationUnit: str('probationUnit'),
       extendedProbationValue: str('extendedProbationValue'),
@@ -804,7 +808,6 @@ export async function setEmploymentInfoAction(formData: FormData) {
       noticeBeforeConfirmationUnit: str('noticeBeforeConfirmationUnit'),
       noticeAfterConfirmationValue: str('noticeAfterConfirmationValue'),
       noticeAfterConfirmationUnit: str('noticeAfterConfirmationUnit'),
-      extendedConfirmationDate: str('extendedConfirmationDate'),
       tenderResignationDate: str('tenderResignationDate'),
       lastWorkingDate: str('lastWorkingDate'),
       // c5ac75fa — the eight flat org columns (orgDivision/orgBranch/orgRegion/orgLine/orgSection/orgTeam/

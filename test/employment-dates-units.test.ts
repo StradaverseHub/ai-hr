@@ -8,6 +8,12 @@
  * membership + non-negative validation; the lifecycle date-ordering guards; the audited
  * employment.info.updated before/after carrying the new fields; backward-compat (all-null legacy row);
  * and admin gating.
+ *
+ * d27961e3 — Extended/Final Confirmation Date were removed from the Employment Dates card; probation
+ * extensions are managed EXCLUSIVELY through the Movement module. setEmploymentInfo now honours
+ * extendedConfirmationDate only under the `probationExtension` movement tag (how createMovementEvent calls
+ * it) — the tagged calls below exercise that path; the derivation itself is unchanged. Forge-proofing of
+ * the untagged path is covered in test/employment-dates-simplify.test.ts.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -37,6 +43,14 @@ async function hire(name = 'Dates Test', hiredOn = '2020-01-01') {
   });
   return { id: r.employmentId };
 }
+
+/** d27961e3 — the movement-writer shape: extendedConfirmationDate rides the probationExtension tag ('' clears). */
+const extendProbation = (employmentId: string, endDate: string) =>
+  setEmploymentInfo(adminCtx(b), {
+    employmentId,
+    extendedConfirmationDate: endDate,
+    movement: { type: 'probationExtension', ...(endDate ? { endDate } : {}) },
+  });
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -77,11 +91,12 @@ describe('setEmploymentInfo — Employment Dates value+unit + lifecycle (955c7de
     await setEmploymentInfo(adminCtx(b), {
       employmentId: e.id,
       confirmationDate: '2020-04-01',
-      extendedConfirmationDate: '2020-06-01',
       tenderResignationDate: '2026-01-05',
       resignationDate: '2026-02-05',
       lastWorkingDate: '2026-02-28',
     });
+    // d27961e3 — the extension is movement-only now; it persists via the tagged (movement-writer) path.
+    await extendProbation(e.id, '2020-06-01');
     const d = await employeeDetail(adminCtx(b), e.id);
     expect(d!.confirmationDate).toBe('2020-04-01');
     expect(d!.extendedConfirmationDate).toBe('2020-06-01');
@@ -92,11 +107,8 @@ describe('setEmploymentInfo — Employment Dates value+unit + lifecycle (955c7de
 
   it('derives finalConfirmationDate = extended when present', async () => {
     const e = await hire('FinalExtended');
-    await setEmploymentInfo(adminCtx(b), {
-      employmentId: e.id,
-      confirmationDate: '2020-04-01',
-      extendedConfirmationDate: '2020-06-01',
-    });
+    await setEmploymentInfo(adminCtx(b), { employmentId: e.id, confirmationDate: '2020-04-01' });
+    await extendProbation(e.id, '2020-06-01');
     const d = await employeeDetail(adminCtx(b), e.id);
     expect(d!.finalConfirmationDate).toBe('2020-06-01');
   });
@@ -107,11 +119,11 @@ describe('setEmploymentInfo — Employment Dates value+unit + lifecycle (955c7de
     let d = await employeeDetail(adminCtx(b), e.id);
     expect(d!.finalConfirmationDate).toBe('2020-04-01');
     // Add an extension → final follows it.
-    await setEmploymentInfo(adminCtx(b), { employmentId: e.id, extendedConfirmationDate: '2020-07-01' });
+    await extendProbation(e.id, '2020-07-01');
     d = await employeeDetail(adminCtx(b), e.id);
     expect(d!.finalConfirmationDate).toBe('2020-07-01');
     // Clear the extension → final falls back to the normal confirmation date.
-    await setEmploymentInfo(adminCtx(b), { employmentId: e.id, extendedConfirmationDate: '' });
+    await extendProbation(e.id, '');
     d = await employeeDetail(adminCtx(b), e.id);
     expect(d!.finalConfirmationDate).toBe('2020-04-01');
   });
@@ -159,15 +171,10 @@ describe('setEmploymentInfo — Employment Dates value+unit + lifecycle (955c7de
     ).rejects.toThrow(/last working/i);
   });
 
-  it('rejects extended confirmation earlier than confirmation', async () => {
+  it('rejects extended confirmation earlier than confirmation (movement path)', async () => {
     const e = await hire('ExtConfOrder');
-    await expect(
-      setEmploymentInfo(adminCtx(b), {
-        employmentId: e.id,
-        confirmationDate: '2020-06-01',
-        extendedConfirmationDate: '2020-04-01',
-      }),
-    ).rejects.toThrow(/extended confirmation/i);
+    await setEmploymentInfo(adminCtx(b), { employmentId: e.id, confirmationDate: '2020-06-01' });
+    await expect(extendProbation(e.id, '2020-04-01')).rejects.toThrow(/extended confirmation/i);
   });
 
   it('validates ordering against stored siblings across separate saves', async () => {
@@ -186,7 +193,6 @@ describe('setEmploymentInfo — Employment Dates value+unit + lifecycle (955c7de
       probationValue: 3,
       probationUnit: 'month',
       confirmationDate: '2020-04-01',
-      extendedConfirmationDate: '2020-06-01',
       lastWorkingDate: '2026-02-28',
     });
     const types = await eventTypesFor(b.tenantId, e.id);
@@ -195,13 +201,21 @@ describe('setEmploymentInfo — Employment Dates value+unit + lifecycle (955c7de
     const fields = payload!.fields as string[];
     expect(fields).toContain('probationValue');
     expect(fields).toContain('probationUnit');
-    expect(fields).toContain('extendedConfirmationDate');
-    expect(fields).toContain('finalConfirmationDate'); // derived field also audited
     const before = payload!.before as Record<string, unknown>;
     const after = payload!.after as Record<string, unknown>;
     expect(before.probationValue).toBeNull();
     expect(after.probationValue).toBe(3);
-    expect(after.finalConfirmationDate).toBe('2020-06-01');
+    expect(after.finalConfirmationDate).toBe('2020-04-01'); // derived (= confirmation, no extension)
+
+    // d27961e3 — a movement-tagged extension is audited the same way, with the derived final following it.
+    await extendProbation(e.id, '2020-06-01');
+    const extPayload = await latestEventPayload(b.tenantId, e.id, 'employment.info.updated');
+    const extFields = extPayload!.fields as string[];
+    expect(extFields).toContain('extendedConfirmationDate');
+    expect(extFields).toContain('finalConfirmationDate'); // derived field also audited
+    const extAfter = extPayload!.after as Record<string, unknown>;
+    expect(extAfter.finalConfirmationDate).toBe('2020-06-01');
+    expect((extPayload!.movement as Record<string, unknown>).type).toBe('probationExtension');
   });
 
   it('is backward compatible: a legacy employment reads every new field as null', async () => {
