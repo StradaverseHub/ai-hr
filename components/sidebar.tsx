@@ -56,6 +56,9 @@ import '@/packs/performance';
 // rows (navLinks), a My-Absence self-service row (top group) and a leave-config row (Admin group).
 // packs/leave/index.ts is client-safe by design too.
 import '@/packs/leave';
+// ADR-0080 rung 7 (the final retrofit): the Payroll nav row mounts from the pack registry the same
+// way — a single flat Administration-group row. packs/payroll/index.ts is client-safe by design too.
+import '@/packs/payroll';
 import { modulePackById } from '@/packs/registry';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
@@ -110,6 +113,13 @@ const PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find
 const LEAVE_LINKS = modulePackById('leave')!.navLinks!;
 const LEAVE_ABSENCE_ROW: ChildItem = LEAVE_LINKS.find((l) => l.group === 'main')!;
 const LEAVE_CONFIG_ROW: ChildItem = LEAVE_LINKS.find((l) => l.group === 'admin')!;
+
+// Payroll nav row (ADR-0080 rung 7): the single Administration-group row the payroll pack contributes
+// (packs/payroll/index.ts, PAYROLL_NAV_LINKS — provenance comments moved with it), placed at its
+// pre-rung-7 position in the Admin group below, between Claims config and Analytics (group-gated
+// adminOnly, no per-row flag — unchanged). The `group` tag is the pack's placement declaration;
+// position WITHIN the group stays this file's concern.
+const PAYROLL_ROW: ChildItem = modulePackById('payroll')!.navLinks!.find((l) => l.group === 'admin')!;
 
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
 // map to the reporter's categories; each opens the Reports hub filtered to that category, where the
@@ -197,7 +207,9 @@ const GROUPS: Group[] = [
       LEAVE_CONFIG_ROW,
       // Holidays lives under the Attendance node above (5cb199b3), not in the flat admin list.
       CLAIMS_CONFIG_ROW,
-      { href: '/payroll', labelKey: 'payroll', icon: Wallet },
+      // Since ADR-0080 rung 7 the payroll row lives on the payroll pack and mounts here by const
+      // reference (PAYROLL_ROW).
+      PAYROLL_ROW,
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
       REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
