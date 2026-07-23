@@ -11,8 +11,9 @@
  * Content contract (arrangement only — every tool keeps its exact data prep, actions and behaviour):
  *  - Benefit Schemes: the Grades catalogue relocated from the standalone page-bottom section (grades are
  *    TENANT-WIDE master data — one shared node with the company-wide badge convention and the surviving
- *    03557e76 fold + cookie), followed by the type-scoped scheme management (6c775d68) — so the
- *    grade → grade-group → scheme relationship reads in one place.
+ *    03557e76 fold + cookie), joined with the type-scoped scheme management (6c775d68). 387792a4: the two
+ *    no longer stack — the catalogue is Panel A of the three-panel workbench inside BenefitSchemeConfig
+ *    (gradesPanel slot), so the grade → grade-group → scheme relationship reads side by side.
  *  - Service Based Entitlements: the per-type entitlement table (123c1e76, same rows + upsert action) plus
  *    the Preview Scenario checker (d778d2d3's LeaveRulePreviewDialog) as its checking tool.
  *  - Adjustments: the One-Off/Festive grant tool (fd7c8e20, still preset to the hosting type) plus the Run
@@ -89,14 +90,17 @@ describe('7b945408 · the Entitlement step REUSES the SubStepBar (three sub-step
 });
 
 describe('7b945408 · Benefit Schemes — grades relocated from the page bottom + the scoped scheme area', () => {
-  it('the schemes sub-step renders gradesSection then benefitSchemeSection (grade → group → scheme order)', () => {
+  // 387792a4 re-pinned: the schemes sub-step no longer stacks a separate gradesSection slot above the
+  // config — the Grades catalogue is Panel A of the three-panel workbench INSIDE BenefitSchemeConfig
+  // (threaded via its gradesPanel prop; entitlement-grade-workbench.test.ts guards the workbench itself).
+  it('the schemes sub-step renders the benefitSchemeSection workbench (grades live inside it as Panel A)', () => {
     const schemes = subStepSlice(entitlementSegment(), 'schemes');
-    const grades = schemes.indexOf('{gradesSection}');
-    const config = schemes.indexOf('{benefitSchemeSection}');
-    expect(grades).toBeGreaterThan(-1);
-    expect(config).toBeGreaterThan(grades);
-    // Slot-shaped props, like the other server-composed sections.
-    expect(panelSrc).toContain('gradesSection?: ReactNode');
+    expect(schemes).toContain('{benefitSchemeSection}');
+    // No separate grades slot remains — the panel neither renders nor accepts one.
+    expect(schemes.includes('{gradesSection}')).toBe(false);
+    expect(panelSrc.includes('gradesSection?: ReactNode')).toBe(false);
+    // The page threads the ONE shared grades node into the config as its Panel A slot.
+    expect(pageSrc).toContain('gradesPanel={gradesSection}');
   });
 
   it('the standalone page-bottom Grades Card is gone; the page composes ONE shared gradesSection slot', () => {
@@ -113,8 +117,8 @@ describe('7b945408 · Benefit Schemes — grades relocated from the page bottom 
     }
     // Tenant-wide master data → the company-wide badge convention (08bc6841's pill).
     expect(slot).toContain("t('entitlementStep.gradesCompanyWideBadge')");
-    // ONE shared node passed into every panel via the slot prop (grades are per-tenant, not per-type).
-    expect(pageSrc).toContain('gradesSection={gradesSection}');
+    // ONE shared node fed into every panel's workbench via the config's gradesPanel slot (387792a4).
+    expect(pageSrc).toContain('gradesPanel={gradesSection}');
     // The page body after the workspace card hosts no grades Card anymore.
     const helpAt = pageSrc.indexOf("t.rich('typesHelp'");
     expect(helpAt).toBeGreaterThan(-1);

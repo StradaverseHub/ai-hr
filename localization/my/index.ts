@@ -2,10 +2,10 @@
  * Malaysia localization pack (ADR-0008). Slice 1 ships the statutory profile; leave rules,
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
-import { getStatutoryProfileMY, isValidIC, setBankProfileMY, setIcProfileMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY } from './statutory';
+import { getStatutoryProfileMY, isValidIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026 } from './holidays';
-import { eis, epf, hrdfLevy, overtimePay, pcbMonth, socso, statutory } from './payroll';
+import { eis, epf, hrdfLevy, hrdfSubject, overtimePay, pcbMonth, socso, statutory } from './payroll';
 import { DEFAULT_MY_STATUTORY, MY_RELIEFS } from './statutory-tables';
 import {
   archiveComponentOverrideMY,
@@ -44,6 +44,9 @@ export const myPack = {
     // The counterpart to setIc; the identity form on the Profile tab picks one based on the selected nationality.
     setPassport: setPassportProfileMY,
     setTax: setTaxProfileMY,
+    // Feedback 0df0c635 — partial save of only the Others Statutory controls (today: subject_to_hrdf).
+    // The Others Statutory card on the Bank & Statutory tab saves through this, like setTp3/setBank/setTax.
+    setOthersStatutory: setOthersStatutoryMY,
     validateIC: isValidIC,
   },
   companyStatutory: {
@@ -64,6 +67,9 @@ export const myPack = {
     pcbMonth,
     overtimePay,
     hrdfLevy,
+    // Feedback 0df0c635 — effective per-employee HRDF subjectivity (tri-state subject_to_hrdf resolved
+    // against the employer's registration band). D6 vocabulary: the kernel consumes it via the pack.
+    hrdfSubject,
     epfReliefCap: MY_RELIEFS.epfReliefCap,
     // Active-ruleset loader (ADR-0019): resolves the DB override or the verified default. The kernel
     // calls this once per run and threads the result into the calculators above.

@@ -61,6 +61,7 @@ import {
   asOfForLeaveYear,
   grantAdHocLeave,
   grantAdHocLeaveMulti,
+  reprojectEntitlementForSchemeCohort,
   todayInKualaLumpur,
   DAY_TYPE_INCLUSION_KEYS,
   type DayTypeInclusion,
@@ -140,6 +141,17 @@ function ok(path: string): never {
 function okToast(path: string, msg: string): never {
   revalidatePath(path);
   redirect(`${path}?toast=${encodeURIComponent(msg)}`);
+}
+/** 9b0503ac — success return for entitlement-area saves (policy add/edit/remove, scheme-entitlement
+ *  upserts): stay on the Entitlements config panel with a success toast AND preserve the workspace's
+ *  #type-<id> selection anchor (the updateLeaveTypeAction / b9dac2d1 stay-on-page keystone), so HR lands
+ *  back on the exact leave type + step they were configuring instead of being bounced to /admin/leave.
+ *  The anchor rides AFTER the query string so ToastFromQuery still sees ?toast=; an empty leaveTypeId
+ *  (form didn't carry one) degrades to the bare Entitlements path — same route, so the workspace's client
+ *  selection state still survives the soft navigation. */
+function okEntitlements(msg: string, leaveTypeId: string): never {
+  revalidatePath(ENTITLEMENTS);
+  redirect(`${ENTITLEMENTS}?toast=${encodeURIComponent(msg)}${leaveTypeId ? `#type-${leaveTypeId}` : ''}`);
 }
 
 export async function createCompanyAction(formData: FormData) {
@@ -515,6 +527,7 @@ export async function createLeavePolicyAction(formData: FormData) {
  */
 export async function createLeavePoliciesMultiAction(formData: FormData) {
   const s = await getSession();
+  const leaveTypeId = String(formData.get('leaveTypeId') ?? '');
   const companyIds = formData.getAll('companyIds').map(String).filter(Boolean);
   const gradeIds = formData.getAll('gradeIds').map(String).filter(Boolean);
   const companies: (string | null)[] = companyIds.length ? companyIds : [null];
@@ -524,7 +537,7 @@ export async function createLeavePoliciesMultiAction(formData: FormData) {
     for (const companyId of companies) {
       for (const gradeId of grades) {
         await createLeavePolicy(s, {
-          leaveTypeId: String(formData.get('leaveTypeId')),
+          leaveTypeId,
           annualDays: Number(formData.get('annualDays')),
           carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
           carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
@@ -542,9 +555,15 @@ export async function createLeavePoliciesMultiAction(formData: FormData) {
       }
     }
   } catch (e) {
-    fail(LEAVE, e);
+    // 9b0503ac — the add-entitlement form lives inside a leave type's Entitlements config panel; a failed
+    // save must surface its error banner THERE, not bounce HR to /admin/leave (no #type anchor: fail()
+    // appends ?error=, and a fragment before the query string would swallow it — the b9dac2d1 precedent).
+    fail(ENTITLEMENTS, e);
   }
-  ok(LEAVE);
+  // 9b0503ac — stay on the same leave type's panel with the success toast (no re-navigation between
+  // adjustments); the form's hidden leaveTypeId is the workspace's selection anchor.
+  const t = await getTranslations('admin.leave');
+  okEntitlements(t('entitlementUpdatedToast'), leaveTypeId);
 }
 
 /**
@@ -588,14 +607,18 @@ export async function updateLeavePolicyAction(formData: FormData) {
       reason: String(formData.get('reason') || '') || null,
     });
   } catch (e) {
-    fail(LEAVE, e);
+    // 9b0503ac — every policy edit form (Eligibility inline edit + the Earning/Carry front doors) lives
+    // inside a type's Entitlements config panel; fail back THERE so the error banner is visible in place
+    // (no #type anchor: a fragment before ?error= would swallow it — the b9dac2d1 precedent).
+    fail(ENTITLEMENTS, e);
   }
-  revalidatePath(LEAVE);
+  // 9b0503ac — stay exactly where the admin was: the Entitlements panel, same leave type (the form's
+  // hidden leaveTypeId → #type-<id> anchor). The 49809272 blast-radius toast stays when employees were
+  // recalculated; the no-recalc case shows the reporter's requested plain success confirmation.
   const delta = `${recalc.totalDelta > 0 ? '+' : ''}${recalc.totalDelta}`;
-  redirect(
-    `${LEAVE}?toast=${encodeURIComponent(
-      recalc.affected > 0 ? t('recalcToast', { count: recalc.affected, delta }) : t('recalcNoneToast'),
-    )}`,
+  okEntitlements(
+    recalc.affected > 0 ? t('recalcToast', { count: recalc.affected, delta }) : t('entitlementUpdatedToast'),
+    String(formData.get('leaveTypeId') ?? ''),
   );
 }
 
@@ -794,9 +817,13 @@ export async function deleteLeavePolicyAction(formData: FormData) {
   try {
     await deleteLeavePolicy(s, { id: String(formData.get('id')) });
   } catch (e) {
-    fail(LEAVE, e);
+    // 9b0503ac — the remove button sits in the same Entitlements config panel; stay there on failure too.
+    fail(ENTITLEMENTS, e);
   }
-  ok(LEAVE);
+  // 9b0503ac — removing a dated entitlement row keeps the admin on the same type's panel (consistent with
+  // the neighbouring policy add/edit saves), with its own removal wording.
+  const t = await getTranslations('admin.leave');
+  okEntitlements(t('entitlementRemovedToast'), String(formData.get('leaveTypeId') ?? ''));
 }
 
 // ── Public holidays ──
@@ -1814,6 +1841,25 @@ export async function deleteClockingLocationAction(fd: FormData) {
 // ── Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b) ──────────────────────────────
 // All redirect to the Entitlements tab (where the Benefit Scheme subsection lives). requireAdmin gates the
 // route; RLS additionally gates the write (WITH CHECK app.is_admin()).
+
+/**
+ * ae5b84d5 — after a scheme-side configuration write COMMITS, true up every covered employee's
+ * current-cycle balance (reprojectEntitlementForSchemeCohort loops the idempotent per-employee recalc).
+ * Best-effort, following the recalcAfterProfileChange pattern in the personnel actions: the config save
+ * has already committed and the recalc self-heals on the next trigger, so a hiccup here must never fail
+ * the save the admin just made. Runs AFTER the service's own transaction — never inside it.
+ */
+async function recalcSchemeCohort(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  p: { schemeId?: string; gradeIds?: string[]; trigger: string },
+): Promise<void> {
+  try {
+    await reprojectEntitlementForSchemeCohort(s, p);
+  } catch {
+    // non-fatal — idempotent, re-runs on the next config or profile trigger.
+  }
+}
+
 function parseBands(fd: FormData): import('@/core/leave-compute').ServiceBand[] {
   const raw = String(fd.get('serviceBands') ?? '[]');
   try {
@@ -1840,11 +1886,14 @@ export async function createGradeGroupAction(fd: FormData) {
 export async function updateGradeGroupAction(fd: FormData) {
   const s = await requireAdmin();
   try {
-    await updateGradeGroup(s, {
+    const { gradeIds } = await updateGradeGroup(s, {
       id: String(fd.get('id') ?? ''),
       name: String(fd.get('name') ?? ''),
       gradeIds: fd.getAll('gradeIds').map((v) => String(v)).filter(Boolean),
     });
+    // ae5b84d5: membership moved ⇒ true up BOTH cohorts (the union of before/after grade ids) — a grade
+    // moved into another group re-matches its employees to that group's scheme immediately.
+    await recalcSchemeCohort(s, { gradeIds, trigger: 'grade_group_changed' });
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }
@@ -1880,14 +1929,19 @@ export async function createBenefitSchemeAction(fd: FormData) {
 export async function updateBenefitSchemeAction(fd: FormData) {
   const s = await requireAdmin();
   try {
-    await updateBenefitScheme(s, {
-      id: String(fd.get('id') ?? ''),
+    const schemeId = String(fd.get('id') ?? '');
+    const { changed } = await updateBenefitScheme(s, {
+      id: schemeId,
       companyId: String(fd.get('companyId') ?? ''),
       employmentType: String(fd.get('employmentType') ?? ''),
       gradeGroupId: (String(fd.get('gradeGroupId') ?? '') || null),
       name: String(fd.get('name') ?? ''),
       status: String(fd.get('status') ?? 'active'),
     });
+    // ae5b84d5: only a match-identity/usability change (status / employment type / grade group / company)
+    // re-shuffles coverage — activate/deactivate included, so a mass-revert lands NOW with an honest
+    // scheme_updated audit trigger instead of dripping out of later unrelated runs. Renames skip.
+    if (changed) await recalcSchemeCohort(s, { schemeId, trigger: 'scheme_updated' });
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }
@@ -1906,22 +1960,36 @@ export async function deleteBenefitSchemeAction(fd: FormData) {
 
 export async function upsertSchemeEntitlementAction(fd: FormData) {
   const s = await requireAdmin();
+  const leaveTypeId = String(fd.get('leaveTypeId') ?? '');
   try {
+    const benefitSchemeId = String(fd.get('benefitSchemeId') ?? '');
     await upsertSchemeEntitlement(s, {
-      benefitSchemeId: String(fd.get('benefitSchemeId') ?? ''),
-      leaveTypeId: String(fd.get('leaveTypeId') ?? ''),
+      benefitSchemeId,
+      leaveTypeId,
       serviceBands: parseBands(fd),
     });
+    // ae5b84d5: band edits flow through to covered employees immediately — up AND down (a downward earned
+    // correction can only land here; the monthly run never posts negatives). Idempotent: re-saving the
+    // same values computes delta 0 for everyone and posts nothing.
+    await recalcSchemeCohort(s, { schemeId: benefitSchemeId, trigger: 'scheme_entitlement_changed' });
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }
-  ok(ENTITLEMENTS);
+  // 9b0503ac — the reporter's exact flow: saving the service-band day values (under 2 / 2–5 / over 5 yrs)
+  // must keep the admin on the same leave type's panel and confirm with a success toast. The form always
+  // posts leaveTypeId (hidden when editing, the select when adding) — it anchors the redirect.
+  const t = await getTranslations('admin.leave');
+  okEntitlements(t('entitlementUpdatedToast'), leaveTypeId);
 }
 
 export async function deleteSchemeEntitlementAction(fd: FormData) {
   const s = await requireAdmin();
   try {
-    await deleteSchemeEntitlement(s, { id: String(fd.get('id') ?? '') });
+    const { benefitSchemeId } = await deleteSchemeEntitlement(s, { id: String(fd.get('id') ?? '') });
+    // ae5b84d5: covered employees revert to grade-policy/floor days — true them up now.
+    if (benefitSchemeId) {
+      await recalcSchemeCohort(s, { schemeId: benefitSchemeId, trigger: 'scheme_entitlement_changed' });
+    }
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }

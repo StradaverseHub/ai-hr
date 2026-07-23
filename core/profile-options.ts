@@ -20,9 +20,10 @@
 import { and, asc, eq, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { employeeDependent, employment, person, profileOption } from '../db/schema';
+import { employeeDependent, employeeQualification, employment, person, profileOption } from '../db/schema';
 import { MY_STATES } from '../localization/my/holidays';
 import { DEPENDENT_RELATIONSHIP_CATEGORY, DEPENDENT_RELATIONSHIPS } from './dependents';
+import { QUALIFICATION_LEVEL_CATEGORY, QUALIFICATION_LEVEL_DEFAULTS } from './qualifications';
 
 export const PROFILE_OPTION_CATEGORIES = [
   'religion',
@@ -55,6 +56,10 @@ export const PROFILE_OPTION_CATEGORIES = [
   // (DEPENDENT_RELATIONSHIPS) are seeded below and stay ALWAYS valid server-side; custom values behave like
   // 'other' for field/relief logic. Existing tenants are topped up by migration 0303.
   DEPENDENT_RELATIONSHIP_CATEGORY,
+  // Feedback a949184a — Qualification tab: the Qualification dropdown (employee_qualification.qualification)
+  // becomes centrally maintainable here, the salutation / dependentRelationship pattern. Same flat
+  // tenant-wide list + legacy-value tolerance; existing tenants are topped up by migration 0306.
+  QUALIFICATION_LEVEL_CATEGORY,
 ] as const;
 export type ProfileOptionCategory = (typeof PROFILE_OPTION_CATEGORIES)[number];
 
@@ -186,6 +191,10 @@ const CATEGORY_DEFAULTS: Record<ProfileOptionCategory, string[]> = {
   // so its seed site is 0303, not 0180). The Family tab renders the built-ins via static i18n labels, so
   // the lowercase value doubling as the default label only shows in the System Labels grid (editable there).
   dependentRelationship: [...DEPENDENT_RELATIONSHIPS],
+  // Feedback a949184a — the approved qualification-level seed list, kept BYTE-IDENTICAL with the
+  // 0306_employee_qualification.sql top-up seed (this category post-dates the 0180 seed, so its seed site
+  // is 0306, not 0180). `value` doubles as the default label, editable in the System Labels grid.
+  qualificationLevel: [...QUALIFICATION_LEVEL_DEFAULTS],
 };
 
 /**
@@ -448,6 +457,16 @@ export async function deleteProfileOption(ctx: SessionContext, id: string): Prom
         .select({ n: sql<number>`count(*)::int` })
         .from(employeeDependent)
         .where(eq(employeeDependent.relationship, opt.value));
+      usedCount += Number(u?.n ?? 0);
+    }
+    // Feedback a949184a — the qualificationLevel category governs employee_qualification.qualification
+    // (same third-table leg as dependentRelationship). Archived rows still store the value, so they count
+    // too — deletion must never orphan a stored qualification from its catalog entry; deactivate instead.
+    if (opt.category === QUALIFICATION_LEVEL_CATEGORY) {
+      const [u] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(employeeQualification)
+        .where(eq(employeeQualification.qualification, opt.value));
       usedCount += Number(u?.n ?? 0);
     }
     if (usedCount > 0) {

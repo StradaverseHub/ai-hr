@@ -8,6 +8,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { companyPayrollConfig, payrollPolicy, type PayslipRelease } from '../db/schema';
 import { cleanPayslipRelease } from './payroll-policy-config';
+import { isCurrencyCode } from '../lib/currencies';
 
 /** Thrown when the chosen company-default payroll policy is not a valid (same-company, active) policy. */
 export class InvalidDefaultPolicyError extends Error {
@@ -27,6 +28,14 @@ const cleanDay = (v: unknown): number | null => {
   return Number.isFinite(n) && n >= 1 && n <= 31 ? n : null;
 };
 const cleanBasis = (v: unknown): PaymentBasis => (PAYMENT_BASES.includes(v as PaymentBasis) ? (v as PaymentBasis) : 'monthly');
+
+// 297ae65a — company default salary currency. Clamp-not-throw (module pattern): anything that is not a
+// real ISO 4217 code (lib/currencies.ts master) falls back to 'MYR', so a malformed input can never
+// corrupt the config row.
+const cleanCurrency = (v: unknown): string => {
+  const c = typeof v === 'string' ? v.trim().toUpperCase() : '';
+  return isCurrencyCode(c) ? c : 'MYR';
+};
 
 // Default probation length in months. Blank/invalid → null (= default 3, resolved at compute time). Reject
 // <= 0 by falling back to null; NO arbitrary upper clamp (any positive integer is allowed per the plan).
@@ -68,6 +77,9 @@ export type PayrollConfigInput = {
   defaultPayrollPolicyId?: string | null;
   // Step 6 (f3148da1) — payslip release config (or null = immediate). Cleaned via cleanPayslipRelease.
   payslipRelease?: PayslipRelease | null;
+  // 297ae65a — company default salary currency (ISO 4217; invalid/absent ⇒ 'MYR'). The Basic Salary form
+  // preselects it on new records.
+  defaultCurrency?: string | null;
 };
 
 export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInput) {
@@ -85,6 +97,7 @@ export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInpu
     reviewReminderDays: cleanReminderDays(p.reviewReminderDays),
     defaultPayrollPolicyId: rawDefaultPolicy,
     payslipRelease,
+    defaultCurrency: cleanCurrency(p.defaultCurrency),
   };
   return withTenant(ctx, async (tx) => {
     // Step 1 — the chosen default policy MUST be an active policy in THIS company (RLS is tenant-wide, so a

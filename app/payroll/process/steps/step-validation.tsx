@@ -81,8 +81,12 @@ export function StepValidation({
   }
 
   const blockers = advisory.missingCompensation.length + (advisory.zeroBasic?.length ?? 0);
+  // 297ae65a — a non-MYR/mixed-currency salary is an AMBER warning (Process stays allowed).
   const warnings =
-    advisory.missingStatutory.length + advisory.missingBank.length + (advisory.staleBasicComponent?.length ?? 0);
+    advisory.missingStatutory.length +
+    advisory.missingBank.length +
+    (advisory.staleBasicComponent?.length ?? 0) +
+    (advisory.currencyMismatch?.length ?? 0);
 
   if (blockers + warnings === 0) {
     return (
@@ -101,6 +105,7 @@ export function StepValidation({
     ['missingStatutory', advisory.missingStatutory, false],
     ['missingBank', advisory.missingBank, false],
     ['staleBasicComponent', advisory.staleBasicComponent ?? [], false],
+    ['currencyMismatch', advisory.currencyMismatch ?? [], false],
   ];
 
   return (

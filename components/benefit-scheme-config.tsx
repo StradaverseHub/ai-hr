@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useState, useTransition, type ReactNode } from 'react';
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   pointerWithin,
   useDraggable,
@@ -39,6 +40,17 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
  * selected type's row, while grade-group and scheme CRUD stay full (they are structural) and every write
  * still goes through the same scheme-wide actions. Combined-limit pools that span other leave types render
  * with a "shared with <other types>" badge so a shared-cap edit from one type's step never surprises.
+ *
+ * Three-panel workbench (feedback 387792a4): the long vertical scroll became a side-by-side grid —
+ * Panel A `gradesPanel` (the Grade Master catalogue, server-composed slot) · Panel B Grade Groups ·
+ * Panel C Assignment (the schemes list: Company × Employment Type × Grade Group per scheme). The grid is
+ * `xl:grid-cols-3` and stacks to one column below xl with sticky panel headers, so nothing is lost on a
+ * laptop. A DndContext wraps the grid: dragging a grade card from Panel A onto a group's drop zone in
+ * Panel B posts the SAME updateGradeGroup action (full member list = existing ∪ dragged) the checkbox
+ * fallback posts — one write path, the click-based assignment stays as the accessible route. The
+ * per-scheme Leave Entitlements area renders full-width BELOW the workbench, unchanged; what is assigned
+ * here keeps feeding the Service Based Entitlements sub-step automatically (same rows, revalidated on
+ * every assignment save). Composition + interaction only — no data-model or action change.
  */
 
 type Company = { id: string; name: string };
@@ -114,6 +126,7 @@ export function BenefitSchemeConfig({
   combinedLimits,
   actions,
   scopeLeaveTypeId,
+  gradesPanel,
 }: {
   companies: Company[];
   grades: Grade[];
@@ -128,6 +141,10 @@ export function BenefitSchemeConfig({
    *  visible/editable. Grade-group + scheme management and all writes remain scheme-wide. Absent = the full
    *  (unscoped) table. */
   scopeLeaveTypeId?: string;
+  /** 387792a4: Panel A of the workbench — the server-composed Grade Master slot (GradeCatalog + its fold).
+   *  Rendered as the first grid cell INSIDE this component's DndContext so its grade drag handles resolve
+   *  here. Absent = the workbench renders Panels B + C only. */
+  gradesPanel?: ReactNode;
 }) {
   const t = useTranslations('admin.benefitScheme');
   const companyName = useMemo(() => new Map(companies.map((c) => [c.id, c.name])), [companies]);
@@ -199,20 +216,79 @@ export function BenefitSchemeConfig({
   // shape falls back to the 2/5 default). Presentation only — no entitlement value changes.
   const headerTiers = selectedEnts.length > 0 ? tiersFromBands(selectedEnts[0].serviceBands) : { n1: 2, n2: 5 };
 
+  // ── 387792a4 — grade → grade-group drag-and-drop (Panel A → Panel B) ─────────────────────────────
+  // The dragged id is `grade:<id>` (GradeCatalog's handles); drop targets are `gradeGroup:<id>` zones on
+  // the Panel B group rows. A successful drop posts actions.updateGradeGroup with the group's FULL member
+  // list (existing ∪ dragged) — byte-for-byte the FormData the checkbox fallback's Save posts, so both
+  // assignment paths write the same rows. A DragOverlay chip follows the pointer (the source row stays
+  // put), which also survives the panels' own overflow containers.
+  const [, startGradeAssign] = useTransition();
+  const gradeSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const [activeGradeId, setActiveGradeId] = useState<string | null>(null);
+  const [groupNotice, setGroupNotice] = useState<string | null>(null);
+  const gradeById = useMemo(() => new Map(grades.map((g) => [g.id, g])), [grades]);
+  const activeGrade = activeGradeId ? (gradeById.get(activeGradeId) ?? null) : null;
+  const onGradeDragStart = (e: DragStartEvent) => {
+    const id = String(e.active.id);
+    if (!id.startsWith('grade:')) return;
+    setGroupNotice(null);
+    setActiveGradeId(id.slice('grade:'.length));
+  };
+  const onGradeDragEnd = (e: DragEndEvent) => {
+    const gradeId = activeGradeId;
+    setActiveGradeId(null);
+    if (!gradeId || !e.over) return;
+    const overId = String(e.over.id);
+    if (!overId.startsWith('gradeGroup:')) return;
+    const group = gradeGroups.find((g) => g.id === overId.slice('gradeGroup:'.length));
+    if (!group || group.archived) return;
+    if (group.gradeIds.includes(gradeId)) {
+      setGroupNotice(t('gradeAlreadyInGroup', { name: gradeById.get(gradeId)?.name ?? '—' }));
+      return;
+    }
+    const fd = new FormData();
+    fd.set('id', group.id);
+    fd.set('name', group.name);
+    for (const id of [...group.gradeIds, gradeId]) fd.append('gradeIds', id);
+    startGradeAssign(() => {
+      void actions.updateGradeGroup(fd);
+    });
+  };
+
   return (
     <div className="space-y-8" data-tour="benefit-scheme">
-      {/* ── Grade Groups ─────────────────────────────────────────────── */}
-      <section className="space-y-3">
-        <div>
+      {/* ── 387792a4 — three-panel workbench: A Grade Master · B Grade Groups · C Assignment ─────────
+          Side-by-side at xl, stacked (grid-cols-1) below with sticky panel headers. One DndContext spans
+          the grid so Panel A's grade handles can drop onto Panel B's group zones. */}
+      <DndContext
+        sensors={gradeSensors}
+        collisionDetection={pointerWithin}
+        onDragStart={onGradeDragStart}
+        onDragEnd={onGradeDragEnd}
+        onDragCancel={() => setActiveGradeId(null)}
+      >
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
+      {/* ── Panel A — Grade Master (server-composed slot; its fold summary doubles as the sticky header) ── */}
+      {gradesPanel !== undefined && (
+        <section className="min-w-0 [&_summary]:sticky [&_summary]:top-0 [&_summary]:z-10 [&_summary]:rounded-t-lg [&_summary]:bg-card">
+          {gradesPanel}
+        </section>
+      )}
+      {/* ── Panel B — Grade Groups ───────────────────────────────────── */}
+      <section className="min-w-0 rounded-lg border border-border xl:max-h-[42rem] xl:overflow-y-auto">
+        <div className="sticky top-0 z-10 rounded-t-lg border-b border-border bg-card px-3 py-2">
           <h3 className="text-sm font-semibold text-foreground">{t('groupsTitle')}</h3>
           <p className="text-xs text-muted-foreground">{t('groupsHelp')}</p>
         </div>
+        <div className="space-y-3 p-3">
+        <p className="text-xs text-muted-foreground">{t('dropGradeHint')}</p>
+        {groupNotice && <p className="text-xs text-destructive">{groupNotice}</p>}
         <ul className="divide-y divide-border rounded-lg border border-border">
           {gradeGroups.length === 0 && (
             <li className="px-3 py-4 text-center text-sm text-muted-foreground">{t('noGroups')}</li>
           )}
           {gradeGroups.map((g) => (
-            <li key={g.id} className="px-3 py-2.5">
+            <GradeGroupItem key={g.id} group={g} activeGradeId={activeGradeId}>
               <details>
                 <summary className="flex cursor-pointer items-center justify-between gap-2">
                   <span className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -266,7 +342,7 @@ export function BenefitSchemeConfig({
                   </form>
                 </div>
               </details>
-            </li>
+            </GradeGroupItem>
           ))}
         </ul>
         <form action={actions.createGradeGroup} className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-border p-3">
@@ -287,14 +363,16 @@ export function BenefitSchemeConfig({
           </div>
           <button className={btnPrimary}>{t('addGroup')}</button>
         </form>
+        </div>
       </section>
 
-      {/* ── Benefit Schemes ──────────────────────────────────────────── */}
-      <section className="space-y-3">
-        <div>
+      {/* ── Panel C — Assignment (Benefit Schemes: Company × Employment Type per Grade Group) ────────── */}
+      <section className="min-w-0 rounded-lg border border-border xl:max-h-[42rem] xl:overflow-y-auto">
+        <div className="sticky top-0 z-10 rounded-t-lg border-b border-border bg-card px-3 py-2">
           <h3 className="text-sm font-semibold text-foreground">{t('schemesTitle')}</h3>
           <p className="text-xs text-muted-foreground">{t('schemesHelp')}</p>
         </div>
+        <div className="space-y-3 p-3">
         {schemes.length === 0 ? (
           <p className="rounded-lg border border-border px-3 py-4 text-center text-sm text-muted-foreground">
             {t('noSchemes')}
@@ -383,7 +461,23 @@ export function BenefitSchemeConfig({
             scheme={null}
           />
         </div>
+        </div>
       </section>
+      </div>
+      {/* The dragged grade follows the pointer as an overlay chip — the panels' own overflow containers
+          cannot clip it, unlike a transformed source row. */}
+      <DragOverlay>
+        {activeGrade ? (
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg">
+            <GripVertical className="size-3.5 text-muted-foreground" />
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+              {activeGrade.code}
+            </span>
+            {activeGrade.name}
+          </span>
+        ) : null}
+      </DragOverlay>
+      </DndContext>
 
       {/* ── Leave Entitlements per scheme ────────────────────────────── */}
       <section className="space-y-3">
@@ -452,6 +546,31 @@ export function BenefitSchemeConfig({
         )}
       </section>
     </div>
+  );
+}
+
+/** 387792a4 — one Panel B group row: a `gradeGroup:<id>` drop zone for grades dragged from Panel A.
+ *  Highlights while a grade drag is active (unless the grade is already a member or the group is
+ *  archived); the drop itself is resolved by the workbench DndContext in BenefitSchemeConfig, which posts
+ *  the same updateGradeGroup write the checkbox fallback inside this row posts. */
+function GradeGroupItem({
+  group,
+  activeGradeId,
+  children,
+}: {
+  group: GradeGroup;
+  activeGradeId: string | null;
+  children: ReactNode;
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id: `gradeGroup:${group.id}`, disabled: group.archived });
+  const validTarget = !!activeGradeId && !group.archived && !group.gradeIds.includes(activeGradeId);
+  return (
+    <li
+      ref={setNodeRef}
+      className={`px-3 py-2.5 ${validTarget ? (isOver ? 'bg-primary/15' : 'bg-primary/5') : ''}`}
+    >
+      {children}
+    </li>
   );
 }
 
@@ -970,12 +1089,13 @@ function CreateGroupDialog({
 /**
  * SchemeForm grid per host (item 0ad01560). Static class lookup — Tailwind cannot JIT a runtime-interpolated
  * class string (same discipline as the dashboard-customizer GRID_COLS fix).
- *  - 'inline': the full-width add-scheme row under the list — six columns across at lg fit comfortably there.
+ *  - 'inline': the add-scheme box inside the workbench's Assignment panel (387792a4) — the cell is a third
+ *    of the row at xl, so the old six-across lg row gave way to two comfortable columns.
  *  - 'dialog': the Edit popup (max-w-3xl) — six columns squeezed every dropdown to ~100px and truncated long
  *    company / grade-group / scheme names, so the dialog gets two comfortable columns instead.
  */
 const SCHEME_FORM_GRID: Record<'inline' | 'dialog', string> = {
-  inline: 'grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6 lg:items-end',
+  inline: 'grid grid-cols-1 gap-2 sm:grid-cols-2 sm:items-end',
   dialog: 'grid grid-cols-1 gap-2 sm:grid-cols-2',
 };
 

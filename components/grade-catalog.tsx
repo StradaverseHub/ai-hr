@@ -1,6 +1,8 @@
 'use client';
 
 import { Fragment, useState } from 'react';
+import { useDraggable } from '@dnd-kit/core';
+import { GripVertical } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Badge, Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
@@ -23,6 +25,14 @@ type Action = (formData: FormData) => void | Promise<void>;
  * Delete is a confirm dialog that is DISABLED when the grade is in use (historical records preserved). The
  * grade catalog itself is presentation only — every mutation goes through the passed server actions, which
  * append the DomainEvents. (substrate: this component is a client view, the events live in core/admin.ts.)
+ *
+ * Three-panel workbench (feedback 387792a4): the catalog is Panel A (Grade Master) of the Entitlement
+ * step's grade workbench. Two additions, both presentation-side only:
+ *  - a search input filtering the table by grade code or name (client state, no data change);
+ *  - a drag handle per active grade (useDraggable, id `grade:<id>`) so a grade can be dragged into a
+ *    grade-group drop zone in Panel B. The handle only STARTS the drag — the drop is handled by the
+ *    hosting BenefitSchemeConfig's DndContext, which posts the SAME updateGradeGroup action the
+ *    checkbox fallback uses. Rendered outside a DndContext the handle is inert, nothing else changes.
  */
 export function GradeCatalog({
   grades,
@@ -38,9 +48,25 @@ export function GradeCatalog({
 }) {
   const t = useTranslations('admin.leave');
   const [editingId, setEditingId] = useState<string | null>(null);
+  // 387792a4 — Panel A search: case-insensitive substring match on code or name. Display filter only.
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const visible = q
+    ? grades.filter((g) => g.code.toLowerCase().includes(q) || g.name.toLowerCase().includes(q))
+    : grades;
 
   return (
     <div>
+      <div className="px-4 pt-3">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label={t('gradeSearchLabel')}
+          placeholder={t('gradeSearchPlaceholder')}
+          className={`${inputCls} w-full max-w-xs`}
+        />
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[38rem] text-sm">
           <thead>
@@ -60,14 +86,25 @@ export function GradeCatalog({
                 </td>
               </tr>
             )}
-            {grades.map((g) => {
+            {grades.length > 0 && visible.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-xs text-muted-foreground">
+                  {t('gradeSearchNoResults')}
+                </td>
+              </tr>
+            )}
+            {visible.map((g) => {
               const editing = editingId === g.id;
               return (
                 <Fragment key={g.id}>
                   <tr className={`border-b border-border ${g.archived ? 'opacity-60' : ''}`}>
                     <td className="px-4 py-2.5">
-                      <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                        {g.code}
+                      <span className="flex items-center gap-1.5">
+                        {/* 387792a4 — active grades drag into a grade-group drop zone (Panel B). */}
+                        {!g.archived && <GradeDragHandle gradeId={g.id} name={g.name} t={t} />}
+                        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                          {g.code}
+                        </span>
                       </span>
                     </td>
                     <td className="px-4 py-2.5 font-medium text-foreground">{g.name}</td>
@@ -189,5 +226,33 @@ export function GradeCatalog({
         </Button>
       </form>
     </div>
+  );
+}
+
+/** 387792a4 — the Panel A drag handle: starts a `grade:<id>` drag the workbench's DndContext resolves onto
+ *  a grade-group drop zone. Keyboard/AT users keep the checkbox fallback in Panel B (the accessible path). */
+function GradeDragHandle({
+  gradeId,
+  name,
+  t,
+}: {
+  gradeId: string;
+  name: string;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `grade:${gradeId}` });
+  return (
+    <button
+      type="button"
+      ref={setNodeRef}
+      aria-label={t('gradeDragAria', { name })}
+      className={`grid size-6 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-primary/40 ${
+        isDragging ? 'opacity-50' : ''
+      }`}
+      {...attributes}
+      {...listeners}
+    >
+      <GripVertical className="size-3.5" />
+    </button>
   );
 }

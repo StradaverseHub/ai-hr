@@ -433,3 +433,20 @@ export function schemeBandDays(serviceBands: unknown, serviceYears: number): num
   const band = bandFor({ serviceBands: serviceBands as ServiceBand[] } as AccrualConfig, serviceYears);
   return band ? band.days : null;
 }
+
+/**
+ * Auto-link entitlement to profile (feedback ae5b84d5) — the ONE composition of statutory floor ×
+ * benefit-scheme days × grade-policy days used by EVERY granting/projection site (openLeaveYear, the
+ * hire grant, accrueEarnedLeave, projectExpectedEntitlement): a resolved scheme entitlement SUPERSEDES
+ * the grade policy days (even an explicit 0), and the EA-1955 floor still clamps on top. `schemeDays`
+ * null = no scheme / no entitlement for the type ⇒ fall back to the policy days — byte-identical to the
+ * pre-existing inline `Math.max(floor, schemeDays ?? policyDays)` at both composition sites. Keeping the
+ * formula in one pure helper removes the drift class the recalc/cron idempotency depends on.
+ */
+export function entitledDays(
+  floorDays: number,
+  schemeDays: number | null,
+  policyDays: number,
+): number {
+  return Math.max(floorDays, schemeDays ?? policyDays);
+}

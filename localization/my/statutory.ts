@@ -563,6 +563,58 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput) {
   });
 }
 
+// ── Feedback 0df0c635 — Others Statutory card ──────────────────────────────────────────────────────────
+/** Just the Others Statutory controls (feedback 0df0c635) — today only the per-employee "Subject to HRDF"
+ *  checkbox. Used by the dedicated Others Statutory card on the Bank & Statutory tab, which saves
+ *  independently of the full statutory row (like setTp3/setBank/setTax). */
+export type OthersStatutoryInput = {
+  personId: string;
+  /** Tri-state stored value: explicit true/false = HR override; null clears back to "follow the company's
+   *  HRDF registration default". The card's checkbox always submits an explicit true/false. */
+  subjectToHrdf?: boolean | null;
+};
+
+/**
+ * Feedback 0df0c635 — save ONLY the subject_to_hrdf column on employee_statutory_my, leaving the rest of
+ * the statutory row (IC, EPF, SOCSO/EIS, tax, bank, TP3, zakat) untouched — the Others Statutory card is
+ * its own partial-save card on the Bank & Statutory tab, exactly like setTp3ProfileMY/setBankProfileMY.
+ * Requires an existing statutory row (the flag has no meaning before the identity row exists) — throws
+ * NoStatutoryProfileError otherwise, so existing employee records remain unchanged until HR configures the
+ * checkbox. Appends an `employee.others-statutory.updated` DomainEvent (before/after) per substrate
+ * discipline, so an auditor can reconstruct who toggled HRDF subjectivity and when, from the log alone.
+ */
+export async function setOthersStatutoryMY(ctx: SessionContext, p: OthersStatutoryInput) {
+  const subjectToHrdf = typeof p.subjectToHrdf === 'boolean' ? p.subjectToHrdf : null;
+  return withTenant(ctx, async (tx) => {
+    const [existing] = await tx
+      .select({ id: employeeStatutoryMy.id, subjectToHrdf: employeeStatutoryMy.subjectToHrdf })
+      .from(employeeStatutoryMy)
+      .where(eq(employeeStatutoryMy.personId, p.personId))
+      .limit(1);
+    if (!existing) throw new NoStatutoryProfileError();
+    await tx
+      .update(employeeStatutoryMy)
+      .set({ subjectToHrdf, updatedAt: sql`now()` })
+      .where(eq(employeeStatutoryMy.id, existing.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employee-statutory',
+      aggregateId: existing.id,
+      eventType: 'employee.others-statutory.updated',
+      actor: actorOf(ctx),
+      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+      // before/after of only the HRDF subjectivity flag — a config setting, not per-payslip cleartext pay,
+      // so recording it is consistent with the sibling statutory setters (ADR-0030).
+      payload: {
+        personId: p.personId,
+        before: { subjectToHrdf: existing.subjectToHrdf },
+        after: { subjectToHrdf },
+      },
+    });
+    return { id: existing.id };
+  });
+}
+
 // ── Item 8b5334db — Identification & Tax card ──────────────────────────────────────────────────────────
 /** Tax residency status. resident ⇒ full computerised MTD; non_resident ⇒ flat 30% (spec §D.a); rep
  *  (Returning Expert Programme) + knowledge_worker (specific-region incentive, e.g. Iskandar) ⇒ flat 15%.

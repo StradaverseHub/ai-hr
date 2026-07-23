@@ -418,14 +418,15 @@ export default async function LeaveEntitlementsPage({
     </div>
   );
 
-  // ── Grades catalogue → the Entitlement step's Benefit Schemes sub-step (7b945408) ────────────────
-  // The standalone page-bottom Grades section is gone: the grade master now opens the Benefit Schemes
-  // sub-step of every type's Entitlement step, so the grade → grade-group → scheme relationship reads in
-  // one place. Grades are TENANT-WIDE master data (not per-type), so ONE node is composed here and shared
-  // by every panel (the halfDaySection precedent), marked with the company-wide badge convention
-  // (08bc6841). The 03557e76 fold survives the move — CollapsibleCardSection + the SAME cookie keep a
-  // long grade list behind its heading, SSR-read so the first paint is already correct. GradeCatalog and
-  // its actions are untouched.
+  // ── Grades catalogue → Panel A of the Benefit Schemes workbench (7b945408 · 387792a4) ────────────
+  // The standalone page-bottom Grades section is gone: the grade master lives in the Benefit Schemes
+  // sub-step of every type's Entitlement step — since 387792a4 as Panel A (Grade Master) of the
+  // three-panel workbench, threaded into BenefitSchemeConfig via its gradesPanel slot so the grade drag
+  // handles land inside the workbench's DndContext. Grades are TENANT-WIDE master data (not per-type), so
+  // ONE node is composed here and shared by every panel (the halfDaySection precedent), marked with the
+  // company-wide badge convention (08bc6841). The 03557e76 fold survives — CollapsibleCardSection + the
+  // SAME cookie keep a long grade list behind its heading, SSR-read so the first paint is already
+  // correct. GradeCatalog's actions are untouched; it gained the Panel A search filter (387792a4).
   const gradesSection = (
     <div className="rounded-lg border border-border">
       <CollapsibleCardSection
@@ -495,7 +496,7 @@ export default async function LeaveEntitlementsPage({
   );
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader
         title={t('pageTitle')}
         description={t('pageDescription')}
@@ -578,13 +579,14 @@ export default async function LeaveEntitlementsPage({
               benefitSchemeSection={
                 /* 6c775d68: the Benefit Schemes management area, scoped to this leave type, rendered inside
                    the Entitlement step below the per-type table. Shared props (one page-level data prep) +
-                   the per-type scope id. */
+                   the per-type scope id. 387792a4: the shared gradesSection node rides in as the config's
+                   gradesPanel — Panel A of its three-panel workbench. */
                 <div className="space-y-3 border-t border-border pt-3">
                   <div>
                     <span className="text-xs font-medium text-muted-foreground">{t('benefitSchemeTitle')}</span>
                     <p className="text-xs text-muted-foreground">{t('benefitSchemeHelp')}</p>
                   </div>
-                  <BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} />
+                  <BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} gradesPanel={gradesSection} />
                 </div>
               }
               festiveGrantSection={
@@ -670,7 +672,6 @@ export default async function LeaveEntitlementsPage({
                 </div>
               }
               halfDaySection={halfDaySection}
-              gradesSection={gradesSection}
               previewScenarioSection={previewScenarioSection}
               accrualSection={accrualSection}
               updateTypeAction={updateLeaveTypeAction}

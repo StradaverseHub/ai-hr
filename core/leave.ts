@@ -29,6 +29,7 @@ import {
   bandCarryMax,
   bandMaxBalance,
   carryEnabled,
+  entitledDays,
   hasAnyCarryExpiry,
   isValidMonthDay,
   isWellFormedBands,
@@ -56,6 +57,7 @@ export {
   bandCarryMax,
   bandMaxBalance,
   carryEnabled,
+  entitledDays,
   hasAnyCarryExpiry,
   isValidMonthDay,
   isWellFormedBands,
@@ -4655,8 +4657,12 @@ type SchemeEmp = {
  * closure `(employmentId, leaveTypeId, serviceYears) => number | null`: the scheme's band days for that
  * service length, or null when the employee has no scheme or the scheme has no entitlement for the type
  * (⇒ caller falls back to the grade leave_policy days). READ-ONLY — no events (CLAUDE.md skip rule).
+ *
+ * Exported (feedback ae5b84d5) so the hire grant (core/org.ts) and the recalc paths below can resolve the
+ * SAME scheme entitlement the sweeps grant — no import cycle: core/org.ts already imports from this module
+ * and this module never imports core/org.ts.
  */
-async function buildSchemeEntitlementResolver(
+export async function buildSchemeEntitlementResolver(
   tx: Tx,
   emps: SchemeEmp[],
   typeIds: string[],
@@ -4864,10 +4870,10 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
         if (isEarnedMethod(pol?.method)) continue;
         // Benefit Scheme (b83c6a3b): a resolved scheme entitlement SUPERSEDES the grade policy days for this
-        // type; the EA-1955 floor still clamps on top (Math.max below). null ⇒ no scheme ⇒ use policy days.
+        // type; the EA-1955 floor still clamps on top. null ⇒ no scheme ⇒ use policy days. One shared
+        // composition (entitledDays, feedback ae5b84d5) so this can never drift from the recalc kernel.
         const schemeDays = schemeDaysFor(e.employmentId, t.id, years);
-        const policyDays = schemeDays ?? (pol?.days ?? 0);
-        const days = Math.max(pack.leave.entitlement(t.code, years), policyDays);
+        const days = entitledDays(pack.leave.entitlement(t.code, years), schemeDays, pol?.days ?? 0);
         if (days <= 0) continue;
         const before = balanceBy.get(key) ?? 0;
         // Carry-forward enhancement: ANNUAL carries only when the explicit toggle is on (back-compat
@@ -5326,9 +5332,10 @@ export async function accrueEarnedLeave(
           }
         }
         // Benefit Scheme (b83c6a3b): scheme band days supersede pol.days as the annual target; EA floor still
-        // clamps. null ⇒ fall back to the earned policy's own days.
+        // clamps. null ⇒ fall back to the earned policy's own days. Shared composition (entitledDays,
+        // feedback ae5b84d5) — identical to openLeaveYear / the hire grant / the recalc kernel.
         const schemeTargetDays = schemeDaysFor(e.employmentId, typeId, years);
-        const entitlement = Math.max(pack.leave.entitlement(type.code, years), schemeTargetDays ?? pol!.days);
+        const entitlement = entitledDays(pack.leave.entitlement(type.code, years), schemeTargetDays, pol!.days);
         if (entitlement <= 0) continue;
         const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
         const accrualStart =
@@ -5436,6 +5443,12 @@ export function projectExpectedEntitlement(
   policyRows: GradePolicyRow[],
   floor: (code: string, years: number) => number,
   asOf: string,
+  /** Auto-link entitlement (ae5b84d5): the employee's benefit-scheme band days for this type at a given
+   *  service length (buildSchemeEntitlementResolver, partially applied by the caller). null = no scheme /
+   *  no entitlement for the type ⇒ fall back to the policy days. Called with the FINAL `years` — i.e.
+   *  AFTER the anniversary re-resolution below, so the hook always sees the same band anchor as `pol`.
+   *  Absent (undefined) ⇒ byte-identical pre-existing behaviour. */
+  schemeDaysForYears?: (years: number) => number | null,
 ): { expected: number; windowStart: string } | null {
   const yearStart = `${asOf.slice(0, 4)}-01-01`;
   const cycleStartEarned = earnedCycleStart(emp.hiredOn, asOf, emp.leaveCycle);
@@ -5453,8 +5466,10 @@ export function projectExpectedEntitlement(
   const windowStart = earnedMethod ? cycleStartEarned : yearStart;
 
   // ⚠️ EA-FLOOR INVARIANT — identical to openLeaveYear / the hire grant / accrueEarnedLeave: the resolved
-  // entitlement is max(statutory floor, policy). A below-floor correction claws back only down TO the floor.
-  const days = Math.max(floor(typeCode, years), pol?.days ?? 0);
+  // entitlement is max(statutory floor, scheme ?? policy) — one shared composition (entitledDays). A
+  // below-floor correction claws back only down TO the floor. The scheme hook receives the FINAL years
+  // (post-re-resolution above), matching the sweeps' own band anchor.
+  const days = entitledDays(floor(typeCode, years), schemeDaysForYears?.(years) ?? null, pol?.days ?? 0);
   let expected: number;
   if (earnedMethod) {
     const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
@@ -5469,6 +5484,15 @@ export function projectExpectedEntitlement(
   } else {
     // Existing employee (year-open grant) or a non-prorating type: the full resolved amount.
     expected = days;
+  }
+  // Feedback 9d8cf621 mirrored into the kernel (ae5b84d5): the winning band's Maximum Balance cap bounds
+  // what the granting engines will ever materialize this cycle (applyMaxBalance at year-open/hire; the
+  // earned room-cap in accrueEarnedLeave), so the projection must not exceed it either — on BOTH the
+  // upfront and earned paths. Documented approximation: a carried-in prior-year balance is not re-derived
+  // here — the year-open already capped carry+grant, and this clamp guarantees the in-cycle granted total
+  // never exceeds the cap. No cap (null/undefined) ⇒ pass-through.
+  if (pol?.maxBalanceDays != null) {
+    expected = Math.min(expected, round2(Math.max(0, pol.maxBalanceDays)));
   }
   return { expected, windowStart };
 }
@@ -5594,6 +5618,9 @@ export async function reprojectEntitlementForPolicy(
       leaveCycle: company.leaveCycle,
       gradeId: employment.gradeId,
       companyId: employment.companyId,
+      // ae5b84d5: the manual scheme override — without it an override-assigned employee resolves to the
+      // wrong scheme below and gets a wrong delta.
+      benefitSchemeId: employment.benefitSchemeId,
     })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))
@@ -5606,6 +5633,21 @@ export async function reprojectEntitlementForPolicy(
     );
   if (emps.length === 0) return none;
   const empIds = emps.map((e) => e.employmentId);
+
+  // Auto-link entitlement (ae5b84d5): resolve each cohort employee's scheme entitlement ONCE. A scheme-
+  // superseded employee's expected days now match what openLeaveYear/accrueEarnedLeave actually granted
+  // (scheme days), so a routine policy edit no longer claws those balances back (delta 0). No schemes ⇒
+  // the resolver short-circuits to `() => null` — byte-identical back-compat.
+  const schemeDaysFor = await buildSchemeEntitlementResolver(
+    tx,
+    emps.map((e) => ({
+      employmentId: e.employmentId,
+      companyId: e.companyId,
+      gradeId: e.gradeId,
+      overrideSchemeId: e.benefitSchemeId,
+    })),
+    [p.leaveTypeId],
+  );
 
   // 5. Bulk ledger read (never per-employee): trailing ~12 months covers every possible cycle start
   //    (calendar Jan-1 and any anniversary month) — the accrueEarnedLeave pattern. Fetch the `accrual`
@@ -5663,6 +5705,8 @@ export async function reprojectEntitlementForPolicy(
       policyRows,
       (c, y) => pack.leave.entitlement(c, y),
       p.asOf,
+      // ae5b84d5: this employee's scheme band days supersede the policy days in the projection.
+      (years) => schemeDaysFor(e.employmentId, p.leaveTypeId, years),
     );
     if (!projected) continue;
     const { expected, windowStart } = projected;
@@ -5756,6 +5800,8 @@ export async function reprojectEntitlementForEmployment(
         terminatedOn: employment.terminatedOn,
         country: company.country,
         leaveCycle: company.leaveCycle,
+        // ae5b84d5: the manual scheme override feeds the scheme resolver below.
+        benefitSchemeId: employment.benefitSchemeId,
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -5803,6 +5849,22 @@ export async function reprojectEntitlementForEmployment(
       if (arr) arr.push(row);
       else policyByType.set(r.leaveTypeId, [row]);
     }
+
+    // Auto-link entitlement (ae5b84d5): resolve THIS employment's effective benefit scheme once across all
+    // active types, so the profile-triggered projection matches what the grant sweeps actually pay (scheme
+    // days supersede policy days; EA floor still clamps). No schemes ⇒ `() => null` (back-compat).
+    const schemeDaysFor = await buildSchemeEntitlementResolver(
+      tx,
+      [
+        {
+          employmentId: emp.employmentId,
+          companyId: emp.companyId,
+          gradeId: emp.gradeId,
+          overrideSchemeId: emp.benefitSchemeId,
+        },
+      ],
+      typeIds,
+    );
 
     // 4. This employment's ledger across all types (accrual grants + prior recalc adjustments) — the
     //    trailing ~12 months covers every possible cycle start (calendar Jan-1 and any anniversary month).
@@ -5854,6 +5916,8 @@ export async function reprojectEntitlementForEmployment(
         policyByType.get(type.id) ?? [],
         (c, y) => pack.leave.entitlement(c, y),
         asOf,
+        // ae5b84d5: the scheme band days for this type supersede the policy days in the projection.
+        (years) => schemeDaysFor(emp.employmentId, type.id, years),
       );
       if (!projected) continue;
       const { expected, windowStart } = projected;
@@ -5912,6 +5976,83 @@ export async function reprojectEntitlementForEmployment(
     }
     return { affected, totalDelta };
   });
+}
+
+/**
+ * Auto-link entitlement to profile (feedback ae5b84d5) — the SCHEME-SIDE cohort recalculation. When HR
+ * edits the Grade Group configuration itself (a scheme's entitlement bands, the scheme's identity/status,
+ * or a grade group's membership), every employee the change can touch must be trued up — including
+ * DOWNWARD earned corrections, which the monthly run alone can never post (accrueEarnedLeave only grants
+ * when the shortfall is positive).
+ *
+ * Cohort resolution (deliberately a SUPERSET — an unaffected employee computes delta 0 and posts nothing):
+ *  - `schemeId`  → every live employment in the scheme's company, PLUS any employment whose manual
+ *                  override (`employment.benefit_scheme_id`) points at that scheme (any company).
+ *  - `gradeIds`  → every live employment whose grade is in the list (the union of a grade group's
+ *                  before/after membership — see updateGradeGroup).
+ *
+ * Then loops `reprojectEntitlementForEmployment` SEQUENTIALLY, best-effort per employee (log + continue):
+ * a rare admin operation, so per-employee transactions are acceptable, and one frozen/hiccuping employee
+ * never blocks the rest. MUST be called AFTER the config-write transaction has committed (the actions do),
+ * never inside it — each per-employee recalc opens its own transaction and reads the committed config.
+ * No summary event of its own: the config write appended its audit event, and every posted correction
+ * carries its per-row `leave.entitlement.recalculated` event + recalc-audit row (the existing trail).
+ */
+export async function reprojectEntitlementForSchemeCohort(
+  ctx: SessionContext,
+  p: { schemeId?: string; gradeIds?: string[]; trigger: string; asOf?: string },
+): Promise<{ employees: number; affected: number; totalDelta: number }> {
+  const asOf = p.asOf ?? todayInKualaLumpur();
+  const gradeIds = (p.gradeIds ?? []).filter(Boolean);
+  // Read-only candidate resolution (no events — CLAUDE.md skip rule). Same live-in-cycle window guard the
+  // granting engines use; reprojectEntitlementForEmployment re-checks it per employment anyway.
+  const empIds = await withTenant(ctx, async (tx) => {
+    const ids = new Set<string>();
+    const yearStart = `${asOf.slice(0, 4)}-01-01`;
+    const liveCond = () =>
+      and(
+        lte(employment.hiredOn, asOf),
+        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
+      );
+    if (p.schemeId) {
+      const [scheme] = await tx
+        .select({ companyId: benefitScheme.companyId })
+        .from(benefitScheme)
+        .where(eq(benefitScheme.id, p.schemeId))
+        .limit(1);
+      const memberCond = scheme
+        ? or(eq(employment.companyId, scheme.companyId), eq(employment.benefitSchemeId, p.schemeId))
+        : eq(employment.benefitSchemeId, p.schemeId);
+      const rows = await tx
+        .select({ id: employment.id })
+        .from(employment)
+        .where(and(liveCond(), memberCond));
+      for (const r of rows) ids.add(r.id);
+    }
+    if (gradeIds.length) {
+      const rows = await tx
+        .select({ id: employment.id })
+        .from(employment)
+        .where(and(liveCond(), inArray(employment.gradeId, gradeIds)));
+      for (const r of rows) ids.add(r.id);
+    }
+    return [...ids];
+  });
+
+  let affected = 0;
+  let totalDelta = 0;
+  for (const employmentId of empIds) {
+    try {
+      const res = await reprojectEntitlementForEmployment(ctx, { employmentId, asOf, trigger: p.trigger });
+      affected += res.affected;
+      totalDelta = round2(totalDelta + res.totalDelta);
+    } catch (e) {
+      // Best-effort per employee: the recalc is idempotent and self-heals on the next trigger — one
+      // failing employment must not abort the rest of the cohort.
+      console.error(`scheme-cohort recalc failed for employment ${employmentId}:`, e);
+    }
+  }
+  return { employees: empIds.length, affected, totalDelta };
 }
 
 /** R45 7527ea5f — the profile-change recalculation history for one employment (newest first), joined to

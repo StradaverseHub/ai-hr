@@ -6,6 +6,7 @@ import { Badge } from './ui/badge';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { inputCls } from './ui';
 import { PayStructureFields, type PayModeOption } from './pay-structure-fields';
+import { CurrencySelect } from './currency-select';
 import { editCompensationAction, supersedeCompensationAction } from '@/app/admin/personnel/[employmentId]/actions';
 
 export type SalaryStatus = 'active' | 'future' | 'historical';
@@ -319,6 +320,12 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
                               className={`${inputCls} w-40`}
                             />
                           </label>
+                          {/* 297ae65a — edit the open row's salary currency in place (searchable ISO 4217
+                              select; the service validates and records only a real change). */}
+                          <div className="flex w-56 flex-col gap-1.5">
+                            <span className="text-xs font-medium text-muted-foreground">{t('salaryCurrency')}</span>
+                            <CurrencySelect name="currency" value={r.currency} />
+                          </div>
                           {/* ADR-0078 — edit the open row's salary structure in place. The service enforces
                               the period-boundary rule and refuses a mode change on a processed period. */}
                           <PayStructureFields

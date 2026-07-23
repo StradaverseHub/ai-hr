@@ -420,6 +420,12 @@
       "zakatSummaryInactive": "Không có lựa chọn zakat đang hoạt động cho nhân viên này.",
       "zakatSummaryManageLink": "Quản lý zakat",
       "saveStatutory": "Lưu thông tin pháp lý",
+      "othersStatutoryTitle": "Quy định khác",
+      "othersStatutoryHint": "Các thiết lập theo luật định không thuộc EPF, SOCSO, EIS hoặc Thông tin thuế.",
+      "subjectToHrdf": "Thuộc diện HRDF",
+      "subjectToHrdfHint": "Khi được chọn, thu nhập đủ điều kiện của nhân viên này sẽ được đưa vào tính phí HRD Corp (HRDF) khi xử lý lương; khi bỏ chọn, nhân viên được loại trừ hoàn toàn.",
+      "subjectToHrdfFollowingDefault": "Đang theo mặc định đăng ký HRDF của công ty. Lưu để đặt lựa chọn rõ ràng cho nhân viên này.",
+      "othersStatutorySave": "Lưu quy định khác",
       "assignmentHistory": "Lịch sử phân công",
       "periodValidTime": "Kỳ (thời gian hiệu lực)",
       "department": "Phòng ban",
@@ -430,21 +436,15 @@
       "dataPrivacyTitle": "Quyền riêng tư dữ liệu (PDPA)",
       "dataPrivacyNote": "Chạy xóa PDPA có bảo vệ theo quy định lưu giữ cho nhân viên này — hủy những gì có thể, giữ những gì luật yêu cầu.",
       "dataPrivacyLink": "Mở quyền riêng tư dữ liệu",
-      "reportingLines": "Tuyến báo cáo",
-      "reportsTo": "Báo cáo cho",
-      "noManagers": "Không có quản lý.",
-      "endReportingLine": "Kết thúc tuyến báo cáo",
-      "directReports": "Nhân viên trực tiếp",
-      "noDirectReports": "Không có nhân viên trực tiếp.",
-      "manager": "Quản lý",
-      "lineType": "Loại tuyến",
-      "lineTypeAdministrative": "Hành chính",
-      "lineTypeFunctional": "Chức năng",
-      "lineTypeProject": "Dự án",
-      "lineTypeDotted": "Tuyến nét đứt",
-      "lineTypeDottedBadge": "tuyến nét đứt",
-      "addReportingLine": "Thêm tuyến báo cáo",
-      "reportingLineEffectiveFrom": "Hiệu lực từ",
+      "directSuperiorTitle": "Cấp trên trực tiếp",
+      "directSuperiorCurrent": "Cấp trên trực tiếp hiện tại",
+      "directSuperiorLabel": "Cấp trên trực tiếp",
+      "directSuperiorNone": "Chưa có cấp trên trực tiếp",
+      "directSuperiorSearch": "Tìm theo mã nhân viên hoặc tên",
+      "directSuperiorNoResults": "Không có nhân viên phù hợp.",
+      "directSuperiorSave": "Lưu",
+      "directSuperiorHistory": "Các cấp trên trước đây",
+      "directSuperiorHint": "Hệ thống tự động xây dựng cấp bậc báo cáo và phê duyệt theo Cấp trên trực tiếp của từng nhân viên — không cần cấu hình cấp phê duyệt.",
       "transferTitle": "Điều chuyển (theo ngày hiệu lực)",
       "newDepartment": "Phòng ban mới",
       "effectiveDate": "Ngày hiệu lực",
@@ -638,6 +638,36 @@
         "deleteFamilyConfirmTitle": "Xóa hồ sơ thành viên gia đình?",
         "deleteFamilyConfirmBody": "Thao tác này xóa thành viên gia đình khỏi sổ đăng ký gia đình. Nếu khoản giảm trừ cho con ở chế độ tự động, số con được giảm trừ của nhân viên sẽ được cập nhật tương ứng."
       },
+      "qualification": {
+        "title": "Thông tin bằng cấp",
+        "add": "Thêm bằng cấp",
+        "addTitle": "Thêm bằng cấp",
+        "editTitle": "Sửa bằng cấp",
+        "viewTitle": "Xem bằng cấp",
+        "view": "Xem",
+        "edit": "Sửa",
+        "save": "Lưu",
+        "delete": "Xóa",
+        "deleteConfirmTitle": "Xóa bằng cấp",
+        "deleteConfirmBody": "Xóa bản ghi bằng cấp này? Nó sẽ không còn hiển thị trong lịch sử bằng cấp của nhân viên này.",
+        "none": "Chưa có bản ghi bằng cấp.",
+        "hint": "Bộ phận nhân sự quản lý các bản ghi này. Loại bằng cấp được quản lý tại Cài đặt hệ thống > Nhãn hệ thống > Tùy chọn hồ sơ.",
+        "level": "Bằng cấp",
+        "levelPlaceholder": "Chọn bằng cấp",
+        "institute": "Cơ sở đào tạo",
+        "major": "Chuyên ngành / Lĩnh vực học",
+        "fromYm": "Từ (năm & tháng)",
+        "toYm": "Đến (năm & tháng)",
+        "graduationDate": "Ngày tốt nghiệp",
+        "result": "Kết quả / Xếp loại",
+        "resultPlaceholder": "vd. Loại xuất sắc, CGPA 3.75",
+        "description": "Mô tả",
+        "highest": "Bằng cấp cao nhất",
+        "highestColumn": "Cao nhất",
+        "highestBadge": "Cao nhất",
+        "highestHint": "Chỉ một bản ghi có thể là bằng cấp cao nhất. Chọn mục này sẽ chuyển đánh dấu khỏi bản ghi trước đó.",
+        "actions": "Thao tác"
+      },
       "encashmentTitle": "Quy đổi phép năm",
       "encashmentBalance": "Số dư gốc",
       "encashmentAuto": "Số tự động",
@@ -677,7 +707,8 @@
         "documents": "Tài liệu",
         "others": "Khác",
         "empty": "Không có gì để hiển thị ở đây.",
-        "leave": "Nghỉ phép"
+        "leave": "Nghỉ phép",
+        "qualification": "Bằng cấp"
       },
       "employmentInfo": {
         "title": "Thông tin việc làm",
@@ -717,7 +748,7 @@
         "employeeStatus": "Trạng thái nhân viên",
         "category": "Danh mục",
         "readOnlyNote": "Công ty, Phòng ban, Vị trí, Bậc công việc, Loại hình việc làm và Trạng thái nhân viên được hiển thị để tham khảo. Quản lý chúng trong Biến động (điều chuyển) và tab Hồ sơ (bậc) để giữ nguyên lịch sử.",
-        "superiorNote": "Đặt người quản lý (cấp trên) trên thẻ Tuyến báo cáo bên dưới.",
+        "superiorNote": "Đặt Cấp trên trực tiếp tại thẻ bên dưới.",
         "save": "Lưu thông tin việc làm",
         "assignmentGroup": "Phân công tổ chức",
         "assignmentEffectiveDate": "Ngày hiệu lực phân công",
@@ -744,9 +775,6 @@
         "unit_week": "Tuần",
         "unit_day": "Ngày",
         "extendedProbationPeriod": "Thời gian thử việc gia hạn",
-        "extendedConfirmationDate": "Ngày xác nhận gia hạn",
-        "finalConfirmationDate": "Ngày xác nhận cuối cùng",
-        "finalConfirmationNote": "Tự động lấy ngày xác nhận gia hạn nếu có, nếu không lấy ngày xác nhận.",
         "noticeBeforeConfirmation": "Báo trước trước khi xác nhận",
         "noticeAfterConfirmation": "Báo trước sau khi xác nhận",
         "tenderResignationDate": "Ngày nộp đơn nghỉ việc",
@@ -954,7 +982,11 @@
       "recalcReason": {
         "grade_changed": "Thay đổi cấp bậc",
         "employment_changed": "Thay đổi thông tin lao động",
-        "employment_info_changed": "Thay đổi ngày tuyển dụng/xác nhận"
+        "employment_info_changed": "Thay đổi ngày tuyển dụng/xác nhận",
+        "benefit_scheme_override": "Thay đổi phân bổ chế độ phúc lợi",
+        "scheme_entitlement_changed": "Thay đổi bảng quyền lợi của chế độ",
+        "scheme_updated": "Thay đổi chế độ phúc lợi",
+        "grade_group_changed": "Thay đổi nhóm cấp bậc"
       },
       "payMethodGroup": "Nhân viên này được trả lương như thế nào",
       "payMode": "Hình thức tính lương",
@@ -1056,7 +1088,8 @@
           "terminateConfirmTitle": "Chấm dứt hợp đồng lao động?",
           "terminateConfirmDescription": "Thao tác này chấm dứt hợp đồng vào ngày hiệu lực và đóng phân công hiện tại. Thao tác được ghi vào nhật ký kiểm toán."
         }
-      }
+      },
+      "salaryCurrency": "Tiền tệ"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -1536,7 +1569,12 @@
       "otherDevicesNote": "Bạn có tổng cộng {count, plural, one {# thiết bị đã đăng ký} other {# thiết bị đã đăng ký}}.",
       "outsideGeofence": "Bạn hiện đang ở ngoài vị trí chấm công được ủy quyền. Vui lòng di chuyển đến địa điểm làm việc được chỉ định trước khi chấm công vào/ra.",
       "outsideGeofenceDistance": "Bạn đang ở ngoài vị trí chấm công được ủy quyền — cách địa điểm được phê duyệt gần nhất khoảng {distance} m (bán kính cho phép {radius} m).",
-      "locationRequired": "Vị trí của bạn là bắt buộc để chấm công vào/ra tại nơi làm việc này. Vui lòng cho phép truy cập vị trí và thử lại."
+      "locationRequired": "Vị trí của bạn là bắt buộc để chấm công vào/ra tại nơi làm việc này. Vui lòng cho phép truy cập vị trí và thử lại.",
+      "switchShift": "Chuyển",
+      "shiftEndsAt": "Ca này kết thúc lúc {time}",
+      "clockedInAt": "Đã chấm công vào lúc {time}",
+      "sessionsToday": "{count, plural, one {# phiên hoàn thành hôm nay} other {# phiên hoàn thành hôm nay}}",
+      "locationUnknown": "Địa điểm làm việc của bạn được xác định khi bạn chấm công vào"
     }
   },
   "org": {
@@ -2642,7 +2680,8 @@
         "zeroBasic": "Lương cơ bản hoặc mức lương bằng không",
         "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ pháp định (EPF/SOCSO/PCB)",
-        "missingBank": "Thông tin ngân hàng chưa đầy đủ"
+        "missingBank": "Thông tin ngân hàng chưa đầy đủ",
+        "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập"
       },
       "preChecksOpenProfile": "Mở hồ sơ",
       "preChecksBlockedError": "Không thể xử lý lương: {n} nhân viên không có hồ sơ lương hiện tại. Vui lòng khắc phục các mục kiểm tra trước khi xử lý.",
@@ -3181,7 +3220,8 @@
         "zeroBasic": "Lương cơ bản hoặc mức lương bằng không",
         "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ theo luật định (EPF/SOCSO/PCB)",
-        "missingBank": "Thông tin ngân hàng chưa đầy đủ"
+        "missingBank": "Thông tin ngân hàng chưa đầy đủ",
+        "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập"
       }
     },
     "guide": {
@@ -3915,7 +3955,8 @@
       "advanceNoticeSectionHelp": "Nhân viên phải nộp đơn xin loại nghỉ phép này trước ngày bắt đầu bao nhiêu ngày. Để trống nếu không yêu cầu. Quản trị viên HR không bao giờ bị chặn bởi quy tắc này.",
       "advanceCustomMessageHelp": "Hiển thị cho nhân viên khi loại nghỉ phép này được nộp mà không đủ thời gian báo trước. Tối đa 500 ký tự. Để trống để giữ thông báo tiêu chuẩn. Chỉ áp dụng cho loại nghỉ phép này.",
       "recalcToast": "Đã sửa quyền nghỉ — tính lại cho {count} nhân viên (tổng cộng {delta} ngày).",
-      "recalcNoneToast": "Đã sửa chính sách. Không có số dư nhân viên nào thay đổi.",
+      "entitlementUpdatedToast": "Đã cập nhật quyền nghỉ phép thành công",
+      "entitlementRemovedToast": "Đã xóa quyền nghỉ phép thành công",
       "recalcInPlaceHint": "Chỉnh sửa tại đây sẽ sửa quyền nghỉ hiện tại và tự động ghi có lại cho các nhân viên bị ảnh hưởng. Để thay đổi quyền nghỉ từ một ngày trong tương lai, hãy thêm phiên bản mới.",
       "typeMasterTitle": "Loại nghỉ phép",
       "colName": "Tên",
@@ -4106,7 +4147,11 @@
           "forfeited": "Bị mất",
           "totalAvailable": "Tổng khả dụng"
         }
-      }
+      },
+      "gradeSearchLabel": "Tìm kiếm bậc",
+      "gradeSearchPlaceholder": "Tìm theo mã hoặc tên…",
+      "gradeSearchNoResults": "Không có bậc nào khớp với tìm kiếm của bạn.",
+      "gradeDragAria": "Kéo {name} vào một nhóm bậc"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -4620,7 +4665,7 @@
       "clockingNote": "Chỉ có thể xóa khi địa điểm không có nhân viên được gán và không có lịch sử chấm công. Nếu không, hãy lưu trữ địa điểm đó."
     },
     "leaveTabs": {
-      "types": "Loại nghỉ phép",
+      "types": "Tóm tắt",
       "entitlements": "Quyền lợi",
       "applicationRules": "Quy tắc nộp đơn",
       "approval": "Quy trình phê duyệt",
@@ -4673,7 +4718,8 @@
         "team": "Nhóm",
         "base": "Cơ sở",
         "category": "Loại",
-        "dependentRelationship": "Quan hệ gia đình"
+        "dependentRelationship": "Quan hệ gia đình",
+        "qualificationLevel": "Trình độ bằng cấp"
       },
       "col": {
         "code": "Mã",
@@ -4902,7 +4948,9 @@
       "createGroupTitle": "Nhóm các loại nghỉ",
       "createGroupHelp": "Các loại nghỉ được nhóm dùng chung một giới hạn tổng mỗi năm. Nhân viên sẽ thấy tên nhóm khi chạm giới hạn.",
       "totalLimitPerYear": "Giới hạn tổng (ngày / năm)",
-      "createGroupConfirm": "Tạo nhóm"
+      "createGroupConfirm": "Tạo nhóm",
+      "dropGradeHint": "Kéo một bậc từ Danh mục bậc thả vào một nhóm để thêm — hoặc đánh dấu ô chọn của bậc đó trong nhóm rồi lưu.",
+      "gradeAlreadyInGroup": "{name} đã có trong nhóm này."
     }
   },
   "topbar": {
@@ -5686,7 +5734,9 @@
     "release_relative": "Tương đối so với ngày trả lương",
     "releaseValue": "Ngày / độ lệch",
     "releaseValuePlaceholder": "vd. 5 hoặc -2",
-    "releaseHint": "Kiểm soát khi nào nhân viên thấy phiếu lương trong tự phục vụ. Ngày cố định = một ngày của tháng sau kỳ lương; tương đối = số ngày trước(-)/sau(+) ngày trả lương. Không bao giờ trước khi chốt lương."
+    "releaseHint": "Kiểm soát khi nào nhân viên thấy phiếu lương trong tự phục vụ. Ngày cố định = một ngày của tháng sau kỳ lương; tương đối = số ngày trước(-)/sau(+) ngày trả lương. Không bao giờ trước khi chốt lương.",
+    "defaultCurrency": "Tiền tệ lương mặc định",
+    "defaultCurrencyHint": "Bản ghi Lương cơ bản mới sẽ chọn sẵn tiền tệ này; HR có thể thay đổi cho từng bản ghi."
   },
   "employeeIdConfig": {
     "title": "Thiết lập số chạy tự động cho Mã nhân viên",
@@ -7105,5 +7155,11 @@
       "admin": "Tạo tài khoản quản trị viên",
       "invitation": "Cấp liên kết kích hoạt"
     }
+  },
+  "currencySelect": {
+    "placeholder": "Chọn tiền tệ",
+    "searchPlaceholder": "Tìm tiền tệ…",
+    "noResults": "Không tìm thấy tiền tệ",
+    "legacySuffix": "(giá trị hiện có)"
   }
 }

@@ -5,6 +5,7 @@ import { isAdmin, requireAdmin } from '@/lib/authz';
 import {
   assignmentHistory,
   delegationsFor,
+  directSuperiorHistoryFor,
   employeeAudit,
   employeeDetail,
   leaveBalances,
@@ -23,16 +24,18 @@ import { deriveSummaryBalance } from '@/components/leave/entitlement-panel-confi
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
+// Direct Superior (dce55aff): the searchable employee picker reuses the shared Combobox — its label
+// carries "EMP-0008 – John Tan" so type-ahead matches Employee ID and name alike.
+import { Combobox } from '@/components/ui/combobox';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
 import { SameAsPermanentAddress } from '@/components/same-as-permanent-address';
 import {
   addDelegationAction,
-  addReportingLineAction,
   endDelegationAction,
-  endReportingLineAction,
   setCompensationAction,
+  setDirectSuperiorAction,
   setComplianceFieldsAction,
   setContactAddressAction,
   setEmergencyContactAction,
@@ -52,6 +55,7 @@ import {
   setIcAction,
   setPassportAction,
   setTaxAction,
+  setOthersStatutoryAction,
 } from './actions';
 // Movement tab redesign (78853b97): Employment History projection + New Event dispatcher.
 import { movementHistory, movementDetail } from '@/core/movement';
@@ -70,10 +74,16 @@ import {
 import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
 import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
+// 297ae65a — searchable ISO 4217 Currency select for the Basic Salary form + the company default it preselects.
+import { CurrencySelect } from '@/components/currency-select';
+import { getPayrollConfig } from '@/core/payroll-config';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
 import { listDependents, eligibleChildReliefCount, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
+// Feedback a949184a — Qualification tab: per-employment academic/professional qualification register.
+import { listQualifications, type QualificationRow } from '@/core/qualifications';
+import { addQualificationAction, editQualificationAction, archiveQualificationAction } from './qualification-actions';
 import { FamilyFormDialog } from '@/components/family-form-dialog';
 import { FamilyRelationshipFields } from '@/components/family-relationship-fields';
 import { listAssignablePolicies } from '@/core/payroll-policy';
@@ -91,6 +101,10 @@ import { DocumentsSection } from './documents-section';
 import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
 import { getStatutoryProfileMY, defaultSocsoEisNumber } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
+// Feedback 0df0c635 — the Others Statutory card needs the company's HRDF registration band for the
+// "Subject to HRDF" effective default. Read via the registry, NOT a direct localization/my import
+// (ADR-0080 ratchet: app files consume the pack interface).
+import { packFor } from '@/localization/registry';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { PhotoEditMenu } from '@/components/photo-edit-menu';
@@ -111,14 +125,6 @@ function LeaveStatus({ status, label }: { status: string; label: string }) {
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${LEAVE_STATUS[status] ?? ''}`}>
       {label}
-    </span>
-  );
-}
-
-function LineTypeBadge({ type, dottedLabel }: { type: string; dottedLabel: string }) {
-  return (
-    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-      {type === 'dotted' ? dottedLabel : type}
     </span>
   );
 }
@@ -216,6 +222,11 @@ export default async function EmployeePage({
   // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
   const closedPayrollPeriods = admin ? await closedPayrollPeriodsFor(s, employmentId) : [];
   const statutory = admin ? await getStatutoryProfileMY(s, emp.personId) : null;
+  // Feedback 0df0c635 — the company's HRDF registration band (Others Statutory card): a registered company
+  // (mandatory/optional) defaults its employees to Subject to HRDF; not_registered defaults to not subject.
+  // Read via the pack registry (ADR-0080 ratchet). Admin-only, like every other statutory read here.
+  const companyStatutoryRow = admin ? ((await packFor('MY')?.companyStatutory.get(s, emp.companyId)) ?? null) : null;
+  const hrdfCompanyDefault = (companyStatutoryRow?.hrdfStatus ?? 'not_registered') !== 'not_registered';
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
   const holidayGroups = admin ? await listHolidayGroups(s) : [];
   // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
@@ -243,8 +254,17 @@ export default async function EmployeePage({
   // Personnel — Family / Dependents (phase 1): per-person benefits/insurance register (admin-only). Keyed
   // on person_id (already loaded on emp), NOT employment_id. Does NOT feed the tax num_children figure.
   const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
+  // Feedback a949184a — Qualification tab: this employment's academic/professional qualification records
+  // (admin-only surface; employment-keyed, unlike the person-keyed Family register). Sorted by the service:
+  // most recent graduation first, in-progress (blank graduation date) last.
+  const qualifications = admin ? await listQualifications(s, { employmentId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
+  // 297ae65a — the company's configured default salary currency (company_payroll_config.default_currency,
+  // 'MYR' when unset): the Basic Salary form preselects it for a brand-new first record.
+  const defaultSalaryCurrency = admin
+    ? ((await getPayrollConfig(s, emp.companyId))?.defaultCurrency ?? 'MYR')
+    : 'MYR';
   // R46 79eb7151 — resolve the policy the payroll kernel will ACTUALLY use for this employee (direct
   // assignment → company default → null ⇒ monthly default), so the Salary section can surface its Pay Mode
   // and Payment Term read-only. Resolving rather than reading emp.payrollPolicyId matters: an employee with
@@ -266,6 +286,22 @@ export default async function EmployeePage({
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
+  // Direct Superior (dce55aff): the CURRENT superior is the active administrative reporting line (the
+  // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
+  // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
+  const currentSuperior = reporting.managers.find((m) => m.lineType === 'administrative') ?? null;
+  const superiorHistory = admin ? await directSuperiorHistoryFor(s, employmentId) : [];
+  // "EMP-0008 – John Tan" labels: the Combobox filters on the label, so one picker searches Employee ID
+  // and name alike. Active employees only (`others` already excludes self + terminated); the current
+  // superior is prepended if no longer in that set (e.g. terminated) so the field never shows a raw id.
+  const superiorLabel = (code: string | null, name: string) => (code ? `${code} – ${name}` : name);
+  const superiorOptions = others.map((o) => ({ value: o.employmentId, label: superiorLabel(o.employeeCode, o.name) }));
+  if (currentSuperior && !superiorOptions.some((o) => o.value === currentSuperior.employmentId)) {
+    superiorOptions.unshift({
+      value: currentSuperior.employmentId,
+      label: superiorLabel(currentSuperior.employeeCode, currentSuperior.name),
+    });
+  }
   const changeHistory = admin ? await employeeAudit(s, employmentId) : [];
   // Movement tab redesign (78853b97): Employment History is a read-model projection over the
   // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
@@ -297,6 +333,8 @@ export default async function EmployeePage({
         category: [],
         // ea36b7fa — Family tab Relationship catalog (admin-only surface; empty ⇒ built-in fallback).
         dependentRelationship: [],
+        // a949184a — Qualification tab level catalog (non-admin viewers never render the form).
+        qualificationLevel: [],
       } as Awaited<ReturnType<typeof listAllProfileOptions>>);
 
   // Family/Dependents (phase 1): render relationship/gender as STATIC literal i18n keys (a switch, not a
@@ -333,7 +371,7 @@ export default async function EmployeePage({
 
   // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
   // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
-  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'others'; label: string }[] = [
+  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification' | 'others'; label: string }[] = [
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
     { key: 'job', label: t('tabs.job') },
@@ -355,6 +393,10 @@ export default async function EmployeePage({
     { key: 'payroll', label: t('tabs.payroll') },
     { key: 'leave', label: t('tabs.leave') },
     { key: 'documents', label: t('tabs.documents') },
+    // Qualification (feedback a949184a): the employee's academic / professional qualification history —
+    // a list-and-dialog register mirroring the Family tab's table + dialogForm pattern. Placed after
+    // Documents per the request's tab-order example.
+    { key: 'qualification', label: t('tabs.qualification') },
     { key: 'others', label: t('tabs.others') },
   ];
 
@@ -1385,6 +1427,174 @@ export default async function EmployeePage({
     </Card>
   ) : null;
 
+  // ── QUALIFICATION ──────────────────────────────────────────────────────────
+  // Feedback a949184a — the employee's academic / professional qualification history, mirroring the Family
+  // tab's list-and-dialog pattern: one summary table (Qualification / Institute / Major / Graduation Date /
+  // Highest) + a single Add Qualification dialog posting to the event-logged core service. The Qualification
+  // dropdown is catalog-backed (System Labels > Profile Options, category qualificationLevel) with the
+  // standard legacy-value merge: a stored value whose option was deactivated/renamed still renders (and
+  // re-saves) pre-selected. Exactly ONE record can be the Highest Qualification — ticking it on save
+  // transfers the flag from the previous holder (core/qualifications.ts, backstopped by a partial unique
+  // index). Rows arrive pre-sorted from the service: most recent graduation first, in-progress last.
+  const qualificationLevelLabels = new Map(profileOptions.qualificationLevel.map((o) => [o.value, o.label]));
+  const qualificationLabelOf = (v: string) => qualificationLevelLabels.get(v) ?? v;
+  const qualificationOptions = profileOptions.qualificationLevel.map((o) => ({ value: o.value, label: o.label }));
+  const qualificationOptionsFor = (q: QualificationRow | null) =>
+    q && !qualificationOptions.some((o) => o.value === q.qualification)
+      ? [
+          ...qualificationOptions,
+          { value: q.qualification, label: `${q.qualification} ${t('optionLegacySuffix')}` },
+        ]
+      : qualificationOptions;
+
+  // Shared field inputs for one qualification form (Add when q is null, Edit otherwise). Control names are
+  // load-bearing for qualification-actions.ts. HTML `required` on the level select + max-length guards are
+  // the client-side floor; the service re-validates (active catalog, YYYY-MM periods, From ≤ To,
+  // Graduation ≥ From) on save.
+  const qualificationFields = (q: QualificationRow | null) => (
+    <>
+      <Field label={t('qualification.level')}>
+        <select name="qualification" required defaultValue={q?.qualification ?? ''} className={inputCls}>
+          <option value="">{t('qualification.levelPlaceholder')}</option>
+          {qualificationOptionsFor(q).map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label={t('qualification.institute')}>
+        <input name="institute" defaultValue={q?.institute ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('qualification.fromYm')}>
+        <input name="fromYm" type="month" defaultValue={q?.fromYm ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('qualification.toYm')}>
+        <input name="toYm" type="month" defaultValue={q?.toYm ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('qualification.graduationDate')}>
+        <input name="graduationDate" type="date" defaultValue={q?.graduationDate ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('qualification.major')}>
+        <input name="major" defaultValue={q?.major ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('qualification.result')}>
+        <input name="result" defaultValue={q?.result ?? ''} placeholder={t('qualification.resultPlaceholder')} className={inputCls} />
+      </Field>
+      <div className="sm:col-span-2">
+        <Field label={t('qualification.description')}>
+          <textarea name="description" rows={2} defaultValue={q?.description ?? ''} className={taCls} />
+        </Field>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <input type="checkbox" name="isHighest" defaultChecked={q?.isHighest ?? false} />
+          {t('qualification.highest')}
+        </label>
+      </div>
+      <p className="text-xs text-muted-foreground sm:col-span-2">{t('qualification.highestHint')}</p>
+    </>
+  );
+
+  // One dialog form for Add (q null) and Edit — the Family tab's dialogForm pattern. The STATIC hidden
+  // `tab` input keeps the post-save redirect on this tab (Dialog.Portal reparents the form outside the
+  // PersonnelTabs shell, so the shell's submit listener never sees it — see the Family tab note).
+  const qualificationDialogForm = (q: QualificationRow | null) => (
+    <form action={q ? editQualificationAction : addQualificationAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      {q && <input type="hidden" name="id" value={q.id} />}
+      <input type="hidden" name="tab" value="qualification" data-tab-tracker="" />
+      {qualificationFields(q)}
+      <div className="flex justify-end sm:col-span-2">
+        <button className={btnPrimary}>{q ? t('qualification.save') : t('qualification.add')}</button>
+      </div>
+    </form>
+  );
+
+  // View: the SAME server-rendered fields, disabled inside a fieldset with no <form> — the Family tab's
+  // viewDialogBody pattern (the read-only view can never drift from the Edit layout, and can never post).
+  const qualificationViewBody = (q: QualificationRow) => (
+    <fieldset disabled>
+      <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">{qualificationFields(q)}</div>
+    </fieldset>
+  );
+
+  const qualificationPanel = admin ? (
+    <Card id="section-qualification" className="overflow-hidden">
+      <SectionHeader title={t('qualification.title')} count={qualifications.length} />
+      <section className="border-t border-border">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+          <FamilyFormDialog triggerLabel={t('qualification.add')} title={t('qualification.addTitle')}>
+            {qualificationDialogForm(null)}
+          </FamilyFormDialog>
+        </div>
+        {qualifications.length === 0 ? (
+          <p className="px-4 pb-4 text-sm text-muted-foreground">{t('qualification.none')}</p>
+        ) : (
+          <div className="overflow-x-auto px-4 pb-4">
+            <table className="w-full min-w-[52rem] text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">{t('qualification.level')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('qualification.institute')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('qualification.major')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('qualification.graduationDate')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('qualification.highestColumn')}</th>
+                  <th className="py-2 text-right font-medium">{t('qualification.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {qualifications.map((q) => (
+                  <tr key={q.id} className="border-b border-border/60 align-top">
+                    <td className="py-2 pr-3 font-medium">{qualificationLabelOf(q.qualification)}</td>
+                    <td className="py-2 pr-3">{q.institute ?? '—'}</td>
+                    <td className="py-2 pr-3">{q.major ?? '—'}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{q.graduationDate ?? '—'}</td>
+                    <td className="py-2 pr-3">
+                      {q.isHighest ? <Badge variant="success">{t('qualification.highestBadge')}</Badge> : '—'}
+                    </td>
+                    <td className="py-2">
+                      <div className="flex items-center justify-end gap-2">
+                        <FamilyFormDialog
+                          triggerLabel={t('qualification.view')}
+                          triggerVariant="outline"
+                          title={t('qualification.viewTitle')}
+                        >
+                          {qualificationViewBody(q)}
+                        </FamilyFormDialog>
+                        <FamilyFormDialog
+                          triggerLabel={t('qualification.edit')}
+                          triggerVariant="outline"
+                          title={t('qualification.editTitle')}
+                        >
+                          {qualificationDialogForm(q)}
+                        </FamilyFormDialog>
+                        {/* Delete lives INSIDE the tab shell, so ConfirmSubmit's requestSubmit() fires a
+                            bubbling submit the shell's capture listener sees (tab retention for free). */}
+                        <form action={archiveQualificationAction}>
+                          <input type="hidden" name="employmentId" value={emp.employmentId} />
+                          <input type="hidden" name="id" value={q.id} />
+                          <ConfirmSubmit
+                            size="sm"
+                            variant="destructive"
+                            title={t('qualification.deleteConfirmTitle')}
+                            description={t('qualification.deleteConfirmBody')}
+                            confirmLabel={t('qualification.delete')}
+                          >
+                            {t('qualification.delete')}
+                          </ConfirmSubmit>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('qualification.hint')}</p>
+    </Card>
+  ) : null;
+
   // 2.1 Payroll Policy — assign the named pay-processing template applied to this employee. Admin-only;
   // payroll uses it automatically on the next run. Null = monthly default.
   const payrollPolicyCard = admin && !emp.terminatedOn ? (
@@ -1721,6 +1931,12 @@ export default async function EmployeePage({
             <Field label={t('basicSalaryMyr')}>
               <input name="basicSalary" type="number" min="0" step="0.01" required className={inputCls} />
             </Field>
+            {/* 297ae65a — the record's salary currency, grouped WITH the amount (searchable ISO 4217 list).
+                Preselects the open row's currency (carry-forward made visible) or the company default for
+                a brand-new first record; the service validates + carries forward server-side. */}
+            <Field label={t('salaryCurrency')}>
+              <CurrencySelect name="currency" value={openSalaryRow?.currency ?? defaultSalaryCurrency} />
+            </Field>
             <Field label={t('salaryColRemarks')}>
               <input
                 name="remarks"
@@ -2004,6 +2220,41 @@ export default async function EmployeePage({
   // (Malaysia) card as a nested "Income Tax (PCB)" section (see statutoryCard above). Income tax is a Malaysia
   // statutory payroll item, so all statutory fields now live in one box. The IdentityTaxCard island still owns
   // its own setTaxAction partial save — only its render location + chrome (embedded mode) changed.
+
+  // ── OTHERS STATUTORY (Bank & Statutory tab) ─────────────────────────────────
+  // Feedback 0df0c635 — the home for statutory settings that don't belong under EPF, SOCSO, EIS or Tax
+  // Information (extensible for future controls without a redesign), starting with the per-employee
+  // "Subject to HRDF" checkbox. Its own card with its OWN partial save (setOthersStatutoryAction → the
+  // pack's setOthersStatutory), like the Bank/TP3/Tax split-out precedents, so saving it can never touch
+  // the full-row statutory form and vice versa. Tri-state per the house convention: the stored value is
+  // null until HR saves (⇒ the checkbox shows the EFFECTIVE company-registration default + a "following
+  // company default" hint); a save writes the explicit true/false override. Payroll excludes an
+  // explicit-false employee from the HRD Corp levy entirely.
+  const othersStatutoryCard = admin ? (
+    <Card>
+      <SectionHeader title={t('othersStatutoryTitle')} />
+      <form action={setOthersStatutoryAction} className="flex flex-col gap-3 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <input type="hidden" name="personId" value={emp.personId} />
+        <p className="text-xs text-muted-foreground">{t('othersStatutoryHint')}</p>
+        <label className="flex items-center gap-2 text-sm" title={t('subjectToHrdfHint')}>
+          <input
+            type="checkbox"
+            name="subjectToHrdf"
+            defaultChecked={statutory?.subjectToHrdf ?? hrdfCompanyDefault}
+            className="size-4 rounded"
+          />
+          {t('subjectToHrdf')}
+        </label>
+        {(statutory?.subjectToHrdf ?? null) == null ? (
+          <p className="text-xs text-muted-foreground">{t('subjectToHrdfFollowingDefault')}</p>
+        ) : null}
+        <div className="flex items-end justify-end">
+          <button className={btnPrimary}>{t('othersStatutorySave')}</button>
+        </div>
+      </form>
+    </Card>
+  ) : null;
 
   // ── TP3 / OPENING BALANCES (Payroll tab) ────────────────────────────────────
   // Item a6a47698 — relocated off the Bank & Statutory card onto the Payroll tab. It is a payroll matter
@@ -2616,17 +2867,14 @@ export default async function EmployeePage({
                 </div>
               </Field>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {/* d27961e3 — Extended Confirmation Date and Final Confirmation Date were REMOVED from this card.
+                Probation extensions are managed exclusively through the Movement tab (New Event → Probation
+                Extension), which records the effective date + remarks in the movement history and remains the
+                single mutator of the underlying extended/final columns (kept — they still drive the derived
+                probation status). Only the standard Confirmation Date stays editable here. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label={t('employmentInfo.confirmationDate')}>
                 <input name="confirmationDate" type="date" defaultValue={emp.confirmationDate ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('employmentInfo.extendedConfirmationDate')}>
-                <input name="extendedConfirmationDate" type="date" defaultValue={emp.extendedConfirmationDate ?? ''} className={inputCls} />
-              </Field>
-              <Field label={t('employmentInfo.finalConfirmationDate')}>
-                {/* Derived (= extended ?? normal), recomputed + audited on save; read-only, not submitted. */}
-                <input type="date" disabled value={emp.finalConfirmationDate ?? emp.extendedConfirmationDate ?? emp.confirmationDate ?? ''} className={inputCls} aria-label={t('employmentInfo.finalConfirmationDate')} />
-                <p className="text-xs text-muted-foreground">{t('employmentInfo.finalConfirmationNote')}</p>
               </Field>
             </div>
           </div>
@@ -2688,92 +2936,74 @@ export default async function EmployeePage({
      into the New Event form — kind "Blacklist" routes to the same audited setEmploymentBlacklist
      service (set AND clear), so nothing about the columns or events changed. */
 
-  const reportingLinesCard = (
-    <Card id="section-reporting-lines">
-      <SectionHeader title={t('reportingLines')} />
-        <div className="grid grid-cols-1 divide-border sm:grid-cols-2 sm:divide-x">
-          <div className="p-4">
-            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('reportsTo')}</div>
-            {reporting.managers.length === 0 ? (
-              <div className="text-sm text-muted-foreground">{t('noManagers')}</div>
-            ) : (
-              <ul className="space-y-2">
-                {reporting.managers.map((m) => (
-                  <li key={m.id} className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2">
-                      <Link
-                        href={`/admin/personnel/${m.employmentId}`}
-                        className="text-foreground hover:text-primary"
-                      >
-                        {m.name}
-                      </Link>
-                      <LineTypeBadge type={m.lineType} dottedLabel={t('lineTypeDottedBadge')} />
-                    </span>
-                    <form action={endReportingLineAction}>
-                      <input type="hidden" name="employmentId" value={emp.employmentId} />
-                      <input type="hidden" name="reportingLineId" value={m.id} />
-                      <input type="hidden" name="endDate" value={today} />
-                      <button type="submit" title={t('endReportingLine')} className="text-muted-foreground transition-colors hover:text-red-500">
-                        ×
-                      </button>
-                    </form>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="p-4">
-            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('directReports')}</div>
-            {reporting.reports.length === 0 ? (
-              <div className="text-sm text-muted-foreground">{t('noDirectReports')}</div>
-            ) : (
-              <ul className="space-y-2">
-                {reporting.reports.map((r) => (
-                  <li key={r.id} className="flex items-center gap-2 text-sm">
-                    <Link
-                      href={`/admin/personnel/${r.employmentId}`}
-                      className="text-foreground hover:text-primary"
-                    >
-                      {r.name}
-                    </Link>
-                    <LineTypeBadge type={r.lineType} dottedLabel={t('lineTypeDottedBadge')} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+  /* Direct Superior (dce55aff) — replaces the Reporting Lines card. ONE searchable field (Employee ID
+     or name) answers the one question the system actually asks: who does this person report to. Saving
+     writes the administrative reporting line via setDirectSuperiorAction → setReportingLine (CLOSE +
+     INSERT supersede, validFrom = today, cycle + self-assignment refusal, DomainEvents) — the same
+     engine every approval/visibility consumer already follows, so the change takes effect everywhere
+     immediately. Manager / Line Type / Effective From / multi-line management are gone from the UI;
+     existing functional/project/dotted rows remain in the data (org chart still renders them — their
+     retirement is a follow-up decision, not decided here). Prior superiors stay visible read-only in
+     the compact history disclosure below the field. */
+  const directSuperiorCard = (
+    <Card id="section-direct-superior">
+      <SectionHeader title={t('directSuperiorTitle')} />
+      <div className="space-y-4 p-4">
+        <div className="text-sm">
+          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('directSuperiorCurrent')}</div>
+          {currentSuperior ? (
+            <Link href={`/admin/personnel/${currentSuperior.employmentId}`} className="font-medium text-foreground hover:text-primary">
+              {superiorLabel(currentSuperior.employeeCode, currentSuperior.name)}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">{t('directSuperiorNone')}</span>
+          )}
         </div>
         {!emp.terminatedOn && others.length > 0 && (
-          <form
-            action={addReportingLineAction}
-            className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
-          >
+          <form action={setDirectSuperiorAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <Field label={t('manager')}>
-              <select name="managerEmploymentId" required className={inputCls}>
-                {others.map((o) => (
-                  <option key={o.employmentId} value={o.employmentId}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('lineType')}>
-              <select name="lineType" defaultValue="administrative" className={inputCls}>
-                <option value="administrative">{t('lineTypeAdministrative')}</option>
-                <option value="functional">{t('lineTypeFunctional')}</option>
-                <option value="project">{t('lineTypeProject')}</option>
-                <option value="dotted">{t('lineTypeDotted')}</option>
-              </select>
-            </Field>
-            <Field label={t('reportingLineEffectiveFrom')}>
-              <input name="validFrom" type="date" required defaultValue={today} className={inputCls} />
-            </Field>
+            {/* The no-change guard + the "clear → end current line" path both need the current state. */}
+            <input type="hidden" name="currentSuperiorEmploymentId" value={currentSuperior?.employmentId ?? ''} />
+            <input type="hidden" name="currentLineId" value={currentSuperior?.id ?? ''} />
+            <div className="sm:col-span-2">
+              <Field label={t('directSuperiorLabel')}>
+                <Combobox
+                  name="superiorEmploymentId"
+                  value={currentSuperior?.employmentId ?? ''}
+                  options={superiorOptions}
+                  placeholder={t('directSuperiorNone')}
+                  searchPlaceholder={t('directSuperiorSearch')}
+                  noResultsLabel={t('directSuperiorNoResults')}
+                  legacySuffix=""
+                />
+              </Field>
+            </div>
             <div>
-              <button className={btnPrimary}>{t('addReportingLine')}</button>
+              <button className={btnPrimary}>{t('directSuperiorSave')}</button>
             </div>
           </form>
         )}
+        {superiorHistory.length > 0 && (
+          <details className="text-sm">
+            <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t('directSuperiorHistory')}
+            </summary>
+            <ul className="mt-2 space-y-1">
+              {superiorHistory.map((h) => (
+                <li key={h.id} className="flex items-center justify-between gap-3">
+                  <Link href={`/admin/personnel/${h.managerEmploymentId}`} className="text-foreground hover:text-primary">
+                    {superiorLabel(h.employeeCode, h.name)}
+                  </Link>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {h.validFrom} → {h.validTo}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        <p className="text-xs text-muted-foreground">{t('directSuperiorHint')}</p>
+      </div>
     </Card>
   );
 
@@ -2957,7 +3187,7 @@ export default async function EmployeePage({
     job: (
       <>
         {employmentInfoCard}
-        {reportingLinesCard}
+        {directSuperiorCard}
         {delegationsCard}
       </>
     ),
@@ -3002,6 +3232,9 @@ export default async function EmployeePage({
         {/* Item df09f22a — the Identification & Tax card was merged into statutoryCard as a nested "Income Tax
             (PCB)" section (Income tax is a Malaysia statutory item). One box now holds every statutory field. */}
         {statutoryCard}
+        {/* Feedback 0df0c635 — Others Statutory pinned BELOW the existing statutory cards (reporter-specified
+            order: Statutory (Malaysia) → Tax Information → Others Statutory). */}
+        {othersStatutoryCard}
       </>
     ),
     // Payroll tab keeps pay components, CP38, encashment, policy assignment and compensation. The
@@ -3041,6 +3274,9 @@ export default async function EmployeePage({
       </>
     ),
     documents: documentsPanel,
+    // Qualification (feedback a949184a): the academic/professional qualification register — a single card
+    // mirroring the Family tab's list-and-dialog pattern (see qualificationPanel above).
+    qualification: qualificationPanel,
     others: (
       <>
         {changeHistoryCard}
@@ -3152,11 +3388,12 @@ export default async function EmployeePage({
             </div>
             {/* Item 7a504619 — Direct Superior read straight from the active administrative reporting line
                 (already loaded via reportingLinesFor). Read-only mirror of the Employment tab; a change there
-                shows here automatically. Dash when no manager is assigned. */}
+                shows here automatically. Dash when no manager is assigned. dce55aff: shows the superior's
+                Employee ID alongside the full name ("EMP-0008 – John Tan"). */}
             <div>
               <dt className="text-xs text-muted-foreground">{t('headerSuperior')}</dt>
               <dd className="font-medium text-foreground">
-                {reporting.managers.find((m) => m.lineType === 'administrative')?.name ?? '—'}
+                {currentSuperior ? superiorLabel(currentSuperior.employeeCode, currentSuperior.name) : '—'}
               </dd>
             </div>
             <div>

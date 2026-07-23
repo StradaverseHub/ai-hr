@@ -38,9 +38,12 @@ describe('6c775d68 · the standalone Benefit Schemes section is gone from the pa
   });
 
   it('composes BenefitSchemeConfig ONCE per type inside the panels map, scoped to that type', () => {
-    // Exactly one <BenefitSchemeConfig …> composition remains — the per-panel scoped one.
+    // Exactly one <BenefitSchemeConfig …> composition remains — the per-panel scoped one. 387792a4: the
+    // shared gradesSection node rides in as the config's gradesPanel (Panel A of the workbench).
     expect(pageSrc.match(/<BenefitSchemeConfig/g)?.length).toBe(1);
-    expect(pageSrc).toContain('<BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} />');
+    expect(pageSrc).toContain(
+      '<BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} gradesPanel={gradesSection} />',
+    );
     // …passed into the panel through the Entitlement-step slot, headed by the kept i18n strings.
     expect(pageSrc).toContain('benefitSchemeSection={');
     expect(pageSrc).toContain("{t('benefitSchemeTitle')}");
@@ -60,8 +63,10 @@ describe('6c775d68 · the standalone Benefit Schemes section is gone from the pa
 describe('6c775d68 · the panel renders the scoped area inside the Entitlement step', () => {
   // 7b945408 re-pinned: the Entitlement step became a three-sub-step walk (see
   // leave-entitlement-substeps.test.ts). The scoped Benefit Schemes area now anchors sub-step 1
-  // (Benefit Schemes, after the relocated Grades catalogue); the per-type entitlement table moved to
-  // sub-step 2 (Service Based Entitlements). Both still live inside the SAME Entitlement card — the
+  // (Benefit Schemes); the per-type entitlement table moved to sub-step 2 (Service Based Entitlements).
+  // 387792a4 re-pinned again: the Grades catalogue no longer renders as a separate slot ABOVE the config —
+  // it is Panel A of the three-panel workbench INSIDE BenefitSchemeConfig (gradesPanel; see
+  // entitlement-grade-workbench.test.ts). Both areas still live inside the SAME Entitlement card — the
   // single home this guard exists for.
   it('the benefitSchemeSection slot renders inside the schemes sub-step gate, before the Condition step', () => {
     const gate = panelSrc.indexOf("{entitlementSubStep === 'schemes' && (");

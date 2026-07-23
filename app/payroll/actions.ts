@@ -56,8 +56,12 @@ export async function generateAction(formData: FormData) {
     // existence blocker is gone: the Personnel Basic Salary record is the authoritative pay source.
     // A stale BASIC pay item (amount differing from Personnel) joins the confirm-to-proceed warnings.
     const blockers = checks.missingCompensation.length + (checks.zeroBasic?.length ?? 0);
+    // 297ae65a — a non-MYR/mixed-currency salary joins the confirm-to-proceed warnings (never blocks).
     const warnings =
-      checks.missingStatutory.length + checks.missingBank.length + (checks.staleBasicComponent?.length ?? 0);
+      checks.missingStatutory.length +
+      checks.missingBank.length +
+      (checks.staleBasicComponent?.length ?? 0) +
+      (checks.currencyMismatch?.length ?? 0);
     if (blockers > 0) {
       errMsg = t('preChecksBlockedError', { n: blockers });
     } else if (warnings > 0 && !acknowledged) {

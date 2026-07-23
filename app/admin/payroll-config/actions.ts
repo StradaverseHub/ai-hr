@@ -49,6 +49,8 @@ export async function savePayrollConfigAction(formData: FormData) {
       reviewReminderDays: str(formData, 'reviewReminderDays') ?? null,
       defaultPayrollPolicyId: str(formData, 'defaultPayrollPolicyId') ?? null,
       payslipRelease,
+      // 297ae65a — company default salary currency; cleanCurrency clamps invalid/absent to 'MYR'.
+      defaultCurrency: str(formData, 'defaultCurrency') ?? null,
     });
     await setCompanyStatutoryMY(s, {
       companyId,

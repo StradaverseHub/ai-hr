@@ -1793,6 +1793,34 @@
       "when": 1781862405000,
       "tag": "0305_dependent_relationship_options",
       "breakpoints": true
+    },
+    {
+      "idx": 306,
+      "version": "7",
+      "when": 1781862406000,
+"tag": "0306_subject_to_hrdf",
+      "breakpoints": true
+    },
+    {
+      "idx": 307,
+      "version": "7",
+      "when": 1781862407000,
+      "tag": "0307_company_default_currency",
+      "breakpoints": true
+    },
+    {
+      "idx": 308,
+      "version": "7",
+      "when": 1781862408000,
+      "tag": "0308_employee_qualification",
+      "breakpoints": true
+    },
+    {
+      "idx": 309,
+      "version": "7",
+      "when": 1781862409000,
+      "tag": "0309_backfill_dob_from_ic",
+      "breakpoints": true
     }
   ]
 }

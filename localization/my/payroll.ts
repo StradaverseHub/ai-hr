@@ -209,6 +209,21 @@ export function hrdfLevy(
   return round2(Math.max(0, base) * rate);
 }
 
+/**
+ * Feedback 0df0c635 — effective per-employee HRDF subjectivity (the "Subject to HRDF" checkbox on the
+ * Others Statutory card). Tri-state stored value resolved against the employer's registration band:
+ *   • explicit false → the employee's base is excluded from the levy entirely;
+ *   • explicit true  → included (the registration band still sets the rate — not_registered stays 0);
+ *   • null (untouched) → follow the company default: registered (mandatory/optional) ⇒ subject,
+ *     not_registered ⇒ not — exactly the pre-flag behaviour, so a null row is byte-identical.
+ * Exposed on the pack (D6 vocabulary pattern) so the kernel consumes it via `pack.payroll` without a
+ * direct core→localization/my import (ADR-0080 ratchet).
+ */
+export function hrdfSubject(subjectToHrdf: boolean | null | undefined, status: HrdfStatus): boolean {
+  if (subjectToHrdf != null) return subjectToHrdf;
+  return status !== 'not_registered';
+}
+
 /** Exact schedule lookup: first band the wage fits in; wages above the table contribute at the
  *  top band (both Act 4 and Act 800 prescribe this for wages exceeding RM6,000 — their row 65). */
 function bandFor(bands: ContribBand[], wage: number): ContribBand {

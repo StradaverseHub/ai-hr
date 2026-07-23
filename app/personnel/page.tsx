@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies, listDepartments, listEmployeesPage } from '@/core/read';
+import { deriveEmploymentStatus } from '@/core/employment-status';
 import { Avatar, Card, EmployeeCode, PageHeader, StatusBadge } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 
@@ -26,6 +27,11 @@ export default async function PersonnelPage({
   }>;
 }) {
   const t = await getTranslations('people.list');
+  // Employee Status sync (5afcda91): the directory shows the SAME system-derived Employee Status as
+  // /admin/personnel — deriveEmploymentStatus over the lifecycle dates, never the legacy stored
+  // assignment.status (whose obsolete values must never render anywhere).
+  const tStatus = await getTranslations('people.employeeStatus');
+  const today = new Date().toISOString().slice(0, 10);
   const { s: session, scopeIds } = await scopedSession();
   const { q, page: pageParam, company, dept, status, type } = await searchParams;
   const page = Math.max(0, Number(pageParam) || 0);
@@ -170,7 +176,10 @@ export default async function PersonnelPage({
                 <td className="px-4 py-3 text-muted-foreground">{e.department ?? '—'}</td>
                 <td className="px-4 py-3 text-muted-foreground">{e.company}</td>
                 <td className="px-4 py-3">
-                  <StatusBadge status={e.terminatedOn ? 'terminated' : e.status} />
+                  {(() => {
+                    const st = deriveEmploymentStatus(e, today);
+                    return <StatusBadge status={st} label={tStatus(st)} />;
+                  })()}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{e.hiredOn}</td>
               </tr>

@@ -394,31 +394,34 @@ export async function createMovementEventAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
-export async function addReportingLineAction(formData: FormData) {
+/** Direct Superior (dce55aff) — the Reporting Lines management UI is replaced by ONE field. Saving
+ *  writes the administrative reporting line through the existing service path: setReportingLine
+ *  supersedes (CLOSE + INSERT) any prior active admin line, refuses self-assignment and cycles
+ *  (ReportingCycleError), and appends the reporting-line.set / .superseded DomainEvents — so the full
+ *  audit trail (previous superior, new superior, actor, timestamp) is preserved without effort.
+ *  Effective-dating stays internal: validFrom is always "today". An EMPTY selection clears the
+ *  current superior (the employee becomes a hierarchy top) via endReportingLine. Line types
+ *  functional/project/dotted are no longer maintainable from this screen. */
+export async function setDirectSuperiorAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  const superiorEmploymentId = String(formData.get('superiorEmploymentId') ?? '').trim();
+  const currentSuperiorEmploymentId = String(formData.get('currentSuperiorEmploymentId') ?? '').trim();
+  const currentLineId = String(formData.get('currentLineId') ?? '').trim();
+  const today = new Date().toISOString().slice(0, 10);
   try {
-    await setReportingLine(s, {
-      subordinateEmploymentId: employmentId,
-      managerEmploymentId: String(formData.get('managerEmploymentId')),
-      lineType: String(formData.get('lineType')) as 'administrative' | 'functional' | 'project' | 'dotted',
-      validFrom: String(formData.get('validFrom')),
-    });
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
-}
-
-export async function endReportingLineAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  try {
-    await endReportingLine(s, {
-      reportingLineId: String(formData.get('reportingLineId')),
-      endDate: String(formData.get('endDate')),
-    });
+    if (superiorEmploymentId === currentSuperiorEmploymentId) {
+      // No change — skip the write so the audit trail records only genuine superior moves.
+    } else if (superiorEmploymentId === '') {
+      if (currentLineId) await endReportingLine(s, { reportingLineId: currentLineId, endDate: today });
+    } else {
+      await setReportingLine(s, {
+        subordinateEmploymentId: employmentId,
+        managerEmploymentId: superiorEmploymentId,
+        lineType: 'administrative',
+        validFrom: today,
+      });
+    }
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
@@ -482,9 +485,14 @@ export async function setCompensationAction(formData: FormData) {
     const payModeRaw = String(formData.get('payMode') ?? '').trim();
     const paymentTermRaw = String(formData.get('paymentTerm') ?? '').trim();
     const rateRaw = String(formData.get('rateAmount') ?? '').trim();
+    // 297ae65a — the salary currency (ISO 4217 code from the searchable select). An empty/absent value
+    // falls through to the service's carry-forward (keeps the prior record's currency; MYR for a first
+    // record), so a cleared select can never blank the stored currency.
+    const currencyRaw = String(formData.get('currency') ?? '').trim();
     await setCompensation(s, {
       employmentId,
       basicSalary: Number(formData.get('basicSalary')),
+      currency: currencyRaw || undefined,
       // Allowance is no longer maintained on the Basic Salary screen (feedback 87c82b18) — allowances
       // belong to Pay Components. Omitting it CARRIES the existing figure forward (never wipes it).
       remarks: String(formData.get('remarks') ?? '').trim() || undefined,
@@ -521,10 +529,13 @@ export async function editCompensationAction(formData: FormData) {
     const payModeRaw = String(formData.get('payMode') ?? '').trim();
     const paymentTermRaw = String(formData.get('paymentTerm') ?? '').trim();
     const rateRaw = String(formData.get('rateAmount') ?? '').trim();
+    // 297ae65a — currency rides the edit form too; empty ⇒ untouched (the service records only real changes).
+    const currencyRaw = String(formData.get('currency') ?? '').trim();
     await updateCompensation(s, {
       compensationId: String(formData.get('compensationId')),
       employmentId,
       basicSalary: rawBasicStr !== '' ? Number(rawBasicStr) : undefined,
+      currency: currencyRaw || undefined,
       // Remarks always submitted (possibly empty → cleared to NULL).
       remarks: String(formData.get('remarks') ?? '').trim() || null,
       payMode: payModeRaw || undefined,
@@ -796,6 +807,10 @@ export async function setEmploymentInfoAction(formData: FormData) {
       shortNoticeDays: str('shortNoticeDays'),
       // 955c7de4 — redesigned value+unit periods + new lifecycle dates. finalConfirmationDate is derived
       // server-side, never submitted.
+      // d27961e3 — extendedConfirmationDate is deliberately NOT read from the form: Extended/Final
+      // Confirmation Date left the Employment Dates card, and probation extensions are managed exclusively
+      // through the Movement module (createMovementEventAction → 'probationExtension'). A forged form field
+      // by that name is ignored here AND by setEmploymentInfo (movement-tag gated).
       probationValue: str('probationValue'),
       probationUnit: str('probationUnit'),
       extendedProbationValue: str('extendedProbationValue'),
@@ -804,7 +819,6 @@ export async function setEmploymentInfoAction(formData: FormData) {
       noticeBeforeConfirmationUnit: str('noticeBeforeConfirmationUnit'),
       noticeAfterConfirmationValue: str('noticeAfterConfirmationValue'),
       noticeAfterConfirmationUnit: str('noticeAfterConfirmationUnit'),
-      extendedConfirmationDate: str('extendedConfirmationDate'),
       tenderResignationDate: str('tenderResignationDate'),
       lastWorkingDate: str('lastWorkingDate'),
       // c5ac75fa — the eight flat org columns (orgDivision/orgBranch/orgRegion/orgLine/orgSection/orgTeam/
@@ -1261,6 +1275,32 @@ export async function setTaxAction(formData: FormData) {
       numChildren: Number(formData.get('numChildren')) || 0,
       childReliefMode: (formData.get('childReliefMode') as string) || 'manual',
       employerBearsTax: formData.get('employerBearsTax') === 'on',
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Feedback 0df0c635 — save ONLY the Others Statutory controls (today: the "Subject to HRDF" checkbox).
+ * The Others Statutory card is its own partial-save card on the Bank & Statutory tab (like the Bank and
+ * Income Tax cards), so it needs a dedicated partial-update action that leaves the rest of the statutory
+ * row untouched. The checkbox always submits an explicit true/false (tri-state null is only ever the
+ * untouched stored state — "follow the company's HRDF registration default"). requireAdmin gates it like
+ * the sibling statutory actions; the pack setter appends `employee.others-statutory.updated` (before/after).
+ */
+export async function setOthersStatutoryAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const personId = String(formData.get('personId'));
+  const pack = packFor('MY');
+  try {
+    if (!pack) throw new Error('No localization pack for MY');
+    await pack.statutory.setOthersStatutory(s, {
+      personId,
+      subjectToHrdf: formData.get('subjectToHrdf') === 'on',
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));

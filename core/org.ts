@@ -9,7 +9,7 @@ import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } fr
 import { nextEmployeeCode } from './comp';
 import { generateEmployeeCode } from './employee-id-config';
 import { requireEmployeeCode } from '../lib/employee-code';
-import { applyMaxBalance, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
+import { applyMaxBalance, buildSchemeEntitlementResolver, entitledDays, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
 import { labelUsableByCompany } from './system-labels';
 import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile-options';
@@ -264,6 +264,16 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           if (arr) arr.push(pol);
           else policyByType.set(pol.leaveTypeId, [pol]);
         }
+        // Auto-link entitlement (ae5b84d5): resolve the new hire's benefit scheme so the FIRST balance
+        // already comes from the matching Grade Group table (previously only the next year-open did).
+        // Runs after the assignment insert above (same tx), so the resolver's current-assignment
+        // employment-type lookup sees this hire. A brand-new employment has no manual override (null);
+        // no schemes configured ⇒ `() => null` ⇒ byte-identical grade-policy/floor behaviour.
+        const schemeDaysFor = await buildSchemeEntitlementResolver(
+          tx,
+          [{ employmentId: emp.id, companyId: p.companyId, gradeId: p.gradeId ?? null, overrideSchemeId: null }],
+          p.grantLeaveTypes.map((t) => t.id),
+        );
         const month = Number(p.hiredOn.slice(5, 7));
         for (const lt of p.grantLeaveTypes) {
           // ADR-0066: scope to the new hire's company so a per-company UPFRONT entitlement reaches joiners.
@@ -273,7 +283,9 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not the hire lump.
           if (isEarnedMethod(polFor?.method)) continue;
           const floor = pack.leave.entitlement(lt.code, 0);
-          const days = Math.max(floor, polFor?.days ?? 0);
+          // ae5b84d5: scheme band days (0-year band) supersede the policy days; EA floor still clamps —
+          // the SAME entitledDays composition openLeaveYear / accrueEarnedLeave / the recalc kernel use.
+          const days = entitledDays(floor, schemeDaysFor(emp.id, lt.id, 0), polFor?.days ?? 0);
           if (days <= 0) continue;
           // ANNUAL pro-rates by months remaining in the hire year (s.60E practice).
           // SICK / HOSPITALIZATION grant in full: s.60F is a per-calendar-year
@@ -1638,6 +1650,9 @@ export type EmploymentInfoInput = {
   noticeBeforeConfirmationUnit?: string | null;
   noticeAfterConfirmationValue?: number | string | null;
   noticeAfterConfirmationUnit?: string | null;
+  /** d27961e3 — MOVEMENT-ONLY. Probation extensions left the Employment Dates form: this field is honoured
+   *  solely when the call carries the `probationExtension` movement tag (i.e. it came from
+   *  createMovementEvent, the single mutator). A plain save that posts it is IGNORED (forge-proof). */
   extendedConfirmationDate?: string | null;
   tenderResignationDate?: string | null;
   lastWorkingDate?: string | null;
@@ -1708,7 +1723,8 @@ const EMPLOYMENT_INFO_DATE_FIELDS = [
   'confirmationDate',
   'resignationDate',
   // 955c7de4 — new lifecycle dates. finalConfirmationDate is DERIVED (not in this list; computed on save).
-  'extendedConfirmationDate',
+  // d27961e3 — extendedConfirmationDate is NOT in this list either: it is movement-only (accepted below
+  // solely under the probationExtension movement tag), so the Employment Dates form can no longer set it.
   'tenderResignationDate',
   'lastWorkingDate',
 ] as const;
@@ -1743,6 +1759,15 @@ export async function setEmploymentInfo(
     const v = raw == null ? null : String(raw).trim();
     if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
     set[f] = v || null;
+  }
+  // d27961e3 — Extended Confirmation Date left the Employment Dates form: probation extensions are managed
+  // EXCLUSIVELY through the Movement module (createMovementEvent 'probationExtension' delegates here with the
+  // movement tag). Without that tag the field is silently IGNORED — a forged form submission cannot mutate it —
+  // so the movement writer stays the single mutator. Derivation + ordering guards below are unchanged.
+  if (p.extendedConfirmationDate !== undefined && p.movement?.type === 'probationExtension') {
+    const v = p.extendedConfirmationDate == null ? null : String(p.extendedConfirmationDate).trim();
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
+    set.extendedConfirmationDate = v || null;
   }
   for (const f of EMPLOYMENT_INFO_PERIOD_FIELDS) {
     const raw = p[f];

@@ -146,7 +146,7 @@ export default async function LeaveAuditPage({
   const actorName = (a: { actorId: string | null; actorName: string | null }) => a.actorName ?? ta('systemActor');
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <LeaveTabs active="audit" />
 

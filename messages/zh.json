@@ -420,6 +420,12 @@
       "zakatSummaryInactive": "该员工没有启用的天课选择。",
       "zakatSummaryManageLink": "管理天课",
       "saveStatutory": "保存法定信息",
+      "othersStatutoryTitle": "其他法定项目",
+      "othersStatutoryHint": "不属于 EPF、SOCSO、EIS 或税务信息的法定设置。",
+      "subjectToHrdf": "须缴纳 HRDF",
+      "subjectToHrdfHint": "勾选后，该员工的合格收入将在薪资处理时计入 HRD Corp（HRDF）征费计算；未勾选则完全排除该员工。",
+      "subjectToHrdfFollowingDefault": "目前跟随公司 HRDF 注册默认设置。保存后将为该员工设定明确的选择。",
+      "othersStatutorySave": "保存其他法定项目",
       "assignmentHistory": "任职历史",
       "periodValidTime": "期间（有效时间）",
       "department": "部门",
@@ -430,21 +436,15 @@
       "dataPrivacyTitle": "数据隐私 (PDPA)",
       "dataPrivacyNote": "为此员工执行受保留期约束的 PDPA 删除——销毁可销毁的部分，保留法律要求的部分。",
       "dataPrivacyLink": "打开数据隐私",
-      "reportingLines": "汇报关系",
-      "reportsTo": "汇报对象",
-      "noManagers": "无上级。",
-      "endReportingLine": "结束汇报关系",
-      "directReports": "直接下属",
-      "noDirectReports": "无直接下属。",
-      "manager": "上级",
-      "lineType": "汇报类型",
-      "lineTypeAdministrative": "行政",
-      "lineTypeFunctional": "职能",
-      "lineTypeProject": "项目",
-      "lineTypeDotted": "虚线汇报",
-      "lineTypeDottedBadge": "虚线",
-      "addReportingLine": "添加汇报关系",
-      "reportingLineEffectiveFrom": "生效日期",
+      "directSuperiorTitle": "直属上级",
+      "directSuperiorCurrent": "当前直属上级",
+      "directSuperiorLabel": "直属上级",
+      "directSuperiorNone": "暂无直属上级",
+      "directSuperiorSearch": "按员工编号或姓名搜索",
+      "directSuperiorNoResults": "没有匹配的员工。",
+      "directSuperiorSave": "保存",
+      "directSuperiorHistory": "历任上级",
+      "directSuperiorHint": "系统会沿每位员工的直属上级自动生成汇报与审批层级，无需配置审批级别。",
       "transferTitle": "调动（按生效日期）",
       "newDepartment": "新部门",
       "effectiveDate": "生效日期",
@@ -638,6 +638,36 @@
         "deleteFamilyConfirmTitle": "移除家庭成员记录？",
         "deleteFamilyConfirmBody": "这将从家庭名册中移除该家庭成员。如果子女减免处于自动模式，员工的子女减免人数将相应刷新。"
       },
+      "qualification": {
+        "title": "学历资历信息",
+        "add": "添加资历",
+        "addTitle": "添加资历",
+        "editTitle": "编辑资历",
+        "viewTitle": "查看资历",
+        "view": "查看",
+        "edit": "编辑",
+        "save": "保存",
+        "delete": "删除",
+        "deleteConfirmTitle": "删除资历",
+        "deleteConfirmBody": "移除此资历记录？它将不再显示在该员工的资历历史中。",
+        "none": "暂无资历记录。",
+        "hint": "这些记录由 HR 维护。资历类型在 系统设置 > 系统标签 > 档案选项 中管理。",
+        "level": "资历",
+        "levelPlaceholder": "选择资历",
+        "institute": "院校",
+        "major": "主修 / 专业领域",
+        "fromYm": "开始（年月）",
+        "toYm": "结束（年月）",
+        "graduationDate": "毕业日期",
+        "result": "成绩 / 等级",
+        "resultPlaceholder": "例如：一等荣誉、CGPA 3.75",
+        "description": "描述",
+        "highest": "最高学历",
+        "highestColumn": "最高",
+        "highestBadge": "最高",
+        "highestHint": "只能有一条记录被标记为最高学历。勾选此项会将标记从之前的记录移除。",
+        "actions": "操作"
+      },
       "encashmentTitle": "年假折现",
       "encashmentBalance": "原始余额",
       "encashmentAuto": "自动计算数值",
@@ -677,7 +707,8 @@
         "documents": "文件",
         "others": "其他",
         "empty": "此处暂无内容。",
-        "leave": "休假"
+        "leave": "休假",
+        "qualification": "学历资历"
       },
       "employmentInfo": {
         "title": "雇佣信息",
@@ -717,7 +748,7 @@
         "employeeStatus": "员工状态",
         "category": "类别",
         "readOnlyNote": "公司、部门、职位、职级、雇佣类型和员工状态仅供参考。请在变动（调动）和个人资料标签（职级）中管理它们，以保持其历史记录完整。",
-        "superiorNote": "在下方的汇报关系卡中设置汇报对象（上级）。",
+        "superiorNote": "请在下方卡片中设置直属上级。",
         "save": "保存雇佣信息",
         "assignmentGroup": "组织分配",
         "assignmentEffectiveDate": "分配生效日期",
@@ -744,9 +775,6 @@
         "unit_week": "周",
         "unit_day": "天",
         "extendedProbationPeriod": "延长试用期",
-        "extendedConfirmationDate": "延长确认日期",
-        "finalConfirmationDate": "最终确认日期",
-        "finalConfirmationNote": "如有延长确认日期则自动采用该日期，否则采用确认日期。",
         "noticeBeforeConfirmation": "确认前通知期",
         "noticeAfterConfirmation": "确认后通知期",
         "tenderResignationDate": "提交辞职日期",
@@ -954,7 +982,11 @@
       "recalcReason": {
         "grade_changed": "职级变更",
         "employment_changed": "雇佣信息变更",
-        "employment_info_changed": "入职/确认日期变更"
+        "employment_info_changed": "入职/确认日期变更",
+        "benefit_scheme_override": "福利方案指派变更",
+        "scheme_entitlement_changed": "方案假期额度表变更",
+        "scheme_updated": "福利方案变更",
+        "grade_group_changed": "职级组变更"
       },
       "payMethodGroup": "该员工的支付方式",
       "payMode": "计薪方式",
@@ -1056,7 +1088,8 @@
           "terminateConfirmTitle": "终止雇佣？",
           "terminateConfirmDescription": "这将在生效日期终止雇佣并关闭当前任职安排。该操作会记录在审计日志中。"
         }
-      }
+      },
+      "salaryCurrency": "货币"
     },
     "import": {
       "title": "导入员工",
@@ -1536,7 +1569,12 @@
       "otherDevicesNote": "您共有 {count, plural, one {# 台已注册设备} other {# 台已注册设备}}。",
       "outsideGeofence": "您目前不在授权的打卡地点范围内。请前往指定的工作地点后再进行签到或签退。",
       "outsideGeofenceDistance": "您不在授权的打卡地点范围内——距最近的批准地点约 {distance} 米（允许半径 {radius} 米）。",
-      "locationRequired": "在此工作地点签到或签退需要您的位置信息。请允许位置访问权限后重试。"
+      "locationRequired": "在此工作地点签到或签退需要您的位置信息。请允许位置访问权限后重试。",
+      "switchShift": "切换",
+      "shiftEndsAt": "本班次将于 {time} 结束",
+      "clockedInAt": "已于 {time} 打卡上班",
+      "sessionsToday": "{count, plural, one {今日已完成 # 个时段} other {今日已完成 # 个时段}}",
+      "locationUnknown": "打卡时将匹配您的工作地点"
     }
   },
   "org": {
@@ -2642,7 +2680,8 @@
         "zeroBasic": "基本薪资或薪资率为零",
         "staleBasicComponent": "BASIC 薪资项目已过时——以人事薪资记录为准",
         "missingStatutory": "无法定资料（EPF/SOCSO/PCB）",
-        "missingBank": "银行资料不完整"
+        "missingBank": "银行资料不完整",
+        "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理"
       },
       "preChecksOpenProfile": "打开档案",
       "preChecksBlockedError": "无法处理薪资：{n} 名员工没有当前薪资记录。请先解决处理前检查问题。",
@@ -3181,7 +3220,8 @@
         "zeroBasic": "基本薪资或薪资率为零",
         "staleBasicComponent": "BASIC 薪资项目已过时——以人事薪资记录为准",
         "missingStatutory": "无法定档案（EPF/SOCSO/PCB）",
-        "missingBank": "银行资料不完整"
+        "missingBank": "银行资料不完整",
+        "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理"
       }
     },
     "guide": {
@@ -3915,7 +3955,8 @@
       "advanceNoticeSectionHelp": "员工必须在开始日期前多少天提交此假期类型的申请。留空表示无要求。HR 管理员不受此规则限制。",
       "advanceCustomMessageHelp": "当此假期类型因提前申请天数不足被拦截时向员工显示。最多 500 个字符。留空则保留标准消息。仅适用于此假期类型。",
       "recalcToast": "已更正应享额度——已为 {count} 名员工重新计算（共 {delta} 天）。",
-      "recalcNoneToast": "政策已更正。没有员工余额发生变化。",
+      "entitlementUpdatedToast": "休假应享额度已成功更新",
+      "entitlementRemovedToast": "休假应享额度已成功移除",
       "recalcInPlaceHint": "在此编辑会更正当前应享额度，并自动为受影响的员工重新入账。若要从未来某日起更改额度，请改为新增一个版本。",
       "typeMasterTitle": "休假类型",
       "colName": "名称",
@@ -4106,7 +4147,11 @@
           "forfeited": "已作废",
           "totalAvailable": "可用总额"
         }
-      }
+      },
+      "gradeSearchLabel": "搜索职级",
+      "gradeSearchPlaceholder": "按代码或名称搜索…",
+      "gradeSearchNoResults": "没有符合搜索条件的职级。",
+      "gradeDragAria": "将 {name} 拖入职级组"
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -4620,7 +4665,7 @@
       "clockingNote": "只有当地点没有员工分配且没有考勤历史记录时才能删除，否则请改为归档。"
     },
     "leaveTabs": {
-      "types": "假期类型",
+      "types": "摘要",
       "entitlements": "假期额度",
       "applicationRules": "申请规则",
       "approval": "审批流程",
@@ -4673,7 +4718,8 @@
         "team": "团队",
         "base": "基地",
         "category": "类别",
-        "dependentRelationship": "家庭关系"
+        "dependentRelationship": "家庭关系",
+        "qualificationLevel": "资历级别"
       },
       "col": {
         "code": "代码",
@@ -4902,7 +4948,9 @@
       "createGroupTitle": "为假期类型分组",
       "createGroupHelp": "分组后的假期类型每年共享一个合并总上限。员工达到上限时会看到该组名称。",
       "totalLimitPerYear": "总上限（天 / 年）",
-      "createGroupConfirm": "创建分组"
+      "createGroupConfirm": "创建分组",
+      "dropGradeHint": "从职级主档中将职级拖放到某个组即可添加——也可以在组内勾选它的复选框后保存。",
+      "gradeAlreadyInGroup": "{name} 已在该组中。"
     }
   },
   "topbar": {
@@ -5686,7 +5734,9 @@
     "release_relative": "相对于发薪日",
     "releaseValue": "日期/偏移",
     "releaseValuePlaceholder": "例如 5 或 -2",
-    "releaseHint": "控制员工何时能在自助服务中查看工资单。固定日期＝薪资周期之后月份的某一天；相对＝发薪日之前(-)/之后(+)的天数。绝不会早于薪资关账。"
+    "releaseHint": "控制员工何时能在自助服务中查看工资单。固定日期＝薪资周期之后月份的某一天；相对＝发薪日之前(-)/之后(+)的天数。绝不会早于薪资关账。",
+    "defaultCurrency": "默认薪资货币",
+    "defaultCurrencyHint": "新的基本工资记录将预选此货币；HR 可按记录更改。"
   },
   "employeeIdConfig": {
     "title": "员工编号自动流水号设置",
@@ -7105,5 +7155,11 @@
       "admin": "创建管理员登录",
       "invitation": "签发激活链接"
     }
+  },
+  "currencySelect": {
+    "placeholder": "选择货币",
+    "searchPlaceholder": "搜索货币…",
+    "noResults": "未找到货币",
+    "legacySuffix": "（现有值）"
   }
 }

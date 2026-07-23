@@ -420,6 +420,12 @@
       "zakatSummaryInactive": "Tiada pilihan zakat aktif untuk pekerja ini.",
       "zakatSummaryManageLink": "Urus zakat",
       "saveStatutory": "Simpan berkanun",
+      "othersStatutoryTitle": "Statutori Lain",
+      "othersStatutoryHint": "Tetapan statutori yang tidak tergolong di bawah KWSP, PERKESO, SIP atau Maklumat Cukai.",
+      "subjectToHrdf": "Tertakluk kepada HRDF",
+      "subjectToHrdfHint": "Apabila ditanda, pendapatan layak pekerja ini dimasukkan dalam pengiraan levi HRD Corp (HRDF) semasa penggajian; jika tidak ditanda, pekerja dikecualikan sepenuhnya.",
+      "subjectToHrdfFollowingDefault": "Mengikut tetapan lalai pendaftaran HRDF syarikat. Simpan untuk menetapkan pilihan khusus bagi pekerja ini.",
+      "othersStatutorySave": "Simpan statutori lain",
       "assignmentHistory": "Sejarah penugasan",
       "periodValidTime": "Tempoh (masa sah)",
       "department": "Jabatan",
@@ -430,21 +436,15 @@
       "dataPrivacyTitle": "Privasi data (PDPA)",
       "dataPrivacyNote": "Jalankan pemadaman PDPA terkawal-pengekalan untuk pekerja ini — memusnahkan apa yang boleh, menyimpan apa yang dikehendaki undang-undang.",
       "dataPrivacyLink": "Buka privasi data",
-      "reportingLines": "Garis pelaporan",
-      "reportsTo": "Melapor kepada",
-      "noManagers": "Tiada pengurus.",
-      "endReportingLine": "Tamatkan garis pelaporan",
-      "directReports": "Lapor terus",
-      "noDirectReports": "Tiada lapor terus.",
-      "manager": "Pengurus",
-      "lineType": "Jenis garis",
-      "lineTypeAdministrative": "Pentadbiran",
-      "lineTypeFunctional": "Fungsian",
-      "lineTypeProject": "Projek",
-      "lineTypeDotted": "Garis putus-putus",
-      "lineTypeDottedBadge": "garis putus-putus",
-      "addReportingLine": "Tambah garis pelaporan",
-      "reportingLineEffectiveFrom": "Berkuat kuasa dari",
+      "directSuperiorTitle": "Ketua Langsung",
+      "directSuperiorCurrent": "Ketua langsung semasa",
+      "directSuperiorLabel": "Ketua Langsung",
+      "directSuperiorNone": "Tiada ketua langsung",
+      "directSuperiorSearch": "Cari mengikut ID pekerja atau nama",
+      "directSuperiorNoResults": "Tiada pekerja yang sepadan.",
+      "directSuperiorSave": "Simpan",
+      "directSuperiorHistory": "Ketua terdahulu",
+      "directSuperiorHint": "Hierarki pelaporan dan kelulusan diterbitkan secara automatik dengan mengikuti Ketua Langsung setiap pekerja — tiada tahap kelulusan perlu dikonfigurasi.",
       "transferTitle": "Pindah (berkuat kuasa tarikh)",
       "newDepartment": "Jabatan baharu",
       "effectiveDate": "Tarikh berkuat kuasa",
@@ -638,6 +638,36 @@
         "deleteFamilyConfirmTitle": "Buang rekod ahli keluarga?",
         "deleteFamilyConfirmBody": "Ini membuang ahli keluarga daripada daftar keluarga. Jika pelepasan anak dalam mod automatik, kiraan pelepasan anak pekerja akan dikemas kini sewajarnya."
       },
+      "qualification": {
+        "title": "Maklumat Kelayakan",
+        "add": "Tambah kelayakan",
+        "addTitle": "Tambah kelayakan",
+        "editTitle": "Edit kelayakan",
+        "viewTitle": "Lihat kelayakan",
+        "view": "Lihat",
+        "edit": "Edit",
+        "save": "Simpan",
+        "delete": "Padam",
+        "deleteConfirmTitle": "Padam kelayakan",
+        "deleteConfirmBody": "Buang rekod kelayakan ini? Ia tidak akan dipaparkan lagi dalam sejarah kelayakan pekerja ini.",
+        "none": "Tiada rekod kelayakan.",
+        "hint": "HR menyelenggara rekod ini. Jenis kelayakan diurus di Tetapan Sistem > Label Sistem > Pilihan Profil.",
+        "level": "Kelayakan",
+        "levelPlaceholder": "Pilih kelayakan",
+        "institute": "Institusi",
+        "major": "Pengkhususan / Bidang pengajian",
+        "fromYm": "Dari (tahun & bulan)",
+        "toYm": "Hingga (tahun & bulan)",
+        "graduationDate": "Tarikh graduasi",
+        "result": "Keputusan / Gred",
+        "resultPlaceholder": "cth. Kepujian Kelas Pertama, PNGK 3.75",
+        "description": "Keterangan",
+        "highest": "Kelayakan tertinggi",
+        "highestColumn": "Tertinggi",
+        "highestBadge": "Tertinggi",
+        "highestHint": "Hanya satu rekod boleh menjadi kelayakan tertinggi. Menanda pilihan ini akan mengalihkan penanda daripada rekod sebelumnya.",
+        "actions": "Tindakan"
+      },
       "encashmentTitle": "Pemvantaian cuti",
       "encashmentBalance": "Baki mentah",
       "encashmentAuto": "Angka automatik",
@@ -677,7 +707,8 @@
         "documents": "Dokumen",
         "others": "Lain-lain",
         "empty": "Tiada apa-apa untuk dipaparkan di sini.",
-        "leave": "Cuti"
+        "leave": "Cuti",
+        "qualification": "Kelayakan"
       },
       "employmentInfo": {
         "title": "Maklumat Pekerjaan",
@@ -717,7 +748,7 @@
         "employeeStatus": "Status Pekerja",
         "category": "Kategori",
         "readOnlyNote": "Syarikat, Jabatan, Jawatan, Gred Jawatan, Jenis Pekerjaan dan Status Pekerja dipaparkan sebagai rujukan. Uruskannya di bawah Pergerakan (pemindahan) dan tab Profil (gred) untuk mengekalkan sejarahnya.",
-        "superiorNote": "Tetapkan penyelia (atasan) pada kad Barisan pelaporan di bawah.",
+        "superiorNote": "Tetapkan Ketua Langsung pada kad di bawah.",
         "save": "Simpan maklumat pekerjaan",
         "assignmentGroup": "Penetapan Organisasi",
         "assignmentEffectiveDate": "Tarikh berkuat kuasa penetapan",
@@ -744,9 +775,6 @@
         "unit_week": "Minggu",
         "unit_day": "Hari",
         "extendedProbationPeriod": "Tempoh Percubaan Lanjutan",
-        "extendedConfirmationDate": "Tarikh Pengesahan Lanjutan",
-        "finalConfirmationDate": "Tarikh Pengesahan Akhir",
-        "finalConfirmationNote": "Ditetapkan secara automatik kepada tarikh pengesahan lanjutan jika ada, jika tidak tarikh pengesahan.",
         "noticeBeforeConfirmation": "Notis Sebelum Pengesahan",
         "noticeAfterConfirmation": "Notis Selepas Pengesahan",
         "tenderResignationDate": "Tarikh Serah Peletakan Jawatan",
@@ -954,7 +982,11 @@
       "recalcReason": {
         "grade_changed": "Gred ditukar",
         "employment_changed": "Butiran pekerjaan ditukar",
-        "employment_info_changed": "Tarikh mula/pengesahan ditukar"
+        "employment_info_changed": "Tarikh mula/pengesahan ditukar",
+        "benefit_scheme_override": "Tugasan skim manfaat ditukar",
+        "scheme_entitlement_changed": "Jadual kelayakan skim ditukar",
+        "scheme_updated": "Skim manfaat ditukar",
+        "grade_group_changed": "Kumpulan gred ditukar"
       },
       "payMethodGroup": "Cara Pekerja Ini Dibayar",
       "payMode": "Mod Bayaran",
@@ -1056,7 +1088,8 @@
           "terminateConfirmTitle": "Tamatkan pekerjaan?",
           "terminateConfirmDescription": "Ini menamatkan pekerjaan pada tarikh berkuat kuasa dan menutup penempatan semasa. Tindakan ini direkodkan dalam jejak audit."
         }
-      }
+      },
+      "salaryCurrency": "Mata wang"
     },
     "import": {
       "title": "Import pekerja",
@@ -1536,7 +1569,12 @@
       "otherDevicesNote": "Anda mempunyai {count, plural, one {# peranti berdaftar} other {# peranti berdaftar}} kesemuanya.",
       "outsideGeofence": "Anda kini berada di luar lokasi daftar masuk yang dibenarkan. Sila pergi ke lokasi kerja yang ditetapkan sebelum daftar masuk atau daftar keluar.",
       "outsideGeofenceDistance": "Anda berada di luar lokasi daftar masuk yang dibenarkan — kira-kira {distance} m dari tapak diluluskan terdekat (radius dibenarkan {radius} m).",
-      "locationRequired": "Lokasi anda diperlukan untuk daftar masuk atau keluar di tempat kerja ini. Sila benarkan akses lokasi dan cuba lagi."
+      "locationRequired": "Lokasi anda diperlukan untuk daftar masuk atau keluar di tempat kerja ini. Sila benarkan akses lokasi dan cuba lagi.",
+      "switchShift": "Tukar",
+      "shiftEndsAt": "Syif ini tamat pada {time}",
+      "clockedInAt": "Daftar masuk pada {time}",
+      "sessionsToday": "{count, plural, one {# sesi selesai hari ini} other {# sesi selesai hari ini}}",
+      "locationUnknown": "Lokasi kerja anda dipadankan semasa anda daftar masuk"
     }
   },
   "org": {
@@ -2642,7 +2680,8 @@
         "zeroBasic": "Gaji asas atau kadar gaji adalah sifar",
         "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil statutori (KWSP/PERKESO/PCB)",
-        "missingBank": "Butiran bank tidak lengkap"
+        "missingBank": "Butiran bank tidak lengkap",
+        "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan"
       },
       "preChecksOpenProfile": "Buka profil",
       "preChecksBlockedError": "Payroll tidak boleh diproses: {n} pekerja tiada rekod gaji semasa. Selesaikan semakan pra-pemprosesan dahulu.",
@@ -3181,7 +3220,8 @@
         "zeroBasic": "Gaji asas atau kadar gaji adalah sifar",
         "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil berkanun (EPF/SOCSO/PCB)",
-        "missingBank": "Butiran bank tidak lengkap"
+        "missingBank": "Butiran bank tidak lengkap",
+        "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan"
       }
     },
     "guide": {
@@ -3915,7 +3955,8 @@
       "advanceNoticeSectionHelp": "Berapa hari sebelum tarikh mula pekerja mesti menghantar permohonan jenis cuti ini. Biarkan kosong untuk tiada syarat. Pentadbir HR tidak sekali-kali disekat oleh peraturan ini.",
       "advanceCustomMessageHelp": "Dipaparkan kepada pekerja apabila jenis cuti ini dihantar dengan notis awal yang tidak mencukupi. Sehingga 500 aksara. Biarkan kosong untuk mengekalkan mesej standard. Hanya terpakai untuk jenis cuti ini.",
       "recalcToast": "Kelayakan diperbetulkan — {count} pekerja dikira semula ({delta} hari kesemuanya).",
-      "recalcNoneToast": "Polisi diperbetulkan. Tiada baki pekerja yang berubah.",
+      "entitlementUpdatedToast": "Kelayakan cuti berjaya dikemas kini",
+      "entitlementRemovedToast": "Kelayakan cuti berjaya dibuang",
       "recalcInPlaceHint": "Suntingan di sini membetulkan kelayakan semasa dan mengkreditkan semula pekerja yang terjejas secara automatik. Untuk menukar kelayakan mulai tarikh hadapan, tambah versi baharu.",
       "typeMasterTitle": "Jenis cuti",
       "colName": "Nama",
@@ -4106,7 +4147,11 @@
           "forfeited": "Dilucutkan",
           "totalAvailable": "Jumlah Tersedia"
         }
-      }
+      },
+      "gradeSearchLabel": "Cari gred",
+      "gradeSearchPlaceholder": "Cari mengikut kod atau nama…",
+      "gradeSearchNoResults": "Tiada gred sepadan dengan carian anda.",
+      "gradeDragAria": "Seret {name} ke dalam kumpulan gred"
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -4620,7 +4665,7 @@
       "clockingNote": "Pemadaman hanya boleh dilakukan apabila lokasi tiada penetapan pekerja dan tiada sejarah kehadiran. Jika tidak, arkibkan sahaja."
     },
     "leaveTabs": {
-      "types": "Jenis Cuti",
+      "types": "Ringkasan",
       "entitlements": "Kelayakan",
       "applicationRules": "Peraturan Permohonan",
       "approval": "Aliran Kelulusan",
@@ -4673,7 +4718,8 @@
         "team": "Pasukan",
         "base": "Pangkalan",
         "category": "Kategori",
-        "dependentRelationship": "Hubungan keluarga"
+        "dependentRelationship": "Hubungan keluarga",
+        "qualificationLevel": "Tahap kelayakan"
       },
       "col": {
         "code": "Kod",
@@ -4902,7 +4948,9 @@
       "createGroupTitle": "Kumpulkan jenis cuti",
       "createGroupHelp": "Jenis cuti yang dikumpulkan berkongsi satu had jumlah gabungan setahun. Nama kumpulan dipaparkan kepada pekerja apabila mereka mencapai had.",
       "totalLimitPerYear": "Had jumlah (hari / tahun)",
-      "createGroupConfirm": "Cipta kumpulan"
+      "createGroupConfirm": "Cipta kumpulan",
+      "dropGradeHint": "Seret gred daripada Induk Gred ke atas kumpulan untuk menambahnya — atau tandakan kotak semaknya di dalam kumpulan dan simpan.",
+      "gradeAlreadyInGroup": "{name} sudah berada dalam kumpulan ini."
     }
   },
   "topbar": {
@@ -5686,7 +5734,9 @@
     "release_relative": "Relatif kepada hari gaji",
     "releaseValue": "Hari / ofset",
     "releaseValuePlaceholder": "cth. 5 atau -2",
-    "releaseHint": "Mengawal bila pekerja boleh melihat slip gaji dalam layan diri. Hari tetap = hari dalam bulan selepas tempoh gaji; relatif = hari sebelum(-)/selepas(+) hari gaji. Tidak sekali-kali sebelum gaji ditutup."
+    "releaseHint": "Mengawal bila pekerja boleh melihat slip gaji dalam layan diri. Hari tetap = hari dalam bulan selepas tempoh gaji; relatif = hari sebelum(-)/selepas(+) hari gaji. Tidak sekali-kali sebelum gaji ditutup.",
+    "defaultCurrency": "Mata wang gaji lalai",
+    "defaultCurrencyHint": "Rekod Gaji Pokok baharu akan prapilih mata wang ini; HR boleh menukarnya bagi setiap rekod."
   },
   "employeeIdConfig": {
     "title": "Persediaan Nombor Berjalan Automatik ID Pekerja",
@@ -7105,5 +7155,11 @@
       "admin": "Cipta log masuk pentadbir",
       "invitation": "Keluarkan pautan pengaktifan"
     }
+  },
+  "currencySelect": {
+    "placeholder": "Pilih mata wang",
+    "searchPlaceholder": "Cari mata wang…",
+    "noResults": "Tiada mata wang ditemui",
+    "legacySuffix": "(nilai sedia ada)"
   }
 }

@@ -1998,6 +1998,10 @@ export async function generatePayslips(
         // Item 0d9bb2da — employer bears the employee's EPF share (EPF still computed + reported in full;
         // only the funding of the employee leg moves to employer cost). Off by default ⇒ byte-identical.
         employerBearsEpf: employeeStatutoryMy.employerBearsEpf,
+        // Feedback 0df0c635 — per-employee "Subject to HRDF" (Others Statutory card). Tri-state: null
+        // follows the company registration default (byte-identical); explicit false excludes the
+        // employee's base from the HRD Corp levy; explicit true keeps it in.
+        subjectToHrdf: employeeStatutoryMy.subjectToHrdf,
         epfCitizenship: employeeStatutoryMy.epfCitizenship,
         epfMode: employeeStatutoryMy.epfMode,
         epfEmployeeRate: employeeStatutoryMy.epfEmployeeRate,
@@ -3073,8 +3077,13 @@ export async function generatePayslips(
       // unpaid leave; NOT the EPF/SOCSO wage (overtime, bonus, and reimbursed claims are excluded).
       const fixedAllowance = en.hrdfAllowApplied;
       const hrdfBase = Math.max(0, round2(basic + fixedAllowance - unpaidDeduction));
+      // Feedback 0df0c635 — per-employee "Subject to HRDF" (Others Statutory card), resolved via the pack
+      // (D6 vocabulary — no direct core→localization/my import). Explicit false excludes this employee's
+      // base from the levy entirely; explicit true keeps it in (the registration band below still sets the
+      // rate — not_registered stays 0); null follows the company default, byte-identical to pre-flag runs.
+      const hrdfSubject = pack.payroll.hrdfSubject(e.subjectToHrdf ?? null, hrdfStatus);
       // #6: HRDF rates come from the resolved ruleset (rules.hrdf) when overridden, else the built-in MY_HRDF.
-      const hrdf = pack.payroll.hrdfLevy(hrdfBase, hrdfStatus, rules.hrdf);
+      const hrdf = hrdfSubject ? pack.payroll.hrdfLevy(hrdfBase, hrdfStatus, rules.hrdf) : 0;
       // 1.2.3 CP38 — the month's LHDN instalment. Charged on the REGULAR run only: like basic/OT/unpaid/hrdf,
       // an additional (off-cycle/bonus/adjustment) run carries cp38 = 0 (a re-issue re-runs the regular batch,
       // not an adjustment run). So a regular + bonus run in one month charges exactly one instalment.
@@ -3388,6 +3397,10 @@ export async function generatePayslips(
           // the run frequency is weekly/biweekly; absent ⇒ byte-identical monthly slip). The employer pays each
           // cycle's `amount` on its cadence; statutory contributions stay settled monthly on this same payslip.
           ...(paymentSchedule ? { paymentSchedule: { frequency: runFrequency, cycles: paymentSchedule } } : {}),
+          // Feedback 0df0c635 — snapshot the EFFECTIVE per-employee HRDF subjectivity, ONLY when HR set an
+          // explicit override (a null/untouched row stays absent ⇒ byte-identical to pre-flag slips). The
+          // audited-inputs convention: a closed payslip records the setting as it was when it was computed.
+          ...(e.subjectToHrdf != null ? { hrdfSubject } : {}),
           // Item 5a461b99 — snapshot the "Employer bears" decision + the amounts the employer absorbed for
           // provenance, ONLY when at least one flag is set (absent ⇒ byte-identical to today). The reported
           // socso/eis/skbbk figures above are unchanged; this records that their EMPLOYEE share was not deducted.
@@ -4376,6 +4389,10 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
 //     The operator must explicitly confirm to proceed (enforced in generateAction).
 //   • missingBank — WARNING. Statutory profile exists but bank name/account is incomplete: the
 //     payment file cannot carry this employee. Confirm-to-proceed like missingStatutory.
+//   • currencyMismatch — WARNING (297ae65a). The employee's salary record carries a currency other
+//     than MYR while this run computes under the MY pack (Malaysian statutory maths, MYR figures) —
+//     a mixed-currency batch or a wholly non-MYR one. Currency CONVERSION is explicitly a future
+//     enhancement, so the run warns instead of calculating something misleading; no math change.
 
 export type PreProcessCheckRow = { employmentId: string; name: string; employeeCode: string | null };
 
@@ -4401,6 +4418,12 @@ export type PreProcessAdvisory = {
   staleBasicComponent?: PreProcessCheckRow[];
   missingStatutory: PreProcessCheckRow[];
   missingBank: PreProcessCheckRow[];
+  // WARNING (297ae65a — Currency on Basic Salary). The employee's OPEN compensation row is denominated in
+  // a currency other than MYR while payroll computes under the MY pack: the amount is processed AS ENTERED
+  // (recording/reporting first; conversion is a future enhancement), so the operator must explicitly
+  // confirm a mixed-currency / non-MYR run instead of it calculating something misleading silently.
+  // OPTIONAL so pre-existing advisory literals stay valid; absent ⇒ no such employees.
+  currencyMismatch?: PreProcessCheckRow[];
 };
 
 /** Shared tx-level core: the same scoped, period-active population as generatePayslips' employee
@@ -4426,6 +4449,8 @@ async function preProcessChecksTx(
       compValidFrom: compensation.validFrom,
       compBasic: compensation.basicSalary,
       compRate: compensation.rateAmount,
+      // 297ae65a — the record's salary currency, for the non-MYR / mixed-currency warning below.
+      compCurrency: compensation.currency,
       statPersonId: employeeStatutoryMy.personId,
       bankName: employeeStatutoryMy.bankName,
       bankAccountNo: employeeStatutoryMy.bankAccountNo,
@@ -4496,7 +4521,7 @@ async function preProcessChecksTx(
       basicAmountsByEmp.set(bRow.employmentId, list);
     }
   }
-  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], staleBasicComponent: [], missingStatutory: [], missingBank: [] };
+  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [] };
   for (const r of rows) {
     const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
     // Feedback 64fb5e48 — the OPEN row must exist (the generation employee query inner-joins it, so a
@@ -4522,6 +4547,12 @@ async function preProcessChecksTx(
     if (r.compId && (basicAmountsByEmp.get(r.employmentId) ?? []).some((amt) => round2(amt) !== round2(Number(r.compBasic)))) {
       out.staleBasicComponent!.push(row);
     }
+    // 297ae65a — WARNING (never blocks): the salary record is denominated in a currency other than MYR
+    // while this run computes under the MY pack (the only pack today). Covers both a MIXED batch (some
+    // non-MYR) and a wholly non-MYR one; the amount is processed as entered — recording/reporting first,
+    // conversion is an explicit future enhancement — so the operator confirms rather than the engine
+    // silently computing Malaysian statutory maths over a foreign-currency figure.
+    if (r.compId && (r.compCurrency ?? 'MYR') !== 'MYR') out.currencyMismatch!.push(row);
     if (!r.statPersonId) out.missingStatutory.push(row);
     // Bank readiness is only meaningful once a statutory profile exists (a missing profile already
     // covers the row above — listing it twice would be noise, not signal).

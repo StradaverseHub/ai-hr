@@ -67,10 +67,11 @@ describe('Personnel — Attendance Information tab (1fbe9891)', () => {
     const job = panelBody('job');
     expect(job.includes('{locationCard}')).toBe(false);
     expect(job.includes('{defaultShiftCard}')).toBe(false);
-    // Employment tab still renders reporting lines + delegations. (assignmentHistoryCard and
+    // Employment tab still renders the superior + delegations cards. (assignmentHistoryCard and
     // transferTerminateCards later relocated to the Career Movement tab by feedback 5296d984 — see
-    // test/personnel-career-movement-tab.test.ts; the job tab no longer renders them.)
-    expect(job.includes('{reportingLinesCard}')).toBe(true);
+    // test/personnel-career-movement-tab.test.ts; the job tab no longer renders them. Feedback
+    // dce55aff replaced the Reporting Lines card with the Direct Superior card.)
+    expect(job.includes('{directSuperiorCard}')).toBe(true);
     expect(job.includes('{delegationsCard}')).toBe(true);
   });
 

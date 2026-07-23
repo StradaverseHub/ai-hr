@@ -184,7 +184,7 @@ export default async function LeaveApprovalTabPage({
   const workflowLabels = buildWorkflowMatrixLabels(t);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title={t('title')} description={t('description')} />
       <LeaveTabs active="approval" />
       {error && <ErrorBanner message={error} />}

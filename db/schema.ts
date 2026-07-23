@@ -2118,6 +2118,11 @@ export const employeeStatutoryMy = pgTable(
     // funded from employer cost instead of deducted from net (same plumbing as employer_bears_socso/eis/tax).
     // Default false ⇒ byte-identical. LHDN perquisite gross-up (employer-paid EPF as a benefit) is a follow-up.
     employerBearsEpf: boolean('employer_bears_epf').notNull().default(false),
+    // Feedback 0df0c635 — Others Statutory card: per-employee "Subject to HRDF". NULLABLE tri-state:
+    // NULL = follow the company's HRDF registration default (registered ⇒ subject, not_registered ⇒ not) —
+    // today's behaviour, so pre-existing rows are byte-identical; explicit false excludes the employee's
+    // base from the HRD Corp levy entirely; explicit true keeps it in (the company band still sets the rate).
+    subjectToHrdf: boolean('subject_to_hrdf'),
     // EPF citizenship status — drives the Third Schedule rule (Part A / Part E / non-citizen 2%/2%).
     epfCitizenship: epfCitizenshipEnum('epf_citizenship').notNull().default('citizen'),
     // EPF contribution mode (Wave 2B). For 'voluntary_excess' the elected per-side rates (decimals,
@@ -2241,6 +2246,10 @@ export const companyPayrollConfig = pgTable(
     defaultPayrollPolicyId: uuid('default_payroll_policy_id').references((): AnyPgColumn => payrollPolicy.id),
     // Step 6 (f3148da1) — payslip release config (see PayslipRelease). NULL = immediate (today's behaviour).
     payslipRelease: jsonb('payslip_release').$type<PayslipRelease | null>(),
+    // 297ae65a — the company's DEFAULT salary currency (ISO 4217 code, validated against lib/currencies.ts
+    // in core/payroll-config.ts). New Basic Salary records preselect it; compensation.currency stays the
+    // per-record store. Default 'MYR' = today's behaviour (migration 0306, additive).
+    defaultCurrency: text('default_currency').notNull().default('MYR'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -3457,6 +3466,45 @@ export const employeeDependent = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index('employee_dependent_person_idx').on(t.tenantId, t.personId)],
+);
+
+// ─────────────── Personnel — Qualification (feedback a949184a, migration 0306) ───────────────
+// A per-EMPLOYMENT register of an employee's academic / professional qualification history for the
+// Personnel (Admin) profile's Qualification tab. `qualification` stores a profile_option value from the
+// 'qualificationLevel' catalog (System Settings > System Labels > Profile Options) with legacy-value
+// tolerance (validated in core/qualifications.ts, not by constraint). from_ym / to_ym are 'YYYY-MM' study
+// periods; the single-highest rule (at most ONE live is_highest per employment) is enforced by the
+// service's transactional flag transfer PLUS the partial unique index below as the concurrency backstop.
+// RLS (0306): USING app.can_see_employment (self + admin read) / WITH CHECK app.is_admin() (admin write),
+// mirroring the employee_cp38 employment-keyed precedent.
+export const employeeQualification = pgTable(
+  'employee_qualification',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    qualification: text('qualification').notNull(), // qualificationLevel catalog value (legacy-tolerant)
+    description: text('description'),
+    fromYm: text('from_ym'), // 'YYYY-MM' study start (validated in-service)
+    toYm: text('to_ym'), // 'YYYY-MM' study end (>= from_ym, validated in-service)
+    institute: text('institute'),
+    major: text('major'),
+    graduationDate: date('graduation_date'), // may be blank while incomplete; >= from_ym when both set
+    result: text('result'), // overall result / grade (free text)
+    isHighest: boolean('is_highest').notNull().default(false),
+    archivedAt: timestamp('archived_at', { withTimezone: true }), // soft-delete
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('employee_qualification_employment_idx').on(t.tenantId, t.employmentId),
+    // Single-highest backstop: one live highest per employment (archived rows never block a new one).
+    uniqueIndex('employee_qualification_one_highest_uq')
+      .on(t.tenantId, t.employmentId)
+      .where(sql`is_highest and archived_at is null`),
+  ],
 );
 
 // ──────────────────────── Payroll (generic kernel) ────────────────────────

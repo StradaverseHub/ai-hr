@@ -72,7 +72,7 @@ export default async function LeaveApplicationRulesPage({
   const leaveYearRecordYearSet = new Set(leaveYearRecordYears);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <LeaveTabs active="application-rules" />
       <ErrorBanner message={error} />
