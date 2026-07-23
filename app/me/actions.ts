@@ -44,6 +44,7 @@ import {
   GeolocationRequiredError,
   OutsideGeofenceError,
 } from '@/core/attendance';
+import { DeviceNotRegisteredError } from '@/core/attendance-device';
 import { requestTravel } from '@/core/travel-request';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
@@ -544,12 +545,22 @@ function parseGeo(formData: FormData): { lat: number; lng: number } | undefined 
   return { lat, lng };
 }
 
-/** ADR-0070: localize the two geofencing errors into the viewer's own language; everything else falls
- *  back to its raw message (mirrors localizeLeaveError's shape). */
+/** Feedback 5249d43f: the registered-device token this browser stored at registration (hidden field
+ *  filled client-side from localStorage). Blank ⇒ undefined — the SERVER decides whether that blocks
+ *  the punch (only when the company policy requires a registered device). */
+function parseDeviceToken(formData: FormData): string | undefined {
+  const v = String(formData.get('deviceToken') ?? '').trim();
+  return v || undefined;
+}
+
+/** ADR-0070: localize the geofencing + registered-device errors into the viewer's own language;
+ *  everything else falls back to its raw message (mirrors localizeLeaveError's shape). */
 async function localizeClockError(e: unknown): Promise<string> {
   const t = await getTranslations('me');
   if (e instanceof OutsideGeofenceError) return t('outsideGeofence');
   if (e instanceof GeolocationRequiredError) return t('locationRequired');
+  // 5249d43f — points the employee at the Clock in/out page, where device registration lives.
+  if (e instanceof DeviceNotRegisteredError) return t('deviceNotRegistered');
   return (e as Error).message;
 }
 
@@ -557,7 +568,7 @@ export async function myCheckIn(formData: FormData) {
   const { s, employmentId } = await resolveMe();
   const { date, time } = nowParts();
   try {
-    await checkIn(s, { employmentId, date, time, geo: parseGeo(formData) });
+    await checkIn(s, { employmentId, date, time, geo: parseGeo(formData), deviceToken: parseDeviceToken(formData) });
   } catch (e) {
     redirect(`/me?error=${encodeURIComponent(await localizeClockError(e))}`);
   }
@@ -569,7 +580,7 @@ export async function myCheckOut(formData: FormData) {
   const { s, employmentId } = await resolveMe();
   const { date, time } = nowParts();
   try {
-    await checkOut(s, { employmentId, date, time, geo: parseGeo(formData) });
+    await checkOut(s, { employmentId, date, time, geo: parseGeo(formData), deviceToken: parseDeviceToken(formData) });
   } catch (e) {
     redirect(`/me?error=${encodeURIComponent(await localizeClockError(e))}`);
   }

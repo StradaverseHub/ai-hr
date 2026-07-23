@@ -363,6 +363,34 @@ export const employeeClockingLocation = pgTable(
   ],
 );
 
+// employee_device = the browsers/devices an employee has registered for web clocking (feedback 5249d43f,
+// migration 0301). The token is a server-minted random UUID handed back once at registration, stored
+// client-side (localStorage) and presented with every web punch; enforcement is the per-company
+// attendance_policy.require_registered_device switch (default OFF so nobody is locked out on ship).
+// Registration is SELF-SERVICE (the subject employee inserts their own row); administrators revoke.
+// Revocation is a soft mark (revoked_at) so the device history stays auditable next to its
+// attendance.device.registered / .revoked events. RLS via can_see_employment (self / manager-up / admin —
+// the attendance_punch per-person pattern, minus the payroll-partner branch).
+export const employeeDevice = pgTable(
+  'employee_device',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    label: text('label').notNull(),
+    deviceToken: uuid('device_token').notNull(),
+    registeredAt: timestamp('registered_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('employee_device_employment_idx').on(t.employmentId),
+    uniqueIndex('employee_device_token_uq').on(t.deviceToken),
+  ],
+);
+
 // app_user = a login identity (WorkOS-sourced); optionally linked to a Person.
 export const appUser = pgTable(
   'app_user',
@@ -2619,6 +2647,10 @@ export const attendancePolicy = pgTable(
     // ADR-0069: how an approved overtime request's minutes are resolved against the engine's live figure
     // (requested | system_calculated | smaller_of). Company-wide setting; default system_calculated.
     otApprovalCalculation: otApprovalCalculationEnum('ot_approval_calculation').notNull().default('system_calculated'),
+    // Feedback 5249d43f (migration 0301): when TRUE, web clock-in/out requires a registered device token
+    // (employee_device) — enforced server-side in core/attendance-device.ts enforceDeviceGateTx. Default
+    // FALSE so shipping the feature locks nobody out; terminal imports are exempt (documented bypass).
+    requireRegisteredDevice: boolean('require_registered_device').notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('attendance_policy_company_uq').on(t.companyId)],

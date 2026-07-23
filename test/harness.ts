@@ -22,6 +22,9 @@ const ALL_TABLES = [
   'performance_goal', 'review_goal', 'performance_checkin', 'peer_feedback_request', 'peer_feedback', 'calibration_session', 'calibration_entry', 'performance_attachment',
   'shift', 'roster_assignment', 'toil_policy', 'toil_accrual', 'location',
   'clocking_location', 'employee_clocking_location',
+  // 5249d43f — registered clocking devices: truncate between test files (the global unique token index
+  // means a leaked row can't collide, but a surviving device would make a later gate test false-green).
+  'employee_device',
   'notification', 'notification_pref', 'notification_delivery', 'notification_cursor',
   'tp1_relief',
   'employee_dependent',

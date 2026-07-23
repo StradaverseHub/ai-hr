@@ -1765,6 +1765,13 @@
       "when": 1781862401000,
       "tag": "0301_passport_issuing_country",
       "breakpoints": true
+    },
+    {
+      "idx": 302,
+      "version": "7",
+      "when": 1781862402000,
+      "tag": "0302_employee_device",
+      "breakpoints": true
     }
   ]
 }

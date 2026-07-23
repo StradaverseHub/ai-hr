@@ -19,7 +19,7 @@ import { myResignation } from '@/core/offboarding';
 import { MeReviewCard } from './review-card';
 import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { AttendanceClockButton, LocationNotice } from './attendance-clock';
+import { AttendanceClockButton, LocationNotice } from '@/components/attendance-clock-button';
 import { ClientTabs } from '@/components/personnel-tabs';
 // a7cbd895: the Leave tab (and its dialogs/forms/reads) moved wholesale to /leave — "My Absence" in the
 // left nav. /me is purely profile now; ?tab=leave deep-links are forwarded (see the redirect below).
