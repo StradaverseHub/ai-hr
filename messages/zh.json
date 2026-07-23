@@ -4740,6 +4740,7 @@
       "perTypeColScheme": "福利方案",
       "perTypeEmpty": "此休假类型尚未配置福利方案额度。请在下方的福利方案部分添加。",
       "perTypeSharedPool": "共享上限“{name}”：每年 {days} 天",
+      "sharedWithTypes": "与{names}共享——在此的修改会影响此共享池中的每个休假类型",
       "perTypeManageNote": "与方案的休假额度表实时一致——在此编辑会同时更新两处。合并（共享）上限在福利方案部分管理。",
       "addEntitlement": "添加休假额度",
       "threshold1": "层级1 至（年）",

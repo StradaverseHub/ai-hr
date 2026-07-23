@@ -69,6 +69,8 @@ const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
   categoryEntitlement: [
     // the NEW per-type benefit-scheme entitlement table (filtered view, shared rows + action)
     '<LeaveTypeEntitlementTable',
+    // 6c775d68: the scoped Benefit Schemes management area follows the table inside the same step
+    '{benefitSchemeSection}',
   ],
   categoryEssPolicy: [
     'name="durations"',
@@ -207,7 +209,8 @@ describe('123c1e76 · per-type Entitlement card reuses the benefit-scheme table 
   it('the entitlements page feeds the panel the filtered rows and the SAME upsert action', () => {
     expect(pageSrc).toContain('schemeEntitlements={schemeEntsByType.get(lt.id) ?? []}');
     expect(pageSrc).toContain('upsertSchemeEntitlementAction={upsertSchemeEntitlementAction}');
-    // The shared Benefit Schemes section still manages scheme-wide config (combined limits et al).
+    // Scheme-wide management still ships — since 6c775d68 as the SCOPED BenefitSchemeConfig inside each
+    // type's Entitlement step (see benefit-scheme-scoped-step.test.ts), no longer as a standalone section.
     expect(pageSrc).toContain('<BenefitSchemeConfig');
   });
 

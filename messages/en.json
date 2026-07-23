@@ -4740,6 +4740,7 @@
       "perTypeColScheme": "Benefit scheme",
       "perTypeEmpty": "No benefit-scheme entitlement is configured for this leave type yet. Add one in the Benefit Schemes section below.",
       "perTypeSharedPool": "Shared limit \"{name}\": {days} days/year",
+      "sharedWithTypes": "Shared with {names} — edits here affect every leave type in this pool",
       "perTypeManageNote": "Same live figures as the scheme's Leave Entitlements table — editing here updates both. Combined (shared) limits are managed in the Benefit Schemes section.",
       "addEntitlement": "Add a leave entitlement",
       "threshold1": "Tier 1 to (years)",

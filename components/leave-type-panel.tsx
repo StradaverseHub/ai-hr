@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { ESS_VIEW_COMPONENT_KEYS } from '@/core/ess-view';
@@ -572,6 +572,7 @@ export function LeaveTypePanel({
   grades,
   companies,
   schemeEntitlements,
+  benefitSchemeSection,
   updateTypeAction,
   archiveTypeAction,
   deleteTypeAction,
@@ -676,6 +677,10 @@ export function LeaveTypePanel({
    *  days + read-only combined-pool cap), rendered in the per-type Entitlement card. The SAME live rows the
    *  shared Benefit Schemes table shows — filtered by leave type, never duplicated. */
   schemeEntitlements: LeaveTypeSchemeEntitlement[];
+  /** 6c775d68: the Benefit Schemes management area, scoped to THIS leave type — a server-composed
+   *  <BenefitSchemeConfig scopeLeaveTypeId={id}> slot rendered inside the Entitlement step, below the
+   *  per-type table. Slot-shaped so the scheme data is prepared ONCE at page level (no N+1 per type). */
+  benefitSchemeSection?: ReactNode;
   updateTypeAction: Action;
   archiveTypeAction: Action;
   deleteTypeAction: Action;
@@ -1718,6 +1723,10 @@ export function LeaveTypePanel({
               action (no duplication, nothing can drift); scheme-wide management — adding/removing rows,
               copying between schemes, combined-limit grouping — stays in the Benefit Schemes section. */}
           <LeaveTypeEntitlementTable ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction} />
+          {/* 6c775d68: the Benefit Schemes management area follows, scoped to this type — the standalone
+              page-bottom section moved here so step 3 is the ONE place for everything entitlement-related.
+              Server-composed slot; see the benefitSchemeSection prop doc. */}
+          {benefitSchemeSection}
             </CardContent>
           </Card>
           )}

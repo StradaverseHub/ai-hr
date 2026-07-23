@@ -4740,6 +4740,7 @@
       "perTypeColScheme": "Chương trình phúc lợi",
       "perTypeEmpty": "Chưa cấu hình định mức theo chương trình phúc lợi cho loại nghỉ phép này. Thêm trong mục Chương trình phúc lợi bên dưới.",
       "perTypeSharedPool": "Hạn mức chung \"{name}\": {days} ngày/năm",
+      "sharedWithTypes": "Dùng chung với {names} — chỉnh sửa tại đây ảnh hưởng đến mọi loại nghỉ phép trong nhóm này",
       "perTypeManageNote": "Cùng số liệu trực tiếp với bảng Quyền nghỉ phép của chương trình — chỉnh sửa tại đây sẽ cập nhật cả hai. Hạn mức gộp (dùng chung) được quản lý trong mục Chương trình phúc lợi.",
       "addEntitlement": "Thêm quyền nghỉ phép",
       "threshold1": "Bậc 1 đến (năm)",

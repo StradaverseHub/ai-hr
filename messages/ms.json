@@ -4740,6 +4740,7 @@
       "perTypeColScheme": "Skim faedah",
       "perTypeEmpty": "Tiada kelayakan skim faedah dikonfigurasi untuk jenis cuti ini lagi. Tambah dalam bahagian Skim Faedah di bawah.",
       "perTypeSharedPool": "Had kongsi \"{name}\": {days} hari/tahun",
+      "sharedWithTypes": "Dikongsi dengan {names} — suntingan di sini memberi kesan kepada setiap jenis cuti dalam kumpulan ini",
       "perTypeManageNote": "Angka langsung yang sama dengan jadual Kelayakan Cuti skim — suntingan di sini mengemas kini kedua-duanya. Had gabungan (kongsi) diurus dalam bahagian Skim Faedah.",
       "addEntitlement": "Tambah kelayakan cuti",
       "threshold1": "Peringkat 1 hingga (tahun)",

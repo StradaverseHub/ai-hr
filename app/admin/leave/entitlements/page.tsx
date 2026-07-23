@@ -191,9 +191,9 @@ export default async function LeaveEntitlementsPage({
 
   // Restructure (123c1e76): per-type Entitlement card data — each leave type's benefit-scheme entitlement
   // rows, joined with the owning scheme's name and (read-only) any combined-limit pool the type belongs to
-  // in that scheme. The SAME already-loaded rows the Benefit Schemes section renders below — filtered by
-  // leave type, never duplicated — and the panel's Edit dialog posts the SAME upsert action, so the two
-  // surfaces cannot drift.
+  // in that scheme. The SAME already-loaded rows the scoped Benefit Schemes area (6c775d68, below in the
+  // same step) renders — filtered by leave type, never duplicated — and the panel's Edit dialog posts the
+  // SAME upsert action, so the two surfaces cannot drift.
   const schemeNameById = new Map(benefitSchemes.map((sc) => [sc.id, sc.name]));
   const poolBySchemeType = new Map<string, { name: string; totalLimitDays: number }>();
   for (const cl of schemeCombinedLimits) {
@@ -219,6 +219,57 @@ export default async function LeaveEntitlementsPage({
     else schemeEntsByType.set(e.leaveTypeId, [row]);
   }
   for (const arr of schemeEntsByType.values()) arr.sort((a, b) => a.schemeName.localeCompare(b.schemeName));
+
+  // Move Benefit Schemes into the Entitlement step (feedback 6c775d68): the standalone page-bottom section
+  // is gone — BenefitSchemeConfig now renders inside EACH leave type's Entitlement step, scoped to that type
+  // (scopeLeaveTypeId). The props are prepared ONCE here from the rows this page already loads and shared by
+  // every panel (only the scope id varies) — no per-type reload, no N+1. All scheme data, combined limits
+  // and calculations are untouched: this changes where schemes are managed, not how they work.
+  const schemeConfigProps = {
+    companies: companyOptions,
+    grades: grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name, code: g.code })),
+    leaveTypes: activeTypeOptions.map((lt) => ({ id: lt.id, name: lt.name, code: typeCodeById.get(lt.id) ?? '' })),
+    gradeGroups: gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived })),
+    schemes: benefitSchemes.map((sc) => ({
+      id: sc.id,
+      companyId: sc.companyId,
+      employmentType: sc.employmentType,
+      gradeGroupId: sc.gradeGroupId,
+      gradeGroupName: sc.gradeGroupName,
+      name: sc.name,
+      status: sc.status,
+    })),
+    entitlements: schemeEntitlements.map((e) => ({
+      id: e.id,
+      benefitSchemeId: e.benefitSchemeId,
+      leaveTypeId: e.leaveTypeId,
+      leaveTypeName: e.leaveTypeName,
+      serviceBands: e.serviceBands,
+    })),
+    combinedLimits: schemeCombinedLimits.map((cl) => ({
+      id: cl.id,
+      benefitSchemeId: cl.benefitSchemeId,
+      name: cl.name,
+      totalLimitDays: cl.totalLimitDays,
+      leaveTypeIds: cl.leaveTypeIds,
+    })),
+    actions: {
+      createGradeGroup: createGradeGroupAction,
+      updateGradeGroup: updateGradeGroupAction,
+      deleteGradeGroup: deleteGradeGroupAction,
+      createScheme: createBenefitSchemeAction,
+      updateScheme: updateBenefitSchemeAction,
+      deleteScheme: deleteBenefitSchemeAction,
+      upsertEntitlement: upsertSchemeEntitlementAction,
+      deleteEntitlement: deleteSchemeEntitlementAction,
+      copyEntitlements: copySchemeEntitlementsAction,
+      updateCombinedLimit: updateSchemeCombinedLimitAction,
+      deleteCombinedLimit: deleteSchemeCombinedLimitAction,
+      // R47 d6f88c2f — DnD grouping writes for the entitlement table.
+      moveCombinedLimitMember: moveCombinedLimitMemberAction,
+      groupLeaveTypes: groupSchemeLeaveTypesAction,
+    },
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -288,6 +339,18 @@ export default async function LeaveEntitlementsPage({
               grades={gradeOptions}
               companies={companyOptions}
               schemeEntitlements={schemeEntsByType.get(lt.id) ?? []}
+              benefitSchemeSection={
+                /* 6c775d68: the Benefit Schemes management area, scoped to this leave type, rendered inside
+                   the Entitlement step below the per-type table. Shared props (one page-level data prep) +
+                   the per-type scope id. */
+                <div className="space-y-3 border-t border-border pt-3">
+                  <div>
+                    <span className="text-xs font-medium text-muted-foreground">{t('benefitSchemeTitle')}</span>
+                    <p className="text-xs text-muted-foreground">{t('benefitSchemeHelp')}</p>
+                  </div>
+                  <BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} />
+                </div>
+              }
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}
@@ -453,71 +516,11 @@ export default async function LeaveEntitlementsPage({
         </CollapsibleCardSection>
       </Card>
 
-      {/* Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b): a friendlier configuration
-          LAYER over the grade-scoped engine, placed AFTER the Grade catalog (which stays unchanged). Grade
-          groups + named schemes (Company × Employment Type × Grade Group) + a per-scheme leave-entitlement
-          table. Employees resolve to a scheme (auto-match, or a manual override) and the scheme's service-
-          band days supersede the grade policy — the EA-1955 floor still applies. */}
-      <Card>
-        <SectionHeader title={t('benefitSchemeTitle')} count={benefitSchemes.length} />
-        <p className="px-4 pt-3 pb-1 text-xs text-muted-foreground">{t('benefitSchemeHelp')}</p>
-        <div className="p-4">
-          <BenefitSchemeConfig
-            companies={companyOptions}
-            grades={grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name, code: g.code }))}
-            leaveTypes={activeTypeOptions.map((lt) => ({
-              id: lt.id,
-              name: lt.name,
-              code: types.find((t) => t.id === lt.id)?.code ?? '',
-            }))}
-            gradeGroups={gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived }))}
-            schemes={benefitSchemes.map((sc) => ({
-              id: sc.id,
-              companyId: sc.companyId,
-              employmentType: sc.employmentType,
-              gradeGroupId: sc.gradeGroupId,
-              gradeGroupName: sc.gradeGroupName,
-              name: sc.name,
-              status: sc.status,
-            }))}
-            entitlements={schemeEntitlements.map((e) => ({
-              id: e.id,
-              benefitSchemeId: e.benefitSchemeId,
-              leaveTypeId: e.leaveTypeId,
-              leaveTypeName: e.leaveTypeName,
-              serviceBands: e.serviceBands,
-            }))}
-            combinedLimits={schemeCombinedLimits.map((cl) => ({
-              id: cl.id,
-              benefitSchemeId: cl.benefitSchemeId,
-              name: cl.name,
-              totalLimitDays: cl.totalLimitDays,
-              leaveTypeIds: cl.leaveTypeIds,
-            }))}
-            actions={{
-              createGradeGroup: createGradeGroupAction,
-              updateGradeGroup: updateGradeGroupAction,
-              deleteGradeGroup: deleteGradeGroupAction,
-              createScheme: createBenefitSchemeAction,
-              updateScheme: updateBenefitSchemeAction,
-              deleteScheme: deleteBenefitSchemeAction,
-              upsertEntitlement: upsertSchemeEntitlementAction,
-              deleteEntitlement: deleteSchemeEntitlementAction,
-              copyEntitlements: copySchemeEntitlementsAction,
-              updateCombinedLimit: updateSchemeCombinedLimitAction,
-              deleteCombinedLimit: deleteSchemeCombinedLimitAction,
-              // R47 d6f88c2f — DnD grouping writes for the entitlement table.
-              moveCombinedLimitMember: moveCombinedLimitMemberAction,
-              groupLeaveTypes: groupSchemeLeaveTypesAction,
-            }}
-          />
-        </div>
-      </Card>
-
       {/* Feedback 26e76a9f — "Preview a scenario": the live entitlement checker relocated from the Types
           tab when its read-only Entitlement rules card was removed. Sits with the entitlement configuration
-          it previews (near the Benefit Schemes card). Runs the same pure resolver the server engines use
-          (components/leave-rule-preview.tsx) — read-only, writes nothing. */}
+          it previews (the per-type Entitlement steps above manage the benefit schemes since 6c775d68). Runs
+          the same pure resolver the server engines use (components/leave-rule-preview.tsx) — read-only,
+          writes nothing. */}
       {activeTypeOptions.length > 0 && companyOptions.length > 0 && (
         <Card>
           <SectionHeader title={t('previewTitle')} />
