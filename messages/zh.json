@@ -4108,7 +4108,11 @@
           "forfeited": "已作废",
           "totalAvailable": "可用总额"
         }
-      }
+      },
+      "gradeSearchLabel": "搜索职级",
+      "gradeSearchPlaceholder": "按代码或名称搜索…",
+      "gradeSearchNoResults": "没有符合搜索条件的职级。",
+      "gradeDragAria": "将 {name} 拖入职级组"
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -4904,7 +4908,9 @@
       "createGroupTitle": "为假期类型分组",
       "createGroupHelp": "分组后的假期类型每年共享一个合并总上限。员工达到上限时会看到该组名称。",
       "totalLimitPerYear": "总上限（天 / 年）",
-      "createGroupConfirm": "创建分组"
+      "createGroupConfirm": "创建分组",
+      "dropGradeHint": "从职级主档中将职级拖放到某个组即可添加——也可以在组内勾选它的复选框后保存。",
+      "gradeAlreadyInGroup": "{name} 已在该组中。"
     }
   },
   "topbar": {

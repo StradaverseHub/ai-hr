@@ -4108,7 +4108,11 @@
           "forfeited": "Forfeited",
           "totalAvailable": "Total Available"
         }
-      }
+      },
+      "gradeSearchLabel": "Search grades",
+      "gradeSearchPlaceholder": "Search by code or name…",
+      "gradeSearchNoResults": "No grades match your search.",
+      "gradeDragAria": "Drag {name} into a grade group"
     },
     "holidays": {
       "pageTitle": "Public holidays",
@@ -4904,7 +4908,9 @@
       "createGroupTitle": "Group leave types",
       "createGroupHelp": "Grouped leave types share one combined total limit per year. The group name is shown to employees when they reach the limit.",
       "totalLimitPerYear": "Total limit (days / year)",
-      "createGroupConfirm": "Create group"
+      "createGroupConfirm": "Create group",
+      "dropGradeHint": "Drag a grade from the Grade Master onto a group to add it — or tick its checkbox inside the group and save.",
+      "gradeAlreadyInGroup": "{name} is already in this group."
     }
   },
   "topbar": {

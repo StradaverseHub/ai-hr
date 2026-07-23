@@ -4108,7 +4108,11 @@
           "forfeited": "ถูกริบ",
           "totalAvailable": "รวมที่ใช้ได้"
         }
-      }
+      },
+      "gradeSearchLabel": "ค้นหาระดับ",
+      "gradeSearchPlaceholder": "ค้นหาตามรหัสหรือชื่อ…",
+      "gradeSearchNoResults": "ไม่มีระดับที่ตรงกับการค้นหาของคุณ",
+      "gradeDragAria": "ลาก {name} ไปยังกลุ่มระดับตำแหน่ง"
     },
     "holidays": {
       "pageTitle": "วันหยุดราชการ",
@@ -4904,7 +4908,9 @@
       "createGroupTitle": "จัดกลุ่มประเภทการลา",
       "createGroupHelp": "ประเภทการลาที่จัดกลุ่มจะใช้วงเงินรวมเดียวกันต่อปี พนักงานจะเห็นชื่อกลุ่มเมื่อถึงวงเงิน",
       "totalLimitPerYear": "วงเงินรวม (วัน / ปี)",
-      "createGroupConfirm": "สร้างกลุ่ม"
+      "createGroupConfirm": "สร้างกลุ่ม",
+      "dropGradeHint": "ลากระดับจากหน้าหลักระดับไปวางบนกลุ่มเพื่อเพิ่ม — หรือทำเครื่องหมายในช่องของระดับนั้นภายในกลุ่มแล้วบันทึก",
+      "gradeAlreadyInGroup": "{name} อยู่ในกลุ่มนี้แล้ว"
     }
   },
   "topbar": {

@@ -4108,7 +4108,11 @@
           "forfeited": "Dilucutkan",
           "totalAvailable": "Jumlah Tersedia"
         }
-      }
+      },
+      "gradeSearchLabel": "Cari gred",
+      "gradeSearchPlaceholder": "Cari mengikut kod atau nama…",
+      "gradeSearchNoResults": "Tiada gred sepadan dengan carian anda.",
+      "gradeDragAria": "Seret {name} ke dalam kumpulan gred"
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -4904,7 +4908,9 @@
       "createGroupTitle": "Kumpulkan jenis cuti",
       "createGroupHelp": "Jenis cuti yang dikumpulkan berkongsi satu had jumlah gabungan setahun. Nama kumpulan dipaparkan kepada pekerja apabila mereka mencapai had.",
       "totalLimitPerYear": "Had jumlah (hari / tahun)",
-      "createGroupConfirm": "Cipta kumpulan"
+      "createGroupConfirm": "Cipta kumpulan",
+      "dropGradeHint": "Seret gred daripada Induk Gred ke atas kumpulan untuk menambahnya — atau tandakan kotak semaknya di dalam kumpulan dan simpan.",
+      "gradeAlreadyInGroup": "{name} sudah berada dalam kumpulan ini."
     }
   },
   "topbar": {

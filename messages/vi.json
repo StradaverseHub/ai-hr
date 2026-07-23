@@ -4108,7 +4108,11 @@
           "forfeited": "Bị mất",
           "totalAvailable": "Tổng khả dụng"
         }
-      }
+      },
+      "gradeSearchLabel": "Tìm kiếm bậc",
+      "gradeSearchPlaceholder": "Tìm theo mã hoặc tên…",
+      "gradeSearchNoResults": "Không có bậc nào khớp với tìm kiếm của bạn.",
+      "gradeDragAria": "Kéo {name} vào một nhóm bậc"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -4904,7 +4908,9 @@
       "createGroupTitle": "Nhóm các loại nghỉ",
       "createGroupHelp": "Các loại nghỉ được nhóm dùng chung một giới hạn tổng mỗi năm. Nhân viên sẽ thấy tên nhóm khi chạm giới hạn.",
       "totalLimitPerYear": "Giới hạn tổng (ngày / năm)",
-      "createGroupConfirm": "Tạo nhóm"
+      "createGroupConfirm": "Tạo nhóm",
+      "dropGradeHint": "Kéo một bậc từ Danh mục bậc thả vào một nhóm để thêm — hoặc đánh dấu ô chọn của bậc đó trong nhóm rồi lưu.",
+      "gradeAlreadyInGroup": "{name} đã có trong nhóm này."
     }
   },
   "topbar": {

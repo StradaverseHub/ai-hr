@@ -875,7 +875,6 @@ export function LeaveTypePanel({
   festiveGrantSection,
   approvalWorkflowSection,
   halfDaySection,
-  gradesSection,
   previewScenarioSection,
   accrualSection,
   updateTypeAction,
@@ -988,7 +987,10 @@ export function LeaveTypePanel({
   schemeEntitlements: LeaveTypeSchemeEntitlement[];
   /** 6c775d68: the Benefit Schemes management area, scoped to THIS leave type — a server-composed
    *  <BenefitSchemeConfig scopeLeaveTypeId={id}> slot rendered inside the Entitlement step, below the
-   *  per-type table. Slot-shaped so the scheme data is prepared ONCE at page level (no N+1 per type). */
+   *  per-type table. Slot-shaped so the scheme data is prepared ONCE at page level (no N+1 per type).
+   *  387792a4: the config now hosts the three-panel grade workbench (Grade Master · Grade Groups ·
+   *  Assignment) — the page threads the shared Grades catalogue in as its gradesPanel slot, so this ONE
+   *  section is the whole Benefit Schemes sub-step. */
   benefitSchemeSection?: ReactNode;
   /** fd7c8e20: the One-Off / Festive Leave Grant tool, moved from the page-bottom section into the
    *  Entitlement step BELOW the Benefit Schemes area — a server-composed <FestiveGrantCard
@@ -1006,11 +1008,6 @@ export function LeaveTypePanel({
    *  applies-company-wide badge). Slot-shaped like benefitSchemeSection: the rows are per-COMPANY (not
    *  per-type), so ONE node is prepared at page level and shared by every panel. */
   halfDaySection?: ReactNode;
-  /** 7b945408: the Grades catalogue (tenant-wide master data), relocated from the standalone page-bottom
-   *  section into the Entitlement step's Benefit Schemes sub-step — a server-composed slot (the 03557e76
-   *  CollapsibleCardSection fold + GradeCatalog, marked with the company-wide badge convention). Grades are
-   *  per-TENANT (not per-type), so ONE node is prepared at page level and shared by every panel. */
-  gradesSection?: ReactNode;
   /** 7b945408: the Preview Scenario checker (d778d2d3's LeaveRulePreviewDialog), joining the Service Based
    *  Entitlements sub-step as its checking tool — a server-composed slot (page-level data prep, one shared
    *  node). The PageHeader button is removed separately by item 962077a8; this slot is its new home. */
@@ -2090,14 +2087,14 @@ export function LeaveTypePanel({
             onSelect={(k) => selectEntitlementSubStep(k as EntitlementSubStepKey)}
             ariaLabel={t('entitlementStepsLabel')}
           />
-          {/* Sub-step 1 — Benefit Schemes (7b945408): who receives which scheme. The Grades catalogue
-              (tenant-wide master data, relocated from the standalone page-bottom section — gradesSection
-              slot) leads, then the type-scoped scheme management (6c775d68 — grade groups, schemes,
-              per-scheme entitlements, combined limits), so the grade → grade-group → scheme relationship
-              is finally visible in one place. Both are server-composed slots; see the prop docs. */}
+          {/* Sub-step 1 — Benefit Schemes (7b945408): who receives which scheme. 387792a4 restructured the
+              old vertical scroll into the three-panel workbench BenefitSchemeConfig hosts — Panel A Grade
+              Master (the relocated Grades catalogue, now fed in as the config's gradesPanel slot) · Panel B
+              Grade Groups · Panel C Assignment — with the per-scheme entitlements area below it, so the
+              grade → grade-group → scheme relationship reads side by side instead of stacked. One
+              server-composed slot; see the benefitSchemeSection prop doc. */}
           {entitlementSubStep === 'schemes' && (
           <>
-          {gradesSection}
           {benefitSchemeSection}
           </>
           )}
