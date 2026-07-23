@@ -3468,6 +3468,45 @@ export const employeeDependent = pgTable(
   (t) => [index('employee_dependent_person_idx').on(t.tenantId, t.personId)],
 );
 
+// ─────────────── Personnel — Qualification (feedback a949184a, migration 0306) ───────────────
+// A per-EMPLOYMENT register of an employee's academic / professional qualification history for the
+// Personnel (Admin) profile's Qualification tab. `qualification` stores a profile_option value from the
+// 'qualificationLevel' catalog (System Settings > System Labels > Profile Options) with legacy-value
+// tolerance (validated in core/qualifications.ts, not by constraint). from_ym / to_ym are 'YYYY-MM' study
+// periods; the single-highest rule (at most ONE live is_highest per employment) is enforced by the
+// service's transactional flag transfer PLUS the partial unique index below as the concurrency backstop.
+// RLS (0306): USING app.can_see_employment (self + admin read) / WITH CHECK app.is_admin() (admin write),
+// mirroring the employee_cp38 employment-keyed precedent.
+export const employeeQualification = pgTable(
+  'employee_qualification',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    qualification: text('qualification').notNull(), // qualificationLevel catalog value (legacy-tolerant)
+    description: text('description'),
+    fromYm: text('from_ym'), // 'YYYY-MM' study start (validated in-service)
+    toYm: text('to_ym'), // 'YYYY-MM' study end (>= from_ym, validated in-service)
+    institute: text('institute'),
+    major: text('major'),
+    graduationDate: date('graduation_date'), // may be blank while incomplete; >= from_ym when both set
+    result: text('result'), // overall result / grade (free text)
+    isHighest: boolean('is_highest').notNull().default(false),
+    archivedAt: timestamp('archived_at', { withTimezone: true }), // soft-delete
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('employee_qualification_employment_idx').on(t.tenantId, t.employmentId),
+    // Single-highest backstop: one live highest per employment (archived rows never block a new one).
+    uniqueIndex('employee_qualification_one_highest_uq')
+      .on(t.tenantId, t.employmentId)
+      .where(sql`is_highest and archived_at is null`),
+  ],
+);
+
 // ──────────────────────── Payroll (generic kernel) ────────────────────────
 export const payrollStatusEnum = pgEnum('payroll_status', ['draft', 'processed', 'closed']);
 

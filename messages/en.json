@@ -655,6 +655,36 @@
         "deleteFamilyConfirmTitle": "Remove family member record?",
         "deleteFamilyConfirmBody": "This removes the family member from the family register. If child relief is on automatic mode, the employee's child-relief count is refreshed accordingly."
       },
+      "qualification": {
+        "title": "Qualification Information",
+        "add": "Add qualification",
+        "addTitle": "Add qualification",
+        "editTitle": "Edit qualification",
+        "viewTitle": "View qualification",
+        "view": "View",
+        "edit": "Edit",
+        "save": "Save",
+        "delete": "Delete",
+        "deleteConfirmTitle": "Delete qualification",
+        "deleteConfirmBody": "Remove this qualification record? It will no longer appear in this employee's qualification history.",
+        "none": "No qualification records.",
+        "hint": "HR maintains these records. Qualification types are managed under System Settings > System Labels > Profile Options.",
+        "level": "Qualification",
+        "levelPlaceholder": "Select qualification",
+        "institute": "Institute",
+        "major": "Major / Field of study",
+        "fromYm": "From (year & month)",
+        "toYm": "To (year & month)",
+        "graduationDate": "Graduation date",
+        "result": "Result / Grade",
+        "resultPlaceholder": "e.g. First Class Honours, CGPA 3.75",
+        "description": "Description",
+        "highest": "Highest qualification",
+        "highestColumn": "Highest",
+        "highestBadge": "Highest",
+        "highestHint": "Only one record can be the highest qualification. Ticking this moves the marker off the previous record.",
+        "actions": "Actions"
+      },
       "clocking": {
         "cardTitle": "Clocking locations & geofencing",
         "assignedLocations": "Assigned clocking locations",
@@ -677,7 +707,8 @@
         "documents": "Documents",
         "others": "Others",
         "empty": "Nothing to show here.",
-        "leave": "Leave"
+        "leave": "Leave",
+        "qualification": "Qualification"
       },
       "employmentInfo": {
         "title": "Employment Information",
@@ -4686,7 +4717,8 @@
         "team": "Team",
         "base": "Base",
         "category": "Category",
-        "dependentRelationship": "Family relationship"
+        "dependentRelationship": "Family relationship",
+        "qualificationLevel": "Qualification level"
       },
       "col": {
         "code": "Code",

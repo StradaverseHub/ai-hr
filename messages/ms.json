@@ -638,6 +638,36 @@
         "deleteFamilyConfirmTitle": "Buang rekod ahli keluarga?",
         "deleteFamilyConfirmBody": "Ini membuang ahli keluarga daripada daftar keluarga. Jika pelepasan anak dalam mod automatik, kiraan pelepasan anak pekerja akan dikemas kini sewajarnya."
       },
+      "qualification": {
+        "title": "Maklumat Kelayakan",
+        "add": "Tambah kelayakan",
+        "addTitle": "Tambah kelayakan",
+        "editTitle": "Edit kelayakan",
+        "viewTitle": "Lihat kelayakan",
+        "view": "Lihat",
+        "edit": "Edit",
+        "save": "Simpan",
+        "delete": "Padam",
+        "deleteConfirmTitle": "Padam kelayakan",
+        "deleteConfirmBody": "Buang rekod kelayakan ini? Ia tidak akan dipaparkan lagi dalam sejarah kelayakan pekerja ini.",
+        "none": "Tiada rekod kelayakan.",
+        "hint": "HR menyelenggara rekod ini. Jenis kelayakan diurus di Tetapan Sistem > Label Sistem > Pilihan Profil.",
+        "level": "Kelayakan",
+        "levelPlaceholder": "Pilih kelayakan",
+        "institute": "Institusi",
+        "major": "Pengkhususan / Bidang pengajian",
+        "fromYm": "Dari (tahun & bulan)",
+        "toYm": "Hingga (tahun & bulan)",
+        "graduationDate": "Tarikh graduasi",
+        "result": "Keputusan / Gred",
+        "resultPlaceholder": "cth. Kepujian Kelas Pertama, PNGK 3.75",
+        "description": "Keterangan",
+        "highest": "Kelayakan tertinggi",
+        "highestColumn": "Tertinggi",
+        "highestBadge": "Tertinggi",
+        "highestHint": "Hanya satu rekod boleh menjadi kelayakan tertinggi. Menanda pilihan ini akan mengalihkan penanda daripada rekod sebelumnya.",
+        "actions": "Tindakan"
+      },
       "encashmentTitle": "Pemvantaian cuti",
       "encashmentBalance": "Baki mentah",
       "encashmentAuto": "Angka automatik",
@@ -677,7 +707,8 @@
         "documents": "Dokumen",
         "others": "Lain-lain",
         "empty": "Tiada apa-apa untuk dipaparkan di sini.",
-        "leave": "Cuti"
+        "leave": "Cuti",
+        "qualification": "Kelayakan"
       },
       "employmentInfo": {
         "title": "Maklumat Pekerjaan",
@@ -4686,7 +4717,8 @@
         "team": "Pasukan",
         "base": "Pangkalan",
         "category": "Kategori",
-        "dependentRelationship": "Hubungan keluarga"
+        "dependentRelationship": "Hubungan keluarga",
+        "qualificationLevel": "Tahap kelayakan"
       },
       "col": {
         "code": "Kod",

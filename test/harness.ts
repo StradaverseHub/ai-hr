@@ -28,6 +28,9 @@ const ALL_TABLES = [
   'notification', 'notification_pref', 'notification_delivery', 'notification_cursor',
   'tp1_relief',
   'employee_dependent',
+  // a949184a — qualification register: a leaked live is_highest row would trip the partial unique index
+  // (employee_qualification_one_highest_uq) across test files.
+  'employee_qualification',
   // 0110 — leaking review rows across tests would make the partial-unique index throw spuriously
   // (order-dependent false-green/false-red). Must be truncated between tests.
   'employment_review',

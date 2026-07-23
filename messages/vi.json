@@ -638,6 +638,36 @@
         "deleteFamilyConfirmTitle": "Xóa hồ sơ thành viên gia đình?",
         "deleteFamilyConfirmBody": "Thao tác này xóa thành viên gia đình khỏi sổ đăng ký gia đình. Nếu khoản giảm trừ cho con ở chế độ tự động, số con được giảm trừ của nhân viên sẽ được cập nhật tương ứng."
       },
+      "qualification": {
+        "title": "Thông tin bằng cấp",
+        "add": "Thêm bằng cấp",
+        "addTitle": "Thêm bằng cấp",
+        "editTitle": "Sửa bằng cấp",
+        "viewTitle": "Xem bằng cấp",
+        "view": "Xem",
+        "edit": "Sửa",
+        "save": "Lưu",
+        "delete": "Xóa",
+        "deleteConfirmTitle": "Xóa bằng cấp",
+        "deleteConfirmBody": "Xóa bản ghi bằng cấp này? Nó sẽ không còn hiển thị trong lịch sử bằng cấp của nhân viên này.",
+        "none": "Chưa có bản ghi bằng cấp.",
+        "hint": "Bộ phận nhân sự quản lý các bản ghi này. Loại bằng cấp được quản lý tại Cài đặt hệ thống > Nhãn hệ thống > Tùy chọn hồ sơ.",
+        "level": "Bằng cấp",
+        "levelPlaceholder": "Chọn bằng cấp",
+        "institute": "Cơ sở đào tạo",
+        "major": "Chuyên ngành / Lĩnh vực học",
+        "fromYm": "Từ (năm & tháng)",
+        "toYm": "Đến (năm & tháng)",
+        "graduationDate": "Ngày tốt nghiệp",
+        "result": "Kết quả / Xếp loại",
+        "resultPlaceholder": "vd. Loại xuất sắc, CGPA 3.75",
+        "description": "Mô tả",
+        "highest": "Bằng cấp cao nhất",
+        "highestColumn": "Cao nhất",
+        "highestBadge": "Cao nhất",
+        "highestHint": "Chỉ một bản ghi có thể là bằng cấp cao nhất. Chọn mục này sẽ chuyển đánh dấu khỏi bản ghi trước đó.",
+        "actions": "Thao tác"
+      },
       "encashmentTitle": "Quy đổi phép năm",
       "encashmentBalance": "Số dư gốc",
       "encashmentAuto": "Số tự động",
@@ -677,7 +707,8 @@
         "documents": "Tài liệu",
         "others": "Khác",
         "empty": "Không có gì để hiển thị ở đây.",
-        "leave": "Nghỉ phép"
+        "leave": "Nghỉ phép",
+        "qualification": "Bằng cấp"
       },
       "employmentInfo": {
         "title": "Thông tin việc làm",
@@ -4686,7 +4717,8 @@
         "team": "Nhóm",
         "base": "Cơ sở",
         "category": "Loại",
-        "dependentRelationship": "Quan hệ gia đình"
+        "dependentRelationship": "Quan hệ gia đình",
+        "qualificationLevel": "Trình độ bằng cấp"
       },
       "col": {
         "code": "Mã",

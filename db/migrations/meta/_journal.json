@@ -1807,6 +1807,13 @@
       "when": 1781862407000,
       "tag": "0307_company_default_currency",
       "breakpoints": true
+    },
+    {
+      "idx": 308,
+      "version": "7",
+      "when": 1781862408000,
+      "tag": "0308_employee_qualification",
+      "breakpoints": true
     }
   ]
 }

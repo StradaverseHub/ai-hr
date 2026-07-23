@@ -638,6 +638,36 @@
         "deleteFamilyConfirmTitle": "移除家庭成员记录？",
         "deleteFamilyConfirmBody": "这将从家庭名册中移除该家庭成员。如果子女减免处于自动模式，员工的子女减免人数将相应刷新。"
       },
+      "qualification": {
+        "title": "学历资历信息",
+        "add": "添加资历",
+        "addTitle": "添加资历",
+        "editTitle": "编辑资历",
+        "viewTitle": "查看资历",
+        "view": "查看",
+        "edit": "编辑",
+        "save": "保存",
+        "delete": "删除",
+        "deleteConfirmTitle": "删除资历",
+        "deleteConfirmBody": "移除此资历记录？它将不再显示在该员工的资历历史中。",
+        "none": "暂无资历记录。",
+        "hint": "这些记录由 HR 维护。资历类型在 系统设置 > 系统标签 > 档案选项 中管理。",
+        "level": "资历",
+        "levelPlaceholder": "选择资历",
+        "institute": "院校",
+        "major": "主修 / 专业领域",
+        "fromYm": "开始（年月）",
+        "toYm": "结束（年月）",
+        "graduationDate": "毕业日期",
+        "result": "成绩 / 等级",
+        "resultPlaceholder": "例如：一等荣誉、CGPA 3.75",
+        "description": "描述",
+        "highest": "最高学历",
+        "highestColumn": "最高",
+        "highestBadge": "最高",
+        "highestHint": "只能有一条记录被标记为最高学历。勾选此项会将标记从之前的记录移除。",
+        "actions": "操作"
+      },
       "encashmentTitle": "年假折现",
       "encashmentBalance": "原始余额",
       "encashmentAuto": "自动计算数值",
@@ -677,7 +707,8 @@
         "documents": "文件",
         "others": "其他",
         "empty": "此处暂无内容。",
-        "leave": "休假"
+        "leave": "休假",
+        "qualification": "学历资历"
       },
       "employmentInfo": {
         "title": "雇佣信息",
@@ -4686,7 +4717,8 @@
         "team": "团队",
         "base": "基地",
         "category": "类别",
-        "dependentRelationship": "家庭关系"
+        "dependentRelationship": "家庭关系",
+        "qualificationLevel": "资历级别"
       },
       "col": {
         "code": "代码",

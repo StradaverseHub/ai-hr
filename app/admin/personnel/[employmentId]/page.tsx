@@ -81,6 +81,9 @@ import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
 import { listDependents, eligibleChildReliefCount, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
+// Feedback a949184a — Qualification tab: per-employment academic/professional qualification register.
+import { listQualifications, type QualificationRow } from '@/core/qualifications';
+import { addQualificationAction, editQualificationAction, archiveQualificationAction } from './qualification-actions';
 import { FamilyFormDialog } from '@/components/family-form-dialog';
 import { FamilyRelationshipFields } from '@/components/family-relationship-fields';
 import { listAssignablePolicies } from '@/core/payroll-policy';
@@ -251,6 +254,10 @@ export default async function EmployeePage({
   // Personnel — Family / Dependents (phase 1): per-person benefits/insurance register (admin-only). Keyed
   // on person_id (already loaded on emp), NOT employment_id. Does NOT feed the tax num_children figure.
   const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
+  // Feedback a949184a — Qualification tab: this employment's academic/professional qualification records
+  // (admin-only surface; employment-keyed, unlike the person-keyed Family register). Sorted by the service:
+  // most recent graduation first, in-progress (blank graduation date) last.
+  const qualifications = admin ? await listQualifications(s, { employmentId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
   // 297ae65a — the company's configured default salary currency (company_payroll_config.default_currency,
@@ -326,6 +333,8 @@ export default async function EmployeePage({
         category: [],
         // ea36b7fa — Family tab Relationship catalog (admin-only surface; empty ⇒ built-in fallback).
         dependentRelationship: [],
+        // a949184a — Qualification tab level catalog (non-admin viewers never render the form).
+        qualificationLevel: [],
       } as Awaited<ReturnType<typeof listAllProfileOptions>>);
 
   // Family/Dependents (phase 1): render relationship/gender as STATIC literal i18n keys (a switch, not a
@@ -362,7 +371,7 @@ export default async function EmployeePage({
 
   // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
   // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
-  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'others'; label: string }[] = [
+  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification' | 'others'; label: string }[] = [
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
     { key: 'job', label: t('tabs.job') },
@@ -384,6 +393,10 @@ export default async function EmployeePage({
     { key: 'payroll', label: t('tabs.payroll') },
     { key: 'leave', label: t('tabs.leave') },
     { key: 'documents', label: t('tabs.documents') },
+    // Qualification (feedback a949184a): the employee's academic / professional qualification history —
+    // a list-and-dialog register mirroring the Family tab's table + dialogForm pattern. Placed after
+    // Documents per the request's tab-order example.
+    { key: 'qualification', label: t('tabs.qualification') },
     { key: 'others', label: t('tabs.others') },
   ];
 
@@ -1411,6 +1424,174 @@ export default async function EmployeePage({
         {familyMembersSection}
       </div>
       <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('family.hint')}</p>
+    </Card>
+  ) : null;
+
+  // ── QUALIFICATION ──────────────────────────────────────────────────────────
+  // Feedback a949184a — the employee's academic / professional qualification history, mirroring the Family
+  // tab's list-and-dialog pattern: one summary table (Qualification / Institute / Major / Graduation Date /
+  // Highest) + a single Add Qualification dialog posting to the event-logged core service. The Qualification
+  // dropdown is catalog-backed (System Labels > Profile Options, category qualificationLevel) with the
+  // standard legacy-value merge: a stored value whose option was deactivated/renamed still renders (and
+  // re-saves) pre-selected. Exactly ONE record can be the Highest Qualification — ticking it on save
+  // transfers the flag from the previous holder (core/qualifications.ts, backstopped by a partial unique
+  // index). Rows arrive pre-sorted from the service: most recent graduation first, in-progress last.
+  const qualificationLevelLabels = new Map(profileOptions.qualificationLevel.map((o) => [o.value, o.label]));
+  const qualificationLabelOf = (v: string) => qualificationLevelLabels.get(v) ?? v;
+  const qualificationOptions = profileOptions.qualificationLevel.map((o) => ({ value: o.value, label: o.label }));
+  const qualificationOptionsFor = (q: QualificationRow | null) =>
+    q && !qualificationOptions.some((o) => o.value === q.qualification)
+      ? [
+          ...qualificationOptions,
+          { value: q.qualification, label: `${q.qualification} ${t('optionLegacySuffix')}` },
+        ]
+      : qualificationOptions;
+
+  // Shared field inputs for one qualification form (Add when q is null, Edit otherwise). Control names are
+  // load-bearing for qualification-actions.ts. HTML `required` on the level select + max-length guards are
+  // the client-side floor; the service re-validates (active catalog, YYYY-MM periods, From ≤ To,
+  // Graduation ≥ From) on save.
+  const qualificationFields = (q: QualificationRow | null) => (
+    <>
+      <Field label={t('qualification.level')}>
+        <select name="qualification" required defaultValue={q?.qualification ?? ''} className={inputCls}>
+          <option value="">{t('qualification.levelPlaceholder')}</option>
+          {qualificationOptionsFor(q).map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label={t('qualification.institute')}>
+        <input name="institute" defaultValue={q?.institute ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('qualification.fromYm')}>
+        <input name="fromYm" type="month" defaultValue={q?.fromYm ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('qualification.toYm')}>
+        <input name="toYm" type="month" defaultValue={q?.toYm ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('qualification.graduationDate')}>
+        <input name="graduationDate" type="date" defaultValue={q?.graduationDate ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('qualification.major')}>
+        <input name="major" defaultValue={q?.major ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('qualification.result')}>
+        <input name="result" defaultValue={q?.result ?? ''} placeholder={t('qualification.resultPlaceholder')} className={inputCls} />
+      </Field>
+      <div className="sm:col-span-2">
+        <Field label={t('qualification.description')}>
+          <textarea name="description" rows={2} defaultValue={q?.description ?? ''} className={taCls} />
+        </Field>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <input type="checkbox" name="isHighest" defaultChecked={q?.isHighest ?? false} />
+          {t('qualification.highest')}
+        </label>
+      </div>
+      <p className="text-xs text-muted-foreground sm:col-span-2">{t('qualification.highestHint')}</p>
+    </>
+  );
+
+  // One dialog form for Add (q null) and Edit — the Family tab's dialogForm pattern. The STATIC hidden
+  // `tab` input keeps the post-save redirect on this tab (Dialog.Portal reparents the form outside the
+  // PersonnelTabs shell, so the shell's submit listener never sees it — see the Family tab note).
+  const qualificationDialogForm = (q: QualificationRow | null) => (
+    <form action={q ? editQualificationAction : addQualificationAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      {q && <input type="hidden" name="id" value={q.id} />}
+      <input type="hidden" name="tab" value="qualification" data-tab-tracker="" />
+      {qualificationFields(q)}
+      <div className="flex justify-end sm:col-span-2">
+        <button className={btnPrimary}>{q ? t('qualification.save') : t('qualification.add')}</button>
+      </div>
+    </form>
+  );
+
+  // View: the SAME server-rendered fields, disabled inside a fieldset with no <form> — the Family tab's
+  // viewDialogBody pattern (the read-only view can never drift from the Edit layout, and can never post).
+  const qualificationViewBody = (q: QualificationRow) => (
+    <fieldset disabled>
+      <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">{qualificationFields(q)}</div>
+    </fieldset>
+  );
+
+  const qualificationPanel = admin ? (
+    <Card id="section-qualification" className="overflow-hidden">
+      <SectionHeader title={t('qualification.title')} count={qualifications.length} />
+      <section className="border-t border-border">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+          <FamilyFormDialog triggerLabel={t('qualification.add')} title={t('qualification.addTitle')}>
+            {qualificationDialogForm(null)}
+          </FamilyFormDialog>
+        </div>
+        {qualifications.length === 0 ? (
+          <p className="px-4 pb-4 text-sm text-muted-foreground">{t('qualification.none')}</p>
+        ) : (
+          <div className="overflow-x-auto px-4 pb-4">
+            <table className="w-full min-w-[52rem] text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">{t('qualification.level')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('qualification.institute')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('qualification.major')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('qualification.graduationDate')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('qualification.highestColumn')}</th>
+                  <th className="py-2 text-right font-medium">{t('qualification.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {qualifications.map((q) => (
+                  <tr key={q.id} className="border-b border-border/60 align-top">
+                    <td className="py-2 pr-3 font-medium">{qualificationLabelOf(q.qualification)}</td>
+                    <td className="py-2 pr-3">{q.institute ?? '—'}</td>
+                    <td className="py-2 pr-3">{q.major ?? '—'}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{q.graduationDate ?? '—'}</td>
+                    <td className="py-2 pr-3">
+                      {q.isHighest ? <Badge variant="success">{t('qualification.highestBadge')}</Badge> : '—'}
+                    </td>
+                    <td className="py-2">
+                      <div className="flex items-center justify-end gap-2">
+                        <FamilyFormDialog
+                          triggerLabel={t('qualification.view')}
+                          triggerVariant="outline"
+                          title={t('qualification.viewTitle')}
+                        >
+                          {qualificationViewBody(q)}
+                        </FamilyFormDialog>
+                        <FamilyFormDialog
+                          triggerLabel={t('qualification.edit')}
+                          triggerVariant="outline"
+                          title={t('qualification.editTitle')}
+                        >
+                          {qualificationDialogForm(q)}
+                        </FamilyFormDialog>
+                        {/* Delete lives INSIDE the tab shell, so ConfirmSubmit's requestSubmit() fires a
+                            bubbling submit the shell's capture listener sees (tab retention for free). */}
+                        <form action={archiveQualificationAction}>
+                          <input type="hidden" name="employmentId" value={emp.employmentId} />
+                          <input type="hidden" name="id" value={q.id} />
+                          <ConfirmSubmit
+                            size="sm"
+                            variant="destructive"
+                            title={t('qualification.deleteConfirmTitle')}
+                            description={t('qualification.deleteConfirmBody')}
+                            confirmLabel={t('qualification.delete')}
+                          >
+                            {t('qualification.delete')}
+                          </ConfirmSubmit>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('qualification.hint')}</p>
     </Card>
   ) : null;
 
@@ -3093,6 +3274,9 @@ export default async function EmployeePage({
       </>
     ),
     documents: documentsPanel,
+    // Qualification (feedback a949184a): the academic/professional qualification register — a single card
+    // mirroring the Family tab's list-and-dialog pattern (see qualificationPanel above).
+    qualification: qualificationPanel,
     others: (
       <>
         {changeHistoryCard}
