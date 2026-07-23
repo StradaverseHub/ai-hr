@@ -56,7 +56,7 @@ import {
 // Movement tab redesign (78853b97): Employment History projection + New Event dispatcher.
 import { movementHistory, movementDetail } from '@/core/movement';
 import { MovementNewEvent } from './movement-new-event';
-import { serviceYearsMonthsAt } from '@/core/leave';
+import { serviceYearsMonthsAt, serviceYearsMonthsDaysAt } from '@/core/leave';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import {
   closedPayrollPeriodsFor,
@@ -2459,6 +2459,24 @@ export default async function EmployeePage({
   };
   const groupServiceLabel = fmtService(emp.hiredOn);
   const currentServiceLabel = fmtService(emp.joinDate ?? emp.hiredOn);
+  // cc681bd5 — Year of Service: day-precise duration from the Group Join Date (hiredOn — fixed through
+  // internal transfers; joinDate is deliberately ignored) to today, recomputed on every render so each
+  // profile open shows that day's exact figure with no manual refresh. Smart format drops zero LEADING
+  // units only ("8 Months 15 Days" under a year, "25 Days" for a new joiner) while inner zeros stay
+  // ("10 Years 0 Months 5 Days"); days always render (a same-day hire shows "0 Days"). Read-only,
+  // display-only — leave bands keep reading serviceYearsAt / serviceYearsMonthsAt.
+  const yearOfServiceLabel = ((): string | null => {
+    if (!emp.hiredOn) return null;
+    const s = serviceYearsMonthsDaysAt(emp.hiredOn, today);
+    const parts: string[] = [];
+    if (s.years > 0) parts.push(t('employmentInfo.yearsUnit', { count: s.years }));
+    if (s.years > 0 || s.months > 0) parts.push(t('employmentInfo.monthsUnit', { count: s.months }));
+    parts.push(t('employmentInfo.daysUnit', { count: s.days }));
+    return parts.join(' ');
+  })();
+  const yearOfServiceTooltip = emp.hiredOn
+    ? t('employmentInfo.yearOfServiceTooltip', { groupJoinDate: emp.hiredOn, asOf: today })
+    : null;
   const employmentInfoCard = admin ? (
     <Card id="section-employment-info">
       <SectionHeader title={t('employmentInfo.title')} />
@@ -2680,6 +2698,25 @@ export default async function EmployeePage({
               </p>
             </Field>
           </div>
+
+          {/* cc681bd5 — Year of Service row: read-only Y/M/D figure with an i-badge tooltip (same
+              plain-CSS native-title pattern as the family tax-relief badge) carrying the underlying
+              Group Join Date and the as-of date. "Not Available" when no Group Join Date is recorded. */}
+          <p className="text-sm">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-muted-foreground">{t('employmentInfo.yearOfService')}:</span>
+              <span className="font-medium">{yearOfServiceLabel ?? t('employmentInfo.notAvailable')}</span>
+              {yearOfServiceTooltip && (
+                <span
+                  className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground"
+                  title={yearOfServiceTooltip}
+                  aria-label={yearOfServiceTooltip}
+                >
+                  i
+                </span>
+              )}
+            </span>
+          </p>
 
           {/* Probation Information */}
           <div className="space-y-3">

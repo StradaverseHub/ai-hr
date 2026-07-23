@@ -4104,6 +4104,38 @@ export const serviceYearsMonthsAt = (
 };
 
 /**
+ * Length of service between `hiredOn` and `asOf` to full day precision — the "Year of Service" figure on
+ * the Employee Information card (feedback cc681bd5). Same UTC whole-month math as serviceYearsMonthsAt
+ * (its `.years`/`.months` ALWAYS equal serviceYearsMonthsAt for the same inputs — this only appends the
+ * residual-day tail), so the card figure can never disagree with the leave service bands. Day borrowing:
+ * when asOf's day-of-month is below hiredOn's, one month is borrowed and the residual days count from the
+ * anchor — hiredOn advanced by the whole-month total, its day-of-month clamped to the anchor month's
+ * length (31 Jan + 1 month anchors at 28/29 Feb, so 31-Jan → 1-Mar = 1 Month 1 Day; a 29-Feb hire anchors
+ * at 28-Feb in common years). An `asOf` before `hiredOn` clamps to all zeros. Display-only; drives no
+ * entitlement (leave bands keep reading serviceYearsAt / serviceYearsMonthsAt).
+ */
+export const serviceYearsMonthsDaysAt = (
+  hiredOn: string,
+  asOf: string,
+): { years: number; months: number; days: number } => {
+  const h = new Date(`${hiredOn}T00:00:00Z`);
+  const a = new Date(`${asOf}T00:00:00Z`);
+  if (a.getTime() < h.getTime()) return { years: 0, months: 0, days: 0 };
+  let months =
+    (a.getUTCFullYear() - h.getUTCFullYear()) * 12 + (a.getUTCMonth() - h.getUTCMonth());
+  if (a.getUTCDate() < h.getUTCDate()) months -= 1;
+  months = Math.max(0, months);
+  const anchorMonthIndex = h.getUTCMonth() + months;
+  const anchorYear = h.getUTCFullYear() + Math.floor(anchorMonthIndex / 12);
+  const anchorMonth = anchorMonthIndex % 12;
+  // Day 0 of month N+1 is the last day of month N — the clamp target for month-end hires.
+  const daysInAnchorMonth = new Date(Date.UTC(anchorYear, anchorMonth + 1, 0)).getUTCDate();
+  const anchor = Date.UTC(anchorYear, anchorMonth, Math.min(h.getUTCDate(), daysInAnchorMonth));
+  const days = Math.round((a.getTime() - anchor) / 86_400_000);
+  return { years: Math.floor(months / 12), months: months % 12, days };
+};
+
+/**
  * Open a leave year: for every active employment hired before 1 Jan of `year`, post the
  * new year's accrual per standing type at the employee's CURRENT service band — so the
  * 2y/5y band upgrades happen here — resolved as max(statutory floor, company policy).
