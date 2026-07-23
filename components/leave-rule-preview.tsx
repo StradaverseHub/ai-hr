@@ -3,16 +3,17 @@
 /**
  * Leave Entitlement Rules Engine — live, read-only preview. Runs the EXACT SAME pure resolver
  * (`previewEntitlement` → `resolveGradePolicy`) the server engines use, imported from core/leave-compute
- * (RSC-safe: no db import) so this can never disagree with a real grant. The statutory floor is imported
- * directly from localization/my/leave (pure — its only import is a type), NOT the full pack registry
- * (localization/registry → localization/my/index pulls in db/client via statutory-config — NOT client-safe).
- * Only one country pack exists today (MY); if a second pack lands, this must switch to a client-safe
- * registry rather than hardcoding MY here.
+ * (RSC-safe: no db import) so this can never disagree with a real grant. The statutory floor comes from
+ * the CLIENT-SAFE pack registry (ADR-0080 rung 5b, D4): `clientPackFor(company.country)` resolves the
+ * pack's pure `leave.entitlement` (MY: localization/my/leave) — NOT the full pack registry
+ * (localization/registry → localization/my/index pulls in db/client via statutory-config — NOT
+ * client-safe). A company whose country has no registered pack gets no floor (identical to the old
+ * hardcoded `country === 'MY'` check while MY is the only pack).
  */
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { previewEntitlement, type GradePolicyRow } from '@/core/leave-compute';
-import { entitlement as myEntitlement } from '@/localization/my/leave';
+import { clientPackFor } from '@/localization/registry.client';
 import { Field, inputCls } from './ui';
 
 export type PreviewLeaveTypeOption = { id: string; name: string; code: string };
@@ -51,8 +52,10 @@ export function LeaveRulePreview({
     const rows: GradePolicyRow[] = policies
       .filter((p) => p.leaveTypeId === leaveTypeId)
       .map((p) => ({ gradeId: p.gradeId, companyId: p.companyId, accrual: p.accrual }));
-    // Floor source: MY pack only (see header comment) — any other country has no client-safe floor.
-    const floorDays = company.country === 'MY' ? myEntitlement(type.code, Math.max(0, serviceYears)) : null;
+    // Floor source: the company country's registered pack (see header comment) — a country with no
+    // pack has no client-safe floor.
+    const floorPack = clientPackFor(company.country);
+    const floorDays = floorPack ? floorPack.leave.entitlement(type.code, Math.max(0, serviceYears)) : null;
     return previewEntitlement(rows, gradeId || null, companyId || null, Math.max(0, serviceYears), floorDays);
   }, [type, company, policies, leaveTypeId, gradeId, companyId, serviceYears]);
 
@@ -115,7 +118,7 @@ export function LeaveRulePreview({
           <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             {result.floorApplied ? t('previewWinnerFloor') : t('previewWinnerPolicy')}
           </span>
-          {company.country !== 'MY' && <span className="text-muted-foreground">{t('previewNoPack')}</span>}
+          {!clientPackFor(company.country) && <span className="text-muted-foreground">{t('previewNoPack')}</span>}
         </div>
       ) : null}
     </div>

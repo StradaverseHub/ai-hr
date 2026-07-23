@@ -22,6 +22,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const ALWAYS_ALLOWED = [
   'localization/my/', // the pack itself
   'localization/registry.ts', // the seam — the one place that resolves packs by design
+  'localization/registry.client.ts', // the client-safe seam (rung 5b, D4) — same class as registry.ts: the ONE client-side place that names packs
   'localization/country-pack.ts', // the D1 contract (MY-derived signatures until rung 5)
   'scripts/statutory-pack-build-my.ts', // the pack's build script (ADR-0020)
 ];

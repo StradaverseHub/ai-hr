@@ -86,12 +86,22 @@ describe('Passport identity — leaf helper + static wiring (e3ce0d4d)', () => {
     expect(COMBOBOX.includes('onValueChange')).toBe(true);
     expect(COMBOBOX.includes('onValueChange?.(v)')).toBe(true);
     expect(IDENTITY.trimStart().startsWith("'use client'")).toBe(true);
-    expect(IDENTITY.includes("from '@/localization/my/ic-dob'")).toBe(true);
+    // Rung 5b (ADR-0080 D4): the predicate arrives via the CLIENT-SAFE pack registry, not a direct
+    // localization/my import — still db-free (the MY implementation stays the leaf ic-dob module,
+    // referenced by localization/my/client.ts; identity pinned in the (pack) test below).
+    expect(IDENTITY.includes("from '@/localization/registry.client'")).toBe(true);
+    expect(IDENTITY.includes("from '@/localization/my/ic-dob'")).toBe(false);
     expect(IDENTITY.includes('isMalaysianNationality(nationality)')).toBe(true);
   });
 
   it('(pack) setPassport is registered on the MY statutory pack', () => {
     expect(typeof myPack.statutory.setPassport).toBe('function');
+  });
+
+  it('(pack) the client-safe vocabulary serves the SAME leaf nationality predicate (rung 5b)', () => {
+    // One source of truth: the client registry's MY entry references the leaf helper itself, so the
+    // identity fork on screen can never disagree with the server-side derivation.
+    expect(myPack.client.identity.isLocalNationality).toBe(isMalaysianNationality);
   });
 
   it('(i18n) exposes the passport labels in all six locales', () => {

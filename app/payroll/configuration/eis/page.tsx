@@ -66,6 +66,7 @@ export default async function EisConfigPage({
         <StatutoryConfigForm
           ruleset={ruleset}
           defaultVersion={ruleset.version}
+          epfScheduleFallback={pack.payroll.epfThirdSchedule}
           sections={['eis']}
           cancelHref={SELF}
           returnTo={SELF}

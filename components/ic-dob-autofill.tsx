@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { dobFromIC } from '@/localization/my/ic-dob';
+import { clientCountryPacks } from '@/localization/registry.client';
 
 /**
  * Item 354a500d — IC → Date-of-Birth autofill (client convenience). Renders the IC-number input on the
@@ -13,8 +13,18 @@ import { dobFromIC } from '@/localization/my/ic-dob';
  * real calendar date, a note is shown and the DOB is left untouched. The DOB stays fully editable — the
  * server (setIcAction → setPersonComplianceFields) persists the same derivation only when DOB is empty.
  *
- * dobFromIC comes from the leaf pure module (not statutory.ts) so this client bundle stays free of db deps.
+ * dobFromIC arrives via the CLIENT-SAFE pack registry (ADR-0080 rung 5b, D4): each pack's
+ * `identity.dobFromIC` is a pure leaf function (MY: localization/my/ic-dob, zero db deps), taken as a
+ * union across registered packs — first non-null derivation wins. MY-only today, so this is identical
+ * to the old direct leaf import; per-company narrowing is the second-country rung's decision.
  */
+const dobFromIC = (ic: string): string | null => {
+  for (const p of clientCountryPacks()) {
+    const iso = p.identity.dobFromIC(ic);
+    if (iso !== null) return iso;
+  }
+  return null;
+};
 export function IcDobAutofill({
   name,
   defaultValue,

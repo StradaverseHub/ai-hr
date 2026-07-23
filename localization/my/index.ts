@@ -8,12 +8,15 @@ import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import { eis, epf, hrdfLevy, hrdfSubject, overtimePay, pcbMonth, socso, statutory } from './payroll';
 import {
   DEFAULT_MY_STATUTORY,
+  MY_EPF_THIRD_SCHEDULE_PART_A,
+  MY_EPF_THIRD_SCHEDULE_PART_E,
   MY_LP_OPTIONAL_DEDUCTION_CODES,
   MY_PCB_EXEMPTION_CODES,
   MY_RELIEFS,
   PCB_REMUNERATION_TYPES,
   pcbExemptionCodesFor,
 } from './statutory-tables';
+import { myClientPack } from './client';
 import { BACKFILL_COMPONENT_CODES, MY_DEFAULT_PAY_COMPONENTS } from './pay-components';
 import { EA_FIELDS } from './reports';
 import {
@@ -40,6 +43,9 @@ import type { CountryPack } from '../country-pack';
 // registry derived its type FROM this object — backwards).
 export const myPack: CountryPack = {
   country: 'MY' as const,
+  // Rung 5b (ADR-0080 D4) — the client-safe vocabulary slice, ALSO served to 'use client'
+  // components by localization/registry.client.ts (this reference makes it contract-declared).
+  client: myClientPack,
   // Rung 5a (ADR-0080 D6) — jurisdiction state labels, consumed by holiday groups, location state
   // overrides, and the profile-option 'state' catalog seed via the registry.
   states: MY_STATES,
@@ -90,6 +96,10 @@ export const myPack: CountryPack = {
     // against the employer's registration band). D6 vocabulary: the kernel consumes it via the pack.
     hrdfSubject,
     epfReliefCap: MY_RELIEFS.epfReliefCap,
+    // Rung 5b (D6) — the built-in verified EPF Third Schedule tables; the statutory band-table
+    // editor's fallback for stored overrides that predate partA/partE (threaded down as props by
+    // the configuration pages).
+    epfThirdSchedule: { partA: MY_EPF_THIRD_SCHEDULE_PART_A, partE: MY_EPF_THIRD_SCHEDULE_PART_E },
     // Rung 5a (D6 — the corrected R55 shape): the built-in LHDN PCB 2026 exemption/LP tables and the
     // remuneration-type vocabulary. The kernel's ruleset fallback and the pay-component classification
     // validator consume THESE, never the MY table names.

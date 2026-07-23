@@ -9,7 +9,8 @@
  * Manual (by fixed amount) is DEFERRED (no KWSP fixed-amount election); the UI option is disabled and
  * any stray submission is coerced defensively to `auto`. See docs/adr/0046-epf-five-category-ui-labels.md.
  */
-import type { EpfMode } from '../localization/my/payroll';
+// Rung 5b (ADR-0080 D1/D6): the lawful-enum vocabulary arrives via the contract, not the MY pack.
+import type { EpfMode } from '../localization/country-pack';
 
 export type EpfUiMode = 'auto' | 'manual_percentage' | 'semi_auto' | 'manual_fixed' | 'none';
 

@@ -1,5 +1,5 @@
 {
-  "//": "ADR-0080 D7/D9 drift-guard ratchet allowlists, keyed by pack boundary. Entries may ONLY be removed — adding one fails the guard by design. 'localization/my' seeded from the audited imports on 2026-07-23 (43 files; the ADR's ~47 included comment-only mentions; guard: test/country-pack-drift.test.ts); rung 5a (kernel seam restoration, 2026-07-24) removed all 11 core/ entries — the kernel now consumes the D6 vocabulary through the registry (localization/registry.ts packFor/requirePackFor/countryPacks). 'attendance' seeded at rung 2 (2026-07-23) with the audited kernel-contract debt — cross-module consumers that become kernel contracts at later rungs, documented in packs/attendance/index.ts (guard: test/attendance-pack-drift.test.ts). 'claims' seeded at rung 3 (2026-07-23): the payroll payout path already rides the PayrollInputContributor kernel contract (packs/contracts.ts), so only the approvals-inbox and report-registry cross-module readers remain as debt, documented in packs/claims/index.ts (guard: test/claims-pack-drift.test.ts). 'performance' seeded at rung 4 (2026-07-23): a single entry — core/employment-review.ts reuses the currentAdminManager reporting-line helper, spine vocabulary whose future home is the org/reporting-line spine, documented in packs/performance/index.ts (guard: test/performance-pack-drift.test.ts). See docs/adr/0080-country-packs-as-installable-modules.md.",
+  "//": "ADR-0080 D7/D9 drift-guard ratchet allowlists, keyed by pack boundary. Entries may ONLY be removed — adding one fails the guard by design. 'localization/my' seeded from the audited imports on 2026-07-23 (43 files; the ADR's ~47 included comment-only mentions; guard: test/country-pack-drift.test.ts); rung 5a (kernel seam restoration, 2026-07-24) removed all 11 core/ entries — the kernel now consumes the D6 vocabulary through the registry (localization/registry.ts packFor/requirePackFor/countryPacks); rung 5b (lib/+components/ country seam, 2026-07-24) removed the 6 components/ entries + lib/epf-mode-map.ts — shared widgets now consume pack vocabulary via the client-safe registry (localization/registry.client.ts), server-threaded props (pack.payroll.epfThirdSchedule), or the server registry union (countryPacks().states); remaining app/+db/+scripts/+ingest entries are rung-5c territory (country admin UI mounting). 'attendance' seeded at rung 2 (2026-07-23) with the audited kernel-contract debt — cross-module consumers that become kernel contracts at later rungs, documented in packs/attendance/index.ts (guard: test/attendance-pack-drift.test.ts). 'claims' seeded at rung 3 (2026-07-23): the payroll payout path already rides the PayrollInputContributor kernel contract (packs/contracts.ts), so only the approvals-inbox and report-registry cross-module readers remain as debt, documented in packs/claims/index.ts (guard: test/claims-pack-drift.test.ts). 'performance' seeded at rung 4 (2026-07-23): a single entry — core/employment-review.ts reuses the currentAdminManager reporting-line helper, spine vocabulary whose future home is the org/reporting-line spine, documented in packs/performance/index.ts (guard: test/performance-pack-drift.test.ts). See docs/adr/0080-country-packs-as-installable-modules.md.",
   "performance": [
     "core/employment-review.ts"
   ],
@@ -42,15 +42,8 @@
     "app/payroll/reports/socso-eis-file/route.ts",
     "app/payroll/transactions/zakat/election-actions.ts",
     "app/payroll/transactions/zakat/page.tsx",
-    "components/bank-info-card.tsx",
-    "components/holiday-group-form.tsx",
-    "components/ic-dob-autofill.tsx",
-    "components/leave-rule-preview.tsx",
-    "components/personnel-identity.tsx",
-    "components/statutory-config-form.tsx",
     "db/provision.ts",
     "db/seed.ts",
-    "lib/epf-mode-map.ts",
     "localization/statutory-pack/ingest.ts"
   ]
 }

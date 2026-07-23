@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { BNM_BANKS } from '@/localization/my/bank-files/bnm-codes';
+import { clientCountryPacks } from '@/localization/registry.client';
 
 // Inlined from components/ui (server module) so this stays a clean client island — same pattern as
 // components/epf-election.tsx.
@@ -20,10 +20,12 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** Canonical MY bank names for the picker (item ef720d3a). Sourced from the existing BNM catalog that the
- *  bank-file builders already use, so a picked value normalises cleanly and its BNM code stays derivable via
- *  tryBnmCodeForBankName. Presented in catalog order (the four common banks first). */
-const BANK_NAMES = BNM_BANKS.map((b) => b.canonical);
+/** Canonical bank names for the picker (item ef720d3a), served by the CLIENT-SAFE pack registry
+ *  (ADR-0080 rung 5b, D4): each pack's `bankNames` is its jurisdiction's payment-directory projection
+ *  (MY: the BNM catalog the bank-file builders already use, so a picked value normalises cleanly and its
+ *  BNM code stays derivable via tryBnmCodeForBankName). Union across packs in catalog order (the four
+ *  common MY banks first) — MY-only today, byte-identical to the old direct BNM_BANKS import. */
+const BANK_NAMES = clientCountryPacks().flatMap((p) => p.bankNames);
 
 export type BankInfoDefaults = {
   bankName: string | null;
