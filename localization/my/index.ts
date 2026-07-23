@@ -25,8 +25,11 @@ import {
 } from './statutory-config';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
 import { eaStatement, MY_REPORTS } from './reports';
+import type { CountryPack } from '../country-pack';
 
-export const myPack = {
+// ADR-0080 D1: the pack implements the registry-owned CountryPack contract (previously the
+// registry derived its type FROM this object — backwards).
+export const myPack: CountryPack = {
   country: 'MY' as const,
   statutory: {
     set: setStatutoryProfileMY,

@@ -1,6 +1,6 @@
 # ADR-0080 — Packs as the module system: module packs and country packs
 
-- **Status:** Proposed (architecture + build plan — no code written yet)
+- **Status:** Accepted — rung 1 (pack registry + CountryPack interface + both drift guards) landed 2026-07-23
 - **Date:** 2026-07-23 (revised same day: generalized from country packs to a two-axis pack system, per
   operator discussion — functional modules become packs too, retrofitted one by one)
 - **Relates to:** ADR-0008 (localization packs — this ADR restores and hardens its seam), ADR-0077 (module
