@@ -4622,7 +4622,7 @@
       "clockingNote": "Pemadaman hanya boleh dilakukan apabila lokasi tiada penetapan pekerja dan tiada sejarah kehadiran. Jika tidak, arkibkan sahaja."
     },
     "leaveTabs": {
-      "types": "Jenis Cuti",
+      "types": "Ringkasan",
       "entitlements": "Kelayakan",
       "applicationRules": "Peraturan Permohonan",
       "approval": "Aliran Kelulusan",

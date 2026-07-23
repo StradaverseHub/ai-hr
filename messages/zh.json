@@ -4622,7 +4622,7 @@
       "clockingNote": "只有当地点没有员工分配且没有考勤历史记录时才能删除，否则请改为归档。"
     },
     "leaveTabs": {
-      "types": "假期类型",
+      "types": "摘要",
       "entitlements": "假期额度",
       "applicationRules": "申请规则",
       "approval": "审批流程",

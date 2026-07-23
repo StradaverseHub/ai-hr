@@ -4622,7 +4622,7 @@
       "clockingNote": "Chỉ có thể xóa khi địa điểm không có nhân viên được gán và không có lịch sử chấm công. Nếu không, hãy lưu trữ địa điểm đó."
     },
     "leaveTabs": {
-      "types": "Loại nghỉ phép",
+      "types": "Tóm tắt",
       "entitlements": "Quyền lợi",
       "applicationRules": "Quy tắc nộp đơn",
       "approval": "Quy trình phê duyệt",

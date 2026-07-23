@@ -4622,7 +4622,7 @@
       "clockingNote": "Deleting is only possible when a site has no employee assignments and no attendance history. Otherwise, archive it."
     },
     "leaveTabs": {
-      "types": "Leave Types",
+      "types": "Summary",
       "entitlements": "Entitlements",
       "applicationRules": "Application Rules",
       "approval": "Approval Workflow",
