@@ -1110,6 +1110,7 @@
     "balancesTitle": "余额",
     "myBalancesTitle": "我的余额",
     "balancesSubtitle": "可用 / 应享",
+    "balancesToggle": "显示或隐藏休假余额详情",
     "colEmployee": "员工",
     "balanceCellTitle": "{taken, plural, one {# 已用} other {# 已用}} · {pending, plural, one {# 待批准} other {# 待批准}}",
     "pendBadge": "{count} 待审",

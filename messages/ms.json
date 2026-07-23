@@ -1110,6 +1110,7 @@
     "balancesTitle": "Baki",
     "myBalancesTitle": "Baki saya",
     "balancesSubtitle": "tersedia / kelayakan",
+    "balancesToggle": "Tunjuk atau sembunyikan butiran baki cuti",
     "colEmployee": "Pekerja",
     "balanceCellTitle": "{taken, plural, one {# digunakan} other {# digunakan}} · {pending, plural, one {# menunggu kelulusan} other {# menunggu kelulusan}}",
     "pendBadge": "{count} tangguh",

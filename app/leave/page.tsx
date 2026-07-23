@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
@@ -33,7 +34,10 @@ import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 // My Absence merge (a7cbd895): the /me Leave tab's primary summary cards + per-request extras now live here.
 import { LeaveCards, type LeaveCardEntry } from '@/components/leave/leave-cards';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
-import { PRIMARY_CODES } from '@/lib/leave-groups';
+// Restored old-Leave-page layout (feedback 56a0deb9): collapsible balance card + secondary-type groups.
+import { CollapsibleCardSection } from '@/components/collapsible-card-section';
+import { SecondaryLeaveGroups } from '@/components/leave/secondary-leave-groups';
+import { PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup } from '@/lib/leave-groups';
 import { deriveSummaryBalance } from '@/components/leave/entitlement-panel-config';
 // deriveBalanceRow lives in a SERVER-SAFE module (no 'use client'), so this RSC can call it at render
 // time — importing it from the client table would trip the RSC boundary guard (b7d84266). R37 e5a158d3.
@@ -63,6 +67,11 @@ const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const
 // Approval Information — "Pending with" stages (feedback 0773bda9). The approval chain stores a ROLE
 // (approver_kind), not a named person, so this filter narrows by the stage a pending request awaits.
 const PENDING_STAGES = ['direct_manager', 'hr_admin'] as const;
+
+// Restored old-Leave-page layout (feedback 56a0deb9): the collapsible Current Balance section persists its
+// open/closed choice in this cookie (SSR-read via cookies(), mirroring GRADES_OPEN_COOKIE on the leave
+// entitlements page). Cookie absent ⇒ CLOSED — the reporter wants the balance details collapsed by default.
+const BALANCE_OPEN_COOKIE = 'leave_balance_open';
 
 // Self-service Leave page (consultant feedback #8/#10): Balance + History + Apply only. Team
 // availability lives on the Dashboard (the "Planned absences" timeline); approvals live in the
@@ -113,6 +122,10 @@ export default async function LeavePage({
   // not a UTC clock that would allow/block a day near KL midnight. The default-date on the apply form uses it too.
   const today = todayInKualaLumpur();
   const sp = await searchParams;
+  // Feedback 56a0deb9 — collapsible balance section. SSR-read the persisted choice (cookie absent ⇒ closed,
+  // the reporter's default) so the first paint is already correct — no closed-then-restored flash.
+  const cookieStore = await cookies();
+  const balanceOpen = cookieStore.get(BALANCE_OPEN_COOKIE)?.value === '1';
 
   // Partial Leave Cancellation (ADR-0065 / R5 Build #2): the candidate dates for a row's Cancel-dates pop-up are
   // the row's REAL working dates (roster + holiday aware, resolved server-side in core/read.ts) that are
@@ -210,9 +223,9 @@ export default async function LeavePage({
   // The clickable colour-coded PRIMARY-type cards that headed the /me Leave tab (6d78f373) now open the
   // merged page, so the at-a-glance summary employees know moved with the tab. Same source (selfBalances +
   // breakdownByType), same ESS gating (deriveBalanceRow / entitlementCalcBreakdown) — presentation only.
-  // Secondary types are deliberately NOT re-rendered as separate collapsible groups here: every non-hidden
-  // type (secondary included) already has a row in the detailed balance table below with the SAME
-  // EntitlementBreakdown side-sheet, so duplicating them would list each type twice on one page.
+  // Secondary types render again as their own grouped section (feedback 56a0deb9 reversed the R54 call to
+  // skip them): the reporter wants the old /me arrangement back, and with the detailed balance table now
+  // COLLAPSED by default the double-listing that motivated the skip is no longer prominent.
   type SelfBalance = (typeof selfBalances)[number];
   const buildCardPanel = (b: SelfBalance) => {
     const bd = breakdownByType.get(b.leaveTypeId);
@@ -247,6 +260,16 @@ export default async function LeavePage({
     return i === -1 ? PRIMARY_CODES.length : i;
   };
   primaryCards.sort((a, b) => primaryRank(a.code) - primaryRank(b.code) || a.leaveType.localeCompare(b.leaveType));
+
+  // ── "Other leave" secondary-type groups (restored · feedback 56a0deb9) ───────────────────────────────
+  // The pre-R54 grouped panels the /me Leave tab carried (6d78f373): SECONDARY-placement types bucketed
+  // into Family & Personal / Education / Other via lib/leave-groups, each row keeping its View Breakdown
+  // side-sheet link. Same source as the detailed table (selfBalances + breakdownByType) — no data change;
+  // empty groups are omitted, and an all-primary catalog omits the whole section (as on the old page).
+  const secondaryGroups = SECONDARY_GROUPS.map((group) => ({
+    group,
+    types: selfBalances.filter((b) => b.placement === 'secondary' && resolveSecondaryGroup(b.code) === group),
+  })).filter((g) => g.types.length > 0);
 
   // History: admins get the paginated, filterable, sortable read (over any population size); a
   // manager/employee keeps the untouched self-service view (their OWN requests, capped list). Option
@@ -514,6 +537,50 @@ export default async function LeavePage({
     );
   };
 
+  // The "Other leave" breakdown Card (restored · feedback 56a0deb9): the pre-R54 grouped panels, rebuilt
+  // from the SAME derivations that feed the detailed balance table (deriveBalanceRow remaining + ESS-gated
+  // EntitlementBreakdown side-sheet sharing the ?asOf= reload). Null when no secondary types exist — the
+  // section is omitted exactly as on the old /me page. Rendered in BOTH branches below: beside the history
+  // for the personal view, full-width above the table for admins.
+  const secondaryBreakdownCard =
+    secondaryGroups.length > 0 ? (
+      <Card className="p-5">
+        <SecondaryLeaveGroups
+          heading={tMe('otherLeaveHeading')}
+          groups={secondaryGroups.map(({ group, types }) => ({
+            group,
+            label: tMe(`leaveGroups.${group}`),
+            types: types.map((b) => {
+              const bd = breakdownByType.get(b.leaveTypeId);
+              const showBreakdown = b.essView.entitlementCalcBreakdown !== false;
+              return {
+                leaveTypeId: b.leaveTypeId,
+                leaveType: b.leaveType,
+                color: b.color,
+                icon: b.icon,
+                code: b.code,
+                remaining: deriveBalanceRow(b, bd ?? null).available,
+                breakdown:
+                  showBreakdown && bd ? (
+                    <EntitlementBreakdown
+                      data={bd}
+                      summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) }}
+                      upcoming={selfRequests
+                        .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
+                        .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
+                      visual={{ color: b.color, icon: b.icon, code: b.code }}
+                      asOf={breakdownAsOf}
+                      action="/leave"
+                      applyEssConfig
+                    />
+                  ) : undefined,
+              };
+            }),
+          }))}
+        />
+      </Card>
+    ) : null;
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div data-tour="leave-intro">
@@ -615,12 +682,18 @@ export default async function LeavePage({
           view (replaced the old all-employee pivot): the viewer's OWN dense Workday-style table with a
           per-type EntitlementBreakdown side-sheet and ONE shared as-at-date GET form. Same source
           (leaveBalances + leaveEntitlementBreakdown) + same deriveBalanceRow gating as /me, so figures,
-          breakdowns, calculations and visibility are unchanged. */}
+          breakdowns, calculations and visibility are unchanged. Feedback 56a0deb9: the section folds
+          behind its header (CollapsibleCardSection — CLOSED by default, cookie-persisted per browser) so
+          the page opens tidy; the data-tour anchor stays on the Card, whose summary bar remains visible
+          when closed, so the leave-balance tour step keeps a target either way. */}
       <Card className="overflow-hidden" data-tour="leave-balance">
-        <div className="border-b border-border px-4 py-3 text-sm font-medium">
-          {t('myBalancesTitle')}
-          <span className="ml-2 font-normal text-muted-foreground">{t('balancesSubtitle')}</span>
-        </div>
+        <CollapsibleCardSection
+          title={t('myBalancesTitle')}
+          subtitle={t('balancesSubtitle')}
+          toggleLabel={t('balancesToggle')}
+          cookieKey={BALANCE_OPEN_COOKIE}
+          defaultOpen={balanceOpen}
+        >
         {me == null || detailedBalances.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground">{t('balancesEmpty')}</div>
         ) : (
@@ -670,11 +743,172 @@ export default async function LeavePage({
             />
           </div>
         )}
+        </CollapsibleCardSection>
       </Card>
 
+      {/* Self-service view (feedback 56a0deb9): the restored arrangement of the old My Profile > Leave
+          page — the "Other leave" breakdown beside the request history, each in its own column on wide
+          screens, stacking on small ones. The history reuses the old compact list style (status pill,
+          stage line, document link, edit/cancel actions, per-date outcome expander) rather than squeezing
+          the 7-column admin table into a half column. Rows, actions, gates and data are all unchanged. */}
+      {!admin && (
+        <div className={`grid grid-cols-1 gap-6 ${secondaryGroups.length > 0 ? 'lg:grid-cols-2' : ''}`}>
+          {secondaryBreakdownCard}
+          <Card className="overflow-hidden" data-tour="leave-requests">
+            <div className="border-b border-border px-4 py-3 text-sm font-medium">
+              {t('myRequestsTitle')}
+              <span className="ml-2 font-normal text-muted-foreground">{t('requestsCountTotal', { count: total })}</span>
+            </div>
+            <ul className="space-y-1.5 p-4 text-sm">
+              {history.map((r) => {
+                // "Partially approved" display badge (R17 600be8ac ask #4): an approved request with ≥1
+                // rejected date shows amber, not a flat green Approved. Display-derived; DB stays 'approved'.
+                const isPartial = r.status === 'approved' && r.hasRejectedDates;
+                const dateRows = requestDateBreakdowns.get(r.id) ?? [];
+                return (
+                  <li key={r.id} className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="block truncate text-muted-foreground">
+                          {r.leaveType} · {r.startDate} → {r.endDate}
+                          {durationLabel(t, r.durationType, r.hours) && (
+                            <span className="ml-1 text-xs font-medium uppercase text-foreground/70">
+                              {durationLabel(t, r.durationType, r.hours)}
+                            </span>
+                          )}
+                          {/* Hourly-leave time window (0129): the actual window on hourly rows, slice-guarded
+                              for the Postgres seconds, gated so non-hourly rows never render a stray time. */}
+                          {r.durationType === 'hourly' && r.fromTime && r.toTime && (
+                            <span className="ml-1 text-xs font-medium text-foreground/60">
+                              {r.fromTime.slice(0, 5)}–{r.toTime.slice(0, 5)}
+                            </span>
+                          )}
+                          {/* Emergency Leave (0106): the ANNUAL/UNPAID children of one EL submission share a
+                              parent_group_id — tag each so the applicant reads them as one Emergency Leave. */}
+                          {r.parentGroupId && (
+                            <span className="ml-1 text-[10px] font-medium uppercase text-foreground/60">
+                              {t('emergency.groupLabel')}
+                            </span>
+                          )}
+                        </span>
+                        {r.status === 'pending' && r.stepCount > 0 && (
+                          <span className="text-xs text-muted-foreground/80">
+                            {r.currentStepKind === 'direct_manager' ? tMe('stageManager') : tMe('stageHr')}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {r.hasDocument && (
+                          <a
+                            href={`/me/leave/attachment/${r.id}?inline=1`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-primary underline-offset-2 hover:underline"
+                          >
+                            {tMe('viewDocument')}
+                          </a>
+                        )}
+                        {/* Partial Leave Cancellation (ADR-0065): a pending give-back request shows a pill. */}
+                        {r.pendingCancellationId && (
+                          <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                            {t('cancelPendingBadge')}
+                          </span>
+                        )}
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${REQ_STATUS[isPartial ? 'partial' : r.status] ?? 'bg-muted text-muted-foreground'}`}>
+                          {isPartial ? tMe('leaveStatus.partiallyApproved') : t(`status.${r.status}`)}
+                        </span>
+                      </div>
+                    </div>
+                    {/* Edit/cancel-by-status (item c9a19e34) + Cancel-dates (R5 Build #2): the same gates the
+                        table applied — every row here is the viewer's OWN (see the `mine` filter above); the
+                        services re-assert subject/status/shape authoritatively. */}
+                    {(() => {
+                      if (
+                        r.status === 'pending' &&
+                        r.parentGroupId == null &&
+                        r.typeCode !== 'EMERGENCY' &&
+                        r.typeCode !== 'REPLACEMENT'
+                      ) {
+                        return (
+                          <div className="flex flex-wrap gap-2">
+                            <EditLeaveDialog
+                              leaveRequestId={r.id}
+                              types={leaveTypes.map((lt) => ({
+                                id: lt.id,
+                                label: lt.name,
+                                durations: lt.durations ?? null,
+                                code: lt.code,
+                              }))}
+                              current={{
+                                leaveTypeId: r.leaveTypeId,
+                                durationType: (r.durationType ?? 'full_day') as
+                                  | 'full_day'
+                                  | 'half_day_am'
+                                  | 'half_day_pm'
+                                  | 'hourly',
+                                startDate: r.startDate,
+                                endDate: r.endDate,
+                                fromTime: r.fromTime,
+                                toTime: r.toTime,
+                                reason: r.reason,
+                                employeeRemark: r.employeeRemark,
+                              }}
+                              submitAction={editLeaveAction}
+                            />
+                            <CancelLeaveDialog leaveRequestId={r.id} submitAction={cancelOwnLeaveAction} />
+                          </div>
+                        );
+                      }
+                      const cancellableShape =
+                        r.status === 'approved' &&
+                        r.durationType === 'full_day' &&
+                        (r.parentGroupId == null || r.isCancellationSplit);
+                      if (cancellableShape && !r.pendingCancellationId) {
+                        return (
+                          <div className="flex flex-wrap gap-2">
+                            <CancelDatesDialog
+                              leaveRequestId={r.id}
+                              candidateDates={cancellableCandidates(r.workingDates)}
+                              submitAction={requestLeaveCancellationAction}
+                            />
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                    {/* Per-date outcome expander (R17 600be8ac ask #6): the date-by-date approved/rejected
+                        list with reasons, resolved for the 5 most recent requests (dateBreakdownEntries). */}
+                    {dateRows.length > 0 && (
+                      <LeaveDateOutcome
+                        dates={dateRows}
+                        locale={locale}
+                        labels={{
+                          title: tMe('dateBreakdown.title'),
+                          approved: tMe('dateBreakdown.approved'),
+                          rejected: tMe('dateBreakdown.rejected'),
+                          pending: tMe('dateBreakdown.pending'),
+                          reason: tMe('dateBreakdown.reason'),
+                        }}
+                      />
+                    )}
+                  </li>
+                );
+              })}
+              {history.length === 0 && <li className="text-muted-foreground">{t('requestsEmpty')}</li>}
+            </ul>
+          </Card>
+        </div>
+      )}
+
+      {/* HR admins: their own "Other leave" breakdown card renders full-width — their history below is the
+          org-wide sortable/paginated table, which needs the room, so the side-by-side pairing above applies
+          to the personal view only (feedback 56a0deb9). */}
+      {admin && secondaryBreakdownCard}
+      {/* Admin request history — the full-width sortable/paginated table (feedback 0773bda9), unchanged. */}
+      {admin && (
       <Card className="overflow-hidden" data-tour="leave-requests">
         <div className="border-b border-border px-4 py-3 text-sm font-medium">
-          {admin ? t('requestsTitle') : t('myRequestsTitle')}
+          {t('requestsTitle')}
           <span className="ml-2 font-normal text-muted-foreground">
             {hasFilters
               ? t('filters.showingOf', { shown: history.length, total })
@@ -685,38 +919,24 @@ export default async function LeavePage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                {admin ? (
-                  <>
-                    {sortableTh('name', t('colEmployee'))}
-                    {sortableTh('applied', t('colApplied'))}
-                    <th className="px-4 py-2 font-medium">{t('colType')}</th>
-                    {/* Leave Start & End are both sortable per the reporter's list — one Dates column, two toggles. */}
-                    <th className="px-4 py-2 font-medium">
-                      <span className="inline-flex items-center gap-1.5">
-                        <Link href={sortHref('start')} className="hover:text-foreground" aria-label={t('filters.sortAria', { column: t('filters.dateFrom') })}>
-                          {t('colDates')}
-                          <span aria-hidden className="ml-0.5 text-[10px]">{sort === 'start' ? (dir === 'asc' ? '▲' : '▼') : '↕'}</span>
-                        </Link>
-                        <Link href={sortHref('end')} className="text-[10px] font-normal normal-case text-muted-foreground hover:text-foreground" aria-label={t('filters.sortAria', { column: t('filters.dateTo') })}>
-                          ({t('filters.dateTo')}{sort === 'end' ? (dir === 'asc' ? ' ▲' : ' ▼') : ''})
-                        </Link>
-                      </span>
-                    </th>
-                    <th className="px-4 py-2 text-right font-medium">{t('colDays')}</th>
-                    {sortableTh('status', t('colStatus'))}
-                    <th className="px-4 py-2 font-medium">{t('colAction')}</th>
-                  </>
-                ) : (
-                  <>
-                    <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
-                    <th className="px-4 py-2 font-medium">{t('colApplied')}</th>
-                    <th className="px-4 py-2 font-medium">{t('colType')}</th>
-                    <th className="px-4 py-2 font-medium">{t('colDates')}</th>
-                    <th className="px-4 py-2 text-right font-medium">{t('colDays')}</th>
-                    <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
-                    <th className="px-4 py-2 font-medium">{t('colAction')}</th>
-                  </>
-                )}
+                {sortableTh('name', t('colEmployee'))}
+                {sortableTh('applied', t('colApplied'))}
+                <th className="px-4 py-2 font-medium">{t('colType')}</th>
+                {/* Leave Start & End are both sortable per the reporter's list — one Dates column, two toggles. */}
+                <th className="px-4 py-2 font-medium">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Link href={sortHref('start')} className="hover:text-foreground" aria-label={t('filters.sortAria', { column: t('filters.dateFrom') })}>
+                      {t('colDates')}
+                      <span aria-hidden className="ml-0.5 text-[10px]">{sort === 'start' ? (dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                    </Link>
+                    <Link href={sortHref('end')} className="text-[10px] font-normal normal-case text-muted-foreground hover:text-foreground" aria-label={t('filters.sortAria', { column: t('filters.dateTo') })}>
+                      ({t('filters.dateTo')}{sort === 'end' ? (dir === 'asc' ? ' ▲' : ' ▼') : ''})
+                    </Link>
+                  </span>
+                </th>
+                <th className="px-4 py-2 text-right font-medium">{t('colDays')}</th>
+                {sortableTh('status', t('colStatus'))}
+                <th className="px-4 py-2 font-medium">{t('colAction')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -733,12 +953,10 @@ export default async function LeavePage({
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                       {r.appliedOn ? new Date(r.appliedOn).toISOString().slice(0, 10) : '—'}
                       {/* Short leave reference (feedback 0773bda9): the searchable #-prefix of the record id,
-                          shown to admins so the global search's reference match is discoverable. */}
-                      {admin && (
-                        <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-wide text-muted-foreground/70">
-                          #{r.id.slice(0, 8)}
-                        </span>
-                      )}
+                          shown so the global search's reference match is discoverable. */}
+                      <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                        #{r.id.slice(0, 8)}
+                      </span>
                     </td>
                     <td className="px-4 py-2.5">
                       <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${chip}`}>
@@ -755,25 +973,6 @@ export default async function LeavePage({
                     </td>
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                       {r.startDate} → {r.endDate}
-                      {/* Per-date outcome expander (My Absence merge · a7cbd895, ported from /me): the
-                          employee's date-by-date approved/rejected list with rejection reasons. Only the
-                          self-service view resolves these rows (see dateBreakdownEntries above). */}
-                      {(() => {
-                        const dateRows = requestDateBreakdowns.get(r.id) ?? [];
-                        return dateRows.length > 0 ? (
-                          <LeaveDateOutcome
-                            dates={dateRows}
-                            locale={locale}
-                            labels={{
-                              title: tMe('dateBreakdown.title'),
-                              approved: tMe('dateBreakdown.approved'),
-                              rejected: tMe('dateBreakdown.rejected'),
-                              pending: tMe('dateBreakdown.pending'),
-                              reason: tMe('dateBreakdown.reason'),
-                            }}
-                          />
-                        ) : null;
-                      })()}
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">
                       {Number(r.days)}
@@ -791,18 +990,11 @@ export default async function LeavePage({
                       )}
                     </td>
                     <td className="px-4 py-2.5">
-                      {(() => {
-                        // "Partially approved" display badge (My Absence merge · a7cbd895, ported from /me
-                        // R17 600be8ac ask #4): an approved request with ≥1 rejected date shows amber on the
-                        // self-service view. Display-derived only — the DB status stays 'approved'; the
-                        // admin history keeps its unchanged plain status pill.
-                        const isPartial = !admin && r.status === 'approved' && r.hasRejectedDates;
-                        return (
-                          <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${REQ_STATUS[isPartial ? 'partial' : r.status] ?? 'bg-muted text-muted-foreground'}`}>
-                            {isPartial ? tMe('leaveStatus.partiallyApproved') : t(`status.${r.status}`)}
-                          </span>
-                        );
-                      })()}
+                      {/* Admin history keeps its plain status pill (the amber "Partially approved" display
+                          badge is a self-service affordance — it lives on the compact list above). */}
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${REQ_STATUS[r.status] ?? 'bg-muted text-muted-foreground'}`}>
+                        {t(`status.${r.status}`)}
+                      </span>
                       {/* Partial Leave Cancellation (ADR-0065): a pending give-back request shows a pill. */}
                       {r.pendingCancellationId && (
                         <span className="ml-1.5 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
@@ -810,13 +1002,13 @@ export default async function LeavePage({
                         </span>
                       )}
                       {/* Approval Information (feedback 0773bda9): decided rows show the final decider; a
-                          still-pending row shows the stage it awaits. Admin history only. */}
-                      {admin && r.decidedByName && (
+                          still-pending row shows the stage it awaits. */}
+                      {r.decidedByName && (
                         <span className="mt-0.5 block text-[10px] text-muted-foreground">
                           {t('filters.decidedByLine', { name: r.decidedByName })}
                         </span>
                       )}
-                      {admin && r.status === 'pending' && r.currentStepKind && (
+                      {r.status === 'pending' && r.currentStepKind && (
                         <span className="mt-0.5 block text-[10px] text-muted-foreground">
                           {t('filters.pendingWithLine', {
                             stage:
@@ -825,25 +1017,6 @@ export default async function LeavePage({
                                 : r.currentStepKind,
                           })}
                         </span>
-                      )}
-                      {/* Self-service extras (My Absence merge · a7cbd895, ported from /me): the pending
-                          request's current approval stage, and a link to the employee's own uploaded
-                          supporting document. The attachment route stays at /me/leave/attachment (unchanged;
-                          the approvals page links it too). Non-admin rows are always the viewer's own. */}
-                      {!admin && r.status === 'pending' && r.stepCount > 0 && (
-                        <span className="mt-0.5 block text-[10px] text-muted-foreground">
-                          {r.currentStepKind === 'direct_manager' ? tMe('stageManager') : tMe('stageHr')}
-                        </span>
-                      )}
-                      {!admin && r.hasDocument && (
-                        <a
-                          href={`/me/leave/attachment/${r.id}?inline=1`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-0.5 block text-[10px] text-primary underline-offset-2 hover:underline"
-                        >
-                          {tMe('viewDocument')}
-                        </a>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
@@ -970,6 +1143,7 @@ export default async function LeavePage({
           </div>
         )}
       </Card>
+      )}
     </div>
   );
 }

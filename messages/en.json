@@ -1110,6 +1110,7 @@
     "balancesTitle": "Balances",
     "myBalancesTitle": "My balances",
     "balancesSubtitle": "available / entitled",
+    "balancesToggle": "Show or hide the leave balance details",
     "colEmployee": "Employee",
     "balanceCellTitle": "{taken, plural, one {# used} other {# used}} · {pending, plural, one {# pending approval} other {# pending approval}}",
     "pendBadge": "{count} pend",

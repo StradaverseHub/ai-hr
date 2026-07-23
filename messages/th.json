@@ -1110,6 +1110,7 @@
     "balancesTitle": "ยอดคงเหลือ",
     "myBalancesTitle": "ยอดคงเหลือของฉัน",
     "balancesSubtitle": "ที่ใช้ได้ / สิทธิ์ทั้งหมด",
+    "balancesToggle": "แสดงหรือซ่อนรายละเอียดยอดคงเหลือการลา",
     "colEmployee": "พนักงาน",
     "balanceCellTitle": "{taken, plural, one {# ใช้ไป} other {# ใช้ไป}} · {pending, plural, one {# รออนุมัติ} other {# รออนุมัติ}}",
     "pendBadge": "{count} รอ",

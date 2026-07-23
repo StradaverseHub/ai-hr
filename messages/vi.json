@@ -1110,6 +1110,7 @@
     "balancesTitle": "Số dư phép",
     "myBalancesTitle": "Số dư phép của tôi",
     "balancesSubtitle": "khả dụng / được hưởng",
+    "balancesToggle": "Hiện hoặc ẩn chi tiết số dư phép",
     "colEmployee": "Nhân viên",
     "balanceCellTitle": "{taken, plural, one {# đã dùng} other {# đã dùng}} · {pending, plural, one {# chờ phê duyệt} other {# chờ phê duyệt}}",
     "pendBadge": "{count} chờ",

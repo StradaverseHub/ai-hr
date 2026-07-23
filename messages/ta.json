@@ -1110,6 +1110,7 @@
     "balancesTitle": "மீதிகள்",
     "myBalancesTitle": "என் மீதிகள்",
     "balancesSubtitle": "கிடைக்கும் / உரிமையுள்ளது",
+    "balancesToggle": "விடுப்பு மீதி விவரங்களைக் காட்டு அல்லது மறை",
     "colEmployee": "பணியாளர்",
     "balanceCellTitle": "{taken, plural, one {# பயன்படுத்தப்பட்டது} other {# பயன்படுத்தப்பட்டது}} · {pending, plural, one {# ஒப்புதல் நிலுவையில்} other {# ஒப்புதல் நிலுவையில்}}",
     "pendBadge": "{count} நிலுவை",
