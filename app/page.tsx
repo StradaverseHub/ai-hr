@@ -18,6 +18,7 @@ import {
   upcomingHolidays,
 } from '@/core/read';
 import { pendingManagerReviewsFor } from '@/core/employment-review';
+import { deriveEmploymentStatus } from '@/core/employment-status';
 import { myFeedbackRequests } from '@/core/performance';
 import { pendingApprovalsCount } from '@/core/approvals-inbox';
 import { todayInKualaLumpur } from '@/core/leave';
@@ -122,6 +123,10 @@ export default async function DashboardPage({
   searchParams: Promise<{ abs?: string; view?: string; cal?: string }>;
 }) {
   const t = await getTranslations('dashboard');
+  // Employee Status sync (5afcda91): the Onboarding card badge shows the system-derived Employee Status
+  // (deriveEmploymentStatus over lifecycle dates) with the shared localized labels — never the legacy
+  // stored assignment.status.
+  const tEmployeeStatus = await getTranslations('people.employeeStatus');
   const locale = await getLocale(); // R37: render leave-type names in the viewer's language
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
@@ -380,7 +385,10 @@ export default async function DashboardPage({
                   {h.role ?? h.department ?? '—'} · {joinedAgo(h.hiredOn, todayMs, t)}
                 </div>
               </div>
-              <StatusBadge status={h.status} />
+              {(() => {
+                const st = deriveEmploymentStatus(h, todayIso);
+                return <StatusBadge status={st} label={tEmployeeStatus(st)} />;
+              })()}
             </li>
           ))}
         </ul>

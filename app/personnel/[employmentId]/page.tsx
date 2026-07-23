@@ -4,6 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import { employeeDetail, assignmentHistory } from '@/core/read';
+import { deriveEmploymentStatus } from '@/core/employment-status';
 import { Avatar, Card, EmployeeName, PageHeader, StatusBadge } from '@/components/ui';
 
 /**
@@ -34,6 +35,13 @@ export default async function PersonnelDetailPage({
   if (!emp) notFound();
   const history = await assignmentHistory(s, employmentId);
   const current = history.find((h) => h.validTo == null) ?? history[0] ?? null;
+
+  // Employee Status sync (5afcda91): same system-derived status as every other Personnel screen —
+  // deriveEmploymentStatus over the lifecycle dates (employeeDetail already projects them all), so the
+  // same employee reads the same status here, on the directory, and on the admin record.
+  const tStatus = await getTranslations('people.employeeStatus');
+  const today = new Date().toISOString().slice(0, 10);
+  const derivedStatus = deriveEmploymentStatus(emp, today);
 
   const rows: { label: string; value: string | null }[] = [
     { label: t('department'), value: current?.department ?? null },
@@ -68,7 +76,7 @@ export default async function PersonnelDetailPage({
             <div className="flex items-center gap-2">
               {/* Employee ID left-of-name (feedback 38668d9b) */}
               <EmployeeName code={emp.employeeCode} name={emp.name} className="text-lg font-semibold" codeClassName="text-sm" />
-              <StatusBadge status={emp.terminatedOn ? 'terminated' : 'active'} />
+              <StatusBadge status={derivedStatus} label={tStatus(derivedStatus)} />
             </div>
             <div className="text-sm text-muted-foreground">{emp.company}</div>
           </div>

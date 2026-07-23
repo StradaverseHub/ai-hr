@@ -111,16 +111,15 @@ export function PageHeader({
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  // Derived Employee Status buckets (R43 c26c3ce5) + legacy stored assignment statuses still shown in the
-  // assignment-history table (offboarding/terminated). `on_leave` was retired from the Employee Status picker;
-  // any historical on_leave row falls through to the neutral default below (still renders, just un-tinted).
+  // Derived Employee Status buckets ONLY (R43 c26c3ce5; Employee Status sync 5afcda91). The obsolete
+  // legacy assignment statuses (on_leave / offboarding / terminated) were removed from the vocabulary —
+  // no surface renders them any more (terminated lifecycles display as the derived `resigned`). Other
+  // vocabularies passing through StatusBadge (e.g. performance cycles) fall to the neutral default.
   probation: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
   active: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   active_serving_notice: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   resigned: 'bg-muted text-muted-foreground',
   blacklisted: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
-  offboarding: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400',
-  terminated: 'bg-muted text-muted-foreground',
 };
 
 /**

@@ -1253,8 +1253,16 @@ export function recentHires(
         name: person.fullName,
         role: position.title,
         department: department.name,
-        status: assignment.status,
         hiredOn: employment.hiredOn,
+        // Employee Status sync (5afcda91): project the lifecycle inputs so the dashboard badge shows the
+        // SAME system-derived Employee Status as the Personnel screens (deriveEmploymentStatus), instead
+        // of the legacy stored assignment.status (obsolete on_leave/offboarding values must not render).
+        confirmationDate: employment.confirmationDate,
+        finalConfirmationDate: employment.finalConfirmationDate,
+        resignationDate: employment.resignationDate,
+        lastWorkingDate: employment.lastWorkingDate,
+        terminatedOn: employment.terminatedOn,
+        blacklistedAt: employment.blacklistedAt,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
