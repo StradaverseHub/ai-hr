@@ -10,7 +10,7 @@ export default async function LeaveImportPage() {
   await requireAdmin();
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader
         back={{ href: '/admin/leave', label: t('backLabel') }}
         title={t('title')}

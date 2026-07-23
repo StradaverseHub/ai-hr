@@ -33,7 +33,7 @@ export default async function LeavePayrollPage({
   const encashmentByCompany = new Map(encashmentPolicies.map((p) => [p.companyId, p]));
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <LeaveTabs active="payroll" />
       <ErrorBanner message={error} />
