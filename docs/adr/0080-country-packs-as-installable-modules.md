@@ -13,7 +13,24 @@
   facade, registry-mounted flat Manage-group nav row, ratchet seeded with one entry) landed
   2026-07-23 — `core/employment-review.ts` audited as employment-spine (NOT the pack), and the
   comp-enactment pay seam (`enactCompAction` → `setCompensation`/`setPayrollInput`) documented as
-  debt for the Payroll rung per one-seam-per-rung (no new contract this rung)
+  debt for the Payroll rung per one-seam-per-rung (no new contract this rung);
+  **rung 5 — the country seam** landed 2026-07-24 across sub-slices: 5a (kernel seam — all 11 `core/`
+  files off direct `localization/my` imports, consuming pack vocabulary via `requirePackFor`/
+  `countryPacks`; the R55 `MY_PCB_EXEMPTION_CODES` leak corrected as the D6 worked example; payroll
+  output byte-identical), 5b (`lib/`+`components/` widgets pack-declared via a client-safe pack entry
+  `localization/my/client.ts` + `localization/registry.client.ts`, props-threading, and the server
+  registry — no RSC boundary breaks), 5c (country admin UI via D4 `configSections` descriptors: the
+  `/payroll/configuration` landing + 6 body routes resolve the acting company's pack through
+  `requireConfigSection()` which `notFound()`s off-pack, URLs unchanged; seed/provision moved behind a
+  `seedReferenceData` pack hook). The `localization/my` import ratchet fell 43 → 32 → 25 → **1 residual**
+  (the vendor-pack ingester, retires at the second-country rung) plus a recategorized 14-file PACK_UI
+  set (pack-owned MY screens pending optional physical migration; the ratchet still fails on any NEW
+  leak). 5d (the `country-my` module row + per-company D2/D3 enforcement) and D11 criterion 5 remain the
+  documented ADR-0077 join point — deferred, not built, because `tenant_module`/`isModuleEnabled()` do
+  not yet exist (see §5 and the 5d note below); 5e (satellite-schema + provisioning convention) is
+  captured in D5 and the seed-hook landed in 5c. A midnight-boundary TZ defect surfaced by 5a's
+  clean-room was fixed en route (business-day clock is MYT, `lib/hr-date.ts`; login-block SQL/TS mirror
+  now agree) — unrelated to the seam, shipped separately
 - **Date:** 2026-07-23 (revised same day: generalized from country packs to a two-axis pack system, per
   operator discussion — functional modules become packs too, retrofitted one by one)
 - **Relates to:** ADR-0008 (localization packs — this ADR restores and hardens its seam), ADR-0077 (module
@@ -148,6 +165,20 @@ Codify it:
 - Migrations for satellite tables ship with the pack's code (normal drizzle migrations — one deploy
   still carries all packs' schemas; what varies per tenant is *activation*, not DDL).
 
+**Concretized in rung 5c (the 5e convention).** Two mechanical rules now back the principle above:
+
+- **Declaration.** Every pack (module and country) declares its owned tables in its pack object — the
+  `satelliteTables` list module packs carry (attendance's 10, claims' 5, performance's 10) and the
+  country pack's statutory/company-statutory tables. This list is what the drift guard, the "definition
+  of done" (D11 criterion 2), and any future per-tenant data export read; a table with no declaring pack
+  is spine by definition.
+- **Provisioning.** Reference-data seeding is a pack hook, not kernel code: `CountryPack.seedReferenceData(tx, tenantId)`
+  (landed 5c) — the MY implementation seeds leave types + national/state holidays behind the interface;
+  `db/provision.ts` calls `requirePackFor(country).seedReferenceData(...)` and keeps only the
+  jurisdiction-neutral profile-option seed. A new country supplies its own hook; provisioning code does
+  not change. This is the minimal, shipped form of ADR-0079's "packs seed their own reference data" —
+  module packs gain the same hook shape if and when one needs seed data.
+
 ### D6 — The R55 precedent is the template for kernel vocabulary
 
 R55's PCB work imported `MY_PCB_EXEMPTION_CODES` into `core/payroll.ts` because the kernel needed a
@@ -235,6 +266,22 @@ Rungs 1–4 are pure refactoring with mechanical safety nets and can proceed **i
 ADR-0077**. The `country-my` module row inside rung 5 — and each module pack's entitlement wiring — is
 the ADR-0077 join point (needs `tenant_module` + `isModuleEnabled()`). New modules (recruitment,
 training…) may start as packs at any time after rung 1; they do not wait for the ladder.
+
+### The 5d / entitlement join point — deferred by dependency, not skipped
+
+Rung 5's sub-slices 5a–5c and the 5e convention (below) are **done and shipped**. The one piece not
+built is **5d — the `country-my` catalog row plus per-company D2/D3 enforcement**, together with the
+identical D11-criterion-5 wiring every module pack (attendance/claims/performance) is holding open as a
+documented `moduleCode` hook. All of it consumes the SAME two ADR-0077 primitives that do not yet
+exist: the `tenant_module` join (ADR-0077 D2) and `isModuleEnabled(ctx, code)` (ADR-0077 slice 2). There
+is nothing pack-side left to design — each pack already declares its `moduleCode`, and the country packs
+already fail closed on an unresolvable pack (D3, via `requirePackFor`). What 5d adds is purely the
+*entitlement* check in front of that: refuse configuring a company into a country/module the tenant has
+not bought. Building it now would mean stubbing ADR-0077's schema in this ADR's rung — exactly the
+big-bang coupling the ladder avoids. So 5d is sequenced to land as the first consumer of ADR-0077 slices
+1–2, in one small slice that wires every pack's already-declared `moduleCode` to `isModuleEnabled` at the
+service boundary. Until then the demo behaves as "all modules on, MY the only country" — the shipped
+state — with the fail-closed pack resolution already protecting the money path.
 
 ## 6. Open decisions
 
