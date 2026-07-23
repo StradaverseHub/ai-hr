@@ -3545,6 +3545,7 @@
       "workspaceStepsLabel": "Langkah konfigurasi",
       "workspaceSubStepsLabel": "Langkah persediaan umum",
       "conditionStepsLabel": "Langkah tetapan Syarat",
+      "entitlementStepsLabel": "Langkah tetapan Hak Cuti",
       "subStep": {
         "details": "Butiran",
         "yearType": "Jenis Tahun Cuti",
@@ -3582,6 +3583,14 @@
         "halfDayCompanyWideBadge": "Terpakai seluruh syarikat",
         "expiryAnnualPointer": "Luput Cuti Tahunan ditadbir oleh polisi bawa ke hadapan — tetapkannya di Umum → Polisi Bawa ke Hadapan.",
         "expiryEmergencyNote": "Cuti Kecemasan tidak membawa baki, jadi tiada luput terpakai."
+      },
+      "entitlementStep": {
+        "schemes": "Skim Faedah",
+        "service": "Hak Cuti Berasaskan Tempoh Perkhidmatan",
+        "adjustments": "Pelarasan",
+        "gradesCompanyWideBadge": "Terpakai seluruh syarikat",
+        "previewHint": "Semak hak cuti yang akan diterima oleh pekerja contoh di bawah peraturan semasa.",
+        "accrualHint": "Memproses hak cuti terkumpul bagi satu tahun cuti — pratonton larian percubaan dahulu, kemudian sahkan."
       },
       "approvalStep": {
         "hint": "Peraturan kelulusan jenis cuti ini, boleh disunting di sini. Rantaian seluruh syarikat dan templat boleh guna semula berada pada tab Kelulusan.",

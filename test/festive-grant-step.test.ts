@@ -57,14 +57,19 @@ describe('fd7c8e20 · the standalone festive-grant section is gone from the page
   });
 });
 
-describe('fd7c8e20 · the panel renders the grant tool inside the Entitlement step, below the schemes area', () => {
-  it('the festiveGrantSection slot renders after benefitSchemeSection and before the Condition step', () => {
-    const schemes = panelSrc.indexOf('{benefitSchemeSection}');
+describe('fd7c8e20 · the panel renders the grant tool inside the Entitlement step', () => {
+  // 7b945408 re-pinned: the Entitlement step became a three-sub-step walk (see
+  // leave-entitlement-substeps.test.ts). The grant tool now HEADS sub-step 3 (Adjustments, followed by
+  // the relocated Run Accrual slot) — still inside the same Entitlement card, still per-type preset.
+  it('the festiveGrantSection slot heads the adjustments sub-step gate, before the Condition step', () => {
+    const gate = panelSrc.indexOf("{entitlementSubStep === 'adjustments' && (");
     const slot = panelSrc.indexOf('{festiveGrantSection}');
+    const accrual = panelSrc.indexOf('{accrualSection}');
     const nextStep = panelSrc.indexOf("<CardTitle>{t('categoryEssPolicy')}</CardTitle>");
-    expect(schemes).toBeGreaterThan(-1);
-    expect(slot).toBeGreaterThan(schemes);
-    expect(nextStep).toBeGreaterThan(slot);
+    expect(gate).toBeGreaterThan(-1);
+    expect(slot).toBeGreaterThan(gate);
+    expect(accrual).toBeGreaterThan(slot);
+    expect(nextStep).toBeGreaterThan(accrual);
   });
 });
 

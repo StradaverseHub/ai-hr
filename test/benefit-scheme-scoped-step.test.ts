@@ -57,14 +57,24 @@ describe('6c775d68 · the standalone Benefit Schemes section is gone from the pa
   });
 });
 
-describe('6c775d68 · the panel renders the scoped area inside the Entitlement step, below the table', () => {
-  it('the benefitSchemeSection slot renders after LeaveTypeEntitlementTable and before the Condition step', () => {
-    const table = panelSrc.indexOf('<LeaveTypeEntitlementTable');
+describe('6c775d68 · the panel renders the scoped area inside the Entitlement step', () => {
+  // 7b945408 re-pinned: the Entitlement step became a three-sub-step walk (see
+  // leave-entitlement-substeps.test.ts). The scoped Benefit Schemes area now anchors sub-step 1
+  // (Benefit Schemes, after the relocated Grades catalogue); the per-type entitlement table moved to
+  // sub-step 2 (Service Based Entitlements). Both still live inside the SAME Entitlement card — the
+  // single home this guard exists for.
+  it('the benefitSchemeSection slot renders inside the schemes sub-step gate, before the Condition step', () => {
+    const gate = panelSrc.indexOf("{entitlementSubStep === 'schemes' && (");
     const slot = panelSrc.indexOf('{benefitSchemeSection}');
+    const nextGate = panelSrc.indexOf("{entitlementSubStep === 'service' && (");
+    const table = panelSrc.indexOf('<LeaveTypeEntitlementTable');
     const nextStep = panelSrc.indexOf("<CardTitle>{t('categoryEssPolicy')}</CardTitle>");
-    expect(table).toBeGreaterThan(-1);
-    expect(slot).toBeGreaterThan(table);
-    expect(nextStep).toBeGreaterThan(slot);
+    expect(gate).toBeGreaterThan(-1);
+    expect(slot).toBeGreaterThan(gate);
+    expect(nextGate).toBeGreaterThan(slot);
+    // the per-type table follows in the Service Based Entitlements sub-step of the same card
+    expect(table).toBeGreaterThan(nextGate);
+    expect(nextStep).toBeGreaterThan(table);
   });
 });
 

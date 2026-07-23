@@ -3545,6 +3545,7 @@
       "workspaceStepsLabel": "Configuration steps",
       "workspaceSubStepsLabel": "General setup steps",
       "conditionStepsLabel": "Condition setup steps",
+      "entitlementStepsLabel": "Entitlement setup steps",
       "subStep": {
         "details": "Details",
         "yearType": "Leave Year Type",
@@ -3582,6 +3583,14 @@
         "halfDayCompanyWideBadge": "Applies company-wide",
         "expiryAnnualPointer": "Annual Leave expiry is governed by the carry-forward policy — configure it under General → Carry Forward Policy.",
         "expiryEmergencyNote": "Emergency Leave carries no balance, so no expiry applies."
+      },
+      "entitlementStep": {
+        "schemes": "Benefit Schemes",
+        "service": "Service Based Entitlements",
+        "adjustments": "Adjustments",
+        "gradesCompanyWideBadge": "Applies company-wide",
+        "previewHint": "Check the entitlement a sample employee would receive under the current rules.",
+        "accrualHint": "Processes earned entitlement for a leave year — preview the dry run first, then confirm."
       },
       "approvalStep": {
         "hint": "This leave type's approval rules, editable here. Company-wide chains and reusable templates live on the Approval tab.",

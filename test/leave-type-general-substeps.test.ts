@@ -76,10 +76,11 @@ describe('e1a51aea · reusable sub-step control', () => {
   });
 
   it('persists the sub-step alongside activeStep in the leaveTypeCards shape (compatible migration)', () => {
-    // The ONE writer persists the keys together (08bc6841 extended the e1a51aea shape with essSubStep —
-    // the Condition secondary flow rides the same persistence, see leave-condition-substeps.test.ts)…
+    // The ONE writer persists the keys together (08bc6841 extended the e1a51aea shape with essSubStep,
+    // 7b945408 with entitlementSubStep — the secondary flows ride the same persistence, see
+    // leave-condition-substeps.test.ts / leave-entitlement-substeps.test.ts)…
     expect(panelSrc).toContain(
-      "JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess })",
+      "JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess, entitlementSubStep: ent })",
     );
     // …and hydration tolerates an older payload: activeStep-only and the accordion { key: boolean } shape
     // both still restore (the categories test separately pins parsed[k] === true).

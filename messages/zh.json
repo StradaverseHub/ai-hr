@@ -3545,6 +3545,7 @@
       "workspaceStepsLabel": "配置步骤",
       "workspaceSubStepsLabel": "常规设置步骤",
       "conditionStepsLabel": "条件设置步骤",
+      "entitlementStepsLabel": "额度设置步骤",
       "subStep": {
         "details": "详细信息",
         "yearType": "休假年度类型",
@@ -3582,6 +3583,14 @@
         "halfDayCompanyWideBadge": "适用于全公司",
         "expiryAnnualPointer": "年假的过期由结转政策决定 — 请在“常规 → 结转政策”中配置。",
         "expiryEmergencyNote": "紧急假不带余额，因此没有过期设置。"
+      },
+      "entitlementStep": {
+        "schemes": "福利方案",
+        "service": "按服务年限的额度",
+        "adjustments": "调整",
+        "gradesCompanyWideBadge": "适用于全公司",
+        "previewHint": "查看示例员工在当前规则下将获得的额度。",
+        "accrualHint": "处理某个假期年度的已赚取额度 — 先预览试运行结果，再确认执行。"
       },
       "approvalStep": {
         "hint": "此休假类型的审批规则可在此编辑。公司级审批链与可复用模板位于“审批”标签页。",

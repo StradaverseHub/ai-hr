@@ -3545,6 +3545,7 @@
       "workspaceStepsLabel": "Các bước cấu hình",
       "workspaceSubStepsLabel": "Các bước thiết lập chung",
       "conditionStepsLabel": "Các bước thiết lập Điều kiện",
+      "entitlementStepsLabel": "Các bước thiết lập Định mức",
       "subStep": {
         "details": "Chi tiết",
         "yearType": "Loại năm nghỉ phép",
@@ -3582,6 +3583,14 @@
         "halfDayCompanyWideBadge": "Áp dụng toàn công ty",
         "expiryAnnualPointer": "Hạn sử dụng của Nghỉ phép năm do chính sách chuyển tiếp quyết định — cấu hình tại Chung → Chính sách chuyển tiếp.",
         "expiryEmergencyNote": "Nghỉ khẩn cấp không có số dư, nên không áp dụng hết hạn."
+      },
+      "entitlementStep": {
+        "schemes": "Chương trình phúc lợi",
+        "service": "Định mức theo thâm niên",
+        "adjustments": "Điều chỉnh",
+        "gradesCompanyWideBadge": "Áp dụng toàn công ty",
+        "previewHint": "Kiểm tra định mức mà một nhân viên mẫu sẽ nhận được theo quy tắc hiện tại.",
+        "accrualHint": "Xử lý định mức đã tích lũy cho một năm nghỉ phép — xem trước bản chạy thử trước, rồi xác nhận."
       },
       "approvalStep": {
         "hint": "Quy tắc phê duyệt của loại nghỉ phép này, chỉnh sửa tại đây. Chuỗi phê duyệt toàn công ty và mẫu dùng lại nằm ở thẻ Phê duyệt.",

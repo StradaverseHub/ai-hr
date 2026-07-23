@@ -58,7 +58,8 @@ import {
 import { GradeCatalog } from '@/components/grade-catalog';
 import { CollapsibleCardSection } from '@/components/collapsible-card-section';
 
-/** Cookie persisting the Grades section's open/closed fold (feedback 03557e76). */
+/** Cookie persisting the Grades catalogue's open/closed fold (feedback 03557e76; the fold — and this
+ *  cookie — moved WITH the catalogue into the Entitlement step's Benefit Schemes sub-step, 7b945408). */
 const GRADES_OPEN_COOKIE = 'leave_grades_open';
 
 /**
@@ -68,17 +69,24 @@ const GRADES_OPEN_COOKIE = 'leave_grades_open';
  * here — "one leave type, one full set of settings", exactly where HR expects it. Each `LeaveTypePanel`
  * carries leave-type identity, eligibility, allowed durations, supporting-document config, backdating limit,
  * advance-notice, expiry, the apply-time custom message AND that type's effective-dated entitlement policies
- * (the editable ranges table + the multi-company/grade "Employee Selection" chips). Beneath it only the
- * grade catalog remains. The three other standalone sections are gone (d778d2d3): Run Earned Accrual and
+ * (the editable ranges table + the multi-company/grade "Employee Selection" chips). The three other
+ * standalone sections are gone (d778d2d3): Run Earned Accrual and
  * Preview a Scenario became compact PageHeader action buttons opening the SAME tools in dialogs
  * (EarnedAccrualDialog / LeaveRulePreviewDialog — components wrapped unchanged), and the per-company Leave
  * Cycle card moved to the Application Rules tab beside the other company-level calendar rules (its
  * server action is untouched — only the rendering moved). Bulk import is a "+ Import" action
  * button in the page header (e8f2398f) — the standalone page-bottom Card that only linked to
  * /admin/leave/import is gone. The festive / one-off grant tool no longer
- * sits at the page bottom — fd7c8e20 moved it into each type's Entitlement step (below the Benefit Schemes
- * area), preset to the selected type. The whole `LeaveTypePanel` + add-type form moved wholesale from the
+ * sits at the page bottom — fd7c8e20 moved it into each type's Entitlement step, preset to the selected
+ * type. The whole `LeaveTypePanel` + add-type form moved wholesale from the
  * Types tab, so every sub-form keeps its tri-state marker + hidden `name` intact — no column is wiped on save.
+ *
+ * 7b945408 (Restructure Entitlements Secondary Workflow): the Entitlement step is now a three-sub-step walk
+ * — 1 Benefit Schemes · 2 Service Based Entitlements · 3 Adjustments (the SubStepBar reuse contract). The
+ * Grades catalogue moved off the page bottom into the Benefit Schemes sub-step (gradesSection slot — grades
+ * are tenant-wide master data, badged company-wide), Preview Scenario joins Service Based Entitlements as
+ * its checking tool, and Run Accrual joins Adjustments (it processes earned entitlement). The PageHeader
+ * still hosts the two dialog buttons — item 962077a8 removes them now that the step homes exist.
  */
 export default async function LeaveEntitlementsPage({
   searchParams,
@@ -406,6 +414,82 @@ export default async function LeaveEntitlementsPage({
     </div>
   );
 
+  // ── Grades catalogue → the Entitlement step's Benefit Schemes sub-step (7b945408) ────────────────
+  // The standalone page-bottom Grades section is gone: the grade master now opens the Benefit Schemes
+  // sub-step of every type's Entitlement step, so the grade → grade-group → scheme relationship reads in
+  // one place. Grades are TENANT-WIDE master data (not per-type), so ONE node is composed here and shared
+  // by every panel (the halfDaySection precedent), marked with the company-wide badge convention
+  // (08bc6841). The 03557e76 fold survives the move — CollapsibleCardSection + the SAME cookie keep a
+  // long grade list behind its heading, SSR-read so the first paint is already correct. GradeCatalog and
+  // its actions are untouched.
+  const gradesSection = (
+    <div className="rounded-lg border border-border">
+      <CollapsibleCardSection
+        title={t('gradesTitle')}
+        count={grades.length}
+        subtitle={
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            {t('entitlementStep.gradesCompanyWideBadge')}
+          </span>
+        }
+        toggleLabel={t('gradesToggle')}
+        cookieKey={GRADES_OPEN_COOKIE}
+        defaultOpen={gradesOpen}
+      >
+        <p className="px-4 pt-3 pb-1 text-xs text-muted-foreground">{t('gradesHelp')}</p>
+        <GradeCatalog
+          grades={grades.map((g) => ({
+            id: g.id,
+            code: g.code,
+            name: g.name,
+            rank: g.rank,
+            archived: g.archivedAt != null,
+            inUse: g.inUse,
+          }))}
+          actions={{
+            create: createJobGradeAction,
+            update: updateJobGradeAction,
+            archive: archiveJobGradeAction,
+            delete: deleteJobGradeAction,
+          }}
+        />
+      </CollapsibleCardSection>
+    </div>
+  );
+
+  // ── Entitlement-step tool slots (7b945408) ───────────────────────────────────────────────────────
+  // Preview Scenario joins the Service Based Entitlements sub-step as its checking tool, and Run Accrual
+  // joins Adjustments (it processes earned entitlement — it belongs with entitlement adjustments). Both
+  // mount the SAME self-contained dialogs the PageHeader cluster hosts (d778d2d3) — one shared node each,
+  // fed by the page-level data prep above (no N+1 per type). The header buttons themselves are removed by
+  // item 962077a8; this item only ADDS the new homes.
+  const previewScenarioSection =
+    activeTypeOptions.length > 0 && companyOptions.length > 0 ? (
+      <div className="space-y-1.5 border-t border-border pt-3">
+        <span className="text-xs font-medium text-muted-foreground">{t('previewTitle')}</span>
+        <p className="text-xs text-muted-foreground">{t('entitlementStep.previewHint')}</p>
+        <LeaveRulePreviewDialog
+          leaveTypes={activeTypeOptions.map((o) => ({ id: o.id, name: o.name, code: typeCodeById.get(o.id) ?? '' }))}
+          companies={previewCompanies}
+          grades={gradeOptions}
+          policies={previewPolicies}
+        />
+      </div>
+    ) : null;
+  const accrualSection = (
+    <div className="space-y-1.5 border-t border-border pt-3">
+      <span className="text-xs font-medium text-muted-foreground">{t('runEarnedAccrual')}</span>
+      <p className="text-xs text-muted-foreground">{t('entitlementStep.accrualHint')}</p>
+      <EarnedAccrualDialog
+        companies={festiveCompanies}
+        grades={gradeOptions}
+        leaveTypes={activeTypeOptions}
+        leaveYears={earnedLeaveYears}
+        defaultYear={earnedDefaultYear}
+      />
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
@@ -518,11 +602,11 @@ export default async function LeaveEntitlementsPage({
               }
               festiveGrantSection={
                 /* fd7c8e20 (ADR-0066): the One-Off / Festive Leave Grant tool, moved from the standalone
-                   page-bottom section into the Entitlement step below the Benefit Schemes area. Data prep
-                   (festiveCompanies, recentGrants) stays at page level and is shared by every panel — only
-                   the preselected leave type varies. -mx-4 lets the card's own px-4 gutters line up with
-                   the step's CardContent padding. */
-                <div className="space-y-1 border-t border-border pt-3">
+                   page-bottom section into the Entitlement step (since 7b945408 it HEADS the Adjustments
+                   sub-step, so no top divider). Data prep (festiveCompanies, recentGrants) stays at page
+                   level and is shared by every panel — only the preselected leave type varies. -mx-4 lets
+                   the card's own px-4 gutters line up with the step's CardContent padding. */
+                <div className="space-y-1">
                   <span className="text-xs font-medium text-muted-foreground">{t('festiveTitle')}</span>
                   <div className="-mx-4">
                     <FestiveGrantCard
@@ -599,6 +683,9 @@ export default async function LeaveEntitlementsPage({
                 </div>
               }
               halfDaySection={halfDaySection}
+              gradesSection={gradesSection}
+              previewScenarioSection={previewScenarioSection}
+              accrualSection={accrualSection}
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}
@@ -683,39 +770,10 @@ export default async function LeaveEntitlementsPage({
         </p>
       </Card>
 
-      {/* ADR-0041 2E + Grade Management (728a7db6): the grade master — Code | Name | Rank | Status | Action
-          table with Edit / Archive↔Unarchive / Delete. Grade-scoped leave policies reference these grades.
-          Feedback 03557e76: the whole section folds via its heading (details/summary, like the Application
-          Rules tab's Advanced disclosure). Starts CLOSED so a long grade list no longer forces scrolling past
-          it; the count stays visible on the heading, and the choice persists per-browser via cookie. Purely
-          presentational — GradeCatalog and its actions are untouched. */}
-      <Card>
-        <CollapsibleCardSection
-          title={t('gradesTitle')}
-          count={grades.length}
-          toggleLabel={t('gradesToggle')}
-          cookieKey={GRADES_OPEN_COOKIE}
-          defaultOpen={gradesOpen}
-        >
-          <p className="px-4 pt-3 pb-1 text-xs text-muted-foreground">{t('gradesHelp')}</p>
-          <GradeCatalog
-            grades={grades.map((g) => ({
-              id: g.id,
-              code: g.code,
-              name: g.name,
-              rank: g.rank,
-              archived: g.archivedAt != null,
-              inUse: g.inUse,
-            }))}
-            actions={{
-              create: createJobGradeAction,
-              update: updateJobGradeAction,
-              archive: archiveJobGradeAction,
-              delete: deleteJobGradeAction,
-            }}
-          />
-        </CollapsibleCardSection>
-      </Card>
+      {/* ADR-0041 2E + Grade Management (728a7db6): the grade master no longer sits here as a standalone
+          page-bottom section — 7b945408 moved it (fold, cookie and all) into each type's Entitlement step,
+          Benefit Schemes sub-step (the gradesSection slot above), joining the grade-group → scheme chain
+          it feeds. */}
     </div>
   );
 }

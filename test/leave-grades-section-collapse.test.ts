@@ -1,12 +1,17 @@
 /**
- * Feedback 03557e76 — Grades section collapse on the Leave Config Entitlement tab.
+ * Feedback 03557e76 — Grades catalogue collapse on the Leave Config Entitlement tab.
  *
- * Presentation-only change (no schema/service/domain event): the Grades card's content folds
- * behind a native <details>/<summary> heading (CollapsibleCardSection), starting CLOSED, with
- * the grade count kept visible on the heading and the open/closed choice persisted in a cookie
- * the server page reads SSR-side. These structural assertions guard the reported behaviour:
- * default-hidden grade list + heading toggle + persistence + unchanged GradeCatalog rendering,
- * across all 6 locales.
+ * Presentation-only change (no schema/service/domain event): the Grades content folds behind a
+ * native <details>/<summary> heading (CollapsibleCardSection), starting CLOSED, with the grade
+ * count kept visible on the heading and the open/closed choice persisted in a cookie the server
+ * page reads SSR-side. These structural assertions guard the reported behaviour: default-hidden
+ * grade list + heading toggle + persistence + unchanged GradeCatalog rendering, across all 6
+ * locales.
+ *
+ * 7b945408 re-pinned: the catalogue no longer sits as a standalone page-bottom Card — it moved
+ * (fold, cookie and all) into the Entitlement step's Benefit Schemes sub-step via the page-composed
+ * gradesSection slot (see leave-entitlement-substeps.test.ts for the relocation guard). The fold
+ * semantics this file guards are unchanged; only the host moved.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,9 +32,14 @@ describe('leave grades section collapse', () => {
     expect(section).toMatch(/\[&::-webkit-details-marker\]:hidden/);
   });
 
-  it('wraps the Grades card content in the collapsible section on the entitlements page', () => {
-    expect(page).toContain('<CollapsibleCardSection');
-    const body = page.slice(page.indexOf('<CollapsibleCardSection'), page.indexOf('</CollapsibleCardSection>'));
+  it('wraps the Grades content in the collapsible section, composed as the gradesSection slot (7b945408)', () => {
+    // The fold now rides inside the page-composed gradesSection slot (Entitlement step, Benefit
+    // Schemes sub-step) — not a standalone page-bottom Card.
+    const slotStart = page.indexOf('const gradesSection = (');
+    expect(slotStart).toBeGreaterThan(-1);
+    const foldStart = page.indexOf('<CollapsibleCardSection', slotStart);
+    expect(foldStart).toBeGreaterThan(slotStart);
+    const body = page.slice(foldStart, page.indexOf('</CollapsibleCardSection>'));
     // GradeCatalog + its help text render unchanged INSIDE the fold; actions wiring is untouched.
     expect(body).toContain('<GradeCatalog');
     expect(body).toContain("t('gradesHelp')");

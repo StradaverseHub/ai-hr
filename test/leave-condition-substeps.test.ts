@@ -89,9 +89,9 @@ describe('08bc6841 · the Condition step REUSES the SubStepBar (three sub-steps 
 
   it("keeps 'ess' as the Condition step's storage key and persists essSubStep in the shared shape", () => {
     expect(panelSrc).toContain("const STEP_KEYS = ['general', 'eligibility', 'entitlement', 'ess', 'custom'] as const");
-    // The ONE writer persists all three keys together…
+    // The ONE writer persists the keys together (7b945408 extended the shape with entitlementSubStep)…
     expect(panelSrc).toContain(
-      'JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess })',
+      'JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess, entitlementSubStep: ent })',
     );
     // …and hydration tolerates an older payload (essSubStep absent ⇒ default Criteria).
     expect(panelSrc).toContain("typeof parsed.essSubStep === 'string'");
