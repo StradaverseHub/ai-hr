@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { packFor } from '@/localization/registry';
+import { requireConfigSection } from '../guard';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { PayrollTabs } from '@/components/payroll-tabs';
@@ -32,16 +32,8 @@ export default async function HrdfConfigPage({
   const t = await getTranslations('payroll.config');
   const { error } = await searchParams;
   const back = await settingsBack();
-  const pack = packFor('MY');
-
-  if (!pack) {
-    return (
-      <div className="mx-auto max-w-5xl space-y-6">
-        <PageHeader title={t('body_hrdf')} back={back} />
-        <ErrorBanner message="No localization pack for MY." />
-      </div>
-    );
-  }
+  // Rung 5c (D4): resolve the acting company's pack; 404 unless it declares the HRDF section.
+  const pack = await requireConfigSection('hrdf');
 
   const [{ ruleset, components }, componentOverrides] = await Promise.all([
     pack.statutoryConfig.readActive(s),

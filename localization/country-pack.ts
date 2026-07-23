@@ -71,6 +71,7 @@ export type {
   EaOverrideEntry,
   EaStatement,
   EpfMode,
+  HrdfStatus,
   ReportDef,
   ReportResult,
   PcbExemptionTable,
@@ -78,6 +79,30 @@ export type {
   PayComponentSeed,
   SocsoBand,
   StatutoryRuleset,
+};
+
+/**
+ * Rung 5c (ADR-0080 D4) — a country-admin configuration section the pack contributes. FLAT data only
+ * (anti-framework, ADR-0080 §7 "descriptor-driven UI"): a stable key, an i18n `labelKey`, and the
+ * route `href`. `overview` marks the sections that also appear in the Statutory Configuration
+ * landing-page per-body version grid (the independently-versioned bodies; SKBBK is a routed section
+ * but rides the SOCSO bands, so it is NOT in the overview grid).
+ *
+ * The descriptor carries no component ref: these routes are the pack's own UI files (kept physically
+ * in `app/payroll/configuration/*` pending migration under `localization/my/ui/` — open decision 2).
+ * The `key` is the ROUTE-OWNERSHIP marker: generic config routes resolve the acting company's pack
+ * and 404 unless it declares a section with their key (the gate moves from "route exists" to "pack
+ * declares the section", ADR-0080 D4). For MY — which declares every section — this never 404s.
+ */
+export type ConfigSectionDescriptor = {
+  /** Stable section key: the URL segment, the guard key, and the `components[]` version-grid key. */
+  key: string;
+  /** i18n key resolved under the `payroll.config` namespace (e.g. 'body_epf'). */
+  labelKey: string;
+  /** The section's route (kept at its current URL for MY — no user-visible churn, ADR-0080 D4). */
+  href: string;
+  /** Shown in the landing-page per-body version grid (epf/socso/eis/pcb/hrdf; SKBBK excluded). */
+  overview?: boolean;
 };
 
 /**
@@ -168,12 +193,20 @@ export interface CountryPack {
     normalizeIC: (ic: string) => string;
     /** Date of birth derivable from the national ID (MY: MyKad YYMMDD prefix), or null. */
     dobFromIC: (ic: string, now?: Date) => string | null;
+    /**
+     * The statutory number to persist when a form leaves it blank (MY: a local's SOCSO/EIS number
+     * defaults to their MyKad IC; a non-local or an explicit value is returned untouched). Rung 5c —
+     * consumed by the generic personnel/zakat screens through the pack instead of a direct import.
+     */
+    defaultSocsoEisNumber: MyStatutoryModule['defaultSocsoEisNumber'];
   };
 
   /** Company-level statutory registration (employer numbers, HRDF band, …). */
   companyStatutory: {
     set: MyCompanyStatutoryModule['setCompanyStatutoryMY'];
     get: MyCompanyStatutoryModule['getCompanyStatutoryMY'];
+    /** Every company's statutory registration row (the group Organization admin panel). */
+    list: MyCompanyStatutoryModule['listCompanyStatutoryMY'];
   };
 
   /** Statutory leave vocabulary + entitlement hooks the leave engine dispatches through. */
@@ -236,6 +269,12 @@ export interface CountryPack {
     hrdfSubject: (subjectToHrdf: boolean | null | undefined, status: HrdfStatus) => boolean;
     /** EPF relief cap (RM) used by the PCB accumulator maths. */
     epfReliefCap: number;
+    /**
+     * The built-in HRDF levy rates (MY: HRD Corp mandatory 1% / optional 0.5%) — the FALLBACK the OT/
+     * HRDF configuration screens apply when a resolved ruleset predates the `hrdf` slice. D6 vocabulary
+     * so the generic Attendance-policy / config screens never name the MY table.
+     */
+    hrdfDefault: { mandatoryRate: number; optionalRate: number };
     /**
      * Rung 5b (D6) — the built-in verified EPF Third Schedule band tables (MY: Part A citizen/PR
      * <60, Part E citizen 60–<75). The statutory band-table editor uses these as the FALLBACK when
@@ -312,6 +351,26 @@ export interface CountryPack {
 
   /** The EA-statement field vocabulary the EA-only amendment layer (core/ea-override.ts) validates against. */
   eaFields: readonly EaField[];
+
+  /**
+   * Rung 5c (D4) — the country-admin configuration sections this pack contributes. The generic
+   * Statutory Configuration landing page renders the `overview` sections' links from HERE (not a
+   * hardcoded MY body list), and each config route resolves the acting company's pack and 404s
+   * unless it declares a section with the route's key. A company in another country gets that
+   * country's sections; an unknown country gets none (the routes 404).
+   */
+  configSections: ConfigSectionDescriptor[];
+
+  /**
+   * Rung 5c (D5 / ADR-0079) — seed this pack's tenant-wide reference data into a NEW tenant: the
+   * statutory leave-type catalog and the national + state public-holiday calendar (the
+   * jurisdiction-shaped rows). Returns the created leave-type ids keyed by code (callers wire standing
+   * grants / demo opt-ins off the codes). Generic seeding (profile-option catalogs) stays in
+   * db/provision.ts; only the country-shaped rows move behind the pack, so db/seed.ts and
+   * db/provision.ts route through the registry instead of importing `localization/my`. The
+   * implementation may physically stay under `localization/my/` — the pack references it.
+   */
+  seedReferenceData: (tx: Tx, tenantId: string) => Promise<Record<string, string>>;
 
   /** Statutory report catalog (CP39, SOCSO/EIS files, …) the reporting engine enumerates. */
   reports: ReportDef[];

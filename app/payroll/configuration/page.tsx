@@ -1,14 +1,14 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { packFor } from '@/localization/registry';
 import { Button, Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { StatutoryTabs } from '@/components/statutory-tabs';
 import { StatutoryConfigForm } from '@/components/statutory-config-form';
-import { STATUTORY_BODIES } from '@/localization/my/statutory-tables';
+import { STATUTORY_BODIES, type StatutoryBody } from '@/localization/my/statutory-tables';
 import { latestAvailablePackVersion } from '@/lib/statutory-pack-available';
 import { archiveStatutoryAction } from './actions';
+import { requireConfigSection } from './guard';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
@@ -23,21 +23,14 @@ export default async function StatutoryConfigPage({
   const t = await getTranslations('payroll.config');
   const { edit, error, section } = await searchParams;
   const back = await settingsBack();
-  const pack = packFor('MY');
+  // Rung 5c (D4): the landing page mounts through the acting company's pack. The guard 404s unless the
+  // pack contributes a configuration surface (unreachable for a MY tenant — MY declares every section).
+  const pack = await requireConfigSection();
 
   // Old deep-links: ?section=epf used to switch the single page into the EPF inline editor. The page is now
   // split into per-body sub-routes (31646c85), so bounce any legacy section link to that body's own tab.
   if (section && (STATUTORY_BODIES as readonly string[]).includes(section) && section !== 'ot') {
     redirect(`${BASE}/${section}`);
-  }
-
-  if (!pack) {
-    return (
-      <div className="mx-auto max-w-5xl space-y-6">
-        <PageHeader title={t('title')} back={back} />
-        <ErrorBanner message="No localization pack for MY." />
-      </div>
-    );
   }
 
   const [{ ruleset, source, row, packVersion, issuedAt, components }, history, packs, syncStatus, componentOverrides] =
@@ -139,20 +132,21 @@ export default async function StatutoryConfigPage({
         <h2 className="text-sm font-semibold">{t('perBodyTitle')}</h2>
         <p className="mt-1 text-xs text-muted-foreground">{t('perBodySubtitle')}</p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {/* 'ot' is filtered from this statutory grid (feedback e776d17d) — overtime is now owned by the
-              Attendance module. HAZARD H1: filter at the render site only; do NOT remove 'ot' from the
-              STATUTORY_BODIES constant, or the relocated OT write path (setComponentOverrideMY body
-              validation) and the kernel's own body resolution break. */}
-          {STATUTORY_BODIES.filter((b) => b !== 'ot').map((b) => {
-            const c = components[b];
+          {/* Rung 5c (D4): the per-body links render from the acting company's pack (its `overview`
+              configuration sections) instead of a hardcoded MY body list. For MY the `overview` set is
+              epf/socso/eis/pcb/hrdf in that order — byte-identical to the old
+              `STATUTORY_BODIES.filter((b) => b !== 'ot')` grid (SKBBK is a routed section but rides the
+              SOCSO bands, so it is not independently versioned and stays out of this grid). */}
+          {pack.configSections.filter((sec) => sec.overview).map((sec) => {
+            const c = components[sec.key as StatutoryBody];
             return (
               <Link
-                key={b}
-                href={`${BASE}/${b}`}
+                key={sec.key}
+                href={sec.href}
                 className="flex items-center justify-between rounded-lg border border-border px-3 py-2 transition-colors hover:border-primary/50 hover:bg-accent/40"
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-medium">{t(`body_${b}`)}</div>
+                  <div className="text-sm font-medium">{t(sec.labelKey)}</div>
                   <div className="truncate font-mono text-xs text-muted-foreground">{c.version}</div>
                 </div>
                 <span

@@ -7,7 +7,6 @@ import { listAttendancePolicies } from '@/core/attendance';
 import { listRegisteredDevices } from '@/core/attendance-device';
 import { ensureStandardRule, listAttendanceRules } from '@/core/attendance-rule';
 import { packFor } from '@/localization/registry';
-import { MY_HRDF } from '@/localization/my/statutory-tables';
 import { Badge, Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
 import { StatutoryComponentForm } from '@/components/statutory-component-form';
 import { setAttendancePolicyAction } from '../actions';
@@ -74,7 +73,8 @@ export default async function AttendancePolicyPage({
           restDayExcessMultiplier: otRuleset.ot.restDayExcessMultiplier ?? 2,
           holidayExcessMultiplier: otRuleset.ot.holidayExcessMultiplier ?? 3,
         },
-        hrdf: otRuleset.hrdf ?? MY_HRDF,
+        // Rung 5c — the HRDF-levy fallback comes from the pack (D6 vocabulary) not a direct MY import.
+        hrdf: otRuleset.hrdf ?? pack!.payroll.hrdfDefault,
       }
     : null;
   const otComponentLabels = {

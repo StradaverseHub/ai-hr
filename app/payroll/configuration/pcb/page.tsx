@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { packFor } from '@/localization/registry';
+import { requireConfigSection } from '../guard';
 import { Button, Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { PayrollTabs } from '@/components/payroll-tabs';
@@ -25,16 +25,8 @@ export default async function PcbConfigPage({
   const t = await getTranslations('payroll.config');
   const { edit, error } = await searchParams;
   const back = await settingsBack();
-  const pack = packFor('MY');
-
-  if (!pack) {
-    return (
-      <div className="mx-auto max-w-5xl space-y-6">
-        <PageHeader title={t('body_pcb')} back={back} />
-        <ErrorBanner message="No localization pack for MY." />
-      </div>
-    );
-  }
+  // Rung 5c (D4): resolve the acting company's pack; 404 unless it declares the PCB section.
+  const pack = await requireConfigSection('pcb');
 
   const [{ ruleset, components }, componentOverrides] = await Promise.all([
     pack.statutoryConfig.readActive(s),

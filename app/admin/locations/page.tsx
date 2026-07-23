@@ -5,7 +5,7 @@ import { listCompanies } from '@/core/read';
 import { listLocations } from '@/core/location';
 import { listClockingLocations } from '@/core/clocking-location';
 import { listHolidayGroups } from '@/core/admin';
-import { MY_STATES } from '@/localization/my/holidays';
+import { countryPacks } from '@/localization/registry';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import {
@@ -41,6 +41,10 @@ export default async function LocationsPage({
     if (arr) arr.push(l);
     else byCompany.set(l.companyId, [l]);
   }
+  // Rung 5c — the state pick-list comes from the country packs via the registry (union-read, the
+  // rung-5a `countryPacks()` precedent for tenant-level vocabulary with no acting company). MY-only
+  // today ⇒ byte-identical to the old MY_STATES import.
+  const stateOptions = countryPacks().flatMap((p) => p.states);
   // Country/state are rendered through label maps (not raw strings) so a value isn't shown untranslated.
   const stateLabel = (st: string | null) => (st ? st : t('stateNational'));
 
@@ -91,7 +95,7 @@ export default async function LocationsPage({
                         <Field label={t('state')}>
                           <select name="state" defaultValue={l.state ?? ''} className={`${inputCls} min-w-[8rem]`}>
                             <option value="">{t('stateNational')}</option>
-                            {MY_STATES.map((st) => (
+                            {stateOptions.map((st) => (
                               <option key={st} value={st}>
                                 {st}
                               </option>
@@ -150,7 +154,7 @@ export default async function LocationsPage({
                 <Field label={t('state')}>
                   <select name="state" defaultValue="" className={inputCls}>
                     <option value="">{t('stateNational')}</option>
-                    {MY_STATES.map((st) => (
+                    {stateOptions.map((st) => (
                       <option key={st} value={st}>
                         {st}
                       </option>

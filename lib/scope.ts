@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import type { SessionContext } from '../db/client';
-import { allowedCompanies } from '../core/read';
+import { allowedCompanies, listCompanies } from '../core/read';
 import { getSession } from './session';
 import { requireAdmin } from './authz';
 
@@ -31,4 +31,18 @@ export async function scopedAdmin(): Promise<{ s: SessionContext; scopeIds: stri
   const allowed = await allowedCompanies(s);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
   return { s, scopeIds };
+}
+
+/**
+ * The ISO country of the active company context — which country pack the country-admin screens mount
+ * (ADR-0080 D4). Resolves the first in-scope company's `company.country`, defaulting to 'MY' when the
+ * scope yields nothing (the guard then resolves the MY pack, matching today's MY-only reality). This
+ * is what moves the config-route gate from "route exists" to "the acting company's pack declares the
+ * section": a company in another country resolves that country's pack (or none → the route 404s).
+ */
+export async function actingCompanyCountry(): Promise<string> {
+  const { s, scopeIds } = await scopedSession();
+  const companies = await listCompanies(s);
+  const inScope = companies.filter((c) => scopeIds.includes(c.id));
+  return (inScope[0]?.country ?? companies[0]?.country ?? 'MY').toUpperCase();
 }

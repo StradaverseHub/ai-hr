@@ -26,7 +26,6 @@ import { setPersonComplianceFields } from '@/core/profile';
 import { removePersonPhoto, setPersonPhoto } from '@/core/person-photo';
 import { packFor } from '@/localization/registry';
 import { mapEpfUiMode } from '@/lib/epf-mode-map';
-import { defaultSocsoEisNumber, dobFromIC } from '@/localization/my/statutory';
 
 // Tab retention (feedback bd2f0bb2): the client tab shell (components/personnel-tabs.tsx) injects a hidden
 // `tab` field into every submitting form. Each action appends `&tab=<key>` to its post-save redirect so the
@@ -1051,7 +1050,7 @@ export async function setStatutoryAction(formData: FormData) {
       // Item 5a461b99 — "SOCSO & EIS Number". For a Malaysian employee with a blank number, normalise to
       // their IC number server-side (mirrors the form default); non-Malaysians keep manual entry. The
       // `nationality` hidden field is the RSC page's emp.nationality (used only for this convenience default).
-      socsoNumber: defaultSocsoEisNumber({
+      socsoNumber: pack.statutory.defaultSocsoEisNumber({
         socsoNumber: (formData.get('socsoNumber') as string) || null,
         icNumber,
         nationality: (formData.get('nationality') as string) || null,
@@ -1210,7 +1209,7 @@ export async function setIcAction(formData: FormData) {
   // the derivation holds even if the client wrapper didn't run (JS off / API import). `dobOnlyIfEmpty` guarantees
   // we NEVER overwrite an existing DOB — it fills only when the person has none. Best-effort: the IC is already
   // saved, so a failure here (e.g. DOB already set → no-op) must not fail the IC save.
-  const derivedDob = dobFromIC(icRaw);
+  const derivedDob = packFor('MY')?.statutory.dobFromIC(icRaw);
   if (derivedDob) {
     try {
       await setPersonComplianceFields(s, { employmentId, dateOfBirth: derivedDob, dobOnlyIfEmpty: true });
