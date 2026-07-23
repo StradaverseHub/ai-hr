@@ -43,8 +43,8 @@ import {
   requestAttendanceCorrection,
   GeolocationRequiredError,
   OutsideGeofenceError,
-} from '@/core/attendance';
-import { DeviceNotRegisteredError } from '@/core/attendance-device';
+  DeviceNotRegisteredError,
+} from '@/packs/attendance/service';
 import { requestTravel } from '@/core/travel-request';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';

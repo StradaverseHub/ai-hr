@@ -11,7 +11,7 @@ import {
   myTaxRelief,
   myTaxReliefEmploymentIds,
 } from '@/core/read';
-import { myAttendanceCorrections } from '@/core/attendance';
+import { myAttendanceCorrections } from '@/packs/attendance/service';
 import { myTravelRequests } from '@/core/travel-request';
 import { listLoansForEmployment } from '@/core/loans';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';

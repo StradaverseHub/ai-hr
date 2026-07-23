@@ -69,7 +69,7 @@ import {
   type LeaveDurationType,
   type ServiceBand,
 } from '@/core/leave';
-import { setAttendancePolicy } from '@/core/attendance';
+import { setAttendancePolicy } from '@/packs/attendance/service';
 import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
 import {
   createClockingLocation,
@@ -78,7 +78,7 @@ import {
   restoreClockingLocation,
   deleteClockingLocation,
   ClockingLocationInUseError,
-} from '@/core/clocking-location';
+} from '@/packs/attendance/service';
 import { countEmployeesInScope } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
 import { LEAVE_EXPLANATION_KEYS, type LeaveFormulaConfig } from '@/core/leave-formula';

@@ -1,13 +1,15 @@
 /**
- * Pack registry scaffolding (ADR-0080 D8, rung 1) — the country registry fronts the general
- * registry and behaviour is unchanged: packFor('MY') resolves the MY pack, unknown/absent
- * countries resolve undefined, and the registry enumerates the one registered pack (country-my).
- * No module pack is registered in rung 1 (the Attendance rung is the first).
+ * Pack registry scaffolding (ADR-0080 D8) — the country registry fronts the general registry and
+ * behaviour is unchanged: packFor('MY') resolves the MY pack, unknown/absent countries resolve
+ * undefined, and the registry enumerates both registered packs: country-my (rung 1) and the
+ * attendance module pack (rung 2 — the first module retrofit; its own surface is covered in
+ * test/attendance-pack.test.ts).
  */
 import { describe, expect, it } from 'vitest';
 import { packFor } from '../localization/registry';
 import { myPack } from '../localization/my';
-import { listPacks, packById } from '../packs/registry';
+import '../packs/attendance';
+import { listPacks, modulePackById, packById } from '../packs/registry';
 
 describe('ADR-0080 D8: pack registry rung-1 wiring', () => {
   it('packFor resolves MY (case-insensitively) and refuses unknowns', () => {
@@ -19,13 +21,16 @@ describe('ADR-0080 D8: pack registry rung-1 wiring', () => {
     expect(packFor('')).toBeUndefined();
   });
 
-  it('the general registry carries country-my and zero module packs', () => {
+  it('the general registry carries country-my and the attendance module pack', () => {
     const entry = packById('country-my');
     expect(entry).toBeDefined();
     expect(entry?.kind).toBe('country');
     expect(listPacks('country').map((p) => p.id)).toEqual(['country-my']);
-    expect(listPacks('module')).toEqual([]);
-    expect(listPacks()).toHaveLength(1);
+    expect(listPacks('module').map((p) => p.id)).toEqual(['attendance']);
+    expect(listPacks()).toHaveLength(2);
+    // Kind-narrowed lookup: module ids resolve, country ids do not cross kinds.
+    expect(modulePackById('attendance')?.id).toBe('attendance');
+    expect(modulePackById('country-my')).toBeUndefined();
   });
 
   it('the resolved pack exposes the CountryPack surface', () => {

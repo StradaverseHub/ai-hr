@@ -94,7 +94,7 @@ import { EmployeeShiftFields } from '@/components/employee-shift-fields';
 import { setDefaultShiftAction } from './actions';
 import { listHolidayGroups, listPositions, listBusinessUnits } from '@/core/admin';
 import { listLocations } from '@/core/location';
-import { listClockingLocations, listEmployeeClockingLocations } from '@/core/clocking-location';
+import { listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
 import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actions';
 import { ReviewSection } from './review-section';
 import { DocumentsSection } from './documents-section';

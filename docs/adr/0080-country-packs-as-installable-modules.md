@@ -1,6 +1,10 @@
 # ADR-0080 — Packs as the module system: module packs and country packs
 
-- **Status:** Accepted — rung 1 (pack registry + CountryPack interface + both drift guards) landed 2026-07-23
+- **Status:** Accepted — rung 1 (pack registry + CountryPack interface + both drift guards) landed 2026-07-23;
+  rung 2 (Attendance module pack: `packs/attendance` declaration + service facade, registry-mounted
+  sidebar node, boundary ratchet seeded with the audited kernel-contract debt) landed 2026-07-23 —
+  D11 criteria 1–4 met, criterion 5 (entitlement gate) documented as a hook point pending ADR-0077's
+  `tenant_module`/`isModuleEnabled()`
 - **Date:** 2026-07-23 (revised same day: generalized from country packs to a two-axis pack system, per
   operator discussion — functional modules become packs too, retrofitted one by one)
 - **Relates to:** ADR-0008 (localization packs — this ADR restores and hardens its seam), ADR-0077 (module
