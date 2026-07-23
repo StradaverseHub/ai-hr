@@ -714,6 +714,9 @@ export async function setCompanyLeaveCycleAction(formData: FormData) {
 
 /** Feedback request 31474452: set a company's half-day leave-deduction toggle (checkbox posts "on" or is
  *  absent — mirrors the existing checkbox-action convention in this file, e.g. autoAccrueOnApproval above). */
+// R64 08bc6841 — the half-day-deduction card's single home is now the Entitlements tab (the Condition
+// step's Leave Application Rules grid), so this action redirects THERE (the R45 cc816207 / R61 d778d2d3
+// relocation precedent). The setLeaveHalfDayFullDeduction write itself is unchanged.
 export async function setLeaveHalfDayFullDeductionAction(formData: FormData) {
   const s = await getSession();
   try {
@@ -722,9 +725,9 @@ export async function setLeaveHalfDayFullDeductionAction(formData: FormData) {
       enabled: formData.get('enabled') === 'on',
     });
   } catch (e) {
-    fail(LEAVE, e);
+    fail(ENTITLEMENTS, e);
   }
-  ok(LEAVE);
+  ok(ENTITLEMENTS);
 }
 
 /** ADR-0041 (2E): grade catalog — create + archive. */

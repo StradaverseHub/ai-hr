@@ -3544,6 +3544,7 @@
       "workspaceTypeListLabel": "Leave types",
       "workspaceStepsLabel": "Configuration steps",
       "workspaceSubStepsLabel": "General setup steps",
+      "conditionStepsLabel": "Condition setup steps",
       "subStep": {
         "details": "Details",
         "yearType": "Leave Year Type",
@@ -3573,6 +3574,14 @@
         "noActivePolicy": "No active entitlement policy yet — add one under Eligibility first.",
         "frontDoorScopeLabel": "Applies to policy",
         "workflowUnavailable": "Approval workflow settings are unavailable here — open the Approval tab."
+      },
+      "conditionStep": {
+        "criteria": "Criteria",
+        "rules": "Leave Application Rules",
+        "expiry": "Expiry",
+        "halfDayCompanyWideBadge": "Applies company-wide",
+        "expiryAnnualPointer": "Annual Leave expiry is governed by the carry-forward policy — configure it under General → Carry Forward Policy.",
+        "expiryEmergencyNote": "Emergency Leave carries no balance, so no expiry applies."
       },
       "approvalStep": {
         "hint": "This leave type's approval rules, editable here. Company-wide chains and reusable templates live on the Approval tab.",

@@ -60,11 +60,12 @@ const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
     // moved here from the retired Approval Rules card
     'name="partialApproval"',
   ],
+  // 08bc6841: the eligibility-rules sub-form and the expiry sub-form moved OUT of this card into the
+  // Condition step's Criteria / Expiry sub-steps (see leave-condition-substeps.test.ts) — Eligibility now
+  // focuses purely on the entitlement policies.
   categoryEligibilityEntitlement: [
-    'name="eligibility"',
     "t('companyEntitlements')",
     "t('addEntitlement')",
-    'name="expiry"',
   ],
   categoryEntitlement: [
     // the NEW per-type benefit-scheme entitlement table (filtered view, shared rows + action)
@@ -75,6 +76,8 @@ const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
     '{festiveGrantSection}',
   ],
   categoryEssPolicy: [
+    // 08bc6841: moved here from the Eligibility card (Criteria sub-step)
+    'name="eligibility"',
     'name="durations"',
     'name="document"',
     'name="negativeBalance"',
@@ -83,6 +86,8 @@ const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
     'name="duplicatePolicy"',
     // moved here from the retired Leave Calculation Rules card
     'name="dayTypeInclusion"',
+    // 08bc6841: moved here from the Eligibility card (Expiry sub-step)
+    'name="expiry"',
   ],
   categoryCustom: [
     // moved here from the retired Leave Information Display card

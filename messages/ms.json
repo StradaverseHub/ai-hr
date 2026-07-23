@@ -3544,6 +3544,7 @@
       "workspaceTypeListLabel": "Jenis cuti",
       "workspaceStepsLabel": "Langkah konfigurasi",
       "workspaceSubStepsLabel": "Langkah persediaan umum",
+      "conditionStepsLabel": "Langkah tetapan Syarat",
       "subStep": {
         "details": "Butiran",
         "yearType": "Jenis Tahun Cuti",
@@ -3573,6 +3574,14 @@
         "noActivePolicy": "Belum ada polisi kelayakan aktif — tambah satu di bawah Kelayakan dahulu.",
         "frontDoorScopeLabel": "Terpakai kepada polisi",
         "workflowUnavailable": "Tetapan aliran kerja kelulusan tidak tersedia di sini — buka tab Kelulusan."
+      },
+      "conditionStep": {
+        "criteria": "Kriteria",
+        "rules": "Peraturan Permohonan Cuti",
+        "expiry": "Luput",
+        "halfDayCompanyWideBadge": "Terpakai seluruh syarikat",
+        "expiryAnnualPointer": "Luput Cuti Tahunan ditadbir oleh polisi bawa ke hadapan — tetapkannya di Umum → Polisi Bawa ke Hadapan.",
+        "expiryEmergencyNote": "Cuti Kecemasan tidak membawa baki, jadi tiada luput terpakai."
       },
       "approvalStep": {
         "hint": "Peraturan kelulusan jenis cuti ini, boleh disunting di sini. Rantaian seluruh syarikat dan templat boleh guna semula berada pada tab Kelulusan.",

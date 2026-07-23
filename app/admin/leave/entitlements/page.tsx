@@ -20,7 +20,7 @@ import {
 import { BenefitSchemeConfig, type LeaveTypeSchemeEntitlement } from '@/components/benefit-scheme-config';
 import type { ServiceBand } from '@/core/leave-compute';
 import { entitlement } from '@/localization/my/leave';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
 import { LeaveTypeWorkspace } from '@/components/leave-type-workspace';
@@ -30,6 +30,7 @@ import { LeaveRulePreviewDialog } from '@/components/leave/leave-rule-preview-di
 import {
   archiveLeaveTypeAction,
   countEmployeesInScopeAction,
+  setLeaveHalfDayFullDeductionAction,
   createLeavePoliciesMultiAction,
   createLeaveTypeAction,
   deleteLeavePolicyAction,
@@ -355,6 +356,56 @@ export default async function LeaveEntitlementsPage({
     labels: buildWorkflowMatrixLabels(ta),
   };
 
+  // ── Half-Day Deduction card (08bc6841) ─────────────────────────────────────────────────────────────
+  // Relocated from the Application Rules tab (feedback 31474452's per-company toggle — this is its single
+  // home now): rendered as ONE card of the Condition step's Leave Application Rules grid. The rows are
+  // per-COMPANY (not per-type), so one node is composed here and shared by every panel (the slot
+  // precedent — benefitSchemeSection etc.); each row posts the SAME setLeaveHalfDayFullDeductionAction —
+  // only the rendering (and the action's redirect target) moved. The applies-company-wide badge flags
+  // that saving here affects every leave type and every application, not just the hosting type.
+  const halfDaySection = (
+    <div className="space-y-1.5 rounded-lg border border-border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">{t('halfDayDeductionTitle')}</span>
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {t('conditionStep.halfDayCompanyWideBadge')}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">{t('halfDayDeductionHelp')}</p>
+      <p className="text-xs text-muted-foreground">{t('halfDayDeductionFrozenNote')}</p>
+      <ul className="divide-y divide-border">
+        {companies.map((c) => (
+          <li key={c.id} className="py-2">
+            <form
+              action={setLeaveHalfDayFullDeductionAction}
+              className="flex flex-wrap items-center justify-between gap-3"
+            >
+              <input type="hidden" name="companyId" value={c.id} />
+              <div className="min-w-0">
+                <span className="block truncate text-sm font-medium text-foreground">{c.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {c.leaveHalfDayFullDeduction ? t('halfDayDeductionOn') : t('halfDayDeductionOff')}
+                </span>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="enabled"
+                  defaultChecked={!!c.leaveHalfDayFullDeduction}
+                  className="size-4 rounded"
+                />
+                {t('halfDayDeductionToggleLabel')}
+              </label>
+              <Button type="submit" variant="outline" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
@@ -547,6 +598,7 @@ export default async function LeaveEntitlementsPage({
                   </Link>
                 </div>
               }
+              halfDaySection={halfDaySection}
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}

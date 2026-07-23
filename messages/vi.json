@@ -3544,6 +3544,7 @@
       "workspaceTypeListLabel": "Loại nghỉ phép",
       "workspaceStepsLabel": "Các bước cấu hình",
       "workspaceSubStepsLabel": "Các bước thiết lập chung",
+      "conditionStepsLabel": "Các bước thiết lập Điều kiện",
       "subStep": {
         "details": "Chi tiết",
         "yearType": "Loại năm nghỉ phép",
@@ -3573,6 +3574,14 @@
         "noActivePolicy": "Chưa có chính sách quyền lợi đang hiệu lực — hãy thêm một chính sách trong mục Điều kiện trước.",
         "frontDoorScopeLabel": "Áp dụng cho chính sách",
         "workflowUnavailable": "Thiết lập quy trình phê duyệt không khả dụng tại đây — hãy mở thẻ Phê duyệt."
+      },
+      "conditionStep": {
+        "criteria": "Tiêu chí",
+        "rules": "Quy tắc xin nghỉ phép",
+        "expiry": "Hết hạn",
+        "halfDayCompanyWideBadge": "Áp dụng toàn công ty",
+        "expiryAnnualPointer": "Hạn sử dụng của Nghỉ phép năm do chính sách chuyển tiếp quyết định — cấu hình tại Chung → Chính sách chuyển tiếp.",
+        "expiryEmergencyNote": "Nghỉ khẩn cấp không có số dư, nên không áp dụng hết hạn."
       },
       "approvalStep": {
         "hint": "Quy tắc phê duyệt của loại nghỉ phép này, chỉnh sửa tại đây. Chuỗi phê duyệt toàn công ty và mẫu dùng lại nằm ở thẻ Phê duyệt.",
