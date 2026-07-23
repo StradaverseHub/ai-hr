@@ -21,7 +21,7 @@ import { and, asc, eq, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employeeDependent, employeeQualification, employment, person, profileOption } from '../db/schema';
-import { MY_STATES } from '../localization/my/holidays';
+import { countryPacks } from '../localization/registry';
 import { DEPENDENT_RELATIONSHIP_CATEGORY, DEPENDENT_RELATIONSHIPS } from './dependents';
 import { QUALIFICATION_LEVEL_CATEGORY, QUALIFICATION_LEVEL_DEFAULTS } from './qualifications';
 
@@ -162,7 +162,10 @@ const CATEGORY_DEFAULTS: Record<ProfileOptionCategory, string[]> = {
     'Ugandan', 'Ukrainian', 'Uruguayan', 'Uzbekistani', 'Vanuatuan', 'Vatican', 'Venezuelan', 'Vietnamese',
     'Vincentian', 'Yemeni', 'Zambian', 'Zimbabwean', 'Other',
   ],
-  state: [...MY_STATES],
+  // ADR-0080 D6 (rung 5a): the state seed comes from the registered country packs' state vocabulary
+  // (tenant-wide catalog ⇒ union across packs, in registration order). With MY the only pack this is
+  // byte-identical to the 0180 seed block — the BYTE-IDENTICAL discipline above still holds.
+  state: countryPacks().flatMap((p) => [...p.states]),
   country: ['Malaysia', 'Singapore', 'Indonesia', 'Thailand', 'Brunei', 'India', 'Other'],
   relationship: RELATIONSHIP_VALUES,
   // 8c284478 — standard titles + Malaysian honorifics, all editable/deactivatable afterwards in System

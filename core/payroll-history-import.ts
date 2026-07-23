@@ -37,7 +37,8 @@
  *  5. Statutory figures are taken VERBATIM from the file (migration data is whatever the prior system
  *     paid — no MY recompute). The statutory JSONB carries every key the readers consume
  *     (epfEmployee/Employer, socsoEmployee/Employer, socsoSkbbk, eisEmployee/Employer, pcb, lp, zakat)
- *     plus a `version` stamp set to MY_STATUTORY_VERSION so versionOf reports the import provenance.
+ *     plus a `version` stamp set to the company's pack's built-in ruleset version so versionOf
+ *     reports the import provenance.
  *
  *  6. Employee resolution by EMAIL (matching commitEmployeeImport and importBatchComponents);
  *     employee_code is an optional secondary disambiguator only.
@@ -49,9 +50,12 @@
  */
 import { and, eq, inArray } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { employeeStatutoryMy, employment, payPeriod, payrollBatch, payslip, person } from '../db/schema';
+import { company, employeeStatutoryMy, employment, payPeriod, payrollBatch, payslip, person } from '../db/schema';
 import { appendEvent, actorOf } from '../db/events';
-import { MY_STATUTORY_VERSION } from '../localization/my/statutory-tables';
+// Rung 5a (ADR-0080 D1/D6): the provenance version stamp is the company's pack's built-in ruleset
+// version (`statutoryConfig.default.version` — the same constant the old MY_STATUTORY_VERSION import
+// carried), resolved fail-loud in analyze() from company.country.
+import { requirePackFor } from '../localization/registry';
 import {
   PAYROLL_HISTORY_COLUMNS,
   type PayrollHistoryRecord,
@@ -123,8 +127,15 @@ async function analyze(
   ctx: SessionContext,
   companyId: string,
   records: PayrollHistoryRecord[],
-): Promise<{ preview: HistoryImportPreview; resolved: ResolvedRow[] }> {
-  const { byEmail, occupiedPeriods } = await withTenant(ctx, async (tx) => {
+): Promise<{ preview: HistoryImportPreview; resolved: ResolvedRow[]; statutoryVersion: string }> {
+  const { byEmail, occupiedPeriods, statutoryVersion } = await withTenant(ctx, async (tx) => {
+    // Rung 5a: resolve the company's pack (fail-loud) for the provenance version stamp.
+    const [co] = await tx
+      .select({ country: company.country })
+      .from(company)
+      .where(eq(company.id, companyId))
+      .limit(1);
+    const statutoryVersion = requirePackFor(co?.country).statutoryConfig.default.version;
     const emps = await tx
       .select({
         employmentId: employment.id,
@@ -149,6 +160,7 @@ async function analyze(
     return {
       byEmail: new Map(emps.filter((e) => e.email).map((e) => [e.email!.toLowerCase(), e])),
       occupiedPeriods: new Set(existing.map((e) => e.period)),
+      statutoryVersion,
     };
   });
 
@@ -302,7 +314,7 @@ async function analyze(
       employerCost: employerCostRaw !== '' ? money(employerCostRaw) : round2(grossPay + epfEmployer + socsoEmployer + eisEmployer),
       statutory: {
         epfEmployee, epfEmployer, socsoEmployee, socsoEmployer, socsoSkbbk,
-        eisEmployee, eisEmployer, pcb, lp, zakat, version: MY_STATUTORY_VERSION,
+        eisEmployee, eisEmployer, pcb, lp, zakat, version: statutoryVersion,
         // 1.2.3 CP38 — stamp ONLY when > 0 (mirrors the kernel's conditional stamp), with its ref when
         // supplied, so cp39FileForBatch sums the instalment into the e-Data file's CP38 column.
         ...(cp38 > 0 ? { cp38, ...(cp38Ref !== '' ? { cp38Ref } : {}) } : {}),
@@ -318,7 +330,7 @@ async function analyze(
     rows: resolved.map((r) => r.result),
     missingColumns,
   };
-  return { preview, resolved };
+  return { preview, resolved, statutoryVersion };
 }
 
 /** Dry run: validate the records against the company + existing batches; writes nothing. */
@@ -341,7 +353,7 @@ export async function commitPayrollHistoryImport(
   ctx: SessionContext,
   p: { companyId: string; records: PayrollHistoryRecord[] },
 ): Promise<HistoryImportResult> {
-  const { resolved } = await analyze(ctx, p.companyId, p.records);
+  const { resolved, statutoryVersion } = await analyze(ctx, p.companyId, p.records);
   const valid = resolved.filter((r) => r.result.ok);
   const skipped = resolved.filter((r) => r.result.skipped).length;
   const failed: HistoryImportResult['failed'] = [];
@@ -369,7 +381,7 @@ export async function commitPayrollHistoryImport(
         if (!periodId) {
           const [created] = await tx
             .insert(payPeriod)
-            .values({ tenantId: ctx.tenantId, companyId: p.companyId, period, status: 'open', statutoryVersion: MY_STATUTORY_VERSION })
+            .values({ tenantId: ctx.tenantId, companyId: p.companyId, period, status: 'open', statutoryVersion })
             .returning({ id: payPeriod.id });
           periodId = created.id;
         }

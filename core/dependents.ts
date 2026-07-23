@@ -34,8 +34,8 @@
 import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
-import { employeeDependent, employeeStatutoryMy, employment, payrollBatch, profileOption } from '../db/schema';
-import { setTaxProfileMY } from '../localization/my/statutory';
+import { company, employeeDependent, employeeStatutoryMy, employment, payrollBatch, profileOption } from '../db/schema';
+import { requirePackFor } from '../localization/registry';
 
 /**
  * The BUILT-IN relationship values (rendered as static i18n labels in the UI). ea36b7fa — these five are no
@@ -339,13 +339,17 @@ export async function syncChildReliefFromFamily(
     // Rail (d) — is a payroll run for the current period still open? Detect BEFORE writing so the alert
     // describes the same moment as the write. We alert rather than block (approved): blocking would leave
     // HR unable to correct a family record for as long as payroll stays open.
-    const payrollAlert = await withTenant(ctx, async (tx) => {
+    // Rung 5a (ADR-0080 D1/D6): the same employment read also resolves the person's jurisdiction
+    // (employment → company.country) so the tax write below goes through the person's country pack.
+    const { payrollAlert, country } = await withTenant(ctx, async (tx) => {
       const employments = await tx
-        .select({ companyId: employment.companyId })
+        .select({ companyId: employment.companyId, country: company.country })
         .from(employment)
+        .innerJoin(company, eq(company.id, employment.companyId))
         .where(and(eq(employment.tenantId, ctx.tenantId), eq(employment.personId, personId)));
       const companyIds = Array.from(new Set(employments.map((e) => e.companyId)));
-      if (companyIds.length === 0) return null;
+      const country = employments[0]?.country ?? null;
+      if (companyIds.length === 0) return { payrollAlert: null, country };
       const period = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
       const open = await tx
         .select({ id: payrollBatch.id })
@@ -360,14 +364,16 @@ export async function syncChildReliefFromFamily(
             ne(payrollBatch.status, 'closed'),
           ),
         );
-      return open.length > 0 ? { period, batches: open.length } : null;
+      return { payrollAlert: open.length > 0 ? { period, batches: open.length } : null, country };
     });
 
-    // Rail (c) — reuse the single audited tax writer, stamped with provenance so the resulting
+    // Rail (c) — reuse the single audited tax writer (via the person's country pack — ADR-0080 D1;
+    // requirePackFor FAILS LOUDLY for an unknown country / a person with no employment, which the outer
+    // catch degrades to NO_SYNC('error'), the rail-safe outcome), stamped with provenance so the resulting
     // `employee.tax.updated` event is identifiable as machine-driven. Every other tax column is carried
-    // forward unchanged: setTaxProfileMY overwrites the whole tax column set, so omitting them would
+    // forward unchanged: the setter overwrites the whole tax column set, so omitting them would
     // silently reset residency / category / employer-bears-tax.
-    await setTaxProfileMY(ctx, {
+    await requirePackFor(country).statutory.setTax(ctx, {
       personId,
       taxNumber: state.statutory.taxNumber,
       taxCategory: state.statutory.taxCategory ?? undefined,

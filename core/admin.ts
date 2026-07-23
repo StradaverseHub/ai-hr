@@ -34,7 +34,7 @@ import {
   type LeaveYearCycleOverride,
   type ServiceBand,
 } from './leave';
-import { MY_STATES } from '../localization/my/holidays';
+import { countryPacks } from '../localization/registry';
 import { MARITAL_STATUSES } from './profile';
 import {
   appUser,
@@ -1760,12 +1760,14 @@ export async function deleteHoliday(ctx: SessionContext, p: { id: string }) {
 }
 
 // ───────────────────────── Holiday groups ─────────────────────────
-// A holiday group is a NAMED bundle of states (MY_STATES labels). It is delivered OVER the existing state
+// A holiday group is a NAMED bundle of states (pack `states` labels). It is delivered OVER the existing state
 // engine: holidays are not re-tagged; the resolver (core/leave.ts) expands the assigned group to its
 // member states and feeds them into the same holiday.state UNION predicate as work_state. Admin-only
 // writes (RLS 0100). Assignment lives on employment.holiday_group_id (mutually exclusive with work_state).
 
-/** Sanitise + validate a group's member states: each ∈ MY_STATES, de-duplicated. For a 'custom' calendar
+/** Sanitise + validate a group's member states: each ∈ the registered packs' state vocabulary
+ *  (ADR-0080 D6 — holiday groups are tenant-level, so the union across registered country packs is
+ *  used; per-company narrowing is a later slice), de-duplicated. For a 'custom' calendar
  *  states supply nothing (national is NOT auto-added) so an empty list is allowed; for 'standard'/'extended'
  *  the states[] ARE the gazette state source, so at least one is required (a zero-state non-custom group ==
  *  national, which already exists) — UNLESS the group has a PARENT (R18 a519a96e): then the parent's
@@ -1775,7 +1777,7 @@ function cleanHolidayGroupStates(
   archetype: HolidayGroupArchetype,
   hasParent = false,
 ): string[] {
-  const valid = new Set<string>(MY_STATES);
+  const valid = new Set<string>(countryPacks().flatMap((p) => p.states));
   const out = [...new Set((states ?? []).map((s) => (s ?? '').trim()).filter(Boolean))];
   if (archetype !== 'custom' && out.length === 0 && !hasParent)
     throw new Error('A standard or extended holiday calendar must include at least one state.');

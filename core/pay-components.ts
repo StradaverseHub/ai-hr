@@ -17,18 +17,32 @@ import {
   payrollInput,
   person,
 } from '../db/schema';
-import { MY_DEFAULT_PAY_COMPONENTS, BACKFILL_COMPONENT_CODES, type PayComponentSeed } from '../localization/my/pay-components';
-import {
-  PCB_REMUNERATION_TYPES,
-  pcbExemptionCodesFor,
-  type PcbRemunerationType,
-} from '../localization/my/statutory-tables';
+import { countryPacks } from '../localization/registry';
+import type { PayComponentSeed, PcbExemptionTable, PcbRemunerationType } from '../localization/country-pack';
 import { parseCsvRecords } from '../lib/csv';
 import { validatePayRule, type PayRule, type PayRuleErrorCode } from './pay-rule';
 
-// Re-export the LHDN PCB 2026 classification vocabulary (feedback 09b554e9) so service-side callers keep a
-// single import point; the client form island imports the pure statutory-tables module directly (db-free).
-export { PCB_REMUNERATION_TYPES, pcbExemptionCodesFor, type PcbRemunerationType };
+// ── Pack-supplied vocabulary (ADR-0080 D6, rung 5a) ──────────────────────────────────────────────
+// The default catalog, the backfill-critical code roles, and the LHDN PCB classification vocabulary
+// all come from the registered country packs — no direct localization/my import. The catalog and its
+// classification validation are TENANT-level (there is no acting company on a catalog save), so the
+// vocabulary is the union across registered packs, in registration order — byte-identical with MY as
+// the only pack; per-company narrowing is a later slice (ADR-0080 §6).
+const DEFAULT_PAY_COMPONENTS: PayComponentSeed[] = countryPacks().flatMap((p) => p.payComponents.defaults);
+const BACKFILL_COMPONENT_CODES: { basic: string; allowance: string; overtime: string; bonus: string; claim: string } =
+  Object.assign({}, ...countryPacks().map((p) => p.payComponents.backfillCodes));
+
+/** The remuneration-type vocabulary for pay-code PCB classification (feedback 09b554e9), pack-supplied.
+ *  Re-exported so service-side callers keep a single import point; the client form island imports the
+ *  pack's pure statutory-tables module directly (db-free — a 5b-slice cutover). */
+export const PCB_REMUNERATION_TYPES: readonly PcbRemunerationType[] = countryPacks().flatMap(
+  (p) => p.payroll.pcbRemunerationTypes,
+);
+/** Exemption-code list valid for a remuneration type — merged across the registered packs' built-ins. */
+export function pcbExemptionCodesFor(type: PcbRemunerationType): PcbExemptionTable {
+  return Object.assign({}, ...countryPacks().map((p) => p.payroll.pcbExemptionCodesFor(type)));
+}
+export type { PcbRemunerationType } from '../localization/country-pack';
 
 const money = (v: number) => Number(v).toFixed(2);
 
@@ -81,7 +95,7 @@ async function componentIdByCode(tx: Tx, tenantId: string, code: string): Promis
 export function seedPayComponentCatalog(ctx: SessionContext) {
   return withTenant(ctx, async (tx) => {
     let created = 0;
-    for (const c of MY_DEFAULT_PAY_COMPONENTS) {
+    for (const c of DEFAULT_PAY_COMPONENTS) {
       const existing = await componentIdByCode(tx, ctx.tenantId, c.code);
       if (existing) {
         await tx.update(payComponent).set(flagsOf(c)).where(eq(payComponent.id, existing));
@@ -96,9 +110,9 @@ export function seedPayComponentCatalog(ctx: SessionContext) {
       aggregateId: ctx.tenantId, // catalog-level op keyed to the tenant
       eventType: 'pay-component.catalog.seeded',
       actor: actorOf(ctx),
-      payload: { total: MY_DEFAULT_PAY_COMPONENTS.length, created },
+      payload: { total: DEFAULT_PAY_COMPONENTS.length, created },
     });
-    return { total: MY_DEFAULT_PAY_COMPONENTS.length, created };
+    return { total: DEFAULT_PAY_COMPONENTS.length, created };
   });
 }
 

@@ -52,10 +52,6 @@ import {
   tp1Relief,
 } from '../db/schema';
 import { setPayrollBatchComponent } from './pay-components';
-// LHDN PCB 2026 pay-code classification (feedback 09b554e9) — the built-in exemption tables are the
-// FALLBACK for a resolved ruleset predating 2026.5 (rules.pcbExemptions absent), mirroring the
-// hrdf/partA optional-body fallbacks. Pure data import (no MY runtime coupling beyond what packFor carries).
-import { MY_LP_OPTIONAL_DEDUCTION_CODES, MY_PCB_EXEMPTION_CODES } from '../localization/my/statutory-tables';
 import { cp38ForPeriod } from './cp38';
 import { applyLoansForBatch } from './loans';
 import { warnIfHolidaysIncomplete, holidayDatesFor, type HolidayCompletenessWarning } from './holidays';
@@ -2739,7 +2735,9 @@ export async function generatePayslips(
 
     // LHDN PCB 2026 (feedback 09b554e9) — the exemption tables ride the resolved statutory ruleset (a
     // pack/override predating 2026.5 omits them and falls back to the verified built-ins, mirroring hrdf).
-    const exemptionTables = rules.pcbExemptions ?? { pcb: MY_PCB_EXEMPTION_CODES, lp: MY_LP_OPTIONAL_DEDUCTION_CODES };
+    // Rung 5a (ADR-0080 D6 — the corrected R55 shape): the built-in fallback tables come from the batch's
+    // resolved country pack, not a direct MY import.
+    const exemptionTables = rules.pcbExemptions ?? pack.payroll.pcbExemptionTables;
 
     /** Per-employee earnings, from the typed components (flag on) or the legacy comp+input (flag off).
      *  Returns the exact variables the loop already used so the rest of the kernel is unchanged.

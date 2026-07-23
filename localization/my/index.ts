@@ -2,11 +2,20 @@
  * Malaysia localization pack (ADR-0008). Slice 1 ships the statutory profile; leave rules,
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
-import { getStatutoryProfileMY, isValidIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY } from './statutory';
+import { dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
-import { MY_HOLIDAYS_2026 } from './holidays';
+import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import { eis, epf, hrdfLevy, hrdfSubject, overtimePay, pcbMonth, socso, statutory } from './payroll';
-import { DEFAULT_MY_STATUTORY, MY_RELIEFS } from './statutory-tables';
+import {
+  DEFAULT_MY_STATUTORY,
+  MY_LP_OPTIONAL_DEDUCTION_CODES,
+  MY_PCB_EXEMPTION_CODES,
+  MY_RELIEFS,
+  PCB_REMUNERATION_TYPES,
+  pcbExemptionCodesFor,
+} from './statutory-tables';
+import { BACKFILL_COMPONENT_CODES, MY_DEFAULT_PAY_COMPONENTS } from './pay-components';
+import { EA_FIELDS } from './reports';
 import {
   archiveComponentOverrideMY,
   archiveStatutoryRulesetMY,
@@ -31,6 +40,9 @@ import type { CountryPack } from '../country-pack';
 // registry derived its type FROM this object — backwards).
 export const myPack: CountryPack = {
   country: 'MY' as const,
+  // Rung 5a (ADR-0080 D6) — jurisdiction state labels, consumed by holiday groups, location state
+  // overrides, and the profile-option 'state' catalog seed via the registry.
+  states: MY_STATES,
   statutory: {
     set: setStatutoryProfileMY,
     get: getStatutoryProfileMY,
@@ -51,6 +63,10 @@ export const myPack: CountryPack = {
     // The Others Statutory card on the Bank & Statutory tab saves through this, like setTp3/setBank/setTax.
     setOthersStatutory: setOthersStatutoryMY,
     validateIC: isValidIC,
+    // Rung 5a (D6) — IC canonicalisation + MyKad-derived DOB, consumed by the bulk importer through
+    // the pack instead of a direct localization/my import.
+    normalizeIC,
+    dobFromIC,
   },
   companyStatutory: {
     set: setCompanyStatutoryMY,
@@ -74,6 +90,15 @@ export const myPack: CountryPack = {
     // against the employer's registration band). D6 vocabulary: the kernel consumes it via the pack.
     hrdfSubject,
     epfReliefCap: MY_RELIEFS.epfReliefCap,
+    // Rung 5a (D6 — the corrected R55 shape): the built-in LHDN PCB 2026 exemption/LP tables and the
+    // remuneration-type vocabulary. The kernel's ruleset fallback and the pay-component classification
+    // validator consume THESE, never the MY table names.
+    pcbExemptionTables: { pcb: MY_PCB_EXEMPTION_CODES, lp: MY_LP_OPTIONAL_DEDUCTION_CODES },
+    pcbRemunerationTypes: PCB_REMUNERATION_TYPES,
+    pcbExemptionCodesFor,
+    // Rung 5a (D6) — the TP1 categories with a VERIFIED LHDN cap (statutory-tables MY_RELIEFS).
+    // `children` / EPF are per-unit caps and deliberately absent (see core/tax-relief.ts rationale).
+    taxReliefCategoryCaps: { individual: MY_RELIEFS.individual, spouse: MY_RELIEFS.spouse },
     // Active-ruleset loader (ADR-0019): resolves the DB override or the verified default. The kernel
     // calls this once per run and threads the result into the calculators above.
     loadRuleset: getActiveStatutoryMY,
@@ -100,6 +125,14 @@ export const myPack: CountryPack = {
     archiveComponent: archiveComponentOverrideMY,
     validateComponent: validateStatutoryComponent,
   },
+  // Rung 5a (D6) — the default pay-component catalog (treatment flags are jurisdiction facts) and the
+  // backfill-critical code roles core/pay-components resolves through the registry.
+  payComponents: {
+    defaults: MY_DEFAULT_PAY_COMPONENTS,
+    backfillCodes: BACKFILL_COMPONENT_CODES,
+  },
+  // Rung 5a (D6) — the EA-form field vocabulary the EA-only amendment layer validates against.
+  eaFields: EA_FIELDS,
   reports: MY_REPORTS,
   eaStatement,
 };

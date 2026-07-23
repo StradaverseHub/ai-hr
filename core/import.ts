@@ -1,7 +1,7 @@
 /**
  * Day-one employee importer (ADR-0008 localization stays in the pack; this is the generic
  * bulk-load path). Parses a validated set of CSV records and reuses the same services the
- * single-hire form uses — hireEmployee → setStatutoryProfileMY → setCompensation — so an
+ * single-hire form uses — hireEmployee → the pack's statutory.set → setCompensation — so an
  * imported employee is indistinguishable from a hand-entered one, events included.
  *
  * Two phases:
@@ -13,12 +13,15 @@
  * day-one migration wants maximum rows in, not all-or-nothing. The dry run is the gate.
  */
 import { withTenant, type SessionContext } from '../db/client';
-import { person, employeeStatutoryMy, employment } from '../db/schema';
+import { company, person, employeeStatutoryMy, employment } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { hireEmployee } from './org';
 import { setCompensation } from './comp';
 import { setPersonComplianceFields } from './profile';
-import { setStatutoryProfileMY, isValidIC, normalizeIC, dobFromIC } from '../localization/my/statutory';
+// Rung 5a (ADR-0080 D1/D6): the statutory writer + IC helpers come from the COMPANY'S country pack
+// (resolved in analyze() from company.country), never from a direct localization/my import. A company
+// whose country resolves no pack fails the import loudly (D3) instead of validating under MY rules.
+import { requirePackFor, type CountryPack } from '../localization/registry';
 import { normalizeEmployeeCode, isValidEmployeeCode, EMPLOYEE_CODE_MAX_LEN } from '../lib/employee-code';
 import { listDepartments, listLeaveTypes } from './read';
 import { listPositions, listCostCenters } from './admin';
@@ -80,7 +83,7 @@ async function analyze(
   ctx: SessionContext,
   companyId: string,
   records: ImportRecord[],
-): Promise<{ preview: ImportPreview; resolved: ResolvedRow[] }> {
+): Promise<{ preview: ImportPreview; resolved: ResolvedRow[]; pack: CountryPack }> {
   const [departments, positions, costCenters, leaveTypes] = await Promise.all([
     listDepartments(ctx, { companyIds: [companyId] }),
     listPositions(ctx, { companyIds: [companyId] }),
@@ -99,8 +102,15 @@ async function analyze(
     .map((t) => ({ id: t.id, code: t.code }));
 
   // Existing identifiers (tenant-scoped via RLS) so the import can't create dup ICs (DB-unique)
-  // or silently re-add someone by email.
-  const { existingEmails, existingIcs, existingCodes } = await withTenant(ctx, async (tx) => {
+  // or silently re-add someone by email. Rung 5a: the same read resolves the company's country pack
+  // (fail-loud) so every IC rule below is the acting company's, not a hardcoded jurisdiction.
+  const { existingEmails, existingIcs, existingCodes, pack } = await withTenant(ctx, async (tx) => {
+    const [co] = await tx
+      .select({ country: company.country })
+      .from(company)
+      .where(eq(company.id, companyId))
+      .limit(1);
+    const pack = requirePackFor(co?.country);
     const ppl = await tx.select({ email: person.primaryEmail }).from(person);
     const ics = await tx.select({ ic: employeeStatutoryMy.icNumber }).from(employeeStatutoryMy);
     // Employee IDs already in use in this tenant (feedback 38668d9b) — an import must not collide with an
@@ -110,8 +120,9 @@ async function analyze(
       existingEmails: new Set(ppl.map((r) => r.email.toLowerCase())),
       // Item e3ce0d4d — icNumber is now nullable (non-Malaysian passport rows); skip null ICs so a blank never
       // enters the collision set (mirrors the employeeCode filter below).
-      existingIcs: new Set(ics.filter((r) => r.ic).map((r) => normalizeIC(r.ic as string))),
+      existingIcs: new Set(ics.filter((r) => r.ic).map((r) => pack.statutory.normalizeIC(r.ic as string))),
       existingCodes: new Set(codes.filter((r) => r.code).map((r) => normalizeEmployeeCode(r.code))),
+      pack,
     };
   });
 
@@ -181,14 +192,14 @@ async function analyze(
       else errors.push(`Unknown employment_type "${rec.employment_type}"`);
     }
 
-    // IC (required, format + uniqueness — DB enforces tenant-unique IC)
+    // IC (required, format + uniqueness — DB enforces tenant-unique IC; rules from the company's pack)
     const icRaw = norm(rec.ic_number);
-    const icNorm = normalizeIC(icRaw);
+    const icNorm = pack.statutory.normalizeIC(icRaw);
     if (!icRaw) errors.push('Missing ic_number');
-    else if (!isValidIC(icRaw)) errors.push(`Invalid IC "${icRaw}" (expected 12 digits)`);
+    else if (!pack.statutory.validateIC(icRaw)) errors.push(`Invalid IC "${icRaw}" (expected 12 digits)`);
     else if (seenIcs.has(icNorm)) errors.push('Duplicate ic_number in this file');
     else if (existingIcs.has(icNorm)) errors.push('An employee with this IC already exists');
-    if (icRaw && isValidIC(icRaw)) seenIcs.add(icNorm);
+    if (icRaw && pack.statutory.validateIC(icRaw)) seenIcs.add(icNorm);
 
     // Salary
     const salaryRaw = norm(rec.basic_salary).replace(/[,_]/g, '');
@@ -322,7 +333,7 @@ async function analyze(
     rows: resolved.map((r) => r.result),
     missingColumns,
   };
-  return { preview, resolved };
+  return { preview, resolved, pack };
 }
 
 /** Dry run: validate the records against the company catalog without writing anything. */
@@ -341,7 +352,7 @@ export async function commitEmployeeImport(
   ctx: SessionContext,
   p: { companyId: string; records: ImportRecord[] },
 ): Promise<ImportResult> {
-  const { resolved } = await analyze(ctx, p.companyId, p.records);
+  const { resolved, pack } = await analyze(ctx, p.companyId, p.records);
   const valid = resolved.filter((r) => r.result.ok);
   const failed: ImportResult['failed'] = [];
   let imported = 0;
@@ -349,13 +360,13 @@ export async function commitEmployeeImport(
   for (const row of valid) {
     try {
       const { employmentId, personId } = await hireEmployee(ctx, row.hire);
-      await setStatutoryProfileMY(ctx, { personId, ...row.statutory });
+      await pack.statutory.set(ctx, { personId, ...row.statutory });
       // Feedback b9fd8fd5 — imports behave like manual entry (setIcAction, item 354a500d): a valid IC also
       // persists the derived Date of Birth so the Profile tab's Age never reads "Not Available" for an
       // imported employee. `dobOnlyIfEmpty` guarantees an existing DOB is never overwritten; an IC whose
       // first six digits form no real calendar date derives nothing (null) and is skipped, not failed.
       // Best-effort: the employee is already hired + statutory-saved, so a failure here must not fail the row.
-      const derivedDob = dobFromIC(row.statutory.icNumber);
+      const derivedDob = pack.statutory.dobFromIC(row.statutory.icNumber);
       if (derivedDob) {
         try {
           await setPersonComplianceFields(ctx, { employmentId, dateOfBirth: derivedDob, dobOnlyIfEmpty: true });
