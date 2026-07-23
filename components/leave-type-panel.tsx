@@ -573,6 +573,7 @@ export function LeaveTypePanel({
   companies,
   schemeEntitlements,
   benefitSchemeSection,
+  festiveGrantSection,
   updateTypeAction,
   archiveTypeAction,
   deleteTypeAction,
@@ -681,6 +682,11 @@ export function LeaveTypePanel({
    *  <BenefitSchemeConfig scopeLeaveTypeId={id}> slot rendered inside the Entitlement step, below the
    *  per-type table. Slot-shaped so the scheme data is prepared ONCE at page level (no N+1 per type). */
   benefitSchemeSection?: ReactNode;
+  /** fd7c8e20: the One-Off / Festive Leave Grant tool, moved from the page-bottom section into the
+   *  Entitlement step BELOW the Benefit Schemes area — a server-composed <FestiveGrantCard
+   *  defaultLeaveTypeId={id}> slot, so the grant form arrives preset to THIS type. Slot-shaped like
+   *  benefitSchemeSection: companies/grants data is prepared ONCE at page level (no N+1 per type). */
+  festiveGrantSection?: ReactNode;
   updateTypeAction: Action;
   archiveTypeAction: Action;
   deleteTypeAction: Action;
@@ -1727,6 +1733,11 @@ export function LeaveTypePanel({
               page-bottom section moved here so step 3 is the ONE place for everything entitlement-related.
               Server-composed slot; see the benefitSchemeSection prop doc. */}
           {benefitSchemeSection}
+          {/* fd7c8e20: the One-Off / Festive Leave Grant tool follows, preset to this type — the standalone
+              page-bottom section moved here, completing step 3 as the one place for everything
+              entitlement-related (regular entitlement, schemes, one-off/festive grants). Server-composed
+              slot; see the festiveGrantSection prop doc. */}
+          {festiveGrantSection}
             </CardContent>
           </Card>
           )}

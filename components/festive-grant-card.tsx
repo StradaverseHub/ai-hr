@@ -13,6 +13,9 @@ export type FestiveLeaveTypeOption = { id: string; name: string };
 export type FestiveGrantRow = {
   occurredAt: string;
   companyName: string | null;
+  /** fd7c8e20: the granted leave type's id — drives the per-type filter when the card is embedded in a
+   *  leave type's Entitlement step. null on legacy/typeless audit rows (shown only in the all-types view). */
+  leaveTypeId: string | null;
   leaveTypeName: string | null;
   days: number | null;
   count: number | null;
@@ -26,6 +29,12 @@ export type FestiveGrantRow = {
  * (e.g. "CNY 2026"). Each company gets its own per-company audit entry (the event log), exactly as if
  * granted separately. `companies` is already narrowed by the page to only the companies this admin
  * administers (group admins see all) — so Select all here always succeeds.
+ *
+ * fd7c8e20: the card now lives INSIDE each leave type's Entitlement step (below the Benefit Schemes area)
+ * instead of a standalone page-bottom section. `defaultLeaveTypeId` preselects the hosting type in the
+ * Leave type select — still changeable, so cross-type grants remain possible without leaving the workspace —
+ * and scopes the Recent grants list to that type, with a toggle to view every type's grants. Grant writing,
+ * records and behaviour are untouched: only the tool's location (and the list's default filter) moved.
  */
 export function FestiveGrantCard({
   companies,
@@ -33,6 +42,7 @@ export function FestiveGrantCard({
   leaveTypes,
   recent,
   defaultDate,
+  defaultLeaveTypeId,
 }: {
   companies: FestiveCompanyOption[];
   /** Group admins only — shows the "All companies (group-wide)" checkbox, which targets EVERY active
@@ -42,6 +52,9 @@ export function FestiveGrantCard({
   recent: FestiveGrantRow[];
   /** Today's ISO date for the effective-date default. */
   defaultDate: string;
+  /** fd7c8e20: the hosting leave type when embedded in a type's Entitlement step — preselects the Leave
+   *  type select (still changeable) and default-filters Recent grants to that type (toggle shows all). */
+  defaultLeaveTypeId?: string;
 }) {
   const t = useTranslations('admin.leave');
   const router = useRouter();
@@ -51,6 +64,11 @@ export function FestiveGrantCard({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [daysError, setDaysError] = useState<string | null>(null);
   const [days, setDays] = useState('1');
+  // fd7c8e20: Recent-grants scope. When hosted inside a type's step, start on that type's grants; the
+  // toggle widens to all types (grants for other types stay intact and reachable — display filter only).
+  const [showAllTypes, setShowAllTypes] = useState(false);
+  const scopedToType = !!defaultLeaveTypeId && !showAllTypes;
+  const visibleGrants = scopedToType ? recent.filter((r) => r.leaveTypeId === defaultLeaveTypeId) : recent;
 
   const validateDays = (v: string): string | null => {
     const n = Number(v);
@@ -134,7 +152,9 @@ export function FestiveGrantCard({
           </label>
         )}
         <Field label={t('festiveLeaveTypeLabel')}>
-          <select name="leaveTypeId" required defaultValue="" className={`${inputCls} w-44`}>
+          {/* fd7c8e20: preselect the hosting type when embedded in its Entitlement step — changeable, so
+              cross-type grants stay possible without leaving the workspace. */}
+          <select name="leaveTypeId" required defaultValue={defaultLeaveTypeId ?? ''} className={`${inputCls} w-44`}>
             <option value="" disabled>
               {t('festiveLeaveTypePlaceholder')}
             </option>
@@ -174,12 +194,26 @@ export function FestiveGrantCard({
       {daysError && <p className="mx-4 -mt-2 text-xs text-destructive">{daysError}</p>}
 
       <div className="space-y-1.5 px-4 pb-4">
-        <div className="text-xs font-medium text-muted-foreground">{t('festiveRecentTitle')}</div>
-        {recent.length === 0 ? (
-          <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">{t('festiveRecentEmpty')}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-xs font-medium text-muted-foreground">{t('festiveRecentTitle')}</div>
+          {/* fd7c8e20: scope toggle — only when hosted in a type's step (defaultLeaveTypeId set). */}
+          {defaultLeaveTypeId && (
+            <button
+              type="button"
+              onClick={() => setShowAllTypes((v) => !v)}
+              className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+            >
+              {showAllTypes ? t('festiveShowTypeOnly') : t('festiveShowAllTypes')}
+            </button>
+          )}
+        </div>
+        {visibleGrants.length === 0 ? (
+          <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
+            {scopedToType ? t('festiveRecentEmptyForType') : t('festiveRecentEmpty')}
+          </p>
         ) : (
           <ul className="divide-y divide-border rounded-lg bg-background">
-            {recent.map((r, i) => (
+            {visibleGrants.map((r, i) => (
               <li key={i} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs">
                 <span className="font-medium text-foreground">{r.reason}</span>
                 <span className="text-muted-foreground">

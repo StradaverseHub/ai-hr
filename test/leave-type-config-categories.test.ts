@@ -71,6 +71,8 @@ const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
     '<LeaveTypeEntitlementTable',
     // 6c775d68: the scoped Benefit Schemes management area follows the table inside the same step
     '{benefitSchemeSection}',
+    // fd7c8e20: the One-Off / Festive Leave Grant tool completes the step, below the schemes area
+    '{festiveGrantSection}',
   ],
   categoryEssPolicy: [
     'name="durations"',

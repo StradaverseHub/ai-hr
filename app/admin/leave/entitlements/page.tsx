@@ -64,9 +64,10 @@ const GRADES_OPEN_COOKIE = 'leave_grades_open';
  * advance-notice, expiry, the apply-time custom message AND that type's effective-dated entitlement policies
  * (the editable ranges table + the multi-company/grade "Employee Selection" chips). Beneath it are the
  * company-level entitlement operations re-homed here earlier (0d147b78): leave-year opener + earned-accrual
- * runner, per-company accrual cycle, grade catalog, bulk import, festive grant. The whole `LeaveTypePanel` +
- * add-type form moved wholesale from the Types tab, so every sub-form keeps its tri-state marker + hidden
- * `name` intact — no column is wiped on save.
+ * runner, per-company accrual cycle, grade catalog, bulk import. The festive / one-off grant tool no longer
+ * sits at the page bottom — fd7c8e20 moved it into each type's Entitlement step (below the Benefit Schemes
+ * area), preset to the selected type. The whole `LeaveTypePanel` + add-type form moved wholesale from the
+ * Types tab, so every sub-form keeps its tri-state marker + hidden `name` intact — no column is wiped on save.
  */
 export default async function LeaveEntitlementsPage({
   searchParams,
@@ -122,6 +123,9 @@ export default async function LeaveEntitlementsPage({
   const recentGrants: FestiveGrantRow[] = adHocGrants.map((g) => ({
     occurredAt: g.occurredAt.toISOString(),
     companyName: g.companyId ? (companyNameById.get(g.companyId) ?? null) : null,
+    // fd7c8e20: the raw type id rides along so the embedded card can default-filter the list to its
+    // hosting leave type (display filter only — every grant row stays in this one shared array).
+    leaveTypeId: g.leaveTypeId ?? null,
     leaveTypeName: g.leaveTypeId ? (typeNameById.get(g.leaveTypeId) ?? null) : null,
     days: g.days,
     count: g.count,
@@ -351,6 +355,26 @@ export default async function LeaveEntitlementsPage({
                   <BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} />
                 </div>
               }
+              festiveGrantSection={
+                /* fd7c8e20 (ADR-0066): the One-Off / Festive Leave Grant tool, moved from the standalone
+                   page-bottom section into the Entitlement step below the Benefit Schemes area. Data prep
+                   (festiveCompanies, recentGrants) stays at page level and is shared by every panel — only
+                   the preselected leave type varies. -mx-4 lets the card's own px-4 gutters line up with
+                   the step's CardContent padding. */
+                <div className="space-y-1 border-t border-border pt-3">
+                  <span className="text-xs font-medium text-muted-foreground">{t('festiveTitle')}</span>
+                  <div className="-mx-4">
+                    <FestiveGrantCard
+                      companies={festiveCompanies}
+                      canGroupWide={canGroupWide}
+                      leaveTypes={activeTypeOptions}
+                      recent={recentGrants}
+                      defaultDate={todayIso}
+                      defaultLeaveTypeId={lt.id}
+                    />
+                  </div>
+                </div>
+              }
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}
@@ -544,18 +568,6 @@ export default async function LeaveEntitlementsPage({
             <Link href="/admin/leave/import">{t('importLink')}</Link>
           </Button>
         </div>
-      </Card>
-
-      {/* ADR-0066: festive / one-off leave grant — hand N extra days to everyone in a company + leave type. */}
-      <Card>
-        <SectionHeader title={t('festiveTitle')} />
-        <FestiveGrantCard
-          companies={festiveCompanies}
-          canGroupWide={canGroupWide}
-          leaveTypes={activeTypeOptions}
-          recent={recentGrants}
-          defaultDate={todayIso}
-        />
       </Card>
     </div>
   );
