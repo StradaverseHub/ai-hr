@@ -65,6 +65,7 @@ export default async function PcbConfigPage({
         <StatutoryConfigForm
           ruleset={ruleset}
           defaultVersion={ruleset.version}
+          epfScheduleFallback={pack.payroll.epfThirdSchedule}
           sections={['pcb']}
           cancelHref={SELF}
           returnTo={SELF}

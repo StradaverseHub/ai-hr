@@ -79,7 +79,7 @@ export default async function StatutoryConfigPage({
           {t('safetyNote')}
         </Card>
         <p className="text-sm text-muted-foreground">{t('editIntro')}</p>
-        <StatutoryConfigForm ruleset={ruleset} defaultVersion={ruleset.version} />
+        <StatutoryConfigForm ruleset={ruleset} defaultVersion={ruleset.version} epfScheduleFallback={pack.payroll.epfThirdSchedule} />
       </div>
     );
   }

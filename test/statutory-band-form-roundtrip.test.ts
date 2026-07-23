@@ -8,11 +8,24 @@
  * the pure representation of "open the editor, change nothing, publish".
  */
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MY_STATUTORY, type StatutoryRuleset } from '../localization/my/statutory-tables';
+import {
+  DEFAULT_MY_STATUTORY,
+  MY_EPF_THIRD_SCHEDULE_PART_A,
+  MY_EPF_THIRD_SCHEDULE_PART_E,
+  type StatutoryRuleset,
+} from '../localization/my/statutory-tables';
 import { assemble, initState } from '../components/statutory-config-form';
 
+// Rung 5b (ADR-0080 D6): the form no longer imports the MY tables — the server page threads
+// pack.payroll.epfThirdSchedule in. The tests pass the same built-in tables the pack declares.
+const EPF_FALLBACK = { partA: MY_EPF_THIRD_SCHEDULE_PART_A, partE: MY_EPF_THIRD_SCHEDULE_PART_E };
+
 describe('SOCSO/EIS band grid round-trip', () => {
-  const out = assemble(initState(DEFAULT_MY_STATUTORY), DEFAULT_MY_STATUTORY) as StatutoryRuleset;
+  const out = assemble(
+    initState(DEFAULT_MY_STATUTORY, EPF_FALLBACK),
+    DEFAULT_MY_STATUTORY,
+    EPF_FALLBACK,
+  ) as StatutoryRuleset;
 
   it('reproduces SOCSO Category 1 bands byte-identically (incl. the SKBBK leg)', () => {
     expect(out.socso.category1).toEqual(DEFAULT_MY_STATUTORY.socso.category1);

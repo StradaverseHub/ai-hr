@@ -15,9 +15,11 @@
  * "Interface churn" risk) — it is internal, so revisions stay cheap.
  *
  * Extension points that do NOT exist yet (deliberately absent, not forgotten):
- *   - D4 UI descriptors (configuration sections, personnel-profile cards, report entries) — land in
- *     rung 5b/5c when country UI mounting becomes registry-driven. Kept off the interface until then
- *     so nothing speculative accretes.
+ *   - D4 route/section mounting descriptors (configuration sections, report entries) — land in
+ *     rung 5c when country UI ROUTE mounting becomes registry-driven. Kept off the interface until
+ *     then so nothing speculative accretes. Rung 5b added the first D4 slice: the CLIENT-SAFE
+ *     vocabulary (`CountryPackClient`, the `client` field below) that shared `components/` widgets
+ *     consume through `localization/registry.client.ts` instead of importing `localization/my`.
  *
  * Rung 5a (kernel seam restoration) added the D6 engine vocabulary as first-class fields — state
  * labels, IC helpers, PCB exemption tables/remuneration types, TP1 relief caps, the pay-component
@@ -34,6 +36,7 @@ import type { MyLeaveTypeDef } from './my/leave';
 import type { MyHoliday } from './my/holidays';
 import type {
   EpfElection,
+  EpfMode,
   OtDay,
   OvertimePayResult,
   PcbAccumulators,
@@ -41,9 +44,11 @@ import type {
   TaxProfile,
 } from './my/payroll';
 import type {
+  ContribBand,
   HrdfStatus,
   PcbExemptionTable,
   PcbRemunerationType,
+  SocsoBand,
   StatutoryBody,
   StatutoryRuleset,
 } from './my/statutory-tables';
@@ -61,15 +66,58 @@ import type { PayComponentSeed } from './my/pay-components';
 // Kernel consumers import these FROM THE CONTRACT, never from localization/my (D1/D7). The shapes are
 // still MY-derived (see the scope-honesty note above); nominalization is future interface churn.
 export type {
+  ContribBand,
   EaField,
   EaOverrideEntry,
   EaStatement,
+  EpfMode,
   ReportDef,
   ReportResult,
   PcbExemptionTable,
   PcbRemunerationType,
   PayComponentSeed,
+  SocsoBand,
+  StatutoryRuleset,
 };
+
+/**
+ * The CLIENT-SAFE slice of a country pack's vocabulary (rung 5b, D4): pure data + pure functions
+ * ONLY — zero db / server-only / 'use client' deps — so `'use client'` components can consume
+ * jurisdiction vocabulary without dragging the full pack (whose statutory-config surface imports
+ * db/client) into the client bundle. Each pack implements it in a LEAF entry file (MY:
+ * `localization/my/client.ts`) that `localization/registry.client.ts` imports directly; the server
+ * pack object references the same implementation via `CountryPack.client` so the declaration is
+ * part of the contract. Flat data/refs only (D4 anti-framework): no components, no render hooks.
+ */
+export interface CountryPackClient {
+  /** ISO alpha-2 country code (uppercase) — same registry key as the server pack. */
+  country: string;
+
+  /** National-identity vocabulary the personnel Profile widgets consume. */
+  identity: {
+    /**
+     * Is this nationality catalog value the jurisdiction's OWN nationality (MY: Malaysian /
+     * Malaysia / MY / MYS, loose case-insensitive match)? Drives the NRIC-vs-passport identity
+     * fork on the personnel profile.
+     */
+    isLocalNationality: (nationality?: string | null) => boolean;
+    /** Date of birth derivable from the national ID (MY: MyKad YYMMDD prefix), or null. */
+    dobFromIC: (ic: string, now?: Date) => string | null;
+  };
+
+  /** Client-safe statutory-leave vocabulary. */
+  leave: {
+    /** Statutory floor: entitlement in days for a leave-type code at completed years of service. */
+    entitlement: (code: string, serviceYears: number) => number;
+  };
+
+  /**
+   * Canonical salary-bank names for the employee bank picker, in catalog order (MY: the BNM/IBG
+   * receiving-bank directory — every name resolves to a routing code, so a picked value can never
+   * produce an unpayable salary file).
+   */
+  bankNames: readonly string[];
+}
 
 // ── MY-derived signature accessors (type-only; nominalized in rung 5, see header) ──────────────────
 type MyStatutoryModule = typeof import('./my/statutory');
@@ -85,6 +133,13 @@ type MyPayrollModule = typeof import('./my/payroll');
 export interface CountryPack {
   /** ISO alpha-2 country code (uppercase) — the registry key, matching `company.country`. */
   country: string;
+
+  /**
+   * Rung 5b (D4) — the pack's client-safe vocabulary slice (see `CountryPackClient`). The SAME
+   * object `localization/registry.client.ts` serves to `'use client'` components; declared here so
+   * providing a client entry is part of the contract, not an MY convention.
+   */
+  client: CountryPackClient;
 
   /**
    * The jurisdiction's state/territory labels (MY: the 16 gazette states + federal territories) —
@@ -181,6 +236,14 @@ export interface CountryPack {
     hrdfSubject: (subjectToHrdf: boolean | null | undefined, status: HrdfStatus) => boolean;
     /** EPF relief cap (RM) used by the PCB accumulator maths. */
     epfReliefCap: number;
+    /**
+     * Rung 5b (D6) — the built-in verified EPF Third Schedule band tables (MY: Part A citizen/PR
+     * <60, Part E citizen 60–<75). The statutory band-table editor uses these as the FALLBACK when
+     * a stored ruleset override predates the partA/partE fields — the same fallback the calculator
+     * itself applies — threaded down as props by the configuration pages (the component never
+     * names the MY tables).
+     */
+    epfThirdSchedule: { partA: ContribBand[]; partE: ContribBand[] };
     /**
      * D6 (the corrected R55 shape): the built-in PCB exemption / optional-deduction (LP) code→cap
      * tables. The kernel uses these as the FALLBACK when a resolved ruleset predates them

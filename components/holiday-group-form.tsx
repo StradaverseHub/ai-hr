@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { Card, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { MY_STATES } from '@/localization/my/holidays';
+import { countryPacks } from '@/localization/registry';
 
 /** A holiday row rendered in the tick-list (subset of listHolidays' shape). */
 export type PickableHoliday = {
@@ -47,6 +47,11 @@ export async function HolidayGroupForm({
   const t = await getTranslations('admin.holidayGroups');
   const th = await getTranslations('admin.holidays');
   const selected = new Set(selectedIds);
+  // Rung 5b (ADR-0080 D4/D6): the member-state options come from the registered packs' state
+  // vocabulary (the rung-5a countryPacks() union pattern for tenant-level reads with no acting
+  // company — MY-only today, so byte-identical to the old MY_STATES import). Order is the packs'
+  // declared order.
+  const stateOptions = countryPacks().flatMap((p) => p.states);
 
   const ARCHETYPES = ['standard', 'extended', 'custom'] as const;
   const archetypeLabel: Record<(typeof ARCHETYPES)[number], string> = {
@@ -116,7 +121,7 @@ export async function HolidayGroupForm({
           </Field>
           <Field label={t('statesLabel')}>
             <select name="states" multiple defaultValue={value.states} className={`${inputCls} h-32`}>
-              {MY_STATES.map((st) => (
+              {stateOptions.map((st) => (
                 <option key={st} value={st}>
                   {st}
                 </option>

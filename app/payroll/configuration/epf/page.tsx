@@ -77,6 +77,7 @@ export default async function EpfConfigPage({
         <StatutoryConfigForm
           ruleset={ruleset}
           defaultVersion={ruleset.version}
+          epfScheduleFallback={pack.payroll.epfThirdSchedule}
           sections={['epf', 'ceilings']}
           cancelHref={SELF}
           returnTo={SELF}

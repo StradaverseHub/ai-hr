@@ -14,8 +14,10 @@
  * field reappears if the nationality is ever corrected to Malaysian.
  *
  * Boundary: the RSC page (page.tsx) RENDERS these components as JSX (allowed) and passes the server actions in
- * as props (the established RSC→client pattern). The Card shell stays a Server Component. `isMalaysianNationality`
- * is imported from the leaf `@/localization/my/ic-dob` (zero db deps) so this client bundle stays db-free.
+ * as props (the established RSC→client pattern). The Card shell stays a Server Component. The nationality
+ * predicate arrives via the CLIENT-SAFE pack registry (ADR-0080 rung 5b, D4) — each pack's
+ * `identity.isLocalNationality` is a pure leaf function (MY: localization/my/ic-dob, zero db deps) — so this
+ * client bundle stays db-free.
  */
 
 import { createContext, useContext, useState, type ReactNode } from 'react';
@@ -23,7 +25,12 @@ import { useTranslations } from 'next-intl';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { IcDobAutofill } from '@/components/ic-dob-autofill';
 import { Field, btnPrimary, inputCls } from '@/components/ui';
-import { isMalaysianNationality } from '@/localization/my/ic-dob';
+import { clientCountryPacks } from '@/localization/registry.client';
+
+/** Union across registered packs (rung 5b — MY-only today, so the truth table is identical to the old
+ *  direct `isMalaysianNationality` import); per-company narrowing is the second-country rung's decision. */
+const isMalaysianNationality = (nationality?: string | null): boolean =>
+  clientCountryPacks().some((p) => p.identity.isLocalNationality(nationality));
 
 type IdentityCtx = { nationality: string; setNationality: (v: string) => void };
 const Ctx = createContext<IdentityCtx | null>(null);

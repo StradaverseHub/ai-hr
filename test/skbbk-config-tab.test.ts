@@ -17,8 +17,18 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MY_STATUTORY, STATUTORY_BODIES, type StatutoryRuleset } from '../localization/my/statutory-tables';
+import {
+  DEFAULT_MY_STATUTORY,
+  MY_EPF_THIRD_SCHEDULE_PART_A,
+  MY_EPF_THIRD_SCHEDULE_PART_E,
+  STATUTORY_BODIES,
+  type StatutoryRuleset,
+} from '../localization/my/statutory-tables';
 import { assemble, initState } from '../components/statutory-config-form';
+
+// Rung 5b (ADR-0080 D6): the form takes the pack's built-in EPF Third Schedule tables as an argument
+// (threaded from pack.payroll.epfThirdSchedule by the server page); pass the same tables here.
+const EPF_FALLBACK = { partA: MY_EPF_THIRD_SCHEDULE_PART_A, partE: MY_EPF_THIRD_SCHEDULE_PART_E };
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -75,7 +85,11 @@ describe('SKBBK is NOT an independently-versioned statutory body (the un-chosen 
 
 describe('Advanced edit round-trips the SKBBK leg into the SOCSO override (byte-identical)', () => {
   // assemble(initState(DEFAULT)) is the pure "open the SOCSO editor, change nothing, publish" payload.
-  const out = assemble(initState(DEFAULT_MY_STATUTORY), DEFAULT_MY_STATUTORY) as StatutoryRuleset;
+  const out = assemble(
+    initState(DEFAULT_MY_STATUTORY, EPF_FALLBACK),
+    DEFAULT_MY_STATUTORY,
+    EPF_FALLBACK,
+  ) as StatutoryRuleset;
 
   it('preserves the exact SKBBK amounts on Category 1 (the field most likely to be dropped)', () => {
     expect(out.socso.category1.map((band) => band.skbbk)).toEqual(

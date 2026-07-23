@@ -30,6 +30,7 @@ import {
   IncompleteCustomHolderError,
 } from '../localization/my/statutory';
 import { BNM_BANKS } from '../localization/my/bank-files/bnm-codes';
+import { myClientPack } from '../localization/my/client';
 import { setBankAction, setStatutoryAction } from '../app/admin/personnel/[employmentId]/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
@@ -75,7 +76,11 @@ describe('Bank card — source layout (ef720d3a)', () => {
   });
 
   it('(b) sources the bank dropdown from the BNM catalog (29 canonical names incl. Maybank/CIMB)', () => {
-    expect(CARD.includes("from '@/localization/my/bank-files/bnm-codes'")).toBe(true);
+    // Rung 5b (ADR-0080 D4): the card reads the CLIENT-SAFE pack registry, not localization/my
+    // directly; the MY entry's bankNames is pinned below as exactly the BNM canonical projection.
+    expect(CARD.includes("from '@/localization/registry.client'")).toBe(true);
+    expect(CARD.includes("from '@/localization/my/bank-files/bnm-codes'")).toBe(false);
+    expect(myClientPack.bankNames).toEqual(BNM_BANKS.map((b) => b.canonical));
     expect(BNM_BANKS.length).toBe(29);
     const names = BNM_BANKS.map((b) => b.canonical);
     expect(names).toContain('Maybank');

@@ -5,13 +5,15 @@ import { useTranslations } from 'next-intl';
 import { inputCls, Button, Card } from '@/components/ui';
 import { BandGridEditor, type BandColumn } from '@/components/band-grid-editor';
 import { saveStatutoryAction } from '@/app/payroll/configuration/actions';
-import {
-  MY_EPF_THIRD_SCHEDULE_PART_A,
-  MY_EPF_THIRD_SCHEDULE_PART_E,
-  type ContribBand,
-  type SocsoBand,
-  type StatutoryRuleset,
-} from '@/localization/my/statutory-tables';
+// Rung 5b (ADR-0080 D1/D6): band/ruleset types come from the contract, and the built-in EPF Third
+// Schedule fallback tables are THREADED IN by the server pages (pack.payroll.epfThirdSchedule) —
+// this client component never names the MY tables.
+import type { ContribBand, SocsoBand, StatutoryRuleset } from '@/localization/country-pack';
+
+/** The pack's built-in verified EPF Third Schedule tables (CountryPack.payroll.epfThirdSchedule),
+ *  used when a stored override predates the partA/partE fields — the same fallback the calculator
+ *  applies. */
+export type EpfScheduleFallback = { partA: ContribBand[]; partE: ContribBand[] };
 
 const num = (x: string): number => {
   const n = parseFloat(x);
@@ -80,16 +82,16 @@ const eisRow = (b: ContribBand): EisBandRow => ({
   employee: String(b.employee),
 });
 
-export function initState(r: StatutoryRuleset): FormState {
+export function initState(r: StatutoryRuleset, epfFallback: EpfScheduleFallback): FormState {
   return {
     epfEmployeeRate: toPct(r.epf.employeeRate),
     epfEmployerRateLow: toPct(r.epf.employerRateLow),
     epfEmployerRateHigh: toPct(r.epf.employerRateHigh),
     epfEmployerThreshold: String(r.epf.employerThreshold),
-    // partA/partE are optional on the stored override; fall back to the built-in verified tables so the
-    // grid always shows the schedule the kernel actually applies (statutory-tables.ts:475,479).
-    epfPartA: toEpfRows(r.epf.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A),
-    epfPartE: toEpfRows(r.epf.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E),
+    // partA/partE are optional on the stored override; fall back to the pack's built-in verified
+    // tables so the grid always shows the schedule the kernel actually applies.
+    epfPartA: toEpfRows(r.epf.partA ?? epfFallback.partA),
+    epfPartE: toEpfRows(r.epf.partE ?? epfFallback.partE),
     contribCeiling: String(r.contribCeiling),
     reliefIndividual: String(r.pcb.reliefs.individual),
     reliefSpouse: String(r.pcb.reliefs.spouse),
@@ -148,7 +150,7 @@ const toContribBand = (r: EisBandRow): ContribBand => ({
  * The SOCSO/EIS band ARRAYS are likewise written from the edited grid state (feedback ee6e1292), with the
  * cross-check rates + verifiedUpTo carried through from base via the per-slice spreads.
  */
-export function assemble(s: FormState, base: StatutoryRuleset): unknown {
+export function assemble(s: FormState, base: StatutoryRuleset, epfFallback: EpfScheduleFallback): unknown {
   return {
     ...base,
     epf: {
@@ -157,8 +159,8 @@ export function assemble(s: FormState, base: StatutoryRuleset): unknown {
       employerRateLow: rate(s.epfEmployerRateLow),
       employerRateHigh: rate(s.epfEmployerRateHigh),
       employerThreshold: num(s.epfEmployerThreshold),
-      partA: fromEpfRows(s.epfPartA, base.epf.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A),
-      partE: fromEpfRows(s.epfPartE, base.epf.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E),
+      partA: fromEpfRows(s.epfPartA, base.epf.partA ?? epfFallback.partA),
+      partE: fromEpfRows(s.epfPartE, base.epf.partE ?? epfFallback.partE),
     },
     contribCeiling: num(s.contribCeiling),
     // SOCSO — write the edited Cat 1 / Cat 2 band arrays; keep the cross-check rates + verifiedUpTo from
@@ -241,12 +243,16 @@ const ALL_SECTIONS: ReadonlyArray<ConfigFormSection> = ['epf', 'ceilings', 'pcb'
 export function StatutoryConfigForm({
   ruleset,
   defaultVersion,
+  epfScheduleFallback,
   sections = ALL_SECTIONS,
   cancelHref = '/payroll/configuration',
   returnTo,
 }: {
   ruleset: StatutoryRuleset;
   defaultVersion: string;
+  /** The pack's built-in EPF Third Schedule tables (pack.payroll.epfThirdSchedule) — the fallback
+   *  when the stored ruleset predates partA/partE. Threaded by the server page (rung 5b). */
+  epfScheduleFallback: EpfScheduleFallback;
   /** Body sections to render (render-only; state + payload always cover the full ruleset). */
   sections?: ReadonlyArray<ConfigFormSection>;
   /** Where the Cancel link points (defaults to the configuration index). Body tabs pass their own route. */
@@ -257,7 +263,7 @@ export function StatutoryConfigForm({
 }) {
   const t = useTranslations('payroll.config');
   const show = (sec: ConfigFormSection) => sections.includes(sec);
-  const [s, setS] = useState<FormState>(() => initState(ruleset));
+  const [s, setS] = useState<FormState>(() => initState(ruleset, epfScheduleFallback));
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setS((p) => ({ ...p, [k]: v }));
   const setBand = (i: number, k: keyof BandRow, v: string) =>
     setS((p) => ({ ...p, pcbBands: p.pcbBands.map((b, j) => (j === i ? { ...b, [k]: v } : b)) }));
@@ -316,7 +322,10 @@ export function StatutoryConfigForm({
   ];
 
   const today = new Date().toISOString().slice(0, 10);
-  const dataJson = useMemo(() => JSON.stringify(assemble(s, ruleset)), [s, ruleset]);
+  const dataJson = useMemo(
+    () => JSON.stringify(assemble(s, ruleset, epfScheduleFallback)),
+    [s, ruleset, epfScheduleFallback],
+  );
 
   return (
     <form action={saveStatutoryAction} className="space-y-4">

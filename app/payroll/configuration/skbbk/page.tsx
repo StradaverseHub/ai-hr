@@ -76,6 +76,7 @@ export default async function SkbbkConfigPage({
         <StatutoryConfigForm
           ruleset={ruleset}
           defaultVersion={ruleset.version}
+          epfScheduleFallback={pack.payroll.epfThirdSchedule}
           sections={['socso']}
           cancelHref={SELF}
           returnTo={SELF}
