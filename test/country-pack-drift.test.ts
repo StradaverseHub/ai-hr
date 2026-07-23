@@ -27,32 +27,71 @@ const ALWAYS_ALLOWED = [
   'scripts/statutory-pack-build-my.ts', // the pack's build script (ADR-0020)
 ];
 
-describe('ADR-0080 D7: localization/my import ratchet', () => {
+const SCAN = ['app', 'components', 'core', 'db', 'i18n', 'lib', 'localization', 'middleware.ts', 'packs', 'scripts'];
+const isAllowedImporter = (rel: string) =>
+  ALWAYS_ALLOWED.some((a) => (a.endsWith('/') ? rel.startsWith(a) : rel === a));
+
+// Rung 5c (ADR-0080 D4): two ratcheted sets guard the SAME `localization/my` boundary.
+//   - `localization/my`         — genuine remaining DEBT (generic code that still reaches into the MY
+//                                 pack; retires as it is routed through the registry).
+//   - `localization/my.pack-ui` — the MY pack's OWN admin UI (Statutory Configuration routes + zakat
+//                                 screens + the PCB classification island), kept physically in app/
+//                                 pending migration under localization/my/ui/ (open decision 2). Its
+//                                 mounting is registry-driven (app/payroll/configuration/guard.ts).
+// The guard is enforced on the UNION: any importer outside BOTH sets (and the always-allowed wiring)
+// is a violation, so recategorizing pack-UI does NOT weaken the ratchet — a genuinely NEW leak still
+// fails. Both sets only ever shrink (stale entries fail).
+const DEBT = allowlists['localization/my'];
+const PACK_UI = allowlists['localization/my.pack-ui'];
+
+describe('ADR-0080 D7/D4: localization/my import ratchet', () => {
   const result = runImportRatchet({
     root,
-    scan: ['app', 'components', 'core', 'db', 'i18n', 'lib', 'localization', 'middleware.ts', 'packs', 'scripts'],
+    scan: SCAN,
     boundary: 'localization/my',
-    allowedImporters: (rel) => ALWAYS_ALLOWED.some((a) => (a.endsWith('/') ? rel.startsWith(a) : rel === a)),
-    allowlist: allowlists['localization/my'],
+    allowedImporters: isAllowedImporter,
+    allowlist: [...DEBT, ...PACK_UI],
   });
 
-  it('no NEW file imports localization/my directly (the leak may not grow)', () => {
+  it('no NEW file imports localization/my directly, outside the debt allowlist OR the pack-UI set', () => {
     expect(
       result.violations,
-      `These files import localization/my directly but are not in the audited allowlist ` +
-        `(test/pack-drift-allowlist.json). Jurisdiction code is resolved through the registry: import ` +
-        `packFor() from localization/registry instead of reaching into the MY pack — see ${ADR} (D1/D7). ` +
-        `The allowlist only ever shrinks; do not add entries.\n` +
+      `These files import localization/my directly but are in neither the audited debt allowlist nor the ` +
+        `pack-UI set (test/pack-drift-allowlist.json). Generic code resolves jurisdiction through the ` +
+        `registry: import packFor()/requirePackFor()/countryPacks() from localization/registry instead of ` +
+        `reaching into the MY pack — see ${ADR} (D1/D7). A NEW MY admin screen belongs in the pack-UI set ` +
+        `ONLY if it is genuinely the pack's own UI. Both lists only ever shrink; do not add debt.\n` +
         result.violations.join('\n'),
     ).toEqual([]);
   });
 
-  it('allowlist entries that no longer import localization/my are removed (the ratchet only shrinks)', () => {
+  it('allowlist/pack-ui entries that no longer import localization/my are removed (the ratchet only shrinks)', () => {
     expect(
       result.stale,
       `These test/pack-drift-allowlist.json entries no longer import localization/my — congratulations, ` +
-        `the leak shrank. Lock the win in by REMOVING them from the "localization/my" list (${ADR}, D7):\n` +
+        `the leak shrank. Lock the win in by REMOVING them from the "localization/my" or ` +
+        `"localization/my.pack-ui" list (${ADR}, D7):\n` +
         result.stale.join('\n'),
     ).toEqual([]);
+  });
+
+  it('the debt allowlist and the pack-UI set are disjoint (a file is debt XOR pack-owned UI)', () => {
+    const overlap = DEBT.filter((f) => PACK_UI.includes(f));
+    expect(overlap, `A file must be in exactly one set — overlap:\n${overlap.join('\n')}`).toEqual([]);
+  });
+
+  // The recategorization is NOT a weakening: prove the ratchet still bites. Drop one pack-UI entry from
+  // the allowed union and it must resurface as a violation — exactly what happens to a genuinely new leak.
+  it('a file outside BOTH sets is a violation — the guard still fails on new leaks', () => {
+    const sentinel = 'app/payroll/configuration/page.tsx';
+    expect(PACK_UI, 'sentinel must be a known pack-UI importer').toContain(sentinel);
+    const withoutSentinel = runImportRatchet({
+      root,
+      scan: SCAN,
+      boundary: 'localization/my',
+      allowedImporters: isAllowedImporter,
+      allowlist: [...DEBT, ...PACK_UI].filter((f) => f !== sentinel),
+    });
+    expect(withoutSentinel.violations).toContain(sentinel);
   });
 });

@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { companyTree, listCompanies } from '@/core/read';
 import { listProfileOptions } from '@/core/profile-options';
-import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
+import { packFor } from '@/localization/registry';
 import { listAllCompanyBankProfiles } from '@/core/bank-profile';
 // R46 orgbank (84719377) — per-authority statutory payment configuration + the company-scoped signatory
 // candidates. Both are RLS-scoped listers, grouped by company here like the bank profiles.
@@ -71,7 +71,8 @@ export default async function OrganizationPage({
   const [companies, tree, statutory, bankProfiles, authorities, signatories, stateOpts] = await Promise.all([
     listCompanies(s, { includeArchived: true }),
     companyTree(s),
-    listCompanyStatutoryMY(s),
+    // Rung 5c — company statutory rows come through the pack registry (ADR-0080 D1), not a direct import.
+    packFor('MY')?.companyStatutory.list(s) ?? [],
     listAllCompanyBankProfiles(s),
     listAllCompanyStatutoryAuthorities(s),
     listSignatoryCandidates(s),

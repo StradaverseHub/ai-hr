@@ -12,8 +12,10 @@ import { checkIn, checkOut, requestAttendanceCorrection } from '../packs/attenda
 import { requestLeave, decideLeave, addLeaveAttachment, accrueEarnedLeave } from '../core/leave';
 import { createLeavePolicy, createJobGrade } from '../core/admin';
 import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../packs/performance/service';
-import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { myPack } from '../localization/my';
+// Rung 5c (ADR-0080 D1) — the demo statutory profile is written through the pack registry, not a
+// direct localization/my import (myPack was already unused here). requirePackFor fails closed for an
+// unknown country (D3); the demo company is MY.
+import { requirePackFor } from '../localization/registry';
 import { seedGuides } from './seed-guides';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { createAdminChain, seedCompanyCatalogs, seedTenantCatalogs } from './provision';
@@ -193,6 +195,8 @@ async function main() {
   });
 
   const admin: SessionContext = { tenantId: DEV_TENANT_ID, userId: DEV_ADMIN_USER_ID, roles: ['hr_admin'] };
+  // Rung 5c — the demo company's country pack (MY); the statutory profile writes go through it.
+  const countryPack = requirePackFor('MY');
   // ADR-0040 (2D): demo ANNUAL *accrues monthly* (earned), not as a lump on hire — so balances grow
   // through the year. Entitlement is max(EA floor 8, policy 12) = 12 → 1 day/month; the hire grant skips
   // earned types and accrueEarnedLeave (run after hiring, below) tops each employee up to today's share.
@@ -270,7 +274,7 @@ async function main() {
     // ADR-0078 — payMode/paymentTerm/rateAmount are omitted on every seed call: the service defaults a
     // brand-new record to monthly / monthly / no rate, which is exactly what the demo staff are.
     await setCompensation(admin, { employmentId, basicSalary: p.salary, monthlyAllowance: 500, effectiveFrom: '2026-01-06' });
-    await setStatutoryProfileMY(admin, {
+    await countryPack.statutory.set(admin, {
       personId,
       icNumber: p.ic,
       epfNumber: `EPF${p.ic.slice(0, 7)}`,

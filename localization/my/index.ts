@@ -2,7 +2,7 @@
  * Malaysia localization pack (ADR-0008). Slice 1 ships the statutory profile; leave rules,
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
-import { dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY } from './statutory';
+import { defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import { eis, epf, hrdfLevy, hrdfSubject, overtimePay, pcbMonth, socso, statutory } from './payroll';
@@ -10,12 +10,15 @@ import {
   DEFAULT_MY_STATUTORY,
   MY_EPF_THIRD_SCHEDULE_PART_A,
   MY_EPF_THIRD_SCHEDULE_PART_E,
+  MY_HRDF,
   MY_LP_OPTIONAL_DEDUCTION_CODES,
   MY_PCB_EXEMPTION_CODES,
   MY_RELIEFS,
   PCB_REMUNERATION_TYPES,
   pcbExemptionCodesFor,
 } from './statutory-tables';
+import { MY_CONFIG_SECTIONS } from './config-sections';
+import { seedReferenceDataMY } from './provision';
 import { myClientPack } from './client';
 import { BACKFILL_COMPONENT_CODES, MY_DEFAULT_PAY_COMPONENTS } from './pay-components';
 import { EA_FIELDS } from './reports';
@@ -35,7 +38,7 @@ import {
   validateStatutoryComponent,
   validateStatutoryRuleset,
 } from './statutory-config';
-import { getCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
+import { getCompanyStatutoryMY, listCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
 import { eaStatement, MY_REPORTS } from './reports';
 import type { CountryPack } from '../country-pack';
 
@@ -73,10 +76,15 @@ export const myPack: CountryPack = {
     // the pack instead of a direct localization/my import.
     normalizeIC,
     dobFromIC,
+    // Rung 5c — the SOCSO/EIS blank-number default, consumed by the generic personnel + zakat screens
+    // through the pack (previously a direct localization/my/statutory import).
+    defaultSocsoEisNumber,
   },
   companyStatutory: {
     set: setCompanyStatutoryMY,
     get: getCompanyStatutoryMY,
+    // Rung 5c — the group Organization admin panel reads every company's statutory row through the pack.
+    list: listCompanyStatutoryMY,
   },
   leave: {
     types: MY_LEAVE_TYPES,
@@ -96,6 +104,9 @@ export const myPack: CountryPack = {
     // against the employer's registration band). D6 vocabulary: the kernel consumes it via the pack.
     hrdfSubject,
     epfReliefCap: MY_RELIEFS.epfReliefCap,
+    // Rung 5c (D6) — the built-in HRDF levy rates; the OT/HRDF config + Attendance-policy screens'
+    // fallback when a resolved ruleset predates the `hrdf` slice (they never name MY_HRDF directly).
+    hrdfDefault: MY_HRDF,
     // Rung 5b (D6) — the built-in verified EPF Third Schedule tables; the statutory band-table
     // editor's fallback for stored overrides that predate partA/partE (threaded down as props by
     // the configuration pages).
@@ -143,6 +154,13 @@ export const myPack: CountryPack = {
   },
   // Rung 5a (D6) — the EA-form field vocabulary the EA-only amendment layer validates against.
   eaFields: EA_FIELDS,
+  // Rung 5c (D4) — the country-admin configuration sections; the generic Statutory Configuration
+  // landing page renders these instead of a hardcoded MY body list, and the config routes 404 unless
+  // the acting company's pack declares their section.
+  configSections: MY_CONFIG_SECTIONS,
+  // Rung 5c (D5 / ADR-0079) — seed the MY leave-type catalog + holiday calendar into a new tenant;
+  // db/provision.ts + db/seed.ts invoke this through the registry instead of importing the MY pack.
+  seedReferenceData: seedReferenceDataMY,
   reports: MY_REPORTS,
   eaStatement,
 };

@@ -19,7 +19,7 @@ import {
 } from '@/core/benefit-scheme';
 import { BenefitSchemeConfig, type LeaveTypeSchemeEntitlement } from '@/components/benefit-scheme-config';
 import type { ServiceBand } from '@/core/leave-compute';
-import { entitlement } from '@/localization/my/leave';
+import { countryPacks } from '@/localization/registry';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
@@ -172,9 +172,14 @@ export default async function LeaveEntitlementsPage({
   const earnedDefaultYear =
     earnedLeaveYears.find((y) => y.year === currentYear)?.year ?? earnedLeaveYears[0]?.year ?? currentYear;
 
-  // Statutory floor display (MY pack): sample the three service bands.
+  // Statutory floor display: sample the three service bands. Rung 5c — the entitlement floor comes from
+  // the country pack via the registry (union-read interim: the first/only registered pack, matching the
+  // rung-5a `countryPacks()` precedent for tenant-level vocabulary with no acting company; per-company
+  // narrowing is the second-country rung, ADR-0080 §6). MY-only today ⇒ byte-identical to the old import.
+  const packEntitlement = countryPacks()[0]?.leave.entitlement;
   const floorBands = (code: string) => {
-    const days = [...new Set([0, 2, 6].map((y) => entitlement(code, y)))];
+    if (!packEntitlement) return null;
+    const days = [...new Set([0, 2, 6].map((y) => packEntitlement(code, y)))];
     return days[0] === 0 ? null : days.join(' / ');
   };
 
@@ -543,7 +548,7 @@ export default async function LeaveEntitlementsPage({
               inUse={lt.inUse}
               isAnnual={lt.code === 'ANNUAL'}
               floorLabel={floorBands(lt.code)}
-              floor0={entitlement(lt.code, 0)}
+              floor0={packEntitlement?.(lt.code, 0) ?? 0}
               eligibility={(lt.eligibility as { gender?: string | string[]; maritalStatus?: string | string[]; minServiceMonths?: number; minServiceUnit?: 'months' | 'days' } | null) ?? null}
               durations={(lt.durations as string[] | null) ?? null}
               requiresDocument={lt.requiresDocument}

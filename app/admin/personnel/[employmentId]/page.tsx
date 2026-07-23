@@ -99,12 +99,10 @@ import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actio
 import { ReviewSection } from './review-section';
 import { DocumentsSection } from './documents-section';
 import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
-import { getStatutoryProfileMY, defaultSocsoEisNumber } from '@/localization/my/statutory';
-import { MY_STATES } from '@/localization/my/holidays';
-// Feedback 0df0c635 — the Others Statutory card needs the company's HRDF registration band for the
-// "Subject to HRDF" effective default. Read via the registry, NOT a direct localization/my import
-// (ADR-0080 ratchet: app files consume the pack interface).
-import { packFor } from '@/localization/registry';
+// Rung 5c (ADR-0080 D1) — statutory profile reads, the SOCSO/EIS default and the state pick-list all
+// resolve through the pack registry; this generic personnel screen no longer imports localization/my.
+// (Feedback 0df0c635 — the Others Statutory card also reads the company HRDF band via the pack.)
+import { countryPacks, packFor } from '@/localization/registry';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { PhotoEditMenu } from '@/components/photo-edit-menu';
@@ -221,7 +219,12 @@ export default async function EmployeePage({
   // 7c7c2f80 — periods of CLOSED payroll runs that paid this employee: drives the per-row "deletable"
   // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
   const closedPayrollPeriods = admin ? await closedPayrollPeriodsFor(s, employmentId) : [];
-  const statutory = admin ? await getStatutoryProfileMY(s, emp.personId) : null;
+  // Rung 5c — the acting company's country pack; statutory reads + the SOCSO/EIS default resolve through it.
+  const countryPack = packFor('MY');
+  // Rung 5c — the holiday-calendar state pick-list comes from the country packs via the registry
+  // (union-read, the rung-5a `countryPacks()` precedent). MY-only ⇒ byte-identical to the old MY_STATES.
+  const stateOptions = countryPacks().flatMap((p) => p.states);
+  const statutory = admin ? ((await countryPack?.statutory.get(s, emp.personId)) ?? null) : null;
   // Feedback 0df0c635 — the company's HRDF registration band (Others Statutory card): a registered company
   // (mandatory/optional) defaults its employees to Subject to HRDF; not_registered defaults to not subject.
   // Read via the pack registry (ADR-0080 ratchet). Admin-only, like every other statutory read here.
@@ -2085,7 +2088,7 @@ export default async function EmployeePage({
               <input
                 name="socsoNumber"
                 defaultValue={
-                  defaultSocsoEisNumber({
+                  countryPack?.statutory.defaultSocsoEisNumber({
                     socsoNumber: statutory?.socsoNumber,
                     icNumber: statutory?.icNumber,
                     nationality: emp.nationality,
@@ -3092,7 +3095,7 @@ export default async function EmployeePage({
               </optgroup>
             )}
             <optgroup label={t('holidayCalendarStateOptgroup')}>
-              {MY_STATES.map((st) => (
+              {stateOptions.map((st) => (
                 <option key={st} value={`state:${st}`}>
                   {st}
                 </option>

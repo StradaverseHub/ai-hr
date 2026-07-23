@@ -3,7 +3,7 @@ import { scopedSession } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { getPayrollConfig } from '@/core/payroll-config';
 import { listAssignablePolicies } from '@/core/payroll-policy';
-import { getCompanyStatutoryMY } from '@/localization/my/company-statutory';
+import { packFor } from '@/localization/registry';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 // 297ae65a — searchable ISO 4217 picker for the company default salary currency.
@@ -29,7 +29,8 @@ export default async function PayrollConfigPage({
     companies.map(async (c) => ({
       company: c,
       cfg: await getPayrollConfig(s, c.id),
-      stat: await getCompanyStatutoryMY(s, c.id),
+      // Rung 5c — company statutory read via the pack registry (ADR-0080 D1), not a direct import.
+      stat: (await packFor('MY')?.companyStatutory.get(s, c.id)) ?? null,
       // Step 1 (f3148da1) — active policies assignable as this company's default payroll policy.
       policies: await listAssignablePolicies(s, c.id),
     })),

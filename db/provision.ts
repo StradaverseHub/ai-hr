@@ -34,14 +34,11 @@ import {
   appUser,
   attendancePolicy,
   company,
-  holiday,
-  leaveType,
   person,
   roleAssignment,
   tenant,
 } from './schema';
-import { myPack } from '../localization/my';
-import { MY_STATE_HOLIDAYS_2026 } from '../localization/my/holidays';
+import { requirePackFor } from '../localization/registry';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { seedProfileOptions } from '../core/profile-options';
 import { seedGuides } from './seed-guides';
@@ -107,35 +104,17 @@ async function step<T>(key: ProvisionStep, fn: () => Promise<T>): Promise<T> {
  * Returns the leave-type ids by code, because callers need them immediately (the demo opts specific
  * types into per-date approval; a real customer's standing grants key off the same codes).
  */
-export async function seedTenantCatalogs(tx: Tx, tenantId: string): Promise<Record<string, string>> {
-  const leaveTypeIds: Record<string, string> = {};
-  for (const lt of myPack.leave.types) {
-    const [row] = await tx
-      .insert(leaveType)
-      .values({
-        tenantId,
-        code: lt.code,
-        name: lt.name,
-        paid: lt.paid,
-        counting: lt.counting,
-        eligibility: lt.eligibility ?? null,
-        requiresDocument: lt.requiresDocument ?? false,
-        sendToPayroll: lt.sendToPayroll ?? !lt.paid,
-        i18n: lt.i18n ?? null,
-      })
-      .returning({ id: leaveType.id });
-    leaveTypeIds[lt.code] = row.id;
-  }
-
-  // National (state null = applies everywhere) then the state-specific subset (ADR-0038 2C).
-  for (const h of myPack.holidays) {
-    await tx.insert(holiday).values({ tenantId, country: 'MY', state: null, holidayDate: h.date, name: h.name });
-  }
-  for (const h of MY_STATE_HOLIDAYS_2026) {
-    await tx
-      .insert(holiday)
-      .values({ tenantId, country: 'MY', state: h.state ?? null, holidayDate: h.date, name: h.name });
-  }
+export async function seedTenantCatalogs(
+  tx: Tx,
+  tenantId: string,
+  country = 'MY',
+): Promise<Record<string, string>> {
+  // Rung 5c (ADR-0080 D5 / ADR-0079): the country-shaped reference data (statutory leave types +
+  // national/state holiday calendar) is seeded BEHIND the pack interface via the registry, not by a
+  // direct `localization/my` import. `requirePackFor` fails closed for an unknown country (D3); a
+  // provisioned company always carries a registered country (default 'MY'). Byte-identical to the old
+  // inline loops — same rows, same order, same returned leave-type ids by code.
+  const leaveTypeIds = await requirePackFor(country).seedReferenceData(tx, tenantId);
 
   // Profile dropdown catalogs (religion / race / nationality / state / country / relationship).
   // ctx carries only the tenant id: the injected handle is what the seeder actually writes through, and

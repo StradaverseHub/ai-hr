@@ -4,8 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { setPayrollConfig } from '@/core/payroll-config';
-import { setCompanyStatutoryMY } from '@/localization/my/company-statutory';
-import type { HrdfStatus } from '@/localization/my/statutory-tables';
+import { packFor } from '@/localization/registry';
+import type { HrdfStatus } from '@/localization/country-pack';
 
 const PAGE = '/admin/payroll-config';
 const back = (toast: string) => redirect(`${PAGE}?toast=${encodeURIComponent(toast)}`);
@@ -52,7 +52,12 @@ export async function savePayrollConfigAction(formData: FormData) {
       // 297ae65a — company default salary currency; cleanCurrency clamps invalid/absent to 'MYR'.
       defaultCurrency: str(formData, 'defaultCurrency') ?? null,
     });
-    await setCompanyStatutoryMY(s, {
+    // Rung 5c — the company statutory write goes through the pack registry (ADR-0080 D1), not a direct
+    // import. requirePackFor would fail closed for a non-MY company; packFor + guard keeps this action's
+    // MY-only reality explicit while removing the localization/my import.
+    const pack = packFor('MY');
+    if (!pack) throw new Error('No localization pack for MY');
+    await pack.companyStatutory.set(s, {
       companyId,
       hrdfStatus,
       epfEmployerNo: str(formData, 'epfEmployerNo'),
