@@ -1998,6 +1998,10 @@ export async function generatePayslips(
         // Item 0d9bb2da — employer bears the employee's EPF share (EPF still computed + reported in full;
         // only the funding of the employee leg moves to employer cost). Off by default ⇒ byte-identical.
         employerBearsEpf: employeeStatutoryMy.employerBearsEpf,
+        // Feedback 0df0c635 — per-employee "Subject to HRDF" (Others Statutory card). Tri-state: null
+        // follows the company registration default (byte-identical); explicit false excludes the
+        // employee's base from the HRD Corp levy; explicit true keeps it in.
+        subjectToHrdf: employeeStatutoryMy.subjectToHrdf,
         epfCitizenship: employeeStatutoryMy.epfCitizenship,
         epfMode: employeeStatutoryMy.epfMode,
         epfEmployeeRate: employeeStatutoryMy.epfEmployeeRate,
@@ -3073,8 +3077,13 @@ export async function generatePayslips(
       // unpaid leave; NOT the EPF/SOCSO wage (overtime, bonus, and reimbursed claims are excluded).
       const fixedAllowance = en.hrdfAllowApplied;
       const hrdfBase = Math.max(0, round2(basic + fixedAllowance - unpaidDeduction));
+      // Feedback 0df0c635 — per-employee "Subject to HRDF" (Others Statutory card), resolved via the pack
+      // (D6 vocabulary — no direct core→localization/my import). Explicit false excludes this employee's
+      // base from the levy entirely; explicit true keeps it in (the registration band below still sets the
+      // rate — not_registered stays 0); null follows the company default, byte-identical to pre-flag runs.
+      const hrdfSubject = pack.payroll.hrdfSubject(e.subjectToHrdf ?? null, hrdfStatus);
       // #6: HRDF rates come from the resolved ruleset (rules.hrdf) when overridden, else the built-in MY_HRDF.
-      const hrdf = pack.payroll.hrdfLevy(hrdfBase, hrdfStatus, rules.hrdf);
+      const hrdf = hrdfSubject ? pack.payroll.hrdfLevy(hrdfBase, hrdfStatus, rules.hrdf) : 0;
       // 1.2.3 CP38 — the month's LHDN instalment. Charged on the REGULAR run only: like basic/OT/unpaid/hrdf,
       // an additional (off-cycle/bonus/adjustment) run carries cp38 = 0 (a re-issue re-runs the regular batch,
       // not an adjustment run). So a regular + bonus run in one month charges exactly one instalment.
@@ -3388,6 +3397,10 @@ export async function generatePayslips(
           // the run frequency is weekly/biweekly; absent ⇒ byte-identical monthly slip). The employer pays each
           // cycle's `amount` on its cadence; statutory contributions stay settled monthly on this same payslip.
           ...(paymentSchedule ? { paymentSchedule: { frequency: runFrequency, cycles: paymentSchedule } } : {}),
+          // Feedback 0df0c635 — snapshot the EFFECTIVE per-employee HRDF subjectivity, ONLY when HR set an
+          // explicit override (a null/untouched row stays absent ⇒ byte-identical to pre-flag slips). The
+          // audited-inputs convention: a closed payslip records the setting as it was when it was computed.
+          ...(e.subjectToHrdf != null ? { hrdfSubject } : {}),
           // Item 5a461b99 — snapshot the "Employer bears" decision + the amounts the employer absorbed for
           // provenance, ONLY when at least one flag is set (absent ⇒ byte-identical to today). The reported
           // socso/eis/skbbk figures above are unchanged; this records that their EMPLOYEE share was not deducted.

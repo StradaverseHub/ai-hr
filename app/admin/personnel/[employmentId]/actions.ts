@@ -1269,6 +1269,32 @@ export async function setTaxAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
+/**
+ * Feedback 0df0c635 — save ONLY the Others Statutory controls (today: the "Subject to HRDF" checkbox).
+ * The Others Statutory card is its own partial-save card on the Bank & Statutory tab (like the Bank and
+ * Income Tax cards), so it needs a dedicated partial-update action that leaves the rest of the statutory
+ * row untouched. The checkbox always submits an explicit true/false (tri-state null is only ever the
+ * untouched stored state — "follow the company's HRDF registration default"). requireAdmin gates it like
+ * the sibling statutory actions; the pack setter appends `employee.others-statutory.updated` (before/after).
+ */
+export async function setOthersStatutoryAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const personId = String(formData.get('personId'));
+  const pack = packFor('MY');
+  try {
+    if (!pack) throw new Error('No localization pack for MY');
+    await pack.statutory.setOthersStatutory(s, {
+      personId,
+      subjectToHrdf: formData.get('subjectToHrdf') === 'on',
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
 /** ADR-0070 — set-based replace of an employee's assigned clocking sites. */
 export async function setEmployeeClockingLocationsAction(formData: FormData) {
   const s = await requireAdmin();

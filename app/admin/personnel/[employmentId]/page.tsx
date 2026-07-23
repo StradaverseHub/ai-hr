@@ -52,6 +52,7 @@ import {
   setIcAction,
   setPassportAction,
   setTaxAction,
+  setOthersStatutoryAction,
 } from './actions';
 // Movement tab redesign (78853b97): Employment History projection + New Event dispatcher.
 import { movementHistory, movementDetail } from '@/core/movement';
@@ -91,6 +92,10 @@ import { DocumentsSection } from './documents-section';
 import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
 import { getStatutoryProfileMY, defaultSocsoEisNumber } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
+// Feedback 0df0c635 — the Others Statutory card needs the company's HRDF registration band for the
+// "Subject to HRDF" effective default. Read via the registry, NOT a direct localization/my import
+// (ADR-0080 ratchet: app files consume the pack interface).
+import { packFor } from '@/localization/registry';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { PhotoEditMenu } from '@/components/photo-edit-menu';
@@ -216,6 +221,11 @@ export default async function EmployeePage({
   // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
   const closedPayrollPeriods = admin ? await closedPayrollPeriodsFor(s, employmentId) : [];
   const statutory = admin ? await getStatutoryProfileMY(s, emp.personId) : null;
+  // Feedback 0df0c635 — the company's HRDF registration band (Others Statutory card): a registered company
+  // (mandatory/optional) defaults its employees to Subject to HRDF; not_registered defaults to not subject.
+  // Read via the pack registry (ADR-0080 ratchet). Admin-only, like every other statutory read here.
+  const companyStatutoryRow = admin ? ((await packFor('MY')?.companyStatutory.get(s, emp.companyId)) ?? null) : null;
+  const hrdfCompanyDefault = (companyStatutoryRow?.hrdfStatus ?? 'not_registered') !== 'not_registered';
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
   const holidayGroups = admin ? await listHolidayGroups(s) : [];
   // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
@@ -2005,6 +2015,41 @@ export default async function EmployeePage({
   // statutory payroll item, so all statutory fields now live in one box. The IdentityTaxCard island still owns
   // its own setTaxAction partial save — only its render location + chrome (embedded mode) changed.
 
+  // ── OTHERS STATUTORY (Bank & Statutory tab) ─────────────────────────────────
+  // Feedback 0df0c635 — the home for statutory settings that don't belong under EPF, SOCSO, EIS or Tax
+  // Information (extensible for future controls without a redesign), starting with the per-employee
+  // "Subject to HRDF" checkbox. Its own card with its OWN partial save (setOthersStatutoryAction → the
+  // pack's setOthersStatutory), like the Bank/TP3/Tax split-out precedents, so saving it can never touch
+  // the full-row statutory form and vice versa. Tri-state per the house convention: the stored value is
+  // null until HR saves (⇒ the checkbox shows the EFFECTIVE company-registration default + a "following
+  // company default" hint); a save writes the explicit true/false override. Payroll excludes an
+  // explicit-false employee from the HRD Corp levy entirely.
+  const othersStatutoryCard = admin ? (
+    <Card>
+      <SectionHeader title={t('othersStatutoryTitle')} />
+      <form action={setOthersStatutoryAction} className="flex flex-col gap-3 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <input type="hidden" name="personId" value={emp.personId} />
+        <p className="text-xs text-muted-foreground">{t('othersStatutoryHint')}</p>
+        <label className="flex items-center gap-2 text-sm" title={t('subjectToHrdfHint')}>
+          <input
+            type="checkbox"
+            name="subjectToHrdf"
+            defaultChecked={statutory?.subjectToHrdf ?? hrdfCompanyDefault}
+            className="size-4 rounded"
+          />
+          {t('subjectToHrdf')}
+        </label>
+        {(statutory?.subjectToHrdf ?? null) == null ? (
+          <p className="text-xs text-muted-foreground">{t('subjectToHrdfFollowingDefault')}</p>
+        ) : null}
+        <div className="flex items-end justify-end">
+          <button className={btnPrimary}>{t('othersStatutorySave')}</button>
+        </div>
+      </form>
+    </Card>
+  ) : null;
+
   // ── TP3 / OPENING BALANCES (Payroll tab) ────────────────────────────────────
   // Item a6a47698 — relocated off the Bank & Statutory card onto the Payroll tab. It is a payroll matter
   // (it seeds the PCB accumulators), not a banking/statutory-registration matter. Because the statutory
@@ -3002,6 +3047,9 @@ export default async function EmployeePage({
         {/* Item df09f22a — the Identification & Tax card was merged into statutoryCard as a nested "Income Tax
             (PCB)" section (Income tax is a Malaysia statutory item). One box now holds every statutory field. */}
         {statutoryCard}
+        {/* Feedback 0df0c635 — Others Statutory pinned BELOW the existing statutory cards (reporter-specified
+            order: Statutory (Malaysia) → Tax Information → Others Statutory). */}
+        {othersStatutoryCard}
       </>
     ),
     // Payroll tab keeps pay components, CP38, encashment, policy assignment and compensation. The

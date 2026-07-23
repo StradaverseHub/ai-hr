@@ -1793,6 +1793,13 @@
       "when": 1781862405000,
       "tag": "0305_dependent_relationship_options",
       "breakpoints": true
+    },
+    {
+      "idx": 306,
+      "version": "7",
+      "when": 1781862406000,
+      "tag": "0306_subject_to_hrdf",
+      "breakpoints": true
     }
   ]
 }

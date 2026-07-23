@@ -2118,6 +2118,11 @@ export const employeeStatutoryMy = pgTable(
     // funded from employer cost instead of deducted from net (same plumbing as employer_bears_socso/eis/tax).
     // Default false ⇒ byte-identical. LHDN perquisite gross-up (employer-paid EPF as a benefit) is a follow-up.
     employerBearsEpf: boolean('employer_bears_epf').notNull().default(false),
+    // Feedback 0df0c635 — Others Statutory card: per-employee "Subject to HRDF". NULLABLE tri-state:
+    // NULL = follow the company's HRDF registration default (registered ⇒ subject, not_registered ⇒ not) —
+    // today's behaviour, so pre-existing rows are byte-identical; explicit false excludes the employee's
+    // base from the HRD Corp levy entirely; explicit true keeps it in (the company band still sets the rate).
+    subjectToHrdf: boolean('subject_to_hrdf'),
     // EPF citizenship status — drives the Third Schedule rule (Part A / Part E / non-citizen 2%/2%).
     epfCitizenship: epfCitizenshipEnum('epf_citizenship').notNull().default('citizen'),
     // EPF contribution mode (Wave 2B). For 'voluntary_excess' the elected per-side rates (decimals,
