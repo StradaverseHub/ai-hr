@@ -1,11 +1,10 @@
 // One-off / maintenance CLI — seed the BASIC + ALLOWANCE employment_pay_component rows from every open
-// compensation row, for every tenant. ADR-0078 note: the BASIC component deliberately mirrors the
-// MONTHLY-EQUIVALENT compensation.basic_salary for every pay mode (daily/hourly included) — it feeds
-// percent-of-basic rules and statutory bases, never the daily/hourly basic pay, which the engine computes
-// from compensation.rate_amount at run time. Fixes the data gap behind feedback 62e370b0 ("Basic salary not
-// reflected during payroll processing"): with TYPED_PAY_COMPONENTS_ENABLED on, the typed earnings path reads
-// basic from a BASIC component; employees whose components were never backfilled paid zero. Runs the SAME
-// idempotent backfillEmploymentComponentsFromCompensation service (upserts, so a re-run is a no-op).
+// compensation row, for every tenant. Feedback 64fb5e48: this backfill is now OPTIONAL housekeeping — the
+// payroll engine always pays basic (and feeds percent-of-basic rules and statutory bases) from the
+// Personnel compensation record itself, so BASIC component amounts no longer drive pay. A BASIC component
+// that drifts from compensation.basic_salary only surfaces as the staleBasicComponent pre-check warning;
+// re-running this CLI re-mirrors the amounts and clears the warning. Runs the SAME idempotent
+// backfillEmploymentComponentsFromCompensation service (upserts, so a re-run is a no-op).
 //   node --env-file=.env.production --import tsx scripts/backfill-basic-components.ts
 import { createDb } from '../db/client';
 import { tenant } from '../db/schema';

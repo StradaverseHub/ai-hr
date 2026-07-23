@@ -12,18 +12,17 @@ const LIST = '/admin/pay-components';
 
 export type PayComponentRow = Awaited<ReturnType<typeof listPayComponents>>[number];
 
-/** Input Type is DERIVED from the pay-rule kind (read-only — making it editable is a later change).
- *  null / 'fixed' ⇒ fixed amount, matching the kernel's legacy fixed-amount behaviour. */
-const inputTypeOf = (rule: unknown): 'fixed' | 'percent_of' | 'per_day' | 'per_hour' | 'flat_capped' =>
-  (rule as PayRule | null)?.kind ?? 'fixed';
-
 /**
- * Pay Code maintenance screen (feedback 911b2886) — the shared Create / Edit form, extracted from the old
- * inline block on the list page and rendered by the dedicated /new and /[code] routes (attendance-rule
- * precedent: rules/rule-form.tsx). Server component: it RENDERS the PayRuleEditor client island as JSX,
- * keeping the RSC boundary clean. Two sections — Basic Information and Payroll Configuration — with a
- * Save / Save & New / Cancel toolbar. `error` comes from the action's redirect-with-error and renders
- * through ErrorBanner above the form (the global ToastFromQuery still fires as well, same as attendance).
+ * Pay Code maintenance screen (feedback 911b2886, layout redesign 13b7517b) — the shared Create / Edit
+ * form, extracted from the old inline block on the list page and rendered by the dedicated /new and
+ * /[code] routes (attendance-rule precedent: rules/rule-form.tsx). Server component: it RENDERS the
+ * PayRuleEditor client island as JSX, keeping the RSC boundary clean. Three sections — Basic Information
+ * (identity), Pay Settings (how it is calculated: rounding + the pay rule) and Government Statutory
+ * Configuration (EPF / SOCSO-EIS / PCB / HRDF mappings) — with a Save / Save & New / Cancel toolbar.
+ * The derived Input Type field was removed from this screen (13b7517b): it was read-only display with no
+ * functional impact; the list page keeps its own Input Type column and derivation. `error` comes from the
+ * action's redirect-with-error and renders through ErrorBanner above the form (the global ToastFromQuery
+ * still fires as well, same as attendance).
  */
 export async function ComponentForm({
   component,
@@ -78,10 +77,6 @@ export async function ComponentForm({
                 <option value="non_payable">{t('kind_non_payable')}</option>
               </select>
             </Field>
-            <Field label={t('colInputType')}>
-              {/* Read-only, derived from the pay rule below — configure it via the rule editor. */}
-              <input readOnly value={t(`inputType_${inputTypeOf(component?.rule ?? null)}`)} className={`${inputCls} opacity-60`} />
-            </Field>
             <Field label={t('colStatus')}>
               <input
                 readOnly
@@ -89,6 +84,15 @@ export async function ComponentForm({
                 className={`${inputCls} opacity-60`}
               />
             </Field>
+          </div>
+        </Card>
+
+        {/* Pay Settings (13b7517b) — calculation concerns grouped in their own card: the rounding method
+            and the "How is this calculated?" pay-rule editor, clearly separated from the statutory card
+            below. Everything stays inside the single form, so submission is unchanged. */}
+        <Card className="space-y-3 p-4">
+          <h2 className="text-sm font-semibold text-foreground">{t('sectionPaySettings')}</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label={t('colRounding')}>
               <select name="roundingMethod" defaultValue={component?.roundingMethod ?? 'none'} className={inputCls}>
                 {ROUNDING_METHODS.map((m) => (
@@ -96,9 +100,19 @@ export async function ComponentForm({
                 ))}
               </select>
             </Field>
+            {/* Payroll Setup — configurable pay-rule + AI assist. The Prorates checkbox lives inside this island
+                (it interacts with per-day/per-hour rules) and is submitted as the form's `prorates` field. */}
+            <PayRuleEditor
+              code={component?.code ?? ''}
+              prorates={component?.prorates ?? true}
+              rule={(component?.rule ?? null) as PayRule | null}
+              aiEnabled={aiEnabled}
+            />
           </div>
         </Card>
 
+        {/* Government Statutory Configuration (13b7517b rename) — statutory mappings ONLY: EPF (KWSP),
+            SOCSO (PERKESO) / EIS, PCB and HRDF, with room for future schemes. */}
         <Card className="space-y-3 p-4">
           <h2 className="text-sm font-semibold text-foreground">{t('sectionConfig')}</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -116,14 +130,6 @@ export async function ComponentForm({
               pcbExemptionCode={component?.pcbExemptionCode ?? null}
             />
             <p className="text-xs text-muted-foreground sm:col-span-3">{t('flagsHint')}</p>
-            {/* Payroll Setup — configurable pay-rule + AI assist. The Prorates checkbox lives inside this island
-                (it interacts with per-day/per-hour rules) and is submitted as the form's `prorates` field. */}
-            <PayRuleEditor
-              code={component?.code ?? ''}
-              prorates={component?.prorates ?? true}
-              rule={(component?.rule ?? null) as PayRule | null}
-              aiEnabled={aiEnabled}
-            />
           </div>
         </Card>
 

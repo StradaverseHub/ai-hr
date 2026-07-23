@@ -324,7 +324,7 @@
       "salaryRemarksPlaceholder": "cth. kenaikan tahunan",
       "employeeIdLabel": "ID Pekerja",
       "employeeIdPlaceholder": "cth. EMP-0001",
-      "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 9 aksara."
+      "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 30 aksara."
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -704,6 +704,12 @@
         "groupService": "Perkhidmatan Kumpulan",
         "currentCompanyService": "Perkhidmatan Syarikat Semasa",
         "serviceLength": "{years} Tahun {months} Bulan",
+        "yearOfService": "Tempoh Perkhidmatan",
+        "yearsUnit": "{count} Tahun",
+        "monthsUnit": "{count} Bulan",
+        "daysUnit": "{count} Hari",
+        "notAvailable": "Tidak Tersedia",
+        "yearOfServiceTooltip": "Tarikh Menyertai Kumpulan: {groupJoinDate} · Perkhidmatan setakat: {asOf}",
         "confirmationDate": "Tarikh Pengesahan",
         "resignationDate": "Tarikh Peletakan Jawatan",
         "probationPeriod": "Tempoh Percubaan",
@@ -851,6 +857,7 @@
       "salaryNoResults": "Tiada rekod gaji sepadan dengan carian anda.",
       "employeeIdLabel": "ID Pekerja",
       "employeeIdPlaceholder": "cth. EMP-0001",
+      "salutation": "Gelaran",
       "fullNameIc": "Nama penuh (seperti dalam KP/pasport)",
       "firstName": "Nama pertama",
       "lastName": "Nama akhir",
@@ -2599,7 +2606,8 @@
       "preChecksWarningBadge": "Amaran",
       "preChecks": {
         "missingCompensation": "Tiada rekod gaji semasa",
-        "missingBasicComponent": "Tiada komponen gaji asas",
+        "zeroBasic": "Gaji asas atau kadar gaji adalah sifar",
+        "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil statutori (KWSP/PERKESO/PCB)",
         "missingBank": "Butiran bank tidak lengkap"
       },
@@ -3137,7 +3145,8 @@
       "validationWarningBadge": "Amaran",
       "validationCheck": {
         "missingCompensation": "Tiada rekod gaji semasa",
-        "missingBasicComponent": "Tiada komponen gaji asas",
+        "zeroBasic": "Gaji asas atau kadar gaji adalah sifar",
+        "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil berkanun (EPF/SOCSO/PCB)",
         "missingBank": "Butiran bank tidak lengkap"
       }
@@ -3490,6 +3499,8 @@
       "pageTitle": "Konfigurasi cuti",
       "pageDescription": "Jenis cuti dan dasar kelayakannya",
       "typesSectionTitle": "Tetapan jenis cuti",
+      "workspaceTypeListLabel": "Jenis cuti",
+      "workspaceStepsLabel": "Langkah konfigurasi",
       "noLeaveTypes": "Tiada jenis cuti.",
       "codeLabel": "Kod",
       "codeHint": "Huruf, digit atau garis bawah — disimpan huruf besar (cth. ANNUAL)",
@@ -3613,6 +3624,9 @@
       "festiveGrantedToast": "Diberikan kepada {count} daripada {targeted} pekerja.",
       "festiveRecentTitle": "Pemberian terkini",
       "festiveRecentEmpty": "Tiada pemberian sekali sahaja lagi.",
+      "festiveRecentEmptyForType": "Tiada pemberian sekali sahaja untuk jenis cuti ini lagi.",
+      "festiveShowAllTypes": "Tunjukkan semua jenis cuti",
+      "festiveShowTypeOnly": "Tunjukkan jenis cuti ini sahaja",
       "festiveRecentSummary": "{days} hari {type} · {scope} · {count} pekerja · {date}",
       "archiveGradeConfirmTitle": "Arkibkan gred ini?",
       "archiveGradeConfirmDescription": "Ia akan disembunyikan daripada katalog. Pekerja dan dasar yang sudah menggunakannya kekal rujukannya.",
@@ -3746,10 +3760,10 @@
       "encashmentSave": "Simpan",
       "encashmentEligibleTypesFixed": "Cuti yang layak: Cuti Tahunan sahaja.",
       "encashmentRoundingFixed": "Pembundaran: kurang daripada 0.5 hari dibundarkan turun kepada 0; 0.5 hari atau lebih dibundarkan naik kepada hari penuh seterusnya. Angka ini tidak akan kurang daripada 0.",
-      "importTitle": "Import data cuti",
-      "importHelp": "Muat naik pukal baki pembukaan, bawa hadapan, cuti sejarah dan kredit ad-hoc daripada CSV yang ditampal. Baki dikemas kini serta-merta.",
-      "importLink": "Buka pengimport",
-      "importAction": "Import",
+      "importAction": "+ Import",
+      "runAccrualAction": "Jalankan Pengumpulan",
+      "previewScenarioAction": "Pratonton Senario",
+      "close": "Tutup",
       "import": {
         "title": "Import data cuti",
         "description": "Tampal transaksi cuti (baki pembukaan, bawa hadapan, cuti sejarah, kredit ad-hoc), pratonton setiap baris, kemudian import hanya baris yang sah.",
@@ -4548,6 +4562,7 @@
         "state": "Negeri",
         "country": "Negara",
         "relationship": "Hubungan",
+        "salutation": "Gelaran",
         "division": "Bahagian",
         "branch": "Cawangan",
         "region": "Wilayah",
@@ -4738,6 +4753,7 @@
       "perTypeColScheme": "Skim faedah",
       "perTypeEmpty": "Tiada kelayakan skim faedah dikonfigurasi untuk jenis cuti ini lagi. Tambah dalam bahagian Skim Faedah di bawah.",
       "perTypeSharedPool": "Had kongsi \"{name}\": {days} hari/tahun",
+      "sharedWithTypes": "Dikongsi dengan {names} — suntingan di sini memberi kesan kepada setiap jenis cuti dalam kumpulan ini",
       "perTypeManageNote": "Angka langsung yang sama dengan jadual Kelayakan Cuti skim — suntingan di sini mengemas kini kedua-duanya. Had gabungan (kongsi) diurus dalam bahagian Skim Faedah.",
       "addEntitlement": "Tambah kelayakan cuti",
       "threshold1": "Peringkat 1 hingga (tahun)",
@@ -5428,7 +5444,8 @@
     "statusAll": "Semua",
     "createNew": "Cipta Kod Gaji Baharu",
     "sectionBasic": "Maklumat Asas",
-    "sectionConfig": "Konfigurasi Gaji",
+    "sectionPaySettings": "Tetapan Gaji",
+    "sectionConfig": "Konfigurasi Berkanun Kerajaan",
     "createTitle": "Cipta Kod Gaji Baharu",
     "saveAndNew": "Simpan & Baharu",
     "backToList": "Kembali ke Item Gaji",
@@ -5598,7 +5615,7 @@
     "fieldScope": "Skop",
     "fieldScopeHint": "Global berkongsi satu jujukan merentas semua syarikat; khusus syarikat mengekalkan jujukan berasingan bagi setiap syarikat.",
     "fieldPrefix": "Awalan",
-    "fieldPrefixHint": "Huruf, nombor dan sengkang. Awalan + digit mesti tidak melebihi 9 aksara.",
+    "fieldPrefixHint": "Huruf, nombor dan sengkang. Awalan + digit + akhiran bersama mesti tidak melebihi 30 aksara.",
     "fieldStart": "Nombor permulaan",
     "fieldLength": "Bilangan digit",
     "fieldIncrement": "Tokokan",
@@ -5616,7 +5633,7 @@
     "errors": {
       "duplicateActive": "Persediaan ID Pekerja yang aktif sudah wujud untuk skop ini",
       "prefixCollision": "Persediaan aktif lain sudah menggunakan awalan ini",
-      "tooLong": "Awalan dan panjang nombor mesti tidak melebihi 9 aksara"
+      "tooLong": "Awalan, panjang nombor dan akhiran bersama mesti tidak melebihi 30 aksara"
     },
     "colTemplate": "Templat",
     "colSuffix": "Akhiran",
@@ -5631,7 +5648,8 @@
     "fieldSuffixHint": "Teks pilihan selepas nombor, cth. MY → EMP0001MY. Huruf, nombor dan sengkang.",
     "fieldLengthHint": "Sifar hadapan: nombor diisi kepada bilangan digit ini.",
     "fieldAllowManualOverride": "Benarkan ubah suai ID Pekerja secara manual",
-    "fieldAllowManualOverrideHint": "Apabila dihidupkan, HR boleh menaip ID Pekerja (disemak keunikan) dan bukannya menjananya secara automatik."
+    "fieldAllowManualOverrideHint": "Apabila dihidupkan, HR boleh menaip ID Pekerja (disemak keunikan) dan bukannya menjananya secara automatik.",
+    "cp39LengthNote": "Nota: ID Pekerja melebihi 10 aksara tidak muat dalam fail penghantaran CP39 LHDN — penjanaan CP39 akan menyenaraikan pekerja terlibat dan bukannya memotong ID. ID yang lebih panjang kekal boleh digunakan sepenuhnya di tempat lain."
   },
   "payrollPolicy": {
     "title": "Dasar gaji",

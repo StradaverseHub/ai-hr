@@ -51,13 +51,17 @@ export async function generateAction(formData: FormData) {
   let errMsg: string | null = null;
   try {
     const checks = await preProcessAdvisory(s, batchId);
-    // BLOCKER count: no compensation row OR (typed path) a compensation row with no BASIC component — both
-    // stop generation (server re-asserts via PreProcessBlockedError). See core/payroll.ts generatePayslips.
-    const blockers = checks.missingCompensation.length + checks.missingBasicComponent.length;
+    // BLOCKER count: no compensation row covering the period OR a zero basic/rate (feedback 64fb5e48) —
+    // both stop generation (server re-asserts via PreProcessBlockedError). The old BASIC-pay-item
+    // existence blocker is gone: the Personnel Basic Salary record is the authoritative pay source.
+    // A stale BASIC pay item (amount differing from Personnel) joins the confirm-to-proceed warnings.
+    const blockers = checks.missingCompensation.length + (checks.zeroBasic?.length ?? 0);
+    const warnings =
+      checks.missingStatutory.length + checks.missingBank.length + (checks.staleBasicComponent?.length ?? 0);
     if (blockers > 0) {
       errMsg = t('preChecksBlockedError', { n: blockers });
-    } else if (checks.missingStatutory.length + checks.missingBank.length > 0 && !acknowledged) {
-      errMsg = t('preChecksConfirmRequired', { n: checks.missingStatutory.length + checks.missingBank.length });
+    } else if (warnings > 0 && !acknowledged) {
+      errMsg = t('preChecksConfirmRequired', { n: warnings });
     } else {
       await generatePayslips(s, { batchId });
     }

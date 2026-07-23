@@ -54,6 +54,11 @@ const alpha = (v: string | null | undefined, len: number): string =>
   (v ?? '').toUpperCase().slice(0, len).padEnd(len, ' ');
 const cents = (rm: number) => Math.round(rm * 100);
 
+/** Exhibit-4 width of the detail "employee no" field. Employee IDs may legitimately be longer in the
+ *  product (feedback de2823cc lifted the 9-char cap to 30), but a statutory file must never silently
+ *  truncate an identifier — over-long codes REFUSE generation, listing the employees (fail-loud). */
+export const CP39_EMPLOYEE_NO_LEN = 10;
+
 /** Employer E-number → 10-digit form (Exhibit 5: "E 908915-10" → "0090891510"). */
 export const normalizeEmployerNo = (e: string): string => {
   const d = digits(e);
@@ -76,6 +81,15 @@ export function buildCp39File(p: {
 }): Cp39File {
   const employer = normalizeEmployerNo(p.employerNo);
   const mm = String(p.month).padStart(2, '0');
+  // Fail-loud on over-long employee numbers (feedback de2823cc): alpha() hard-truncates to width, which
+  // would silently corrupt the identifier in a government file. Refuse instead, listing every employee.
+  const overlongNos = p.rows.filter((r) => (r.employeeNo ?? '').trim().length > CP39_EMPLOYEE_NO_LEN);
+  if (overlongNos.length) {
+    throw new Error(
+      `Employee no exceeds the ${CP39_EMPLOYEE_NO_LEN}-character CP39 field for: ` +
+        overlongNos.map((r) => `${r.name} (${(r.employeeNo ?? '').trim()})`).join(', '),
+    );
+  }
   const lines: string[] = [];
   let mtdCents = 0;
   let mtdRecords = 0;
@@ -101,7 +115,7 @@ export function buildCp39File(p: {
       alpha(r.countryCode, 2) +
       num(rowMtd, 8, `MTD (${r.name})`) +
       num(rowCp38, 8, `CP38 (${r.name})`) +
-      alpha(r.employeeNo, 10);
+      alpha(r.employeeNo, CP39_EMPLOYEE_NO_LEN);
     if (line.length !== 136) throw new Error(`detail record is ${line.length} chars, expected 136`);
     lines.push(line);
   }
@@ -194,6 +208,16 @@ export function cp39FileForBatch(
     if (missing.length) {
       throw new Cp39NotReadyError(
         `TIN is mandatory for the CP39 file — missing for: ${missing.join(', ')}`,
+      );
+    }
+    // Fail-closed pre-check (feedback de2823cc): the CP39 employee-no field is fixed at 10 characters.
+    // Longer Employee IDs are fully valid in the product, but must not be silently truncated in a
+    // statutory file — refuse with the affected employees listed so HR can shorten or hand-assign codes.
+    const overlong = empRows.filter((r) => (r.employeeNo ?? '').trim().length > CP39_EMPLOYEE_NO_LEN);
+    if (overlong.length) {
+      throw new Cp39NotReadyError(
+        `Employee ID exceeds the ${CP39_EMPLOYEE_NO_LEN} characters the LHDN CP39 format allows for: ` +
+          overlong.map((r) => `${r.name} (${(r.employeeNo ?? '').trim()})`).join(', '),
       );
     }
     const [yy, mm] = p.periodKey.split('-').map(Number);

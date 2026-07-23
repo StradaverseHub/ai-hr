@@ -18,6 +18,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { preProcessAdvisoryForSelection } from '../core/payroll';
+import { backfillEmploymentComponentsFromCompensation, seedPayComponentCatalog } from '../core/pay-components';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -54,7 +55,7 @@ describe('R37 70764928 — wizard Validation step (preProcessAdvisoryForSelectio
     const noComp = await hire(a, 'NoComp Val'); // no compensation ⇒ BLOCKER
 
     const checks = await preProcessAdvisoryForSelection(a, { companyIds: [b.companyId], payPeriod: PERIOD });
-    const blockers = checks.missingCompensation.length + checks.missingBasicComponent.length;
+    const blockers = checks.missingCompensation.length + (checks.zeroBasic?.length ?? 0);
 
     expect(blockers).toBeGreaterThan(0);
     expect(checks.missingCompensation.map((r) => r.employmentId)).toContain(noComp.employmentId);
@@ -70,8 +71,9 @@ describe('R37 70764928 — wizard Validation step (preProcessAdvisoryForSelectio
     await setStatutoryProfileMY(a, { personId: noBank.personId, icNumber: '900101010102' });
 
     const checks = await preProcessAdvisoryForSelection(a, { companyIds: [b.companyId], payPeriod: PERIOD });
-    const blockers = checks.missingCompensation.length + checks.missingBasicComponent.length;
-    const warnings = checks.missingStatutory.length + checks.missingBank.length;
+    const blockers = checks.missingCompensation.length + (checks.zeroBasic?.length ?? 0);
+    const warnings =
+      checks.missingStatutory.length + checks.missingBank.length + (checks.staleBasicComponent?.length ?? 0);
 
     expect(blockers).toBe(0); // amber, not red — advance is NOT blocked
     expect(warnings).toBeGreaterThan(0);
@@ -90,7 +92,8 @@ describe('R37 70764928 — wizard Validation step (preProcessAdvisoryForSelectio
     const checks = await preProcessAdvisoryForSelection(a, { companyIds: [b.companyId], payPeriod: PERIOD });
 
     expect(checks.missingCompensation).toHaveLength(0);
-    expect(checks.missingBasicComponent).toHaveLength(0);
+    expect(checks.zeroBasic ?? []).toHaveLength(0);
+    expect(checks.staleBasicComponent ?? []).toHaveLength(0);
     expect(checks.missingStatutory).toHaveLength(0);
     expect(checks.missingBank).toHaveLength(0);
   });
@@ -109,8 +112,33 @@ describe('R37 70764928 — wizard Validation step (preProcessAdvisoryForSelectio
     });
 
     expect(checks.missingCompensation).toHaveLength(0);
-    expect(checks.missingBasicComponent).toHaveLength(0);
+    expect(checks.zeroBasic ?? []).toHaveLength(0);
     expect(checks.missingStatutory).toHaveLength(0);
     expect(checks.missingBank).toHaveLength(0);
+  });
+
+  it('AMBER (feedback 64fb5e48): a stale BASIC pay item is a WARNING tier — Process stays allowed', async () => {
+    const a = adminCtx(b);
+    const emp = await hire(a, 'Stale Wiz Val');
+    await setCompensation(a, { employmentId: emp.employmentId, basicSalary: 6500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: emp.personId, icNumber: '900101010105', bankName: 'Maybank', bankAccountNo: '1234500004' });
+    // Mirror 6500 into a BASIC component, then revise Personnel to 7000 — the component is now stale.
+    await seedPayComponentCatalog(a);
+    await backfillEmploymentComponentsFromCompensation(a);
+    await setCompensation(a, { employmentId: emp.employmentId, basicSalary: 7000, effectiveFrom: '2026-02-01' });
+
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    try {
+      const checks = await preProcessAdvisoryForSelection(a, { companyIds: [b.companyId], payPeriod: PERIOD });
+      // Exactly the step's amber computation: zero blockers, the stale row counted among warnings.
+      const blockers = checks.missingCompensation.length + (checks.zeroBasic?.length ?? 0);
+      const warnings =
+        checks.missingStatutory.length + checks.missingBank.length + (checks.staleBasicComponent?.length ?? 0);
+      expect(blockers).toBe(0); // amber, not red — Process is NOT blocked
+      expect(warnings).toBeGreaterThan(0);
+      expect((checks.staleBasicComponent ?? []).map((r) => r.employmentId)).toEqual([emp.employmentId]);
+    } finally {
+      delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+    }
   });
 });

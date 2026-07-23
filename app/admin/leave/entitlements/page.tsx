@@ -14,11 +14,13 @@ import {
 import { BenefitSchemeConfig, type LeaveTypeSchemeEntitlement } from '@/components/benefit-scheme-config';
 import type { ServiceBand } from '@/core/leave-compute';
 import { entitlement } from '@/localization/my/leave';
-import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
+import { LeaveTypeWorkspace } from '@/components/leave-type-workspace';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
-import { EarnedAccrualCard } from '@/components/earned-accrual-card';
+import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
+import { LeaveRulePreviewDialog } from '@/components/leave/leave-rule-preview-dialog';
 import {
   archiveLeaveTypeAction,
   countEmployeesInScopeAction,
@@ -28,7 +30,6 @@ import {
   deleteLeaveTypeAction,
   updateLeavePolicyAction,
   updateLeaveTypeAction,
-  setCompanyLeaveCycleAction,
   createJobGradeAction,
   archiveJobGradeAction,
   updateJobGradeAction,
@@ -49,7 +50,6 @@ import {
 } from '../../actions';
 import { GradeCatalog } from '@/components/grade-catalog';
 import { CollapsibleCardSection } from '@/components/collapsible-card-section';
-import { LeaveRulePreview } from '@/components/leave-rule-preview';
 
 /** Cookie persisting the Grades section's open/closed fold (feedback 03557e76). */
 const GRADES_OPEN_COOKIE = 'leave_grades_open';
@@ -61,11 +61,17 @@ const GRADES_OPEN_COOKIE = 'leave_grades_open';
  * here — "one leave type, one full set of settings", exactly where HR expects it. Each `LeaveTypePanel`
  * carries leave-type identity, eligibility, allowed durations, supporting-document config, backdating limit,
  * advance-notice, expiry, the apply-time custom message AND that type's effective-dated entitlement policies
- * (the editable ranges table + the multi-company/grade "Employee Selection" chips). Beneath it are the
- * company-level entitlement operations re-homed here earlier (0d147b78): leave-year opener + earned-accrual
- * runner, per-company accrual cycle, grade catalog, bulk import, festive grant. The whole `LeaveTypePanel` +
- * add-type form moved wholesale from the Types tab, so every sub-form keeps its tri-state marker + hidden
- * `name` intact — no column is wiped on save.
+ * (the editable ranges table + the multi-company/grade "Employee Selection" chips). Beneath it only the
+ * grade catalog remains. The three other standalone sections are gone (d778d2d3): Run Earned Accrual and
+ * Preview a Scenario became compact PageHeader action buttons opening the SAME tools in dialogs
+ * (EarnedAccrualDialog / LeaveRulePreviewDialog — components wrapped unchanged), and the per-company Leave
+ * Cycle card moved to the Application Rules tab beside the other company-level calendar rules (its
+ * server action is untouched — only the rendering moved). Bulk import is a "+ Import" action
+ * button in the page header (e8f2398f) — the standalone page-bottom Card that only linked to
+ * /admin/leave/import is gone. The festive / one-off grant tool no longer
+ * sits at the page bottom — fd7c8e20 moved it into each type's Entitlement step (below the Benefit Schemes
+ * area), preset to the selected type. The whole `LeaveTypePanel` + add-type form moved wholesale from the
+ * Types tab, so every sub-form keeps its tri-state marker + hidden `name` intact — no column is wiped on save.
  */
 export default async function LeaveEntitlementsPage({
   searchParams,
@@ -114,6 +120,8 @@ export default async function LeaveEntitlementsPage({
   // Feedback 26e76a9f — "preview a scenario" relocated here from the Types tab (its read-only "Entitlement
   // rules" card was removed as a duplicate configuration point). Same inputs as before: the ACTIVE policy
   // rows from the already-loaded listLeavePolicies result — display-only, no data or logic change.
+  // d778d2d3: the checker now opens from the header's "Preview Scenario" button (LeaveRulePreviewDialog);
+  // this page-level data prep is unchanged and simply feeds the dialog.
   const previewPolicies = policies
     .filter((p) => !p.validTo)
     .map((p) => ({ leaveTypeId: p.leaveTypeId, gradeId: p.gradeId, companyId: p.companyId, accrual: p.accrual }));
@@ -121,6 +129,9 @@ export default async function LeaveEntitlementsPage({
   const recentGrants: FestiveGrantRow[] = adHocGrants.map((g) => ({
     occurredAt: g.occurredAt.toISOString(),
     companyName: g.companyId ? (companyNameById.get(g.companyId) ?? null) : null,
+    // fd7c8e20: the raw type id rides along so the embedded card can default-filter the list to its
+    // hosting leave type (display filter only — every grant row stays in this one shared array).
+    leaveTypeId: g.leaveTypeId ?? null,
     leaveTypeName: g.leaveTypeId ? (typeNameById.get(g.leaveTypeId) ?? null) : null,
     days: g.days,
     count: g.count,
@@ -190,9 +201,9 @@ export default async function LeaveEntitlementsPage({
 
   // Restructure (123c1e76): per-type Entitlement card data — each leave type's benefit-scheme entitlement
   // rows, joined with the owning scheme's name and (read-only) any combined-limit pool the type belongs to
-  // in that scheme. The SAME already-loaded rows the Benefit Schemes section renders below — filtered by
-  // leave type, never duplicated — and the panel's Edit dialog posts the SAME upsert action, so the two
-  // surfaces cannot drift.
+  // in that scheme. The SAME already-loaded rows the scoped Benefit Schemes area (6c775d68, below in the
+  // same step) renders — filtered by leave type, never duplicated — and the panel's Edit dialog posts the
+  // SAME upsert action, so the two surfaces cannot drift.
   const schemeNameById = new Map(benefitSchemes.map((sc) => [sc.id, sc.name]));
   const poolBySchemeType = new Map<string, { name: string; totalLimitDays: number }>();
   for (const cl of schemeCombinedLimits) {
@@ -219,23 +230,114 @@ export default async function LeaveEntitlementsPage({
   }
   for (const arr of schemeEntsByType.values()) arr.sort((a, b) => a.schemeName.localeCompare(b.schemeName));
 
+  // Move Benefit Schemes into the Entitlement step (feedback 6c775d68): the standalone page-bottom section
+  // is gone — BenefitSchemeConfig now renders inside EACH leave type's Entitlement step, scoped to that type
+  // (scopeLeaveTypeId). The props are prepared ONCE here from the rows this page already loads and shared by
+  // every panel (only the scope id varies) — no per-type reload, no N+1. All scheme data, combined limits
+  // and calculations are untouched: this changes where schemes are managed, not how they work.
+  const schemeConfigProps = {
+    companies: companyOptions,
+    grades: grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name, code: g.code })),
+    leaveTypes: activeTypeOptions.map((lt) => ({ id: lt.id, name: lt.name, code: typeCodeById.get(lt.id) ?? '' })),
+    gradeGroups: gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived })),
+    schemes: benefitSchemes.map((sc) => ({
+      id: sc.id,
+      companyId: sc.companyId,
+      employmentType: sc.employmentType,
+      gradeGroupId: sc.gradeGroupId,
+      gradeGroupName: sc.gradeGroupName,
+      name: sc.name,
+      status: sc.status,
+    })),
+    entitlements: schemeEntitlements.map((e) => ({
+      id: e.id,
+      benefitSchemeId: e.benefitSchemeId,
+      leaveTypeId: e.leaveTypeId,
+      leaveTypeName: e.leaveTypeName,
+      serviceBands: e.serviceBands,
+    })),
+    combinedLimits: schemeCombinedLimits.map((cl) => ({
+      id: cl.id,
+      benefitSchemeId: cl.benefitSchemeId,
+      name: cl.name,
+      totalLimitDays: cl.totalLimitDays,
+      leaveTypeIds: cl.leaveTypeIds,
+    })),
+    actions: {
+      createGradeGroup: createGradeGroupAction,
+      updateGradeGroup: updateGradeGroupAction,
+      deleteGradeGroup: deleteGradeGroupAction,
+      createScheme: createBenefitSchemeAction,
+      updateScheme: updateBenefitSchemeAction,
+      deleteScheme: deleteBenefitSchemeAction,
+      upsertEntitlement: upsertSchemeEntitlementAction,
+      deleteEntitlement: deleteSchemeEntitlementAction,
+      copyEntitlements: copySchemeEntitlementsAction,
+      updateCombinedLimit: updateSchemeCombinedLimitAction,
+      deleteCombinedLimit: deleteSchemeCombinedLimitAction,
+      // R47 d6f88c2f — DnD grouping writes for the entitlement table.
+      moveCombinedLimitMember: moveCombinedLimitMemberAction,
+      groupLeaveTypes: groupSchemeLeaveTypesAction,
+    },
+  };
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <PageHeader
+        title={t('pageTitle')}
+        description={t('pageDescription')}
+        actions={
+          /* e8f2398f: Import is a page-level action button (the standard top-right spot). d778d2d3 adds the
+             two occasional-use tools beside it — Run Accrual and Preview Scenario — as compact icon+label
+             buttons opening their dialogs; their standalone page-bottom sections are gone. Cluster order:
+             Import, Run Accrual, Preview Scenario. */
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/admin/leave/import" className={btnPrimary}>
+              {t('importAction')}
+            </Link>
+            <EarnedAccrualDialog
+              companies={festiveCompanies}
+              grades={gradeOptions}
+              leaveTypes={activeTypeOptions}
+              leaveYears={earnedLeaveYears}
+              defaultYear={earnedDefaultYear}
+            />
+            {activeTypeOptions.length > 0 && companyOptions.length > 0 && (
+              <LeaveRulePreviewDialog
+                leaveTypes={activeTypeOptions.map((o) => ({ id: o.id, name: o.name, code: typeCodeById.get(o.id) ?? '' }))}
+                companies={previewCompanies}
+                grades={gradeOptions}
+                policies={previewPolicies}
+              />
+            )}
+          </div>
+        }
+      />
       <LeaveTabs active="entitlements" />
       <ErrorBanner message={error} />
 
-      {/* Feedback 9d8cf621 — per-type configuration + entitlements. "1 leave type, 1 full set of settings". */}
+      {/* Feedback 9d8cf621 — per-type configuration + entitlements. "1 leave type, 1 full set of settings".
+          Workspace shape (c979aa8b): the stacked collapsible rows became a two-pane workspace — an internal
+          left panel listing the types (Add Leave button at the bottom) and a right pane showing the SELECTED
+          type's five-step configuration flow (LeaveTypePanel's step bar). Each panel keeps the exact same
+          props/actions as before; the client workspace only decides which one is mounted. */}
       <Card data-tour="leave-config">
         <SectionHeader title={t('typesSectionTitle')} count={types.length} />
-        <ul className="divide-y divide-border">
-          {types.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveTypes')}</li>
-          )}
-          {types.map((lt) => (
-            <LeaveTypePanel
-              key={lt.id}
-              id={lt.id}
+        <LeaveTypeWorkspace
+          items={types.map((lt) => ({
+            id: lt.id,
+            name: lt.name,
+            code: lt.code,
+            archived: !!lt.archivedAt,
+            color: lt.color ?? null,
+            icon: lt.icon ?? null,
+          }))}
+          panels={Object.fromEntries(
+            types.map((lt) => [
+              lt.id,
+              <LeaveTypePanel
+                key={lt.id}
+                id={lt.id}
               name={lt.name}
               code={lt.code}
               description={lt.description ?? null}
@@ -276,6 +378,38 @@ export default async function LeaveEntitlementsPage({
               grades={gradeOptions}
               companies={companyOptions}
               schemeEntitlements={schemeEntsByType.get(lt.id) ?? []}
+              benefitSchemeSection={
+                /* 6c775d68: the Benefit Schemes management area, scoped to this leave type, rendered inside
+                   the Entitlement step below the per-type table. Shared props (one page-level data prep) +
+                   the per-type scope id. */
+                <div className="space-y-3 border-t border-border pt-3">
+                  <div>
+                    <span className="text-xs font-medium text-muted-foreground">{t('benefitSchemeTitle')}</span>
+                    <p className="text-xs text-muted-foreground">{t('benefitSchemeHelp')}</p>
+                  </div>
+                  <BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} />
+                </div>
+              }
+              festiveGrantSection={
+                /* fd7c8e20 (ADR-0066): the One-Off / Festive Leave Grant tool, moved from the standalone
+                   page-bottom section into the Entitlement step below the Benefit Schemes area. Data prep
+                   (festiveCompanies, recentGrants) stays at page level and is shared by every panel — only
+                   the preselected leave type varies. -mx-4 lets the card's own px-4 gutters line up with
+                   the step's CardContent padding. */
+                <div className="space-y-1 border-t border-border pt-3">
+                  <span className="text-xs font-medium text-muted-foreground">{t('festiveTitle')}</span>
+                  <div className="-mx-4">
+                    <FestiveGrantCard
+                      companies={festiveCompanies}
+                      canGroupWide={canGroupWide}
+                      leaveTypes={activeTypeOptions}
+                      recent={recentGrants}
+                      defaultDate={todayIso}
+                      defaultLeaveTypeId={lt.id}
+                    />
+                  </div>
+                </div>
+              }
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}
@@ -284,14 +418,15 @@ export default async function LeaveEntitlementsPage({
               deletePolicyAction={deleteLeavePolicyAction}
               countInScopeAction={countEmployeesInScopeAction}
               upsertSchemeEntitlementAction={upsertSchemeEntitlementAction}
-            />
-          ))}
-        </ul>
-        {/* Layout (a9c5870a): three tiers. Mobile stacks (grid-cols-1). sm–lg keeps the six equal columns with
+              />,
+            ]),
+          )}
+          addForm={
+        /* Layout (a9c5870a): three tiers. Mobile stacks (grid-cols-1). sm–lg keeps the six equal columns with
             Description spanning 3, i.e. the tidy two-row split 750732c3 introduced. From lg an explicit
             grid-template packs all seven pieces onto ONE row: Code/Name/Status/Leave Unit are flexible minmax
             columns, Description gets the wide 3fr share, and Paid + Add are content-sized auto columns — so the
-            wider Description no longer spills Leave Unit/Paid/Add onto a half-empty second row. */}
+            wider Description no longer spills Leave Unit/Paid/Add onto a half-empty second row. */
         <form
           action={createLeaveTypeAction}
           className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-6 lg:[grid-template-columns:minmax(6.5rem,1fr)_minmax(8rem,1fr)_minmax(16rem,3fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_auto_auto]"
@@ -352,56 +487,11 @@ export default async function LeaveEntitlementsPage({
               (grid-cols-1) col-start has no effect; everything stacks unchanged. */}
           <button className={`${btnPrimary} sm:col-start-6 lg:col-start-auto`}>{t('addType')}</button>
         </form>
+          }
+        />
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
           {t.rich('typesHelp', { strong: (chunks) => <span className="font-medium">{chunks}</span> })}
         </p>
-      </Card>
-
-      {/* feedback 2c7c6385 (Run Earned Accrual button): the bare fire-immediately button is replaced with a
-          scope + preview/dry-run + confirm review card. Scope axes narrow the shipped idempotent engine; the
-          preview is a dry-run that writes nothing yet reports the exact numbers the commit produces. The
-          Leave-Year selector reads the managed leave_year_config records (9aa894a4). R45 cc816207 — the Leave
-          Year card that used to sit above this section relocated to the Application Rules tab; earned accrual
-          stays here with Entitlements. */}
-      <Card>
-        <SectionHeader title={t('runEarnedAccrual')} />
-        <div className="border-t border-border">
-          <EarnedAccrualCard
-            companies={festiveCompanies}
-            grades={gradeOptions}
-            leaveTypes={activeTypeOptions}
-            leaveYears={earnedLeaveYears}
-            defaultYear={earnedDefaultYear}
-          />
-        </div>
-      </Card>
-
-      {/* ADR-0040 2D-2: per-company earned-accrual cycle (calendar vs hire anniversary). */}
-      <Card>
-        <SectionHeader title={t('leaveCycleTitle')} count={companies.length} />
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('leaveCycleHelp')}</p>
-        <ul className="divide-y divide-border">
-          {companies.map((c) => (
-            <li key={c.id} className="px-4 py-3">
-              <form
-                action={setCompanyLeaveCycleAction}
-                className="flex flex-wrap items-center justify-between gap-3"
-              >
-                <input type="hidden" name="companyId" value={c.id} />
-                <span className="min-w-0 truncate text-sm font-medium text-foreground">{c.name}</span>
-                <div className="flex items-center gap-2">
-                  <select name="cycle" defaultValue={c.leaveCycle ?? 'calendar'} className={`${inputCls} w-44`}>
-                    <option value="calendar">{t('cycleCalendar')}</option>
-                    <option value="anniversary">{t('cycleAnniversary')}</option>
-                  </select>
-                  <Button type="submit" variant="outline" size="sm">
-                    {t('save')}
-                  </Button>
-                </div>
-              </form>
-            </li>
-          ))}
-        </ul>
       </Card>
 
       {/* ADR-0041 2E + Grade Management (728a7db6): the grade master — Code | Name | Rank | Status | Action
@@ -436,108 +526,6 @@ export default async function LeaveEntitlementsPage({
             }}
           />
         </CollapsibleCardSection>
-      </Card>
-
-      {/* Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b): a friendlier configuration
-          LAYER over the grade-scoped engine, placed AFTER the Grade catalog (which stays unchanged). Grade
-          groups + named schemes (Company × Employment Type × Grade Group) + a per-scheme leave-entitlement
-          table. Employees resolve to a scheme (auto-match, or a manual override) and the scheme's service-
-          band days supersede the grade policy — the EA-1955 floor still applies. */}
-      <Card>
-        <SectionHeader title={t('benefitSchemeTitle')} count={benefitSchemes.length} />
-        <p className="px-4 pt-3 pb-1 text-xs text-muted-foreground">{t('benefitSchemeHelp')}</p>
-        <div className="p-4">
-          <BenefitSchemeConfig
-            companies={companyOptions}
-            grades={grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name, code: g.code }))}
-            leaveTypes={activeTypeOptions.map((lt) => ({
-              id: lt.id,
-              name: lt.name,
-              code: types.find((t) => t.id === lt.id)?.code ?? '',
-            }))}
-            gradeGroups={gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived }))}
-            schemes={benefitSchemes.map((sc) => ({
-              id: sc.id,
-              companyId: sc.companyId,
-              employmentType: sc.employmentType,
-              gradeGroupId: sc.gradeGroupId,
-              gradeGroupName: sc.gradeGroupName,
-              name: sc.name,
-              status: sc.status,
-            }))}
-            entitlements={schemeEntitlements.map((e) => ({
-              id: e.id,
-              benefitSchemeId: e.benefitSchemeId,
-              leaveTypeId: e.leaveTypeId,
-              leaveTypeName: e.leaveTypeName,
-              serviceBands: e.serviceBands,
-            }))}
-            combinedLimits={schemeCombinedLimits.map((cl) => ({
-              id: cl.id,
-              benefitSchemeId: cl.benefitSchemeId,
-              name: cl.name,
-              totalLimitDays: cl.totalLimitDays,
-              leaveTypeIds: cl.leaveTypeIds,
-            }))}
-            actions={{
-              createGradeGroup: createGradeGroupAction,
-              updateGradeGroup: updateGradeGroupAction,
-              deleteGradeGroup: deleteGradeGroupAction,
-              createScheme: createBenefitSchemeAction,
-              updateScheme: updateBenefitSchemeAction,
-              deleteScheme: deleteBenefitSchemeAction,
-              upsertEntitlement: upsertSchemeEntitlementAction,
-              deleteEntitlement: deleteSchemeEntitlementAction,
-              copyEntitlements: copySchemeEntitlementsAction,
-              updateCombinedLimit: updateSchemeCombinedLimitAction,
-              deleteCombinedLimit: deleteSchemeCombinedLimitAction,
-              // R47 d6f88c2f — DnD grouping writes for the entitlement table.
-              moveCombinedLimitMember: moveCombinedLimitMemberAction,
-              groupLeaveTypes: groupSchemeLeaveTypesAction,
-            }}
-          />
-        </div>
-      </Card>
-
-      {/* Feedback 26e76a9f — "Preview a scenario": the live entitlement checker relocated from the Types
-          tab when its read-only Entitlement rules card was removed. Sits with the entitlement configuration
-          it previews (near the Benefit Schemes card). Runs the same pure resolver the server engines use
-          (components/leave-rule-preview.tsx) — read-only, writes nothing. */}
-      {activeTypeOptions.length > 0 && companyOptions.length > 0 && (
-        <Card>
-          <SectionHeader title={t('previewTitle')} />
-          <div className="p-4">
-            <LeaveRulePreview
-              leaveTypes={activeTypeOptions.map((o) => ({ id: o.id, name: o.name, code: typeCodeById.get(o.id) ?? '' }))}
-              companies={previewCompanies}
-              grades={gradeOptions}
-              policies={previewPolicies}
-            />
-          </div>
-        </Card>
-      )}
-
-      {/* Leave Data Import & Migration Tool — bulk-load opening balances / carry-forward / historical leave. */}
-      <Card>
-        <SectionHeader title={t('importTitle')} />
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
-          <p className="max-w-md text-xs text-muted-foreground">{t('importHelp')}</p>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/admin/leave/import">{t('importLink')}</Link>
-          </Button>
-        </div>
-      </Card>
-
-      {/* ADR-0066: festive / one-off leave grant — hand N extra days to everyone in a company + leave type. */}
-      <Card>
-        <SectionHeader title={t('festiveTitle')} />
-        <FestiveGrantCard
-          companies={festiveCompanies}
-          canGroupWide={canGroupWide}
-          leaveTypes={activeTypeOptions}
-          recent={recentGrants}
-          defaultDate={todayIso}
-        />
       </Card>
     </div>
   );

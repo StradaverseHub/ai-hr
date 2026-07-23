@@ -324,7 +324,7 @@
       "salaryRemarksPlaceholder": "e.g. annual increment",
       "employeeIdLabel": "Employee ID",
       "employeeIdPlaceholder": "e.g. EMP-0001",
-      "employeeIdHint": "Letters, numbers and dashes; up to 9 characters."
+      "employeeIdHint": "Letters, numbers and dashes; up to 30 characters."
     },
     "detail": {
       "backToPeople": "People",
@@ -704,6 +704,12 @@
         "groupService": "Group Service",
         "currentCompanyService": "Current Company Service",
         "serviceLength": "{years} Years {months} Months",
+        "yearOfService": "Year of Service",
+        "yearsUnit": "{count, plural, one {# Year} other {# Years}}",
+        "monthsUnit": "{count, plural, one {# Month} other {# Months}}",
+        "daysUnit": "{count, plural, one {# Day} other {# Days}}",
+        "notAvailable": "Not Available",
+        "yearOfServiceTooltip": "Group Join Date: {groupJoinDate} · Service as of: {asOf}",
         "confirmationDate": "Confirmation Date",
         "resignationDate": "Resignation Date",
         "probationPeriod": "Probation Period",
@@ -851,6 +857,7 @@
       "salaryNoResults": "No salary records match your search.",
       "employeeIdLabel": "Employee ID",
       "employeeIdPlaceholder": "e.g. EMP-0001",
+      "salutation": "Salutation",
       "fullNameIc": "Full name (as per IC/passport)",
       "firstName": "First name",
       "lastName": "Last name",
@@ -2361,7 +2368,8 @@
       "preChecksWarningBadge": "Warning",
       "preChecks": {
         "missingCompensation": "No current salary record",
-        "missingBasicComponent": "No basic-salary pay component",
+        "zeroBasic": "Basic salary or pay rate is zero",
+        "staleBasicComponent": "Outdated BASIC pay item — the Personnel salary record is used",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete"
       },
@@ -3137,7 +3145,8 @@
       "validationWarningBadge": "Warning",
       "validationCheck": {
         "missingCompensation": "No current salary record",
-        "missingBasicComponent": "No basic-salary pay component",
+        "zeroBasic": "Basic salary or pay rate is zero",
+        "staleBasicComponent": "Outdated BASIC pay item — the Personnel salary record is used",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete"
       }
@@ -3490,6 +3499,8 @@
       "pageTitle": "Leave configuration",
       "pageDescription": "Leave types and their entitlement policies",
       "typesSectionTitle": "Leave type settings",
+      "workspaceTypeListLabel": "Leave types",
+      "workspaceStepsLabel": "Configuration steps",
       "noLeaveTypes": "No leave types.",
       "codeLabel": "Code",
       "codeHint": "Letters, digits or underscores — stored uppercase (e.g. ANNUAL)",
@@ -3650,6 +3661,9 @@
       "festiveGrantedToast": "Granted to {count} of {targeted} employee(s).",
       "festiveRecentTitle": "Recent grants",
       "festiveRecentEmpty": "No one-off grants yet.",
+      "festiveRecentEmptyForType": "No one-off grants for this leave type yet.",
+      "festiveShowAllTypes": "Show all leave types",
+      "festiveShowTypeOnly": "Show this leave type only",
       "festiveRecentSummary": "{days} day(s) {type} · {scope} · {count} employee(s) · {date}",
       "archiveGradeConfirmTitle": "Archive this grade?",
       "archiveGradeConfirmDescription": "It will be hidden from the catalog. Employees and policies already using it keep their reference.",
@@ -3783,10 +3797,10 @@
       "encashmentSave": "Save",
       "encashmentEligibleTypesFixed": "Eligible leave: Annual Leave only.",
       "encashmentRoundingFixed": "Rounding: less than 0.5 day rounds down to 0; 0.5 day or more rounds up to the next whole day. The figure never goes below 0.",
-      "importTitle": "Import leave data",
-      "importHelp": "Bulk-load opening balances, carry-forward, historical leave taken and ad-hoc credits from a pasted CSV. Balances update immediately.",
-      "importLink": "Open importer",
-      "importAction": "Import",
+      "importAction": "+ Import",
+      "runAccrualAction": "Run Accrual",
+      "previewScenarioAction": "Preview Scenario",
+      "close": "Close",
       "import": {
         "title": "Import leave data",
         "description": "Upload a CSV or Excel file of leave transactions (opening balances, carry-forward, historical leave, ad-hoc credits) — or paste them — preview each row, then import only the valid ones.",
@@ -4548,6 +4562,7 @@
         "state": "State",
         "country": "Country",
         "relationship": "Relationship",
+        "salutation": "Salutation",
         "division": "Division",
         "branch": "Branch",
         "region": "Region",
@@ -4738,6 +4753,7 @@
       "perTypeColScheme": "Benefit scheme",
       "perTypeEmpty": "No benefit-scheme entitlement is configured for this leave type yet. Add one in the Benefit Schemes section below.",
       "perTypeSharedPool": "Shared limit \"{name}\": {days} days/year",
+      "sharedWithTypes": "Shared with {names} — edits here affect every leave type in this pool",
       "perTypeManageNote": "Same live figures as the scheme's Leave Entitlements table — editing here updates both. Combined (shared) limits are managed in the Benefit Schemes section.",
       "addEntitlement": "Add a leave entitlement",
       "threshold1": "Tier 1 to (years)",
@@ -5428,7 +5444,8 @@
     "statusAll": "All",
     "createNew": "Create New Pay Code",
     "sectionBasic": "Basic Information",
-    "sectionConfig": "Payroll Configuration",
+    "sectionPaySettings": "Pay Settings",
+    "sectionConfig": "Government Statutory Configuration",
     "createTitle": "Create New Pay Code",
     "saveAndNew": "Save & New",
     "backToList": "Back to Pay Items",
@@ -5598,7 +5615,7 @@
     "fieldScope": "Scope",
     "fieldScopeHint": "Global shares one sequence across all companies; company-specific keeps a separate sequence per company.",
     "fieldPrefix": "Prefix",
-    "fieldPrefixHint": "Letters, numbers and dashes. Prefix + digits must be at most 9 characters.",
+    "fieldPrefixHint": "Letters, numbers and dashes. Prefix + digits + suffix together must be at most 30 characters.",
     "fieldStart": "Starting number",
     "fieldLength": "Number of digits",
     "fieldIncrement": "Increment",
@@ -5616,7 +5633,7 @@
     "errors": {
       "duplicateActive": "An active Employee ID setup already exists for this scope",
       "prefixCollision": "Another active setup already uses this prefix",
-      "tooLong": "Prefix plus number length must be at most 9 characters"
+      "tooLong": "Prefix, number length and suffix together must be at most 30 characters"
     },
     "colTemplate": "Template",
     "colSuffix": "Suffix",
@@ -5631,7 +5648,8 @@
     "fieldSuffixHint": "Optional text after the number, e.g. MY → EMP0001MY. Letters, numbers and dashes.",
     "fieldLengthHint": "Leading zeroes: the number is padded to this many digits.",
     "fieldAllowManualOverride": "Allow manual Employee ID override",
-    "fieldAllowManualOverrideHint": "When on, HR may hand-key an Employee ID (checked for uniqueness) instead of auto-generating it."
+    "fieldAllowManualOverrideHint": "When on, HR may hand-key an Employee ID (checked for uniqueness) instead of auto-generating it.",
+    "cp39LengthNote": "Note: Employee IDs longer than 10 characters do not fit the LHDN CP39 submission file — CP39 generation will list the affected employees instead of truncating. Longer IDs remain fully usable everywhere else."
   },
   "payrollPolicy": {
     "title": "Payroll policies",

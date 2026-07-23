@@ -1,0 +1,161 @@
+/**
+ * Feedback 64fb5e48 — "Correct Basic Salary Source for Payroll Processing".
+ *
+ * The Personnel Basic Salary record (Personnel (Admin) → Employee → Payroll → Basic Salary =
+ * `compensation`) is the SINGLE authoritative source of basic pay. This suite pins the strengthened
+ * pre-processing checks that replaced the removed missingBasicComponent blocker, and the precedence flip
+ * in the typed earnings path:
+ *
+ *   • STALE OVERRIDE FIXED — a leftover BASIC employment_pay_component whose amount drifted from the
+ *     Personnel record used to silently OVERRIDE pay; now the Personnel record wins and pre-processing
+ *     surfaces a staleBasicComponent WARNING (never a blocker — the run still processes).
+ *   • zeroBasic BLOCKER — a Personnel record that would pay nothing (monthly basic <= 0, or a
+ *     daily/hourly rate <= 0 on a legacy row that predates the write-time guard) fails closed.
+ *   • PERIOD COVERAGE — a salary record effective only AFTER the pay period blocks as
+ *     missingCompensation; a future-dated REVISION whose predecessor covers the period does not.
+ */
+import { and, eq, isNull } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import * as schema from '../db/schema';
+import { hireEmployee } from '../core/org';
+import { setCompensation } from '../core/comp';
+import { setStatutoryProfileMY } from '../localization/my/statutory';
+import { PreProcessBlockedError, createBatch, generatePayslips, preProcessAdvisory } from '../core/payroll';
+import { backfillEmploymentComponentsFromCompensation, seedPayComponentCatalog } from '../core/pay-components';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+
+let b: Base;
+const PERIOD = '2026-07';
+
+const payslipOf = async (batchId: string, employmentId: string) => {
+  const rows = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+  return rows.find((ps) => ps.employmentId === employmentId);
+};
+
+async function hire(a: ReturnType<typeof adminCtx>, name: string, ic: string, hiredOn = '2026-01-01') {
+  const e = await hireEmployee(a, {
+    person: { fullName: name, primaryEmail: `${name.toLowerCase().replace(/\s+/g, '.')}@basicsource.test` },
+    companyId: b.companyId,
+    departmentId: b.deptA,
+    employmentType: 'full_time',
+    hiredOn,
+  });
+  await setStatutoryProfileMY(a, { personId: e.personId, icNumber: ic, bankName: 'Maybank', bankAccountNo: '1234567890' });
+  return e;
+}
+
+beforeAll(async () => {
+  await migrateTestDb();
+});
+beforeEach(async () => {
+  await resetDb();
+  b = await seedBase();
+  delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+});
+afterEach(() => {
+  delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+});
+afterAll(async () => {
+  await closeAll();
+});
+
+describe('feedback 64fb5e48 — stale BASIC pay item never overrides the Personnel record', () => {
+  it('pay follows the Personnel basic, a staleBasicComponent WARNING is emitted, and the run still processes', async () => {
+    const a = adminCtx(b);
+    const emp = await hire(a, 'Stale Case', '900101020001');
+    await setCompensation(a, { employmentId: emp.employmentId, basicSalary: 6500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    // Mirror the old figure into a BASIC component (the one-time migration path), THEN revise the salary in
+    // Personnel — the component is now stale at 6500 while Personnel says 7000.
+    await seedPayComponentCatalog(a);
+    await backfillEmploymentComponentsFromCompensation(a);
+    await setCompensation(a, { employmentId: emp.employmentId, basicSalary: 7000, effectiveFrom: '2026-02-01' });
+
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
+    const checks = await preProcessAdvisory(a, batchId);
+    // WARNING, not a blocker — and precisely this employee.
+    expect((checks.staleBasicComponent ?? []).map((r) => r.employmentId)).toEqual([emp.employmentId]);
+    expect(checks.missingCompensation).toHaveLength(0);
+    expect(checks.zeroBasic ?? []).toHaveLength(0);
+
+    // The run processes (warnings never fail closed) and the PERSONNEL record wins: 7000, not the stale 6500
+    // the old component-precedence would have paid.
+    await generatePayslips(a, { batchId });
+    expect((await payslipOf(batchId, emp.employmentId))?.basicSalary).toBe('7000.00');
+  });
+
+  it('a backfilled component that MATCHES the Personnel record is not flagged', async () => {
+    const a = adminCtx(b);
+    const emp = await hire(a, 'In Sync', '900101020002');
+    await setCompensation(a, { employmentId: emp.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await seedPayComponentCatalog(a);
+    await backfillEmploymentComponentsFromCompensation(a);
+
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
+    const checks = await preProcessAdvisory(a, batchId);
+    expect(checks.staleBasicComponent ?? []).toHaveLength(0);
+  });
+});
+
+describe('feedback 64fb5e48 — zeroBasic blocker (the checks that actually matter)', () => {
+  it('a monthly employee with basic 0 is a zeroBasic blocker and generation fails closed', async () => {
+    const a = adminCtx(b);
+    const zero = await hire(a, 'Zero Basic', '900101020003');
+    await setCompensation(a, { employmentId: zero.employmentId, basicSalary: 0, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    const paid = await hire(a, 'Paid Fine', '900101020004');
+    await setCompensation(a, { employmentId: paid.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
+    const checks = await preProcessAdvisory(a, batchId);
+    expect((checks.zeroBasic ?? []).map((r) => r.employmentId)).toEqual([zero.employmentId]);
+    expect(checks.missingCompensation).toHaveLength(0);
+
+    await expect(generatePayslips(a, { batchId })).rejects.toBeInstanceOf(PreProcessBlockedError);
+    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId))).toHaveLength(0);
+  });
+
+  it('a legacy daily row with rate 0 blocks (write guard bypassed); a positive-rate daily employee passes', async () => {
+    const a = adminCtx(b);
+    const okDaily = await hire(a, 'Daily Ok', '900101020005');
+    await setCompensation(a, { employmentId: okDaily.employmentId, basicSalary: 4600, monthlyAllowance: 0, payMode: 'daily', rateAmount: 250, effectiveFrom: '2026-01-01' });
+    const badDaily = await hire(a, 'Daily Zero', '900101020006');
+    await setCompensation(a, { employmentId: badDaily.employmentId, basicSalary: 4600, monthlyAllowance: 0, payMode: 'daily', rateAmount: 200, effectiveFrom: '2026-01-01' });
+    // assertRateForMode guards NEW writes; simulate a legacy row that predates it (rate zeroed in place).
+    await owner.db
+      .update(schema.compensation)
+      .set({ rateAmount: '0.00' })
+      .where(and(eq(schema.compensation.employmentId, badDaily.employmentId), isNull(schema.compensation.validTo)));
+
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
+    const checks = await preProcessAdvisory(a, batchId);
+    expect((checks.zeroBasic ?? []).map((r) => r.employmentId)).toEqual([badDaily.employmentId]);
+    // The daily employee's basic_salary (monthly-equivalent) is irrelevant to zeroBasic — the RATE decides.
+    expect((checks.zeroBasic ?? []).map((r) => r.employmentId)).not.toContain(okDaily.employmentId);
+  });
+});
+
+describe('feedback 64fb5e48 — effective-date coverage of the pay period', () => {
+  it('a first salary record effective only AFTER the period blocks as missingCompensation', async () => {
+    const a = adminCtx(b);
+    const future = await hire(a, 'Future Start', '900101020007');
+    await setCompensation(a, { employmentId: future.employmentId, basicSalary: 5200, monthlyAllowance: 0, effectiveFrom: '2026-08-01' });
+
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
+    const checks = await preProcessAdvisory(a, batchId);
+    expect(checks.missingCompensation.map((r) => r.employmentId)).toEqual([future.employmentId]);
+    await expect(generatePayslips(a, { batchId })).rejects.toBeInstanceOf(PreProcessBlockedError);
+  });
+
+  it('a future-dated REVISION does not block: the superseded record still covers the period', async () => {
+    const a = adminCtx(b);
+    const emp = await hire(a, 'Sept Raise', '900101020008');
+    await setCompensation(a, { employmentId: emp.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setCompensation(a, { employmentId: emp.employmentId, basicSalary: 5500, effectiveFrom: '2026-09-01' });
+
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
+    const checks = await preProcessAdvisory(a, batchId);
+    expect(checks.missingCompensation).toHaveLength(0);
+    expect(checks.zeroBasic ?? []).toHaveLength(0);
+  });
+});

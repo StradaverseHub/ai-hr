@@ -12,10 +12,12 @@ import type { PreProcessAdvisory } from '@/core/payroll';
  * selection via the `validatePayrollSelection` server action, which reuses the exact same core check as the
  * batch-page card — so what you see here is what the run will enforce.
  *
- * Blocker rows (no current salary record / no BASIC pay component) turn the panel RED and the parent
- * disables Process. Warning rows (missing statutory profile / incomplete bank) turn it AMBER — Process is
- * still allowed. All-clear is GREEN. Status is reported up via `onStatusChange` so the wizard footer can
- * gate the Process button (and keep it disabled while the check is still loading).
+ * Blocker rows (no salary record covering the period / zero basic-or-rate — feedback 64fb5e48: the
+ * Personnel Basic Salary record is authoritative, a BASIC pay item is never required) turn the panel RED
+ * and the parent disables Process. Warning rows (missing statutory profile / incomplete bank / stale BASIC
+ * pay item) turn it AMBER — Process is still allowed. All-clear is GREEN. Status is reported up via
+ * `onStatusChange` so the wizard footer can gate the Process button (and keep it disabled while the check
+ * is still loading).
  *
  * Type-only import from '@/core/payroll' is erased at compile time (no server code pulled into the client
  * bundle), the same pattern the sibling steps use for their row types.
@@ -47,7 +49,7 @@ export function StepValidation({
       .then((a) => {
         if (!live) return;
         setAdvisory(a);
-        const hasBlockers = a.missingCompensation.length + a.missingBasicComponent.length > 0;
+        const hasBlockers = a.missingCompensation.length + (a.zeroBasic?.length ?? 0) > 0;
         onStatusChange({ loading: false, hasBlockers });
       })
       .catch(() => {
@@ -78,8 +80,9 @@ export function StepValidation({
     );
   }
 
-  const blockers = advisory.missingCompensation.length + advisory.missingBasicComponent.length;
-  const warnings = advisory.missingStatutory.length + advisory.missingBank.length;
+  const blockers = advisory.missingCompensation.length + (advisory.zeroBasic?.length ?? 0);
+  const warnings =
+    advisory.missingStatutory.length + advisory.missingBank.length + (advisory.staleBasicComponent?.length ?? 0);
 
   if (blockers + warnings === 0) {
     return (
@@ -94,9 +97,10 @@ export function StepValidation({
 
   const groups: [keyof PreProcessAdvisory, typeof advisory.missingCompensation, boolean][] = [
     ['missingCompensation', advisory.missingCompensation, true],
-    ['missingBasicComponent', advisory.missingBasicComponent, true],
+    ['zeroBasic', advisory.zeroBasic ?? [], true],
     ['missingStatutory', advisory.missingStatutory, false],
     ['missingBank', advisory.missingBank, false],
+    ['staleBasicComponent', advisory.staleBasicComponent ?? [], false],
   ];
 
   return (

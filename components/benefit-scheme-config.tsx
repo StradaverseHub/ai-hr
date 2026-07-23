@@ -32,6 +32,13 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
  *      (< N1 years, N1–N2 years, ≥ N2 years). Serialised into contiguous ServiceBands (the SAME shape the
  *      engine resolves via bandDaysFor), so the day-counting engine is reused unchanged.
  * The existing Grade config above is untouched.
+ *
+ * Move into the Entitlement step (feedback 6c775d68): the standalone page-bottom section is gone — this
+ * component now renders INSIDE each leave type's Entitlement step (below the per-type table), scoped via
+ * `scopeLeaveTypeId`. Scoped means DISPLAY-scoped only: the per-scheme entitlement table shows just the
+ * selected type's row, while grade-group and scheme CRUD stay full (they are structural) and every write
+ * still goes through the same scheme-wide actions. Combined-limit pools that span other leave types render
+ * with a "shared with <other types>" badge so a shared-cap edit from one type's step never surprises.
  */
 
 type Company = { id: string; name: string };
@@ -106,6 +113,7 @@ export function BenefitSchemeConfig({
   entitlements,
   combinedLimits,
   actions,
+  scopeLeaveTypeId,
 }: {
   companies: Company[];
   grades: Grade[];
@@ -115,6 +123,11 @@ export function BenefitSchemeConfig({
   entitlements: Entitlement[];
   combinedLimits: CombinedLimit[];
   actions: Actions;
+  /** 6c775d68: when set (the Entitlement-step host), the per-scheme entitlement table shows ONLY this leave
+   *  type's row; pools spanning other types keep rendering (header + shared badge) so shared caps stay
+   *  visible/editable. Grade-group + scheme management and all writes remain scheme-wide. Absent = the full
+   *  (unscoped) table. */
+  scopeLeaveTypeId?: string;
 }) {
   const t = useTranslations('admin.benefitScheme');
   const companyName = useMemo(() => new Map(companies.map((c) => [c.id, c.name])), [companies]);
@@ -139,7 +152,21 @@ export function BenefitSchemeConfig({
   }, [schemes, companyName]);
 
   const [selectedSchemeId, setSelectedSchemeId] = useState<string>(schemes[0]?.id ?? '');
-  const selectedEnts = entitlements.filter((e) => e.benefitSchemeId === selectedSchemeId);
+  // The selected scheme's FULL entitlement list — dup guards / counts stay scheme-wide even when scoped.
+  const selectedSchemeEnts = entitlements.filter((e) => e.benefitSchemeId === selectedSchemeId);
+  // 6c775d68: display scope — inside a leave type's Entitlement step only that type's row is listed.
+  const selectedEnts = scopeLeaveTypeId
+    ? selectedSchemeEnts.filter((e) => e.leaveTypeId === scopeLeaveTypeId)
+    : selectedSchemeEnts;
+
+  // 6c775d68: leave-type display names for the "shared with <other types>" badge on combined-limit pools.
+  // leaveTypes covers active types; entitlement rows backfill names for archived pool members.
+  const typeNames = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const lt of leaveTypes) m.set(lt.id, lt.name);
+    for (const e of entitlements) if (e.leaveTypeName != null) m.set(e.leaveTypeId, e.leaveTypeName);
+    return m;
+  }, [leaveTypes, entitlements]);
 
   // Feedback b7d04d7d: per-scheme entitlement count for the row-level delete confirmation. Deleting a
   // scheme CASCADES to its scheme_leave_entitlement rows (FK ON DELETE CASCADE), so the confirm dialog
@@ -400,6 +427,8 @@ export function BenefitSchemeConfig({
               onToggleSort={() => setEntSort((d) => (d === 'asc' ? 'desc' : 'asc'))}
               pools={combinedLimits.filter((cl) => cl.benefitSchemeId === selectedSchemeId)}
               headerTiers={headerTiers}
+              scopeLeaveTypeId={scopeLeaveTypeId ?? null}
+              typeNames={typeNames}
               actions={actions}
               t={t}
             />
@@ -407,7 +436,16 @@ export function BenefitSchemeConfig({
               action={actions.upsertEntitlement}
               schemeId={selectedSchemeId}
               leaveTypes={leaveTypes}
-              existingLeaveTypeIds={selectedEnts.map((e) => e.leaveTypeId)}
+              // Scheme-wide, NOT display-scoped: the dup guard must still catch a leave type whose row is
+              // merely hidden by the 6c775d68 scope filter.
+              existingLeaveTypeIds={selectedSchemeEnts.map((e) => e.leaveTypeId)}
+              // Preselect the step's own type — only when it is an offered (active) option, so an archived
+              // type's panel can't wedge the controlled select on a value with no matching <option>.
+              defaultLeaveTypeId={
+                scopeLeaveTypeId && leaveTypes.some((lt) => lt.id === scopeLeaveTypeId)
+                  ? scopeLeaveTypeId
+                  : undefined
+              }
               t={t}
             />
           </>
@@ -436,6 +474,8 @@ function EntitlementDndTable({
   onToggleSort,
   pools,
   headerTiers,
+  scopeLeaveTypeId,
+  typeNames,
   actions,
   t,
 }: {
@@ -448,6 +488,12 @@ function EntitlementDndTable({
   onToggleSort: () => void;
   pools: CombinedLimit[];
   headerTiers: { n1: number; n2: number };
+  /** 6c775d68: the Entitlement-step display scope — non-null means `ents` was filtered to this leave type.
+   *  Pools then render header-only when their member rows are hidden, and pools spanning OTHER types carry
+   *  the "shared with <names>" badge. */
+  scopeLeaveTypeId: string | null;
+  /** Leave-type id → display name, for the shared-pool badge. */
+  typeNames: Map<string, string>;
   actions: Actions;
   t: ReturnType<typeof useTranslations>;
 }) {
@@ -486,8 +532,14 @@ function EntitlementDndTable({
         out.push(blk);
       }
     }
+    // 6c775d68 scoped view: pools whose member rows are all display-filtered away still render as
+    // header-only blocks — they stay visible ("shared with …" badge), droppable (drag the scoped type's
+    // row in to join an existing shared cap) and dissolvable, exactly like on the full table.
+    if (scopeLeaveTypeId) {
+      for (const p of pools) if (!byPool.has(p.id)) out.push({ pool: p, ents: [] });
+    }
     return out;
-  }, [ents, poolByTypeId]);
+  }, [ents, poolByTypeId, pools, scopeLeaveTypeId]);
 
   const [active, setActive] = useState<Entitlement | null>(null);
   const [pendingGroup, setPendingGroup] = useState<[Entitlement, Entitlement] | null>(null);
@@ -586,6 +638,8 @@ function EntitlementDndTable({
                     hasPools={hasPools}
                     activeEnt={active}
                     activePoolId={activePoolId}
+                    scopeLeaveTypeId={scopeLeaveTypeId}
+                    typeNames={typeNames}
                     actions={actions}
                     t={t}
                   />
@@ -632,6 +686,8 @@ function GroupBlock({
   hasPools,
   activeEnt,
   activePoolId,
+  scopeLeaveTypeId,
+  typeNames,
   actions,
   t,
 }: {
@@ -642,11 +698,19 @@ function GroupBlock({
   hasPools: boolean;
   activeEnt: Entitlement | null;
   activePoolId: string | null;
+  /** 6c775d68: non-null inside a leave type's Entitlement step — drives the "shared with" badge. */
+  scopeLeaveTypeId: string | null;
+  typeNames: Map<string, string>;
   actions: Actions;
   t: ReturnType<typeof useTranslations>;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `pool:${pool.id}` });
   const validTarget = !!activeEnt && activePoolId !== pool.id;
+  // 6c775d68: in the scoped (per-type Entitlement step) view, a pool spanning OTHER leave types says so —
+  // editing its shared cap from here correctly affects every listed type, so nobody is surprised.
+  const sharedNames = scopeLeaveTypeId
+    ? pool.leaveTypeIds.filter((id) => id !== scopeLeaveTypeId).map((id) => typeNames.get(id) ?? '—')
+    : [];
   return (
     <>
       <tr
@@ -657,21 +721,26 @@ function GroupBlock({
       >
         <td colSpan={colCount} className="px-3 py-1.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <form action={actions.updateCombinedLimit} className="flex items-center gap-1.5">
-              <input type="hidden" name="id" value={pool.id} />
-              <input type="hidden" name="totalLimitDays" value={String(pool.totalLimitDays)} />
-              {pool.leaveTypeIds.map((id) => (
-                <input key={id} type="hidden" name="leaveTypeIds" value={id} />
-              ))}
-              <input
-                name="name"
-                required
-                defaultValue={pool.name}
-                aria-label={t('renameGroup')}
-                className={`${inputCls} h-7 w-56 text-xs font-medium`}
-              />
-              <Button type="submit" variant="ghost" size="sm">{t('save')}</Button>
-            </form>
+            <div className="flex flex-wrap items-center gap-2">
+              <form action={actions.updateCombinedLimit} className="flex items-center gap-1.5">
+                <input type="hidden" name="id" value={pool.id} />
+                <input type="hidden" name="totalLimitDays" value={String(pool.totalLimitDays)} />
+                {pool.leaveTypeIds.map((id) => (
+                  <input key={id} type="hidden" name="leaveTypeIds" value={id} />
+                ))}
+                <input
+                  name="name"
+                  required
+                  defaultValue={pool.name}
+                  aria-label={t('renameGroup')}
+                  className={`${inputCls} h-7 w-56 text-xs font-medium`}
+                />
+                <Button type="submit" variant="ghost" size="sm">{t('save')}</Button>
+              </form>
+              {sharedNames.length > 0 && (
+                <Badge variant="warning">{t('sharedWithTypes', { names: sharedNames.join(', ') })}</Badge>
+              )}
+            </div>
             <form action={actions.deleteCombinedLimit}>
               <input type="hidden" name="id" value={pool.id} />
               <ConfirmSubmit
@@ -1276,6 +1345,7 @@ function EntitlementForm({
   leaveTypes,
   existingLeaveTypeIds,
   entitlement = null,
+  defaultLeaveTypeId,
   t,
 }: {
   action: (fd: FormData) => void | Promise<void>;
@@ -1285,6 +1355,9 @@ function EntitlementForm({
   /** R47 edb0309d: when set, the form EDITS this row — leave type locked, day values pre-filled from its
    *  stored serviceBands (including legacy non-2/5 cutoffs, which are preserved on save). */
   entitlement?: Entitlement | null;
+  /** 6c775d68: ADD-mode preselection — the scoped Entitlement step seeds its own leave type (still
+   *  changeable; the dup guard fires as usual if the scheme already configures it). */
+  defaultLeaveTypeId?: string;
   t: ReturnType<typeof useTranslations>;
 }) {
   // Fixed three-band day entry (R44 6421c888): service bands are hardcoded at 0–2 / 2–5 / 5+ years — HR
@@ -1293,7 +1366,7 @@ function EntitlementForm({
   // cutoffs keep their own values + calculate correctly (read-side table derives each row's own labels).
   // In EDIT mode the row's OWN cutoffs (tiersFromBands) seed both the values and the band shape written back.
   const editTiers = entitlement ? tiersFromBands(entitlement.serviceBands) : null;
-  const [leaveTypeId, setLeaveTypeId] = useState(entitlement?.leaveTypeId ?? '');
+  const [leaveTypeId, setLeaveTypeId] = useState(entitlement?.leaveTypeId ?? defaultLeaveTypeId ?? '');
   const [d0, setD0] = useState(editTiers?.d0 ?? '');
   const [d1, setD1] = useState(editTiers?.d1 ?? '');
   const [d2, setD2] = useState(editTiers?.d2 ?? '');

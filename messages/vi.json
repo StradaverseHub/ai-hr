@@ -324,7 +324,7 @@
       "salaryRemarksPlaceholder": "vd. tăng lương hàng năm",
       "employeeIdLabel": "Mã nhân viên",
       "employeeIdPlaceholder": "vd. EMP-0001",
-      "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 9 ký tự."
+      "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 30 ký tự."
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -704,6 +704,12 @@
         "groupService": "Thâm niên tập đoàn",
         "currentCompanyService": "Thâm niên công ty hiện tại",
         "serviceLength": "{years} Năm {months} Tháng",
+        "yearOfService": "Thâm niên công tác",
+        "yearsUnit": "{count} Năm",
+        "monthsUnit": "{count} Tháng",
+        "daysUnit": "{count} Ngày",
+        "notAvailable": "Chưa có dữ liệu",
+        "yearOfServiceTooltip": "Ngày gia nhập tập đoàn: {groupJoinDate} · Thâm niên tính đến: {asOf}",
         "confirmationDate": "Ngày xác nhận",
         "resignationDate": "Ngày từ chức",
         "probationPeriod": "Thời gian thử việc",
@@ -851,6 +857,7 @@
       "salaryNoResults": "Không có bản ghi lương nào khớp với tìm kiếm của bạn.",
       "employeeIdLabel": "Mã nhân viên",
       "employeeIdPlaceholder": "vd. EMP-0001",
+      "salutation": "Danh xưng",
       "fullNameIc": "Họ và tên (theo CMND/hộ chiếu)",
       "firstName": "Tên",
       "lastName": "Họ",
@@ -2599,7 +2606,8 @@
       "preChecksWarningBadge": "Cảnh báo",
       "preChecks": {
         "missingCompensation": "Không có hồ sơ lương hiện tại",
-        "missingBasicComponent": "Không có thành phần lương cơ bản",
+        "zeroBasic": "Lương cơ bản hoặc mức lương bằng không",
+        "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ pháp định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ"
       },
@@ -3137,7 +3145,8 @@
       "validationWarningBadge": "Cảnh báo",
       "validationCheck": {
         "missingCompensation": "Không có bản ghi lương hiện tại",
-        "missingBasicComponent": "Không có thành phần lương cơ bản",
+        "zeroBasic": "Lương cơ bản hoặc mức lương bằng không",
+        "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ theo luật định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ"
       }
@@ -3490,6 +3499,8 @@
       "pageTitle": "Cấu hình nghỉ phép",
       "pageDescription": "Các loại nghỉ phép và chính sách hưởng phép của chúng",
       "typesSectionTitle": "Cài đặt loại nghỉ phép",
+      "workspaceTypeListLabel": "Loại nghỉ phép",
+      "workspaceStepsLabel": "Các bước cấu hình",
       "noLeaveTypes": "Không có loại nghỉ phép.",
       "codeLabel": "Mã",
       "codeHint": "Chữ cái, chữ số hoặc gạch dưới — lưu dạng chữ hoa (ví dụ ANNUAL)",
@@ -3613,6 +3624,9 @@
       "festiveGrantedToast": "Đã cấp cho {count} trong số {targeted} nhân viên.",
       "festiveRecentTitle": "Cấp gần đây",
       "festiveRecentEmpty": "Chưa có lần cấp một lần nào.",
+      "festiveRecentEmptyForType": "Chưa có lần cấp một lần nào cho loại nghỉ phép này.",
+      "festiveShowAllTypes": "Hiển thị tất cả loại nghỉ phép",
+      "festiveShowTypeOnly": "Chỉ hiển thị loại nghỉ phép này",
       "festiveRecentSummary": "{days} ngày {type} · {scope} · {count} nhân viên · {date}",
       "archiveGradeConfirmTitle": "Lưu trữ bậc này?",
       "archiveGradeConfirmDescription": "Nó sẽ bị ẩn khỏi danh mục. Nhân viên và chính sách đang dùng vẫn giữ tham chiếu.",
@@ -3746,10 +3760,10 @@
       "encashmentSave": "Lưu",
       "encashmentEligibleTypesFixed": "Loại phép đủ điều kiện: Chỉ Phép năm.",
       "encashmentRoundingFixed": "Làm tròn: dưới 0,5 ngày làm tròn xuống 0; từ 0,5 ngày trở lên làm tròn lên ngày tiếp theo. Con số này không bao giờ thấp hơn 0.",
-      "importTitle": "Nhập dữ liệu nghỉ phép",
-      "importHelp": "Nhập hàng loạt số dư đầu kỳ, chuyển tiếp, nghỉ phép lịch sử và tín dụng đặc biệt từ CSV đã dán. Số dư được cập nhật ngay lập tức.",
-      "importLink": "Mở công cụ nhập",
-      "importAction": "Nhập",
+      "importAction": "+ Nhập",
+      "runAccrualAction": "Chạy tích lũy",
+      "previewScenarioAction": "Xem trước kịch bản",
+      "close": "Đóng",
       "import": {
         "title": "Nhập dữ liệu nghỉ phép",
         "description": "Dán các giao dịch nghỉ phép (số dư đầu kỳ, chuyển tiếp, nghỉ phép lịch sử, tín dụng đặc biệt), xem trước từng dòng, sau đó chỉ nhập các dòng hợp lệ.",
@@ -4548,6 +4562,7 @@
         "state": "Bang",
         "country": "Quốc gia",
         "relationship": "Mối quan hệ",
+        "salutation": "Danh xưng",
         "division": "Ban",
         "branch": "Chi nhánh",
         "region": "Khu vực",
@@ -4738,6 +4753,7 @@
       "perTypeColScheme": "Chương trình phúc lợi",
       "perTypeEmpty": "Chưa cấu hình định mức theo chương trình phúc lợi cho loại nghỉ phép này. Thêm trong mục Chương trình phúc lợi bên dưới.",
       "perTypeSharedPool": "Hạn mức chung \"{name}\": {days} ngày/năm",
+      "sharedWithTypes": "Dùng chung với {names} — chỉnh sửa tại đây ảnh hưởng đến mọi loại nghỉ phép trong nhóm này",
       "perTypeManageNote": "Cùng số liệu trực tiếp với bảng Quyền nghỉ phép của chương trình — chỉnh sửa tại đây sẽ cập nhật cả hai. Hạn mức gộp (dùng chung) được quản lý trong mục Chương trình phúc lợi.",
       "addEntitlement": "Thêm quyền nghỉ phép",
       "threshold1": "Bậc 1 đến (năm)",
@@ -5428,7 +5444,8 @@
     "statusAll": "Tất cả",
     "createNew": "Tạo mã lương mới",
     "sectionBasic": "Thông tin cơ bản",
-    "sectionConfig": "Cấu hình lương",
+    "sectionPaySettings": "Thiết lập tính lương",
+    "sectionConfig": "Cấu hình pháp định chính phủ",
     "createTitle": "Tạo mã lương mới",
     "saveAndNew": "Lưu & Tạo mới",
     "backToList": "Quay lại khoản mục lương",
@@ -5598,7 +5615,7 @@
     "fieldScope": "Phạm vi",
     "fieldScopeHint": "Toàn cục dùng chung một dãy số cho tất cả công ty; theo công ty giữ dãy số riêng cho mỗi công ty.",
     "fieldPrefix": "Tiền tố",
-    "fieldPrefixHint": "Chữ cái, số và dấu gạch ngang. Tiền tố + số chữ số tối đa 9 ký tự.",
+    "fieldPrefixHint": "Chữ cái, số và dấu gạch ngang. Tiền tố + số chữ số + hậu tố cộng lại tối đa 30 ký tự.",
     "fieldStart": "Số bắt đầu",
     "fieldLength": "Số chữ số",
     "fieldIncrement": "Bước tăng",
@@ -5616,7 +5633,7 @@
     "errors": {
       "duplicateActive": "Đã tồn tại một thiết lập Mã nhân viên đang hoạt động cho phạm vi này",
       "prefixCollision": "Một thiết lập đang hoạt động khác đã dùng tiền tố này",
-      "tooLong": "Tiền tố cộng số chữ số tối đa 9 ký tự"
+      "tooLong": "Tiền tố, số chữ số và hậu tố cộng lại tối đa 30 ký tự"
     },
     "colTemplate": "Mẫu",
     "colSuffix": "Hậu tố",
@@ -5631,7 +5648,8 @@
     "fieldSuffixHint": "Văn bản tùy chọn sau số, ví dụ: MY → EMP0001MY. Chữ cái, số và dấu gạch ngang.",
     "fieldLengthHint": "Số 0 đứng đầu: số được đệm đến số chữ số này.",
     "fieldAllowManualOverride": "Cho phép ghi đè Mã nhân viên thủ công",
-    "fieldAllowManualOverrideHint": "Khi bật, HR có thể tự nhập Mã nhân viên (được kiểm tra tính duy nhất) thay vì tạo tự động."
+    "fieldAllowManualOverrideHint": "Khi bật, HR có thể tự nhập Mã nhân viên (được kiểm tra tính duy nhất) thay vì tạo tự động.",
+    "cp39LengthNote": "Lưu ý: Mã nhân viên dài hơn 10 ký tự không vừa với tệp nộp CP39 của LHDN — khi tạo CP39 hệ thống sẽ liệt kê các nhân viên bị ảnh hưởng thay vì cắt bớt mã. Mã dài hơn vẫn dùng được đầy đủ ở mọi nơi khác."
   },
   "payrollPolicy": {
     "title": "Chính sách lương",

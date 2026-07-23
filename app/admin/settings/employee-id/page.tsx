@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
-import { listConfigs, formatEmployeeCode, type ConfigRow } from '@/core/employee-id-config';
+import { listConfigs, formatEmployeeCode, exceedsCp39EmployeeNoLength, type ConfigRow } from '@/core/employee-id-config';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -45,6 +45,15 @@ export default async function EmployeeIdConfigPage({
       <p className="rounded-[1.25rem] border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
         {t('gapNotice')}
       </p>
+
+      {/* Non-blocking CP39 heads-up (feedback de2823cc): long formats stay fully allowed, but the LHDN
+          CP39 file's employee-no field is fixed at 10 chars, so surface a gentle note when any saved
+          template would generate longer IDs. */}
+      {configs.some((c) => exceedsCp39EmployeeNoLength(c.prefix, c.numberLength, c.suffix)) && (
+        <p className="rounded-[1.25rem] border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+          {t('cp39LengthNote')}
+        </p>
+      )}
 
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 pr-4">
@@ -173,7 +182,7 @@ export default async function EmployeeIdConfigPage({
                 name="prefix"
                 defaultValue={editing?.prefix ?? ''}
                 required
-                maxLength={8}
+                maxLength={29}
                 placeholder="EMP"
                 className={`${inputCls} font-mono uppercase`}
               />
@@ -185,7 +194,7 @@ export default async function EmployeeIdConfigPage({
               <input
                 name="suffix"
                 defaultValue={editing?.suffix ?? ''}
-                maxLength={8}
+                maxLength={29}
                 placeholder="MY"
                 className={`${inputCls} font-mono uppercase`}
               />
@@ -199,7 +208,7 @@ export default async function EmployeeIdConfigPage({
 
             <label className="flex flex-col gap-1">
               <span className="text-sm font-medium">{t('fieldLength')}</span>
-              <input name="numberLength" type="number" min={1} max={9} defaultValue={editing?.numberLength ?? 4} className={inputCls} />
+              <input name="numberLength" type="number" min={1} max={15} defaultValue={editing?.numberLength ?? 4} className={inputCls} />
               <span className="text-xs text-muted-foreground">{t('fieldLengthHint')}</span>
             </label>
 
@@ -238,6 +247,11 @@ export default async function EmployeeIdConfigPage({
                 {previewCode(editing?.prefix ?? 'EMP', editing?.startNumber ?? 1, editing?.numberLength ?? 4, editing?.suffix ?? '')}
               </span>
             </p>
+
+            {/* Same non-blocking CP39 note inside the form when the template being edited exceeds 10 chars. */}
+            {editing && exceedsCp39EmployeeNoLength(editing.prefix, editing.numberLength, editing.suffix) && (
+              <p className="sm:col-span-2 text-xs text-muted-foreground">{t('cp39LengthNote')}</p>
+            )}
 
             <div className="sm:col-span-2 flex items-center gap-3">
               <button type="submit" className={btnPrimary}>

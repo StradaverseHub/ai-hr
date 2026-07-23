@@ -695,7 +695,10 @@ export async function runEarnedAccrualAction(
   }
 }
 
-/** ADR-0040 (2D-2): set a company's earned-accrual cycle (calendar vs hire anniversary). */
+/** ADR-0040 (2D-2): set a company's earned-accrual cycle (calendar vs hire anniversary).
+ *  R61 d778d2d3 — the Leave Cycle card RELOCATED from the Entitlements tab to the Application Rules tab,
+ *  so this redirects/revalidates THERE (mirroring the R45 cc816207 leave-year precedent; the page reads
+ *  ?error= for its ErrorBanner). The cycle write itself (core setCompanyLeaveCycle) is untouched. */
 export async function setCompanyLeaveCycleAction(formData: FormData) {
   const s = await getSession();
   try {
@@ -704,9 +707,9 @@ export async function setCompanyLeaveCycleAction(formData: FormData) {
       cycle: String(formData.get('cycle') || 'calendar'),
     });
   } catch (e) {
-    fail(LEAVE, e);
+    fail(APPLICATION_RULES, e);
   }
-  ok(LEAVE);
+  ok(APPLICATION_RULES);
 }
 
 /** Feedback request 31474452: set a company's half-day leave-deduction toggle (checkbox posts "on" or is

@@ -324,7 +324,7 @@
       "salaryRemarksPlaceholder": "例如：年度加薪",
       "employeeIdLabel": "员工编号",
       "employeeIdPlaceholder": "例如 EMP-0001",
-      "employeeIdHint": "字母、数字和连字符；最多 9 个字符。"
+      "employeeIdHint": "字母、数字和连字符；最多 30 个字符。"
     },
     "detail": {
       "backToPeople": "员工",
@@ -704,6 +704,12 @@
         "groupService": "集团服务年资",
         "currentCompanyService": "当前公司服务年资",
         "serviceLength": "{years} 年 {months} 个月",
+        "yearOfService": "服务年资",
+        "yearsUnit": "{count} 年",
+        "monthsUnit": "{count} 个月",
+        "daysUnit": "{count} 天",
+        "notAvailable": "暂无数据",
+        "yearOfServiceTooltip": "集团入职日期：{groupJoinDate} · 服务计算截至：{asOf}",
         "confirmationDate": "确认日期",
         "resignationDate": "离职日期",
         "probationPeriod": "试用期",
@@ -851,6 +857,7 @@
       "salaryNoResults": "没有符合搜索条件的薪资记录。",
       "employeeIdLabel": "员工编号",
       "employeeIdPlaceholder": "例如 EMP-0001",
+      "salutation": "称谓",
       "fullNameIc": "全名（与身份证/护照一致）",
       "firstName": "名字",
       "lastName": "姓氏",
@@ -2599,7 +2606,8 @@
       "preChecksWarningBadge": "警告",
       "preChecks": {
         "missingCompensation": "无当前薪资记录",
-        "missingBasicComponent": "缺少基本薪资项目",
+        "zeroBasic": "基本薪资或薪资率为零",
+        "staleBasicComponent": "BASIC 薪资项目已过时——以人事薪资记录为准",
         "missingStatutory": "无法定资料（EPF/SOCSO/PCB）",
         "missingBank": "银行资料不完整"
       },
@@ -3137,7 +3145,8 @@
       "validationWarningBadge": "警告",
       "validationCheck": {
         "missingCompensation": "无当前薪资记录",
-        "missingBasicComponent": "无基本薪资组成项",
+        "zeroBasic": "基本薪资或薪资率为零",
+        "staleBasicComponent": "BASIC 薪资项目已过时——以人事薪资记录为准",
         "missingStatutory": "无法定档案（EPF/SOCSO/PCB）",
         "missingBank": "银行资料不完整"
       }
@@ -3490,6 +3499,8 @@
       "pageTitle": "休假配置",
       "pageDescription": "休假类型及其应享政策",
       "typesSectionTitle": "休假类型设置",
+      "workspaceTypeListLabel": "休假类型",
+      "workspaceStepsLabel": "配置步骤",
       "noLeaveTypes": "无休假类型。",
       "codeLabel": "代码",
       "codeHint": "字母、数字或下划线 — 以大写存储（例如 ANNUAL）",
@@ -3613,6 +3624,9 @@
       "festiveGrantedToast": "已发放给 {targeted} 名员工中的 {count} 名。",
       "festiveRecentTitle": "近期发放",
       "festiveRecentEmpty": "暂无一次性发放。",
+      "festiveRecentEmptyForType": "该假期类型暂无一次性发放。",
+      "festiveShowAllTypes": "显示所有假期类型",
+      "festiveShowTypeOnly": "仅显示此假期类型",
       "festiveRecentSummary": "{days} 天 {type} · {scope} · {count} 名员工 · {date}",
       "archiveGradeConfirmTitle": "归档此职级？",
       "archiveGradeConfirmDescription": "它将从目录中隐藏。已使用它的员工和政策仍保留引用。",
@@ -3746,10 +3760,10 @@
       "encashmentSave": "保存",
       "encashmentEligibleTypesFixed": "合资格假期：仅限年假。",
       "encashmentRoundingFixed": "四舍五入规则：不足0.5天的部分舍去为0；达到0.5天或以上的部分进位为下一个整天。该数值永远不会低于0。",
-      "importTitle": "导入休假数据",
-      "importHelp": "从粘贴的 CSV 批量导入期初余额、结转、历史休假和临时额度。余额会立即更新。",
-      "importLink": "打开导入工具",
-      "importAction": "导入",
+      "importAction": "+ 导入",
+      "runAccrualAction": "运行累积",
+      "previewScenarioAction": "预览场景",
+      "close": "关闭",
       "import": {
         "title": "导入休假数据",
         "description": "粘贴休假交易（期初余额、结转、历史休假、临时额度），预览每一行，然后仅导入有效的行。",
@@ -4548,6 +4562,7 @@
         "state": "州",
         "country": "国家",
         "relationship": "关系",
+        "salutation": "称谓",
         "division": "事业部",
         "branch": "分行",
         "region": "区域",
@@ -4738,6 +4753,7 @@
       "perTypeColScheme": "福利方案",
       "perTypeEmpty": "此休假类型尚未配置福利方案额度。请在下方的福利方案部分添加。",
       "perTypeSharedPool": "共享上限“{name}”：每年 {days} 天",
+      "sharedWithTypes": "与{names}共享——在此的修改会影响此共享池中的每个休假类型",
       "perTypeManageNote": "与方案的休假额度表实时一致——在此编辑会同时更新两处。合并（共享）上限在福利方案部分管理。",
       "addEntitlement": "添加休假额度",
       "threshold1": "层级1 至（年）",
@@ -5428,7 +5444,8 @@
     "statusAll": "全部",
     "createNew": "新建薪资代码",
     "sectionBasic": "基本信息",
-    "sectionConfig": "薪资配置",
+    "sectionPaySettings": "计薪设置",
+    "sectionConfig": "政府法定配置",
     "createTitle": "新建薪资代码",
     "saveAndNew": "保存并新建",
     "backToList": "返回薪资项目",
@@ -5598,7 +5615,7 @@
     "fieldScope": "范围",
     "fieldScopeHint": "全局在所有公司间共用一个序列；按公司则为每家公司保留独立序列。",
     "fieldPrefix": "前缀",
-    "fieldPrefixHint": "字母、数字和短横线。前缀加位数最多 9 个字符。",
+    "fieldPrefixHint": "字母、数字和短横线。前缀、位数与后缀合计最多 30 个字符。",
     "fieldStart": "起始号码",
     "fieldLength": "位数",
     "fieldIncrement": "递增值",
@@ -5616,7 +5633,7 @@
     "errors": {
       "duplicateActive": "此范围已存在一个启用中的员工编号设置",
       "prefixCollision": "另一个启用中的设置已使用该前缀",
-      "tooLong": "前缀加号码位数最多 9 个字符"
+      "tooLong": "前缀、号码位数与后缀合计最多 30 个字符"
     },
     "colTemplate": "模板",
     "colSuffix": "后缀",
@@ -5631,7 +5648,8 @@
     "fieldSuffixHint": "编号后的可选文本，例如 MY → EMP0001MY。字母、数字和连字符。",
     "fieldLengthHint": "前导零：编号补齐到该位数。",
     "fieldAllowManualOverride": "允许手动覆盖员工编号",
-    "fieldAllowManualOverrideHint": "启用后，HR 可手动输入员工编号（检查唯一性），而非自动生成。"
+    "fieldAllowManualOverrideHint": "启用后，HR 可手动输入员工编号（检查唯一性），而非自动生成。",
+    "cp39LengthNote": "注意：超过 10 个字符的员工编号无法放入 LHDN CP39 申报文件——生成 CP39 时会列出受影响的员工而不是截断编号。较长的编号在系统其他所有位置仍可正常使用。"
   },
   "payrollPolicy": {
     "title": "薪资政策",
