@@ -45,6 +45,15 @@ export type NavNodeDescriptor = {
   children: NavChildDescriptor[];
 };
 
+/**
+ * A STANDALONE (non-collapsible) sidebar row a module pack contributes, added at rung 3 for
+ * Claims — a module whose nav is flat links, not a node: one everyone-visible row in the top
+ * day-to-day group ('main') and one row in the Administration group ('admin'). The `group` tag
+ * names which existing sidebar group renders the row; the row's POSITION within that group stays
+ * the sidebar's concern (like group layout generally — packs contribute rows, not layout).
+ */
+export type NavLinkDescriptor = NavChildDescriptor & { group: 'main' | 'admin' };
+
 /** A pack-owned satellite table declaration (ADR-0080 D5/D11 — documentation, not DDL). */
 export type SatelliteTableDecl = { table: string; note?: string };
 
@@ -71,6 +80,8 @@ export interface ModulePack {
   kind: 'module';
   /** The module's sidebar node, rendered via the registry (ADR-0080 D8; closes ADR-0077 gap #6). */
   nav?: NavNodeDescriptor;
+  /** Standalone sidebar rows for modules whose nav is flat links, not a node (rung 3, claims). */
+  navLinks?: NavLinkDescriptor[];
   /** Tables this pack owns (ADR-0080 D11 criterion 2). */
   satelliteTables?: SatelliteTableDecl[];
   /** Extension points country packs fill (ADR-0080 D8). */

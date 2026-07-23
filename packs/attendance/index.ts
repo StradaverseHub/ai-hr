@@ -30,8 +30,10 @@
  * ratchet until that contract exists; the list only shrinks.
  *
  * - `app/payroll/actions.ts` — `transferAllowancesToBatch`: attendance-derived allowances feed
- *   payroll input. Becomes the `PayrollInputContributor` contract established at the Claims rung
- *   (ladder rung 3) and consumed by the Payroll rung (7).
+ *   payroll input. Its contract HOME now exists: rung 3 established `PayrollInputContributor`
+ *   (packs/contracts.ts) with claims as the first implementor (packs/claims/payroll.ts). This
+ *   attendance path deliberately did NOT migrate at rung 3 (one seam per rung) — it stays
+ *   allowlisted until a later rung registers an attendance contributor, no later than Payroll (7).
  * - `app/approvals/{page,actions}.ts` + `core/approvals-inbox.ts` — the approvals inbox lists and
  *   decides attendance corrections. Cross-module approvals substrate is KERNEL (ADR-0080 open
  *   decision 6); needs an approvals contract, not the pack facade.
