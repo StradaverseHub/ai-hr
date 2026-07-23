@@ -34,17 +34,15 @@ const TICKET_HREFS = [
 
 /**
  * The admin group's FULL flat-row href list, in order. Splicing three rows out of the middle of a
- * long array literal is exactly where an adjacent row gets clipped (the /admin/leave row that
- * follows carries a multi-line comment, 0d147b78), so assert the whole list — a dropped or
- * reordered sibling fails loudly. Rows referenced by const name, not href — the collapsible nodes
- * (SYSTEM_SETTINGS_NODE, REPORTS_NODE) and, since ADR-0080 rung 3, the registry-mounted
- * CLAIMS_CONFIG_ROW (/admin/claims now lives on packs/claims/index.ts) — are asserted separately
- * by position.
+ * long array literal is exactly where an adjacent row gets clipped, so assert the whole list — a
+ * dropped or reordered sibling fails loudly. Rows referenced by const name, not href — the
+ * collapsible nodes (SYSTEM_SETTINGS_NODE, REPORTS_NODE) and, since ADR-0080, the registry-mounted
+ * CLAIMS_CONFIG_ROW (rung 3, /admin/claims → packs/claims) and LEAVE_CONFIG_ROW (rung 6,
+ * /admin/leave → packs/leave) — are asserted separately by position.
  */
 const ADMIN_GROUP_FLAT_HREFS = [
   '/admin/organization',
   '/admin/personnel',
-  '/admin/leave',
   '/payroll',
   '/analytics',
   '/admin/audit',
@@ -97,27 +95,28 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
     expect(hrefs).toEqual([...ADMIN_GROUP_FLAT_HREFS]);
   });
 
-  // ADR-0080 rung 3: the /admin/claims row moved onto the claims pack and mounts by const
-  // reference (CLAIMS_CONFIG_ROW), like the collapsible nodes — so it is asserted by position
-  // here, keeping the anti-clipping guard whole. Row content parity is test/claims-pack.test.ts.
-  it('keeps the claims-config row (CLAIMS_CONFIG_ROW) between /admin/leave and /payroll', () => {
+  // ADR-0080 rung 3 + rung 6: the /admin/claims and /admin/leave rows moved onto their packs and
+  // mount by const reference (CLAIMS_CONFIG_ROW, LEAVE_CONFIG_ROW), like the collapsible nodes — so
+  // they are asserted by position here, keeping the anti-clipping guard whole. Row content parity is
+  // test/claims-pack.test.ts and test/leave-pack.test.ts.
+  it('keeps the config rows in order: LEAVE_CONFIG_ROW → CLAIMS_CONFIG_ROW → /payroll', () => {
     const block = adminGroupBlock();
-    const leave = block.indexOf(`'/admin/leave'`);
+    const leaveRef = block.indexOf('LEAVE_CONFIG_ROW');
     const claimsRef = block.indexOf('CLAIMS_CONFIG_ROW');
     const payroll = block.indexOf(`'/payroll'`);
-    expect(leave, '/admin/leave row exists').toBeGreaterThan(-1);
-    expect(claimsRef, 'CLAIMS_CONFIG_ROW is referenced after /admin/leave').toBeGreaterThan(leave);
+    expect(leaveRef, 'LEAVE_CONFIG_ROW is referenced in the admin group').toBeGreaterThan(-1);
+    expect(claimsRef, 'CLAIMS_CONFIG_ROW is referenced after LEAVE_CONFIG_ROW').toBeGreaterThan(leaveRef);
     expect(payroll, 'CLAIMS_CONFIG_ROW sits before the /payroll row').toBeGreaterThan(claimsRef);
   });
 
-  it('places SYSTEM_SETTINGS_NODE immediately after the /admin/personnel row (before /admin/leave)', () => {
+  it('places SYSTEM_SETTINGS_NODE immediately after the /admin/personnel row (before LEAVE_CONFIG_ROW)', () => {
     const block = adminGroupBlock();
     const personnel = block.indexOf(`'/admin/personnel'`);
     const nodeRef = block.indexOf('SYSTEM_SETTINGS_NODE');
-    const leave = block.indexOf(`'/admin/leave'`);
+    const leaveRef = block.indexOf('LEAVE_CONFIG_ROW');
     expect(personnel, '/admin/personnel row exists').toBeGreaterThan(-1);
     expect(nodeRef, 'SYSTEM_SETTINGS_NODE is referenced in the admin group').toBeGreaterThan(personnel);
-    expect(leave, 'SYSTEM_SETTINGS_NODE sits before the /admin/leave row').toBeGreaterThan(nodeRef);
+    expect(leaveRef, 'SYSTEM_SETTINGS_NODE sits before the LEAVE_CONFIG_ROW row').toBeGreaterThan(nodeRef);
   });
 
   // fdc20776 (flyout redesign) removed per-group open/closed persistence entirely: panels are

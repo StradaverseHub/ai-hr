@@ -21,6 +21,14 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const sidebar = read('components/sidebar.tsx');
+// Since ADR-0080 rung 6 the My Absence / leave-config rows live on the leave PACK
+// (packs/leave/index.ts, LEAVE_NAV_LINKS) and mount into components/sidebar.tsx through the pack
+// registry, so the row-location assertions read the rail's COMBINED sources. The guarantee (row
+// labelled myAbsence at /leave, config row present exactly once, /me tab removed + forwarded) is
+// unchanged; only where the row's source text lives moved. Row content parity is
+// test/leave-pack.test.ts.
+const leavePack = read('packs/leave/index.ts');
+const SRC = sidebar + leavePack;
 const permissions = read('lib/permissions.ts');
 const leavePage = read('app/leave/page.tsx');
 const mePage = read('app/me/page.tsx');
@@ -28,11 +36,17 @@ const meActions = read('app/me/actions.ts');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 describe('My Absence: first-level nav rename (label-only, same href)', () => {
-  it("sidebar row is labelKey 'myAbsence' with href '/leave' unchanged", () => {
-    expect(sidebar.includes("{ href: '/leave', labelKey: 'myAbsence', icon: CalendarDays }")).toBe(true);
-    // The old top-level 'leave' labelKey is gone (leaveConfig — the ADMIN config row — is unaffected).
-    expect(countQuoted(sidebar, 'leave')).toBe(0);
-    expect(countQuoted(sidebar, 'leaveConfig')).toBe(1);
+  it("nav row is labelKey 'myAbsence' with href '/leave' unchanged (now on the leave pack)", () => {
+    // The row literal moved verbatim onto the pack's LEAVE_NAV_LINKS (with its group tag).
+    expect(
+      leavePack.includes("{ group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays }"),
+    ).toBe(true);
+    // The old top-level `labelKey: 'leave'` is gone (renamed to myAbsence; leaveConfig — the ADMIN
+    // config row — is unaffected). Asserted on the labelKey form directly: since rung 6 the sidebar's
+    // only bare `'leave'` token is the `modulePackById('leave')` registry lookup, not a nav labelKey.
+    expect(sidebar.includes("labelKey: 'leave'")).toBe(false);
+    // leaveConfig appears exactly once across the rail's combined sources (moved, not duplicated).
+    expect(countQuoted(SRC, 'leaveConfig')).toBe(1);
   });
 
   it('the Security & Permission matrix column follows the rename (screenKey stays leave)', () => {

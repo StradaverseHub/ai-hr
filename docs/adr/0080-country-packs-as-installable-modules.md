@@ -30,7 +30,26 @@
   not yet exist (see §5 and the 5d note below); 5e (satellite-schema + provisioning convention) is
   captured in D5 and the seed-hook landed in 5c. A midnight-boundary TZ defect surfaced by 5a's
   clean-room was fixed en route (business-day clock is MYT, `lib/hr-date.ts`; login-block SQL/TS mirror
-  now agree) — unrelated to the seam, shipped separately
+  now agree) — unrelated to the seam, shipped separately;
+  **rung 6 — the Leave module retrofit** (second-largest module) landed 2026-07-24: `packs/leave`
+  declaration + service facade over the ten leave implementation modules (`core/leave` + the eight
+  `core/leave-*`/`core/toil` satellites + the `core/benefit-scheme` entitlement-config layer),
+  registry-mounted flat nav (the two rows — My Absence `/leave` in the top group, leave-config
+  `/admin/leave` in Admin — moved verbatim, row-parity oracle in `test/leave-pack.test.ts`, the
+  `sidebar-system-settings-group`/`my-absence-nav` source-guards updated to read the combined
+  sidebar+pack sources), and a 30-file shrink-only ratchet (`test/leave-pack-drift.test.ts`).
+  **`core/holidays.ts` audited as shared SPINE, NOT leave-pack** — the editable holiday system is
+  consumed by attendance + leave + payroll (three modules ⇒ spine, ADR open decision 3; packs
+  contribute only seed calendars via `seedReferenceData`, landed 5c), so its tables stay undeclared
+  (spine) and it is absent from the facade. **The leave↔payroll seam (D9) took NO new contract this
+  rung**: both named effects are computed INLINE in `core/payroll.ts` (not discrete `payroll_input`
+  prefills like claims) — unpaid-leave via direct `leave_request` schema reads in `generatePayslips`
+  (below the ratchet radar), and encashment via `leaverAdvisory`'s import of `core/leave-encashment`
+  (an advisory, never auto-paid; allowlisted as debt) — so per one-seam-per-rung they are the Payroll
+  rung's (7) to restructure; payroll/payslip/leave-impact goldens byte-identical. Two strict D9
+  cross-pack edges were found and captured as debt (no premature contract, no second consumer yet):
+  the attendance pack (`core/attendance.ts`) reads `approvedLeaveDates` + `core/toil`, and the
+  country pack (`localization/my/leave.ts`) reads the `LeaveEligibility` type
 - **Date:** 2026-07-23 (revised same day: generalized from country packs to a two-axis pack system, per
   operator discussion — functional modules become packs too, retrofitted one by one)
 - **Relates to:** ADR-0008 (localization packs — this ADR restores and hardens its seam), ADR-0077 (module
@@ -290,9 +309,12 @@ state — with the fail-closed pack resolution already protecting the money path
 2. **Pack UI code location** — migrate MY screens under `localization/my/ui/` (clean, bigger diff) vs
    leave files in place and only route mounting through descriptors (smaller diff, weaker boundary).
    Recommendation: descriptors first (slice 4), physical migration opportunistically.
-3. **Holiday calendars** — `MY_HOLIDAYS_2026` seeds are pack data; the editable holiday system
-   (ADR-0055/0063/0067) is shared spine. Boundary: packs provide *seed* calendars; tenants own them
-   after provisioning. Confirm during slice 6.
+3. **Holiday calendars** — RESOLVED at rung 6. `MY_HOLIDAYS_2026` seeds are pack data (moved behind
+   `CountryPack.seedReferenceData` at rung 5c); the editable holiday system (ADR-0055/0063/0067) is
+   shared spine. Confirmed: `core/holidays.ts` is consumed by attendance + leave + payroll (three
+   modules), so it is kernel spine — neither leave-pack-owned nor re-exported by the leave facade, and
+   `holiday`/`holiday_group`/`holiday_group_holiday` are spine tables (no declaring pack). Boundary:
+   packs provide *seed* calendars; tenants own them after provisioning.
 4. **i18n ownership** — do pack-specific strings (EPF, PCB, MyKad…) move into pack-owned message
    bundles merged at build time, or stay in the global 6-locale files? Recommendation: stay global until
    a second pack makes the cost real.
