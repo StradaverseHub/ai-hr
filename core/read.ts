@@ -1316,6 +1316,9 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         marital: person.maritalStatus,
         dateOfBirth: person.dateOfBirth,
         // b4682879 — Personnel Profile redesign: personal / contact / structured-address / emergency fields.
+        // 8c284478 — Salutation (catalog-backed, before Full Name on the form); projected here so reports,
+        // correspondence and document templates can consume it as those features grow.
+        salutation: person.salutation,
         firstName: person.firstName,
         lastName: person.lastName,
         preferredName: person.preferredName,

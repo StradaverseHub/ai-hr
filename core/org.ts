@@ -1054,6 +1054,8 @@ export async function setCostAllocation(
  * demographics) — the compliance-sensitive DOB / gender / marital fields stay on setPersonComplianceFields.
  */
 export type PersonProfileFields = {
+  // 8c284478 — Salutation (catalog-backed like religion/race; shown before Full Name on the form).
+  salutation?: string | null;
   firstName?: string | null;
   lastName?: string | null;
   preferredName?: string | null;
@@ -1092,7 +1094,7 @@ export type PersonProfileFields = {
 };
 
 const PROFILE_FIELD_KEYS: (keyof PersonProfileFields)[] = [
-  'firstName', 'lastName', 'preferredName', 'religion', 'race', 'nationality', 'personalEmail',
+  'salutation', 'firstName', 'lastName', 'preferredName', 'religion', 'race', 'nationality', 'personalEmail',
   'addressLine1', 'addressLine2', 'addressLine3', 'postcode', 'city', 'state', 'country',
   // 3a25f5ee — Permanent + Correspondence address fields (audited by NAME only, PDPA — values never logged).
   'permanentAddressLine1', 'permanentAddressLine2', 'permanentAddressLine3', 'permanentPostcode',
@@ -1110,6 +1112,8 @@ const trimOrNull = (v: string | null | undefined): string | null => {
 // 7d309da7 — the profile columns governed by the profile_option catalog, mapped to their category. A save
 // touching any of these validates the NEW value against the tenant's active catalog (legacy value permitted).
 const CATALOG_BACKED_COLUMNS: Partial<Record<keyof PersonProfileFields, ProfileOptionCategory>> = {
+  // 8c284478 — Salutation joins the catalog-governed set (same legacy-value tolerance).
+  salutation: 'salutation',
   religion: 'religion',
   race: 'race',
   nationality: 'nationality',
@@ -1143,6 +1147,7 @@ export async function updatePerson(
         phone: person.phone,
         // Legacy values of the catalog-backed columns — needed so a save that leaves an out-of-catalog
         // value UNCHANGED is permitted (7d309da7 legacy-value tolerance), not rejected.
+        salutation: person.salutation,
         religion: person.religion,
         race: person.race,
         nationality: person.nationality,

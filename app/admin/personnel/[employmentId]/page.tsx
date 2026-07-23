@@ -280,6 +280,8 @@ export default async function EmployeePage({
         state: [],
         country: [],
         relationship: [],
+        // 8c284478 — Salutation catalog (Personal Details, before Full Name).
+        salutation: [],
         // 1001ff61 — org/job catalog categories (non-admin viewers never render these forms).
         division: [],
         branch: [],
@@ -379,6 +381,18 @@ export default async function EmployeePage({
               defaultValue={emp.employeeCode ?? ''}
               placeholder={t('employeeIdPlaceholder')}
               className={inputCls}
+            />
+          </Field>
+          {/* 8c284478 — Salutation BEFORE Full Name (natural data-entry order). Catalog-backed like
+              Religion below: active options from System Labels > Profile Options; an off-catalog stored
+              value renders as a pre-selected legacy extra so a Save never blanks it. Optional (blank ⇒ null). */}
+          <Field label={t('salutation')}>
+            <ProfileOptionSelect
+              name="salutation"
+              value={emp.salutation}
+              options={profileOptions.salutation}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
             />
           </Field>
           <Field label={t('fullNameIc')}>

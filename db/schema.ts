@@ -464,6 +464,10 @@ export const person = pgTable(
     firstName: text('first_name'),
     lastName: text('last_name'),
     preferredName: text('preferred_name'), // known / preferred name
+    // 8c284478 — Salutation (Mr / Dr / Dato' …), shown BEFORE Full Name on the Personal Details card.
+    // Catalog-backed dropdown (profile_option category 'salutation', migration 0300) but stored as free
+    // text with the same legacy-value tolerance as religion/race. Nullable — existing records stay blank.
+    salutation: text('salutation'),
     // PDPA 2010 s.40 sensitive demographics (religion / race). Row-visible to the same readers as the rest
     // of the person row; erasable immediately via core/pdpa.ts (never statutory-locked).
     religion: text('religion'),

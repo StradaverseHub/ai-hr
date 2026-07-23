@@ -31,6 +31,10 @@ export const PROFILE_OPTION_CATEGORIES = [
   'state',
   'country',
   'relationship',
+  // 8c284478 — Salutation (Mr / Dr / Dato' …) on Profile > Personal Details, positioned before Full Name.
+  // Same flat tenant-wide catalog + legacy-value tolerance as religion/race; defaults seeded by migration
+  // 0300 (existing tenants) and seedProfileOptions (new tenants).
+  'salutation',
   // Personnel Organisation Assignment standardisation (1001ff61) — the eight flat organisation/job fields
   // stored as free text on `employment` (org_division / org_branch / org_region / org_line / org_section /
   // org_team / org_base + employment_category) are now backed by the profile_option catalog, giving each a
@@ -80,6 +84,8 @@ export const CATEGORY_PERSON_COLUMN: Partial<Record<ProfileOptionCategory, (keyo
   state: ['state', 'permanentState', 'correspondenceState'],
   country: ['country', 'permanentCountry', 'correspondenceCountry'],
   relationship: ['emergencyContactRelationship'],
+  // 8c284478 — Salutation on the Personal Details card (person.salutation, migration 0300).
+  salutation: ['salutation'],
 };
 
 /**
@@ -148,6 +154,13 @@ const CATEGORY_DEFAULTS: Record<ProfileOptionCategory, string[]> = {
   state: [...MY_STATES],
   country: ['Malaysia', 'Singapore', 'Indonesia', 'Thailand', 'Brunei', 'India', 'Other'],
   relationship: RELATIONSHIP_VALUES,
+  // 8c284478 — standard titles + Malaysian honorifics, all editable/deactivatable afterwards in System
+  // Labels > Profile Options. Kept BYTE-IDENTICAL with the 0300_person_salutation.sql top-up seed (this
+  // category post-dates the 0180 seed, so its seed site is 0300, not 0180).
+  salutation: [
+    'Mr', 'Mrs', 'Ms', 'Mdm', 'Dr', 'Prof', 'Ir', 'Ts', 'Hj', 'Hjh',
+    "Dato'", 'Datin', "Dato' Sri", 'Datuk', 'Tan Sri', 'Puan Sri', 'Tun',
+  ],
   // 1001ff61 — the org/job catalogs ship EMPTY: their values are organisation-specific master data HR
   // curates itself in System Labels, and until they do the dropdowns fall back to free-text tolerance (an
   // empty catalog imposes no constraint — see assertProfileValueAllowed). Keeping these empty also leaves
@@ -164,8 +177,9 @@ const CATEGORY_DEFAULTS: Record<ProfileOptionCategory, string[]> = {
 };
 
 /**
- * The default catalog, kept BYTE-IDENTICAL with the seed block in 0180_profile_option.sql. `value` doubles
- * as the default `label`. `sortOrder` is the index within its category.
+ * The default catalog, kept BYTE-IDENTICAL with the seed block in 0180_profile_option.sql (salutation, a
+ * later addition, is seeded by 0300_person_salutation.sql instead). `value` doubles as the default `label`.
+ * `sortOrder` is the index within its category.
  */
 export const DEFAULT_PROFILE_OPTIONS: { category: ProfileOptionCategory; value: string; sortOrder: number }[] =
   PROFILE_OPTION_CATEGORIES.flatMap((category) =>

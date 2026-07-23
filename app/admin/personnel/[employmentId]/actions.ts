@@ -588,6 +588,8 @@ export async function setPersonAction(formData: FormData) {
       primaryEmail: String(formData.get('primaryEmail') ?? ''),
       phone: (formData.get('phone') as string) || null,
       // b4682879 Personal Details — new independent name parts + PDPA-sensitive demographics.
+      // 8c284478 — Salutation (catalog-backed dropdown before Full Name; blank allowed → null).
+      salutation: orNull(formData.get('salutation')),
       firstName: orNull(formData.get('firstName')),
       lastName: orNull(formData.get('lastName')),
       preferredName: orNull(formData.get('preferredName')),
