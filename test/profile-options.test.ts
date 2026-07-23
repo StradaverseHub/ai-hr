@@ -20,6 +20,7 @@ import {
   type Base,
 } from './harness';
 import { hireEmployee, updatePerson } from '../core/org';
+import { addDependent, DEPENDENT_RELATIONSHIP_CATEGORY, DEPENDENT_RELATIONSHIPS } from '../core/dependents';
 import {
   createProfileOption,
   deleteProfileOption,
@@ -205,6 +206,34 @@ describe('7d309da7 — profile_option catalog', () => {
         country: 'Malaysia', // now inactive
       }),
     ).rejects.toThrow();
+  });
+
+  // ── ea36b7fa — dependentRelationship category (Family tab Relationship dropdown) ──────────────────
+  it('seeds the five built-in dependentRelationship values, and the delete guard covers employee_dependent', async () => {
+    const a = adminCtx(base);
+    await seedProfileOptions(a);
+    // The seed carries the built-ins, values = the lowercase enum (the contract with stored data).
+    const seeded = await listProfileOptions(a, DEPENDENT_RELATIONSHIP_CATEGORY);
+    expect(seeded.map((o) => o.value)).toEqual([...DEPENDENT_RELATIONSHIPS]);
+
+    // A custom option in use by a dependent row cannot be deleted (third guard leg: employee_dependent).
+    const { id: usedId } = await createProfileOption(a, {
+      category: DEPENDENT_RELATIONSHIP_CATEGORY,
+      value: 'Grandparent',
+    });
+    const E = await hire(a, base, 'DepRelUser');
+    await addDependent(a, { personId: E.personId, fullName: 'Nana', relationship: 'Grandparent' });
+    await expect(deleteProfileOption(a, usedId)).rejects.toThrow(ProfileOptionInUseError);
+
+    // An unused custom option deletes fine.
+    const { id: unusedId } = await createProfileOption(a, {
+      category: DEPENDENT_RELATIONSHIP_CATEGORY,
+      value: 'Godparent',
+    });
+    await deleteProfileOption(a, unusedId);
+    expect(
+      (await listProfileOptions(a, DEPENDENT_RELATIONSHIP_CATEGORY)).find((o) => o.id === unusedId),
+    ).toBeUndefined();
   });
 
   // ── seed idempotency ──────────────────────────────────────────────────────
