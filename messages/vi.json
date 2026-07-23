@@ -3752,6 +3752,9 @@
       "encashmentEligibleTypesFixed": "Loại phép đủ điều kiện: Chỉ Phép năm.",
       "encashmentRoundingFixed": "Làm tròn: dưới 0,5 ngày làm tròn xuống 0; từ 0,5 ngày trở lên làm tròn lên ngày tiếp theo. Con số này không bao giờ thấp hơn 0.",
       "importAction": "+ Nhập",
+      "runAccrualAction": "Chạy tích lũy",
+      "previewScenarioAction": "Xem trước kịch bản",
+      "close": "Đóng",
       "import": {
         "title": "Nhập dữ liệu nghỉ phép",
         "description": "Dán các giao dịch nghỉ phép (số dư đầu kỳ, chuyển tiếp, nghỉ phép lịch sử, tín dụng đặc biệt), xem trước từng dòng, sau đó chỉ nhập các dòng hợp lệ.",

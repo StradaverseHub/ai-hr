@@ -9,6 +9,7 @@ import { LeaveYearRuleDialog } from '@/components/leave/leave-year-rule-dialog';
 import { LeaveYearEditDialog } from '@/components/leave/leave-year-edit-dialog';
 import {
   setLeaveHalfDayFullDeductionAction,
+  setCompanyLeaveCycleAction,
   upsertLeaveYearConfigAction,
   setLeaveYearStatusAction,
   saveFutureOpeningRuleAction,
@@ -28,8 +29,13 @@ import {
  * R45 cc816207 — the Leave Year card RELOCATED here from the Entitlements tab. A leave year controls WHEN
  * employees may apply for an upcoming year, not how much entitlement they earn, so HR expects it next to the
  * other application rules. Same fields, buttons, records and behaviour — only its home changed; the leave-year
- * actions now redirect back to THIS route after save/open/delete (app/admin/actions.ts). The earned-accrual
- * card stays under Entitlements (it genuinely belongs with entitlements).
+ * actions now redirect back to THIS route after save/open/delete (app/admin/actions.ts).
+ *
+ * R61 d778d2d3 — the per-company Leave Cycle card (ADR-0040 2D-2: calendar vs hire anniversary) RELOCATED here
+ * from the Entitlements tab, joining the Leave Year card: both are company-level calendar rules, so they belong
+ * together. Same options, same per-company rows, same setCompanyLeaveCycleAction — only the rendering moved
+ * (the action now redirects back to THIS route, mirroring the R45 leave-year precedent). The earned-accrual
+ * tool stays under Entitlements as a header "Run Accrual" dialog button.
  */
 export default async function LeaveApplicationRulesPage({
   searchParams,
@@ -259,6 +265,36 @@ export default async function LeaveApplicationRulesPage({
             above now opens its own LeaveYearRuleDialog, pinned to that row's year. One deliberate loss: the
             old dropdown could target a not-yet-configured future year (the save upserted it as draft); HR now
             clicks "Add leave year" first, then sets the rules on the new row. */}
+      </Card>
+
+      {/* ADR-0040 2D-2: per-company earned-accrual cycle (calendar vs hire anniversary). R61 d778d2d3 —
+          relocated here from the Entitlements tab beside the Leave Year card (kindred company-level
+          calendar rules). Rendering only: same rows, same options, same setCompanyLeaveCycleAction. */}
+      <Card>
+        <SectionHeader title={t('leaveCycleTitle')} count={companies.length} />
+        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('leaveCycleHelp')}</p>
+        <ul className="divide-y divide-border">
+          {companies.map((c) => (
+            <li key={c.id} className="px-4 py-3">
+              <form
+                action={setCompanyLeaveCycleAction}
+                className="flex flex-wrap items-center justify-between gap-3"
+              >
+                <input type="hidden" name="companyId" value={c.id} />
+                <span className="min-w-0 truncate text-sm font-medium text-foreground">{c.name}</span>
+                <div className="flex items-center gap-2">
+                  <select name="cycle" defaultValue={c.leaveCycle ?? 'calendar'} className={`${inputCls} w-44`}>
+                    <option value="calendar">{t('cycleCalendar')}</option>
+                    <option value="anniversary">{t('cycleAnniversary')}</option>
+                  </select>
+                  <Button type="submit" variant="outline" size="sm">
+                    {t('save')}
+                  </Button>
+                </div>
+              </form>
+            </li>
+          ))}
+        </ul>
       </Card>
 
       {/* Feedback request 31474452: per-company half-day leave-deduction toggle. */}
