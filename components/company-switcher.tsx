@@ -27,18 +27,23 @@ export function CompanySwitcher({
         : t('companyCount', { count: selSet.size });
 
   return (
-    <div className="relative">
+    // min-w-0 is load-bearing (overlap guard d9b81f8d): this div is a flex item of the topbar's
+    // right cluster. Without it the item's automatic min-width:auto floor holds the full label
+    // width, and when the right grid track is narrower than the cluster, justify-end spills the
+    // excess LEFTWARD over the centre search box. With min-w-0 + max-w-full on the trigger the
+    // label truncates (ellipsis) instead — the company name shortens before anything can collide.
+    <div className="relative min-w-0">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
+        className="flex min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
       >
-        <span className="size-2 rounded-full bg-primary" />
-        <span className="max-w-[14rem] truncate">{label}</span>
+        <span className="size-2 shrink-0 rounded-full bg-primary" />
+        <span className="min-w-0 max-w-[14rem] truncate">{label}</span>
         <ChevronDown
           className={cn(
-            'size-4 text-muted-foreground transition-transform duration-200 ease-snappy',
+            'size-4 shrink-0 text-muted-foreground transition-transform duration-200 ease-snappy',
             open && 'rotate-180',
           )}
         />
