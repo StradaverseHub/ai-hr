@@ -1110,6 +1110,7 @@
     "balancesTitle": "余额",
     "myBalancesTitle": "我的余额",
     "balancesSubtitle": "可用 / 应享",
+    "balancesToggle": "显示或隐藏休假余额详情",
     "colEmployee": "员工",
     "balanceCellTitle": "{taken, plural, one {# 已用} other {# 已用}} · {pending, plural, one {# 待批准} other {# 待批准}}",
     "pendBadge": "{count} 待审",
@@ -6839,6 +6840,7 @@
     "empty": "尚无仪表板卡片。创建一个以在员工仪表板上提供。",
     "colName": "卡片",
     "colType": "类型",
+    "colAudience": "适用角色",
     "colStatus": "状态",
     "colSelectable": "可选择",
     "colDefault": "默认",
@@ -6850,6 +6852,11 @@
       "information": "信息",
       "action": "操作",
       "shortcut": "快捷方式"
+    },
+    "audience": {
+      "employee": "员工",
+      "manager": "经理",
+      "hr_admin": "HR 管理员"
     },
     "status": {
       "active": "启用",
@@ -6872,6 +6879,8 @@
     "fieldOrder": "显示顺序",
     "fieldHref": "链接（可选）",
     "fieldHrefHint": "点击卡片时跳转到的位置（用于操作/快捷方式卡片）。",
+    "fieldAudience": "显示在哪些仪表板",
+    "fieldAudienceHint": "哪些角色的仪表板提供此卡片（员工、经理、HR 管理员）。未勾选任何角色时默认为员工。",
     "fieldSelectable": "员工在自定义时可添加",
     "fieldDefault": "在员工仪表板上默认显示",
     "fieldMandatory": "必需——员工无法移除",

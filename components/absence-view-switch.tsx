@@ -2,6 +2,12 @@
 
 import { useTranslations } from 'next-intl';
 import { User, Users } from 'lucide-react';
+import {
+  SEGMENTED_BTN,
+  SEGMENTED_BTN_ACTIVE,
+  SEGMENTED_BTN_INACTIVE,
+  SEGMENTED_GROUP,
+} from '@/lib/segmented-control';
 
 /**
  * My/Team segmented switch for the dashboard Leave Calendar (item 8c739dda). "my" shows the viewer's own
@@ -11,6 +17,9 @@ import { User, Users } from 'lucide-react';
  * team-scoped), so toggling is a pure in-memory filter owned by PlannedAbsencesPanel — zero network,
  * no server round-trip. The panel's onChange also syncs the `view` search param via
  * history.replaceState so bookmarks and the back button keep working.
+ *
+ * ed76f6b0: classes come from the shared segmented-control family so this switch, the Week/Month
+ * switch, and the date navigation stay one visual unit (same h-7 height, rounding, hover feel).
  */
 export function AbsenceViewSwitch({
   view,
@@ -25,23 +34,14 @@ export function AbsenceViewSwitch({
     if (next !== view) onChange(next);
   };
 
-  const base =
-    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors';
-  const active = 'bg-card text-foreground shadow-sm';
-  const inactive = 'text-muted-foreground hover:text-foreground';
-
   return (
-    <div
-      role="tablist"
-      aria-label={t('viewSwitchLabel')}
-      className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted/50 p-0.5"
-    >
+    <div role="tablist" aria-label={t('viewSwitchLabel')} className={SEGMENTED_GROUP}>
       <button
         type="button"
         role="tab"
         aria-selected={view === 'my'}
         onClick={() => go('my')}
-        className={`${base} ${view === 'my' ? active : inactive}`}
+        className={`${SEGMENTED_BTN} ${view === 'my' ? SEGMENTED_BTN_ACTIVE : SEGMENTED_BTN_INACTIVE}`}
       >
         <User className="size-3.5" />
         {t('viewMy')}
@@ -51,7 +51,7 @@ export function AbsenceViewSwitch({
         role="tab"
         aria-selected={view === 'team'}
         onClick={() => go('team')}
-        className={`${base} ${view === 'team' ? active : inactive}`}
+        className={`${SEGMENTED_BTN} ${view === 'team' ? SEGMENTED_BTN_ACTIVE : SEGMENTED_BTN_INACTIVE}`}
       >
         <Users className="size-3.5" />
         {t('viewTeam')}

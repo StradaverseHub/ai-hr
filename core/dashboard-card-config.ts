@@ -28,6 +28,27 @@ export type DashboardCardType = (typeof DASHBOARD_CARD_TYPES)[number];
 export const DASHBOARD_CARD_STATUSES = ['active', 'inactive'] as const;
 export type DashboardCardStatus = (typeof DASHBOARD_CARD_STATUSES)[number];
 
+/**
+ * The dashboard roles a card can target (feedback 9606c59f) — mirrors lib/dashboard-cards
+ * resolveDashboardRole. `audience` on a card = which role dashboards offer/show it.
+ */
+export const DASHBOARD_CARD_AUDIENCES = ['employee', 'manager', 'hr_admin'] as const;
+export type DashboardCardAudience = (typeof DASHBOARD_CARD_AUDIENCES)[number];
+
+/**
+ * Normalize an audience list: keep only known roles, de-dupe, and return them in canonical order. An
+ * empty/absent/garbage value falls back to `fallback` (default: the employee dashboard, matching the
+ * column default) — a card must always be visible to at least one role.
+ */
+function normalizeAudience(
+  v: readonly string[] | undefined | null,
+  fallback: readonly DashboardCardAudience[] = ['employee'],
+): DashboardCardAudience[] {
+  const given = new Set(Array.isArray(v) ? v : []);
+  const out = DASHBOARD_CARD_AUDIENCES.filter((r) => given.has(r));
+  return out.length > 0 ? out : [...fallback];
+}
+
 /** Stable card_key shape: letters, digits and underscores (camelCase renderer ids like 'leaveBalance'). */
 export const DASHBOARD_CARD_KEY_RE = /^[A-Za-z0-9_]+$/;
 
@@ -109,6 +130,7 @@ export async function createCard(
     mandatory?: boolean;
     displayOrder?: number;
     href?: string | null;
+    audience?: string[];
   },
 ): Promise<{ id: string }> {
   const cardKey = cleanCardKey(p.cardKey);
@@ -122,6 +144,7 @@ export async function createCard(
   const displayOrder = cleanOrder(p.displayOrder, 0);
   const description = cleanOptText(p.description);
   const href = cleanOptText(p.href);
+  const audience = normalizeAudience(p.audience);
 
   return withTenant(ctx, async (tx) => {
     await assertKeyUnique(tx, ctx.tenantId, cardKey);
@@ -141,6 +164,7 @@ export async function createCard(
           mandatory,
           displayOrder,
           href,
+          audience,
         })
         .returning({ id: dashboardCardConfig.id });
       id = row.id;
@@ -154,7 +178,7 @@ export async function createCard(
       aggregateId: id,
       eventType: 'dashboard-card-config.created',
       actor: actorOf(ctx),
-      payload: { cardKey, name, cardType, status, employeeSelectable, defaultDisplay, mandatory, displayOrder, href },
+      payload: { cardKey, name, cardType, status, employeeSelectable, defaultDisplay, mandatory, displayOrder, href, audience },
     });
     return { id };
   });
@@ -174,6 +198,7 @@ export async function updateCard(
     mandatory?: boolean;
     displayOrder?: number;
     href?: string | null;
+    audience?: string[];
   },
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
@@ -191,12 +216,15 @@ export async function updateCard(
     const displayOrder = p.displayOrder !== undefined ? cleanOrder(p.displayOrder, before.displayOrder) : before.displayOrder;
     const description = p.description !== undefined ? cleanOptText(p.description) : before.description;
     const href = p.href !== undefined ? cleanOptText(p.href) : before.href;
+    // Undefined = leave as-is; a provided (possibly all-unchecked) list normalises with the employee fallback.
+    const audience =
+      p.audience !== undefined ? normalizeAudience(p.audience) : normalizeAudience(before.audience);
 
     if (cardKey !== before.cardKey) await assertKeyUnique(tx, ctx.tenantId, cardKey, p.id);
     try {
       await tx
         .update(dashboardCardConfig)
-        .set({ cardKey, name, description, cardType, status, employeeSelectable, defaultDisplay, mandatory, displayOrder, href, updatedAt: sql`now()` })
+        .set({ cardKey, name, description, cardType, status, employeeSelectable, defaultDisplay, mandatory, displayOrder, href, audience, updatedAt: sql`now()` })
         .where(eq(dashboardCardConfig.id, p.id));
     } catch (e) {
       if (isUniqueViolation(e)) throw new DuplicateCardKeyError();
@@ -219,8 +247,9 @@ export async function updateCard(
           mandatory: before.mandatory,
           displayOrder: before.displayOrder,
           href: before.href,
+          audience: before.audience,
         },
-        after: { cardKey, name, cardType, status, employeeSelectable, defaultDisplay, mandatory, displayOrder, href },
+        after: { cardKey, name, cardType, status, employeeSelectable, defaultDisplay, mandatory, displayOrder, href, audience },
       },
     });
     return { id: p.id };
@@ -273,6 +302,7 @@ export type DashboardCardRow = {
   mandatory: boolean;
   displayOrder: number;
   href: string | null;
+  audience: DashboardCardAudience[];
   updatedAt: Date;
 };
 
@@ -292,6 +322,7 @@ export async function listCards(ctx: SessionContext): Promise<DashboardCardRow[]
         mandatory: dashboardCardConfig.mandatory,
         displayOrder: dashboardCardConfig.displayOrder,
         href: dashboardCardConfig.href,
+        audience: dashboardCardConfig.audience,
         updatedAt: dashboardCardConfig.updatedAt,
       })
       .from(dashboardCardConfig)
@@ -300,6 +331,7 @@ export async function listCards(ctx: SessionContext): Promise<DashboardCardRow[]
       ...r,
       cardType: r.cardType as DashboardCardType,
       status: r.status as DashboardCardStatus,
+      audience: normalizeAudience(r.audience),
     }));
   });
 }
@@ -310,11 +342,12 @@ export async function getCard(ctx: SessionContext, id: string): Promise<Dashboar
 }
 
 /**
- * The ACTIVE dashboard cards the employee customizer (feedback 578a2fcf) renders against: the flattened,
- * HR-configured catalog an employee may show / add / reorder. Read-only projection of listCards filtered
- * to status='active'. When a tenant has NO rows yet (provisioned after the 1586d2f5 seed migration), the
- * customizer falls back to lib/dashboard-layout BUILTIN_DASHBOARD_CARDS, so the dashboard never renders
- * blank. Read-only → no DomainEvent (substrate skip, per CLAUDE.md "When NOT to append": read operation).
+ * The ACTIVE dashboard cards the dashboard customizer (feedback 578a2fcf, role-widened by 9606c59f)
+ * renders against for ONE role: the flattened, HR-configured catalog that role may show / add / reorder,
+ * i.e. listCards filtered to status='active' AND audience ∋ role. When a tenant has NO rows for the role
+ * (provisioned after the seed migrations), the caller falls back to lib/dashboard-layout
+ * BUILTIN_ROLE_DASHBOARD_CARDS[role], so no dashboard ever renders blank. Read-only → no DomainEvent
+ * (substrate skip, per CLAUDE.md "When NOT to append": read operation).
  */
 export type EmployeeDashboardCard = {
   cardKey: string;
@@ -327,10 +360,13 @@ export type EmployeeDashboardCard = {
   displayOrder: number;
 };
 
-export async function listEmployeeDashboardCards(ctx: SessionContext): Promise<EmployeeDashboardCard[]> {
+export async function listDashboardCards(
+  ctx: SessionContext,
+  role: DashboardCardAudience,
+): Promise<EmployeeDashboardCard[]> {
   const rows = await listCards(ctx);
   return rows
-    .filter((r) => r.status === 'active')
+    .filter((r) => r.status === 'active' && r.audience.includes(role))
     .map((r) => ({
       cardKey: r.cardKey,
       name: r.name,
@@ -341,4 +377,9 @@ export async function listEmployeeDashboardCards(ctx: SessionContext): Promise<E
       mandatory: r.mandatory,
       displayOrder: r.displayOrder,
     }));
+}
+
+/** The employee-role projection — kept as the pre-9606c59f name for existing callers/tests. */
+export async function listEmployeeDashboardCards(ctx: SessionContext): Promise<EmployeeDashboardCard[]> {
+  return listDashboardCards(ctx, 'employee');
 }

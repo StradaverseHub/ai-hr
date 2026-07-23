@@ -159,9 +159,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 <div className="flex min-w-0 items-center justify-center">
                   <CommandBar />
                 </div>
-                <div className="flex min-w-0 items-center justify-end gap-2.5">
+                {/* Right cluster (overlap guard d9b81f8d): min-w-0 lets the 1fr track constrain the
+                    cluster, and every child must stay shrink-capable or fixed-size — the
+                    CompanySwitcher compresses first (min-w-0 + truncate in its component); a
+                    non-shrinkable child re-introduces the leftward spill over the centre search
+                    track that justify-end produces on overflow. Gap tightens and the divider drops
+                    on narrower windows so less-important chrome trims before anything collides. */}
+                <div className="flex min-w-0 items-center justify-end gap-2 xl:gap-2.5">
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
-                  <div className="h-5 w-px bg-border" />
+                  <div className="hidden h-5 w-px shrink-0 bg-border md:block" />
                   {/* 3-tab bell for EVERY role (1514d366). The legacy count-only bell is retired — the
                       Task tab covers its purpose (and works even with NOTIFICATIONS_ENABLED off, where
                       only the notification reads are dark). */}

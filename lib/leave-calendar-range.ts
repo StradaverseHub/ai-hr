@@ -103,3 +103,52 @@ export function reanchorForView({
   const days = Math.round((ms(to) - ms(from)) / MS_DAY) + 1;
   return isoOf(ms(from) + Math.floor((days - 1) / 2) * MS_DAY);
 }
+
+/**
+ * The server-side FETCH window for the dashboard Leave Calendar (feedback ed76f6b0): the page loads
+ * ONE window wide enough that the Week/Month toggle is a purely client-side re-slice — zero network,
+ * no dashboard re-render. It is the union of every window a client-side toggle can reach from the
+ * initial (view, anchor) via the reanchorForView rule:
+ *  - the CURRENT window,
+ *  - its toggle COUNTERPART (the other view resolved from the re-anchored current window),
+ *  - and, whenever either of those contains today, the today-anchored week AND month (a re-anchor
+ *    that lands on today drops the anchor entirely, so every later toggle resolves from today —
+ *    today's week can straddle out of today's month, hence both are unioned in explicitly).
+ * Closure argument: from a month window, a re-anchored week is its midpoint's week (days ~8–22,
+ * always inside the month); from a week window, the counterpart month absorbs every later hop —
+ * so no toggle sequence ever escapes this union without a date NAVIGATION (which round-trips and
+ * re-fetches anyway). Worst case ≈ five weeks of rows: the recorded net win over refetching the
+ * whole dashboard on every toggle.
+ */
+export function resolveCalendarFetchWindow({
+  view,
+  anchorIso,
+  todayIso,
+}: {
+  view: CalendarView;
+  anchorIso?: string | null;
+  todayIso: string;
+}): { from: string; to: string } {
+  const current = resolveCalendarRange({ view, anchorIso, todayIso });
+  const otherView: CalendarView = view === 'week' ? 'month' : 'week';
+  const counterpart = resolveCalendarRange({
+    view: otherView,
+    anchorIso: reanchorForView({
+      fromView: view,
+      toView: otherView,
+      from: current.from,
+      to: current.to,
+      todayIso,
+    }),
+    todayIso,
+  });
+  const windows = [current, counterpart];
+  if (windows.some((w) => w.from <= todayIso && todayIso <= w.to)) {
+    windows.push(resolveCalendarRange({ view: 'week', anchorIso: null, todayIso }));
+    windows.push(resolveCalendarRange({ view: 'month', anchorIso: null, todayIso }));
+  }
+  return {
+    from: windows.reduce((min, w) => (w.from < min ? w.from : min), windows[0].from),
+    to: windows.reduce((max, w) => (w.to > max ? w.to : max), windows[0].to),
+  };
+}

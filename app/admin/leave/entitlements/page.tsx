@@ -287,9 +287,14 @@ export default async function LeaveEntitlementsPage({
             />
           ))}
         </ul>
+        {/* Layout (a9c5870a): three tiers. Mobile stacks (grid-cols-1). sm–lg keeps the six equal columns with
+            Description spanning 3, i.e. the tidy two-row split 750732c3 introduced. From lg an explicit
+            grid-template packs all seven pieces onto ONE row: Code/Name/Status/Leave Unit are flexible minmax
+            columns, Description gets the wide 3fr share, and Paid + Add are content-sized auto columns — so the
+            wider Description no longer spills Leave Unit/Paid/Add onto a half-empty second row. */}
         <form
           action={createLeaveTypeAction}
-          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-6"
+          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-6 lg:[grid-template-columns:minmax(6.5rem,1fr)_minmax(8rem,1fr)_minmax(16rem,3fr)_minmax(7rem,1fr)_minmax(7rem,1fr)_auto_auto]"
         >
           <Field label={t('codeLabel')}>
             <input
@@ -303,17 +308,18 @@ export default async function LeaveEntitlementsPage({
           <Field label={t('nameLabel')}>
             <input name="name" required placeholder={t('namePlaceholder')} className={inputCls} />
           </Field>
-          <Field label={t('descriptionLabel')} className="sm:col-span-3">
+          <Field label={t('descriptionLabel')} className="sm:col-span-3 lg:col-span-1">
             {/* Multiline (fbcadc71): textarea so Enter inserts a newline instead of submitting; h-auto/min-h/resize-y
-                overrides inputCls's fixed h-9 so it shows ~3 lines, grows via the drag handle, and scrolls on overflow.
+                overrides inputCls's fixed h-9 so it shows ~2 lines, grows via the drag handle, and scrolls on overflow.
                 Persistence already stores text with newlines (action only .trim()s the ends).
-                Width (750732c3): the Field spans 3 of the 6 sm+ columns so Description is 3x the other boxes —
-                row 1 = Code + Name + Description(3) + Status; inputCls's w-full lets the textarea fill the wider cell. */}
+                Width (750732c3 → a9c5870a): at sm the Field spans 3 of the 6 columns; from lg it occupies the wide
+                3fr slot of the explicit template (lg:col-span-1 resets the span so it sits in exactly that column).
+                rows={2} + trimmed min-h keep the single lg row visually balanced next to the h-9 fields. */}
             <textarea
               name="description"
-              rows={3}
+              rows={2}
               placeholder={t('descriptionPlaceholder')}
-              className={`${inputCls} h-auto min-h-[4.5rem] resize-y`}
+              className={`${inputCls} h-auto min-h-[3.25rem] resize-y`}
             />
           </Field>
           <Field label={t('statusLabel')}>
@@ -340,10 +346,11 @@ export default async function LeaveEntitlementsPage({
               <input type="checkbox" name="paid" defaultChecked aria-label={t('paidLabel')} className="size-4 rounded" />
             </div>
           </Field>
-          {/* 750732c3: right-anchor the primary action — with Description spanning 3 columns, Leave Unit and Paid
-              open row 2, and sm:col-start-6 pins Add under Status at the row's right edge instead of leaving the
-              rest of the row empty. On mobile (grid-cols-1) col-start has no effect; everything stacks unchanged. */}
-          <button className={`${btnPrimary} sm:col-start-6`}>{t('addType')}</button>
+          {/* 750732c3 → a9c5870a: on the sm two-row split, sm:col-start-6 still pins Add at the right edge of
+              row 2 under Status. From lg the explicit template gives Add its own content-sized column at the end
+              of the single row, so lg:col-start-auto releases the pin and it just flows into place. On mobile
+              (grid-cols-1) col-start has no effect; everything stacks unchanged. */}
+          <button className={`${btnPrimary} sm:col-start-6 lg:col-start-auto`}>{t('addType')}</button>
         </form>
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
           {t.rich('typesHelp', { strong: (chunks) => <span className="font-medium">{chunks}</span> })}

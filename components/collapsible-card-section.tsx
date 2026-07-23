@@ -20,6 +20,7 @@ import type { ReactNode, SyntheticEvent } from 'react';
 export function CollapsibleCardSection({
   title,
   count,
+  subtitle,
   toggleLabel,
   cookieKey,
   defaultOpen,
@@ -29,6 +30,8 @@ export function CollapsibleCardSection({
   title: string;
   /** Optional record count shown beside the title, SectionHeader-style. */
   count?: number;
+  /** Optional pre-translated legend shown after the title/count (e.g. "available / entitled"). */
+  subtitle?: string;
   /** Pre-translated accessible name for the summary toggle. */
   toggleLabel: string;
   /** Cookie persisting the open/closed choice; the server page reads it to set `defaultOpen`. */
@@ -50,6 +53,7 @@ export function CollapsibleCardSection({
         <span>
           {title}
           {count !== undefined && <span className="ml-2 font-normal text-muted-foreground">({count})</span>}
+          {subtitle !== undefined && <span className="ml-2 font-normal text-muted-foreground">{subtitle}</span>}
         </span>
         <span aria-hidden className="text-xs text-muted-foreground group-open:rotate-180">
           ▾

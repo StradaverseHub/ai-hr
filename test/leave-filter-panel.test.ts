@@ -57,9 +57,10 @@ describe('leave filter panel: /leave admin surface', () => {
   });
 
   it('gates the search/filter/export UI behind the admin check', () => {
-    // The FilterPanel/search bar/export render only under `admin` (isAdmin(session)).
+    // The FilterPanel/search bar/export render only under `admin` (isAdmin(session)). 56a0deb9 split the
+    // shared table into role branches, so the gate is now the `{admin && (` guard (was an admin ? ( ternary).
     expect(src.includes('isAdmin(session)')).toBe(true);
-    expect(src).toMatch(/admin \? \(/);
+    expect(src).toMatch(/\{admin && \(/);
     // The paginated read is used for admins; the non-admin path keeps listLeaveRequests.
     expect(src.includes('listLeaveRequestsPage')).toBe(true);
     expect(src.includes('listLeaveRequests(session, scopeIds)')).toBe(true);

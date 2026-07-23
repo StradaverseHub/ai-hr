@@ -178,6 +178,17 @@ export const RENDERED_CARD_KEYS = [
   'recentlyJoined',
   'upcomingEvents',
   'recentActivity',
+  // 9606c59f — the card-wrapped manager/admin dashboard sections.
+  'teamAwayToday',
+  'approvalRequests',
+  'upcomingReminders',
+  'headcount',
+  'pendingLeave',
+  'companies',
+  'latestPayroll',
+  'attendanceOverview',
+  'headcountByCompany',
+  'latestPayrollRun',
 ] as const;
 export type RenderedCardKey = (typeof RENDERED_CARD_KEYS)[number];
 const RENDERED = new Set<string>(RENDERED_CARD_KEYS);
@@ -276,3 +287,133 @@ export function normalizeDashboardLayout(raw: unknown, cards: readonly Dashboard
   const selected = order.filter((k) => selectedSet.has(k));
   return { selected, order };
 }
+
+// ───────────────────────── Role-aware customization (feedback 9606c59f) ─────────────────────────
+//
+// Managers and HR Admins get the SAME Customize Dashboard experience employees have. Two pure additions:
+//
+//  1. A per-ROLE built-in fallback catalog (`BUILTIN_ROLE_DASHBOARD_CARDS`): the manager/admin dashboard
+//     sections card-wrapped, used when a tenant has no dashboard_card_config rows for the role — the same
+//     never-render-blank guarantee employees have. `BUILTIN_DASHBOARD_CARDS` above deliberately STAYS the
+//     employee set (its long-standing meaning; existing callers and saved layouts are untouched).
+//
+//  2. A per-ROLE stored layout shape: `app_user.dashboard_layout` evolves from one flat
+//     `{ selected, order }` to `{ employee?: {…}, manager?: {…}, hr_admin?: {…} }` so a person who wears
+//     two hats keeps a sensible dashboard in both. Back-compat: a LEGACY flat value (array or
+//     `{ selected/order }` object) reads as the EMPLOYEE slot — existing saved employee layouts keep
+//     working exactly as they are, and other roles read as "nothing saved" (the role default).
+//     `extract/merge/removeRoleLayout` below are the ONLY readers/writers of that envelope; the slot value
+//     itself still flows through `normalizeDashboardLayout` on every read AND write.
+
+/** The dashboard roles a layout can be saved under — mirrors lib/dashboard-cards resolveDashboardRole. */
+export const DASHBOARD_LAYOUT_ROLES = ['employee', 'manager', 'hr_admin'] as const;
+export type DashboardLayoutRole = (typeof DASHBOARD_LAYOUT_ROLES)[number];
+
+/** Is `raw` a LEGACY flat single-layout value (pre-9606c59f): an order array or `{ selected/order }`? */
+function isLegacyFlatLayout(raw: unknown): boolean {
+  if (Array.isArray(raw)) return true;
+  return (
+    !!raw &&
+    typeof raw === 'object' &&
+    (Array.isArray((raw as { selected?: unknown }).selected) || Array.isArray((raw as { order?: unknown }).order))
+  );
+}
+
+/**
+ * Pull one role's saved layout out of the stored `dashboard_layout` value. A legacy flat value is the
+ * employee's layout (and null for every other role); a role-keyed envelope yields its slot; anything else
+ * (null / scalar / unknown object) yields null = "nothing saved" → the caller normalises to the role default.
+ * The returned slot is RAW — callers must still pass it through `normalizeDashboardLayout`.
+ */
+export function extractRoleLayout(raw: unknown, role: DashboardLayoutRole): unknown {
+  if (raw == null) return null;
+  if (isLegacyFlatLayout(raw)) return role === 'employee' ? raw : null;
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    return (raw as Record<string, unknown>)[role] ?? null;
+  }
+  return null;
+}
+
+/**
+ * Merge one role's (already-normalised) layout into the stored value, preserving every OTHER role's saved
+ * slot untouched. A legacy flat value migrates in place: it becomes the employee slot of the envelope.
+ */
+export function mergeRoleLayout(
+  raw: unknown,
+  role: DashboardLayoutRole,
+  layout: DashboardLayout,
+): Partial<Record<DashboardLayoutRole, unknown>> {
+  const out: Partial<Record<DashboardLayoutRole, unknown>> = {};
+  for (const r of DASHBOARD_LAYOUT_ROLES) {
+    const slot = extractRoleLayout(raw, r);
+    if (slot != null) out[r] = slot;
+  }
+  out[role] = layout;
+  return out;
+}
+
+/**
+ * Drop one role's slot from the stored value (that role's "Reset to Default"), preserving the other roles'
+ * saved slots. Returns null when nothing remains — the caller stores NULL, exactly the pre-9606c59f reset.
+ */
+export function removeRoleLayout(
+  raw: unknown,
+  role: DashboardLayoutRole,
+): Partial<Record<DashboardLayoutRole, unknown>> | null {
+  const out: Partial<Record<DashboardLayoutRole, unknown>> = {};
+  for (const r of DASHBOARD_LAYOUT_ROLES) {
+    if (r === role) continue;
+    const slot = extractRoleLayout(raw, r);
+    if (slot != null) out[r] = slot;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+const builtinCard = (key: string): BuiltinDashboardCard => BUILTIN_DASHBOARD_CARDS.find((c) => c.cardKey === key)!;
+
+/** The card-wrapped manager dashboard sections (9606c59f) — mirrors the 0299 seed. */
+const BUILTIN_MANAGER_CARDS: BuiltinDashboardCard[] = [
+  { cardKey: 'teamAwayToday', name: 'Team Away Today', cardType: 'information', href: '#planned-absences', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 1 },
+  { cardKey: 'approvalRequests', name: 'Approval Requests', cardType: 'action', href: '/approvals', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 2 },
+  { cardKey: 'upcomingReminders', name: 'Upcoming Reminders', cardType: 'information', href: '#upcoming-events', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 3 },
+];
+
+/** The card-wrapped HR-admin dashboard sections (9606c59f) — mirrors the 0299 seed. */
+const BUILTIN_HR_ADMIN_CARDS: BuiltinDashboardCard[] = [
+  { cardKey: 'headcount', name: 'Headcount', cardType: 'information', href: '/personnel', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 1 },
+  { cardKey: 'pendingLeave', name: 'Pending Leave', cardType: 'information', href: '/leave', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 2 },
+  { cardKey: 'companies', name: 'Companies', cardType: 'information', href: '/admin/organization', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 3 },
+  // display_order 4 deliberately ties with plannedAbsences (also 4): the calendar is pinned to the fixed
+  // row regardless of order, and the deterministic cardKey tie-break puts latestPayroll first.
+  { cardKey: 'latestPayroll', name: 'Latest Payroll', cardType: 'information', href: '/payroll', employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 4 },
+];
+
+/** Sections shared with the employee dashboard, plus the wrapped attendance breakdown (manager + admin). */
+const BUILTIN_ATTENDANCE_OVERVIEW: BuiltinDashboardCard = { cardKey: 'attendanceOverview', name: 'Attendance Overview', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 8 };
+
+/**
+ * Built-in default card catalog PER ROLE — the same never-render-blank fallback employees have, for every
+ * role: used when a tenant has no active dashboard_card_config rows for that role (e.g. provisioned after
+ * the 0299 seed migration ran). Mirrors the 0212 + 0296 + 0299 seeds; employee IS `BUILTIN_DASHBOARD_CARDS`.
+ */
+export const BUILTIN_ROLE_DASHBOARD_CARDS: Record<DashboardLayoutRole, BuiltinDashboardCard[]> = {
+  employee: BUILTIN_DASHBOARD_CARDS,
+  manager: [
+    ...BUILTIN_MANAGER_CARDS,
+    builtinCard('plannedAbsences'),
+    builtinCard('upcomingEvents'),
+    builtinCard('recentlyJoined'),
+    builtinCard('recentActivity'),
+    BUILTIN_ATTENDANCE_OVERVIEW,
+  ],
+  hr_admin: [
+    ...BUILTIN_HR_ADMIN_CARDS,
+    builtinCard('plannedAbsences'),
+    builtinCard('upcomingEvents'),
+    builtinCard('recentlyJoined'),
+    builtinCard('recentActivity'),
+    BUILTIN_ATTENDANCE_OVERVIEW,
+    { cardKey: 'headcountByCompany', name: 'Headcount by Company', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 9 },
+    { cardKey: 'latestPayrollRun', name: 'Latest Payroll Run', cardType: 'information', href: null, employeeSelectable: true, defaultDisplay: true, mandatory: false, displayOrder: 10 },
+  ],
+};

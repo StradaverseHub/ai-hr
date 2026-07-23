@@ -1892,6 +1892,10 @@ export const dashboardCardConfig = pgTable(
     displayOrder: integer('display_order').notNull().default(0),
     // Optional click-through target (for shortcut/action cards).
     href: text('href'),
+    // Role dimension (feedback 9606c59f): which dashboard roles (employee | manager | hr_admin, per
+    // lib/dashboard-cards resolveDashboardRole) see/arrange this card. Pre-existing rows are the employee
+    // card set → default '{employee}'.
+    audience: text('audience').array().notNull().default(sql`'{employee}'::text[]`),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
