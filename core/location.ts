@@ -9,7 +9,7 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { company, holidayGroup, location } from '../db/schema';
-import { MY_STATES } from '../localization/my/holidays';
+import { countryPacks } from '../localization/registry';
 
 /** Resolve a holiday-group (calendar) id to a tenant-scoped group, or null when no calendar is assigned.
  *  Throws if the id is non-empty but does not resolve in scope (RLS already tenant-scopes the read), so a
@@ -43,12 +43,13 @@ function cleanCountry(v: string | undefined): string {
   if (!/^[A-Z]{2}$/.test(s)) throw new Error('Country must be a 2-letter code (e.g. MY)');
   return s;
 }
-/** The holiday-state override. Null = inherit work_state/default/national. Validated against the known
- *  MY state labels so a garbage value can't silently disable holiday matching. */
+/** The holiday-state override. Null = inherit work_state/default/national. Validated against the
+ *  registered packs' state vocabulary (ADR-0080 D6 — union across country packs; per-company
+ *  narrowing is a later slice) so a garbage value can't silently disable holiday matching. */
 function cleanState(v: string | null | undefined): string | null {
   const s = (v ?? '').trim();
   if (!s) return null;
-  if (!(MY_STATES as readonly string[]).includes(s)) throw new Error(`Unknown state: ${s}`);
+  if (!countryPacks().some((p) => p.states.includes(s))) throw new Error(`Unknown state: ${s}`);
   return s;
 }
 

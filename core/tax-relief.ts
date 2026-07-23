@@ -25,7 +25,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { isAdmin } from '../lib/authz';
 import { tp1Relief, TP1_CATEGORY_KEYS, type Tp1CategoryKey, type Tp1Categories } from '../db/schema';
-import { MY_RELIEFS } from '../localization/my/statutory-tables';
+import { countryPacks } from '../localization/registry';
 
 export class TaxReliefError extends Error {
   constructor(message: string) {
@@ -40,19 +40,19 @@ const YEAR_MIN = 2000;
 const YEAR_MAX = 2100;
 const REMARKS_MAX = 2000;
 
-// Per-category caps we ACTUALLY have a sourced statutory number for (MY_RELIEFS — the LHDN 2026 MTD
-// projection reliefs, VERIFIED in statutory-tables.ts). We reuse these ONLY for the categories they
-// genuinely correspond to. The other TP1 categories (medical/insurance, lifestyle, parent, education,
-// other) have NO sourced cap in the system today; under ADR-0008 (no unsourced statutory number) they
-// get the non-negative check only, and a sourced per-category cap is a DEFERRED follow-up.
-// TODO(ADR-0008): source + verify 2026 caps for medicalInsurance / lifestyle / parent / education.
-const SOURCED_CATEGORY_CAPS: Partial<Record<Tp1CategoryKey, number>> = {
-  individual: MY_RELIEFS.individual, // D — individual + dependent relatives (RM 9,000)
-  spouse: MY_RELIEFS.spouse, //          S — non-working spouse (RM 4,000)
-  // `children` and the EPF/life cap are per-unit in MY_RELIEFS (perChild, epfReliefCap); a single flat
-  // cap on the aggregated children figure would be wrong (it scales with the number of children), so we
-  // do NOT cap `children` here — non-negative only until a sourced aggregate rule exists.
-};
+// Per-category caps we ACTUALLY have a sourced statutory number for — supplied by the country packs
+// (ADR-0080 D6, rung 5a: `payroll.taxReliefCategoryCaps`; MY sources them from the LHDN 2026 MTD
+// projection reliefs, VERIFIED in the pack's statutory tables). The pack supplies ONLY the categories
+// with a genuine sourced cap. The other TP1 categories (medical/insurance, lifestyle, parent,
+// education, other) have NO sourced cap in the system today; under ADR-0008 (no unsourced statutory
+// number) they get the non-negative check only, and a sourced per-category cap is a DEFERRED follow-up
+// (owned by the pack). TP1 declarations are person-level with no acting company, so the caps merge
+// across registered packs — byte-identical with MY as the only pack; per-person pack resolution is a
+// later slice. (`children` / EPF stay per-unit in the pack tables; a flat aggregate cap would be wrong.)
+const SOURCED_CATEGORY_CAPS: Partial<Record<Tp1CategoryKey, number>> = Object.assign(
+  {},
+  ...countryPacks().map((p) => p.payroll.taxReliefCategoryCaps),
+);
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 

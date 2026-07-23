@@ -29,7 +29,8 @@ import {
 } from '../db/schema';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
 import { packFor } from '../localization/registry';
-import type { EaStatement, ReportDef, ReportResult } from '../localization/my/reports';
+// Rung 5a (ADR-0080 D1): report/EA types come from the pack CONTRACT, never from localization/my.
+import type { EaStatement, ReportDef, ReportResult } from '../localization/country-pack';
 import type { ReportData } from '../lib/report-export';
 import { daysInMonth } from './payroll';
 
@@ -45,8 +46,7 @@ async function companyCountry(ctx: SessionContext, companyId: string): Promise<s
 }
 
 function reportsForCountry(country: string | null): ReportDef[] {
-  const pack = packFor(country) as { reports?: ReportDef[] } | undefined;
-  return pack?.reports ?? [];
+  return packFor(country)?.reports ?? [];
 }
 
 /** Report definitions (metadata only) available for a company's jurisdiction. */
@@ -186,10 +186,8 @@ export async function employeeEaStatement(
       .limit(1);
     return row?.country ?? null;
   });
-  const pack = packFor(country) as
-    | { eaStatement?: (ctx: SessionContext, p: { employmentId: string; year: string }) => Promise<EaStatement | null> }
-    | undefined;
-  if (!pack?.eaStatement) return null;
+  const pack = packFor(country);
+  if (!pack) return null;
   return pack.eaStatement(ctx, p);
 }
 

@@ -16,9 +16,17 @@ import { actorOf, appendEvent } from '../db/events';
 import { eaOverride } from '../db/schema';
 import { canManagePayroll, isAdmin } from '../lib/authz';
 import { employeeEaStatement } from './reporting';
-import { EA_FIELDS, type EaField, type EaOverrideEntry } from '../localization/my/reports';
+import { countryPacks } from '../localization/registry';
+import type { EaField, EaOverrideEntry } from '../localization/country-pack';
 
-export { EA_FIELDS, type EaField } from '../localization/my/reports';
+/**
+ * The EA-form field vocabulary, supplied by the registered country packs (ADR-0080 D6, rung 5a —
+ * `pack.eaFields`; formerly a direct localization/my import). The overwrite layer is validated before
+ * the per-employment pack is resolved (employeeEaStatement does that), so the vocabulary is the union
+ * across registered packs — byte-identical with MY as the only pack.
+ */
+export const EA_FIELDS: readonly EaField[] = countryPacks().flatMap((p) => p.eaFields);
+export type { EaField } from '../localization/country-pack';
 
 export class EaOverrideError extends Error {
   constructor(

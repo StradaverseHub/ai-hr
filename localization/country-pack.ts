@@ -16,16 +16,20 @@
  *
  * Extension points that do NOT exist yet (deliberately absent, not forgotten):
  *   - D4 UI descriptors (configuration sections, personnel-profile cards, report entries) — land in
- *     rung 5 when country UI mounting becomes registry-driven. Kept off the interface until then so
- *     nothing speculative accretes.
- *   - D6 engine vocabulary as first-class fields (`payroll.exemptionCodes`,
- *     `payroll.remunerationTypes`) — the kernel still imports `MY_PCB_EXEMPTION_CODES` directly
- *     (allowlisted in the drift ratchet); rung 5 moves that vocabulary onto the pack.
+ *     rung 5b/5c when country UI mounting becomes registry-driven. Kept off the interface until then
+ *     so nothing speculative accretes.
+ *
+ * Rung 5a (kernel seam restoration) added the D6 engine vocabulary as first-class fields — state
+ * labels, IC helpers, PCB exemption tables/remuneration types, TP1 relief caps, the pay-component
+ * seed catalog, and the EA field list — so no `core/` file imports `localization/my` any more (the
+ * R55 `MY_PCB_EXEMPTION_CODES` precedent, corrected). The kernel consumes whatever the active pack
+ * supplies via `packFor()` / `requirePackFor()`; a missing pack FAILS LOUDLY (ADR-0080 D3).
  *
  * This file is type-only at runtime: every import is `import type` or a type-position
  * `typeof import(…)`, so importing the contract never drags in db/client or the MY tables.
  */
 import type { SessionContext, Tx } from '../db/client';
+import type { Tp1CategoryKey } from '../db/schema';
 import type { MyLeaveTypeDef } from './my/leave';
 import type { MyHoliday } from './my/holidays';
 import type {
@@ -36,7 +40,13 @@ import type {
   PcbMonthResult,
   TaxProfile,
 } from './my/payroll';
-import type { HrdfStatus, StatutoryBody, StatutoryRuleset } from './my/statutory-tables';
+import type {
+  HrdfStatus,
+  PcbExemptionTable,
+  PcbRemunerationType,
+  StatutoryBody,
+  StatutoryRuleset,
+} from './my/statutory-tables';
 import type {
   ActiveResolution,
   StatutoryComponentRow,
@@ -44,7 +54,22 @@ import type {
   StatutoryRulesetRow,
   StatutorySource,
 } from './my/statutory-config';
-import type { EaStatement, ReportDef } from './my/reports';
+import type { EaField, EaOverrideEntry, EaStatement, ReportDef, ReportResult } from './my/reports';
+import type { PayComponentSeed } from './my/pay-components';
+
+// ── Contract-fronted vocabulary types (rung 5a) ────────────────────────────────────────────────────
+// Kernel consumers import these FROM THE CONTRACT, never from localization/my (D1/D7). The shapes are
+// still MY-derived (see the scope-honesty note above); nominalization is future interface churn.
+export type {
+  EaField,
+  EaOverrideEntry,
+  EaStatement,
+  ReportDef,
+  ReportResult,
+  PcbExemptionTable,
+  PcbRemunerationType,
+  PayComponentSeed,
+};
 
 // ── MY-derived signature accessors (type-only; nominalized in rung 5, see header) ──────────────────
 type MyStatutoryModule = typeof import('./my/statutory');
@@ -62,6 +87,13 @@ export interface CountryPack {
   country: string;
 
   /**
+   * The jurisdiction's state/territory labels (MY: the 16 gazette states + federal territories) —
+   * D6 vocabulary consumed by holiday-group validation, location state overrides, and the
+   * profile-option `state` catalog seed. Order is significant (it drives seed sortOrder).
+   */
+  states: readonly string[];
+
+  /**
    * Per-employee statutory profile handlers: the full-row overwrite (`set`/`get`) plus the partial
    * card saves the profile UI grew over time (TP3 opening balances, bank, IC/passport identity,
    * tax, "others statutory"). Row shapes are drizzle-inferred → MY-derived signatures for now.
@@ -77,6 +109,10 @@ export interface CountryPack {
     setOthersStatutory: MyStatutoryModule['setOthersStatutoryMY'];
     /** National-ID validity check (MY: MyKad 12-digit IC). */
     validateIC: (ic: string) => boolean;
+    /** Canonical storage form of a national ID (MY: digits only). */
+    normalizeIC: (ic: string) => string;
+    /** Date of birth derivable from the national ID (MY: MyKad YYMMDD prefix), or null. */
+    dobFromIC: (ic: string, now?: Date) => string | null;
   };
 
   /** Company-level statutory registration (employer numbers, HRDF band, …). */
@@ -145,6 +181,25 @@ export interface CountryPack {
     hrdfSubject: (subjectToHrdf: boolean | null | undefined, status: HrdfStatus) => boolean;
     /** EPF relief cap (RM) used by the PCB accumulator maths. */
     epfReliefCap: number;
+    /**
+     * D6 (the corrected R55 shape): the built-in PCB exemption / optional-deduction (LP) code→cap
+     * tables. The kernel uses these as the FALLBACK when a resolved ruleset predates them
+     * (`rules.pcbExemptions` absent) — it never names the MY tables directly.
+     */
+    pcbExemptionTables: { pcb: PcbExemptionTable; lp: PcbExemptionTable };
+    /** The remuneration-type vocabulary for pay-code PCB classification (D6). */
+    pcbRemunerationTypes: readonly PcbRemunerationType[];
+    /** Exemption-code list valid for a remuneration type (defaults to the built-in tables). */
+    pcbExemptionCodesFor: (
+      type: PcbRemunerationType,
+      tables?: { pcb: PcbExemptionTable; lp: PcbExemptionTable },
+    ) => PcbExemptionTable;
+    /**
+     * Sourced per-category caps for the TP1 optional-relief declaration (MY: LHDN 2026 MTD reliefs —
+     * only the categories with a VERIFIED statutory number carry a cap; the rest are uncapped by
+     * design, ADR-0008 "no unsourced statutory number").
+     */
+    taxReliefCategoryCaps: Readonly<Partial<Record<Tp1CategoryKey, number>>>;
     /** Active-ruleset loader (ADR-0019): DB override or the verified default, as of a date. */
     loadRuleset: (tx: Tx, p: { asOf: string }) => Promise<StatutoryRuleset>;
     /** Same resolution + pack provenance (ADR-0020 §7) for payslip snapshotting. */
@@ -181,6 +236,19 @@ export interface CountryPack {
     archiveComponent: (ctx: SessionContext, id: string) => Promise<void>;
     validateComponent: (body: StatutoryBody, data: unknown) => string[];
   };
+
+  /**
+   * Pay-component vocabulary (D6): the default catalog the tenant seed installs and the
+   * backfill-critical code roles the legacy→typed bridge looks up. Flags are jurisdiction facts
+   * (EPF/SOCSO/PCB/HRDF treatment), so the seed belongs to the pack, not the kernel.
+   */
+  payComponents: {
+    defaults: PayComponentSeed[];
+    backfillCodes: { basic: string; allowance: string; overtime: string; bonus: string; claim: string };
+  };
+
+  /** The EA-statement field vocabulary the EA-only amendment layer (core/ea-override.ts) validates against. */
+  eaFields: readonly EaField[];
 
   /** Statutory report catalog (CP39, SOCSO/EIS files, …) the reporting engine enumerates. */
   reports: ReportDef[];
