@@ -19,7 +19,8 @@
  *    Accrual action (d778d2d3's EarnedAccrualDialog) relocated from the page header — it processes earned
  *    entitlement, so it belongs with entitlement adjustments. Both dialogs are self-contained (form-free —
  *    entitlement-standalone-sections-removal.test.ts pins that), so the new mounts carry no portal caveat.
- *  - Header coordination: this item only ADDS the new homes; item 962077a8 REMOVES the PageHeader buttons.
+ *  - Header coordination: this item only ADDED the new homes; item 962077a8 then REMOVED the PageHeader
+ *    buttons, so the sub-step slots are the tools' only mounts.
  *
  * Static source guard (the repo convention for this DOM-runner-less component; see
  * leave-type-config-categories.test.ts / leave-condition-substeps.test.ts). Browser verification covers
@@ -174,12 +175,12 @@ describe('7b945408 · Adjustments — the festive grant tool + the relocated Run
     expect(pageSrc).toContain('accrualSection={accrualSection}');
   });
 
-  it('coordination with 962077a8: the PageHeader still hosts the dialog buttons until that item lands', () => {
-    // This item only ADDS the new homes. The header cluster keeps Import → Run Accrual → Preview
-    // Scenario (entitlement-standalone-sections-removal.test.ts pins that order); 962077a8 removes it.
+  it('coordination with 962077a8: the PageHeader no longer hosts the dialog buttons (sub-steps only)', () => {
+    // 7b945408 ADDED the new homes; 962077a8 then removed the header cluster's Run Accrual / Preview
+    // Scenario buttons (entitlement-standalone-sections-removal.test.ts pins the Import-only header).
     const header = pageSrc.slice(pageSrc.indexOf('<PageHeader'), pageSrc.indexOf('<LeaveTabs'));
-    expect(header).toContain('<EarnedAccrualDialog');
-    expect(header).toContain('<LeaveRulePreviewDialog');
+    expect(header.includes('<EarnedAccrualDialog')).toBe(false);
+    expect(header.includes('<LeaveRulePreviewDialog')).toBe(false);
   });
 });
 

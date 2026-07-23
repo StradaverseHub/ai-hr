@@ -13,9 +13,10 @@ import {
 
 /**
  * Run Accrual dialog (R61 · feedback d778d2d3). The Run Earned Accrual tool lost its standalone
- * section on the Entitlements page: this compact "Run Accrual" button now sits in the PageHeader
- * actions cluster (next to + Import) and opens the SAME EarnedAccrualCard — scope selection,
- * dry-run preview, confirm — inside a wide pop-up. The card is wrapped unchanged: it is fully
+ * section on the Entitlements page: this compact "Run Accrual" button opens the SAME
+ * EarnedAccrualCard — scope selection, dry-run preview, confirm — inside a wide pop-up. It first
+ * sat in the PageHeader actions cluster; since R64 (7b945408 + 962077a8) it mounts ONLY inside the
+ * Entitlement step's Adjustments sub-step, where entitlement adjustments live. The card is wrapped unchanged: it is fully
  * self-contained (its Preview/Run/Cancel/Export buttons call the server actions directly via
  * useTransition — no <form>, so the ConfirmSubmit requestSubmit-in-portal caveat does not apply).
  * Structure mirrors leave-year-edit-dialog.tsx (Dialog.Root + useState open, Radix portal).
@@ -24,7 +25,7 @@ import {
  * content needs a WIDE dialog (max-w-4xl) to show the dry-run numbers without immediate scrolling;
  * on narrow screens the table scrolls horizontally inside the card exactly as it did in the section.
  *
- * The trigger Button MUST be type="button" — the header cluster may sit inside other layouts and a
+ * The trigger Button MUST be type="button" — the trigger may sit inside other layouts and a
  * default-type button could submit an enclosing form.
  */
 export function EarnedAccrualDialog({

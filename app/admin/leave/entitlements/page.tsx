@@ -71,7 +71,7 @@ const GRADES_OPEN_COOKIE = 'leave_grades_open';
  * advance-notice, expiry, the apply-time custom message AND that type's effective-dated entitlement policies
  * (the editable ranges table + the multi-company/grade "Employee Selection" chips). The three other
  * standalone sections are gone (d778d2d3): Run Earned Accrual and
- * Preview a Scenario became compact PageHeader action buttons opening the SAME tools in dialogs
+ * Preview a Scenario became compact action buttons opening the SAME tools in dialogs
  * (EarnedAccrualDialog / LeaveRulePreviewDialog — components wrapped unchanged), and the per-company Leave
  * Cycle card moved to the Application Rules tab beside the other company-level calendar rules (its
  * server action is untouched — only the rendering moved). Bulk import is a "+ Import" action
@@ -85,8 +85,11 @@ const GRADES_OPEN_COOKIE = 'leave_grades_open';
  * — 1 Benefit Schemes · 2 Service Based Entitlements · 3 Adjustments (the SubStepBar reuse contract). The
  * Grades catalogue moved off the page bottom into the Benefit Schemes sub-step (gradesSection slot — grades
  * are tenant-wide master data, badged company-wide), Preview Scenario joins Service Based Entitlements as
- * its checking tool, and Run Accrual joins Adjustments (it processes earned entitlement). The PageHeader
- * still hosts the two dialog buttons — item 962077a8 removes them now that the step homes exist.
+ * its checking tool, and Run Accrual joins Adjustments (it processes earned entitlement).
+ *
+ * 962077a8 (Remove Unnecessary Action Buttons): with the 7b945408 step homes in place, the PageHeader is
+ * down to the single page-level action — + Import. Run Accrual and Preview Scenario open ONLY from their
+ * sub-steps now (same dialogs, same page-level data prep — nothing duplicated, nothing unreachable).
  */
 export default async function LeaveEntitlementsPage({
   searchParams,
@@ -135,8 +138,9 @@ export default async function LeaveEntitlementsPage({
   // Feedback 26e76a9f — "preview a scenario" relocated here from the Types tab (its read-only "Entitlement
   // rules" card was removed as a duplicate configuration point). Same inputs as before: the ACTIVE policy
   // rows from the already-loaded listLeavePolicies result — display-only, no data or logic change.
-  // d778d2d3: the checker now opens from the header's "Preview Scenario" button (LeaveRulePreviewDialog);
-  // this page-level data prep is unchanged and simply feeds the dialog.
+  // d778d2d3: the checker became the "Preview Scenario" dialog button (LeaveRulePreviewDialog); since
+  // 7b945408/962077a8 it opens from the Service Based Entitlements sub-step — this page-level data prep
+  // is unchanged and simply feeds the dialog.
   const previewPolicies = policies
     .filter((p) => !p.validTo)
     .map((p) => ({ leaveTypeId: p.leaveTypeId, gradeId: p.gradeId, companyId: p.companyId, accrual: p.accrual }));
@@ -460,9 +464,9 @@ export default async function LeaveEntitlementsPage({
   // ── Entitlement-step tool slots (7b945408) ───────────────────────────────────────────────────────
   // Preview Scenario joins the Service Based Entitlements sub-step as its checking tool, and Run Accrual
   // joins Adjustments (it processes earned entitlement — it belongs with entitlement adjustments). Both
-  // mount the SAME self-contained dialogs the PageHeader cluster hosts (d778d2d3) — one shared node each,
-  // fed by the page-level data prep above (no N+1 per type). The header buttons themselves are removed by
-  // item 962077a8; this item only ADDS the new homes.
+  // mount the SAME self-contained dialogs the PageHeader cluster used to host (d778d2d3) — one shared node
+  // each, fed by the page-level data prep above (no N+1 per type). 962077a8 removed the header buttons, so
+  // these sub-step slots are the tools' only mounts now.
   const previewScenarioSection =
     activeTypeOptions.length > 0 && companyOptions.length > 0 ? (
       <div className="space-y-1.5 border-t border-border pt-3">
@@ -496,30 +500,13 @@ export default async function LeaveEntitlementsPage({
         title={t('pageTitle')}
         description={t('pageDescription')}
         actions={
-          /* e8f2398f: Import is a page-level action button (the standard top-right spot). d778d2d3 adds the
-             two occasional-use tools beside it — Run Accrual and Preview Scenario — as compact icon+label
-             buttons opening their dialogs; their standalone page-bottom sections are gone. Cluster order:
-             Import, Run Accrual, Preview Scenario. */
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href="/admin/leave/import" className={btnPrimary}>
-              {t('importAction')}
-            </Link>
-            <EarnedAccrualDialog
-              companies={festiveCompanies}
-              grades={gradeOptions}
-              leaveTypes={activeTypeOptions}
-              leaveYears={earnedLeaveYears}
-              defaultYear={earnedDefaultYear}
-            />
-            {activeTypeOptions.length > 0 && companyOptions.length > 0 && (
-              <LeaveRulePreviewDialog
-                leaveTypes={activeTypeOptions.map((o) => ({ id: o.id, name: o.name, code: typeCodeById.get(o.id) ?? '' }))}
-                companies={previewCompanies}
-                grades={gradeOptions}
-                policies={previewPolicies}
-              />
-            )}
-          </div>
+          /* e8f2398f: Import is a page-level action button (the standard top-right spot). 962077a8: it is
+             the ONLY header action now — the Run Accrual and Preview Scenario buttons d778d2d3 parked here
+             moved into the Entitlement step's sub-steps (7b945408's accrualSection / previewScenarioSection
+             slots above), where the related configuration lives. */
+          <Link href="/admin/leave/import" className={btnPrimary}>
+            {t('importAction')}
+          </Link>
         }
       />
       <LeaveTabs active="entitlements" />
