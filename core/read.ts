@@ -1352,6 +1352,11 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         correspondenceCity: person.correspondenceCity,
         correspondenceState: person.correspondenceState,
         correspondenceCountry: person.correspondenceCountry,
+        // bf953339 — Mobile + Home phone pair (migration 0304): `phone` above IS the mobile number;
+        // homePhone sits beside it, and the Correspondence block carries its own independent pair.
+        homePhone: person.homePhone,
+        correspondenceMobilePhone: person.correspondenceMobilePhone,
+        correspondenceHomePhone: person.correspondenceHomePhone,
         emergencyContactName: person.emergencyContactName,
         emergencyContactRelationship: person.emergencyContactRelationship,
         emergencyContactPhone: person.emergencyContactPhone,

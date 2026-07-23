@@ -1086,6 +1086,12 @@ export type PersonProfileFields = {
   correspondenceCity?: string | null;
   correspondenceState?: string | null;
   correspondenceCountry?: string | null;
+  // bf953339 — Mobile + Home phone pair (migration 0304). `person.phone` stays the Mobile Phone Number
+  // (an ALWAYS-written core-trio field, so sibling forms carry it through as a hidden input); these three
+  // are presence-gated like every other profile field — a form that omits them can never clobber them.
+  homePhone?: string | null;
+  correspondenceMobilePhone?: string | null;
+  correspondenceHomePhone?: string | null;
   emergencyContactName?: string | null;
   emergencyContactRelationship?: string | null;
   emergencyContactPhone?: string | null;
@@ -1101,6 +1107,8 @@ const PROFILE_FIELD_KEYS: (keyof PersonProfileFields)[] = [
   'permanentCity', 'permanentState', 'permanentCountry',
   'correspondenceAddressLine1', 'correspondenceAddressLine2', 'correspondenceAddressLine3',
   'correspondencePostcode', 'correspondenceCity', 'correspondenceState', 'correspondenceCountry',
+  // bf953339 — Home + Correspondence phone pair (audited by NAME only, PDPA — values never logged).
+  'homePhone', 'correspondenceMobilePhone', 'correspondenceHomePhone',
   'emergencyContactName', 'emergencyContactRelationship', 'emergencyContactPhone',
   'emergencyContactPhone2', 'emergencyContactAddress',
 ];

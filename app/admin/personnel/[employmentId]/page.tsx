@@ -537,8 +537,15 @@ export default async function EmployeePage({
           <Field label={t('workEmail')}>
             <input name="primaryEmail" type="email" required defaultValue={emp.email} className={inputCls} />
           </Field>
+          {/* bf953339 — Phone renamed to Mobile Phone Number (label-only; the stored person.phone value is
+              untouched) with an optional Home Phone Number beside it. The Correspondence block below keeps
+              its OWN independent pair; the perm-/corr- prefixed ids let the "Same as Permanent Address"
+              island copy the pair alongside the seven address fields. */}
           <Field label={t('phone')}>
-            <input name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
+            <input id="perm-mobile-phone" name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
+          </Field>
+          <Field label={t('homePhone')}>
+            <input id="perm-home-phone" name="homePhone" defaultValue={emp.homePhone ?? ''} className={inputCls} />
           </Field>
           <Field label={t('personalEmail')}>
             <input name="personalEmail" type="email" defaultValue={emp.personalEmail ?? ''} className={inputCls} />
@@ -628,6 +635,15 @@ export default async function EmployeePage({
                 placeholder={t('optionNotSet')}
                 legacySuffix={t('optionLegacySuffix')}
               />
+            </Field>
+            {/* bf953339 — the Correspondence block's OWN Mobile/Home pair, independent of the main pair
+                above so the correspondence contact can differ. Copied by the "Same as Permanent Address"
+                island together with the address fields (perm-/corr- id pairs). */}
+            <Field label={t('phone')}>
+              <input id="corr-mobile-phone" name="correspondenceMobilePhone" defaultValue={emp.correspondenceMobilePhone ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('homePhone')}>
+              <input id="corr-home-phone" name="correspondenceHomePhone" defaultValue={emp.correspondenceHomePhone ?? ''} className={inputCls} />
             </Field>
           </div>
           <div className="sm:col-span-4 flex justify-end">

@@ -75,6 +75,9 @@ describe('erasePersonPii — PDPA retention guard (ADR-0030, #159)', () => {
       'correspondenceAddressLine3',
       'correspondenceCity',
       'correspondenceCountry',
+      // bf953339 — Home + Correspondence phone pair joins the contact scope (erasable immediately).
+      'correspondenceHomePhone',
+      'correspondenceMobilePhone',
       'correspondencePostcode',
       'correspondenceState',
       'country',
@@ -84,6 +87,7 @@ describe('erasePersonPii — PDPA retention guard (ADR-0030, #159)', () => {
       'emergencyContactPhone2',
       'emergencyContactRelationship',
       'firstName',
+      'homePhone',
       'lastName',
       'nationality',
       'permanentAddressLine1',

@@ -475,7 +475,10 @@ export const person = pgTable(
     // (notNull, never derived). first/last/preferred below are INDEPENDENT nullable name parts (b4682879).
     fullName: text('full_name').notNull(),
     primaryEmail: text('primary_email').notNull(), // login / work email (personalEmail is separate below)
+    // bf953339 — `phone` IS the Mobile Phone Number (rename was label-only, no data movement); homePhone
+    // is the optional residential line beside it on the Contact & Address card (migration 0304).
     phone: text('phone'),
+    homePhone: text('home_phone'),
     // Low-risk personal fields the employee self-maintains on /me (ADR-0012).
     // NOTE: `address` is the LEGACY free-text home address — retained for rollback / PDPA history but NO
     // LONGER rendered or written by the UI (b4682879 backfilled it into addressLine1); use the structured
@@ -528,6 +531,10 @@ export const person = pgTable(
     correspondenceCity: text('correspondence_city'),
     correspondenceState: text('correspondence_state'),
     correspondenceCountry: text('correspondence_country'),
+    // bf953339 — the Correspondence block's OWN phone pair (migration 0304): an employee's correspondence
+    // contact may differ from the main mobile/home pair above. Both nullable, optional.
+    correspondenceMobilePhone: text('correspondence_mobile_phone'),
+    correspondenceHomePhone: text('correspondence_home_phone'),
     // Extended emergency contact (name + phone above; relationship free text, second phone, address).
     emergencyContactRelationship: text('emergency_contact_relationship'),
     emergencyContactPhone2: text('emergency_contact_phone2'),

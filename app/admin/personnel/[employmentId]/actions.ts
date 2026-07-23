@@ -678,6 +678,12 @@ export async function setContactAddressAction(formData: FormData) {
       fullName: String(formData.get('fullName') ?? ''),
       primaryEmail: String(formData.get('primaryEmail') ?? ''),
       phone: orNull(formData.get('phone')),
+      // bf953339 — `phone` IS the Mobile Phone Number (label-only rename); homePhone joins it in Contact &
+      // Address, and the Correspondence block carries its OWN mobile/home pair. All three are presence-gated
+      // profile fields (like personalEmail), so sibling forms that omit them can never clobber them.
+      homePhone: orNull(formData.get('homePhone')),
+      correspondenceMobilePhone: orNull(formData.get('correspondenceMobilePhone')),
+      correspondenceHomePhone: orNull(formData.get('correspondenceHomePhone')),
       personalEmail: orNull(formData.get('personalEmail')),
       via,
       permanentAddressLine1: orNull(formData.get('permanentAddressLine1')),
