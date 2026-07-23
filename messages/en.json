@@ -2361,7 +2361,8 @@
       "preChecksWarningBadge": "Warning",
       "preChecks": {
         "missingCompensation": "No current salary record",
-        "missingBasicComponent": "No basic-salary pay component",
+        "zeroBasic": "Basic salary or pay rate is zero",
+        "staleBasicComponent": "Outdated BASIC pay item — the Personnel salary record is used",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete"
       },
@@ -3137,7 +3138,8 @@
       "validationWarningBadge": "Warning",
       "validationCheck": {
         "missingCompensation": "No current salary record",
-        "missingBasicComponent": "No basic-salary pay component",
+        "zeroBasic": "Basic salary or pay rate is zero",
+        "staleBasicComponent": "Outdated BASIC pay item — the Personnel salary record is used",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete"
       }

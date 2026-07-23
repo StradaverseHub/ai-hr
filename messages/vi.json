@@ -2599,7 +2599,8 @@
       "preChecksWarningBadge": "Cảnh báo",
       "preChecks": {
         "missingCompensation": "Không có hồ sơ lương hiện tại",
-        "missingBasicComponent": "Không có thành phần lương cơ bản",
+        "zeroBasic": "Lương cơ bản hoặc mức lương bằng không",
+        "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ pháp định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ"
       },
@@ -3137,7 +3138,8 @@
       "validationWarningBadge": "Cảnh báo",
       "validationCheck": {
         "missingCompensation": "Không có bản ghi lương hiện tại",
-        "missingBasicComponent": "Không có thành phần lương cơ bản",
+        "zeroBasic": "Lương cơ bản hoặc mức lương bằng không",
+        "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ theo luật định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ"
       }

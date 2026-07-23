@@ -23,7 +23,6 @@ export async function fetchPayrollRunEmployees(
 
 const EMPTY_ADVISORY: PreProcessAdvisory = {
   missingCompensation: [],
-  missingBasicComponent: [],
   missingStatutory: [],
   missingBank: [],
 };
@@ -32,7 +31,8 @@ const EMPTY_ADVISORY: PreProcessAdvisory = {
  * Payroll Process wizard — Validation step (R37 70764928). Runs the SAME pre-processing checks the batch
  * page and the terminal Process action enforce, but BEFORE the batch exists, over the wizard's live
  * selection (companies + period + touched employee scope). The client renders the result green/amber/red
- * and blocks advance to Process when there are blockers (missing compensation / missing BASIC component).
+ * and blocks advance to Process when there are blockers (missing/zero salary record — feedback 64fb5e48:
+ * the Personnel Basic Salary record is authoritative; a BASIC pay item is never required).
  * Read-only — no state mutation, no event (the durable event is appended when the run is actually created).
  */
 export async function validatePayrollSelection(input: {

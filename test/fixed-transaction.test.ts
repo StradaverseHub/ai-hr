@@ -114,19 +114,19 @@ describe('1.2.1 Fixed Transaction', () => {
 
   // ───────────────────── prorate override ─────────────────────
   // A mid-month joiner on 2026-05-16 (May has 31 days) is employed days 16..31 = 16 days ⇒ factor 16/31.
-  // ALLOWANCE prorates=true in the catalog. With basic=0 the payslip `allowance` column is exactly the
-  // applied ALLOWANCE value, so it cleanly reflects the resolved prorate.
+  // ALLOWANCE prorates=true in the catalog. The payslip `allowance` column is exactly the applied
+  // ALLOWANCE value (basic never lands in it), so it cleanly reflects the resolved prorate. Basic is a
+  // small positive figure — feedback 64fb5e48 made a zero Personnel basic a pre-processing BLOCKER.
   async function joinerAllowance(prorateOverride: boolean | null): Promise<number> {
     const a = adminCtx(base);
     await seedPayComponentCatalog(a);
     const e = await hire(a, base, `Joiner${prorateOverride}`, '2026-05-16');
-    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 0, monthlyAllowance: 0, effectiveFrom: '2026-05-16' });
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-05-16' });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
     const basicId = await codeId(a, 'BASIC');
     const allowId = await codeId(a, 'ALLOWANCE');
-    // BASIC 0 so the wage base is just the allowance; ALLOWANCE 1000 with the override under test.
-    // allowZeroAmount: a zero basic is a legitimate fixture value (same class the amount>0 guard exempts).
-    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-05-16', allowZeroAmount: true });
+    // BASIC mirrors the compensation basic; ALLOWANCE 1000 with the override under test.
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 1000, effectiveFrom: '2026-05-16' });
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 1000, effectiveFrom: '2026-05-16', prorateOverride });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
@@ -153,16 +153,16 @@ describe('1.2.1 Fixed Transaction', () => {
   // String 'YYYY-MM-DD' comparison; period 2026-05 ⇒ periodStart 2026-05-01, periodEnd 2026-05-31.
   // A full-month employee (hired well before) so factor = 1 and the allowance is full-amount when included.
   // We probe whether a single ALLOWANCE item with a given [validFrom, validTo] window is APPLIED in May by
-  // reading the payslip `allowance` column (basic 0).
+  // reading the payslip `allowance` column (basic never lands in it; positive per feedback 64fb5e48).
   async function appliedInMay(validFrom: string, validTo: string | null): Promise<number> {
     const a = adminCtx(base);
     await seedPayComponentCatalog(a);
     const e = await hire(a, base, `Win${validFrom}${validTo ?? 'open'}`, '2026-01-01');
-    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 0, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
     const basicId = await codeId(a, 'BASIC');
     const allowId = await codeId(a, 'ALLOWANCE');
-    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-01-01', allowZeroAmount: true });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 1000, effectiveFrom: '2026-01-01' });
     // prorateOverride=false ⇒ full amount when in-window, so the value cleanly signals included (777) vs not (0).
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: validFrom, effectiveTo: validTo, prorateOverride: false });
 
@@ -426,9 +426,9 @@ describe('1.2.1 Fixed Transaction', () => {
 
     async function allowanceOf(name: string, ic: string, withCycle: boolean): Promise<string> {
       const e = await hire(a, base, name, '2026-05-16');
-      await setCompensation(a, { employmentId: e.employmentId, basicSalary: 0, monthlyAllowance: 0, effectiveFrom: '2026-05-16' });
+      await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-05-16' });
       await setStatutoryProfileMY(a, { personId: e.personId, icNumber: ic });
-      await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-05-16', allowZeroAmount: true });
+      await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 1000, effectiveFrom: '2026-05-16' });
       await setEmploymentPayComponent(a, {
         employmentId: e.employmentId, componentId: allowId, amount: 1000, effectiveFrom: '2026-05-16', prorateOverride: false,
         runType: withCycle ? 'bonus' : null,
@@ -503,11 +503,11 @@ describe('1.2.1 Fixed Transaction', () => {
     const a = adminCtx(base);
     await seedPayComponentCatalog(a);
     const e = await hire(a, base, 'ArchDrop', '2026-01-01');
-    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 0, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
     const basicId = await codeId(a, 'BASIC');
     const allowId = await codeId(a, 'ALLOWANCE');
-    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-01-01', allowZeroAmount: true });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 1000, effectiveFrom: '2026-01-01' });
     const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-01-01', prorateOverride: false });
 
     // Present before archive.
@@ -550,11 +550,11 @@ describe('1.2.1 Fixed Transaction', () => {
     const a = adminCtx(base);
     await seedPayComponentCatalog(a);
     const e = await hire(a, base, 'StopDate', '2026-01-01');
-    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 0, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 1000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
     const basicId = await codeId(a, 'BASIC');
     const allowId = await codeId(a, 'ALLOWANCE');
-    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-01-01', allowZeroAmount: true });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 1000, effectiveFrom: '2026-01-01' });
     const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-01-01', prorateOverride: false });
 
     // Stop it at 2026-05-31 (inclusive) — May is the last month it pays.

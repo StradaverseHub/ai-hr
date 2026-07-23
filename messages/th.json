@@ -2599,7 +2599,8 @@
       "preChecksWarningBadge": "คำเตือน",
       "preChecks": {
         "missingCompensation": "ไม่มีบันทึกเงินเดือนปัจจุบัน",
-        "missingBasicComponent": "ไม่มีองค์ประกอบเงินเดือนพื้นฐาน",
+        "zeroBasic": "เงินเดือนพื้นฐานหรืออัตราค่าจ้างเป็นศูนย์",
+        "staleBasicComponent": "รายการจ่าย BASIC ล้าสมัย — ระบบใช้บันทึกเงินเดือนจากฝ่ายบุคคล",
         "missingStatutory": "ไม่มีข้อมูลตามกฎหมาย (EPF/SOCSO/PCB)",
         "missingBank": "ข้อมูลธนาคารไม่ครบถ้วน"
       },
@@ -3137,7 +3138,8 @@
       "validationWarningBadge": "คำเตือน",
       "validationCheck": {
         "missingCompensation": "ไม่มีบันทึกเงินเดือนปัจจุบัน",
-        "missingBasicComponent": "ไม่มีองค์ประกอบเงินเดือนพื้นฐาน",
+        "zeroBasic": "เงินเดือนพื้นฐานหรืออัตราค่าจ้างเป็นศูนย์",
+        "staleBasicComponent": "รายการจ่าย BASIC ล้าสมัย — ระบบใช้บันทึกเงินเดือนจากฝ่ายบุคคล",
         "missingStatutory": "ไม่มีข้อมูลตามกฎหมาย (EPF/SOCSO/PCB)",
         "missingBank": "ข้อมูลธนาคารไม่ครบถ้วน"
       }

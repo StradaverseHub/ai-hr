@@ -2599,7 +2599,8 @@
       "preChecksWarningBadge": "எச்சரிக்கை",
       "preChecks": {
         "missingCompensation": "நடப்பு சம்பளப் பதிவு இல்லை",
-        "missingBasicComponent": "அடிப்படை ஊதியக் கூறு இல்லை",
+        "zeroBasic": "அடிப்படை ஊதியம் அல்லது ஊதிய விகிதம் பூஜ்ஜியமாக உள்ளது",
+        "staleBasicComponent": "காலாவதியான BASIC ஊதிய உருப்படி — பணியாளர் சம்பளப் பதிவே பயன்படுத்தப்படுகிறது",
         "missingStatutory": "சட்டப்பூர்வ சுயவிவரம் இல்லை (EPF/SOCSO/PCB)",
         "missingBank": "வங்கி விவரங்கள் முழுமையற்றவை"
       },
@@ -3137,7 +3138,8 @@
       "validationWarningBadge": "எச்சரிக்கை",
       "validationCheck": {
         "missingCompensation": "தற்போதைய ஊதிய பதிவு இல்லை",
-        "missingBasicComponent": "அடிப்படை ஊதிய கூறு இல்லை",
+        "zeroBasic": "அடிப்படை ஊதியம் அல்லது ஊதிய விகிதம் பூஜ்ஜியமாக உள்ளது",
+        "staleBasicComponent": "காலாவதியான BASIC ஊதிய உருப்படி — பணியாளர் சம்பளப் பதிவே பயன்படுத்தப்படுகிறது",
         "missingStatutory": "சட்டப்பூர்வ சுயவிவரம் இல்லை (EPF/SOCSO/PCB)",
         "missingBank": "வங்கி விவரங்கள் முழுமையடையவில்லை"
       }

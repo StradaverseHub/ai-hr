@@ -1846,14 +1846,16 @@ export async function generatePayslips(
     // generateAction. A subset reprocess targets a processed run that already passed this gate.
     if (!subset) {
       const checks = await preProcessChecksTx(tx, { companyId: batch.companyId, payPeriod: batch.payPeriod, scope: batch.scope });
-      // BLOCKER: no compensation row (silently dropped by the earnings inner-join) OR — when the typed
-      // path is live (R37 62e370b0) — a compensation row with no BASIC component (typed earnings would read
-      // basic as 0). Both are salary-data gaps that must be fixed before the run, so generation fails closed.
+      // BLOCKER: no compensation row covering the period (a missing open row is silently dropped by the
+      // earnings inner-join; an effective date past the period is a salary the period never had) OR a zero
+      // basic/rate (feedback 64fb5e48 — the Personnel record would pay nothing). The old BASIC-component
+      // existence blocker is GONE (feedback 64fb5e48): the Personnel Basic Salary record is the
+      // authoritative pay source, so an internal BASIC pay item is never a processing prerequisite.
       // ADR-0078 adds unpayablePayMode: a custom_period employee has NO calculation and must not be quietly
-      // paid their monthly-equivalent basic — the guard deliberately precedes the basicFallback path below.
+      // paid their monthly-equivalent basic. staleBasicComponent is a WARNING and never blocks.
       const blocked =
         checks.missingCompensation.length +
-        checks.missingBasicComponent.length +
+        (checks.zeroBasic?.length ?? 0) +
         (checks.unpayablePayMode?.length ?? 0);
       if (blocked > 0) throw new PreProcessBlockedError(blocked);
     }
@@ -2787,33 +2789,31 @@ export async function generatePayslips(
       // (factor × dim); `hours` is the employee's attendance hours. NOTE: `per_day`/`per_hour` rules require
       // the component to have prorates=false (validatePayRule rejects the combo), so the kernel's `factor`
       // multiplier below does NOT also apply to them — no double-proration. `percent_of basic` reads the
-      // BASIC component's resolved amount (computed once below, order-independent). There is NO division in
+      // Personnel compensation basic (seeded once below, order-independent). There is NO division in
       // the resolver, so a zero-days / zero-hours employee can never abort the batch.
       const rscope = { basic: 0, daysWorked: factor * dim, hours: hoursByEmp.get(e.employmentId) ?? 0 };
-      // Resolve the BASIC component's amount first so `percent_of basic` is order-independent. BASIC itself
-      // never references percent_of basic, so basic=0 in its own scope is harmless.
-      const basicComp = comps.find((c) => c.code === 'BASIC');
-      // FALLBACK (R37 62e370b0): typed path but this employee has NO BASIC employment_pay_component row
-      // (e.g. their compensation was never backfilled into the typed component tables). Rather than
-      // silently resolving basic to 0 — which pays the employee nothing despite a saved basic salary —
-      // read the basic straight off the compensation join (`e.basic`), exactly as the legacy path does.
-      // This keeps `rscope.basic` correct for any `percent_of basic` rule and seeds basicRaw/basicGross
-      // below so a missing backfill can never zero out someone's pay.
-      const basicFallback = basicComp ? 0 : Number(e.basic ?? 0);
-      rscope.basic = basicComp ? resolvePayRule(basicComp.rule, rscope, basicComp.amount) : basicFallback;
-      if (!basicComp && basicFallback !== 0) {
-        // Mirror the legacy path: basicRaw is the unfactored monthly basic; basicGross applies the
-        // EA-1955 tenure `factor` (mid-period joiner/leaver proration). No BASIC component means no
-        // prorateOverride to consult, so the contractual monthly basic prorates like the legacy path.
-        basicRaw = basicFallback;
-        basicGross = round2(basicFallback * factor);
-      }
+      // ── Feedback 64fb5e48 (supersedes the R37 62e370b0 fallback): Personnel is the ONLY basic source ──
+      // The BASIC line always reads the Personnel Basic Salary record (the compensation join, `e.basic`) —
+      // exactly what the legacy path reads. A BASIC employment_pay_component never supplies the amount any
+      // more (previously a stale one silently OVERRODE the Personnel record — a payment-integrity risk);
+      // it is skipped in the loop below and pre-flight surfaces a staleBasicComponent WARNING when its
+      // amount disagrees. `rscope.basic` therefore feeds `percent_of basic` rules from the same
+      // authoritative figure, and basicRaw/basicGross mirror the legacy path: basicRaw is the unfactored
+      // monthly basic; basicGross applies the EA-1955 tenure `factor` (mid-period joiner/leaver
+      // proration). Daily/hourly modes override both in the payslip loop, as before.
+      const compensationBasic = Number(e.basic ?? 0);
+      rscope.basic = compensationBasic;
+      basicRaw = compensationBasic;
+      basicGross = round2(compensationBasic * factor);
       // A single resolved value per component, substituted at BOTH read sites (the line-868 amount and the
       // line-877 basicRaw accumulator) so the gross AND the statutory base see the same number.
       const resolveAmount = (c: (typeof comps)[number]): number =>
         c.rule && c.rule.kind !== 'fixed' ? resolvePayRule(c.rule, rscope, c.amount) : c.amount;
 
       for (const c of comps) {
+        // Feedback 64fb5e48 — a BASIC component is inert in the engine: the Personnel record above already
+        // seeded basicRaw/basicGross/rscope.basic, and a stale component amount must never override pay.
+        if (c.code === 'BASIC') continue;
         const resolved = resolveAmount(c);
         // 1.2.1 Fixed Transaction — the per-employee override wins over the catalog `prorates` flag; null
         // (every legacy/backfilled row + every one-off batch component) inherits the catalog flag, so this is
@@ -2852,7 +2852,6 @@ export async function generatePayslips(
         // A non-payable, non-taxable component (e.g. a record-only BIK) carries onto the payslip as an
         // INFORMATIONAL record line — it does NOT affect any cash bucket, gross, or net (ADR-0025 §5 / Option A).
         if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied }); continue; }
-        if (c.code === 'BASIC') { basicRaw += resolved; basicGross = round2(basicGross + applied); continue; }
         // ── Feedback 09b554e9: declared Normal/Additional remuneration, with per-code annual exemption ──
         // The exempt portion (up to the PCB code's remaining annual headroom; cap -1 = fully exempt,
         // cap 0 = fully taxable) is PAID but stays out of every statutory base (the reimburse bucket);
@@ -4360,12 +4359,19 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
   });
 }
 
-// ── Pre-processing checks (feedback f1564110, Phase 1) ────────────────────────────────────────────
+// ── Pre-processing checks (feedback f1564110, Phase 1; feedback 64fb5e48) ─────────────────────────
 // Validates employee master data BEFORE the run is calculated, per the reporter's proposed workflow
-// ("maintain employee info → validate → process as the final step"). Three classes:
-//   • missingCompensation — BLOCKER. No current compensation row: the generation employee query
+// ("maintain employee info → validate → process as the final step"). All salary checks read the
+// Personnel Basic Salary record (compensation) — the authoritative source; the internal BASIC pay
+// item is NEVER a processing prerequisite (feedback 64fb5e48). Classes:
+//   • missingCompensation — BLOCKER. No open compensation row (the generation employee query
 //     inner-joins compensation, so these employees were previously dropped from the run with no
-//     warning at all. Generation now fails closed (PreProcessBlockedError) until fixed.
+//     warning at all), or no salary record covering the pay period. Generation fails closed
+//     (PreProcessBlockedError) until fixed.
+//   • zeroBasic — BLOCKER. The record would pay nothing: zero basic (monthly/custom) or zero/missing
+//     rate (daily/hourly).
+//   • staleBasicComponent — WARNING. A leftover BASIC pay item disagrees with the Personnel basic;
+//     pay follows Personnel, the item should be cleaned up.
 //   • missingStatutory — WARNING. No employee_statutory_my row: EPF/SOCSO/PCB fall back to defaults.
 //     The operator must explicitly confirm to proceed (enforced in generateAction).
 //   • missingBank — WARNING. Statutory profile exists but bank name/account is incomplete: the
@@ -4382,11 +4388,17 @@ export type PreProcessAdvisory = {
   // is all-or-nothing, so an engine throw would take down the whole company's run. OPTIONAL so pre-0290
   // literals stay valid; absent ⇒ no such employees.
   unpayablePayMode?: PreProcessCheckRow[];
-  // BLOCKER (R37 62e370b0). Only populated when TYPED_PAY_COMPONENTS_ENABLED is on: the employee HAS a
-  // current compensation row but NO period-active BASIC employment_pay_component. In that state the typed
-  // earnings path used to resolve basic to 0 and pay them nothing (the earningsOf fallback now prevents the
-  // silent zero, but an un-backfilled BASIC is still a data gap the operator must fix before processing).
-  missingBasicComponent: PreProcessCheckRow[];
+  // BLOCKER (feedback 64fb5e48, replaces the R37 62e370b0 missingBasicComponent check). The employee's
+  // authoritative Personnel Basic Salary record (the OPEN compensation row) would pay nothing: monthly /
+  // custom modes with basic_salary <= 0, or daily/hourly modes without a positive rate_amount.
+  // assertRateForMode (core/comp.ts) only guards NEW writes, so this also catches legacy rows. OPTIONAL so
+  // pre-existing advisory literals stay valid; absent ⇒ no such employees.
+  zeroBasic?: PreProcessCheckRow[];
+  // WARNING (feedback 64fb5e48) — typed path only: a period-active BASIC employment_pay_component exists
+  // whose amount disagrees with the Personnel Basic Salary (compensation.basic_salary). The engine now
+  // ALWAYS pays basic from the Personnel record (the component never supplies the amount), so this is
+  // stale data flagged for cleanup — it never blocks processing. OPTIONAL like unpayablePayMode.
+  staleBasicComponent?: PreProcessCheckRow[];
   missingStatutory: PreProcessCheckRow[];
   missingBank: PreProcessCheckRow[];
 };
@@ -4409,6 +4421,11 @@ async function preProcessChecksTx(
       employeeCode: employment.employeeCode,
       compId: compensation.id,
       compPayMode: compensation.payMode,
+      // Feedback 64fb5e48 — the fields the strengthened checks read off the Personnel record: effective
+      // date (period coverage), basic amount (zeroBasic + stale comparison) and daily/hourly rate.
+      compValidFrom: compensation.validFrom,
+      compBasic: compensation.basicSalary,
+      compRate: compensation.rateAmount,
       statPersonId: employeeStatutoryMy.personId,
       bankName: employeeStatutoryMy.bankName,
       bankAccountNo: employeeStatutoryMy.bankAccountNo,
@@ -4429,14 +4446,37 @@ async function preProcessChecksTx(
       ),
     )
     .orderBy(person.fullName);
-  // R37 62e370b0 — typed path only: which in-scope employees have a period-active BASIC component. An
-  // employee with a compensation row but NO BASIC component is flagged as missingBasicComponent (BLOCKER),
-  // because the typed earnings path reads basic from that component. Gated: with the flag off the legacy
-  // path reads e.basic directly, so a BASIC component is irrelevant and this query is skipped entirely.
-  const basicComponentEmpIds = new Set<string>();
+  // Feedback 64fb5e48 — effective-date coverage. The engine reads the OPEN compensation row; when that row
+  // only takes effect AFTER the period end, the period itself may still be covered by the (closed, non-
+  // superseded) predecessor the revision truncated — a future-dated increment is not a data gap. Only
+  // employments whose open row starts after the period need this history lookup, so the common case (open
+  // row already in effect) issues NO extra query.
+  const futureOnlyIds = rows.filter((r) => r.compId && r.compValidFrom! > periodEnd).map((r) => r.employmentId);
+  const coveredEmpIds = new Set<string>();
+  if (futureOnlyIds.length > 0) {
+    const covRows = await tx
+      .selectDistinct({ employmentId: compensation.employmentId })
+      .from(compensation)
+      .where(
+        and(
+          inArray(compensation.employmentId, futureOnlyIds),
+          isNull(compensation.supersededAt),
+          lte(compensation.validFrom, periodEnd),
+          or(isNull(compensation.validTo), gte(compensation.validTo, periodStart)),
+        ),
+      );
+    for (const c of covRows) coveredEmpIds.add(c.employmentId);
+  }
+  // Feedback 64fb5e48 (supersedes the R37 62e370b0 missingBasicComponent blocker) — typed path only: the
+  // period-active BASIC employment_pay_component AMOUNTS per in-scope employee. The engine now always pays
+  // basic from the Personnel compensation record, so a MISSING BASIC component is no gap at all; a PRESENT
+  // one whose amount disagrees with the Personnel basic is stale data, surfaced below as the
+  // staleBasicComponent WARNING (pay follows Personnel either way). Gated: with the flag off the legacy
+  // path never reads components, so the query is skipped entirely.
+  const basicAmountsByEmp = new Map<string, number[]>();
   if (process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true' && rows.length > 0) {
     const basicRows = await tx
-      .select({ employmentId: employmentPayComponent.employmentId })
+      .select({ employmentId: employmentPayComponent.employmentId, amount: employmentPayComponent.amount })
       .from(employmentPayComponent)
       .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
       .where(
@@ -4450,21 +4490,38 @@ async function preProcessChecksTx(
           isNull(employmentPayComponent.supersededAt),
         ),
       );
-    for (const b of basicRows) basicComponentEmpIds.add(b.employmentId);
+    for (const bRow of basicRows) {
+      const list = basicAmountsByEmp.get(bRow.employmentId) ?? [];
+      list.push(Number(bRow.amount));
+      basicAmountsByEmp.set(bRow.employmentId, list);
+    }
   }
-  const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
-  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], missingBasicComponent: [], missingStatutory: [], missingBank: [] };
+  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], staleBasicComponent: [], missingStatutory: [], missingBank: [] };
   for (const r of rows) {
     const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
-    if (!r.compId) out.missingCompensation.push(row);
+    // Feedback 64fb5e48 — the OPEN row must exist (the generation employee query inner-joins it, so a
+    // missing one silently drops the employee) AND the pay period must actually be covered by a salary
+    // record: an open row already in effect covers it, else a period-overlapping predecessor must exist.
+    if (!r.compId || (r.compValidFrom! > periodEnd && !coveredEmpIds.has(r.employmentId))) out.missingCompensation.push(row);
     // ADR-0078 — pay_mode='custom_period' has no calculation: BLOCKER, named per employee. Checked before
-    // the BASIC-component gap so one row lands in exactly one blocker list (the mode gap subsumes it —
-    // there is nothing to compute regardless of components).
+    // the zero-amount gap so one row lands in exactly one blocker list (the mode gap subsumes it —
+    // there is nothing to compute regardless of amounts).
     else if (r.compPayMode === 'custom_period') out.unpayablePayMode!.push(row);
-    // A compensation row exists but the typed path has no BASIC component to read → BLOCKER (only when the
-    // typed path is live). Reported alongside missingCompensation, not instead of it: the two gaps are
-    // disjoint (this branch requires compId to be present).
-    else if (typedComponentsOn && !basicComponentEmpIds.has(r.employmentId)) out.missingBasicComponent.push(row);
+    // Feedback 64fb5e48 — zeroBasic: the Personnel record would pay nothing. Daily/hourly modes pay
+    // rate × time so the RATE must be positive (basic_salary keeps its monthly-equivalent role for
+    // statutory reads); every other mode requires basic_salary > 0. assertRateForMode only guards new
+    // writes — this covers legacy rows too.
+    else if (
+      r.compPayMode === 'daily' || r.compPayMode === 'hourly'
+        ? !(Number(r.compRate ?? 0) > 0)
+        : !(Number(r.compBasic ?? 0) > 0)
+    ) out.zeroBasic!.push(row);
+    // Feedback 64fb5e48 — WARNING (never blocks): a period-active BASIC component whose amount disagrees
+    // with the authoritative Personnel basic. The engine pays the Personnel record regardless; this only
+    // flags the stale row for cleanup. Independent of the statutory warnings below (a row can carry both).
+    if (r.compId && (basicAmountsByEmp.get(r.employmentId) ?? []).some((amt) => round2(amt) !== round2(Number(r.compBasic)))) {
+      out.staleBasicComponent!.push(row);
+    }
     if (!r.statPersonId) out.missingStatutory.push(row);
     // Bank readiness is only meaningful once a statutory profile exists (a missing profile already
     // covers the row above — listing it twice would be noise, not signal).
@@ -4483,7 +4540,7 @@ export function preProcessAdvisory(ctx: SessionContext, batchId: string): Promis
       .from(payrollBatch)
       .where(eq(payrollBatch.id, batchId))
       .limit(1);
-    if (!batch) return { missingCompensation: [], missingBasicComponent: [], missingStatutory: [], missingBank: [] };
+    if (!batch) return { missingCompensation: [], missingStatutory: [], missingBank: [] };
     return preProcessChecksTx(tx, batch);
   });
 }
@@ -4505,7 +4562,8 @@ export function preProcessAdvisoryForSelection(
     const merged: PreProcessAdvisory = {
       missingCompensation: [],
       unpayablePayMode: [],
-      missingBasicComponent: [],
+      zeroBasic: [],
+      staleBasicComponent: [],
       missingStatutory: [],
       missingBank: [],
     };
@@ -4513,7 +4571,8 @@ export function preProcessAdvisoryForSelection(
       const a = await preProcessChecksTx(tx, { companyId, payPeriod: input.payPeriod, scope });
       merged.missingCompensation.push(...a.missingCompensation);
       merged.unpayablePayMode!.push(...(a.unpayablePayMode ?? []));
-      merged.missingBasicComponent.push(...a.missingBasicComponent);
+      merged.zeroBasic!.push(...(a.zeroBasic ?? []));
+      merged.staleBasicComponent!.push(...(a.staleBasicComponent ?? []));
       merged.missingStatutory.push(...a.missingStatutory);
       merged.missingBank.push(...a.missingBank);
     }

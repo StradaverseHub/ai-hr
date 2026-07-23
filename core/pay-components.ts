@@ -828,7 +828,11 @@ export function setPayrollBatchComponent(
 // ───────────────────── Backfill (legacy → components) ─────────────────────
 
 /** Seed BASIC + ALLOWANCE recurring components from every open compensation row. Idempotent-ish:
- *  setEmploymentPayComponent supersedes the prior open value, so re-running just re-states it. */
+ *  setEmploymentPayComponent supersedes the prior open value, so re-running just re-states it.
+ *  Feedback 64fb5e48 — OPTIONAL housekeeping only: the payroll engine now always pays basic from the
+ *  Personnel compensation record, so BASIC component amounts no longer drive pay (a divergent one only
+ *  surfaces as the staleBasicComponent warning in the pre-processing checks, and a missing one is not a
+ *  gap at all). Kept for tenants that want the BASIC line mirrored into the typed component tables. */
 export function backfillEmploymentComponentsFromCompensation(ctx: SessionContext) {
   return withTenant(ctx, async (tx) => {
     const basicId = await componentIdByCode(tx, ctx.tenantId, BACKFILL_COMPONENT_CODES.basic);

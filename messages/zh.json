@@ -2599,7 +2599,8 @@
       "preChecksWarningBadge": "警告",
       "preChecks": {
         "missingCompensation": "无当前薪资记录",
-        "missingBasicComponent": "缺少基本薪资项目",
+        "zeroBasic": "基本薪资或薪资率为零",
+        "staleBasicComponent": "BASIC 薪资项目已过时——以人事薪资记录为准",
         "missingStatutory": "无法定资料（EPF/SOCSO/PCB）",
         "missingBank": "银行资料不完整"
       },
@@ -3137,7 +3138,8 @@
       "validationWarningBadge": "警告",
       "validationCheck": {
         "missingCompensation": "无当前薪资记录",
-        "missingBasicComponent": "无基本薪资组成项",
+        "zeroBasic": "基本薪资或薪资率为零",
+        "staleBasicComponent": "BASIC 薪资项目已过时——以人事薪资记录为准",
         "missingStatutory": "无法定档案（EPF/SOCSO/PCB）",
         "missingBank": "银行资料不完整"
       }

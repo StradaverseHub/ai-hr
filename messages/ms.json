@@ -2599,7 +2599,8 @@
       "preChecksWarningBadge": "Amaran",
       "preChecks": {
         "missingCompensation": "Tiada rekod gaji semasa",
-        "missingBasicComponent": "Tiada komponen gaji asas",
+        "zeroBasic": "Gaji asas atau kadar gaji adalah sifar",
+        "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil statutori (KWSP/PERKESO/PCB)",
         "missingBank": "Butiran bank tidak lengkap"
       },
@@ -3137,7 +3138,8 @@
       "validationWarningBadge": "Amaran",
       "validationCheck": {
         "missingCompensation": "Tiada rekod gaji semasa",
-        "missingBasicComponent": "Tiada komponen gaji asas",
+        "zeroBasic": "Gaji asas atau kadar gaji adalah sifar",
+        "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil berkanun (EPF/SOCSO/PCB)",
         "missingBank": "Butiran bank tidak lengkap"
       }
