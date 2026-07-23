@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listAttendancePolicies } from '@/core/attendance';
+import { listRegisteredDevices } from '@/core/attendance-device';
 import { ensureStandardRule, listAttendanceRules } from '@/core/attendance-rule';
 import { packFor } from '@/localization/registry';
 import { MY_HRDF } from '@/localization/my/statutory-tables';
@@ -11,6 +12,7 @@ import { Badge, Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls } fro
 import { StatutoryComponentForm } from '@/components/statutory-component-form';
 import { setAttendancePolicyAction } from '../actions';
 import { deleteAttendanceRuleAction } from './rule-actions';
+import { revokeDeviceAction } from './device-actions';
 
 const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
 const DAY_KEY: Record<number, string> = { 1: 'dayMon', 2: 'dayTue', 3: 'dayWed', 4: 'dayThu', 5: 'dayFri', 6: 'daySat', 7: 'daySun' };
@@ -49,6 +51,11 @@ export default async function AttendancePolicyPage({
   const companyName = new Map(visible.map((c) => [c.id, c.name]));
   await Promise.all(visible.map((c) => ensureStandardRule(s, c.id)));
   const rules = await listAttendanceRules(s, visible.map((c) => c.id));
+
+  // Feedback 5249d43f — every active registered clocking device in scope, with per-row revoke (the admin
+  // control balancing self-service registration). Lives here because the enforcement switch does too.
+  const devices = await listRegisteredDevices(s, visible.map((c) => c.id));
+  const fmtDate = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : '—');
 
   // Overtime rates (feedback e776d17d) — the SAME resolved MY ruleset the statutory page reads, edited
   // through the SAME 'ot' slice / setStatutoryComponentAction write path. Tenant-global, renders once.
@@ -282,6 +289,22 @@ export default async function AttendancePolicyPage({
                   <p className="mt-1.5 text-xs text-muted-foreground">{t('otApprovalCalcHint')}</p>
                 </fieldset>
 
+                {/* Feedback 5249d43f: registered-device enforcement. Ships OFF so nobody is locked out;
+                    flip ON per company once its teams have registered their devices. */}
+                <fieldset>
+                  <legend className="mb-1.5 text-sm font-medium text-foreground">{t('requireDeviceLegend')}</legend>
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      name="requireRegisteredDevice"
+                      defaultChecked={p.requireRegisteredDevice}
+                      className="size-4 accent-primary"
+                    />
+                    {t('requireDeviceLabel')}
+                  </label>
+                  <p className="mt-1.5 text-xs text-muted-foreground">{t('requireDeviceHint')}</p>
+                </fieldset>
+
                 <div className="flex items-center gap-3">
                   <button className={btnPrimary}>{t('save')}</button>
                   <span className="text-xs text-muted-foreground">{t('lateHint')}</span>
@@ -291,6 +314,56 @@ export default async function AttendancePolicyPage({
           );
         })
       )}
+
+      {/* ── Registered clocking devices (feedback 5249d43f): the admin view of every employee's
+          self-registered devices, with per-row revoke. Revoking blocks web clocking from that device
+          (while the enforcement switch above is ON) until the employee registers it again. ─────────── */}
+      <Card className="overflow-hidden">
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold text-foreground">{t('devicesTitle')}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">{t('devicesIntro')}</p>
+        </div>
+        {devices.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('devicesEmpty')}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">{t('devColEmployee')}</th>
+                  <th className="px-4 py-2 font-medium">{t('devColDevice')}</th>
+                  {multiCompany && <th className="px-4 py-2 font-medium">{t('devColCompany')}</th>}
+                  <th className="px-4 py-2 font-medium">{t('devColRegistered')}</th>
+                  <th className="px-4 py-2 font-medium">{t('devColLastUsed')}</th>
+                  <th className="px-4 py-2 text-right font-medium">{t('devColAction')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {devices.map((d) => (
+                  <tr key={d.id} className="border-b border-border/60">
+                    <td className="px-4 py-2 font-medium text-foreground">
+                      {d.employee}
+                      {d.employeeCode && <span className="ml-1.5 text-xs text-muted-foreground">{d.employeeCode}</span>}
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">{d.label}</td>
+                    {multiCompany && (
+                      <td className="px-4 py-2 text-muted-foreground">{companyName.get(d.companyId) ?? '—'}</td>
+                    )}
+                    <td className="px-4 py-2 tabular-nums text-muted-foreground">{fmtDate(d.registeredAt)}</td>
+                    <td className="px-4 py-2 tabular-nums text-muted-foreground">{fmtDate(d.lastUsedAt)}</td>
+                    <td className="px-4 py-2">
+                      <form action={revokeDeviceAction} className="flex justify-end">
+                        <input type="hidden" name="deviceId" value={d.id} />
+                        <button className="text-destructive hover:underline">{t('devRevoke')}</button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

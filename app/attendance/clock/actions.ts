@@ -1,0 +1,109 @@
+'use server';
+
+/**
+ * Server actions for Attendance > Clock in/out (feedback 5249d43f). Same engine as the /me clock card —
+ * core checkIn/checkOut own EVERY rule (server timestamps, duplicate/ordering refusal, geofence, the
+ * registered-device gate), so behaviour is identical everywhere. The employment is ALWAYS resolved from
+ * the session, never a form field (ADR-0015).
+ */
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
+import { getSession } from '@/lib/session';
+import { myEmployment } from '@/core/read';
+import {
+  checkIn,
+  checkOut,
+  GeolocationRequiredError,
+  OutsideGeofenceError,
+} from '@/core/attendance';
+import { DeviceNotRegisteredError, registerDevice } from '@/core/attendance-device';
+
+const PAGE = '/attendance/clock';
+
+/** Resolve the caller's own employment from the session — never from a form field. */
+async function resolveMe() {
+  const s = await getSession();
+  const me = await myEmployment(s);
+  if (!me) throw new Error('This account is not linked to an employee profile.');
+  return { s, employmentId: me.employmentId };
+}
+
+/** SERVER clock — the date/time the punch is recorded at. The browser's clock is display-only. */
+function nowParts() {
+  const d = new Date();
+  return { date: d.toISOString().slice(0, 10), time: d.toTimeString().slice(0, 5) };
+}
+
+/** The optional hidden lat/lng fields the client-side geolocation capture writes (ADR-0070). Missing/
+ *  blank/non-finite ⇒ undefined — the server decides whether that's fatal, never the client. */
+function parseGeo(formData: FormData): { lat: number; lng: number } | undefined {
+  const latRaw = formData.get('lat');
+  const lngRaw = formData.get('lng');
+  if (latRaw == null || lngRaw == null || latRaw === '' || lngRaw === '') return undefined;
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  return { lat, lng };
+}
+
+function parseDeviceToken(formData: FormData): string | undefined {
+  const v = String(formData.get('deviceToken') ?? '').trim();
+  return v || undefined;
+}
+
+/** Localize the clock errors; the geofence block surfaces the DISTANCE whenever the engine measured one
+ *  (OutsideGeofenceError carries the nearest site's distance + the allowed radius). */
+async function localizeClockError(e: unknown): Promise<string> {
+  const t = await getTranslations('attendance.clock');
+  if (e instanceof OutsideGeofenceError) {
+    return e.info.distanceM != null
+      ? t('outsideGeofenceDistance', { distance: e.info.distanceM, radius: e.info.radiusM })
+      : t('outsideGeofence');
+  }
+  if (e instanceof GeolocationRequiredError) return t('locationRequired');
+  return (e as Error).message;
+}
+
+export async function clockInAction(formData: FormData) {
+  const { s, employmentId } = await resolveMe();
+  const { date, time } = nowParts();
+  try {
+    await checkIn(s, { employmentId, date, time, geo: parseGeo(formData), deviceToken: parseDeviceToken(formData) });
+  } catch (e) {
+    // deviceError=1 renders the inline register-this-device prompt instead of a bare error string.
+    if (e instanceof DeviceNotRegisteredError) redirect(`${PAGE}?deviceError=1`);
+    redirect(`${PAGE}?error=${encodeURIComponent(await localizeClockError(e))}`);
+  }
+  revalidatePath(PAGE);
+  redirect(`${PAGE}?toast=Clocked+in`);
+}
+
+export async function clockOutAction(formData: FormData) {
+  const { s, employmentId } = await resolveMe();
+  const { date, time } = nowParts();
+  try {
+    await checkOut(s, { employmentId, date, time, geo: parseGeo(formData), deviceToken: parseDeviceToken(formData) });
+  } catch (e) {
+    if (e instanceof DeviceNotRegisteredError) redirect(`${PAGE}?deviceError=1`);
+    redirect(`${PAGE}?error=${encodeURIComponent(await localizeClockError(e))}`);
+  }
+  revalidatePath(PAGE);
+  redirect(`${PAGE}?toast=Clocked+out`);
+}
+
+/**
+ * Self-service device registration (5249d43f). Called DIRECTLY from the client island (not a form
+ * action) because the minted token must reach the browser exactly once to be stored in localStorage —
+ * a redirect would drop it. Errors return as data (the island toasts them).
+ */
+export async function registerDeviceAction(p: { label: string }): Promise<{ deviceToken?: string; error?: string }> {
+  try {
+    const { s, employmentId } = await resolveMe();
+    const { deviceToken } = await registerDevice(s, { employmentId, label: p.label });
+    revalidatePath(PAGE);
+    return { deviceToken };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}

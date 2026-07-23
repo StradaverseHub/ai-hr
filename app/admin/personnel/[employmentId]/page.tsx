@@ -57,6 +57,9 @@ import {
 import { movementHistory, movementDetail } from '@/core/movement';
 import { MovementNewEvent } from './movement-new-event';
 import { serviceYearsMonthsAt, serviceYearsMonthsDaysAt } from '@/core/leave';
+// 9d13221c — Age beside Date of Birth: shared completed-years helper (kept a separate import so the
+// cc681bd5 import line above stays byte-identical for its drift-guard test).
+import { completedYearsAt } from '@/core/leave';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import {
   closedPayrollPeriodsFor,
@@ -352,6 +355,14 @@ export default async function EmployeePage({
     { key: 'others', label: t('tabs.others') },
   ];
 
+  // 9d13221c — Age beside Date of Birth: completed whole years from the stored DOB to today, recomputed
+  // on every render so each profile open shows that day's exact age (it increments the day the birthday
+  // arrives — a 29-Feb birthday increments on 1 Mar in common years). Read-only + display-only: the age is
+  // never stored, never an input, and never audited (DOB edits keep their existing audit trail); a DOB save
+  // re-renders this page so the figure refreshes immediately. Blank DOB → "Not Available".
+  const ageYears = completedYearsAt(emp.dateOfBirth, today);
+  const ageLabel = ageYears === null ? null : t('ageYears', { years: ageYears });
+
   // ── PROFILE ────────────────────────────────────────────────────────────────
   // b4682879 — modular redesign: three organised cards (Personal Details, Contact & Address, Emergency
   // Contact) plus the existing gender/marital/DOB compliance card. Each card stays its OWN <form> (panels
@@ -460,6 +471,14 @@ export default async function EmployeePage({
           <Field label={t('birthDate')}>
             <input id="profile-dob-input" name="dateOfBirth" type="date" defaultValue={emp.dateOfBirth ?? ''} className={inputCls} />
           </Field>
+          {/* 9d13221c — read-only Age beside Date of Birth: system-calculated (muted text, deliberately
+              NOT an input — nothing to type, nothing to save), derived fresh from the stored DOB on every
+              render. "Not Available" when no DOB is recorded (shares the cc681bd5 fallback key). */}
+          <Field label={t('age')}>
+            <p className="flex h-9 items-center text-sm text-muted-foreground">
+              {ageLabel ?? t('employmentInfo.notAvailable')}
+            </p>
+          </Field>
           <Field label={t('gender')}>
             <select name="gender" defaultValue={emp.gender ?? ''} className={inputCls}>
               <option value="">{t('genderNotSet')}</option>
@@ -485,11 +504,13 @@ export default async function EmployeePage({
           </div>
         </form>
 
-        {/* Item e3ce0d4d — nationality-conditional identification. IdentityFields (client) reads the live
-            nationality from IdentityProvider and renders the IC form (Malaysian: IcDobAutofill, IC mandatory,
-            DOB autofill preserved — item 354a500d/8b5334db) OR the passport form (non-Malaysian: number/issue/
-            expiry mandatory, remark optional; setPassportAction skips MyKad validation). Both server actions are
-            passed in as props (RSC→client pattern); only the relevant card shows so its required fields apply. */}
+        {/* Item e3ce0d4d / 55865c32 — Identity Information. IdentityFields (client) renders BOTH sections for
+            every employee: Identity No (NRIC) (IcDobAutofill, DOB autofill preserved — item 354a500d/8b5334db)
+            AND Passport Information (number/issue/expiry/issuing country/remark). The live nationality from
+            IdentityProvider only toggles which document is REQUIRED (Malaysian → NRIC; non-Malaysian → passport
+            trio) — the server re-derives this from the person record on save. Both server actions are passed in
+            as props (RSC→client pattern). countryOptions reuses the Nationality picker's catalog source for the
+            passport's Issuing Country dropdown. */}
         <IdentityFields
           employmentId={emp.employmentId}
           personId={emp.personId}
@@ -497,7 +518,9 @@ export default async function EmployeePage({
           passportNumber={statutory?.passportNumber ?? ''}
           passportIssueDate={statutory?.passportIssueDate ?? ''}
           passportExpiryDate={statutory?.passportExpiryDate ?? ''}
+          passportIssuingCountry={statutory?.passportIssuingCountry ?? ''}
           passportRemark={statutory?.passportRemark ?? ''}
+          countryOptions={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
           setIcAction={setIcAction}
           setPassportAction={setPassportAction}
         />

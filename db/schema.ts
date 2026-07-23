@@ -363,6 +363,34 @@ export const employeeClockingLocation = pgTable(
   ],
 );
 
+// employee_device = the browsers/devices an employee has registered for web clocking (feedback 5249d43f,
+// migration 0301). The token is a server-minted random UUID handed back once at registration, stored
+// client-side (localStorage) and presented with every web punch; enforcement is the per-company
+// attendance_policy.require_registered_device switch (default OFF so nobody is locked out on ship).
+// Registration is SELF-SERVICE (the subject employee inserts their own row); administrators revoke.
+// Revocation is a soft mark (revoked_at) so the device history stays auditable next to its
+// attendance.device.registered / .revoked events. RLS via can_see_employment (self / manager-up / admin —
+// the attendance_punch per-person pattern, minus the payroll-partner branch).
+export const employeeDevice = pgTable(
+  'employee_device',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    label: text('label').notNull(),
+    deviceToken: uuid('device_token').notNull(),
+    registeredAt: timestamp('registered_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('employee_device_employment_idx').on(t.employmentId),
+    uniqueIndex('employee_device_token_uq').on(t.deviceToken),
+  ],
+);
+
 // app_user = a login identity (WorkOS-sourced); optionally linked to a Person.
 export const appUser = pgTable(
   'app_user',
@@ -2016,12 +2044,16 @@ export const employeeStatutoryMy = pgTable(
     // Item e3ce0d4d — NULLABLE (relaxed from NOT NULL by migration 0212): a Malaysian employee is identified
     // by their MyKad IC, a non-Malaysian by their passport (below), so a non-Malaysian identity row carries no IC.
     icNumber: text('ic_number'),
-    // Item e3ce0d4d — passport identification (non-Malaysian employees). All nullable/additive: Malaysian rows
-    // leave these blank and keep their IC. Foundation for future passport-expiry reminders / work-permit tracking.
+    // Item e3ce0d4d — passport identification. All nullable/additive. Item 55865c32 relaxed the either/or:
+    // EVERY employee (Malaysian included) may maintain a passport block alongside their NRIC; nationality only
+    // drives which document is mandatory. Foundation for passport-expiry reminders / work-permit tracking.
     passportNumber: text('passport_number'),
     passportIssueDate: date('passport_issue_date'),
     passportExpiryDate: date('passport_expiry_date'),
     passportRemark: text('passport_remark'),
+    // Item 55865c32 — the passport's issuing country (free text from the international country picker; the
+    // Combobox's legacy-value tolerance renders any stored value). Optional — not part of the mandatory trio.
+    passportIssuingCountry: text('passport_issuing_country'),
     epfNumber: text('epf_number'),
     socsoNumber: text('socso_number'),
     taxNumber: text('tax_number'),
@@ -2615,6 +2647,10 @@ export const attendancePolicy = pgTable(
     // ADR-0069: how an approved overtime request's minutes are resolved against the engine's live figure
     // (requested | system_calculated | smaller_of). Company-wide setting; default system_calculated.
     otApprovalCalculation: otApprovalCalculationEnum('ot_approval_calculation').notNull().default('system_calculated'),
+    // Feedback 5249d43f (migration 0301): when TRUE, web clock-in/out requires a registered device token
+    // (employee_device) — enforced server-side in core/attendance-device.ts enforceDeviceGateTx. Default
+    // FALSE so shipping the feature locks nobody out; terminal imports are exempt (documented bypass).
+    requireRegisteredDevice: boolean('require_registered_device').notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('attendance_policy_company_uq').on(t.companyId)],

@@ -74,8 +74,9 @@ describe('sidebar Attendance group (5cb199b3 consolidation)', () => {
     }
   });
 
-  // f60cd403: day-to-day Records first, administrative bulk-upload Import always last.
-  it('keeps Records (/attendance) as the first child of the Attendance node', () => {
+  // f60cd403: day-to-day rows first, administrative bulk-upload Import always last. (5249d43f inserted
+  // Clock in/out ABOVE Records — see the dedicated describe below — so Records now leads the REST.)
+  it('keeps Records (/attendance) ahead of the config/roster/import children', () => {
     const first = node.indexOf(`'/attendance'`);
     expect(first, 'Records is a child of the Attendance node').toBeGreaterThan(-1);
     const others = ["'/attendance/import'", "'/roster'", ...TICKET_HREFS.map((h) => `'${h}'`)];
@@ -102,6 +103,40 @@ describe('sidebar Attendance group (5cb199b3 consolidation)', () => {
     const line = node.split('\n').find((l) => l.includes(`'/attendance/import'`));
     expect(line, 'Import row exists').toBeDefined();
     expect(line, 'Import keeps managerUp visibility').toMatch(/managerUp:\s*true/);
+  });
+});
+
+// Feedback 5249d43f: the employee-facing "Clock in/out" page is the PRIMARY day-to-day action, so it sits
+// FIRST in the Attendance node — above Records — visible to every employee (self-service, like /me).
+describe('sidebar Attendance group — Clock in/out first (5249d43f)', () => {
+  const node = attendanceNodeBlock();
+
+  it('inserts Clock in/out (/attendance/clock) as the FIRST child of the Attendance node', () => {
+    const clockIdx = node.indexOf(`'/attendance/clock'`);
+    expect(clockIdx, 'Clock in/out is a child of the Attendance node').toBeGreaterThan(-1);
+    const others = [`'/attendance'`, `'/roster'`, `'/attendance/import'`, ...TICKET_HREFS.map((h) => `'${h}'`)];
+    for (const q of others) {
+      const idx = node.indexOf(q);
+      expect(idx, `${q} present`).toBeGreaterThan(-1);
+      expect(clockIdx, `Clock in/out precedes ${q}`).toBeLessThan(idx);
+    }
+  });
+
+  it('keeps Clock in/out visible to every employee (no adminOnly/managerUp gate)', () => {
+    const line = node.split('\n').find((l) => l.includes(`'/attendance/clock'`));
+    expect(line, 'Clock in/out row exists').toBeDefined();
+    expect(line, 'Clock in/out carries no visibility gate').not.toMatch(/adminOnly|managerUp/);
+  });
+
+  it('appears exactly once across the whole sidebar', () => {
+    expect(countQuoted(SRC, '/attendance/clock')).toBe(1);
+  });
+
+  it('has its nav label in en.json', () => {
+    const en = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8'),
+    ) as { nav: Record<string, string> };
+    expect(en.nav.attendanceClock).toBe('Clock in/out');
   });
 });
 

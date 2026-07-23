@@ -4136,6 +4136,20 @@ export const serviceYearsMonthsDaysAt = (
 };
 
 /**
+ * Completed whole years between `from` and `asOf` — the anniversary-accurate counter behind the read-only
+ * Age figure beside Date of Birth on the Personal Details card (feedback 9d13221c). Delegates to
+ * serviceYearsAt, so the two can never disagree: the count increments ON the anniversary day itself and
+ * never before — a 29-Feb birthday therefore increments on 1 Mar in common years (28-Feb is still before
+ * the anniversary). A null/blank `from` returns null (the card shows "Not Available"); an `asOf` before
+ * `from` clamps to 0. Pure + display-only: the age is never stored and never audited (DOB edits keep their
+ * existing audit trail) — callers recompute against the current date on every view, so the figure is always
+ * that day's exact age with zero maintenance. Future age consumers (analytics, retirement reports,
+ * directory columns) should reuse THIS helper rather than reinventing the calendar math.
+ */
+export const completedYearsAt = (from: string | null | undefined, asOf: string): number | null =>
+  from ? serviceYearsAt(from, asOf) : null;
+
+/**
  * Open a leave year: for every active employment hired before 1 Jan of `year`, post the
  * new year's accrual per standing type at the employee's CURRENT service band — so the
  * 2y/5y band upgrades happen here — resolved as max(statutory floor, company policy).

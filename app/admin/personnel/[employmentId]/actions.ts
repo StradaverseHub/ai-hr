@@ -1203,11 +1203,12 @@ export async function setIcAction(formData: FormData) {
 }
 
 /**
- * Item e3ce0d4d — save ONLY the passport identification columns for a NON-Malaysian employee. The counterpart
- * to setIcAction: the Profile-tab identity form shows the IC field for Malaysians and these passport fields for
- * everyone else (client-side, driven by the selected nationality). Like setIcAction the pack setter SEEDS the
- * statutory row (UPSERT) — but with NO IC (ic_number stays null) and SKIPS MyKad validation. It requires the
- * passport number + issue date + expiry date (remark optional) and appends `employee.passport.updated`.
+ * Item e3ce0d4d — save ONLY the passport identification columns. The counterpart to setIcAction. Item
+ * 55865c32: the Profile-tab identity block now shows BOTH sections for every employee — the pack setter
+ * derives requiredness from the person's stored nationality server-side (non-Malaysian → number + issue +
+ * expiry mandatory; Malaysian → optional but all-or-nothing). Like setIcAction the pack setter SEEDS the
+ * statutory row (UPSERT) — but with NO IC (ic_number stays null) and SKIPS MyKad validation. Remark and
+ * issuing country are optional; appends `employee.passport.updated`.
  */
 export async function setPassportAction(formData: FormData) {
   const s = await requireAdmin();
@@ -1222,6 +1223,7 @@ export async function setPassportAction(formData: FormData) {
       passportIssueDate: (formData.get('passportIssueDate') as string) || null,
       passportExpiryDate: (formData.get('passportExpiryDate') as string) || null,
       passportRemark: (formData.get('passportRemark') as string) || null,
+      passportIssuingCountry: (formData.get('passportIssuingCountry') as string) || null,
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));

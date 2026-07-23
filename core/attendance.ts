@@ -13,6 +13,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide, filterDelegationOrgScopeTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
+import { enforceDeviceGateTx } from './attendance-device';
 import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './attendance-rule';
 import { holidayDatesFor } from './holidays';
 import { approvedLeaveDates } from './leave';
@@ -696,9 +697,14 @@ async function recomputeDayFromPunches(
 
 async function checkInTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string },
 ) {
   return withTenant(ctx, async (tx) => {
+    // Feedback 5249d43f: registered-device gate FIRST — when the company policy requires it, an absent /
+    // unknown / revoked token throws the typed DeviceNotRegisteredError before anything is evaluated or
+    // written (policy OFF ⇒ no-op). Terminal imports bypass by construction (they never call checkIn).
+    await enforceDeviceGateTx(tx, { employmentId: p.employmentId, deviceToken: p.deviceToken });
+
     const [existing] = await tx
       .select({ id: attendance.id, dayType: attendance.dayType })
       .from(attendance)
@@ -803,7 +809,7 @@ async function checkInTx(
  *  (ADR-0070 §3 — the only way a blocked ATTEMPT can be durably recorded once its write rolled back). */
 export async function checkIn(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string },
 ) {
   try {
     return await checkInTx(ctx, p);
@@ -817,9 +823,12 @@ export async function checkIn(
 
 async function checkOutTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string },
 ) {
   return withTenant(ctx, async (tx) => {
+    // Feedback 5249d43f: same registered-device gate as checkInTx — see the comment there.
+    await enforceDeviceGateTx(tx, { employmentId: p.employmentId, deviceToken: p.deviceToken });
+
     const [rec] = await tx
       .select()
       .from(attendance)
@@ -941,7 +950,7 @@ async function checkOutTx(
 /** Check out. Same optional-geo / blocked-event contract as checkIn (ADR-0070 §3). */
 export async function checkOut(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string },
 ) {
   try {
     return await checkOutTx(ctx, p);
@@ -2000,6 +2009,8 @@ export type AttendancePolicyView = {
   halfWorkingDays: number[];
   // ADR-0069: how an approved overtime request's minutes are resolved (requested | system_calculated | smaller_of).
   otApprovalCalculation: OtApprovalMethod;
+  // Feedback 5249d43f: when TRUE, web clock-in/out requires a registered device (employee_device).
+  requireRegisteredDevice: boolean;
   isDefault: boolean; // true ⇒ no row saved yet; the form shows engine defaults
 };
 
@@ -2022,6 +2033,7 @@ export function listAttendancePolicies(
         workingDays: attendancePolicy.workingDays,
         halfWorkingDays: attendancePolicy.halfWorkingDays,
         otApprovalCalculation: attendancePolicy.otApprovalCalculation,
+        requireRegisteredDevice: attendancePolicy.requireRegisteredDevice,
       })
       .from(attendancePolicy)
       .where(inArray(attendancePolicy.companyId, companyIds));
@@ -2040,6 +2052,7 @@ export function listAttendancePolicies(
             workingDays: DEFAULTS.workingDays,
             halfWorkingDays: DEFAULTS.halfWorkingDays,
             otApprovalCalculation: 'system_calculated' as OtApprovalMethod,
+            requireRegisteredDevice: false,
             isDefault: true,
           };
     });
@@ -2069,6 +2082,9 @@ export async function setAttendancePolicy(
     // ADR-0069: how an approved overtime request's minutes are resolved. Optional — absent ⇒ preserved on an
     // existing row / defaulted to system_calculated on a fresh row.
     otApprovalCalculation?: OtApprovalMethod;
+    // Feedback 5249d43f: require a registered device for web clocking. Optional — absent ⇒ false (the
+    // checkbox posts nothing when unchecked; pre-existing callers keep the shipping default OFF).
+    requireRegisteredDevice?: boolean;
   },
 ) {
   const workStart = asTime(p.workStart, 'Work start');
@@ -2101,6 +2117,7 @@ export async function setAttendancePolicy(
     throw new Error('Invalid overtime approval calculation option.');
   }
   const otApprovalCalculation: OtApprovalMethod = p.otApprovalCalculation ?? 'system_calculated';
+  const requireRegisteredDevice = p.requireRegisteredDevice ?? false;
 
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
@@ -2116,10 +2133,11 @@ export async function setAttendancePolicy(
         workingDays,
         halfWorkingDays,
         otApprovalCalculation,
+        requireRegisteredDevice,
       })
       .onConflictDoUpdate({
         target: attendancePolicy.companyId,
-        set: { workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays, halfWorkingDays, otApprovalCalculation },
+        set: { workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays, halfWorkingDays, otApprovalCalculation, requireRegisteredDevice },
       })
       .returning({ id: attendancePolicy.id });
     await appendEvent(tx, {
@@ -2138,6 +2156,7 @@ export async function setAttendancePolicy(
         workingDays,
         halfWorkingDays,
         otApprovalCalculation,
+        requireRegisteredDevice,
       },
     });
     return row;

@@ -1650,6 +1650,8 @@ export async function setAttendancePolicyAction(fd: FormData) {
       workingDays,
       halfWorkingDays,
       otApprovalCalculation,
+      // Feedback 5249d43f: registered-device enforcement checkbox (absent when unchecked ⇒ false).
+      requireRegisteredDevice: fd.get('requireRegisteredDevice') != null,
     });
   } catch (e) {
     fail(ATTENDANCE_POLICY, e);

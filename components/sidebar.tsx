@@ -80,6 +80,10 @@ const ATTENDANCE_NODE: CollapsibleGroupItem = {
   labelKey: 'attendance',
   icon: Clock,
   children: [
+    // Feedback 5249d43f: "Clock in/out" — the employee-facing clocking page — is the PRIMARY day-to-day
+    // action, so it sits FIRST, above Records (the node's documented day-to-day-first ordering, f60cd403).
+    // Visible to every employee (self-service, like /me).
+    { href: '/attendance/clock', labelKey: 'attendanceClock', icon: Clock },
     { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
     { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
     // R33 f21d6eee: "Shift settings" (/admin/attendance) is now the shared shift library; the per-company
