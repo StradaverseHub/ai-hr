@@ -49,7 +49,44 @@
   rung's (7) to restructure; payroll/payslip/leave-impact goldens byte-identical. Two strict D9
   cross-pack edges were found and captured as debt (no premature contract, no second consumer yet):
   the attendance pack (`core/attendance.ts`) reads `approvedLeaveDates` + `core/toil`, and the
-  country pack (`localization/my/leave.ts`) reads the `LeaveEligibility` type
+  country pack (`localization/my/leave.ts`) reads the `LeaveEligibility` type;
+  **rung 7 — the Payroll module retrofit** (THE FINAL RETROFIT, the money path, deepest entanglement)
+  landed 2026-07-24: `packs/payroll` declaration + service facade over the TWENTY payroll
+  implementation modules (`core/payroll` — the `generatePayslips` engine — + `core/payroll-*` (cycle,
+  config, policy, policy-config, individual-txn, run-group, view, readiness, history-import,
+  permissions-admin) + `core/pay-components`/`pay-rule`/`pay-rule-ai` + `core/cp38`/`ea-override`/
+  `tax-relief` + `core/loans`/`loans-compute` + `core/statutory-authority`), registry-mounted flat nav
+  (the single `/payroll` Administration-group row moved verbatim, row-parity oracle in
+  `test/payroll-pack.test.ts`, the `sidebar-system-settings-group` source-guard updated to read the row
+  by const reference), a 19-table satellite declaration, and a 24-file shrink-only ratchet
+  (`test/payroll-pack-drift.test.ts`). Payroll output is BYTE-IDENTICAL — the retrofit is boundary-only
+  (facade + nav + ratchet); no payroll math moved. **`core/comp.ts` audited as jurisdiction-neutral
+  employment SPINE, NOT payroll-pack** (the rung-4/rung-6 analogue): compensation is effective-dated
+  employment history set on hire/promote/movement, the `compensation` table is read by 10+ modules, and
+  it houses `nextEmployeeCode` — a table many modules read is spine (packs read it, don't own it), so
+  `compensation` stays undeclared and comp.ts is absent from the facade. The country statutory
+  profile/rule tables (`employee_statutory_my`, `company_statutory_my`) and the ADR-0020 statutory-pack
+  distribution tables are the COUNTRY axis (declared by `country-<cc>` at 5d), NOT payroll-module
+  satellites. Payroll consumes country calculators through the registry with ZERO direct `localization/my`
+  imports (removed at 5a). **The pay-seam DEBT this rung inherited, disposed per one-correct-partial:**
+  (a) claims taxable payout — RESOLVED-INTO-CONTRACT already at rung 3 (`PayrollInputContributor`,
+  `app/payroll/actions.ts` resolves the claims contributor by id), unchanged and proven byte-identical
+  by the payout goldens; (b) the rung-6 leave↔payroll seam — LEFT INLINE by shape+risk: neither effect
+  produces a `payroll_input` row (unpaid-leave is an inline generation-time reduction reading
+  `leave_request` directly, below the ratchet radar; encashment is a read-only `leaverAdvisory` import of
+  `core/leave-encashment`, never auto-paid), so the contributor contract — which models `payroll_input`
+  row producers — is the wrong shape for them and extracting the money path cannot be proven
+  byte-identical; `core/payroll.ts` stays on the LEAVE ratchet allowlist for the encashment advisory, and
+  the consumer side of the contract is established (claims) while the leave side remains inline by risk
+  choice; (c) the rung-4 comp-enactment seam — merit rides `setCompensation` (comp.ts, now confirmed
+  SPINE, a legal pack→spine call needing no contract) and bonus rides `setPayrollInput` (this pack), so
+  `core/performance.ts` is allowlisted under "payroll" as the comp-enactment bonus seam (a
+  `PayrollInputContributor` candidate deferred until a second batch-writing consumer justifies
+  generalizing the contract); (d) attendance-derived allowances stay on the ATTENDANCE ratchet (richer
+  return shape, distinct per-policy action — no shape-compatible second producer yet). **With rung 7 the
+  ladder's retrofit rungs 1–7 are COMPLETE** — every existing module (attendance, claims, performance,
+  leave, payroll) plus the country seam is a registry-mounted pack behind a ratcheted boundary; only
+  rung 8 (the second country pack) remains, and it is prospect-gated (open decision 1)
 - **Date:** 2026-07-23 (revised same day: generalized from country packs to a two-axis pack system, per
   operator discussion — functional modules become packs too, retrofitted one by one)
 - **Relates to:** ADR-0008 (localization packs — this ADR restores and hardens its seam), ADR-0077 (module

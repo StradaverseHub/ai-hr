@@ -43,7 +43,6 @@ const TICKET_HREFS = [
 const ADMIN_GROUP_FLAT_HREFS = [
   '/admin/organization',
   '/admin/personnel',
-  '/payroll',
   '/analytics',
   '/admin/audit',
   '/admin/scheduled-actions',
@@ -99,14 +98,17 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
   // mount by const reference (CLAIMS_CONFIG_ROW, LEAVE_CONFIG_ROW), like the collapsible nodes — so
   // they are asserted by position here, keeping the anti-clipping guard whole. Row content parity is
   // test/claims-pack.test.ts and test/leave-pack.test.ts.
-  it('keeps the config rows in order: LEAVE_CONFIG_ROW → CLAIMS_CONFIG_ROW → /payroll', () => {
+  it('keeps the config rows in order: LEAVE_CONFIG_ROW → CLAIMS_CONFIG_ROW → PAYROLL_ROW', () => {
     const block = adminGroupBlock();
     const leaveRef = block.indexOf('LEAVE_CONFIG_ROW');
     const claimsRef = block.indexOf('CLAIMS_CONFIG_ROW');
-    const payroll = block.indexOf(`'/payroll'`);
+    // ADR-0080 rung 7: the /payroll row moved onto the payroll pack and mounts by const reference
+    // (PAYROLL_ROW), like the claims/leave config rows — asserted by position here; row content
+    // parity is test/payroll-pack.test.ts.
+    const payroll = block.indexOf('PAYROLL_ROW');
     expect(leaveRef, 'LEAVE_CONFIG_ROW is referenced in the admin group').toBeGreaterThan(-1);
     expect(claimsRef, 'CLAIMS_CONFIG_ROW is referenced after LEAVE_CONFIG_ROW').toBeGreaterThan(leaveRef);
-    expect(payroll, 'CLAIMS_CONFIG_ROW sits before the /payroll row').toBeGreaterThan(claimsRef);
+    expect(payroll, 'PAYROLL_ROW sits after CLAIMS_CONFIG_ROW').toBeGreaterThan(claimsRef);
   });
 
   it('places SYSTEM_SETTINGS_NODE immediately after the /admin/personnel row (before LEAVE_CONFIG_ROW)', () => {
