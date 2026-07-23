@@ -1,23 +1,33 @@
 /**
- * Item 55865c32 — Identity Information (Personnel → Profile → Personal Details): every employee, whatever
- * their nationality, may maintain BOTH an Identity No (NRIC) and Passport Information. Nationality only
- * drives which document is REQUIRED (derived SERVER-SIDE from the person record — never the client):
- *   • Malaysian → NRIC mandatory; passport optional but all-or-nothing (trio together or nothing);
- *   • non-Malaysian → passport trio mandatory; NRIC optional (blank save no-ops, non-blank stays strict MyKad).
- * Plus: new passport_issuing_country column (round-trip + audit) and the "IC number" → "Identity No (NRIC)"
- * label rename.
+ * Items 55865c32 + 357faecf — Identity Information (Personnel → Profile → Personal Details).
+ *
+ * Item 357faecf re-gates the Identity No (NRIC) card's VISIBILITY on nationality: it renders only while the
+ * selected nationality is Malaysian, hiding instantly (no reload) when the nationality changes. Passport
+ * Information keeps item 55865c32's behaviour — visible for EVERY employee, issuing country included, with
+ * nationality driving only its required flags (derived SERVER-SIDE from the person record on save — never
+ * the client):
+ *   • Malaysian → NRIC card shown, NRIC mandatory; passport optional but all-or-nothing (trio or nothing);
+ *   • non-Malaysian → NRIC card hidden (stored ic_number rows untouched); passport trio mandatory.
+ * The server surface is intentionally UNCHANGED from 55865c32: setIcProfileMY stays strict-MyKad and
+ * nationality-agnostic — a hidden card simply never posts.
  *
  * Guards:
- *  (ui)     IdentityFields renders BOTH forms unconditionally (no nationality fork), requiredness toggles by
- *           nationality, the Issuing Country Combobox is wired, and the page/action carry the new field.
+ *  (ui)     the NRIC form renders inside an isMY visibility fork; the passport form stays UNCONDITIONAL
+ *           (the pre-R63 either/or must not return), passport requiredness still toggles by nationality,
+ *           the Issuing Country Combobox is wired, and the page/action carry the issuing-country field.
+ *  (ui-flip) the fork reads the LIVE nationality from IdentityProvider context (NationalityField pushes
+ *           onValueChange), so the NRIC card appears/disappears the moment the nationality changes.
  *  (i18n)   label drift guard — people.detail.icNumber reads "Identity No (NRIC)" (en exact; every locale
- *           carries NRIC), and the new identity/passport-section keys exist in all six locales.
+ *           carries NRIC), and the identity/passport-section keys exist in all six locales.
  *  (my-1)   Malaysian keeps NRIC and saves a FULL passport alongside it (both documents coexist).
  *  (my-2)   Malaysian passport partial-fill is rejected; all-blank with no row no-ops (no empty row seeded).
  *  (my-3)   Malaysian all-blank save CLEARS an existing passport block (audited before/after).
- *  (nonmy-1) non-Malaysian with a valid 12-digit IC saves it (employee.ic.updated fires).
+ *  (nonmy-1) the SERVICE stays nationality-agnostic: a non-Malaysian's valid 12-digit IC still saves
+ *           (employee.ic.updated fires) — only the UI hides the field.
  *  (nonmy-2) non-Malaysian blank IC no-ops — no InvalidICError, no row seeded.
  *  (nonmy-3) non-Malaysian passport trio stays mandatory (partial AND all-blank both rejected).
+ *  (kept)   a stored NRIC SURVIVES a nationality change to non-Malaysian and later unrelated saves — the
+ *           field is hidden, never wiped, and the data is intact if the nationality is corrected back.
  *  (country) issuing country round-trips and appears in the employee.passport.updated before/after payload.
  *  (act)    setPassportAction carries passportIssuingCountry from the form into the pack setter.
  */
@@ -55,20 +65,38 @@ const IDENTITY = read('components/personnel-identity.tsx');
 const ACTIONS = read('app/admin/personnel/[employmentId]/actions.ts');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-describe('Identity both-sections — static wiring + label rename (55865c32)', () => {
-  it('(ui) IdentityFields renders BOTH identity forms unconditionally — requiredness, not visibility, follows nationality', () => {
-    // Both forms present in the same render path — the old either/or fork is gone.
-    expect(IDENTITY.includes('action={setIcAction}')).toBe(true);
-    expect(IDENTITY.includes('action={setPassportAction}')).toBe(true);
+describe('Identity sections — NRIC gated by nationality, passport always (55865c32 + 357faecf)', () => {
+  it('(ui) the NRIC form renders inside the isMY visibility fork; the passport form stays unconditional', () => {
+    // Item 357faecf — the NRIC card is gated: the fork opens BEFORE the IC form and closes BEFORE the
+    // passport form, so hiding the NRIC never takes Passport Information with it (the pre-R63 either/or
+    // early-return must not return either).
+    const forkOpen = IDENTITY.indexOf('{isMY && (');
+    const icForm = IDENTITY.indexOf('action={setIcAction}');
+    const forkClose = IDENTITY.indexOf('\n      )}', icForm);
+    const passportForm = IDENTITY.indexOf('action={setPassportAction}');
+    expect(forkOpen).toBeGreaterThan(-1);
+    expect(icForm).toBeGreaterThan(forkOpen);
+    expect(forkClose).toBeGreaterThan(icForm);
+    expect(passportForm).toBeGreaterThan(forkClose);
     expect(IDENTITY.includes('if (isMY)')).toBe(false);
-    // Nationality now toggles the required flags: NRIC for Malaysians, the passport trio for non-Malaysians.
-    expect(IDENTITY.includes('required={isMY}')).toBe(true);
+    // The NRIC input is mandatory whenever its card is shown (Malaysians must have an NRIC); the passport
+    // trio's requiredness still toggles by nationality (mandatory only for non-Malaysians).
+    expect(IDENTITY.includes('required={isMY}')).toBe(false);
     expect(IDENTITY.includes('required={!isMY}')).toBe(true);
     // The Issuing Country picker (searchable Combobox) is part of the passport form.
     expect(IDENTITY.includes('name="passportIssuingCountry"')).toBe(true);
     // Section headings make NRIC vs Passport visibly separate documents.
     expect(IDENTITY.includes("t('identityNricTitle')")).toBe(true);
     expect(IDENTITY.includes("t('passportInfoTitle')")).toBe(true);
+  });
+
+  it('(ui-flip) the fork reads the LIVE nationality from context — the card flips the moment nationality changes', () => {
+    // NationalityField pushes every selection into IdentityProvider context (no reload)…
+    expect(IDENTITY.includes('onValueChange={setNationality}')).toBe(true);
+    // …and IdentityFields derives the gate from that live value, so the NRIC card appears/disappears
+    // immediately when the Nationality picker changes.
+    expect(IDENTITY.includes('const { nationality } = useIdentity()')).toBe(true);
+    expect(IDENTITY.includes('const isMY = isMalaysianNationality(nationality)')).toBe(true);
   });
 
   it('(ui) the page passes the issuing country + the international country options; the action forwards the field', () => {
@@ -107,7 +135,7 @@ describe('Identity both-sections — static wiring + label rename (55865c32)', (
   });
 });
 
-describe('Identity both-sections — service + action behaviour (55865c32)', () => {
+describe('Identity sections — service + action behaviour (55865c32, unchanged by 357faecf)', () => {
   let base: Base;
   beforeAll(async () => {
     await migrateTestDb();
@@ -213,7 +241,7 @@ describe('Identity both-sections — service + action behaviour (55865c32)', () 
     expect((payload as Record<string, unknown>).after).toMatchObject({ passportNumber: null, passportIssuingCountry: null });
   });
 
-  it('(nonmy-1) a non-Malaysian with a valid 12-digit IC saves it (NRIC no longer nationality-gated)', async () => {
+  it('(nonmy-1) the service stays nationality-agnostic — a non-Malaysian valid IC still saves (only the UI hides the field)', async () => {
     const a = adminCtx(base);
     const e = await hireWithNationality(a, 'Foreign With Ic', 'Singaporean');
     const { id } = await setIcProfileMY(a, { personId: e.personId, icNumber: '880202085032' });
@@ -250,6 +278,43 @@ describe('Identity both-sections — service + action behaviour (55865c32)', () 
     const row = await getStatutoryProfileMY(a, e.personId);
     expect(row?.passportNumber).toBe('E12345678');
     expect(row?.passportIssuingCountry).toBeNull();
+  });
+
+  it('(kept) a stored NRIC survives a nationality change to non-Malaysian and later unrelated saves', async () => {
+    const a = adminCtx(base);
+    // A Malaysian employee with an NRIC on record…
+    const e = await hireWithNationality(a, 'Was Malaysian', 'Malaysian');
+    await setIcProfileMY(a, { personId: e.personId, icNumber: '900101015040' });
+    // …whose nationality is then corrected to non-Malaysian. Item 357faecf hides the NRIC field in the UI
+    // but the stored row must NOT be deleted or blanked by the change.
+    await updatePerson(a, {
+      personId: e.personId,
+      fullName: 'Was Malaysian',
+      primaryEmail: 'was.malaysian@acme.test',
+      nationality: 'Singaporean',
+    });
+    let row = await getStatutoryProfileMY(a, e.personId);
+    expect(row?.icNumber).toBe('900101015040');
+    // Later unrelated saves (the passport card is still visible and in use) leave the hidden NRIC intact.
+    await setPassportProfileMY(a, {
+      personId: e.personId,
+      passportNumber: 'S9876543',
+      passportIssueDate: '2026-01-01',
+      passportExpiryDate: '2036-01-01',
+      passportIssuingCountry: 'Singapore',
+    });
+    row = await getStatutoryProfileMY(a, e.personId);
+    expect(row?.icNumber).toBe('900101015040');
+    expect(row?.passportNumber).toBe('S9876543');
+    // If the nationality is ever corrected back, the same NRIC is still there for the reappearing field.
+    await updatePerson(a, {
+      personId: e.personId,
+      fullName: 'Was Malaysian',
+      primaryEmail: 'was.malaysian@acme.test',
+      nationality: 'Malaysian',
+    });
+    row = await getStatutoryProfileMY(a, e.personId);
+    expect(row?.icNumber).toBe('900101015040');
   });
 
   it('(country) the issuing country round-trips and appears in the audit before/after payload', async () => {

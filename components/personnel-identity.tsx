@@ -1,15 +1,17 @@
 'use client';
 
 /**
- * Item e3ce0d4d / 55865c32 — Identity Information (Personnel → Profile → Personal Details).
+ * Item e3ce0d4d / 55865c32 / 357faecf — Identity Information (Personnel → Profile → Personal Details).
  *
- * Item 55865c32 relaxed the original either/or: BOTH identity sections — Identity No (NRIC) and Passport
- * Information — now render for EVERY employee, whatever their nationality. Nationality only drives which
- * document is RECOMMENDED (required), never which is visible: a Malaysian must have an NRIC and may optionally
- * add a passport; a non-Malaysian must have passport details and may optionally record an NRIC. This 'use
- * client' island lifts the live nationality selection into a small context so the identity block updates its
- * required flags the moment the nationality changes — no page reload (the server re-derives requiredness from
- * the person record on save; the client's live selection is never trusted).
+ * Item 357faecf re-gates the Identity No (NRIC) card on nationality: it renders ONLY while the selected
+ * nationality is Malaysian, and hides instantly (no reload) when the nationality changes. Passport
+ * Information keeps item 55865c32's behaviour — visible for EVERY employee (issuing country included), with
+ * nationality driving only its required flags: a Malaysian's passport is optional, a non-Malaysian's trio is
+ * mandatory. This 'use client' island lifts the live nationality selection into a small context so the
+ * identity block reacts the moment the nationality changes — no page reload (the server re-derives
+ * requiredness from the person record on save; the client's live selection is never trusted). A hidden NRIC
+ * card posts nothing, so a non-Malaysian's stored ic_number row is never touched — the data stays and the
+ * field reappears if the nationality is ever corrected to Malaysian.
  *
  * Boundary: the RSC page (page.tsx) RENDERS these components as JSX (allowed) and passes the server actions in
  * as props (the established RSC→client pattern). The Card shell stays a Server Component. `isMalaysianNationality`
@@ -84,11 +86,12 @@ export function NationalityField({
 }
 
 /**
- * The Identity Information block (item 55865c32): BOTH sections render unconditionally as two clearly-headed
- * cards — Identity No (NRIC) and Passport Information — each with its own save. Nationality (live from
- * IdentityProvider) now toggles only the REQUIRED flags + hints, never visibility: Malaysian → NRIC mandatory,
- * passport optional (all-or-nothing, enforced server-side); non-Malaysian → passport trio mandatory, NRIC
- * optional. The two server actions are received as props from the RSC page.
+ * The Identity Information block (items 55865c32 + 357faecf): the Identity No (NRIC) card renders ONLY for a
+ * Malaysian nationality (live from IdentityProvider — hiding/showing instantly on change, no reload), while
+ * Passport Information renders for EVERY employee. Nationality still drives the passport required flags:
+ * Malaysian → NRIC mandatory (when shown), passport optional (all-or-nothing, enforced server-side);
+ * non-Malaysian → passport trio mandatory, NRIC hidden (stored ic_number rows untouched). The two server
+ * actions are received as props from the RSC page.
  */
 export function IdentityFields({
   employmentId,
@@ -123,31 +126,34 @@ export function IdentityFields({
 
   return (
     <>
-      {/* Identity No (NRIC) — shown for EVERY employee. IcDobAutofill derives DOB from a valid MyKad and
-          fills the empty DOB input (id=profile-dob-input) in the sibling compliance form; the server mirrors
-          this on save. Required only for Malaysians; an optional NRIC left blank simply no-ops on save. */}
-      <form action={setIcAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4">
-        <input type="hidden" name="employmentId" value={employmentId} />
-        <input type="hidden" name="personId" value={personId} />
-        <p className="sm:col-span-4 text-sm font-medium text-foreground">{t('identityNricTitle')}</p>
-        <Field label={t('icNumber')}>
-          <IcDobAutofill
-            name="icNumber"
-            required={isMY}
-            defaultValue={icDefault}
-            placeholder="900101011234"
-            className={inputCls}
-            dobInputId="profile-dob-input"
-            invalidDateNote={t('icDobInvalidDate')}
-          />
-        </Field>
-        <p className="text-xs text-muted-foreground sm:col-span-3 sm:self-center">{t('icNumberHint')}</p>
-        <div className="sm:col-span-4 flex justify-end">
-          <button className={btnPrimary}>{t('saveIc')}</button>
-        </div>
-      </form>
+      {/* Identity No (NRIC) — item 357faecf: rendered ONLY while the nationality is Malaysian; a hidden card
+          posts nothing, so a non-Malaysian's stored ic_number stays untouched. IcDobAutofill derives DOB from
+          a valid MyKad and fills the empty DOB input (id=profile-dob-input) in the sibling compliance form;
+          the server mirrors this on save. Mandatory whenever shown (Malaysians must have an NRIC). */}
+      {isMY && (
+        <form action={setIcAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4">
+          <input type="hidden" name="employmentId" value={employmentId} />
+          <input type="hidden" name="personId" value={personId} />
+          <p className="sm:col-span-4 text-sm font-medium text-foreground">{t('identityNricTitle')}</p>
+          <Field label={t('icNumber')}>
+            <IcDobAutofill
+              name="icNumber"
+              required
+              defaultValue={icDefault}
+              placeholder="900101011234"
+              className={inputCls}
+              dobInputId="profile-dob-input"
+              invalidDateNote={t('icDobInvalidDate')}
+            />
+          </Field>
+          <p className="text-xs text-muted-foreground sm:col-span-3 sm:self-center">{t('icNumberHint')}</p>
+          <div className="sm:col-span-4 flex justify-end">
+            <button className={btnPrimary}>{t('saveIc')}</button>
+          </div>
+        </form>
+      )}
 
-      {/* Passport Information — also shown for EVERY employee. The number/issue/expiry required attrs apply
+      {/* Passport Information — shown for EVERY employee. The number/issue/expiry required attrs apply
           only for non-Malaysians; the server re-derives requiredness from the person record (a Malaysian's
           passport is optional but all-or-nothing). Issuing country + remark are always optional. */}
       <form action={setPassportAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4">
