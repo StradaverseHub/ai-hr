@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
-import { ESS_VIEW_COMPONENT_KEYS } from '@/core/ess-view';
+import { ESS_VIEW_CHECKLIST_GROUPS } from '@/components/leave/entitlement-panel-config';
 import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
 import { Search } from 'lucide-react';
@@ -1033,6 +1033,10 @@ export function LeaveTypePanel({
   upsertSchemeEntitlementAction: Action;
 }) {
   const t = useTranslations('admin.leave');
+  // Sync Employee Leave View Configuration (11876072): the ESS-view checklist group headings reuse the
+  // employee panel's OWN section titles (leave.breakdown.section.*) so the admin screen reads as a preview of
+  // the panel — same words, same order.
+  const tBreakdown = useTranslations('leave.breakdown');
   // Leave Type Employee Visibility (7b11f1c1): statutory-entitlement codes can never have employee
   // applications blocked (an employee must be able to exercise a lawful entitlement — EA 1955 s.60E/s.60F/
   // s.37/s.60FA). Mirrors STATUTORY_APPLY_CODES in core/leave.ts; kept as a local literal so this client
@@ -2673,7 +2677,12 @@ export function LeaveTypePanel({
               (own tri-state) posts `essView=1` — a checklist of the breakdown components an employee sees in
               My Profile → Leave for THIS leave type. An unchecked box does not post; the action rebuilds the
               full { key: boolean } map from the closed key list, so unticked ⇒ hidden in ESS. Gating applies
-              to /me only — admin/HR always see everything. null/missing ⇒ visible (backward compatible). */}
+              to /me only — admin/HR always see everything. null/missing ⇒ visible (backward compatible).
+              Sync (11876072): the checkboxes are no longer a flat grid — they are GROUPED into the same
+              sections, in the same order, the employee breakdown panel shows (ESS_VIEW_CHECKLIST_GROUPS is
+              derived from ENTITLEMENT_PANEL_SECTIONS, the panel's own descriptor, so the two cannot drift).
+              Keys no panel section references land in a trailing "Other" group. Same keys, same effects —
+              only the arrangement changed. */}
           <div className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">{t('essView.sectionTitle')}</span>
             <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
@@ -2682,17 +2691,28 @@ export function LeaveTypePanel({
               <input type="hidden" name="name" value={name} />
               {/* marker: tells the action to touch the ess_view_config column (tri-state guard) */}
               <input type="hidden" name="essView" value="1" />
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {ESS_VIEW_COMPONENT_KEYS.map((key) => (
-                  <label key={key} className="flex items-center gap-2 text-xs text-foreground">
-                    <input
-                      type="checkbox"
-                      name={`essView_${key}`}
-                      defaultChecked={essViewConfig?.[key] !== false}
-                      className="size-3.5 rounded border-border"
-                    />
-                    {t(`essView.${key}`)}
-                  </label>
+              <div className="space-y-3">
+                {ESS_VIEW_CHECKLIST_GROUPS.map((group) => (
+                  <fieldset key={group.key} className="space-y-1.5">
+                    {/* Heading = the panel section's own title (leave.breakdown.section.*); the orphan group
+                        uses the admin-side "Other" label. */}
+                    <legend className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {group.labelKey ? tBreakdown(group.labelKey) : t('essView.groupOther')}
+                    </legend>
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                      {group.keys.map((key) => (
+                        <label key={key} className="flex items-center gap-2 text-xs text-foreground">
+                          <input
+                            type="checkbox"
+                            name={`essView_${key}`}
+                            defaultChecked={essViewConfig?.[key] !== false}
+                            className="size-3.5 rounded border-border"
+                          />
+                          {t(`essView.${key}`)}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
                 ))}
               </div>
               <Button type="submit" size="sm">

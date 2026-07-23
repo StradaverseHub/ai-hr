@@ -11,7 +11,7 @@
  * INTERACTION (the reporter's expected_function §1): clicking a card HIGHLIGHTS it and opens THAT type's full
  * details in the existing right-side slide-out panel (components/leave/LeaveDetailsPanel) with NO page refresh —
  * it drives the panel in controlled-open mode (the card is the trigger, this island owns the open + selected
- * state for the highlight). The panel itself is unchanged: same summary / upcoming / breakdown / as-at form /
+ * state for the highlight). The panel itself is unchanged: same summary / breakdown / as-at form /
  * ESS-view gating (65dec703) it already renders from the "View Breakdown" link on the secondary rows.
  *
  * The RSC hands each card its already-computed plain data (remaining figure + the breakdown envelope). A card
@@ -26,13 +26,12 @@ import { useTranslations } from 'next-intl';
 import { leaveVisual } from '@/lib/leave-visual';
 import { LeaveDetailsPanel } from './LeaveDetailsPanel';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
-import type { PanelSummary, UpcomingLeaveItem } from './entitlement-panel-config';
+import type { PanelSummary } from './entitlement-panel-config';
 
 /** The plain envelope the RSC pre-computes so the panel can mount client-side without a DB client. */
 export type LeaveCardPanel = {
   data: EntitlementBreakdownData;
   summary: PanelSummary;
-  upcoming: UpcomingLeaveItem[];
   visual: { color: string | null; icon: string | null; code: string | null };
   asOf: string;
 };
@@ -106,7 +105,6 @@ export function LeaveCards({ entries }: { entries: LeaveCardEntry[] }) {
           hideTrigger
           data={selected.panel.data}
           summary={selected.panel.summary}
-          upcoming={selected.panel.upcoming}
           visual={selected.panel.visual}
           asOf={selected.panel.asOf}
           // a7cbd895: the cards live on /leave (My Absence) now — the panel's as-at GET form posts back

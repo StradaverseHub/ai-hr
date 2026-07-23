@@ -1269,7 +1269,6 @@
         "entitlement": "Pecahan kelayakan",
         "utilization": "Penggunaan cuti",
         "adjustments": "Pelarasan",
-        "upcoming": "Cuti akan datang",
         "transactions": "Sejarah transaksi",
         "calcBreakdown": "Pecahan pengiraan kelayakan"
       },
@@ -1290,8 +1289,6 @@
       },
       "panelSubtitle": "Setakat {date}",
       "close": "Tutup",
-      "noUpcoming": "Tiada cuti diluluskan akan datang.",
-      "daysCount": "{count} hari",
       "colBalanceChange": "Perubahan baki",
       "explanationShow": "Tunjuk penerangan",
       "explanationHide": "Sembunyikan penerangan",
@@ -3978,7 +3975,7 @@
         "pendingApproval": "Menunggu Kelulusan",
         "carryForwardExpiry": "Tarikh Luput Bawa Ke Hadapan",
         "forfeited": "Baki Dilucuthak",
-        "upcomingApprovedLeave": "Cuti Diluluskan Akan Datang",
+        "groupOther": "Lain-lain",
         "transactionHistory": "Sejarah Transaksi",
         "entitlementCalcBreakdown": "Pecahan Pengiraan Kelayakan"
       },

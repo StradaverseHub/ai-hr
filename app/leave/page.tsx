@@ -233,10 +233,7 @@ export default async function LeavePage({
     return {
       data: bd,
       summary: { available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) },
-      // §5 Upcoming Approved Leave — approved + future requests for THIS type (matched by localized name).
-      upcoming: selfRequests
-        .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-        .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType })),
+      // §5 Upcoming Approved Leave removed from the panel (feedback 11876072) — no upcoming list is built.
       visual: { color: b.color, icon: b.icon, code: b.code },
       asOf: breakdownAsOf,
     };
@@ -565,9 +562,6 @@ export default async function LeavePage({
                     <EntitlementBreakdown
                       data={bd}
                       summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) }}
-                      upcoming={selfRequests
-                        .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-                        .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
                       visual={{ color: b.color, icon: b.icon, code: b.code }}
                       asOf={breakdownAsOf}
                       action="/leave"
@@ -729,9 +723,6 @@ export default async function LeavePage({
                       <EntitlementBreakdown
                         data={bd}
                         summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) }}
-                        upcoming={selfRequests
-                          .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-                          .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
                         visual={{ color: b.color, icon: b.icon, code: b.code }}
                         asOf={breakdownAsOf}
                         action="/leave"

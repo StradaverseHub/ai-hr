@@ -30,7 +30,6 @@ import {
   type PanelField,
   type PanelSection,
   type PanelSummary,
-  type UpcomingLeaveItem,
 } from './entitlement-panel-config';
 
 const PLACEHOLDER = '—';
@@ -38,7 +37,6 @@ const PLACEHOLDER = '—';
 export function LeaveDetailsPanel({
   data,
   summary,
-  upcoming,
   visual,
   asOf,
   action,
@@ -50,7 +48,6 @@ export function LeaveDetailsPanel({
 }: {
   data: EntitlementBreakdownData;
   summary: PanelSummary;
-  upcoming: UpcomingLeaveItem[];
   /** Display-only per-type theming (639fdf77). Unconfigured ⇒ code-keyed default icon, no chip. */
   visual: { color: string | null; icon: string | null; code: string | null };
   asOf: string;
@@ -79,7 +76,7 @@ export function LeaveDetailsPanel({
       return next;
     });
 
-  const panel: PanelData = { breakdown: data, summary, upcoming };
+  const panel: PanelData = { breakdown: data, summary };
   // ESS gate: shown when config is not applied (admin) OR the key is not explicitly false (missing ⇒ visible).
   const show = (key?: string) => !applyEssConfig || key == null || data.essView?.[key as keyof typeof data.essView] !== false;
 
@@ -179,25 +176,9 @@ export function LeaveDetailsPanel({
     );
   };
 
-  const renderUpcoming = () => {
-    if (upcoming.length === 0) {
-      return <p className="text-xs text-muted-foreground">{t('noUpcoming')}</p>;
-    }
-    return (
-      <ul className="space-y-1.5 text-sm">
-        {upcoming.map((u, i) => (
-          <li key={`${u.startDate}-${i}`} className="flex items-baseline justify-between gap-3">
-            <span className="tabular-nums text-foreground">
-              {u.startDate}
-              {u.endDate !== u.startDate && <span className="text-muted-foreground"> – {u.endDate}</span>}
-            </span>
-            <span className="tabular-nums text-muted-foreground">{t('daysCount', { count: u.days })}</span>
-          </li>
-        ))}
-      </ul>
-    );
-  };
-
+  // Upcoming Leave renderer REMOVED (feedback 11876072): the §5 'upcoming' section descriptor was dropped from
+  // entitlement-panel-config.ts (with its `upcomingApprovedLeave` ess-view key), so the panel no longer lists
+  // approved-future requests here. The requests themselves are untouched — the /leave history still shows them.
   // Transaction History renderer REMOVED (feedback 1dd4d827): the 'transactions' section descriptor was dropped
   // from entitlement-panel-config.ts, so the panel no longer surfaces the leave ledger here. Ledger data on
   // `data.transactions` is untouched and still powers the /leave Leave History table.
@@ -272,9 +253,8 @@ export function LeaveDetailsPanel({
 
             {sections.map((section) => {
               if (!show(section.essKey)) return null;
-              let body: React.ReactNode = null;
-              if (section.kind === 'upcoming') body = renderUpcoming();
-              else body = renderFields(section);
+              // Every remaining section is plain field rows (the 'upcoming'/'transactions' kinds are removed).
+              const body = renderFields(section);
               if (body == null) return null; // a fields section with everything gated/omitted
               return (
                 <section key={section.key}>

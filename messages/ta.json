@@ -1269,7 +1269,6 @@
         "entitlement": "உரிமை விவரம்",
         "utilization": "விடுப்பு பயன்பாடு",
         "adjustments": "சரிசெய்தல்கள்",
-        "upcoming": "வரவிருக்கும் விடுப்பு",
         "transactions": "பரிவர்த்தனை வரலாறு",
         "calcBreakdown": "உரிமை கணக்கீட்டு விவரம்"
       },
@@ -1290,8 +1289,6 @@
       },
       "panelSubtitle": "{date} வரை",
       "close": "மூடு",
-      "noUpcoming": "வரவிருக்கும் அங்கீகரிக்கப்பட்ட விடுப்பு இல்லை.",
-      "daysCount": "{count} நாட்கள்",
       "colBalanceChange": "இருப்பு மாற்றம்",
       "explanationShow": "விளக்கத்தைக் காட்டு",
       "explanationHide": "விளக்கத்தை மறை",
@@ -3978,7 +3975,7 @@
         "pendingApproval": "ஒப்புதலுக்கு நிலுவையில்",
         "carryForwardExpiry": "முன்கொண்டு காலாவதி தேதி",
         "forfeited": "இழந்த இருப்பு",
-        "upcomingApprovedLeave": "வரவிருக்கும் அங்கீகரிக்கப்பட்ட விடுப்பு",
+        "groupOther": "மற்றவை",
         "transactionHistory": "பரிவர்த்தனை வரலாறு",
         "entitlementCalcBreakdown": "உரிமை கணக்கீட்டு விவரம்"
       },

@@ -1269,7 +1269,6 @@
         "entitlement": "Entitlement breakdown",
         "utilization": "Leave utilization",
         "adjustments": "Adjustments",
-        "upcoming": "Upcoming leave",
         "transactions": "Transaction history",
         "calcBreakdown": "Entitlement calculation breakdown"
       },
@@ -1290,8 +1289,6 @@
       },
       "panelSubtitle": "As at {date}",
       "close": "Close",
-      "noUpcoming": "No upcoming approved leave.",
-      "daysCount": "{count} days",
       "colBalanceChange": "Balance change",
       "explanationShow": "Show explanation",
       "explanationHide": "Hide explanation",
@@ -4015,7 +4012,7 @@
         "pendingApproval": "Pending Approval",
         "carryForwardExpiry": "Carry Forward Expiry Date",
         "forfeited": "Forfeited Balance",
-        "upcomingApprovedLeave": "Upcoming Approved Leave",
+        "groupOther": "Other",
         "transactionHistory": "Transaction History",
         "entitlementCalcBreakdown": "Entitlement Calculation Breakdown"
       },

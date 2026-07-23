@@ -4,8 +4,8 @@
  * Read-only leave-entitlement breakdown entry point (shared by /me and /admin/personnel/[id]).
  *
  * Thin adapter: it owns the structural mirror of the server's leaveEntitlementBreakdown shape and hands it
- * — plus the §1 summary figures and §5 upcoming-approved list the page already loaded — to LeaveDetailsPanel,
- * the slide-out RIGHT side-sheet that renders the seven sections from the declarative descriptor
+ * — plus the §1 summary figures the page already loaded — to LeaveDetailsPanel,
+ * the slide-out RIGHT side-sheet that renders the sections from the declarative descriptor
  * (entitlement-panel-config.ts). It NEVER imports a DB client or a server action, so it is a safe client
  * component (no RSC boundary violation).
  *
@@ -15,7 +15,7 @@
  * Substrate: read-only presentation → no DomainEvent. // substrate: read-only, no event
  */
 import { LeaveDetailsPanel } from './LeaveDetailsPanel';
-import type { PanelSummary, UpcomingLeaveItem } from './entitlement-panel-config';
+import type { PanelSummary } from './entitlement-panel-config';
 
 /** Mirror of core/read.ts LeaveEntitlementBreakdown — kept structural so this stays db-free. */
 export type EntitlementBreakdownData = {
@@ -47,7 +47,6 @@ export type EntitlementBreakdownData = {
 export function EntitlementBreakdown({
   data,
   summary,
-  upcoming,
   visual,
   asOf,
   action,
@@ -57,8 +56,6 @@ export function EntitlementBreakdown({
   data: EntitlementBreakdownData;
   /** §1 Leave Summary figures from the balance row (leaveBalances). */
   summary: PanelSummary;
-  /** §5 Upcoming Approved Leave — approved + future requests for this leave type. */
-  upcoming: UpcomingLeaveItem[];
   /** Display-only per-type theming (639fdf77): colour / icon / code. */
   visual: { color: string | null; icon: string | null; code: string | null };
   /** The current as-at date driving the view (defaults to today server-side). */
@@ -75,7 +72,6 @@ export function EntitlementBreakdown({
     <LeaveDetailsPanel
       data={data}
       summary={summary}
-      upcoming={upcoming}
       visual={visual}
       asOf={asOf}
       action={action}

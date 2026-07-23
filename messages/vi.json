@@ -1269,7 +1269,6 @@
         "entitlement": "Chi tiết quyền lợi",
         "utilization": "Sử dụng nghỉ phép",
         "adjustments": "Điều chỉnh",
-        "upcoming": "Nghỉ phép sắp tới",
         "transactions": "Lịch sử giao dịch",
         "calcBreakdown": "Chi tiết tính quyền lợi"
       },
@@ -1290,8 +1289,6 @@
       },
       "panelSubtitle": "Tính đến {date}",
       "close": "Đóng",
-      "noUpcoming": "Không có nghỉ phép đã duyệt sắp tới.",
-      "daysCount": "{count} ngày",
       "colBalanceChange": "Thay đổi số dư",
       "explanationShow": "Hiện giải thích",
       "explanationHide": "Ẩn giải thích",
@@ -3978,7 +3975,7 @@
         "pendingApproval": "Chờ phê duyệt",
         "carryForwardExpiry": "Ngày hết hạn chuyển sang",
         "forfeited": "Số dư bị mất",
-        "upcomingApprovedLeave": "Nghỉ phép đã duyệt sắp tới",
+        "groupOther": "Khác",
         "transactionHistory": "Lịch sử giao dịch",
         "entitlementCalcBreakdown": "Chi tiết tính toán quyền lợi"
       },

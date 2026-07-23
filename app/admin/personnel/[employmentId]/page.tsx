@@ -1681,10 +1681,7 @@ export default async function EmployeePage({
                 <EntitlementBreakdown
                   data={breakdownByType.get(b.leaveTypeId)!}
                   summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, breakdownByType.get(b.leaveTypeId)) }}
-                  // §5 Upcoming Approved Leave — approved + future requests for THIS type (name-matched).
-                  upcoming={requests
-                    .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-                    .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
+                  // §5 Upcoming Approved Leave removed from the panel (feedback 11876072).
                   visual={{ color: b.color, icon: b.icon, code: b.code }}
                   asOf={breakdownAsOf}
                   action={`/admin/personnel/${employmentId}`}
