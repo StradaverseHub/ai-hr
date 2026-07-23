@@ -57,7 +57,7 @@ import {
   updateGoal,
   updateGoalProgress,
   type GoalStatus,
-} from '@/core/performance';
+} from '@/packs/performance/service';
 
 /** Resolve the caller's own employment from the session — never from a form field. */
 async function resolveMe() {

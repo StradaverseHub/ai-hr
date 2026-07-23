@@ -19,7 +19,7 @@ import {
 } from '@/core/read';
 import { pendingManagerReviewsFor } from '@/core/employment-review';
 import { deriveEmploymentStatus } from '@/core/employment-status';
-import { myFeedbackRequests } from '@/core/performance';
+import { myFeedbackRequests } from '@/packs/performance/service';
 import { pendingApprovalsCount } from '@/core/approvals-inbox';
 import { todayInKualaLumpur } from '@/core/leave';
 import { Card, PageHeader, StatusBadge } from '@/components/ui';
