@@ -24,7 +24,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { createCompany, createDepartment, createJobGrade, createLeavePolicy, updateLeavePolicy } from '../core/admin';
-import { accrueEarnedLeave, openLeaveYear, POLICY_RECALC_REASON_PREFIX } from '../core/leave';
+import {
+  accrueEarnedLeave,
+  entitledDays,
+  openLeaveYear,
+  projectExpectedEntitlement,
+  POLICY_RECALC_REASON_PREFIX,
+  type GradePolicyRow,
+} from '../core/leave';
+import { createGradeGroup, createBenefitScheme, upsertSchemeEntitlement } from '../core/benefit-scheme';
 import { leaveEntitlementBreakdown } from '../core/read';
 import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -348,6 +356,107 @@ describe('49809272 — effective-date model preserved', () => {
     });
     expect(res).toEqual({ affected: 0, totalDelta: 0 });
     expect(await annualBalance(emp.employmentId)).toBe(12);
+  });
+});
+
+describe('ae5b84d5 — kernel: entitledDays + the scheme hook in projectExpectedEntitlement', () => {
+  const CAL = { hiredOn: '2024-01-01', leaveCycle: null, gradeId: null, companyId: 'C' };
+  const upfront12: GradePolicyRow[] = [{ gradeId: null, companyId: null, accrual: { annualDays: 12 } }];
+  const floor8 = () => 8;
+
+  it('entitledDays: scheme supersedes policy (even 0), EA floor clamps on top, null falls back', () => {
+    expect(entitledDays(8, null, 12)).toBe(12); // no scheme ⇒ policy
+    expect(entitledDays(8, 15, 12)).toBe(15); // scheme supersedes policy
+    expect(entitledDays(16, 10, 20)).toBe(16); // floor clamps a below-floor scheme
+    expect(entitledDays(8, 0, 12)).toBe(8); // an explicit scheme 0 supersedes policy; floor holds
+  });
+
+  it('the hook supersedes policy days; the EA floor still clamps; null-returning hook is a no-op', () => {
+    expect(projectExpectedEntitlement(CAL, 'ANNUAL', upfront12, floor8, ASOF)?.expected).toBe(12);
+    expect(projectExpectedEntitlement(CAL, 'ANNUAL', upfront12, floor8, ASOF, () => 20)?.expected).toBe(20);
+    expect(projectExpectedEntitlement(CAL, 'ANNUAL', upfront12, floor8, ASOF, () => 4)?.expected).toBe(8); // floor
+    // A hook that resolves no scheme is byte-identical to the absent hook.
+    expect(projectExpectedEntitlement(CAL, 'ANNUAL', upfront12, floor8, ASOF, () => null)?.expected).toBe(12);
+  });
+
+  it('maxBalanceDays clamps the kernel on the UPFRONT path (scheme days included)', () => {
+    const capped: GradePolicyRow[] = [
+      { gradeId: null, companyId: null, accrual: { annualDays: 12, serviceBands: [{ fromYears: 0, toYears: null, days: 12, maxBalanceDays: 10 }] } },
+    ];
+    expect(projectExpectedEntitlement(CAL, 'ANNUAL', capped, floor8, ASOF)?.expected).toBe(10);
+    expect(projectExpectedEntitlement(CAL, 'ANNUAL', capped, floor8, ASOF, () => 20)?.expected).toBe(10);
+  });
+
+  it('maxBalanceDays clamps the kernel on the EARNED path', () => {
+    const cappedEarned: GradePolicyRow[] = [
+      {
+        gradeId: null,
+        companyId: null,
+        accrual: { annualDays: 12, method: 'earned_monthly', serviceBands: [{ fromYears: 0, toYears: null, days: 12, maxBalanceDays: 5 }] },
+      },
+    ];
+    // 6 elapsed periods at ASOF ⇒ raw 6, clamped to the 5-day cap.
+    expect(projectExpectedEntitlement(CAL, 'ANNUAL', cappedEarned, floor8, ASOF)?.expected).toBe(5);
+  });
+
+  it('anniversary company: the hook receives the year-open RE-RESOLVED years (called after the 5450 re-resolution)', () => {
+    // Hired 2020-03-01, asOf 2026-06-15: anniversary cycle start = 2026-03-01 (6 completed years) but the
+    // upfront branch re-anchors to the calendar year-open 2026-01-01 (5 completed years) — the hook must
+    // see the FINAL years (5), matching the band anchor `pol` resolved with.
+    const ann = { hiredOn: '2020-03-01', leaveCycle: 'anniversary', gradeId: null, companyId: 'C' };
+    const calls: number[] = [];
+    const r = projectExpectedEntitlement(ann, 'ANNUAL', [{ gradeId: null, companyId: null, accrual: { annualDays: 10 } }], floor8, '2026-06-15', (years) => {
+      calls.push(years);
+      return 20;
+    });
+    expect(calls).toEqual([5]);
+    expect(r?.expected).toBe(20);
+    expect(r?.windowStart).toBe('2026-01-01');
+  });
+
+  it('anniversary company: the earned defensive skip (null) is unchanged with the hook present', () => {
+    // At the anniversary anchor (6y) the upfront policy wins; re-resolved at year-open (5y) the earned one
+    // wins ⇒ the kernel skips defensively (returns null) — hook or no hook.
+    const ann = { hiredOn: '2020-03-01', leaveCycle: 'anniversary', gradeId: null, companyId: 'C' };
+    const flip: GradePolicyRow[] = [
+      { gradeId: null, companyId: null, accrual: { annualDays: 0, serviceBands: [{ fromYears: 0, toYears: 6, days: 5 }, { fromYears: 6, toYears: null, days: 20 }] } },
+      { gradeId: null, companyId: null, accrual: { annualDays: 0, method: 'earned_monthly', serviceBands: [{ fromYears: 0, toYears: 6, days: 10 }, { fromYears: 6, toYears: null, days: 5 }] } },
+    ];
+    expect(projectExpectedEntitlement(ann, 'ANNUAL', flip, floor8, '2026-06-15')).toBeNull();
+    expect(projectExpectedEntitlement(ann, 'ANNUAL', flip, floor8, '2026-06-15', () => 99)).toBeNull();
+  });
+});
+
+describe('ae5b84d5 — a policy edit no longer claws back scheme-superseded balances', () => {
+  it('updateLeavePolicy trues up policy-driven employees but leaves scheme-covered ones at their scheme days', async () => {
+    const ctx = adminCtx(b);
+    const grade = await createJobGrade(ctx, { code: 'GH', name: 'Grade H' });
+    const group = await createGradeGroup(ctx, { name: 'Grade H group', gradeIds: [grade.id] });
+    const scheme = await createBenefitScheme(ctx, {
+      companyId: b.companyId,
+      employmentType: 'full_time',
+      gradeGroupId: group.id,
+      name: 'Permanent Grade H',
+      status: 'active',
+    });
+    await upsertSchemeEntitlement(ctx, {
+      benefitSchemeId: scheme.id,
+      leaveTypeId: b.annualLeaveTypeId,
+      serviceBands: [{ fromYears: 0, toYears: null, days: 20 }],
+    });
+    const { id } = await policy(12);
+    const schemeEmp = await hireIn(b.companyId, b.deptA, { gradeId: grade.id });
+    const plainEmp = await hireIn(b.companyId, b.deptA);
+    expect(await annualBalance(schemeEmp.employmentId)).toBe(20); // scheme superseded the policy at hire
+    expect(await annualBalance(plainEmp.employmentId)).toBe(12);
+
+    // The latent bug this feature fixes: a routine policy edit used to project the scheme employee at the
+    // POLICY days (13) and claw back the scheme-granted 7. Now the projection reads the scheme table.
+    const res = await updateLeavePolicy(ctx, { id, annualDays: 13, validFrom: '2026-01-01', asOf: ASOF });
+    expect(res).toEqual({ affected: 1, totalDelta: 1 }); // ONLY the plain employee moved
+    expect(await annualBalance(plainEmp.employmentId)).toBe(13);
+    expect(await annualBalance(schemeEmp.employmentId)).toBe(20); // untouched
+    expect((await recalcRows(schemeEmp.employmentId)).length).toBe(0);
   });
 });
 

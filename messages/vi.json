@@ -951,7 +951,11 @@
       "recalcReason": {
         "grade_changed": "Thay đổi cấp bậc",
         "employment_changed": "Thay đổi thông tin lao động",
-        "employment_info_changed": "Thay đổi ngày tuyển dụng/xác nhận"
+        "employment_info_changed": "Thay đổi ngày tuyển dụng/xác nhận",
+        "benefit_scheme_override": "Thay đổi phân bổ chế độ phúc lợi",
+        "scheme_entitlement_changed": "Thay đổi bảng quyền lợi của chế độ",
+        "scheme_updated": "Thay đổi chế độ phúc lợi",
+        "grade_group_changed": "Thay đổi nhóm cấp bậc"
       },
       "payMethodGroup": "Nhân viên này được trả lương như thế nào",
       "payMode": "Hình thức tính lương",

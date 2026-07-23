@@ -22,6 +22,9 @@ import {
   schemeLeaveCombinedLimitMember,
 } from '../db/schema';
 import { isWellFormedBands, type ServiceBand } from './leave-compute';
+// ae5b84d5 — the profile-side recalc engine trues an employee's current-cycle balance up after a manual
+// scheme override changes. No import cycle: core/leave.ts never imports this module.
+import { reprojectEntitlementForEmployment } from './leave';
 
 type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
 type SchemeStatus = 'active' | 'inactive';
@@ -122,10 +125,17 @@ export async function createGradeGroup(
 export async function updateGradeGroup(
   ctx: SessionContext,
   p: { id: string; name: string; gradeIds?: string[] },
-) {
+): Promise<{ gradeIds: string[] }> {
   const name = cleanName(p.name, 'Grade group name');
   const gradeIds = p.gradeIds === undefined ? undefined : [...new Set(p.gradeIds.filter(Boolean))];
   return withTenant(ctx, async (tx) => {
+    // ae5b84d5: capture the BEFORE membership inside this tx — the action fires the cohort recalc over the
+    // UNION of before/after grade ids, so both a grade that LEFT the group and one that JOINED are trued up
+    // (the feedback's "employee transfers to another Grade Group" case, config-side).
+    const beforeMembers = await tx
+      .select({ gradeId: gradeGroupMember.gradeId })
+      .from(gradeGroupMember)
+      .where(eq(gradeGroupMember.gradeGroupId, p.id));
     await tx
       .update(gradeGroup)
       .set({ name })
@@ -145,6 +155,7 @@ export async function updateGradeGroup(
       actor: actorOf(ctx),
       payload: { name, ...(gradeIds !== undefined ? { gradeIds } : {}) },
     });
+    return { gradeIds: [...new Set([...beforeMembers.map((m) => m.gradeId), ...(gradeIds ?? [])])] };
   });
 }
 
@@ -321,6 +332,16 @@ export async function updateBenefitScheme(
         after: { companyId: p.companyId, employmentType, gradeGroupId, name, status },
       },
     });
+    // ae5b84d5: tell the action whether the scheme's MATCH IDENTITY / usability moved (status, employment
+    // type, grade group, company) — those are the edits that re-shuffle who the scheme covers, so the
+    // action fires the cohort recalc only then (a pure rename never moves a balance).
+    const changed =
+      !!prev &&
+      (prev.status !== status ||
+        prev.employmentType !== employmentType ||
+        prev.gradeGroupId !== gradeGroupId ||
+        prev.companyId !== p.companyId);
+    return { changed };
   });
 }
 
@@ -416,8 +437,18 @@ export async function upsertSchemeEntitlement(
   });
 }
 
-export async function deleteSchemeEntitlement(ctx: SessionContext, p: { id: string }) {
+export async function deleteSchemeEntitlement(
+  ctx: SessionContext,
+  p: { id: string },
+): Promise<{ benefitSchemeId: string | null }> {
   return withTenant(ctx, async (tx) => {
+    // ae5b84d5: resolve the owning scheme BEFORE the delete so the action can fire the cohort recalc
+    // (covered employees fall back to grade-policy/floor days and must be trued up).
+    const [row] = await tx
+      .select({ benefitSchemeId: schemeLeaveEntitlement.benefitSchemeId })
+      .from(schemeLeaveEntitlement)
+      .where(eq(schemeLeaveEntitlement.id, p.id))
+      .limit(1);
     await tx.delete(schemeLeaveEntitlement).where(eq(schemeLeaveEntitlement.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -427,6 +458,7 @@ export async function deleteSchemeEntitlement(ctx: SessionContext, p: { id: stri
       actor: actorOf(ctx),
       payload: {},
     });
+    return { benefitSchemeId: row?.benefitSchemeId ?? null };
   });
 }
 
@@ -800,12 +832,17 @@ export async function groupSchemeLeaveTypes(
 }
 
 // ── Employee ↔ scheme override ────────────────────────────────────────────────────────────────────────
-/** Manually assign (or clear) an employee's benefit scheme override. null ⇒ revert to auto-match. */
+/** Manually assign (or clear) an employee's benefit scheme override. null ⇒ revert to auto-match.
+ *
+ *  ae5b84d5: when the override actually CHANGES, the employee's current-cycle balance is trued up
+ *  immediately (reprojectEntitlementForEmployment) — best-effort AFTER the write commits, following the
+ *  recalcAfterProfileChange pattern in the personnel actions: a recalc hiccup never fails the assignment
+ *  (the correction is idempotent and self-heals on the next trigger). */
 export async function setEmploymentBenefitScheme(
   ctx: SessionContext,
   p: { employmentId: string; benefitSchemeId: string | null },
 ) {
-  return withTenant(ctx, async (tx) => {
+  const changed = await withTenant(ctx, async (tx) => {
     const [prev] = await tx
       .select({ benefitSchemeId: employment.benefitSchemeId })
       .from(employment)
@@ -824,7 +861,18 @@ export async function setEmploymentBenefitScheme(
       subjectEmploymentId: p.employmentId,
       payload: { before: prev?.benefitSchemeId ?? null, after: p.benefitSchemeId },
     });
+    return (prev?.benefitSchemeId ?? null) !== p.benefitSchemeId;
   });
+  if (changed) {
+    try {
+      await reprojectEntitlementForEmployment(ctx, {
+        employmentId: p.employmentId,
+        trigger: 'benefit_scheme_override',
+      });
+    } catch {
+      // non-fatal — the assignment is committed; the idempotent recalc re-runs on the next trigger.
+    }
+  }
 }
 
 /** All grades (id + name + code) for the grade-group member picker. Read-only. */

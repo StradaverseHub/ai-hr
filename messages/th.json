@@ -951,7 +951,11 @@
       "recalcReason": {
         "grade_changed": "เปลี่ยนระดับ",
         "employment_changed": "เปลี่ยนรายละเอียดการจ้าง",
-        "employment_info_changed": "เปลี่ยนวันที่เริ่มงาน/บรรจุ"
+        "employment_info_changed": "เปลี่ยนวันที่เริ่มงาน/บรรจุ",
+        "benefit_scheme_override": "เปลี่ยนการกำหนดโครงการสวัสดิการ",
+        "scheme_entitlement_changed": "เปลี่ยนตารางสิทธิ์ของโครงการ",
+        "scheme_updated": "เปลี่ยนโครงการสวัสดิการ",
+        "grade_group_changed": "เปลี่ยนกลุ่มระดับ"
       },
       "payMethodGroup": "พนักงานคนนี้รับเงินอย่างไร",
       "payMode": "รูปแบบการจ่าย",

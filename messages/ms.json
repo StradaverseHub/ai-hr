@@ -951,7 +951,11 @@
       "recalcReason": {
         "grade_changed": "Gred ditukar",
         "employment_changed": "Butiran pekerjaan ditukar",
-        "employment_info_changed": "Tarikh mula/pengesahan ditukar"
+        "employment_info_changed": "Tarikh mula/pengesahan ditukar",
+        "benefit_scheme_override": "Tugasan skim manfaat ditukar",
+        "scheme_entitlement_changed": "Jadual kelayakan skim ditukar",
+        "scheme_updated": "Skim manfaat ditukar",
+        "grade_group_changed": "Kumpulan gred ditukar"
       },
       "payMethodGroup": "Cara Pekerja Ini Dibayar",
       "payMode": "Mod Bayaran",

@@ -951,7 +951,11 @@
       "recalcReason": {
         "grade_changed": "தரம் மாற்றப்பட்டது",
         "employment_changed": "பணி விவரங்கள் மாற்றப்பட்டன",
-        "employment_info_changed": "பணியமர்த்தல்/உறுதிப்படுத்தல் தேதி மாற்றப்பட்டது"
+        "employment_info_changed": "பணியமர்த்தல்/உறுதிப்படுத்தல் தேதி மாற்றப்பட்டது",
+        "benefit_scheme_override": "நலத்திட்ட ஒதுக்கீடு மாற்றப்பட்டது",
+        "scheme_entitlement_changed": "திட்ட உரிமை அட்டவணை மாற்றப்பட்டது",
+        "scheme_updated": "நலத்திட்டம் மாற்றப்பட்டது",
+        "grade_group_changed": "தரக் குழு மாற்றப்பட்டது"
       },
       "payMethodGroup": "இந்த ஊழியருக்கு எவ்வாறு ஊதியம் வழங்கப்படுகிறது",
       "payMode": "ஊதிய முறை",

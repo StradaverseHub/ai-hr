@@ -951,7 +951,11 @@
       "recalcReason": {
         "grade_changed": "职级变更",
         "employment_changed": "雇佣信息变更",
-        "employment_info_changed": "入职/确认日期变更"
+        "employment_info_changed": "入职/确认日期变更",
+        "benefit_scheme_override": "福利方案指派变更",
+        "scheme_entitlement_changed": "方案假期额度表变更",
+        "scheme_updated": "福利方案变更",
+        "grade_group_changed": "职级组变更"
       },
       "payMethodGroup": "该员工的支付方式",
       "payMode": "计薪方式",

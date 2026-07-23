@@ -61,6 +61,7 @@ import {
   asOfForLeaveYear,
   grantAdHocLeave,
   grantAdHocLeaveMulti,
+  reprojectEntitlementForSchemeCohort,
   todayInKualaLumpur,
   DAY_TYPE_INCLUSION_KEYS,
   type DayTypeInclusion,
@@ -1814,6 +1815,25 @@ export async function deleteClockingLocationAction(fd: FormData) {
 // ── Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b) ──────────────────────────────
 // All redirect to the Entitlements tab (where the Benefit Scheme subsection lives). requireAdmin gates the
 // route; RLS additionally gates the write (WITH CHECK app.is_admin()).
+
+/**
+ * ae5b84d5 — after a scheme-side configuration write COMMITS, true up every covered employee's
+ * current-cycle balance (reprojectEntitlementForSchemeCohort loops the idempotent per-employee recalc).
+ * Best-effort, following the recalcAfterProfileChange pattern in the personnel actions: the config save
+ * has already committed and the recalc self-heals on the next trigger, so a hiccup here must never fail
+ * the save the admin just made. Runs AFTER the service's own transaction — never inside it.
+ */
+async function recalcSchemeCohort(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  p: { schemeId?: string; gradeIds?: string[]; trigger: string },
+): Promise<void> {
+  try {
+    await reprojectEntitlementForSchemeCohort(s, p);
+  } catch {
+    // non-fatal — idempotent, re-runs on the next config or profile trigger.
+  }
+}
+
 function parseBands(fd: FormData): import('@/core/leave-compute').ServiceBand[] {
   const raw = String(fd.get('serviceBands') ?? '[]');
   try {
@@ -1840,11 +1860,14 @@ export async function createGradeGroupAction(fd: FormData) {
 export async function updateGradeGroupAction(fd: FormData) {
   const s = await requireAdmin();
   try {
-    await updateGradeGroup(s, {
+    const { gradeIds } = await updateGradeGroup(s, {
       id: String(fd.get('id') ?? ''),
       name: String(fd.get('name') ?? ''),
       gradeIds: fd.getAll('gradeIds').map((v) => String(v)).filter(Boolean),
     });
+    // ae5b84d5: membership moved ⇒ true up BOTH cohorts (the union of before/after grade ids) — a grade
+    // moved into another group re-matches its employees to that group's scheme immediately.
+    await recalcSchemeCohort(s, { gradeIds, trigger: 'grade_group_changed' });
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }
@@ -1880,14 +1903,19 @@ export async function createBenefitSchemeAction(fd: FormData) {
 export async function updateBenefitSchemeAction(fd: FormData) {
   const s = await requireAdmin();
   try {
-    await updateBenefitScheme(s, {
-      id: String(fd.get('id') ?? ''),
+    const schemeId = String(fd.get('id') ?? '');
+    const { changed } = await updateBenefitScheme(s, {
+      id: schemeId,
       companyId: String(fd.get('companyId') ?? ''),
       employmentType: String(fd.get('employmentType') ?? ''),
       gradeGroupId: (String(fd.get('gradeGroupId') ?? '') || null),
       name: String(fd.get('name') ?? ''),
       status: String(fd.get('status') ?? 'active'),
     });
+    // ae5b84d5: only a match-identity/usability change (status / employment type / grade group / company)
+    // re-shuffles coverage — activate/deactivate included, so a mass-revert lands NOW with an honest
+    // scheme_updated audit trigger instead of dripping out of later unrelated runs. Renames skip.
+    if (changed) await recalcSchemeCohort(s, { schemeId, trigger: 'scheme_updated' });
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }
@@ -1907,11 +1935,16 @@ export async function deleteBenefitSchemeAction(fd: FormData) {
 export async function upsertSchemeEntitlementAction(fd: FormData) {
   const s = await requireAdmin();
   try {
+    const benefitSchemeId = String(fd.get('benefitSchemeId') ?? '');
     await upsertSchemeEntitlement(s, {
-      benefitSchemeId: String(fd.get('benefitSchemeId') ?? ''),
+      benefitSchemeId,
       leaveTypeId: String(fd.get('leaveTypeId') ?? ''),
       serviceBands: parseBands(fd),
     });
+    // ae5b84d5: band edits flow through to covered employees immediately — up AND down (a downward earned
+    // correction can only land here; the monthly run never posts negatives). Idempotent: re-saving the
+    // same values computes delta 0 for everyone and posts nothing.
+    await recalcSchemeCohort(s, { schemeId: benefitSchemeId, trigger: 'scheme_entitlement_changed' });
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }
@@ -1921,7 +1954,11 @@ export async function upsertSchemeEntitlementAction(fd: FormData) {
 export async function deleteSchemeEntitlementAction(fd: FormData) {
   const s = await requireAdmin();
   try {
-    await deleteSchemeEntitlement(s, { id: String(fd.get('id') ?? '') });
+    const { benefitSchemeId } = await deleteSchemeEntitlement(s, { id: String(fd.get('id') ?? '') });
+    // ae5b84d5: covered employees revert to grade-policy/floor days — true them up now.
+    if (benefitSchemeId) {
+      await recalcSchemeCohort(s, { schemeId: benefitSchemeId, trigger: 'scheme_entitlement_changed' });
+    }
   } catch (e) {
     fail(ENTITLEMENTS, e);
   }

@@ -9,7 +9,7 @@ import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } fr
 import { nextEmployeeCode } from './comp';
 import { generateEmployeeCode } from './employee-id-config';
 import { requireEmployeeCode } from '../lib/employee-code';
-import { applyMaxBalance, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
+import { applyMaxBalance, buildSchemeEntitlementResolver, entitledDays, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
 import { labelUsableByCompany } from './system-labels';
 import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile-options';
@@ -264,6 +264,16 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           if (arr) arr.push(pol);
           else policyByType.set(pol.leaveTypeId, [pol]);
         }
+        // Auto-link entitlement (ae5b84d5): resolve the new hire's benefit scheme so the FIRST balance
+        // already comes from the matching Grade Group table (previously only the next year-open did).
+        // Runs after the assignment insert above (same tx), so the resolver's current-assignment
+        // employment-type lookup sees this hire. A brand-new employment has no manual override (null);
+        // no schemes configured ⇒ `() => null` ⇒ byte-identical grade-policy/floor behaviour.
+        const schemeDaysFor = await buildSchemeEntitlementResolver(
+          tx,
+          [{ employmentId: emp.id, companyId: p.companyId, gradeId: p.gradeId ?? null, overrideSchemeId: null }],
+          p.grantLeaveTypes.map((t) => t.id),
+        );
         const month = Number(p.hiredOn.slice(5, 7));
         for (const lt of p.grantLeaveTypes) {
           // ADR-0066: scope to the new hire's company so a per-company UPFRONT entitlement reaches joiners.
@@ -273,7 +283,9 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not the hire lump.
           if (isEarnedMethod(polFor?.method)) continue;
           const floor = pack.leave.entitlement(lt.code, 0);
-          const days = Math.max(floor, polFor?.days ?? 0);
+          // ae5b84d5: scheme band days (0-year band) supersede the policy days; EA floor still clamps —
+          // the SAME entitledDays composition openLeaveYear / accrueEarnedLeave / the recalc kernel use.
+          const days = entitledDays(floor, schemeDaysFor(emp.id, lt.id, 0), polFor?.days ?? 0);
           if (days <= 0) continue;
           // ANNUAL pro-rates by months remaining in the hire year (s.60E practice).
           // SICK / HOSPITALIZATION grant in full: s.60F is a per-calendar-year

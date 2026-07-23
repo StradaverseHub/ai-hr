@@ -951,7 +951,11 @@
       "recalcReason": {
         "grade_changed": "Grade changed",
         "employment_changed": "Employment details changed",
-        "employment_info_changed": "Hire/confirmation date changed"
+        "employment_info_changed": "Hire/confirmation date changed",
+        "benefit_scheme_override": "Benefit scheme assignment changed",
+        "scheme_entitlement_changed": "Scheme entitlement table changed",
+        "scheme_updated": "Benefit scheme changed",
+        "grade_group_changed": "Grade group changed"
       },
       "payMethodGroup": "How This Employee Is Paid",
       "payMode": "Pay Mode",
