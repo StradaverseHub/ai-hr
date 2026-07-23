@@ -6,6 +6,8 @@ import { listAssignablePolicies } from '@/core/payroll-policy';
 import { getCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
+// 297ae65a — searchable ISO 4217 picker for the company default salary currency.
+import { CurrencySelect } from '@/components/currency-select';
 import { savePayrollConfigAction } from './actions';
 
 const HRDF = ['not_registered', 'mandatory', 'optional'] as const;
@@ -67,8 +69,14 @@ export default async function PayrollConfigPage({
                       ))}
                     </select>
                   </Field>
+                  {/* 297ae65a — the company default salary currency: new Basic Salary records preselect
+                      it (per-record currency stays editable on the employee's salary form). */}
+                  <Field label={t('defaultCurrency')}>
+                    <CurrencySelect name="defaultCurrency" value={cfg?.defaultCurrency ?? 'MYR'} />
+                  </Field>
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">{t('dayHint')}</p>
+                <p className="mt-1.5 text-xs text-muted-foreground">{t('defaultCurrencyHint')}</p>
               </div>
 
               {/* Step 1 (f3148da1) — company-default payroll policy + Step 6 payslip release */}

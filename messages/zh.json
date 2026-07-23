@@ -1057,7 +1057,8 @@
           "terminateConfirmTitle": "终止雇佣？",
           "terminateConfirmDescription": "这将在生效日期终止雇佣并关闭当前任职安排。该操作会记录在审计日志中。"
         }
-      }
+      },
+      "salaryCurrency": "货币"
     },
     "import": {
       "title": "导入员工",
@@ -2648,7 +2649,8 @@
         "zeroBasic": "基本薪资或薪资率为零",
         "staleBasicComponent": "BASIC 薪资项目已过时——以人事薪资记录为准",
         "missingStatutory": "无法定资料（EPF/SOCSO/PCB）",
-        "missingBank": "银行资料不完整"
+        "missingBank": "银行资料不完整",
+        "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理"
       },
       "preChecksOpenProfile": "打开档案",
       "preChecksBlockedError": "无法处理薪资：{n} 名员工没有当前薪资记录。请先解决处理前检查问题。",
@@ -3187,7 +3189,8 @@
         "zeroBasic": "基本薪资或薪资率为零",
         "staleBasicComponent": "BASIC 薪资项目已过时——以人事薪资记录为准",
         "missingStatutory": "无法定档案（EPF/SOCSO/PCB）",
-        "missingBank": "银行资料不完整"
+        "missingBank": "银行资料不完整",
+        "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理"
       }
     },
     "guide": {
@@ -5698,7 +5701,9 @@
     "release_relative": "相对于发薪日",
     "releaseValue": "日期/偏移",
     "releaseValuePlaceholder": "例如 5 或 -2",
-    "releaseHint": "控制员工何时能在自助服务中查看工资单。固定日期＝薪资周期之后月份的某一天；相对＝发薪日之前(-)/之后(+)的天数。绝不会早于薪资关账。"
+    "releaseHint": "控制员工何时能在自助服务中查看工资单。固定日期＝薪资周期之后月份的某一天；相对＝发薪日之前(-)/之后(+)的天数。绝不会早于薪资关账。",
+    "defaultCurrency": "默认薪资货币",
+    "defaultCurrencyHint": "新的基本工资记录将预选此货币；HR 可按记录更改。"
   },
   "employeeIdConfig": {
     "title": "员工编号自动流水号设置",
@@ -7117,5 +7122,11 @@
       "admin": "创建管理员登录",
       "invitation": "签发激活链接"
     }
+  },
+  "currencySelect": {
+    "placeholder": "选择货币",
+    "searchPlaceholder": "搜索货币…",
+    "noResults": "未找到货币",
+    "legacySuffix": "（现有值）"
   }
 }

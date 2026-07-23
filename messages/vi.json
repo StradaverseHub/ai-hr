@@ -1057,7 +1057,8 @@
           "terminateConfirmTitle": "Chấm dứt hợp đồng lao động?",
           "terminateConfirmDescription": "Thao tác này chấm dứt hợp đồng vào ngày hiệu lực và đóng phân công hiện tại. Thao tác được ghi vào nhật ký kiểm toán."
         }
-      }
+      },
+      "salaryCurrency": "Tiền tệ"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -2648,7 +2649,8 @@
         "zeroBasic": "Lương cơ bản hoặc mức lương bằng không",
         "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ pháp định (EPF/SOCSO/PCB)",
-        "missingBank": "Thông tin ngân hàng chưa đầy đủ"
+        "missingBank": "Thông tin ngân hàng chưa đầy đủ",
+        "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập"
       },
       "preChecksOpenProfile": "Mở hồ sơ",
       "preChecksBlockedError": "Không thể xử lý lương: {n} nhân viên không có hồ sơ lương hiện tại. Vui lòng khắc phục các mục kiểm tra trước khi xử lý.",
@@ -3187,7 +3189,8 @@
         "zeroBasic": "Lương cơ bản hoặc mức lương bằng không",
         "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ theo luật định (EPF/SOCSO/PCB)",
-        "missingBank": "Thông tin ngân hàng chưa đầy đủ"
+        "missingBank": "Thông tin ngân hàng chưa đầy đủ",
+        "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập"
       }
     },
     "guide": {
@@ -5698,7 +5701,9 @@
     "release_relative": "Tương đối so với ngày trả lương",
     "releaseValue": "Ngày / độ lệch",
     "releaseValuePlaceholder": "vd. 5 hoặc -2",
-    "releaseHint": "Kiểm soát khi nào nhân viên thấy phiếu lương trong tự phục vụ. Ngày cố định = một ngày của tháng sau kỳ lương; tương đối = số ngày trước(-)/sau(+) ngày trả lương. Không bao giờ trước khi chốt lương."
+    "releaseHint": "Kiểm soát khi nào nhân viên thấy phiếu lương trong tự phục vụ. Ngày cố định = một ngày của tháng sau kỳ lương; tương đối = số ngày trước(-)/sau(+) ngày trả lương. Không bao giờ trước khi chốt lương.",
+    "defaultCurrency": "Tiền tệ lương mặc định",
+    "defaultCurrencyHint": "Bản ghi Lương cơ bản mới sẽ chọn sẵn tiền tệ này; HR có thể thay đổi cho từng bản ghi."
   },
   "employeeIdConfig": {
     "title": "Thiết lập số chạy tự động cho Mã nhân viên",
@@ -7117,5 +7122,11 @@
       "admin": "Tạo tài khoản quản trị viên",
       "invitation": "Cấp liên kết kích hoạt"
     }
+  },
+  "currencySelect": {
+    "placeholder": "Chọn tiền tệ",
+    "searchPlaceholder": "Tìm tiền tệ…",
+    "noResults": "Không tìm thấy tiền tệ",
+    "legacySuffix": "(giá trị hiện có)"
   }
 }

@@ -17,8 +17,17 @@ import {
   type PayrollFrequency,
 } from '../db/schema';
 import { PAYROLL_FREQUENCIES } from './payroll-policy-config';
+import { isCurrencyCode } from '../lib/currencies';
 
 const money = (n: number | string): string => (typeof n === 'number' ? n.toFixed(2) : String(n));
+
+/** 297ae65a — salary currency must be a real ISO 4217 code (lib/currencies.ts master). Throws on any
+ *  other value so a crafted post can never store a junk currency on a salary record. */
+function normalizeCurrency(v: string): string {
+  const c = v.trim().toUpperCase();
+  if (!isCurrencyCode(c)) throw new Error('Unknown currency');
+  return c;
+}
 
 // ─────────────── Employee-specific salary structure (feedback 642ecc55 / ADR-0078) ───────────────
 // pay_mode reuses the payroll_policy_type enum values; payment_term is validated against the
@@ -107,6 +116,9 @@ export async function setCompensation(
   p: {
     employmentId: string;
     basicSalary: number;
+    /** ISO 4217 code (297ae65a), validated against lib/currencies.ts. Omit to CARRY FORWARD the current
+     *  record's currency (MYR for a brand-new first record) — a basic-only revision must never silently
+     *  reset an SGD salary to MYR. */
     currency?: string;
     /** Omit to CARRY FORWARD the current record's allowance — a basic-salary-only revision must NOT wipe
      *  the monthly allowance (it feeds the OT ORP wage basis). Pass an explicit number (including 0) to set
@@ -170,6 +182,11 @@ export async function setCompensation(
         ? null
         : money(p.rateAmount)
       : (cur?.rateAmount ?? null);
+    // 297ae65a — currency with the same carry-forward semantics: omitted keeps the prior record's currency
+    // (MYR for a brand-new first record — the column default), so pre-currency callers (import, movement,
+    // performance enact) stay byte-identical; a provided value is validated against the ISO 4217 master.
+    const currencyProvided = p.currency !== undefined;
+    const currency = currencyProvided ? normalizeCurrency(p.currency as string) : (cur?.currency ?? 'MYR');
     assertRateForMode(payMode, rateAmount);
     // D4 — a pay-mode CHANGE (relative to the record it supersedes) only takes effect on a period boundary.
     // The first record of an employment carries no prior mode, so it may start on any date (e.g. mid-month
@@ -183,7 +200,7 @@ export async function setCompensation(
         tenantId: ctx.tenantId,
         employmentId: p.employmentId,
         basicSalary: money(p.basicSalary),
-        currency: p.currency ?? 'MYR',
+        currency,
         monthlyAllowance: money(effectiveAllowance),
         payMode,
         paymentTerm,
@@ -194,6 +211,7 @@ export async function setCompensation(
       })
       .returning({ id: compensation.id });
     const fieldsChanged = ['basicSalary'];
+    if (currencyProvided) fieldsChanged.push('currency');
     if (allowanceProvided) fieldsChanged.push('monthlyAllowance');
     if (payModeProvided) fieldsChanged.push('payMode');
     if (paymentTermProvided) fieldsChanged.push('paymentTerm');
@@ -222,8 +240,9 @@ export async function setCompensation(
 }
 
 /**
- * Edit Salary Record (feedback 87c82b18, flow #4; widened for 7c7c2f80). Corrects the basic salary,
- * remarks and/or EFFECTIVE DATE of an EXISTING salary-history row **in place** — used to fix the latest
+ * Edit Salary Record (feedback 87c82b18, flow #4; widened for 7c7c2f80; currency added by 297ae65a).
+ * Corrects the basic salary, currency, remarks and/or EFFECTIVE DATE of an EXISTING salary-history row
+ * **in place** — used to fix the latest
  * (active) or a future-effective record before it takes effect. Business rule: only the OPEN row
  * (`validTo IS NULL`, not superseded) may be edited; historical (closed) rows are immutable, preserving
  * the audit chain.
@@ -244,6 +263,9 @@ export async function updateCompensation(
     compensationId: string;
     employmentId: string;
     basicSalary?: number;
+    /** ISO 4217 code (297ae65a) — edit the open row's salary currency in place; validated against
+     *  lib/currencies.ts. Omitted or unchanged ⇒ no-op (nothing recorded). */
+    currency?: string;
     remarks?: string | null;
     /** ADR-0078 — edit the open row's pay structure. A pay-mode change requires the row's effective date
      *  to be a period boundary AND rejects rows whose window a processed/closed run already relied on. */
@@ -277,6 +299,14 @@ export async function updateCompensation(
     if (p.basicSalary !== undefined) {
       set.basicSalary = money(p.basicSalary);
       fieldsChanged.push('basicSalary');
+    }
+    // 297ae65a — currency edit: validated, recorded only on a real change (the edit form always posts it).
+    if (p.currency !== undefined) {
+      const nextCurrency = normalizeCurrency(p.currency);
+      if (nextCurrency !== row.currency) {
+        set.currency = nextCurrency;
+        fieldsChanged.push('currency');
+      }
     }
     if (p.remarks !== undefined) {
       set.remarks = p.remarks && p.remarks.trim() ? p.remarks.trim() : null;

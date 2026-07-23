@@ -1057,7 +1057,8 @@
           "terminateConfirmTitle": "Terminate employment?",
           "terminateConfirmDescription": "This ends the employment on the effective date and closes the current assignment. The action is recorded in the audit trail."
         }
-      }
+      },
+      "salaryCurrency": "Currency"
     },
     "import": {
       "title": "Import employees",
@@ -2410,7 +2411,8 @@
         "zeroBasic": "Basic salary or pay rate is zero",
         "staleBasicComponent": "Outdated BASIC pay item — the Personnel salary record is used",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
-        "missingBank": "Bank details incomplete"
+        "missingBank": "Bank details incomplete",
+        "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered"
       },
       "preChecksOpenProfile": "Open profile",
       "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
@@ -3187,7 +3189,8 @@
         "zeroBasic": "Basic salary or pay rate is zero",
         "staleBasicComponent": "Outdated BASIC pay item — the Personnel salary record is used",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
-        "missingBank": "Bank details incomplete"
+        "missingBank": "Bank details incomplete",
+        "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered"
       }
     },
     "guide": {
@@ -5698,7 +5701,9 @@
     "release_relative": "Relative to pay day",
     "releaseValue": "Day / offset",
     "releaseValuePlaceholder": "e.g. 5 or -2",
-    "releaseHint": "Controls when employees can see their payslip in self-service. Fixed day = a day of the month after the pay period; relative = days before(-)/after(+) pay day. Never before payroll closes."
+    "releaseHint": "Controls when employees can see their payslip in self-service. Fixed day = a day of the month after the pay period; relative = days before(-)/after(+) pay day. Never before payroll closes.",
+    "defaultCurrency": "Default salary currency",
+    "defaultCurrencyHint": "New Basic Salary records preselect this currency; HR can change it per record."
   },
   "employeeIdConfig": {
     "title": "Employee ID Auto Running Number Setup",
@@ -7117,5 +7122,11 @@
       "admin": "Create the administrator login",
       "invitation": "Issue the activation link"
     }
+  },
+  "currencySelect": {
+    "placeholder": "Select currency",
+    "searchPlaceholder": "Search currency…",
+    "noResults": "No currency found",
+    "legacySuffix": "(existing value)"
   }
 }

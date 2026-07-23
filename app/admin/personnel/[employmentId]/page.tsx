@@ -74,6 +74,9 @@ import {
 import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
 import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
+// 297ae65a — searchable ISO 4217 Currency select for the Basic Salary form + the company default it preselects.
+import { CurrencySelect } from '@/components/currency-select';
+import { getPayrollConfig } from '@/core/payroll-config';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
 import { listDependents, eligibleChildReliefCount, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
@@ -250,6 +253,11 @@ export default async function EmployeePage({
   const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
+  // 297ae65a — the company's configured default salary currency (company_payroll_config.default_currency,
+  // 'MYR' when unset): the Basic Salary form preselects it for a brand-new first record.
+  const defaultSalaryCurrency = admin
+    ? ((await getPayrollConfig(s, emp.companyId))?.defaultCurrency ?? 'MYR')
+    : 'MYR';
   // R46 79eb7151 — resolve the policy the payroll kernel will ACTUALLY use for this employee (direct
   // assignment → company default → null ⇒ monthly default), so the Salary section can surface its Pay Mode
   // and Payment Term read-only. Resolving rather than reading emp.payrollPolicyId matters: an employee with
@@ -1741,6 +1749,12 @@ export default async function EmployeePage({
             </Field>
             <Field label={t('basicSalaryMyr')}>
               <input name="basicSalary" type="number" min="0" step="0.01" required className={inputCls} />
+            </Field>
+            {/* 297ae65a — the record's salary currency, grouped WITH the amount (searchable ISO 4217 list).
+                Preselects the open row's currency (carry-forward made visible) or the company default for
+                a brand-new first record; the service validates + carries forward server-side. */}
+            <Field label={t('salaryCurrency')}>
+              <CurrencySelect name="currency" value={openSalaryRow?.currency ?? defaultSalaryCurrency} />
             </Field>
             <Field label={t('salaryColRemarks')}>
               <input

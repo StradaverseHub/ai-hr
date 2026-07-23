@@ -2246,6 +2246,10 @@ export const companyPayrollConfig = pgTable(
     defaultPayrollPolicyId: uuid('default_payroll_policy_id').references((): AnyPgColumn => payrollPolicy.id),
     // Step 6 (f3148da1) — payslip release config (see PayslipRelease). NULL = immediate (today's behaviour).
     payslipRelease: jsonb('payslip_release').$type<PayslipRelease | null>(),
+    // 297ae65a — the company's DEFAULT salary currency (ISO 4217 code, validated against lib/currencies.ts
+    // in core/payroll-config.ts). New Basic Salary records preselect it; compensation.currency stays the
+    // per-record store. Default 'MYR' = today's behaviour (migration 0306, additive).
+    defaultCurrency: text('default_currency').notNull().default('MYR'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

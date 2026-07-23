@@ -1057,7 +1057,8 @@
           "terminateConfirmTitle": "Tamatkan pekerjaan?",
           "terminateConfirmDescription": "Ini menamatkan pekerjaan pada tarikh berkuat kuasa dan menutup penempatan semasa. Tindakan ini direkodkan dalam jejak audit."
         }
-      }
+      },
+      "salaryCurrency": "Mata wang"
     },
     "import": {
       "title": "Import pekerja",
@@ -2648,7 +2649,8 @@
         "zeroBasic": "Gaji asas atau kadar gaji adalah sifar",
         "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil statutori (KWSP/PERKESO/PCB)",
-        "missingBank": "Butiran bank tidak lengkap"
+        "missingBank": "Butiran bank tidak lengkap",
+        "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan"
       },
       "preChecksOpenProfile": "Buka profil",
       "preChecksBlockedError": "Payroll tidak boleh diproses: {n} pekerja tiada rekod gaji semasa. Selesaikan semakan pra-pemprosesan dahulu.",
@@ -3187,7 +3189,8 @@
         "zeroBasic": "Gaji asas atau kadar gaji adalah sifar",
         "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil berkanun (EPF/SOCSO/PCB)",
-        "missingBank": "Butiran bank tidak lengkap"
+        "missingBank": "Butiran bank tidak lengkap",
+        "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan"
       }
     },
     "guide": {
@@ -5698,7 +5701,9 @@
     "release_relative": "Relatif kepada hari gaji",
     "releaseValue": "Hari / ofset",
     "releaseValuePlaceholder": "cth. 5 atau -2",
-    "releaseHint": "Mengawal bila pekerja boleh melihat slip gaji dalam layan diri. Hari tetap = hari dalam bulan selepas tempoh gaji; relatif = hari sebelum(-)/selepas(+) hari gaji. Tidak sekali-kali sebelum gaji ditutup."
+    "releaseHint": "Mengawal bila pekerja boleh melihat slip gaji dalam layan diri. Hari tetap = hari dalam bulan selepas tempoh gaji; relatif = hari sebelum(-)/selepas(+) hari gaji. Tidak sekali-kali sebelum gaji ditutup.",
+    "defaultCurrency": "Mata wang gaji lalai",
+    "defaultCurrencyHint": "Rekod Gaji Pokok baharu akan prapilih mata wang ini; HR boleh menukarnya bagi setiap rekod."
   },
   "employeeIdConfig": {
     "title": "Persediaan Nombor Berjalan Automatik ID Pekerja",
@@ -7117,5 +7122,11 @@
       "admin": "Cipta log masuk pentadbir",
       "invitation": "Keluarkan pautan pengaktifan"
     }
+  },
+  "currencySelect": {
+    "placeholder": "Pilih mata wang",
+    "searchPlaceholder": "Cari mata wang…",
+    "noResults": "Tiada mata wang ditemui",
+    "legacySuffix": "(nilai sedia ada)"
   }
 }

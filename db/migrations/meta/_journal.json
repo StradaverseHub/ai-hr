@@ -1798,7 +1798,14 @@
       "idx": 306,
       "version": "7",
       "when": 1781862406000,
-      "tag": "0306_subject_to_hrdf",
+"tag": "0306_subject_to_hrdf",
+      "breakpoints": true
+    },
+    {
+      "idx": 307,
+      "version": "7",
+      "when": 1781862407000,
+      "tag": "0307_company_default_currency",
       "breakpoints": true
     }
   ]

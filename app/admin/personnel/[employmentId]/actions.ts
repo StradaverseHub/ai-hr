@@ -485,9 +485,14 @@ export async function setCompensationAction(formData: FormData) {
     const payModeRaw = String(formData.get('payMode') ?? '').trim();
     const paymentTermRaw = String(formData.get('paymentTerm') ?? '').trim();
     const rateRaw = String(formData.get('rateAmount') ?? '').trim();
+    // 297ae65a — the salary currency (ISO 4217 code from the searchable select). An empty/absent value
+    // falls through to the service's carry-forward (keeps the prior record's currency; MYR for a first
+    // record), so a cleared select can never blank the stored currency.
+    const currencyRaw = String(formData.get('currency') ?? '').trim();
     await setCompensation(s, {
       employmentId,
       basicSalary: Number(formData.get('basicSalary')),
+      currency: currencyRaw || undefined,
       // Allowance is no longer maintained on the Basic Salary screen (feedback 87c82b18) — allowances
       // belong to Pay Components. Omitting it CARRIES the existing figure forward (never wipes it).
       remarks: String(formData.get('remarks') ?? '').trim() || undefined,
@@ -524,10 +529,13 @@ export async function editCompensationAction(formData: FormData) {
     const payModeRaw = String(formData.get('payMode') ?? '').trim();
     const paymentTermRaw = String(formData.get('paymentTerm') ?? '').trim();
     const rateRaw = String(formData.get('rateAmount') ?? '').trim();
+    // 297ae65a — currency rides the edit form too; empty ⇒ untouched (the service records only real changes).
+    const currencyRaw = String(formData.get('currency') ?? '').trim();
     await updateCompensation(s, {
       compensationId: String(formData.get('compensationId')),
       employmentId,
       basicSalary: rawBasicStr !== '' ? Number(rawBasicStr) : undefined,
+      currency: currencyRaw || undefined,
       // Remarks always submitted (possibly empty → cleared to NULL).
       remarks: String(formData.get('remarks') ?? '').trim() || null,
       payMode: payModeRaw || undefined,

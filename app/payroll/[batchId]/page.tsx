@@ -45,8 +45,12 @@ export default async function BatchPage({
   // Feedback 64fb5e48 — blockers are the salary-record gaps (missing/period-miss/zero); the old
   // BASIC-pay-item existence blocker is gone. A stale BASIC pay item is a confirm-to-proceed warning.
   const preBlockers = preChecks.missingCompensation.length + (preChecks.zeroBasic?.length ?? 0);
+  // 297ae65a — the non-MYR/mixed-currency salary notice counts among the confirm-to-proceed warnings.
   const preWarnings =
-    preChecks.missingStatutory.length + preChecks.missingBank.length + (preChecks.staleBasicComponent?.length ?? 0);
+    preChecks.missingStatutory.length +
+    preChecks.missingBank.length +
+    (preChecks.staleBasicComponent?.length ?? 0) +
+    (preChecks.currencyMismatch?.length ?? 0);
   // Config-level readiness (feedback 5db3ae48, Phase A) — the layer ABOVE the employee-master pre-checks:
   // is the COMPANY configured to run payroll (statutory tables, active cycle, pay-day, pay items, policy)?
   // Read-only; surfaced here as a compact panel with a link to the full Workflow Guide. Uses the
@@ -363,6 +367,7 @@ export default async function BatchPage({
                   ['missingStatutory', preChecks.missingStatutory, false],
                   ['missingBank', preChecks.missingBank, false],
                   ['staleBasicComponent', preChecks.staleBasicComponent ?? [], false],
+                  ['currencyMismatch', preChecks.currencyMismatch ?? [], false],
                 ] as const
               ).map(([key, rows, isBlocker]) =>
                 rows.length === 0 ? null : (

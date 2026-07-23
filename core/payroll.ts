@@ -4389,6 +4389,10 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
 //     The operator must explicitly confirm to proceed (enforced in generateAction).
 //   • missingBank — WARNING. Statutory profile exists but bank name/account is incomplete: the
 //     payment file cannot carry this employee. Confirm-to-proceed like missingStatutory.
+//   • currencyMismatch — WARNING (297ae65a). The employee's salary record carries a currency other
+//     than MYR while this run computes under the MY pack (Malaysian statutory maths, MYR figures) —
+//     a mixed-currency batch or a wholly non-MYR one. Currency CONVERSION is explicitly a future
+//     enhancement, so the run warns instead of calculating something misleading; no math change.
 
 export type PreProcessCheckRow = { employmentId: string; name: string; employeeCode: string | null };
 
@@ -4414,6 +4418,12 @@ export type PreProcessAdvisory = {
   staleBasicComponent?: PreProcessCheckRow[];
   missingStatutory: PreProcessCheckRow[];
   missingBank: PreProcessCheckRow[];
+  // WARNING (297ae65a — Currency on Basic Salary). The employee's OPEN compensation row is denominated in
+  // a currency other than MYR while payroll computes under the MY pack: the amount is processed AS ENTERED
+  // (recording/reporting first; conversion is a future enhancement), so the operator must explicitly
+  // confirm a mixed-currency / non-MYR run instead of it calculating something misleading silently.
+  // OPTIONAL so pre-existing advisory literals stay valid; absent ⇒ no such employees.
+  currencyMismatch?: PreProcessCheckRow[];
 };
 
 /** Shared tx-level core: the same scoped, period-active population as generatePayslips' employee
@@ -4439,6 +4449,8 @@ async function preProcessChecksTx(
       compValidFrom: compensation.validFrom,
       compBasic: compensation.basicSalary,
       compRate: compensation.rateAmount,
+      // 297ae65a — the record's salary currency, for the non-MYR / mixed-currency warning below.
+      compCurrency: compensation.currency,
       statPersonId: employeeStatutoryMy.personId,
       bankName: employeeStatutoryMy.bankName,
       bankAccountNo: employeeStatutoryMy.bankAccountNo,
@@ -4509,7 +4521,7 @@ async function preProcessChecksTx(
       basicAmountsByEmp.set(bRow.employmentId, list);
     }
   }
-  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], staleBasicComponent: [], missingStatutory: [], missingBank: [] };
+  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [] };
   for (const r of rows) {
     const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
     // Feedback 64fb5e48 — the OPEN row must exist (the generation employee query inner-joins it, so a
@@ -4535,6 +4547,12 @@ async function preProcessChecksTx(
     if (r.compId && (basicAmountsByEmp.get(r.employmentId) ?? []).some((amt) => round2(amt) !== round2(Number(r.compBasic)))) {
       out.staleBasicComponent!.push(row);
     }
+    // 297ae65a — WARNING (never blocks): the salary record is denominated in a currency other than MYR
+    // while this run computes under the MY pack (the only pack today). Covers both a MIXED batch (some
+    // non-MYR) and a wholly non-MYR one; the amount is processed as entered — recording/reporting first,
+    // conversion is an explicit future enhancement — so the operator confirms rather than the engine
+    // silently computing Malaysian statutory maths over a foreign-currency figure.
+    if (r.compId && (r.compCurrency ?? 'MYR') !== 'MYR') out.currencyMismatch!.push(row);
     if (!r.statPersonId) out.missingStatutory.push(row);
     // Bank readiness is only meaningful once a statutory profile exists (a missing profile already
     // covers the row above — listing it twice would be noise, not signal).
