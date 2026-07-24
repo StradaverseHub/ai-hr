@@ -6152,7 +6152,15 @@
     "escalationSpecificRole": "Một vai trò phê duyệt cụ thể",
     "escalationRole": "Vai trò phê duyệt",
     "escalationNotifyNote": "Cảnh báo leo thang được gửi tới chuông thông báo.",
-    "escalationUnavailableSingleApprover": "Leo thang phê duyệt chỉ khả dụng cho các công ty dùng chuỗi phê duyệt nhiều bước."
+    "escalationUnavailableSingleApprover": "Leo thang phê duyệt chỉ khả dụng cho các công ty dùng chuỗi phê duyệt nhiều bước.",
+    "templateCreationTitle": "Tạo mẫu phê duyệt",
+    "templateCreationHint": "Xây dựng luồng phê duyệt dùng lại được cùng các bước của nó tại đây.",
+    "multiStepNote": "Mẫu có từ hai bước trở lên chính là phê duyệt nhiều bước. Việc bắt buộc phê duyệt nhiều bước vẫn là công tắc theo từng công ty mà bạn bật trong Mẫu gán.",
+    "assignmentTemplateTitle": "Mẫu gán",
+    "assignmentTemplateHint": "Quyết định mỗi luồng phê duyệt áp dụng cho công ty, loại nghỉ phép và nhân viên nào.",
+    "leaveTypesMore": "{n, plural, other {+# nữa}}",
+    "companyDefaultsTitle": "Mặc định công ty và leo thang",
+    "companyDefaultsHint": "Mở một công ty để sửa chuỗi phê duyệt cơ bản, công tắc phê duyệt nhiều bước và cài đặt leo thang của công ty đó."
   },
   "feedback": {
     "title": "Phản hồi",

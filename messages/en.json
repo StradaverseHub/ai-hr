@@ -6152,7 +6152,15 @@
     "escalationSpecificRole": "A specific approval role",
     "escalationRole": "Approval role",
     "escalationNotifyNote": "Escalation alerts are delivered to the notification bell.",
-    "escalationUnavailableSingleApprover": "Approval escalation is available only for companies using a multi-step approval chain."
+    "escalationUnavailableSingleApprover": "Approval escalation is available only for companies using a multi-step approval chain.",
+    "templateCreationTitle": "Approval Template Creation",
+    "templateCreationHint": "Build a reusable approval flow and its steps here.",
+    "multiStepNote": "A template with two or more steps is a multi-step approval. Requiring multi-step approval stays a per-company switch you turn on under Assignment Template.",
+    "assignmentTemplateTitle": "Assignment Template",
+    "assignmentTemplateHint": "Decide which companies, leave types and employees each approval flow applies to.",
+    "leaveTypesMore": "{n, plural, one {+# more} other {+# more}}",
+    "companyDefaultsTitle": "Company defaults and escalation",
+    "companyDefaultsHint": "Open a company to edit its base approval chain, its multi-step approval switch and its escalation settings."
   },
   "feedback": {
     "title": "Feedback",

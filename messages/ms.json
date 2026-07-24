@@ -6152,7 +6152,15 @@
     "escalationSpecificRole": "Peranan kelulusan tertentu",
     "escalationRole": "Peranan kelulusan",
     "escalationNotifyNote": "Makluman eskalasi dihantar ke loceng pemberitahuan.",
-    "escalationUnavailableSingleApprover": "Eskalasi kelulusan hanya tersedia untuk syarikat yang menggunakan rantaian kelulusan berbilang peringkat."
+    "escalationUnavailableSingleApprover": "Eskalasi kelulusan hanya tersedia untuk syarikat yang menggunakan rantaian kelulusan berbilang peringkat.",
+    "templateCreationTitle": "Penciptaan Templat Kelulusan",
+    "templateCreationHint": "Bina aliran kelulusan yang boleh diguna semula dan langkah-langkahnya di sini.",
+    "multiStepNote": "Templat dengan dua langkah atau lebih ialah kelulusan berbilang langkah. Mewajibkan kelulusan berbilang langkah kekal sebagai suis bagi setiap syarikat yang anda hidupkan di bawah Templat Penetapan.",
+    "assignmentTemplateTitle": "Templat Penetapan",
+    "assignmentTemplateHint": "Tentukan syarikat, jenis cuti dan pekerja yang terpakai bagi setiap aliran kelulusan.",
+    "leaveTypesMore": "{n, plural, other {+# lagi}}",
+    "companyDefaultsTitle": "Lalai syarikat dan eskalasi",
+    "companyDefaultsHint": "Buka sesebuah syarikat untuk mengedit rantaian kelulusan asasnya, suis kelulusan berbilang langkah dan tetapan eskalasinya."
   },
   "feedback": {
     "title": "Maklum Balas",

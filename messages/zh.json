@@ -6152,7 +6152,15 @@
     "escalationSpecificRole": "指定审批角色",
     "escalationRole": "审批角色",
     "escalationNotifyNote": "升级提醒将发送到通知铃铛。",
-    "escalationUnavailableSingleApprover": "审批升级仅适用于使用多级审批链的公司。"
+    "escalationUnavailableSingleApprover": "审批升级仅适用于使用多级审批链的公司。",
+    "templateCreationTitle": "审批模板创建",
+    "templateCreationHint": "在此创建可重复使用的审批流程及其步骤。",
+    "multiStepNote": "包含两个或以上步骤的模板即为多级审批。是否要求多级审批仍是您在分配模板中按公司开启的开关。",
+    "assignmentTemplateTitle": "分配模板",
+    "assignmentTemplateHint": "决定每条审批流程适用于哪些公司、假期类型与员工。",
+    "leaveTypesMore": "{n, plural, other {+# 项}}",
+    "companyDefaultsTitle": "公司默认设置与升级",
+    "companyDefaultsHint": "展开某家公司即可编辑其基础审批链、多级审批开关与升级设置。"
   },
   "feedback": {
     "title": "反馈",
