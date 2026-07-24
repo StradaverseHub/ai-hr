@@ -1175,8 +1175,8 @@ export function LeaveTypePanel({
         : 'border-border text-muted-foreground hover:bg-accent/60 hover:text-foreground',
     );
 
-  // #25 visibility: a composable human summary of the eligibility rule (avoids a key-per-permutation
-  // matrix across 6 locales). e.g. "Female only · ≥ 12 months service", or "Open to all employees".
+  // #25 visibility: composable labels for the eligibility rule values (avoids a key-per-permutation
+  // matrix across 6 locales). Shared by the edit form's pickers and the 0c15db78 criteria table.
   const genderLabel = (g: string) =>
     g === 'male' ? t('eligibilityGenderMale') : g === 'female' ? t('eligibilityGenderFemale') : null;
   const maritalLabel = (m: string) =>
@@ -1193,33 +1193,38 @@ export function LeaveTypePanel({
               : m === 'other'
                 ? t('eligibilityMaritalOther')
                 : null;
-  // Multi-select (#badc5966): join the selected labels for a field with "or" ("Male or Female"), then join
-  // fields with a space ("Married Male or Female only"). asEligList tolerates legacy scalar rows.
-  const orJoin = (labels: (string | null)[]) => labels.filter(Boolean).join(` ${t('eligibilitySummaryOr')} `);
-  const eligibilitySummary = () => {
-    const genders = asEligList(eligibility?.gender);
-    const maritals = asEligList(eligibility?.maritalStatus);
-    // Probation (d6bdbd55) is a separate prop, not inside `eligibility` — fold it into the same "open to all"
-    // vs restricted decision so a probation-only rule doesn't read as unrestricted.
-    if (
-      (!eligibility || (genders.length === 0 && maritals.length === 0 && !eligibility.minServiceMonths)) &&
-      !probationEligibility
-    ) {
-      return t('eligibilityOpenToAll');
-    }
-    const parts: string[] = [];
-    const maritalText = orJoin(maritals.map(maritalLabel));
-    const genderText = orJoin(genders.map(genderLabel));
-    const who = [maritalText, genderText].filter(Boolean).join(' ');
-    if (who) parts.push(t('eligibilitySummaryOnly', { who }));
-    if (eligibility?.minServiceMonths) {
-      // Min-service unit (#f88f0a63): render "≥ N months/days service". Absent unit ⇒ months (legacy compat).
-      const unit = eligibility.minServiceUnit === 'days' ? t('expiryUnitDays') : t('expiryUnitMonths');
-      parts.push(t('eligibilitySummaryService', { n: eligibility.minServiceMonths, unit }));
-    }
-    if (probationEligibility === 'confirmed_only') parts.push(t('eligibilitySummaryConfirmedOnly'));
-    else if (probationEligibility === 'probation_only') parts.push(t('eligibilitySummaryProbationOnly'));
-    return parts.join(' · ');
+  // #0c15db78: the Criteria sub-step lays the FOUR eligibility rules out plainly — reading them no longer
+  // requires opening "Edit rules". This is the single source of truth for how each criterion is labelled
+  // and valued; it replaced the one-line condensed summary helper. Zero new translation keys by
+  // construction: every label and value reuses a key the edit form already ships in all 6 locales.
+  const criteriaRows = (): { label: string; value: string }[] => {
+    // ONE shared empty marker for all four rows ("No restriction") instead of mixing Any / N/A, so the
+    // value column stays coherent when a rule is unset.
+    const noRestriction = t('eligibilityProbationNone');
+    // Multi-select (#badc5966): join the selected labels for a field with "or" ("Male or Female").
+    // asEligList tolerates legacy scalar rows; a value outside the known set falls back to the raw stored
+    // string (mirrors the edit form's `maritalLabel(m) ?? m`) so a restricted type never misreads as
+    // unrestricted — the empty marker appears ONLY when nothing at all is stored.
+    const joinOr = (values: string[], label: (v: string) => string | null) =>
+      values.length === 0 ? noRestriction : values.map((v) => label(v) ?? v).join(` ${t('eligibilitySummaryOr')} `);
+    // Min-service unit (#f88f0a63): absent unit ⇒ months (legacy compat). Same falsy guard as the old
+    // summary, so a stored 0 reads as the empty marker rather than "0 Months".
+    const minService = eligibility?.minServiceMonths
+      ? `${eligibility.minServiceMonths} ${eligibility.minServiceUnit === 'days' ? t('expiryUnitDays') : t('expiryUnitMonths')}`
+      : noRestriction;
+    // Probation (d6bdbd55) is a separate prop, not inside `eligibility`, but reads as a fourth criterion.
+    const probation =
+      probationEligibility === 'confirmed_only'
+        ? t('eligibilityProbationConfirmedOnly')
+        : probationEligibility === 'probation_only'
+          ? t('eligibilityProbationProbationOnly')
+          : noRestriction;
+    return [
+      { label: t('eligibilityMaritalLabel'), value: joinOr(asEligList(eligibility?.maritalStatus), maritalLabel) },
+      { label: t('eligibilityGenderLabel'), value: joinOr(asEligList(eligibility?.gender), genderLabel) },
+      { label: t('eligibilityMinServiceLabel'), value: minService },
+      { label: t('eligibilityProbationLabel'), value: probation },
+    ];
   };
 
   // Day Type Inclusion (ef6d7146): a compact human summary of which day types are counted. When none are on
@@ -2255,7 +2260,23 @@ export function LeaveTypePanel({
                 </Button>
               </form>
             ) : (
-              <div className="rounded-lg bg-background px-3 py-2 text-xs text-foreground">{eligibilitySummary()}</div>
+              /* #0c15db78: the four criteria as a labelled two-column table, always visible — no click on
+                 "Edit rules" needed to read them. Headerless on purpose: a Criterion/Value header row is
+                 the one thing that would demand new translation keys, so it is omitted and the translation
+                 surface stays at zero new keys. No overflow-x wrapper either — four short values cannot
+                 exceed a phone's width. */
+              <table className="w-full rounded-lg bg-background text-xs text-foreground">
+                <tbody>
+                  {criteriaRows().map((row) => (
+                    <tr key={row.label} className="border-b border-border last:border-b-0">
+                      <th scope="row" className="px-3 py-2 text-left font-medium text-muted-foreground">
+                        {row.label}
+                      </th>
+                      <td className="px-3 py-2 text-right">{row.value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
             <p className="text-xs text-muted-foreground">{t('eligibilityHelp')}</p>
             <p className="text-xs text-muted-foreground">{t('eligibilityUndisclosedNote')}</p>

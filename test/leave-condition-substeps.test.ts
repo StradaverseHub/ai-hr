@@ -108,7 +108,8 @@ describe('08bc6841 · Criteria — the eligibility rules moved from the Eligibil
       'name="minServiceMonths"',
       'name="minServiceUnit"',
       'name="probation"',
-      'eligibilitySummary()',
+      // 0c15db78: the non-edit view is now the criteria table, not the one-line eligibilitySummary().
+      'criteriaRows()',
     ]) {
       expect(criteria.includes(needle), `${needle} inside criteria`).toBe(true);
     }
@@ -123,6 +124,98 @@ describe('08bc6841 · Criteria — the eligibility rules moved from the Eligibil
     // …but keeps the entitlement policy timeline + add form.
     expect(elig).toContain("t('companyEntitlements')");
     expect(elig).toContain("t('addEntitlement')");
+  });
+});
+
+/**
+ * 0c15db78 · Display Secondary Step 1 Criteria Directly — the four eligibility rules render as a labelled
+ * two-column table the moment the Criteria sub-step opens, instead of a condensed one-line summary that
+ * pushed the reader into "Edit rules" to see each rule. Presentation only: no schema, no service, no new
+ * translation keys (every label and value reuses a key the edit form already ships in all 6 locales).
+ */
+describe('0c15db78 · Criteria — the four rules shown directly, no "Edit rules" click', () => {
+  const criteriaRowsBody = () => {
+    const start = panelSrc.indexOf('const criteriaRows =');
+    expect(start, 'criteriaRows() helper exists').toBeGreaterThan(-1);
+    return panelSrc.slice(start, panelSrc.indexOf('\n  };', start));
+  };
+
+  it('renders the non-edit view as a headerless two-column table over criteriaRows()', () => {
+    const criteria = subStepSlice(essSegment(), 'criteria');
+    // The always-on table replaced the summary div; the branch is still gated on editingEligibility so
+    // "Edit rules" keeps swapping in the untouched form.
+    expect(criteria).toContain('{criteriaRows().map((row) => (');
+    expect(criteria).toContain('{row.label}');
+    expect(criteria).toContain('{row.value}');
+    expect(criteria).toContain('editingEligibility ? (');
+    // Headerless by construction — a Criterion/Value header row is the only thing that would need new keys.
+    expect(criteria.includes('<thead')).toBe(false);
+  });
+
+  it('derives one row per criterion in order, each from an existing translation key', () => {
+    const body = criteriaRowsBody();
+    const order = [
+      'eligibilityMaritalLabel',
+      'eligibilityGenderLabel',
+      'eligibilityMinServiceLabel',
+      'eligibilityProbationLabel',
+    ];
+    let cursor = -1;
+    for (const key of order) {
+      const at = body.indexOf(`t('${key}')`);
+      expect(at, `${key} labels a row`).toBeGreaterThan(cursor);
+      cursor = at;
+    }
+    // Values reuse the edit form's own label helpers and the min-service unit keys.
+    expect(body).toContain('joinOr(asEligList(eligibility?.maritalStatus), maritalLabel)');
+    expect(body).toContain('joinOr(asEligList(eligibility?.gender), genderLabel)');
+    expect(body).toContain("eligibility.minServiceUnit === 'days' ? t('expiryUnitDays') : t('expiryUnitMonths')");
+    expect(body).toContain("t('eligibilityProbationConfirmedOnly')");
+    expect(body).toContain("t('eligibilityProbationProbationOnly')");
+  });
+
+  it('uses ONE shared empty marker for every unset rule, guards a stored 0, and never swallows unknown values', () => {
+    const body = criteriaRowsBody();
+    // ONE existing key ("No restriction") for all four empty cells — not a mix of Any / N/A, and not a
+    // newly invented key.
+    expect(body).toContain("const noRestriction = t('eligibilityProbationNone');");
+    expect(body.includes("t('eligibilityGenderAny')")).toBe(false);
+    expect(body.includes("t('eligibilityMaritalAny')")).toBe(false);
+    expect(body.includes("t('criteriaNa')")).toBe(false);
+    // Same falsy guard as the old summary — a stored 0 reads "No restriction", never "0 Months".
+    expect(body).toContain('eligibility?.minServiceMonths\n      ?');
+    // Unmappable-value guard: fall back to the raw stored value, show the marker only on an empty list.
+    expect(body).toContain('values.length === 0 ? noRestriction');
+    expect(body).toContain('label(v) ?? v');
+  });
+
+  it('drops the dead one-line summary helpers it replaced', () => {
+    for (const dead of ['const eligibilitySummary =', 'eligibilitySummary()', 'const orJoin =']) {
+      expect(panelSrc.includes(dead), `${dead} removed`).toBe(false);
+    }
+    // …while the still-used join key stays.
+    expect(panelSrc).toContain("t('eligibilitySummaryOr')");
+  });
+
+  it('adds no new translation keys — every key the table uses already ships in all 6 locales', () => {
+    const used = [
+      'eligibilityMaritalLabel',
+      'eligibilityGenderLabel',
+      'eligibilityMinServiceLabel',
+      'eligibilityProbationLabel',
+      'eligibilityProbationNone',
+      'eligibilityProbationConfirmedOnly',
+      'eligibilityProbationProbationOnly',
+      'eligibilitySummaryOr',
+      'expiryUnitMonths',
+      'expiryUnitDays',
+    ];
+    for (const locale of LOCALES) {
+      const msgs = readFileSync(resolve(here, `../messages/${locale}.json`), 'utf8');
+      for (const key of used) {
+        expect(msgs.includes(`"${key}"`), `${key} in ${locale}`).toBe(true);
+      }
+    }
   });
 });
 
