@@ -68,8 +68,10 @@ applied in dependency order on `build/r66`, conflicts resolved, then gated and s
 
 ### Outstanding
 
-- [ ] **`sudo systemctl restart aihr` on the server** — `deploy.sh` declines sudo by design, so the
-      new build is on the box but not yet loaded.
+- [x] **`sudo systemctl restart aihr`** — done 2026-07-24 11:53 +08. Service `active`, `✓ Ready in
+      105ms`, no errors in the journal; `GET /` returns 401, which is the demo's password gate
+      working, not a fault. Note `deploy.sh` still declines sudo by design, but the `ubuntu` account
+      has passwordless sudo for the unit, so the restart **can** be driven over SSH from here.
 - [ ] Reporter's call on the anniversary accrual semantics (Decision 1).
 
 ### Notes
