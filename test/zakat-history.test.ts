@@ -20,6 +20,16 @@ import { closeBatch, createBatch, generatePayslips, setPayrollDeductionInput } f
 import { exportZakatTxnsCsv, listZakatElections, listZakatTxnsAcross } from '../core/payroll-view';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
+/** The cleartext zakat figure used by the export test — the value that must never reach the event log. */
+const ZAKAT_AMOUNT = 100;
+
+/** Every leaf (non-object) value in a nested structure, at any depth, arrays included.
+ *  Lets a Layer-0 assertion compare WHOLE VALUES instead of substring-scanning `JSON.stringify`, which
+ *  false-positives on ids that merely contain the digits of an amount. */
+function leafValues(v: unknown): unknown[] {
+  return v !== null && typeof v === 'object' ? Object.values(v).flatMap(leafValues) : [v];
+}
+
 async function seedCompanyB(b: Base): Promise<{ companyId: string; deptId: string }> {
   const [c] = await owner.db
     .insert(schema.company)
@@ -229,7 +239,7 @@ describe('zakat transaction history (d435673e) — read-only lists + export even
   it('export: returns CSV bytes and appends exactly one zakat.history.exported event with actor + rowCount', async () => {
     const a = adminCtx(base);
     const e = await hirePayrollReady(a, base.companyId, base.deptA, 'Csv Z', '900101011234');
-    await setFixedZakat(a, e.personId, 100);
+    await setFixedZakat(a, e.personId, ZAKAT_AMOUNT);
     const b = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId: b.batchId });
 
@@ -250,8 +260,29 @@ describe('zakat transaction history (d435673e) — read-only lists + export even
     const payload = events[0].payload as Record<string, unknown>;
     expect(payload.rowCount).toBe(1);
     expect(payload.report).toBe('zakat-transaction-history');
-    // Layer-0: the payload carries filter references + a count, never a cleartext amount.
-    expect(JSON.stringify(payload)).not.toContain('100');
+    // Layer-0 (ADR-0030): the payload carries filter REFERENCES + a count, never a cleartext amount.
+    //
+    // Asserted by SHAPE, not by substring-scanning the serialized blob. The previous
+    // `expect(JSON.stringify(payload)).not.toContain('100')` was both flaky and weak: flaky because a
+    // randomly generated company UUID whose hex happens to contain "100" (observed:
+    // 8977a24e-6add-4584-ac1a-066711009fc2) failed a run that had leaked nothing; weak because it only
+    // ever caught that one literal — an amount stored under any other value sailed straight through.
+    // Pinning the key set is what the payroll-batch.input-set guard does (overtime-rate-split.test.ts).
+    expect(Object.keys(payload).sort()).toEqual(['filters', 'report', 'rowCount']);
+    expect(Object.keys(payload.filters as Record<string, unknown>).sort()).toEqual([
+      'companyIds',
+      'cycle',
+      'employmentId',
+      'month',
+      'status',
+      'year',
+    ]);
+    // …and no LEAF VALUE anywhere in the payload is the amount. Whole-value comparison, so an id that
+    // merely contains the digits can never trip it, while a genuine amount field always does — in any
+    // position, at any depth, whatever its key is called.
+    expect(leafValues(payload)).not.toContain(ZAKAT_AMOUNT);
+    expect(leafValues(payload)).not.toContain(String(ZAKAT_AMOUNT));
+    expect(leafValues(payload)).not.toContain(ZAKAT_AMOUNT.toFixed(2));
   });
 
   it('export: empty scope still records a (zero-row) egress event and yields a header-only CSV', async () => {
