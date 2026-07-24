@@ -191,11 +191,17 @@ describe('eee43966 · Eligibility ADD (a new dated entitlement) inherits the run
 });
 
 describe('eee43966 · panel structure — one edit surface for the earning method', () => {
-  /** The Eligibility card's segment (its CardTitle to the next card's CardTitle) — both the inline EDIT
-   *  form and the add-a-dated-entitlement ADD form live inside it. */
+  /** The card segment (its CardTitle to the next card's CardTitle) holding both the inline EDIT form and
+   *  the add-a-dated-entitlement ADD form.
+   *
+   *  Integration r66: this used to be the Eligibility card (categoryEligibilityEntitlement). b8fcae73
+   *  removed the Eligibility step from the workflow altogether and folded its forms into Entitlement —
+   *  that key is now RETIRED (see leave-type-config-categories.test.ts's RETIRED_KEYS). The assertions
+   *  below are unchanged and still bite: they are re-pointed at the card the two forms actually live in
+   *  now, not relaxed. */
   const eligibilitySegment = () => {
-    const start = panelSrc.indexOf("<CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>");
-    const end = panelSrc.indexOf("<CardTitle>{t('categoryEntitlement')}</CardTitle>");
+    const start = panelSrc.indexOf("<CardTitle>{t('categoryEntitlement')}</CardTitle>");
+    const end = panelSrc.indexOf("<CardTitle>{t('categoryEssPolicy')}</CardTitle>");
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     return panelSrc.slice(start, end);
