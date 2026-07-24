@@ -110,10 +110,13 @@ import {
   removeCompanyStatutoryAuthority,
 } from '@/core/statutory-authority';
 import { packFor } from '@/localization/registry';
+// 4e9a4d59 — the post-action redirect contract lives in a plain module so BOTH this file and
+// app/admin/leave-approval/actions.ts share ONE okEntitlements (a 'use server' file can only export
+// async functions, so these helpers could never be exported from here).
+import { ENTITLEMENTS, fail, ok, okToast, okEntitlements } from './_redirects';
 
 const ORG = '/admin/organization';
 const LEAVE = '/admin/leave';
-const ENTITLEMENTS = '/admin/leave/entitlements';
 // R45 cc816207 — the managed Leave-Year table RELOCATED from the Entitlements tab to the Application Rules
 // tab, so its create/edit/open/close/delete/opening-rule actions revalidate/redirect HERE (the page reads
 // ?error= for the ErrorBanner).
@@ -127,32 +130,6 @@ const HOLIDAY_GROUPS = '/admin/holidays/groups';
 const ATTENDANCE_POLICY = '/admin/attendance-policy';
 const TOIL_POLICY = '/admin/toil';
 const LOCATIONS = '/admin/locations';
-
-function fail(path: string, e: unknown): never {
-  redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);
-}
-function ok(path: string): never {
-  revalidatePath(path);
-  redirect(path);
-}
-/** Cluster dcd8e32f — like ok(), but also surfaces an ALREADY-LOCALISED success message through the
- *  globally mounted ToastFromQuery (app/layout.tsx reads ?toast= via useSearchParams). Localise the text
- *  before calling — ToastFromQuery renders the raw string, so never pass an i18n key/code in the URL. */
-function okToast(path: string, msg: string): never {
-  revalidatePath(path);
-  redirect(`${path}?toast=${encodeURIComponent(msg)}`);
-}
-/** 9b0503ac — success return for entitlement-area saves (policy add/edit/remove, scheme-entitlement
- *  upserts): stay on the Entitlements config panel with a success toast AND preserve the workspace's
- *  #type-<id> selection anchor (the updateLeaveTypeAction / b9dac2d1 stay-on-page keystone), so HR lands
- *  back on the exact leave type + step they were configuring instead of being bounced to /admin/leave.
- *  The anchor rides AFTER the query string so ToastFromQuery still sees ?toast=; an empty leaveTypeId
- *  (form didn't carry one) degrades to the bare Entitlements path — same route, so the workspace's client
- *  selection state still survives the soft navigation. */
-function okEntitlements(msg: string, leaveTypeId: string): never {
-  revalidatePath(ENTITLEMENTS);
-  redirect(`${ENTITLEMENTS}?toast=${encodeURIComponent(msg)}${leaveTypeId ? `#type-${leaveTypeId}` : ''}`);
-}
 
 export async function createCompanyAction(formData: FormData) {
   const s = await getSession();
@@ -760,6 +737,15 @@ export async function setLeaveHalfDayFullDeductionAction(formData: FormData) {
   ok(ENTITLEMENTS);
 }
 
+/** 4e9a4d59 — the grade catalog is Panel A of the Entitlement step's workbench, so ALL FOUR of its saves
+ *  stay on the Leave Type workspace instead of bouncing to /admin/leave. Grades are TENANT-GLOBAL master
+ *  data (no leaveTypeId column), so the posted `leaveTypeId` is a UI-RETURN HINT ONLY — it says which type
+ *  panel was open, it is never persisted. GradeCatalog fills it from the live #type-<id> hash at submit
+ *  time; when no type is selected it is empty and okEntitlements degrades to the bare Entitlements route. */
+function gradeReturnAnchor(formData: FormData): string {
+  return String(formData.get('leaveTypeId') ?? '');
+}
+
 /** ADR-0041 (2E): grade catalog — create + archive. */
 export async function createJobGradeAction(formData: FormData) {
   const s = await getSession();
@@ -770,9 +756,10 @@ export async function createJobGradeAction(formData: FormData) {
       rank: Number(formData.get('rank')) || 0,
     });
   } catch (e) {
-    fail(LEAVE, e);
+    fail(ENTITLEMENTS, e);
   }
-  ok(LEAVE);
+  const t = await getTranslations('admin.leave');
+  okEntitlements(t('savedToast'), gradeReturnAnchor(formData));
 }
 
 export async function archiveJobGradeAction(formData: FormData) {
@@ -780,9 +767,10 @@ export async function archiveJobGradeAction(formData: FormData) {
   try {
     await archiveJobGrade(s, { id: String(formData.get('id')), archived: formData.get('archived') === 'true' });
   } catch (e) {
-    fail(LEAVE, e);
+    fail(ENTITLEMENTS, e);
   }
-  ok(LEAVE);
+  const t = await getTranslations('admin.leave');
+  okEntitlements(t('savedToast'), gradeReturnAnchor(formData));
 }
 
 /** 728a7db6 — edit a grade's Code / Name / Rank inline. */
@@ -796,9 +784,10 @@ export async function updateJobGradeAction(formData: FormData) {
       rank: Number(formData.get('rank')) || 0,
     });
   } catch (e) {
-    fail(LEAVE, e);
+    fail(ENTITLEMENTS, e);
   }
-  ok(LEAVE);
+  const t = await getTranslations('admin.leave');
+  okEntitlements(t('savedToast'), gradeReturnAnchor(formData));
 }
 
 /** 728a7db6 — hard-delete a grade (blocked server-side when in use). */
@@ -807,9 +796,10 @@ export async function deleteJobGradeAction(formData: FormData) {
   try {
     await deleteJobGrade(s, { id: String(formData.get('id')) });
   } catch (e) {
-    fail(LEAVE, e);
+    fail(ENTITLEMENTS, e);
   }
-  ok(LEAVE);
+  const t = await getTranslations('admin.leave');
+  okEntitlements(t('savedToast'), gradeReturnAnchor(formData));
 }
 
 export async function deleteLeavePolicyAction(formData: FormData) {

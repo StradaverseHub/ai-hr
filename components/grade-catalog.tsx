@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useState, type FormEvent } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { GripVertical } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -17,6 +17,20 @@ export type GradeRow = {
 };
 
 type Action = (formData: FormData) => void | Promise<void>;
+
+/**
+ * 4e9a4d59 — stamp the workspace's LIVE selection anchor into a grade form's hidden `leaveTypeId` so the
+ * server action can redirect HR back to the exact leave type panel they were configuring (grades are
+ * tenant-global master data — this is a UI-return hint, never a persisted field).
+ *
+ * Read at SUBMIT time, not mount time: LeaveTypeWorkspace keeps `window.location.hash` in sync via
+ * replaceState as HR switches type, and this catalog is ONE shared node rendered inside every panel, so a
+ * mount-time read would go stale. An empty value (no type selected) degrades to the bare Entitlements route.
+ */
+function stampLeaveTypeAnchor(e: FormEvent<HTMLFormElement>): void {
+  const field = e.currentTarget.elements.namedItem('leaveTypeId');
+  if (field instanceof HTMLInputElement) field.value = window.location.hash.match(/^#type-(.+)$/)?.[1] ?? '';
+}
 
 /**
  * Grade Management for Leave Entitlement (feedback 728a7db6). Renders the grade master as the reporter's
@@ -127,17 +141,19 @@ export function GradeCatalog({
                           {editing ? t('cancel') : t('editGrade')}
                         </Button>
                         {g.archived ? (
-                          <form action={actions.archive}>
+                          <form action={actions.archive} onSubmit={stampLeaveTypeAnchor}>
                             <input type="hidden" name="id" value={g.id} />
                             <input type="hidden" name="archived" value="false" />
+                            <input type="hidden" name="leaveTypeId" defaultValue="" />
                             <Button type="submit" variant="ghost" size="sm">
                               {t('unarchive')}
                             </Button>
                           </form>
                         ) : (
-                          <form action={actions.archive}>
+                          <form action={actions.archive} onSubmit={stampLeaveTypeAnchor}>
                             <input type="hidden" name="id" value={g.id} />
                             <input type="hidden" name="archived" value="true" />
+                            <input type="hidden" name="leaveTypeId" defaultValue="" />
                             <ConfirmSubmit
                               size="sm"
                               variant="ghost"
@@ -149,8 +165,9 @@ export function GradeCatalog({
                             </ConfirmSubmit>
                           </form>
                         )}
-                        <form action={actions.delete}>
+                        <form action={actions.delete} onSubmit={stampLeaveTypeAnchor}>
                           <input type="hidden" name="id" value={g.id} />
+                          <input type="hidden" name="leaveTypeId" defaultValue="" />
                           <ConfirmSubmit
                             size="sm"
                             variant="ghost"
@@ -174,9 +191,13 @@ export function GradeCatalog({
                         <form
                           action={actions.update}
                           className="flex flex-wrap items-end gap-2"
-                          onSubmit={() => setEditingId(null)}
+                          onSubmit={(e) => {
+                            stampLeaveTypeAnchor(e);
+                            setEditingId(null);
+                          }}
                         >
                           <input type="hidden" name="id" value={g.id} />
+                          <input type="hidden" name="leaveTypeId" defaultValue="" />
                           <Field label={t('gradeCodeLabel')}>
                             <input
                               name="code"
@@ -211,7 +232,12 @@ export function GradeCatalog({
         </table>
       </div>
 
-      <form action={actions.create} className="flex flex-wrap items-end gap-2 border-t border-border p-4">
+      <form
+        action={actions.create}
+        className="flex flex-wrap items-end gap-2 border-t border-border p-4"
+        onSubmit={stampLeaveTypeAnchor}
+      >
+        <input type="hidden" name="leaveTypeId" defaultValue="" />
         <Field label={t('gradeCodeLabel')}>
           <input name="code" required placeholder="EXEC" className={`${inputCls} w-28 uppercase`} />
         </Field>

@@ -10,7 +10,12 @@ import { getLeaveApprovalPolicy, isCompanyDefaultApprovalRule, listLeaveApproval
 import { listApprovalTemplates } from '@/core/leave-approval-template';
 import { WorkflowMatrix } from '@/app/admin/leave-approval/workflow-matrix';
 import { buildWorkflowMatrixLabels } from '@/app/admin/leave-approval/matrix-labels';
-import { archiveLeaveApprovalRuleAction, saveLeaveApprovalRuleAction } from '@/app/admin/leave-approval/actions';
+// 4e9a4d59 — the EMBEDDED matrix posts the stay-on-this-type wrappers (the standalone Approvals screen
+// keeps the plain actions), so a rule save/delete never bounces HR out of the leave type they're setting up.
+import {
+  archiveLeaveApprovalRuleFromEntitlementsAction,
+  saveLeaveApprovalRuleFromEntitlementsAction,
+} from '@/app/admin/leave-approval/actions';
 import {
   listGradeGroups,
   listBenefitSchemes,
@@ -373,7 +378,10 @@ export default async function LeaveEntitlementsPage({
     departments: departmentsAll.map((x) => ({ id: x.id, label: x.name, companyId: x.companyId })),
     positions: positionsAll.map((x) => ({ id: x.id, label: x.title, companyId: x.companyId })),
     templates: approvalTemplates.filter((t2) => t2.active).map((t2) => ({ id: t2.id, label: t2.name })),
-    actions: { save: saveLeaveApprovalRuleAction, archive: archiveLeaveApprovalRuleAction },
+    actions: {
+      save: saveLeaveApprovalRuleFromEntitlementsAction,
+      archive: archiveLeaveApprovalRuleFromEntitlementsAction,
+    },
     labels: buildWorkflowMatrixLabels(ta),
   };
 

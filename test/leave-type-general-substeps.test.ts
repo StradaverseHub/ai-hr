@@ -179,9 +179,30 @@ describe('e1a51aea · Approval Workflow sub-step (scoped matrix embed)', () => {
   it('the page embeds WorkflowMatrix filtered + seeded to the hosting type', () => {
     expect(pageSrc).toContain('rows={approvalRuleRows.filter((r) => r.leaveTypeId === lt.id)}');
     expect(pageSrc).toContain('defaultLeaveTypeId={lt.id}');
-    // Same actions as the Approval tab — nothing forks.
-    expect(pageSrc).toContain('saveLeaveApprovalRuleAction');
-    expect(pageSrc).toContain('archiveLeaveApprovalRuleAction');
+    // 4e9a4d59 — the embedded matrix now posts the stay-on-this-type wrappers instead of the Approval
+    // tab's actions, so a rule save/delete no longer throws HR out of the leave type they're setting up.
+    // The PERSIST behaviour still cannot fork: both entry points run the same two persist helpers, and
+    // only the post-save redirect differs (workspace → okEntitlements, standalone → the Approval page).
+    expect(pageSrc).toContain('saveLeaveApprovalRuleFromEntitlementsAction');
+    expect(pageSrc).toContain('archiveLeaveApprovalRuleFromEntitlementsAction');
+    const approvalActionsSrc = readFileSync(
+      resolve(here, '../app/admin/leave-approval/actions.ts'),
+      'utf8',
+    );
+    for (const [action, helper] of [
+      ['saveLeaveApprovalRuleAction', 'persistApprovalRule'],
+      ['saveLeaveApprovalRuleFromEntitlementsAction', 'persistApprovalRule'],
+      ['archiveLeaveApprovalRuleAction', 'persistArchiveApprovalRule'],
+      ['archiveLeaveApprovalRuleFromEntitlementsAction', 'persistArchiveApprovalRule'],
+    ] as const) {
+      const start = approvalActionsSrc.indexOf(`export async function ${action}(`);
+      expect(start, `${action} exists`).toBeGreaterThan(-1);
+      const body = approvalActionsSrc.slice(start, approvalActionsSrc.indexOf('\n}', start));
+      expect(body.includes(`${helper}(s, formData)`), `${action} reuses ${helper}`).toBe(true);
+    }
+    // Only the workspace pair returns through the shared stay-on-page contract; the standalone pair keeps
+    // landing on the Approvals screen.
+    expect(approvalActionsSrc).toContain("from '@/app/admin/_redirects'");
     // One label source shared with the Approval tab (matrix-labels.ts), so the two matrices cannot drift.
     expect(pageSrc).toContain('buildWorkflowMatrixLabels');
     expect(approvalPageSrc).toContain('buildWorkflowMatrixLabels');
