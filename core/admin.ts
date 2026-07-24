@@ -846,7 +846,7 @@ export async function createLeavePolicy(
     // new validFrom and append a superseded event per closed row, so version history stays reconstructable
     // via validTo (every engine already filters on it — see leave-compute.ts / core/leave.ts callers).
     const sameScope = await tx
-      .select({ id: leavePolicy.id, validFrom: leavePolicy.validFrom })
+      .select({ id: leavePolicy.id, validFrom: leavePolicy.validFrom, accrual: leavePolicy.accrual })
       .from(leavePolicy)
       .where(
         and(
@@ -864,6 +864,20 @@ export async function createLeavePolicy(
       }
     }
 
+    // Feedback eee43966 — EARNING METHOD IS SET UNDER *GENERAL*, NEVER BY THE ELIGIBILITY TAB. Adding a
+    // dated entitlement going forward supersedes the running same-scope row (loop below); without this,
+    // an absent `method` fell back to the lump-sum default and silently DOWNGRADED an earned_monthly
+    // setup to grant_on_hire_prorated. Inherit the superseded row's method instead (greatest validFrom =
+    // the version actually running). A brand-new scope has no prior row, so genuinely new types still
+    // default to lump; an EXPLICIT method (the General front door) still wins. No reproject here: a new
+    // dated version applies from validFrom by design and the method dimension is unchanged.
+    const inheritedMethod = sameScope
+      .slice()
+      .sort((a, b) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0))
+      .map((row) => (row.accrual as { method?: string } | null)?.method)
+      .filter((m): m is string => !!m)
+      .at(-1);
+
     const [row] = await tx
       .insert(leavePolicy)
       .values({
@@ -874,7 +888,7 @@ export async function createLeavePolicy(
         accrual: {
           annualDays: p.annualDays,
           carryForwardMax,
-          method: p.method || 'grant_on_hire_prorated',
+          method: p.method || inheritedMethod || 'grant_on_hire_prorated',
           ...expiry,
           ...carryFlags,
           ...bandsAccrual,
@@ -989,6 +1003,12 @@ export async function updateLeavePolicy(
     const carryFlags = carryFlagsAccrual(p.carryForwardEnabled, p.carryForwardIncludeEarned);
     const currentBands = (current.accrual as { serviceBands?: ServiceBand[] } | null)?.serviceBands;
     const bandsAccrual = serviceBandsAccrual(p.serviceBands, currentBands);
+    // Feedback eee43966 — PRESERVE the stored earning method when the caller does not send one, mirroring
+    // the bands tri-state above. The Eligibility tab no longer renders a method select, so an eligibility
+    // edit (days / grade / carry / bands / effective date) posts `method` absent and MUST NOT reset the
+    // method to the lump-sum default. Read from the row (not a client-side hidden field) so a method
+    // changed under General after the panel rendered can never be clobbered by a stale value.
+    const currentMethod = (current.accrual as { method?: string } | null)?.method;
     const companyId = p.companyId ?? null;
     const gradeId = p.gradeId ?? null;
 
@@ -1015,7 +1035,7 @@ export async function updateLeavePolicy(
     const accrual = {
       annualDays: p.annualDays,
       carryForwardMax,
-      method: p.method || 'grant_on_hire_prorated',
+      method: p.method || currentMethod || 'grant_on_hire_prorated',
       ...expiry,
       ...carryFlags,
       ...bandsAccrual,

@@ -1740,13 +1740,10 @@ export function LeaveTypePanel({
                   <Field label={t('effectiveFromLabel')}>
                     <input name="validFrom" type="date" required defaultValue={p.validFrom} className={inputCls} />
                   </Field>
-                  <Field label={t('accrualMethodLabel')}>
-                    <select name="method" defaultValue={methodValue(p.method)} className={`${inputCls} w-40`}>
-                      <option value="grant_on_hire_prorated">{t('methodLumpSum')}</option>
-                      <option value="earned_monthly">{t('methodEarnedMonthly')}</option>
-                      <option value="earned_quarterly">{t('methodEarnedQuarterly')}</option>
-                    </select>
-                  </Field>
+                  {/* Feedback eee43966 — the earning method is set in ONE place only: General → Earning
+                      Method. No select here; updateLeavePolicy preserves the row's stored method when the
+                      edit posts none, so an eligibility edit can never change how leave is earned. The
+                      read-only earned badge on the collapsed row still shows HR the method. */}
                   {grades.length > 0 && (
                     <Field label={t('gradeLabel')}>
                       <select name="gradeId" defaultValue={p.gradeId ?? ''} className={`${inputCls} w-40`}>
@@ -1930,13 +1927,10 @@ export function LeaveTypePanel({
               <Field label={t('effectiveFromLabel')}>
                 <input name="validFrom" type="date" required defaultValue={`${thisYear}-01-01`} className={inputCls} />
               </Field>
-              <Field label={t('accrualMethodLabel')}>
-                <select name="method" defaultValue="grant_on_hire_prorated" className={`${inputCls} w-40`}>
-                  <option value="grant_on_hire_prorated">{t('methodLumpSum')}</option>
-                  <option value="earned_monthly">{t('methodEarnedMonthly')}</option>
-                  <option value="earned_quarterly">{t('methodEarnedQuarterly')}</option>
-                </select>
-              </Field>
+              {/* Feedback eee43966 — no earning-method select on the add-a-dated-entitlement form either.
+                  This one WAS the reporter's bug: it defaulted to lump sum, and saving superseded the
+                  running earned_monthly row with a lump one. createLeavePolicy now inherits the method
+                  from the row it supersedes, so a version bump carries the earning method forward. */}
               {/* Feedback 9d8cf621 — "Employee Selection": HR picks one or MORE companies + job grades. The
                   chosen ids post as repeated `companyIds` / `gradeIds` fields (hidden inputs below), and the
                   action fans out to one entitlement per (company × grade). Empty = group default / all grades
