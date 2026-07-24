@@ -1327,7 +1327,7 @@
         "taken": "Ngày nghỉ bạn đã dùng (đã duyệt và đã nghỉ).",
         "pendingApproval": "Ngày nghỉ bạn đã xin và đang chờ duyệt.",
         "available": "Ngày nghỉ bạn vẫn có thể dùng ngay bây giờ, sau khi trừ các yêu cầu đang chờ.",
-        "balance": "Số dư còn lại cuối cùng của bạn sau quyền lợi, ngày nghỉ đã dùng và mọi điều chỉnh."
+        "balance": "Số dư còn lại của bạn: tổng quyền lợi, bao gồm phần chuyển sang và các điều chỉnh, trừ đi ngày nghỉ đã dùng."
       }
     },
     "preview": {
@@ -1653,7 +1653,7 @@
         "taken": "Ngày nghỉ bạn đã dùng.",
         "adjustment": "Thay đổi thủ công hoặc một lần đối với số dư, chẳng hạn ngày nghỉ lễ.",
         "overutilized": "Mức số dư của bạn xuống dưới 0, nếu có.",
-        "balance": "Số dư còn lại cuối cùng: Tích lũy cộng Chuyển sang và Điều chỉnh, trừ Đã dùng và Dùng vượt."
+        "balance": "Số dư còn lại của bạn: tổng quyền lợi, bao gồm phần chuyển sang và các điều chỉnh, trừ đi ngày nghỉ đã dùng."
       }
     },
     "typeLabel": "Loại",

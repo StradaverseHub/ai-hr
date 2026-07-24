@@ -20,7 +20,6 @@ import { Avatar, Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, Sta
 import { hasPersonPhoto } from '@/core/person-photo';
 import { listEntitlementRecalcAudit } from '@/core/leave';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
-import { deriveSummaryBalance } from '@/components/leave/entitlement-panel-config';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
@@ -1745,7 +1744,7 @@ export default async function EmployeePage({
               {breakdownByType.get(b.leaveTypeId) && (
                 <EntitlementBreakdown
                   data={breakdownByType.get(b.leaveTypeId)!}
-                  summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, breakdownByType.get(b.leaveTypeId)) }}
+                  summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: b.balance }}
                   // §5 Upcoming Approved Leave removed from the panel (feedback 11876072).
                   visual={{ color: b.color, icon: b.icon, code: b.code }}
                   asOf={breakdownAsOf}

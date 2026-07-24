@@ -19,7 +19,6 @@ import { describe, expect, it } from 'vitest';
 import {
   ENTITLEMENT_PANEL_SECTIONS,
   ESS_VIEW_CHECKLIST_GROUPS,
-  deriveSummaryBalance,
   type PanelData,
 } from '../components/leave/entitlement-panel-config';
 import { ESS_VIEW_COMPONENT_KEYS } from '../core/ess-view';
@@ -45,7 +44,8 @@ const DATA: PanelData = {
     transactions: [{ effectiveOn: '2026-01-01', entryType: 'accrual', days: 12, sourceRequestId: null }],
     essView: {},
   },
-  // §1 Balance (877f2f37) = (available 15 + carryForwardRemaining 3 + otherAdjustments 4) − taken 2 − forfeited 1 = 19.
+  // §1 Balance (6574c6b4): the authoritative ledger remaining (b.balance), passed straight into summary.balance
+  // by the call site — no longer re-derived here. 19 is this fixture's ledger figure; the field just picks it.
   summary: { available: 15, taken: 2, pending: 1, ytdEntitled: 12, balance: 19 },
 };
 
@@ -117,10 +117,14 @@ describe('entitlement-panel-config: fields PICK existing values (no hardcoded fo
     expect(summary.fields!.find((f) => f.key === 'balance')!.essKey).toBeUndefined();
   });
 
-  it('deriveSummaryBalance = (Available + Carry-Forward Remaining + Adjustments) − Taken − Forfeited', () => {
-    expect(deriveSummaryBalance(15, 2, { carryForwardRemaining: 3, otherAdjustments: 4, forfeited: 1 })).toBe(19);
-    // A missing breakdown ⇒ its parts are 0 (Balance falls back to Available − Taken).
-    expect(deriveSummaryBalance(10, 4, null)).toBe(6);
+  it('§1 Balance is a plain pick of d.summary.balance — the call site passes b.balance directly (6574c6b4)', () => {
+    // deriveSummaryBalance is DELETED: the old panel formula double-subtracted forfeited and re-added carry/
+    // adjustments over the ledger sum. The ledger remaining (b.balance) is now passed straight into
+    // summary.balance, so the panel and the balance table always show the same authoritative figure.
+    const balanceField = ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === 'summary')!.fields!.find((f) => f.key === 'balance')!;
+    expect(balanceField.select!(DATA)).toBe(DATA.summary.balance);
+    // Mei Ling regression: a true +14 flows through untouched (no re-derivation).
+    expect(balanceField.select!({ ...DATA, summary: { ...DATA.summary, balance: 14 } })).toBe(14);
   });
 
   it('the §7 calc-breakdown carries the engine figures §2 used to duplicate (e503f284 removed §2)', () => {

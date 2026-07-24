@@ -1327,7 +1327,7 @@
         "taken": "Leave you have already used (approved and taken).",
         "pendingApproval": "Leave you've applied for that is still awaiting approval.",
         "available": "Leave you can still take now, after pending requests are set aside.",
-        "balance": "Your final remaining balance after entitlement, leave used, and any adjustments."
+        "balance": "Your remaining balance: total entitlement, including any carried forward and adjustments, minus leave taken."
       }
     },
     "preview": {
@@ -1653,7 +1653,7 @@
         "taken": "Leave you have already used.",
         "adjustment": "Manual or one-off changes to your balance, such as festive grants.",
         "overutilized": "How far your balance has gone below zero, if at all.",
-        "balance": "Final remaining balance: Accrued plus Carried Forward and Adjustment, minus Taken and Overutilized."
+        "balance": "Your remaining balance: total entitlement, including any carried forward and adjustments, minus leave taken."
       }
     },
     "typeLabel": "Type",

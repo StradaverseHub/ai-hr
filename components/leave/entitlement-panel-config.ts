@@ -23,29 +23,12 @@ export type PanelSummary = {
   pending: number;
   /** YTD Entitled = the accrued figure (accrual + in-lieu accrual to date). */
   ytdEntitled: number;
-  /** §1 Balance (877f2f37): the reconciled remaining figure assembled by deriveSummaryBalance below from parts
-   *  the system already tracks (leaveBalances + leaveEntitlementBreakdown). A small display derivation — NOT an
-   *  entitlement-engine change. */
+  /** §1 Balance (877f2f37): the authoritative ledger remaining figure — b.balance from leaveBalances (= sum of
+   *  ledger days), passed in by the call site GROSS of pending (6574c6b4). Formerly re-derived by a helper here
+   *  that double-counted carried/adjustments/taken over the ledger sum; now a plain pass-through, so the panel and
+   *  the balance table always agree. Display only — no entitlement-engine change. */
   balance: number;
 };
-
-/**
- * §1 Balance row (feedback 877f2f37): the reporter's reconciled remaining figure —
- *   Balance = (Available + Carry-Forward Remaining + Adjustments) − Taken − Forfeited.
- * Assembled from figures the system already tracks: `available` / `taken` come from the balance row
- * (leaveBalances); the remaining parts from leaveEntitlementBreakdown. A missing breakdown ⇒ its parts are 0
- * (Balance falls back to Available − Taken). Rounded to 2dp. Presentation/derivation only — no engine change.
- */
-export function deriveSummaryBalance(
-  available: number,
-  taken: number,
-  breakdown: { carryForwardRemaining: number; otherAdjustments: number; forfeited: number } | null | undefined,
-): number {
-  const carryForwardRemaining = breakdown?.carryForwardRemaining ?? 0;
-  const otherAdjustments = breakdown?.otherAdjustments ?? 0;
-  const forfeited = breakdown?.forfeited ?? 0;
-  return Math.round((available + carryForwardRemaining + otherAdjustments - taken - forfeited) * 100) / 100;
-}
 
 /** The full data envelope a field's `select` reads from. DB-free: every value is already computed. */
 export type PanelData = {
@@ -104,9 +87,9 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
     order: 1,
     // Reordered (877f2f37) to read the way employees think — from what they were granted, through what they've
     // used, to what's left: YTD Entitled → Taken → Pending Approval → Available → Balance. Each row carries a
-    // STATIC hover tooltip (tooltipKey; no HR config). Balance is the new reconciled remaining figure, PICKED
-    // from the precomputed d.summary.balance (deriveSummaryBalance) so this stays a declarative pick, not a
-    // hardcoded formula in the descriptor.
+    // STATIC hover tooltip (tooltipKey; no HR config). Balance is the authoritative ledger remaining figure,
+    // PICKED from the precomputed d.summary.balance (the call site passes b.balance directly, 6574c6b4) so this
+    // stays a declarative pick, not a hardcoded formula in the descriptor.
     fields: [
       { key: 'ytdEntitled', labelKey: 'field.ytdEntitled', essKey: 'ytdEntitled', tooltipKey: 'summaryTip.ytdEntitled', select: (d) => d.summary.ytdEntitled },
       { key: 'taken', labelKey: 'field.taken', essKey: 'taken', tooltipKey: 'summaryTip.taken', select: (d) => d.summary.taken },
