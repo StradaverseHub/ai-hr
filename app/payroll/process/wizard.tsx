@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Card } from '@/components/ui';
 import { fetchPayrollRunEmployees, resumeRunAction, runMultiCompanyAction } from './actions';
-import { wizardInitialStep } from './selection-logic';
+import { preferredCycleId, wizardInitialStep } from './selection-logic';
 import { StepPeriod, type Company, type CycleRunType, type CycleOption, type ExistingRun } from './steps/step-period';
 import { StepSelection, type Master, type PayrollRunEmployeeRow } from './steps/step-selection';
 import { StepValidation } from './steps/step-validation';
@@ -66,6 +66,7 @@ export function Wizard({
   payDayByCompany,
   existingRuns,
   cyclesByCompany,
+  defaultCycleByCompany,
   thisMonth,
   multiCycle,
   resumeBatch,
@@ -79,6 +80,9 @@ export function Wizard({
   payDayByCompany: Record<string, number | null>;
   existingRuns: ExistingRun[];
   cyclesByCompany: Record<string, CycleOption[]>;
+  // Organization Module (361e3b15): each company's SAVED default cycle NAME. Drives the Step-1 pre-select for
+  // the single/primary company (matched by name against the active options), falling back gracefully.
+  defaultCycleByCompany: Record<string, string>;
   thisMonth: string;
   multiCycle: boolean;
   /** When set, the wizard opens in RESUME mode: Step 1 shows the draft's fixed identity READ-ONLY for
@@ -129,18 +133,20 @@ export function Wizard({
     return multiCycle ? all : all.filter((c) => c.runType === 'regular');
   }, [cyclesByCompany, companyId, multiCycle]);
 
-  // Keep the selected cycle valid for the current company: default to the first regular-mapped option
-  // (falling back to the first available), and clear it when it no longer belongs to this company's list.
+  // Keep the selected cycle valid for the current company. Organization Module (361e3b15): the pre-select
+  // order is now saved-default-name → first regular → first available (preferredCycleId), so the primary
+  // company's STORED default actually drives Step-1 (and therefore the intended run type). A saved name that
+  // is no longer active falls through gracefully to the regular/first fallback (no blank selection). Clear
+  // the pick when the current company has no options.
   useEffect(() => {
     if (cycleOptions.length === 0) {
       if (cycleId !== '') setCycleId('');
       return;
     }
     if (!cycleOptions.some((c) => c.id === cycleId)) {
-      const preferred = cycleOptions.find((c) => c.runType === 'regular') ?? cycleOptions[0];
-      setCycleId(preferred.id);
+      setCycleId(preferredCycleId(cycleOptions, defaultCycleByCompany[companyId]));
     }
-  }, [cycleOptions, cycleId]);
+  }, [cycleOptions, cycleId, defaultCycleByCompany, companyId]);
 
   // A stable key for the SET of selected companies, so the reset/fetch effects fire when the multi-select
   // changes (an array reference alone would not be a reliable dependency). Order-independent.
@@ -331,6 +337,10 @@ export function Wizard({
             companyIds={isResume ? [companyId] : companyIds}
             payPeriod={payPeriod}
             employmentIds={filtersTouched ? [...selected] : undefined}
+            // Organization Module (361e3b15): the intended run type drives the missing-cycle pre-flight. A
+            // resume has its cycle fixed on the batch and does not re-resolve cycles, so the pre-flight is
+            // skipped there (undefined); a fresh run derives it from the Step-1 cycle selection.
+            intendedRunType={isResume ? undefined : cycleOptions.find((c) => c.id === cycleId)?.runType}
             onStatusChange={setValidation}
           />
         )}

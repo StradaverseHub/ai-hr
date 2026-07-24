@@ -282,6 +282,9 @@ export function listCompanies(ctx: SessionContext, opts: { includeArchived?: boo
         fax: company.fax,
         leaveCycle: company.leaveCycle,
         leaveHalfDayFullDeduction: company.leaveHalfDayFullDeduction,
+        // Organization Module (361e3b15) — the company's saved default payroll cycle (name), read by the
+        // General-tab picker and the Payroll Process wizard's Step-1 pre-select.
+        defaultPayrollCycle: company.defaultPayrollCycle,
         // Shared System Labels flag (62de487d) — the grid shows/toggles per-company sharing.
         sharedSystemLabels: company.sharedSystemLabels,
         archivedAt: company.archivedAt,

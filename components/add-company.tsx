@@ -16,10 +16,14 @@ export function CompaniesCardHeader({
   title,
   count,
   createAction,
+  cycleOptions,
 }: {
   title: string;
   count: number;
   createAction: Action;
+  // Organization Module (361e3b15): the standard payroll cycle NAMES the new Default Payroll Cycle picker
+  // lists (passed from the server so this client component pulls no DB-backed module). Pre-set to 'Monthly'.
+  cycleOptions: string[];
 }) {
   const t = useTranslations('admin.organization');
   const tc = useTranslations('common');
@@ -74,6 +78,18 @@ export function CompaniesCardHeader({
             title={t('currencyHint')}
             className={`${inputCls} uppercase`}
           />
+          {/* Organization Module (361e3b15): Default Payroll Cycle, pre-set to Monthly so most admins just
+              accept it. The company comes payroll-ready with the standard cycles seeded on create. */}
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="text-xs font-medium text-muted-foreground">{t('defaultPayrollCycle')}</span>
+            <select name="defaultPayrollCycle" defaultValue="Monthly" title={t('defaultPayrollCycleHint')} className={inputCls}>
+              {cycleOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="flex items-center gap-2 sm:col-span-4">
             <button className={btnPrimary}>{t('addCompany')}</button>
             <button type="button" onClick={() => setOpen(false)} className={btnGhost}>

@@ -61,10 +61,15 @@ import {
   leaveRequest,
   leaveType,
   location,
+  payrollCycle,
   person,
   position,
   roleAssignment,
 } from '../db/schema';
+// Organization Module — Automatic Payroll Cycle Assignment (361e3b15): the admin Add-company path now seeds
+// the standard cycle catalog (the seed the account-setup / provisioning paths already run) so a company is
+// payroll-ready the moment it is created, and stores its default cycle by name.
+import { DEFAULT_PAYROLL_CYCLES, seedPayrollCycleCatalog } from './payroll-cycle';
 
 /** The three holiday-calendar KINDS (ADR-0067). 'standard' = official gazette only (no resolver branch);
  *  'extended' = gazette ∪ company ad-hoc; 'custom' = company ad-hoc only (national NOT auto-added). */
@@ -248,13 +253,25 @@ type Role =
  *  other role is normalized to a null (group-wide / inert) company_id by assignRole. */
 const SCOPABLE_ROLES = new Set<Role>(['hr_admin', 'payroll_partner', 'performance_comp_partner']);
 
+/** Resolve a create-form Default Payroll Cycle name to a canonical DEFAULT_PAYROLL_CYCLES name. The picker
+ *  only ever offers the six seeded names, so an unknown/blank value falls back to 'Monthly' (the column
+ *  default) — never a name that isn't in the freshly-seeded catalog. Case-insensitive match. */
+function resolveDefaultCycleName(v: string | undefined): string {
+  const s = (v ?? '').trim();
+  const match = DEFAULT_PAYROLL_CYCLES.find((c) => c.name.toLowerCase() === s.toLowerCase());
+  return match ? match.name : 'Monthly';
+}
+
 export async function createCompany(
   ctx: SessionContext,
-  p: { legalName: string; country?: string; currency?: string; registrationNo?: string },
+  p: { legalName: string; country?: string; currency?: string; registrationNo?: string; defaultPayrollCycle?: string },
 ) {
   const legalName = cleanName(p.legalName, 'Legal name');
   const country = isoCode(p.country, 'MY', 'Country');
   const currency = isoCode(p.currency, 'MYR', 'Currency');
+  // Organization Module (361e3b15): the chosen default, resolved against the standard catalog we are about to
+  // seed. Defaults to 'Monthly' (the column default) so the common case is a single accept-and-move-on step.
+  const defaultPayrollCycle = resolveDefaultCycleName(p.defaultPayrollCycle);
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(company)
@@ -264,17 +281,70 @@ export async function createCompany(
         country,
         currency,
         registrationNo: p.registrationNo?.trim() || null,
+        defaultPayrollCycle,
       })
       .returning({ id: company.id });
+    // Organization Module (361e3b15) — the actual pain fix: seed the six standard payroll cycles inside THIS
+    // transaction (tx-injection, the provisionTenant/seedCompanyCatalogs precedent) so a company added via the
+    // admin form is payroll-ready immediately, exactly like the account-setup / provisioning paths already are.
+    await seedPayrollCycleCatalog(ctx, row.id, tx);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'company',
       aggregateId: row.id,
       eventType: 'company.created',
       actor: actorOf(ctx),
-      payload: { legalName: p.legalName, country: p.country || 'MY' },
+      payload: { legalName: p.legalName, country: p.country || 'MY', defaultPayrollCycle },
     });
     return row;
+  });
+}
+
+/**
+ * Organization Module — Automatic Payroll Cycle Assignment (361e3b15). Change a company's default payroll
+ * cycle later, from the company's General settings. Reads the prior value, validates the new name resolves to
+ * an ACTIVE cycle in THAT company's own catalog (rejecting unknown/archived names — no silent invalid save),
+ * writes it, then appends `company.default-payroll-cycle.set` with a before→after payload (the
+ * setLeaveHalfDayFullDeduction audit precedent). Future-only by construction: batches snapshot their run
+ * type at creation and store no cycle id, so changing the default never touches a completed run. RLS (the
+ * company update policy) already requires admin-for-company, same as updateCompany.
+ */
+export async function setCompanyDefaultPayrollCycle(
+  ctx: SessionContext,
+  p: { companyId: string; cycleName: string },
+) {
+  const cycleName = (p.cycleName ?? '').replace(/\s+/g, ' ').trim();
+  if (!cycleName) throw new Error('Choose a payroll cycle.');
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ defaultPayrollCycle: company.defaultPayrollCycle })
+      .from(company)
+      .where(eq(company.id, p.companyId))
+      .limit(1);
+    // Validate against THIS company's ACTIVE catalog (name match, case-insensitive) — an unknown or archived
+    // name is rejected rather than saved, so the stored default always points at a usable cycle.
+    const [match] = await tx
+      .select({ name: payrollCycle.name })
+      .from(payrollCycle)
+      .where(
+        and(
+          eq(payrollCycle.companyId, p.companyId),
+          isNull(payrollCycle.archivedAt),
+          sql`lower(${payrollCycle.name}) = lower(${cycleName})`,
+        ),
+      )
+      .limit(1);
+    if (!match) throw new Error(`“${cycleName}” is not an active payroll cycle for this company.`);
+    await tx.update(company).set({ defaultPayrollCycle: match.name }).where(eq(company.id, p.companyId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: p.companyId,
+      eventType: 'company.default-payroll-cycle.set',
+      actor: actorOf(ctx),
+      payload: { before: before?.defaultPayrollCycle ?? null, after: match.name },
+    });
+    return { id: p.companyId };
   });
 }
 

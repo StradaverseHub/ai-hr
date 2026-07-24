@@ -17,6 +17,30 @@ export function resumeHref(batchId: string, status: string): string {
 }
 
 /**
+ * Organization Module — Automatic Payroll Cycle Assignment (361e3b15). Choose the Step-1 cycle to pre-select
+ * for a company from its available (already flag-filtered) cycle options. Preference order:
+ *   1. the company's SAVED default (matched BY NAME — the stored default is a name, not an id) when it is
+ *      among the active options — this makes the stored default actually drive Step-1 (and thus the run type);
+ *   2. else the first regular-mapped cycle (the common month-end case);
+ *   3. else the first available option.
+ * Returns '' when there are no options (nothing to select). Falling through gracefully on a saved name that is
+ * no longer active is the archived/renamed fallback (no blank selection) the plan requires. Pure so the
+ * wizard's pre-select rule is unit-testable without a DOM harness.
+ */
+export function preferredCycleId(
+  cycleOptions: readonly { id: string; name: string; runType: string }[],
+  savedDefaultName?: string,
+): string {
+  if (cycleOptions.length === 0) return '';
+  if (savedDefaultName) {
+    const byName = cycleOptions.find((c) => c.name === savedDefaultName);
+    if (byName) return byName.id;
+  }
+  const preferred = cycleOptions.find((c) => c.runType === 'regular') ?? cycleOptions[0];
+  return preferred.id;
+}
+
+/**
  * The wizard's entry step (0-based). BOTH the fresh-run and the RESUME flow open on Step 1 (index 0):
  * feedback 4f00d8f0 requires that selecting a Draft payroll process "return the user to Step 1 (Payroll
  * Period & Company Selection) to review" — the resume flow previously jumped straight to Employee

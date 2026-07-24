@@ -325,9 +325,15 @@ describe('payroll cycle master (ADR-0069)', () => {
 
   it('copy skips a live duplicate name and a regular-conflict target; other targets still succeed', async () => {
     const a = adminCtx(b);
-    const { id: dupCo } = await createCompany(a, { legalName: 'Dup Co Sdn Bhd' });
-    const { id: regCo } = await createCompany(a, { legalName: 'Reg Co Sdn Bhd' });
-    const { id: freeCo } = await createCompany(a, { legalName: 'Free Co Sdn Bhd' });
+    // 361e3b15: createCompany now auto-seeds the standard cycle catalog (incl. a 'Monthly' regular cycle), so
+    // this test builds its EXACT duplicate / regular-conflict / free fixtures on companies inserted directly
+    // (empty), exactly as the copy-skip behaviour under test requires. The assertions below are unchanged.
+    const [dc] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Dup Co Sdn Bhd' }).returning({ id: schema.company.id });
+    const [rc] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Reg Co Sdn Bhd' }).returning({ id: schema.company.id });
+    const [fc] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Free Co Sdn Bhd' }).returning({ id: schema.company.id });
+    const dupCo = dc.id;
+    const regCo = rc.id;
+    const freeCo = fc.id;
 
     // Regular source cycle to copy.
     const { id: src } = await upsertPayrollCycle(a, { companyId: b.companyId, name: 'Monthly', runType: 'regular' });

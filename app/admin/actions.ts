@@ -33,6 +33,7 @@ import {
   deletePosition,
   revokeRole,
   setCompanyParent,
+  setCompanyDefaultPayrollCycle,
   setCompanyLeaveCycle,
   setCompanyLogo,
   removeCompanyLogo,
@@ -138,11 +139,33 @@ export async function createCompanyAction(formData: FormData) {
       country: String(formData.get('country') ?? 'MY'),
       currency: String(formData.get('currency') ?? 'MYR'),
       registrationNo: (formData.get('registrationNo') as string) || undefined,
+      // Organization Module (361e3b15): the Default Payroll Cycle picker (pre-set to Monthly). createCompany
+      // resolves it against the standard catalog it seeds, defaulting to 'Monthly' for any unknown/blank value.
+      defaultPayrollCycle: (formData.get('defaultPayrollCycle') as string) || undefined,
     });
   } catch (e) {
     fail(ORG, e);
   }
   ok(ORG);
+}
+
+/**
+ * Organization Module — Automatic Payroll Cycle Assignment (361e3b15). Change a company's default payroll
+ * cycle later from the company's General settings. The core validates the name resolves to an active cycle in
+ * that company and audits the before→after change; a successful save confirms via a localised toast.
+ */
+export async function updateCompanyDefaultCycleAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await setCompanyDefaultPayrollCycle(s, {
+      companyId: String(formData.get('companyId')),
+      cycleName: String(formData.get('defaultPayrollCycle') ?? ''),
+    });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  const t = await getTranslations('admin.organization');
+  okToast(ORG, t('defaultPayrollCycleSaved'));
 }
 
 /**

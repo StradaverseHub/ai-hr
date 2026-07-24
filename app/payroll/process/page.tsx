@@ -89,6 +89,12 @@ export default async function PayrollProcessPage({ searchParams }: { searchParam
     cyclesByCompany[id] = cycleLists[i].map((c) => ({ id: c.id, name: c.name, runType: c.runType, remarks: c.remarks, description: c.description }));
   });
 
+  // Organization Module (361e3b15): each company's SAVED default cycle name, so the wizard's Step-1 pre-select
+  // for the single/primary company loads the stored default (matched by name against the active options) —
+  // making the saved default load-bearing, not decorative. Falls back gracefully when the name is inactive.
+  const defaultCycleByCompany: Record<string, string> = {};
+  for (const c of companies) if (scopeIds.includes(c.id)) defaultCycleByCompany[c.id] = c.defaultPayrollCycle;
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
@@ -111,6 +117,7 @@ export default async function PayrollProcessPage({ searchParams }: { searchParam
           payDayByCompany={payDayByCompany}
           existingRuns={allBatches.map((b) => ({ id: b.id, companyId: b.companyId, payPeriod: b.payPeriod, runType: b.runType, status: b.status, company: b.company }))}
           cyclesByCompany={cyclesByCompany}
+          defaultCycleByCompany={defaultCycleByCompany}
           thisMonth={thisMonth}
           multiCycle={multiCycle}
           resumeBatch={resumeBatch}

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { validatePayrollSelection } from '../actions';
+import { checkPayrollCycleReadiness, validatePayrollSelection } from '../actions';
 import type { PreProcessAdvisory } from '@/core/payroll';
+import type { IntendedRunType } from '@/core/payroll-run-group';
 
 /**
  * Payroll Process wizard — Validation step (R37 70764928). Renders the pre-processing checks as an explicit
@@ -26,23 +27,43 @@ export function StepValidation({
   companyIds,
   payPeriod,
   employmentIds,
+  intendedRunType,
   onStatusChange,
 }: {
   companyIds: string[];
   payPeriod: string;
   employmentIds?: string[];
+  // Organization Module (361e3b15) — the run's intended cycle type, driving the missing-cycle pre-flight.
+  // Omitted (e.g. resume mode, where the batch's cycle is already fixed) ⇒ the pre-flight is skipped.
+  intendedRunType?: IntendedRunType;
   onStatusChange: (s: { loading: boolean; hasBlockers: boolean }) => void;
 }) {
   const t = useTranslations('payroll.process');
   const [advisory, setAdvisory] = useState<PreProcessAdvisory | null>(null);
   const [loading, setLoading] = useState(true);
+  // Organization Module (361e3b15) — companies with no active cycle of the intended run type (pre-flight).
+  const [missingCycle, setMissingCycle] = useState<{ companyId: string; companyName: string }[]>([]);
 
   // A stable, order-independent key for the selection so the effect refires when the admin goes back and
   // changes companies / period / who is included — never on a bare array-reference change.
-  const key = `${[...companyIds].sort().join(',')}|${payPeriod}|${[...(employmentIds ?? [])].sort().join(',')}`;
+  const key = `${[...companyIds].sort().join(',')}|${payPeriod}|${[...(employmentIds ?? [])].sort().join(',')}|${intendedRunType ?? ''}`;
 
   useEffect(() => {
     let live = true;
+    // Organization Module (361e3b15) — fire the missing-cycle pre-flight alongside the advisory (skipped when
+    // no intended run type is supplied, e.g. resume mode). Purely informational: it names un-runnable
+    // companies BEFORE submit; it does not itself block Process (the run reports them per-company too).
+    if (intendedRunType) {
+      checkPayrollCycleReadiness({ companyIds, intendedRunType })
+        .then((rows) => {
+          if (live) setMissingCycle(rows);
+        })
+        .catch(() => {
+          if (live) setMissingCycle([]);
+        });
+    } else {
+      setMissingCycle([]);
+    }
     setLoading(true);
     onStatusChange({ loading: true, hasBlockers: false });
     validatePayrollSelection({ companyIds, payPeriod, employmentIds })
@@ -88,13 +109,31 @@ export function StepValidation({
     (advisory.staleBasicComponent?.length ?? 0) +
     (advisory.currencyMismatch?.length ?? 0);
 
+  // Organization Module (361e3b15) — a per-company AMBER note naming any selected company with no active cycle
+  // of the intended run type. Rendered above the salary/statutory advisory so a payroll-ready company that is
+  // nonetheless missing its cycle is never silently skipped.
+  const missingCycleBanner =
+    missingCycle.length > 0 ? (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+        <p className="font-medium">⚠ {t('validationMissingCycleTitle', { n: missingCycle.length })}</p>
+        <ul className="mt-1 space-y-0.5 text-xs">
+          {missingCycle.map((m) => (
+            <li key={m.companyId}>{t('payrollCycleMissingForCompany', { company: m.companyName })}</li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
+
   if (blockers + warnings === 0) {
     return (
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
-        <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
-          <span aria-hidden>✓</span> {t('validationAllClear')}
-        </p>
-        <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-400/80">{t('validationAllClearHint')}</p>
+      <div className="space-y-4">
+        {missingCycleBanner}
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+          <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <span aria-hidden>✓</span> {t('validationAllClear')}
+          </p>
+          <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-400/80">{t('validationAllClearHint')}</p>
+        </div>
       </div>
     );
   }
@@ -110,6 +149,7 @@ export function StepValidation({
 
   return (
     <div className="space-y-4">
+      {missingCycleBanner}
       {blockers > 0 ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
           <p className="font-medium">✗ {t('validationBlockerTitle', { n: blockers })}</p>
