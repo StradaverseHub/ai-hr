@@ -42,10 +42,11 @@ const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 const SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry', 'workflow'] as const;
 
-/** Slice the General card's segment (its CardTitle to the next card's CardTitle). */
+/** Slice the General card's segment (its CardTitle to the next card's CardTitle — the Entitlement card
+ *  since b8fcae73 removed the Eligibility card that used to sit between them). */
 function generalSegment(): string {
   const start = panelSrc.indexOf("<CardTitle>{t('categoryGeneral')}</CardTitle>");
-  const end = panelSrc.indexOf("<CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>");
+  const end = panelSrc.indexOf("<CardTitle>{t('categoryEntitlement')}</CardTitle>");
   expect(start).toBeGreaterThan(-1);
   expect(end).toBeGreaterThan(start);
   return panelSrc.slice(start, end);

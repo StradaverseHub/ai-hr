@@ -1,7 +1,7 @@
 /**
  * Leave-type config: active-step indicator on the workspace step bar (feedback 27136ea6, restructured by
- * c979aa8b — the five 123c1e76 accordion cards became the five steps of a horizontal step flow: General /
- * Eligibility / Entitlement / Condition / Custom, ONE section visible at a time).
+ * c979aa8b — the five 123c1e76 accordion cards became the steps of a horizontal step flow, shortened and
+ * reordered by b8fcae73 to General / Condition / Entitlement / Custom, ONE section visible at a time).
  *
  * The 27136ea6 requirement — HR can tell at a glance which section they are editing — now lives on the step
  * bar: the CURRENT step's pill carries the accent wash (bg-accent), a semibold label and aria-current="step";
@@ -21,7 +21,7 @@ import { describe, expect, it } from 'vitest';
 const here = dirname(fileURLToPath(import.meta.url));
 const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
 
-const STEP_KEYS = ['general', 'eligibility', 'entitlement', 'ess', 'custom'] as const;
+const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const;
 
 describe('27136ea6 · c979aa8b · the active step is visually distinguished on the step bar', () => {
   it('each step button derives highlight + aria-current from ITS OWN activeStep comparison', () => {

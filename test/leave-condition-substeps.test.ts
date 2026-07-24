@@ -1,7 +1,8 @@
 /**
  * Restructure Leave Condition Secondary Workflow (feedback 08bc6841).
  *
- * The Condition step (step 4 of the c979aa8b workspace flow, storage key 'ess') becomes a guided
+ * The Condition step (storage key 'ess'; step 4 of the c979aa8b workspace flow, step 2 since b8fcae73
+ * dropped Eligibility and reordered the walk) becomes a guided
  * THREE-SUB-STEP walk — 1 Criteria · 2 Leave Application Rules · 3 Expiry — switched by the SAME reusable
  * SubStepBar the General restructure introduced (components/leave-sub-step-bar.tsx, the e1a51aea reuse
  * contract: secondary flows must REUSE it, never reinvent a nested bar). The active sub-step persists per
@@ -12,7 +13,9 @@
  * save behaviour):
  *  - Criteria: the eligibility rules moved here from the main Eligibility step — gender / marital
  *    ChipMultiSelects, min-service (value + unit), probation — same eligibility=1 marker, same
- *    updateTypeAction, values untouched. The Eligibility step now focuses purely on entitlement policies.
+ *    updateTypeAction, values untouched. That left the Eligibility step holding only entitlement policies,
+ *    which is why b8fcae73 later removed the step outright and moved the policies timeline into the
+ *    Entitlement step's Company Entitlements sub-step (see leave-entitlement-substeps.test.ts).
  *  - Leave Application Rules: the SEVEN existing rule groups re-laid as a responsive card grid
  *    (grid-cols-1 md:grid-cols-2 xl:grid-cols-3) in the existing source order — durations, document,
  *    negativeBalance, backdating (EMERGENCY-hidden), minAdvance (EMERGENCY-hidden), duplicatePolicy,
@@ -54,10 +57,11 @@ function essSegment(): string {
   return panelSrc.slice(start, end);
 }
 
-/** Slice the Eligibility card's segment (its CardTitle to the Entitlement card's CardTitle). */
-function eligibilitySegment(): string {
-  const start = panelSrc.indexOf("<CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>");
-  const end = panelSrc.indexOf("<CardTitle>{t('categoryEntitlement')}</CardTitle>");
+/** Slice the Entitlement card's segment (its CardTitle to the Condition card's CardTitle) — where
+ *  b8fcae73 relocated the entitlement policy timeline that used to live on the retired Eligibility card. */
+function entitlementSegment(): string {
+  const start = panelSrc.indexOf("<CardTitle>{t('categoryEntitlement')}</CardTitle>");
+  const end = panelSrc.indexOf("<CardTitle>{t('categoryEssPolicy')}</CardTitle>");
   expect(start).toBeGreaterThan(-1);
   expect(end).toBeGreaterThan(start);
   return panelSrc.slice(start, end);
@@ -88,7 +92,8 @@ describe('08bc6841 · the Condition step REUSES the SubStepBar (three sub-steps 
   });
 
   it("keeps 'ess' as the Condition step's storage key and persists essSubStep in the shared shape", () => {
-    expect(panelSrc).toContain("const STEP_KEYS = ['general', 'eligibility', 'entitlement', 'ess', 'custom'] as const");
+    // b8fcae73 shortened + reordered the walk; 'ess' survives verbatim as Condition's storage key.
+    expect(panelSrc).toContain("const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const");
     // The ONE writer persists the keys together (7b945408 extended the shape with entitlementSubStep)…
     expect(panelSrc).toContain(
       'JSON.stringify({ activeStep: step, generalSubStep: sub, essSubStep: ess, entitlementSubStep: ent })',
@@ -117,13 +122,16 @@ describe('08bc6841 · Criteria — the eligibility rules moved from the Eligibil
     expect(criteria).toContain('action={updateTypeAction}');
   });
 
-  it('the Eligibility card no longer hosts the eligibility rules or the expiry form (policies only)', () => {
-    const elig = eligibilitySegment();
-    expect(elig.includes('name="eligibility"')).toBe(false);
-    expect(elig.includes('name="expiry"')).toBe(false);
-    // …but keeps the entitlement policy timeline + add form.
-    expect(elig).toContain("t('companyEntitlements')");
-    expect(elig).toContain("t('addEntitlement')");
+  it('the Eligibility card is gone; its policy timeline survives inside the Entitlement card', () => {
+    // b8fcae73 removed the card entirely — 08bc6841 had already emptied it of eligibility rules + expiry.
+    expect(panelSrc.includes("<CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>")).toBe(false);
+    const ent = entitlementSegment();
+    // The rules and the expiry form live in Condition, NOT with the relocated policies.
+    expect(ent.includes('name="eligibility"')).toBe(false);
+    expect(ent.includes('name="expiry"')).toBe(false);
+    // …and the entitlement policy timeline + add form came across intact.
+    expect(ent).toContain("t('companyEntitlements')");
+    expect(ent).toContain("t('addEntitlement')");
   });
 });
 

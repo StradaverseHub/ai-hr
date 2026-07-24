@@ -4134,7 +4134,6 @@
       "negativeBalanceHelp": "ควบคุมว่าพนักงานสามารถส่งหรือแก้ไขคำขอลาประเภทนี้ที่เกินยอดคงเหลือที่ใช้ได้หรือไม่ 'ไม่' จะบล็อกการขอเกินขณะส่งและแก้ไข (นับรวมวันลาที่รออนุมัติ); 'ใช่' อนุญาตให้ยอดคงเหลือติดลบได้",
       "eligibilityChipAddPlaceholder": "เพิ่ม…",
       "categoryGeneral": "ทั่วไป",
-      "categoryEligibilityEntitlement": "การมีสิทธิ์",
       "categoryEntitlement": "สิทธิ์วันลา",
       "categoryEssPolicy": "เงื่อนไข",
       "categoryCustom": "การตั้งค่าที่กำหนดเอง",

@@ -97,16 +97,22 @@ const DOC_MIME_OPTIONS = [
   { mime: 'image/png', label: 'fileTypePng' as const },
 ] as const;
 
-/** Step flow (c979aa8b): the five configuration steps, in walk order — 1 General Setting, 2 Eligibility,
- *  3 Entitlement, 4 Condition, 5 Custom Settings. The keys are the SAME storage keys the pre-step accordion
- *  used ('ess' is Condition's historical key — kept deliberately so persisted state survives, see the
- *  leaveTypeCards migration in LeaveTypePanel). */
-const STEP_KEYS = ['general', 'eligibility', 'entitlement', 'ess', 'custom'] as const;
+/** Step flow (c979aa8b, shortened by b8fcae73): the FOUR configuration steps, in walk order —
+ *  1 General Setting, 2 Condition, 3 Entitlement, 4 Custom Settings. The Eligibility step was removed:
+ *  it had held no eligibility rules since 08bc6841 relocated those to Condition · Criteria, and its
+ *  remaining content (the per-company entitlement policies timeline) moved to the Entitlement step's
+ *  Company Entitlements sub-step. The keys are the SAME storage keys the pre-step accordion used ('ess' is
+ *  Condition's historical key — kept deliberately so persisted state survives, see the leaveTypeCards
+ *  migration in LeaveTypePanel). */
+const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const;
 type StepKey = (typeof STEP_KEYS)[number];
+/** The storage key of the step b8fcae73 retired. Kept ONLY so a persisted leaveTypeCards:<id> payload that
+ *  still points at it can be remapped to where its content went (Entitlement · Company Entitlements)
+ *  instead of silently snapping back to step 1. It is never a StepKey and never renders. */
+const RETIRED_ELIGIBILITY_STEP = 'eligibility';
 /** Step → its admin.leave title key (the same category* keys the accordion cards used, all 6 locales). */
 const STEP_TITLE_KEY: Record<StepKey, string> = {
   general: 'categoryGeneral',
-  eligibility: 'categoryEligibilityEntitlement',
   entitlement: 'categoryEntitlement',
   ess: 'categoryEssPolicy',
   custom: 'categoryCustom',
@@ -155,22 +161,27 @@ const ESS_SUB_STEP_TITLE_KEY: Record<EssSubStepKey, string> = {
   expiry: 'conditionStep.expiry',
 };
 
-/** Entitlement step sub-flow (7b945408): the three sub-steps of step 3, in walk order — 1 Benefit Schemes
+/** Entitlement step sub-flow (7b945408, extended by b8fcae73): the four sub-steps of step 3, in walk
+ *  order — 1 Benefit Schemes
  *  (who receives which scheme: the Grades catalogue relocated from the page bottom + the type-scoped scheme
  *  management, so the grade → grade-group → scheme relationship reads in one place), 2 Service Based
  *  Entitlements (how entitlement is calculated: the per-type entitlement table + the Preview Scenario
- *  checker), 3 Adjustments (what manual adjustments apply: the One-Off/Festive grant tool + the Run Accrual
+ *  checker), 3 Company Entitlements (b8fcae73: the per-company entitlement policies timeline relocated
+ *  from the retired Eligibility step — days per company/grade, carry-forward, accrual method, effective
+ *  dates; it reuses the EXISTING companyEntitlements string as its label, so no new locale key), 4
+ *  Adjustments (what manual adjustments apply: the One-Off/Festive grant tool + the Run Accrual
  *  action relocated from the page header — it processes earned entitlement, so it belongs with entitlement
  *  adjustments). Keys are storage keys (persisted as `entitlementSubStep` in the leaveTypeCards:<id>
  *  localStorage shape, next to activeStep / generalSubStep / essSubStep — the e1a51aea shape extended
  *  backward-compatibly). Rendered by the SAME reusable SubStepBar the General flow introduced
  *  (components/leave-sub-step-bar.tsx — the reuse contract). */
-const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'adjustments'] as const;
+const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'policies', 'adjustments'] as const;
 type EntitlementSubStepKey = (typeof ENTITLEMENT_SUB_STEP_KEYS)[number];
 /** Sub-step → its admin.leave title key (all 6 locales). */
 const ENTITLEMENT_SUB_STEP_TITLE_KEY: Record<EntitlementSubStepKey, string> = {
   schemes: 'entitlementStep.schemes',
   service: 'entitlementStep.service',
+  policies: 'companyEntitlements',
   adjustments: 'entitlementStep.adjustments',
 };
 
@@ -1113,7 +1124,7 @@ export function LeaveTypePanel({
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
   // Step flow (c979aa8b — was the 123c1e76 five-card accordion): ONE section visible at a time, chosen by
-  // the numbered horizontal step bar (1 General … 5 Custom). The active step is per-type client state,
+  // the numbered horizontal step bar (1 General … 4 Custom since b8fcae73). The active step is per-type client state,
   // persisted to the SAME localStorage key the accordion used (`leaveTypeCards:<id>`) so it SURVIVES the
   // stay-on-save redirect (b9dac2d1 keystone re-mounts the panel) — the step HR was editing stays open after
   // Save. Stored shape is now { activeStep }; an old accordion payload ({ key: boolean }) migrates gracefully:
@@ -1141,7 +1152,20 @@ export function LeaveTypePanel({
       const raw = window.localStorage.getItem(`leaveTypeCards:${id}`);
       if (!raw) return;
       const parsed = JSON.parse(raw) as Record<string, unknown> | null;
-      if (parsed && typeof parsed.activeStep === 'string' && (STEP_KEYS as readonly string[]).includes(parsed.activeStep)) {
+      // b8fcae73: the Eligibility step is gone, so a payload still pointing at it (either shape) no longer
+      // matches STEP_KEYS and would silently fall back to step 1. Remap it to the content's new home —
+      // Entitlement · Company Entitlements — and let that remap WIN over any stored entitlementSubStep.
+      const wantedEligibility =
+        !!parsed &&
+        typeof parsed === 'object' &&
+        (parsed.activeStep === RETIRED_ELIGIBILITY_STEP ||
+          (typeof parsed.activeStep !== 'string' &&
+            !STEP_KEYS.some((k) => parsed[k] === true) &&
+            parsed[RETIRED_ELIGIBILITY_STEP] === true));
+      if (wantedEligibility) {
+        setActiveStep('entitlement');
+        setEntitlementSubStep('policies');
+      } else if (parsed && typeof parsed.activeStep === 'string' && (STEP_KEYS as readonly string[]).includes(parsed.activeStep)) {
         setActiveStep(parsed.activeStep as StepKey);
       } else if (parsed && typeof parsed === 'object') {
         // migrate the pre-step accordion shape { key: boolean } — first open card wins
@@ -1163,6 +1187,7 @@ export function LeaveTypePanel({
         setEssSubStep(parsed.essSubStep as EssSubStepKey);
       }
       if (
+        !wantedEligibility &&
         parsed &&
         typeof parsed.entitlementSubStep === 'string' &&
         (ENTITLEMENT_SUB_STEP_KEYS as readonly string[]).includes(parsed.entitlementSubStep)
@@ -1680,12 +1705,59 @@ export function LeaveTypePanel({
             </CardContent>
           </Card>
           )}
-          {activeStep === 'eligibility' && (
+          {activeStep === 'entitlement' && (
           <Card>
             <CardHeader>
-              <CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>
+              <CardTitle>{t('categoryEntitlement')}</CardTitle>
             </CardHeader>
-            <CardContent id={`cat-eligibility-${id}`} className="space-y-3">
+            <CardContent id={`cat-entitlement-${id}`} className="space-y-3">
+          {/* Entitlement sub-flow (7b945408, extended by b8fcae73): the SAME reusable SubStepBar the General
+              flow introduced (components/leave-sub-step-bar.tsx — the reuse contract) walks the four
+              sub-steps 1 Benefit Schemes · 2 Service Based Entitlements · 3 Company Entitlements ·
+              4 Adjustments. One sub-step visible at a time; the choice persists per type alongside
+              activeStep/generalSubStep/essSubStep (leaveTypeCards:<id>). The entitlement journey reads: who
+              receives which scheme → how entitlement is calculated → how many days each company or grade
+              gets → what manual adjustments apply. */}
+          <SubStepBar
+            steps={ENTITLEMENT_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(ENTITLEMENT_SUB_STEP_TITLE_KEY[k]) }))}
+            active={entitlementSubStep}
+            onSelect={(k) => selectEntitlementSubStep(k as EntitlementSubStepKey)}
+            ariaLabel={t('entitlementStepsLabel')}
+          />
+          {/* Sub-step 1 — Benefit Schemes (7b945408): who receives which scheme. 387792a4 restructured the
+              old vertical scroll into the three-panel workbench BenefitSchemeConfig hosts — Panel A Grade
+              Master (the relocated Grades catalogue, now fed in as the config's gradesPanel slot) · Panel B
+              Grade Groups · Panel C Assignment — with the per-scheme entitlements area below it, so the
+              grade → grade-group → scheme relationship reads side by side instead of stacked. One
+              server-composed slot; see the benefitSchemeSection prop doc. */}
+          {entitlementSubStep === 'schemes' && (
+          <>
+          {benefitSchemeSection}
+          </>
+          )}
+          {/* Sub-step 2 — Service Based Entitlements (7b945408): how entitlement is calculated. */}
+          {entitlementSubStep === 'service' && (
+          <>
+          {/* Restructure (123c1e76): the per-type Entitlement table — THIS leave type's benefit-scheme
+              entitlement rows (the days each scheme grants per service tier), which previously appeared only
+              in the shared Benefit Schemes area. Read-and-edit over the SAME live rows via the SAME upsert
+              action (no duplication, nothing can drift); scheme-wide management — adding/removing rows,
+              copying between schemes, combined-limit grouping — stays in the Benefit Schemes sub-step. */}
+          <LeaveTypeEntitlementTable ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction} />
+          {/* 7b945408: the Preview Scenario checker joins this sub-step as its checking tool — the SAME
+              self-contained LeaveRulePreviewDialog (d778d2d3). Server-composed slot; see the
+              previewScenarioSection prop doc. */}
+          {previewScenarioSection}
+          </>
+          )}
+          {/* Sub-step 3 — Company Entitlements (b8fcae73): the per-company entitlement policies
+              timeline relocated VERBATIM from the retired Eligibility step, which had held no
+              eligibility rules since 08bc6841 moved those to Condition · Criteria. Days per company or
+              grade, carry-forward, accrual method and effective dates — same state, same create/update/
+              delete actions. It gets its OWN sub-step rather than joining Service Based Entitlements so
+              the two similar "days per X" editors can't be confused. */}
+          {entitlementSubStep === 'policies' && (
+          <>
           {/* 08bc6841: the eligibility rules block (gender / marital / min service / probation) moved
               to the Condition step's Criteria sub-step — this step now focuses purely on entitlement
               policies (who gets how many days). */}
@@ -2110,54 +2182,9 @@ export function LeaveTypePanel({
           )}
           {/* 08bc6841: the Leave Type Expiry configuration (fec49317) moved to the Condition step's
               Expiry sub-step — same form, same expiry=1 tri-state marker, same non-Annual gate. */}
-            </CardContent>
-          </Card>
-          )}
-          {activeStep === 'entitlement' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('categoryEntitlement')}</CardTitle>
-            </CardHeader>
-            <CardContent id={`cat-entitlement-${id}`} className="space-y-3">
-          {/* Entitlement sub-flow (7b945408): the SAME reusable SubStepBar the General flow introduced
-              (components/leave-sub-step-bar.tsx — the reuse contract) walks the three sub-steps
-              1 Benefit Schemes · 2 Service Based Entitlements · 3 Adjustments. One sub-step visible at a
-              time; the choice persists per type alongside activeStep/generalSubStep/essSubStep
-              (leaveTypeCards:<id>). The entitlement journey reads: who receives which scheme → how
-              entitlement is calculated → what manual adjustments apply. */}
-          <SubStepBar
-            steps={ENTITLEMENT_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(ENTITLEMENT_SUB_STEP_TITLE_KEY[k]) }))}
-            active={entitlementSubStep}
-            onSelect={(k) => selectEntitlementSubStep(k as EntitlementSubStepKey)}
-            ariaLabel={t('entitlementStepsLabel')}
-          />
-          {/* Sub-step 1 — Benefit Schemes (7b945408): who receives which scheme. 387792a4 restructured the
-              old vertical scroll into the three-panel workbench BenefitSchemeConfig hosts — Panel A Grade
-              Master (the relocated Grades catalogue, now fed in as the config's gradesPanel slot) · Panel B
-              Grade Groups · Panel C Assignment — with the per-scheme entitlements area below it, so the
-              grade → grade-group → scheme relationship reads side by side instead of stacked. One
-              server-composed slot; see the benefitSchemeSection prop doc. */}
-          {entitlementSubStep === 'schemes' && (
-          <>
-          {benefitSchemeSection}
           </>
           )}
-          {/* Sub-step 2 — Service Based Entitlements (7b945408): how entitlement is calculated. */}
-          {entitlementSubStep === 'service' && (
-          <>
-          {/* Restructure (123c1e76): the per-type Entitlement table — THIS leave type's benefit-scheme
-              entitlement rows (the days each scheme grants per service tier), which previously appeared only
-              in the shared Benefit Schemes area. Read-and-edit over the SAME live rows via the SAME upsert
-              action (no duplication, nothing can drift); scheme-wide management — adding/removing rows,
-              copying between schemes, combined-limit grouping — stays in the Benefit Schemes sub-step. */}
-          <LeaveTypeEntitlementTable ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction} />
-          {/* 7b945408: the Preview Scenario checker joins this sub-step as its checking tool — the SAME
-              self-contained LeaveRulePreviewDialog (d778d2d3). Server-composed slot; see the
-              previewScenarioSection prop doc. */}
-          {previewScenarioSection}
-          </>
-          )}
-          {/* Sub-step 3 — Adjustments (7b945408): what manual adjustments apply. */}
+          {/* Sub-step 4 — Adjustments (7b945408): what manual adjustments apply. */}
           {entitlementSubStep === 'adjustments' && (
           <>
           {/* fd7c8e20: the One-Off / Festive Leave Grant tool, preset to this type — the standalone

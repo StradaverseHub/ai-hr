@@ -15,18 +15,25 @@
  * the SAME scheme_leave_entitlement rows the shared Benefit Schemes area manages (same upsert action — no
  * duplicated configuration). This guards, statically (the suite has no DOM runner for this component — the
  * repo convention for this UI-only file; see leave-type-edit-layout.test.ts):
- *   1. The 5 category cards render, in order, each titled by its admin.leave.category* key.
+ *   1. The 4 category cards render, in order, each titled by its admin.leave.category* key.
  *   2. Every sub-form's tri-state marker survived AND landed in its assigned category (no form dropped,
  *      none misfiled) — so nothing stopped posting its marker.
- *   3. The three retired cards are gone from the panel and their title keys retired from every locale.
+ *   3. The retired cards are gone from the panel and their title keys retired from every locale.
  *   4. The renamed + new category titles exist in all six locales (en pins the exact reported wording).
  *   5. The per-type Entitlement table reuses the benefit-scheme row components + upsert action, and its
  *      strings exist in all six locales.
  *
- * Step flow (c979aa8b): the five cards are no longer independent accordions — they are the five STEPS of the
+ * Step flow (c979aa8b): the cards are no longer independent accordions — they are the STEPS of the
  * leave-type workspace (one section visible at a time, chosen by the numbered step bar; see
- * leave-type-workspace.test.ts). The invariants above are UNCHANGED: same five titles in the same source
+ * leave-type-workspace.test.ts). The invariants above are UNCHANGED: same titles in the same source
  * order, same content assignment, same storage keys (now persisting the active step instead of open flags).
+ *
+ * Workflow shortened (b8fcae73): the Eligibility step is REMOVED and the walk reordered to
+ * 1 General · 2 Condition · 3 Entitlement · 4 Custom. That card had held no eligibility rules since
+ * 08bc6841 moved them to Condition · Criteria; its surviving content (the per-company entitlement policies
+ * timeline) relocated INTO the Entitlement step as its Company Entitlements sub-step, so the two needles
+ * below moved from the categoryEligibilityEntitlement list into categoryEntitlement's, and
+ * categoryEligibilityEntitlement joins RETIRED_KEYS (unreferenced by the panel, undefined in every locale).
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -40,16 +47,23 @@ const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
+/** Physical CardTitle order in the panel source (b8fcae73 dropped the Eligibility card). */
 const CATEGORY_KEYS = [
   'categoryGeneral',
-  'categoryEligibilityEntitlement',
   'categoryEntitlement',
   'categoryEssPolicy',
   'categoryCustom',
 ] as const;
 
-/** The three cards this restructure retires — their content moved, the card (and title key) is gone. */
-const RETIRED_KEYS = ['categoryApproval', 'categoryDisplay', 'categoryCalculation'] as const;
+/** The cards these restructures retire — their content moved, the card (and title key) is gone. */
+const RETIRED_KEYS = [
+  'categoryApproval',
+  'categoryDisplay',
+  'categoryCalculation',
+  // b8fcae73: the Eligibility step, emptied of eligibility rules by 08bc6841 and now merged into
+  // Entitlement · Company Entitlements.
+  'categoryEligibilityEntitlement',
+] as const;
 
 /** The category → the markers/anchors that must live inside that category's card, in the new grouping. */
 const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
@@ -59,13 +73,6 @@ const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
     // moved here from the retired Approval Rules card
     'name="partialApproval"',
   ],
-  // 08bc6841: the eligibility-rules sub-form and the expiry sub-form moved OUT of this card into the
-  // Condition step's Criteria / Expiry sub-steps (see leave-condition-substeps.test.ts) — Eligibility now
-  // focuses purely on the entitlement policies.
-  categoryEligibilityEntitlement: [
-    "t('companyEntitlements')",
-    "t('addEntitlement')",
-  ],
   categoryEntitlement: [
     // the NEW per-type benefit-scheme entitlement table (filtered view, shared rows + action)
     '<LeaveTypeEntitlementTable',
@@ -73,6 +80,11 @@ const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
     '{benefitSchemeSection}',
     // fd7c8e20: the One-Off / Festive Leave Grant tool completes the step, below the schemes area
     '{festiveGrantSection}',
+    // b8fcae73: the per-company entitlement policies timeline, relocated here from the retired
+    // Eligibility card as this step's Company Entitlements sub-step (08bc6841 had already moved the
+    // eligibility rules / expiry sub-forms to Condition · Criteria / Expiry).
+    "t('companyEntitlements')",
+    "t('addEntitlement')",
   ],
   categoryEssPolicy: [
     // 08bc6841: moved here from the Eligibility card (Criteria sub-step)
@@ -121,8 +133,8 @@ function cardSegments(): Record<string, string> {
   return out;
 }
 
-describe('123c1e76 · leave-type config restructured into 5 category cards', () => {
-  it('renders exactly the 5 category CardTitles, in order', () => {
+describe('123c1e76 · leave-type config restructured into 4 category cards (b8fcae73 dropped Eligibility)', () => {
+  it('renders exactly the 4 category CardTitles, in order', () => {
     const seq = CATEGORY_KEYS.map((k) => `<CardTitle>{t('${k}')}</CardTitle>`);
     let cursor = -1;
     for (const s of seq) {
@@ -130,7 +142,7 @@ describe('123c1e76 · leave-type config restructured into 5 category cards', () 
       expect(at, `${s} present after previous`).toBeGreaterThan(cursor);
       cursor = at;
     }
-    // No stray 6th category card.
+    // No stray extra category card.
     const titleCount = (panelSrc.match(/<CardTitle>/g) ?? []).length;
     expect(titleCount).toBe(CATEGORY_KEYS.length);
   });
@@ -163,23 +175,23 @@ describe('123c1e76 · leave-type config restructured into 5 category cards', () 
 
   it('keeps the localStorage step keys stable (per-type section state survives the step restructure)', () => {
     // c979aa8b: the step keys ARE the old accordion card keys, declared in walk order — 'ess' deliberately
-    // stays Condition's historical key so persisted state carries over.
-    expect(panelSrc).toContain("const STEP_KEYS = ['general', 'eligibility', 'entitlement', 'ess', 'custom'] as const");
+    // stays Condition's historical key so persisted state carries over. b8fcae73 shortened the walk to four
+    // and reordered it (Condition ahead of Entitlement); the surviving keys are untouched.
+    expect(panelSrc).toContain("const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const");
     // Same per-type storage key shape as the accordion used…
     expect(panelSrc).toContain('leaveTypeCards:${id}');
     // …and an old accordion payload ({ key: boolean }) migrates (first open card wins), not discarded.
     expect(panelSrc).toContain('parsed[k] === true');
   });
 
-  it('pins the reported en titles: Eligibility, Condition, Entitlement', () => {
+  it('pins the reported en titles: Condition, Entitlement', () => {
     const msgs = JSON.parse(readFileSync(resolve(here, '../messages/en.json'), 'utf8'));
     const leave = msgs.admin.leave;
-    expect(leave.categoryEligibilityEntitlement).toBe('Eligibility');
     expect(leave.categoryEssPolicy).toBe('Condition');
     expect(leave.categoryEntitlement).toBe('Entitlement');
   });
 
-  it('has all 5 category titles (and no retired keys) in every locale', () => {
+  it('has all 4 category titles (and no retired keys) in every locale', () => {
     for (const loc of LOCALES) {
       const msgs = JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'));
       const leave = msgs?.admin?.leave ?? {};

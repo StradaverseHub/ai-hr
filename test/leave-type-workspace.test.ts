@@ -5,8 +5,9 @@
  *     via aria-current + the sidebar's accent pattern) with the Add Leave button at the bottom, collapsing
  *     to a dropdown on mobile;
  *   - a RIGHT workspace showing the SELECTED type's configuration as a horizontal STEP FLOW (1 General
- *     Setting … 5 Custom Settings — see leave-type-config-active-section.test.ts for the active-step
- *     treatment), one section visible at a time, switched client-side (no reload, no nested tabs).
+ *     Setting … 4 Custom Settings after b8fcae73 dropped the Eligibility step — see
+ *     leave-type-config-active-section.test.ts for the active-step treatment), one section visible at a
+ *     time, switched client-side (no reload, no nested tabs).
  *
  * Deep-links keep working: the Leave Types tab's Edit links (#type-<id>, feedback 097de541) and the
  * stay-on-save redirect's anchor (app/admin/actions.ts) select the targeted type in the workspace.
@@ -170,21 +171,25 @@ describe('c979aa8b · hash deep-link still selects the type', () => {
   });
 });
 
-describe('c979aa8b · step bar: numbered 1–5, category labels, one section at a time', () => {
-  it('renders the five steps in walk order with a numeric 1-based badge', () => {
-    expect(panelSrc).toContain("const STEP_KEYS = ['general', 'eligibility', 'entitlement', 'ess', 'custom'] as const");
-    // The visible number is the 1-based index of the map — step 1 General … step 5 Custom.
+describe('c979aa8b · step bar: numbered 1–4, category labels, one section at a time', () => {
+  it('renders the four steps in walk order with a numeric 1-based badge', () => {
+    // b8fcae73: the Eligibility step is gone and the walk reordered — 1 General · 2 Condition ('ess' is
+    // Condition's historical storage key) · 3 Entitlement · 4 Custom. The bar is ONE map over STEP_KEYS, so
+    // this array IS the numbering and the Previous/Next walk order.
+    expect(panelSrc).toContain("const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const");
+    // The visible number is the 1-based index of the map — step 1 General … step 4 Custom.
     expect(panelSrc).toContain('{i + 1}');
     // Labels reuse the existing category* title keys (all six locales already carry them).
     for (const titleKey of [
       "general: 'categoryGeneral'",
-      "eligibility: 'categoryEligibilityEntitlement'",
       "entitlement: 'categoryEntitlement'",
       "ess: 'categoryEssPolicy'",
       "custom: 'categoryCustom'",
     ]) {
       expect(panelSrc).toContain(titleKey);
     }
+    // The retired step's title mapping is gone with it.
+    expect(panelSrc.includes("eligibility: 'categoryEligibilityEntitlement'")).toBe(false);
   });
 });
 

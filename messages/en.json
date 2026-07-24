@@ -4134,7 +4134,6 @@
       "negativeBalanceHelp": "Controls whether an employee can submit or edit a leave application of this type that exceeds their available balance. 'No' blocks over-application at submission and edit (counting leave already pending); 'Yes' allows the balance to go negative.",
       "eligibilityChipAddPlaceholder": "Add…",
       "categoryGeneral": "General",
-      "categoryEligibilityEntitlement": "Eligibility",
       "categoryEntitlement": "Entitlement",
       "categoryEssPolicy": "Condition",
       "categoryCustom": "Custom Settings",

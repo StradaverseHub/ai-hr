@@ -4134,7 +4134,6 @@
       "negativeBalanceHelp": "控制员工是否可以提交或编辑超过其可用余额的此类假期申请。“否”将在提交和编辑时阻止超额申请（计入尚待批准的假期）；“是”则允许余额变为负数。",
       "eligibilityChipAddPlaceholder": "添加…",
       "categoryGeneral": "常规",
-      "categoryEligibilityEntitlement": "资格",
       "categoryEntitlement": "额度",
       "categoryEssPolicy": "条件",
       "categoryCustom": "自定义设置",
