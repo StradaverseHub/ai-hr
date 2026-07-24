@@ -6,19 +6,21 @@
  * (Anniversary to Calendar): the option rendered disabled, updateLeaveType rejected it, and the DB CHECK
  * admitted only ('a2a','c2c'). This item switches it on AND teaches the engine the calculation, together.
  *
- * The model under test:
+ * The model under test (adcdf215 — UP-FRONT first year):
  *  • a2c's leave YEAR is the CALENDAR year (resolveLeaveYearCycle maps it to 'calendar'), so carry
  *    anchoring and the year-two full grant are the ordinary calendar ones — no third cycle token.
- *  • The ONLY novelty is the employee's FIRST (hire) year on ANNUAL: entitlement builds day by day from
- *    the join date at (resolved entitlement ÷ 365) × days worked to date, clamped to the annual amount.
+ *  • The ONLY novelty is the employee's FIRST (hire) year on ANNUAL: the full prorated part-year
+ *    entitlement (resolved entitlement ÷ 365) × days from join to 31 Dec, clamped to the annual amount, is
+ *    available UP FRONT at hire — independent of asOf, not built day by day. A first-year LEAVER is capped
+ *    at their last day of service (serviceEnd) so encashment / final pay is never over-granted.
  *  • The correction posts ACCRUAL-CLASS rows (not adjustments), because "YTD Entitled" counts only
- *    entryType in ('accrual','in_lieu_accrual') — an adjustment alone could never lift the reporter's
- *    7.00 to 10.90 — plus a compensating reversal of the superseded system rows so Balance/Available agree.
+ *    entryType in ('accrual','in_lieu_accrual') — an adjustment alone could never move YTD Entitled to the
+ *    up-front target — plus a compensating reversal of the superseded system rows so Balance/Available agree.
  *
  * Under test:
- *  (1) HAPPY PATH — the reporter's own numbers: hired 2026-01-06, ANNUAL 20 days, checked 2026-07-23 ⇒
- *      YTD Entitled 10.90; with 3.50 taken, Available 7.40 and Balance 7.40, surfaced by leaveBalances
- *      AND leaveEntitlementBreakdown.
+ *  (1) HAPPY PATH — the reporter's own case, now UP FRONT: hired 2026-01-06, ANNUAL 20 days, checked
+ *      2026-07-23 ⇒ YTD Entitled 19.73 (20/365 × 360, full year-end proration available at hire); with 3.50
+ *      taken, Available 16.23 and Balance 16.23, surfaced by leaveBalances AND leaveEntitlementBreakdown.
  *  (2) LEAP YEAR — a 366-day first year clamps to the annual entitlement (20.00, never 20.05).
  *  (3) NON-ANNUAL — a2c on SICK grants in FULL (EA s.60F), never day-sliced.
  *  (4) CLAW-DOWN through the real HR action — updateLeaveType saving a2c corrects an already-wrong
@@ -144,31 +146,32 @@ const a2cRows = (employmentId: string) =>
     );
 
 // ── (1) HAPPY PATH — the reporter's numbers ────────────────────────────────────────────────────────
-describe('f3a64d90 — first-year day-by-day build-up (the reporter’s case)', () => {
-  it('hired 6 Jan 2026 on 20 ANNUAL days ⇒ YTD 10.90, Available 7.40, Balance 7.40 at 23 Jul 2026', async () => {
+describe('f3a64d90 — first-year up-front entitlement (the reporter’s case)', () => {
+  it('hired 6 Jan 2026 on 20 ANNUAL days ⇒ YTD 19.73, Available 16.23, Balance 16.23 at 23 Jul 2026', async () => {
     await annualPolicy(20);
     await setOverride('a2c', ASOF);
     const { employmentId } = await hire({
       grants: [{ id: b.annualLeaveTypeId, code: 'ANNUAL', yearCycleOverride: 'a2c' }],
     });
-    // The hire grant opens at the day-one sliver (20/365 × 1), NOT the hire-month lump of 20.
-    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(0.05);
+    // adcdf215: the hire grant opens at the FULL up-front part-year figure (20/365 × 360 = 19.73), NOT a
+    // day-one sliver and NOT the hire-month lump of 20.
+    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(19.73);
 
     await debit(employmentId, 3.5, '2026-06-10');
     await reprojectEntitlementForEmployment(adminCtx(b), { employmentId, asOf: ASOF, trigger: 'test' });
 
     const s = await annualSummary(employmentId);
-    expect(s.accrued).toBe(10.9); // YTD Entitled — accrual-class only, so the correction had to be one
+    expect(s.accrued).toBe(19.73); // YTD Entitled — accrual-class only, up front and asOf-independent
     expect(s.taken).toBe(3.5);
     expect(s.pending).toBe(0);
-    expect(s.balance).toBe(7.4);
-    expect(s.available).toBe(7.4);
+    expect(s.balance).toBe(16.23);
+    expect(s.available).toBe(16.23);
 
     // The Entitlement breakdown panel reads the same ledger and must agree line for line.
     const bd = await leaveEntitlementBreakdown(adminCtx(b), employmentId, b.annualLeaveTypeId, ASOF);
     expect(bd!.cycleStart).toBe('2026-01-01'); // a2c's leave YEAR is the calendar year
-    expect(bd!.currentYearEntitlement).toBe(10.9);
-    expect(bd!.totalAvailable).toBe(7.4);
+    expect(bd!.currentYearEntitlement).toBe(19.73);
+    expect(bd!.totalAvailable).toBe(16.23);
   });
 
   it('is idempotent — a second recalc at the same date writes nothing', async () => {
@@ -182,14 +185,14 @@ describe('f3a64d90 — first-year day-by-day build-up (the reporter’s case)', 
     const r2 = await reprojectEntitlementForEmployment(adminCtx(b), { employmentId, asOf: ASOF, trigger: 'test' });
     expect(r2.affected).toBe(0);
     expect(await a2cRows(employmentId)).toHaveLength(first.length);
-    expect((await annualSummary(employmentId)).accrued).toBe(10.9);
+    expect((await annualSummary(employmentId)).accrued).toBe(19.73);
   });
 });
 
 // ── (2) LEAP YEAR — the mandatory clamp ────────────────────────────────────────────────────────────
 describe('f3a64d90 — a2cFirstYearEntitledToDate', () => {
-  it('reproduces the reporter’s arithmetic (20 ÷ 365 × 199 = 10.90)', () => {
-    expect(a2cFirstYearEntitledToDate(HIRED, ASOF, 20)).toBe(10.9);
+  it('reproduces the reporter’s up-front arithmetic (20 ÷ 365 × 360 = 19.73)', () => {
+    expect(a2cFirstYearEntitledToDate(HIRED, ASOF, 20)).toBe(19.73);
   });
 
   it('clamps a 366-day leap first year to the annual entitlement (20.00, not 20.05)', () => {
@@ -197,9 +200,39 @@ describe('f3a64d90 — a2cFirstYearEntitledToDate', () => {
     expect(a2cFirstYearEntitledToDate('2028-01-01', '2028-12-31', 20)).toBe(20);
   });
 
-  it('never accrues past 31 Dec of the HIRE year, and floors a pre-hire asOf at 0', () => {
+  it('is asOf-independent within the hire year (window ends 31 Dec), and floors a pre-hire asOf at 0', () => {
+    // adcdf215: the up-front window end is 31 Dec of the HIRE year, so a later-year asOf and a 31-Dec asOf
+    // both give the same figure — the value never tracks asOf for an active employee.
     expect(a2cFirstYearEntitledToDate(HIRED, '2027-06-30', 20)).toBe(a2cFirstYearEntitledToDate(HIRED, '2026-12-31', 20));
-    expect(a2cFirstYearEntitledToDate(HIRED, '2026-01-05', 20)).toBe(0);
+    expect(a2cFirstYearEntitledToDate(HIRED, '2026-01-05', 20)).toBe(0); // pre-hire guard
+  });
+
+  it('is asOf-independent for an ACTIVE hire (hire date, mid-year, 31 Dec all give 19.73; pre-hire is 0)', () => {
+    // adcdf215: the full up-front figure is available from day one and does not build over the year.
+    expect(a2cFirstYearEntitledToDate(HIRED, HIRED, 20)).toBe(19.73); // available immediately at hire
+    expect(a2cFirstYearEntitledToDate(HIRED, ASOF, 20)).toBe(19.73); // mid-year — same figure
+    expect(a2cFirstYearEntitledToDate(HIRED, '2026-12-31', 20)).toBe(19.73); // year-end — same figure
+    expect(a2cFirstYearEntitledToDate(HIRED, '2026-01-05', 20)).toBe(0); // one day before hire ⇒ floored
+  });
+
+  it('caps a first-year LEAVER at their last day of service (serviceEnd), not the full year', () => {
+    // adcdf215: a leaver terminated 2026-03-15 (69 days worked, inclusive) prorates to 20/365 × 69 = 3.78,
+    // well below the 19.73 an active employee would carry — so encashment / final pay is never over-granted.
+    expect(a2cFirstYearEntitledToDate(HIRED, ASOF, 20, '2026-03-15')).toBe(3.78);
+    expect(a2cFirstYearEntitledToDate(HIRED, ASOF, 20, '2026-03-15')).toBeLessThan(a2cFirstYearEntitledToDate(HIRED, ASOF, 20));
+    // A serviceEnd in a LATER year does not cap (still the full up-front figure).
+    expect(a2cFirstYearEntitledToDate(HIRED, ASOF, 20, '2027-02-01')).toBe(19.73);
+  });
+
+  it('clamps the up-front figure to the winning band’s Maximum Balance from hire (cap 10 < 19.73)', () => {
+    // adcdf215: projectExpectedEntitlement applies the max-balance cap on the up-front figure, so the cap
+    // bites IMMEDIATELY at hire rather than partway through the year as the old build-up did.
+    const capped: GradePolicyRow[] = [
+      { gradeId: null, companyId: null, accrual: { annualDays: 20, serviceBands: [{ fromYears: 0, toYears: null, days: 20, maxBalanceDays: 10 }] } },
+    ];
+    const emp = { hiredOn: HIRED, leaveCycle: 'calendar' as string | null, gradeId: null, companyId: 'c1' };
+    const res = projectExpectedEntitlement(emp, 'ANNUAL', capped, () => 0, ASOF, undefined, 'a2c');
+    expect(res!.expected).toBe(10); // min(19.73, cap 10)
   });
 
   it('bounds the special first-year window to ANNUAL in the hire year', () => {
@@ -249,10 +282,10 @@ describe('f3a64d90 — saving the Leave Year Type corrects everyone already affe
     await setOverride('a2c', ASOF);
 
     const after = await annualSummary(employmentId);
-    expect(after.accrued).toBe(10.9); // clawed DOWN to the a2c target (accrual-class, so YTD moved)
+    expect(after.accrued).toBe(19.73); // clawed DOWN from 20 to the a2c up-front target (accrual-class)
     expect(after.taken).toBe(3.5);
-    expect(after.balance).toBe(7.4); // the stale −9.50 was reversed, so Balance = 10.90 − 3.50
-    expect(after.available).toBe(7.4);
+    expect(after.balance).toBe(16.23); // the stale −9.50 was reversed, so Balance = 19.73 − 3.50
+    expect(after.available).toBe(16.23);
 
     // Both row classes were written under the one a2c reason (the top-up and the reversal).
     const rows = await a2cRows(employmentId);
@@ -261,8 +294,8 @@ describe('f3a64d90 — saving the Leave Year Type corrects everyone already affe
     // Re-running the correction is inert (both classes are read back into the next run's sums).
     await reprojectEntitlementForEmployment(adminCtx(b), { employmentId, asOf: ASOF, trigger: 'test' });
     const again = await annualSummary(employmentId);
-    expect(again.accrued).toBe(10.9);
-    expect(again.balance).toBe(7.4);
+    expect(again.accrued).toBe(19.73);
+    expect(again.balance).toBe(16.23);
   });
 
   it('leaves employees on other Leave Year Types completely untouched', async () => {
@@ -286,7 +319,7 @@ describe('f3a64d90 — year two onward is a plain calendar year', () => {
       grants: [{ id: b.annualLeaveTypeId, code: 'ANNUAL', yearCycleOverride: 'a2c' }],
     });
     await reprojectEntitlementForEmployment(adminCtx(b), { employmentId, asOf: ASOF, trigger: 'test' });
-    expect(await accruedInYear(employmentId, 2026)).toBe(10.9);
+    expect(await accruedInYear(employmentId, 2026)).toBe(19.73); // hire year — up-front figure
 
     await openLeaveYear(adminCtx(b), { year: 2027 });
     expect(await accruedInYear(employmentId, 2027)).toBe(20);
@@ -306,18 +339,18 @@ describe('f3a64d90 — the slice is taken off the fully resolved entitlement', (
   ];
 
   it('a below-floor policy still slices the STATUTORY floor, not the raw policy days', () => {
-    // Policy says 5, the EA-1955 floor says 8 ⇒ the slice is 8/365 × 199 = 4.36, never 5/365 × 199.
+    // Policy says 5, the EA-1955 floor says 8 ⇒ the up-front slice is 8/365 × 360 = 7.89, never 5/365 × 360.
     const res = projectExpectedEntitlement(emp, 'ANNUAL', policyRows(5), () => 8, ASOF, undefined, 'a2c');
     expect(res!.expected).toBe(a2cFirstYearEntitledToDate(HIRED, ASOF, 8));
-    expect(res!.expected).toBe(4.36);
+    expect(res!.expected).toBe(7.89);
     expect(res!.windowStart).toBe('2026-01-01');
   });
 
   it('an auto-linked benefit-scheme band supersedes the policy days in the slice', () => {
-    // Scheme band 24 beats the policy's 20 and the floor's 8 ⇒ 24/365 × 199.
+    // Scheme band 24 beats the policy's 20 and the floor's 8 ⇒ up-front 24/365 × 360 = 23.67.
     const res = projectExpectedEntitlement(emp, 'ANNUAL', policyRows(20), () => 8, ASOF, () => 24, 'a2c');
     expect(res!.expected).toBe(a2cFirstYearEntitledToDate(HIRED, ASOF, 24));
-    expect(res!.expected).toBe(13.08);
+    expect(res!.expected).toBe(23.67);
   });
 
   it('without the a2c override the same inputs keep the existing hire-month proration', () => {

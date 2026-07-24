@@ -85,9 +85,9 @@ export type HireParams = {
   provisionalEndOn?: string | null;
   /** Standing entitlements to grant on hire (pack-driven). Pass ANNUAL / SICK /
    *  HOSPITALIZATION; situational types (maternity etc.) are claimed per event, not granted.
-   *  `yearCycleOverride` (f3a64d90) is the type's raw leave_type.year_cycle_override — only 'a2c' is
-   *  load-bearing here (it replaces the hire-month lump with the day-to-date sliver on ANNUAL). Absent /
-   *  null ⇒ byte-identical pre-existing grant behaviour. */
+   *  `yearCycleOverride` (f3a64d90 → adcdf215) is the type's raw leave_type.year_cycle_override — only 'a2c'
+   *  is load-bearing here (it replaces the hire-month lump with the full up-front part-year figure on
+   *  ANNUAL). Absent / null ⇒ byte-identical pre-existing grant behaviour. */
   grantLeaveTypes?: { id: string; code: string; yearCycleOverride?: string | null }[];
 };
 
@@ -293,11 +293,12 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           // ANNUAL pro-rates by months remaining in the hire year (s.60E practice).
           // SICK / HOSPITALIZATION grant in full: s.60F is a per-calendar-year
           // entitlement and must not be prorated for mid-year joiners.
-          // Anniversary to Calendar (f3a64d90): an a2c ANNUAL type does NOT lump the hire year — it builds
-          // day by day from the join date, so the hire grant opens at the to-date sliver (one day worked on
-          // day one) and reprojectA2cEntitlement / a profile recalc carry it forward. Without this row the
-          // employee would have no accrual in the window and every later correction would skip them.
-          // Non-ANNUAL a2c types keep the existing full grant (s.60F).
+          // Anniversary to Calendar (f3a64d90 → adcdf215): an a2c ANNUAL type does NOT month-lump the hire
+          // year — it grants the full prorated part-year (join → 31 Dec) UP FRONT, so the hire grant opens
+          // at the whole up-front figure (e.g. a 6-Jan, 20-day joiner opens at 19.73, not a growing sliver).
+          // A fresh hire has no terminatedOn, so no serviceEnd is passed and it gets the full up-front value;
+          // reprojectA2cEntitlement / a profile recalc keep it in sync (and would cap a later leaver at their
+          // exit). Non-ANNUAL a2c types keep the existing full grant (s.60F).
           const grantRaw = isA2cFirstYear(lt.yearCycleOverride, lt.code, p.hiredOn, p.hiredOn)
             ? a2cFirstYearEntitledToDate(p.hiredOn, p.hiredOn, days)
             : lt.code === 'ANNUAL'

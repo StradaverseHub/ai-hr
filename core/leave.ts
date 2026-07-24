@@ -5108,11 +5108,11 @@ export function earnedCycleStart(hiredOn: string, asOf: string, cycle: string | 
   return `${cycleYear}-${hireMonth}-01`;
 }
 
-/** Leave Year Type override (feedback e1a51aea, extended by f3a64d90): the LIVE per-type override values.
- *  'a2a' and 'c2c' reuse the existing anniversary/calendar semantics; 'a2c' (Anniversary to Calendar) went
- *  live with f3a64d90 — its leave YEAR is the calendar year (see resolveLeaveYearCycle), and the ONLY novel
- *  behaviour is the HIRE-year ANNUAL day-by-day build-up (a2cFirstYearEntitledToDate). Migration 0310
- *  widened the DB CHECK to match this set (defence-in-depth). */
+/** Leave Year Type override (feedback e1a51aea, extended by f3a64d90 → adcdf215): the LIVE per-type override
+ *  values. 'a2a' and 'c2c' reuse the existing anniversary/calendar semantics; 'a2c' (Anniversary to Calendar)
+ *  went live with f3a64d90 — its leave YEAR is the calendar year (see resolveLeaveYearCycle), and the ONLY
+ *  novel behaviour is the HIRE-year ANNUAL up-front part-year entitlement (a2cFirstYearEntitledToDate).
+ *  Migration 0310 widened the DB CHECK to match this set (defence-in-depth). */
 export const LEAVE_YEAR_CYCLE_OVERRIDES = ['a2a', 'c2c', 'a2c'] as const;
 export type LeaveYearCycleOverride = (typeof LEAVE_YEAR_CYCLE_OVERRIDES)[number];
 
@@ -5129,10 +5129,11 @@ export const A2C_OVERRIDE = 'a2c';
  * of company.leave_cycle in a per-type computation resolves through this ONE function (accrueEarnedLeave,
  * the two recalc kernels' callers, leaveEntitlementBreakdown) so the override cannot half-apply.
  *
- * Anniversary to Calendar (f3a64d90) maps to 'calendar' — NOT a new third cycle. Its year runs 1 Jan →
- * 31 Dec like any calendar type; only the employee's FIRST (hire) year is sliced day-by-day from the join
- * date. Mapping it here keeps earnedCycleStart, the carry/forfeit anchoring, openLeaveYear's year-two grant
- * and every resolve call-site byte-identical, and gets year-two-onward behaviour for free.
+ * Anniversary to Calendar (f3a64d90 → adcdf215) maps to 'calendar' — NOT a new third cycle. Its year runs
+ * 1 Jan → 31 Dec like any calendar type; only the employee's FIRST (hire) year is prorated (join → 31 Dec)
+ * and granted UP FRONT from the join date. Mapping it here keeps earnedCycleStart, the carry/forfeit
+ * anchoring, openLeaveYear's year-two grant and every resolve call-site byte-identical, and gets
+ * year-two-onward behaviour for free.
  */
 export function resolveLeaveYearCycle(
   override: string | null | undefined,
@@ -5144,20 +5145,30 @@ export function resolveLeaveYearCycle(
 }
 
 /**
- * Anniversary to Calendar — the ONE shared first-year kernel (feedback f3a64d90). An employee hired
- * part-way through a year builds their ANNUAL entitlement day by day across their first, partial leave
- * year (join date → 31 Dec of the hire year):
+ * Anniversary to Calendar — the ONE shared first-year kernel (feedback f3a64d90 → adcdf215). An employee
+ * hired part-way through a year gets their full prorated part-year ANNUAL entitlement UP FRONT, available
+ * from their join date, across their first, partial leave year (join date → 31 Dec of the hire year):
  *
- *     (annual entitlement ÷ 365) × days worked to date          — the reporter's stated formula
+ *     (annual entitlement ÷ 365) × days from join to 31 Dec     — the reporter's stated formula
  *
- * `daysWorked` is INCLUSIVE of both the join date and `asOf` (daysBetween is exclusive-end, hence the +1):
- * a 2026-01-06 joiner checked on 2026-07-23 has worked 199 days, so 20/365 × 199 = 10.90 days.
- * The window end is clamped to 31 Dec of the HIRE year, so an asOf in a later year can never keep
- * accruing on the first-year formula (year two is a plain calendar grant — see resolveLeaveYearCycle).
+ * UP-FRONT (adcdf215): the value is INDEPENDENT of `asOf` for an active employee — the window end is
+ * 31 Dec of the HIRE year, so a 2026-01-06 joiner sees 20/365 × 360 = 19.73 days immediately at hire,
+ * not a sliver that builds day by day. `daysWorked` is INCLUSIVE of both endpoints (daysBetween is
+ * exclusive-end, hence the +1). Year two onward is a plain calendar grant (see resolveLeaveYearCycle).
+ *
+ * `asOf` is STILL load-bearing, not vestigial: a pre-hire `asOf` floors the figure at 0 (the explicit
+ * guard below — previously this floor was implemented THROUGH the window end, which the up-front switch
+ * removed), and the upstream isA2cFirstYear check gates entry to this kernel by the hire-year window.
+ *
+ * LEAVER CAP (adcdf215): for a first-year employee who has LEFT, pass `serviceEnd` (their termination
+ * date). The window end is then the EARLIER of 31 Dec and `serviceEnd`, so the figure prorates only to
+ * their last working day and never inflates encashment / final pay with days they never served. When
+ * `serviceEnd` is absent (a fresh, active hire) the end is 31 Dec — the full up-front figure.
  *
  * The min() CLAMP is mandatory, not cosmetic: a 366-day first year (a 1-Jan hire in a leap year) would
  * otherwise yield 20/365 × 366 = 20.05 — overshooting the annual entitlement. The /365 divisor stays per
- * the reporter's spec; the clamp guarantees the cap holds. Pre-hire `asOf` floors at 0.
+ * the reporter's spec (it pins the 19.73 reference; a 6-Jan c2c/calendar joiner month-prorates to 20.00
+ * instead — the divergence is intentional), and the clamp guarantees the cap holds.
  *
  * `entitledDays` MUST be the FULLY RESOLVED entitlement (EA-1955 floor ∨ benefit-scheme band ∨ policy days
  * — i.e. the shared `entitledDays()` composition), never a raw policy number, so this path respects the
@@ -5168,10 +5179,18 @@ export function a2cFirstYearEntitledToDate(
   hiredOn: string,
   asOf: string,
   entitledDays: number,
+  serviceEnd?: string | null,
 ): number {
   if (entitledDays <= 0) return 0;
+  // Pre-hire floor (adcdf215): the up-front figure is only available from the join date onward. This is an
+  // EXPLICIT guard now — the old build-up floored pre-hire implicitly, via a window end that tracked asOf
+  // (asOf < dec31 ? asOf : dec31) so a pre-hire asOf produced daysWorked ≤ 0. The up-front window end no
+  // longer tracks asOf, so the floor must be stated here.
+  if (asOf < hiredOn) return 0;
   const dec31 = `${hiredOn.slice(0, 4)}-12-31`;
-  const end = asOf < dec31 ? asOf : dec31;
+  // Active first-year employee ⇒ full part-year (join → 31 Dec) up front. A first-year LEAVER is capped at
+  // their last day of service so the figure never over-grants days they never served.
+  const end = serviceEnd != null && serviceEnd < dec31 ? serviceEnd : dec31;
   const daysWorked = daysBetween(hiredOn, end) + 1; // inclusive of both endpoints
   if (daysWorked <= 0) return 0;
   return round2(Math.min((entitledDays / 365) * daysWorked, entitledDays));
@@ -5672,7 +5691,16 @@ export type PolicyScope = { gradeId: string | null; companyId: string | null };
 export function projectExpectedEntitlement(
   // Leave Year Type override (e1a51aea): `leaveCycle` is the EFFECTIVE cycle for the (type, company) pair —
   // callers resolve it via resolveLeaveYearCycle(type.yearCycleOverride, company.leaveCycle) before calling.
-  emp: { hiredOn: string; leaveCycle: string | null; gradeId: string | null; companyId: string },
+  // `terminatedOn` (adcdf215): a first-year a2c LEAVER's last day of service — passed as the serviceEnd cap
+  // into the up-front kernel so the figure prorates to their exit, not the full year. Absent/null ⇒ active
+  // employee ⇒ full up-front figure. Ignored on every non-a2c branch (byte-identical for other callers).
+  emp: {
+    hiredOn: string;
+    leaveCycle: string | null;
+    gradeId: string | null;
+    companyId: string;
+    terminatedOn?: string | null;
+  },
   typeCode: string,
   policyRows: GradePolicyRow[],
   floor: (code: string, years: number) => number,
@@ -5715,13 +5743,14 @@ export function projectExpectedEntitlement(
   const days = entitledDays(floor(typeCode, years), schemeDaysForYears?.(years) ?? null, pol?.days ?? 0);
   let expected: number;
   if (a2cFirstYear) {
-    // Anniversary to Calendar (f3a64d90), FIRST (hire) year only: the entitlement builds day by day from
-    // the join date to `asOf` at (resolved entitlement ÷ 365) — the ONE shared kernel, so the hire grant,
-    // this projection and the a2c correction can never disagree. The window is the CALENDAR year (a2c
-    // resolves to 'calendar'), so carry/forfeit anchoring and the year-two grant stay untouched. Every
-    // other a2c case — a non-ANNUAL type, or ANNUAL in year two onward — falls through to the branches
-    // below and behaves exactly like an ordinary calendar type (full grant).
-    expected = a2cFirstYearEntitledToDate(emp.hiredOn, asOf, days);
+    // Anniversary to Calendar (f3a64d90 → adcdf215), FIRST (hire) year only: the entitlement is the full
+    // prorated part-year (join → 31 Dec) UP FRONT at (resolved entitlement ÷ 365) — the ONE shared kernel,
+    // so the hire grant, this projection and the a2c correction can never disagree. A first-year LEAVER is
+    // capped at their last day of service via `terminatedOn` (serviceEnd) so the figure never over-grants
+    // days they never served. The window is the CALENDAR year (a2c resolves to 'calendar'), so carry/forfeit
+    // anchoring and the year-two grant stay untouched. Every other a2c case — a non-ANNUAL type, or ANNUAL
+    // in year two onward — falls through to the branches below and behaves like an ordinary calendar type.
+    expected = a2cFirstYearEntitledToDate(emp.hiredOn, asOf, days, emp.terminatedOn ?? null);
   } else if (earnedMethod) {
     const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
     const accrualStart =
@@ -5754,9 +5783,9 @@ export function projectExpectedEntitlement(
   return { expected, windowStart };
 }
 
-/** Anniversary to Calendar (f3a64d90): the SYSTEM-generated adjustment reasons the a2c first-year model
- *  SUPERSEDES. Under a2c a first-year employee's entitlement is exactly the day-by-day accrual — there is
- *  no prior cycle to carry from (so no cap/expiry forfeit belongs in the window), and any earlier
+/** Anniversary to Calendar (f3a64d90 → adcdf215): the SYSTEM-generated adjustment reasons the a2c first-year
+ *  model SUPERSEDES. Under a2c a first-year employee's entitlement is exactly the up-front part-year figure —
+ *  there is no prior cycle to carry from (so no cap/expiry forfeit belongs in the window), and any earlier
  *  policy-/profile-recalc adjustment was computed under the model a2c replaces. A human festive-grant or
  *  a manual HR adjustment carries NO `sys:` reason and is therefore never touched. */
 const a2cSupersededReasonCond = () =>
@@ -5776,15 +5805,20 @@ const a2cSupersededReasonCond = () =>
  * WHY ITS OWN PATH, and not one more `adjustment` in the two existing recalc kernels: the "YTD Entitled"
  * figure on every leave summary is `accrued`, and `accrued` sums ONLY entryType in ('accrual',
  * 'in_lieu_accrual') (core/read.ts leaveBalances). An `adjustment` moves Balance and Available but is
- * INVISIBLE to YTD Entitled — so a plain adjustment could never lift the reporter's 7.00 to 10.90. This
- * path therefore posts an ACCRUAL-CLASS row for the entitlement delta, which is what makes all four
- * surfaces (YTD Entitled, Available, Balance, and the Entitlement breakdown's cycleAccrual) move together.
+ * INVISIBLE to YTD Entitled — so a plain adjustment could never lift a to-date figure to the up-front
+ * target. This path therefore posts an ACCRUAL-CLASS row for the entitlement delta, which is what makes all
+ * four surfaces (YTD Entitled, Available, Balance, and the Entitlement breakdown's cycleAccrual) move
+ * together. adcdf215: this same accrual delta is what TOPS UP an already-in-flight build-up employee
+ * (to-date → up-front, e.g. 10.90 → 19.73) on the next correction sweep — up-front ≥ to-date for a mid-year
+ * first-year employee, so that top-up is never a claw-down.
  *
  * Two rows, both stamped `sys:a2c_recalc:<leaveTypeId>`:
  *  1. ACCRUAL delta — brings the window's accrual-class total to exactly the a2c target
  *     (a2cFirstYearEntitledToDate over the FULLY resolved entitlement: EA-1955 floor ∨ benefit-scheme band
- *     ∨ policy days). Signed: an employee whose ledger EXCEEDS the target is clawed DOWN, which the
- *     grant-only engines can never do.
+ *     ∨ policy days). For a first-year LEAVER the target is capped at their last day of service (the
+ *     candidate's `terminatedOn`, threaded through as the kernel's serviceEnd) so the correction never
+ *     over-grants encashment / final pay. Signed: an employee whose ledger EXCEEDS the target is clawed
+ *     DOWN, which the grant-only engines can never do.
  *  2. ADJUSTMENT reversal — cancels the superseded system rows in the window (see
  *     a2cSupersededReasonCond). Without it a pure accrual top-up would fix YTD Entitled and leave Balance
  *     wrong, which is precisely the defect reported (accrued 7.00, taken 3.50, balance −6.00: about −9.50
@@ -5809,7 +5843,8 @@ export async function reprojectA2cEntitlement(
     leaveTypeId: string;
     /** Restrict to these employments; absent ⇒ every live employment the type can reach. */
     employmentIds?: string[];
-    /** Tenant-local (MYT) "today" — anchors the day-by-day build-up. */
+    /** Tenant-local (MYT) "today" — the correction date. adcdf215: the active up-front figure is asOf-
+     *  independent, but asOf still bounds the ledger window read below and gates the hire-year check. */
     asOf: string;
     /** Recorded on the event payload: what triggered the correction (e.g. 'year_cycle_override'). */
     trigger: string;
@@ -5832,6 +5867,9 @@ export async function reprojectA2cEntitlement(
     .select({
       employmentId: employment.id,
       hiredOn: employment.hiredOn,
+      // adcdf215: a first-year LEAVER's last day of service — threaded into the up-front kernel as the
+      // serviceEnd cap so the correction prorates to their exit, never over-granting encashment / final pay.
+      terminatedOn: employment.terminatedOn,
       country: company.country,
       leaveCycle: company.leaveCycle,
       gradeId: employment.gradeId,
@@ -5920,6 +5958,8 @@ export async function reprojectA2cEntitlement(
         leaveCycle: resolveLeaveYearCycle(type.yearCycleOverride, e.leaveCycle) ?? null,
         gradeId: e.gradeId,
         companyId: e.companyId,
+        // adcdf215: cap a first-year leaver's up-front figure at their last day of service.
+        terminatedOn: e.terminatedOn,
       },
       type.code,
       policyRows,
