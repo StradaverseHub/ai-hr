@@ -225,6 +225,13 @@ export default async function LeaveEntitlementsPage({
   // same step) renders — filtered by leave type, never duplicated — and the panel's Edit dialog posts the
   // SAME upsert action, so the two surfaces cannot drift.
   const schemeNameById = new Map(benefitSchemes.map((sc) => [sc.id, sc.name]));
+  // Feedback 0d1a0cfc — the owning COMPANY name per scheme, so the Service Based Entitlements table's
+  // "Benefit scheme" column can name the company beside the scheme (matching the company-grouped Scheme
+  // picker). Resolved from the benefitSchemes + companies rows this page already loads — no new query,
+  // nothing stored.
+  const schemeCompanyNameById = new Map(
+    benefitSchemes.map((sc) => [sc.id, companyNameById.get(sc.companyId) ?? null] as const),
+  );
   const poolBySchemeType = new Map<string, { name: string; totalLimitDays: number }>();
   for (const cl of schemeCombinedLimits) {
     for (const ltId of cl.leaveTypeIds) {
@@ -238,6 +245,7 @@ export default async function LeaveEntitlementsPage({
       id: e.id,
       benefitSchemeId: e.benefitSchemeId,
       schemeName: schemeNameById.get(e.benefitSchemeId) ?? '—',
+      companyName: schemeCompanyNameById.get(e.benefitSchemeId) ?? null,
       leaveTypeId: e.leaveTypeId,
       leaveTypeName: e.leaveTypeName,
       serviceBands: e.serviceBands,
