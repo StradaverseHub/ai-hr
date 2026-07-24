@@ -1338,6 +1338,20 @@
       "emergencySplitNote": "Pembahagian akhir sakit/tahunan/tanpa gaji disahkan semasa anda menghantar.",
       "loading": "Mengira…"
     },
+    "applyDetails": {
+      "toggle": "Lihat butiran hari demi hari",
+      "colStatus": "Status jadual kerja",
+      "colApplied": "Cuti dikira",
+      "yes": "Ya",
+      "no": "Tidak",
+      "total": "Jumlah: {days} hari"
+    },
+    "applyDayStatus": {
+      "working_day": "Hari bekerja",
+      "half_working_day": "Hari bekerja separuh",
+      "rest_day": "Hari rehat",
+      "public_holiday": "Cuti umum"
+    },
     "adminCancelButton": "Batal cuti",
     "adminCancelDialogTitle": "Batal cuti bagi pihak pekerja",
     "adminCancelDialogDescription": "Adakah anda pasti mahu membatalkan cuti ini bagi pihak pekerja? Baki akan dipulihkan dan pekerja akan dimaklumkan. Ia berkuat kuasa serta-merta tanpa memerlukan kelulusan.",

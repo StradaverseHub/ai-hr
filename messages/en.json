@@ -1338,6 +1338,20 @@
       "emergencySplitNote": "The final sick/annual/unpaid split is confirmed when you submit.",
       "loading": "Calculating…"
     },
+    "applyDetails": {
+      "toggle": "View day-by-day details",
+      "colStatus": "Schedule status",
+      "colApplied": "Leave applied",
+      "yes": "Yes",
+      "no": "No",
+      "total": "Total: {days} day(s)"
+    },
+    "applyDayStatus": {
+      "working_day": "Working day",
+      "half_working_day": "Half working day",
+      "rest_day": "Rest day",
+      "public_holiday": "Public holiday"
+    },
     "adminCancelButton": "Cancel leave",
     "adminCancelDialogTitle": "Cancel leave on behalf of employee",
     "adminCancelDialogDescription": "Are you sure you want to cancel this leave on behalf of the employee? The balance will be restored and the employee will be notified. This takes effect immediately with no approval required.",

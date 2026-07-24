@@ -1338,6 +1338,20 @@
       "emergencySplitNote": "最终的病假/年假/无薪假分配将在提交时确认。",
       "loading": "计算中…"
     },
+    "applyDetails": {
+      "toggle": "查看每日明细",
+      "colStatus": "排班状态",
+      "colApplied": "计入休假",
+      "yes": "是",
+      "no": "否",
+      "total": "合计：{days} 天"
+    },
+    "applyDayStatus": {
+      "working_day": "工作日",
+      "half_working_day": "半个工作日",
+      "rest_day": "休息日",
+      "public_holiday": "公共假期"
+    },
     "adminCancelButton": "取消休假",
     "adminCancelDialogTitle": "代员工取消休假",
     "adminCancelDialogDescription": "您确定要代该员工取消此休假吗？余额将被恢复，并会通知该员工。此操作立即生效，无需审批。",

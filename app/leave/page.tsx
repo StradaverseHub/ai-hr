@@ -52,6 +52,7 @@ import {
   editLeaveAction,
   cancelOwnLeaveAction,
   previewLeaveDeductionAction,
+  leaveApplySummaryAction,
 } from './actions';
 
 const REQ_STATUS: Record<string, string> = {
@@ -181,10 +182,18 @@ export default async function LeavePage({
   const locale = await getLocale();
   const [employees, leaveTypes, me] = await Promise.all([
     listEmployees(session, scopeIds),
-    listLeaveTypes(session),
+    // Employee apply-popup enhancement: pass the viewer's locale so listLeaveTypes localizes `name` through
+    // pickName. Without it the list is always English, which also makes an alphabetical sort meaningless
+    // outside English. Admin master screens deliberately keep passing no locale (they edit the English name).
+    listLeaveTypes(session, { locale }),
     // R37 e5a158d3: the balance view is now the viewer's OWN detailed table (was an all-employee pivot).
     myEmployment(session),
   ]);
+  // Sort ONCE, at the source: all four consumers on this page map off this array (the request-leave dialog
+  // options, the two edit-leave dialog lists, and the admin filter-chip options), so one sort makes them
+  // agree instead of one popup being ordered and another not. NOT pushed into core/read.ts listLeaveTypes —
+  // the admin master listing has its own ordering.
+  leaveTypes.sort((a, b) => a.name.localeCompare(b.name, locale, { sensitivity: 'base' }));
   const active = employees.filter((e) => !e.terminatedOn);
 
   // Request Leave (feedback 48e69709): the apply form moved from a collapsed Card at the page bottom into a
@@ -740,6 +749,7 @@ export default async function LeavePage({
                 employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}
                 submitAction={requestLeaveAction}
                 previewAction={previewLeaveDeductionAction}
+                summaryAction={leaveApplySummaryAction}
               />
             </div>
           }
