@@ -24,6 +24,7 @@
     "review:sweep": "node --env-file=.env.local --import tsx scripts/review-sweep.ts",
     "feedback:plan": "node --env-file=.env.local --import tsx scripts/feedback-plan.ts",
     "improve:pull": "node --import tsx scripts/improve/cli.ts pull",
+    "improve:raise": "node --import tsx scripts/improve/cli.ts raise",
     "improve:pull-approved": "node --import tsx scripts/improve/cli.ts pull-approved",
     "improve:push-plan": "node --import tsx scripts/improve/cli.ts push-plan",
     "improve:build-start": "node --import tsx scripts/improve/cli.ts build-start",

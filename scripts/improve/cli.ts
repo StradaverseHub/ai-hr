@@ -9,7 +9,7 @@
  *
  * push-plan / mark-deployed read their argument as JSON on stdin (plans contain newlines/quotes).
  */
-import { markBuildCompleted, markBuildStarted, markDeployed, pullApproved, pullPlannable, pushPlan } from './remote';
+import { markBuildCompleted, markBuildStarted, markDeployed, pullApproved, pullPlannable, pushPlan, raiseFeedback } from './remote';
 import { releaseBuiltItem } from './release';
 
 function readStdin(): Promise<string> {
@@ -31,6 +31,15 @@ async function main() {
     case 'pull-approved':
       process.stdout.write(JSON.stringify(pullApproved(), null, 2) + '\n');
       break;
+    case 'raise': {
+      // Operator-raised feedback (status → open), e.g. a decision the pipeline surfaced that the reporter
+      // must own. Reads {tenantId, reporterEmploymentId, reporterUserId?, category, title, description,
+      // expectedBehavior?, expectedFunction?} as JSON on stdin.
+      const p = JSON.parse(await readStdin());
+      const { id } = raiseFeedback(p);
+      console.log(`raised feedback ${id} (status → open)`);
+      break;
+    }
     case 'push-plan': {
       const p = JSON.parse(await readStdin());
       pushPlan(p);

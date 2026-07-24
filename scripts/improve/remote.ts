@@ -10,6 +10,7 @@
  * then there is no feedback_request table to pull from.
  */
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 
 const HOST = process.env.IMPROVE_SSH_HOST ?? '10.20.30.20';
 const PORT = process.env.IMPROVE_SSH_PORT ?? '8288';
@@ -66,6 +67,50 @@ function selectFeedback(whereStatus: string): RemoteFeedback[] {
 export const pullPlannable = (): RemoteFeedback[] => selectFeedback(`'open','contested'`);
 /** Items the reporter has approved (ready to build + release). */
 export const pullApproved = (): RemoteFeedback[] => selectFeedback(`'approved'`);
+
+/**
+ * Raise a NEW feedback item on the deployed board on a reporter's behalf (operator-side), for when a
+ * decision the pipeline uncovered needs the reporter to own it — e.g. two approved items that turned out
+ * to contradict each other. Mirrors core/feedback.ts submitFeedback EXACTLY: one feedback_request row
+ * (status defaults to 'open', awaiting a plan) + one feedback.submitted domain_event, same columns the
+ * app sets, so the substrate/hash-chain trigger treats it identically to an in-app submission. The item
+ * then flows the normal path: plan → the reporter approves or rejects on /feedback.
+ */
+export function raiseFeedback(p: {
+  tenantId: string;
+  reporterEmploymentId: string;
+  reporterUserId?: string | null;
+  category: 'issue' | 'enhancement' | 'new_function';
+  title: string;
+  description: string;
+  expectedBehavior?: string | null;
+  expectedFunction?: string | null;
+}): { id: string } {
+  assertUuid(p.tenantId, 'tenant id');
+  assertUuid(p.reporterEmploymentId, 'reporter employment id');
+  if (p.reporterUserId) assertUuid(p.reporterUserId, 'reporter user id');
+  if (!['issue', 'enhancement', 'new_function'].includes(p.category)) throw new Error(`bad category: ${p.category}`);
+  const title = p.title.trim();
+  const description = p.description.trim();
+  if (!title) throw new Error('A title is required.');
+  if (!description) throw new Error('A description is required.');
+  const id = randomUUID();
+  const ruser = p.reporterUserId ? `'${p.reporterUserId}'` : 'NULL';
+  const actorType = p.reporterUserId ? 'user' : 'system';
+  const actorId = p.reporterUserId ? `'${p.reporterUserId}'` : 'NULL';
+  const eb = p.expectedBehavior?.trim() ? dq(p.expectedBehavior.trim()) : 'NULL';
+  const ef = p.expectedFunction?.trim() ? dq(p.expectedFunction.trim()) : 'NULL';
+  const sql = [
+    'BEGIN;',
+    `INSERT INTO feedback_request (id, tenant_id, reporter_employment_id, reporter_user_id, category, title, description, expected_behavior, expected_function, status) ` +
+      `VALUES ('${id}', '${p.tenantId}', '${p.reporterEmploymentId}', ${ruser}, '${p.category}', ${dq(title)}, ${dq(description)}, ${eb}, ${ef}, 'open');`,
+    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, actor_id, subject_employment_id, payload) ` +
+      `VALUES ('${p.tenantId}', 'feedback', '${id}', 'feedback.submitted', '${actorType}', ${actorId}, '${p.reporterEmploymentId}', ${dq(JSON.stringify({ category: p.category, title, via: 'operator-raised' }))}::jsonb);`,
+    'COMMIT;',
+  ].join('\n');
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
+  return { id };
+}
 
 /** Push a refined plan back (UPDATE + a feedback.plan.drafted domain_event — the substrate stays whole). */
 export function pushPlan(p: {
