@@ -40,6 +40,7 @@ import {
   type ServiceBand,
 } from './leave';
 import { countryPacks } from '../localization/registry';
+import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
 import { MARITAL_STATUSES } from './profile';
 import {
   appUser,
@@ -60,10 +61,17 @@ import {
   leaveRequest,
   leaveType,
   location,
+  payrollCycle,
   person,
   position,
   roleAssignment,
 } from '../db/schema';
+// Organization Module — Automatic Payroll Cycle Assignment (361e3b15): the admin Add-company path now seeds
+// the standard cycle catalog (the seed the account-setup / provisioning paths already run) so a company is
+// payroll-ready the moment it is created, and stores its default cycle by name. Imported through the pack
+// FACADE, not `./payroll-cycle` directly (ADR-0080 D9, test/payroll-pack-drift.test.ts): this is a new
+// cross-module consumer, and the ratchet allowlist only ever shrinks.
+import { DEFAULT_PAYROLL_CYCLES, seedPayrollCycleCatalog } from '../packs/payroll/service';
 
 /** The three holiday-calendar KINDS (ADR-0067). 'standard' = official gazette only (no resolver branch);
  *  'extended' = gazette ∪ company ad-hoc; 'custom' = company ad-hoc only (national NOT auto-added). */
@@ -182,6 +190,17 @@ function cleanEligList(
   return deduped.length > 0 ? deduped : undefined;
 }
 
+/** Normalize an org-assignment eligibility field to a de-duped, blank-stripped list WITHOUT catalogue
+ *  validation. Unlike cleanEligList, the stored values are NOT allow-listed against the profile_option catalogue:
+ *  the picker limits NEW picks to active values, but a value later deactivated/removed must still re-save cleanly
+ *  (legacy tolerance — the same rule assertProfileValueAllowed applies on the profile side). Empty ⇒ undefined
+ *  (the field carries no restriction). */
+function cleanOrgEligList(v: string | string[] | null | undefined): string[] | undefined {
+  const arr = (Array.isArray(v) ? v : v == null ? [] : [v]).map((x) => String(x).trim()).filter((x) => x !== '');
+  const deduped = [...new Set(arr)];
+  return deduped.length > 0 ? deduped : undefined;
+}
+
 function cleanEligibility(e: LeaveEligibility | null | undefined): LeaveEligibility | null {
   if (e == null) return null;
   const out: LeaveEligibility = {};
@@ -189,6 +208,13 @@ function cleanEligibility(e: LeaveEligibility | null | undefined): LeaveEligibil
   if (gender) out.gender = gender;
   const maritalStatus = cleanEligList(e.maritalStatus, ELIGIBILITY_MARITAL_OPTIONS, 'marital status');
   if (maritalStatus) out.maritalStatus = maritalStatus;
+  // Organisation Assignment criteria: one de-duped list per org field, no catalogue hard-validation (legacy
+  // tolerance). Absent/empty ⇒ key omitted, so the field carries no restriction. Iterating the single
+  // descriptor keeps this in lock-step with the gates + the UI.
+  for (const c of ORG_ASSIGNMENT_CRITERIA) {
+    const list = cleanOrgEligList(e[c.key]);
+    if (list) out[c.key] = list;
+  }
   if (e.minServiceMonths != null && (e.minServiceMonths as unknown) !== '') {
     const n = Number(e.minServiceMonths);
     if (!Number.isInteger(n) || n < 0) throw new Error('Minimum service duration must be a non-negative whole number');
@@ -229,13 +255,25 @@ type Role =
  *  other role is normalized to a null (group-wide / inert) company_id by assignRole. */
 const SCOPABLE_ROLES = new Set<Role>(['hr_admin', 'payroll_partner', 'performance_comp_partner']);
 
+/** Resolve a create-form Default Payroll Cycle name to a canonical DEFAULT_PAYROLL_CYCLES name. The picker
+ *  only ever offers the six seeded names, so an unknown/blank value falls back to 'Monthly' (the column
+ *  default) — never a name that isn't in the freshly-seeded catalog. Case-insensitive match. */
+function resolveDefaultCycleName(v: string | undefined): string {
+  const s = (v ?? '').trim();
+  const match = DEFAULT_PAYROLL_CYCLES.find((c) => c.name.toLowerCase() === s.toLowerCase());
+  return match ? match.name : 'Monthly';
+}
+
 export async function createCompany(
   ctx: SessionContext,
-  p: { legalName: string; country?: string; currency?: string; registrationNo?: string },
+  p: { legalName: string; country?: string; currency?: string; registrationNo?: string; defaultPayrollCycle?: string },
 ) {
   const legalName = cleanName(p.legalName, 'Legal name');
   const country = isoCode(p.country, 'MY', 'Country');
   const currency = isoCode(p.currency, 'MYR', 'Currency');
+  // Organization Module (361e3b15): the chosen default, resolved against the standard catalog we are about to
+  // seed. Defaults to 'Monthly' (the column default) so the common case is a single accept-and-move-on step.
+  const defaultPayrollCycle = resolveDefaultCycleName(p.defaultPayrollCycle);
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(company)
@@ -245,17 +283,70 @@ export async function createCompany(
         country,
         currency,
         registrationNo: p.registrationNo?.trim() || null,
+        defaultPayrollCycle,
       })
       .returning({ id: company.id });
+    // Organization Module (361e3b15) — the actual pain fix: seed the six standard payroll cycles inside THIS
+    // transaction (tx-injection, the provisionTenant/seedCompanyCatalogs precedent) so a company added via the
+    // admin form is payroll-ready immediately, exactly like the account-setup / provisioning paths already are.
+    await seedPayrollCycleCatalog(ctx, row.id, tx);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'company',
       aggregateId: row.id,
       eventType: 'company.created',
       actor: actorOf(ctx),
-      payload: { legalName: p.legalName, country: p.country || 'MY' },
+      payload: { legalName: p.legalName, country: p.country || 'MY', defaultPayrollCycle },
     });
     return row;
+  });
+}
+
+/**
+ * Organization Module — Automatic Payroll Cycle Assignment (361e3b15). Change a company's default payroll
+ * cycle later, from the company's General settings. Reads the prior value, validates the new name resolves to
+ * an ACTIVE cycle in THAT company's own catalog (rejecting unknown/archived names — no silent invalid save),
+ * writes it, then appends `company.default-payroll-cycle.set` with a before→after payload (the
+ * setLeaveHalfDayFullDeduction audit precedent). Future-only by construction: batches snapshot their run
+ * type at creation and store no cycle id, so changing the default never touches a completed run. RLS (the
+ * company update policy) already requires admin-for-company, same as updateCompany.
+ */
+export async function setCompanyDefaultPayrollCycle(
+  ctx: SessionContext,
+  p: { companyId: string; cycleName: string },
+) {
+  const cycleName = (p.cycleName ?? '').replace(/\s+/g, ' ').trim();
+  if (!cycleName) throw new Error('Choose a payroll cycle.');
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ defaultPayrollCycle: company.defaultPayrollCycle })
+      .from(company)
+      .where(eq(company.id, p.companyId))
+      .limit(1);
+    // Validate against THIS company's ACTIVE catalog (name match, case-insensitive) — an unknown or archived
+    // name is rejected rather than saved, so the stored default always points at a usable cycle.
+    const [match] = await tx
+      .select({ name: payrollCycle.name })
+      .from(payrollCycle)
+      .where(
+        and(
+          eq(payrollCycle.companyId, p.companyId),
+          isNull(payrollCycle.archivedAt),
+          sql`lower(${payrollCycle.name}) = lower(${cycleName})`,
+        ),
+      )
+      .limit(1);
+    if (!match) throw new Error(`“${cycleName}” is not an active payroll cycle for this company.`);
+    await tx.update(company).set({ defaultPayrollCycle: match.name }).where(eq(company.id, p.companyId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: p.companyId,
+      eventType: 'company.default-payroll-cycle.set',
+      actor: actorOf(ctx),
+      payload: { before: before?.defaultPayrollCycle ?? null, after: match.name },
+    });
+    return { id: p.companyId };
   });
 }
 
@@ -738,13 +829,23 @@ function carryFlagsAccrual(
 }
 
 /**
- * Feedback b81d3c52 — Rounding Method persistence, under the SAME JSONB-rebuild rule as carryFlagsAccrual:
- * `accrual` is rebuilt wholesale on every save, so a key the caller did not supply is dropped. Only the two
- * REAL methods are persisted — 'none' / absent / anything unrecognised OMITS the key entirely, so a
- * No-Rounding policy stays byte-identical to a row written before this feature existed (and a re-save of an
- * untouched row adds nothing). The resolvers read an absent key as 'none'.
+ * Feedback b81d3c52 — Rounding Method persistence, generalised to the SAME tri-state the bands use
+ * (serviceBandsAccrual), under the JSONB-rebuild rule: `accrual` is rebuilt wholesale on every save, so a
+ * key the caller did not supply is dropped. The Rounding Method now REMEMBERS itself on its own instead of
+ * riding a hidden input on every unrelated form:
+ *  - `undefined` (the form did not render the Rounding dropdown / posted no marker) ⇒ PRESERVE the current
+ *    stored value (only meaningful on update — the caller passes it as `preserve`; create passes undefined
+ *    so absent means "nothing", byte-identical to before this ticket).
+ *  - `null` (the dropdown WAS rendered and 'none'/anything unrecognised was chosen) ⇒ CLEAR (omit the key),
+ *    so a No-Rounding policy stays byte-identical to a row written before this feature existed.
+ *  - 'up' / 'down' ⇒ SET. The resolvers read an absent key as 'none'.
  */
-function roundingAccrual(method?: string): { roundingMethod?: LeaveRoundingMethod } {
+function roundingAccrual(
+  method: string | null | undefined,
+  preserve: LeaveRoundingMethod | undefined,
+): { roundingMethod?: LeaveRoundingMethod } {
+  if (method === undefined) return preserve ? { roundingMethod: preserve } : {};
+  if (method === null) return {};
   return method === 'up' || method === 'down' ? { roundingMethod: method } : {};
 }
 
@@ -846,9 +947,10 @@ export async function createLeavePolicy(
      *  no bands (flat annualDays only). A non-empty array is validated (contiguous, first-from-0,
      *  last-open-ended, max 10). */
     serviceBands?: ServiceBand[] | null;
-    /** Feedback b81d3c52 — Rounding Method for this policy's calculated entitlement. Only 'up' / 'down'
-     *  are persisted; 'none' / undefined omit the key entirely (see `roundingAccrual`). */
-    roundingMethod?: string;
+    /** Feedback b81d3c52 — Rounding Method for this policy's calculated entitlement. 'up' / 'down' persist;
+     *  `null`/`undefined`/anything unrecognised omit the key (on create there is nothing to preserve, so
+     *  both `null` (No-Rounding chosen) and `undefined` (no dropdown) behave identically — see `roundingAccrual`). */
+    roundingMethod?: string | null;
     validFrom: string;
   },
 ) {
@@ -919,7 +1021,9 @@ export async function createLeavePolicy(
           ...expiry,
           ...carryFlags,
           ...bandsAccrual,
-          ...roundingAccrual(p.roundingMethod),
+          // create has no prior row to preserve — `undefined` (no dropdown) and `null` (No-Rounding chosen)
+          // both omit the key; only 'up'/'down' set it. Byte-identical to pre-tri-state behaviour.
+          ...roundingAccrual(p.roundingMethod, undefined),
         },
         validFrom: p.validFrom,
         validTo: null,
@@ -991,10 +1095,11 @@ export async function updateLeavePolicy(
      *  through a form without the band editor never touches them); null/[] = clear; array = replace
      *  (validated). */
     serviceBands?: ServiceBand[] | null;
-    /** Feedback b81d3c52 — Rounding Method. Only 'up' / 'down' persist; anything else omits the key. Every
-     *  writer rebuilds `accrual` wholesale, so EVERY form that posts this action must re-post the stored
-     *  value (the front doors do so with a hidden input) or a save would silently clear it. */
-    roundingMethod?: string;
+    /** Feedback b81d3c52 (tri-state, this ticket) — Rounding Method. `undefined` = PRESERVE the stored value
+     *  (a form that did not render the Rounding dropdown posts no marker → the writer keeps what is there,
+     *  so the fragile per-form hidden input is gone); `null` = CLEAR (dropdown rendered, No-Rounding chosen);
+     *  'up' / 'down' = SET. Reprojects already-granted balances when it changes (see reprojectEntitlementForPolicy). */
+    roundingMethod?: string | null;
     validFrom: string;
     /** Feedback 49809272: tenant-local (MYT) "today" anchoring the recalculation's current cycle. The
      *  action layer computes and passes it (tests pass fixed dates); defaults to todayInKualaLumpur()
@@ -1041,6 +1146,11 @@ export async function updateLeavePolicy(
     // method to the lump-sum default. Read from the row (not a client-side hidden field) so a method
     // changed under General after the panel rendered can never be clobbered by a stale value.
     const currentMethod = (current.accrual as { method?: string } | null)?.method;
+    // Feedback b81d3c52 (tri-state, this ticket) — PRESERVE the stored Rounding Method the same way, read
+    // from the row (not a client-side hidden field) so a form that does not render the Rounding dropdown
+    // (Carry Forward / Eligibility) posts no marker and the writer keeps what is there. `undefined` =
+    // preserve this; `null` = the dropdown WAS shown and No-Rounding was chosen ⇒ clear; 'up'/'down' = set.
+    const currentRounding = (current.accrual as { roundingMethod?: LeaveRoundingMethod } | null)?.roundingMethod;
     const companyId = p.companyId ?? null;
     const gradeId = p.gradeId ?? null;
 
@@ -1071,7 +1181,7 @@ export async function updateLeavePolicy(
       ...expiry,
       ...carryFlags,
       ...bandsAccrual,
-      ...roundingAccrual(p.roundingMethod),
+      ...roundingAccrual(p.roundingMethod, currentRounding),
     };
     await tx
       .update(leavePolicy)
@@ -1122,6 +1232,230 @@ export async function updateLeavePolicy(
       },
     });
     return recalc;
+  });
+}
+
+// ─────────────────────── Service-Based Entitlements (company × grade) ───────────────────────
+// Restructure Service-Based Leave Entitlements by Company and Grade. The Service Based Entitlements
+// sub-step is a company-driven table: pick a company, edit each grade's three service-band figures.
+// It is backed by the SAME leave_policy store the Company Entitlements timeline uses, so existing data
+// and the resolver are preserved. Writes go through createLeavePolicy / updateLeavePolicy (no new writer
+// primitive) — this service only ORCHESTRATES them so the first save materialises the whole company
+// scope safely.
+
+/** Mirror resolveGradePolicy's scope + grade tiering, but return the WINNING ROW (with its full accrual
+ *  JSONB) instead of the resolved days — so the seeding path can copy the config that currently RESOLVES
+ *  for a (grade, company) verbatim (method / carry-forward / rounding / bands preserved, not just days).
+ *  "Most generous" is compared on flat annualDays (the governing metric; a lone grade default is the
+ *  common shape) — good enough to identify the one policy that governs the grade. */
+type ActivePolicyRow = { id: string; gradeId: string | null; companyId: string | null; accrual: unknown; validFrom: string };
+function pickResolvingPolicyRow(
+  rows: ActivePolicyRow[],
+  gradeId: string | null,
+  companyId: string | null,
+): ActivePolicyRow | null {
+  const pickMax = (subset: ActivePolicyRow[]): ActivePolicyRow | null => {
+    let best: ActivePolicyRow | null = null;
+    let bestDays = -1;
+    for (const r of subset) {
+      const days = Number((r.accrual as AccrualConfig | null)?.annualDays ?? 0);
+      if (days > bestDays) {
+        bestDays = days;
+        best = r;
+      }
+    }
+    return best;
+  };
+  const within = (scope: ActivePolicyRow[]): ActivePolicyRow | null => {
+    const graded = gradeId ? pickMax(scope.filter((r) => r.gradeId === gradeId)) : null;
+    return graded ?? pickMax(scope.filter((r) => r.gradeId == null));
+  };
+  if (companyId != null) {
+    const companyScope = rows.filter((r) => r.companyId === companyId);
+    if (companyScope.length > 0) return within(companyScope);
+  }
+  return within(rows.filter((r) => r.companyId == null));
+}
+
+/** Map a stored accrual JSONB into createLeavePolicy's argument shape — a FAITHFUL FULL COPY (annualDays,
+ *  service bands, method, carry-forward config + flags, rounding), so a seeded company+grade row resolves
+ *  byte-identically to the row it copies (never a days-only downgrade). */
+function accrualToCreateArgs(accrual: unknown): {
+  annualDays: number;
+  carryForwardMax: number;
+  carryForwardExpiryMonth: number | null;
+  carryForwardExpiryDay: number | null;
+  carryForwardExpiryMode?: 'date' | 'months';
+  carryForwardExpiryMonths: number | null;
+  carryForwardEnabled?: boolean;
+  carryForwardIncludeEarned?: boolean;
+  method?: string;
+  serviceBands: ServiceBand[] | null;
+  roundingMethod?: string;
+} {
+  const acc = (accrual ?? {}) as AccrualConfig;
+  return {
+    annualDays: Number(acc.annualDays ?? 0),
+    carryForwardMax: Math.max(0, Number(acc.carryForwardMax ?? 0)),
+    carryForwardExpiryMonth: acc.carryForwardExpiryMonth ?? null,
+    carryForwardExpiryDay: acc.carryForwardExpiryDay ?? null,
+    carryForwardExpiryMode: acc.carryForwardExpiryMode === 'months' ? 'months' : undefined,
+    carryForwardExpiryMonths: acc.carryForwardExpiryMonths ?? null,
+    carryForwardEnabled: typeof acc.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : undefined,
+    carryForwardIncludeEarned: acc.carryForwardIncludeEarned,
+    method: acc.method,
+    serviceBands: Array.isArray(acc.serviceBands) && acc.serviceBands.length > 0 ? acc.serviceBands : null,
+    roundingMethod: acc.roundingMethod,
+  };
+}
+
+/**
+ * Save one grade's Service-Based Entitlement for a company from the company-driven table.
+ *
+ * The three inputs are the days for < 2 years / 2–5 years / 5+ years service. If all three are equal AND the
+ * grade's currently-resolving policy is FLAT (no bands), the row is written flat (annualDays, no bands) so a
+ * flat policy stays flat; otherwise the fixed 0–2 / 2–5 / 5+ three-band shape is written (annualDays = the
+ * 5+ figure, which is always set so legacy/no-band resolution and the EA floor path keep a value).
+ *
+ * FIRST-SAVE SAFEGUARD (ADR-0066). Writing a company-scoped row makes the resolver short-circuit to the
+ * company tier and abandon the group default for EVERY other grade of that company — which would silently
+ * drop the untouched grades to zero. So the first time any grade is saved for a company, the WHOLE company
+ * scope is materialised first: every active grade gets a company+grade row copied verbatim from what
+ * currently resolves for it, plus a company null-grade default mirroring the group null-grade default.
+ * Those copies resolve byte-identically, so untouched grades keep their exact days and no balance moves.
+ *
+ * WRITER ROUTING (fix 4). Seeding uses createLeavePolicy (genuinely new scopes). The edited grade is then
+ * updated IN PLACE via updateLeavePolicy on its own row id (keeping validFrom, so only the current-cycle
+ * recalc fires and the reprojection posts the real delta). A grade first touched after seeding is copied
+ * then updated the same way, so its employees are recalculated too.
+ */
+export async function saveServiceEntitlement(
+  ctx: SessionContext,
+  p: {
+    leaveTypeId: string;
+    companyId: string;
+    gradeId: string;
+    under2: number;
+    mid: number;
+    over: number;
+    /** Effective date for newly-created rows (seeds + first-ever grade row). Defaults to 1 Jan this year. */
+    validFrom?: string;
+    /** Tenant-local "today" anchoring the reprojection; defaults to todayInKualaLumpur(). */
+    asOf?: string;
+  },
+): Promise<{ affected: number; totalDelta: number }> {
+  const validFrom = p.validFrom ?? `${new Date().getUTCFullYear()}-01-01`;
+  // Authoritative snapshot of the type's ACTIVE policy rows (all scopes), taken BEFORE any write so the
+  // seeding copies reflect what resolved beforehand.
+  const active: ActivePolicyRow[] = await withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: leavePolicy.id,
+        gradeId: leavePolicy.gradeId,
+        companyId: leavePolicy.companyId,
+        accrual: leavePolicy.accrual,
+        validFrom: leavePolicy.validFrom,
+      })
+      .from(leavePolicy)
+      .where(and(eq(leavePolicy.leaveTypeId, p.leaveTypeId), isNull(leavePolicy.validTo))),
+  );
+  const activeGrades: { id: string }[] = await withTenant(ctx, (tx) =>
+    tx
+      .select({ id: jobGrade.id })
+      .from(jobGrade)
+      .where(isNull(jobGrade.archivedAt))
+      .orderBy(jobGrade.rank, jobGrade.name),
+  );
+
+  const companyHasScope = active.some((r) => r.companyId === p.companyId);
+  if (!companyHasScope) {
+    // Seed the company null-grade default from the group null-grade default (if one exists).
+    const groupDefault = pickResolvingPolicyRow(active, null, null);
+    if (groupDefault) {
+      await createLeavePolicy(ctx, {
+        leaveTypeId: p.leaveTypeId,
+        companyId: p.companyId,
+        gradeId: null,
+        validFrom,
+        ...accrualToCreateArgs(groupDefault.accrual),
+      });
+    }
+    // Seed every active grade with a verbatim copy of its currently-resolving accrual.
+    for (const g of activeGrades) {
+      const src = pickResolvingPolicyRow(active, g.id, null);
+      if (!src) continue;
+      await createLeavePolicy(ctx, {
+        leaveTypeId: p.leaveTypeId,
+        companyId: p.companyId,
+        gradeId: g.id,
+        validFrom,
+        ...accrualToCreateArgs(src.accrual),
+      });
+    }
+  }
+
+  // Ensure a company+grade row exists for the edited grade, then edit it in place so the reprojection runs.
+  let target = await withTenant(ctx, (tx) =>
+    tx
+      .select({ id: leavePolicy.id, accrual: leavePolicy.accrual, validFrom: leavePolicy.validFrom })
+      .from(leavePolicy)
+      .where(
+        and(
+          eq(leavePolicy.leaveTypeId, p.leaveTypeId),
+          eq(leavePolicy.companyId, p.companyId),
+          eq(leavePolicy.gradeId, p.gradeId),
+          isNull(leavePolicy.validTo),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+  );
+  if (!target) {
+    // Company scope existed but this grade was never seeded (e.g. a grade added later). Copy what resolves
+    // for it now, then update in place — so its employees are recalculated like any other edit.
+    const src = pickResolvingPolicyRow(active, p.gradeId, p.companyId);
+    const created = await createLeavePolicy(ctx, {
+      leaveTypeId: p.leaveTypeId,
+      companyId: p.companyId,
+      gradeId: p.gradeId,
+      validFrom,
+      ...accrualToCreateArgs(src?.accrual ?? { annualDays: p.over }),
+    });
+    target = { id: created.id, accrual: src?.accrual ?? { annualDays: p.over }, validFrom };
+  }
+
+  const currentAcc = (target.accrual ?? {}) as AccrualConfig;
+  const sourceFlat = !(Array.isArray(currentAcc.serviceBands) && currentAcc.serviceBands.length > 0);
+  const flat = sourceFlat && p.under2 === p.mid && p.mid === p.over;
+  const serviceBands: ServiceBand[] | null = flat
+    ? null
+    : [
+        { fromYears: 0, toYears: 2, days: p.under2 },
+        { fromYears: 2, toYears: 5, days: p.mid },
+        { fromYears: 5, toYears: null, days: p.over },
+      ];
+  // annualDays is mandatory + load-bearing (legacy resolution + the EA floor path): always the flat value,
+  // or the 5+ tier days when bands are written (fix 3) — never 0/undefined.
+  const annualDays = flat ? p.under2 : p.over;
+  return updateLeavePolicy(ctx, {
+    id: target.id,
+    annualDays,
+    serviceBands,
+    // Preserve the row's carry-forward + rounding config (the writer rebuilds accrual wholesale; an
+    // omitted field would be cleared — see updateLeavePolicy). Method is preserved by the writer itself.
+    carryForwardMax: Math.max(0, Number(currentAcc.carryForwardMax ?? 0)),
+    carryForwardExpiryMonth: currentAcc.carryForwardExpiryMonth ?? null,
+    carryForwardExpiryDay: currentAcc.carryForwardExpiryDay ?? null,
+    carryForwardExpiryMode: currentAcc.carryForwardExpiryMode === 'months' ? 'months' : undefined,
+    carryForwardExpiryMonths: currentAcc.carryForwardExpiryMonths ?? null,
+    carryForwardEnabled: typeof currentAcc.carryForwardEnabled === 'boolean' ? currentAcc.carryForwardEnabled : undefined,
+    carryForwardIncludeEarned: currentAcc.carryForwardIncludeEarned,
+    method: currentAcc.method,
+    roundingMethod: currentAcc.roundingMethod,
+    gradeId: p.gradeId,
+    companyId: p.companyId,
+    validFrom: target.validFrom,
+    asOf: p.asOf,
   });
 }
 

@@ -741,6 +741,14 @@
         "team": "团队",
         "base": "基地",
         "company": "公司",
+        "companyChangeableHint": "该员工尚无任何交易记录，因此您仍可在此更正其公司。请选择正确的公司，然后选择部门并保存。",
+        "companyPendingBanner": "正在将该员工转移至 {company}。请选择其部门并保存以确认——在保存前不会做任何更改。",
+        "companyLockedNote": "该员工已有活动记录，无法在此更改公司。请在“异动”选项卡中记录一次调动，以保留其历史记录。",
+        "companyLockedTooltip": "已锁定——该员工已有活动记录。请使用“异动”记录调动。",
+        "companyChangeSave": "转移公司并保存",
+        "companyChangeContinue": "继续",
+        "companyChangeCancel": "取消",
+        "destinationNotAdministered": "您只能将此人转移到您管理的公司。若要转移到其他公司，请在“异动”选项卡中记录一次调动。",
         "department": "部门",
         "position": "职位",
         "jobGrade": "职级",
@@ -1327,7 +1335,7 @@
         "taken": "您已使用的休假（已批准并已休）。",
         "pendingApproval": "您已申请但仍在等待批准的休假。",
         "available": "在扣除待批准申请后，您现在仍可休的休假。",
-        "balance": "在计入额度、已用休假及任何调整后的最终剩余余额。"
+        "balance": "您的剩余余额：总额度（含任何结转和调整），减去已用休假。"
       }
     },
     "preview": {
@@ -1653,7 +1661,7 @@
         "taken": "您已使用的休假。",
         "adjustment": "对余额的手动或一次性变更，例如节日额度。",
         "overutilized": "您的余额低于零的程度（如有）。",
-        "balance": "最终剩余余额：累计加结转和调整，减去已用和超用。"
+        "balance": "您的剩余余额：总额度（含任何结转和调整），减去已用休假。"
       }
     },
     "typeLabel": "类型",
@@ -3170,6 +3178,9 @@
       "allMyCompanies": "我的所有公司",
       "alreadyProcessedTag": "已处理",
       "transactionsPrerequisiteNote": "运行前请在“交易”页面录入所有薪资交易（津贴、扣款、加班、报销、调整）。此流程仅选择范围并执行计算。",
+      "validationMissingCycleTitle": "所选的 {n} 家公司没有用于本次运行的薪资周期",
+      "payrollCycleMissingForCompany": "{company} 没有用于本次运行的活动薪资周期，请在处理前进行设置。",
+      "payrollCycleMissingForCompanyType": "{company} 没有活动的 {runType} 周期，请在薪资周期设置中进行设置。",
       "resultTitle": "薪资处理结果",
       "resultSubtitle": "多公司薪资运行的摘要与状态。",
       "resultExpired": "此结果已不可用——请开始新的薪资运行以查看最新结果。",
@@ -3350,6 +3361,12 @@
       "currency": "货币",
       "currencyHint": "3 位 ISO 货币代码，例如 MYR",
       "addCompany": "添加公司",
+      "defaultPayrollCycle": "默认薪资周期",
+      "defaultPayrollCycleHint": "为该公司运行薪资时预先选择的周期。更改仅影响未来的运行。",
+      "defaultPayrollCycleSaved": "默认薪资周期已保存",
+      "defaultPayrollCycleInactive": "已保存的默认周期“{name}”已不再是活动周期，请选择新的周期。",
+      "defaultPayrollCycleNoActive": "该公司没有活动的薪资周期。请先在薪资周期页面进行设置。",
+      "saveDefaultPayrollCycle": "保存默认周期",
       "fieldName": "名称",
       "fieldTitle": "名称",
       "fieldJobFamily": "职位族",
@@ -4173,7 +4190,17 @@
       "gradeSearchLabel": "搜索职级",
       "gradeSearchPlaceholder": "按代码或名称搜索…",
       "gradeSearchNoResults": "没有符合搜索条件的职级。",
-      "gradeDragAria": "将 {name} 拖入职级组"
+      "gradeDragAria": "将 {name} 拖入职级组",
+      "serviceCompanyLabel": "公司",
+      "serviceSelectCompanyPlaceholder": "选择公司…",
+      "serviceSelectCompanyEmpty": "选择公司以载入其职级并设定按服务年资的假期额度。",
+      "serviceNoGrades": "没有可显示的有效职级。请在 设置 → 系统标签 → 组织标签 中新增职级。",
+      "serviceNonConformingNote": "自定义服务年资区间 — 请在公司额度中编辑以保留。",
+      "serviceTableNote": "天数会依各职级目前的额度预先填入。编辑某职级会重新计算其员工；未改动的职级保持不变。",
+      "serviceUnder2Aria": "{grade} 不足 2 年的天数",
+      "serviceMidAria": "{grade} 2 至 5 年的天数",
+      "serviceOverAria": "{grade} 超过 5 年的天数",
+      "schemeEntitlementsTitle": "福利计划额度"
     },
     "holidays": {
       "pageTitle": "公共假期",

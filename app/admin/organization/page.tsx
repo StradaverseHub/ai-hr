@@ -7,6 +7,10 @@ import { listAllCompanyBankProfiles } from '@/core/bank-profile';
 // R46 orgbank (84719377) — per-authority statutory payment configuration + the company-scoped signatory
 // candidates. Both are RLS-scoped listers, grouped by company here like the bank profiles.
 import { listAllCompanyStatutoryAuthorities, listSignatoryCandidates } from '@/core/statutory-authority';
+// Organization Module — Automatic Payroll Cycle Assignment (361e3b15): the Add-company Default Payroll Cycle
+// picker lists the standard catalog names, and each company's General tab pre-selects its saved default from
+// that company's ACTIVE cycles.
+import { DEFAULT_PAYROLL_CYCLES, listPayrollCycles } from '@/core/payroll-cycle';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import {
   CompanyPanel,
@@ -29,6 +33,7 @@ import {
   setCompanyParentAction,
   setCompanyStatutoryAction,
   updateCompanyAction,
+  updateCompanyDefaultCycleAction,
 } from '../actions';
 
 type TreeNode = { id: string; name: string; country: string; parentId: string | null };
@@ -131,6 +136,14 @@ export default async function OrganizationPage({
     signatoryBy.set(sg.companyId, list);
   }
   const parentBy = new Map(tree.map((n) => [n.id, n.parentId]));
+  // Organization Module (361e3b15): each company's ACTIVE payroll cycle names, so its General-tab picker lists
+  // that company's own cycles with the saved default pre-selected (and can flag a saved default that is no
+  // longer active). Read per company (tenant-scoped by RLS); the org admin's company list is small.
+  const cycleNameLists = await Promise.all(
+    companies.map((c) => listPayrollCycles(s, c.id, { activeOnly: true })),
+  );
+  const activeCycleNamesBy = new Map<string, string[]>();
+  companies.forEach((c, i) => activeCycleNamesBy.set(c.id, cycleNameLists[i].map((r) => r.name)));
   // substrate: read-only, no event. The Companies management card is a tenant-wide master:
   // it renders every company regardless of the company-switcher scope (getScopeIds), unlike
   // operational screens which stay scoped. The switcher is intentionally ignored on this screen.
@@ -147,6 +160,7 @@ export default async function OrganizationPage({
     removeStatutoryAuthority: removeCompanyStatutoryAuthorityAction,
     setCompanyLogo: setCompanyLogoAction,
     removeCompanyLogo: removeCompanyLogoAction,
+    updateCompanyDefaultCycle: updateCompanyDefaultCycleAction,
   };
 
   return (
@@ -188,6 +202,7 @@ export default async function OrganizationPage({
           title={t('companies')}
           count={companies.length}
           createAction={createCompanyAction}
+          cycleOptions={DEFAULT_PAYROLL_CYCLES.map((c) => c.name)}
         />
         {companies.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesYet')}</p>
@@ -223,6 +238,8 @@ export default async function OrganizationPage({
                     inUse: c.inUse,
                     parentId: parentBy.get(c.id) ?? null,
                     hasLogo: c.hasLogo,
+                    // Organization Module (361e3b15): the company's saved default payroll cycle name.
+                    defaultPayrollCycle: c.defaultPayrollCycle,
                   }}
                   companies={companies}
                   statutory={statBy.get(c.id) ?? null}
@@ -230,6 +247,7 @@ export default async function OrganizationPage({
                   statutoryAuthorities={authorityBy.get(c.id) ?? []}
                   signatories={signatoryBy.get(c.id) ?? []}
                   stateOptions={stateOptions}
+                  activeCycleNames={activeCycleNamesBy.get(c.id) ?? []}
                   actions={actions}
                 />
               ),

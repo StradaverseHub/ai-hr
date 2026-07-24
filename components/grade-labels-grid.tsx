@@ -30,7 +30,7 @@
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Trash2, X } from 'lucide-react';
+import { ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Filter, Trash2, X } from 'lucide-react';
 import { Button, ErrorBanner, StatusBadge, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from './ui';
 import { ConfirmDialog } from './ui/confirm-submit';
 
@@ -277,7 +277,6 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
   return (
     <div className="min-w-0 flex-1 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold text-foreground">{t('category.grade')}</h2>
         <button
           type="button"
           onClick={() => setShowFilters((v) => !v)}
@@ -288,6 +287,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
               : 'border-input hover:bg-accent hover:text-accent-foreground'
           }`}
         >
+          <Filter className="size-3.5" aria-hidden />
           {t('filter')}
           {activeFilterCount > 0 && (
             <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground tabular-nums">
@@ -346,8 +346,9 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
 
       <div className={tableWrapCls}>
         <table className="w-full text-sm">
-          <thead className={`${theadCls} sticky top-0 z-10 backdrop-blur`}>
+          <thead className={theadCls}>
             <tr>
+              <th className="w-8 px-2 py-2"></th>
               <th className={sortableThCls} onClick={() => toggleSort('code')}>
                 {t('col.code')} *{sortIcon('code')}
               </th>
@@ -368,7 +369,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
           <tbody className={tbodyCls}>
             {view.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">
                   {t('noRows')}
                 </td>
               </tr>
@@ -377,6 +378,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
               const err = rowErrors[r.key];
               return (
                 <tr key={r.key} className={`${r.archived ? 'opacity-60' : ''} ${err ? 'bg-destructive/5' : ''}`}>
+                  <td className="px-2 py-1.5"></td>
                   <td className="px-3 py-1.5">
                     {/* 728a7db6 made grade codes editable, so unlike Profile Options the Code cell stays
                         an input after the row is saved. */}

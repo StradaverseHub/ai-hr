@@ -7,7 +7,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { createAdditionalRun, createBatch, preProcessAdvisoryForSelection, updateBatchScope, type PreProcessAdvisory } from '@/core/payroll';
 import { getActivePayrollCycle } from '@/core/payroll-cycle';
 import { listEmployees, listEmployeesForPayrollRun, type PayrollRunEmployeeRow } from '@/core/read';
-import { encodeRunGroupResult, runMultiCompanyPayroll } from '@/core/payroll-run-group';
+import { companiesMissingCycle, encodeRunGroupResult, runMultiCompanyPayroll, type IntendedRunType } from '@/core/payroll-run-group';
 
 /** Step 2 population (plan §2) — fetched by the client once company(ies) + period are chosen. Accepts one
  *  or more company ids so the multi-company run's Step-2 list spans every selected company (3653d14b). */
@@ -49,6 +49,22 @@ export async function validatePayrollSelection(input: {
     payPeriod: input.payPeriod,
     employmentIds: employmentIds.length ? employmentIds : undefined,
   });
+}
+
+/**
+ * Organization Module — Automatic Payroll Cycle Assignment (361e3b15). Wizard Validation-step PRE-FLIGHT:
+ * which selected companies have no active cycle of the intended run type, so the operator sees a clear
+ * per-company message BEFORE submit instead of the run quietly skipping them. Reuses the exact per-company
+ * gate the run applies (companiesMissingCycle). Read-only — no state mutation, no event.
+ */
+export async function checkPayrollCycleReadiness(input: {
+  companyIds: string[];
+  intendedRunType: IntendedRunType;
+}): Promise<{ companyId: string; companyName: string }[]> {
+  const s = await getSession();
+  const companyIds = (input.companyIds ?? []).filter(Boolean);
+  if (companyIds.length === 0) return [];
+  return companiesMissingCycle(s, companyIds, input.intendedRunType);
 }
 
 /**

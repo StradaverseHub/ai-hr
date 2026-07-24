@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import type { LeaveRoundingMethod, ServiceBand } from '@/core/leave-compute';
+import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/leave-org-criteria';
 import { ESS_VIEW_CHECKLIST_GROUPS } from '@/components/leave/entitlement-panel-config';
 import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
@@ -20,7 +21,12 @@ import { Button, Field, inputCls } from './ui';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { ChipMultiSelect } from './ui/chip-multi-select';
-import { LeaveTypeEntitlementTable, type LeaveTypeSchemeEntitlement } from './benefit-scheme-config';
+import {
+  LeaveTypeEntitlementTable,
+  ServiceEntitlementTable,
+  type LeaveTypeSchemeEntitlement,
+  type ServicePolicyRow,
+} from './benefit-scheme-config';
 import { SubStepBar } from './leave-sub-step-bar';
 
 export type EntitlementPolicy = {
@@ -69,6 +75,17 @@ export type LeaveEligibilityRule = {
   // Min-service unit (#f88f0a63): the number in minServiceMonths measured in 'months' (default / absent) or
   // 'days'. Absent on legacy rows ⇒ rendered + posted as 'months'.
   minServiceUnit?: 'months' | 'days';
+  // Organisation Assignment criteria (Enhance Leave Criteria Configuration): the eight catalogue-backed org
+  // fields, each scalar-or-array (match-ANY) exactly like gender/maritalStatus. Keyed by the employment column
+  // name (see ORG_ASSIGNMENT_CRITERIA). Absent key ⇒ no restriction. Mirrors the server LeaveEligibility.
+  orgDivision?: string | string[];
+  orgBranch?: string | string[];
+  orgRegion?: string | string[];
+  orgLine?: string | string[];
+  orgSection?: string | string[];
+  orgTeam?: string | string[];
+  orgBase?: string | string[];
+  employmentCategory?: string | string[];
 };
 
 /** The checkbox options the eligibility rule form renders. Order matches the mockup. The marital list mirrors
@@ -438,8 +455,11 @@ function EarningMethodForm({
       <p className="text-xs text-muted-foreground">{t('subStep.earningMappingHelp')}</p>
       {/* Feedback b81d3c52 — Rounding Method sits directly UNDER Earning Method (its requested home) and
           rides the same policy row: it tidies whatever the earning calculation produces, as the final
-          step, without changing the calculation itself. `roundingMethodValue` maps absent ⇒ 'none', and
-          the action normalizes 'none' back to "store nothing". */}
+          step, without changing the calculation itself. `roundingMethodValue` maps absent ⇒ 'none'. This
+          form RENDERS the dropdown, so it posts the tri-state marker (roundingMethodRendered): the action
+          then reads 'none' as an explicit CLEAR and 'up'/'down' as SET. Forms that do NOT render the
+          dropdown omit the marker and the stored value is preserved — no hidden pass-through input needed. */}
+      <input type="hidden" name="roundingMethodRendered" value="1" />
       <Field label={t('subStep.roundingMethodLabel')}>
         <select
           name="roundingMethod"
@@ -484,10 +504,9 @@ function CarryPolicyForm({
       <FrontDoorIdentityFields p={p} leaveTypeId={leaveTypeId} />
       {/* preserve the method — this front door only edits carry */}
       <input type="hidden" name="method" value={methodValue(p.method)} />
-      {/* b81d3c52 front-door preservation (the FrontDoorPreservedCarry precedent, mirrored): the writers
-          rebuild `accrual` wholesale, so a form that does not re-post the stored Rounding Method would
-          silently clear it. This front door only edits carry — re-post rounding untouched. */}
-      <input type="hidden" name="roundingMethod" value={roundingMethodValue(p.roundingMethod)} />
+      {/* b81d3c52 (tri-state, this ticket): the Rounding Method now remembers itself. This front door does
+          NOT render the Rounding dropdown, so it posts NO `roundingMethodRendered` marker — the writer
+          preserves the stored value. The former hidden `roundingMethod` pass-through input is gone. */}
       <input type="hidden" name="carryBlockRendered" value="1" />
       {carryOn && <input type="hidden" name="carryForwardEnabled" value="on" />}
       {!!p.carryForwardIncludeEarned && <input type="hidden" name="carryForwardIncludeEarned" value="on" />}
@@ -892,6 +911,7 @@ export function LeaveTypePanel({
   isAnnual,
   floor0,
   eligibility,
+  orgAssignmentOptions,
   durations,
   requiresDocument,
   mandatoryAfterDays,
@@ -937,6 +957,7 @@ export function LeaveTypePanel({
   deletePolicyAction,
   countInScopeAction,
   upsertSchemeEntitlementAction,
+  saveServiceEntitlementAction,
 }: {
   id: string;
   name: string;
@@ -953,6 +974,12 @@ export function LeaveTypePanel({
   isAnnual: boolean;
   floor0: number;
   eligibility: LeaveEligibilityRule | null;
+  /** Organisation Assignment criteria (Enhance Leave Criteria Configuration): the ACTIVE picker values for each
+   *  of the eight org fields, keyed by profile_option category (division / branch / … / category). Sourced from
+   *  the SAME master list the profile Organisation Assignment screen uses (listAllProfileOptions active-only), so
+   *  deleted/inactive values are never offered as new choices. Already-stored values (incl. now-inactive ones)
+   *  are unioned in at render so a saved condition stays visible and survives a re-save. */
+  orgAssignmentOptions: Record<string, { value: string; label: string }[]>;
   /** ADR-0048: enabled non-full-day durations (e.g. ['half_day_am','hourly']); null/[] = full-day-only. */
   durations: string[] | null;
   /** Supporting-document config — current values, threaded so the sub-form round-trips. */
@@ -1079,8 +1106,17 @@ export function LeaveTypePanel({
   /** Restructure (123c1e76): the SAME upsertSchemeEntitlement action the Benefit Schemes table posts —
    *  the per-type Entitlement card's Edit dialog writes through it, so nothing forks. */
   upsertSchemeEntitlementAction: Action;
+  /** Restructure Service-Based Leave Entitlements — the company-driven Service Based Entitlements table posts
+   *  ONE grade's three service-band figures for a company through this action. The first save for a company
+   *  materialises the whole company scope so untouched grades never drop to zero; the edited grade is
+   *  recalculated in place (see saveServiceEntitlement in core/admin). */
+  saveServiceEntitlementAction: Action;
 }) {
   const t = useTranslations('admin.leave');
+  // Organisation Assignment criteria (Enhance Leave Criteria Configuration): the eight criterion labels REUSE
+  // the existing profile_option category labels (already shipped in all six locales) — zero new keys. Scoped
+  // translator so a call site reads t org-label statically (the i18n coverage test).
+  const tOrg = useTranslations('admin.profileOptions.category');
   // Sync Employee Leave View Configuration (11876072): the view-config group headings reuse the employee
   // panel's OWN section titles (leave.breakdown.section.*) so the admin screen reads as a preview of the
   // panel — same words, same order. That translator now lives inside ViewConfigSection (2bc2f2a3).
@@ -1253,6 +1289,20 @@ export function LeaveTypePanel({
               : m === 'other'
                 ? t('eligibilityMaritalOther')
                 : null;
+  // Organisation Assignment criteria (Enhance Leave Criteria Configuration): the picker for a field offers the
+  // ACTIVE catalogue values (deleted/inactive are never NEW choices), UNIONED with whatever is ALREADY stored
+  // on this type — so a saved value, even one later deactivated, stays visible and survives a re-save.
+  // (ChipMultiSelect drops any defaultSelected not present in its options, so the union is required for the
+  // stored value to keep posting its hidden input.) A stored-but-inactive value renders with its raw value as
+  // the label (it is no longer in the catalogue to supply a display label).
+  const orgCriterionOptions = (category: string, key: OrgAssignmentCriterionKey) => {
+    const active = orgAssignmentOptions[category] ?? [];
+    const stored = asEligList(eligibility?.[key]);
+    const extras = stored
+      .filter((v) => !active.some((o) => o.value === v))
+      .map((v) => ({ value: v, label: v }));
+    return [...active, ...extras];
+  };
   // #0c15db78: the Criteria sub-step lays the FOUR eligibility rules out plainly — reading them no longer
   // requires opening "Edit rules". This is the single source of truth for how each criterion is labelled
   // and valued; it replaced the one-line condensed summary helper. Zero new translation keys by
@@ -1284,6 +1334,15 @@ export function LeaveTypePanel({
       { label: t('eligibilityGenderLabel'), value: joinOr(asEligList(eligibility?.gender), genderLabel) },
       { label: t('eligibilityMinServiceLabel'), value: minService },
       { label: t('eligibilityProbationLabel'), value: probation },
+      // Organisation Assignment criteria (Enhance Leave Criteria Configuration): one summary row per org field,
+      // from the SAME descriptor that drives the picker + the gates. Label reuses the existing profile_option
+      // category label (tOrg); each value shows its catalogue display label when known, else the raw stored
+      // value (so an inactive-but-stored value still reads correctly). Empty ⇒ the shared "No restriction".
+      ...ORG_ASSIGNMENT_CRITERIA.map((c) => {
+        const opts = orgAssignmentOptions[c.category] ?? [];
+        const orgLabel = (v: string) => opts.find((o) => o.value === v)?.label ?? v;
+        return { label: tOrg(c.labelKey), value: joinOr(asEligList(eligibility?.[c.key]), orgLabel) };
+      }),
     ];
   };
 
@@ -1733,17 +1792,40 @@ export function LeaveTypePanel({
           {entitlementSubStep === 'schemes' && (
           <>
           {benefitSchemeSection}
+          {/* Restructure Service-Based Leave Entitlements: the per-scheme entitlement table — THIS leave
+              type's benefit-scheme entitlement rows (the days each scheme grants per service tier). It
+              stays reachable HERE, under Benefit Schemes, where naming schemes is correct; the relocated
+              Service Based Entitlements picker (sub-step 2) is company-only. Read-and-edit over the SAME
+              live rows via the SAME upsert action (no duplication, nothing can drift). */}
+          <div className="space-y-1.5 border-t border-border pt-3">
+            <span className="text-xs font-medium text-muted-foreground">{t('schemeEntitlementsTitle')}</span>
+            <LeaveTypeEntitlementTable ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction} />
+          </div>
           </>
           )}
-          {/* Sub-step 2 — Service Based Entitlements (7b945408): how entitlement is calculated. */}
+          {/* Sub-step 2 — Service Based Entitlements: the company-driven, by-grade entitlement table
+              (Restructure Service-Based Leave Entitlements). The picker lists COMPANY names only; choosing a
+              company auto-populates one row per active grade with the three service bands pre-filled from
+              what currently resolves. Benefit-scheme figures still take priority where set — this table sets
+              the fallback everyone else resolves to. */}
           {entitlementSubStep === 'service' && (
           <>
-          {/* Restructure (123c1e76): the per-type Entitlement table — THIS leave type's benefit-scheme
-              entitlement rows (the days each scheme grants per service tier), which previously appeared only
-              in the shared Benefit Schemes area. Read-and-edit over the SAME live rows via the SAME upsert
-              action (no duplication, nothing can drift); scheme-wide management — adding/removing rows,
-              copying between schemes, combined-limit grouping — stays in the Benefit Schemes sub-step. */}
-          <LeaveTypeEntitlementTable ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction} />
+          <ServiceEntitlementTable
+            leaveTypeId={id}
+            leaveTypeName={name}
+            companies={companies}
+            grades={grades}
+            policies={policies.map(
+              (p): ServicePolicyRow => ({
+                gradeId: p.gradeId ?? null,
+                companyId: p.companyId ?? null,
+                annualDays: p.annualDays,
+                serviceBands: p.serviceBands ?? null,
+                validTo: p.validTo,
+              }),
+            )}
+            saveAction={saveServiceEntitlementAction}
+          />
           {/* 7b945408: the Preview Scenario checker joins this sub-step as its checking tool — the SAME
               self-contained LeaveRulePreviewDialog (d778d2d3). Server-composed slot; see the
               previewScenarioSection prop doc. */}
@@ -1783,10 +1865,10 @@ export function LeaveTypePanel({
                   {/* Feedback 49809272: editing IN PLACE recalculates affected employees' current-cycle
                       balances automatically — tell the admin before they save. */}
                   <p className="w-full text-[11px] text-muted-foreground">{t('recalcInPlaceHint')}</p>
-                  {/* b81d3c52: the Rounding Method's home is the Earning Method front door, but THIS form
-                      posts the same action and the writers rebuild `accrual` wholesale — re-post the
-                      stored value untouched or an Eligibility edit would silently clear it. */}
-                  <input type="hidden" name="roundingMethod" value={roundingMethodValue(p.roundingMethod)} />
+                  {/* b81d3c52 (tri-state, this ticket): the Rounding Method's home is the Earning Method
+                      front door. THIS form does not render the Rounding dropdown, so it posts NO
+                      `roundingMethodRendered` marker and the writer preserves the stored value — the former
+                      hidden pass-through input is gone (removing the coupling flagged as a footgun). */}
                   <Field label={t('daysPerYearLabel')}>
                     <input
                       name="annualDays"
@@ -2036,6 +2118,17 @@ export function LeaveTypePanel({
               <Field label={t('effectiveFromLabel')}>
                 <input name="validFrom" type="date" required defaultValue={`${thisYear}-01-01`} className={inputCls} />
               </Field>
+              {/* Feedback b81d3c52 (tri-state, this ticket) — the add form RENDERS the Rounding dropdown, so
+                  it posts the `roundingMethodRendered` marker: on create 'up'/'down' set the new row's value
+                  and 'none' omits the key (nothing to preserve on create). Defaults to No-Rounding. */}
+              <input type="hidden" name="roundingMethodRendered" value="1" />
+              <Field label={t('subStep.roundingMethodLabel')}>
+                <select name="roundingMethod" defaultValue="none" aria-label={t('subStep.roundingMethodLabel')} className={`${inputCls} w-40`}>
+                  <option value="none">{t('subStep.roundingNone')}</option>
+                  <option value="up">{t('subStep.roundingUp')}</option>
+                  <option value="down">{t('subStep.roundingDown')}</option>
+                </select>
+              </Field>
               {/* Feedback eee43966 — no earning-method select on the add-a-dated-entitlement form either.
                   This one WAS the reporter's bug: it defaulted to lump sum, and saving superseded the
                   running earned_monthly row with a lump one. createLeavePolicy now inherits the method
@@ -2274,6 +2367,23 @@ export function LeaveTypePanel({
                   addPlaceholder={t('eligibilityChipAddPlaceholder')}
                   removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
                 />
+                {/* Organisation Assignment criteria (Enhance Leave Criteria Configuration): one ChipMultiSelect
+                    per org field, driven by the single ORG_ASSIGNMENT_CRITERIA descriptor. Each posts one hidden
+                    input per selected value under name={key} (identical FormData shape to gender/maritalStatus →
+                    the action's getAll(key) reads them). Options are the ACTIVE catalogue values unioned with any
+                    already-stored value, so deleted/inactive values are not offered as NEW picks yet a saved
+                    condition stays visible + survives re-save. Empty selection ⇒ no restriction on that field. */}
+                {ORG_ASSIGNMENT_CRITERIA.map((c) => (
+                  <ChipMultiSelect
+                    key={c.key}
+                    name={c.key}
+                    label={tOrg(c.labelKey)}
+                    options={orgCriterionOptions(c.category, c.key)}
+                    defaultSelected={asEligList(eligibility?.[c.key])}
+                    addPlaceholder={t('eligibilityChipAddPlaceholder')}
+                    removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
+                  />
+                ))}
                 <Field label={t('eligibilityMinServiceLabel')}>
                   {/* Min-service unit (#f88f0a63): duration input + a unit select (Months / Days) beside it,
                       mirroring the expiry {value, unit} field. Absent stored unit ⇒ 'months' default so a

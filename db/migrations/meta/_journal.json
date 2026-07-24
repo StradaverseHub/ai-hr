@@ -1828,6 +1828,13 @@
       "when": 1781862410000,
       "tag": "0310_leave_type_year_cycle_override_a2c",
       "breakpoints": true
+    },
+    {
+      "idx": 311,
+      "version": "7",
+      "when": 1781862411000,
+      "tag": "0311_company_default_payroll_cycle",
+      "breakpoints": true
     }
   ]
 }

@@ -741,6 +741,14 @@
         "team": "Team",
         "base": "Base",
         "company": "Company",
+        "companyChangeableHint": "This employee has no transactions yet, so you can still correct their Company here. Choose the correct company, then pick their Department and Save.",
+        "companyPendingBanner": "Moving this employee to {company}. Pick their Department and Save to confirm — nothing changes until you Save.",
+        "companyLockedNote": "The Company can’t be changed here because this employee already has recorded activity. Use the Movement tab to record a Transfer, which keeps their history intact.",
+        "companyLockedTooltip": "Locked — this employee has recorded activity. Use Movement to record a Transfer.",
+        "companyChangeSave": "Move company and save",
+        "companyChangeContinue": "Continue",
+        "companyChangeCancel": "Cancel",
+        "destinationNotAdministered": "You can only move this person to a company you manage. To move them to another company, use the Movement tab to record a Transfer.",
         "department": "Department",
         "position": "Position",
         "jobGrade": "Job Grade",
@@ -1327,7 +1335,7 @@
         "taken": "Leave you have already used (approved and taken).",
         "pendingApproval": "Leave you've applied for that is still awaiting approval.",
         "available": "Leave you can still take now, after pending requests are set aside.",
-        "balance": "Your final remaining balance after entitlement, leave used, and any adjustments."
+        "balance": "Your remaining balance: total entitlement, including any carried forward and adjustments, minus leave taken."
       }
     },
     "preview": {
@@ -1653,7 +1661,7 @@
         "taken": "Leave you have already used.",
         "adjustment": "Manual or one-off changes to your balance, such as festive grants.",
         "overutilized": "How far your balance has gone below zero, if at all.",
-        "balance": "Final remaining balance: Accrued plus Carried Forward and Adjustment, minus Taken and Overutilized."
+        "balance": "Your remaining balance: total entitlement, including any carried forward and adjustments, minus leave taken."
       }
     },
     "typeLabel": "Type",
@@ -3170,6 +3178,9 @@
       "allMyCompanies": "All my companies",
       "alreadyProcessedTag": "already processed",
       "transactionsPrerequisiteNote": "Key in all payroll transactions (allowances, deductions, overtime, claims, adjustments) on the Transactions screen before running. This process only selects the scope and runs the calculation.",
+      "validationMissingCycleTitle": "{n} selected company(ies) have no payroll cycle for this run",
+      "payrollCycleMissingForCompany": "{company} has no active payroll cycle for this run — set one up before processing.",
+      "payrollCycleMissingForCompanyType": "No active {runType} cycle for {company} — set one up in Payroll Cycle settings.",
       "resultTitle": "Payroll Processing Result",
       "resultSubtitle": "Summary and status of the multi-company payroll run.",
       "resultExpired": "This result is no longer available — start a new payroll run to see fresh results.",
@@ -3350,6 +3361,12 @@
       "currency": "Currency",
       "currencyHint": "3-letter ISO currency code, e.g. MYR",
       "addCompany": "Add company",
+      "defaultPayrollCycle": "Default payroll cycle",
+      "defaultPayrollCycleHint": "The cycle preselected when running this company's payroll. Changing it affects future runs only.",
+      "defaultPayrollCycleSaved": "Default payroll cycle saved",
+      "defaultPayrollCycleInactive": "The saved default \"{name}\" is no longer an active cycle — choose a new one.",
+      "defaultPayrollCycleNoActive": "This company has no active payroll cycles. Set them up on the Payroll Cycle screen first.",
+      "saveDefaultPayrollCycle": "Save default cycle",
       "fieldName": "Name",
       "fieldTitle": "Title",
       "fieldJobFamily": "Job family",
@@ -3531,7 +3548,7 @@
         "position": "Positions",
         "cost_center": "Cost Centres",
         "business_unit": "Business Units",
-        "grade": "Grades"
+        "grade": "Job Grade"
       },
       "sharingSettings": "Sharing settings",
       "sharedLabelsToggle": "Share labels across companies",
@@ -3582,8 +3599,8 @@
       "cancel": "Cancel",
       "apply": "Apply",
       "origin": "origin",
-      "gradeInUseHint": "This grade is in use by employees, leave policies, approval rules, claim limits or a grade group, so it cannot be deleted. Archive it instead.",
-      "deleteGradeTitle": "Delete grade?",
+      "gradeInUseHint": "This job grade is in use by employees, leave policies, approval rules, claim limits or a grade group, so it cannot be deleted. Archive it instead.",
+      "deleteGradeTitle": "Delete job grade?",
       "deleteGradeDescription": "{name} will be permanently removed. This cannot be undone."
     },
     "leave": {
@@ -4173,7 +4190,17 @@
       "gradeSearchLabel": "Search grades",
       "gradeSearchPlaceholder": "Search by code or name…",
       "gradeSearchNoResults": "No grades match your search.",
-      "gradeDragAria": "Drag {name} into a grade group"
+      "gradeDragAria": "Drag {name} into a grade group",
+      "serviceCompanyLabel": "Company",
+      "serviceSelectCompanyPlaceholder": "Select a company…",
+      "serviceSelectCompanyEmpty": "Select a company to load its grades and set service-based entitlements.",
+      "serviceNoGrades": "No active grades to show. Add grades under Settings → System Labels → Organisation Labels.",
+      "serviceNonConformingNote": "Custom service bands — edit under Company entitlements to keep them.",
+      "serviceTableNote": "Days pre-fill from what each grade resolves to today. Editing a grade recalculates its employees; grades you don't touch are unchanged.",
+      "serviceUnder2Aria": "Days under 2 years for {grade}",
+      "serviceMidAria": "Days 2 to 5 years for {grade}",
+      "serviceOverAria": "Days over 5 years for {grade}",
+      "schemeEntitlementsTitle": "Benefit scheme entitlements"
     },
     "holidays": {
       "pageTitle": "Public holidays",

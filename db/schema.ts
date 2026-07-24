@@ -190,6 +190,14 @@ export const company = pgTable(
     // Wave 2 (ADR-0040 2D-2): earned-accrual cycle — 'calendar' (1 Jan–31 Dec, default) or 'anniversary'
     // (each employee accrues relative to their hire-month anniversary). Only earned policies read it.
     leaveCycle: text('leave_cycle').notNull().default('calendar'),
+    // Organization Module — Automatic Payroll Cycle Assignment (361e3b15, migration 0311). Each company's
+    // DEFAULT payroll cycle, stored by NAME (mirrors leaveCycle: text notNull default). The column default
+    // applies on EVERY creation path (admin form, provisionTenant, db/seed) with zero per-path wiring, so no
+    // newly provisioned company is born without a default and every existing row reads 'Monthly'. Stored as a
+    // name (not an id + FK) deliberately: no backfill, no delete/archive guard, and — the accepted trade-off,
+    // identical to leaveCycle — renaming a live cycle won't auto-follow the saved name (the General-tab picker
+    // surfaces an inline note + re-point when the saved name is no longer active).
+    defaultPayrollCycle: text('default_payroll_cycle').notNull().default('Monthly'),
     // Wave 2 (ADR-0038 2C): the default state for employees with no explicit work_state — the holiday
     // fallback for this company.
     defaultWorkState: text('default_work_state'),

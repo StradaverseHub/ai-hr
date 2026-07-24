@@ -35,6 +35,9 @@ export type RunGroupReasonCode =
   | 'INVALID_CYCLE'
   | 'SYSTEM_VALIDATION_ERROR';
 
+/** The four fixed behavioural run types a cycle maps to (mirrors payrollRunTypeEnum / PayrollCycleRunType). */
+export type IntendedRunType = 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
+
 /** The outcome of processing ONE company within the run. */
 export type CompanyOutcome = {
   companyId: string;
@@ -48,6 +51,9 @@ export type CompanyOutcome = {
   employeesSucceeded: number;
   /** Set on a failed company. */
   reason?: RunGroupReasonCode;
+  /** Organization Module (361e3b15) — on an INVALID_CYCLE failure, the run TYPE that had no active cycle in
+   *  this company, so the result page can name the company AND the missing cycle type (not a bare "no cycle"). */
+  missingCycleRunType?: IntendedRunType;
 };
 
 /** The complete result of a multi-company run — the payload the Step-3 result page renders. */
@@ -105,6 +111,32 @@ export function summarize(
     totalEmployeesFailed: totalEmployeesSelected - totalEmployeesSucceeded,
     perCompany,
   };
+}
+
+/**
+ * Organization Module — Automatic Payroll Cycle Assignment (361e3b15). PRE-FLIGHT for the wizard's Validation
+ * step: which of the selected companies have NO active cycle of the intended run type. Reuses the EXACT gate
+ * the run applies per company (listPayrollCycles active → find runType===intendedRunType), keyed on the actual
+ * run runType — so it flags a genuinely un-runnable company (no false positive for a null default that still
+ * resolves, no false negative for a default pointing at a different type) BEFORE submit, with the company
+ * named. Companies outside the admin's grants are simply dropped (authz is re-checked in the run itself).
+ */
+export async function companiesMissingCycle(
+  ctx: SessionContext,
+  companyIds: string[],
+  intendedRunType: IntendedRunType,
+): Promise<{ companyId: string; companyName: string }[]> {
+  const allowed = await allowedCompanies(ctx);
+  const allowedById = new Map(allowed.map((c) => [c.id, c.name]));
+  const requested = [...new Set(companyIds)].filter(Boolean).filter((id) => allowedById.has(id));
+  const missing: { companyId: string; companyName: string }[] = [];
+  for (const companyId of requested) {
+    const cycle = (await listPayrollCycles(ctx, companyId, { activeOnly: true })).find(
+      (c) => c.runType === intendedRunType,
+    );
+    if (!cycle) missing.push({ companyId, companyName: allowedById.get(companyId)! });
+  }
+  return missing;
 }
 
 export type RunMultiCompanyInput = {
@@ -200,6 +232,8 @@ export async function runMultiCompanyPayroll(
           employeesSelected,
           employeesSucceeded: 0,
           reason: 'INVALID_CYCLE',
+          // Organization Module (361e3b15) — carry the intended run type so the result page's message names it.
+          missingCycleRunType: intendedRunType,
         });
         continue;
       }

@@ -4,6 +4,8 @@ import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/
 import { listLeaveTypes, listCompanies, listJobGrades, listDepartments } from '@/core/read';
 import { listAdHocLeaveGrants, listLeavePolicies, listBusinessUnits, listPositions } from '@/core/admin';
 import { listLeaveYearConfigs } from '@/core/leave';
+import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
+import { listAllProfileOptions } from '@/core/profile-options';
 // e1a51aea — the Approval Workflow sub-step's data + shared matrix labels (one source with the Approval tab).
 import { getLeaveApprovalPolicy, isCompanyDefaultApprovalRule, listLeaveApprovalRules } from '@/core/leave-approval-policy';
 import { listApprovalTemplates } from '@/core/leave-approval-template';
@@ -26,7 +28,7 @@ import type { ServiceBand } from '@/core/leave-compute';
 import { countryPacks } from '@/localization/registry';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
-import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
+import { LeaveTypePanel, type EntitlementPolicy, type LeaveEligibilityRule } from '@/components/leave-type-panel';
 import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
 import { EarnedAccrualDialog } from '@/components/leave/earned-accrual-dialog';
@@ -40,6 +42,7 @@ import {
   deleteLeavePolicyAction,
   deleteLeaveTypeAction,
   updateLeavePolicyAction,
+  saveServiceEntitlementAction,
   updateLeaveTypeAction,
   createGradeGroupAction,
   updateGradeGroupAction,
@@ -99,7 +102,7 @@ export default async function LeaveEntitlementsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies, grades, adHocGrants, leaveYearConfigs, gradeGroups, benefitSchemes, schemeEntitlements, schemeCombinedLimits] =
+  const [types, policies, companies, grades, adHocGrants, leaveYearConfigs, gradeGroups, benefitSchemes, schemeEntitlements, schemeCombinedLimits, profileOptionsActive] =
     await Promise.all([
       listLeaveTypes(s, { includeArchived: true }),
       listLeavePolicies(s),
@@ -119,7 +122,19 @@ export default async function LeaveEntitlementsPage({
       listSchemeEntitlements(s),
       // Combined Leave Type Limit (R44 4c48fd1f): the per-scheme shared-cap pools.
       listSchemeCombinedLimits(s),
+      // Organisation Assignment criteria (Enhance Leave Criteria Configuration): the ACTIVE picker values for
+      // the eight org fields come from the SAME master list the profile Organisation Assignment screen reads
+      // (data consistency); activeOnly ⇒ deleted/inactive values are never offered as new choices.
+      listAllProfileOptions(s, { activeOnly: true }),
     ]);
+  // Per-category active option lists for the eight org-assignment criteria, keyed by profile_option category
+  // (division / branch / … / category), passed to every LeaveTypePanel. One page-level prep — no N+1 per type.
+  const orgAssignmentOptions = Object.fromEntries(
+    ORG_ASSIGNMENT_CRITERIA.map((c) => [
+      c.category,
+      (profileOptionsActive[c.category] ?? []).map((o) => ({ value: o.value, label: o.label })),
+    ]),
+  );
   const gradeOptions = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
   // ADR-0066: companies for the per-policy scope select. companyOptions stays the FULL list — policy writes
   // are separately RLS-gated and must not be narrowed here.
@@ -532,7 +547,8 @@ export default async function LeaveEntitlementsPage({
               inUse={lt.inUse}
               isAnnual={lt.code === 'ANNUAL'}
               floor0={packEntitlement?.(lt.code, 0) ?? 0}
-              eligibility={(lt.eligibility as { gender?: string | string[]; maritalStatus?: string | string[]; minServiceMonths?: number; minServiceUnit?: 'months' | 'days' } | null) ?? null}
+              eligibility={(lt.eligibility as LeaveEligibilityRule | null) ?? null}
+              orgAssignmentOptions={orgAssignmentOptions}
               durations={(lt.durations as string[] | null) ?? null}
               requiresDocument={lt.requiresDocument}
               mandatoryAfterDays={lt.mandatoryAfterDays ?? null}
@@ -670,6 +686,7 @@ export default async function LeaveEntitlementsPage({
               deletePolicyAction={deleteLeavePolicyAction}
               countInScopeAction={countEmployeesInScopeAction}
               upsertSchemeEntitlementAction={upsertSchemeEntitlementAction}
+              saveServiceEntitlementAction={saveServiceEntitlementAction}
               />,
             ]),
           )}

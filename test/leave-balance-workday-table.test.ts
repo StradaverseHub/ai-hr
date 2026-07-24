@@ -28,6 +28,10 @@ const baseBalance = (over: Partial<BalanceInput> = {}): BalanceInput => ({
   color: null,
   icon: null,
   code: 'AL',
+  // Ledger-consistent (6574c6b4): balance 15 = entitlement 12 + carried 5 + adjustment 2 − taken 3 − forfeited 1.
+  // Surfaced as the authoritative remaining figure (b.balance), GROSS of pending. `available` (= balance −
+  // pending) is a separate ledger-net figure the pure helper passes through independently.
+  balance: 15,
   available: 8.5,
   taken: 3,
   essView: {},
@@ -52,8 +56,9 @@ describe('deriveBalanceRow: the standardized balance columns map from existing f
     expect(row.adjustment).toBe(2); // otherAdjustments
     expect(row.overutilized).toBe(0); // available >= 0 ⇒ 0
     expect(row.ytdEntitled).toBe(17); // currentYearEntitlement(12) + carriedForward(5)
-    // Balance = (Accrued 8.5 + Carried Forward 5 + Adjustment 2) − Taken 3 − Overutilized 0 = 12.5.
-    expect(row.balance).toBe(12.5);
+    // Balance surfaces the authoritative ledger figure b.balance DIRECTLY (6574c6b4) — it is NOT re-derived from
+    // the columns. Here b.balance is the ledger-consistent 15 (see fixture), so the row shows 15.
+    expect(row.balance).toBe(15);
     expect(row.visual).toEqual({ color: null, icon: null, code: 'AL' });
   });
 
@@ -64,23 +69,65 @@ describe('deriveBalanceRow: the standardized balance columns map from existing f
     expect('unplanned' in row).toBe(false);
   });
 
-  it('Overutilized is derived as max(0, -available), and reduces Balance, when the type is over-drawn', () => {
-    const row = deriveBalanceRow(baseBalance({ available: -2.5 }), baseBreakdown());
+  it('Overutilized is derived as max(0, -available) and no longer feeds Balance (6574c6b4)', () => {
+    // A genuinely over-drawn ledger (balance −2.5). Overutilized still fires off Available (unchanged), but
+    // Balance now surfaces b.balance directly — it is NOT reduced a second time by Overutilized (old double-count).
+    const row = deriveBalanceRow(baseBalance({ balance: -2.5, available: -2.5 }), baseBreakdown());
     expect(row.overutilized).toBe(2.5);
     expect(row.available).toBe(-2.5);
-    // Balance = (−2.5 + 5 + 2) − 3 − 2.5 = −1.
-    expect(row.balance).toBe(-1);
+    expect(row.balance).toBe(-2.5);
   });
 
-  it('a type with NO breakdown loaded: breakdown columns null; Balance falls back to Accrued − Taken', () => {
+  it('a type with NO breakdown loaded: breakdown columns null; Balance still surfaces b.balance (6574c6b4)', () => {
     const row = deriveBalanceRow(baseBalance(), null);
     expect(row.broughtForward).toBeNull();
     expect(row.adjustment).toBeNull();
     expect(row.ytdEntitled).toBeNull();
-    // ...but ledger-sourced Available / Taken still show, and Balance uses 0 for the missing carry/adjustment.
+    // ...but ledger-sourced Available / Taken still show, and Balance is the ledger figure regardless of breakdown.
     expect(row.available).toBe(8.5);
     expect(row.taken).toBe(3);
-    expect(row.balance).toBe(5.5); // (8.5 + 0 + 0) − 3 − 0
+    expect(row.balance).toBe(15); // b.balance, independent of whether a breakdown loaded
+  });
+
+  it('Mei Ling regression (6574c6b4): balance 14, taken 28, no carry/adjustment/pending ⇒ Balance +14, Overutilized 0', () => {
+    // The reported bug: the old formula collapsed to entitlement − 2*taken (42 − 2*28), turning a true +14 into
+    // −14. Surfacing b.balance directly yields the correct +14, and the over-draw warning stays 0.
+    const row = deriveBalanceRow(
+      baseBalance({ balance: 14, available: 14, taken: 28 }),
+      baseBreakdown({ currentYearEntitlement: 42, carriedForward: 0, otherAdjustments: 0, forfeited: 0 }),
+    );
+    expect(row.balance).toBe(14);
+    expect(row.overutilized).toBe(0);
+  });
+
+  it('carry-forward invariance: changing carriedForward does NOT change Balance (guards the double-ADD half)', () => {
+    const base = baseBalance({ balance: 15 });
+    const a = deriveBalanceRow(base, baseBreakdown({ carriedForward: 5 }));
+    const b = deriveBalanceRow(base, baseBreakdown({ carriedForward: 99 }));
+    expect(a.balance).toBe(15);
+    expect(b.balance).toBe(15);
+    // …while the informational Carried Forward column still reflects the breakdown.
+    expect(a.broughtForward).toBe(5);
+    expect(b.broughtForward).toBe(99);
+  });
+
+  it('adjustment invariance: changing otherAdjustments does NOT change Balance', () => {
+    const base = baseBalance({ balance: 15 });
+    const a = deriveBalanceRow(base, baseBreakdown({ otherAdjustments: 2 }));
+    const b = deriveBalanceRow(base, baseBreakdown({ otherAdjustments: 40 }));
+    expect(a.balance).toBe(15);
+    expect(b.balance).toBe(15);
+    expect(a.adjustment).toBe(2);
+    expect(b.adjustment).toBe(40);
+  });
+
+  it('pending > 0: Balance is GROSS (b.balance), Available is net (balance − pending), Overutilized tracks Available', () => {
+    // Ledger balance 3 with a 5-day pending request ⇒ available = 3 − 5 = −2 (over-drawn via pending). Balance
+    // stays the gross ledger figure; the over-draw warning fires off Available, unchanged (semantic decision).
+    const row = deriveBalanceRow(baseBalance({ balance: 3, available: -2, taken: 4 }), baseBreakdown());
+    expect(row.balance).toBe(3); // gross ledger remaining
+    expect(row.available).toBe(-2); // net = balance − pending
+    expect(row.overutilized).toBe(2); // max(0, −available)
   });
 
   it('ESS view-config (65dec703) gates Available/Taken/Overutilized/Balance to null without leaking figures', () => {

@@ -2,10 +2,12 @@
  * Rounding Method — persistence round-trip through the server actions (feedback b81d3c52).
  *
  * `leave_policy.accrual` is a JSONB blob that createLeavePolicy / updateLeavePolicy rebuild WHOLESALE on
- * every save, so any key the submitting form did not post is silently DROPPED. The Rounding Method's home
- * is the Earning Method front door, but three other forms post the very same policy — the Carry Forward
- * front door, the Eligibility inline edit form, and the multi-scope add form — and each of them therefore
- * has to re-post the stored value (as a hidden input) or a save from any of them would wipe HR's setting.
+ * every save, so any key the submitting form did not post used to be silently DROPPED. This ticket makes the
+ * Rounding Method REMEMBER itself with a TRI-STATE marker (`roundingMethodRendered`, mirroring serviceBands)
+ * instead of the fragile hidden pass-through input the codebase flagged as a footgun: a form that renders
+ * the Rounding dropdown (the Earning Method front door + the multi-scope add form) posts the marker, so
+ * 'none' CLEARS and 'up'/'down' SET; a form that does NOT render it (Carry Forward, Eligibility inline edit)
+ * posts no marker and the writer PRESERVES the stored value.
  *
  * These are BEHAVIOURAL tests: they drive the real server actions with the exact FormData each form
  * submits and assert the stored JSONB, which is the regression a static "does the source contain a hidden
@@ -108,7 +110,8 @@ describe('b81d3c52 · persistence — every writer preserves the stored Rounding
     });
     expect('roundingMethod' in (await accrualOf(created.id))).toBe(false);
 
-    // EarningMethodForm: identity fields + FrontDoorPreservedCarry + the mapped method + the new select.
+    // EarningMethodForm: identity fields + FrontDoorPreservedCarry + the mapped method + the rendered
+    // Rounding select. It RENDERS the dropdown, so it posts the tri-state marker roundingMethodRendered=1.
     await run(() =>
       updateLeavePolicyAction(
         fd({
@@ -122,6 +125,7 @@ describe('b81d3c52 · persistence — every writer preserves the stored Rounding
           carryForwardMax: '5',
           carryForwardExpiryMode: 'date',
           method: 'grant_on_hire_prorated',
+          roundingMethodRendered: '1',
           roundingMethod: 'up',
         }),
       ),
@@ -129,9 +133,11 @@ describe('b81d3c52 · persistence — every writer preserves the stored Rounding
     expect(await accrualOf(created.id)).toMatchObject({ roundingMethod: 'up' });
   });
 
-  it('the Carry Forward front door re-posts it — a carry-only save does NOT wipe it', async () => {
+  it('the Carry Forward front door PRESERVES it — a carry-only save (no marker) does NOT wipe it', async () => {
     const created = await seededPolicy();
-    // CarryPolicyForm: identity + preserved method + the carry block + the hidden roundingMethod.
+    // CarryPolicyForm: identity + preserved method + the carry block. It does NOT render the Rounding
+    // dropdown, so it posts NO roundingMethodRendered marker — the tri-state writer preserves the stored
+    // 'up' (the former hidden roundingMethod pass-through input is gone).
     await run(() =>
       updateLeavePolicyAction(
         fd({
@@ -146,7 +152,6 @@ describe('b81d3c52 · persistence — every writer preserves the stored Rounding
           carryForwardEnabled: 'on',
           carryForwardMax: '9', // the field this form actually edits
           carryForwardExpiryMode: 'date',
-          roundingMethod: 'up', // the hidden preservation input
         }),
       ),
     );
@@ -154,8 +159,10 @@ describe('b81d3c52 · persistence — every writer preserves the stored Rounding
     expect(acc).toMatchObject({ carryForwardMax: 9, roundingMethod: 'up' });
   });
 
-  it('the Eligibility inline EDIT form re-posts it — a days/scope edit does NOT wipe it', async () => {
+  it('the Eligibility inline EDIT form PRESERVES it — a days/scope edit (no marker) does NOT wipe it', async () => {
     const created = await seededPolicy();
+    // This form does not render the Rounding dropdown, so it posts no roundingMethodRendered marker — the
+    // stored 'up' is preserved (no hidden pass-through input any more).
     await run(() =>
       updateLeavePolicyAction(
         fd({
@@ -171,14 +178,17 @@ describe('b81d3c52 · persistence — every writer preserves the stored Rounding
           carryForwardExpiryMode: 'date',
           serviceBandsRendered: '1',
           serviceBands: '',
-          roundingMethod: 'up', // the hidden preservation input
         }),
       ),
     );
     expect(await accrualOf(created.id)).toMatchObject({ annualDays: 16, roundingMethod: 'up' });
   });
 
-  it('REGRESSION PIN: a save that omits the field clears it — which is exactly why the hidden inputs exist', async () => {
+  it('PRESERVE PIN (tri-state): a save that omits the marker now PRESERVES the stored method — no hidden input needed', async () => {
+    // INVERTED for this ticket: under the old forward-only contract an omitting save CLEARED the key (which
+    // is why every form carried a hidden pass-through input). Now a save with no roundingMethodRendered
+    // marker means "the form did not render the dropdown" ⇒ the writer PRESERVES the stored 'up'. This is
+    // the whole point of removing the fragile hidden-input coupling.
     const created = await seededPolicy();
     await run(() =>
       updateLeavePolicyAction(
@@ -191,10 +201,10 @@ describe('b81d3c52 · persistence — every writer preserves the stored Rounding
         }),
       ),
     );
-    expect('roundingMethod' in (await accrualOf(created.id))).toBe(false);
+    expect(await accrualOf(created.id)).toMatchObject({ roundingMethod: 'up' });
   });
 
-  it('picking No Rounding on the Earning Method form clears the stored key (nothing new is written)', async () => {
+  it('picking No Rounding on the Earning Method form clears the stored key (marker present + none = clear)', async () => {
     const created = await seededPolicy();
     await run(() =>
       updateLeavePolicyAction(
@@ -207,6 +217,7 @@ describe('b81d3c52 · persistence — every writer preserves the stored Rounding
           carryBlockRendered: '1',
           carryForwardMax: '5',
           carryForwardExpiryMode: 'date',
+          roundingMethodRendered: '1',
           roundingMethod: 'none',
         }),
       ),
@@ -221,6 +232,8 @@ describe('b81d3c52 · persistence — every writer preserves the stored Rounding
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: '12.4',
       validFrom: '2026-01-01',
+      // the multi-scope add form RENDERS the Rounding dropdown, so it posts the marker.
+      roundingMethodRendered: '1',
       roundingMethod: 'down',
     });
     f.append('gradeIds', exec.id);
@@ -232,11 +245,12 @@ describe('b81d3c52 · persistence — every writer preserves the stored Rounding
     for (const acc of accruals) expect(acc).toMatchObject({ annualDays: 12.4, roundingMethod: 'down' });
   });
 
-  it('createLeavePoliciesMultiAction omits the key when No Rounding is selected', async () => {
+  it('createLeavePoliciesMultiAction omits the key when No Rounding is selected (marker present + none)', async () => {
     const f = fd({
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: '12',
       validFrom: '2026-01-01',
+      roundingMethodRendered: '1',
       roundingMethod: 'none',
     });
     await run(() => createLeavePoliciesMultiAction(f));

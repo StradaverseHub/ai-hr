@@ -83,6 +83,10 @@ export type PanelCompany = {
   inUse: boolean;
   parentId: string | null;
   hasLogo: boolean;
+  // Organization Module (361e3b15) — the company's saved default payroll cycle (name). Pre-selected in the
+  // General-tab picker; if it is no longer among the active cycles the picker flags it and lets the admin
+  // re-point (no silent invalid selection).
+  defaultPayrollCycle: string;
 };
 /** A tenant-wide profile-option choice (value stored, label shown) for the State / Country pick-lists. */
 export type PanelOption = { value: string; label: string };
@@ -481,6 +485,7 @@ export function CompanyPanel({
   statutoryAuthorities = [],
   signatories = [],
   stateOptions = [],
+  activeCycleNames = [],
   actions,
   className,
 }: {
@@ -495,6 +500,9 @@ export function CompanyPanel({
   // Enhance Company General Tab (bc5d4891) — tenant-wide catalog for the Contact-Info State picker. The
   // Country picker (94ae7e1f) now uses the complete shared ISO list (lib/countries), not a curated catalog.
   stateOptions?: PanelOption[];
+  // Organization Module (361e3b15) — THIS company's ACTIVE payroll cycle names, for the Default Payroll
+  // Cycle picker on the General tab.
+  activeCycleNames?: string[];
   actions: {
     updateCompany: Action;
     archiveCompany: Action;
@@ -507,6 +515,7 @@ export function CompanyPanel({
     removeStatutoryAuthority: Action;
     setCompanyLogo: Action;
     removeCompanyLogo: Action;
+    updateCompanyDefaultCycle: Action;
   };
   // Applied by OrganizationList to CSS-hide non-matching rows during search (keeps the panel mounted).
   className?: string;
@@ -670,6 +679,49 @@ export function CompanyPanel({
                 {t('saveDetails')}
               </Button>
             </div>
+          </form>
+
+          {/* Organization Module (361e3b15) — Default Payroll Cycle. Lists THIS company's ACTIVE cycles with
+              the saved default pre-selected. Changing it affects FUTURE runs only (batches snapshot their run
+              type at creation) and is audit-trailed. If the saved default is no longer active (archived or
+              renamed), an inline note flags it and the admin re-points — no silent invalid selection. */}
+          <form action={actions.updateCompanyDefaultCycle} className="space-y-2.5 rounded-lg bg-background p-3">
+            <SubHeader>{t('defaultPayrollCycle')}</SubHeader>
+            <input type="hidden" name="companyId" value={c.id} />
+            {(() => {
+              const savedActive = activeCycleNames.includes(c.defaultPayrollCycle);
+              return (
+                <>
+                  <Field label={t('defaultPayrollCycle')}>
+                    <select
+                      name="defaultPayrollCycle"
+                      defaultValue={savedActive ? c.defaultPayrollCycle : ''}
+                      className={inputCls}
+                      disabled={activeCycleNames.length === 0}
+                    >
+                      {!savedActive && <option value="">{t('optionNone')}</option>}
+                      {activeCycleNames.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {activeCycleNames.length === 0 ? (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">{t('defaultPayrollCycleNoActive')}</p>
+                  ) : !savedActive ? (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      {t('defaultPayrollCycleInactive', { name: c.defaultPayrollCycle })}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{t('defaultPayrollCycleHint')}</p>
+                  )}
+                  <Button type="submit" size="sm" variant="outline" disabled={activeCycleNames.length === 0}>
+                    {t('saveDefaultPayrollCycle')}
+                  </Button>
+                </>
+              );
+            })()}
           </form>
 
           {/* Group parent + archive/delete */}

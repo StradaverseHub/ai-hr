@@ -34,7 +34,12 @@ export default async function PayrollProcessResultPage({ searchParams }: { searc
     );
   }
 
-  const reasonText = (code: RunGroupReasonCode): string => t(`reason.${code}`);
+  // Organization Module (361e3b15) — an INVALID_CYCLE row names the company AND the missing cycle type (not a
+  // bare "no cycle"), reusing the same friendly run-type labels the wizard uses. Other reasons stay as-is.
+  const reasonDetail = (c: (typeof result.perCompany)[number]): string =>
+    c.reason === 'INVALID_CYCLE' && c.missingCycleRunType
+      ? t('payrollCycleMissingForCompanyType', { company: c.companyName, runType: t(`runType.${c.missingCycleRunType}`) })
+      : t(`reason.${c.reason as RunGroupReasonCode}`);
 
   const overallVariant =
     result.overallStatus === 'succeeded' ? 'success' : result.overallStatus === 'partial' ? 'warning' : 'danger';
@@ -102,7 +107,7 @@ export default async function PayrollProcessResultPage({ searchParams }: { searc
                   </td>
                   <td className="px-4 py-2 text-muted-foreground">
                     {c.status === 'failed' && c.reason ? (
-                      <span className="text-amber-700 dark:text-amber-400">{reasonText(c.reason)}</span>
+                      <span className="text-amber-700 dark:text-amber-400">{reasonDetail(c)}</span>
                     ) : c.batchId ? (
                       <Link href={`/payroll/${c.batchId}`} className="font-medium text-primary hover:underline">
                         {t('viewBatch')}

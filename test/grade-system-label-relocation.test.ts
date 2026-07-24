@@ -120,6 +120,14 @@ describe('b1b81a08 · the destination — a fifth rail entry with its own body',
     expect(gradeGridSrc).toContain('return sortDir === \'asc\' ? av - bv : bv - av;');
   });
 
+  it('the grade body drops its in-body heading and no longer pins the header (sibling parity)', () => {
+    // The category name now renders only from the rail (gridSrc, still guarded at the test above), so
+    // the grade BODY must not repeat it as an in-body heading — asserted against gradeGridSrc, NOT gridSrc.
+    expect(gradeGridSrc).not.toContain("t('category.grade')");
+    // The header aligns with the four canonical siblings, which use a plain (non-sticky) thead.
+    expect(gradeGridSrc).not.toContain('sticky top-0');
+  });
+
   it('the page loads listJobGrades and no longer REPLACES the grid with the no-companies card', () => {
     expect(labelsPageSrc).toContain('listJobGrades(s, { includeArchived: true })');
     expect(labelsPageSrc).toContain('gradesSlot={gradesSlot}');
@@ -350,7 +358,7 @@ describe('b1b81a08 · i18n — the five new keys resolve in all six locales', ()
       expect((sl.col.name as string).length).toBeGreaterThan(0);
     }
     const en = JSON.parse(read('../messages/en.json'));
-    expect(en.admin.systemLabels.category.grade).toBe('Grades');
+    expect(en.admin.systemLabels.category.grade).toBe('Job Grade');
     expect(en.admin.systemLabels.col.rank).toBe('Rank');
     expect(en.admin.systemLabels.col.name).toBe('Grade Name');
   });

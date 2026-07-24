@@ -22,6 +22,7 @@ import {
 } from './holidays';
 import { isoWeekday } from './attendance';
 import { packFor } from '../localization/registry';
+import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
 import {
   applyMaxBalance,
   applyRounding,
@@ -355,6 +356,19 @@ export type LeaveEligibility = {
   // own column, migration 0225) and merged into this object at the enforcement chokepoints so it rides the
   // same assertEligible / isLeaveEligible gate as the other rules.
   probation?: 'confirmed_only' | 'probation_only';
+  // Organisation Assignment criteria (Enhance Leave Criteria Configuration): the eight catalogue-backed org
+  // fields, each keyed by its `employment` column name (see ORG_ASSIGNMENT_CRITERIA in core/leave-org-criteria).
+  // Each accepts a scalar (legacy shape) OR an array (multi-select, match-ANY) exactly like gender/marital, so
+  // asList() normalizes both without a migration. ABSENT key ⇒ no restriction, so every existing stored row is
+  // unchanged and existing saved conditions keep working.
+  orgDivision?: string | string[];
+  orgBranch?: string | string[];
+  orgRegion?: string | string[];
+  orgLine?: string | string[];
+  orgSection?: string | string[];
+  orgTeam?: string | string[];
+  orgBase?: string | string[];
+  employmentCategory?: string | string[];
 };
 
 /** The closed set of probation eligibility values (mirrors the DB CHECK on leave_type.probation_eligibility). */
@@ -630,11 +644,43 @@ function onProbationAsOf(emp: ProbationEmp | undefined, asOf: string): boolean {
   return confDate != null && asOf < confDate;
 }
 
+/** The employee facts the two eligibility gates read. The eight org-assignment columns are OPTIONAL so a
+ *  chokepoint that doesn't fetch them (or an employment with them all NULL) simply carries no org restriction —
+ *  the value the gate compares against is `emp[key] ?? ''`, which no non-empty configured list ever matches. */
+type EligibilityEmp = {
+  gender: string | null;
+  marital: string | null;
+  hiredOn: string;
+  confirmationDate?: string | null;
+  finalConfirmationDate?: string | null;
+  orgDivision?: string | null;
+  orgBranch?: string | null;
+  orgRegion?: string | null;
+  orgLine?: string | null;
+  orgSection?: string | null;
+  orgTeam?: string | null;
+  orgBase?: string | null;
+  employmentCategory?: string | null;
+};
+
+/** True when `elig` carries ANY restriction — gender / marital / min-service / probation OR one of the eight
+ *  org-assignment criteria. The chokepoints guard on this so the employee fetch is skipped only when the type
+ *  is genuinely open to all, and so a newly-added criterion is picked up here rather than at each call site. */
+export function hasAnyEligibilityRestriction(elig: LeaveEligibility | null | undefined): boolean {
+  if (!elig) return false;
+  if (asList(elig.gender).length > 0) return true;
+  if (asList(elig.maritalStatus).length > 0) return true;
+  if (elig.minServiceMonths) return true;
+  if (elig.probation) return true;
+  for (const c of ORG_ASSIGNMENT_CRITERIA) {
+    if (asList(elig[c.key]).length > 0) return true;
+  }
+  return false;
+}
+
 function assertEligible(
   elig: LeaveEligibility,
-  emp:
-    | { gender: string | null; marital: string | null; hiredOn: string; confirmationDate?: string | null; finalConfirmationDate?: string | null }
-    | undefined,
+  emp: EligibilityEmp | undefined,
   asOf: string,
 ): void {
   // Multi-select (#badc5966): qualify if the employee's attribute matches ANY selected value (OR within a
@@ -661,6 +707,15 @@ function assertEligible(
     }
     if (elig.probation === 'probation_only' && !onProbation) {
       throw new LeaveIneligibleError('This leave type is available to employees on probation only.');
+    }
+  }
+  // Organisation Assignment criteria: OR within a field, AND across fields (identical to gender/marital). An
+  // empty/absent list carries no restriction; a configured list requires the employee's stored org value to be
+  // one of the chosen values. asList() normalizes a legacy scalar the same way it does for gender/marital.
+  for (const c of ORG_ASSIGNMENT_CRITERIA) {
+    const allowed = asList(elig[c.key]);
+    if (allowed.length > 0 && !allowed.includes(emp?.[c.key] ?? '')) {
+      throw new LeaveIneligibleError(`This leave type is available to employees in ${allowed.join(' or ')} only.`);
     }
   }
 }
@@ -809,9 +864,7 @@ export function maternityAllowanceEligibility(
  *  show an employee only the leave types they could actually take (2F-1 / R18). */
 export function isLeaveEligible(
   elig: LeaveEligibility | null | undefined,
-  emp:
-    | { gender: string | null; marital: string | null; hiredOn: string; confirmationDate?: string | null; finalConfirmationDate?: string | null }
-    | undefined,
+  emp: EligibilityEmp | undefined,
   asOf: string,
 ): boolean {
   if (!elig) return true;
@@ -826,6 +879,11 @@ export function isLeaveEligible(
     const onProbation = onProbationAsOf(emp, asOf);
     if (elig.probation === 'confirmed_only' && onProbation) return false;
     if (elig.probation === 'probation_only' && !onProbation) return false;
+  }
+  // Organisation Assignment criteria — mirrors assertEligible (OR within a field, AND across fields).
+  for (const c of ORG_ASSIGNMENT_CRITERIA) {
+    const allowed = asList(elig[c.key]);
+    if (allowed.length > 0 && !allowed.includes(emp?.[c.key] ?? '')) return false;
   }
   return true;
 }
@@ -1473,7 +1531,7 @@ export async function requestLeave(
     const probation = (lt?.probationEligibility ?? null) as ProbationEligibility | null;
     const elig: LeaveEligibility | null =
       baseElig || probation ? { ...(baseElig ?? {}), ...(probation ? { probation } : {}) } : null;
-    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths || elig.probation)) {
+    if (elig && hasAnyEligibilityRestriction(elig)) {
       const [emp] = await tx
         .select({
           gender: person.gender,
@@ -1481,6 +1539,16 @@ export async function requestLeave(
           hiredOn: employment.hiredOn,
           confirmationDate: employment.confirmationDate,
           finalConfirmationDate: employment.finalConfirmationDate,
+          // Organisation Assignment criteria: the eight org columns live ON employment (already the FROM root),
+          // so widening this existing SELECT is sufficient — no new join, no as-of choice.
+          orgDivision: employment.orgDivision,
+          orgBranch: employment.orgBranch,
+          orgRegion: employment.orgRegion,
+          orgLine: employment.orgLine,
+          orgSection: employment.orgSection,
+          orgTeam: employment.orgTeam,
+          orgBase: employment.orgBase,
+          employmentCategory: employment.employmentCategory,
         })
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))
@@ -3871,7 +3939,7 @@ export async function editLeaveRequest(
     const probation = (lt.probationEligibility ?? null) as ProbationEligibility | null;
     const elig: LeaveEligibility | null =
       baseElig || probation ? { ...(baseElig ?? {}), ...(probation ? { probation } : {}) } : null;
-    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths || elig.probation)) {
+    if (elig && hasAnyEligibilityRestriction(elig)) {
       const [emp] = await tx
         .select({
           gender: person.gender,
@@ -3879,6 +3947,16 @@ export async function editLeaveRequest(
           hiredOn: employment.hiredOn,
           confirmationDate: employment.confirmationDate,
           finalConfirmationDate: employment.finalConfirmationDate,
+          // Organisation Assignment criteria: the eight org columns live ON employment (already the FROM root),
+          // so widening this existing SELECT is sufficient — no new join, no as-of choice.
+          orgDivision: employment.orgDivision,
+          orgBranch: employment.orgBranch,
+          orgRegion: employment.orgRegion,
+          orgLine: employment.orgLine,
+          orgSection: employment.orgSection,
+          orgTeam: employment.orgTeam,
+          orgBase: employment.orgBase,
+          employmentCategory: employment.employmentCategory,
         })
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))
@@ -5108,11 +5186,11 @@ export function earnedCycleStart(hiredOn: string, asOf: string, cycle: string | 
   return `${cycleYear}-${hireMonth}-01`;
 }
 
-/** Leave Year Type override (feedback e1a51aea, extended by f3a64d90): the LIVE per-type override values.
- *  'a2a' and 'c2c' reuse the existing anniversary/calendar semantics; 'a2c' (Anniversary to Calendar) went
- *  live with f3a64d90 — its leave YEAR is the calendar year (see resolveLeaveYearCycle), and the ONLY novel
- *  behaviour is the HIRE-year ANNUAL day-by-day build-up (a2cFirstYearEntitledToDate). Migration 0310
- *  widened the DB CHECK to match this set (defence-in-depth). */
+/** Leave Year Type override (feedback e1a51aea, extended by f3a64d90 → adcdf215): the LIVE per-type override
+ *  values. 'a2a' and 'c2c' reuse the existing anniversary/calendar semantics; 'a2c' (Anniversary to Calendar)
+ *  went live with f3a64d90 — its leave YEAR is the calendar year (see resolveLeaveYearCycle), and the ONLY
+ *  novel behaviour is the HIRE-year ANNUAL up-front part-year entitlement (a2cFirstYearEntitledToDate).
+ *  Migration 0310 widened the DB CHECK to match this set (defence-in-depth). */
 export const LEAVE_YEAR_CYCLE_OVERRIDES = ['a2a', 'c2c', 'a2c'] as const;
 export type LeaveYearCycleOverride = (typeof LEAVE_YEAR_CYCLE_OVERRIDES)[number];
 
@@ -5129,10 +5207,11 @@ export const A2C_OVERRIDE = 'a2c';
  * of company.leave_cycle in a per-type computation resolves through this ONE function (accrueEarnedLeave,
  * the two recalc kernels' callers, leaveEntitlementBreakdown) so the override cannot half-apply.
  *
- * Anniversary to Calendar (f3a64d90) maps to 'calendar' — NOT a new third cycle. Its year runs 1 Jan →
- * 31 Dec like any calendar type; only the employee's FIRST (hire) year is sliced day-by-day from the join
- * date. Mapping it here keeps earnedCycleStart, the carry/forfeit anchoring, openLeaveYear's year-two grant
- * and every resolve call-site byte-identical, and gets year-two-onward behaviour for free.
+ * Anniversary to Calendar (f3a64d90 → adcdf215) maps to 'calendar' — NOT a new third cycle. Its year runs
+ * 1 Jan → 31 Dec like any calendar type; only the employee's FIRST (hire) year is prorated (join → 31 Dec)
+ * and granted UP FRONT from the join date. Mapping it here keeps earnedCycleStart, the carry/forfeit
+ * anchoring, openLeaveYear's year-two grant and every resolve call-site byte-identical, and gets
+ * year-two-onward behaviour for free.
  */
 export function resolveLeaveYearCycle(
   override: string | null | undefined,
@@ -5144,20 +5223,30 @@ export function resolveLeaveYearCycle(
 }
 
 /**
- * Anniversary to Calendar — the ONE shared first-year kernel (feedback f3a64d90). An employee hired
- * part-way through a year builds their ANNUAL entitlement day by day across their first, partial leave
- * year (join date → 31 Dec of the hire year):
+ * Anniversary to Calendar — the ONE shared first-year kernel (feedback f3a64d90 → adcdf215). An employee
+ * hired part-way through a year gets their full prorated part-year ANNUAL entitlement UP FRONT, available
+ * from their join date, across their first, partial leave year (join date → 31 Dec of the hire year):
  *
- *     (annual entitlement ÷ 365) × days worked to date          — the reporter's stated formula
+ *     (annual entitlement ÷ 365) × days from join to 31 Dec     — the reporter's stated formula
  *
- * `daysWorked` is INCLUSIVE of both the join date and `asOf` (daysBetween is exclusive-end, hence the +1):
- * a 2026-01-06 joiner checked on 2026-07-23 has worked 199 days, so 20/365 × 199 = 10.90 days.
- * The window end is clamped to 31 Dec of the HIRE year, so an asOf in a later year can never keep
- * accruing on the first-year formula (year two is a plain calendar grant — see resolveLeaveYearCycle).
+ * UP-FRONT (adcdf215): the value is INDEPENDENT of `asOf` for an active employee — the window end is
+ * 31 Dec of the HIRE year, so a 2026-01-06 joiner sees 20/365 × 360 = 19.73 days immediately at hire,
+ * not a sliver that builds day by day. `daysWorked` is INCLUSIVE of both endpoints (daysBetween is
+ * exclusive-end, hence the +1). Year two onward is a plain calendar grant (see resolveLeaveYearCycle).
+ *
+ * `asOf` is STILL load-bearing, not vestigial: a pre-hire `asOf` floors the figure at 0 (the explicit
+ * guard below — previously this floor was implemented THROUGH the window end, which the up-front switch
+ * removed), and the upstream isA2cFirstYear check gates entry to this kernel by the hire-year window.
+ *
+ * LEAVER CAP (adcdf215): for a first-year employee who has LEFT, pass `serviceEnd` (their termination
+ * date). The window end is then the EARLIER of 31 Dec and `serviceEnd`, so the figure prorates only to
+ * their last working day and never inflates encashment / final pay with days they never served. When
+ * `serviceEnd` is absent (a fresh, active hire) the end is 31 Dec — the full up-front figure.
  *
  * The min() CLAMP is mandatory, not cosmetic: a 366-day first year (a 1-Jan hire in a leap year) would
  * otherwise yield 20/365 × 366 = 20.05 — overshooting the annual entitlement. The /365 divisor stays per
- * the reporter's spec; the clamp guarantees the cap holds. Pre-hire `asOf` floors at 0.
+ * the reporter's spec (it pins the 19.73 reference; a 6-Jan c2c/calendar joiner month-prorates to 20.00
+ * instead — the divergence is intentional), and the clamp guarantees the cap holds.
  *
  * `entitledDays` MUST be the FULLY RESOLVED entitlement (EA-1955 floor ∨ benefit-scheme band ∨ policy days
  * — i.e. the shared `entitledDays()` composition), never a raw policy number, so this path respects the
@@ -5168,10 +5257,18 @@ export function a2cFirstYearEntitledToDate(
   hiredOn: string,
   asOf: string,
   entitledDays: number,
+  serviceEnd?: string | null,
 ): number {
   if (entitledDays <= 0) return 0;
+  // Pre-hire floor (adcdf215): the up-front figure is only available from the join date onward. This is an
+  // EXPLICIT guard now — the old build-up floored pre-hire implicitly, via a window end that tracked asOf
+  // (asOf < dec31 ? asOf : dec31) so a pre-hire asOf produced daysWorked ≤ 0. The up-front window end no
+  // longer tracks asOf, so the floor must be stated here.
+  if (asOf < hiredOn) return 0;
   const dec31 = `${hiredOn.slice(0, 4)}-12-31`;
-  const end = asOf < dec31 ? asOf : dec31;
+  // Active first-year employee ⇒ full part-year (join → 31 Dec) up front. A first-year LEAVER is capped at
+  // their last day of service so the figure never over-grants days they never served.
+  const end = serviceEnd != null && serviceEnd < dec31 ? serviceEnd : dec31;
   const daysWorked = daysBetween(hiredOn, end) + 1; // inclusive of both endpoints
   if (daysWorked <= 0) return 0;
   return round2(Math.min((entitledDays / 365) * daysWorked, entitledDays));
@@ -5672,7 +5769,16 @@ export type PolicyScope = { gradeId: string | null; companyId: string | null };
 export function projectExpectedEntitlement(
   // Leave Year Type override (e1a51aea): `leaveCycle` is the EFFECTIVE cycle for the (type, company) pair —
   // callers resolve it via resolveLeaveYearCycle(type.yearCycleOverride, company.leaveCycle) before calling.
-  emp: { hiredOn: string; leaveCycle: string | null; gradeId: string | null; companyId: string },
+  // `terminatedOn` (adcdf215): a first-year a2c LEAVER's last day of service — passed as the serviceEnd cap
+  // into the up-front kernel so the figure prorates to their exit, not the full year. Absent/null ⇒ active
+  // employee ⇒ full up-front figure. Ignored on every non-a2c branch (byte-identical for other callers).
+  emp: {
+    hiredOn: string;
+    leaveCycle: string | null;
+    gradeId: string | null;
+    companyId: string;
+    terminatedOn?: string | null;
+  },
   typeCode: string,
   policyRows: GradePolicyRow[],
   floor: (code: string, years: number) => number,
@@ -5715,13 +5821,14 @@ export function projectExpectedEntitlement(
   const days = entitledDays(floor(typeCode, years), schemeDaysForYears?.(years) ?? null, pol?.days ?? 0);
   let expected: number;
   if (a2cFirstYear) {
-    // Anniversary to Calendar (f3a64d90), FIRST (hire) year only: the entitlement builds day by day from
-    // the join date to `asOf` at (resolved entitlement ÷ 365) — the ONE shared kernel, so the hire grant,
-    // this projection and the a2c correction can never disagree. The window is the CALENDAR year (a2c
-    // resolves to 'calendar'), so carry/forfeit anchoring and the year-two grant stay untouched. Every
-    // other a2c case — a non-ANNUAL type, or ANNUAL in year two onward — falls through to the branches
-    // below and behaves exactly like an ordinary calendar type (full grant).
-    expected = a2cFirstYearEntitledToDate(emp.hiredOn, asOf, days);
+    // Anniversary to Calendar (f3a64d90 → adcdf215), FIRST (hire) year only: the entitlement is the full
+    // prorated part-year (join → 31 Dec) UP FRONT at (resolved entitlement ÷ 365) — the ONE shared kernel,
+    // so the hire grant, this projection and the a2c correction can never disagree. A first-year LEAVER is
+    // capped at their last day of service via `terminatedOn` (serviceEnd) so the figure never over-grants
+    // days they never served. The window is the CALENDAR year (a2c resolves to 'calendar'), so carry/forfeit
+    // anchoring and the year-two grant stay untouched. Every other a2c case — a non-ANNUAL type, or ANNUAL
+    // in year two onward — falls through to the branches below and behaves like an ordinary calendar type.
+    expected = a2cFirstYearEntitledToDate(emp.hiredOn, asOf, days, emp.terminatedOn ?? null);
   } else if (earnedMethod) {
     const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
     const accrualStart =
@@ -5754,9 +5861,9 @@ export function projectExpectedEntitlement(
   return { expected, windowStart };
 }
 
-/** Anniversary to Calendar (f3a64d90): the SYSTEM-generated adjustment reasons the a2c first-year model
- *  SUPERSEDES. Under a2c a first-year employee's entitlement is exactly the day-by-day accrual — there is
- *  no prior cycle to carry from (so no cap/expiry forfeit belongs in the window), and any earlier
+/** Anniversary to Calendar (f3a64d90 → adcdf215): the SYSTEM-generated adjustment reasons the a2c first-year
+ *  model SUPERSEDES. Under a2c a first-year employee's entitlement is exactly the up-front part-year figure —
+ *  there is no prior cycle to carry from (so no cap/expiry forfeit belongs in the window), and any earlier
  *  policy-/profile-recalc adjustment was computed under the model a2c replaces. A human festive-grant or
  *  a manual HR adjustment carries NO `sys:` reason and is therefore never touched. */
 const a2cSupersededReasonCond = () =>
@@ -5776,15 +5883,20 @@ const a2cSupersededReasonCond = () =>
  * WHY ITS OWN PATH, and not one more `adjustment` in the two existing recalc kernels: the "YTD Entitled"
  * figure on every leave summary is `accrued`, and `accrued` sums ONLY entryType in ('accrual',
  * 'in_lieu_accrual') (core/read.ts leaveBalances). An `adjustment` moves Balance and Available but is
- * INVISIBLE to YTD Entitled — so a plain adjustment could never lift the reporter's 7.00 to 10.90. This
- * path therefore posts an ACCRUAL-CLASS row for the entitlement delta, which is what makes all four
- * surfaces (YTD Entitled, Available, Balance, and the Entitlement breakdown's cycleAccrual) move together.
+ * INVISIBLE to YTD Entitled — so a plain adjustment could never lift a to-date figure to the up-front
+ * target. This path therefore posts an ACCRUAL-CLASS row for the entitlement delta, which is what makes all
+ * four surfaces (YTD Entitled, Available, Balance, and the Entitlement breakdown's cycleAccrual) move
+ * together. adcdf215: this same accrual delta is what TOPS UP an already-in-flight build-up employee
+ * (to-date → up-front, e.g. 10.90 → 19.73) on the next correction sweep — up-front ≥ to-date for a mid-year
+ * first-year employee, so that top-up is never a claw-down.
  *
  * Two rows, both stamped `sys:a2c_recalc:<leaveTypeId>`:
  *  1. ACCRUAL delta — brings the window's accrual-class total to exactly the a2c target
  *     (a2cFirstYearEntitledToDate over the FULLY resolved entitlement: EA-1955 floor ∨ benefit-scheme band
- *     ∨ policy days). Signed: an employee whose ledger EXCEEDS the target is clawed DOWN, which the
- *     grant-only engines can never do.
+ *     ∨ policy days). For a first-year LEAVER the target is capped at their last day of service (the
+ *     candidate's `terminatedOn`, threaded through as the kernel's serviceEnd) so the correction never
+ *     over-grants encashment / final pay. Signed: an employee whose ledger EXCEEDS the target is clawed
+ *     DOWN, which the grant-only engines can never do.
  *  2. ADJUSTMENT reversal — cancels the superseded system rows in the window (see
  *     a2cSupersededReasonCond). Without it a pure accrual top-up would fix YTD Entitled and leave Balance
  *     wrong, which is precisely the defect reported (accrued 7.00, taken 3.50, balance −6.00: about −9.50
@@ -5809,7 +5921,8 @@ export async function reprojectA2cEntitlement(
     leaveTypeId: string;
     /** Restrict to these employments; absent ⇒ every live employment the type can reach. */
     employmentIds?: string[];
-    /** Tenant-local (MYT) "today" — anchors the day-by-day build-up. */
+    /** Tenant-local (MYT) "today" — the correction date. adcdf215: the active up-front figure is asOf-
+     *  independent, but asOf still bounds the ledger window read below and gates the hire-year check. */
     asOf: string;
     /** Recorded on the event payload: what triggered the correction (e.g. 'year_cycle_override'). */
     trigger: string;
@@ -5832,6 +5945,9 @@ export async function reprojectA2cEntitlement(
     .select({
       employmentId: employment.id,
       hiredOn: employment.hiredOn,
+      // adcdf215: a first-year LEAVER's last day of service — threaded into the up-front kernel as the
+      // serviceEnd cap so the correction prorates to their exit, never over-granting encashment / final pay.
+      terminatedOn: employment.terminatedOn,
       country: company.country,
       leaveCycle: company.leaveCycle,
       gradeId: employment.gradeId,
@@ -5920,6 +6036,8 @@ export async function reprojectA2cEntitlement(
         leaveCycle: resolveLeaveYearCycle(type.yearCycleOverride, e.leaveCycle) ?? null,
         gradeId: e.gradeId,
         companyId: e.companyId,
+        // adcdf215: cap a first-year leaver's up-front figure at their last day of service.
+        terminatedOn: e.terminatedOn,
       },
       type.code,
       policyRows,
@@ -6055,27 +6173,45 @@ export async function reprojectEntitlementForPolicy(
 ): Promise<{ affected: number; totalDelta: number }> {
   const none = { affected: 0, totalDelta: 0 };
 
-  // 1. Recalculate only when the correction moves ENTITLEMENT (days / method / bands) or the policy's
-  //    scope. Carry-forward-only edits (cap, expiry, toggles) never changed what was granted — skip.
+  // 1. Recalculate only when the correction moves ENTITLEMENT (days / method / bands / rounding) or the
+  //    policy's scope. Carry-forward-only edits (cap, expiry, toggles) never changed what was granted — skip.
   //    Method is normalized the way the writers persist it (absent ⇒ the lump-sum default). Bands are
   //    canonical by construction (validated contiguous-ascending), so a JSON compare is stable.
-  //    FORWARD-ONLY (feedback b81d3c52) — `roundingMethod` is DELIBERATELY ABSENT from this comparison.
-  //    Flipping the Rounding Method dropdown must NOT immediately re-credit every live balance; balances
-  //    settle onto the tidied figure at their next natural grant / top-up / year reset. (The projection
-  //    above still rounds, so when a days/method change DOES trigger a reproject no spurious rounding
-  //    delta appears.) A one-time retroactive re-credit is an explicit follow-up — do not add it here.
+  //    ROUNDING RE-CREDIT (this ticket, reversing the b81d3c52 forward-only decision) — `roundingMethod` is
+  //    NOW part of this comparison: flipping the Rounding Method dropdown immediately re-figures every
+  //    already-granted balance to the tidied whole-day value, so the configured rule matches the displayed
+  //    entitlement without waiting for the next natural grant / top-up / year reset. `rounding` is normalized
+  //    the way the writer persists it (roundingAccrual, core/admin.ts) — 'up'/'down' pass through, anything
+  //    else (incl. absent) collapses to 'none', so a no-rounding vs absent row is NOT a false-positive change.
+  //    The effective-date guards below (validFrom > asOf, closed historical version) STILL protect frozen
+  //    prior years — a rounding flip only ever touches the CURRENT open cycle.
   const norm = (a: AccrualConfig | null) => ({
     annualDays: Number(a?.annualDays ?? 0),
     method: a?.method || 'grant_on_hire_prorated',
     bands: JSON.stringify(a?.serviceBands ?? null),
+    rounding: a?.roundingMethod === 'up' || a?.roundingMethod === 'down' ? a.roundingMethod : 'none',
   });
   const nb = norm(p.before);
   const na = norm(p.after);
   const entitlementChanged =
-    nb.annualDays !== na.annualDays || nb.method !== na.method || nb.bands !== na.bands;
+    nb.annualDays !== na.annualDays ||
+    nb.method !== na.method ||
+    nb.bands !== na.bands ||
+    nb.rounding !== na.rounding;
   const scopeChanged =
     p.beforeScope.gradeId !== p.afterScope.gradeId || p.beforeScope.companyId !== p.afterScope.companyId;
   if (!entitlementChanged && !scopeChanged) return none;
+  // A rounding-ONLY change (nothing else moved) posts its compensating row ACCRUAL-class instead of the
+  // usual `adjustment` (see the insert below): the tidied whole-day value must land ON the earned/entitled
+  // figure itself (leaveBalances.accrued / breakdown.cycleAccrual sum accrual-class only), matching the
+  // a2c precedent — not sit beside a raw figure as a separate correction. Days/method/bands/scope edits
+  // keep `adjustment` (byte-identical to every existing 49809272 recalc test).
+  const roundingOnlyChange =
+    nb.rounding !== na.rounding &&
+    nb.annualDays === na.annualDays &&
+    nb.method === na.method &&
+    nb.bands === na.bands &&
+    !scopeChanged;
 
   // 2. Only a version ACTIVE at asOf can have driven this cycle's materialized grants. A forward-dated
   //    version (validFrom > asOf) applies from its own date per effective-date logic; a closed historical
@@ -6245,16 +6381,19 @@ export async function reprojectEntitlementForPolicy(
     const delta = round2(expected - alreadyPosted);
     if (delta === 0) continue;
 
-    // Append-only ledger: the compensating row is a signed `adjustment` (the sanctioned ± channel the
-    // breakdown surfaces separately). A negative delta CAN push the balance below days already taken —
-    // a real over-granted situation, surfaced honestly rather than hidden.
+    // Append-only ledger: the compensating row is signed. A rounding-only change posts it ACCRUAL-class so
+    // the tidied whole-day value lands ON the earned/entitled figure (leaveBalances.accrued /
+    // breakdown.cycleAccrual sum accrual-class only — the a2c precedent); every other correction stays an
+    // `adjustment` (the sanctioned ± channel the breakdown surfaces separately). Either class is read back
+    // into `alreadyPosted` next run (idempotent). A negative delta CAN push the balance below days already
+    // taken — a real over-granted situation (incl. downward rounding), surfaced honestly rather than hidden.
     const [row] = await tx
       .insert(leaveLedger)
       .values({
         tenantId: ctx.tenantId,
         employmentId: e.employmentId,
         leaveTypeId: p.leaveTypeId,
-        entryType: 'adjustment',
+        entryType: roundingOnlyChange ? 'accrual' : 'adjustment',
         days: delta.toFixed(2),
         effectiveOn: p.asOf,
         reason: `${POLICY_RECALC_REASON_PREFIX}:${p.policyId}`,

@@ -33,6 +33,7 @@ import {
   deletePosition,
   revokeRole,
   setCompanyParent,
+  setCompanyDefaultPayrollCycle,
   setCompanyLeaveCycle,
   setCompanyLogo,
   removeCompanyLogo,
@@ -42,6 +43,7 @@ import {
   updateCostCenter,
   updateDepartment,
   updateLeavePolicy,
+  saveServiceEntitlement,
   updateLeaveType,
   updatePosition,
 } from '@/core/admin';
@@ -63,8 +65,10 @@ import {
   type DayTypeInclusion,
   type EarnedAccrualGroup,
   type LeaveDurationType,
+  type LeaveEligibility,
   type ServiceBand,
 } from '@/core/leave';
+import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 import { setAttendancePolicy } from '@/packs/attendance/service';
 import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
 import {
@@ -135,11 +139,33 @@ export async function createCompanyAction(formData: FormData) {
       country: String(formData.get('country') ?? 'MY'),
       currency: String(formData.get('currency') ?? 'MYR'),
       registrationNo: (formData.get('registrationNo') as string) || undefined,
+      // Organization Module (361e3b15): the Default Payroll Cycle picker (pre-set to Monthly). createCompany
+      // resolves it against the standard catalog it seeds, defaulting to 'Monthly' for any unknown/blank value.
+      defaultPayrollCycle: (formData.get('defaultPayrollCycle') as string) || undefined,
     });
   } catch (e) {
     fail(ORG, e);
   }
   ok(ORG);
+}
+
+/**
+ * Organization Module — Automatic Payroll Cycle Assignment (361e3b15). Change a company's default payroll
+ * cycle later from the company's General settings. The core validates the name resolves to an active cycle in
+ * that company and audits the before→after change; a successful save confirms via a localised toast.
+ */
+export async function updateCompanyDefaultCycleAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await setCompanyDefaultPayrollCycle(s, {
+      companyId: String(formData.get('companyId')),
+      cycleName: String(formData.get('defaultPayrollCycle') ?? ''),
+    });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  const t = await getTranslations('admin.organization');
+  okToast(ORG, t('defaultPayrollCycleSaved'));
 }
 
 /**
@@ -442,16 +468,19 @@ const carryFlagField = (fd: FormData, name: string): boolean | undefined =>
   fd.get('carryBlockRendered') == null ? undefined : fd.get(name) === 'on';
 
 /**
- * Feedback b81d3c52 — Rounding Method (Entitlements → leave type → General → Earning Method). Normalizes
- * the posted value to the two REAL methods; 'none', an absent field and any unrecognised string all map to
- * `undefined`, which the service reads as "omit the key" so a No-Rounding policy stores nothing new (and a
- * form that does not render/re-post the field cannot poison the JSONB with a bogus value). Every form that
- * posts a policy re-posts this — the Earning Method select itself, and a hidden input on the Carry Forward
- * front door + the Eligibility inline edit form — because the writers rebuild `accrual` wholesale.
+ * Feedback b81d3c52 — Rounding Method (Entitlements → leave type → General → Earning Method). TRI-STATE
+ * (this ticket), mirroring `serviceBandsField` exactly, so the Rounding Method REMEMBERS itself on its own
+ * instead of riding a hidden input on every unrelated form (the footgun the codebase itself flagged):
+ *  - marker `roundingMethodRendered` ABSENT ⇒ `undefined` = PRESERVE (the form did not render the Rounding
+ *    dropdown — Carry Forward / Eligibility inline edit — so the writer keeps the stored value);
+ *  - marker present + 'up' / 'down' ⇒ that value = SET;
+ *  - marker present + anything else (incl. 'none') ⇒ `null` = explicit CLEAR (omit the key).
+ * Only the forms that actually render the dropdown (Earning Method, the multi-scope add form) post the marker.
  */
-const roundingMethodField = (fd: FormData): string | undefined => {
+const roundingMethodField = (fd: FormData): 'up' | 'down' | null | undefined => {
+  if (fd.get('roundingMethodRendered') == null) return undefined;
   const v = String(fd.get('roundingMethod') ?? '');
-  return v === 'up' || v === 'down' ? v : undefined;
+  return v === 'up' || v === 'down' ? v : null;
 };
 
 /**
@@ -610,6 +639,39 @@ export async function updateLeavePolicyAction(formData: FormData) {
   okEntitlements(
     recalc.affected > 0 ? t('recalcToast', { count: recalc.affected, delta }) : t('entitlementUpdatedToast'),
     String(formData.get('leaveTypeId') ?? ''),
+  );
+}
+
+/**
+ * Restructure Service-Based Leave Entitlements — save one grade's three service-band figures for a company
+ * from the company-driven Service Based Entitlements table. The first save for a company materialises the
+ * whole company scope so the untouched grades never silently drop to zero (ADR-0066 short-circuit); the
+ * edited grade is recalculated in place. Everything is orchestrated over the existing createLeavePolicy /
+ * updateLeavePolicy writers in core (no new writer primitive) — see saveServiceEntitlement.
+ */
+export async function saveServiceEntitlementAction(formData: FormData) {
+  const s = await getSession();
+  const leaveTypeId = String(formData.get('leaveTypeId') ?? '');
+  const t = await getTranslations('admin.leave');
+  let recalc = { affected: 0, totalDelta: 0 };
+  try {
+    recalc = await saveServiceEntitlement(s, {
+      leaveTypeId,
+      companyId: String(formData.get('companyId') ?? ''),
+      gradeId: String(formData.get('gradeId') ?? ''),
+      under2: Number(formData.get('under2')),
+      mid: Number(formData.get('mid')),
+      over: Number(formData.get('over')),
+      asOf: todayInKualaLumpur(),
+    });
+  } catch (e) {
+    // 9b0503ac — surface the error on the Entitlements panel, not a bounce to /admin/leave.
+    fail(ENTITLEMENTS, e);
+  }
+  const delta = `${recalc.totalDelta > 0 ? '+' : ''}${recalc.totalDelta}`;
+  okEntitlements(
+    recalc.affected > 0 ? t('recalcToast', { count: recalc.affected, delta }) : t('entitlementUpdatedToast'),
+    leaveTypeId,
   );
 }
 
@@ -1247,14 +1309,22 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // Multi-select (#badc5966): the gender / marital checkbox groups post repeated inputs → getAll yields the
   // selected values as arrays. cleanEligibility de-dupes, validates, and collapses an empty array to "no
   // restriction".
-  const eligibility = touchEligibility
-    ? {
-        gender: fd.getAll('gender').map(String),
-        maritalStatus: fd.getAll('maritalStatus').map(String),
-        minServiceMonths: minRaw === '' ? undefined : Number(minRaw),
-        minServiceUnit: unitRaw === '' ? undefined : (unitRaw as 'months' | 'days'),
-      }
-    : undefined;
+  let eligibility: LeaveEligibility | undefined;
+  if (touchEligibility) {
+    eligibility = {
+      gender: fd.getAll('gender').map(String),
+      maritalStatus: fd.getAll('maritalStatus').map(String),
+      minServiceMonths: minRaw === '' ? undefined : Number(minRaw),
+      minServiceUnit: unitRaw === '' ? undefined : (unitRaw as 'months' | 'days'),
+    };
+    // Organisation Assignment criteria (Enhance Leave Criteria Configuration): each org field's ChipMultiSelect
+    // posts one repeated input per selected value → getAll yields the list. cleanEligibility de-dupes, drops
+    // blanks and collapses an empty array to "no restriction" (no catalogue hard-validation, so a value later
+    // deactivated still re-saves cleanly). Iterating the single descriptor keeps the action in lock-step.
+    for (const c of ORG_ASSIGNMENT_CRITERIA) {
+      eligibility[c.key] = fd.getAll(c.key).map(String);
+    }
+  }
   // Probation eligibility (d6bdbd55): the eligibility sub-form also posts a `probation` select ('' | confirmed_only
   // | probation_only). It rides the SAME `eligibility=1` marker, so an unrelated save leaves the column untouched
   // (undefined). Blank ⇒ null (clears the restriction); a concrete value sets it. The service re-validates against

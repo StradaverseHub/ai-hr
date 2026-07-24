@@ -25,8 +25,9 @@ export type LeaveBalanceRow = {
   overutilized: number | null;
   /** Derived currentYearEntitlement + carriedForward. */
   ytdEntitled: number | null;
-  /** Standardize Leave Balance Table (776cd1b5): computed final remaining balance —
-   *  (Accrued + Carried Forward + Adjustment) − Taken − Overutilized. null ⇒ Accrued/Taken ESS-hidden. */
+  /** Standardize Leave Balance Table (776cd1b5): the authoritative ledger remaining balance (b.balance = sum
+   *  of ledger days, shown GROSS of pending), surfaced directly — NOT re-derived (6574c6b4). null ⇒ Accrued/Taken
+   *  ESS-hidden. */
   balance: number | null;
   /** RSC-instantiated <EntitlementBreakdown/> side-sheet trigger (R22). */
   detail?: ReactNode;
@@ -53,6 +54,8 @@ export type BalanceInput = {
   color: string | null;
   icon: string | null;
   code: string | null;
+  /** Authoritative ledger remaining (sum of ledger days), GROSS of pending — surfaced as Balance (6574c6b4). */
+  balance: number;
   available: number;
   taken: number;
   /** Employee Leave View Configuration (65dec703): resolved per-component visibility (missing ⇒ visible). */
@@ -78,15 +81,12 @@ export function deriveBalanceRow(b: BalanceInput, bd: BreakdownInput): Omit<Leav
   const showAvailable = b.essView.available !== false;
   const showTaken = b.essView.taken !== false;
   const overutilized = showAvailable ? Math.max(0, -b.available) : null;
-  // Standardize Leave Balance Table (776cd1b5): Balance = (Accrued + Carried Forward + Adjustment) − Taken −
-  // Overutilized, where Accrued = available. Missing breakdown parts count as 0. Gated on Available AND Taken
-  // being visible (Balance contains both) so a hidden figure can never leak through the computed column.
-  const carried = bd ? bd.carriedForward : 0;
-  const adj = bd ? bd.otherAdjustments : 0;
-  const balance =
-    showAvailable && showTaken
-      ? Math.round((b.available + carried + adj - b.taken - Math.max(0, -b.available)) * 100) / 100
-      : null;
+  // Balance = the authoritative ledger remaining (b.balance = sum of ledger days, already nets entitlement +
+  // carried + adjustments − taken − forfeited), surfaced DIRECTLY rather than re-derived (6574c6b4). The old
+  // formula re-added carried/adjustments and re-subtracted taken over the ledger sum — a double-count that turned
+  // a true +14 into −14. Shown GROSS of pending (the adjacent Accrued column shows balance − pending). Still gated
+  // on Available AND Taken being visible so a hidden figure can never leak through this column.
+  const balance = showAvailable && showTaken ? Math.round(b.balance * 100) / 100 : null;
   return {
     leaveTypeId: b.leaveTypeId,
     leaveType: b.leaveType,

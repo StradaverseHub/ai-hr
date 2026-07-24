@@ -208,9 +208,11 @@ describe('123c1e76 · leave-type config restructured into 4 category cards (b8fc
 
 describe('123c1e76 · per-type Entitlement card reuses the benefit-scheme table (no forked config)', () => {
   it('the panel imports the shared table + type from benefit-scheme-config', () => {
-    expect(panelSrc).toMatch(
-      /import \{ LeaveTypeEntitlementTable, type LeaveTypeSchemeEntitlement \} from '\.\/benefit-scheme-config'/,
-    );
+    // Restructure Service-Based Leave Entitlements added ServiceEntitlementTable + ServicePolicyRow to the
+    // same import; the reuse of LeaveTypeEntitlementTable + its type must remain.
+    expect(panelSrc).toContain("from './benefit-scheme-config'");
+    expect(panelSrc).toMatch(/import \{[\s\S]*LeaveTypeEntitlementTable[\s\S]*\} from '\.\/benefit-scheme-config'/);
+    expect(panelSrc).toMatch(/import \{[\s\S]*type LeaveTypeSchemeEntitlement[\s\S]*\} from '\.\/benefit-scheme-config'/);
   });
 
   it('benefit-scheme-config exports the per-type table and it reuses the row edit dialog + tier reader', () => {

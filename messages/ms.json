@@ -741,6 +741,14 @@
         "team": "Pasukan",
         "base": "Pangkalan",
         "company": "Syarikat",
+        "companyChangeableHint": "Pekerja ini belum mempunyai sebarang transaksi, jadi anda masih boleh membetulkan Syarikatnya di sini. Pilih syarikat yang betul, kemudian pilih Jabatan dan Simpan.",
+        "companyPendingBanner": "Memindahkan pekerja ini ke {company}. Pilih Jabatan mereka dan Simpan untuk mengesahkan — tiada apa berubah sehingga anda Simpan.",
+        "companyLockedNote": "Syarikat tidak boleh diubah di sini kerana pekerja ini sudah mempunyai rekod aktiviti. Gunakan tab Pergerakan untuk merekod Pemindahan, yang mengekalkan sejarah mereka.",
+        "companyLockedTooltip": "Dikunci — pekerja ini sudah mempunyai rekod aktiviti. Gunakan Pergerakan untuk merekod Pemindahan.",
+        "companyChangeSave": "Pindah syarikat dan simpan",
+        "companyChangeContinue": "Teruskan",
+        "companyChangeCancel": "Batal",
+        "destinationNotAdministered": "Anda hanya boleh memindahkan orang ini ke syarikat yang anda urus. Untuk memindahkan mereka ke syarikat lain, gunakan tab Pergerakan untuk merekod Pemindahan.",
         "department": "Jabatan",
         "position": "Jawatan",
         "jobGrade": "Gred Jawatan",
@@ -1327,7 +1335,7 @@
         "taken": "Cuti yang telah anda gunakan (diluluskan dan diambil).",
         "pendingApproval": "Cuti yang anda mohon dan masih menunggu kelulusan.",
         "available": "Cuti yang masih boleh anda ambil sekarang, selepas permohonan yang menunggu diketepikan.",
-        "balance": "Baki akhir anda selepas mengambil kira kelayakan, cuti digunakan dan sebarang pelarasan."
+        "balance": "Baki cuti anda yang tinggal: jumlah kelayakan, termasuk sebarang bawa ke hadapan dan pelarasan, tolak cuti yang diambil."
       }
     },
     "preview": {
@@ -1653,7 +1661,7 @@
         "taken": "Cuti yang telah anda gunakan.",
         "adjustment": "Perubahan manual atau sekali sahaja pada baki anda, seperti pemberian perayaan.",
         "overutilized": "Sejauh mana baki anda telah menjadi negatif, jika ada.",
-        "balance": "Baki akhir: Terkumpul tambah Dibawa Ke Hadapan dan Pelarasan, tolak Diambil dan Terlebih Guna."
+        "balance": "Baki cuti anda yang tinggal: jumlah kelayakan, termasuk sebarang bawa ke hadapan dan pelarasan, tolak cuti yang diambil."
       }
     },
     "typeLabel": "Jenis",
@@ -3170,6 +3178,9 @@
       "allMyCompanies": "Semua syarikat saya",
       "alreadyProcessedTag": "telah diproses",
       "transactionsPrerequisiteNote": "Masukkan semua transaksi gaji (elaun, potongan, kerja lebih masa, tuntutan, pelarasan) pada skrin Transaksi sebelum menjalankan. Proses ini hanya memilih skop dan menjalankan pengiraan.",
+      "validationMissingCycleTitle": "{n} syarikat dipilih tiada kitaran gaji untuk proses ini",
+      "payrollCycleMissingForCompany": "{company} tiada kitaran gaji aktif untuk proses ini — sediakan satu sebelum memproses.",
+      "payrollCycleMissingForCompanyType": "Tiada kitaran {runType} aktif untuk {company} — sediakan satu dalam tetapan Kitaran Gaji.",
       "resultTitle": "Keputusan Pemprosesan Gaji",
       "resultSubtitle": "Ringkasan dan status larian gaji pelbagai syarikat.",
       "resultExpired": "Keputusan ini tidak lagi tersedia — mulakan larian gaji baharu untuk melihat keputusan terkini.",
@@ -3350,6 +3361,12 @@
       "currency": "Mata wang",
       "currencyHint": "Kod mata wang ISO 3 huruf, cth. MYR",
       "addCompany": "Tambah syarikat",
+      "defaultPayrollCycle": "Kitaran gaji lalai",
+      "defaultPayrollCycleHint": "Kitaran yang dipilih dahulu semasa memproses gaji syarikat ini. Perubahan hanya menjejaskan proses akan datang.",
+      "defaultPayrollCycleSaved": "Kitaran gaji lalai disimpan",
+      "defaultPayrollCycleInactive": "Lalai yang disimpan \"{name}\" bukan lagi kitaran aktif — pilih yang baharu.",
+      "defaultPayrollCycleNoActive": "Syarikat ini tiada kitaran gaji aktif. Sediakannya di skrin Kitaran Gaji terlebih dahulu.",
+      "saveDefaultPayrollCycle": "Simpan kitaran lalai",
       "fieldName": "Nama",
       "fieldTitle": "Tajuk",
       "fieldJobFamily": "Keluarga kerja",
@@ -3531,7 +3548,7 @@
         "position": "Jawatan",
         "cost_center": "Pusat Kos",
         "business_unit": "Unit Perniagaan",
-        "grade": "Gred"
+        "grade": "Gred Jawatan"
       },
       "sharingSettings": "Tetapan perkongsian",
       "sharedLabelsToggle": "Kongsi label merentas syarikat",
@@ -3582,8 +3599,8 @@
       "cancel": "Batal",
       "apply": "Guna",
       "origin": "asal",
-      "gradeInUseHint": "Gred ini sedang digunakan oleh pekerja, dasar cuti, peraturan kelulusan, had tuntutan atau kumpulan gred, jadi ia tidak boleh dipadam. Arkibkan ia sebaliknya.",
-      "deleteGradeTitle": "Padam gred?",
+      "gradeInUseHint": "Gred jawatan ini sedang digunakan oleh pekerja, dasar cuti, peraturan kelulusan, had tuntutan atau kumpulan gred, jadi ia tidak boleh dipadam. Arkibkan ia sebaliknya.",
+      "deleteGradeTitle": "Padam gred jawatan?",
       "deleteGradeDescription": "{name} akan dibuang secara kekal. Tindakan ini tidak boleh dibatalkan."
     },
     "leave": {
@@ -4173,7 +4190,17 @@
       "gradeSearchLabel": "Cari gred",
       "gradeSearchPlaceholder": "Cari mengikut kod atau nama…",
       "gradeSearchNoResults": "Tiada gred sepadan dengan carian anda.",
-      "gradeDragAria": "Seret {name} ke dalam kumpulan gred"
+      "gradeDragAria": "Seret {name} ke dalam kumpulan gred",
+      "serviceCompanyLabel": "Syarikat",
+      "serviceSelectCompanyPlaceholder": "Pilih syarikat…",
+      "serviceSelectCompanyEmpty": "Pilih syarikat untuk memuatkan gred dan menetapkan kelayakan mengikut tempoh perkhidmatan.",
+      "serviceNoGrades": "Tiada gred aktif untuk dipaparkan. Tambah gred di Tetapan → Label Sistem → Label Organisasi.",
+      "serviceNonConformingNote": "Jalur perkhidmatan tersuai — sunting di Kelayakan syarikat untuk mengekalkannya.",
+      "serviceTableNote": "Hari diisi awal daripada kelayakan semasa setiap gred. Menyunting gred mengira semula pekerjanya; gred yang tidak disentuh kekal tidak berubah.",
+      "serviceUnder2Aria": "Hari bawah 2 tahun untuk {grade}",
+      "serviceMidAria": "Hari 2 hingga 5 tahun untuk {grade}",
+      "serviceOverAria": "Hari melebihi 5 tahun untuk {grade}",
+      "schemeEntitlementsTitle": "Kelayakan skim faedah"
     },
     "holidays": {
       "pageTitle": "Cuti umum",

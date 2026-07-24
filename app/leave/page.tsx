@@ -40,7 +40,6 @@ import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/le
 import { CollapsibleCardSection } from '@/components/collapsible-card-section';
 import { SecondaryLeaveGroups } from '@/components/leave/secondary-leave-groups';
 import { PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup } from '@/lib/leave-groups';
-import { deriveSummaryBalance } from '@/components/leave/entitlement-panel-config';
 // deriveBalanceRow lives in a SERVER-SAFE module (no 'use client'), so this RSC can call it at render
 // time — importing it from the client table would trip the RSC boundary guard (b7d84266). R37 e5a158d3.
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
@@ -248,7 +247,7 @@ export default async function LeavePage({
     if (b.essView.entitlementCalcBreakdown === false || !bd) return null;
     return {
       data: bd,
-      summary: { available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) },
+      summary: { available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: b.balance },
       // §5 Upcoming Approved Leave removed from the panel (feedback 11876072) — no upcoming list is built.
       visual: { color: b.color, icon: b.icon, code: b.code },
       asOf: breakdownAsOf,
@@ -685,7 +684,7 @@ export default async function LeavePage({
                   showBreakdown && bd ? (
                     <EntitlementBreakdown
                       data={bd}
-                      summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) }}
+                      summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: b.balance }}
                       visual={{ color: b.color, icon: b.icon, code: b.code }}
                       asOf={breakdownAsOf}
                       action="/leave"
@@ -847,7 +846,7 @@ export default async function LeavePage({
                     showBreakdown && bd ? (
                       <EntitlementBreakdown
                         data={bd}
-                        summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: deriveSummaryBalance(b.available, b.taken, bd) }}
+                        summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: b.balance }}
                         visual={{ color: b.color, icon: b.icon, code: b.code }}
                         asOf={breakdownAsOf}
                         action="/leave"
