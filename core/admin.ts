@@ -29,9 +29,14 @@ import {
   type LeaveEligibility,
   type ProbationEligibility,
   PROBATION_ELIGIBILITY_VALUES,
-  // Leave Year Type override (e1a51aea): the closed { a2a, c2c } live-value set for year_cycle_override.
+  // Leave Year Type override (e1a51aea, extended by f3a64d90): the closed { a2a, c2c, a2c } live-value set
+  // for year_cycle_override, plus the a2c first-year correction fired when the override moves to/from a2c.
   LEAVE_YEAR_CYCLE_OVERRIDES,
+  A2C_OVERRIDE,
+  reprojectA2cEntitlement,
   type LeaveYearCycleOverride,
+  // Feedback b81d3c52 — the Rounding Method value set persisted on `leave_policy.accrual`.
+  type LeaveRoundingMethod,
   type ServiceBand,
 } from './leave';
 import { countryPacks } from '../localization/registry';
@@ -722,6 +727,17 @@ function carryFlagsAccrual(
 }
 
 /**
+ * Feedback b81d3c52 — Rounding Method persistence, under the SAME JSONB-rebuild rule as carryFlagsAccrual:
+ * `accrual` is rebuilt wholesale on every save, so a key the caller did not supply is dropped. Only the two
+ * REAL methods are persisted — 'none' / absent / anything unrecognised OMITS the key entirely, so a
+ * No-Rounding policy stays byte-identical to a row written before this feature existed (and a re-save of an
+ * untouched row adds nothing). The resolvers read an absent key as 'none'.
+ */
+function roundingAccrual(method?: string): { roundingMethod?: LeaveRoundingMethod } {
+  return method === 'up' || method === 'down' ? { roundingMethod: method } : {};
+}
+
+/**
  * Leave Entitlement Rules Engine — write-time validation of the service-band array (the runtime resolver
  * `bandDaysFor` is separately DEFENSIVE for rows that bypass this, e.g. seeds/hand-written data). Throws a
  * plain-English Error (matching this file's convention) naming the specific defect: integers for
@@ -819,6 +835,9 @@ export async function createLeavePolicy(
      *  no bands (flat annualDays only). A non-empty array is validated (contiguous, first-from-0,
      *  last-open-ended, max 10). */
     serviceBands?: ServiceBand[] | null;
+    /** Feedback b81d3c52 — Rounding Method for this policy's calculated entitlement. Only 'up' / 'down'
+     *  are persisted; 'none' / undefined omit the key entirely (see `roundingAccrual`). */
+    roundingMethod?: string;
     validFrom: string;
   },
 ) {
@@ -843,7 +862,7 @@ export async function createLeavePolicy(
     // new validFrom and append a superseded event per closed row, so version history stays reconstructable
     // via validTo (every engine already filters on it — see leave-compute.ts / core/leave.ts callers).
     const sameScope = await tx
-      .select({ id: leavePolicy.id, validFrom: leavePolicy.validFrom })
+      .select({ id: leavePolicy.id, validFrom: leavePolicy.validFrom, accrual: leavePolicy.accrual })
       .from(leavePolicy)
       .where(
         and(
@@ -861,6 +880,20 @@ export async function createLeavePolicy(
       }
     }
 
+    // Feedback eee43966 — EARNING METHOD IS SET UNDER *GENERAL*, NEVER BY THE ELIGIBILITY TAB. Adding a
+    // dated entitlement going forward supersedes the running same-scope row (loop below); without this,
+    // an absent `method` fell back to the lump-sum default and silently DOWNGRADED an earned_monthly
+    // setup to grant_on_hire_prorated. Inherit the superseded row's method instead (greatest validFrom =
+    // the version actually running). A brand-new scope has no prior row, so genuinely new types still
+    // default to lump; an EXPLICIT method (the General front door) still wins. No reproject here: a new
+    // dated version applies from validFrom by design and the method dimension is unchanged.
+    const inheritedMethod = sameScope
+      .slice()
+      .sort((a, b) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0))
+      .map((row) => (row.accrual as { method?: string } | null)?.method)
+      .filter((m): m is string => !!m)
+      .at(-1);
+
     const [row] = await tx
       .insert(leavePolicy)
       .values({
@@ -871,10 +904,11 @@ export async function createLeavePolicy(
         accrual: {
           annualDays: p.annualDays,
           carryForwardMax,
-          method: p.method || 'grant_on_hire_prorated',
+          method: p.method || inheritedMethod || 'grant_on_hire_prorated',
           ...expiry,
           ...carryFlags,
           ...bandsAccrual,
+          ...roundingAccrual(p.roundingMethod),
         },
         validFrom: p.validFrom,
         validTo: null,
@@ -946,6 +980,10 @@ export async function updateLeavePolicy(
      *  through a form without the band editor never touches them); null/[] = clear; array = replace
      *  (validated). */
     serviceBands?: ServiceBand[] | null;
+    /** Feedback b81d3c52 — Rounding Method. Only 'up' / 'down' persist; anything else omits the key. Every
+     *  writer rebuilds `accrual` wholesale, so EVERY form that posts this action must re-post the stored
+     *  value (the front doors do so with a hidden input) or a save would silently clear it. */
+    roundingMethod?: string;
     validFrom: string;
     /** Feedback 49809272: tenant-local (MYT) "today" anchoring the recalculation's current cycle. The
      *  action layer computes and passes it (tests pass fixed dates); defaults to todayInKualaLumpur()
@@ -986,6 +1024,12 @@ export async function updateLeavePolicy(
     const carryFlags = carryFlagsAccrual(p.carryForwardEnabled, p.carryForwardIncludeEarned);
     const currentBands = (current.accrual as { serviceBands?: ServiceBand[] } | null)?.serviceBands;
     const bandsAccrual = serviceBandsAccrual(p.serviceBands, currentBands);
+    // Feedback eee43966 — PRESERVE the stored earning method when the caller does not send one, mirroring
+    // the bands tri-state above. The Eligibility tab no longer renders a method select, so an eligibility
+    // edit (days / grade / carry / bands / effective date) posts `method` absent and MUST NOT reset the
+    // method to the lump-sum default. Read from the row (not a client-side hidden field) so a method
+    // changed under General after the panel rendered can never be clobbered by a stale value.
+    const currentMethod = (current.accrual as { method?: string } | null)?.method;
     const companyId = p.companyId ?? null;
     const gradeId = p.gradeId ?? null;
 
@@ -1012,10 +1056,11 @@ export async function updateLeavePolicy(
     const accrual = {
       annualDays: p.annualDays,
       carryForwardMax,
-      method: p.method || 'grant_on_hire_prorated',
+      method: p.method || currentMethod || 'grant_on_hire_prorated',
       ...expiry,
       ...carryFlags,
       ...bandsAccrual,
+      ...roundingAccrual(p.roundingMethod),
     };
     await tx
       .update(leavePolicy)
@@ -2877,11 +2922,16 @@ export async function updateLeaveType(
     // to Anniversary ⇒ the existing anniversary semantics) | 'c2c' (Calendar to Calendar ⇒ the existing
     // calendar semantics) | null (clear ⇒ follow the company cycle, today's behaviour). OWN tri-state
     // (undefined = year_cycle_override column untouched), mirroring leaveUnit — the "Leave Year Type"
-    // sub-step posts `yearCycle=1` so an unrelated save never resets it. The reporter's third option
-    // 'a2c' (Anniversary to Calendar hybrid) is REJECTED with a clear message: the engine has no hybrid-
-    // year calculation semantics yet — it ships as its own item (see the plan's GOOD TO KNOW). Validated
-    // against the closed live set (the DB CHECK from migration 0303 is defence-in-depth).
+    // sub-step posts `yearCycle=1` so an unrelated save never resets it. f3a64d90 added the third live
+    // value 'a2c' (Anniversary to Calendar): its leave YEAR is the calendar year, and in the employee's
+    // HIRE year ANNUAL builds day by day from the join date at (entitlement ÷ 365) × days worked. Saving
+    // a move TO or FROM 'a2c' immediately re-corrects everyone on the type (reprojectA2cEntitlement, same
+    // transaction) — HR never has to touch records one by one. Validated against the closed live set (the
+    // DB CHECK, widened by migration 0310, is defence-in-depth).
     yearCycleOverride?: string | null;
+    /** f3a64d90: tenant-local (MYT) "today" anchoring the a2c day-by-day correction fired on an override
+     *  change. The action layer passes it; tests pass a fixed date. Defaults to todayInKualaLumpur(). */
+    asOf?: string;
     // Leave Type Employee Visibility (feedback 7b11f1c1): two INDEPENDENT tri-state booleans controlling, per
     // leave type, whether an employee sees it on the /me Leave surface and whether they may apply for it. Each
     // is its OWN tri-state (undefined = column untouched), mirroring perDateApproval — the visibility sub-form
@@ -3011,18 +3061,15 @@ export async function updateLeaveType(
   const leaveUnitSet = touchLeaveUnit ? { leaveUnit: p.leaveUnit } : {};
   // Leave Year Type override (e1a51aea): OWN tri-state, mirroring touchLeaveUnit — the "Leave Year Type"
   // sub-step posts `yearCycle=1`, any other save omits yearCycleOverride so year_cycle_override stays
-  // untouched. 'a2c' gets its own explicit rejection (the option renders disabled in the UI, but a hand-
-  // crafted POST must fail loudly, not store a value the engine cannot compute); anything else outside
-  // the closed { a2a, c2c } live set is rejected generically. null clears (⇒ company cycle).
+  // untouched. Anything outside the closed live set is rejected; null clears (⇒ company cycle).
+  // f3a64d90: 'a2c' (Anniversary to Calendar) is now IN that set — its engine semantics shipped with this
+  // item (a2cFirstYearEntitledToDate + reprojectA2cEntitlement), and migration 0310 widened the DB CHECK
+  // to match, so the previous explicit rejection is gone. The membership test below stays the primary
+  // guard; the CHECK is defence-in-depth against a hand-crafted write.
   const touchYearCycle = p.yearCycleOverride !== undefined;
   if (touchYearCycle && p.yearCycleOverride != null) {
-    if (p.yearCycleOverride === 'a2c') {
-      throw new Error(
-        'Anniversary to Calendar is not available yet — engine support for the hybrid leave year ships as its own item.',
-      );
-    }
     if (!(LEAVE_YEAR_CYCLE_OVERRIDES as readonly string[]).includes(p.yearCycleOverride)) {
-      throw new Error('Leave year type must be a2a (Anniversary to Anniversary), c2c (Calendar to Calendar), or the company default.');
+      throw new Error('Leave year type must be a2a (Anniversary to Anniversary), a2c (Anniversary to Calendar), c2c (Calendar to Calendar), or the company default.');
     }
   }
   const yearCycleSet = touchYearCycle
@@ -3397,6 +3444,24 @@ export async function updateLeaveType(
         }
         throw e;
       });
+    // Anniversary to Calendar (f3a64d90) — the BACKFILL. Unlike updateLeavePolicy, this service never
+    // recalculated anything; a Leave Year Type save only rewrote a column, so employees already carrying a
+    // figure computed under the OLD model kept it (the reporter's YTD 7.00 / balance −6.00). The moment the
+    // override moves TO or FROM 'a2c', re-correct every live employee on this type IN THE SAME TRANSACTION:
+    // accrual-class rows so YTD Entitled moves, plus the compensating reversal so Balance/Available agree.
+    // Idempotent, so a re-save of the same value writes nothing. A move AWAY from a2c is a no-op inside the
+    // helper (the type is no longer a2c) — the ordinary calendar engines own it from the next year-open.
+    if (
+      touchYearCycle &&
+      (p.yearCycleOverride ?? null) !== (before?.yearCycleOverride ?? null) &&
+      ((p.yearCycleOverride ?? null) === A2C_OVERRIDE || (before?.yearCycleOverride ?? null) === A2C_OVERRIDE)
+    ) {
+      await reprojectA2cEntitlement(tx, ctx, {
+        leaveTypeId: p.id,
+        asOf: p.asOf ?? todayInKualaLumpur(),
+        trigger: 'year_cycle_override',
+      });
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-type',

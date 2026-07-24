@@ -876,7 +876,8 @@ export function CompanyPanel({
               <p className="text-xs text-muted-foreground">
                 {t('statutoryFilingsHint')}
               </p>
-              <p className="text-xs text-muted-foreground">{t('hrdfHint')}</p>
+              {/* The HRDF headcount hint ("mandatory at 10+, optional at 5–9") is deliberately gone —
+                  HRDF eligibility is a free company choice, not a headcount rule. */}
               <Button type="submit" size="sm">
                 {t('saveStatutoryIdentity')}
               </Button>

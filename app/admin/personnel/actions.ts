@@ -67,7 +67,9 @@ export async function hireAction(formData: FormData) {
       provisionalEndOn,
       grantLeaveTypes: types
         .filter((t) => STANDING_GRANTS.has(t.code))
-        .map((t) => ({ id: t.id, code: t.code })),
+        // f3a64d90: forward the type's Leave Year Type so an 'a2c' ANNUAL opens at its day-to-date sliver
+        // instead of the hire-month lump. Any other value (or null) leaves the grant unchanged.
+        .map((t) => ({ id: t.id, code: t.code, yearCycleOverride: t.yearCycleOverride })),
     });
     // Seed the first salary-history record (validated above) with the JOIN DATE as its effective date.
     // The service CLOSEs/INSERTs, appends the compensation.set event, and marks it active — no extra

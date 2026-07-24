@@ -5,8 +5,9 @@
  *     via aria-current + the sidebar's accent pattern) with the Add Leave button at the bottom, collapsing
  *     to a dropdown on mobile;
  *   - a RIGHT workspace showing the SELECTED type's configuration as a horizontal STEP FLOW (1 General
- *     Setting … 5 Custom Settings — see leave-type-config-active-section.test.ts for the active-step
- *     treatment), one section visible at a time, switched client-side (no reload, no nested tabs).
+ *     Setting … 4 Custom Settings after b8fcae73 dropped the Eligibility step — see
+ *     leave-type-config-active-section.test.ts for the active-step treatment), one section visible at a
+ *     time, switched client-side (no reload, no nested tabs).
  *
  * Deep-links keep working: the Leave Types tab's Edit links (#type-<id>, feedback 097de541) and the
  * stay-on-save redirect's anchor (app/admin/actions.ts) select the targeted type in the workspace.
@@ -125,6 +126,39 @@ describe('8cc268c4 · Add Leave opens the "Add Leave Type" pop-up (no right-pane
   });
 });
 
+describe('1bd9a911 · left-side type list: A–Z order + its own scrollbar', () => {
+  it('the page sorts the workspace list active-first then A–Z (server-side, so desktop + mobile agree)', () => {
+    // The sort lives on the page, on a display copy of `types`, and feeds the workspace's items prop.
+    expect(pageSrc).toContain('const workspaceItems = [...types].sort(');
+    expect(pageSrc).toContain('Number(!!a.archivedAt) - Number(!!b.archivedAt)');
+    expect(pageSrc).toContain("a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })");
+    expect(pageSrc).toContain('items={workspaceItems.map((lt) => ({');
+    // `panels` stays keyed by id off the unsorted list — order is irrelevant there, so it is untouched.
+    expect(pageSrc).toContain('panels={Object.fromEntries(');
+    // The client keeps its plain first-item default: items[0] is now the alphabetically first ACTIVE type.
+    expect(workspaceSrc).toContain("useState<string>(items[0]?.id ?? '')");
+  });
+
+  it('caps the desktop list to a fixed height with its own vertical scrollbar', () => {
+    const ul = workspaceSrc.match(/<ul[^>]*className="[^"]*"/)?.[0] ?? '';
+    expect(ul).toContain('overflow-y-auto');
+    expect(ul).toMatch(/max-h-\[/);
+    // The Add Leave button stays OUTSIDE the scrolling <ul>, at the bottom of the nav.
+    const ulEnd = workspaceSrc.indexOf('</ul>');
+    expect(ulEnd).toBeGreaterThan(-1);
+    expect(workspaceSrc.indexOf('className="mt-auto w-full"', ulEnd)).toBeGreaterThan(ulEnd);
+  });
+
+  it('keeps the selected type visible inside the scroll panel', () => {
+    expect(workspaceSrc).toMatch(/import \{[^}]*useRef[^}]*\} from 'react'/);
+    expect(workspaceSrc).toContain('<ul ref={listRef}');
+    expect(workspaceSrc).toContain('listRef.current?.querySelector(\'[aria-current="true"]\')');
+    expect(workspaceSrc).toContain("scrollIntoView({ block: 'nearest' })");
+    // …re-run whenever the selection changes (hash deep-link, just-added type, click).
+    expect(workspaceSrc).toMatch(/scrollIntoView[\s\S]{0,80}\}, \[selected\]\);/);
+  });
+});
+
 describe('c979aa8b · hash deep-link still selects the type', () => {
   it('selects #type-<id> on mount and on hashchange, and writes the hash back on selection', () => {
     // The effect replaces the old per-row expand effect that lived in leave-type-panel.tsx.
@@ -137,21 +171,25 @@ describe('c979aa8b · hash deep-link still selects the type', () => {
   });
 });
 
-describe('c979aa8b · step bar: numbered 1–5, category labels, one section at a time', () => {
-  it('renders the five steps in walk order with a numeric 1-based badge', () => {
-    expect(panelSrc).toContain("const STEP_KEYS = ['general', 'eligibility', 'entitlement', 'ess', 'custom'] as const");
-    // The visible number is the 1-based index of the map — step 1 General … step 5 Custom.
+describe('c979aa8b · step bar: numbered 1–4, category labels, one section at a time', () => {
+  it('renders the four steps in walk order with a numeric 1-based badge', () => {
+    // b8fcae73: the Eligibility step is gone and the walk reordered — 1 General · 2 Condition ('ess' is
+    // Condition's historical storage key) · 3 Entitlement · 4 Custom. The bar is ONE map over STEP_KEYS, so
+    // this array IS the numbering and the Previous/Next walk order.
+    expect(panelSrc).toContain("const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const");
+    // The visible number is the 1-based index of the map — step 1 General … step 4 Custom.
     expect(panelSrc).toContain('{i + 1}');
     // Labels reuse the existing category* title keys (all six locales already carry them).
     for (const titleKey of [
       "general: 'categoryGeneral'",
-      "eligibility: 'categoryEligibilityEntitlement'",
       "entitlement: 'categoryEntitlement'",
       "ess: 'categoryEssPolicy'",
       "custom: 'categoryCustom'",
     ]) {
       expect(panelSrc).toContain(titleKey);
     }
+    // The retired step's title mapping is gone with it.
+    expect(panelSrc.includes("eligibility: 'categoryEligibilityEntitlement'")).toBe(false);
   });
 });
 

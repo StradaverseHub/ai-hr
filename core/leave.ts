@@ -24,6 +24,7 @@ import { isoWeekday } from './attendance';
 import { packFor } from '../localization/registry';
 import {
   applyMaxBalance,
+  applyRounding,
   bandDaysFor,
   bandFor,
   bandCarryExpiry,
@@ -44,6 +45,7 @@ import {
   type BenefitSchemeRow,
   type CarryExpiry,
   type GradePolicyRow,
+  type LeaveRoundingMethod,
   type PreviewResult,
   type ResolvedPolicy,
   type SchemeMatchSubject,
@@ -52,6 +54,7 @@ import {
 // Re-export the pure module's surface so every existing caller/test keeps importing these from '@/core/leave'.
 export {
   applyMaxBalance,
+  applyRounding,
   bandDaysFor,
   bandFor,
   bandCarryExpiry,
@@ -72,6 +75,7 @@ export {
   type BenefitSchemeRow,
   type CarryExpiry,
   type GradePolicyRow,
+  type LeaveRoundingMethod,
   type PreviewResult,
   type ResolvedPolicy,
   type SchemeMatchSubject,
@@ -4881,10 +4885,16 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         // "disable carry" behaviour. SICK/HOSPITALIZATION stay 0 (statutory annual reset, EA s.60F).
         const carryMax = t.code === 'ANNUAL' && carryEnabled(pol) ? (pol?.carryMax ?? 0) : 0;
         const rawCarry = Math.min(Math.max(before, 0), carryMax);
+        // Feedback b81d3c52 — Rounding Method: tidy the CALCULATED entitlement to a whole day BEFORE the
+        // max-balance clamp, at the identical point every other engine rounds (hire grant / earned accrual
+        // / the recalc kernel's projection) so the ledger and the kernel can never disagree. The carry-in
+        // (`rawCarry`) is deliberately NOT rounded — a fractional carry-over plus a whole-day grant still
+        // yields a fractional balance; rounding shapes the ENTITLEMENT, not every balance.
+        const grantRounded = applyRounding(days, pol?.roundingMethod);
         // Feedback 9d8cf621 — Maximum Balance Days: clamp the carry-in AND this year's grant so the
         // resulting balance (carry + grant) never exceeds the resolved band's cap. Reducing the carry
         // increases the forfeit below by construction (forfeit = before − carry). No cap ⇒ pass-through.
-        const { carry, grant: grantDays } = applyMaxBalance(rawCarry, days, pol?.maxBalanceDays);
+        const { carry, grant: grantDays } = applyMaxBalance(rawCarry, grantRounded, pol?.maxBalanceDays);
         const forfeit = Math.max(0, before - carry);
         if (forfeit > 0) {
           await tx.insert(leaveLedger).values({
@@ -4955,12 +4965,18 @@ export function earnedCycleStart(hiredOn: string, asOf: string, cycle: string | 
   return `${cycleYear}-${hireMonth}-01`;
 }
 
-/** Leave Year Type override (feedback e1a51aea): the two LIVE per-type override values. 'a2a' and 'c2c'
- *  reuse the existing anniversary/calendar semantics; the reporter's hybrid 'a2c' is deliberately NOT in
- *  this set — it renders disabled in the UI and is rejected by updateLeaveType until the engine's hybrid-
- *  year calculation ships as its own item (no new payout mathematics inside a screen restructure). */
-export const LEAVE_YEAR_CYCLE_OVERRIDES = ['a2a', 'c2c'] as const;
+/** Leave Year Type override (feedback e1a51aea, extended by f3a64d90): the LIVE per-type override values.
+ *  'a2a' and 'c2c' reuse the existing anniversary/calendar semantics; 'a2c' (Anniversary to Calendar) went
+ *  live with f3a64d90 — its leave YEAR is the calendar year (see resolveLeaveYearCycle), and the ONLY novel
+ *  behaviour is the HIRE-year ANNUAL day-by-day build-up (a2cFirstYearEntitledToDate). Migration 0310
+ *  widened the DB CHECK to match this set (defence-in-depth). */
+export const LEAVE_YEAR_CYCLE_OVERRIDES = ['a2a', 'c2c', 'a2c'] as const;
 export type LeaveYearCycleOverride = (typeof LEAVE_YEAR_CYCLE_OVERRIDES)[number];
+
+/** Anniversary to Calendar (feedback f3a64d90): the raw stored override string. Deliberately NOT a third
+ *  cycle token — a2c's leave YEAR is calendar (Jan-1 boundary, calendar carry/forfeit anchoring, full
+ *  calendar grant from year two). Only the first-year ANNUAL proration rides this raw value. */
+export const A2C_OVERRIDE = 'a2c';
 
 /**
  * Leave Year Type override (feedback e1a51aea): resolve the EFFECTIVE cycle for one (leave type, company)
@@ -4969,15 +4985,82 @@ export type LeaveYearCycleOverride = (typeof LEAVE_YEAR_CYCLE_OVERRIDES)[number]
  * today, so behaviour is byte-identical until HR makes an explicit per-type choice. Every engine consumer
  * of company.leave_cycle in a per-type computation resolves through this ONE function (accrueEarnedLeave,
  * the two recalc kernels' callers, leaveEntitlementBreakdown) so the override cannot half-apply.
+ *
+ * Anniversary to Calendar (f3a64d90) maps to 'calendar' — NOT a new third cycle. Its year runs 1 Jan →
+ * 31 Dec like any calendar type; only the employee's FIRST (hire) year is sliced day-by-day from the join
+ * date. Mapping it here keeps earnedCycleStart, the carry/forfeit anchoring, openLeaveYear's year-two grant
+ * and every resolve call-site byte-identical, and gets year-two-onward behaviour for free.
  */
 export function resolveLeaveYearCycle(
   override: string | null | undefined,
   companyCycle: string | null | undefined,
 ): string | null | undefined {
   if (override === 'a2a') return 'anniversary';
-  if (override === 'c2c') return 'calendar';
+  if (override === 'c2c' || override === A2C_OVERRIDE) return 'calendar';
   return companyCycle;
 }
+
+/**
+ * Anniversary to Calendar — the ONE shared first-year kernel (feedback f3a64d90). An employee hired
+ * part-way through a year builds their ANNUAL entitlement day by day across their first, partial leave
+ * year (join date → 31 Dec of the hire year):
+ *
+ *     (annual entitlement ÷ 365) × days worked to date          — the reporter's stated formula
+ *
+ * `daysWorked` is INCLUSIVE of both the join date and `asOf` (daysBetween is exclusive-end, hence the +1):
+ * a 2026-01-06 joiner checked on 2026-07-23 has worked 199 days, so 20/365 × 199 = 10.90 days.
+ * The window end is clamped to 31 Dec of the HIRE year, so an asOf in a later year can never keep
+ * accruing on the first-year formula (year two is a plain calendar grant — see resolveLeaveYearCycle).
+ *
+ * The min() CLAMP is mandatory, not cosmetic: a 366-day first year (a 1-Jan hire in a leap year) would
+ * otherwise yield 20/365 × 366 = 20.05 — overshooting the annual entitlement. The /365 divisor stays per
+ * the reporter's spec; the clamp guarantees the cap holds. Pre-hire `asOf` floors at 0.
+ *
+ * `entitledDays` MUST be the FULLY RESOLVED entitlement (EA-1955 floor ∨ benefit-scheme band ∨ policy days
+ * — i.e. the shared `entitledDays()` composition), never a raw policy number, so this path respects the
+ * statutory floor and auto-linked scheme bands exactly like every other granting pathway. ONE helper is
+ * consumed by the hire grant, the projection kernel and the a2c correction, so preview == commit.
+ */
+export function a2cFirstYearEntitledToDate(
+  hiredOn: string,
+  asOf: string,
+  entitledDays: number,
+): number {
+  if (entitledDays <= 0) return 0;
+  const dec31 = `${hiredOn.slice(0, 4)}-12-31`;
+  const end = asOf < dec31 ? asOf : dec31;
+  const daysWorked = daysBetween(hiredOn, end) + 1; // inclusive of both endpoints
+  if (daysWorked <= 0) return 0;
+  return round2(Math.min((entitledDays / 365) * daysWorked, entitledDays));
+}
+
+/** Anniversary to Calendar (f3a64d90): is this (type, employee, asOf) inside the ONE window where a2c
+ *  behaves differently from a plain calendar type — the employee's HIRE year, on ANNUAL only?
+ *
+ *  The ANNUAL-only guard is statutory, not stylistic: SICK and HOSPITALIZATION (STANDING_LEAVE_CODES) are
+ *  per-calendar-year entitlements under EA-1955 s.60F and must be granted IN FULL to a mid-year joiner —
+ *  they are never day-sliced, even when a2c is configured on them. From the next 1 Jan the employee is on
+ *  the ordinary calendar year (full grant at year-open), so the window is bounded to the hire year. */
+export function isA2cFirstYear(
+  override: string | null | undefined,
+  typeCode: string,
+  hiredOn: string,
+  asOf: string,
+): boolean {
+  return (
+    override === A2C_OVERRIDE &&
+    typeCode === 'ANNUAL' &&
+    hiredOn <= asOf &&
+    hiredOn.slice(0, 4) === asOf.slice(0, 4)
+  );
+}
+
+/** Anniversary to Calendar (f3a64d90): reason PREFIX stamped on the ledger rows reprojectA2cEntitlement
+ *  posts. Two classes ride it — an ACCRUAL-class top-up/claw-down (so "YTD Entitled", which counts only
+ *  entryType in ('accrual','in_lieu_accrual'), actually moves) and a compensating ADJUSTMENT that reverses
+ *  the superseded system rows so Balance/Available net to the same figure. Both are read back on the next
+ *  run, which is exactly what makes the correction idempotent. */
+export const A2C_RECALC_REASON_PREFIX = 'sys:a2c_recalc';
 
 // ── Grade-based policy resolution (ADR-0041 / 2E) — extracted to ./leave-compute (RSC-safe pure module,
 // see its header) and re-exported below via the `export {` block near the top of this file's imports so
@@ -5342,6 +5425,14 @@ export async function accrueEarnedLeave(
           cyc === 'anniversary' || e.hiredOn <= cycleStart ? cycleStart : `${e.hiredOn.slice(0, 7)}-01`;
         const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, p.asOf, pol!.method!));
         let earnedToDate = Math.round((entitlement / totalPeriods) * elapsed * 100) / 100;
+        // Feedback b81d3c52 — Rounding Method (the Accrual Process surface). The CUMULATIVE-to-date figure
+        // is tidied every period, before the room-cap, so the running balance the Accrual Process credits
+        // is itself a whole day: 'up' shows whole days as they build, 'down' floors a small early
+        // cumulative to 0 (no row is written — see the `toGrant > 0` guard) and then builds. Because that
+        // guard never posts a NEGATIVE top-up, switching to 'down' mid-cycle cannot claw back what is
+        // already credited — only forward periods accrue less (the forward-only contract; the save-time
+        // recalc kernel deliberately does not reproject on a rounding-only edit either).
+        earnedToDate = applyRounding(earnedToDate, pol!.roundingMethod);
         // Feedback 9d8cf621 — Maximum Balance Days: cap the cumulative earned so retainedCarry + earned
         // never exceeds the cap (i.e. the running balance stays ≤ cap across the cycle). null ⇒ no cap.
         if (pol!.maxBalanceDays != null) {
@@ -5449,6 +5540,11 @@ export function projectExpectedEntitlement(
    *  AFTER the anniversary re-resolution below, so the hook always sees the same band anchor as `pol`.
    *  Absent (undefined) ⇒ byte-identical pre-existing behaviour. */
   schemeDaysForYears?: (years: number) => number | null,
+  /** Anniversary to Calendar (f3a64d90): the RAW `leave_type.year_cycle_override` string — NOT the resolved
+   *  cycle above (a2c resolves to 'calendar', which is deliberately indistinguishable from c2c). Only 'a2c'
+   *  is load-bearing here, and only for ANNUAL in the employee's hire year. Absent ⇒ byte-identical
+   *  pre-existing behaviour for every other caller. */
+  yearCycleOverride?: string | null,
 ): { expected: number; windowStart: string } | null {
   const yearStart = `${asOf.slice(0, 4)}-01-01`;
   const cycleStartEarned = earnedCycleStart(emp.hiredOn, asOf, emp.leaveCycle);
@@ -5463,7 +5559,11 @@ export function projectExpectedEntitlement(
     pol = resolveGradePolicy(policyRows, emp.gradeId, emp.companyId, years);
     if (isEarnedMethod(pol?.method)) return null;
   }
-  const windowStart = earnedMethod ? cycleStartEarned : yearStart;
+  // Anniversary to Calendar (f3a64d90): the first-year window is the CALENDAR year, whatever the resolved
+  // policy method says — a2c resolves to 'calendar' so cycleStartEarned already equals yearStart, but
+  // stating it here keeps the invariant explicit rather than incidental.
+  const a2cFirstYear = isA2cFirstYear(yearCycleOverride, typeCode, emp.hiredOn, asOf);
+  const windowStart = !a2cFirstYear && earnedMethod ? cycleStartEarned : yearStart;
 
   // ⚠️ EA-FLOOR INVARIANT — identical to openLeaveYear / the hire grant / accrueEarnedLeave: the resolved
   // entitlement is max(statutory floor, scheme ?? policy) — one shared composition (entitledDays). A
@@ -5471,7 +5571,15 @@ export function projectExpectedEntitlement(
   // (post-re-resolution above), matching the sweeps' own band anchor.
   const days = entitledDays(floor(typeCode, years), schemeDaysForYears?.(years) ?? null, pol?.days ?? 0);
   let expected: number;
-  if (earnedMethod) {
+  if (a2cFirstYear) {
+    // Anniversary to Calendar (f3a64d90), FIRST (hire) year only: the entitlement builds day by day from
+    // the join date to `asOf` at (resolved entitlement ÷ 365) — the ONE shared kernel, so the hire grant,
+    // this projection and the a2c correction can never disagree. The window is the CALENDAR year (a2c
+    // resolves to 'calendar'), so carry/forfeit anchoring and the year-two grant stay untouched. Every
+    // other a2c case — a non-ANNUAL type, or ANNUAL in year two onward — falls through to the branches
+    // below and behaves exactly like an ordinary calendar type (full grant).
+    expected = a2cFirstYearEntitledToDate(emp.hiredOn, asOf, days);
+  } else if (earnedMethod) {
     const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
     const accrualStart =
       emp.leaveCycle === 'anniversary' || emp.hiredOn <= windowStart ? windowStart : `${emp.hiredOn.slice(0, 7)}-01`;
@@ -5485,6 +5593,12 @@ export function projectExpectedEntitlement(
     // Existing employee (year-open grant) or a non-prorating type: the full resolved amount.
     expected = days;
   }
+  // Feedback b81d3c52 mirrored into the kernel — round the projection at the SAME point and in the SAME
+  // order (rounding, THEN the max-balance clamp) the three granting engines do, on EVERY branch (earned,
+  // joiner pro-ration, full grant). REQUIRED for ledger agreement: without it, any reproject triggered by
+  // an unrelated days/method change would compare a raw projection against a rounded ledger and post a
+  // permanent oscillating delta. `pol` null (floor-only / scheme-only) ⇒ no method ⇒ pass-through.
+  expected = applyRounding(expected, pol?.roundingMethod);
   // Feedback 9d8cf621 mirrored into the kernel (ae5b84d5): the winning band's Maximum Balance cap bounds
   // what the granting engines will ever materialize this cycle (applyMaxBalance at year-open/hire; the
   // earned room-cap in accrueEarnedLeave), so the projection must not exceed it either — on BOTH the
@@ -5495,6 +5609,258 @@ export function projectExpectedEntitlement(
     expected = Math.min(expected, round2(Math.max(0, pol.maxBalanceDays)));
   }
   return { expected, windowStart };
+}
+
+/** Anniversary to Calendar (f3a64d90): the SYSTEM-generated adjustment reasons the a2c first-year model
+ *  SUPERSEDES. Under a2c a first-year employee's entitlement is exactly the day-by-day accrual — there is
+ *  no prior cycle to carry from (so no cap/expiry forfeit belongs in the window), and any earlier
+ *  policy-/profile-recalc adjustment was computed under the model a2c replaces. A human festive-grant or
+ *  a manual HR adjustment carries NO `sys:` reason and is therefore never touched. */
+const a2cSupersededReasonCond = () =>
+  or(
+    recalcAdjustmentReasonCond(),
+    like(leaveLedger.reason, `${A2C_RECALC_REASON_PREFIX}:%`),
+    inArray(leaveLedger.reason, [
+      CARRY_FORFEIT_REASON_CAP,
+      CARRY_FORFEIT_REASON_EXPIRY,
+      AGED_FORFEIT_REASON,
+    ]),
+  );
+
+/**
+ * Anniversary to Calendar — the dedicated first-year correction (feedback f3a64d90).
+ *
+ * WHY ITS OWN PATH, and not one more `adjustment` in the two existing recalc kernels: the "YTD Entitled"
+ * figure on every leave summary is `accrued`, and `accrued` sums ONLY entryType in ('accrual',
+ * 'in_lieu_accrual') (core/read.ts leaveBalances). An `adjustment` moves Balance and Available but is
+ * INVISIBLE to YTD Entitled — so a plain adjustment could never lift the reporter's 7.00 to 10.90. This
+ * path therefore posts an ACCRUAL-CLASS row for the entitlement delta, which is what makes all four
+ * surfaces (YTD Entitled, Available, Balance, and the Entitlement breakdown's cycleAccrual) move together.
+ *
+ * Two rows, both stamped `sys:a2c_recalc:<leaveTypeId>`:
+ *  1. ACCRUAL delta — brings the window's accrual-class total to exactly the a2c target
+ *     (a2cFirstYearEntitledToDate over the FULLY resolved entitlement: EA-1955 floor ∨ benefit-scheme band
+ *     ∨ policy days). Signed: an employee whose ledger EXCEEDS the target is clawed DOWN, which the
+ *     grant-only engines can never do.
+ *  2. ADJUSTMENT reversal — cancels the superseded system rows in the window (see
+ *     a2cSupersededReasonCond). Without it a pure accrual top-up would fix YTD Entitled and leave Balance
+ *     wrong, which is precisely the defect reported (accrued 7.00, taken 3.50, balance −6.00: about −9.50
+ *     of stale system rows). After both rows the ledger nets to target − debits, so
+ *     Available = Balance = YTD Entitled − Taken − Pending.
+ *
+ * IDEMPOTENT by construction: both classes of row are read back into the next run's sums, so a re-run
+ * computes delta 0 and reversal 0 and writes nothing.
+ *
+ * SCOPE: the HIRE year only (isA2cFirstYear). From the next 1 Jan a2c resolves to 'calendar' and
+ * openLeaveYear owns the full grant like any calendar type — one engine, no double-grant, no new
+ * idempotency marker. Non-ANNUAL a2c types are never touched (EA s.60F full grant).
+ *
+ * Runs INSIDE the caller's transaction (takes the live `tx`), so HR's leave-type save and the correction
+ * commit together. Frozen encashment snapshots are skipped (ADR-0069 — the DB trigger would abort the tx).
+ * Substrate: one `leave.entitlement.recalculated` DomainEvent per corrected employment.
+ */
+export async function reprojectA2cEntitlement(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    leaveTypeId: string;
+    /** Restrict to these employments; absent ⇒ every live employment the type can reach. */
+    employmentIds?: string[];
+    /** Tenant-local (MYT) "today" — anchors the day-by-day build-up. */
+    asOf: string;
+    /** Recorded on the event payload: what triggered the correction (e.g. 'year_cycle_override'). */
+    trigger: string;
+  },
+): Promise<{ affected: number; totalDelta: number }> {
+  const none = { affected: 0, totalDelta: 0 };
+
+  const [type] = await tx
+    .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride })
+    .from(leaveType)
+    .where(and(eq(leaveType.id, p.leaveTypeId), isNull(leaveType.archivedAt)))
+    .limit(1);
+  // No-op unless the type is actually on a2c today. Callers fire this on any move TO or FROM a2c; a move
+  // AWAY simply hands the type back to the ordinary calendar engines from the next year-open.
+  if (!type || type.yearCycleOverride !== A2C_OVERRIDE) return none;
+
+  const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
+  const scopeIds = (p.employmentIds ?? []).filter(Boolean);
+  const candidates = await tx
+    .select({
+      employmentId: employment.id,
+      hiredOn: employment.hiredOn,
+      country: company.country,
+      leaveCycle: company.leaveCycle,
+      gradeId: employment.gradeId,
+      companyId: employment.companyId,
+      benefitSchemeId: employment.benefitSchemeId,
+    })
+    .from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .where(
+      and(
+        lte(employment.hiredOn, p.asOf),
+        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
+        scopeIds.length > 0 ? inArray(employment.id, scopeIds) : undefined,
+      ),
+    );
+  // The ONE window where a2c differs from a plain calendar type: the employee's hire year, ANNUAL only.
+  const emps = candidates.filter((e) => isA2cFirstYear(type.yearCycleOverride, type.code, e.hiredOn, p.asOf));
+  if (emps.length === 0) return none;
+  const empIds = emps.map((e) => e.employmentId);
+
+  const policyRows: GradePolicyRow[] = await tx
+    .select({ gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
+    .from(leavePolicy)
+    .where(
+      and(
+        eq(leavePolicy.leaveTypeId, p.leaveTypeId),
+        lte(leavePolicy.validFrom, p.asOf),
+        or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, p.asOf)),
+      ),
+    );
+
+  // ae5b84d5: the auto-linked benefit-scheme band days feed `entitledDays` exactly as in every other
+  // pathway, so the a2c slice is taken off the SAME resolved entitlement the grant engines would use.
+  const schemeDaysFor = await buildSchemeEntitlementResolver(
+    tx,
+    emps.map((e) => ({
+      employmentId: e.employmentId,
+      companyId: e.companyId,
+      gradeId: e.gradeId,
+      overrideSchemeId: e.benefitSchemeId,
+    })),
+    [p.leaveTypeId],
+  );
+
+  // The calendar window [yearStart, asOf]: accrual-class rows (what YTD Entitled shows) and the superseded
+  // system adjustments (what Balance must be freed of), in one round-trip.
+  const ledgerRows = await tx
+    .select({
+      employmentId: leaveLedger.employmentId,
+      entryType: leaveLedger.entryType,
+      days: leaveLedger.days,
+    })
+    .from(leaveLedger)
+    .where(
+      and(
+        inArray(leaveLedger.employmentId, empIds),
+        eq(leaveLedger.leaveTypeId, p.leaveTypeId),
+        gte(leaveLedger.effectiveOn, yearStart),
+        lte(leaveLedger.effectiveOn, p.asOf),
+        or(
+          inArray(leaveLedger.entryType, ['accrual', 'in_lieu_accrual']),
+          and(eq(leaveLedger.entryType, 'adjustment'), a2cSupersededReasonCond()),
+        ),
+      ),
+    );
+  const accruedBy = new Map<string, number>();
+  const supersededBy = new Map<string, number>();
+  for (const r of ledgerRows) {
+    const target = r.entryType === 'adjustment' ? supersededBy : accruedBy;
+    target.set(r.employmentId, round2((target.get(r.employmentId) ?? 0) + Number(r.days)));
+  }
+
+  const frozenSet = await frozenSnapshotKeySet(tx, empIds, [p.leaveTypeId]);
+
+  const reason = `${A2C_RECALC_REASON_PREFIX}:${p.leaveTypeId}`;
+  let affected = 0;
+  let totalDelta = 0;
+  for (const e of emps) {
+    const pack = packFor(e.country);
+    if (!pack) continue;
+    if (frozenSet.has(`${e.employmentId}|${p.leaveTypeId}`)) continue;
+
+    const projected = projectExpectedEntitlement(
+      {
+        hiredOn: e.hiredOn,
+        leaveCycle: resolveLeaveYearCycle(type.yearCycleOverride, e.leaveCycle) ?? null,
+        gradeId: e.gradeId,
+        companyId: e.companyId,
+      },
+      type.code,
+      policyRows,
+      (c, y) => pack.leave.entitlement(c, y),
+      p.asOf,
+      (years) => schemeDaysFor(e.employmentId, p.leaveTypeId, years),
+      type.yearCycleOverride,
+    );
+    if (!projected) continue;
+    const { expected } = projected;
+
+    const accrued = accruedBy.get(e.employmentId) ?? 0;
+    const superseded = supersededBy.get(e.employmentId) ?? 0;
+    const accrualDelta = round2(expected - accrued);
+    const reversal = round2(-superseded);
+    if (accrualDelta === 0 && reversal === 0) continue;
+
+    let anchorRowId: string | null = null;
+    if (accrualDelta !== 0) {
+      const [row] = await tx
+        .insert(leaveLedger)
+        .values({
+          tenantId: ctx.tenantId,
+          employmentId: e.employmentId,
+          leaveTypeId: p.leaveTypeId,
+          // ACCRUAL-class — the whole point: `accrued` (YTD Entitled) counts only these entry types.
+          entryType: 'accrual',
+          days: accrualDelta.toFixed(2),
+          effectiveOn: p.asOf,
+          reason,
+        })
+        .returning({ id: leaveLedger.id });
+      anchorRowId = row.id;
+    }
+    if (reversal !== 0) {
+      const [row] = await tx
+        .insert(leaveLedger)
+        .values({
+          tenantId: ctx.tenantId,
+          employmentId: e.employmentId,
+          leaveTypeId: p.leaveTypeId,
+          entryType: 'adjustment',
+          days: reversal.toFixed(2),
+          effectiveOn: p.asOf,
+          reason,
+        })
+        .returning({ id: leaveLedger.id });
+      anchorRowId ??= row.id;
+    }
+
+    await tx.insert(leaveEntitlementRecalcAudit).values({
+      tenantId: ctx.tenantId,
+      employmentId: e.employmentId,
+      leaveTypeId: p.leaveTypeId,
+      previousEntitlement: accrued.toFixed(2),
+      newEntitlement: expected.toFixed(2),
+      delta: accrualDelta.toFixed(2),
+      reason: p.trigger,
+      effectiveOn: p.asOf,
+      ledgerId: anchorRowId,
+    });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-ledger',
+      aggregateId: anchorRowId!,
+      eventType: 'leave.entitlement.recalculated',
+      actor: actorOf(ctx),
+      subjectEmploymentId: e.employmentId,
+      payload: {
+        employmentId: e.employmentId,
+        leaveTypeId: p.leaveTypeId,
+        before: accrued,
+        after: expected,
+        delta: accrualDelta,
+        supersededReversal: reversal,
+        cycleStart: yearStart,
+        reason: 'a2c_recalc',
+        trigger: p.trigger,
+      },
+    });
+    affected += 1;
+    totalDelta = round2(totalDelta + accrualDelta + reversal);
+  }
+  return { affected, totalDelta };
 }
 
 /**
@@ -5550,6 +5916,11 @@ export async function reprojectEntitlementForPolicy(
   //    scope. Carry-forward-only edits (cap, expiry, toggles) never changed what was granted — skip.
   //    Method is normalized the way the writers persist it (absent ⇒ the lump-sum default). Bands are
   //    canonical by construction (validated contiguous-ascending), so a JSON compare is stable.
+  //    FORWARD-ONLY (feedback b81d3c52) — `roundingMethod` is DELIBERATELY ABSENT from this comparison.
+  //    Flipping the Rounding Method dropdown must NOT immediately re-credit every live balance; balances
+  //    settle onto the tidied figure at their next natural grant / top-up / year reset. (The projection
+  //    above still rounds, so when a days/method change DOES trigger a reproject no spurious rounding
+  //    delta appears.) A one-time retroactive re-credit is an explicit follow-up — do not add it here.
   const norm = (a: AccrualConfig | null) => ({
     annualDays: Number(a?.annualDays ?? 0),
     method: a?.method || 'grant_on_hire_prorated',
@@ -5685,6 +6056,9 @@ export async function reprojectEntitlementForPolicy(
 
   let affected = 0;
   let totalDelta = 0;
+  // f3a64d90: employments whose a2c first-year ANNUAL correction is DELEGATED to reprojectA2cEntitlement
+  // after this loop (it posts accrual-class rows; this loop's `adjustment` is invisible to YTD Entitled).
+  const a2cDelegated: string[] = [];
   for (const e of emps) {
     const pack = packFor(e.country);
     if (!pack) continue;
@@ -5707,9 +6081,19 @@ export async function reprojectEntitlementForPolicy(
       p.asOf,
       // ae5b84d5: this employee's scheme band days supersede the policy days in the projection.
       (years) => schemeDaysFor(e.employmentId, p.leaveTypeId, years),
+      // f3a64d90: the RAW override — 'a2c' day-slices the hire-year ANNUAL projection.
+      type.yearCycleOverride,
     );
     if (!projected) continue;
     const { expected, windowStart } = projected;
+
+    // Anniversary to Calendar (f3a64d90): a2c's first ANNUAL year is corrected by reprojectA2cEntitlement,
+    // which posts ACCRUAL-class rows so "YTD Entitled" actually moves (this path's `adjustment` is invisible
+    // to that surface — see core/read.ts leaveBalances). DELEGATE rather than post a half-correction here.
+    if (isA2cFirstYear(type.yearCycleOverride, type.code, e.hiredOn, p.asOf)) {
+      a2cDelegated.push(e.employmentId);
+      continue;
+    }
 
     const inWindow = (rowsBy.get(e.employmentId) ?? []).filter((r) => r.effectiveOn >= windowStart);
     // Materialized-only guard (see the docblock): no `accrual` row this cycle ⇒ nothing to correct here.
@@ -5753,6 +6137,17 @@ export async function reprojectEntitlementForPolicy(
     });
     affected += 1;
     totalDelta = round2(totalDelta + delta);
+  }
+  // f3a64d90: run the delegated a2c first-year corrections in the SAME transaction (accrual-class rows).
+  if (a2cDelegated.length > 0) {
+    const a2c = await reprojectA2cEntitlement(tx, ctx, {
+      leaveTypeId: p.leaveTypeId,
+      employmentIds: a2cDelegated,
+      asOf: p.asOf,
+      trigger: 'policy_recalc',
+    });
+    affected += a2c.affected;
+    totalDelta = round2(totalDelta + a2c.totalDelta);
   }
   return { affected, totalDelta };
 }
@@ -5918,9 +6313,25 @@ export async function reprojectEntitlementForEmployment(
         asOf,
         // ae5b84d5: the scheme band days for this type supersede the policy days in the projection.
         (years) => schemeDaysFor(emp.employmentId, type.id, years),
+        // f3a64d90: the RAW override — 'a2c' day-slices the hire-year ANNUAL projection.
+        type.yearCycleOverride,
       );
       if (!projected) continue;
       const { expected, windowStart } = projected;
+
+      // f3a64d90: DELEGATE a2c's first ANNUAL year to reprojectA2cEntitlement — it posts ACCRUAL-class rows
+      // (this path's `adjustment` never moves YTD Entitled) and reconciles the superseded system rows.
+      if (isA2cFirstYear(type.yearCycleOverride, type.code, emp.hiredOn, asOf)) {
+        const a2c = await reprojectA2cEntitlement(tx, ctx, {
+          leaveTypeId: type.id,
+          employmentIds: [p.employmentId],
+          asOf,
+          trigger: p.trigger,
+        });
+        affected += a2c.affected;
+        totalDelta = round2(totalDelta + a2c.totalDelta);
+        continue;
+      }
 
       const inWindow = (ledgerByType.get(type.id) ?? []).filter((r) => r.effectiveOn >= windowStart);
       // Materialized-only guard: no `accrual` row this cycle ⇒ nothing granted yet ⇒ nothing to correct.

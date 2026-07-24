@@ -159,8 +159,16 @@ describe('387792a4 · downstream sync — assignments keep feeding Service Based
     // page — so a Panel B/C save re-renders the Service Based Entitlements sub-step's table without a
     // manual refresh. Pinned at the action layer: each workbench action ends with ok(ENTITLEMENTS).
     const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
-    expect(actionsSrc).toContain("const ENTITLEMENTS = '/admin/leave/entitlements'");
-    expect(actionsSrc).toMatch(/function ok\(path: string\): never \{\s*revalidatePath\(path\);/);
+    // 4e9a4d59 — the ENTITLEMENTS constant and the ok()/fail()/okToast()/okEntitlements() redirect
+    // contract moved OUT of the 'use server' actions file into the plain app/admin/_redirects.ts module
+    // (a 'use server' file can only export async functions, so the leave-approval actions could never
+    // import them from there). Same definitions, one home — assert them there, and assert actions.ts
+    // imports them rather than re-declaring a divergent copy.
+    const redirectsSrc = readFileSync(resolve(here, '../app/admin/_redirects.ts'), 'utf8');
+    expect(redirectsSrc).toContain("export const ENTITLEMENTS = '/admin/leave/entitlements'");
+    expect(redirectsSrc).toMatch(/export function ok\(path: string\): never \{\s*revalidatePath\(path\);/);
+    expect(actionsSrc).toContain("from './_redirects'");
+    expect(actionsSrc).not.toContain("const ENTITLEMENTS = '/admin/leave/entitlements'");
     for (const action of [
       'createGradeGroupAction',
       'updateGradeGroupAction',

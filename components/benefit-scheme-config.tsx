@@ -496,8 +496,17 @@ export function BenefitSchemeConfig({
                   onChange={(e) => setSelectedSchemeId(e.target.value)}
                   className={`${inputCls} w-72`}
                 >
-                  {schemes.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                  {/* Feedback 0d1a0cfc — the Scheme picker lists the configured Benefit Schemes grouped
+                      under their owning COMPANY (optgroup), so two companies with similarly named schemes
+                      are no longer confusable. Same option set as the previous flat schemes.map (nothing is
+                      filtered in or out), reusing the schemesByCompany memo the workbench already builds —
+                      presentation only; selection state, onChange and the default remain untouched. */}
+                  {schemesByCompany.map((group) => (
+                    <optgroup key={group.companyId} label={group.name}>
+                      {group.schemes.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </Field>
@@ -1395,6 +1404,10 @@ function EntitlementEditDialog({
 export type LeaveTypeSchemeEntitlement = Entitlement & {
   /** Owning scheme's display name — the per-type table's first column. */
   schemeName: string;
+  /** Feedback 0d1a0cfc — the owning scheme's COMPANY name, shown beside the scheme name so this column
+   *  matches the company-grouped Scheme picker above. Derived on the page from the already-loaded company
+   *  list (never stored); null when the company cannot be resolved. */
+  companyName: string | null;
   /** Combined-limit pool this leave type belongs to within that scheme; null = not pooled. Read-only here. */
   poolName: string | null;
   poolTotalLimitDays: number | null;
@@ -1434,7 +1447,14 @@ export function LeaveTypeEntitlementTable({
                 <tr key={e.id} className="border-b border-border last:border-0">
                   <td className="px-3 py-2 font-medium">
                     <span className="flex flex-col">
-                      {e.schemeName}
+                      {/* Feedback 0d1a0cfc — company name beside the scheme name, mirroring the
+                          company-grouped Scheme picker so both surfaces name the same thing. */}
+                      <span className="flex flex-wrap items-baseline gap-x-1.5">
+                        {e.schemeName}
+                        {e.companyName != null && (
+                          <span className="text-xs font-normal text-muted-foreground">{e.companyName}</span>
+                        )}
+                      </span>
                       {e.poolName != null && e.poolTotalLimitDays != null && (
                         <span className="text-xs font-normal text-muted-foreground">
                           {t('perTypeSharedPool', { name: e.poolName, days: e.poolTotalLimitDays })}

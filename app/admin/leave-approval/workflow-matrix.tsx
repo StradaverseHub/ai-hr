@@ -226,6 +226,10 @@ export function WorkflowMatrix({
                           <form action={actions.archive}>
                             <input type="hidden" name="companyId" value={r.companyId} />
                             <input type="hidden" name="ruleId" value={r.id} />
+                            {/* 4e9a4d59 — return anchor for the leave-type workspace's embedded matrix (rows
+                                there are filtered to the viewed type, so this always names it). The
+                                standalone Approvals screen's archive action ignores the field. */}
+                            <input type="hidden" name="leaveTypeId" value={r.leaveTypeId ?? ''} />
                             <ConfirmSubmit size="sm" title={labels.delete} description={labels.deleteConfirm} confirmLabel={labels.delete}>
                               {labels.delete}
                             </ConfirmSubmit>

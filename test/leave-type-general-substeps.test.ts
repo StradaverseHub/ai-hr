@@ -9,8 +9,9 @@
  * (backward-compatible: older payloads still hydrate, generalSubStep defaults to Details).
  *
  * Content contract:
- *  - Details keeps the EXACT existing General content (identity/rename, statutory floor, leave unit,
- *    per-date approval) — the leave-type-config-categories.test.ts anchors keep guarding it.
+ *  - Details keeps the EXACT existing General content (identity/rename, leave unit, per-date approval;
+ *    the read-only statutory-floor row was removed by feedback 3c093c7a) — the
+ *    leave-type-config-categories.test.ts anchors keep guarding it.
  *  - Leave Year Type: a per-type override select posting the `yearCycle=1` tri-state marker
  *    (leave_type.year_cycle_override, migration 0303); the Anniversary-to-Calendar option renders
  *    DISABLED pending engine work (no hybrid-year semantics ship in this restructure).
@@ -41,10 +42,11 @@ const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 const SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry', 'workflow'] as const;
 
-/** Slice the General card's segment (its CardTitle to the next card's CardTitle). */
+/** Slice the General card's segment (its CardTitle to the next card's CardTitle — the Entitlement card
+ *  since b8fcae73 removed the Eligibility card that used to sit between them). */
 function generalSegment(): string {
   const start = panelSrc.indexOf("<CardTitle>{t('categoryGeneral')}</CardTitle>");
-  const end = panelSrc.indexOf("<CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>");
+  const end = panelSrc.indexOf("<CardTitle>{t('categoryEntitlement')}</CardTitle>");
   expect(start).toBeGreaterThan(-1);
   expect(end).toBeGreaterThan(start);
   return panelSrc.slice(start, end);
@@ -89,10 +91,10 @@ describe('e1a51aea · reusable sub-step control', () => {
 });
 
 describe('e1a51aea · Details keeps the existing General content', () => {
-  it('the identity form, statutory floor, leave unit and per-date approval live in the details sub-step', () => {
+  it('the identity form, leave unit and per-date approval live in the details sub-step', () => {
     const seg = generalSegment();
     const details = seg.slice(seg.indexOf("generalSubStep === 'details'"), seg.indexOf("generalSubStep === 'yearType'"));
-    for (const needle of ['name="identity"', "t('statutoryMinimum')", 'name="leaveUnit"', 'name="partialApproval"']) {
+    for (const needle of ['name="identity"', 'name="leaveUnit"', 'name="partialApproval"']) {
       expect(details.includes(needle), `${needle} inside details`).toBe(true);
     }
   });
@@ -109,10 +111,15 @@ describe('e1a51aea · Leave Year Type sub-step (per-type cycle override)', () =>
     }
   });
 
-  it('renders Anniversary-to-Calendar DISABLED with the pending-engine note (no hybrid semantics ship here)', () => {
+  // f3a64d90 switched Anniversary-to-Calendar ON (its engine semantics shipped with that item), so the
+  // option is now SELECTABLE and its pending-engine note is gone — the inverse of the e1a51aea assertion.
+  it('renders Anniversary-to-Calendar SELECTABLE with no pending-engine note (f3a64d90)', () => {
     const seg = generalSegment();
-    expect(seg).toMatch(/value="a2c" disabled/);
-    expect(seg).toContain("t('subStep.pendingEngineNote')");
+    expect(seg).not.toMatch(/value="a2c" disabled/);
+    expect(seg).toContain('<option value="a2c">');
+    expect(seg).not.toContain("t('subStep.pendingEngineNote')");
+    // The stored value must round-trip into the select's defaultValue, or the choice renders as lost.
+    expect(seg).toContain("yearCycleOverride === 'a2c'");
   });
 });
 
@@ -178,9 +185,30 @@ describe('e1a51aea · Approval Workflow sub-step (scoped matrix embed)', () => {
   it('the page embeds WorkflowMatrix filtered + seeded to the hosting type', () => {
     expect(pageSrc).toContain('rows={approvalRuleRows.filter((r) => r.leaveTypeId === lt.id)}');
     expect(pageSrc).toContain('defaultLeaveTypeId={lt.id}');
-    // Same actions as the Approval tab — nothing forks.
-    expect(pageSrc).toContain('saveLeaveApprovalRuleAction');
-    expect(pageSrc).toContain('archiveLeaveApprovalRuleAction');
+    // 4e9a4d59 — the embedded matrix now posts the stay-on-this-type wrappers instead of the Approval
+    // tab's actions, so a rule save/delete no longer throws HR out of the leave type they're setting up.
+    // The PERSIST behaviour still cannot fork: both entry points run the same two persist helpers, and
+    // only the post-save redirect differs (workspace → okEntitlements, standalone → the Approval page).
+    expect(pageSrc).toContain('saveLeaveApprovalRuleFromEntitlementsAction');
+    expect(pageSrc).toContain('archiveLeaveApprovalRuleFromEntitlementsAction');
+    const approvalActionsSrc = readFileSync(
+      resolve(here, '../app/admin/leave-approval/actions.ts'),
+      'utf8',
+    );
+    for (const [action, helper] of [
+      ['saveLeaveApprovalRuleAction', 'persistApprovalRule'],
+      ['saveLeaveApprovalRuleFromEntitlementsAction', 'persistApprovalRule'],
+      ['archiveLeaveApprovalRuleAction', 'persistArchiveApprovalRule'],
+      ['archiveLeaveApprovalRuleFromEntitlementsAction', 'persistArchiveApprovalRule'],
+    ] as const) {
+      const start = approvalActionsSrc.indexOf(`export async function ${action}(`);
+      expect(start, `${action} exists`).toBeGreaterThan(-1);
+      const body = approvalActionsSrc.slice(start, approvalActionsSrc.indexOf('\n}', start));
+      expect(body.includes(`${helper}(s, formData)`), `${action} reuses ${helper}`).toBe(true);
+    }
+    // Only the workspace pair returns through the shared stay-on-page contract; the standalone pair keeps
+    // landing on the Approvals screen.
+    expect(approvalActionsSrc).toContain("from '@/app/admin/_redirects'");
     // One label source shared with the Approval tab (matrix-labels.ts), so the two matrices cannot drift.
     expect(pageSrc).toContain('buildWorkflowMatrixLabels');
     expect(approvalPageSrc).toContain('buildWorkflowMatrixLabels');
@@ -224,7 +252,9 @@ describe('e1a51aea · i18n — all six locales', () => {
         'yearTypeA2c',
         'yearTypeC2c',
         'yearTypeHelp',
-        'pendingEngineNote',
+        // f3a64d90 retired the shared pendingEngineNote (it also named the now-live Anniversary to
+        // Calendar) for a dedicated key that speaks only about Earn Upon Resignation.
+        'resignationPendingNote',
         'earningMethodLabel',
         'earningNone',
         'earningByMonth',
@@ -232,6 +262,14 @@ describe('e1a51aea · i18n — all six locales', () => {
         'earningResignation',
         'earningMappingHelp',
         'earningHelp',
+        // Feedback b81d3c52 — Rounding Method, configured directly under Earning Method. This array is
+        // HARDCODED (the loop only asserts the keys literally listed here), so every new sub-step key MUST
+        // be appended or a locale that drops it still passes green.
+        'roundingMethodLabel',
+        'roundingNone',
+        'roundingUp',
+        'roundingDown',
+        'roundingHelp',
         'carryPolicyLabel',
         'carryNone',
         'carryFixedMax',

@@ -9,7 +9,7 @@ import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } fr
 import { nextEmployeeCode } from './comp';
 import { generateEmployeeCode } from './employee-id-config';
 import { requireEmployeeCode } from '../lib/employee-code';
-import { applyMaxBalance, buildSchemeEntitlementResolver, entitledDays, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
+import { a2cFirstYearEntitledToDate, applyMaxBalance, applyRounding, buildSchemeEntitlementResolver, entitledDays, isA2cFirstYear, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
 import { labelUsableByCompany } from './system-labels';
 import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile-options';
@@ -84,8 +84,11 @@ export type HireParams = {
    *  is the source of truth: it computes the full_time default via computeProvisionalEndOn. */
   provisionalEndOn?: string | null;
   /** Standing entitlements to grant on hire (pack-driven). Pass ANNUAL / SICK /
-   *  HOSPITALIZATION; situational types (maternity etc.) are claimed per event, not granted. */
-  grantLeaveTypes?: { id: string; code: string }[];
+   *  HOSPITALIZATION; situational types (maternity etc.) are claimed per event, not granted.
+   *  `yearCycleOverride` (f3a64d90) is the type's raw leave_type.year_cycle_override — only 'a2c' is
+   *  load-bearing here (it replaces the hire-month lump with the day-to-date sliver on ANNUAL). Absent /
+   *  null ⇒ byte-identical pre-existing grant behaviour. */
+  grantLeaveTypes?: { id: string; code: string; yearCycleOverride?: string | null }[];
 };
 
 /** Days in a given month (1-based month). */
@@ -290,13 +293,26 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           // ANNUAL pro-rates by months remaining in the hire year (s.60E practice).
           // SICK / HOSPITALIZATION grant in full: s.60F is a per-calendar-year
           // entitlement and must not be prorated for mid-year joiners.
-          const grantRaw =
-            lt.code === 'ANNUAL'
+          // Anniversary to Calendar (f3a64d90): an a2c ANNUAL type does NOT lump the hire year — it builds
+          // day by day from the join date, so the hire grant opens at the to-date sliver (one day worked on
+          // day one) and reprojectA2cEntitlement / a profile recalc carry it forward. Without this row the
+          // employee would have no accrual in the window and every later correction would skip them.
+          // Non-ANNUAL a2c types keep the existing full grant (s.60F).
+          const grantRaw = isA2cFirstYear(lt.yearCycleOverride, lt.code, p.hiredOn, p.hiredOn)
+            ? a2cFirstYearEntitledToDate(p.hiredOn, p.hiredOn, days)
+            : lt.code === 'ANNUAL'
               ? Math.round(((days * (12 - (month - 1))) / 12) * 100) / 100
               : days;
+          // Feedback b81d3c52 — Rounding Method: the reporter's own worked example (a 6-Jan joiner whose
+          // pro-rated entitlement lands on a fraction). Tidy the CALCULATED figure to a whole day as the
+          // FINAL step of the earning calculation and BEFORE the max-balance clamp — the identical point
+          // and order openLeaveYear / accrueEarnedLeave / projectExpectedEntitlement apply it, so the
+          // credited ledger row and the recalc kernel's projection can never disagree. The pro-ration
+          // formula itself (whole months remaining) is unchanged. No method ⇒ pass-through.
+          const grantRounded = applyRounding(grantRaw, polFor?.roundingMethod);
           // Feedback 9d8cf621 — Maximum Balance Days: a new hire has 0 prior balance, so clamp the initial
           // grant so it never opens above the resolved band's cap. null ⇒ pass-through (grant unchanged).
-          const { grant } = applyMaxBalance(0, grantRaw, polFor?.maxBalanceDays);
+          const { grant } = applyMaxBalance(0, grantRounded, polFor?.maxBalanceDays);
           if (grant <= 0) continue;
           await tx.insert(leaveLedger).values({
             tenantId: ctx.tenantId,

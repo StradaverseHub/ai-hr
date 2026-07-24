@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Badge, Button, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { groupTemplateAssignments } from './assignment-groups';
 import { StepListEditor } from './step-list-editor';
 
 type Option = { id: string; label: string };
@@ -77,59 +79,61 @@ export type TemplateManagerLabels = {
   dragToReorder: string;
 };
 
-type Actions = {
+/** Approval Template Creation actions (9b0d99f3 — section 1 of the Approval Workflow tab). */
+export type TemplateActions = {
   saveTemplate: (fd: FormData) => void | Promise<void>;
   duplicateTemplate: (fd: FormData) => void | Promise<void>;
   setActive: (fd: FormData) => void | Promise<void>;
   deleteTemplate: (fd: FormData) => void | Promise<void>;
   setDefault: (fd: FormData) => void | Promise<void>;
+};
+
+/** Assignment Template actions (9b0d99f3 — section 2 of the Approval Workflow tab). */
+export type AssignmentActions = {
   assign: (fd: FormData) => void | Promise<void>;
   unassign: (fd: FormData) => void | Promise<void>;
   setMultiApproval: (fd: FormData) => void | Promise<void>;
 };
 
+const stepLabelBag = (labels: TemplateManagerLabels) => ({
+  chain: labels.chain,
+  empty: labels.empty,
+  manager: labels.manager,
+  departmentHead: labels.departmentHead,
+  businessUnitHead: labels.businessUnitHead,
+  hr: labels.hr,
+  hrManager: labels.hrManager,
+  payroll: labels.payroll,
+  customRole: labels.customRole,
+  add: labels.add,
+  moveUp: labels.moveUp,
+  moveDown: labels.moveDown,
+  remove: labels.remove,
+  dragToReorder: labels.dragToReorder,
+});
+
+const nameOf = (opts: Option[], id: string | null) => (id ? (opts.find((o) => o.id === id)?.label ?? id) : '—');
+
 /**
- * 6fadb036 (R17) — Approval Workflow Enhancement. Two cards on the Approval Workflow tab, above the
- * per-company editors: (1) reusable Approval Templates (CRUD, duplicate, activate/deactivate, set org-wide
- * default, drag-and-drop steps) and (2) an Assignments table that maps templates to many (company × leave
- * type) pairs in one action. The per-company default chain + scoped exception rules stay below, untouched.
+ * 6fadb036 (R17) — Approval Workflow Enhancement: reusable Approval Templates (CRUD, duplicate,
+ * activate/deactivate, set org-wide default, drag-and-drop steps).
+ *
+ * 9b0d99f3 — this component is now ONLY the "Approval Template Creation" card. The assignments table
+ * (which template covers which company × leave type) split out into ApprovalAssignmentManager below,
+ * so the page can head the two concerns separately. No behaviour changed on either side.
  */
 export function ApprovalTemplateManager({
   templates,
-  assignments,
-  companies,
-  leaveTypes,
-  companyMultiApproval,
   actions,
   labels,
 }: {
   templates: TemplateRow[];
-  assignments: AssignmentRow[];
-  companies: Option[];
-  leaveTypes: Option[];
-  companyMultiApproval: Record<string, boolean>;
-  actions: Actions;
+  actions: TemplateActions;
   labels: TemplateManagerLabels;
 }) {
   const [editing, setEditing] = useState<TemplateRow | 'new' | null>(null);
-  const [assigning, setAssigning] = useState(false);
 
-  const stepLabels = {
-    chain: labels.chain,
-    empty: labels.empty,
-    manager: labels.manager,
-    departmentHead: labels.departmentHead,
-    businessUnitHead: labels.businessUnitHead,
-    hr: labels.hr,
-    hrManager: labels.hrManager,
-    payroll: labels.payroll,
-    customRole: labels.customRole,
-    add: labels.add,
-    moveUp: labels.moveUp,
-    moveDown: labels.moveDown,
-    remove: labels.remove,
-    dragToReorder: labels.dragToReorder,
-  };
+  const stepLabels = stepLabelBag(labels);
   // 6fadb036 (gap-close): full 7-role vocabulary preview labels.
   const kindLabel = (k: string): string => {
     switch (k) {
@@ -150,8 +154,6 @@ export function ApprovalTemplateManager({
     }
   };
   const stepsPreview = (levels: string[]) => levels.map(kindLabel).join(' → ');
-  const nameOf = (opts: Option[], id: string | null) => (id ? (opts.find((o) => o.id === id)?.label ?? id) : '—');
-  const templateName = (id: string) => templates.find((t) => t.id === id)?.name ?? id;
 
   return (
     <div className="space-y-6">
@@ -245,77 +247,126 @@ export function ApprovalTemplateManager({
           <p className="text-[11px] text-muted-foreground">{labels.rolesGatedNote}</p>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* ── Assignments ── */}
-      <div className="rounded-2xl border border-border bg-card">
-        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-          <div>
-            <div className="text-sm font-semibold">{labels.assignmentsTitle}</div>
-            <p className="text-xs text-muted-foreground">{labels.assignmentsHint}</p>
-          </div>
-          {!assigning && templates.some((t) => t.active) && (
-            <Button type="button" variant="outline" size="sm" onClick={() => setAssigning(true)}>
-              {labels.assign}
-            </Button>
-          )}
+/**
+ * 9b0d99f3 — the "Assignment Template" assignments list (split out of ApprovalTemplateManager).
+ *
+ * The table is COLLAPSED to one line per (company × template): first leave type + a "+N more"
+ * disclosure, so a company with many leave types no longer prints a screenful of rows. Expanding a
+ * line lists EVERY row of the group by ruleId, each keeping its own unassign — nothing hidden,
+ * nothing deduped. Assignment itself (AssignForm, its multi-step-off warning and the explicit
+ * enable-multi-approval button) is unchanged.
+ */
+export function ApprovalAssignmentManager({
+  templates,
+  assignments,
+  companies,
+  leaveTypes,
+  companyMultiApproval,
+  actions,
+  labels,
+}: {
+  templates: TemplateRow[];
+  assignments: AssignmentRow[];
+  companies: Option[];
+  leaveTypes: Option[];
+  companyMultiApproval: Record<string, boolean>;
+  actions: AssignmentActions;
+  labels: TemplateManagerLabels;
+}) {
+  const t = useTranslations('leaveApproval');
+  const [assigning, setAssigning] = useState(false);
+  const templateName = (id: string) => templates.find((x) => x.id === id)?.name ?? id;
+  const groups = groupTemplateAssignments(assignments);
+
+  return (
+    <div className="rounded-2xl border border-border bg-card">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <div>
+          <div className="text-sm font-semibold">{labels.assignmentsTitle}</div>
+          <p className="text-xs text-muted-foreground">{labels.assignmentsHint}</p>
         </div>
+        {!assigning && templates.some((x) => x.active) && (
+          <Button type="button" variant="outline" size="sm" onClick={() => setAssigning(true)}>
+            {labels.assign}
+          </Button>
+        )}
+      </div>
 
-        <div className="space-y-4 p-4">
-          {assignments.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{labels.noAssignments}</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[32rem] text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    <th className="py-2 pr-3">{labels.templateCol}</th>
-                    <th className="py-2 pr-3">{labels.leaveTypeCol}</th>
-                    <th className="py-2 pr-3">{labels.companyCol}</th>
-                    <th className="py-2" />
+      <div className="space-y-4 p-4">
+        {groups.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{labels.noAssignments}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[32rem] text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <th className="py-2 pr-3">{labels.companyCol}</th>
+                  <th className="py-2 pr-3">{labels.leaveTypeCol}</th>
+                  <th className="py-2 pr-3">{labels.templateCol}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((g) => (
+                  <tr key={g.key} className="border-b border-border/60 align-top">
+                    <td className="py-2 pr-3">{nameOf(companies, g.companyId)}</td>
+                    <td className="py-2 pr-3">
+                      <details className="group">
+                        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-1.5 [&::-webkit-details-marker]:hidden">
+                          <Badge variant="accent">{nameOf(leaveTypes, g.firstLeaveTypeId)}</Badge>
+                          {g.overflowCount > 0 && (
+                            <span className="text-xs text-muted-foreground underline decoration-dotted">
+                              {t('leaveTypesMore', { n: g.overflowCount })}
+                            </span>
+                          )}
+                          <span aria-hidden className="text-xs text-muted-foreground group-open:rotate-180">
+                            ▾
+                          </span>
+                        </summary>
+                        <ul className="mt-2 space-y-1.5 border-l border-border pl-3">
+                          {g.rows.map((a) => (
+                            <li key={a.ruleId} className="flex flex-wrap items-center gap-2">
+                              <Badge variant="accent">{nameOf(leaveTypes, a.leaveTypeId)}</Badge>
+                              <form action={actions.unassign}>
+                                <input type="hidden" name="ruleId" value={a.ruleId} />
+                                <input type="hidden" name="companyId" value={a.companyId} />
+                                <ConfirmSubmit
+                                  size="sm"
+                                  title={labels.unassign}
+                                  description={labels.unassignConfirm}
+                                  confirmLabel={labels.unassign}
+                                >
+                                  {labels.unassign}
+                                </ConfirmSubmit>
+                              </form>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    </td>
+                    <td className="py-2 pr-3 font-medium">{templateName(g.templateId)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {assignments.map((a) => (
-                    <tr key={a.ruleId} className="border-b border-border/60">
-                      <td className="py-2 pr-3 font-medium">{templateName(a.templateId)}</td>
-                      <td className="py-2 pr-3">
-                        <Badge variant="accent">{nameOf(leaveTypes, a.leaveTypeId)}</Badge>
-                      </td>
-                      <td className="py-2 pr-3">{nameOf(companies, a.companyId)}</td>
-                      <td className="py-2 text-right">
-                        <form action={actions.unassign}>
-                          <input type="hidden" name="ruleId" value={a.ruleId} />
-                          <input type="hidden" name="companyId" value={a.companyId} />
-                          <ConfirmSubmit
-                            size="sm"
-                            title={labels.unassign}
-                            description={labels.unassignConfirm}
-                            confirmLabel={labels.unassign}
-                          >
-                            {labels.unassign}
-                          </ConfirmSubmit>
-                        </form>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-          {assigning && (
-            <AssignForm
-              templates={templates.filter((t) => t.active)}
-              companies={companies}
-              leaveTypes={leaveTypes}
-              companyMultiApproval={companyMultiApproval}
-              assignAction={actions.assign}
-              multiApprovalAction={actions.setMultiApproval}
-              labels={labels}
-              onCancel={() => setAssigning(false)}
-            />
-          )}
-        </div>
+        {assigning && (
+          <AssignForm
+            templates={templates.filter((x) => x.active)}
+            companies={companies}
+            leaveTypes={leaveTypes}
+            companyMultiApproval={companyMultiApproval}
+            assignAction={actions.assign}
+            multiApprovalAction={actions.setMultiApproval}
+            labels={labels}
+            onCancel={() => setAssigning(false)}
+          />
+        )}
       </div>
     </div>
   );

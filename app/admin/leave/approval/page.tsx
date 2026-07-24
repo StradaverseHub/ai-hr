@@ -9,7 +9,11 @@ import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveApprovalEditor } from '../../leave-approval/editor';
 import { LeaveEscalationEditor, type EscalationLabels } from '../../leave-approval/escalation-editor';
-import { ApprovalTemplateManager, type TemplateManagerLabels } from '../../leave-approval/template-manager';
+import {
+  ApprovalAssignmentManager,
+  ApprovalTemplateManager,
+  type TemplateManagerLabels,
+} from '../../leave-approval/template-manager';
 import { WorkflowMatrix } from '../../leave-approval/workflow-matrix';
 import { buildWorkflowMatrixLabels } from '../../leave-approval/matrix-labels';
 import {
@@ -36,6 +40,13 @@ import {
  * route now 308-redirects here (`app/admin/leave-approval/page.tsx`). Auth guard is `scopedSession()`
  * exactly as before (RLS trims companies) — deliberately NOT the settings pages' `requireAdmin()`, so
  * company-scoped admins keep seeing only the companies they manage.
+ *
+ * 9b0d99f3 — Approval Workflow Refactoring & Assignment Simplification. The page is split into two
+ * headed sections: (1) APPROVAL TEMPLATE CREATION (build the flow and its steps) and (2) ASSIGNMENT
+ * TEMPLATE (who it applies to) — the assignments table, the scoped WorkflowMatrix (grade group,
+ * condition, advanced scope) and the per-company base chain + escalation, the last of which is now a
+ * compact one-line-per-company disclosure list instead of a full-height Card per company. Pure
+ * presentation: no data model, no resolve/gate path, no action wiring changed.
  */
 export default async function LeaveApprovalTabPage({
   searchParams,
@@ -195,97 +206,147 @@ export default async function LeaveApprovalTabPage({
         </Card>
       ) : (
         <>
-          <ApprovalTemplateManager
-            templates={templates}
-            assignments={assignments.map((a) => ({
-              ruleId: a.ruleId,
-              templateId: a.templateId,
-              companyId: a.companyId,
-              leaveTypeId: a.leaveTypeId,
-            }))}
-            companies={companies.map((c) => ({ id: c.id, label: c.name }))}
-            leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
-            companyMultiApproval={companyMultiApproval}
-            actions={{
-              saveTemplate: saveApprovalTemplateAction,
-              duplicateTemplate: duplicateApprovalTemplateAction,
-              setActive: setApprovalTemplateActiveAction,
-              deleteTemplate: deleteApprovalTemplateAction,
-              setDefault: setTenantDefaultTemplateAction,
-              assign: assignApprovalTemplateAction,
-              unassign: unassignApprovalTemplateAction,
-              setMultiApproval: setLeaveMultiApprovalAction,
-            }}
-            labels={templateLabels}
-          />
+          {/* ══ Section 1 — Approval Template Creation: build the flow and its steps. ══ */}
+          <section className="space-y-3">
+            <div>
+              <h2 className="text-base font-semibold">{t('templateCreationTitle')}</h2>
+              <p className="text-xs text-muted-foreground">{t('templateCreationHint')}</p>
+            </div>
+            <ApprovalTemplateManager
+              templates={templates}
+              actions={{
+                saveTemplate: saveApprovalTemplateAction,
+                duplicateTemplate: duplicateApprovalTemplateAction,
+                setActive: setApprovalTemplateActiveAction,
+                deleteTemplate: deleteApprovalTemplateAction,
+                setDefault: setTenantDefaultTemplateAction,
+              }}
+              labels={templateLabels}
+            />
+            {/* 9b0d99f3 item 3 — the multi-step framing belongs with template creation (a >=2-step
+                template IS a multi-step approval). The per-company switch itself stays explicit. */}
+            <p className="text-xs text-muted-foreground">{t('multiStepNote')}</p>
+          </section>
 
-          {/* R41 72800eda — the configured workflows summary table + View/Edit popup (across all companies). */}
-          <WorkflowMatrix
-            rows={rows.flatMap(({ rules }) =>
-              rules
-                .filter((r) => !isCompanyDefaultApprovalRule(r))
-                .map((r) => ({
-                  id: r.id,
-                  companyId: r.companyId,
-                  ruleName: r.ruleName,
-                  leaveTypeId: r.leaveTypeId,
-                  gradeGroupId: r.gradeGroupId,
-                  businessUnitId: r.businessUnitId,
-                  departmentId: r.departmentId,
-                  positionId: r.positionId,
-                  gradeId: r.gradeId,
-                  employmentType: r.employmentType,
-                  minDays: r.minDays,
-                  maxDays: r.maxDays,
-                  levels: r.levels,
-                  templateId: r.templateId,
-                })),
-            )}
-            companies={companies.map((c) => ({ id: c.id, label: c.name }))}
-            leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
-            gradeGroups={gradeGroupsAll.filter((g) => !g.archived).map((g) => ({ id: g.id, label: g.name }))}
-            grades={gradesAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` }))}
-            businessUnits={businessUnitsAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}`, companyId: x.companyId }))}
-            departments={departmentsAll.map((x) => ({ id: x.id, label: x.name, companyId: x.companyId }))}
-            positions={positionsAll.map((x) => ({ id: x.id, label: x.title, companyId: x.companyId }))}
-            templates={templates.filter((t2) => t2.active).map((t2) => ({ id: t2.id, label: t2.name }))}
-            actions={{ save: saveLeaveApprovalRuleAction, archive: archiveLeaveApprovalRuleAction }}
-            labels={workflowLabels}
-          />
+          {/* ══ Section 2 — Assignment Template: who each flow applies to. ══ */}
+          <section className="space-y-3">
+            <div>
+              <h2 className="text-base font-semibold">{t('assignmentTemplateTitle')}</h2>
+              <p className="text-xs text-muted-foreground">{t('assignmentTemplateHint')}</p>
+            </div>
 
-          {/* Company defaults: the base chain + multi-step-approval on/off gate for each company. */}
-          {rows.map(({ company, pol, esc }) => (
-            <Card key={company.id}>
-              <SectionHeader title={company.name} />
-              <LeaveApprovalEditor
-                companyId={company.id}
-                action={saveLeaveApprovalPolicyAction}
-                initialEnabled={pol.enabled}
-                initialLevels={pol.levels}
-                labels={labels}
-              />
-              {/* R51 722904dc — Approval Escalation Settings, below the chain. Hidden for single-approver
-                  companies (no multi-step chain ⇒ no next level to escalate to; the sole approver is very
-                  often the HR admin the escalation would notify). */}
-              {pol.enabled ? (
-                <LeaveEscalationEditor
-                  companyId={company.id}
-                  action={saveLeaveEscalationPolicyAction}
-                  initial={{
-                    enabled: esc.enabled,
-                    escalateAfterDays: esc.escalateAfterDays,
-                    target: esc.target,
-                    targetRole: esc.targetRole,
-                  }}
-                  labels={escalationLabels}
-                />
-              ) : (
-                <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
-                  {t('escalationUnavailableSingleApprover')}
-                </p>
+            <ApprovalAssignmentManager
+              templates={templates}
+              assignments={assignments.map((a) => ({
+                ruleId: a.ruleId,
+                templateId: a.templateId,
+                companyId: a.companyId,
+                leaveTypeId: a.leaveTypeId,
+              }))}
+              companies={companies.map((c) => ({ id: c.id, label: c.name }))}
+              leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
+              companyMultiApproval={companyMultiApproval}
+              actions={{
+                assign: assignApprovalTemplateAction,
+                unassign: unassignApprovalTemplateAction,
+                setMultiApproval: setLeaveMultiApprovalAction,
+              }}
+              labels={templateLabels}
+            />
+
+            {/* R41 72800eda — the configured workflows summary table + View/Edit popup (across all companies).
+                9b0d99f3 2.i/2.ii/2.iv — this is where grade group, the condition (min/max days) and the
+                advanced scope dropdown live, so it sits under the Assignment Template heading. */}
+            <WorkflowMatrix
+              rows={rows.flatMap(({ rules }) =>
+                rules
+                  .filter((r) => !isCompanyDefaultApprovalRule(r))
+                  .map((r) => ({
+                    id: r.id,
+                    companyId: r.companyId,
+                    ruleName: r.ruleName,
+                    leaveTypeId: r.leaveTypeId,
+                    gradeGroupId: r.gradeGroupId,
+                    businessUnitId: r.businessUnitId,
+                    departmentId: r.departmentId,
+                    positionId: r.positionId,
+                    gradeId: r.gradeId,
+                    employmentType: r.employmentType,
+                    minDays: r.minDays,
+                    maxDays: r.maxDays,
+                    levels: r.levels,
+                    templateId: r.templateId,
+                  })),
               )}
+              companies={companies.map((c) => ({ id: c.id, label: c.name }))}
+              leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
+              gradeGroups={gradeGroupsAll.filter((g) => !g.archived).map((g) => ({ id: g.id, label: g.name }))}
+              grades={gradesAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` }))}
+              businessUnits={businessUnitsAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}`, companyId: x.companyId }))}
+              departments={departmentsAll.map((x) => ({ id: x.id, label: x.name, companyId: x.companyId }))}
+              positions={positionsAll.map((x) => ({ id: x.id, label: x.title, companyId: x.companyId }))}
+              templates={templates.filter((t2) => t2.active).map((t2) => ({ id: t2.id, label: t2.name }))}
+              actions={{ save: saveLeaveApprovalRuleAction, archive: archiveLeaveApprovalRuleAction }}
+              labels={workflowLabels}
+            />
+
+            {/* Company defaults: the base chain + multi-step-approval on/off gate for each company, plus
+                (2.iii) the Approval Escalation Settings — both are inherently per-company (each company
+                escalates to a different person), so 9b0d99f3 folds them into ONE compact line per company
+                you expand only when you need it, instead of a full-height Card each. */}
+            <Card>
+              <SectionHeader title={t('companyDefaultsTitle')} count={rows.length} />
+              <p className="px-4 pt-3 text-xs text-muted-foreground">{t('companyDefaultsHint')}</p>
+              <ul className="divide-y divide-border">
+                {rows.map(({ company, pol, esc }) => (
+                  <li key={company.id}>
+                    <details className="group">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span>{company.name}</span>
+                          {!pol.enabled && (
+                            <span className="text-xs font-normal text-muted-foreground">{t('multiApprovalOff')}</span>
+                          )}
+                        </span>
+                        <span aria-hidden className="text-xs text-muted-foreground group-open:rotate-180">
+                          ▾
+                        </span>
+                      </summary>
+                      <div className="border-t border-border">
+                        <LeaveApprovalEditor
+                          companyId={company.id}
+                          action={saveLeaveApprovalPolicyAction}
+                          initialEnabled={pol.enabled}
+                          initialLevels={pol.levels}
+                          labels={labels}
+                        />
+                        {/* R51 722904dc — Approval Escalation Settings, below the chain. Hidden for single-approver
+                            companies (no multi-step chain ⇒ no next level to escalate to; the sole approver is very
+                            often the HR admin the escalation would notify). */}
+                        {pol.enabled ? (
+                          <LeaveEscalationEditor
+                            companyId={company.id}
+                            action={saveLeaveEscalationPolicyAction}
+                            initial={{
+                              enabled: esc.enabled,
+                              escalateAfterDays: esc.escalateAfterDays,
+                              target: esc.target,
+                              targetRole: esc.targetRole,
+                            }}
+                            labels={escalationLabels}
+                          />
+                        ) : (
+                          <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
+                            {t('escalationUnavailableSingleApprover')}
+                          </p>
+                        )}
+                      </div>
+                    </details>
+                  </li>
+                ))}
+              </ul>
             </Card>
-          ))}
+          </section>
         </>
       )}
     </div>

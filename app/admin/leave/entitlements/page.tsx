@@ -10,7 +10,12 @@ import { getLeaveApprovalPolicy, isCompanyDefaultApprovalRule, listLeaveApproval
 import { listApprovalTemplates } from '@/core/leave-approval-template';
 import { WorkflowMatrix } from '@/app/admin/leave-approval/workflow-matrix';
 import { buildWorkflowMatrixLabels } from '@/app/admin/leave-approval/matrix-labels';
-import { archiveLeaveApprovalRuleAction, saveLeaveApprovalRuleAction } from '@/app/admin/leave-approval/actions';
+// 4e9a4d59 — the EMBEDDED matrix posts the stay-on-this-type wrappers (the standalone Approvals screen
+// keeps the plain actions), so a rule save/delete never bounces HR out of the leave type they're setting up.
+import {
+  archiveLeaveApprovalRuleFromEntitlementsAction,
+  saveLeaveApprovalRuleFromEntitlementsAction,
+} from '@/app/admin/leave-approval/actions';
 import {
   listGradeGroups,
   listBenefitSchemes,
@@ -172,16 +177,12 @@ export default async function LeaveEntitlementsPage({
   const earnedDefaultYear =
     earnedLeaveYears.find((y) => y.year === currentYear)?.year ?? earnedLeaveYears[0]?.year ?? currentYear;
 
-  // Statutory floor display: sample the three service bands. Rung 5c — the entitlement floor comes from
+  // Country-pack entitlement lookup — feeds each type's `floor0` (the day-zero statutory entitlement that
+  // drives the entitlement summary and the below-minimum badge). Rung 5c — the entitlement floor comes from
   // the country pack via the registry (union-read interim: the first/only registered pack, matching the
   // rung-5a `countryPacks()` precedent for tenant-level vocabulary with no acting company; per-company
   // narrowing is the second-country rung, ADR-0080 §6). MY-only today ⇒ byte-identical to the old import.
   const packEntitlement = countryPacks()[0]?.leave.entitlement;
-  const floorBands = (code: string) => {
-    if (!packEntitlement) return null;
-    const days = [...new Set([0, 2, 6].map((y) => packEntitlement(code, y)))];
-    return days[0] === 0 ? null : days.join(' / ');
-  };
 
   // Group each type's effective-dated policies, newest first, for inline editing.
   const polByType = new Map<string, EntitlementPolicy[]>();
@@ -197,6 +198,8 @@ export default async function LeaveEntitlementsPage({
       carryForwardEnabled?: boolean;
       carryForwardIncludeEarned?: boolean;
       serviceBands?: ServiceBand[];
+      /** b81d3c52 — Rounding Method; absent on every policy that uses No Rounding. */
+      roundingMethod?: 'none' | 'up' | 'down';
     } | null;
     const ep: EntitlementPolicy = {
       id: p.id,
@@ -210,6 +213,8 @@ export default async function LeaveEntitlementsPage({
       carryForwardEnabled: typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : null,
       carryForwardIncludeEarned: acc?.carryForwardIncludeEarned ?? false,
       method: acc?.method,
+      // b81d3c52 — only the two real methods reach the panel; absent / anything else ⇒ null (No Rounding).
+      roundingMethod: acc?.roundingMethod === 'up' || acc?.roundingMethod === 'down' ? acc.roundingMethod : null,
       gradeId: p.gradeId,
       gradeName: p.gradeName,
       companyId: p.companyId,
@@ -229,6 +234,13 @@ export default async function LeaveEntitlementsPage({
   // same step) renders — filtered by leave type, never duplicated — and the panel's Edit dialog posts the
   // SAME upsert action, so the two surfaces cannot drift.
   const schemeNameById = new Map(benefitSchemes.map((sc) => [sc.id, sc.name]));
+  // Feedback 0d1a0cfc — the owning COMPANY name per scheme, so the Service Based Entitlements table's
+  // "Benefit scheme" column can name the company beside the scheme (matching the company-grouped Scheme
+  // picker). Resolved from the benefitSchemes + companies rows this page already loads — no new query,
+  // nothing stored.
+  const schemeCompanyNameById = new Map(
+    benefitSchemes.map((sc) => [sc.id, companyNameById.get(sc.companyId) ?? null] as const),
+  );
   const poolBySchemeType = new Map<string, { name: string; totalLimitDays: number }>();
   for (const cl of schemeCombinedLimits) {
     for (const ltId of cl.leaveTypeIds) {
@@ -242,6 +254,7 @@ export default async function LeaveEntitlementsPage({
       id: e.id,
       benefitSchemeId: e.benefitSchemeId,
       schemeName: schemeNameById.get(e.benefitSchemeId) ?? '—',
+      companyName: schemeCompanyNameById.get(e.benefitSchemeId) ?? null,
       leaveTypeId: e.leaveTypeId,
       leaveTypeName: e.leaveTypeName,
       serviceBands: e.serviceBands,
@@ -369,7 +382,10 @@ export default async function LeaveEntitlementsPage({
     departments: departmentsAll.map((x) => ({ id: x.id, label: x.name, companyId: x.companyId })),
     positions: positionsAll.map((x) => ({ id: x.id, label: x.title, companyId: x.companyId })),
     templates: approvalTemplates.filter((t2) => t2.active).map((t2) => ({ id: t2.id, label: t2.name })),
-    actions: { save: saveLeaveApprovalRuleAction, archive: archiveLeaveApprovalRuleAction },
+    actions: {
+      save: saveLeaveApprovalRuleFromEntitlementsAction,
+      archive: archiveLeaveApprovalRuleFromEntitlementsAction,
+    },
     labels: buildWorkflowMatrixLabels(ta),
   };
 
@@ -500,6 +516,17 @@ export default async function LeaveEntitlementsPage({
     </div>
   );
 
+  // Feedback 1bd9a911 — the workspace's internal left-side Leave Type list is ordered here, on the server,
+  // so BOTH the desktop list and the mobile dropdown (they read the same `items` prop) get one ordering and
+  // the client keeps its plain `items[0]` default selection. Active types first, then archived ones, each
+  // group A–Z case-insensitively. Only the workspace list order changes: `panels` is keyed by id, and the
+  // other type-derived arrays (activeTypeOptions, typeNameById, …) are deliberately left alone.
+  const workspaceItems = [...types].sort(
+    (a, b) =>
+      Number(!!a.archivedAt) - Number(!!b.archivedAt) ||
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -526,7 +553,7 @@ export default async function LeaveEntitlementsPage({
       <Card data-tour="leave-config">
         <SectionHeader title={t('typesSectionTitle')} count={types.length} />
         <LeaveTypeWorkspace
-          items={types.map((lt) => ({
+          items={workspaceItems.map((lt) => ({
             id: lt.id,
             name: lt.name,
             code: lt.code,
@@ -547,7 +574,6 @@ export default async function LeaveEntitlementsPage({
               archived={!!lt.archivedAt}
               inUse={lt.inUse}
               isAnnual={lt.code === 'ANNUAL'}
-              floorLabel={floorBands(lt.code)}
               floor0={packEntitlement?.(lt.code, 0) ?? 0}
               eligibility={(lt.eligibility as { gender?: string | string[]; maritalStatus?: string | string[]; minServiceMonths?: number; minServiceUnit?: 'months' | 'days' } | null) ?? null}
               durations={(lt.durations as string[] | null) ?? null}

@@ -1,8 +1,10 @@
 /**
  * Restructure Entitlements Secondary Workflow (feedback 7b945408).
  *
- * The Entitlement step (step 3 of the c979aa8b workspace flow) becomes a guided THREE-SUB-STEP walk —
- * 1 Benefit Schemes · 2 Service Based Entitlements · 3 Adjustments — switched by the SAME reusable
+ * The Entitlement step (step 3 of the c979aa8b workspace flow — still step 3 after b8fcae73 shortened and
+ * reordered the walk) becomes a guided SUB-STEP walk: originally three (1 Benefit Schemes · 2 Service Based
+ * Entitlements · 3 Adjustments), four since b8fcae73 inserted Company Entitlements at position 3 and pushed
+ * Adjustments to 4 — switched by the SAME reusable
  * SubStepBar the General restructure introduced (components/leave-sub-step-bar.tsx, the e1a51aea reuse
  * contract: secondary flows must REUSE it, never reinvent a nested bar). The active sub-step persists per
  * type alongside activeStep/generalSubStep/essSubStep in the leaveTypeCards:<id> localStorage shape
@@ -16,6 +18,11 @@
  *    (gradesPanel slot), so the grade → grade-group → scheme relationship reads side by side.
  *  - Service Based Entitlements: the per-type entitlement table (123c1e76, same rows + upsert action) plus
  *    the Preview Scenario checker (d778d2d3's LeaveRulePreviewDialog) as its checking tool.
+ *  - Company Entitlements (b8fcae73): the per-company entitlement-policies timeline relocated verbatim from
+ *    the retired Eligibility step — days per company/grade, carry-forward, accrual method, effective dates,
+ *    add/edit/remove. Same state, same create/update/delete actions; its tab label reuses the EXISTING
+ *    companyEntitlements string, so no new locale key. It gets its OWN sub-step rather than joining Service
+ *    Based Entitlements so the two similar "days per X" editors cannot be confused.
  *  - Adjustments: the One-Off/Festive grant tool (fd7c8e20, still preset to the hosting type) plus the Run
  *    Accrual action (d778d2d3's EarnedAccrualDialog) relocated from the page header — it processes earned
  *    entitlement, so it belongs with entitlement adjustments. Both dialogs are self-contained (form-free —
@@ -40,7 +47,7 @@ const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'adjustments'] as const;
+const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'policies', 'adjustments'] as const;
 
 /** Slice the Entitlement card's segment (its CardTitle to the Condition card's CardTitle). */
 function entitlementSegment(): string {
@@ -64,9 +71,12 @@ function subStepSlice(seg: string, key: (typeof ENTITLEMENT_SUB_STEP_KEYS)[numbe
   return seg.slice(start, next);
 }
 
-describe('7b945408 · the Entitlement step REUSES the SubStepBar (three sub-steps in walk order)', () => {
+describe('7b945408 · the Entitlement step REUSES the SubStepBar (four sub-steps in walk order)', () => {
   it('renders the shared SubStepBar inside the Entitlement card — no reinvented nested bar', () => {
-    expect(panelSrc).toContain("const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'adjustments'] as const");
+    // b8fcae73 inserted 'policies' between service and adjustments (the relocated Company Entitlements).
+    expect(panelSrc).toContain(
+      "const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'policies', 'adjustments'] as const",
+    );
     const seg = entitlementSegment();
     expect(seg).toContain('<SubStepBar');
     expect(seg).toContain('ENTITLEMENT_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(ENTITLEMENT_SUB_STEP_TITLE_KEY[k]) }))');
@@ -155,6 +165,31 @@ describe('7b945408 · Service Based Entitlements — the per-type table + the Pr
     expect(slot).toContain('policies={previewPolicies}');
     expect(slot).toContain('companies={previewCompanies}');
     expect(pageSrc).toContain('previewScenarioSection={previewScenarioSection}');
+  });
+});
+
+describe('b8fcae73 · Company Entitlements — the per-company policy timeline relocated from Eligibility', () => {
+  it('the policies sub-step hosts the timeline + add form the retired Eligibility step used to own', () => {
+    const policies = subStepSlice(entitlementSegment(), 'policies');
+    // The timeline heading and the add-entitlement affordance came across verbatim.
+    expect(policies).toContain("t('companyEntitlements')");
+    expect(policies).toContain("t('addEntitlement')");
+    // Same CRUD wiring — create/update/delete reused, not forked.
+    for (const action of ['action={createPolicyAction}', 'action={updatePolicyAction}', 'action={deletePolicyAction}']) {
+      expect(policies.includes(action), `${action} still wired`).toBe(true);
+    }
+    // The tab label REUSES the existing companyEntitlements string — no new locale key.
+    expect(panelSrc).toContain("policies: 'companyEntitlements'");
+  });
+
+  it('a persisted activeStep pointing at the retired Eligibility step lands on this sub-step', () => {
+    // Without a remap the stored value no longer matches STEP_KEYS and would snap back to step 1.
+    expect(panelSrc).toContain("const RETIRED_ELIGIBILITY_STEP = 'eligibility'");
+    expect(panelSrc).toContain('parsed.activeStep === RETIRED_ELIGIBILITY_STEP');
+    // …and the legacy accordion shape ({ eligibility: true }) gets the same treatment.
+    expect(panelSrc).toContain('parsed[RETIRED_ELIGIBILITY_STEP] === true');
+    // The remap WINS over any stored entitlementSubStep, otherwise the user would not see the content.
+    expect(panelSrc).toContain('!wantedEligibility');
   });
 });
 
