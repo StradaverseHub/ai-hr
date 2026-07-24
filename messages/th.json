@@ -5021,8 +5021,10 @@
     "allCompanies": "ทุกบริษัท",
     "companyCount": "{count, plural, one {# บริษัท} other {# บริษัท}}",
     "companyContext": "บริบทบริษัท",
+    "deselectAll": "ล้างการเลือกทั้งหมด",
     "devAs": "พัฒนาในฐานะ",
-    "noRole": "ไม่มีบทบาท"
+    "noRole": "ไม่มีบทบาท",
+    "selectAll": "เลือกทั้งหมด"
   },
   "components": {
     "plannedAbsences": {

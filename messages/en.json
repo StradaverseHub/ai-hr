@@ -5021,8 +5021,10 @@
     "allCompanies": "All companies",
     "companyCount": "{count, plural, one {# company} other {# companies}}",
     "companyContext": "Company context",
+    "deselectAll": "Deselect all",
     "devAs": "dev as",
-    "noRole": "no role"
+    "noRole": "no role",
+    "selectAll": "Select all"
   },
   "components": {
     "plannedAbsences": {

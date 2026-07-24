@@ -5021,8 +5021,10 @@
     "allCompanies": "全部公司",
     "companyCount": "{count, plural, one {# 家公司} other {# 家公司}}",
     "companyContext": "公司上下文",
+    "deselectAll": "取消全选",
     "devAs": "以…身份开发",
-    "noRole": "无角色"
+    "noRole": "无角色",
+    "selectAll": "全选"
   },
   "components": {
     "plannedAbsences": {

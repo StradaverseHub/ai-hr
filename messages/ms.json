@@ -5021,8 +5021,10 @@
     "allCompanies": "Semua syarikat",
     "companyCount": "{count, plural, one {# syarikat} other {# syarikat}}",
     "companyContext": "Konteks syarikat",
+    "deselectAll": "Nyahpilih semua",
     "devAs": "dev sebagai",
-    "noRole": "tiada peranan"
+    "noRole": "tiada peranan",
+    "selectAll": "Pilih semua"
   },
   "components": {
     "plannedAbsences": {

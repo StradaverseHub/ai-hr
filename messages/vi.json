@@ -5021,8 +5021,10 @@
     "allCompanies": "Tất cả công ty",
     "companyCount": "{count, plural, one {# công ty} other {# công ty}}",
     "companyContext": "Bối cảnh công ty",
+    "deselectAll": "Bỏ chọn tất cả",
     "devAs": "dev với tư cách",
-    "noRole": "không có vai trò"
+    "noRole": "không có vai trò",
+    "selectAll": "Chọn tất cả"
   },
   "components": {
     "plannedAbsences": {
