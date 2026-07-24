@@ -89,7 +89,7 @@
     "myWorkspace": "Profil Saya",
     "people": "Kakitangan",
     "orgChart": "Carta organisasi",
-    "myAbsence": "Ketidakhadiran Saya",
+    "myAbsence": "Cuti Saya",
     "attendance": "Kehadiran",
     "manage": "Urus",
     "approvals": "Item Kelulusan",
@@ -1141,7 +1141,7 @@
     }
   },
   "leave": {
-    "myAbsenceTitle": "Ketidakhadiran Saya",
+    "myAbsenceTitle": "Cuti Saya",
     "title": "Cuti",
     "description": "Semak baki cuti anda, mohon cuti, dan jejaki permohonan anda.",
     "chipRequested": "Dimohon",

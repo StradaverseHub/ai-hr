@@ -89,7 +89,7 @@
     "myWorkspace": "My Profile",
     "people": "Personnel",
     "orgChart": "Org chart",
-    "myAbsence": "My Absence",
+    "myAbsence": "My Leave",
     "attendance": "Attendance",
     "manage": "Manage",
     "approvals": "Approval Items",
@@ -1141,7 +1141,7 @@
     }
   },
   "leave": {
-    "myAbsenceTitle": "My Absence",
+    "myAbsenceTitle": "My Leave",
     "title": "Leave",
     "description": "Check your balance, apply for leave, and track your requests.",
     "chipRequested": "Requested",
