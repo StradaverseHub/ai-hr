@@ -7,6 +7,63 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## r67 — 2026-07-24 — 3 approved feedback items
+
+**Shipped:** `build/r67@038d2db` → merged to `main` as `76f3195`. All 3 `deployed`. Service restarted
+13:26 +08 (`✓ Ready in 106ms`, journal clean).
+
+**Gate:** `tsc --noEmit` clean · `next build` clean · **4515/4515 tests, 427 files**. No flaky failure —
+the zakat substring assertion fixed in `91b2e4d` (this session) held.
+
+| id | Item |
+|---|---|
+| `1c541ceb` | Search popup (Cmd-K → Approval Delegation) cut-off: one scroll region, wider dialog, edit form no longer stretches the table |
+| `b1b81a08` | Grade config moved from Leave Config → System Settings → System Label → Organization Label |
+| `643d38e7` | Leave request popup: A–Z localised type sort, Pending/Taken/Balance summary, expandable day-by-day panel |
+
+### Decisions
+
+**1. `643d38e7` fixed a defect the ticket didn't name.** `previewLeaveDeductionAction` returned `null`
+whenever `employmentId` was empty, and a self-service employee always reaches it empty — so the "this
+will deduct N day(s)" line had been **silently dead for regular employees**, only ever rendering for an
+HR/manager applying on someone's behalf. The build added the `myEmployment(session)` fallback
+`requestLeaveAction` already used. In scope because the summary the ticket *did* ask for is meaningless
+without it.
+
+**2. Off-day vs rest-day was deliberately NOT split.** The reporter's example distinguished Saturday
+"Off day" from Sunday "Rest day", but the leave engine treats every non-working weekday identically when
+deciding deductions. Both render as "Rest day". Faking the split would make the day-by-day panel
+disagree with the deducted-days total directly above it. Flagged to the reporter in the plan; a proper
+off/rest split is its own future item.
+
+**3. `b1b81a08` is a UI move with NO data migration — by design.** Grade rows are not copied, renamed,
+or recreated; only the management screen relocates, so every employee / entitlement / benefit-scheme /
+claim-limit / approval-rule reference keeps resolving to the same row. Delete guards were *tightened*
+(now also blocked when a grade is used by an approval rule, claim limit, or grade group). Two
+company-scoped extras (spreadsheet export, multi-row paste) intentionally not carried over — today's
+grade screen has neither, so nothing is lost.
+
+### Integration
+
+Clean. Only `messages/*.json` (6 locales) was touched by more than one patch, and they merged without
+conflict — each patch appends its own keys. No hand-merging, unlike r66. This is the payoff of building
+off a `main` that already contained the prior round rather than racing patches off a stale base.
+
+### Notable quality point
+
+The leave summary and the day-by-day row total are **not** computed independently — both reuse the same
+`leaveBalance()` / `previewLeaveDeduction` source the headline deducted-days figure already uses (day
+rows fold in behind an `includeDayRows` flag, keeping the no-flag return byte-identical). So the three
+numbers in the popup are structurally incapable of disagreeing. ESS visibility config honoured (a figure
+HR has hidden shows as a dash, not revealed).
+
+### Outstanding
+
+- Nothing for r67. Board is clear (0 open, 0 approved, 0 planned awaiting build).
+- Still carried from r66: reporter's call on the anniversary accrual semantics (see r66 Decision 1).
+
+---
+
 ## r66 — 2026-07-24 — 12 approved feedback items
 
 **Shipped:** `build/r66@e76d082` → merged to `main` as `7666b2e`. All 12 items `deployed` on the board.
