@@ -37,10 +37,6 @@ import {
   setCompanyLogo,
   removeCompanyLogo,
   setLeaveHalfDayFullDeduction,
-  createJobGrade,
-  archiveJobGrade,
-  updateJobGrade,
-  deleteJobGrade,
   updateBusinessUnit,
   updateCompany,
   updateCostCenter,
@@ -755,70 +751,12 @@ export async function setLeaveHalfDayFullDeductionAction(formData: FormData) {
   ok(ENTITLEMENTS);
 }
 
-/** 4e9a4d59 — the grade catalog is Panel A of the Entitlement step's workbench, so ALL FOUR of its saves
- *  stay on the Leave Type workspace instead of bouncing to /admin/leave. Grades are TENANT-GLOBAL master
- *  data (no leaveTypeId column), so the posted `leaveTypeId` is a UI-RETURN HINT ONLY — it says which type
- *  panel was open, it is never persisted. GradeCatalog fills it from the live #type-<id> hash at submit
- *  time; when no type is selected it is empty and okEntitlements degrades to the bare Entitlements route. */
-function gradeReturnAnchor(formData: FormData): string {
-  return String(formData.get('leaveTypeId') ?? '');
-}
-
-/** ADR-0041 (2E): grade catalog — create + archive. */
-export async function createJobGradeAction(formData: FormData) {
-  const s = await getSession();
-  try {
-    await createJobGrade(s, {
-      code: String(formData.get('code') ?? ''),
-      name: String(formData.get('name') ?? ''),
-      rank: Number(formData.get('rank')) || 0,
-    });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  const t = await getTranslations('admin.leave');
-  okEntitlements(t('savedToast'), gradeReturnAnchor(formData));
-}
-
-export async function archiveJobGradeAction(formData: FormData) {
-  const s = await getSession();
-  try {
-    await archiveJobGrade(s, { id: String(formData.get('id')), archived: formData.get('archived') === 'true' });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  const t = await getTranslations('admin.leave');
-  okEntitlements(t('savedToast'), gradeReturnAnchor(formData));
-}
-
-/** 728a7db6 — edit a grade's Code / Name / Rank inline. */
-export async function updateJobGradeAction(formData: FormData) {
-  const s = await getSession();
-  try {
-    await updateJobGrade(s, {
-      id: String(formData.get('id')),
-      code: String(formData.get('code') ?? ''),
-      name: String(formData.get('name') ?? ''),
-      rank: Number(formData.get('rank')) || 0,
-    });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  const t = await getTranslations('admin.leave');
-  okEntitlements(t('savedToast'), gradeReturnAnchor(formData));
-}
-
-/** 728a7db6 — hard-delete a grade (blocked server-side when in use). */
-export async function deleteJobGradeAction(formData: FormData) {
-  const s = await getSession();
-  try {
-    await deleteJobGrade(s, { id: String(formData.get('id')) });
-  } catch (e) {
-    fail(ENTITLEMENTS, e);
-  }
-  const t = await getTranslations('admin.leave');
-  okEntitlements(t('savedToast'), gradeReturnAnchor(formData));
-}
+// b1b81a08 — createJobGradeAction / updateJobGradeAction / archiveJobGradeAction / deleteJobGradeAction and
+// their gradeReturnAnchor helper are GONE. Grade master data is no longer maintained from Leave Config, so
+// there is no leave-type panel to return to: the grid on Settings → System Labels → Organisation Labels
+// calls saveJobGradesGridAction / removeJobGradeGridAction (app/admin/settings/actions.ts), which are
+// value-returning (per-row errors) rather than redirecting, and which gate on requireAdmin. The core
+// mutations in core/admin.ts are unchanged and are what both surfaces have always called.
 
 export async function deleteLeavePolicyAction(formData: FormData) {
   const s = await getSession();

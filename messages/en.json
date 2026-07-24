@@ -3490,7 +3490,7 @@
     },
     "systemLabels": {
       "pageTitle": "System Labels",
-      "pageDescription": "Set up the shared lists everyone else picks from — departments, positions, cost centers and business units — per company.",
+      "pageDescription": "Set up the shared lists everyone else picks from — departments, positions, cost centers and business units per company, plus your organisation-wide grades.",
       "companies": "Companies",
       "noCompaniesInScope": "No companies in scope.",
       "countSummary": "{dept} dept · {pos} pos · {cc} cc · {bu} bu",
@@ -3516,7 +3516,8 @@
         "department": "Departments",
         "position": "Positions",
         "cost_center": "Cost Centres",
-        "business_unit": "Business Units"
+        "business_unit": "Business Units",
+        "grade": "Grades"
       },
       "sharingSettings": "Sharing settings",
       "sharedLabelsToggle": "Share labels across companies",
@@ -3540,7 +3541,7 @@
       "clearFilters": "Clear filters",
       "unsavedChanges": "You have unsaved changes.",
       "col": {
-        "name": "Type Name",
+        "name": "Grade Name",
         "label": "Label",
         "description": "Description",
         "title": "Title",
@@ -3550,7 +3551,8 @@
         "scope": "Criteria",
         "status": "Status",
         "lastUpdated": "Last updated",
-        "actions": "Actions"
+        "actions": "Actions",
+        "rank": "Rank"
       },
       "noRows": "No labels match your filters.",
       "businessUnitNone": "— None —",
@@ -3565,7 +3567,10 @@
       "pasteHint": "Tip: paste rows straight from a spreadsheet to add them in bulk.",
       "cancel": "Cancel",
       "apply": "Apply",
-      "origin": "origin"
+      "origin": "origin",
+      "gradeInUseHint": "This grade is in use by employees, leave policies, approval rules, claim limits or a grade group, so it cannot be deleted. Archive it instead.",
+      "deleteGradeTitle": "Delete grade?",
+      "deleteGradeDescription": "{name} will be permanently removed. This cannot be undone."
     },
     "leave": {
       "pageTitle": "Leave configuration",
@@ -5257,11 +5262,11 @@
       "systemLabels": {
         "intro": {
           "title": "System Labels",
-          "body": "This is where you set up the shared lists everyone else picks from — departments, positions, cost centers and business units — for each company."
+          "body": "This is where you set up the shared lists everyone else picks from — departments, positions, cost centers and business units for each company, plus your organisation-wide grades."
         },
         "companies": {
           "title": "Per-company catalogs",
-          "body": "Open a company to add, edit, archive or delete its departments, positions, cost centers and business units. Each can carry an optional description."
+          "body": "Open a company to add, edit, archive or delete its departments, positions, cost centers and business units. Each can carry an optional description. Grades are organisation-wide and are maintained from the same screen."
         }
       },
       "performance": {

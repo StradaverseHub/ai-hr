@@ -1039,9 +1039,9 @@ export function LeaveTypePanel({
   /** 6c775d68: the Benefit Schemes management area, scoped to THIS leave type — a server-composed
    *  <BenefitSchemeConfig scopeLeaveTypeId={id}> slot rendered inside the Entitlement step, below the
    *  per-type table. Slot-shaped so the scheme data is prepared ONCE at page level (no N+1 per type).
-   *  387792a4: the config now hosts the three-panel grade workbench (Grade Master · Grade Groups ·
-   *  Assignment) — the page threads the shared Grades catalogue in as its gradesPanel slot, so this ONE
-   *  section is the whole Benefit Schemes sub-step. */
+   *  387792a4: the config hosts the grade workbench. b1b81a08 narrowed it to TWO panels (Grade Groups ·
+   *  Assignment) — grade MASTER data now lives on Settings → System Labels → Organisation Labels, so there
+   *  is no gradesPanel slot any more. This ONE section is still the whole Benefit Schemes sub-step. */
   benefitSchemeSection?: ReactNode;
   /** fd7c8e20: the One-Off / Festive Leave Grant tool, moved from the page-bottom section into the
    *  Entitlement step BELOW the Benefit Schemes area — a server-composed <FestiveGrantCard
@@ -1725,11 +1725,11 @@ export function LeaveTypePanel({
             ariaLabel={t('entitlementStepsLabel')}
           />
           {/* Sub-step 1 — Benefit Schemes (7b945408): who receives which scheme. 387792a4 restructured the
-              old vertical scroll into the three-panel workbench BenefitSchemeConfig hosts — Panel A Grade
-              Master (the relocated Grades catalogue, now fed in as the config's gradesPanel slot) · Panel B
-              Grade Groups · Panel C Assignment — with the per-scheme entitlements area below it, so the
-              grade → grade-group → scheme relationship reads side by side instead of stacked. One
-              server-composed slot; see the benefitSchemeSection prop doc. */}
+              old vertical scroll into the workbench BenefitSchemeConfig hosts; b1b81a08 narrowed it to two
+              panels — Grade Groups · Assignment — with the per-scheme entitlements area below, so the
+              grade-group → scheme relationship still reads side by side. The Grade Master panel moved out
+              of Leave Config to Settings → System Labels → Organisation Labels. One server-composed slot;
+              see the benefitSchemeSection prop doc. */}
           {entitlementSubStep === 'schemes' && (
           <>
           {benefitSchemeSection}

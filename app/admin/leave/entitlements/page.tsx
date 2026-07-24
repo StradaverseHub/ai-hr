@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades, listDepartments } from '@/core/read';
@@ -42,10 +41,6 @@ import {
   deleteLeaveTypeAction,
   updateLeavePolicyAction,
   updateLeaveTypeAction,
-  createJobGradeAction,
-  archiveJobGradeAction,
-  updateJobGradeAction,
-  deleteJobGradeAction,
   createGradeGroupAction,
   updateGradeGroupAction,
   deleteGradeGroupAction,
@@ -60,12 +55,6 @@ import {
   moveCombinedLimitMemberAction,
   groupSchemeLeaveTypesAction,
 } from '../../actions';
-import { GradeCatalog } from '@/components/grade-catalog';
-import { CollapsibleCardSection } from '@/components/collapsible-card-section';
-
-/** Cookie persisting the Grades catalogue's open/closed fold (feedback 03557e76; the fold — and this
- *  cookie — moved WITH the catalogue into the Entitlement step's Benefit Schemes sub-step, 7b945408). */
-const GRADES_OPEN_COOKIE = 'leave_grades_open';
 
 /**
  * Leave Settings — Entitlements tab.
@@ -87,10 +76,16 @@ const GRADES_OPEN_COOKIE = 'leave_grades_open';
  * Types tab, so every sub-form keeps its tri-state marker + hidden `name` intact — no column is wiped on save.
  *
  * 7b945408 (Restructure Entitlements Secondary Workflow): the Entitlement step is now a three-sub-step walk
- * — 1 Benefit Schemes · 2 Service Based Entitlements · 3 Adjustments (the SubStepBar reuse contract). The
- * Grades catalogue moved off the page bottom into the Benefit Schemes sub-step (gradesSection slot — grades
- * are tenant-wide master data, badged company-wide), Preview Scenario joins Service Based Entitlements as
- * its checking tool, and Run Accrual joins Adjustments (it processes earned entitlement).
+ * — 1 Benefit Schemes · 2 Service Based Entitlements · 3 Adjustments (the SubStepBar reuse contract).
+ * Preview Scenario joins Service Based Entitlements as its checking tool, and Run Accrual joins Adjustments
+ * (it processes earned entitlement).
+ *
+ * b1b81a08 (Grade relocation): the Grades catalogue is no longer maintained anywhere on this page. Grades
+ * are organisation-level master data, so add/edit/archive/delete now lives on Settings → System Labels →
+ * Organisation Labels beside Departments and Positions. The grade LIST is still read here — it feeds the
+ * leave-policy scope dropdown, the preview dialog and the benefit-scheme grade groups — and no grade record
+ * was copied, renamed or re-created, so every employment, leave policy, approval rule, claim limit and
+ * grade group still points at the same row.
  *
  * 962077a8 (Remove Unnecessary Action Buttons): with the 7b945408 step homes in place, the PageHeader is
  * down to the single page-level action — + Import. Run Accrual and Preview Scenario open ONLY from their
@@ -104,17 +99,15 @@ export default async function LeaveEntitlementsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  // Feedback 03557e76 — Grades section fold. SSR-read the persisted choice (cookie absent ⇒ closed,
-  // the reported problem) so the first paint is already correct — no closed-then-restored flash.
-  const cookieStore = await cookies();
-  const gradesOpen = cookieStore.get(GRADES_OPEN_COOKIE)?.value === '1';
   const [types, policies, companies, grades, adHocGrants, leaveYearConfigs, gradeGroups, benefitSchemes, schemeEntitlements, schemeCombinedLimits] =
     await Promise.all([
       listLeaveTypes(s, { includeArchived: true }),
       listLeavePolicies(s),
       listCompanies(s),
-      // 728a7db6 — load archived grades too so the management table can show + unarchive them; the leave-type
-      // scope dropdown below is filtered to ACTIVE grades only (archived grades can't be assigned to new scopes).
+      // b1b81a08 — grade MANAGEMENT moved to Settings → System Labels → Organisation Labels, but the grade
+      // list is still READ here: it feeds gradeOptions (the leave-policy scope dropdown), the preview
+      // dialog and BenefitSchemeConfig's grades prop. Archived rows still load so an existing grade-scoped
+      // policy can render its grade name; the ACTIVE-only filters below are unchanged.
       listJobGrades(s, { includeArchived: true }),
       listAdHocLeaveGrants(s),
       // Leave Year Configuration (9aa894a4): still read here for the earned-accrual Leave-Year selector; the
@@ -439,49 +432,13 @@ export default async function LeaveEntitlementsPage({
     </div>
   );
 
-  // ── Grades catalogue → Panel A of the Benefit Schemes workbench (7b945408 · 387792a4) ────────────
-  // The standalone page-bottom Grades section is gone: the grade master lives in the Benefit Schemes
-  // sub-step of every type's Entitlement step — since 387792a4 as Panel A (Grade Master) of the
-  // three-panel workbench, threaded into BenefitSchemeConfig via its gradesPanel slot so the grade drag
-  // handles land inside the workbench's DndContext. Grades are TENANT-WIDE master data (not per-type), so
-  // ONE node is composed here and shared by every panel (the halfDaySection precedent), marked with the
-  // company-wide badge convention (08bc6841). The 03557e76 fold survives — CollapsibleCardSection + the
-  // SAME cookie keep a long grade list behind its heading, SSR-read so the first paint is already
-  // correct. GradeCatalog's actions are untouched; it gained the Panel A search filter (387792a4).
-  const gradesSection = (
-    <div className="rounded-lg border border-border">
-      <CollapsibleCardSection
-        title={t('gradesTitle')}
-        count={grades.length}
-        subtitle={
-          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            {t('entitlementStep.gradesCompanyWideBadge')}
-          </span>
-        }
-        toggleLabel={t('gradesToggle')}
-        cookieKey={GRADES_OPEN_COOKIE}
-        defaultOpen={gradesOpen}
-      >
-        <p className="px-4 pt-3 pb-1 text-xs text-muted-foreground">{t('gradesHelp')}</p>
-        <GradeCatalog
-          grades={grades.map((g) => ({
-            id: g.id,
-            code: g.code,
-            name: g.name,
-            rank: g.rank,
-            archived: g.archivedAt != null,
-            inUse: g.inUse,
-          }))}
-          actions={{
-            create: createJobGradeAction,
-            update: updateJobGradeAction,
-            archive: archiveJobGradeAction,
-            delete: deleteJobGradeAction,
-          }}
-        />
-      </CollapsibleCardSection>
-    </div>
-  );
+  // ── Grade MASTER is no longer maintained here (b1b81a08) ─────────────────────────────────────────
+  // Grades are organisation-level master data, so their add/edit/archive/delete surface moved to
+  // Settings → System Labels → Organisation Labels, beside Departments / Positions / Cost Centres /
+  // Business Units. The old Panel A grade catalogue (its fold cookie and the grade→grade-group DRAG
+  // shortcut that rode on it) is gone; the tick-box grade-group membership editor in Panel B is the
+  // surviving assignment path and is unaffected. Grade GROUPS and Benefit Schemes stay exactly where they
+  // are — only the grade list itself moved.
 
   // ── Entitlement-step tool slots (7b945408) ───────────────────────────────────────────────────────
   // Preview Scenario joins the Service Based Entitlements sub-step as its checking tool, and Run Accrual
@@ -610,14 +567,14 @@ export default async function LeaveEntitlementsPage({
               benefitSchemeSection={
                 /* 6c775d68: the Benefit Schemes management area, scoped to this leave type, rendered inside
                    the Entitlement step below the per-type table. Shared props (one page-level data prep) +
-                   the per-type scope id. 387792a4: the shared gradesSection node rides in as the config's
-                   gradesPanel — Panel A of its three-panel workbench. */
+                   the per-type scope id. b1b81a08: the workbench is now TWO panels — Grade Groups and
+                   Assignment. The Grade Master panel moved to Settings → System Labels. */
                 <div className="space-y-3 border-t border-border pt-3">
                   <div>
                     <span className="text-xs font-medium text-muted-foreground">{t('benefitSchemeTitle')}</span>
                     <p className="text-xs text-muted-foreground">{t('benefitSchemeHelp')}</p>
                   </div>
-                  <BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} gradesPanel={gradesSection} />
+                  <BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} />
                 </div>
               }
               festiveGrantSection={
@@ -798,10 +755,9 @@ export default async function LeaveEntitlementsPage({
         </p>
       </Card>
 
-      {/* ADR-0041 2E + Grade Management (728a7db6): the grade master no longer sits here as a standalone
-          page-bottom section — 7b945408 moved it (fold, cookie and all) into each type's Entitlement step,
-          Benefit Schemes sub-step (the gradesSection slot above), joining the grade-group → scheme chain
-          it feeds. */}
+      {/* ADR-0041 2E + Grade Management (728a7db6): the grade master no longer sits here at all. b1b81a08
+          relocated it out of Leave Config entirely, to Settings → System Labels → Organisation Labels;
+          grade GROUPS and benefit schemes stay in the Entitlement step's Benefit Schemes sub-step. */}
     </div>
   );
 }

@@ -1457,7 +1457,18 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
         name: jobGrade.name,
         rank: jobGrade.rank,
         archivedAt: jobGrade.archivedAt,
-        inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = job_grade.id) or exists (select 1 from leave_policy lp where lp.grade_id = job_grade.id)`,
+        // Grade relocation to System Labels (b1b81a08): the in-use predicate spans ALL FIVE referencing
+        // tables, not just employment + leave_policy. leave_approval_policy.grade_id and
+        // claim_policy.grade_id are plain FKs with no onDelete, so a grade used only by an approval rule or
+        // a claim limit used to report inUse=false, render an ENABLED Delete, and raise a raw 23503 at the
+        // admin; grade_group_member CASCADES, so the same delete silently dropped benefit-scheme group
+        // membership. Must stay byte-identical to deleteJobGrade's in-transaction re-check (core/admin.ts)
+        // so the button state and the guard agree.
+        inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = job_grade.id)
+          or exists (select 1 from leave_policy lp where lp.grade_id = job_grade.id)
+          or exists (select 1 from leave_approval_policy lap where lap.grade_id = job_grade.id)
+          or exists (select 1 from claim_policy cp where cp.grade_id = job_grade.id)
+          or exists (select 1 from grade_group_member ggm where ggm.grade_id = job_grade.id)`,
       })
       .from(jobGrade)
       .where(opts.includeArchived ? undefined : isNull(jobGrade.archivedAt))

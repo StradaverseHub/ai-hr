@@ -3490,7 +3490,7 @@
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",
-      "pageDescription": "Sediakan senarai kongsi yang dipilih oleh semua orang — jabatan, jawatan, pusat kos dan unit perniagaan — mengikut syarikat.",
+      "pageDescription": "Sediakan senarai kongsi yang dipilih oleh semua orang — jabatan, jawatan, pusat kos dan unit perniagaan mengikut syarikat, serta gred seluruh organisasi.",
       "companies": "Syarikat",
       "noCompaniesInScope": "Tiada syarikat dalam skop.",
       "countSummary": "{dept} jbtn · {pos} jwtn · {cc} pk · {bu} up",
@@ -3516,7 +3516,8 @@
         "department": "Jabatan",
         "position": "Jawatan",
         "cost_center": "Pusat Kos",
-        "business_unit": "Unit Perniagaan"
+        "business_unit": "Unit Perniagaan",
+        "grade": "Gred"
       },
       "sharingSettings": "Tetapan perkongsian",
       "sharedLabelsToggle": "Kongsi label merentas syarikat",
@@ -3540,7 +3541,7 @@
       "clearFilters": "Kosongkan penapis",
       "unsavedChanges": "Anda mempunyai perubahan yang belum disimpan.",
       "col": {
-        "name": "Nama Jenis",
+        "name": "Nama Gred",
         "label": "Label",
         "description": "Penerangan",
         "title": "Jawatan",
@@ -3550,7 +3551,8 @@
         "scope": "Kriteria",
         "status": "Status",
         "lastUpdated": "Kemas kini terakhir",
-        "actions": "Tindakan"
+        "actions": "Tindakan",
+        "rank": "Pangkat"
       },
       "noRows": "Tiada label sepadan dengan penapis anda.",
       "businessUnitNone": "— Tiada —",
@@ -3565,7 +3567,10 @@
       "pasteHint": "Petua: tampal baris terus dari hamparan untuk menambah secara pukal.",
       "cancel": "Batal",
       "apply": "Guna",
-      "origin": "asal"
+      "origin": "asal",
+      "gradeInUseHint": "Gred ini sedang digunakan oleh pekerja, dasar cuti, peraturan kelulusan, had tuntutan atau kumpulan gred, jadi ia tidak boleh dipadam. Arkibkan ia sebaliknya.",
+      "deleteGradeTitle": "Padam gred?",
+      "deleteGradeDescription": "{name} akan dibuang secara kekal. Tindakan ini tidak boleh dibatalkan."
     },
     "leave": {
       "pageTitle": "Konfigurasi cuti",
@@ -5257,11 +5262,11 @@
       "systemLabels": {
         "intro": {
           "title": "Label Sistem",
-          "body": "Di sinilah anda menyediakan senarai kongsi yang dipilih oleh semua orang — jabatan, jawatan, pusat kos dan unit perniagaan — bagi setiap syarikat."
+          "body": "Di sinilah anda menyediakan senarai kongsi yang dipilih oleh semua orang — jabatan, jawatan, pusat kos dan unit perniagaan bagi setiap syarikat, serta gred seluruh organisasi."
         },
         "companies": {
           "title": "Katalog setiap syarikat",
-          "body": "Buka syarikat untuk menambah, menyunting, mengarkib atau memadam jabatan, jawatan, pusat kos dan unit perniagaannya. Setiap satu boleh mempunyai keterangan pilihan."
+          "body": "Buka sesebuah syarikat untuk menambah, menyunting, mengarkib atau memadam jabatan, jawatan, pusat kos dan unit perniagaannya. Setiap satu boleh membawa keterangan pilihan. Gred pula meliputi seluruh organisasi dan diselenggara dari skrin yang sama."
         }
       },
       "performance": {

@@ -1,8 +1,11 @@
 /**
- * Grade Management for Leave Entitlement (feedback 728a7db6). Covers the grade-master admin CRUD delta:
+ * Grade Management (feedback 728a7db6, extended by b1b81a08). Covers the grade-master admin CRUD delta:
  * duplicate-name rejection (create + edit), editable grade code with uniqueness, delete blocked when the
- * grade is referenced (employment or leave policy) vs succeeding + emitting job-grade.deleted when unused,
- * and archived grades being excluded from the default listing while still visible with includeArchived.
+ * grade is referenced vs succeeding + emitting job-grade.deleted when unused, and archived grades being
+ * excluded from the default listing while still visible with includeArchived.
+ *
+ * b1b81a08 widened the in-use guard from two referencing tables (employment, leave_policy) to five, adding
+ * leave_approval_policy, claim_policy and grade_group_member — asserted here alongside the original two.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -15,6 +18,9 @@ import {
   createLeavePolicy,
   DuplicateError,
 } from '../core/admin';
+import { createGradeGroup } from '../core/benefit-scheme';
+import { createLeaveApprovalRule } from '../core/leave-approval-policy';
+import { createClaimType, setClaimPolicy } from '../core/claims';
 import { listJobGrades } from '../core/read';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
@@ -99,6 +105,48 @@ describe('Grade Management (728a7db6) — grade-master CRUD', () => {
       gradeId: g.id,
     });
     await expect(deleteJobGrade(ctx(), { id: g.id })).rejects.toThrow();
+  });
+
+  // b1b81a08 — the in-use predicate (both listJobGrades' `inUse` and deleteJobGrade's in-tx re-check)
+  // widened from two referencing tables to five. Before, a grade used only by an approval rule or a claim
+  // limit reported inUse=false and raised a raw 23503; grade_group_member CASCADED, so its delete silently
+  // dropped benefit-scheme membership.
+  it('blocks deletion of a grade referenced ONLY by a leave approval rule and reports inUse', async () => {
+    const g = await createJobGrade(ctx(), { code: 'PH', name: 'Permanent - Grade H' });
+    await createLeaveApprovalRule(ctx(), { companyId: b.companyId, gradeId: g.id, levels: ['direct_manager'] });
+    const row = (await listJobGrades(ctx(), { includeArchived: true })).find((r) => r.id === g.id)!;
+    expect(row.inUse).toBe(true);
+    await expect(deleteJobGrade(ctx(), { id: g.id })).rejects.toThrow();
+  });
+
+  it('blocks deletion of a grade referenced ONLY by a claim limit and reports inUse', async () => {
+    const g = await createJobGrade(ctx(), { code: 'PH', name: 'Permanent - Grade H' });
+    const ct = await createClaimType(ctx(), {
+      code: 'MED',
+      name: 'Medical',
+      defaultTaxable: false,
+      requiresReceipt: true,
+    });
+    await setClaimPolicy(ctx(), {
+      claimTypeId: ct.id,
+      annualBudget: 1000,
+      perClaimCap: null,
+      effectiveFrom: '2026-01-01',
+      gradeId: g.id,
+    });
+    const row = (await listJobGrades(ctx(), { includeArchived: true })).find((r) => r.id === g.id)!;
+    expect(row.inUse).toBe(true);
+    await expect(deleteJobGrade(ctx(), { id: g.id })).rejects.toThrow();
+  });
+
+  it('blocks deletion of a grade that is ONLY a grade-group member and reports inUse', async () => {
+    const g = await createJobGrade(ctx(), { code: 'PH', name: 'Permanent - Grade H' });
+    await createGradeGroup(ctx(), { name: 'Senior band', gradeIds: [g.id] });
+    const row = (await listJobGrades(ctx(), { includeArchived: true })).find((r) => r.id === g.id)!;
+    expect(row.inUse).toBe(true);
+    await expect(deleteJobGrade(ctx(), { id: g.id })).rejects.toThrow();
+    // grade_group_member cascades, so the pre-b1b81a08 delete would have SUCCEEDED and dropped membership.
+    expect((await listJobGrades(ctx(), { includeArchived: true })).some((r) => r.id === g.id)).toBe(true);
   });
 
   it('deletes an unused grade and appends job-grade.deleted', async () => {

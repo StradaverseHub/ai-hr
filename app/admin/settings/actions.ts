@@ -3,12 +3,17 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/authz';
 import {
   archiveBusinessUnit,
   archiveCostCenter,
   archiveDepartment,
+  archiveJobGrade,
   archivePosition,
   bulkSaveLabels,
+  createJobGrade,
+  deleteJobGrade,
+  updateJobGrade,
   createBusinessUnit,
   createCostCenter,
   createDepartment,
@@ -363,4 +368,141 @@ export async function setCompanySharedLabelsAction(
   } catch (e) {
     return { ok: false, message: (e as Error).message };
   }
+}
+
+// ── Grades (b1b81a08) ────────────────────────────────────────────────────────────────────────────────
+// Grade master data moved OUT of Leave Config into the System Labels Organisation-Labels rail. job_grade is
+// TENANT-GLOBAL (no company_id, no is_global, no label_company_assignment row), so it is NOT a fifth
+// LabelKindStr and these do NOT go through bulkSaveLabels.
+//
+// Deliberately a FAN-OUT over the existing per-row core mutations — the saveProfileOptionsAction pattern —
+// rather than a new bulk service. db/client.ts withTenant opens ONE transaction with no savepoints, so
+// bulkSaveLabels' catch-and-continue keeps issuing statements in an already-aborted transaction and the
+// next one raises 25P02 (which is neither a unique nor a privilege violation, so it escapes as a raw
+// Postgres string with nothing highlighted and nothing saved). Giving each row its own withTenant
+// transaction removes that failure class entirely: good rows commit, bad rows come back as row errors.
+//
+// Both entry points call requireAdmin, NOT a bare getSession. Migration 0090's job_grade policy is
+// `FOR ALL USING (tenant_id = current_tenant) WITH CHECK (tenant_id = current_tenant AND app.is_admin())`,
+// and WITH CHECK does not apply to DELETE — so DELETE on job_grade is gated by tenant membership alone.
+// Server actions are addressable, so these get their own explicit gate. (Tightening the policy itself is a
+// separate security item; it is NOT bundled here, which keeps this change migration-free.)
+export type GradeGridSaveResult =
+  | { ok: true; created: number; updated: number; createdIds: { key: string; id: string }[] }
+  | { ok: false; rowErrors: { key: string; field?: string; message: string }[]; message?: string };
+
+export type GradeGridCreate = { key: string; code: string; name: string; rank: string };
+export type GradeGridUpdate = {
+  key: string;
+  id: string;
+  code: string;
+  name: string;
+  rank: string;
+  setArchived: boolean | null;
+};
+
+/**
+ * Parse a grid rank cell into a real int4. createJobGrade/updateJobGrade both gate on
+ * `Number.isFinite(p.rank)` and `Number.isFinite('3')` is FALSE, so passing the raw string through would
+ * silently persist every rank as 0. Anything non-integer or outside int4 is a row error on the rank field
+ * (guards both `'ten'` quietly becoming 0 and 9999999999 raising 22003 as a raw banner).
+ */
+const INT4_MIN = -2147483648;
+const INT4_MAX = 2147483647;
+function parseRank(raw: string): number | null {
+  const s = String(raw ?? '').trim();
+  if (s === '') return 0;
+  const n = Number(s);
+  if (!Number.isInteger(n) || n < INT4_MIN || n > INT4_MAX) return null;
+  return n;
+}
+
+/** Batched Save for the Grades grid: one transaction PER ROW, so a bad row never poisons the good ones. */
+export async function saveJobGradesGridAction(payload: {
+  creates: GradeGridCreate[];
+  updates: GradeGridUpdate[];
+}): Promise<GradeGridSaveResult> {
+  const s = await requireAdmin();
+  const rowErrors: { key: string; field?: string; message: string }[] = [];
+  const createdIds: { key: string; id: string }[] = [];
+  let created = 0;
+  let updated = 0;
+
+  for (const c of payload.creates) {
+    const rank = parseRank(c.rank);
+    if (rank === null) {
+      rowErrors.push({ key: c.key, field: 'rank', message: RANK_ERROR });
+      continue;
+    }
+    try {
+      // Each of these is its own withTenant transaction. Every throw class becomes a row error on the
+      // right field: DuplicateError (code or name), the /^[A-Z][A-Z0-9_]{0,31}$/ format Error (typing
+      // "G-1" or "Band 1a" is the single most likely HR input), and cleanName's blank/oversize Error.
+      const { id } = await createJobGrade(s, { code: c.code, name: c.name, rank });
+      createdIds.push({ key: c.key, id });
+      created += 1;
+    } catch (e) {
+      rowErrors.push({ key: c.key, field: fieldOfGradeError(e, c.name), message: (e as Error).message });
+    }
+  }
+
+  for (const u of payload.updates) {
+    const rank = parseRank(u.rank);
+    if (rank === null) {
+      rowErrors.push({ key: u.key, field: 'rank', message: RANK_ERROR });
+      continue;
+    }
+    try {
+      await updateJobGrade(s, { id: u.id, code: u.code, name: u.name, rank });
+      // Archive lives on its own core mutation (its own archived/unarchived event); only fire it when the
+      // row's archived state actually CHANGED, so a plain rename never emits a spurious status event.
+      if (u.setArchived !== null) {
+        await archiveJobGrade(s, { id: u.id, archived: u.setArchived });
+      }
+      updated += 1;
+    } catch (e) {
+      rowErrors.push({ key: u.key, field: fieldOfGradeError(e, u.name), message: (e as Error).message });
+    }
+  }
+
+  if (rowErrors.length > 0) return { ok: false, rowErrors };
+  revalidateGrades();
+  return { ok: true, created, updated, createdIds };
+}
+
+/** Delete one grade from the grid's row action. Blocked server-side when the grade is referenced. */
+export async function removeJobGradeGridAction(id: string): Promise<ScopeActionResult> {
+  const s = await requireAdmin();
+  try {
+    await deleteJobGrade(s, { id });
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
+  revalidateGrades();
+  return { ok: true };
+}
+
+const RANK_ERROR = 'Rank must be a whole number.';
+
+// Grades feed the Leave Config scope pickers, the benefit-scheme grade groups and the Personnel grade
+// selector, so a grade write revalidates those routes alongside System Labels.
+const GRADE_REVALIDATE_ALSO = ['/admin/leave/entitlements', '/admin/personnel'];
+function revalidateGrades() {
+  revalidatePath(SYSTEM_LABELS);
+  for (const p of GRADE_REVALIDATE_ALSO) revalidatePath(p);
+}
+
+/**
+ * Which grid cell to highlight for a grade write failure. The core throws plain Errors / DuplicateErrors
+ * carrying the offending value in the message, so match on that: a name clash names the row's name, a code
+ * clash / format rejection is the code cell. Anything unrecognised highlights the whole row (no field).
+ */
+function fieldOfGradeError(e: unknown, name: string): string | undefined {
+  const msg = (e as Error).message ?? '';
+  if (/Grade name/i.test(msg)) return 'name';
+  if (/Grade code/i.test(msg)) return 'code';
+  if (name && msg.includes(`“${name}”`)) return 'name';
+  if (/grade with code/i.test(msg)) return 'code';
+  if (/grade named/i.test(msg)) return 'name';
+  return undefined;
 }

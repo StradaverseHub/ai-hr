@@ -3490,7 +3490,7 @@
     },
     "systemLabels": {
       "pageTitle": "系统标签",
-      "pageDescription": "按公司设置供其他人选用的共享列表——部门、职位、成本中心和业务单元。",
+      "pageDescription": "按公司设置供其他人选用的共享列表——部门、职位、成本中心和业务单元，以及全组织通用的职级。",
       "companies": "公司",
       "noCompaniesInScope": "范围内没有公司。",
       "countSummary": "{dept} 部门 · {pos} 职位 · {cc} 成本中心 · {bu} 业务单元",
@@ -3516,7 +3516,8 @@
         "department": "部门",
         "position": "职位",
         "cost_center": "成本中心",
-        "business_unit": "业务单位"
+        "business_unit": "业务单位",
+        "grade": "职级"
       },
       "sharingSettings": "共享设置",
       "sharedLabelsToggle": "跨公司共享标签",
@@ -3540,7 +3541,7 @@
       "clearFilters": "清除筛选",
       "unsavedChanges": "您有未保存的更改。",
       "col": {
-        "name": "类型名称",
+        "name": "职级名称",
         "label": "标签",
         "description": "说明",
         "title": "职称",
@@ -3550,7 +3551,8 @@
         "scope": "条件",
         "status": "状态",
         "lastUpdated": "最后更新",
-        "actions": "操作"
+        "actions": "操作",
+        "rank": "级序"
       },
       "noRows": "没有符合筛选条件的标签。",
       "businessUnitNone": "— 无 —",
@@ -3565,7 +3567,10 @@
       "pasteHint": "提示：可直接从电子表格粘贴多行以批量添加。",
       "cancel": "取消",
       "apply": "应用",
-      "origin": "来源"
+      "origin": "来源",
+      "gradeInUseHint": "此职级正被员工、休假政策、审批规则、报销限额或职级组使用，因此无法删除。请改为归档。",
+      "deleteGradeTitle": "删除职级？",
+      "deleteGradeDescription": "{name} 将被永久删除，此操作无法撤销。"
     },
     "leave": {
       "pageTitle": "休假配置",
@@ -5257,11 +5262,11 @@
       "systemLabels": {
         "intro": {
           "title": "系统标签",
-          "body": "在此为每家公司设置供其他人选用的共享列表——部门、职位、成本中心和业务单元。"
+          "body": "在这里为每家公司设置供其他人选用的共享列表——部门、职位、成本中心和业务单元，以及全组织通用的职级。"
         },
         "companies": {
           "title": "各公司目录",
-          "body": "打开一家公司即可添加、编辑、归档或删除其部门、职位、成本中心和业务单元。每项均可附带可选描述。"
+          "body": "打开任一公司即可新增、编辑、归档或删除其部门、职位、成本中心和业务单元，每项都可附加可选说明。职级为全组织通用，并在同一页面维护。"
         }
       },
       "performance": {

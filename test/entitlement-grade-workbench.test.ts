@@ -1,186 +1,148 @@
 /**
- * Refactor Entitlement Configuration Workflow (feedback 387792a4).
+ * Refactor Entitlement Configuration Workflow (feedback 387792a4), narrowed by b1b81a08.
  *
- * The Benefit Schemes sub-step of the Entitlement step (7b945408) used to stack Grade Master, Grade
- * Groups, Benefit Schemes and the per-scheme entitlements into one long vertical scroll. It is now a
- * three-panel workbench inside BenefitSchemeConfig:
- *   Panel A — Grade Master: the server-composed GradeCatalog slot (gradesPanel), which gained a
- *             code/name search filter and a drag handle per active grade.
- *   Panel B — Grade Groups: create/rename/delete + membership, each group row a drop zone for grades
- *             dragged from Panel A; the click-based checkbox path stays as the accessible fallback.
+ * 387792a4 turned the Benefit Schemes sub-step into a THREE-panel workbench inside BenefitSchemeConfig:
+ *   Panel A — Grade Master (the server-composed GradeCatalog slot, `gradesPanel`), with a drag handle per
+ *             active grade that could be dropped onto a Panel B group row;
+ *   Panel B — Grade Groups: create/rename/delete + membership;
  *   Panel C — Assignment: the Benefit Schemes list (Company × Employment Type × Grade Group per scheme).
- * The grid is xl:grid-cols-3 and stacks to ONE column below xl with sticky panel headers; the per-scheme
- * Leave Entitlements area renders full-width BELOW the workbench, unchanged. Drag-assignment posts the
- * SAME updateGradeGroup action (full member list) the checkbox fallback posts — one write path, so the
- * Service Based Entitlements sub-step keeps auto-populating from the same rows (the actions revalidate
- * the entitlements path on every save).
  *
- * Static source guard (repo convention for this DOM-runner-less feature area — see
- * benefit-scheme-scoped-step.test.ts). What a static test CANNOT prove — the actual drag interaction,
- * regrouping, delete guard rails, downstream table sync and mobile stacking — is assigned to browser
- * verification.
+ * b1b81a08 moved grade MASTER data out of Leave Config to Settings → System Labels → Organisation Labels,
+ * because a grade is organisation-level master data (it also drives claim limits, approval routing and
+ * payroll banding), not leave-specific configuration. Panel A and the grade→group DRAG shortcut that only
+ * existed to feed it are therefore gone, and the workbench is a TWO-panel grid: Grade Groups · Assignment.
+ * The tick-box membership editor inside each group row — always the accessible path, and always the write
+ * the drop delegated to — is the surviving way to put a grade into a group, and is unchanged.
+ *
+ * This suite now pins the two-panel contract plus that surviving membership editor. Static source guard
+ * (repo convention for this DOM-runner-less feature area — see benefit-scheme-scoped-step.test.ts); the
+ * round-trip of a membership save through the real action + DB is exercised below against core.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
+import {
+  createGradeGroup,
+  listGradeGroups,
+  updateGradeGroup,
+} from '../core/benefit-scheme';
+import { createJobGrade } from '../core/admin';
+import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const configSrc = readFileSync(resolve(here, '../components/benefit-scheme-config.tsx'), 'utf8');
-const catalogSrc = readFileSync(resolve(here, '../components/grade-catalog.tsx'), 'utf8');
 const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
 
-const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
-
-describe('387792a4 · the three-panel grid — side by side at xl, stacked below (drift guard)', () => {
-  it('renders a grid that is ONE column by default and three at xl (the stacking contract)', () => {
-    expect(configSrc).toContain('grid grid-cols-1 items-start gap-4 xl:grid-cols-3');
+describe('b1b81a08 · the workbench is now TWO panels — Grade Groups · Assignment', () => {
+  it('renders a grid that is ONE column by default and TWO at xl (the stacking contract)', () => {
+    expect(configSrc).toContain('grid grid-cols-1 items-start gap-4 xl:grid-cols-2');
+    // The three-column form is gone with Panel A.
+    expect(configSrc.includes('xl:grid-cols-3')).toBe(false);
   });
 
-  it('panel order inside the grid is A (gradesPanel) → B (Grade Groups) → C (Assignment)', () => {
-    const grid = configSrc.indexOf('grid grid-cols-1 items-start gap-4 xl:grid-cols-3');
-    const a = configSrc.indexOf('{gradesPanel}');
-    const b = configSrc.indexOf("t('groupsTitle')");
-    const c = configSrc.indexOf("t('schemesTitle')");
+  it('panel order inside the grid is Grade Groups → Assignment', () => {
+    const grid = configSrc.indexOf('grid grid-cols-1 items-start gap-4 xl:grid-cols-2');
+    const groups = configSrc.indexOf("t('groupsTitle')");
+    const schemes = configSrc.indexOf("t('schemesTitle')");
     expect(grid).toBeGreaterThan(-1);
-    expect(a).toBeGreaterThan(grid);
-    expect(b).toBeGreaterThan(a);
-    expect(c).toBeGreaterThan(b);
+    expect(groups).toBeGreaterThan(grid);
+    expect(schemes).toBeGreaterThan(groups);
   });
 
-  it('the per-scheme Leave Entitlements area renders full-width BELOW the workbench grid', () => {
-    // The entitlements section sits after the workbench DndContext closes — outside the grid.
-    const gridClose = configSrc.indexOf('</DndContext>');
+  it('the per-scheme Leave Entitlements area still renders full-width BELOW the workbench grid', () => {
+    const groups = configSrc.indexOf("t('groupsTitle')");
     const ent = configSrc.indexOf("t('entTitle')");
-    expect(gridClose).toBeGreaterThan(-1);
-    expect(ent).toBeGreaterThan(gridClose);
+    expect(groups).toBeGreaterThan(-1);
+    expect(ent).toBeGreaterThan(groups);
   });
 
-  it('panels B and C carry sticky headers; Panel A leans on its fold summary made sticky', () => {
+  it('both surviving panels keep their sticky headers', () => {
     expect(configSrc.match(/sticky top-0 z-10 rounded-t-lg border-b border-border bg-card/g)?.length).toBe(2);
-    expect(configSrc).toContain('[&_summary]:sticky [&_summary]:top-0 [&_summary]:z-10');
-  });
-
-  it('the page threads the shared grades node in as the gradesPanel slot (one node, no per-type fork)', () => {
-    expect(pageSrc).toContain(
-      '<BenefitSchemeConfig {...schemeConfigProps} scopeLeaveTypeId={lt.id} gradesPanel={gradesSection} />',
-    );
-    expect(configSrc).toContain('gradesPanel?: ReactNode');
   });
 });
 
-describe('387792a4 · Panel A — Grade Master search filter', () => {
-  it('filters the catalogue client-side by grade code OR name, case-insensitively', () => {
-    expect(catalogSrc).toContain("const [query, setQuery] = useState('')");
-    expect(catalogSrc).toContain(
-      'grades.filter((g) => g.code.toLowerCase().includes(q) || g.name.toLowerCase().includes(q))',
-    );
-    // The filtered list renders; the full list still feeds the empty state so search cannot fake "no grades".
-    expect(catalogSrc).toContain('{visible.map((g) => {');
-    expect(catalogSrc).toContain('{grades.length > 0 && visible.length === 0 && (');
-    expect(catalogSrc).toContain("t('gradeSearchNoResults')");
+describe('b1b81a08 · Panel A and its drag wiring are gone (over-deletion guard included)', () => {
+  it('the component no longer declares or renders a gradesPanel slot', () => {
+    expect(configSrc.includes('gradesPanel')).toBe(false);
+    expect(pageSrc.includes('gradesPanel=')).toBe(false);
   });
 
-  it('the search input is labelled for AT and placeholdered from i18n', () => {
-    expect(catalogSrc).toContain("aria-label={t('gradeSearchLabel')}");
-    expect(catalogSrc).toContain("placeholder={t('gradeSearchPlaceholder')}");
+  it('the grade→grade-group drag wiring is gone with the panel that fed it', () => {
+    for (const gone of [
+      'gradeSensors',
+      'onGradeDragStart',
+      'onGradeDragEnd',
+      'activeGradeId',
+      'GradeGroupItem',
+      'gradeGroup:${group.id}',
+      "t('dropGradeHint')",
+      "t('gradeAlreadyInGroup'",
+    ]) {
+      expect(configSrc.includes(gone), `${gone} removed`).toBe(false);
+    }
+  });
+
+  it('the UNRELATED entitlement DndContext survives — this change must not over-delete', () => {
+    // The per-scheme entitlement pool/row drag (R47 d6f88c2f) is a SECOND, independent DndContext further
+    // down the same file. Nothing about grades touches it, and no other test currently guards it.
+    expect(configSrc).toContain('<DndContext');
+    expect(configSrc).toContain('useDroppable({ id: `pool:${pool.id}` })');
+    expect(configSrc).toContain('useDroppable({ id: `row:${ent.id}` })');
+  });
+
+  it('the grade LIST is still loaded by the page and still fed to the config', () => {
+    // Relocating the EDITOR must not orphan the readers: the scope dropdown, the preview dialog and the
+    // grade-group membership tick-boxes all still need the grade rows.
+    expect(pageSrc).toContain('listJobGrades(s, { includeArchived: true })');
+    expect(pageSrc).toContain('const gradeOptions = grades.filter((g) => !g.archivedAt)');
+    expect(configSrc).toContain('grades: Grade[]');
   });
 });
 
-describe('387792a4 · drag-assignment writes the SAME rows as the click path', () => {
-  it('Panel A exposes a grade:<id> drag handle per ACTIVE grade (archived grades are not draggable)', () => {
-    expect(catalogSrc).toContain('useDraggable({ id: `grade:${gradeId}` })');
-    expect(catalogSrc).toContain('{!g.archived && <GradeDragHandle gradeId={g.id} name={g.name} t={t} />}');
-    expect(catalogSrc).toContain("aria-label={t('gradeDragAria', { name })}");
-  });
-
-  it('Panel B group rows are gradeGroup:<id> drop zones, disabled for archived groups', () => {
-    expect(configSrc).toContain('useDroppable({ id: `gradeGroup:${group.id}`, disabled: group.archived })');
-    // Valid-target highlight excludes rows the dragged grade already belongs to.
-    expect(configSrc).toContain(
-      'const validTarget = !!activeGradeId && !group.archived && !group.gradeIds.includes(activeGradeId)',
-    );
-  });
-
-  it('the drop posts actions.updateGradeGroup with the FULL member list (existing ∪ dragged)', () => {
-    // Same FormData shape the checkbox fallback's Save posts: id + name + one gradeIds entry per member.
-    expect(configSrc).toContain("fd.set('id', group.id)");
-    expect(configSrc).toContain("fd.set('name', group.name)");
-    expect(configSrc).toContain("for (const id of [...group.gradeIds, gradeId]) fd.append('gradeIds', id)");
-    expect(configSrc).toMatch(/startGradeAssign\(\(\) => \{\s*void actions\.updateGradeGroup\(fd\);\s*\}\)/);
-  });
-
-  it('the click-based checkbox path REMAINS as the accessible fallback (same action)', () => {
-    // The Panel B update form still posts the same scheme-wide action with the same field names.
+describe('b1b81a08 · the tick-box grade-group membership editor is the surviving path', () => {
+  it('each group row posts updateGradeGroup with one gradeIds entry per member', () => {
     expect(configSrc).toContain('<form action={actions.updateGradeGroup} className="space-y-3">');
     expect(configSrc).toContain('name="gradeIds"');
-    // An already-member drop surfaces a notice instead of a silent no-op write.
-    expect(configSrc).toContain("t('gradeAlreadyInGroup', { name: gradeById.get(gradeId)?.name ?? '—' })");
+    expect(configSrc).toContain('defaultChecked={g.gradeIds.includes(gr.id)}');
+    // The empty-state string is shared by the edit form and the create form and must be kept.
+    expect(configSrc.match(/t\('noGrades'\)/g)?.length).toBe(2);
   });
 
-  it('the dragged grade renders in a DragOverlay so panel overflow containers cannot clip it', () => {
-    expect(configSrc).toContain('<DragOverlay>');
-    expect(configSrc).toContain('{activeGrade ? (');
-  });
-});
-
-describe('387792a4 · Panel B keeps the group member count visible', () => {
-  it('each group row shows how many grades it holds', () => {
+  it('each group row still shows how many grades it holds', () => {
     expect(configSrc).toContain("t('memberCount', { count: g.gradeIds.length })");
   });
 });
 
-describe('387792a4 · i18n — all six locales', () => {
-  it('ships every new workbench string, with the interpolations intact (en pins the wording)', () => {
-    for (const loc of LOCALES) {
-      const msgs = JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'));
-      const leave = msgs?.admin?.leave ?? {};
-      for (const key of ['gradeSearchLabel', 'gradeSearchPlaceholder', 'gradeSearchNoResults', 'gradeDragAria']) {
-        expect(typeof leave[key], `${loc}.admin.leave.${key}`).toBe('string');
-        expect((leave[key] as string).length, `${loc}.admin.leave.${key} non-empty`).toBeGreaterThan(0);
-      }
-      expect(leave.gradeDragAria as string, `${loc}: gradeDragAria keeps {name}`).toContain('{name}');
-      const bs = msgs?.admin?.benefitScheme ?? {};
-      for (const key of ['dropGradeHint', 'gradeAlreadyInGroup']) {
-        expect(typeof bs[key], `${loc}.admin.benefitScheme.${key}`).toBe('string');
-        expect((bs[key] as string).length, `${loc}.admin.benefitScheme.${key} non-empty`).toBeGreaterThan(0);
-      }
-      expect(bs.gradeAlreadyInGroup as string, `${loc}: gradeAlreadyInGroup keeps {name}`).toContain('{name}');
-    }
-    const en = JSON.parse(readFileSync(resolve(here, '../messages/en.json'), 'utf8'));
-    expect(en.admin.leave.gradeSearchLabel).toBe('Search grades');
-    expect(en.admin.benefitScheme.gradeAlreadyInGroup).toBe('{name} is already in this group.');
-  });
-});
+describe('b1b81a08 · the membership write itself still round-trips', () => {
+  let b: Base;
+  const ctx = () => adminCtx(b);
 
-describe('387792a4 · downstream sync — assignments keep feeding Service Based Entitlements', () => {
-  it('every workbench write posts an action that revalidates the entitlements page (ok(ENTITLEMENTS))', () => {
-    // The grade-group + scheme actions all fail/ok against the ENTITLEMENTS path, which revalidates the
-    // page — so a Panel B/C save re-renders the Service Based Entitlements sub-step's table without a
-    // manual refresh. Pinned at the action layer: each workbench action ends with ok(ENTITLEMENTS).
-    const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
-    // 4e9a4d59 — the ENTITLEMENTS constant and the ok()/fail()/okToast()/okEntitlements() redirect
-    // contract moved OUT of the 'use server' actions file into the plain app/admin/_redirects.ts module
-    // (a 'use server' file can only export async functions, so the leave-approval actions could never
-    // import them from there). Same definitions, one home — assert them there, and assert actions.ts
-    // imports them rather than re-declaring a divergent copy.
-    const redirectsSrc = readFileSync(resolve(here, '../app/admin/_redirects.ts'), 'utf8');
-    expect(redirectsSrc).toContain("export const ENTITLEMENTS = '/admin/leave/entitlements'");
-    expect(redirectsSrc).toMatch(/export function ok\(path: string\): never \{\s*revalidatePath\(path\);/);
-    expect(actionsSrc).toContain("from './_redirects'");
-    expect(actionsSrc).not.toContain("const ENTITLEMENTS = '/admin/leave/entitlements'");
-    for (const action of [
-      'createGradeGroupAction',
-      'updateGradeGroupAction',
-      'deleteGradeGroupAction',
-      'createBenefitSchemeAction',
-      'updateBenefitSchemeAction',
-      'deleteBenefitSchemeAction',
-    ]) {
-      const start = actionsSrc.indexOf(`export async function ${action}(`);
-      expect(start, `${action} exists`).toBeGreaterThan(-1);
-      const body = actionsSrc.slice(start, actionsSrc.indexOf('export async function', start + 1));
-      expect(body.includes('ok(ENTITLEMENTS)'), `${action} revalidates ENTITLEMENTS`).toBe(true);
-    }
+  beforeAll(async () => {
+    await migrateTestDb();
+  });
+  beforeEach(async () => {
+    await resetDb();
+    b = await seedBase();
+  });
+  afterAll(async () => {
+    await closeAll();
+  });
+
+  it('adds and removes grades from a group through the same full-member-list write the tick-boxes post', async () => {
+    const g1 = await createJobGrade(ctx(), { code: 'EXEC', name: 'Executive', rank: 1 });
+    const g2 = await createJobGrade(ctx(), { code: 'MGR', name: 'Manager', rank: 2 });
+    const group = await createGradeGroup(ctx(), { name: 'Senior band', gradeIds: [g1.id] });
+
+    // Tick g2 on: the form posts the FULL member list (existing ∪ newly ticked).
+    await updateGradeGroup(ctx(), { id: group.id, name: 'Senior band', gradeIds: [g1.id, g2.id] });
+    let groups = await listGradeGroups(ctx());
+    expect(new Set(groups.find((g) => g.id === group.id)!.gradeIds)).toEqual(new Set([g1.id, g2.id]));
+
+    // Untick g1: same write shape, shorter list.
+    await updateGradeGroup(ctx(), { id: group.id, name: 'Senior band', gradeIds: [g2.id] });
+    groups = await listGradeGroups(ctx());
+    expect(groups.find((g) => g.id === group.id)!.gradeIds).toEqual([g2.id]);
   });
 });

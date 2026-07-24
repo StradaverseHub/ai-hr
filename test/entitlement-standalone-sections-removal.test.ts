@@ -64,10 +64,12 @@ describe('d778d2d3: the three standalone sections are gone from the Entitlements
     expect(entitlementsPage).not.toMatch(/SectionHeader title=\{t\('previewTitle'\)\}/);
   });
 
-  it('keeps the leave-type workspace and the Grades catalog — the slimmed page body', () => {
+  it('keeps the leave-type workspace — the slimmed page body', () => {
     expect(entitlementsPage).toMatch(/<LeaveTypeWorkspace/);
     expect(entitlementsPage).toMatch(/<LeaveTypePanel/);
-    expect(entitlementsPage).toMatch(/<GradeCatalog/);
+    // b1b81a08: the Grades catalog is no longer part of this page body at all — grade master data moved to
+    // Settings → System Labels → Organisation Labels.
+    expect(entitlementsPage).not.toMatch(/<GradeCatalog/);
   });
 });
 

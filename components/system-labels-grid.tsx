@@ -15,7 +15,7 @@
  * fire immediately (a saved row must exist first), while text edits + new rows batch into Save.
  */
 
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
@@ -164,14 +164,29 @@ export function SystemLabelsGrid({
   companies,
   isGroupAdmin,
   actions,
+  gradesSlot,
+  gradesActiveCount = 0,
 }: {
   data: Record<GridKind, GridRecord[]>;
   companies: GridCompany[];
   isGroupAdmin: boolean;
   actions: GridActions;
+  /** b1b81a08 — the Grades BODY (components/grade-labels-grid.tsx), rendered in place of the company-scoped
+   *  toolbar + table when the rail's Grades entry is selected. job_grade is tenant-global (no company_id,
+   *  no is_global, no label_company_assignment row), so it is deliberately NOT a fifth GridKind: forcing it
+   *  into this grid would need a synthetic record mapper plus ~ten kind-suppressions and would still render
+   *  a meaningless Criteria column. `kind` therefore stays typed GridKind and every existing hook, memo and
+   *  derived value (rowsByKind / view / counts / scopeLabel / exportCsv) keeps running unchanged — no hook
+   *  becomes conditional. Absent ⇒ the rail shows the four company-scoped categories only. */
+  gradesSlot?: ReactNode;
+  /** Live count beside the rail's Grades entry (active, i.e. non-archived grades). */
+  gradesActiveCount?: number;
 }) {
   const t = useTranslations('admin.systemLabels');
   const [kind, setKind] = useState<GridKind>('department');
+  // b1b81a08 — which BODY the rail is showing. `kind` keeps its last company-scoped value throughout, so
+  // switching to Grades and back restores the category the admin was on.
+  const [showGrades, setShowGrades] = useState(false);
   const [rowsByKind, setRowsByKind] = useState<Record<GridKind, RowState[]>>(() => {
     const seed = {} as Record<GridKind, RowState[]>;
     for (const k of KINDS) seed[k] = data[k].map((r) => ({ ...r, key: r.id, isNew: false, dirty: false }));
@@ -469,13 +484,14 @@ export function SystemLabelsGrid({
                 <button
                   type="button"
                   onClick={() => {
+                    setShowGrades(false);
                     setKind(k);
                     setSelected(new Set());
                     setRowErrors({});
                     setError(null);
                   }}
                   className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-                    kind === k ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
+                    !showGrades && kind === k ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
                   }`}
                 >
                   <span>{t(`category.${k}`)}</span>
@@ -483,6 +499,27 @@ export function SystemLabelsGrid({
                 </button>
               </li>
             ))}
+            {/* b1b81a08 — the fifth rail entry: Grades. Same button, same live count; selecting it swaps
+                the BODY for gradesSlot rather than re-pointing `kind` (job_grade is tenant-global). */}
+            {gradesSlot !== undefined && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGrades(true);
+                    setSelected(new Set());
+                    setRowErrors({});
+                    setError(null);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                    showGrades ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
+                  }`}
+                >
+                  <span>{t('category.grade')}</span>
+                  <span className="tabular-nums text-xs text-muted-foreground">{gradesActiveCount}</span>
+                </button>
+              </li>
+            )}
           </ul>
         </div>
         <button
@@ -515,7 +552,12 @@ export function SystemLabelsGrid({
         )}
       </nav>
 
-      {/* Main grid */}
+      {/* Main body. b1b81a08: selecting Grades in the rail swaps THIS panel for gradesSlot — the
+          company-scoped toolbar (company select, copy-to-companies, CSV export) and the Criteria column
+          have no meaning for tenant-global grade rows, so the grade body is its own component. */}
+      {showGrades && gradesSlot !== undefined ? (
+        gradesSlot
+      ) : (
       <div className="min-w-0 flex-1 space-y-3">
         {/* Toolbar — 797e3523: filters collapse behind a Filter button (hidden by default). */}
         <div className="flex flex-wrap items-center gap-2">
@@ -749,6 +791,7 @@ export function SystemLabelsGrid({
         </div>
         <p className="text-[11px] text-muted-foreground">{t('pasteHint')}</p>
       </div>
+      )}
     </div>
   );
 }
