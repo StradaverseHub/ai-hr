@@ -59,8 +59,14 @@ HR has hidden shows as a dash, not revealed).
 
 ### Outstanding
 
-- Nothing for r67. Board is clear (0 open, 0 approved, 0 planned awaiting build).
-- Still carried from r66: reporter's call on the anniversary accrual semantics (see r66 Decision 1).
+- Nothing to build for r67.
+- The r66 anniversary accrual decision (r66 Decision 1) is now **on the reporter's plate as a board
+  item**: `adcdf215` "Confirm how first-year leave is calculated for Anniversary to Calendar joiners"
+  (status `open`, raised 2026-07-24 via the new `pnpm improve:raise`). It proposes switching to the
+  up-front-grant method; **approve = switch, reject/ignore = keep the current build-up (accrual-to-date)
+  behaviour that is live now.** Framed as a single concrete change so it respects the board's
+  approve-carries-no-payload rule — it does not ask the reporter to pick between options. Until they
+  act, the board is not fully clear: it has this one open item awaiting a plan.
 
 ---
 
