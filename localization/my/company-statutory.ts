@@ -16,7 +16,8 @@ export type CompanyStatutoryInput = {
   lhdnEmployerNo?: string;
   myinvoisTin?: string;
   ssmRegistrationNo?: string;
-  /** HRD Corp levy registration band (Wave 2A). Omitted on upsert = leave at the column default. */
+  /** HRDF contribution rate (stored as not_registered / mandatory / optional = no / 1.0% / 0.5%
+   *  contribution). Omitted on upsert = leave at the column default. */
   hrdfStatus?: HrdfStatus;
 };
 
@@ -31,8 +32,10 @@ export async function setCompanyStatutoryMY(ctx: SessionContext, p: CompanyStatu
     ...(p.hrdfStatus !== undefined ? { hrdfStatus: p.hrdfStatus } : {}),
   };
   return withTenant(ctx, async (tx) => {
+    // hrdfStatus is read alongside the id so a rate change can be audited old → new. Both editable
+    // surfaces (Organization ▸ Statutory and Admin ▸ Payroll config) write through this one function.
     const [existing] = await tx
-      .select({ id: companyStatutoryMy.id })
+      .select({ id: companyStatutoryMy.id, hrdfStatus: companyStatutoryMy.hrdfStatus })
       .from(companyStatutoryMy)
       .where(eq(companyStatutoryMy.companyId, p.companyId))
       .limit(1);
@@ -50,13 +53,26 @@ export async function setCompanyStatutoryMY(ctx: SessionContext, p: CompanyStatu
         .returning({ id: companyStatutoryMy.id });
       id = row.id;
     }
+    // Audit trail for the HRDF Contribution Rate: emit the repo's { before, after } convention so
+    // lib/audit-format renders an accented "old → new" line (actor + timestamp ride the envelope).
+    // Gated on an actual CHANGE, not merely "provided" — both forms post hrdfStatus on every save
+    // (it is a select with a defaultValue), so a provided-gate would log before == after noise on
+    // every EPF/SOCSO-only edit.
+    const hrdfChanged =
+      existing !== undefined && p.hrdfStatus !== undefined && existing.hrdfStatus !== p.hrdfStatus;
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'company-statutory-my',
       aggregateId: id,
       eventType: existing ? 'company.statutory.my.updated' : 'company.statutory.my.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId },
+      payload: hrdfChanged
+        ? {
+            companyId: p.companyId,
+            before: { hrdfStatus: existing.hrdfStatus },
+            after: { hrdfStatus: p.hrdfStatus },
+          }
+        : { companyId: p.companyId },
     });
     return { id };
   });
