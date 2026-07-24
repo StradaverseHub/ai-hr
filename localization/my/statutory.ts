@@ -2,11 +2,11 @@
  * Malaysia statutory profile (localization pack, per ADR-0008). Per-Person statutory
  * identity: IC, EPF, SOCSO, tax, EIS eligibility, bank. IC is validated + unique per tenant.
  */
-import { eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
-import { employeeStatutoryMy, person } from '../../db/schema';
-import { DEFAULT_MY_STATUTORY } from './statutory-tables';
+import { companyStatutoryMy, domainEvent, employeeStatutoryMy, employment, person } from '../../db/schema';
+import { DEFAULT_MY_STATUTORY, type HrdfStatus } from './statutory-tables';
 import { MY_STATES } from './holidays';
 import type { EpfMode } from './payroll';
 
@@ -612,6 +612,167 @@ export async function setOthersStatutoryMY(ctx: SessionContext, p: OthersStatuto
       },
     });
     return { id: existing.id };
+  });
+}
+
+// ── Feedback 57840a6e — corrective step for accidental HRDF opt-outs ───────────────────────────────────
+/** One row's verdict from correctAccidentalHrdfOptOutsMY. */
+export type HrdfOptOutVerdict = {
+  statutoryId: string;
+  personId: string;
+  /** reset_to_default = the No was written while the company was not_registered (the old checkbox's
+   *  default capture) ⇒ provably accidental, cleared back to null. kept_explicit_no = written while the
+   *  company WAS registered ⇒ HR actively unchecked a defaulted-ticked box, left alone. unclassified =
+   *  no `employee.others-statutory.updated` write set it to false in the log, so nothing can be proven;
+   *  reported for HR to confirm, never auto-changed. */
+  verdict: 'reset_to_default' | 'kept_explicit_no' | 'unclassified';
+  /** When the No was written (null when unclassified). */
+  writtenAt: string | null;
+  /** The company's HRDF band at that moment (null when unclassified). */
+  companyHrdfStatusAtWrite: HrdfStatus | null;
+};
+
+/**
+ * Feedback 57840a6e — repair the employees the OLD Others Statutory checkbox pinned to an explicit
+ * "No" by accident. The checkbox rendered from the company's HRDF band, so while the company was
+ * not_registered it showed UNCHECKED, and any save of that card (for any reason) wrote an explicit
+ * false. Those rows then stay excluded from the HRD Corp levy for ever — hrdfSubject() honours an
+ * explicit value over the company default — which is exactly the "HRDF not generated after payroll"
+ * report. The forward fix (the tri-state select) only changes FUTURE saves; the already-poisoned rows
+ * need this step.
+ *
+ * Deliberately NOT a blanket false → null flip: once stored, `false` alone cannot distinguish a
+ * deliberate HR opt-out from the accidental default capture, and a blanket flip would silently
+ * re-enrol staff HR genuinely meant to exclude. The DomainEvent log is the discriminator — for each
+ * false row we find the write that set it (`employee.others-statutory.updated` with after = false) and
+ * reconstruct the company's HRDF band at that instant from the `company.statutory.my.*` before/after
+ * trail:
+ *   • written while not_registered ⇒ the accidental default capture ⇒ reset to null (follow default);
+ *   • written while mandatory/optional ⇒ HR actively said No ⇒ left untouched;
+ *   • no such write in the log ⇒ unclassified, reported only.
+ * Read-only by default (`apply` defaults to false) so an operator reviews the verdicts first, and safe
+ * to run more than once — a corrected row is null, so it is no longer a candidate.
+ *
+ * Audit: every reset appends `employee.others-statutory.corrected` (before/after + why), so the
+ * recalculated levy on the next payroll run is traceable to this step. Note the payslip snapshot only
+ * stamps hrdfSubject when the stored value is non-null (core/payroll.ts), so a corrected employee's
+ * NEXT slip legitimately drops that key — expected, not a snapshot violation.
+ */
+export async function correctAccidentalHrdfOptOutsMY(
+  ctx: SessionContext,
+  p: { companyId: string; apply?: boolean },
+) {
+  const apply = p.apply === true;
+  return withTenant(ctx, async (tx) => {
+    // 1. The company's HRDF band today + every audited change to it, oldest first.
+    const [coStat] = await tx
+      .select({ hrdfStatus: companyStatutoryMy.hrdfStatus })
+      .from(companyStatutoryMy)
+      .where(eq(companyStatutoryMy.companyId, p.companyId))
+      .limit(1);
+    const currentStatus: HrdfStatus = coStat?.hrdfStatus ?? 'not_registered';
+    const coEvents = await tx
+      .select({ payload: domainEvent.payload, sequence: domainEvent.sequence })
+      .from(domainEvent)
+      .where(and(eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.aggregateType, 'company-statutory-my')))
+      .orderBy(asc(domainEvent.sequence));
+    const timeline = coEvents
+      .map((e) => ({
+        seq: e.sequence,
+        pl: e.payload as { companyId?: string; before?: { hrdfStatus?: HrdfStatus }; after?: { hrdfStatus?: HrdfStatus } } | null,
+      }))
+      .filter((x) => x.pl?.companyId === p.companyId && x.pl?.after?.hrdfStatus !== undefined)
+      .map((x) => ({ seq: x.seq, before: x.pl!.before?.hrdfStatus ?? 'not_registered', after: x.pl!.after!.hrdfStatus! }));
+    /** The company's band as of event `seq`. Ordering is by the log's own monotonic sequence, not by wall
+     *  clock, so two writes in the same instant can never be judged out of order: the last change at-or-
+     *  before seq wins; before the first recorded change the band was that change's `before`; with no
+     *  recorded change it never moved off today's. */
+    const statusAt = (seq: number): HrdfStatus => {
+      if (timeline.length === 0) return currentStatus;
+      let seen: HrdfStatus | null = null;
+      for (const c of timeline) {
+        if (c.seq <= seq) seen = c.after;
+        else break;
+      }
+      return seen ?? timeline[0].before;
+    };
+
+    // 2. Candidates: explicit-false rows belonging to someone employed by this company.
+    const candidates = await tx
+      .selectDistinct({ id: employeeStatutoryMy.id, personId: employeeStatutoryMy.personId })
+      .from(employeeStatutoryMy)
+      .innerJoin(employment, eq(employment.personId, employeeStatutoryMy.personId))
+      .where(and(eq(employment.companyId, p.companyId), eq(employeeStatutoryMy.subjectToHrdf, false)));
+
+    const verdicts: HrdfOptOutVerdict[] = [];
+    for (const row of candidates) {
+      // The write that set this row to false — latest first, so a No re-affirmed later is judged by the
+      // most recent decision (a Yes in between would have cleared the row from the candidate list anyway).
+      const writes = await tx
+        .select({ payload: domainEvent.payload, occurredAt: domainEvent.occurredAt, sequence: domainEvent.sequence })
+        .from(domainEvent)
+        .where(
+          and(
+            eq(domainEvent.tenantId, ctx.tenantId),
+            eq(domainEvent.aggregateType, 'employee-statutory'),
+            eq(domainEvent.aggregateId, row.id),
+            eq(domainEvent.eventType, 'employee.others-statutory.updated'),
+          ),
+        )
+        .orderBy(desc(domainEvent.sequence));
+      const setter = writes.find((w) => (w.payload as { after?: { subjectToHrdf?: boolean | null } } | null)?.after?.subjectToHrdf === false);
+      if (!setter) {
+        verdicts.push({ statutoryId: row.id, personId: row.personId, verdict: 'unclassified', writtenAt: null, companyHrdfStatusAtWrite: null });
+        continue;
+      }
+      const bandAtWrite = statusAt(setter.sequence);
+      if (bandAtWrite !== 'not_registered') {
+        verdicts.push({
+          statutoryId: row.id,
+          personId: row.personId,
+          verdict: 'kept_explicit_no',
+          writtenAt: setter.occurredAt.toISOString(),
+          companyHrdfStatusAtWrite: bandAtWrite,
+        });
+        continue;
+      }
+      verdicts.push({
+        statutoryId: row.id,
+        personId: row.personId,
+        verdict: 'reset_to_default',
+        writtenAt: setter.occurredAt.toISOString(),
+        companyHrdfStatusAtWrite: bandAtWrite,
+      });
+      if (!apply) continue;
+      await tx
+        .update(employeeStatutoryMy)
+        .set({ subjectToHrdf: null, updatedAt: sql`now()` })
+        .where(eq(employeeStatutoryMy.id, row.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'employee-statutory',
+        aggregateId: row.id,
+        eventType: 'employee.others-statutory.corrected',
+        actor: actorOf(ctx),
+        subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, row.personId),
+        payload: {
+          personId: row.personId,
+          companyId: p.companyId,
+          before: { subjectToHrdf: false },
+          after: { subjectToHrdf: null },
+          reason: 'accidental-hrdf-opt-out',
+          writtenAt: setter.occurredAt.toISOString(),
+          companyHrdfStatusAtWrite: bandAtWrite,
+        },
+      });
+    }
+    return {
+      apply,
+      scanned: candidates.length,
+      corrected: verdicts.filter((v) => v.verdict === 'reset_to_default'),
+      kept: verdicts.filter((v) => v.verdict === 'kept_explicit_no'),
+      unclassified: verdicts.filter((v) => v.verdict === 'unclassified'),
+    };
   });
 }
 

@@ -187,6 +187,13 @@ export interface CountryPack {
     setPassport: MyStatutoryModule['setPassportProfileMY'];
     setTax: MyStatutoryModule['setTaxProfileMY'];
     setOthersStatutory: MyStatutoryModule['setOthersStatutoryMY'];
+    /**
+     * Feedback 57840a6e — one-shot, audit-gated repair of the employees an earlier UI pinned to an
+     * explicit statutory opt-out by accident (MY: "Subject to HRDF = No" captured from the company
+     * default by the old checkbox). Read-only unless `apply`. Exposed on the pack so the maintenance
+     * CLI resolves jurisdiction through the registry instead of importing the MY module directly.
+     */
+    correctAccidentalHrdfOptOuts: MyStatutoryModule['correctAccidentalHrdfOptOutsMY'];
     /** National-ID validity check (MY: MyKad 12-digit IC). */
     validateIC: (ic: string) => boolean;
     /** Canonical storage form of a national ID (MY: digits only). */
