@@ -51,7 +51,22 @@ export type ResolvedPolicy = {
   /** Feedback 9d8cf621 — Maximum Balance Days cap resolved from the winning service band (null = no cap).
    *  The granting engines clamp the running balance against this via `applyMaxBalance`. */
   maxBalanceDays?: number | null;
+  /** Feedback b81d3c52 — Rounding Method, resolved from the SAME winning policy row as days/method.
+   *  Absent/undefined ⇒ 'none' (no rounding, byte-identical to pre-b81d3c52 behaviour). */
+  roundingMethod?: LeaveRoundingMethod;
 };
+
+/** Feedback b81d3c52 — how a CALCULATED leave entitlement is tidied before it is credited:
+ *   - 'none' (or absent) — keep the calculated value exactly as-is (today's behaviour);
+ *   - 'up'              — always lift a part-day to the next WHOLE day (10.10 ⇒ 11, 10.50 ⇒ 11);
+ *   - 'down'            — always drop a part-day to the previous WHOLE day (10.90 ⇒ 10, 10.49 ⇒ 10).
+ *  DELIBERATELY WHOLE-DAY ONLY: the request's option labels say "to Nearest 0.5" but every worked example
+ *  in it rounds to a whole day, and the approved plan flagged the ambiguity — half-day steps are an
+ *  explicit follow-up, so no half-day branch is pre-written here.
+ *
+ *  This is a SEPARATE concept from the pay-component `roundingMethod` (core/pay-components.ts, values
+ *  none/nearest) — different domain, different values, deliberately no shared code. */
+export type LeaveRoundingMethod = 'none' | 'up' | 'down';
 
 /** Leave Entitlement Rules Engine: one contiguous service-length band. `toYears` null = open-ended (the
  *  final band). Matching is half-open on completed service years: fromYears <= years < toYears.
@@ -99,6 +114,10 @@ export type AccrualConfig = {
    *  Contiguous, first fromYears = 0, last toYears = null, max 10 bands — enforced at write time
    *  (core/admin.ts); the resolver is DEFENSIVE and ignores a malformed array rather than throwing. */
   serviceBands?: ServiceBand[];
+  /** Feedback b81d3c52 — Rounding Method for this policy's calculated entitlement. PERSISTED ONLY when it
+   *  is 'up' or 'down': a No-Rounding policy OMITS the key entirely, so a re-saved untouched row stays
+   *  byte-identical to what it was before this feature existed. Absent is read as 'none' everywhere. */
+  roundingMethod?: LeaveRoundingMethod;
 };
 
 /**
@@ -221,6 +240,32 @@ export function applyMaxBalance(
   return { carry: clampedCarry, grant: Math.min(Math.max(grant, 0), room) };
 }
 
+/** 2dp normalisation, mirroring the ledger's `toFixed(2)` precision (the same rule core/leave.ts's own
+ *  private `round2` applies). Module-local: leave.ts keeps its own copy, so nothing is re-exported. */
+function round2dp(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Feedback b81d3c52 — Rounding Method. Tidy a CALCULATED entitlement to a whole day per the leave type's
+ * configured method, as the FINAL step after the earning calculation (the earning maths itself is
+ * untouched). Applied by every granting/projection engine at the same point — the hire grant, the
+ * year-open grant, the earned-accrual cumulative, the recalc kernel's projection and the admin preview —
+ * so the credited balance, every ledger-derived display surface and the preview can never disagree.
+ *
+ * DEFENSIVE like `bandDaysFor` / `bandMaxBalance`: an unknown method string, null/undefined, or a
+ * non-finite value passes straight through unchanged rather than throwing — these run inside cron sweeps
+ * over hand-written / seeded JSONB where a bad row must not abort a tenant's whole sweep.
+ *
+ * Whole-day only (see `LeaveRoundingMethod`): 'up' ⇒ ceil, 'down' ⇒ floor, anything else ⇒ unchanged.
+ */
+export function applyRounding(value: number, method: LeaveRoundingMethod | string | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return value;
+  if (method === 'up') return round2dp(Math.ceil(value));
+  if (method === 'down') return round2dp(Math.floor(value));
+  return value;
+}
+
 /** Validates the contiguity/shape invariant used by both the defensive resolver (bandDaysFor) and the
  *  write-time validator (core/admin.ts): every row numeric, days >= 0, fromYears integers >= 0, sorted with
  *  no gaps/overlaps, first fromYears = 0, last toYears = null, max 10 bands. */
@@ -300,6 +345,12 @@ export function resolveGradePolicy(
             typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : undefined,
           // Feedback 9d8cf621: Maximum Balance Days from the winning band (null = no cap).
           maxBalanceDays: bandMaxBalance(band),
+          // Feedback b81d3c52: the Rounding Method rides the SAME winning policy row as days/method —
+          // assigned INSIDE this block under the identical discipline as carryExpiry/carryForwardEnabled,
+          // so a rejected lower-`days` policy can never leak its rounding onto the selected one.
+          // Only the two real methods are honoured; anything else (absent / garbage) ⇒ undefined ⇒ none.
+          roundingMethod:
+            acc?.roundingMethod === 'up' || acc?.roundingMethod === 'down' ? acc.roundingMethod : undefined,
         };
       }
     }
@@ -354,7 +405,12 @@ export function previewEntitlement(
   const policy = resolveGradePolicy(rows, employeeGradeId, employeeCompanyId, serviceYears);
   const policyDays = policy?.days ?? null;
   const floor = floorDays ?? 0;
-  const days = Math.max(floor, policyDays ?? 0);
+  // Feedback b81d3c52 — the preview must show the TIDIED figure, because that is what the engines credit.
+  // Rounding is applied to the composed entitlement (the `entitledDays` equivalent) at exactly the point
+  // the granting engines apply it, so this function's docstring guarantee ("the admin preview can never
+  // disagree with the real engine") still holds once a Rounding Method is configured. `floorDays` /
+  // `policyDays` stay RAW so the UI can still explain which input won.
+  const days = applyRounding(Math.max(floor, policyDays ?? 0), policy?.roundingMethod);
   // Derive which scope tier actually won, mirroring resolveGradePolicy's own subset filters exactly —
   // including the case where the company scope EXISTS but resolves to a policy days of 0 (i.e. the
   // company has only other-grade rows and no null-grade default): scope is still 'company' (short-circuit

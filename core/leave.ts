@@ -24,6 +24,7 @@ import { isoWeekday } from './attendance';
 import { packFor } from '../localization/registry';
 import {
   applyMaxBalance,
+  applyRounding,
   bandDaysFor,
   bandFor,
   bandCarryExpiry,
@@ -44,6 +45,7 @@ import {
   type BenefitSchemeRow,
   type CarryExpiry,
   type GradePolicyRow,
+  type LeaveRoundingMethod,
   type PreviewResult,
   type ResolvedPolicy,
   type SchemeMatchSubject,
@@ -52,6 +54,7 @@ import {
 // Re-export the pure module's surface so every existing caller/test keeps importing these from '@/core/leave'.
 export {
   applyMaxBalance,
+  applyRounding,
   bandDaysFor,
   bandFor,
   bandCarryExpiry,
@@ -72,6 +75,7 @@ export {
   type BenefitSchemeRow,
   type CarryExpiry,
   type GradePolicyRow,
+  type LeaveRoundingMethod,
   type PreviewResult,
   type ResolvedPolicy,
   type SchemeMatchSubject,
@@ -4881,10 +4885,16 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         // "disable carry" behaviour. SICK/HOSPITALIZATION stay 0 (statutory annual reset, EA s.60F).
         const carryMax = t.code === 'ANNUAL' && carryEnabled(pol) ? (pol?.carryMax ?? 0) : 0;
         const rawCarry = Math.min(Math.max(before, 0), carryMax);
+        // Feedback b81d3c52 — Rounding Method: tidy the CALCULATED entitlement to a whole day BEFORE the
+        // max-balance clamp, at the identical point every other engine rounds (hire grant / earned accrual
+        // / the recalc kernel's projection) so the ledger and the kernel can never disagree. The carry-in
+        // (`rawCarry`) is deliberately NOT rounded — a fractional carry-over plus a whole-day grant still
+        // yields a fractional balance; rounding shapes the ENTITLEMENT, not every balance.
+        const grantRounded = applyRounding(days, pol?.roundingMethod);
         // Feedback 9d8cf621 — Maximum Balance Days: clamp the carry-in AND this year's grant so the
         // resulting balance (carry + grant) never exceeds the resolved band's cap. Reducing the carry
         // increases the forfeit below by construction (forfeit = before − carry). No cap ⇒ pass-through.
-        const { carry, grant: grantDays } = applyMaxBalance(rawCarry, days, pol?.maxBalanceDays);
+        const { carry, grant: grantDays } = applyMaxBalance(rawCarry, grantRounded, pol?.maxBalanceDays);
         const forfeit = Math.max(0, before - carry);
         if (forfeit > 0) {
           await tx.insert(leaveLedger).values({
@@ -5415,6 +5425,14 @@ export async function accrueEarnedLeave(
           cyc === 'anniversary' || e.hiredOn <= cycleStart ? cycleStart : `${e.hiredOn.slice(0, 7)}-01`;
         const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, p.asOf, pol!.method!));
         let earnedToDate = Math.round((entitlement / totalPeriods) * elapsed * 100) / 100;
+        // Feedback b81d3c52 — Rounding Method (the Accrual Process surface). The CUMULATIVE-to-date figure
+        // is tidied every period, before the room-cap, so the running balance the Accrual Process credits
+        // is itself a whole day: 'up' shows whole days as they build, 'down' floors a small early
+        // cumulative to 0 (no row is written — see the `toGrant > 0` guard) and then builds. Because that
+        // guard never posts a NEGATIVE top-up, switching to 'down' mid-cycle cannot claw back what is
+        // already credited — only forward periods accrue less (the forward-only contract; the save-time
+        // recalc kernel deliberately does not reproject on a rounding-only edit either).
+        earnedToDate = applyRounding(earnedToDate, pol!.roundingMethod);
         // Feedback 9d8cf621 — Maximum Balance Days: cap the cumulative earned so retainedCarry + earned
         // never exceeds the cap (i.e. the running balance stays ≤ cap across the cycle). null ⇒ no cap.
         if (pol!.maxBalanceDays != null) {
@@ -5575,6 +5593,12 @@ export function projectExpectedEntitlement(
     // Existing employee (year-open grant) or a non-prorating type: the full resolved amount.
     expected = days;
   }
+  // Feedback b81d3c52 mirrored into the kernel — round the projection at the SAME point and in the SAME
+  // order (rounding, THEN the max-balance clamp) the three granting engines do, on EVERY branch (earned,
+  // joiner pro-ration, full grant). REQUIRED for ledger agreement: without it, any reproject triggered by
+  // an unrelated days/method change would compare a raw projection against a rounded ledger and post a
+  // permanent oscillating delta. `pol` null (floor-only / scheme-only) ⇒ no method ⇒ pass-through.
+  expected = applyRounding(expected, pol?.roundingMethod);
   // Feedback 9d8cf621 mirrored into the kernel (ae5b84d5): the winning band's Maximum Balance cap bounds
   // what the granting engines will ever materialize this cycle (applyMaxBalance at year-open/hire; the
   // earned room-cap in accrueEarnedLeave), so the projection must not exceed it either — on BOTH the
@@ -5892,6 +5916,11 @@ export async function reprojectEntitlementForPolicy(
   //    scope. Carry-forward-only edits (cap, expiry, toggles) never changed what was granted — skip.
   //    Method is normalized the way the writers persist it (absent ⇒ the lump-sum default). Bands are
   //    canonical by construction (validated contiguous-ascending), so a JSON compare is stable.
+  //    FORWARD-ONLY (feedback b81d3c52) — `roundingMethod` is DELIBERATELY ABSENT from this comparison.
+  //    Flipping the Rounding Method dropdown must NOT immediately re-credit every live balance; balances
+  //    settle onto the tidied figure at their next natural grant / top-up / year reset. (The projection
+  //    above still rounds, so when a days/method change DOES trigger a reproject no spurious rounding
+  //    delta appears.) A one-time retroactive re-credit is an explicit follow-up — do not add it here.
   const norm = (a: AccrualConfig | null) => ({
     annualDays: Number(a?.annualDays ?? 0),
     method: a?.method || 'grant_on_hire_prorated',

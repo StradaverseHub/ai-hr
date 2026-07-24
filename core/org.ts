@@ -9,7 +9,7 @@ import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } fr
 import { nextEmployeeCode } from './comp';
 import { generateEmployeeCode } from './employee-id-config';
 import { requireEmployeeCode } from '../lib/employee-code';
-import { a2cFirstYearEntitledToDate, applyMaxBalance, buildSchemeEntitlementResolver, entitledDays, isA2cFirstYear, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
+import { a2cFirstYearEntitledToDate, applyMaxBalance, applyRounding, buildSchemeEntitlementResolver, entitledDays, isA2cFirstYear, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
 import { labelUsableByCompany } from './system-labels';
 import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile-options';
@@ -303,9 +303,16 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
             : lt.code === 'ANNUAL'
               ? Math.round(((days * (12 - (month - 1))) / 12) * 100) / 100
               : days;
+          // Feedback b81d3c52 — Rounding Method: the reporter's own worked example (a 6-Jan joiner whose
+          // pro-rated entitlement lands on a fraction). Tidy the CALCULATED figure to a whole day as the
+          // FINAL step of the earning calculation and BEFORE the max-balance clamp — the identical point
+          // and order openLeaveYear / accrueEarnedLeave / projectExpectedEntitlement apply it, so the
+          // credited ledger row and the recalc kernel's projection can never disagree. The pro-ration
+          // formula itself (whole months remaining) is unchanged. No method ⇒ pass-through.
+          const grantRounded = applyRounding(grantRaw, polFor?.roundingMethod);
           // Feedback 9d8cf621 — Maximum Balance Days: a new hire has 0 prior balance, so clamp the initial
           // grant so it never opens above the resolved band's cap. null ⇒ pass-through (grant unchanged).
-          const { grant } = applyMaxBalance(0, grantRaw, polFor?.maxBalanceDays);
+          const { grant } = applyMaxBalance(0, grantRounded, polFor?.maxBalanceDays);
           if (grant <= 0) continue;
           await tx.insert(leaveLedger).values({
             tenantId: ctx.tenantId,

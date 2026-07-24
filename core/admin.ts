@@ -35,6 +35,8 @@ import {
   A2C_OVERRIDE,
   reprojectA2cEntitlement,
   type LeaveYearCycleOverride,
+  // Feedback b81d3c52 — the Rounding Method value set persisted on `leave_policy.accrual`.
+  type LeaveRoundingMethod,
   type ServiceBand,
 } from './leave';
 import { countryPacks } from '../localization/registry';
@@ -725,6 +727,17 @@ function carryFlagsAccrual(
 }
 
 /**
+ * Feedback b81d3c52 — Rounding Method persistence, under the SAME JSONB-rebuild rule as carryFlagsAccrual:
+ * `accrual` is rebuilt wholesale on every save, so a key the caller did not supply is dropped. Only the two
+ * REAL methods are persisted — 'none' / absent / anything unrecognised OMITS the key entirely, so a
+ * No-Rounding policy stays byte-identical to a row written before this feature existed (and a re-save of an
+ * untouched row adds nothing). The resolvers read an absent key as 'none'.
+ */
+function roundingAccrual(method?: string): { roundingMethod?: LeaveRoundingMethod } {
+  return method === 'up' || method === 'down' ? { roundingMethod: method } : {};
+}
+
+/**
  * Leave Entitlement Rules Engine — write-time validation of the service-band array (the runtime resolver
  * `bandDaysFor` is separately DEFENSIVE for rows that bypass this, e.g. seeds/hand-written data). Throws a
  * plain-English Error (matching this file's convention) naming the specific defect: integers for
@@ -822,6 +835,9 @@ export async function createLeavePolicy(
      *  no bands (flat annualDays only). A non-empty array is validated (contiguous, first-from-0,
      *  last-open-ended, max 10). */
     serviceBands?: ServiceBand[] | null;
+    /** Feedback b81d3c52 — Rounding Method for this policy's calculated entitlement. Only 'up' / 'down'
+     *  are persisted; 'none' / undefined omit the key entirely (see `roundingAccrual`). */
+    roundingMethod?: string;
     validFrom: string;
   },
 ) {
@@ -892,6 +908,7 @@ export async function createLeavePolicy(
           ...expiry,
           ...carryFlags,
           ...bandsAccrual,
+          ...roundingAccrual(p.roundingMethod),
         },
         validFrom: p.validFrom,
         validTo: null,
@@ -963,6 +980,10 @@ export async function updateLeavePolicy(
      *  through a form without the band editor never touches them); null/[] = clear; array = replace
      *  (validated). */
     serviceBands?: ServiceBand[] | null;
+    /** Feedback b81d3c52 — Rounding Method. Only 'up' / 'down' persist; anything else omits the key. Every
+     *  writer rebuilds `accrual` wholesale, so EVERY form that posts this action must re-post the stored
+     *  value (the front doors do so with a hidden input) or a save would silently clear it. */
+    roundingMethod?: string;
     validFrom: string;
     /** Feedback 49809272: tenant-local (MYT) "today" anchoring the recalculation's current cycle. The
      *  action layer computes and passes it (tests pass fixed dates); defaults to todayInKualaLumpur()
@@ -1039,6 +1060,7 @@ export async function updateLeavePolicy(
       ...expiry,
       ...carryFlags,
       ...bandsAccrual,
+      ...roundingAccrual(p.roundingMethod),
     };
     await tx
       .update(leavePolicy)

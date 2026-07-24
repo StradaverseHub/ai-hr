@@ -198,6 +198,8 @@ export default async function LeaveEntitlementsPage({
       carryForwardEnabled?: boolean;
       carryForwardIncludeEarned?: boolean;
       serviceBands?: ServiceBand[];
+      /** b81d3c52 — Rounding Method; absent on every policy that uses No Rounding. */
+      roundingMethod?: 'none' | 'up' | 'down';
     } | null;
     const ep: EntitlementPolicy = {
       id: p.id,
@@ -211,6 +213,8 @@ export default async function LeaveEntitlementsPage({
       carryForwardEnabled: typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : null,
       carryForwardIncludeEarned: acc?.carryForwardIncludeEarned ?? false,
       method: acc?.method,
+      // b81d3c52 — only the two real methods reach the panel; absent / anything else ⇒ null (No Rounding).
+      roundingMethod: acc?.roundingMethod === 'up' || acc?.roundingMethod === 'down' ? acc.roundingMethod : null,
       gradeId: p.gradeId,
       gradeName: p.gradeName,
       companyId: p.companyId,

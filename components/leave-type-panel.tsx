@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import type { ServiceBand } from '@/core/leave-compute';
+import type { LeaveRoundingMethod, ServiceBand } from '@/core/leave-compute';
 import { ESS_VIEW_CHECKLIST_GROUPS } from '@/components/leave/entitlement-panel-config';
 import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
@@ -44,6 +44,9 @@ export type EntitlementPolicy = {
   /** Accrual cadence (ADR-0040): 'earned_monthly' | 'earned_quarterly' earn through the year; anything
    *  else is a lump grant at hire / year-open. */
   method?: string;
+  /** Feedback b81d3c52 — Rounding Method applied to the CALCULATED entitlement before it is credited.
+   *  null/undefined = No Rounding (nothing is stored for a No-Rounding policy). */
+  roundingMethod?: LeaveRoundingMethod | null;
   /** Grade this policy applies to (ADR-0041 2E); null = all grades (company default). */
   gradeId?: string | null;
   gradeName?: string | null;
@@ -112,6 +115,12 @@ const STEP_TITLE_KEY: Record<StepKey, string> = {
 const isEarned = (m?: string) => m === 'earned_monthly' || m === 'earned_quarterly';
 /** Normalise to a select value: earned methods pass through, everything else is the lump option. */
 const methodValue = (m?: string) => (isEarned(m) ? m! : 'grant_on_hire_prorated');
+
+/** Feedback b81d3c52 — normalise a stored Rounding Method to a select/hidden-input value. Nothing stored
+ *  (the No-Rounding default, and every policy written before this feature) ⇒ 'none'. The action maps
+ *  'none' straight back to "store nothing", so a round-trip through any form is a no-op on the JSONB. */
+const roundingMethodValue = (m?: LeaveRoundingMethod | null): LeaveRoundingMethod =>
+  m === 'up' || m === 'down' ? m : 'none';
 
 /** General step sub-flow (e1a51aea): the five sub-steps of step 1, in walk order — 1 Details, 2 Leave Year
  *  Type, 3 Earning Method, 4 Carry Forward Policy, 5 Approval Workflow. The keys are storage keys (persisted
@@ -416,6 +425,26 @@ function EarningMethodForm({
         </select>
       </Field>
       <p className="text-xs text-muted-foreground">{t('subStep.earningMappingHelp')}</p>
+      {/* Feedback b81d3c52 — Rounding Method sits directly UNDER Earning Method (its requested home) and
+          rides the same policy row: it tidies whatever the earning calculation produces, as the final
+          step, without changing the calculation itself. `roundingMethodValue` maps absent ⇒ 'none', and
+          the action normalizes 'none' back to "store nothing". */}
+      <Field label={t('subStep.roundingMethodLabel')}>
+        <select
+          name="roundingMethod"
+          defaultValue={roundingMethodValue(p.roundingMethod)}
+          aria-label={t('subStep.roundingMethodLabel')}
+          className={`${inputCls} w-72`}
+        >
+          <option value="none">{t('subStep.roundingNone')}</option>
+          <option value="up">{t('subStep.roundingUp')}</option>
+          <option value="down">{t('subStep.roundingDown')}</option>
+        </select>
+      </Field>
+      <p className="text-xs text-muted-foreground">{t('subStep.roundingHelp')}</p>
+      {/* Integration r66: b81d3c52 was cut against main and still referenced the shared
+          `pendingEngineNote`, which eee43966/f3a64d90 retired in favour of the dedicated
+          `resignationPendingNote` (the old key also named Anniversary to Calendar, now live). */}
       <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.resignationPendingNote')}</p>
       <Button type="submit" size="sm">
         {t('save')}
@@ -444,6 +473,10 @@ function CarryPolicyForm({
       <FrontDoorIdentityFields p={p} leaveTypeId={leaveTypeId} />
       {/* preserve the method — this front door only edits carry */}
       <input type="hidden" name="method" value={methodValue(p.method)} />
+      {/* b81d3c52 front-door preservation (the FrontDoorPreservedCarry precedent, mirrored): the writers
+          rebuild `accrual` wholesale, so a form that does not re-post the stored Rounding Method would
+          silently clear it. This front door only edits carry — re-post rounding untouched. */}
+      <input type="hidden" name="roundingMethod" value={roundingMethodValue(p.roundingMethod)} />
       <input type="hidden" name="carryBlockRendered" value="1" />
       {carryOn && <input type="hidden" name="carryForwardEnabled" value="on" />}
       {!!p.carryForwardIncludeEarned && <input type="hidden" name="carryForwardIncludeEarned" value="on" />}
@@ -1678,6 +1711,10 @@ export function LeaveTypePanel({
                   {/* Feedback 49809272: editing IN PLACE recalculates affected employees' current-cycle
                       balances automatically — tell the admin before they save. */}
                   <p className="w-full text-[11px] text-muted-foreground">{t('recalcInPlaceHint')}</p>
+                  {/* b81d3c52: the Rounding Method's home is the Earning Method front door, but THIS form
+                      posts the same action and the writers rebuild `accrual` wholesale — re-post the
+                      stored value untouched or an Eligibility edit would silently clear it. */}
+                  <input type="hidden" name="roundingMethod" value={roundingMethodValue(p.roundingMethod)} />
                   <Field label={t('daysPerYearLabel')}>
                     <input
                       name="annualDays"

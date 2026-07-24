@@ -446,6 +446,19 @@ const carryFlagField = (fd: FormData, name: string): boolean | undefined =>
   fd.get('carryBlockRendered') == null ? undefined : fd.get(name) === 'on';
 
 /**
+ * Feedback b81d3c52 — Rounding Method (Entitlements → leave type → General → Earning Method). Normalizes
+ * the posted value to the two REAL methods; 'none', an absent field and any unrecognised string all map to
+ * `undefined`, which the service reads as "omit the key" so a No-Rounding policy stores nothing new (and a
+ * form that does not render/re-post the field cannot poison the JSONB with a bogus value). Every form that
+ * posts a policy re-posts this — the Earning Method select itself, and a hidden input on the Carry Forward
+ * front door + the Eligibility inline edit form — because the writers rebuild `accrual` wholesale.
+ */
+const roundingMethodField = (fd: FormData): string | undefined => {
+  const v = String(fd.get('roundingMethod') ?? '');
+  return v === 'up' || v === 'down' ? v : undefined;
+};
+
+/**
  * Leave Entitlement Rules Engine — the band editor always renders a hidden `serviceBandsRendered=1` marker
  * plus a `serviceBands` JSON field (exact carryBlockRendered/carryFlagField precedent above). Marker absent
  * ⇒ undefined (preserve on update; no-op on create). Marker present + empty array ⇒ null (clear). Marker
@@ -484,6 +497,7 @@ export async function createLeavePolicyAction(formData: FormData) {
       gradeId: String(formData.get('gradeId') || '') || null,
       companyId: String(formData.get('companyId') || '') || null,
       serviceBands: serviceBandsField(formData),
+      roundingMethod: roundingMethodField(formData),
       validFrom: String(formData.get('validFrom')),
     });
   } catch (e) {
@@ -510,6 +524,8 @@ export async function createLeavePoliciesMultiAction(formData: FormData) {
   const companies: (string | null)[] = companyIds.length ? companyIds : [null];
   const grades: (string | null)[] = gradeIds.length ? gradeIds : [null];
   const bands = serviceBandsField(formData);
+  // b81d3c52: read the Rounding Method ONCE — every fanned-out (company × grade) row gets the same value.
+  const rounding = roundingMethodField(formData);
   try {
     for (const companyId of companies) {
       for (const gradeId of grades) {
@@ -527,6 +543,7 @@ export async function createLeavePoliciesMultiAction(formData: FormData) {
           gradeId,
           companyId,
           serviceBands: bands,
+          roundingMethod: rounding,
           validFrom: String(formData.get('validFrom')),
         });
       }
@@ -578,6 +595,7 @@ export async function updateLeavePolicyAction(formData: FormData) {
       gradeId: String(formData.get('gradeId') || '') || null,
       companyId: String(formData.get('companyId') || '') || null,
       serviceBands: serviceBandsField(formData),
+      roundingMethod: roundingMethodField(formData),
       validFrom: String(formData.get('validFrom')),
       asOf: todayInKualaLumpur(),
       // 4ec5a940 — optional "why the change was made" note, recorded on the audit event.

@@ -261,6 +261,14 @@ describe('e1a51aea · i18n — all six locales', () => {
         'earningResignation',
         'earningMappingHelp',
         'earningHelp',
+        // Feedback b81d3c52 — Rounding Method, configured directly under Earning Method. This array is
+        // HARDCODED (the loop only asserts the keys literally listed here), so every new sub-step key MUST
+        // be appended or a locale that drops it still passes green.
+        'roundingMethodLabel',
+        'roundingNone',
+        'roundingUp',
+        'roundingDown',
+        'roundingHelp',
         'carryPolicyLabel',
         'carryNone',
         'carryFixedMax',
