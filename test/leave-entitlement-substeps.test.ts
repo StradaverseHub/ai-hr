@@ -124,16 +124,34 @@ describe('7b945408 · Benefit Schemes sub-step — the scoped scheme area', () =
   });
 });
 
-describe('7b945408 · Service Based Entitlements — the per-type table + the Preview Scenario checker', () => {
-  it('the service sub-step renders LeaveTypeEntitlementTable then the previewScenarioSection slot', () => {
+describe('Service Based Entitlements — the company-driven grade table + the Preview Scenario checker', () => {
+  // Restructure Service-Based Leave Entitlements by Company and Grade: the service sub-step is now the
+  // company-driven ServiceEntitlementTable (company-only picker → auto-populated grade rows). The old
+  // per-type benefit-scheme table (LeaveTypeEntitlementTable) relocated to the Benefit Schemes sub-step,
+  // where naming schemes is correct.
+  it('the service sub-step renders ServiceEntitlementTable then the previewScenarioSection slot', () => {
     const service = subStepSlice(entitlementSegment(), 'service');
-    const table = service.indexOf('<LeaveTypeEntitlementTable');
+    const table = service.indexOf('<ServiceEntitlementTable');
     const preview = service.indexOf('{previewScenarioSection}');
     expect(table).toBeGreaterThan(-1);
     expect(preview).toBeGreaterThan(table);
-    // Same rows + same upsert action as before (leave-type-config-categories.test.ts pins the reuse).
-    expect(service).toContain('ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction}');
+    // The company-driven table is fed the leave type identity, companies, active grades and this type's
+    // policies, and saves through the dedicated first-save-safe action.
+    expect(service).toContain('leaveTypeId={id}');
+    expect(service).toContain('companies={companies}');
+    expect(service).toContain('grades={grades}');
+    expect(service).toContain('saveAction={saveServiceEntitlementAction}');
+    // The benefit-scheme picker (scheme names) must NOT appear in the relocated service picker.
+    expect(service.includes('<LeaveTypeEntitlementTable')).toBe(false);
     expect(panelSrc).toContain('previewScenarioSection?: ReactNode');
+  });
+
+  it('the benefit-scheme per-type table stays reachable under the Benefit Schemes sub-step', () => {
+    const schemes = subStepSlice(entitlementSegment(), 'schemes');
+    // The scheme-days editor is not retired — it lives beside the scheme management, over the SAME rows +
+    // upsert action (never forked).
+    expect(schemes).toContain('<LeaveTypeEntitlementTable');
+    expect(schemes).toContain('ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction}');
   });
 
   it('the page composes the SAME LeaveRulePreviewDialog into the slot (page-level data prep, no fork)', () => {

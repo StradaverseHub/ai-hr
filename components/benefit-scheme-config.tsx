@@ -16,7 +16,7 @@ import { CSS } from '@dnd-kit/utilities';
 import * as Dialog from '@radix-ui/react-dialog';
 import { GripVertical } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import type { ServiceBand } from '@/core/leave-compute';
+import { resolveGradePolicy, type GradePolicyRow, type ServiceBand } from '@/core/leave-compute';
 import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
 import { Combobox } from '@/components/ui/combobox';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -1388,6 +1388,270 @@ export function LeaveTypeEntitlementTable({
         </table>
       </div>
       <p className="text-xs text-muted-foreground">{t('perTypeManageNote')}</p>
+    </div>
+  );
+}
+
+// ─────────────────── Service-Based Entitlements (company × grade) ───────────────────
+// Restructure Service-Based Leave Entitlements by Company and Grade — the company-driven table that IS the
+// Service Based Entitlements sub-step. Pick a company (the picker lists COMPANY names only — no benefit
+// scheme names), and the table auto-populates one row per active grade (org-wide, so every company shows
+// the same grade list) with the days for the three service bands pre-filled from what CURRENTLY RESOLVES
+// for that company+grade. It is backed by the same leave_policy store (via saveServiceEntitlementAction),
+// so existing data + the resolver are preserved and benefit-scheme figures still take priority where set.
+
+/** The minimal active/inactive policy shape the table samples for pre-fill (mapped from the panel's
+ *  per-type EntitlementPolicy list — validTo null = active). */
+export type ServicePolicyRow = {
+  gradeId: string | null;
+  companyId: string | null;
+  annualDays: number;
+  serviceBands: ServiceBand[] | null;
+  validTo: string | null;
+};
+
+/** A conforming shape is one the fixed three-column quick edit can round-trip without flattening: FLAT
+ *  (no bands) or exactly the 0–2 / 2–5 / 5+ three-band shape. An arbitrary N-band or a non-0/2/5 boundary
+ *  policy is NON-conforming — the row is shown read-only so its bands are never silently flattened. */
+function isConformingServiceShape(bands: ServiceBand[] | null): boolean {
+  if (bands == null || bands.length === 0) return true;
+  return (
+    bands.length === 3 &&
+    bands[0].fromYears === 0 &&
+    bands[0].toYears === 2 &&
+    bands[1].fromYears === 2 &&
+    bands[1].toYears === 5 &&
+    bands[2].fromYears === 5 &&
+    bands[2].toYears == null
+  );
+}
+
+/** Mirror resolveGradePolicy's scope + grade tiering, but return the winning ROW — so the table can read
+ *  its band SHAPE (to decide quick-edit vs read-only). "Most generous" is compared on flat annualDays. */
+function pickResolvingServiceRow(
+  rows: ServicePolicyRow[],
+  gradeId: string,
+  companyId: string,
+): ServicePolicyRow | null {
+  const pickMax = (subset: ServicePolicyRow[]): ServicePolicyRow | null => {
+    let best: ServicePolicyRow | null = null;
+    for (const r of subset) if (!best || r.annualDays > best.annualDays) best = r;
+    return best;
+  };
+  const within = (scope: ServicePolicyRow[]): ServicePolicyRow | null =>
+    pickMax(scope.filter((r) => r.gradeId === gradeId)) ?? pickMax(scope.filter((r) => r.gradeId == null));
+  const companyScope = rows.filter((r) => r.companyId === companyId);
+  if (companyScope.length > 0) return within(companyScope);
+  return within(rows.filter((r) => r.companyId == null));
+}
+
+type ServicePrefill = {
+  gradeId: string;
+  gradeName: string;
+  under2: number;
+  mid: number;
+  over: number;
+  /** false when the resolving policy has a non-conforming band shape — row is read-only to avoid flatten. */
+  editable: boolean;
+};
+
+/** One editable grade row. Self-contained state so an UNTOUCHED row is never written (Save disabled until a
+ *  value changes) — no spurious reprojection. Remounted (via key) when the company changes so its inputs
+ *  re-seed from the new pre-fill. */
+function ServiceGradeRow({
+  leaveTypeId,
+  leaveTypeName,
+  companyId,
+  prefill,
+  saveAction,
+  gridCls,
+  t,
+}: {
+  leaveTypeId: string;
+  leaveTypeName: string;
+  companyId: string;
+  prefill: ServicePrefill;
+  saveAction: (fd: FormData) => void | Promise<void>;
+  gridCls: string;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [u, setU] = useState(String(prefill.under2));
+  const [m, setM] = useState(String(prefill.mid));
+  const [o, setO] = useState(String(prefill.over));
+  const dirty = Number(u) !== prefill.under2 || Number(m) !== prefill.mid || Number(o) !== prefill.over;
+  if (!prefill.editable) {
+    return (
+      <div className={`${gridCls} items-center border-b border-border px-3 py-2 text-sm last:border-0`}>
+        <span className="text-muted-foreground">{leaveTypeName}</span>
+        <span className="font-medium">{prefill.gradeName}</span>
+        <span className="tabular-nums">{prefill.under2}</span>
+        <span className="tabular-nums">{prefill.mid}</span>
+        <span className="tabular-nums">{prefill.over}</span>
+        <span className="text-[11px] text-muted-foreground">{t('serviceNonConformingNote')}</span>
+      </div>
+    );
+  }
+  return (
+    <form
+      action={saveAction}
+      className={`${gridCls} items-center border-b border-border px-3 py-2 text-sm last:border-0`}
+    >
+      <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
+      <input type="hidden" name="companyId" value={companyId} />
+      <input type="hidden" name="gradeId" value={prefill.gradeId} />
+      <span className="text-muted-foreground">{leaveTypeName}</span>
+      <span className="font-medium">{prefill.gradeName}</span>
+      <input
+        name="under2"
+        type="number"
+        min="0"
+        step="0.5"
+        required
+        value={u}
+        onChange={(e) => setU(e.target.value)}
+        aria-label={t('serviceUnder2Aria', { grade: prefill.gradeName })}
+        className={`${inputCls} w-16`}
+      />
+      <input
+        name="mid"
+        type="number"
+        min="0"
+        step="0.5"
+        required
+        value={m}
+        onChange={(e) => setM(e.target.value)}
+        aria-label={t('serviceMidAria', { grade: prefill.gradeName })}
+        className={`${inputCls} w-16`}
+      />
+      <input
+        name="over"
+        type="number"
+        min="0"
+        step="0.5"
+        required
+        value={o}
+        onChange={(e) => setO(e.target.value)}
+        aria-label={t('serviceOverAria', { grade: prefill.gradeName })}
+        className={`${inputCls} w-16`}
+      />
+      <Button type="submit" size="sm" disabled={!dirty}>
+        {t('save')}
+      </Button>
+    </form>
+  );
+}
+
+export function ServiceEntitlementTable({
+  leaveTypeId,
+  leaveTypeName,
+  companies,
+  grades,
+  policies,
+  saveAction,
+}: {
+  leaveTypeId: string;
+  leaveTypeName: string;
+  companies: { id: string; name: string }[];
+  /** Active tenant grades, already ordered by seniority (job_grade.rank then name) on the server. */
+  grades: { id: string; name: string }[];
+  policies: ServicePolicyRow[];
+  saveAction: (fd: FormData) => void | Promise<void>;
+}) {
+  const t = useTranslations('admin.leave');
+  const tb = useTranslations('admin.benefitScheme');
+  const [companyId, setCompanyId] = useState('');
+
+  // GradePolicyRow[] for resolveGradePolicy — active rows only, sampled for the pre-fill. Reading via
+  // resolveGradePolicy inherently reads flat annualDays, 3-band, arbitrary N-band and null-default rows
+  // correctly (nothing renders blank when live entitlement exists).
+  const activeRows: GradePolicyRow[] = useMemo(
+    () =>
+      policies
+        .filter((p) => p.validTo == null)
+        .map((p) => ({
+          gradeId: p.gradeId,
+          companyId: p.companyId,
+          accrual: { annualDays: p.annualDays, serviceBands: p.serviceBands ?? undefined },
+        })),
+    [policies],
+  );
+  const activePolicyRows = useMemo(() => policies.filter((p) => p.validTo == null), [policies]);
+
+  const prefills: ServicePrefill[] = useMemo(() => {
+    if (!companyId) return [];
+    // Sample at representative service lengths (~1 / 3 / 6 years) so each column reflects the real resolved
+    // days for that band, whatever the underlying shape.
+    return grades.map((g) => {
+      const sample = (years: number) => resolveGradePolicy(activeRows, g.id, companyId, years)?.days ?? 0;
+      const winner = pickResolvingServiceRow(activePolicyRows, g.id, companyId);
+      return {
+        gradeId: g.id,
+        gradeName: g.name,
+        under2: sample(1),
+        mid: sample(3),
+        over: sample(6),
+        editable: isConformingServiceShape(winner?.serviceBands ?? null),
+      };
+    });
+  }, [companyId, grades, activeRows, activePolicyRows]);
+
+  const gridCls =
+    'grid grid-cols-[minmax(5rem,1fr)_minmax(5rem,1fr)_4.5rem_4.5rem_4.5rem_auto] gap-2';
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label={t('serviceCompanyLabel')}>
+          <select
+            value={companyId}
+            onChange={(e) => setCompanyId(e.target.value)}
+            aria-label={t('serviceCompanyLabel')}
+            className={`${inputCls} w-56`}
+          >
+            <option value="">{t('serviceSelectCompanyPlaceholder')}</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      {!companyId ? (
+        <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
+          {t('serviceSelectCompanyEmpty')}
+        </p>
+      ) : grades.length === 0 ? (
+        <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
+          {t('serviceNoGrades')}
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="min-w-[36rem]">
+            <div className={`${gridCls} border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground`}>
+              <span>{tb('colLeaveType')}</span>
+              <span>{t('gradeLabel')}</span>
+              <span>{tb('tierUnderFixed')}</span>
+              <span>{tb('tierMidFixed')}</span>
+              <span>{tb('tierOverFixed')}</span>
+              <span />
+            </div>
+            {prefills.map((pf) => (
+              <ServiceGradeRow
+                key={`${companyId}:${pf.gradeId}`}
+                leaveTypeId={leaveTypeId}
+                leaveTypeName={leaveTypeName}
+                companyId={companyId}
+                prefill={pf}
+                saveAction={saveAction}
+                gridCls={gridCls}
+                t={t}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">{t('serviceTableNote')}</p>
     </div>
   );
 }

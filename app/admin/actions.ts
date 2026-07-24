@@ -42,6 +42,7 @@ import {
   updateCostCenter,
   updateDepartment,
   updateLeavePolicy,
+  saveServiceEntitlement,
   updateLeaveType,
   updatePosition,
 } from '@/core/admin';
@@ -610,6 +611,39 @@ export async function updateLeavePolicyAction(formData: FormData) {
   okEntitlements(
     recalc.affected > 0 ? t('recalcToast', { count: recalc.affected, delta }) : t('entitlementUpdatedToast'),
     String(formData.get('leaveTypeId') ?? ''),
+  );
+}
+
+/**
+ * Restructure Service-Based Leave Entitlements — save one grade's three service-band figures for a company
+ * from the company-driven Service Based Entitlements table. The first save for a company materialises the
+ * whole company scope so the untouched grades never silently drop to zero (ADR-0066 short-circuit); the
+ * edited grade is recalculated in place. Everything is orchestrated over the existing createLeavePolicy /
+ * updateLeavePolicy writers in core (no new writer primitive) — see saveServiceEntitlement.
+ */
+export async function saveServiceEntitlementAction(formData: FormData) {
+  const s = await getSession();
+  const leaveTypeId = String(formData.get('leaveTypeId') ?? '');
+  const t = await getTranslations('admin.leave');
+  let recalc = { affected: 0, totalDelta: 0 };
+  try {
+    recalc = await saveServiceEntitlement(s, {
+      leaveTypeId,
+      companyId: String(formData.get('companyId') ?? ''),
+      gradeId: String(formData.get('gradeId') ?? ''),
+      under2: Number(formData.get('under2')),
+      mid: Number(formData.get('mid')),
+      over: Number(formData.get('over')),
+      asOf: todayInKualaLumpur(),
+    });
+  } catch (e) {
+    // 9b0503ac — surface the error on the Entitlements panel, not a bounce to /admin/leave.
+    fail(ENTITLEMENTS, e);
+  }
+  const delta = `${recalc.totalDelta > 0 ? '+' : ''}${recalc.totalDelta}`;
+  okEntitlements(
+    recalc.affected > 0 ? t('recalcToast', { count: recalc.affected, delta }) : t('entitlementUpdatedToast'),
+    leaveTypeId,
   );
 }
 

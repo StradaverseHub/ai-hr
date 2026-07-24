@@ -4173,7 +4173,17 @@
       "gradeSearchLabel": "搜索职级",
       "gradeSearchPlaceholder": "按代码或名称搜索…",
       "gradeSearchNoResults": "没有符合搜索条件的职级。",
-      "gradeDragAria": "将 {name} 拖入职级组"
+      "gradeDragAria": "将 {name} 拖入职级组",
+      "serviceCompanyLabel": "公司",
+      "serviceSelectCompanyPlaceholder": "选择公司…",
+      "serviceSelectCompanyEmpty": "选择公司以载入其职级并设定按服务年资的假期额度。",
+      "serviceNoGrades": "没有可显示的有效职级。请在 设置 → 系统标签 → 组织标签 中新增职级。",
+      "serviceNonConformingNote": "自定义服务年资区间 — 请在公司额度中编辑以保留。",
+      "serviceTableNote": "天数会依各职级目前的额度预先填入。编辑某职级会重新计算其员工；未改动的职级保持不变。",
+      "serviceUnder2Aria": "{grade} 不足 2 年的天数",
+      "serviceMidAria": "{grade} 2 至 5 年的天数",
+      "serviceOverAria": "{grade} 超过 5 年的天数",
+      "schemeEntitlementsTitle": "福利计划额度"
     },
     "holidays": {
       "pageTitle": "公共假期",

@@ -1125,6 +1125,230 @@ export async function updateLeavePolicy(
   });
 }
 
+// ─────────────────────── Service-Based Entitlements (company × grade) ───────────────────────
+// Restructure Service-Based Leave Entitlements by Company and Grade. The Service Based Entitlements
+// sub-step is a company-driven table: pick a company, edit each grade's three service-band figures.
+// It is backed by the SAME leave_policy store the Company Entitlements timeline uses, so existing data
+// and the resolver are preserved. Writes go through createLeavePolicy / updateLeavePolicy (no new writer
+// primitive) — this service only ORCHESTRATES them so the first save materialises the whole company
+// scope safely.
+
+/** Mirror resolveGradePolicy's scope + grade tiering, but return the WINNING ROW (with its full accrual
+ *  JSONB) instead of the resolved days — so the seeding path can copy the config that currently RESOLVES
+ *  for a (grade, company) verbatim (method / carry-forward / rounding / bands preserved, not just days).
+ *  "Most generous" is compared on flat annualDays (the governing metric; a lone grade default is the
+ *  common shape) — good enough to identify the one policy that governs the grade. */
+type ActivePolicyRow = { id: string; gradeId: string | null; companyId: string | null; accrual: unknown; validFrom: string };
+function pickResolvingPolicyRow(
+  rows: ActivePolicyRow[],
+  gradeId: string | null,
+  companyId: string | null,
+): ActivePolicyRow | null {
+  const pickMax = (subset: ActivePolicyRow[]): ActivePolicyRow | null => {
+    let best: ActivePolicyRow | null = null;
+    let bestDays = -1;
+    for (const r of subset) {
+      const days = Number((r.accrual as AccrualConfig | null)?.annualDays ?? 0);
+      if (days > bestDays) {
+        bestDays = days;
+        best = r;
+      }
+    }
+    return best;
+  };
+  const within = (scope: ActivePolicyRow[]): ActivePolicyRow | null => {
+    const graded = gradeId ? pickMax(scope.filter((r) => r.gradeId === gradeId)) : null;
+    return graded ?? pickMax(scope.filter((r) => r.gradeId == null));
+  };
+  if (companyId != null) {
+    const companyScope = rows.filter((r) => r.companyId === companyId);
+    if (companyScope.length > 0) return within(companyScope);
+  }
+  return within(rows.filter((r) => r.companyId == null));
+}
+
+/** Map a stored accrual JSONB into createLeavePolicy's argument shape — a FAITHFUL FULL COPY (annualDays,
+ *  service bands, method, carry-forward config + flags, rounding), so a seeded company+grade row resolves
+ *  byte-identically to the row it copies (never a days-only downgrade). */
+function accrualToCreateArgs(accrual: unknown): {
+  annualDays: number;
+  carryForwardMax: number;
+  carryForwardExpiryMonth: number | null;
+  carryForwardExpiryDay: number | null;
+  carryForwardExpiryMode?: 'date' | 'months';
+  carryForwardExpiryMonths: number | null;
+  carryForwardEnabled?: boolean;
+  carryForwardIncludeEarned?: boolean;
+  method?: string;
+  serviceBands: ServiceBand[] | null;
+  roundingMethod?: string;
+} {
+  const acc = (accrual ?? {}) as AccrualConfig;
+  return {
+    annualDays: Number(acc.annualDays ?? 0),
+    carryForwardMax: Math.max(0, Number(acc.carryForwardMax ?? 0)),
+    carryForwardExpiryMonth: acc.carryForwardExpiryMonth ?? null,
+    carryForwardExpiryDay: acc.carryForwardExpiryDay ?? null,
+    carryForwardExpiryMode: acc.carryForwardExpiryMode === 'months' ? 'months' : undefined,
+    carryForwardExpiryMonths: acc.carryForwardExpiryMonths ?? null,
+    carryForwardEnabled: typeof acc.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : undefined,
+    carryForwardIncludeEarned: acc.carryForwardIncludeEarned,
+    method: acc.method,
+    serviceBands: Array.isArray(acc.serviceBands) && acc.serviceBands.length > 0 ? acc.serviceBands : null,
+    roundingMethod: acc.roundingMethod,
+  };
+}
+
+/**
+ * Save one grade's Service-Based Entitlement for a company from the company-driven table.
+ *
+ * The three inputs are the days for < 2 years / 2–5 years / 5+ years service. If all three are equal AND the
+ * grade's currently-resolving policy is FLAT (no bands), the row is written flat (annualDays, no bands) so a
+ * flat policy stays flat; otherwise the fixed 0–2 / 2–5 / 5+ three-band shape is written (annualDays = the
+ * 5+ figure, which is always set so legacy/no-band resolution and the EA floor path keep a value).
+ *
+ * FIRST-SAVE SAFEGUARD (ADR-0066). Writing a company-scoped row makes the resolver short-circuit to the
+ * company tier and abandon the group default for EVERY other grade of that company — which would silently
+ * drop the untouched grades to zero. So the first time any grade is saved for a company, the WHOLE company
+ * scope is materialised first: every active grade gets a company+grade row copied verbatim from what
+ * currently resolves for it, plus a company null-grade default mirroring the group null-grade default.
+ * Those copies resolve byte-identically, so untouched grades keep their exact days and no balance moves.
+ *
+ * WRITER ROUTING (fix 4). Seeding uses createLeavePolicy (genuinely new scopes). The edited grade is then
+ * updated IN PLACE via updateLeavePolicy on its own row id (keeping validFrom, so only the current-cycle
+ * recalc fires and the reprojection posts the real delta). A grade first touched after seeding is copied
+ * then updated the same way, so its employees are recalculated too.
+ */
+export async function saveServiceEntitlement(
+  ctx: SessionContext,
+  p: {
+    leaveTypeId: string;
+    companyId: string;
+    gradeId: string;
+    under2: number;
+    mid: number;
+    over: number;
+    /** Effective date for newly-created rows (seeds + first-ever grade row). Defaults to 1 Jan this year. */
+    validFrom?: string;
+    /** Tenant-local "today" anchoring the reprojection; defaults to todayInKualaLumpur(). */
+    asOf?: string;
+  },
+): Promise<{ affected: number; totalDelta: number }> {
+  const validFrom = p.validFrom ?? `${new Date().getUTCFullYear()}-01-01`;
+  // Authoritative snapshot of the type's ACTIVE policy rows (all scopes), taken BEFORE any write so the
+  // seeding copies reflect what resolved beforehand.
+  const active: ActivePolicyRow[] = await withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: leavePolicy.id,
+        gradeId: leavePolicy.gradeId,
+        companyId: leavePolicy.companyId,
+        accrual: leavePolicy.accrual,
+        validFrom: leavePolicy.validFrom,
+      })
+      .from(leavePolicy)
+      .where(and(eq(leavePolicy.leaveTypeId, p.leaveTypeId), isNull(leavePolicy.validTo))),
+  );
+  const activeGrades: { id: string }[] = await withTenant(ctx, (tx) =>
+    tx
+      .select({ id: jobGrade.id })
+      .from(jobGrade)
+      .where(isNull(jobGrade.archivedAt))
+      .orderBy(jobGrade.rank, jobGrade.name),
+  );
+
+  const companyHasScope = active.some((r) => r.companyId === p.companyId);
+  if (!companyHasScope) {
+    // Seed the company null-grade default from the group null-grade default (if one exists).
+    const groupDefault = pickResolvingPolicyRow(active, null, null);
+    if (groupDefault) {
+      await createLeavePolicy(ctx, {
+        leaveTypeId: p.leaveTypeId,
+        companyId: p.companyId,
+        gradeId: null,
+        validFrom,
+        ...accrualToCreateArgs(groupDefault.accrual),
+      });
+    }
+    // Seed every active grade with a verbatim copy of its currently-resolving accrual.
+    for (const g of activeGrades) {
+      const src = pickResolvingPolicyRow(active, g.id, null);
+      if (!src) continue;
+      await createLeavePolicy(ctx, {
+        leaveTypeId: p.leaveTypeId,
+        companyId: p.companyId,
+        gradeId: g.id,
+        validFrom,
+        ...accrualToCreateArgs(src.accrual),
+      });
+    }
+  }
+
+  // Ensure a company+grade row exists for the edited grade, then edit it in place so the reprojection runs.
+  let target = await withTenant(ctx, (tx) =>
+    tx
+      .select({ id: leavePolicy.id, accrual: leavePolicy.accrual, validFrom: leavePolicy.validFrom })
+      .from(leavePolicy)
+      .where(
+        and(
+          eq(leavePolicy.leaveTypeId, p.leaveTypeId),
+          eq(leavePolicy.companyId, p.companyId),
+          eq(leavePolicy.gradeId, p.gradeId),
+          isNull(leavePolicy.validTo),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+  );
+  if (!target) {
+    // Company scope existed but this grade was never seeded (e.g. a grade added later). Copy what resolves
+    // for it now, then update in place — so its employees are recalculated like any other edit.
+    const src = pickResolvingPolicyRow(active, p.gradeId, p.companyId);
+    const created = await createLeavePolicy(ctx, {
+      leaveTypeId: p.leaveTypeId,
+      companyId: p.companyId,
+      gradeId: p.gradeId,
+      validFrom,
+      ...accrualToCreateArgs(src?.accrual ?? { annualDays: p.over }),
+    });
+    target = { id: created.id, accrual: src?.accrual ?? { annualDays: p.over }, validFrom };
+  }
+
+  const currentAcc = (target.accrual ?? {}) as AccrualConfig;
+  const sourceFlat = !(Array.isArray(currentAcc.serviceBands) && currentAcc.serviceBands.length > 0);
+  const flat = sourceFlat && p.under2 === p.mid && p.mid === p.over;
+  const serviceBands: ServiceBand[] | null = flat
+    ? null
+    : [
+        { fromYears: 0, toYears: 2, days: p.under2 },
+        { fromYears: 2, toYears: 5, days: p.mid },
+        { fromYears: 5, toYears: null, days: p.over },
+      ];
+  // annualDays is mandatory + load-bearing (legacy resolution + the EA floor path): always the flat value,
+  // or the 5+ tier days when bands are written (fix 3) — never 0/undefined.
+  const annualDays = flat ? p.under2 : p.over;
+  return updateLeavePolicy(ctx, {
+    id: target.id,
+    annualDays,
+    serviceBands,
+    // Preserve the row's carry-forward + rounding config (the writer rebuilds accrual wholesale; an
+    // omitted field would be cleared — see updateLeavePolicy). Method is preserved by the writer itself.
+    carryForwardMax: Math.max(0, Number(currentAcc.carryForwardMax ?? 0)),
+    carryForwardExpiryMonth: currentAcc.carryForwardExpiryMonth ?? null,
+    carryForwardExpiryDay: currentAcc.carryForwardExpiryDay ?? null,
+    carryForwardExpiryMode: currentAcc.carryForwardExpiryMode === 'months' ? 'months' : undefined,
+    carryForwardExpiryMonths: currentAcc.carryForwardExpiryMonths ?? null,
+    carryForwardEnabled: typeof currentAcc.carryForwardEnabled === 'boolean' ? currentAcc.carryForwardEnabled : undefined,
+    carryForwardIncludeEarned: currentAcc.carryForwardIncludeEarned,
+    method: currentAcc.method,
+    roundingMethod: currentAcc.roundingMethod,
+    gradeId: p.gradeId,
+    companyId: p.companyId,
+    validFrom: target.validFrom,
+    asOf: p.asOf,
+  });
+}
+
 /** Remove an entitlement policy. Safe: the ledger references the leave *type*, not the policy,
  *  so past grants are untouched — this only stops the row from driving future grants. */
 export async function deleteLeavePolicy(ctx: SessionContext, p: { id: string }) {

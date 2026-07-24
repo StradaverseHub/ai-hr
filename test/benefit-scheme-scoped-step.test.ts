@@ -72,14 +72,20 @@ describe('6c775d68 · the panel renders the scoped area inside the Entitlement s
     const gate = panelSrc.indexOf("{entitlementSubStep === 'schemes' && (");
     const slot = panelSrc.indexOf('{benefitSchemeSection}');
     const nextGate = panelSrc.indexOf("{entitlementSubStep === 'service' && (");
-    const table = panelSrc.indexOf('<LeaveTypeEntitlementTable');
+    // Restructure Service-Based Leave Entitlements: the per-type benefit-scheme table (LeaveTypeEntitlementTable)
+    // now lives in the Benefit Schemes sub-step (after the scheme workbench, where naming schemes is correct);
+    // the Service Based Entitlements sub-step hosts the company-driven ServiceEntitlementTable.
+    const schemeTable = panelSrc.indexOf('<LeaveTypeEntitlementTable');
+    const serviceTable = panelSrc.indexOf('<ServiceEntitlementTable');
     const nextStep = panelSrc.indexOf("<CardTitle>{t('categoryEssPolicy')}</CardTitle>");
     expect(gate).toBeGreaterThan(-1);
     expect(slot).toBeGreaterThan(gate);
-    expect(nextGate).toBeGreaterThan(slot);
-    // the per-type table follows in the Service Based Entitlements sub-step of the same card
-    expect(table).toBeGreaterThan(nextGate);
-    expect(nextStep).toBeGreaterThan(table);
+    // the benefit-scheme table follows the scheme workbench, still inside the schemes sub-step
+    expect(schemeTable).toBeGreaterThan(slot);
+    expect(nextGate).toBeGreaterThan(schemeTable);
+    // the company-driven service table anchors the Service Based Entitlements sub-step of the same card
+    expect(serviceTable).toBeGreaterThan(nextGate);
+    expect(nextStep).toBeGreaterThan(serviceTable);
   });
 });
 

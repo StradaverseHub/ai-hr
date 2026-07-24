@@ -4173,7 +4173,17 @@
       "gradeSearchLabel": "Search grades",
       "gradeSearchPlaceholder": "Search by code or name…",
       "gradeSearchNoResults": "No grades match your search.",
-      "gradeDragAria": "Drag {name} into a grade group"
+      "gradeDragAria": "Drag {name} into a grade group",
+      "serviceCompanyLabel": "Company",
+      "serviceSelectCompanyPlaceholder": "Select a company…",
+      "serviceSelectCompanyEmpty": "Select a company to load its grades and set service-based entitlements.",
+      "serviceNoGrades": "No active grades to show. Add grades under Settings → System Labels → Organisation Labels.",
+      "serviceNonConformingNote": "Custom service bands — edit under Company entitlements to keep them.",
+      "serviceTableNote": "Days pre-fill from what each grade resolves to today. Editing a grade recalculates its employees; grades you don't touch are unchanged.",
+      "serviceUnder2Aria": "Days under 2 years for {grade}",
+      "serviceMidAria": "Days 2 to 5 years for {grade}",
+      "serviceOverAria": "Days over 5 years for {grade}",
+      "schemeEntitlementsTitle": "Benefit scheme entitlements"
     },
     "holidays": {
       "pageTitle": "Public holidays",

@@ -20,7 +20,12 @@ import { Button, Field, inputCls } from './ui';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { ChipMultiSelect } from './ui/chip-multi-select';
-import { LeaveTypeEntitlementTable, type LeaveTypeSchemeEntitlement } from './benefit-scheme-config';
+import {
+  LeaveTypeEntitlementTable,
+  ServiceEntitlementTable,
+  type LeaveTypeSchemeEntitlement,
+  type ServicePolicyRow,
+} from './benefit-scheme-config';
 import { SubStepBar } from './leave-sub-step-bar';
 
 export type EntitlementPolicy = {
@@ -937,6 +942,7 @@ export function LeaveTypePanel({
   deletePolicyAction,
   countInScopeAction,
   upsertSchemeEntitlementAction,
+  saveServiceEntitlementAction,
 }: {
   id: string;
   name: string;
@@ -1079,6 +1085,11 @@ export function LeaveTypePanel({
   /** Restructure (123c1e76): the SAME upsertSchemeEntitlement action the Benefit Schemes table posts —
    *  the per-type Entitlement card's Edit dialog writes through it, so nothing forks. */
   upsertSchemeEntitlementAction: Action;
+  /** Restructure Service-Based Leave Entitlements — the company-driven Service Based Entitlements table posts
+   *  ONE grade's three service-band figures for a company through this action. The first save for a company
+   *  materialises the whole company scope so untouched grades never drop to zero; the edited grade is
+   *  recalculated in place (see saveServiceEntitlement in core/admin). */
+  saveServiceEntitlementAction: Action;
 }) {
   const t = useTranslations('admin.leave');
   // Sync Employee Leave View Configuration (11876072): the view-config group headings reuse the employee
@@ -1733,17 +1744,40 @@ export function LeaveTypePanel({
           {entitlementSubStep === 'schemes' && (
           <>
           {benefitSchemeSection}
+          {/* Restructure Service-Based Leave Entitlements: the per-scheme entitlement table — THIS leave
+              type's benefit-scheme entitlement rows (the days each scheme grants per service tier). It
+              stays reachable HERE, under Benefit Schemes, where naming schemes is correct; the relocated
+              Service Based Entitlements picker (sub-step 2) is company-only. Read-and-edit over the SAME
+              live rows via the SAME upsert action (no duplication, nothing can drift). */}
+          <div className="space-y-1.5 border-t border-border pt-3">
+            <span className="text-xs font-medium text-muted-foreground">{t('schemeEntitlementsTitle')}</span>
+            <LeaveTypeEntitlementTable ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction} />
+          </div>
           </>
           )}
-          {/* Sub-step 2 — Service Based Entitlements (7b945408): how entitlement is calculated. */}
+          {/* Sub-step 2 — Service Based Entitlements: the company-driven, by-grade entitlement table
+              (Restructure Service-Based Leave Entitlements). The picker lists COMPANY names only; choosing a
+              company auto-populates one row per active grade with the three service bands pre-filled from
+              what currently resolves. Benefit-scheme figures still take priority where set — this table sets
+              the fallback everyone else resolves to. */}
           {entitlementSubStep === 'service' && (
           <>
-          {/* Restructure (123c1e76): the per-type Entitlement table — THIS leave type's benefit-scheme
-              entitlement rows (the days each scheme grants per service tier), which previously appeared only
-              in the shared Benefit Schemes area. Read-and-edit over the SAME live rows via the SAME upsert
-              action (no duplication, nothing can drift); scheme-wide management — adding/removing rows,
-              copying between schemes, combined-limit grouping — stays in the Benefit Schemes sub-step. */}
-          <LeaveTypeEntitlementTable ents={schemeEntitlements} upsertEntitlement={upsertSchemeEntitlementAction} />
+          <ServiceEntitlementTable
+            leaveTypeId={id}
+            leaveTypeName={name}
+            companies={companies}
+            grades={grades}
+            policies={policies.map(
+              (p): ServicePolicyRow => ({
+                gradeId: p.gradeId ?? null,
+                companyId: p.companyId ?? null,
+                annualDays: p.annualDays,
+                serviceBands: p.serviceBands ?? null,
+                validTo: p.validTo,
+              }),
+            )}
+            saveAction={saveServiceEntitlementAction}
+          />
           {/* 7b945408: the Preview Scenario checker joins this sub-step as its checking tool — the SAME
               self-contained LeaveRulePreviewDialog (d778d2d3). Server-composed slot; see the
               previewScenarioSection prop doc. */}

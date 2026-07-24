@@ -4173,7 +4173,17 @@
       "gradeSearchLabel": "ค้นหาระดับ",
       "gradeSearchPlaceholder": "ค้นหาตามรหัสหรือชื่อ…",
       "gradeSearchNoResults": "ไม่มีระดับที่ตรงกับการค้นหาของคุณ",
-      "gradeDragAria": "ลาก {name} ไปยังกลุ่มระดับตำแหน่ง"
+      "gradeDragAria": "ลาก {name} ไปยังกลุ่มระดับตำแหน่ง",
+      "serviceCompanyLabel": "บริษัท",
+      "serviceSelectCompanyPlaceholder": "เลือกบริษัท…",
+      "serviceSelectCompanyEmpty": "เลือกบริษัทเพื่อโหลดระดับตำแหน่งและกำหนดสิทธิ์ตามอายุงาน",
+      "serviceNoGrades": "ไม่มีระดับตำแหน่งที่ใช้งานอยู่ให้แสดง เพิ่มระดับตำแหน่งได้ที่ การตั้งค่า → ป้ายกำกับระบบ → ป้ายกำกับองค์กร",
+      "serviceNonConformingNote": "ช่วงอายุงานแบบกำหนดเอง — แก้ไขที่สิทธิ์ระดับบริษัทเพื่อคงไว้",
+      "serviceTableNote": "จำนวนวันจะถูกเติมล่วงหน้าจากสิทธิ์ปัจจุบันของแต่ละระดับ การแก้ไขระดับจะคำนวณพนักงานใหม่ ระดับที่ไม่ได้แก้ไขจะไม่เปลี่ยนแปลง",
+      "serviceUnder2Aria": "จำนวนวันต่ำกว่า 2 ปีสำหรับ {grade}",
+      "serviceMidAria": "จำนวนวัน 2 ถึง 5 ปีสำหรับ {grade}",
+      "serviceOverAria": "จำนวนวันมากกว่า 5 ปีสำหรับ {grade}",
+      "schemeEntitlementsTitle": "สิทธิ์ตามแผนสวัสดิการ"
     },
     "holidays": {
       "pageTitle": "วันหยุดราชการ",

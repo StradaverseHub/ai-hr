@@ -4173,7 +4173,17 @@
       "gradeSearchLabel": "Tìm kiếm bậc",
       "gradeSearchPlaceholder": "Tìm theo mã hoặc tên…",
       "gradeSearchNoResults": "Không có bậc nào khớp với tìm kiếm của bạn.",
-      "gradeDragAria": "Kéo {name} vào một nhóm bậc"
+      "gradeDragAria": "Kéo {name} vào một nhóm bậc",
+      "serviceCompanyLabel": "Công ty",
+      "serviceSelectCompanyPlaceholder": "Chọn công ty…",
+      "serviceSelectCompanyEmpty": "Chọn công ty để tải các bậc lương và thiết lập quyền lợi theo thâm niên.",
+      "serviceNoGrades": "Không có bậc lương đang hoạt động để hiển thị. Thêm bậc lương tại Cài đặt → Nhãn hệ thống → Nhãn tổ chức.",
+      "serviceNonConformingNote": "Khoảng thâm niên tùy chỉnh — chỉnh sửa tại Quyền lợi công ty để giữ nguyên.",
+      "serviceTableNote": "Số ngày được điền sẵn theo quyền lợi hiện tại của mỗi bậc. Chỉnh sửa một bậc sẽ tính lại cho nhân viên của bậc đó; các bậc bạn không chạm vào sẽ không đổi.",
+      "serviceUnder2Aria": "Số ngày dưới 2 năm cho {grade}",
+      "serviceMidAria": "Số ngày 2 đến 5 năm cho {grade}",
+      "serviceOverAria": "Số ngày trên 5 năm cho {grade}",
+      "schemeEntitlementsTitle": "Quyền lợi theo chương trình phúc lợi"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

@@ -4173,7 +4173,17 @@
       "gradeSearchLabel": "Cari gred",
       "gradeSearchPlaceholder": "Cari mengikut kod atau nama…",
       "gradeSearchNoResults": "Tiada gred sepadan dengan carian anda.",
-      "gradeDragAria": "Seret {name} ke dalam kumpulan gred"
+      "gradeDragAria": "Seret {name} ke dalam kumpulan gred",
+      "serviceCompanyLabel": "Syarikat",
+      "serviceSelectCompanyPlaceholder": "Pilih syarikat…",
+      "serviceSelectCompanyEmpty": "Pilih syarikat untuk memuatkan gred dan menetapkan kelayakan mengikut tempoh perkhidmatan.",
+      "serviceNoGrades": "Tiada gred aktif untuk dipaparkan. Tambah gred di Tetapan → Label Sistem → Label Organisasi.",
+      "serviceNonConformingNote": "Jalur perkhidmatan tersuai — sunting di Kelayakan syarikat untuk mengekalkannya.",
+      "serviceTableNote": "Hari diisi awal daripada kelayakan semasa setiap gred. Menyunting gred mengira semula pekerjanya; gred yang tidak disentuh kekal tidak berubah.",
+      "serviceUnder2Aria": "Hari bawah 2 tahun untuk {grade}",
+      "serviceMidAria": "Hari 2 hingga 5 tahun untuk {grade}",
+      "serviceOverAria": "Hari melebihi 5 tahun untuk {grade}",
+      "schemeEntitlementsTitle": "Kelayakan skim faedah"
     },
     "holidays": {
       "pageTitle": "Cuti umum",

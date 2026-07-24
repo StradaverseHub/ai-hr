@@ -40,6 +40,7 @@ import {
   deleteLeavePolicyAction,
   deleteLeaveTypeAction,
   updateLeavePolicyAction,
+  saveServiceEntitlementAction,
   updateLeaveTypeAction,
   createGradeGroupAction,
   updateGradeGroupAction,
@@ -670,6 +671,7 @@ export default async function LeaveEntitlementsPage({
               deletePolicyAction={deleteLeavePolicyAction}
               countInScopeAction={countEmployeesInScopeAction}
               upsertSchemeEntitlementAction={upsertSchemeEntitlementAction}
+              saveServiceEntitlementAction={saveServiceEntitlementAction}
               />,
             ]),
           )}
