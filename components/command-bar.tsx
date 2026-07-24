@@ -103,12 +103,16 @@ export function CommandBar() {
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        {/* The delegation panel needs a full workspace (list table + edit forms), so the dialog widens
-            ONLY while it is active; the search list keeps its compact max-w-lg. */}
+        {/* Content owns the height AND is the single scroller (the house idiom across the repo's dialogs) —
+            no inner vh-sized boxes, so nothing can be clipped with no scrollbar to recover it. The delegation
+            state widens ONLY while it is active because the shared delegation table has a 720px floor and the
+            padding chain (quick-panel p-4 + Card border + list wrapper p-4 = 68px) eats the headroom; the
+            search list keeps its compact width. NB: the width guard is source-static — raising that table
+            floor would clip again without failing a test. */}
         <Dialog.Content
           className={`fixed left-1/2 top-[12vh] z-50 max-h-[76vh] w-[calc(100%-2rem)] ${
-            active === 'delegation' ? 'max-w-3xl' : 'max-w-lg'
-          } -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg`}
+            active === 'delegation' ? 'max-w-4xl' : 'max-w-lg'
+          } -translate-x-1/2 overflow-y-auto rounded-xl border border-border bg-popover text-popover-foreground shadow-lg`}
         >
           <Dialog.Title className="sr-only">{t('open')}</Dialog.Title>
           <Dialog.Description className="sr-only">{t('placeholder')}</Dialog.Description>
@@ -125,7 +129,7 @@ export function CommandBar() {
                   className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 />
               </div>
-              <div className="max-h-[56vh] overflow-y-auto p-2">
+              <div className="p-2">
                 {results.length === 0 ? (
                   <div className="px-3 py-6 text-center text-sm text-muted-foreground">{t('noResults')}</div>
                 ) : (
@@ -194,7 +198,7 @@ function DelegationQuickPanel({ onClose, onBack }: { onClose: () => void; onBack
   };
 
   return (
-    <div className="max-h-[76vh] overflow-y-auto p-4">
+    <div className="p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <button

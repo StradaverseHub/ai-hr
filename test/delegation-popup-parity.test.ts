@@ -11,7 +11,9 @@
  *       client-supplied flag would be a privilege hole;
  *   (d) delegations.saved exists in all six locales (the inline save confirmation both surfaces render);
  *   (e) the shared manager composes the full-page building blocks — DelegationCreateForm and
- *       DelegationOrgScopePicker — proving the coverage cascade reaches both surfaces.
+ *       DelegationOrgScopePicker — proving the coverage cascade reaches both surfaces;
+ *   (f) the popup geometry that makes the shared table usable: Dialog.Content owns the height and is the
+ *       SINGLE scroller, and it widens conditionally for the delegation state (the table has a 720px floor).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -63,5 +65,30 @@ describe('Delegation popup ↔ page parity (29fe2d45)', () => {
   it('composes the full-page building blocks in the shared manager (coverage cascade included)', () => {
     expect(MANAGER.includes('DelegationCreateForm')).toBe(true);
     expect(MANAGER.includes('DelegationOrgScopePicker')).toBe(true);
+  });
+
+  it('popup geometry: Dialog.Content is the single scroller and widens only for the delegation state', () => {
+    // Assert on the OPENING TAG slice only (same technique as test/header-command-bar.test.ts) so a comment
+    // can neither satisfy nor break these — the className is a template literal, it contains no '>'.
+    const openTagStart = COMMAND_BAR.indexOf('<Dialog.Content');
+    expect(openTagStart, 'components/command-bar.tsx must render a Dialog.Content').toBeGreaterThan(-1);
+    const content = COMMAND_BAR.slice(openTagStart, COMMAND_BAR.indexOf('>', openTagStart));
+
+    // Content owns the height AND does the scrolling — inner vh-sized boxes clipped the table with no
+    // scrollbar to recover it, because they measure against the viewport, not against Content's box.
+    expect(content).toContain('max-h-[76vh]');
+    expect(content).toContain('overflow-y-auto');
+
+    // Conditional width: an unconditional max-w-4xl would blow up the compact search list.
+    expect(content).toContain("active === 'delegation' ? 'max-w-4xl' : 'max-w-lg'");
+
+    // The pair is what makes the width meaningful: 896px Content minus the padding chain
+    // (quick-panel p-4 + Card border + list wrapper p-4 = 68px) = 828px for the table's 720px floor.
+    // KNOWN GAP: this guard is source-static and cannot prove fit — raising the floor to, say,
+    // min-w-[900px] would clip the Edit/Revoke cell again with this test still green.
+    expect(MANAGER).toContain('min-w-[720px]');
+
+    // No second height box anywhere in the file — exactly one vh-based max-h, the one on Content.
+    expect(COMMAND_BAR.match(/max-h-\[\d+(?:\.\d+)?vh\]/g) ?? []).toHaveLength(1);
   });
 });
