@@ -1469,10 +1469,10 @@ export async function updateLeaveTypeAction(fd: FormData) {
     ? { leaveUnit: (fd.get('leaveUnitValue') === 'hour' ? 'hour' : 'day') as 'day' | 'hour' }
     : {};
   // Leave Year Type override (e1a51aea): the General step's "Leave Year Type" sub-step posts `yearCycle=1`
-  // (marker) plus a `yearCycleValue` select ('' = company default ⇒ null | a2a | c2c; the a2c option is
-  // rendered disabled). The raw value is forwarded UNSANITISED so the service can reject 'a2c' (and any
-  // other unknown value) loudly with its specific "engine support coming" message — silently coercing here
-  // would store nothing and hide the error. Any other sub-form save omits the marker ⇒ tri-state untouched.
+  // (marker) plus a `yearCycleValue` select ('' = company default ⇒ null | a2a | c2c | a2c — all three
+  // values are LIVE since 18e15fc1). The raw value is forwarded UNSANITISED so the service rejects any
+  // unknown value loudly against its closed set — silently coercing here would store nothing and hide the
+  // error. Any other sub-form save omits the marker ⇒ tri-state untouched.
   const touchYearCycle = fd.get('yearCycle') === '1';
   const yearCycleRaw = String(fd.get('yearCycleValue') ?? '').trim();
   const yearCycleFields = touchYearCycle
