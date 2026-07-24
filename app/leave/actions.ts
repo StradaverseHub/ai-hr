@@ -14,17 +14,26 @@ import {
   requestLeave,
   requestLeaveCancellation,
   previewLeaveDeduction,
+  leaveTypeApplySummary,
   validateLeaveDocument,
   isEmergencyReasonCategory,
   todayInKualaLumpur,
   type LeaveDurationType,
 } from '@/core/leave';
+import { resolveEssView } from '@/core/ess-view';
 import { localizeLeaveError } from '@/app/me/actions';
 
 /** Feedback 31474452 (Step 5): read-only pre-submission preview for the Leave-tab form (which can apply
  *  on-behalf-of any employment the caller can see, via the Field label={t('fieldEmployee')} select). Runs
  *  under the caller's own session — RLS on leave_ledger/leave_type gates disclosure exactly as requestLeave
- *  does; an out-of-scope employmentId simply yields an RLS-empty balance rather than a throw. */
+ *  does; an out-of-scope employmentId simply yields an RLS-empty balance rather than a throw.
+ *
+ *  Employee apply-popup enhancement: the Employee selector is rendered ONLY on the on-behalf-of path, so a
+ *  plain self-service employee reached here with an empty employmentId and ALWAYS got null — the "this will
+ *  deduct N day(s)" line was silently dead for the ticket's actual user. Fall back to the caller's own
+ *  employment exactly like requestLeaveAction does. includeDayRows rides along on this same call so the
+ *  day-by-day panel and the deduction line come from ONE computation (no second action, no stale-response
+ *  race, no extra read). */
 export async function previewLeaveDeductionAction(p: {
   employmentId: string;
   leaveTypeId: string;
@@ -33,11 +42,46 @@ export async function previewLeaveDeductionAction(p: {
   durationType: LeaveDurationType;
 }) {
   const session = await getSession();
-  if (!p.employmentId || !p.leaveTypeId || !p.startDate || !p.endDate) return null;
+  if (!p.leaveTypeId || !p.startDate || !p.endDate) return null;
   try {
-    return await previewLeaveDeduction(session, p);
+    const employmentId = p.employmentId || (await myEmployment(session))?.employmentId;
+    if (!employmentId) return null;
+    return await previewLeaveDeduction(session, { ...p, employmentId, includeDayRows: true });
   } catch {
     return null; // preview is best-effort — the submit action remains the authoritative gate
+  }
+}
+
+/** Employee apply-popup entitlement summary (Pending / Taken / Balance) for the currently-selected leave
+ *  type. Read-only and best-effort — a failure renders nothing, never blocking the form.
+ *
+ *  ESS gating is decided HERE, not in core, because the two existing consumers answer it differently:
+ *   - Pending is gated on the resolved `pendingApproval` key, Taken on `taken`;
+ *   - Balance is NEVER gated (ENTITLEMENT_PANEL_SECTIONS documents "Balance has no essKey"), and it is the
+ *     same figure the deduction line right below already shows;
+ *   - and gating is skipped ENTIRELY when the resolved employment is not the caller's own — the admin/HR
+ *     on-behalf read, which core/read.ts already documents as never gated (EntitlementBreakdown's
+ *     applyEssConfig=false convention).
+ *  A gated figure comes back null and renders as a dash. */
+export async function leaveApplySummaryAction(p: { employmentId: string; leaveTypeId: string }) {
+  const session = await getSession();
+  if (!p.leaveTypeId) return null;
+  try {
+    const me = await myEmployment(session);
+    const employmentId = p.employmentId || me?.employmentId;
+    if (!employmentId) return null;
+    const s = await leaveTypeApplySummary(session, { employmentId, leaveTypeId: p.leaveTypeId });
+    if (!me || employmentId !== me.employmentId) {
+      return { pending: s.pending, taken: s.taken, balance: s.balance };
+    }
+    const view = resolveEssView(s.essViewConfig);
+    return {
+      pending: view.pendingApproval ? s.pending : null,
+      taken: view.taken ? s.taken : null,
+      balance: s.balance,
+    };
+  } catch {
+    return null;
   }
 }
 

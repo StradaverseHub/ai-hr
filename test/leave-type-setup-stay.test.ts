@@ -6,20 +6,21 @@
  * that shipped with b9dac2d1 (create/update type) and 9b0503ac (the entitlement-area saves, asserted by
  * test/entitlement-save-stay.test.ts). Two corners still bounced HR off the workspace:
  *
- *   A. the Grade catalog (Panel A of the Entitlement step) — its four saves redirected to /admin/leave;
+ *   A. the Grade catalog (then Panel A of the Entitlement step) — its four saves redirected to /admin/leave;
  *   B. the embedded Approval Workflow matrix — its save/delete redirected to /admin/leave/approval.
  *
- * Both now return through the SAME okEntitlements contract the entitlement saves use (app/admin/
+ * Both returned through the SAME okEntitlements contract the entitlement saves use (app/admin/
  * _redirects.ts): /admin/leave/entitlements?toast=…#type-<id> — the ?toast= the globally mounted
  * ToastFromQuery renders, plus the #type-<id> anchor LeaveTypeWorkspace's hash effect uses to re-select
  * the type. Failures stay on the Entitlements page too (?error=, no fragment — a fragment before the
  * query would swallow it, the b9dac2d1 precedent).
  *
- * Grades are TENANT-GLOBAL master data (no leaveTypeId column), so the posted leaveTypeId is a UI-return
- * hint the client stamps from the live hash; when absent the redirect degrades to the bare route.
+ * b1b81a08 retired half A: grade master data moved out of Leave Config to Settings → System Labels →
+ * Organisation Labels, so there is no grade form on this workspace and no grade action to anchor. Only the
+ * Approval Workflow half of the contract remains testable here.
  *
- * These assertions are on the redirect STRING. The client-side hash read (GradeCatalog's submit-time
- * stamp) and the on-screen "same type + same tab" outcome are covered by the browser smoke.
+ * These assertions are on the redirect STRING; the on-screen "same type + same tab" outcome is covered by
+ * the browser smoke.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -43,15 +44,7 @@ vi.mock('next/cache', () => ({ revalidatePath: (p: string) => revalidateSpy(p), 
 // The actions localise toasts before redirecting; the key-echoing fake keeps the URL assertable.
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
 
-import { randomUUID } from 'node:crypto';
-import { createJobGrade } from '../core/admin';
 import { createLeaveApprovalRule } from '../core/leave-approval-policy';
-import {
-  archiveJobGradeAction,
-  createJobGradeAction,
-  deleteJobGradeAction,
-  updateJobGradeAction,
-} from '../app/admin/actions';
 import {
   archiveLeaveApprovalRuleAction,
   archiveLeaveApprovalRuleFromEntitlementsAction,
@@ -62,7 +55,6 @@ import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from 
 
 const ENTITLEMENTS = '/admin/leave/entitlements';
 const APPROVAL = '/admin/leave/approval';
-const LEAVE = '/admin/leave';
 
 /** Run a server action that ends in redirect() (throws RedirectError here) and return the target path. */
 async function captureRedirect(run: () => Promise<void>): Promise<string> {
@@ -81,12 +73,6 @@ const fd = (fields: Record<string, string>): FormData => {
   return f;
 };
 
-/** A unique grade code/name pair — the catalog enforces partial-unique indexes on both. */
-const uniqueGrade = () => {
-  const n = randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
-  return { code: `G${n}`, name: `Grade ${n}` };
-};
-
 let b: Base;
 
 beforeAll(async () => {
@@ -103,87 +89,11 @@ beforeEach(async () => {
   revalidateSpy.mockClear();
 });
 
-describe('4e9a4d59 — Grade catalog saves stay on the leave type being configured', () => {
-  it('createJobGradeAction anchors back to the open type instead of bouncing to /admin/leave', async () => {
-    const g = uniqueGrade();
-    const target = await captureRedirect(() =>
-      createJobGradeAction(fd({ code: g.code, name: g.name, rank: '3', leaveTypeId: b.annualLeaveTypeId })),
-    );
-    // The old bug: ok(LEAVE) — a different route, throwing HR out of the setup flow.
-    expect(target.startsWith(`${ENTITLEMENTS}?toast=`)).toBe(true);
-    expect(target).toContain('savedToast');
-    expect(target.endsWith(`#type-${b.annualLeaveTypeId}`)).toBe(true);
-    expect(target.startsWith(`${LEAVE}?`)).toBe(false);
-    expect(revalidateSpy).toHaveBeenCalledWith(ENTITLEMENTS);
-  });
-
-  it('updateJobGradeAction (inline row edit) stays on the same type', async () => {
-    const g = uniqueGrade();
-    const created = await createJobGrade(adminCtx(b), { code: g.code, name: g.name, rank: 1 });
-    const renamed = uniqueGrade();
-    const target = await captureRedirect(() =>
-      updateJobGradeAction(
-        fd({
-          id: created.id,
-          code: renamed.code,
-          name: renamed.name,
-          rank: '2',
-          leaveTypeId: b.annualLeaveTypeId,
-        }),
-      ),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?toast=`)).toBe(true);
-    expect(target).toContain('savedToast');
-    expect(target.endsWith(`#type-${b.annualLeaveTypeId}`)).toBe(true);
-  });
-
-  it('archiveJobGradeAction stays on the same type', async () => {
-    const g = uniqueGrade();
-    const created = await createJobGrade(adminCtx(b), { code: g.code, name: g.name, rank: 1 });
-    const target = await captureRedirect(() =>
-      archiveJobGradeAction(fd({ id: created.id, archived: 'true', leaveTypeId: b.annualLeaveTypeId })),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?toast=`)).toBe(true);
-    expect(target.endsWith(`#type-${b.annualLeaveTypeId}`)).toBe(true);
-  });
-
-  it('deleteJobGradeAction stays on the same type', async () => {
-    const g = uniqueGrade();
-    const created = await createJobGrade(adminCtx(b), { code: g.code, name: g.name, rank: 1 });
-    const target = await captureRedirect(() =>
-      deleteJobGradeAction(fd({ id: created.id, leaveTypeId: b.annualLeaveTypeId })),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?toast=`)).toBe(true);
-    expect(target.endsWith(`#type-${b.annualLeaveTypeId}`)).toBe(true);
-  });
-
-  it('without the leaveTypeId hint the redirect degrades to the bare Entitlements route (no #type)', async () => {
-    const g = uniqueGrade();
-    const target = await captureRedirect(() =>
-      createJobGradeAction(fd({ code: g.code, name: g.name, rank: '0' })),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?toast=`)).toBe(true);
-    expect(target).not.toContain('#type-');
-    // Still the workspace route — never /admin/leave.
-    expect(target.startsWith(ENTITLEMENTS)).toBe(true);
-  });
-
-  it('a failed grade save stays on the Entitlements page (?error=, no fragment)', async () => {
-    const target = await captureRedirect(() =>
-      // "1BAD" fails the grade-code shape rule, so createJobGrade throws.
-      createJobGradeAction(fd({ code: '1BAD', name: 'Nope', rank: '0', leaveTypeId: b.annualLeaveTypeId })),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?error=`)).toBe(true);
-    expect(target).not.toContain('#type-'); // a fragment before ?error= would swallow the query
-  });
-
-  it('a failed grade delete also stays on the Entitlements page', async () => {
-    const target = await captureRedirect(() =>
-      deleteJobGradeAction(fd({ id: randomUUID(), leaveTypeId: b.annualLeaveTypeId })),
-    );
-    expect(target.startsWith(`${ENTITLEMENTS}?error=`)).toBe(true);
-  });
-});
+// b1b81a08 — the Grade catalog describe block is GONE. Grade master data no longer lives in Leave
+// Config, so createJobGradeAction / updateJobGradeAction / archiveJobGradeAction / deleteJobGradeAction and
+// their leaveTypeId return-anchor no longer exist; the relocated grid saves through the value-returning
+// actions guarded by test/grade-system-label-relocation.test.ts. The Approval Workflow half of the
+// 4e9a4d59 stay-on-this-type contract below is untouched.
 
 describe('4e9a4d59 — Approval Workflow saves posted from the leave type workspace stay on that type', () => {
   it('saveLeaveApprovalRuleFromEntitlementsAction anchors back to the rule’s leave type', async () => {

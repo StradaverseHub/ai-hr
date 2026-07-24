@@ -1338,6 +1338,20 @@
       "emergencySplitNote": "Việc phân chia ốm/phép năm/không lương cuối cùng sẽ được xác nhận khi bạn gửi.",
       "loading": "Đang tính toán…"
     },
+    "applyDetails": {
+      "toggle": "Xem chi tiết từng ngày",
+      "colStatus": "Trạng thái lịch làm việc",
+      "colApplied": "Tính nghỉ phép",
+      "yes": "Có",
+      "no": "Không",
+      "total": "Tổng: {days} ngày"
+    },
+    "applyDayStatus": {
+      "working_day": "Ngày làm việc",
+      "half_working_day": "Ngày làm việc nửa ngày",
+      "rest_day": "Ngày nghỉ",
+      "public_holiday": "Ngày lễ"
+    },
     "adminCancelButton": "Hủy nghỉ phép",
     "adminCancelDialogTitle": "Hủy nghỉ phép thay cho nhân viên",
     "adminCancelDialogDescription": "Bạn có chắc muốn hủy đơn nghỉ này thay cho nhân viên không? Số dư sẽ được khôi phục và nhân viên sẽ được thông báo. Việc này có hiệu lực ngay lập tức mà không cần phê duyệt.",
@@ -3490,7 +3504,7 @@
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",
-      "pageDescription": "Thiết lập các danh sách dùng chung mà mọi người chọn — phòng ban, chức vụ, trung tâm chi phí và đơn vị kinh doanh — theo từng công ty.",
+      "pageDescription": "Thiết lập các danh sách dùng chung mà mọi người chọn — phòng ban, chức vụ, trung tâm chi phí và đơn vị kinh doanh theo từng công ty, cùng ngạch bậc dùng chung cho toàn tổ chức.",
       "companies": "Công ty",
       "noCompaniesInScope": "Không có công ty trong phạm vi.",
       "countSummary": "{dept} pb · {pos} cv · {cc} ttcp · {bu} đvkd",
@@ -3516,7 +3530,8 @@
         "department": "Phòng ban",
         "position": "Chức vụ",
         "cost_center": "Trung tâm chi phí",
-        "business_unit": "Đơn vị kinh doanh"
+        "business_unit": "Đơn vị kinh doanh",
+        "grade": "Ngạch bậc"
       },
       "sharingSettings": "Cài đặt chia sẻ",
       "sharedLabelsToggle": "Chia sẻ nhãn giữa các công ty",
@@ -3540,7 +3555,7 @@
       "clearFilters": "Xóa bộ lọc",
       "unsavedChanges": "Bạn có thay đổi chưa lưu.",
       "col": {
-        "name": "Tên loại",
+        "name": "Tên ngạch bậc",
         "label": "Nhãn",
         "description": "Mô tả",
         "title": "Chức danh",
@@ -3550,7 +3565,8 @@
         "scope": "Tiêu chí",
         "status": "Trạng thái",
         "lastUpdated": "Cập nhật lần cuối",
-        "actions": "Thao tác"
+        "actions": "Thao tác",
+        "rank": "Thứ bậc"
       },
       "noRows": "Không có nhãn nào khớp bộ lọc.",
       "businessUnitNone": "— Không —",
@@ -3565,7 +3581,10 @@
       "pasteHint": "Mẹo: dán hàng trực tiếp từ bảng tính để thêm hàng loạt.",
       "cancel": "Hủy",
       "apply": "Áp dụng",
-      "origin": "gốc"
+      "origin": "gốc",
+      "gradeInUseHint": "Ngạch bậc này đang được nhân viên, chính sách nghỉ phép, quy tắc phê duyệt, hạn mức yêu cầu chi trả hoặc một nhóm ngạch bậc sử dụng nên không thể xóa. Hãy lưu trữ thay thế.",
+      "deleteGradeTitle": "Xóa ngạch bậc?",
+      "deleteGradeDescription": "{name} sẽ bị xóa vĩnh viễn. Không thể hoàn tác."
     },
     "leave": {
       "pageTitle": "Cấu hình nghỉ phép",
@@ -5257,11 +5276,11 @@
       "systemLabels": {
         "intro": {
           "title": "Nhãn hệ thống",
-          "body": "Đây là nơi bạn thiết lập các danh sách dùng chung mà mọi người chọn — phòng ban, vị trí, trung tâm chi phí và đơn vị kinh doanh — cho từng công ty."
+          "body": "Đây là nơi bạn thiết lập các danh sách dùng chung mà mọi người chọn — phòng ban, chức vụ, trung tâm chi phí và đơn vị kinh doanh cho từng công ty, cùng ngạch bậc dùng chung cho toàn tổ chức."
         },
         "companies": {
           "title": "Danh mục theo công ty",
-          "body": "Mở một công ty để thêm, sửa, lưu trữ hoặc xóa phòng ban, vị trí, trung tâm chi phí và đơn vị kinh doanh của nó. Mỗi mục có thể kèm mô tả tùy chọn."
+          "body": "Mở một công ty để thêm, sửa, lưu trữ hoặc xóa phòng ban, chức vụ, trung tâm chi phí và đơn vị kinh doanh của công ty đó. Mỗi mục có thể kèm mô tả tùy chọn. Ngạch bậc dùng chung cho toàn tổ chức và được quản lý ngay trên màn hình này."
         }
       },
       "performance": {

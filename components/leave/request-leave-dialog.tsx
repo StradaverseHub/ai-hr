@@ -11,6 +11,8 @@ type Action = (fd: FormData) => void | Promise<void>;
 
 /** Preview server-action shape — reuse exactly what LeaveDurationFields expects for its `action` prop. */
 type PreviewAction = NonNullable<ComponentProps<typeof LeaveDurationFields>['action']>;
+/** Apply-summary server-action shape — same reuse, for the Pending/Taken/Balance block. */
+type SummaryAction = ComponentProps<typeof LeaveDurationFields>['summaryAction'];
 
 /**
  * Request Leave, relocated (feedback 48e69709) — the apply form used to sit at the very bottom of /leave as an
@@ -26,6 +28,7 @@ export function RequestLeaveDialog({
   employeeOptions,
   submitAction,
   previewAction,
+  summaryAction,
 }: {
   types: LeaveTypeOption[];
   startDefault?: string;
@@ -34,6 +37,9 @@ export function RequestLeaveDialog({
   employeeOptions?: { id: string; name: string }[];
   submitAction: Action;
   previewAction: PreviewAction;
+  /** Employee apply-popup enhancement: Pending / Taken / Balance for the selected type. Required — this is
+   *  the only consumer of LeaveDurationFields' summary block. */
+  summaryAction: SummaryAction;
 }) {
   const t = useTranslations('leave');
   const [open, setOpen] = useState(false);
@@ -65,6 +71,7 @@ export function RequestLeaveDialog({
               showDocumentFields
               employeeOptions={employeeOptions}
               action={previewAction}
+              summaryAction={summaryAction}
             />
             <Field label={t('fieldReason')}>
               <input name="reason" className={inputCls} placeholder={t('reasonPlaceholder')} />

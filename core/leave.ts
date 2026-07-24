@@ -851,6 +851,18 @@ export async function availableLeaveBalance(
   excludeRequestId?: string,
 ): Promise<number> {
   const bal = await leaveBalance(tx, employmentId, leaveTypeId);
+  return round2(bal - (await pendingLeaveDays(tx, employmentId, leaveTypeId, excludeRequestId)));
+}
+
+/** The days already RESERVED by this employee's other PENDING requests of the same leave type — extracted
+ *  verbatim from availableLeaveBalance (no behaviour change) so the apply-popup summary's "Pending" figure is
+ *  byte-identical to what the submit-time negative-balance guard reserves. substrate: read-only, no event. */
+async function pendingLeaveDays(
+  tx: Tx,
+  employmentId: string,
+  leaveTypeId: string,
+  excludeRequestId?: string,
+): Promise<number> {
   const [row] = await tx
     .select({ pending: sql<string>`coalesce(sum(${leaveRequest.days}), 0)` })
     .from(leaveRequest)
@@ -862,7 +874,55 @@ export async function availableLeaveBalance(
         ...(excludeRequestId ? [sql`${leaveRequest.id} <> ${excludeRequestId}`] : []),
       ),
     );
-  return round2(bal - Number(row?.pending ?? 0));
+  return Number(row?.pending ?? 0);
+}
+
+/**
+ * Employee apply-popup entitlement summary (Pending / Taken / Balance) for ONE (employment, leave type) pair.
+ *
+ * Deliberately NOT routed through core/read.ts leaveBalances: that function drops visible_to_employee=false
+ * types and filters its no-activity tail through isLeaveEligible, while the apply dropdown renders the
+ * unfiltered listLeaveTypes — so a selectable type could have no row at all there. Aggregating over one pair
+ * means a type with no ledger and no pending rows returns 0 / 0 / 0 rather than nothing.
+ *
+ * `balance` is the RAW ledger balance — the SAME leaveBalance() call previewLeaveDeduction assigns to
+ * balanceAvailable — so the summary's Balance and the preview line's "balance before", rendered 40px apart in
+ * the same popup, are one number by construction (no third Balance formula, no asOf drift).
+ *
+ * ESS gating is NOT applied here: essViewConfig is returned raw and the caller decides (app/leave/actions.ts),
+ * because the admin on-behalf path must never be gated. substrate: read-only, no event.
+ */
+export async function leaveTypeApplySummary(
+  ctx: SessionContext,
+  p: { employmentId: string; leaveTypeId: string },
+): Promise<{
+  pending: number;
+  taken: number;
+  balance: number;
+  essViewConfig: Record<string, boolean> | null;
+}> {
+  return withTenant(ctx, async (tx) => {
+    const balance = await leaveBalance(tx, p.employmentId, p.leaveTypeId);
+    const pending = await pendingLeaveDays(tx, p.employmentId, p.leaveTypeId);
+    // Same expression core/read.ts leaveBalances uses for `taken`, so the two never disagree.
+    const [tk] = await tx
+      .select({
+        taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
+      })
+      .from(leaveLedger)
+      .where(and(eq(leaveLedger.employmentId, p.employmentId), eq(leaveLedger.leaveTypeId, p.leaveTypeId)));
+    const [lt] = await tx
+      .select({ essViewConfig: leaveType.essViewConfig })
+      .from(leaveType)
+      .where(eq(leaveType.id, p.leaveTypeId))
+      .limit(1);
+    return {
+      pending: round2(pending),
+      taken: round2(Number(tk?.taken ?? 0)),
+      balance: round2(balance),
+      essViewConfig: (lt?.essViewConfig ?? null) as Record<string, boolean> | null,
+    };
+  });
 }
 
 // ── Combined Leave Type Limit enforcement (R44 4c48fd1f, Stage 2) ───────────────────────────────────
@@ -1876,6 +1936,10 @@ export async function previewLeaveDeduction(
     startDate: string;
     endDate: string;
     durationType?: LeaveDurationType;
+    /** Employee apply-popup day-by-day panel: when set (and only for a full_day span) the SAME computation
+     *  that produced `days` also returns its per-date detail as `dayRows`. Absent ⇒ byte-identical work, so
+     *  every existing caller (notably app/me/actions.ts myPreviewLeaveDeduction) is untouched. */
+    includeDayRows?: boolean;
   },
 ): Promise<{
   days: number;
@@ -1883,6 +1947,7 @@ export async function previewLeaveDeduction(
   balanceAfter: number;
   hasHalfScheduleDate: boolean;
   isEmergencySplit: boolean;
+  dayRows?: LeaveApplyDayRow[];
 }> {
   return withTenant(ctx, async (tx) => {
     const durationType: LeaveDurationType = p.durationType ?? 'full_day';
@@ -1898,10 +1963,14 @@ export async function previewLeaveDeduction(
 
     let days = 0;
     let hasHalfScheduleDate = false;
+    // Resolved lazily on the working_days branch below; the day-rows path re-uses them when present and
+    // resolves them itself on the calendar_days branch (rows still need a SCHEDULE LABEL there).
+    let hols: Set<string> | null = null;
+    let sched: Awaited<ReturnType<typeof resolveSchedule>> | null = null;
     if (lt?.counting === 'working_days') {
-      const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
-      const sched = await resolveSchedule(tx, p.employmentId);
-      hasHalfScheduleDate = eachDate(p.startDate, p.endDate).some((d) => sched.halfDaysIso.includes(isoWeekday(d)));
+      hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
+      sched = await resolveSchedule(tx, p.employmentId);
+      hasHalfScheduleDate = eachDate(p.startDate, p.endDate).some((d) => sched!.halfDaysIso.includes(isoWeekday(d)));
       if (durationType === 'full_day' || isEmergencySplit) {
         const incl = normalizeDayTypeInclusion(lt?.dayTypeInclusion);
         days = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
@@ -1914,13 +1983,87 @@ export async function previewLeaveDeduction(
       days = 0.5;
     }
 
+    // ── Employee apply-popup day-by-day rows (opt-in) ────────────────────────────────────────────────
+    // Folded into THIS call rather than a second action so the per-date "Leave applied" column can never
+    // contradict `days` above: one computation, one snapshot, one transaction. Half/hourly durations are
+    // always a single date and carry no real range, so rows are full_day-only.
+    let dayRows: LeaveApplyDayRow[] | undefined;
+    if (p.includeDayRows && durationType === 'full_day' && lt) {
+      dayRows = await resolveApplyDayRows(tx, {
+        employmentId: p.employmentId,
+        startDate: p.startDate,
+        endDate: p.endDate,
+        counting: lt.counting,
+        inclusion: normalizeDayTypeInclusion(lt.dayTypeInclusion),
+        hols,
+        sched,
+      });
+    }
+
     return {
       days,
       balanceAvailable,
       balanceAfter: round2(balanceAvailable - days),
       hasHalfScheduleDate,
       isEmergencySplit,
+      ...(dayRows ? { dayRows } : {}),
     };
+  });
+}
+
+/** Employee apply-popup day-by-day panel: what ONE date is on the employee's LEAVE schedule. Rest and Off
+ *  day are ONE bucket ('rest_day'), matching dayWeight's Phase-A collapse — splitting them here would let the
+ *  panel disagree with the deducted-days figure right above it. */
+export type LeaveApplyDayStatus = 'working_day' | 'half_working_day' | 'rest_day' | 'public_holiday';
+
+/** One row of the apply-popup day-by-day panel. `days` is the EXACT dayWeight this date contributes, so the
+ *  rows always sum to previewLeaveDeduction's reported `days`. */
+export type LeaveApplyDayRow = { date: string; status: LeaveApplyDayStatus; days: number };
+
+/** Longest span the day-by-day panel will materialise. Beyond this the panel simply does not appear (the
+ *  link is hidden) rather than shipping thousands of rows into the popup. */
+const APPLY_DAY_ROWS_MAX_SPAN = 400;
+
+/** Per-date detail for the apply popup. Classification order MIRRORS dayWeight (holiday → Full → Half → rest)
+ *  so the label and the weight can never describe different things. substrate: read-only, no event. */
+async function resolveApplyDayRows(
+  tx: Tx,
+  p: {
+    employmentId: string;
+    startDate: string;
+    endDate: string;
+    counting: string | null;
+    inclusion: DayTypeInclusion | undefined;
+    hols: Set<string> | null;
+    sched: Awaited<ReturnType<typeof resolveSchedule>> | null;
+  },
+): Promise<LeaveApplyDayRow[] | undefined> {
+  if (p.endDate < p.startDate) return undefined;
+  if (dayCount(p.startDate, p.endDate) > APPLY_DAY_ROWS_MAX_SPAN) return undefined;
+  // resolveSchedule falls back to Mon-Fri when its employment join is empty (the deduction math depends on
+  // that fallback and is NOT changed). For the ROWS we must not render a confident invented calendar for an
+  // employment this session cannot see under RLS, so gate on the employment actually resolving.
+  const [emp] = await tx
+    .select({ id: employment.id })
+    .from(employment)
+    .where(eq(employment.id, p.employmentId))
+    .limit(1);
+  if (!emp) return undefined;
+  const hols = p.hols ?? (await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate));
+  const sched = p.sched ?? (await resolveSchedule(tx, p.employmentId));
+  return eachDate(p.startDate, p.endDate).map((date) => {
+    const dow = isoWeekday(date);
+    const status: LeaveApplyDayStatus = hols.has(date)
+      ? 'public_holiday'
+      : sched.workingDaysIso.includes(dow)
+        ? 'working_day'
+        : sched.halfDaysIso.includes(dow)
+          ? 'half_working_day'
+          : 'rest_day';
+    // A calendar_days type deducts every date in the span, whatever the schedule says — the label still
+    // reflects the schedule, so the rows keep summing to the reported total in both counting modes.
+    const days = p.counting === 'working_days' ? dayWeight(date, sched, hols, p.inclusion) : 1;
+    return { date, status, days };
   });
 }
 

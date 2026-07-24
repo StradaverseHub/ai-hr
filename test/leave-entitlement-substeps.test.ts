@@ -11,11 +11,11 @@
  * (backward-compatible: older payloads still hydrate, entitlementSubStep defaults to Benefit Schemes).
  *
  * Content contract (arrangement only — every tool keeps its exact data prep, actions and behaviour):
- *  - Benefit Schemes: the Grades catalogue relocated from the standalone page-bottom section (grades are
- *    TENANT-WIDE master data — one shared node with the company-wide badge convention and the surviving
- *    03557e76 fold + cookie), joined with the type-scoped scheme management (6c775d68). 387792a4: the two
- *    no longer stack — the catalogue is Panel A of the three-panel workbench inside BenefitSchemeConfig
- *    (gradesPanel slot), so the grade → grade-group → scheme relationship reads side by side.
+ *  - Benefit Schemes: the type-scoped scheme management (6c775d68) — grade groups and benefit schemes, side
+ *    by side inside BenefitSchemeConfig. It used to also host the Grades catalogue (as Panel A of a
+ *    three-panel workbench, 387792a4); b1b81a08 moved grade MASTER data out of Leave Config to Settings →
+ *    System Labels → Organisation Labels, so the workbench is two panels and this page composes no grade
+ *    editor at all. The grade LIST is still loaded here for the policy scope dropdown and the groups.
  *  - Service Based Entitlements: the per-type entitlement table (123c1e76, same rows + upsert action) plus
  *    the Preview Scenario checker (d778d2d3's LeaveRulePreviewDialog) as its checking tool.
  *  - Company Entitlements (b8fcae73): the per-company entitlement-policies timeline relocated verbatim from
@@ -99,48 +99,28 @@ describe('7b945408 · the Entitlement step REUSES the SubStepBar (four sub-steps
   });
 });
 
-describe('7b945408 · Benefit Schemes — grades relocated from the page bottom + the scoped scheme area', () => {
-  // 387792a4 re-pinned: the schemes sub-step no longer stacks a separate gradesSection slot above the
-  // config — the Grades catalogue is Panel A of the three-panel workbench INSIDE BenefitSchemeConfig
-  // (threaded via its gradesPanel prop; entitlement-grade-workbench.test.ts guards the workbench itself).
-  it('the schemes sub-step renders the benefitSchemeSection workbench (grades live inside it as Panel A)', () => {
+describe('7b945408 · Benefit Schemes sub-step — the scoped scheme area', () => {
+  // b1b81a08 re-pinned: grade MASTER data left Leave Config entirely for Settings → System Labels →
+  // Organisation Labels, so there is no gradesSection slot, no gradesPanel prop and no GradeCatalog on
+  // this page any more (test/grade-system-label-relocation.test.ts owns the destination). What this
+  // sub-step still hosts is the benefitSchemeSection workbench: grade GROUPS and benefit schemes.
+  it('the schemes sub-step renders the benefitSchemeSection workbench and nothing grade-master shaped', () => {
     const schemes = subStepSlice(entitlementSegment(), 'schemes');
     expect(schemes).toContain('{benefitSchemeSection}');
-    // No separate grades slot remains — the panel neither renders nor accepts one.
+    // No grades slot remains anywhere — the panel neither renders nor accepts one.
     expect(schemes.includes('{gradesSection}')).toBe(false);
     expect(panelSrc.includes('gradesSection?: ReactNode')).toBe(false);
-    // The page threads the ONE shared grades node into the config as its Panel A slot.
-    expect(pageSrc).toContain('gradesPanel={gradesSection}');
+    expect(pageSrc.includes('gradesPanel=')).toBe(false);
   });
 
-  it('the standalone page-bottom Grades Card is gone; the page composes ONE shared gradesSection slot', () => {
-    // GradeCatalog is composed exactly once — inside the gradesSection const, not a page-bottom Card.
-    expect(pageSrc.match(/<GradeCatalog/g)?.length).toBe(1);
-    const slotStart = pageSrc.indexOf('const gradesSection = (');
-    expect(slotStart).toBeGreaterThan(-1);
-    const slot = pageSrc.slice(slotStart, pageSrc.indexOf('const previewScenarioSection'));
-    expect(slot).toContain('<GradeCatalog');
-    expect(slot).toContain('<CollapsibleCardSection');
-    // Grade actions untouched — same CRUD wiring as the standalone section carried.
-    for (const action of ['create: createJobGradeAction', 'update: updateJobGradeAction', 'archive: archiveJobGradeAction', 'delete: deleteJobGradeAction']) {
-      expect(slot.includes(action), `${action} still wired`).toBe(true);
-    }
-    // Tenant-wide master data → the company-wide badge convention (08bc6841's pill).
-    expect(slot).toContain("t('entitlementStep.gradesCompanyWideBadge')");
-    // ONE shared node fed into every panel's workbench via the config's gradesPanel slot (387792a4).
-    expect(pageSrc).toContain('gradesPanel={gradesSection}');
-    // The page body after the workspace card hosts no grades Card anymore.
-    const helpAt = pageSrc.indexOf("t.rich('typesHelp'");
-    expect(helpAt).toBeGreaterThan(-1);
-    expect(pageSrc.slice(helpAt).includes('<GradeCatalog')).toBe(false);
-  });
-
-  it('keeps the 03557e76 fold semantics: cookie SSR-read + CollapsibleCardSection ride along', () => {
-    // The fold moved WITH the catalogue — cookie name, SSR read and defaultOpen wiring survive
-    // (leave-grades-section-collapse.test.ts pins the fold behaviour itself).
-    expect(pageSrc).toContain("const GRADES_OPEN_COOKIE = 'leave_grades_open'");
-    expect(pageSrc).toMatch(/GRADES_OPEN_COOKIE\)\?\.value === '1'/);
-    expect(pageSrc).toContain('defaultOpen={gradesOpen}');
+  it('the page composes no grade catalogue at all, and no fold cookie survives it', () => {
+    expect(pageSrc.includes('<GradeCatalog')).toBe(false);
+    expect(pageSrc.includes('const gradesSection = (')).toBe(false);
+    expect(pageSrc.includes('leave_grades_open')).toBe(false);
+    // The grade LIST is still loaded — it feeds the policy scope dropdown, the preview dialog and the
+    // benefit-scheme grade groups. Relocating the editor must not orphan those consumers.
+    expect(pageSrc).toContain('listJobGrades(s, { includeArchived: true })');
+    expect(pageSrc).toContain('grades={gradeOptions}');
   });
 });
 

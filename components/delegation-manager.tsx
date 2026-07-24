@@ -225,7 +225,14 @@ function DelegationEditForm({
   return (
     <details className="w-full">
       <summary className="cursor-pointer text-right text-primary hover:underline">{t('edit')}</summary>
-      <form action={formAction} className="mt-2 grid grid-cols-1 items-end gap-2 rounded-md border border-border p-3 sm:grid-cols-2">
+      {/* Capped width: this form lives inside the Actions <td>, and its sm:grid-cols-2 + the org-scope
+          picker's sm:grid-cols-3 of full-width selects are VIEWPORT queries, not container queries — so an
+          open row would otherwise explode the cell's intrinsic width and push the table sideways. A closed
+          <details> is display:none and contributes nothing, so collapsed rows are unaffected. */}
+      <form
+        action={formAction}
+        className="mt-2 grid w-[32rem] max-w-full grid-cols-1 items-end gap-2 rounded-md border border-border p-3 sm:grid-cols-2"
+      >
         {state && !state.ok ? (
           <div className="sm:col-span-2">
             <ErrorBanner message={state.error} />

@@ -610,10 +610,15 @@ export async function updateJobGrade(
 
 /**
  * 728a7db6 — hard-delete a grade from the catalog. Reporter requires a Delete action that is BLOCKED when
- * the grade is currently in use (referenced by an employment or a leave policy), preserving historical
- * records. We re-check the in-use predicate INSIDE the write tx (not just the UI's disabled state) so a
- * concurrent assignment can't slip a delete through. Unused ⇒ hard delete + a `job-grade.deleted` event
- * (the only new substrate event this feature introduces).
+ * the grade is currently in use, preserving historical records. We re-check the in-use predicate INSIDE the
+ * write tx (not just the UI's disabled state) so a concurrent assignment can't slip a delete through.
+ * Unused ⇒ hard delete + a `job-grade.deleted` event (the only new substrate event this feature introduces).
+ *
+ * b1b81a08 — the predicate now spans ALL FIVE referencing tables (employment, leave_policy,
+ * leave_approval_policy, claim_policy, grade_group_member), matching listJobGrades' `inUse` byte for byte so
+ * the grid's disabled Delete and this guard never disagree. Before, an approval rule or a claim limit was
+ * invisible to both, so Delete rendered enabled and raised a raw 23503 foreign-key string at the admin;
+ * grade_group_member CASCADES, so the delete silently dropped benefit-scheme group membership.
  */
 export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
@@ -625,13 +630,19 @@ export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
     if (!g) throw new Error('Grade not found.');
     const [used] = await tx
       .select({
-        inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = ${p.id}) or exists (select 1 from leave_policy lp where lp.grade_id = ${p.id})`,
+        inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = ${p.id})
+          or exists (select 1 from leave_policy lp where lp.grade_id = ${p.id})
+          or exists (select 1 from leave_approval_policy lap where lap.grade_id = ${p.id})
+          or exists (select 1 from claim_policy cp where cp.grade_id = ${p.id})
+          or exists (select 1 from grade_group_member ggm where ggm.grade_id = ${p.id})`,
       })
       .from(jobGrade)
       .where(eq(jobGrade.id, p.id))
       .limit(1);
     if (used?.inUse) {
-      throw new Error('This grade is in use by employees or leave policies and cannot be deleted. Archive it instead.');
+      throw new Error(
+        'This grade is in use by employees, leave policies, approval rules, claim limits or a grade group and cannot be deleted. Archive it instead.',
+      );
     }
     await tx.delete(jobGrade).where(eq(jobGrade.id, p.id));
     await appendEvent(tx, {
