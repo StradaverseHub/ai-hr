@@ -23,7 +23,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { createCompany, createDepartment, createJobGrade, createLeavePolicy, updateLeavePolicy } from '../core/admin';
+import { createCompany, createDepartment, createJobGrade, createLeavePolicy, updateLeavePolicy, updateLeaveType } from '../core/admin';
 import {
   accrueEarnedLeave,
   entitledDays,
@@ -33,7 +33,7 @@ import {
   type GradePolicyRow,
 } from '../core/leave';
 import { createGradeGroup, createBenefitScheme, upsertSchemeEntitlement } from '../core/benefit-scheme';
-import { leaveEntitlementBreakdown } from '../core/read';
+import { leaveBalances, leaveEntitlementBreakdown } from '../core/read';
 import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -479,5 +479,139 @@ describe('49809272 — Balance / Ledger / Breakdown consistency', () => {
     expect(view?.currentYearEntitlement).toBe(14);
     expect(view?.otherAdjustments).toBe(-2); // negative recalc row included by reason (feedback 49809272)
     expect(view?.totalAvailable).toBe(12);
+  });
+});
+
+// ── b81d3c52 (this ticket): a rounding-method change re-figures already-granted balances ────────────────
+// The change-gate norm() now includes roundingMethod, and a rounding-ONLY change posts its compensating row
+// ACCRUAL-class so the tidied whole-day value lands ON the earned/entitled figure (all display surfaces read
+// the same rounded number), matching the a2c precedent. Every existing days/method/bands recalc case above
+// still posts adjustment-class (roundingOnlyChange is false) and reconciles via otherAdjustments — unchanged.
+describe('b81d3c52 — rounding-method change reaches already-earned balances', () => {
+  const HIRED_MID = '2026-05-01';
+  /** The accrued (YTD Entitled) figure a ledger-derived surface shows — accrual-class only. */
+  const accruedOf = async (employmentId: string) => {
+    const rows = await leaveBalances(adminCtx(b), employmentId);
+    return rows.find((r) => r.leaveTypeId === b.annualLeaveTypeId)!.accrued;
+  };
+  /** A mid-year joiner whose prorated hire grant is a RAW FRACTION (16.44 × 8/12 = 10.96), so applyRounding
+   *  is NOT a no-op — a plain integer-days ANNUAL lump would never surface a fraction. Rounding starts unset. */
+  const joinerFractional = async () => {
+    const { id } = await policy(16.44);
+    const emp = await hireIn(b.companyId, b.deptA, { hiredOn: HIRED_MID });
+    return { id, employmentId: emp.employmentId };
+  };
+
+  it('(a) with rounding UNSET the raw fraction shows on accrued AND balance', async () => {
+    const { employmentId } = await joinerFractional();
+    expect(await annualBalance(employmentId)).toBe(10.96);
+    expect(await accruedOf(employmentId)).toBe(10.96);
+  });
+
+  it('(b) changing rounding to UP re-figures accrued / balance / entitlement to 11 via ONE accrual-class row', async () => {
+    const { id, employmentId } = await joinerFractional();
+    const res = await updateLeavePolicy(adminCtx(b), {
+      id, annualDays: 16.44, roundingMethod: 'up', validFrom: '2026-01-01', asOf: ASOF,
+    });
+    expect(res).toEqual({ affected: 1, totalDelta: 0.04 });
+    expect(await annualBalance(employmentId)).toBe(11);
+    expect(await accruedOf(employmentId)).toBe(11); // YTD Entitled moves — accrual-class, not adjustment
+    const view = await leaveEntitlementBreakdown(adminCtx(b), employmentId, b.annualLeaveTypeId, '2026-12-31');
+    expect(view?.currentYearEntitlement).toBe(11); // the entitlement LINE itself reads the rounded figure
+    expect(view?.otherAdjustments).toBe(0); // NOT a separate correction line beside a raw figure
+    const rows = await recalcRows(employmentId);
+    expect(rows.length).toBe(1);
+    expect(rows[0].entryType).toBe('accrual');
+    expect(Number(rows[0].days)).toBe(0.04);
+  });
+
+  it('(c) changing rounding to DOWN claws the balance back to 10 (negative accrual-class row)', async () => {
+    const { id, employmentId } = await joinerFractional();
+    const res = await updateLeavePolicy(adminCtx(b), {
+      id, annualDays: 16.44, roundingMethod: 'down', validFrom: '2026-01-01', asOf: ASOF,
+    });
+    expect(res).toEqual({ affected: 1, totalDelta: -0.96 });
+    expect(await annualBalance(employmentId)).toBe(10);
+    expect(await accruedOf(employmentId)).toBe(10);
+    const rows = await recalcRows(employmentId);
+    expect(rows.length).toBe(1);
+    expect(rows[0].entryType).toBe('accrual');
+    expect(Number(rows[0].days)).toBe(-0.96);
+  });
+
+  it('(d) re-saving the identical rounding posts nothing (idempotent — accrual-class read back into `already`)', async () => {
+    const { id, employmentId } = await joinerFractional();
+    await updateLeavePolicy(adminCtx(b), { id, annualDays: 16.44, roundingMethod: 'up', validFrom: '2026-01-01', asOf: ASOF });
+    const again = await updateLeavePolicy(adminCtx(b), { id, annualDays: 16.44, roundingMethod: 'up', validFrom: '2026-01-01', asOf: ASOF });
+    expect(again).toEqual({ affected: 0, totalDelta: 0 });
+    expect(await annualBalance(employmentId)).toBe(11);
+    expect((await recalcRows(employmentId)).length).toBe(1); // one row, not two
+  });
+
+  it('(e) turning rounding OFF (up ⇒ none) restores the exact fraction (symmetric)', async () => {
+    const { id, employmentId } = await joinerFractional();
+    await updateLeavePolicy(adminCtx(b), { id, annualDays: 16.44, roundingMethod: 'up', validFrom: '2026-01-01', asOf: ASOF });
+    expect(await annualBalance(employmentId)).toBe(11);
+    const off = await updateLeavePolicy(adminCtx(b), { id, annualDays: 16.44, roundingMethod: 'none', validFrom: '2026-01-01', asOf: ASOF });
+    expect(off).toEqual({ affected: 1, totalDelta: -0.04 });
+    expect(await annualBalance(employmentId)).toBe(10.96);
+    expect(await accruedOf(employmentId)).toBe(10.96);
+  });
+
+  it('(f) earned follow-on: the next accrual advances by the real amount only — no double-count of the correction', async () => {
+    // 21.92 / 12 = 1.826667 per month; 6 periods ⇒ 10.96 raw with rounding unset.
+    const { id } = await policy(21.92, { method: 'earned_monthly' });
+    const emp = await hireIn(b.companyId, b.deptA); // 1 Jan hire, earned ⇒ no hire lump
+    await accrueEarnedLeave(adminCtx(b), { asOf: '2026-06-30' });
+    expect(await annualBalance(emp.employmentId)).toBe(10.96);
+
+    const res = await updateLeavePolicy(adminCtx(b), {
+      id, annualDays: 21.92, method: 'earned_monthly', roundingMethod: 'up', validFrom: '2026-01-01', asOf: '2026-06-30',
+    });
+    expect(res).toEqual({ affected: 1, totalDelta: 0.04 });
+    expect(await annualBalance(emp.employmentId)).toBe(11);
+
+    // 7 periods raw = 12.79 ⇒ up ⇒ 13; `already` = 11 (10.96 accrual + 0.04 accrual-class correction), so
+    // the top-up is exactly +2. Were the correction not counted, `already` would be 10.96 ⇒ balance 13.04.
+    await accrueEarnedLeave(adminCtx(b), { asOf: '2026-07-31' });
+    expect(await annualBalance(emp.employmentId)).toBe(13);
+  });
+
+  it('(g) a2c parity: a first-year a2c employee rounds via the accrual-class a2c delegation', async () => {
+    const A2C_ASOF = '2026-07-23'; // 199 days worked from 6 Jan ⇒ 20/365×199 = 10.90 raw
+    await updateLeaveType(adminCtx(b), { id: b.annualLeaveTypeId, name: 'Annual Leave', yearCycleOverride: 'a2c', asOf: A2C_ASOF });
+    const { id } = await policy(20);
+    const emp = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'A2C', primaryEmail: uniqEmail() },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-06',
+      grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL', yearCycleOverride: 'a2c' }],
+    });
+
+    const res = await updateLeavePolicy(adminCtx(b), {
+      id, annualDays: 20, roundingMethod: 'up', validFrom: '2026-01-01', asOf: A2C_ASOF,
+    });
+    expect(res.affected).toBe(1);
+    // Delegated to reprojectA2cEntitlement (accrual-class), so YTD Entitled rounds UP to 11 — consistent
+    // with the ordinary-employee path above.
+    expect(await accruedOf(emp.employmentId)).toBe(11);
+    expect(await annualBalance(emp.employmentId)).toBe(11);
+  });
+
+  it('(h) regression: a change to BOTH days and rounding is NOT rounding-only ⇒ stays adjustment-class', async () => {
+    const { id } = await policy(12); // integer ⇒ no fraction
+    const emp = await hireIn(b.companyId, b.deptA); // balance 12
+    const res = await updateLeavePolicy(adminCtx(b), {
+      id, annualDays: 15, roundingMethod: 'up', validFrom: '2026-01-01', asOf: ASOF,
+    });
+    expect(res).toEqual({ affected: 1, totalDelta: 3 }); // ceil(15) = 15 ⇒ +3; the rounding is a no-op on 15
+    const rows = await recalcRows(emp.employmentId);
+    expect(rows.length).toBe(1);
+    expect(rows[0].entryType).toBe('adjustment'); // days moved too ⇒ roundingOnlyChange is false
+    const view = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, b.annualLeaveTypeId, '2026-12-31');
+    expect(view?.currentYearEntitlement).toBe(12); // original accrual only
+    expect(view?.otherAdjustments).toBe(3); // the days delta stays a separate adjustment (unchanged behaviour)
   });
 });

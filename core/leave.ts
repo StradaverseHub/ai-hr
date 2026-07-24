@@ -6095,27 +6095,45 @@ export async function reprojectEntitlementForPolicy(
 ): Promise<{ affected: number; totalDelta: number }> {
   const none = { affected: 0, totalDelta: 0 };
 
-  // 1. Recalculate only when the correction moves ENTITLEMENT (days / method / bands) or the policy's
-  //    scope. Carry-forward-only edits (cap, expiry, toggles) never changed what was granted — skip.
+  // 1. Recalculate only when the correction moves ENTITLEMENT (days / method / bands / rounding) or the
+  //    policy's scope. Carry-forward-only edits (cap, expiry, toggles) never changed what was granted — skip.
   //    Method is normalized the way the writers persist it (absent ⇒ the lump-sum default). Bands are
   //    canonical by construction (validated contiguous-ascending), so a JSON compare is stable.
-  //    FORWARD-ONLY (feedback b81d3c52) — `roundingMethod` is DELIBERATELY ABSENT from this comparison.
-  //    Flipping the Rounding Method dropdown must NOT immediately re-credit every live balance; balances
-  //    settle onto the tidied figure at their next natural grant / top-up / year reset. (The projection
-  //    above still rounds, so when a days/method change DOES trigger a reproject no spurious rounding
-  //    delta appears.) A one-time retroactive re-credit is an explicit follow-up — do not add it here.
+  //    ROUNDING RE-CREDIT (this ticket, reversing the b81d3c52 forward-only decision) — `roundingMethod` is
+  //    NOW part of this comparison: flipping the Rounding Method dropdown immediately re-figures every
+  //    already-granted balance to the tidied whole-day value, so the configured rule matches the displayed
+  //    entitlement without waiting for the next natural grant / top-up / year reset. `rounding` is normalized
+  //    the way the writer persists it (roundingAccrual, core/admin.ts) — 'up'/'down' pass through, anything
+  //    else (incl. absent) collapses to 'none', so a no-rounding vs absent row is NOT a false-positive change.
+  //    The effective-date guards below (validFrom > asOf, closed historical version) STILL protect frozen
+  //    prior years — a rounding flip only ever touches the CURRENT open cycle.
   const norm = (a: AccrualConfig | null) => ({
     annualDays: Number(a?.annualDays ?? 0),
     method: a?.method || 'grant_on_hire_prorated',
     bands: JSON.stringify(a?.serviceBands ?? null),
+    rounding: a?.roundingMethod === 'up' || a?.roundingMethod === 'down' ? a.roundingMethod : 'none',
   });
   const nb = norm(p.before);
   const na = norm(p.after);
   const entitlementChanged =
-    nb.annualDays !== na.annualDays || nb.method !== na.method || nb.bands !== na.bands;
+    nb.annualDays !== na.annualDays ||
+    nb.method !== na.method ||
+    nb.bands !== na.bands ||
+    nb.rounding !== na.rounding;
   const scopeChanged =
     p.beforeScope.gradeId !== p.afterScope.gradeId || p.beforeScope.companyId !== p.afterScope.companyId;
   if (!entitlementChanged && !scopeChanged) return none;
+  // A rounding-ONLY change (nothing else moved) posts its compensating row ACCRUAL-class instead of the
+  // usual `adjustment` (see the insert below): the tidied whole-day value must land ON the earned/entitled
+  // figure itself (leaveBalances.accrued / breakdown.cycleAccrual sum accrual-class only), matching the
+  // a2c precedent — not sit beside a raw figure as a separate correction. Days/method/bands/scope edits
+  // keep `adjustment` (byte-identical to every existing 49809272 recalc test).
+  const roundingOnlyChange =
+    nb.rounding !== na.rounding &&
+    nb.annualDays === na.annualDays &&
+    nb.method === na.method &&
+    nb.bands === na.bands &&
+    !scopeChanged;
 
   // 2. Only a version ACTIVE at asOf can have driven this cycle's materialized grants. A forward-dated
   //    version (validFrom > asOf) applies from its own date per effective-date logic; a closed historical
@@ -6285,16 +6303,19 @@ export async function reprojectEntitlementForPolicy(
     const delta = round2(expected - alreadyPosted);
     if (delta === 0) continue;
 
-    // Append-only ledger: the compensating row is a signed `adjustment` (the sanctioned ± channel the
-    // breakdown surfaces separately). A negative delta CAN push the balance below days already taken —
-    // a real over-granted situation, surfaced honestly rather than hidden.
+    // Append-only ledger: the compensating row is signed. A rounding-only change posts it ACCRUAL-class so
+    // the tidied whole-day value lands ON the earned/entitled figure (leaveBalances.accrued /
+    // breakdown.cycleAccrual sum accrual-class only — the a2c precedent); every other correction stays an
+    // `adjustment` (the sanctioned ± channel the breakdown surfaces separately). Either class is read back
+    // into `alreadyPosted` next run (idempotent). A negative delta CAN push the balance below days already
+    // taken — a real over-granted situation (incl. downward rounding), surfaced honestly rather than hidden.
     const [row] = await tx
       .insert(leaveLedger)
       .values({
         tenantId: ctx.tenantId,
         employmentId: e.employmentId,
         leaveTypeId: p.leaveTypeId,
-        entryType: 'adjustment',
+        entryType: roundingOnlyChange ? 'accrual' : 'adjustment',
         days: delta.toFixed(2),
         effectiveOn: p.asOf,
         reason: `${POLICY_RECALC_REASON_PREFIX}:${p.policyId}`,

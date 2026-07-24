@@ -443,16 +443,19 @@ const carryFlagField = (fd: FormData, name: string): boolean | undefined =>
   fd.get('carryBlockRendered') == null ? undefined : fd.get(name) === 'on';
 
 /**
- * Feedback b81d3c52 — Rounding Method (Entitlements → leave type → General → Earning Method). Normalizes
- * the posted value to the two REAL methods; 'none', an absent field and any unrecognised string all map to
- * `undefined`, which the service reads as "omit the key" so a No-Rounding policy stores nothing new (and a
- * form that does not render/re-post the field cannot poison the JSONB with a bogus value). Every form that
- * posts a policy re-posts this — the Earning Method select itself, and a hidden input on the Carry Forward
- * front door + the Eligibility inline edit form — because the writers rebuild `accrual` wholesale.
+ * Feedback b81d3c52 — Rounding Method (Entitlements → leave type → General → Earning Method). TRI-STATE
+ * (this ticket), mirroring `serviceBandsField` exactly, so the Rounding Method REMEMBERS itself on its own
+ * instead of riding a hidden input on every unrelated form (the footgun the codebase itself flagged):
+ *  - marker `roundingMethodRendered` ABSENT ⇒ `undefined` = PRESERVE (the form did not render the Rounding
+ *    dropdown — Carry Forward / Eligibility inline edit — so the writer keeps the stored value);
+ *  - marker present + 'up' / 'down' ⇒ that value = SET;
+ *  - marker present + anything else (incl. 'none') ⇒ `null` = explicit CLEAR (omit the key).
+ * Only the forms that actually render the dropdown (Earning Method, the multi-scope add form) post the marker.
  */
-const roundingMethodField = (fd: FormData): string | undefined => {
+const roundingMethodField = (fd: FormData): 'up' | 'down' | null | undefined => {
+  if (fd.get('roundingMethodRendered') == null) return undefined;
   const v = String(fd.get('roundingMethod') ?? '');
-  return v === 'up' || v === 'down' ? v : undefined;
+  return v === 'up' || v === 'down' ? v : null;
 };
 
 /**

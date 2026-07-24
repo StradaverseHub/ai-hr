@@ -20,18 +20,21 @@
  *  (3) the joiner hire grant rounds, and leaveEntitlementBreakdown (ledger-derived) shows the rounded figure;
  *  (4) earned accrual rounds the CUMULATIVE every period — up builds in whole days, down floors a small
  *      early cumulative to 0 (no row) and then builds;
- *  (5) FORWARD-ONLY: a rounding-only in-place edit posts NO adjustment, and switching to Round Down
- *      mid-cycle never claws back what is already credited (the `toGrant > 0` guard);
+ *  (5) RECALC ON ROUNDING CHANGE (this ticket, reversing the b81d3c52 forward-only decision): a rounding-only
+ *      in-place edit re-figures already-granted balances immediately via an ACCRUAL-class row (so the tidied
+ *      value lands ON the entitlement figure), turning rounding off restores the raw figure, and downward
+ *      rounding DOES claw back already-credited days (the plan's documented caveat) — signed, surfaced honestly;
  *  (6) LEDGER AGREEMENT: with rounding on, a later days-change reproject posts only the intended delta
  *      (the projection rounds too, so no permanent oscillating rounding delta appears);
  *  (7) back-compat: an absent roundingMethod behaves exactly as before this feature existed;
- *  (8) static-source guard for the three forms that post the policy (the repo's DOM-runner-less convention).
+ *  (8) static-source guard: the dropdown-rendering forms (Earning Method + the multi-scope add form) post the
+ *      tri-state marker; the others (Carry Forward, Eligibility) post no marker so the writer preserves it.
  *
  * The persistence round-trip through the server actions lives in leave-rounding-persistence.test.ts
  * (it needs the action-layer module mocks); i18n parity for the five new keys is appended to the
  * hardcoded key array in leave-type-general-substeps.test.ts.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq, like } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
@@ -40,7 +43,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { createLeavePolicy, updateLeavePolicy } from '../core/admin';
-import { accrueEarnedLeave, openLeaveYear, projectExpectedEntitlement } from '../core/leave';
+import { accrueEarnedLeave, openLeaveYear, projectExpectedEntitlement, POLICY_RECALC_REASON_PREFIX } from '../core/leave';
 import {
   applyRounding,
   previewEntitlement,
@@ -75,6 +78,18 @@ const policy = (p: { annualDays: number; roundingMethod?: string; method?: strin
     roundingMethod: p.roundingMethod,
     validFrom: p.validFrom ?? '2026-01-01',
   });
+
+/** All policy-recalc rows for one employment (owner read — bypasses RLS for assertions). */
+const recalcRows = (employmentId: string) =>
+  owner.db
+    .select({ days: schema.leaveLedger.days, entryType: schema.leaveLedger.entryType, effectiveOn: schema.leaveLedger.effectiveOn })
+    .from(schema.leaveLedger)
+    .where(
+      and(
+        eq(schema.leaveLedger.employmentId, employmentId),
+        like(schema.leaveLedger.reason, `${POLICY_RECALC_REASON_PREFIX}:%`),
+      ),
+    );
 
 /** The stored `accrual` JSONB (owner read — bypasses RLS for assertions). */
 const readAccrual = async (policyId: string): Promise<Record<string, unknown>> => {
@@ -328,14 +343,16 @@ describe('b81d3c52 · accrueEarnedLeave — the cumulative is rounded every peri
 });
 
 // ── (5) Forward-only ──────────────────────────────────────────────────────────────────────────────────
-describe('b81d3c52 · FORWARD-ONLY — no retroactive re-credit, no mid-cycle clawback', () => {
-  it('a rounding-only in-place edit posts NO compensating adjustment', async () => {
+describe('b81d3c52 · RECALC ON ROUNDING CHANGE — the configured rule reaches already-earned balances', () => {
+  it('a rounding-only in-place edit re-figures already-granted balances via an ACCRUAL-class row', async () => {
     const created = await policy({ annualDays: 12.4 });
     const emp = await hire('2026-01-01');
     expect(await balance(emp.employmentId)).toBe(12.4);
 
-    // Flipping the dropdown must not re-credit every live balance — that is an unrequested product
-    // behaviour and an explicit follow-up. The balance settles at the next natural grant / year reset.
+    // REVERSING the b81d3c52 forward-only decision (this ticket): flipping the dropdown NOW re-figures every
+    // already-earned balance to the rounded value straight away — no manual regeneration. The correction is
+    // ACCRUAL-class, so it lands ON the entitlement figure (leaveBalances.accrued / breakdown.cycleAccrual),
+    // not beside it as a separate adjustment.
     const res = await updateLeavePolicy(adminCtx(b), {
       id: created.id,
       annualDays: 12.4,
@@ -343,21 +360,41 @@ describe('b81d3c52 · FORWARD-ONLY — no retroactive re-credit, no mid-cycle cl
       validFrom: '2026-01-01',
       asOf: '2026-06-30',
     });
-    expect(res).toEqual({ affected: 0, totalDelta: 0 });
-    expect(await balance(emp.employmentId)).toBe(12.4);
+    expect(res).toEqual({ affected: 1, totalDelta: 0.6 });
+    expect(await balance(emp.employmentId)).toBe(13); // ceil(12.4)
     expect(await readAccrual(created.id)).toMatchObject({ roundingMethod: 'up' });
 
-    // …and it DOES shape the next natural grant: the 2027 year-open credits a whole day.
-    await openLeaveYear(adminCtx(b), { year: 2027 });
-    expect(await balance(emp.employmentId)).toBe(13);
+    const rows = await recalcRows(emp.employmentId);
+    expect(rows.length).toBe(1);
+    expect(rows[0].entryType).toBe('accrual'); // NOT adjustment — the a2c precedent
+    expect(Number(rows[0].days)).toBe(0.6);
+
+    // The breakdown's entitlement line itself reads the rounded figure (accrual-class ⇒ cycleAccrual).
+    const bd = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, b.annualLeaveTypeId, '2026-12-31');
+    expect(bd!.currentYearEntitlement).toBe(13);
+    expect(bd!.otherAdjustments).toBe(0); // the correction is NOT a separate adjustment beside the figure
+
+    // Idempotent: an identical re-save computes delta 0 and posts no second row.
+    const again = await updateLeavePolicy(adminCtx(b), {
+      id: created.id,
+      annualDays: 12.4,
+      roundingMethod: 'up',
+      validFrom: '2026-01-01',
+      asOf: '2026-06-30',
+    });
+    expect(again).toEqual({ affected: 0, totalDelta: 0 });
+    expect((await recalcRows(emp.employmentId)).length).toBe(1);
   });
 
-  it('switching to Round Down mid-cycle never claws back an already-credited earned balance', async () => {
+  it('DOWNWARD-ROUNDING CLAWBACK (the plan caveat): switching to Round Down re-figures the earned balance DOWN', async () => {
     const created = await policy({ annualDays: 14, method: 'earned_monthly', roundingMethod: 'up' });
     const emp = await hire('2026-01-01');
     await accrueEarnedLeave(adminCtx(b), { asOf: '2026-03-15' }); // 3.5 ⇒ up ⇒ 4
     expect(await balance(emp.employmentId)).toBe(4);
 
+    // The single change-gate cannot enable up-only: turning rounding DOWN re-figures already-credited days
+    // to the floored value (3.5 ⇒ 3). This is deliberate and matches the reporter's request (surfaced under
+    // GOOD TO KNOW). The correction is a signed ACCRUAL-class row (−1), so the entitlement line drops too.
     const res = await updateLeavePolicy(adminCtx(b), {
       id: created.id,
       annualDays: 14,
@@ -366,17 +403,38 @@ describe('b81d3c52 · FORWARD-ONLY — no retroactive re-credit, no mid-cycle cl
       validFrom: '2026-01-01',
       asOf: '2026-03-15',
     });
-    expect(res).toEqual({ affected: 0, totalDelta: 0 }); // the save-time kernel does not reproject either
-    expect(await balance(emp.employmentId)).toBe(4);
+    expect(res).toEqual({ affected: 1, totalDelta: -1 });
+    expect(await balance(emp.employmentId)).toBe(3);
+    const rows = await recalcRows(emp.employmentId);
+    expect(rows.length).toBe(1);
+    expect(rows[0].entryType).toBe('accrual');
+    expect(Number(rows[0].days)).toBe(-1);
 
-    // Re-running the cron at the SAME date would now compute a cumulative of 3 (3.5 floored) — one day
-    // BELOW what is already credited. The `toGrant > 0` guard means no negative row is ever posted.
+    // The cron re-run at the SAME date double-counts nothing: its `already` sum sees the accrual-class
+    // correction, so cumulative 3 − already 3 = 0 (the correction is not re-granted).
     await accrueEarnedLeave(adminCtx(b), { asOf: '2026-03-15' });
-    expect(await balance(emp.employmentId)).toBe(4);
+    expect(await balance(emp.employmentId)).toBe(3);
 
-    // Only FORWARD periods accrue less: at 5 months the floored cumulative is 5, so a +1 top-up lands.
+    // Only FORWARD periods accrue: at 5 months the floored cumulative is 5, so a +2 top-up lands over 3.
     await accrueEarnedLeave(adminCtx(b), { asOf: '2026-05-15' }); // 5.83 ⇒ 5
     expect(await balance(emp.employmentId)).toBe(5);
+  });
+
+  it('turning rounding OFF (up ⇒ none) restores the exact earned figure (symmetric)', async () => {
+    const created = await policy({ annualDays: 12.4 });
+    const emp = await hire('2026-01-01');
+    await updateLeavePolicy(adminCtx(b), {
+      id: created.id, annualDays: 12.4, roundingMethod: 'up', validFrom: '2026-01-01', asOf: '2026-06-30',
+    });
+    expect(await balance(emp.employmentId)).toBe(13);
+
+    // No marker vs 'none' clear are both a rounding change up ⇒ none; the reproject restores the raw 12.4.
+    const off = await updateLeavePolicy(adminCtx(b), {
+      id: created.id, annualDays: 12.4, roundingMethod: 'none', validFrom: '2026-01-01', asOf: '2026-06-30',
+    });
+    expect(off).toEqual({ affected: 1, totalDelta: -0.6 });
+    expect(await balance(emp.employmentId)).toBe(12.4);
+    expect('roundingMethod' in (await readAccrual(created.id))).toBe(false);
   });
 });
 
@@ -480,12 +538,12 @@ describe('b81d3c52 · storage — a No-Rounding policy stores NOTHING new', () =
 });
 
 // ── (8) Static source guard ───────────────────────────────────────────────────────────────────────────
-describe('b81d3c52 · UI source guard — the select lives under Earning Method, every other writer re-posts it', () => {
+describe('b81d3c52 · UI source guard — the dropdown-rendering forms post the tri-state marker; the others preserve', () => {
   const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
   const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
   const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
 
-  it('EarningMethodForm renders the Rounding Method select with all three options', () => {
+  it('EarningMethodForm renders the Rounding Method select AND posts the tri-state marker', () => {
     const form = panelSrc.slice(panelSrc.indexOf('function EarningMethodForm'), panelSrc.indexOf('function CarryPolicyForm'));
     expect(form).toContain("name=\"roundingMethod\"");
     expect(form).toContain("t('subStep.roundingMethodLabel')");
@@ -494,19 +552,30 @@ describe('b81d3c52 · UI source guard — the select lives under Earning Method,
     expect(form).toContain("t('subStep.roundingDown')");
     expect(form).toContain("t('subStep.roundingHelp')");
     expect(form).toContain('defaultValue={roundingMethodValue(p.roundingMethod)}');
+    // renders the dropdown ⇒ posts the marker so 'none' CLEARS and up/down SET.
+    expect(form).toContain('name="roundingMethodRendered"');
   });
 
-  it('CarryPolicyForm re-posts the stored value as a hidden input (JSONB-rebuild safety)', () => {
+  it('CarryPolicyForm posts NO marker and NO hidden roundingMethod input — the writer preserves it', () => {
     const form = panelSrc.slice(panelSrc.indexOf('function CarryPolicyForm'));
     const body = form.slice(0, form.indexOf('</form>'));
-    expect(body).toContain('<input type="hidden" name="roundingMethod" value={roundingMethodValue(p.roundingMethod)} />');
+    // tri-state (this ticket): the fragile hidden pass-through input is gone; absent marker ⇒ preserve.
+    expect(body).not.toContain('name="roundingMethod"');
+    expect(body).not.toContain('name="roundingMethodRendered"');
   });
 
-  it('the Eligibility inline EDIT form re-posts it too', () => {
+  it('the Eligibility inline EDIT form posts NO marker and NO hidden roundingMethod input either', () => {
     const edit = panelSrc.slice(panelSrc.indexOf("action={updatePolicyAction}"));
     const body = edit.slice(0, edit.indexOf('</form>'));
+    expect(body).not.toContain('name="roundingMethod"');
+    expect(body).not.toContain('name="roundingMethodRendered"');
+  });
+
+  it('the multi-scope ADD form renders the dropdown and posts the marker', () => {
+    const add = panelSrc.slice(panelSrc.indexOf('action={createPolicyAction}'));
+    const body = add.slice(0, add.indexOf('</form>'));
     expect(body).toContain('name="roundingMethod"');
-    expect(body).toContain('roundingMethodValue(p.roundingMethod)');
+    expect(body).toContain('name="roundingMethodRendered"');
   });
 
   it('the Entitlements page populates roundingMethod onto the panel policy', () => {

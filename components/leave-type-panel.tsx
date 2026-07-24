@@ -443,8 +443,11 @@ function EarningMethodForm({
       <p className="text-xs text-muted-foreground">{t('subStep.earningMappingHelp')}</p>
       {/* Feedback b81d3c52 — Rounding Method sits directly UNDER Earning Method (its requested home) and
           rides the same policy row: it tidies whatever the earning calculation produces, as the final
-          step, without changing the calculation itself. `roundingMethodValue` maps absent ⇒ 'none', and
-          the action normalizes 'none' back to "store nothing". */}
+          step, without changing the calculation itself. `roundingMethodValue` maps absent ⇒ 'none'. This
+          form RENDERS the dropdown, so it posts the tri-state marker (roundingMethodRendered): the action
+          then reads 'none' as an explicit CLEAR and 'up'/'down' as SET. Forms that do NOT render the
+          dropdown omit the marker and the stored value is preserved — no hidden pass-through input needed. */}
+      <input type="hidden" name="roundingMethodRendered" value="1" />
       <Field label={t('subStep.roundingMethodLabel')}>
         <select
           name="roundingMethod"
@@ -489,10 +492,9 @@ function CarryPolicyForm({
       <FrontDoorIdentityFields p={p} leaveTypeId={leaveTypeId} />
       {/* preserve the method — this front door only edits carry */}
       <input type="hidden" name="method" value={methodValue(p.method)} />
-      {/* b81d3c52 front-door preservation (the FrontDoorPreservedCarry precedent, mirrored): the writers
-          rebuild `accrual` wholesale, so a form that does not re-post the stored Rounding Method would
-          silently clear it. This front door only edits carry — re-post rounding untouched. */}
-      <input type="hidden" name="roundingMethod" value={roundingMethodValue(p.roundingMethod)} />
+      {/* b81d3c52 (tri-state, this ticket): the Rounding Method now remembers itself. This front door does
+          NOT render the Rounding dropdown, so it posts NO `roundingMethodRendered` marker — the writer
+          preserves the stored value. The former hidden `roundingMethod` pass-through input is gone. */}
       <input type="hidden" name="carryBlockRendered" value="1" />
       {carryOn && <input type="hidden" name="carryForwardEnabled" value="on" />}
       {!!p.carryForwardIncludeEarned && <input type="hidden" name="carryForwardIncludeEarned" value="on" />}
@@ -1817,10 +1819,10 @@ export function LeaveTypePanel({
                   {/* Feedback 49809272: editing IN PLACE recalculates affected employees' current-cycle
                       balances automatically — tell the admin before they save. */}
                   <p className="w-full text-[11px] text-muted-foreground">{t('recalcInPlaceHint')}</p>
-                  {/* b81d3c52: the Rounding Method's home is the Earning Method front door, but THIS form
-                      posts the same action and the writers rebuild `accrual` wholesale — re-post the
-                      stored value untouched or an Eligibility edit would silently clear it. */}
-                  <input type="hidden" name="roundingMethod" value={roundingMethodValue(p.roundingMethod)} />
+                  {/* b81d3c52 (tri-state, this ticket): the Rounding Method's home is the Earning Method
+                      front door. THIS form does not render the Rounding dropdown, so it posts NO
+                      `roundingMethodRendered` marker and the writer preserves the stored value — the former
+                      hidden pass-through input is gone (removing the coupling flagged as a footgun). */}
                   <Field label={t('daysPerYearLabel')}>
                     <input
                       name="annualDays"
@@ -2069,6 +2071,17 @@ export function LeaveTypePanel({
               )}
               <Field label={t('effectiveFromLabel')}>
                 <input name="validFrom" type="date" required defaultValue={`${thisYear}-01-01`} className={inputCls} />
+              </Field>
+              {/* Feedback b81d3c52 (tri-state, this ticket) — the add form RENDERS the Rounding dropdown, so
+                  it posts the `roundingMethodRendered` marker: on create 'up'/'down' set the new row's value
+                  and 'none' omits the key (nothing to preserve on create). Defaults to No-Rounding. */}
+              <input type="hidden" name="roundingMethodRendered" value="1" />
+              <Field label={t('subStep.roundingMethodLabel')}>
+                <select name="roundingMethod" defaultValue="none" aria-label={t('subStep.roundingMethodLabel')} className={`${inputCls} w-40`}>
+                  <option value="none">{t('subStep.roundingNone')}</option>
+                  <option value="up">{t('subStep.roundingUp')}</option>
+                  <option value="down">{t('subStep.roundingDown')}</option>
+                </select>
               </Field>
               {/* Feedback eee43966 — no earning-method select on the add-a-dated-entitlement form either.
                   This one WAS the reporter's bug: it defaulted to lump sum, and saving superseded the

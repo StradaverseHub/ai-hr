@@ -738,13 +738,23 @@ function carryFlagsAccrual(
 }
 
 /**
- * Feedback b81d3c52 — Rounding Method persistence, under the SAME JSONB-rebuild rule as carryFlagsAccrual:
- * `accrual` is rebuilt wholesale on every save, so a key the caller did not supply is dropped. Only the two
- * REAL methods are persisted — 'none' / absent / anything unrecognised OMITS the key entirely, so a
- * No-Rounding policy stays byte-identical to a row written before this feature existed (and a re-save of an
- * untouched row adds nothing). The resolvers read an absent key as 'none'.
+ * Feedback b81d3c52 — Rounding Method persistence, generalised to the SAME tri-state the bands use
+ * (serviceBandsAccrual), under the JSONB-rebuild rule: `accrual` is rebuilt wholesale on every save, so a
+ * key the caller did not supply is dropped. The Rounding Method now REMEMBERS itself on its own instead of
+ * riding a hidden input on every unrelated form:
+ *  - `undefined` (the form did not render the Rounding dropdown / posted no marker) ⇒ PRESERVE the current
+ *    stored value (only meaningful on update — the caller passes it as `preserve`; create passes undefined
+ *    so absent means "nothing", byte-identical to before this ticket).
+ *  - `null` (the dropdown WAS rendered and 'none'/anything unrecognised was chosen) ⇒ CLEAR (omit the key),
+ *    so a No-Rounding policy stays byte-identical to a row written before this feature existed.
+ *  - 'up' / 'down' ⇒ SET. The resolvers read an absent key as 'none'.
  */
-function roundingAccrual(method?: string): { roundingMethod?: LeaveRoundingMethod } {
+function roundingAccrual(
+  method: string | null | undefined,
+  preserve: LeaveRoundingMethod | undefined,
+): { roundingMethod?: LeaveRoundingMethod } {
+  if (method === undefined) return preserve ? { roundingMethod: preserve } : {};
+  if (method === null) return {};
   return method === 'up' || method === 'down' ? { roundingMethod: method } : {};
 }
 
@@ -846,9 +856,10 @@ export async function createLeavePolicy(
      *  no bands (flat annualDays only). A non-empty array is validated (contiguous, first-from-0,
      *  last-open-ended, max 10). */
     serviceBands?: ServiceBand[] | null;
-    /** Feedback b81d3c52 — Rounding Method for this policy's calculated entitlement. Only 'up' / 'down'
-     *  are persisted; 'none' / undefined omit the key entirely (see `roundingAccrual`). */
-    roundingMethod?: string;
+    /** Feedback b81d3c52 — Rounding Method for this policy's calculated entitlement. 'up' / 'down' persist;
+     *  `null`/`undefined`/anything unrecognised omit the key (on create there is nothing to preserve, so
+     *  both `null` (No-Rounding chosen) and `undefined` (no dropdown) behave identically — see `roundingAccrual`). */
+    roundingMethod?: string | null;
     validFrom: string;
   },
 ) {
@@ -919,7 +930,9 @@ export async function createLeavePolicy(
           ...expiry,
           ...carryFlags,
           ...bandsAccrual,
-          ...roundingAccrual(p.roundingMethod),
+          // create has no prior row to preserve — `undefined` (no dropdown) and `null` (No-Rounding chosen)
+          // both omit the key; only 'up'/'down' set it. Byte-identical to pre-tri-state behaviour.
+          ...roundingAccrual(p.roundingMethod, undefined),
         },
         validFrom: p.validFrom,
         validTo: null,
@@ -991,10 +1004,11 @@ export async function updateLeavePolicy(
      *  through a form without the band editor never touches them); null/[] = clear; array = replace
      *  (validated). */
     serviceBands?: ServiceBand[] | null;
-    /** Feedback b81d3c52 — Rounding Method. Only 'up' / 'down' persist; anything else omits the key. Every
-     *  writer rebuilds `accrual` wholesale, so EVERY form that posts this action must re-post the stored
-     *  value (the front doors do so with a hidden input) or a save would silently clear it. */
-    roundingMethod?: string;
+    /** Feedback b81d3c52 (tri-state, this ticket) — Rounding Method. `undefined` = PRESERVE the stored value
+     *  (a form that did not render the Rounding dropdown posts no marker → the writer keeps what is there,
+     *  so the fragile per-form hidden input is gone); `null` = CLEAR (dropdown rendered, No-Rounding chosen);
+     *  'up' / 'down' = SET. Reprojects already-granted balances when it changes (see reprojectEntitlementForPolicy). */
+    roundingMethod?: string | null;
     validFrom: string;
     /** Feedback 49809272: tenant-local (MYT) "today" anchoring the recalculation's current cycle. The
      *  action layer computes and passes it (tests pass fixed dates); defaults to todayInKualaLumpur()
@@ -1041,6 +1055,11 @@ export async function updateLeavePolicy(
     // method to the lump-sum default. Read from the row (not a client-side hidden field) so a method
     // changed under General after the panel rendered can never be clobbered by a stale value.
     const currentMethod = (current.accrual as { method?: string } | null)?.method;
+    // Feedback b81d3c52 (tri-state, this ticket) — PRESERVE the stored Rounding Method the same way, read
+    // from the row (not a client-side hidden field) so a form that does not render the Rounding dropdown
+    // (Carry Forward / Eligibility) posts no marker and the writer keeps what is there. `undefined` =
+    // preserve this; `null` = the dropdown WAS shown and No-Rounding was chosen ⇒ clear; 'up'/'down' = set.
+    const currentRounding = (current.accrual as { roundingMethod?: LeaveRoundingMethod } | null)?.roundingMethod;
     const companyId = p.companyId ?? null;
     const gradeId = p.gradeId ?? null;
 
@@ -1071,7 +1090,7 @@ export async function updateLeavePolicy(
       ...expiry,
       ...carryFlags,
       ...bandsAccrual,
-      ...roundingAccrual(p.roundingMethod),
+      ...roundingAccrual(p.roundingMethod, currentRounding),
     };
     await tx
       .update(leavePolicy)
