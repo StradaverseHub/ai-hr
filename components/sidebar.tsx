@@ -34,6 +34,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ApprovalCountBadge } from '@/components/approval-count-badge';
 import {
   NavFlyout,
   NavFlyoutPanel,
@@ -233,11 +234,16 @@ const GROUPS: Group[] = [
 export function Sidebar({
   isAdmin,
   canApprove = false,
+  approvalCount = 0,
   defaultCollapsed,
 }: {
   isAdmin: boolean;
   /** Manager-and-up: shows the Approvals inbox. */
   canApprove?: boolean;
+  /** Pending items awaiting THIS viewer's decision (feedback 836118c4) — badge on the
+   *  "Approval Items" row. Computed once in app/layout.tsx as listPendingTasks(...).length; the rail
+   *  never queries. 0 (or a viewer without the row) renders no badge. */
+  approvalCount?: number;
   defaultCollapsed: boolean;
 }) {
   const pathname = usePathname();
@@ -371,17 +377,25 @@ export function Sidebar({
                 const active = isActive(item.href);
                 const Icon = item.icon;
                 const label = t(item.labelKey);
+                // Pending-approval badge (feedback 836118c4). Keyed on the href, like every other
+                // row-specific behaviour in this file — no marker field on the Item type. The count
+                // arrives pre-computed from the layout; a viewer without the row never reaches here.
+                const showApprovalCount = item.href === '/approvals' && approvalCount > 0;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
                     data-tour={item.tour}
                     title={collapsed ? label : undefined}
-                    aria-label={label}
+                    // The badge itself is aria-hidden, so the count reaches screen readers here —
+                    // otherwise the rail would announce "Approval Items" whether 0 or 12 are waiting.
+                    aria-label={showApprovalCount ? `${label}, ${t('approvalsCount', { count: approvalCount })}` : label}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
                       rowBase,
                       collapsed ? 'size-11 justify-center' : 'w-full gap-3 px-3 py-2',
+                      // Anchors the collapsed-rail badge bubble over the icon square.
+                      showApprovalCount && 'relative',
                       active
                         ? 'bg-accent font-medium text-accent-foreground'
                         : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
@@ -392,6 +406,9 @@ export function Sidebar({
                       strokeWidth={2}
                     />
                     {!collapsed && <span className="truncate text-sm">{label}</span>}
+                    {showApprovalCount && (
+                      <ApprovalCountBadge count={approvalCount} collapsed={collapsed} />
+                    )}
                   </Link>
                 );
               })}
