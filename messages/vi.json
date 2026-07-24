@@ -3588,7 +3588,7 @@
         "yearTypeA2c": "Ngày vào làm đến năm dương lịch",
         "yearTypeC2c": "Năm dương lịch đến năm dương lịch",
         "yearTypeHelp": "Các loại chưa chọn sẽ theo chu kỳ nghỉ phép của công ty (thẻ Quy tắc nộp đơn); chọn một giá trị chỉ ghi đè chu kỳ cho loại này.",
-        "pendingEngineNote": "“Ngày vào làm đến năm dương lịch” và “Tích lũy khi thôi việc” được hiển thị nhưng bị vô hiệu hóa — hỗ trợ của bộ máy tính toán sẽ được giao như một hạng mục riêng.",
+        "resignationPendingNote": "“Tích lũy khi thôi việc” được hiển thị nhưng bị vô hiệu hóa — hỗ trợ của bộ máy tính toán sẽ được giao như một hạng mục riêng.",
         "earningMethodLabel": "Phương thức tích lũy",
         "earningNone": "Không (cấp toàn bộ quyền lợi ngay từ đầu)",
         "earningByMonth": "Theo tháng (tích lũy hằng tháng)",

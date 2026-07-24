@@ -29,8 +29,11 @@ import {
   type LeaveEligibility,
   type ProbationEligibility,
   PROBATION_ELIGIBILITY_VALUES,
-  // Leave Year Type override (e1a51aea): the closed { a2a, c2c } live-value set for year_cycle_override.
+  // Leave Year Type override (e1a51aea, extended by f3a64d90): the closed { a2a, c2c, a2c } live-value set
+  // for year_cycle_override, plus the a2c first-year correction fired when the override moves to/from a2c.
   LEAVE_YEAR_CYCLE_OVERRIDES,
+  A2C_OVERRIDE,
+  reprojectA2cEntitlement,
   type LeaveYearCycleOverride,
   type ServiceBand,
 } from './leave';
@@ -2877,11 +2880,16 @@ export async function updateLeaveType(
     // to Anniversary ⇒ the existing anniversary semantics) | 'c2c' (Calendar to Calendar ⇒ the existing
     // calendar semantics) | null (clear ⇒ follow the company cycle, today's behaviour). OWN tri-state
     // (undefined = year_cycle_override column untouched), mirroring leaveUnit — the "Leave Year Type"
-    // sub-step posts `yearCycle=1` so an unrelated save never resets it. The reporter's third option
-    // 'a2c' (Anniversary to Calendar hybrid) is REJECTED with a clear message: the engine has no hybrid-
-    // year calculation semantics yet — it ships as its own item (see the plan's GOOD TO KNOW). Validated
-    // against the closed live set (the DB CHECK from migration 0303 is defence-in-depth).
+    // sub-step posts `yearCycle=1` so an unrelated save never resets it. f3a64d90 added the third live
+    // value 'a2c' (Anniversary to Calendar): its leave YEAR is the calendar year, and in the employee's
+    // HIRE year ANNUAL builds day by day from the join date at (entitlement ÷ 365) × days worked. Saving
+    // a move TO or FROM 'a2c' immediately re-corrects everyone on the type (reprojectA2cEntitlement, same
+    // transaction) — HR never has to touch records one by one. Validated against the closed live set (the
+    // DB CHECK, widened by migration 0310, is defence-in-depth).
     yearCycleOverride?: string | null;
+    /** f3a64d90: tenant-local (MYT) "today" anchoring the a2c day-by-day correction fired on an override
+     *  change. The action layer passes it; tests pass a fixed date. Defaults to todayInKualaLumpur(). */
+    asOf?: string;
     // Leave Type Employee Visibility (feedback 7b11f1c1): two INDEPENDENT tri-state booleans controlling, per
     // leave type, whether an employee sees it on the /me Leave surface and whether they may apply for it. Each
     // is its OWN tri-state (undefined = column untouched), mirroring perDateApproval — the visibility sub-form
@@ -3011,18 +3019,15 @@ export async function updateLeaveType(
   const leaveUnitSet = touchLeaveUnit ? { leaveUnit: p.leaveUnit } : {};
   // Leave Year Type override (e1a51aea): OWN tri-state, mirroring touchLeaveUnit — the "Leave Year Type"
   // sub-step posts `yearCycle=1`, any other save omits yearCycleOverride so year_cycle_override stays
-  // untouched. 'a2c' gets its own explicit rejection (the option renders disabled in the UI, but a hand-
-  // crafted POST must fail loudly, not store a value the engine cannot compute); anything else outside
-  // the closed { a2a, c2c } live set is rejected generically. null clears (⇒ company cycle).
+  // untouched. Anything outside the closed live set is rejected; null clears (⇒ company cycle).
+  // f3a64d90: 'a2c' (Anniversary to Calendar) is now IN that set — its engine semantics shipped with this
+  // item (a2cFirstYearEntitledToDate + reprojectA2cEntitlement), and migration 0310 widened the DB CHECK
+  // to match, so the previous explicit rejection is gone. The membership test below stays the primary
+  // guard; the CHECK is defence-in-depth against a hand-crafted write.
   const touchYearCycle = p.yearCycleOverride !== undefined;
   if (touchYearCycle && p.yearCycleOverride != null) {
-    if (p.yearCycleOverride === 'a2c') {
-      throw new Error(
-        'Anniversary to Calendar is not available yet — engine support for the hybrid leave year ships as its own item.',
-      );
-    }
     if (!(LEAVE_YEAR_CYCLE_OVERRIDES as readonly string[]).includes(p.yearCycleOverride)) {
-      throw new Error('Leave year type must be a2a (Anniversary to Anniversary), c2c (Calendar to Calendar), or the company default.');
+      throw new Error('Leave year type must be a2a (Anniversary to Anniversary), a2c (Anniversary to Calendar), c2c (Calendar to Calendar), or the company default.');
     }
   }
   const yearCycleSet = touchYearCycle
@@ -3397,6 +3402,24 @@ export async function updateLeaveType(
         }
         throw e;
       });
+    // Anniversary to Calendar (f3a64d90) — the BACKFILL. Unlike updateLeavePolicy, this service never
+    // recalculated anything; a Leave Year Type save only rewrote a column, so employees already carrying a
+    // figure computed under the OLD model kept it (the reporter's YTD 7.00 / balance −6.00). The moment the
+    // override moves TO or FROM 'a2c', re-correct every live employee on this type IN THE SAME TRANSACTION:
+    // accrual-class rows so YTD Entitled moves, plus the compensating reversal so Balance/Available agree.
+    // Idempotent, so a re-save of the same value writes nothing. A move AWAY from a2c is a no-op inside the
+    // helper (the type is no longer a2c) — the ordinary calendar engines own it from the next year-open.
+    if (
+      touchYearCycle &&
+      (p.yearCycleOverride ?? null) !== (before?.yearCycleOverride ?? null) &&
+      ((p.yearCycleOverride ?? null) === A2C_OVERRIDE || (before?.yearCycleOverride ?? null) === A2C_OVERRIDE)
+    ) {
+      await reprojectA2cEntitlement(tx, ctx, {
+        leaveTypeId: p.id,
+        asOf: p.asOf ?? todayInKualaLumpur(),
+        trigger: 'year_cycle_override',
+      });
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-type',

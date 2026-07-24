@@ -3588,7 +3588,7 @@
         "yearTypeA2c": "入职周年至日历年",
         "yearTypeC2c": "日历年至日历年",
         "yearTypeHelp": "未作选择的类型将跟随其公司的休假周期（申请规则标签页）；选择一个值仅覆盖此类型的周期。",
-        "pendingEngineNote": "“入职周年至日历年”和“离职时获取”会显示但保持禁用——计算引擎支持将作为独立事项交付。",
+        "resignationPendingNote": "“离职时获取”会显示但保持禁用——计算引擎支持将作为独立事项交付。",
         "earningMethodLabel": "获取方式",
         "earningNone": "无（期初发放全部额度）",
         "earningByMonth": "按月（每月获取）",

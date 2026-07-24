@@ -3588,7 +3588,7 @@
         "yearTypeA2c": "Anniversary to Calendar",
         "yearTypeC2c": "Calendar to Calendar",
         "yearTypeHelp": "Types without a choice follow their company's leave cycle (Application Rules tab); picking a value overrides the cycle for this type only.",
-        "pendingEngineNote": "Anniversary to Calendar and Earn Upon Resignation are shown but stay disabled — the calculation engine support ships as its own item.",
+        "resignationPendingNote": "Earn Upon Resignation is shown but stays disabled — the calculation engine support ships as its own item.",
         "earningMethodLabel": "Earning method",
         "earningNone": "None (full entitlement up front)",
         "earningByMonth": "By Month (earned monthly)",

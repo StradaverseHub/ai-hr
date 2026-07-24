@@ -110,10 +110,15 @@ describe('e1a51aea · Leave Year Type sub-step (per-type cycle override)', () =>
     }
   });
 
-  it('renders Anniversary-to-Calendar DISABLED with the pending-engine note (no hybrid semantics ship here)', () => {
+  // f3a64d90 switched Anniversary-to-Calendar ON (its engine semantics shipped with that item), so the
+  // option is now SELECTABLE and its pending-engine note is gone — the inverse of the e1a51aea assertion.
+  it('renders Anniversary-to-Calendar SELECTABLE with no pending-engine note (f3a64d90)', () => {
     const seg = generalSegment();
-    expect(seg).toMatch(/value="a2c" disabled/);
-    expect(seg).toContain("t('subStep.pendingEngineNote')");
+    expect(seg).not.toMatch(/value="a2c" disabled/);
+    expect(seg).toContain('<option value="a2c">');
+    expect(seg).not.toContain("t('subStep.pendingEngineNote')");
+    // The stored value must round-trip into the select's defaultValue, or the choice renders as lost.
+    expect(seg).toContain("yearCycleOverride === 'a2c'");
   });
 });
 
@@ -246,7 +251,9 @@ describe('e1a51aea · i18n — all six locales', () => {
         'yearTypeA2c',
         'yearTypeC2c',
         'yearTypeHelp',
-        'pendingEngineNote',
+        // f3a64d90 retired the shared pendingEngineNote (it also named the now-live Anniversary to
+        // Calendar) for a dedicated key that speaks only about Earn Upon Resignation.
+        'resignationPendingNote',
         'earningMethodLabel',
         'earningNone',
         'earningByMonth',

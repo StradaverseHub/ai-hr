@@ -407,14 +407,16 @@ function EarningMethodForm({
           {earningChoiceOf(p.method) === 'by_quarter' && (
             <option value="by_quarter">{t('methodEarnedQuarterly')}</option>
           )}
-          {/* disabled pending engine work — no resignation-earning semantics exist yet */}
-          <option value="resignation" disabled title={t('subStep.pendingEngineNote')}>
+          {/* disabled pending engine work — no resignation-earning semantics exist yet. f3a64d90 retired the
+              shared pendingEngineNote (it also named Anniversary to Calendar, now live) for a dedicated key
+              that speaks only about Earn Upon Resignation. */}
+          <option value="resignation" disabled title={t('subStep.resignationPendingNote')}>
             {t('subStep.earningResignation')}
           </option>
         </select>
       </Field>
       <p className="text-xs text-muted-foreground">{t('subStep.earningMappingHelp')}</p>
-      <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.pendingEngineNote')}</p>
+      <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.resignationPendingNote')}</p>
       <Button type="submit" size="sm">
         {t('save')}
       </Button>
@@ -1557,8 +1559,9 @@ export function LeaveTypePanel({
           )}
           {/* Sub-step 2 — Leave Year Type (e1a51aea): a per-TYPE cycle override of the company leave cycle
               (Application Rules tab). Its own sub-form + `yearCycle=1` tri-state marker so an unrelated save
-              never resets it. Anniversary-to-Calendar is rendered DISABLED pending engine work (no hybrid-
-              year calculation semantics exist — see the plan's GOOD TO KNOW); the service rejects it too. */}
+              never resets it. f3a64d90 switched Anniversary-to-Calendar ON: its engine semantics now exist
+              (calendar leave year + a day-by-day first-year ANNUAL build-up), and saving it immediately
+              re-corrects every employee on the type — so the option is selectable and its pending note gone. */}
           {generalSubStep === 'yearType' && (
           <div className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">{t('subStep.yearType')}</span>
@@ -1571,20 +1574,20 @@ export function LeaveTypePanel({
               <Field label={t('subStep.yearTypeLabel')}>
                 <select
                   name="yearCycleValue"
-                  defaultValue={yearCycleOverride === 'a2a' || yearCycleOverride === 'c2c' ? yearCycleOverride : ''}
+                  defaultValue={
+                    yearCycleOverride === 'a2a' || yearCycleOverride === 'c2c' || yearCycleOverride === 'a2c'
+                      ? yearCycleOverride
+                      : ''
+                  }
                   aria-label={t('subStep.yearTypeLabel')}
                   className={`${inputCls} w-72`}
                 >
                   <option value="">{t('subStep.yearTypeCompanyDefault')}</option>
                   <option value="a2a">{t('subStep.yearTypeA2a')}</option>
-                  {/* disabled pending engine work — the hybrid year has no calculation semantics yet */}
-                  <option value="a2c" disabled title={t('subStep.pendingEngineNote')}>
-                    {t('subStep.yearTypeA2c')}
-                  </option>
+                  <option value="a2c">{t('subStep.yearTypeA2c')}</option>
                   <option value="c2c">{t('subStep.yearTypeC2c')}</option>
                 </select>
               </Field>
-              <p className="text-xs text-amber-600 dark:text-amber-400">{t('subStep.pendingEngineNote')}</p>
               <Button type="submit" size="sm">
                 {t('save')}
               </Button>

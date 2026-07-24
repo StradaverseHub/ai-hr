@@ -8,11 +8,12 @@
  * resolves through the ONE resolveLeaveYearCycle helper.
  *
  * Under test:
- *  (1) resolveLeaveYearCycle — a2a/c2c map to anniversary/calendar; null/unknown fall back to company.
- *  (2) updateLeaveType persistence — a2a/c2c store; null clears; tri-state (an unrelated save preserves).
- *  (3) 'a2c' (the disabled-pending-engine hybrid) and garbage values are REJECTED — the option renders
- *      disabled in the UI, and the service refuses a hand-crafted POST rather than storing a value the
- *      engine cannot compute (the plan's explicit no-new-calculation-semantics discipline).
+ *  (1) resolveLeaveYearCycle — a2a maps to anniversary, c2c AND a2c map to calendar (f3a64d90: a2c's leave
+ *      YEAR is the calendar year — its only novelty is the hire-year day-by-day build-up); null/unknown
+ *      fall back to company.
+ *  (2) updateLeaveType persistence — a2a/c2c/a2c store; null clears; tri-state (unrelated save preserves).
+ *  (3) garbage values are still REJECTED — the closed live set is the primary guard (the widened DB CHECK
+ *      from migration 0310 is defence-in-depth).
  *  (4) engine honor — earned-monthly accrual anchors its cycle at the type's overridden cycle:
  *      calendar company + a2a override ⇒ hire-anniversary window; anniversary company + c2c override ⇒
  *      calendar window; null ⇒ company cycle (byte-identical fallback).
@@ -74,14 +75,18 @@ const seedEarned = async () => {
 };
 
 describe('e1a51aea — resolveLeaveYearCycle', () => {
-  it('a2a/c2c override the company cycle; null/unknown fall back', () => {
+  it('a2a/c2c/a2c override the company cycle; null/unknown fall back', () => {
     expect(resolveLeaveYearCycle('a2a', 'calendar')).toBe('anniversary');
     expect(resolveLeaveYearCycle('c2c', 'anniversary')).toBe('calendar');
     expect(resolveLeaveYearCycle(null, 'anniversary')).toBe('anniversary');
     expect(resolveLeaveYearCycle(null, 'calendar')).toBe('calendar');
     expect(resolveLeaveYearCycle(undefined, 'calendar')).toBe('calendar');
-    // Defensive: an unknown stored value never invents semantics — company cycle wins.
+    // f3a64d90: a2c is NOT a third cycle token — its leave YEAR is the calendar year, so it maps to
+    // 'calendar' and inherits carry anchoring + the year-two full grant untouched.
     expect(resolveLeaveYearCycle('a2c', 'calendar')).toBe('calendar');
+    expect(resolveLeaveYearCycle('a2c', 'anniversary')).toBe('calendar');
+    // Defensive: a genuinely unknown stored value never invents semantics — company cycle wins.
+    expect(resolveLeaveYearCycle('nonsense', 'anniversary')).toBe('anniversary');
   });
 });
 
@@ -101,12 +106,15 @@ describe('e1a51aea — updateLeaveType persistence + validation', () => {
     expect(await storedOverride()).toBeNull();
   });
 
-  it("rejects the disabled-pending-engine 'a2c' hybrid with its specific message", async () => {
-    await expect(setOverride('a2c')).rejects.toThrow(/not available yet/i);
+  it("stores 'a2c' now that the Anniversary-to-Calendar engine shipped (f3a64d90)", async () => {
+    await setOverride('a2c');
+    expect(await storedOverride()).toBe('a2c');
+    // The widened DB CHECK (migration 0310) admits it too — this is the real column, not an app-layer stub.
+    await setOverride(null);
     expect(await storedOverride()).toBeNull();
   });
 
-  it('rejects values outside the closed { a2a, c2c } set', async () => {
+  it('rejects values outside the closed { a2a, c2c, a2c } set', async () => {
     await expect(setOverride('anniversary')).rejects.toThrow(/leave year type/i);
     expect(await storedOverride()).toBeNull();
   });
