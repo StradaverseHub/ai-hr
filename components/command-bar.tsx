@@ -120,13 +120,18 @@ export function CommandBar() {
             <>
               <div className="flex items-center gap-2 border-b border-border px-4">
                 <Search className="size-4 shrink-0 text-muted-foreground" />
+                {/* min-w-0 is load-bearing (feedback 7fe7e1ae): a text input is a flex item with the implicit
+                    `min-width: auto` floor, and its intrinsic min-content width (the `size` attribute's default
+                    ~20 chars) stops it shrinking once the track left after the icon + gap gets narrower than
+                    that — at which point the field spills past the modal's padding box. min-w-0 removes the
+                    floor; flex-1 makes it take exactly the remaining track (same idiom as the result row below). */}
                 <input
                   ref={inputRef}
                   autoFocus
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={t('placeholder')}
-                  className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 />
               </div>
               <div className="p-2">

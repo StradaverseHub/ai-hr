@@ -206,6 +206,32 @@ export function LeaveDetailsPanel({
     );
   };
 
+  // Itemised data-derived rows (feedback 0315dac7): the config adjustments behind §4's Adjustment figure, one
+  // row per grant carrying the reason HR typed and its own day count, so every adjusted day is traceable back
+  // to the Adjustment configuration that created it. Deliberately NARROW — config adjustments only, NOT a
+  // revival of the removed §6 generic transaction table. Labels here are USER DATA (a typed reason), so they
+  // are rendered verbatim; only the "no reason given" fallback is translated.
+  const renderItems = (section: PanelSection) => {
+    if (!section.itemsSelect || !show(section.itemsEssKey)) return null;
+    const items = section.itemsSelect(panel);
+    if (items.length === 0) return null;
+    return (
+      <ul className="mt-1 space-y-1 border-t border-border pt-1.5">
+        {items.map((it) => (
+          <li key={it.key} className="flex items-baseline justify-between gap-3 text-xs">
+            <span className="min-w-0 text-muted-foreground">
+              <span className="break-words">{it.label || t('adjustmentNoReason')}</span>
+              {it.note && <span className="ml-1 text-muted-foreground/70">({it.note})</span>}
+            </span>
+            <span className="shrink-0 tabular-nums text-foreground">
+              {it.value > 0 ? `+${fmtDays(it.value)}` : fmtDays(it.value)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    );
+  };
+
   // Upcoming Leave renderer REMOVED (feedback 11876072): the §5 'upcoming' section descriptor was dropped from
   // entitlement-panel-config.ts (with its `upcomingApprovedLeave` ess-view key), so the panel no longer lists
   // approved-future requests here. The requests themselves are untouched — the /leave history still shows them.
@@ -283,15 +309,22 @@ export function LeaveDetailsPanel({
 
             {sections.map((section) => {
               if (!show(section.essKey)) return null;
-              // Every remaining section is plain field rows (the 'upcoming'/'transactions' kinds are removed).
+              // Every remaining section is plain field rows (the 'upcoming'/'transactions' kinds are removed),
+              // optionally followed by data-derived item rows (§4's itemised config adjustments, 0315dac7).
               const body = renderFields(section);
-              if (body == null) return null; // a fields section with everything gated/omitted
+              const items = renderItems(section);
+              if (body == null && items == null) return null; // everything gated/omitted
               return (
                 <section key={section.key}>
                   <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     {t(section.labelKey)}
                   </h3>
+                  {/* 0315dac7: the reconciliation block spells its formula out in words under the heading. */}
+                  {section.captionKey && (
+                    <p className="mb-1.5 text-xs text-muted-foreground">{t(section.captionKey)}</p>
+                  )}
                   {body}
+                  {items}
                 </section>
               );
             })}

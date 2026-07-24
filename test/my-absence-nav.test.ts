@@ -63,6 +63,16 @@ describe('My Absence: first-level nav rename (label-only, same href)', () => {
       // Renamed/removed keys must not linger (nav.leave → nav.myAbsence; the /me Leave tab is gone).
       expect(msgs.nav.leave, `${loc} nav.leave`).toBeUndefined();
       expect(msgs.me.secLeave, `${loc} me.secLeave`).toBeUndefined();
+      // Feedback 421d7551 — "My Absence" is renamed to "My Leave" everywhere a person can see it.
+      // The keys keep their names (source asserts them below); only the VALUES changed, so this is a
+      // negative guard against the pre-rename wording coming back — a legitimate future re-word stays
+      // free. zh/ta/th/vi already carried the in-language "leave" term and were not touched.
+      for (const stale of ['My Absence', 'Ketidakhadiran Saya']) {
+        expect(msgs.nav.myAbsence, `${loc} nav.myAbsence`).not.toBe(stale);
+        expect((msgs.leave as Record<string, unknown>).myAbsenceTitle, `${loc} leave.myAbsenceTitle`).not.toBe(
+          stale,
+        );
+      }
     }
   });
 

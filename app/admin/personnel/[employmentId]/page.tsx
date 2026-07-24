@@ -249,11 +249,11 @@ export default async function EmployeePage({
   // (union-read, the rung-5a `countryPacks()` precedent). MY-only ⇒ byte-identical to the old MY_STATES.
   const stateOptions = countryPacks().flatMap((p) => p.states);
   const statutory = admin ? ((await countryPack?.statutory.get(s, emp.personId)) ?? null) : null;
-  // Feedback 0df0c635 — the company's HRDF registration band (Others Statutory card): a registered company
-  // (mandatory/optional) defaults its employees to Subject to HRDF; not_registered defaults to not subject.
-  // Read via the pack registry (ADR-0080 ratchet). Admin-only, like every other statutory read here.
-  const companyStatutoryRow = admin ? ((await packFor('MY')?.companyStatutory.get(s, emp.companyId)) ?? null) : null;
-  const hrdfCompanyDefault = (companyStatutoryRow?.hrdfStatus ?? 'not_registered') !== 'not_registered';
+  // Feedback 57840a6e — the company's HRDF registration band is NO LONGER read here. The Others Statutory
+  // control used to pre-tick its checkbox from that band, which is exactly how an untouched card pinned an
+  // employee to an explicit No while the company was not_registered. The control is now a tri-state select
+  // whose "" option persists null (follow the company default, resolved at payroll time), so the page needs
+  // no company-side default at all.
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
   const holidayGroups = admin ? await listHolidayGroups(s) : [];
   // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
@@ -2258,12 +2258,16 @@ export default async function EmployeePage({
   // ── OTHERS STATUTORY (Bank & Statutory tab) ─────────────────────────────────
   // Feedback 0df0c635 — the home for statutory settings that don't belong under EPF, SOCSO, EIS or Tax
   // Information (extensible for future controls without a redesign), starting with the per-employee
-  // "Subject to HRDF" checkbox. Its own card with its OWN partial save (setOthersStatutoryAction → the
+  // "Subject to HRDF" control. Its own card with its OWN partial save (setOthersStatutoryAction → the
   // pack's setOthersStatutory), like the Bank/TP3/Tax split-out precedents, so saving it can never touch
   // the full-row statutory form and vice versa. Tri-state per the house convention: the stored value is
-  // null until HR saves (⇒ the checkbox shows the EFFECTIVE company-registration default + a "following
-  // company default" hint); a save writes the explicit true/false override. Payroll excludes an
-  // explicit-false employee from the HRD Corp levy entirely.
+  // null until HR picks an explicit Yes/No, and null means "follow the company's HRDF registration
+  // default". Feedback 57840a6e — this was a CHECKBOX, which structurally cannot carry three states: an
+  // untouched card rendered from the company default (unchecked while the company was not_registered) and
+  // saved for any other reason silently PINNED the employee to an explicit No, permanently excluding them
+  // from the levy even after the company later set a 0.5%/1.0% rate. It is now a three-option select
+  // (gender/maritalStatus precedent on this page): "" ⇒ null (follow the company default), yes ⇒ true,
+  // no ⇒ false. Payroll excludes an explicit-false employee from the HRD Corp levy entirely.
   const othersStatutoryCard = admin ? (
     <Card>
       <SectionHeader title={t('othersStatutoryTitle')} />
@@ -2271,18 +2275,19 @@ export default async function EmployeePage({
         <input type="hidden" name="employmentId" value={emp.employmentId} />
         <input type="hidden" name="personId" value={emp.personId} />
         <p className="text-xs text-muted-foreground">{t('othersStatutoryHint')}</p>
-        <label className="flex items-center gap-2 text-sm" title={t('subjectToHrdfHint')}>
-          <input
-            type="checkbox"
+        <Field label={t('subjectToHrdf')}>
+          <select
             name="subjectToHrdf"
-            defaultChecked={statutory?.subjectToHrdf ?? hrdfCompanyDefault}
-            className="size-4 rounded"
-          />
-          {t('subjectToHrdf')}
-        </label>
-        {(statutory?.subjectToHrdf ?? null) == null ? (
-          <p className="text-xs text-muted-foreground">{t('subjectToHrdfFollowingDefault')}</p>
-        ) : null}
+            defaultValue={statutory?.subjectToHrdf == null ? '' : statutory.subjectToHrdf ? 'yes' : 'no'}
+            className={inputCls}
+            title={t('subjectToHrdfHint')}
+          >
+            <option value="">{t('subjectToHrdfFollowingDefault')}</option>
+            <option value="yes">{t('prorateYes')}</option>
+            <option value="no">{t('prorateNo')}</option>
+          </select>
+        </Field>
+        <p className="text-xs text-muted-foreground">{t('subjectToHrdfHint')}</p>
         <div className="flex items-end justify-end">
           <button className={btnPrimary}>{t('othersStatutorySave')}</button>
         </div>

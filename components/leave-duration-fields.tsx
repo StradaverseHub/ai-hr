@@ -328,31 +328,55 @@ export function LeaveDurationFields({
         </>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
-        <Field label={t('fieldStartDate')}>
-          <input
-            name="startDate"
-            type="date"
-            required
-            value={start}
-            onChange={(e) => setStart(e.target.value)}
-            className={inputCls}
-          />
-        </Field>
-        {effectiveDuration === 'full_day' ? (
-          <Field label={t('fieldEndDate')}>
+      {/* Compact leave summary (Request-Leave popup redesign): the deductible-day Total sits BESIDE the
+          Start/End date fields, replacing the old wordy "This will deduct X / Balance A → B" box (the balance
+          figures stay in the Pending/Taken/Balance table above, so nothing is lost).
+          Layout: the date grid is grid-cols-2 with NO sm prefix (two-up even on a phone) while the dialog form
+          is grid-cols-1 sm:grid-cols-2, so this wrapper stacks the badge UNDER the dates on mobile and places
+          it to their right from sm up — a plain flex at all breakpoints would squeeze the 2-col date row on a
+          narrow screen. sm:col-span-2 because these are direct items of the dialog's 2-column form grid. */}
+      <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:items-end sm:gap-3">
+        <div className="grid flex-1 grid-cols-2 gap-2">
+          <Field label={t('fieldStartDate')}>
             <input
-              name="endDate"
+              name="startDate"
               type="date"
               required
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
               className={inputCls}
             />
           </Field>
-        ) : (
-          // Half/hourly is single-day: force end = start, no visible End-date field.
-          <input type="hidden" name="endDate" value={start} readOnly />
+          {effectiveDuration === 'full_day' ? (
+            <Field label={t('fieldEndDate')}>
+              <input
+                name="endDate"
+                type="date"
+                required
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+                className={inputCls}
+              />
+            </Field>
+          ) : (
+            // Half/hourly is single-day: force end = start, no visible End-date field.
+            <input type="hidden" name="endDate" value={start} readOnly />
+          )}
+        </div>
+        {/* Day-based durations only — hourly keeps its own live "Total: N hours" line above. The figure is
+            preview.days, the SAME fully-ruled deductible count (half-days, rest/off days, public holidays,
+            work schedule, eligibility) the day-by-day panel footer totals; reusing applyDetails.total means
+            the badge and that footer can never read differently, in any locale. Never recomputed here. */}
+        {previewAction && effectiveDuration !== 'hourly' && (preview || isPreviewing) && (
+          <div className="shrink-0 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
+            {preview ? (
+              <span className="font-medium tabular-nums text-foreground">
+                {t('applyDetails.total', { days: preview.days })}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">{t('preview.loading')}</span>
+            )}
+          </div>
         )}
       </div>
 
@@ -441,35 +465,11 @@ export function LeaveDurationFields({
         </details>
       )}
 
-      {/* Feedback 31474452 (Step 5): pre-submission preview line. Shown for day-based durations only when a
-          previewAction was supplied and a result has resolved. Best-effort — a null result (RLS-gated, still
-          loading, or an invalid range) simply shows nothing, never blocking the form.
-          sm:col-span-2: LeaveDurationFields' children are direct items of the dialog's
-          `grid grid-cols-1 ... sm:grid-cols-2` form, so without it this block lands in a half-width cell. */}
-      {previewAction && effectiveDuration !== 'hourly' && (preview || isPreviewing) && (
-        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs sm:col-span-2">
-          {preview ? (
-            <>
-              <p className="font-medium text-foreground">
-                {preview.isEmergencySplit
-                  ? t('preview.willDeductEmergency', { days: preview.days })
-                  : t('preview.willDeduct', { days: preview.days })}
-              </p>
-              <p className="mt-0.5 text-muted-foreground">
-                {t('preview.balanceLine', { before: preview.balanceAvailable, after: preview.balanceAfter })}
-              </p>
-              {preview.hasHalfScheduleDate && (
-                <p className="mt-0.5 text-muted-foreground">{t('preview.halfScheduleDayNote')}</p>
-              )}
-              {preview.isEmergencySplit && (
-                <p className="mt-0.5 text-muted-foreground">{t('preview.emergencySplitNote')}</p>
-              )}
-            </>
-          ) : (
-            <p className="text-muted-foreground">{t('preview.loading')}</p>
-          )}
-        </div>
-      )}
+      {/* The old "This will deduct X day(s) / Balance A → B" preview box lived here. It is replaced by the
+          compact Total badge beside the dates above: the balance figures are already in the Pending/Taken/
+          Balance table, and the two contextual notes it carried are deliberately not re-hosted — the
+          half-day-schedule detail stays visible inside the day-by-day panel (half rows read 0.5) and the
+          emergency split reminder is already rendered in full by the isEmergency block below. */}
 
       {isEmergency && (
         <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">

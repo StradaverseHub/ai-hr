@@ -2,7 +2,7 @@
  * Malaysia localization pack (ADR-0008). Slice 1 ships the statutory profile; leave rules,
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
-import { defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY } from './statutory';
+import { correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import { eis, epf, hrdfLevy, hrdfSubject, overtimePay, pcbMonth, socso, statutory } from './payroll';
@@ -71,6 +71,9 @@ export const myPack: CountryPack = {
     // Feedback 0df0c635 — partial save of only the Others Statutory controls (today: subject_to_hrdf).
     // The Others Statutory card on the Bank & Statutory tab saves through this, like setTp3/setBank/setTax.
     setOthersStatutory: setOthersStatutoryMY,
+    // Feedback 57840a6e — the corrective step for the explicit "No" rows the OLD checkbox captured from
+    // the company default. Consumed by scripts/correct-hrdf-opt-outs.ts through the registry.
+    correctAccidentalHrdfOptOuts: correctAccidentalHrdfOptOutsMY,
     validateIC: isValidIC,
     // Rung 5a (D6) — IC canonicalisation + MyKad-derived DOB, consumed by the bulk importer through
     // the pack instead of a direct localization/my import.

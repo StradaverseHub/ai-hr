@@ -1,12 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { ChevronDown } from 'lucide-react';
 import { setCompanyScope } from '@/app/scope-actions';
 import { cn } from '@/lib/utils';
 
-/** Odoo-style multi-company context: shows the active company/companies, multi-select to re-scope. */
+/**
+ * Odoo-style multi-company context: shows the active company/companies, multi-select to re-scope.
+ *
+ * 95aafb3c — bulk Select all / Deselect all. Load-bearing server fact behind the two design calls
+ * below: getScopeIds (lib/scope.ts) coerces an ABSENT or EMPTY company_scope cookie back to ALL
+ * allowed ids. So there is no persisted "zero companies" state — empty and all-ticked both resolve
+ * to all.
+ *
+ * - Select all SUBMITS (one click back to the full view). It is a bulk PROGRAMMATIC change, so the
+ *   new checked state must be committed to the DOM before requestSubmit() serialises the form —
+ *   hence flushSync. Without it the post would carry the stale prior subset.
+ * - Deselect all does NOT submit. An empty post writes an empty cookie, which the resolver turns
+ *   straight back into every company; the re-resolved `selected` prop would then silently re-tick
+ *   every box — the opposite of the button's promise. Instead it is a client-side "start fresh"
+ *   clear: the boxes empty, the view stays where it is, and the user's next tick submits their pick.
+ *
+ * The checkbox list is therefore CONTROLLED (mirroring components/ui/multi-select-popover.tsx), so
+ * the button label can track the pending picks live. Note the deliberate split of truth: the trigger
+ * label reflects `selected` (the committed, active scope = what you are viewing), the in-popover
+ * button reflects `sel` (the pending pick). Right after Deselect all those legitimately differ.
+ */
 export function CompanySwitcher({
   companies,
   selected,
@@ -15,7 +36,17 @@ export function CompanySwitcher({
   selected: string[];
 }) {
   const [open, setOpen] = useState(false);
+  const [sel, setSel] = useState<Set<string>>(() => new Set(selected));
   const t = useTranslations('topbar');
+
+  // Resync the pending picks from the server-resolved scope after every revalidation, WITHOUT
+  // remounting (a key on the component would tear down and close the popover mid-pick). The Set is
+  // rebuilt from the same joined string the effect depends on, so there is no stale-array dep.
+  const selectedKey = selected.join(',');
+  useEffect(() => {
+    setSel(new Set(selectedKey ? selectedKey.split(',') : []));
+  }, [selectedKey]);
+
   if (companies.length === 0) return null;
 
   const selSet = new Set(selected);
@@ -26,6 +57,10 @@ export function CompanySwitcher({
         ? (companies.find((c) => selSet.has(c.id))?.name ?? t('companyCount', { count: 1 }))
         : t('companyCount', { count: selSet.size });
 
+  // every() over the rendered companies, NOT a size compare: a size compare misfires if `sel` ever
+  // holds an id that is not in the listed companies.
+  const allSelected = companies.length > 0 && companies.every((c) => sel.has(c.id));
+
   return (
     // min-w-0 is load-bearing (overlap guard d9b81f8d): this div is a flex item of the topbar's
     // right cluster. Without it the item's automatic min-width:auto floor holds the full label
@@ -35,7 +70,12 @@ export function CompanySwitcher({
     <div className="relative min-w-0">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          // Reset the pending picks when the popover OPENS. Deselect all does not submit, so an
+          // abandoned clear would otherwise linger on reopen.
+          if (!open) setSel(new Set(selectedKey ? selectedKey.split(',') : []));
+          setOpen(!open);
+        }}
         aria-expanded={open}
         className="flex min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
       >
@@ -58,6 +98,23 @@ export function CompanySwitcher({
             <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               {t('companyContext')}
             </div>
+            {/* type="button" is REQUIRED: a bare button inside a form defaults to type=submit and
+                would fire a native submit of the PRE-change set alongside our own. */}
+            <button
+              type="button"
+              onClick={(e) => {
+                const form = e.currentTarget.form;
+                if (allSelected) {
+                  setSel(new Set());
+                  return; // client-side clear only — see the docblock
+                }
+                flushSync(() => setSel(new Set(companies.map((c) => c.id))));
+                form?.requestSubmit();
+              }}
+              className="mb-0.5 flex w-full items-center rounded-md px-2 py-1.5 text-left text-xs font-medium text-primary transition-colors hover:bg-muted"
+            >
+              {allSelected ? t('deselectAll') : t('selectAll')}
+            </button>
             {companies.map((c) => (
               <label
                 key={c.id}
@@ -67,8 +124,17 @@ export function CompanySwitcher({
                   type="checkbox"
                   name="companyId"
                   value={c.id}
-                  defaultChecked={selSet.has(c.id)}
-                  onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                  checked={sel.has(c.id)}
+                  onChange={(e) => {
+                    // The native tick is already in the DOM when onChange fires, so this synchronous
+                    // submit posts the correct companyId set for this one change (no flushSync).
+                    const form = e.currentTarget.form;
+                    const next = new Set(sel);
+                    if (e.currentTarget.checked) next.add(c.id);
+                    else next.delete(c.id);
+                    setSel(next);
+                    form?.requestSubmit();
+                  }}
                   className="size-4 accent-[var(--color-primary)]"
                 />
                 <span className="truncate">{c.name}</span>

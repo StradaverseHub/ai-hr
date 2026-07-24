@@ -89,10 +89,11 @@
     "myWorkspace": "Profil Saya",
     "people": "Kakitangan",
     "orgChart": "Carta organisasi",
-    "myAbsence": "Ketidakhadiran Saya",
+    "myAbsence": "Cuti Saya",
     "attendance": "Kehadiran",
     "manage": "Urus",
-    "approvals": "Kelulusan",
+    "approvals": "Item Kelulusan",
+    "approvalsCount": "{count, plural, one {# item menunggu keputusan anda} other {# item menunggu keputusan anda}}",
     "performance": "Prestasi",
     "admin": "Pentadbir",
     "organization": "Organisasi",
@@ -1140,7 +1141,7 @@
     }
   },
   "leave": {
-    "myAbsenceTitle": "Ketidakhadiran Saya",
+    "myAbsenceTitle": "Cuti Saya",
     "title": "Cuti",
     "description": "Semak baki cuti anda, mohon cuti, dan jejaki permohonan anda.",
     "chipRequested": "Dimohon",
@@ -1305,7 +1306,8 @@
         "utilization": "Penggunaan cuti",
         "adjustments": "Pelarasan",
         "transactions": "Sejarah transaksi",
-        "calcBreakdown": "Pecahan pengiraan kelayakan"
+        "calcBreakdown": "Pecahan pengiraan kelayakan",
+        "reconciliation": "Bagaimana jumlah ini terhasil"
       },
       "field": {
         "available": "Tersedia",
@@ -1320,7 +1322,8 @@
         "unplanned": "Tidak dirancang",
         "overutilized": "Penggunaan berlebihan",
         "adjustment": "Pelarasan",
-        "balance": "Baki"
+        "balance": "Baki",
+        "systemCorrection": "Pembetulan sistem"
       },
       "panelSubtitle": "Setakat {date}",
       "close": "Tutup",
@@ -1335,15 +1338,27 @@
         "taken": "Cuti yang telah anda gunakan (diluluskan dan diambil).",
         "pendingApproval": "Cuti yang anda mohon dan masih menunggu kelulusan.",
         "available": "Cuti yang masih boleh anda ambil sekarang, selepas permohonan yang menunggu diketepikan.",
-        "balance": "Baki cuti anda yang tinggal: jumlah kelayakan, termasuk sebarang bawa ke hadapan dan pelarasan, tolak cuti yang diambil."
+        "balance": "Baki anda yang tinggal, iaitu: bawa ke hadapan + kelayakan kitaran ini + pelarasan + pembetulan sistem − dilucutkan − diambil. Bahagian \"Bagaimana jumlah ini terhasil\" di bawah menunjukkan setiap bahagian."
+      },
+      "tip": {
+        "configAdjustment": "Hari tambahan atau potongan yang ditetapkan HR pada langkah Pelarasan dalam tetapan kelayakan cuti. Setiap satu disenaraikan di bawah dengan sebabnya.",
+        "systemCorrection": "Pembetulan automatik yang dicatat sendiri oleh sistem apabila polisi cuti disunting atau gred atau tarikh mula kerja anda berubah. Ia tidak dimasukkan pada skrin Pelarasan."
+      },
+      "adjustmentNoReason": "Tiada sebab dinyatakan",
+      "reconcile": {
+        "caption": "Bawa ke hadapan + Kelayakan + Pelarasan + Pembetulan sistem − Dilucutkan − Diambil = Baki. Baki − Menunggu kelulusan = Tersedia.",
+        "broughtForward": "Bawa ke hadapan",
+        "entitled": "+ Kelayakan kitaran ini",
+        "adjustments": "+ Pelarasan",
+        "systemCorrections": "+ Pembetulan sistem",
+        "forfeited": "− Dilucutkan",
+        "taken": "− Diambil",
+        "balance": "= Baki",
+        "pending": "− Menunggu kelulusan",
+        "available": "= Tersedia"
       }
     },
     "preview": {
-      "willDeduct": "Ini akan menolak {days} hari",
-      "willDeductEmergency": "Ini akan meliputi kira-kira {days} hari (Cuti Kecemasan)",
-      "balanceLine": "Baki: {before} → {after} hari selepas permohonan ini",
-      "halfScheduleDayNote": "Tarikh ini jatuh pada jadual kerja Separuh Hari.",
-      "emergencySplitNote": "Pembahagian akhir sakit/tahunan/tanpa gaji disahkan semasa anda menghantar.",
       "loading": "Mengira…"
     },
     "applyDetails": {
@@ -5006,8 +5021,10 @@
     "allCompanies": "Semua syarikat",
     "companyCount": "{count, plural, one {# syarikat} other {# syarikat}}",
     "companyContext": "Konteks syarikat",
+    "deselectAll": "Nyahpilih semua",
     "devAs": "dev sebagai",
-    "noRole": "tiada peranan"
+    "noRole": "tiada peranan",
+    "selectAll": "Pilih semua"
   },
   "components": {
     "plannedAbsences": {
@@ -5674,7 +5691,7 @@
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
     "historyEmpty": "Tiada sejarah lagi",
     "historySearch": "Cari sejarah",
-    "ariaBell": "Pemberitahuan, {unread} belum dibaca, {tasks} tugasan terbuka",
+    "ariaBell": "Pemberitahuan, {total} menunggu: {unread} belum dibaca dan {tasks} tugasan terbuka",
     "task": {
       "leave": "Luluskan permohonan cuti",
       "leaveCancellation": "Luluskan pembatalan cuti",

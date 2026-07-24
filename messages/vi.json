@@ -92,7 +92,8 @@
     "myAbsence": "Nghỉ phép của tôi",
     "attendance": "Chấm công",
     "manage": "Quản lý",
-    "approvals": "Phê duyệt",
+    "approvals": "Mục phê duyệt",
+    "approvalsCount": "{count, plural, one {# mục đang chờ bạn quyết định} other {# mục đang chờ bạn quyết định}}",
     "performance": "Đánh giá hiệu suất",
     "admin": "Quản trị",
     "organization": "Tổ chức",
@@ -1305,7 +1306,8 @@
         "utilization": "Sử dụng nghỉ phép",
         "adjustments": "Điều chỉnh",
         "transactions": "Lịch sử giao dịch",
-        "calcBreakdown": "Chi tiết tính quyền lợi"
+        "calcBreakdown": "Chi tiết tính quyền lợi",
+        "reconciliation": "Số dư được tính thế nào"
       },
       "field": {
         "available": "Khả dụng",
@@ -1320,7 +1322,8 @@
         "unplanned": "Không kế hoạch",
         "overutilized": "Sử dụng vượt mức",
         "adjustment": "Điều chỉnh",
-        "balance": "Số dư"
+        "balance": "Số dư",
+        "systemCorrection": "Điều chỉnh của hệ thống"
       },
       "panelSubtitle": "Tính đến {date}",
       "close": "Đóng",
@@ -1335,15 +1338,27 @@
         "taken": "Ngày nghỉ bạn đã dùng (đã duyệt và đã nghỉ).",
         "pendingApproval": "Ngày nghỉ bạn đã xin và đang chờ duyệt.",
         "available": "Ngày nghỉ bạn vẫn có thể dùng ngay bây giờ, sau khi trừ các yêu cầu đang chờ.",
-        "balance": "Số dư còn lại của bạn: tổng quyền lợi, bao gồm phần chuyển sang và các điều chỉnh, trừ đi ngày nghỉ đã dùng."
+        "balance": "Số dư còn lại của bạn, tính bằng: chuyển sang + được hưởng kỳ này + điều chỉnh + điều chỉnh của hệ thống − bị mất − đã nghỉ. Mục \"Số dư được tính thế nào\" bên dưới liệt kê từng phần."
+      },
+      "tip": {
+        "configAdjustment": "Số ngày cộng thêm hoặc trừ bớt do HR thiết lập ở bước Điều chỉnh trong cấu hình quyền lợi nghỉ phép. Mỗi khoản được liệt kê kèm lý do bên dưới.",
+        "systemCorrection": "Các điều chỉnh tự động do hệ thống ghi nhận khi chính sách nghỉ phép được sửa hoặc khi cấp bậc, ngày vào làm của bạn thay đổi. Chúng không được nhập ở màn hình Điều chỉnh."
+      },
+      "adjustmentNoReason": "Không có lý do",
+      "reconcile": {
+        "caption": "Chuyển sang + Được hưởng + Điều chỉnh + Điều chỉnh của hệ thống − Bị mất − Đã nghỉ = Số dư. Số dư − Chờ duyệt = Khả dụng.",
+        "broughtForward": "Chuyển sang",
+        "entitled": "+ Được hưởng kỳ này",
+        "adjustments": "+ Điều chỉnh",
+        "systemCorrections": "+ Điều chỉnh của hệ thống",
+        "forfeited": "− Bị mất",
+        "taken": "− Đã nghỉ",
+        "balance": "= Số dư",
+        "pending": "− Chờ duyệt",
+        "available": "= Khả dụng"
       }
     },
     "preview": {
-      "willDeduct": "Việc này sẽ trừ {days} ngày",
-      "willDeductEmergency": "Việc này sẽ bao phủ khoảng {days} ngày (Nghỉ khẩn cấp)",
-      "balanceLine": "Số dư: {before} → {after} ngày sau yêu cầu này",
-      "halfScheduleDayNote": "Ngày này rơi vào lịch làm việc Nửa ngày.",
-      "emergencySplitNote": "Việc phân chia ốm/phép năm/không lương cuối cùng sẽ được xác nhận khi bạn gửi.",
       "loading": "Đang tính toán…"
     },
     "applyDetails": {
@@ -5006,8 +5021,10 @@
     "allCompanies": "Tất cả công ty",
     "companyCount": "{count, plural, one {# công ty} other {# công ty}}",
     "companyContext": "Bối cảnh công ty",
+    "deselectAll": "Bỏ chọn tất cả",
     "devAs": "dev với tư cách",
-    "noRole": "không có vai trò"
+    "noRole": "không có vai trò",
+    "selectAll": "Chọn tất cả"
   },
   "components": {
     "plannedAbsences": {
@@ -5674,7 +5691,7 @@
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
     "historyEmpty": "Chưa có lịch sử",
     "historySearch": "Tìm kiếm lịch sử",
-    "ariaBell": "Thông báo, {unread} chưa đọc, {tasks} công việc đang chờ",
+    "ariaBell": "Thông báo, {total} mục đang chờ: {unread} chưa đọc và {tasks} công việc đang chờ",
     "task": {
       "leave": "Phê duyệt đơn xin nghỉ",
       "leaveCancellation": "Phê duyệt hủy nghỉ phép",

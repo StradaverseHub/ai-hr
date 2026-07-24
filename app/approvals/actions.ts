@@ -35,8 +35,19 @@ function navOf(formData: FormData): Nav {
     sort: String(formData.get('sort') || '') || undefined,
   };
 }
-function done(toast: string, nav: Nav = {}): never {
+// Shell refresh after a decision (feedback 836118c4). revalidatePath(back) defaults to type 'page', which
+// invalidates ONLY /approvals — not the root layout, where the "Approval Items" nav badge and the bell's
+// Task count are computed (listPendingTasks in app/layout.tsx). Deciding an item therefore left both
+// numbers stale across soft navigation until a hard reload. '/', 'layout' invalidates the root layout and
+// everything beneath it and purges the client router cache — the same one-liner
+// app/notification-actions.ts, app/i18n-actions.ts, app/identity-actions.ts and app/scope-actions.ts
+// already use for exactly this reason. Only decrement paths need it: fail() changes no state.
+function revalidateShell(): void {
   revalidatePath(back);
+  revalidatePath('/', 'layout');
+}
+function done(toast: string, nav: Nav = {}): never {
+  revalidateShell();
   redirect(approvalsReturnUrl({ ...nav, toast }));
 }
 function fail(e: unknown, nav: Nav = {}): never {
@@ -284,7 +295,7 @@ export async function bulkDecideAction(formData: FormData) {
     dispatchBulkItem(s, item, decision, rejectReason, deciderEmploymentId),
   );
 
-  revalidatePath(back);
+  revalidateShell();
   const summary =
     decision === 'rejected'
       ? skipped > 0

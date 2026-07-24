@@ -134,6 +134,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // who is BOTH hr_admin and a partner is never narrower than a plain admin (union rule).
               isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}
+              // Pending-approval badge on the "Approval Items" row (feedback 836118c4). Reuses the
+              // pendingTasks already resolved above for the bell — ZERO extra queries — so the badge is
+              // by construction the same user-scoped queue: only items awaiting THIS viewer's decision,
+              // self-excluding, admin-only categories gated inside listPendingTasks. NOT the bell's
+              // taskCount below, which also folds in unread action notifications (not approval records).
+              approvalCount={pendingTasks.length}
               defaultCollapsed={railCollapsed}
             />
             <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">

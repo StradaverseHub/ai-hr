@@ -30,10 +30,26 @@ export type EntitlementBreakdownData = {
   carryForwardExpiryDate: string | null;
   forfeited: number;
   /** ADR-0066: net non-boundary `adjustment` days in the current cycle (festive/one-off/manual grants).
-   *  Re-added for §4 Adjustments + balance reconciliation (was previously dropped by this mirror type). */
+   *  Re-added for §4 Adjustments + balance reconciliation (was previously dropped by this mirror type).
+   *  COMMINGLED (config grants + policy-recalc corrections); the panel's Adjustment line reads
+   *  `configAdjustments` instead (0315dac7). Kept for the balance TABLE column. */
   otherAdjustments: number;
+  /** 0315dac7 reconciliation partition — see core/read.ts LeaveEntitlementBreakdown for the full contract.
+   *  Identity (closed by construction, every ledger row ≤ asOf in exactly one bucket):
+   *    broughtForward + currentYearEntitlement + configAdjustments + systemAdjustments
+   *      − forfeitedThisCycle − takenThisCycle = balance,   and   balance − pendingApproval = totalAvailable. */
+  balance: number;
+  pendingApproval: number;
+  broughtForward: number;
+  configAdjustments: number;
+  systemAdjustments: number;
+  forfeitedThisCycle: number;
+  takenThisCycle: number;
+  /** The individual CONFIG adjustment rows behind `configAdjustments` (reason + days each), so the panel can
+   *  show where every adjusted day came from. System corrections are automatic ⇒ summarised, never itemised. */
+  configAdjustmentItems: { effectiveOn: string; days: number; reason: string | null }[];
   totalAvailable: number;
-  transactions: { effectiveOn: string; entryType: string; days: number; sourceRequestId: string | null }[];
+  transactions: { effectiveOn: string; entryType: string; days: number; sourceRequestId: string | null; reason: string | null }[];
   /** Employee Leave View Configuration (65dec703): per-component ESS visibility (missing key ⇒ visible).
    *  Only consulted when `applyEssConfig` is set — i.e. on /me; admin/HR pass it false and see every row. */
   essView?: Record<string, boolean>;
