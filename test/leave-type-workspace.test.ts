@@ -125,6 +125,39 @@ describe('8cc268c4 · Add Leave opens the "Add Leave Type" pop-up (no right-pane
   });
 });
 
+describe('1bd9a911 · left-side type list: A–Z order + its own scrollbar', () => {
+  it('the page sorts the workspace list active-first then A–Z (server-side, so desktop + mobile agree)', () => {
+    // The sort lives on the page, on a display copy of `types`, and feeds the workspace's items prop.
+    expect(pageSrc).toContain('const workspaceItems = [...types].sort(');
+    expect(pageSrc).toContain('Number(!!a.archivedAt) - Number(!!b.archivedAt)');
+    expect(pageSrc).toContain("a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })");
+    expect(pageSrc).toContain('items={workspaceItems.map((lt) => ({');
+    // `panels` stays keyed by id off the unsorted list — order is irrelevant there, so it is untouched.
+    expect(pageSrc).toContain('panels={Object.fromEntries(');
+    // The client keeps its plain first-item default: items[0] is now the alphabetically first ACTIVE type.
+    expect(workspaceSrc).toContain("useState<string>(items[0]?.id ?? '')");
+  });
+
+  it('caps the desktop list to a fixed height with its own vertical scrollbar', () => {
+    const ul = workspaceSrc.match(/<ul[^>]*className="[^"]*"/)?.[0] ?? '';
+    expect(ul).toContain('overflow-y-auto');
+    expect(ul).toMatch(/max-h-\[/);
+    // The Add Leave button stays OUTSIDE the scrolling <ul>, at the bottom of the nav.
+    const ulEnd = workspaceSrc.indexOf('</ul>');
+    expect(ulEnd).toBeGreaterThan(-1);
+    expect(workspaceSrc.indexOf('className="mt-auto w-full"', ulEnd)).toBeGreaterThan(ulEnd);
+  });
+
+  it('keeps the selected type visible inside the scroll panel', () => {
+    expect(workspaceSrc).toMatch(/import \{[^}]*useRef[^}]*\} from 'react'/);
+    expect(workspaceSrc).toContain('<ul ref={listRef}');
+    expect(workspaceSrc).toContain('listRef.current?.querySelector(\'[aria-current="true"]\')');
+    expect(workspaceSrc).toContain("scrollIntoView({ block: 'nearest' })");
+    // …re-run whenever the selection changes (hash deep-link, just-added type, click).
+    expect(workspaceSrc).toMatch(/scrollIntoView[\s\S]{0,80}\}, \[selected\]\);/);
+  });
+});
+
 describe('c979aa8b · hash deep-link still selects the type', () => {
   it('selects #type-<id> on mount and on hashchange, and writes the hash back on selection', () => {
     // The effect replaces the old per-row expand effect that lived in leave-type-panel.tsx.

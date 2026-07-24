@@ -500,6 +500,17 @@ export default async function LeaveEntitlementsPage({
     </div>
   );
 
+  // Feedback 1bd9a911 — the workspace's internal left-side Leave Type list is ordered here, on the server,
+  // so BOTH the desktop list and the mobile dropdown (they read the same `items` prop) get one ordering and
+  // the client keeps its plain `items[0]` default selection. Active types first, then archived ones, each
+  // group A–Z case-insensitively. Only the workspace list order changes: `panels` is keyed by id, and the
+  // other type-derived arrays (activeTypeOptions, typeNameById, …) are deliberately left alone.
+  const workspaceItems = [...types].sort(
+    (a, b) =>
+      Number(!!a.archivedAt) - Number(!!b.archivedAt) ||
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -526,7 +537,7 @@ export default async function LeaveEntitlementsPage({
       <Card data-tour="leave-config">
         <SectionHeader title={t('typesSectionTitle')} count={types.length} />
         <LeaveTypeWorkspace
-          items={types.map((lt) => ({
+          items={workspaceItems.map((lt) => ({
             id: lt.id,
             name: lt.name,
             code: lt.code,

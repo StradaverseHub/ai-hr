@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
@@ -57,6 +57,11 @@ export function AddLeaveTypeCancel({ children }: { children: ReactNode }) {
  *
  * Mobile: the left panel collapses to a dropdown (a <select> of the types) beside an Add button opening the
  * same dialog.
+ *
+ * List display (feedback 1bd9a911): `items` arrives already ordered by the server page (active types first,
+ * then archived, each A–Z) — this component does not re-sort. The desktop list is capped to a fixed height
+ * with its own scrollbar so a long type list scrolls inside the panel instead of stretching the page, and
+ * the selected row is scrolled into view within that panel (deep link / just-added type).
  */
 export function LeaveTypeWorkspace({
   items,
@@ -72,6 +77,8 @@ export function LeaveTypeWorkspace({
   // 8cc268c4 — the Add Leave Type dialog. Controlled state so BOTH triggers (desktop panel-bottom button +
   // mobile button beside the dropdown) open the one dialog, and the hash effect can close it after a save.
   const [addOpen, setAddOpen] = useState(false);
+  // 1bd9a911 — the capped, scrollable desktop list. Kept so the highlighted row can be revealed inside it.
+  const listRef = useRef<HTMLUListElement | null>(null);
 
   // Hash deep-link (#type-<id>): select the targeted type on mount and on later hashchange, replacing the
   // old per-row expand effect that lived in leave-type-panel.tsx. After a create, the action's redirect
@@ -91,6 +98,13 @@ export function LeaveTypeWorkspace({
     window.addEventListener('hashchange', applyHash);
     return () => window.removeEventListener('hashchange', applyHash);
   }, [idsKey]);
+
+  // 1bd9a911 — keep the selected type visible inside the capped list: a type reached via the #type-<id> deep
+  // link or created just now can sit below the panel's fold. block:'nearest' scrolls the list container the
+  // minimum amount and is a no-op when the row is already visible, so ordinary clicks never jump.
+  useEffect(() => {
+    listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [selected]);
 
   const select = (next: string) => {
     setSelected(next);
@@ -134,7 +148,9 @@ export function LeaveTypeWorkspace({
         aria-label={t('workspaceTypeListLabel')}
         className="hidden w-56 shrink-0 flex-col gap-3 md:flex"
       >
-        <ul className="space-y-1">
+        {/* 1bd9a911 — max-height (not a hard height) so a short list leaves no empty gap; pr-1 keeps the
+            scrollbar clear of the type names. The Add Leave button below stays outside the scroll area. */}
+        <ul ref={listRef} className="max-h-[28rem] space-y-1 overflow-y-auto pr-1">
           {items.length === 0 && (
             <li className="px-3 py-2 text-sm text-muted-foreground">{t('noLeaveTypes')}</li>
           )}
