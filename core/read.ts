@@ -10,7 +10,10 @@ import {
 } from '../lib/approval-history';
 import {
   AGED_FORFEIT_REASON,
+  CARRY_FORFEIT_REASON_CAP,
+  CARRY_FORFEIT_REASON_EXPIRY,
   POLICY_RECALC_REASON_PREFIX,
+  PROFILE_RECALC_REASON_PREFIX,
   earnedCycleStart,
   isEarnedMethod,
   resolveLeaveYearCycle,
@@ -1807,12 +1810,52 @@ export type LeaveEntitlementBreakdown = {
   forfeited: number;
   /** ADR-0066: net `adjustment` days within the current cycle that are NOT the boundary forfeit — i.e.
    *  festive / one-off grants (and any manual +/- adjustment). Surfaced as its own line so the displayed
-   *  breakdown reconciles with `balance` (accrual aggregates exclude `adjustment`). 0 when none. */
+   *  breakdown reconciles with `balance` (accrual aggregates exclude `adjustment`). 0 when none.
+   *  COMMINGLED by construction (positive-or-recalc filter) — kept for the balance TABLE's Adjustment column
+   *  and its existing callers. The panel's Adjustment line now reads `configAdjustments` instead (0315dac7). */
   otherAdjustments: number;
+  /** Signed ledger balance as at asOf (Σ days over every row ≤ asOf) — the headline figure the
+   *  RECONCILIATION PARTITION below closes onto. Same expression leaveBalances/leaveBalancesAll use. */
+  balance: number;
+  /** Pending (not-yet-approved) request days for this (employment, type) — `balance − pendingApproval =
+   *  totalAvailable`, the last line of the reconciliation block. */
+  pendingApproval: number;
+  // ── Reconciliation partition (feedback 0315dac7) ────────────────────────────────────────────────────
+  // The six DISJOINT buckets every ledger row ≤ asOf falls into EXACTLY ONE of, so the identity
+  //   broughtForward + currentYearEntitlement + configAdjustments + systemAdjustments
+  //     − forfeitedThisCycle − takenThisCycle = balance
+  // closes BY CONSTRUCTION rather than by re-deriving the carry arithmetic. That matters: the derived
+  // identity (carriedForward/forfeited from resolveCarryBreakdown) is algebraically FALSE whenever a
+  // year-open cap forfeit fired — openLeaveYear posts a real negative `adjustment`
+  // (CARRY_FORFEIT_REASON_CAP) while `carried` is already post-cap AND `forfeited` re-adds the cap excess,
+  // double-subtracting it. The same holds for the maxBalanceDays clamp and an overdrawn (negative) carry-in.
+  // Sourcing every bucket from the RAW rows makes those divergences vanish.
+  /** Σ days over rows dated STRICTLY BEFORE cycleStart — what actually carried into the cycle, uncapped and
+   *  signed (so an overdrawn carry-in stays negative instead of being floored to 0 like `carriedForward`). */
+  broughtForward: number;
+  /** Σ days over in-cycle `adjustment` rows whose reason is NOT a `sys:` machine reason — the festive /
+   *  one-off / manual grants HR enters on Leave Config → Entitlement → Adjustment. BOTH signs. This is the
+   *  single source of truth the panel's Adjustment line shows (feedback 0315dac7 ask 1). */
+  configAdjustments: number;
+  /** Σ days over in-cycle `adjustment` rows stamped `sys:policy_recalc:*` / `sys:profile_recalc:*` — the
+   *  automatic corrections a policy edit or a grade/hire-date change posts. BOTH signs. Never appears on the
+   *  Adjustment configuration screen, so it gets its own labelled "System corrections" line. */
+  systemAdjustments: number;
+  /** Σ −days over in-cycle `adjustment` rows stamped one of the THREE forfeit reasons (carry cap, carry
+   *  expiry, aged type expiry), as a POSITIVE magnitude, taken from the actual ledger rows. */
+  forfeitedThisCycle: number;
+  /** Σ −days over in-cycle `debit` rows, as a POSITIVE magnitude. Unlike `debitsInWindow` (which the carry
+   *  arithmetic bounds by the carry-expiry date) this covers EVERY debit in the cycle, including ones dated
+   *  after carry expiry — otherwise those days would silently drop out of the identity. */
+  takenThisCycle: number;
+  /** The individual CONFIG adjustment rows behind `configAdjustments`, so a user can point at exactly where
+   *  each adjusted day came from ("CNY 2026: +2.00"). Config rows only — system corrections are automatic
+   *  and stay a single summarised line. */
+  configAdjustmentItems: { effectiveOn: string; days: number; reason: string | null }[];
   /** Ledger balance as at asOf minus pending requests (mirrors leaveBalances' `available`). */
   totalAvailable: number;
   /** Raw in-scope ledger rows so the UI can show the source of each component. */
-  transactions: { effectiveOn: string; entryType: string; days: number; sourceRequestId: string | null }[];
+  transactions: { effectiveOn: string; entryType: string; days: number; sourceRequestId: string | null; reason: string | null }[];
   /** Employee Leave View Configuration (65dec703): per-component ESS visibility for this leave type,
    *  resolved (missing key ⇒ visible). The shared EntitlementBreakdown gates rows against this ONLY when
    *  its `applyEssConfig` prop is set (i.e. on /me); admin/HR pass it false and see every row. */
@@ -1822,6 +1865,32 @@ export type LeaveEntitlementBreakdown = {
    *  explanation exists (feedback b8b665ff). Explanation layer only — never a computed figure. */
   formulaExplanations: ResolvedLeaveFormula;
 };
+
+/**
+ * Feedback 0315dac7 — which bucket a `leave_ledger` `adjustment` row belongs to, decided from its `reason`
+ * ALONE (never its sign). The three classes are mutually exclusive and exhaustive, which is what makes the
+ * reconciliation partition close:
+ *   • 'forfeit' — one of the THREE machine forfeit reasons. Enumerating all three matters: treating only the
+ *     cap forfeit as a boundary row would leave the carry-EXPIRY forfeit counted as an adjustment AND as a
+ *     forfeit (a second double-count).
+ *   • 'system'  — an automatic correction posted by a policy edit (`sys:policy_recalc:<id>`) or a profile
+ *     change (`sys:profile_recalc:<id>`). Invisible on the Adjustment configuration screen, hence its own line.
+ *   • 'config'  — everything else: the festive / one-off / manual grants HR actually enters. A NULL reason
+ *     falls here (a hand-written ledger row with no reason is a manual adjustment, not a machine one).
+ * Exported so the tests can assert the partition directly against the reason constants.
+ */
+export type LedgerAdjustmentClass = 'config' | 'system' | 'forfeit';
+
+export function classifyLedgerAdjustment(reason: string | null): LedgerAdjustmentClass {
+  const r = reason ?? '';
+  if (r === CARRY_FORFEIT_REASON_CAP || r === CARRY_FORFEIT_REASON_EXPIRY || r === AGED_FORFEIT_REASON) {
+    return 'forfeit';
+  }
+  if (r.startsWith(`${POLICY_RECALC_REASON_PREFIX}:`) || r.startsWith(`${PROFILE_RECALC_REASON_PREFIX}:`)) {
+    return 'system';
+  }
+  return 'config';
+}
 
 export function leaveEntitlementBreakdown(
   ctx: SessionContext,
@@ -1953,6 +2022,9 @@ export function leaveEntitlementBreakdown(
           entryType: leaveLedger.entryType,
           days: leaveLedger.days,
           sourceRequestId: leaveLedger.sourceRequestId,
+          // 0315dac7: the reason drives the adjustment partition below (config vs system vs forfeit) and
+          // labels each itemised config adjustment, so it must travel with the row.
+          reason: leaveLedger.reason,
         })
         .from(leaveLedger)
         .where(
@@ -1988,6 +2060,39 @@ export function leaveEntitlementBreakdown(
     // the aged lapse — keeping `entitlement + carried + otherAdjustments − taken − forfeited = balance`.
     const forfeited = Math.round((carryForfeited + num(agg?.agedForfeited)) * 100) / 100;
 
+    // ── Reconciliation partition (feedback 0315dac7) ──────────────────────────────────────────────────
+    // `rows` is EXACTLY the in-cycle window [cycleStart, asOf] the aggregates above use, so walking it once
+    // splits every in-cycle row into one — and only one — bucket. Together with `priorBalance` (everything
+    // strictly before cycleStart) the six buckets tile the whole ledger ≤ asOf, which is what makes
+    //   broughtForward + entitled + config + system − forfeited − taken = balance
+    // an identity rather than an approximation. Derived carry figures deliberately take NO part here.
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    let configAdjustments = 0;
+    let systemAdjustments = 0;
+    let forfeitedThisCycle = 0;
+    let takenThisCycle = 0;
+    const configAdjustmentItems: LeaveEntitlementBreakdown['configAdjustmentItems'] = [];
+    for (const r of rows) {
+      const days = Number(r.days);
+      if (r.entryType === 'debit') {
+        takenThisCycle = r2(takenThisCycle - days); // debits are negative ⇒ positive magnitude
+        continue;
+      }
+      if (r.entryType !== 'adjustment') continue; // accrual / in_lieu_accrual ⇒ currentYearEntitlement
+      switch (classifyLedgerAdjustment(r.reason)) {
+        case 'forfeit':
+          forfeitedThisCycle = r2(forfeitedThisCycle - days); // forfeits are negative ⇒ positive magnitude
+          break;
+        case 'system':
+          systemAdjustments = r2(systemAdjustments + days);
+          break;
+        case 'config':
+          configAdjustments = r2(configAdjustments + days);
+          configAdjustmentItems.push({ effectiveOn: r.effectiveOn, days, reason: r.reason });
+          break;
+      }
+    }
+
     const i18n = type.i18n as Record<string, { name: string }> | null;
     return {
       leaveTypeId: type.id,
@@ -2001,12 +2106,21 @@ export function leaveEntitlementBreakdown(
       carryForwardExpiryDate,
       forfeited,
       otherAdjustments: num(agg?.otherAdjustments),
+      balance,
+      pendingApproval: num(pendRow?.pending),
+      broughtForward: priorBalance,
+      configAdjustments,
+      systemAdjustments,
+      forfeitedThisCycle,
+      takenThisCycle,
+      configAdjustmentItems,
       totalAvailable: Math.round((balance - num(pendRow?.pending)) * 100) / 100,
       transactions: rows.map((r) => ({
         effectiveOn: r.effectiveOn,
         entryType: r.entryType,
         days: Number(r.days),
         sourceRequestId: r.sourceRequestId,
+        reason: r.reason,
       })),
       essView: resolveEssView(type.essViewConfig as Record<string, boolean> | null),
       formulaExplanations: resolveLeaveFormula(type.formulaExplanations as Record<string, LeaveFormulaEntry> | null),

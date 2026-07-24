@@ -62,10 +62,19 @@ export type PanelField = {
   omitWhenNull?: boolean;
 };
 
+/** A DATA-DERIVED row (feedback 0315dac7): unlike a `PanelField` — whose label is a fixed i18n key — these
+ *  rows come one-per-record out of the loaded data, so their label is user-authored text (an adjustment
+ *  reason). `label` null ⇒ the panel renders its own "no reason given" copy. `note` is optional muted
+ *  secondary text (the effective date). Still a pure PICK: no formula, the descriptor only maps. */
+export type PanelItemRow = { key: string; label: string | null; note?: string | null; value: number };
+
 export type PanelSection = {
   key: string;
   /** i18n key under `leave.breakdown` for the section heading. */
   labelKey: string;
+  /** Optional i18n key under `leave.breakdown` for a one-line caption under the heading — used by the
+   *  reconciliation block to spell out the formula in words (feedback 0315dac7). */
+  captionKey?: string;
   /** Display order (ascending). A future line inserts by picking an order between two existing ones. */
   order: number;
   // The `kind` discriminator ('upcoming' §5 list / 'transactions' §6 ledger) is GONE: with §6 removed
@@ -73,6 +82,11 @@ export type PanelSection = {
   /** Whole-section ESS gate (missing ⇒ visible). */
   essKey?: EssViewComponentKey;
   fields?: PanelField[];
+  /** 0315dac7: extra rows PICKED one-per-record out of the data, rendered after `fields`. Used only by §4
+   *  to itemise the config adjustments (reason + days each). Returns [] ⇒ nothing extra renders. */
+  itemsSelect?: (d: PanelData) => PanelItemRow[];
+  /** ESS gate for `itemsSelect`'s rows — they are the detail BEHIND a field, so they hide with it. */
+  itemsEssKey?: EssViewComponentKey;
 };
 
 /**
@@ -115,14 +129,35 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
       { key: 'overutilized', labelKey: 'field.overutilized', essKey: 'overutilized' },
     ],
   },
-  // §4 Adjustments
+  // §4 Adjustments — SPLIT in two (feedback 0315dac7). The single "Adjustment" line used to be
+  // `otherAdjustments`, which commingles the festive / one-off days HR enters on Leave Config → Entitlement →
+  // Adjustment with the automatic `sys:policy_recalc` / `sys:profile_recalc` corrections the system posts by
+  // itself — and dropped negatives and `sys:profile_recalc` entirely. So the figure could not be traced back
+  // to the Adjustment screen (the reporter's unexplained 13 days). Now:
+  //   • "Adjustment"        = configAdjustments  → ties EXACTLY to the Adjustment configuration (ask 1's
+  //                            single source of truth), both signs, itemised below with each row's reason.
+  //   • "System correction" = systemAdjustments  → the automatic corrections, labelled for what they are and
+  //                            summarised (they are machine-posted, so there is no config row to point at).
+  // Both share the `adjustment` ESS key: HR's one Adjustment toggle hides or shows the whole subsection.
   {
     key: 'adjustments',
     labelKey: 'section.adjustments',
     order: 4,
     fields: [
-      { key: 'adjustment', labelKey: 'field.adjustment', essKey: 'adjustment', select: (d) => d.breakdown.otherAdjustments },
+      { key: 'adjustment', labelKey: 'field.adjustment', essKey: 'adjustment', tooltipKey: 'tip.configAdjustment', select: (d) => d.breakdown.configAdjustments },
+      { key: 'systemCorrection', labelKey: 'field.systemCorrection', essKey: 'adjustment', tooltipKey: 'tip.systemCorrection', select: (d) => d.breakdown.systemAdjustments },
     ],
+    // Narrow, config-ONLY itemisation (deliberately NOT a revival of the removed §6 generic transaction
+    // table, 1dd4d827): one row per configured adjustment, carrying the reason HR typed, so every adjusted
+    // day is traceable to the grant that created it ("CNY 2026: +2.00").
+    itemsEssKey: 'adjustment',
+    itemsSelect: (d) =>
+      d.breakdown.configAdjustmentItems.map((it, i) => ({
+        key: `${it.effectiveOn}:${i}`,
+        label: it.reason,
+        note: it.effectiveOn,
+        value: it.days,
+      })),
   },
   // §5 Upcoming Leave — REMOVED (feedback 11876072): the reporter asked for the Upcoming Leave subsection to
   // be dropped from BOTH the admin Employee Leave View Configuration and the employee panel. The descriptor
@@ -145,14 +180,78 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
     fields: [
       { key: 'currentYearEntitlement', labelKey: 'currentYearEntitlement', select: (d) => d.breakdown.currentYearEntitlement },
       { key: 'monthlyAccrued', labelKey: 'monthlyAccrued', omitWhenNull: true, select: (d) => d.breakdown.monthlyAccruedToDate },
-      { key: 'carriedForward', labelKey: 'carriedForward', select: (d) => d.breakdown.carriedForward },
+      // 0315dac7: "Carried forward" now shows broughtForward — the RAW signed balance that crossed the cycle
+      // boundary — so the panel carries ONE carried number, the same one the reconciliation block adds up.
+      // The derived `carriedForward` (post-cap, floored at 0) conflicted with it: after a year-open cap
+      // forfeit the two disagreed and neither closed the sum. carryForwardRemaining + carryForwardExpiry stay
+      // below as the annual-carry detail they always were.
+      { key: 'carriedForward', labelKey: 'carriedForward', select: (d) => d.breakdown.broughtForward },
       { key: 'carryForwardRemaining', labelKey: 'carryForwardRemaining', select: (d) => d.breakdown.carryForwardRemaining },
       { key: 'carryForwardExpiry', labelKey: 'carryForwardExpiry', format: 'date', select: (d) => d.breakdown.carryForwardExpiryDate },
-      { key: 'forfeited', labelKey: 'forfeited', select: (d) => d.breakdown.forfeited },
+      // 0315dac7: sourced from the ACTUAL forfeit ledger rows (all three reasons) rather than the derived
+      // cap-excess, which double-subtracted whenever a cap or maxBalanceDays clamp fired.
+      { key: 'forfeited', labelKey: 'forfeited', select: (d) => d.breakdown.forfeitedThisCycle },
       { key: 'totalAvailable', labelKey: 'totalAvailable', select: (d) => d.breakdown.totalAvailable },
     ],
   },
+  // §8 How this adds up — the consolidated reconciliation block (feedback 0315dac7 ask 3).
+  //
+  // The reporter could not tell how Balance was derived because the addends are SCATTERED: Taken/Pending sit
+  // in §1, Adjustments in §4, entitlement/carried/forfeited in §7. This section co-locates all six addends
+  // with the two result lines so a user can watch the parts add up:
+  //
+  //   Brought forward + Entitled + Adjustments + System corrections − Forfeited − Taken = Balance
+  //   Balance − Pending approval = Available
+  //
+  // Every line is a plain PICK of a precomputed ledger-partition bucket (core/read.ts) — no formula lives
+  // here. The identity closes BY CONSTRUCTION because those buckets tile the ledger (each row ≤ asOf lands in
+  // exactly one), which is why this block reconciles even in the cases the old derived arithmetic did not
+  // (year-open cap forfeit, maxBalanceDays clamp, overdrawn carry-in, a debit dated after carry expiry).
+  //
+  // AS-AT: these lines are as-at the BREAKDOWN's asOf, while §1's Balance is the live leaveBalances figure.
+  // At the default asOf = today they are the same number; under ?asOf= time-travel this block still
+  // self-reconciles to its own as-at balance. Never ESS-gated (no essKey anywhere): a transparency block that
+  // an HR toggle could half-hide would show a sum that does not add up.
+  {
+    key: 'reconciliation',
+    labelKey: 'section.reconciliation',
+    captionKey: 'reconcile.caption',
+    order: 5,
+    fields: [
+      { key: 'reconBroughtForward', labelKey: 'reconcile.broughtForward', select: (d) => d.breakdown.broughtForward },
+      { key: 'reconEntitled', labelKey: 'reconcile.entitled', select: (d) => d.breakdown.currentYearEntitlement },
+      { key: 'reconConfigAdjustments', labelKey: 'reconcile.adjustments', select: (d) => d.breakdown.configAdjustments },
+      { key: 'reconSystemAdjustments', labelKey: 'reconcile.systemCorrections', select: (d) => d.breakdown.systemAdjustments },
+      { key: 'reconForfeited', labelKey: 'reconcile.forfeited', select: (d) => d.breakdown.forfeitedThisCycle },
+      { key: 'reconTaken', labelKey: 'reconcile.taken', select: (d) => d.breakdown.takenThisCycle },
+      { key: 'reconBalance', labelKey: 'reconcile.balance', select: (d) => d.breakdown.balance },
+      { key: 'reconPending', labelKey: 'reconcile.pending', select: (d) => d.breakdown.pendingApproval },
+      { key: 'reconAvailable', labelKey: 'reconcile.available', select: (d) => d.breakdown.totalAvailable },
+    ],
+  },
 ];
+
+/**
+ * The reconciliation identity the §8 block renders, as data (feedback 0315dac7). Exported so the server-side
+ * reconciliation tests and the panel assert the SAME arithmetic — a future line added to §8 without a matching
+ * entry here (or vice-versa) shows up as a failing test, not as a block whose numbers stop adding up.
+ *
+ *   Σ(addends · sign) = balance     and     balance − pendingApproval = totalAvailable
+ */
+export const RECONCILIATION_ADDENDS = [
+  { key: 'broughtForward', sign: 1 as const },
+  { key: 'currentYearEntitlement', sign: 1 as const },
+  { key: 'configAdjustments', sign: 1 as const },
+  { key: 'systemAdjustments', sign: 1 as const },
+  { key: 'forfeitedThisCycle', sign: -1 as const },
+  { key: 'takenThisCycle', sign: -1 as const },
+] satisfies { key: keyof EntitlementBreakdownData; sign: 1 | -1 }[];
+
+/** Σ(addends · sign) over a breakdown — must equal `breakdown.balance` for every employee, always. */
+export function reconciledBalance(b: EntitlementBreakdownData): number {
+  const total = RECONCILIATION_ADDENDS.reduce((sum, a) => sum + a.sign * (b[a.key] as number), 0);
+  return Math.round(total * 100) / 100;
+}
 
 // ─── Admin checklist grouping (feedback 11876072) ───────────────────────────────────────────────────────────
 //

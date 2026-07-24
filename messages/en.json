@@ -1305,7 +1305,8 @@
         "utilization": "Leave utilization",
         "adjustments": "Adjustments",
         "transactions": "Transaction history",
-        "calcBreakdown": "Entitlement calculation breakdown"
+        "calcBreakdown": "Entitlement calculation breakdown",
+        "reconciliation": "How this adds up"
       },
       "field": {
         "available": "Available",
@@ -1320,7 +1321,8 @@
         "unplanned": "Unplanned",
         "overutilized": "Overutilized",
         "adjustment": "Adjustment",
-        "balance": "Balance"
+        "balance": "Balance",
+        "systemCorrection": "System correction"
       },
       "panelSubtitle": "As at {date}",
       "close": "Close",
@@ -1335,7 +1337,24 @@
         "taken": "Leave you have already used (approved and taken).",
         "pendingApproval": "Leave you've applied for that is still awaiting approval.",
         "available": "Leave you can still take now, after pending requests are set aside.",
-        "balance": "Your remaining balance: total entitlement, including any carried forward and adjustments, minus leave taken."
+        "balance": "Your remaining balance, as: brought forward + entitled this cycle + adjustments + system corrections − forfeited − taken. The \"How this adds up\" section below shows every part."
+      },
+      "tip": {
+        "configAdjustment": "Extra or deducted days set by HR on the Adjustment step of the leave entitlement setup. Each one is listed below with its reason.",
+        "systemCorrection": "Automatic corrections the system posted by itself when a leave policy was edited or your grade or hire date changed. They are not entered on the Adjustment screen."
+      },
+      "adjustmentNoReason": "No reason given",
+      "reconcile": {
+        "caption": "Brought forward + Entitled + Adjustments + System corrections − Forfeited − Taken = Balance. Balance − Pending approval = Available.",
+        "broughtForward": "Brought forward",
+        "entitled": "+ Entitled this cycle",
+        "adjustments": "+ Adjustments",
+        "systemCorrections": "+ System corrections",
+        "forfeited": "− Forfeited",
+        "taken": "− Taken",
+        "balance": "= Balance",
+        "pending": "− Pending approval",
+        "available": "= Available"
       }
     },
     "preview": {

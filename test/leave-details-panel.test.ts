@@ -19,6 +19,8 @@ import { describe, expect, it } from 'vitest';
 import {
   ENTITLEMENT_PANEL_SECTIONS,
   ESS_VIEW_CHECKLIST_GROUPS,
+  RECONCILIATION_ADDENDS,
+  reconciledBalance,
   type PanelData,
 } from '../components/leave/entitlement-panel-config';
 import { ESS_VIEW_COMPONENT_KEYS } from '../core/ess-view';
@@ -27,6 +29,13 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 // A synthetic, fully-populated envelope — every field's `select` is a pure pick over this (no formula).
+//
+// The 0315dac7 ledger-partition figures are deliberately chosen so each new bucket is DISTINCT from the legacy
+// derived figure it replaced (broughtForward 5 vs carriedForward 4, forfeitedThisCycle 3 vs forfeited 1,
+// configAdjustments 4 vs the commingled otherAdjustments 5) — otherwise a repointed line would pass by
+// coincidence. They also satisfy the reconciliation identity:
+//   5 (brought forward) + 12 (entitled) + 4 (config) + 1 (system) − 3 (forfeited) − 2 (taken) = 17 = balance
+//   17 (balance) − 1 (pending) = 16 = totalAvailable
 const DATA: PanelData = {
   breakdown: {
     leaveTypeId: 'lt1',
@@ -35,18 +44,33 @@ const DATA: PanelData = {
     cycleStart: '2026-01-01',
     currentYearEntitlement: 12,
     monthlyAccruedToDate: 2,
-    carriedForward: 5,
+    carriedForward: 4,
     carryForwardRemaining: 3,
     carryForwardExpiryDate: '2026-03-31',
     forfeited: 1,
-    otherAdjustments: 4,
-    totalAvailable: 17,
-    transactions: [{ effectiveOn: '2026-01-01', entryType: 'accrual', days: 12, sourceRequestId: null }],
+    // Commingled legacy figure = config 4 + system 1. Still fed to the balance TABLE's Adjustment column;
+    // the panel's Adjustment line no longer reads it.
+    otherAdjustments: 5,
+    balance: 17,
+    pendingApproval: 1,
+    broughtForward: 5,
+    configAdjustments: 4,
+    systemAdjustments: 1,
+    forfeitedThisCycle: 3,
+    takenThisCycle: 2,
+    configAdjustmentItems: [
+      { effectiveOn: '2026-02-01', days: 3, reason: 'CNY 2026' },
+      { effectiveOn: '2026-02-10', days: 1, reason: null },
+    ],
+    totalAvailable: 16,
+    transactions: [
+      { effectiveOn: '2026-01-01', entryType: 'accrual', days: 12, sourceRequestId: null, reason: null },
+    ],
     essView: {},
   },
   // §1 Balance (6574c6b4): the authoritative ledger remaining (b.balance), passed straight into summary.balance
-  // by the call site — no longer re-derived here. 19 is this fixture's ledger figure; the field just picks it.
-  summary: { available: 15, taken: 2, pending: 1, ytdEntitled: 12, balance: 19 },
+  // by the call site — no longer re-derived here. 17 is this fixture's ledger figure; the field just picks it.
+  summary: { available: 15, taken: 2, pending: 1, ytdEntitled: 12, balance: 17 },
 };
 
 describe('entitlement-panel-config: sections in order (1dd4d827 removed §6, 11876072 removed §5)', () => {
@@ -60,6 +84,8 @@ describe('entitlement-panel-config: sections in order (1dd4d827 removed §6, 118
       'utilization',
       'adjustments',
       'calcBreakdown',
+      // 0315dac7: the consolidated "how this adds up" reconciliation block.
+      'reconciliation',
     ]);
     // e503f284: §2 "Entitlement Breakdown" is gone and §7 "Entitlement Calculation Breakdown" now sorts to
     // order 2 — immediately after the summary (order 1), the slot §2 used to hold.
@@ -67,7 +93,8 @@ describe('entitlement-panel-config: sections in order (1dd4d827 removed §6, 118
     const byKey = Object.fromEntries(ENTITLEMENT_PANEL_SECTIONS.map((s) => [s.key, s]));
     expect(byKey.calcBreakdown.order).toBe(2);
     const sorted = [...ENTITLEMENT_PANEL_SECTIONS].sort((a, b) => a.order - b.order).map((s) => s.key);
-    expect(sorted).toEqual(['summary', 'calcBreakdown', 'utilization', 'adjustments']);
+    // The reconciliation block sorts LAST — it is the summing-up of everything above it.
+    expect(sorted).toEqual(['summary', 'calcBreakdown', 'utilization', 'adjustments', 'reconciliation']);
     // Universal removals: no leave type / ESS config can re-surface either — the descriptor entries are gone.
     expect(keys).not.toContain('transactions');
     expect(keys).not.toContain('upcoming');
@@ -106,7 +133,7 @@ describe('entitlement-panel-config: fields PICK existing values (no hardcoded fo
     expect(field('summary', 'pendingApproval').select!(DATA)).toBe(1);
     expect(field('summary', 'ytdEntitled').select!(DATA)).toBe(12);
     // Balance (877f2f37) is a declarative PICK of the precomputed d.summary.balance, not a hardcoded formula.
-    expect(field('summary', 'balance').select!(DATA)).toBe(19);
+    expect(field('summary', 'balance').select!(DATA)).toBe(17);
   });
 
   it('§1 summary is reordered YTD Entitled → Taken → Pending → Available → Balance, each with a static tooltip', () => {
@@ -131,21 +158,112 @@ describe('entitlement-panel-config: fields PICK existing values (no hardcoded fo
     // §2 "Entitlement Breakdown" is removed; its engine figures live on in §7 (currentYearEntitlement =
     // entitlement-to-date, carriedForward = brought-forward, plus carry-forward expiry + forfeited).
     expect(field('calcBreakdown', 'currentYearEntitlement').select!(DATA)).toBe(12);
-    expect(field('calcBreakdown', 'carriedForward').select!(DATA)).toBe(5);
     expect(field('calcBreakdown', 'carryForwardExpiry').select!(DATA)).toBe('2026-03-31');
-    expect(field('calcBreakdown', 'forfeited').select!(DATA)).toBe(1);
   });
 
-  it('§4 adjustments reads otherAdjustments — the field re-added to the mirror type', () => {
-    expect(field('adjustments', 'adjustment').select!(DATA)).toBe(4);
+  it('0315dac7: §7 Carried forward / Forfeited read the LEDGER buckets, not the derived carry arithmetic', () => {
+    // Carried forward now shows broughtForward (the raw signed balance that crossed the boundary, 5), NOT the
+    // post-cap derived `carriedForward` (4) — one carried number, and the one the reconciliation sums.
+    expect(field('calcBreakdown', 'carriedForward').select!(DATA)).toBe(DATA.breakdown.broughtForward);
+    expect(field('calcBreakdown', 'carriedForward').select!(DATA)).not.toBe(DATA.breakdown.carriedForward);
+    // Forfeited now sums the ACTUAL forfeit ledger rows (3), not the derived cap-excess (1) that
+    // double-subtracted whenever a year-open cap or maxBalanceDays clamp fired.
+    expect(field('calcBreakdown', 'forfeited').select!(DATA)).toBe(DATA.breakdown.forfeitedThisCycle);
+    expect(field('calcBreakdown', 'forfeited').select!(DATA)).not.toBe(DATA.breakdown.forfeited);
+    // The annual-carry DETAIL lines are untouched — they stay as the carry-specific explanation.
+    expect(field('calcBreakdown', 'carryForwardRemaining').select!(DATA)).toBe(3);
+  });
+
+  it('0315dac7 ask 1: §4 Adjustment = configAdjustments (the Adjustment config), system corrections split out', () => {
+    // The Adjustment line ties to Leave Config → Entitlement → Adjustment ONLY. The commingled
+    // otherAdjustments (5 = config 4 + system 1) is no longer what the employee sees on this line.
+    expect(field('adjustments', 'adjustment').select!(DATA)).toBe(DATA.breakdown.configAdjustments);
+    expect(field('adjustments', 'adjustment').select!(DATA)).not.toBe(DATA.breakdown.otherAdjustments);
+    // The automatic corrections get their own labelled line rather than hiding inside "Adjustment".
+    expect(field('adjustments', 'systemCorrection').select!(DATA)).toBe(DATA.breakdown.systemAdjustments);
+    // Both hide together behind HR's single Adjustment toggle.
+    expect(field('adjustments', 'adjustment').essKey).toBe('adjustment');
+    expect(field('adjustments', 'systemCorrection').essKey).toBe('adjustment');
+  });
+
+  it('0315dac7: §4 itemises each CONFIG adjustment with its own reason + day count, and they sum to the line', () => {
+    const section = ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === 'adjustments')!;
+    const items = section.itemsSelect!(DATA);
+    expect(items.map((i) => ({ label: i.label, value: i.value, note: i.note }))).toEqual([
+      { label: 'CNY 2026', value: 3, note: '2026-02-01' },
+      // A row with no typed reason keeps its days and lets the panel render its own fallback copy.
+      { label: null, value: 1, note: '2026-02-10' },
+    ]);
+    // The itemisation must account for the whole Adjustment figure — otherwise it explains nothing.
+    expect(items.reduce((s, i) => s + i.value, 0)).toBe(DATA.breakdown.configAdjustments);
+    // Config rows ONLY — system corrections are machine-posted and stay a single summarised line, and this
+    // is deliberately NOT a revival of the removed §6 generic transaction table.
+    expect(items.length).toBe(DATA.breakdown.configAdjustmentItems.length);
+    expect(section.itemsEssKey).toBe('adjustment');
   });
 
   it('§7 calc-breakdown surfaces the engine values verbatim, incl. total available', () => {
     expect(field('calcBreakdown', 'currentYearEntitlement').select!(DATA)).toBe(12);
     expect(field('calcBreakdown', 'carryForwardRemaining').select!(DATA)).toBe(3);
-    expect(field('calcBreakdown', 'totalAvailable').select!(DATA)).toBe(17);
+    expect(field('calcBreakdown', 'totalAvailable').select!(DATA)).toBe(16);
     // monthlyAccrued is omitWhenNull so a grant-on-open type hides the row rather than showing a placeholder.
     expect(field('calcBreakdown', 'monthlyAccrued').omitWhenNull).toBe(true);
+  });
+});
+
+describe('0315dac7 ask 3: the consolidated "how this adds up" reconciliation block', () => {
+  const recon = () => ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === 'reconciliation')!;
+
+  it('co-locates all six addends with = Balance and − Pending = Available, in that reading order', () => {
+    // The reporter could not follow the Balance because the addends were SCATTERED across §1/§4/§7. Every
+    // part of the sum now appears together, in the order it is added.
+    expect(recon().fields!.map((f) => f.key)).toEqual([
+      'reconBroughtForward',
+      'reconEntitled',
+      'reconConfigAdjustments',
+      'reconSystemAdjustments',
+      'reconForfeited',
+      'reconTaken',
+      'reconBalance',
+      'reconPending',
+      'reconAvailable',
+    ]);
+    // A caption spells the formula out in words above the lines.
+    expect(recon().captionKey).toBe('reconcile.caption');
+  });
+
+  it('every line is a plain PICK of a precomputed bucket, and the lines ADD UP to the Balance shown', () => {
+    const v = (k: string) => recon().fields!.find((f) => f.key === k)!.select!(DATA) as number;
+    expect(v('reconBroughtForward')).toBe(5);
+    expect(v('reconEntitled')).toBe(12);
+    expect(v('reconConfigAdjustments')).toBe(4);
+    expect(v('reconSystemAdjustments')).toBe(1);
+    expect(v('reconForfeited')).toBe(3);
+    expect(v('reconTaken')).toBe(2);
+    // The whole point: what the user reads off the block equals the Balance line it ends on.
+    expect(v('reconBroughtForward') + v('reconEntitled') + v('reconConfigAdjustments') + v('reconSystemAdjustments') - v('reconForfeited') - v('reconTaken')).toBe(v('reconBalance'));
+    expect(v('reconBalance') - v('reconPending')).toBe(v('reconAvailable'));
+    // …and the exported identity helper (shared with the server-side reconciliation test) agrees.
+    expect(reconciledBalance(DATA.breakdown)).toBe(DATA.breakdown.balance);
+  });
+
+  it('the rendered addends and RECONCILIATION_ADDENDS cannot drift apart', () => {
+    // A line added to the block without a matching addend (or vice-versa) would silently stop the block
+    // adding up. Assert the two lists describe the same six buckets.
+    const rendered = recon()
+      .fields!.filter((f) => f.key.startsWith('recon') && !['reconBalance', 'reconPending', 'reconAvailable'].includes(f.key))
+      .map((f) => f.select!(DATA) as number);
+    const declared = RECONCILIATION_ADDENDS.map((a) => DATA.breakdown[a.key] as number);
+    expect(rendered).toEqual(declared);
+    expect(RECONCILIATION_ADDENDS.filter((a) => a.sign === -1).map((a) => a.key)).toEqual([
+      'forfeitedThisCycle',
+      'takenThisCycle',
+    ]);
+  });
+
+  it('is never ESS-gated — a half-hidden transparency block would show a sum that does not add up', () => {
+    expect(recon().essKey).toBeUndefined();
+    expect(recon().fields!.every((f) => f.essKey === undefined)).toBe(true);
   });
 });
 
@@ -173,6 +291,8 @@ describe('Leave Details panel i18n: every descriptor label resolves in all 6 loc
 
   const labelKeys = [
     ...ENTITLEMENT_PANEL_SECTIONS.map((s) => s.labelKey),
+    // 0315dac7: a section caption (the reconciliation formula in words) must resolve everywhere too.
+    ...ENTITLEMENT_PANEL_SECTIONS.flatMap((s) => (s.captionKey ? [s.captionKey] : [])),
     ...ENTITLEMENT_PANEL_SECTIONS.flatMap((s) => (s.fields ?? []).map((f) => f.labelKey)),
     // §1 static hover tooltips (877f2f37) — each summary row's tooltipKey must resolve in every locale.
     ...ENTITLEMENT_PANEL_SECTIONS.flatMap((s) => (s.fields ?? []).flatMap((f) => (f.tooltipKey ? [f.tooltipKey] : []))),
@@ -186,6 +306,8 @@ describe('Leave Details panel i18n: every descriptor label resolves in all 6 loc
     'close',
     'noExpiry',
     'viewBreakdown',
+    // 0315dac7: the fallback copy for an itemised config adjustment that carries no typed reason.
+    'adjustmentNoReason',
   ];
 
   for (const loc of LOCALES) {
@@ -255,6 +377,31 @@ describe('Leave Details panel: the inline expand became a Radix right side-sheet
   it('EntitlementBreakdown adapter delegates to LeaveDetailsPanel + re-adds otherAdjustments', () => {
     expect(adapter.includes('LeaveDetailsPanel')).toBe(true);
     expect(adapter.includes('otherAdjustments')).toBe(true);
+  });
+
+  it('0315dac7: the mirror type carries the whole ledger partition (else the panel silently loses lines)', () => {
+    // The adapter's structural mirror is what the RSC's breakdown object is assigned to. A bucket missing
+    // here would compile fine on the server and render nothing in the block.
+    for (const k of [
+      'balance',
+      'pendingApproval',
+      'broughtForward',
+      'configAdjustments',
+      'systemAdjustments',
+      'forfeitedThisCycle',
+      'takenThisCycle',
+      'configAdjustmentItems',
+    ]) {
+      expect(adapter.includes(`${k}:`), `mirror type missing ${k}`).toBe(true);
+    }
+  });
+
+  it('0315dac7: the panel renders the section caption and the itemised config adjustments', () => {
+    expect(panel.includes('section.captionKey')).toBe(true);
+    expect(panel.includes('itemsSelect')).toBe(true);
+    expect(panel.includes('itemsEssKey')).toBe(true);
+    // The itemised reason is USER data, rendered verbatim; only the empty-reason fallback is translated.
+    expect(panel.includes("t('adjustmentNoReason')")).toBe(true);
   });
 });
 

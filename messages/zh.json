@@ -1305,7 +1305,8 @@
         "utilization": "假期使用情况",
         "adjustments": "调整",
         "transactions": "交易记录",
-        "calcBreakdown": "应享计算明细"
+        "calcBreakdown": "应享计算明细",
+        "reconciliation": "余额是如何算出来的"
       },
       "field": {
         "available": "可用",
@@ -1320,7 +1321,8 @@
         "unplanned": "非计划",
         "overutilized": "超额使用",
         "adjustment": "调整",
-        "balance": "余额"
+        "balance": "余额",
+        "systemCorrection": "系统校正"
       },
       "panelSubtitle": "截至 {date}",
       "close": "关闭",
@@ -1335,7 +1337,24 @@
         "taken": "您已使用的休假（已批准并已休）。",
         "pendingApproval": "您已申请但仍在等待批准的休假。",
         "available": "在扣除待批准申请后，您现在仍可休的休假。",
-        "balance": "您的剩余余额：总额度（含任何结转和调整），减去已用休假。"
+        "balance": "您的剩余余额，即：结转 + 本周期额度 + 调整 + 系统校正 − 作废 − 已休。下方的「余额是如何算出来的」列出每一项。"
+      },
+      "tip": {
+        "configAdjustment": "由人力资源部在休假额度设置的「调整」步骤中设定的增加或扣减天数。每一笔连同原因列于下方。",
+        "systemCorrection": "当休假政策被修改，或您的职级、入职日期变更时，系统自动记入的校正。这些不会出现在「调整」设置页面。"
+      },
+      "adjustmentNoReason": "未填写原因",
+      "reconcile": {
+        "caption": "结转 + 本期额度 + 调整 + 系统校正 − 作废 − 已休 = 余额。余额 − 待审批 = 可用。",
+        "broughtForward": "结转",
+        "entitled": "+ 本周期额度",
+        "adjustments": "+ 调整",
+        "systemCorrections": "+ 系统校正",
+        "forfeited": "− 作废",
+        "taken": "− 已休",
+        "balance": "= 余额",
+        "pending": "− 待审批",
+        "available": "= 可用"
       }
     },
     "preview": {

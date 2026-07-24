@@ -1305,7 +1305,8 @@
         "utilization": "Penggunaan cuti",
         "adjustments": "Pelarasan",
         "transactions": "Sejarah transaksi",
-        "calcBreakdown": "Pecahan pengiraan kelayakan"
+        "calcBreakdown": "Pecahan pengiraan kelayakan",
+        "reconciliation": "Bagaimana jumlah ini terhasil"
       },
       "field": {
         "available": "Tersedia",
@@ -1320,7 +1321,8 @@
         "unplanned": "Tidak dirancang",
         "overutilized": "Penggunaan berlebihan",
         "adjustment": "Pelarasan",
-        "balance": "Baki"
+        "balance": "Baki",
+        "systemCorrection": "Pembetulan sistem"
       },
       "panelSubtitle": "Setakat {date}",
       "close": "Tutup",
@@ -1335,7 +1337,24 @@
         "taken": "Cuti yang telah anda gunakan (diluluskan dan diambil).",
         "pendingApproval": "Cuti yang anda mohon dan masih menunggu kelulusan.",
         "available": "Cuti yang masih boleh anda ambil sekarang, selepas permohonan yang menunggu diketepikan.",
-        "balance": "Baki cuti anda yang tinggal: jumlah kelayakan, termasuk sebarang bawa ke hadapan dan pelarasan, tolak cuti yang diambil."
+        "balance": "Baki anda yang tinggal, iaitu: bawa ke hadapan + kelayakan kitaran ini + pelarasan + pembetulan sistem − dilucutkan − diambil. Bahagian \"Bagaimana jumlah ini terhasil\" di bawah menunjukkan setiap bahagian."
+      },
+      "tip": {
+        "configAdjustment": "Hari tambahan atau potongan yang ditetapkan HR pada langkah Pelarasan dalam tetapan kelayakan cuti. Setiap satu disenaraikan di bawah dengan sebabnya.",
+        "systemCorrection": "Pembetulan automatik yang dicatat sendiri oleh sistem apabila polisi cuti disunting atau gred atau tarikh mula kerja anda berubah. Ia tidak dimasukkan pada skrin Pelarasan."
+      },
+      "adjustmentNoReason": "Tiada sebab dinyatakan",
+      "reconcile": {
+        "caption": "Bawa ke hadapan + Kelayakan + Pelarasan + Pembetulan sistem − Dilucutkan − Diambil = Baki. Baki − Menunggu kelulusan = Tersedia.",
+        "broughtForward": "Bawa ke hadapan",
+        "entitled": "+ Kelayakan kitaran ini",
+        "adjustments": "+ Pelarasan",
+        "systemCorrections": "+ Pembetulan sistem",
+        "forfeited": "− Dilucutkan",
+        "taken": "− Diambil",
+        "balance": "= Baki",
+        "pending": "− Menunggu kelulusan",
+        "available": "= Tersedia"
       }
     },
     "preview": {

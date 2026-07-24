@@ -43,7 +43,11 @@ const baseBreakdown = (over: Partial<NonNullable<BreakdownInput>> = {}): Breakdo
   currentYearEntitlement: 12,
   carriedForward: 5,
   forfeited: 1,
-  otherAdjustments: 2,
+  // 0315dac7: `otherAdjustments` commingles HR's configured grants with automatic system corrections; the
+  // Adjustment column now shows `configAdjustments`, the same bucket the breakdown panel's Adjustment line
+  // reads. Kept DISTINCT here (2 vs 6) so a regression back to the commingled figure fails loudly.
+  otherAdjustments: 6,
+  configAdjustments: 2,
   ...over,
 });
 
@@ -53,7 +57,10 @@ describe('deriveBalanceRow: the standardized balance columns map from existing f
     expect(row.available).toBe(8.5); // shown as "Accrued"
     expect(row.taken).toBe(3);
     expect(row.broughtForward).toBe(5); // Carried Forward
-    expect(row.adjustment).toBe(2); // otherAdjustments
+    // 0315dac7: the Adjustment column is the CONFIG adjustment total (what HR entered on the Adjustment
+    // step), NOT the commingled otherAdjustments — same figure the breakdown panel's Adjustment line shows.
+    expect(row.adjustment).toBe(2);
+    expect(row.adjustment).not.toBe(baseBreakdown()!.otherAdjustments);
     expect(row.overutilized).toBe(0); // available >= 0 ⇒ 0
     expect(row.ytdEntitled).toBe(17); // currentYearEntitlement(12) + carriedForward(5)
     // Balance surfaces the authoritative ledger figure b.balance DIRECTLY (6574c6b4) — it is NOT re-derived from
@@ -111,10 +118,10 @@ describe('deriveBalanceRow: the standardized balance columns map from existing f
     expect(b.broughtForward).toBe(99);
   });
 
-  it('adjustment invariance: changing otherAdjustments does NOT change Balance', () => {
+  it('adjustment invariance: changing the adjustment total does NOT change Balance', () => {
     const base = baseBalance({ balance: 15 });
-    const a = deriveBalanceRow(base, baseBreakdown({ otherAdjustments: 2 }));
-    const b = deriveBalanceRow(base, baseBreakdown({ otherAdjustments: 40 }));
+    const a = deriveBalanceRow(base, baseBreakdown({ configAdjustments: 2 }));
+    const b = deriveBalanceRow(base, baseBreakdown({ configAdjustments: 40 }));
     expect(a.balance).toBe(15);
     expect(b.balance).toBe(15);
     expect(a.adjustment).toBe(2);

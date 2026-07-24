@@ -69,6 +69,9 @@ export type BreakdownInput = {
   carriedForward: number;
   forfeited: number;
   otherAdjustments: number;
+  /** 0315dac7: the CONFIG-only adjustment total (festive / one-off / manual grants, both signs) — what the
+   *  Adjustment column shows, so this table and the breakdown panel name the same number. */
+  configAdjustments: number;
 } | null;
 
 /**
@@ -94,7 +97,12 @@ export function deriveBalanceRow(b: BalanceInput, bd: BreakdownInput): Omit<Leav
     available: showAvailable ? b.available : null,
     taken: showTaken ? b.taken : null,
     broughtForward: bd ? bd.carriedForward : null,
-    adjustment: bd ? bd.otherAdjustments : null,
+    // Adjustment = the CONFIG adjustments only (0315dac7). It used to be `otherAdjustments`, which commingles
+    // HR's festive / one-off grants with the automatic `sys:policy_recalc` corrections (and drops
+    // `sys:profile_recalc` and every negative row). The breakdown panel's Adjustment line reads the same
+    // configAdjustments bucket, so the table and the panel can never disagree about "Adjustment" — the
+    // feedback's single-source-of-truth requirement. System corrections are labelled separately in the panel.
+    adjustment: bd ? bd.configAdjustments : null,
     // Overutilized = how far the type is over-drawn. Gated with Available (its own negation) so a hidden
     // balance can't leak.
     overutilized,
