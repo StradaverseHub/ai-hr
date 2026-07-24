@@ -578,7 +578,10 @@ describe('b81d3c52 — rounding-method change reaches already-earned balances', 
   });
 
   it('(g) a2c parity: a first-year a2c employee rounds via the accrual-class a2c delegation', async () => {
-    const A2C_ASOF = '2026-07-23'; // 199 days worked from 6 Jan ⇒ 20/365×199 = 10.90 raw
+    // adcdf215 switched a2c's first year from accrue-to-date to an UP-FRONT part-year grant, so the raw
+    // figure this test rounds is now the whole join→31 Dec slice, not the slice earned by `asOf`:
+    // 6 Jan → 31 Dec = 360 days ⇒ 20/365×360 = 19.73 raw (it was 20/365×199 = 10.90 under the old build-up).
+    const A2C_ASOF = '2026-07-23';
     await updateLeaveType(adminCtx(b), { id: b.annualLeaveTypeId, name: 'Annual Leave', yearCycleOverride: 'a2c', asOf: A2C_ASOF });
     const { id } = await policy(20);
     const emp = await hireEmployee(adminCtx(b), {
@@ -594,10 +597,11 @@ describe('b81d3c52 — rounding-method change reaches already-earned balances', 
       id, annualDays: 20, roundingMethod: 'up', validFrom: '2026-01-01', asOf: A2C_ASOF,
     });
     expect(res.affected).toBe(1);
-    // Delegated to reprojectA2cEntitlement (accrual-class), so YTD Entitled rounds UP to 11 — consistent
-    // with the ordinary-employee path above.
-    expect(await accruedOf(emp.employmentId)).toBe(11);
-    expect(await annualBalance(emp.employmentId)).toBe(11);
+    // Delegated to reprojectA2cEntitlement (accrual-class), so YTD Entitled rounds UP: 19.73 ⇒ 20 —
+    // consistent with the ordinary-employee path above. The assertion still bites on the rounding it is
+    // here to prove: without the 'up' method the figure would stand at 19.73, not 20.
+    expect(await accruedOf(emp.employmentId)).toBe(20);
+    expect(await annualBalance(emp.employmentId)).toBe(20);
   });
 
   it('(h) regression: a change to BOTH days and rounding is NOT rounding-only ⇒ stays adjustment-class', async () => {

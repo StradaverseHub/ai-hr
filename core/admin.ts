@@ -68,8 +68,10 @@ import {
 } from '../db/schema';
 // Organization Module — Automatic Payroll Cycle Assignment (361e3b15): the admin Add-company path now seeds
 // the standard cycle catalog (the seed the account-setup / provisioning paths already run) so a company is
-// payroll-ready the moment it is created, and stores its default cycle by name.
-import { DEFAULT_PAYROLL_CYCLES, seedPayrollCycleCatalog } from './payroll-cycle';
+// payroll-ready the moment it is created, and stores its default cycle by name. Imported through the pack
+// FACADE, not `./payroll-cycle` directly (ADR-0080 D9, test/payroll-pack-drift.test.ts): this is a new
+// cross-module consumer, and the ratchet allowlist only ever shrinks.
+import { DEFAULT_PAYROLL_CYCLES, seedPayrollCycleCatalog } from '../packs/payroll/service';
 
 /** The three holiday-calendar KINDS (ADR-0067). 'standard' = official gazette only (no resolver branch);
  *  'extended' = gazette ∪ company ad-hoc; 'custom' = company ad-hoc only (national NOT auto-added). */
