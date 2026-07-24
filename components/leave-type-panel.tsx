@@ -844,7 +844,6 @@ export function LeaveTypePanel({
   archived,
   inUse,
   isAnnual,
-  floorLabel,
   floor0,
   eligibility,
   durations,
@@ -906,7 +905,6 @@ export function LeaveTypePanel({
   archived: boolean;
   inUse: boolean;
   isAnnual: boolean;
-  floorLabel: string | null;
   floor0: number;
   eligibility: LeaveEligibilityRule | null;
   /** ADR-0048: enabled non-full-day durations (e.g. ['half_day_am','hourly']); null/[] = full-day-only. */
@@ -1504,13 +1502,6 @@ export function LeaveTypePanel({
               )}
             </div>
           )}
-          {/* statutory floor (read-only) */}
-          <div className="flex items-center justify-between gap-3 rounded-lg bg-background px-3 py-2 text-xs">
-            <span className="text-muted-foreground">{t('statutoryMinimum')}</span>
-            <span className="tabular-nums">
-              {floorLabel ? t('daysValue', { days: floorLabel }) : t('none')}
-            </span>
-          </div>
           {/* Leave Unit Configuration (e4980382) — the Day/Hour unit moved into the identity/rename form above
               (bd063176) so it sits beside Reason and saves in one action; the standalone always-on sub-form
               that lived here was removed. */}

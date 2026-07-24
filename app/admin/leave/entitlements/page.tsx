@@ -172,16 +172,12 @@ export default async function LeaveEntitlementsPage({
   const earnedDefaultYear =
     earnedLeaveYears.find((y) => y.year === currentYear)?.year ?? earnedLeaveYears[0]?.year ?? currentYear;
 
-  // Statutory floor display: sample the three service bands. Rung 5c — the entitlement floor comes from
+  // Country-pack entitlement lookup — feeds each type's `floor0` (the day-zero statutory entitlement that
+  // drives the entitlement summary and the below-minimum badge). Rung 5c — the entitlement floor comes from
   // the country pack via the registry (union-read interim: the first/only registered pack, matching the
   // rung-5a `countryPacks()` precedent for tenant-level vocabulary with no acting company; per-company
   // narrowing is the second-country rung, ADR-0080 §6). MY-only today ⇒ byte-identical to the old import.
   const packEntitlement = countryPacks()[0]?.leave.entitlement;
-  const floorBands = (code: string) => {
-    if (!packEntitlement) return null;
-    const days = [...new Set([0, 2, 6].map((y) => packEntitlement(code, y)))];
-    return days[0] === 0 ? null : days.join(' / ');
-  };
 
   // Group each type's effective-dated policies, newest first, for inline editing.
   const polByType = new Map<string, EntitlementPolicy[]>();
@@ -558,7 +554,6 @@ export default async function LeaveEntitlementsPage({
               archived={!!lt.archivedAt}
               inUse={lt.inUse}
               isAnnual={lt.code === 'ANNUAL'}
-              floorLabel={floorBands(lt.code)}
               floor0={packEntitlement?.(lt.code, 0) ?? 0}
               eligibility={(lt.eligibility as { gender?: string | string[]; maritalStatus?: string | string[]; minServiceMonths?: number; minServiceUnit?: 'months' | 'days' } | null) ?? null}
               durations={(lt.durations as string[] | null) ?? null}

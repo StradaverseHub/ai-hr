@@ -55,7 +55,6 @@ const RETIRED_KEYS = ['categoryApproval', 'categoryDisplay', 'categoryCalculatio
 const CATEGORY_CONTENT: Record<(typeof CATEGORY_KEYS)[number], string[]> = {
   categoryGeneral: [
     'name="identity"',
-    "t('statutoryMinimum')",
     'name="leaveUnit"',
     // moved here from the retired Approval Rules card
     'name="partialApproval"',

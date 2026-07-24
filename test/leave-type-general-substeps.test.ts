@@ -9,8 +9,9 @@
  * (backward-compatible: older payloads still hydrate, generalSubStep defaults to Details).
  *
  * Content contract:
- *  - Details keeps the EXACT existing General content (identity/rename, statutory floor, leave unit,
- *    per-date approval) — the leave-type-config-categories.test.ts anchors keep guarding it.
+ *  - Details keeps the EXACT existing General content (identity/rename, leave unit, per-date approval;
+ *    the read-only statutory-floor row was removed by feedback 3c093c7a) — the
+ *    leave-type-config-categories.test.ts anchors keep guarding it.
  *  - Leave Year Type: a per-type override select posting the `yearCycle=1` tri-state marker
  *    (leave_type.year_cycle_override, migration 0303); the Anniversary-to-Calendar option renders
  *    DISABLED pending engine work (no hybrid-year semantics ship in this restructure).
@@ -89,10 +90,10 @@ describe('e1a51aea · reusable sub-step control', () => {
 });
 
 describe('e1a51aea · Details keeps the existing General content', () => {
-  it('the identity form, statutory floor, leave unit and per-date approval live in the details sub-step', () => {
+  it('the identity form, leave unit and per-date approval live in the details sub-step', () => {
     const seg = generalSegment();
     const details = seg.slice(seg.indexOf("generalSubStep === 'details'"), seg.indexOf("generalSubStep === 'yearType'"));
-    for (const needle of ['name="identity"', "t('statutoryMinimum')", 'name="leaveUnit"', 'name="partialApproval"']) {
+    for (const needle of ['name="identity"', 'name="leaveUnit"', 'name="partialApproval"']) {
       expect(details.includes(needle), `${needle} inside details`).toBe(true);
     }
   });
