@@ -7,6 +7,97 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## r69 — 2026-07-25 — 8 approved feedback items
+
+**Shipped:** `build/r69@f56ccb7` → merged to `main` as `93d9d18`. All 8 `deployed`. `deploy.sh` migrated
+and restarted the service, 00:04:23 +08 (`✓ Ready in 125ms`, journal clean, `GET /` 401 = password gate).
+
+**Gate:** clean-room **PASS** — empty DB migrated `0000` → latest, then **4672/4672 tests, 436 files** as
+`ai_hr_app` under RLS · `tsc --noEmit` clean · `next build` clean. **Zero integration failures** — the
+first multi-item round in a while where nothing collided (contrast r68, which had two).
+
+| id | Kind | Item |
+|---|---|---|
+| `57840a6e` | issue | HRDF contribution not calculated after payroll processing |
+| `0315dac7` | issue | Incorrect leave balance |
+| `f71dcafd` | issue | Notification icon UI — colliding count bubbles |
+| `7fe7e1ae` | issue | Action search bar input spilling past the popup edge |
+| `421d7551` | enhancement | "My Absence" renamed to "My Leave" |
+| `9e64ac20` | enhancement | Leave request popup — deduction box replaced with a compact summary |
+| `836118c4` | enhancement | "Approval" → "Approval Items" with a combined pending count |
+| `95aafb3c` | enhancement | Multi-company switcher — bulk select/deselect |
+
+### Decisions
+
+**1. `57840a6e`'s ticket diagnosed the wrong layer — the payroll engine was never broken.** The report
+was "HRDF not generated after payroll processing"; the engine computes HRDF end to end and always did.
+The real defect was one control upstream: Subject-to-HRDF was a **checkbox**, which structurally cannot
+carry the tri-state the data model uses (`null` = follow the company's registration default, `true`/
+`false` = explicit override). An untouched card rendered unchecked while the company was
+`not_registered`, so saving that card for *any* unrelated reason silently wrote an explicit **No** —
+permanently excluding that employee from the levy even after the company later set a 0.5%/1.0% rate. Now
+a three-option select. The corrective for already-damaged rows uses the **DomainEvent log as the
+discriminator**: a No written while the company was `not_registered` is provably accidental and resets to
+null; a No written while registered is HR's real decision and is left alone; anything untraceable is
+**reported for HR rather than auto-changed**. That last branch is the important one — it declines to
+guess on exactly the rows where guessing would silently overwrite a human decision.
+
+**2. `0315dac7` was rebuilt as a raw ledger partition, because the old arithmetic was algebraically
+false.** The Leave Breakdown derived its carry figures rather than partitioning the ledger, which does
+not close after a year-open cap forfeit, a `maxBalanceDays` clamp, or an overdrawn carry-in.
+`leaveEntitlementBreakdown` now sorts every ledger row ≤ asOf into **six disjoint buckets**, so
+`Σ buckets = balance` and `balance − pending = available` hold *by construction* rather than by
+agreement. The old single "Adjustment" line is split into config adjustments (which tie line-by-line to
+Leave Config → Entitlement → Adjustment) and a separately labelled **"System corrections"** row for the
+automatic `sys:policy_recalc` / `sys:profile_recalc` entries the commingled figure used to hide.
+
+> **⚠ Not confirmed against live data.** The reported symptom — an employee showing 13 days of adjustment
+> with nothing on the Adjustment screen — was **never reproduced**. The local dev DB has no adjustment
+> rows for her (ANNUAL accrual 6.00 only), and the read against the live server was blocked by the
+> permission classifier. Both faults are proven from code and pinned by tests, and the symptom *matches*
+> fault 1 (an unlabelled system correction surfacing inside the commingled Adjustment line) — but that is
+> inference, not verification. **Worth confirming on the deployed data before telling the reporter it is
+> fixed.**
+
+**3. `836118c4` deviated from its approved plan, correctly.** The plan directed editing
+`messages/i18n.csv` and running `pnpm i18n:import`. But `messages/*.csv` is **gitignored** (line 52) and
+untracked — it is a regenerable working file, absent from a fresh worktree entirely. A CSV edit could not
+have shipped in the patch, and the plan's CSV round-trip assertions would fail on any clean clone. Built
+against the six tracked JSON catalogs instead (the precedent every other i18n test follows) and replaced
+the CSV assertions with hard-coded expected strings per locale, which still catches a stale-CSV import
+reverting the rename. **Future plans touching i18n should stop specifying the CSV round-trip.**
+
+**4. `95aafb3c`'s "Deselect all" deliberately does not submit.** `getScopeIds` (`lib/scope.ts`) coerces an
+empty `company_scope` cookie back to *all* allowed ids, so submitting an empty selection would silently
+re-tick every box. Deselect is therefore a client-side clear only; Select all commits with `flushSync`
+before `requestSubmit()` so the bulk change posts the full id set.
+
+### Integration
+
+Much cleaner than r68: **no source file was touched by more than one patch.** The only shared surface was
+the six locale files, which merged without conflict because each patch appends its own keys (6488 → 6501,
+parity ✓ across all six). All 8 applied with `git apply --3way` and zero conflicts, and the full suite
+found nothing — so this round's clean textual merge *was* a clean semantic merge. That is a property of
+this particular item mix, not a general rule; r68's counter-example still stands.
+
+`421d7551`'s build flagged a coordination risk for the integrator — that `9e64ac20` might also edit the
+renamed keys or add a second sidebar row. Checked: `9e64ac20` touches neither key, `packs/leave/index.ts`
+still declares exactly one `labelKey: 'myAbsence'` row, and all six locales carry the in-language term.
+
+### Outstanding
+
+- `bc9be1e8` is now the **only** item left on the board, still `approved` and still unbuildable — see r68
+  Decision 1. It was deliberately excluded from this round's build rather than left to triage, because
+  its precondition is now *half* met (`0b7eeb4b` shipped in r68) and an agent reading only the plan could
+  wrongly conclude it is buildable.
+- Confirm `0315dac7` against live data (see the warning above) before reporting it fixed.
+- ~165 leftover `ahr_build_*` databases have accumulated on the local Postgres, one per item built since
+  roughly r40, plus `ahr_build_golden` (which is live and must be kept). Inert but growing every round.
+- The hourly watcher still polls the stale `IMPROVE_SSH_HOST` default and reports `approved=0` — it
+  reported nothing while 8 items queued up. Fix the plist before it hides a real backlog again.
+
+---
+
 ## r68 — 2026-07-24 — 8 approved feedback items (a 9th deliberately not built)
 
 **Shipped:** `build/r68@d8f9869` → merged to `main` as `c008ac3`. All 8 `deployed`. `deploy.sh` applied
@@ -101,66 +192,18 @@ that finds semantic collisions. Do not let a conflict-free apply talk you into a
 
 ## r67 — 2026-07-24 — 3 approved feedback items
 
-**Shipped:** `build/r67@038d2db` → merged to `main` as `76f3195`. All 3 `deployed`. Service restarted
-13:26 +08 (`✓ Ready in 106ms`, journal clean).
-
-**Gate:** `tsc --noEmit` clean · `next build` clean · **4515/4515 tests, 427 files**. No flaky failure —
-the zakat substring assertion fixed in `91b2e4d` (this session) held.
-
-| id | Item |
-|---|---|
-| `1c541ceb` | Search popup (Cmd-K → Approval Delegation) cut-off: one scroll region, wider dialog, edit form no longer stretches the table |
-| `b1b81a08` | Grade config moved from Leave Config → System Settings → System Label → Organization Label |
-| `643d38e7` | Leave request popup: A–Z localised type sort, Pending/Taken/Balance summary, expandable day-by-day panel |
-
-### Decisions
-
-**1. `643d38e7` fixed a defect the ticket didn't name.** `previewLeaveDeductionAction` returned `null`
-whenever `employmentId` was empty, and a self-service employee always reaches it empty — so the "this
-will deduct N day(s)" line had been **silently dead for regular employees**, only ever rendering for an
-HR/manager applying on someone's behalf. The build added the `myEmployment(session)` fallback
-`requestLeaveAction` already used. In scope because the summary the ticket *did* ask for is meaningless
-without it.
-
-**2. Off-day vs rest-day was deliberately NOT split.** The reporter's example distinguished Saturday
-"Off day" from Sunday "Rest day", but the leave engine treats every non-working weekday identically when
-deciding deductions. Both render as "Rest day". Faking the split would make the day-by-day panel
-disagree with the deducted-days total directly above it. Flagged to the reporter in the plan; a proper
-off/rest split is its own future item.
-
-**3. `b1b81a08` is a UI move with NO data migration — by design.** Grade rows are not copied, renamed,
-or recreated; only the management screen relocates, so every employee / entitlement / benefit-scheme /
-claim-limit / approval-rule reference keeps resolving to the same row. Delete guards were *tightened*
-(now also blocked when a grade is used by an approval rule, claim limit, or grade group). Two
-company-scoped extras (spreadsheet export, multi-row paste) intentionally not carried over — today's
-grade screen has neither, so nothing is lost.
-
-### Integration
-
-Clean. Only `messages/*.json` (6 locales) was touched by more than one patch, and they merged without
-conflict — each patch appends its own keys. No hand-merging, unlike r66. This is the payoff of building
-off a `main` that already contained the prior round rather than racing patches off a stale base.
-
-### Notable quality point
-
-The leave summary and the day-by-day row total are **not** computed independently — both reuse the same
-`leaveBalance()` / `previewLeaveDeduction` source the headline deducted-days figure already uses (day
-rows fold in behind an `includeDayRows` flag, keeping the no-flag return byte-identical). So the three
-numbers in the popup are structurally incapable of disagreeing. ESS visibility config honoured (a figure
-HR has hidden shows as a dash, not revealed).
-
-### Outstanding
-
-- Nothing to build for r67.
-- The r66 anniversary accrual decision (r66 Decision 1) is now **on the reporter's plate as a board
-  item**: `adcdf215` "Confirm how first-year leave is calculated for Anniversary to Calendar joiners"
-  (status `open`, raised 2026-07-24 via the new `pnpm improve:raise`). It proposes switching to the
-  up-front-grant method; **approve = switch, reject/ignore = keep the current build-up (accrual-to-date)
-  behaviour that is live now.** Framed as a single concrete change so it respects the board's
-  approve-carries-no-payload rule — it does not ask the reporter to pick between options. Until they
-  act, the board is not fully clear: it has this one open item awaiting a plan.
-
----
+`build/r67@038d2db` → `main` as `76f3195`. All 3 `deployed`. Gate: 4515/4515 tests, 427 files. Search
+popup cut-off (`1c541ceb`), Grade config moved to System Labels (`b1b81a08`), leave request popup with
+localised type sort + Pending/Taken/Balance summary and a day-by-day panel (`643d38e7`). Two calls worth
+keeping: `643d38e7` fixed an unnamed defect — `previewLeaveDeductionAction` returned null whenever
+`employmentId` was empty, which is always true for a self-service employee, so the "this will deduct N
+day(s)" line had been **silently dead for regular employees**, rendering only for an HR/manager applying
+on someone's behalf. And off-day vs rest-day was deliberately NOT split, because the leave engine treats
+every non-working weekday identically when deciding deductions; faking the split would make the day-by-day
+panel disagree with the deducted-days total directly above it. Its three popup figures are structurally
+incapable of disagreeing — all reuse the same `leaveBalance()` / `previewLeaveDeduction` source behind an
+`includeDayRows` flag. First round to build off a `main` that already contained the prior round, which is
+why its 6-locale merge needed no hand-editing unlike r66.
 
 ## r66 — 2026-07-24 — 12 approved feedback items
 
