@@ -3531,7 +3531,7 @@
         "position": "Jawatan",
         "cost_center": "Pusat Kos",
         "business_unit": "Unit Perniagaan",
-        "grade": "Gred"
+        "grade": "Gred Jawatan"
       },
       "sharingSettings": "Tetapan perkongsian",
       "sharedLabelsToggle": "Kongsi label merentas syarikat",
@@ -3582,8 +3582,8 @@
       "cancel": "Batal",
       "apply": "Guna",
       "origin": "asal",
-      "gradeInUseHint": "Gred ini sedang digunakan oleh pekerja, dasar cuti, peraturan kelulusan, had tuntutan atau kumpulan gred, jadi ia tidak boleh dipadam. Arkibkan ia sebaliknya.",
-      "deleteGradeTitle": "Padam gred?",
+      "gradeInUseHint": "Gred jawatan ini sedang digunakan oleh pekerja, dasar cuti, peraturan kelulusan, had tuntutan atau kumpulan gred, jadi ia tidak boleh dipadam. Arkibkan ia sebaliknya.",
+      "deleteGradeTitle": "Padam gred jawatan?",
       "deleteGradeDescription": "{name} akan dibuang secara kekal. Tindakan ini tidak boleh dibatalkan."
     },
     "leave": {

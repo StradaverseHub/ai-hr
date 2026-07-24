@@ -3531,7 +3531,7 @@
         "position": "Chức vụ",
         "cost_center": "Trung tâm chi phí",
         "business_unit": "Đơn vị kinh doanh",
-        "grade": "Ngạch bậc"
+        "grade": "Cấp bậc"
       },
       "sharingSettings": "Cài đặt chia sẻ",
       "sharedLabelsToggle": "Chia sẻ nhãn giữa các công ty",
@@ -3582,8 +3582,8 @@
       "cancel": "Hủy",
       "apply": "Áp dụng",
       "origin": "gốc",
-      "gradeInUseHint": "Ngạch bậc này đang được nhân viên, chính sách nghỉ phép, quy tắc phê duyệt, hạn mức yêu cầu chi trả hoặc một nhóm ngạch bậc sử dụng nên không thể xóa. Hãy lưu trữ thay thế.",
-      "deleteGradeTitle": "Xóa ngạch bậc?",
+      "gradeInUseHint": "Cấp bậc này đang được nhân viên, chính sách nghỉ phép, quy tắc phê duyệt, hạn mức yêu cầu chi trả hoặc một nhóm ngạch bậc sử dụng nên không thể xóa. Hãy lưu trữ thay thế.",
+      "deleteGradeTitle": "Xóa cấp bậc?",
       "deleteGradeDescription": "{name} sẽ bị xóa vĩnh viễn. Không thể hoàn tác."
     },
     "leave": {

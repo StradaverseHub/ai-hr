@@ -3531,7 +3531,7 @@
         "position": "Positions",
         "cost_center": "Cost Centres",
         "business_unit": "Business Units",
-        "grade": "Grades"
+        "grade": "Job Grade"
       },
       "sharingSettings": "Sharing settings",
       "sharedLabelsToggle": "Share labels across companies",
@@ -3582,8 +3582,8 @@
       "cancel": "Cancel",
       "apply": "Apply",
       "origin": "origin",
-      "gradeInUseHint": "This grade is in use by employees, leave policies, approval rules, claim limits or a grade group, so it cannot be deleted. Archive it instead.",
-      "deleteGradeTitle": "Delete grade?",
+      "gradeInUseHint": "This job grade is in use by employees, leave policies, approval rules, claim limits or a grade group, so it cannot be deleted. Archive it instead.",
+      "deleteGradeTitle": "Delete job grade?",
       "deleteGradeDescription": "{name} will be permanently removed. This cannot be undone."
     },
     "leave": {
