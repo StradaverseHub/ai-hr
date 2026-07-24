@@ -40,6 +40,7 @@ import {
   type ServiceBand,
 } from './leave';
 import { countryPacks } from '../localization/registry';
+import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
 import { MARITAL_STATUSES } from './profile';
 import {
   appUser,
@@ -182,6 +183,17 @@ function cleanEligList(
   return deduped.length > 0 ? deduped : undefined;
 }
 
+/** Normalize an org-assignment eligibility field to a de-duped, blank-stripped list WITHOUT catalogue
+ *  validation. Unlike cleanEligList, the stored values are NOT allow-listed against the profile_option catalogue:
+ *  the picker limits NEW picks to active values, but a value later deactivated/removed must still re-save cleanly
+ *  (legacy tolerance — the same rule assertProfileValueAllowed applies on the profile side). Empty ⇒ undefined
+ *  (the field carries no restriction). */
+function cleanOrgEligList(v: string | string[] | null | undefined): string[] | undefined {
+  const arr = (Array.isArray(v) ? v : v == null ? [] : [v]).map((x) => String(x).trim()).filter((x) => x !== '');
+  const deduped = [...new Set(arr)];
+  return deduped.length > 0 ? deduped : undefined;
+}
+
 function cleanEligibility(e: LeaveEligibility | null | undefined): LeaveEligibility | null {
   if (e == null) return null;
   const out: LeaveEligibility = {};
@@ -189,6 +201,13 @@ function cleanEligibility(e: LeaveEligibility | null | undefined): LeaveEligibil
   if (gender) out.gender = gender;
   const maritalStatus = cleanEligList(e.maritalStatus, ELIGIBILITY_MARITAL_OPTIONS, 'marital status');
   if (maritalStatus) out.maritalStatus = maritalStatus;
+  // Organisation Assignment criteria: one de-duped list per org field, no catalogue hard-validation (legacy
+  // tolerance). Absent/empty ⇒ key omitted, so the field carries no restriction. Iterating the single
+  // descriptor keeps this in lock-step with the gates + the UI.
+  for (const c of ORG_ASSIGNMENT_CRITERIA) {
+    const list = cleanOrgEligList(e[c.key]);
+    if (list) out[c.key] = list;
+  }
   if (e.minServiceMonths != null && (e.minServiceMonths as unknown) !== '') {
     const n = Number(e.minServiceMonths);
     if (!Number.isInteger(n) || n < 0) throw new Error('Minimum service duration must be a non-negative whole number');

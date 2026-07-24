@@ -563,7 +563,7 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
       tx
-        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn })
+        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory })
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))
         .where(eq(employment.id, employmentId))
@@ -1625,7 +1625,7 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
       tx
-        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn })
+        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory })
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))
         .where(eq(employment.id, employmentId))

@@ -64,8 +64,10 @@ import {
   type DayTypeInclusion,
   type EarnedAccrualGroup,
   type LeaveDurationType,
+  type LeaveEligibility,
   type ServiceBand,
 } from '@/core/leave';
+import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 import { setAttendancePolicy } from '@/packs/attendance/service';
 import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
 import {
@@ -1284,14 +1286,22 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // Multi-select (#badc5966): the gender / marital checkbox groups post repeated inputs → getAll yields the
   // selected values as arrays. cleanEligibility de-dupes, validates, and collapses an empty array to "no
   // restriction".
-  const eligibility = touchEligibility
-    ? {
-        gender: fd.getAll('gender').map(String),
-        maritalStatus: fd.getAll('maritalStatus').map(String),
-        minServiceMonths: minRaw === '' ? undefined : Number(minRaw),
-        minServiceUnit: unitRaw === '' ? undefined : (unitRaw as 'months' | 'days'),
-      }
-    : undefined;
+  let eligibility: LeaveEligibility | undefined;
+  if (touchEligibility) {
+    eligibility = {
+      gender: fd.getAll('gender').map(String),
+      maritalStatus: fd.getAll('maritalStatus').map(String),
+      minServiceMonths: minRaw === '' ? undefined : Number(minRaw),
+      minServiceUnit: unitRaw === '' ? undefined : (unitRaw as 'months' | 'days'),
+    };
+    // Organisation Assignment criteria (Enhance Leave Criteria Configuration): each org field's ChipMultiSelect
+    // posts one repeated input per selected value → getAll yields the list. cleanEligibility de-dupes, drops
+    // blanks and collapses an empty array to "no restriction" (no catalogue hard-validation, so a value later
+    // deactivated still re-saves cleanly). Iterating the single descriptor keeps the action in lock-step.
+    for (const c of ORG_ASSIGNMENT_CRITERIA) {
+      eligibility[c.key] = fd.getAll(c.key).map(String);
+    }
+  }
   // Probation eligibility (d6bdbd55): the eligibility sub-form also posts a `probation` select ('' | confirmed_only
   // | probation_only). It rides the SAME `eligibility=1` marker, so an unrelated save leaves the column untouched
   // (undefined). Blank ⇒ null (clears the restriction); a concrete value sets it. The service re-validates against

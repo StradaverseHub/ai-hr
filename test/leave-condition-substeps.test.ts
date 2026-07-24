@@ -37,6 +37,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { ORG_ASSIGNMENT_CRITERIA } from '../core/leave-org-criteria';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
@@ -224,6 +225,80 @@ describe('0c15db78 · Criteria — the four rules shown directly, no "Edit rules
         expect(msgs.includes(`"${key}"`), `${key} in ${locale}`).toBe(true);
       }
     }
+  });
+});
+
+/**
+ * Enhance Leave Criteria Configuration — the eight catalogue-backed Organisation Assignment fields join the
+ * Criteria selector ALONGSIDE gender / marital / min-service / probation. ONE descriptor
+ * (core/leave-org-criteria.ts ORG_ASSIGNMENT_CRITERIA) drives the picker, the read-only summary row and the
+ * gates, so this suite asserts the panel iterates that descriptor (not eight hand-wired blocks) and that every
+ * reused label key already ships in all six locales — zero new translation strings.
+ */
+describe('org-criteria · the eight Organisation Assignment fields join the Criteria selector', () => {
+  const EXPECTED_KEYS = [
+    'orgDivision',
+    'orgBranch',
+    'orgRegion',
+    'orgLine',
+    'orgSection',
+    'orgTeam',
+    'orgBase',
+    'employmentCategory',
+  ];
+
+  it('the descriptor carries exactly the eight catalogue-backed org fields (no typed-field creep)', () => {
+    expect(ORG_ASSIGNMENT_CRITERIA.map((c) => c.key)).toEqual(EXPECTED_KEYS);
+    // The five DEFERRED typed fields must NOT appear in this tranche's descriptor.
+    for (const deferred of ['businessUnitId', 'departmentId', 'positionId', 'employmentType', 'gradeId']) {
+      expect(ORG_ASSIGNMENT_CRITERIA.some((c) => (c.key as string) === deferred)).toBe(false);
+    }
+  });
+
+  it('renders one ChipMultiSelect per org field from the single descriptor (eight names), inside Criteria', () => {
+    const criteria = subStepSlice(essSegment(), 'criteria');
+    // Driven by the descriptor map — one <ChipMultiSelect> emitting name={c.key} per entry (the same
+    // one-hidden-input-per-value FORM contract gender/marital use, so the action's getAll(key) reads them).
+    expect(criteria).toContain('ORG_ASSIGNMENT_CRITERIA.map((c) => (');
+    expect(criteria).toContain('name={c.key}');
+    expect(criteria).toContain('defaultSelected={asEligList(eligibility?.[c.key])}');
+    // Picker values are the ACTIVE catalogue unioned with any already-stored value (survive re-save).
+    expect(criteria).toContain('options={orgCriterionOptions(c.category, c.key)}');
+    expect(panelSrc).toContain("import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/leave-org-criteria'");
+  });
+
+  it('adds one criteriaRows() summary row per org field from the same descriptor (eight rows)', () => {
+    const start = panelSrc.indexOf('const criteriaRows =');
+    expect(start).toBeGreaterThan(-1);
+    const body = panelSrc.slice(start, panelSrc.indexOf('\n  };', start));
+    // The four existing rows stay, then the org rows come from the descriptor map with the reused label.
+    expect(body).toContain('...ORG_ASSIGNMENT_CRITERIA.map((c) => {');
+    expect(body).toContain('tOrg(c.labelKey)');
+    expect(body).toContain('joinOr(asEligList(eligibility?.[c.key]), orgLabel)');
+  });
+
+  it('reuses the existing profile-option category labels — every label key resolves in all six locales', () => {
+    for (const locale of LOCALES) {
+      const msgs = JSON.parse(readFileSync(resolve(here, `../messages/${locale}.json`), 'utf8'));
+      const cat = msgs?.admin?.profileOptions?.category ?? {};
+      for (const c of ORG_ASSIGNMENT_CRITERIA) {
+        expect(typeof cat[c.labelKey], `${locale}.admin.profileOptions.category.${c.labelKey}`).toBe('string');
+        expect((cat[c.labelKey] as string).length, `${locale} ${c.labelKey} non-empty`).toBeGreaterThan(0);
+      }
+    }
+    // The scoped translator the panel uses to resolve them (no new admin.leave keys minted).
+    expect(panelSrc).toContain("const tOrg = useTranslations('admin.profileOptions.category');");
+  });
+
+  it('the entitlements page feeds active-only catalogue values, keyed by category, to every panel', () => {
+    expect(pageSrc).toContain('listAllProfileOptions(s, { activeOnly: true })');
+    expect(pageSrc).toContain('const orgAssignmentOptions = Object.fromEntries(');
+    expect(pageSrc).toContain('orgAssignmentOptions={orgAssignmentOptions}');
+  });
+
+  it('the save action reads one getAll() array per org field, from the same descriptor', () => {
+    expect(actionsSrc).toContain('for (const c of ORG_ASSIGNMENT_CRITERIA) {');
+    expect(actionsSrc).toContain("eligibility[c.key] = fd.getAll(c.key).map(String);");
   });
 });
 

@@ -22,6 +22,7 @@ import {
 } from './holidays';
 import { isoWeekday } from './attendance';
 import { packFor } from '../localization/registry';
+import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
 import {
   applyMaxBalance,
   applyRounding,
@@ -355,6 +356,19 @@ export type LeaveEligibility = {
   // own column, migration 0225) and merged into this object at the enforcement chokepoints so it rides the
   // same assertEligible / isLeaveEligible gate as the other rules.
   probation?: 'confirmed_only' | 'probation_only';
+  // Organisation Assignment criteria (Enhance Leave Criteria Configuration): the eight catalogue-backed org
+  // fields, each keyed by its `employment` column name (see ORG_ASSIGNMENT_CRITERIA in core/leave-org-criteria).
+  // Each accepts a scalar (legacy shape) OR an array (multi-select, match-ANY) exactly like gender/marital, so
+  // asList() normalizes both without a migration. ABSENT key ⇒ no restriction, so every existing stored row is
+  // unchanged and existing saved conditions keep working.
+  orgDivision?: string | string[];
+  orgBranch?: string | string[];
+  orgRegion?: string | string[];
+  orgLine?: string | string[];
+  orgSection?: string | string[];
+  orgTeam?: string | string[];
+  orgBase?: string | string[];
+  employmentCategory?: string | string[];
 };
 
 /** The closed set of probation eligibility values (mirrors the DB CHECK on leave_type.probation_eligibility). */
@@ -630,11 +644,43 @@ function onProbationAsOf(emp: ProbationEmp | undefined, asOf: string): boolean {
   return confDate != null && asOf < confDate;
 }
 
+/** The employee facts the two eligibility gates read. The eight org-assignment columns are OPTIONAL so a
+ *  chokepoint that doesn't fetch them (or an employment with them all NULL) simply carries no org restriction —
+ *  the value the gate compares against is `emp[key] ?? ''`, which no non-empty configured list ever matches. */
+type EligibilityEmp = {
+  gender: string | null;
+  marital: string | null;
+  hiredOn: string;
+  confirmationDate?: string | null;
+  finalConfirmationDate?: string | null;
+  orgDivision?: string | null;
+  orgBranch?: string | null;
+  orgRegion?: string | null;
+  orgLine?: string | null;
+  orgSection?: string | null;
+  orgTeam?: string | null;
+  orgBase?: string | null;
+  employmentCategory?: string | null;
+};
+
+/** True when `elig` carries ANY restriction — gender / marital / min-service / probation OR one of the eight
+ *  org-assignment criteria. The chokepoints guard on this so the employee fetch is skipped only when the type
+ *  is genuinely open to all, and so a newly-added criterion is picked up here rather than at each call site. */
+export function hasAnyEligibilityRestriction(elig: LeaveEligibility | null | undefined): boolean {
+  if (!elig) return false;
+  if (asList(elig.gender).length > 0) return true;
+  if (asList(elig.maritalStatus).length > 0) return true;
+  if (elig.minServiceMonths) return true;
+  if (elig.probation) return true;
+  for (const c of ORG_ASSIGNMENT_CRITERIA) {
+    if (asList(elig[c.key]).length > 0) return true;
+  }
+  return false;
+}
+
 function assertEligible(
   elig: LeaveEligibility,
-  emp:
-    | { gender: string | null; marital: string | null; hiredOn: string; confirmationDate?: string | null; finalConfirmationDate?: string | null }
-    | undefined,
+  emp: EligibilityEmp | undefined,
   asOf: string,
 ): void {
   // Multi-select (#badc5966): qualify if the employee's attribute matches ANY selected value (OR within a
@@ -661,6 +707,15 @@ function assertEligible(
     }
     if (elig.probation === 'probation_only' && !onProbation) {
       throw new LeaveIneligibleError('This leave type is available to employees on probation only.');
+    }
+  }
+  // Organisation Assignment criteria: OR within a field, AND across fields (identical to gender/marital). An
+  // empty/absent list carries no restriction; a configured list requires the employee's stored org value to be
+  // one of the chosen values. asList() normalizes a legacy scalar the same way it does for gender/marital.
+  for (const c of ORG_ASSIGNMENT_CRITERIA) {
+    const allowed = asList(elig[c.key]);
+    if (allowed.length > 0 && !allowed.includes(emp?.[c.key] ?? '')) {
+      throw new LeaveIneligibleError(`This leave type is available to employees in ${allowed.join(' or ')} only.`);
     }
   }
 }
@@ -809,9 +864,7 @@ export function maternityAllowanceEligibility(
  *  show an employee only the leave types they could actually take (2F-1 / R18). */
 export function isLeaveEligible(
   elig: LeaveEligibility | null | undefined,
-  emp:
-    | { gender: string | null; marital: string | null; hiredOn: string; confirmationDate?: string | null; finalConfirmationDate?: string | null }
-    | undefined,
+  emp: EligibilityEmp | undefined,
   asOf: string,
 ): boolean {
   if (!elig) return true;
@@ -826,6 +879,11 @@ export function isLeaveEligible(
     const onProbation = onProbationAsOf(emp, asOf);
     if (elig.probation === 'confirmed_only' && onProbation) return false;
     if (elig.probation === 'probation_only' && !onProbation) return false;
+  }
+  // Organisation Assignment criteria — mirrors assertEligible (OR within a field, AND across fields).
+  for (const c of ORG_ASSIGNMENT_CRITERIA) {
+    const allowed = asList(elig[c.key]);
+    if (allowed.length > 0 && !allowed.includes(emp?.[c.key] ?? '')) return false;
   }
   return true;
 }
@@ -1473,7 +1531,7 @@ export async function requestLeave(
     const probation = (lt?.probationEligibility ?? null) as ProbationEligibility | null;
     const elig: LeaveEligibility | null =
       baseElig || probation ? { ...(baseElig ?? {}), ...(probation ? { probation } : {}) } : null;
-    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths || elig.probation)) {
+    if (elig && hasAnyEligibilityRestriction(elig)) {
       const [emp] = await tx
         .select({
           gender: person.gender,
@@ -1481,6 +1539,16 @@ export async function requestLeave(
           hiredOn: employment.hiredOn,
           confirmationDate: employment.confirmationDate,
           finalConfirmationDate: employment.finalConfirmationDate,
+          // Organisation Assignment criteria: the eight org columns live ON employment (already the FROM root),
+          // so widening this existing SELECT is sufficient — no new join, no as-of choice.
+          orgDivision: employment.orgDivision,
+          orgBranch: employment.orgBranch,
+          orgRegion: employment.orgRegion,
+          orgLine: employment.orgLine,
+          orgSection: employment.orgSection,
+          orgTeam: employment.orgTeam,
+          orgBase: employment.orgBase,
+          employmentCategory: employment.employmentCategory,
         })
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))
@@ -3871,7 +3939,7 @@ export async function editLeaveRequest(
     const probation = (lt.probationEligibility ?? null) as ProbationEligibility | null;
     const elig: LeaveEligibility | null =
       baseElig || probation ? { ...(baseElig ?? {}), ...(probation ? { probation } : {}) } : null;
-    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths || elig.probation)) {
+    if (elig && hasAnyEligibilityRestriction(elig)) {
       const [emp] = await tx
         .select({
           gender: person.gender,
@@ -3879,6 +3947,16 @@ export async function editLeaveRequest(
           hiredOn: employment.hiredOn,
           confirmationDate: employment.confirmationDate,
           finalConfirmationDate: employment.finalConfirmationDate,
+          // Organisation Assignment criteria: the eight org columns live ON employment (already the FROM root),
+          // so widening this existing SELECT is sufficient — no new join, no as-of choice.
+          orgDivision: employment.orgDivision,
+          orgBranch: employment.orgBranch,
+          orgRegion: employment.orgRegion,
+          orgLine: employment.orgLine,
+          orgSection: employment.orgSection,
+          orgTeam: employment.orgTeam,
+          orgBase: employment.orgBase,
+          employmentCategory: employment.employmentCategory,
         })
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))

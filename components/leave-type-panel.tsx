@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import type { LeaveRoundingMethod, ServiceBand } from '@/core/leave-compute';
+import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/leave-org-criteria';
 import { ESS_VIEW_CHECKLIST_GROUPS } from '@/components/leave/entitlement-panel-config';
 import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
@@ -74,6 +75,17 @@ export type LeaveEligibilityRule = {
   // Min-service unit (#f88f0a63): the number in minServiceMonths measured in 'months' (default / absent) or
   // 'days'. Absent on legacy rows ⇒ rendered + posted as 'months'.
   minServiceUnit?: 'months' | 'days';
+  // Organisation Assignment criteria (Enhance Leave Criteria Configuration): the eight catalogue-backed org
+  // fields, each scalar-or-array (match-ANY) exactly like gender/maritalStatus. Keyed by the employment column
+  // name (see ORG_ASSIGNMENT_CRITERIA). Absent key ⇒ no restriction. Mirrors the server LeaveEligibility.
+  orgDivision?: string | string[];
+  orgBranch?: string | string[];
+  orgRegion?: string | string[];
+  orgLine?: string | string[];
+  orgSection?: string | string[];
+  orgTeam?: string | string[];
+  orgBase?: string | string[];
+  employmentCategory?: string | string[];
 };
 
 /** The checkbox options the eligibility rule form renders. Order matches the mockup. The marital list mirrors
@@ -899,6 +911,7 @@ export function LeaveTypePanel({
   isAnnual,
   floor0,
   eligibility,
+  orgAssignmentOptions,
   durations,
   requiresDocument,
   mandatoryAfterDays,
@@ -961,6 +974,12 @@ export function LeaveTypePanel({
   isAnnual: boolean;
   floor0: number;
   eligibility: LeaveEligibilityRule | null;
+  /** Organisation Assignment criteria (Enhance Leave Criteria Configuration): the ACTIVE picker values for each
+   *  of the eight org fields, keyed by profile_option category (division / branch / … / category). Sourced from
+   *  the SAME master list the profile Organisation Assignment screen uses (listAllProfileOptions active-only), so
+   *  deleted/inactive values are never offered as new choices. Already-stored values (incl. now-inactive ones)
+   *  are unioned in at render so a saved condition stays visible and survives a re-save. */
+  orgAssignmentOptions: Record<string, { value: string; label: string }[]>;
   /** ADR-0048: enabled non-full-day durations (e.g. ['half_day_am','hourly']); null/[] = full-day-only. */
   durations: string[] | null;
   /** Supporting-document config — current values, threaded so the sub-form round-trips. */
@@ -1094,6 +1113,10 @@ export function LeaveTypePanel({
   saveServiceEntitlementAction: Action;
 }) {
   const t = useTranslations('admin.leave');
+  // Organisation Assignment criteria (Enhance Leave Criteria Configuration): the eight criterion labels REUSE
+  // the existing profile_option category labels (already shipped in all six locales) — zero new keys. Scoped
+  // translator so a call site reads t org-label statically (the i18n coverage test).
+  const tOrg = useTranslations('admin.profileOptions.category');
   // Sync Employee Leave View Configuration (11876072): the view-config group headings reuse the employee
   // panel's OWN section titles (leave.breakdown.section.*) so the admin screen reads as a preview of the
   // panel — same words, same order. That translator now lives inside ViewConfigSection (2bc2f2a3).
@@ -1266,6 +1289,20 @@ export function LeaveTypePanel({
               : m === 'other'
                 ? t('eligibilityMaritalOther')
                 : null;
+  // Organisation Assignment criteria (Enhance Leave Criteria Configuration): the picker for a field offers the
+  // ACTIVE catalogue values (deleted/inactive are never NEW choices), UNIONED with whatever is ALREADY stored
+  // on this type — so a saved value, even one later deactivated, stays visible and survives a re-save.
+  // (ChipMultiSelect drops any defaultSelected not present in its options, so the union is required for the
+  // stored value to keep posting its hidden input.) A stored-but-inactive value renders with its raw value as
+  // the label (it is no longer in the catalogue to supply a display label).
+  const orgCriterionOptions = (category: string, key: OrgAssignmentCriterionKey) => {
+    const active = orgAssignmentOptions[category] ?? [];
+    const stored = asEligList(eligibility?.[key]);
+    const extras = stored
+      .filter((v) => !active.some((o) => o.value === v))
+      .map((v) => ({ value: v, label: v }));
+    return [...active, ...extras];
+  };
   // #0c15db78: the Criteria sub-step lays the FOUR eligibility rules out plainly — reading them no longer
   // requires opening "Edit rules". This is the single source of truth for how each criterion is labelled
   // and valued; it replaced the one-line condensed summary helper. Zero new translation keys by
@@ -1297,6 +1334,15 @@ export function LeaveTypePanel({
       { label: t('eligibilityGenderLabel'), value: joinOr(asEligList(eligibility?.gender), genderLabel) },
       { label: t('eligibilityMinServiceLabel'), value: minService },
       { label: t('eligibilityProbationLabel'), value: probation },
+      // Organisation Assignment criteria (Enhance Leave Criteria Configuration): one summary row per org field,
+      // from the SAME descriptor that drives the picker + the gates. Label reuses the existing profile_option
+      // category label (tOrg); each value shows its catalogue display label when known, else the raw stored
+      // value (so an inactive-but-stored value still reads correctly). Empty ⇒ the shared "No restriction".
+      ...ORG_ASSIGNMENT_CRITERIA.map((c) => {
+        const opts = orgAssignmentOptions[c.category] ?? [];
+        const orgLabel = (v: string) => opts.find((o) => o.value === v)?.label ?? v;
+        return { label: tOrg(c.labelKey), value: joinOr(asEligList(eligibility?.[c.key]), orgLabel) };
+      }),
     ];
   };
 
@@ -2321,6 +2367,23 @@ export function LeaveTypePanel({
                   addPlaceholder={t('eligibilityChipAddPlaceholder')}
                   removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
                 />
+                {/* Organisation Assignment criteria (Enhance Leave Criteria Configuration): one ChipMultiSelect
+                    per org field, driven by the single ORG_ASSIGNMENT_CRITERIA descriptor. Each posts one hidden
+                    input per selected value under name={key} (identical FormData shape to gender/maritalStatus →
+                    the action's getAll(key) reads them). Options are the ACTIVE catalogue values unioned with any
+                    already-stored value, so deleted/inactive values are not offered as NEW picks yet a saved
+                    condition stays visible + survives re-save. Empty selection ⇒ no restriction on that field. */}
+                {ORG_ASSIGNMENT_CRITERIA.map((c) => (
+                  <ChipMultiSelect
+                    key={c.key}
+                    name={c.key}
+                    label={tOrg(c.labelKey)}
+                    options={orgCriterionOptions(c.category, c.key)}
+                    defaultSelected={asEligList(eligibility?.[c.key])}
+                    addPlaceholder={t('eligibilityChipAddPlaceholder')}
+                    removeLabelFor={(label) => t('chipRemoveAria', { name: label })}
+                  />
+                ))}
                 <Field label={t('eligibilityMinServiceLabel')}>
                   {/* Min-service unit (#f88f0a63): duration input + a unit select (Months / Days) beside it,
                       mirroring the expiry {value, unit} field. Absent stored unit ⇒ 'months' default so a
