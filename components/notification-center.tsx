@@ -194,6 +194,10 @@ export function NotificationCenter({
     </li>
   );
 
+  // ── Bell badge (feedback f71dcafd): ONE combined count, so the old unread + task bubbles can no
+  // longer collide on the same 36px button. The per-tab pills below keep the two figures separate. ──
+  const total = unread + taskCount;
+
   const tabBtn = (key: TabKey, label: string, count?: number) => (
     <button
       type="button"
@@ -217,18 +221,13 @@ export function NotificationCenter({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        aria-label={t('ariaBell', { unread, tasks: taskCount })}
+        aria-label={t('ariaBell', { total, unread, tasks: taskCount })}
         className="relative inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
       >
         <Bell className="size-[18px]" />
-        {unread > 0 && (
-          <span className="absolute right-1 top-1 inline-flex min-w-[15px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-[15px] text-white">
-            {unread > 9 ? '9+' : unread}
-          </span>
-        )}
-        {taskCount > 0 && (
-          <span className="absolute bottom-1 right-1 inline-flex min-w-[15px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-[15px] text-white">
-            {taskCount > 9 ? '9+' : taskCount}
+        {total > 0 && (
+          <span className="absolute right-1 top-1 inline-flex min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-[15px] text-primary-foreground">
+            {total > 99 ? '99+' : total}
           </span>
         )}
       </button>

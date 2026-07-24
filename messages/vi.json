@@ -5691,7 +5691,7 @@
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
     "historyEmpty": "Chưa có lịch sử",
     "historySearch": "Tìm kiếm lịch sử",
-    "ariaBell": "Thông báo, {unread} chưa đọc, {tasks} công việc đang chờ",
+    "ariaBell": "Thông báo, {total} mục đang chờ: {unread} chưa đọc và {tasks} công việc đang chờ",
     "task": {
       "leave": "Phê duyệt đơn xin nghỉ",
       "leaveCancellation": "Phê duyệt hủy nghỉ phép",

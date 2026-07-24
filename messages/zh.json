@@ -5691,7 +5691,7 @@
     "tasksEmpty": "没有需要您处理的事项",
     "historyEmpty": "暂无历史记录",
     "historySearch": "搜索历史",
-    "ariaBell": "通知，{unread} 条未读，{tasks} 项待办任务",
+    "ariaBell": "通知，共 {total} 项待处理：{unread} 条未读和 {tasks} 项待办任务",
     "task": {
       "leave": "审批请假申请",
       "leaveCancellation": "审批销假申请",

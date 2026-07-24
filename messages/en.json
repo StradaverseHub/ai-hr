@@ -5691,7 +5691,7 @@
     "tasksEmpty": "Nothing needs your action",
     "historyEmpty": "No history yet",
     "historySearch": "Search history",
-    "ariaBell": "Notifications, {unread} unread, {tasks} open tasks",
+    "ariaBell": "Notifications, {total} waiting: {unread} unread and {tasks} open tasks",
     "task": {
       "leave": "Approve leave request",
       "leaveCancellation": "Approve leave cancellation",

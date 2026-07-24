@@ -5691,7 +5691,7 @@
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
     "historyEmpty": "Tiada sejarah lagi",
     "historySearch": "Cari sejarah",
-    "ariaBell": "Pemberitahuan, {unread} belum dibaca, {tasks} tugasan terbuka",
+    "ariaBell": "Pemberitahuan, {total} menunggu: {unread} belum dibaca dan {tasks} tugasan terbuka",
     "task": {
       "leave": "Luluskan permohonan cuti",
       "leaveCancellation": "Luluskan pembatalan cuti",
