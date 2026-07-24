@@ -1359,11 +1359,6 @@
       }
     },
     "preview": {
-      "willDeduct": "จะหัก {days} วัน",
-      "willDeductEmergency": "จะครอบคลุมประมาณ {days} วัน (ลาฉุกเฉิน)",
-      "balanceLine": "คงเหลือ: {before} → {after} วัน หลังจากคำขอนี้",
-      "halfScheduleDayNote": "วันที่นี้ตรงกับตารางเวลาทำงานแบบครึ่งวัน",
-      "emergencySplitNote": "การแบ่งส่วนลาป่วย/ลาพักร้อน/ลาไม่รับเงินเดือนจะถูกยืนยันเมื่อคุณส่งคำขอ",
       "loading": "กำลังคำนวณ…"
     },
     "applyDetails": {

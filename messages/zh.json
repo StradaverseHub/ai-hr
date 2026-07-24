@@ -1359,11 +1359,6 @@
       }
     },
     "preview": {
-      "willDeduct": "将扣除 {days} 天",
-      "willDeductEmergency": "将大约覆盖 {days} 天（紧急休假）",
-      "balanceLine": "余额：{before} → {after} 天（本次申请后）",
-      "halfScheduleDayNote": "该日期属于半天工作日程。",
-      "emergencySplitNote": "最终的病假/年假/无薪假分配将在提交时确认。",
       "loading": "计算中…"
     },
     "applyDetails": {

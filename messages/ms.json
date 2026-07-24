@@ -1359,11 +1359,6 @@
       }
     },
     "preview": {
-      "willDeduct": "Ini akan menolak {days} hari",
-      "willDeductEmergency": "Ini akan meliputi kira-kira {days} hari (Cuti Kecemasan)",
-      "balanceLine": "Baki: {before} → {after} hari selepas permohonan ini",
-      "halfScheduleDayNote": "Tarikh ini jatuh pada jadual kerja Separuh Hari.",
-      "emergencySplitNote": "Pembahagian akhir sakit/tahunan/tanpa gaji disahkan semasa anda menghantar.",
       "loading": "Mengira…"
     },
     "applyDetails": {

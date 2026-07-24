@@ -1359,11 +1359,6 @@
       }
     },
     "preview": {
-      "willDeduct": "Việc này sẽ trừ {days} ngày",
-      "willDeductEmergency": "Việc này sẽ bao phủ khoảng {days} ngày (Nghỉ khẩn cấp)",
-      "balanceLine": "Số dư: {before} → {after} ngày sau yêu cầu này",
-      "halfScheduleDayNote": "Ngày này rơi vào lịch làm việc Nửa ngày.",
-      "emergencySplitNote": "Việc phân chia ốm/phép năm/không lương cuối cùng sẽ được xác nhận khi bạn gửi.",
       "loading": "Đang tính toán…"
     },
     "applyDetails": {

@@ -1359,11 +1359,6 @@
       }
     },
     "preview": {
-      "willDeduct": "This will deduct {days} day(s)",
-      "willDeductEmergency": "This will cover approximately {days} day(s) (Emergency Leave)",
-      "balanceLine": "Balance: {before} → {after} day(s) after this request",
-      "halfScheduleDayNote": "This date falls on a Half-day work schedule.",
-      "emergencySplitNote": "The final sick/annual/unpaid split is confirmed when you submit.",
       "loading": "Calculating…"
     },
     "applyDetails": {

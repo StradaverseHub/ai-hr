@@ -199,10 +199,56 @@ describe('LeaveDurationFields: summary + day-by-day disclosure', () => {
     expect(read('core/leave.ts').includes('isoWeekday: ')).toBe(false);
   });
 
-  it('puts sm:col-span-2 on ALL THREE blocks (summary, details, and the existing preview line)', () => {
+  it('puts sm:col-span-2 on ALL THREE blocks (summary, details, and the date+Total wrapper)', () => {
     expect(fields.includes('px-3 py-2 text-xs sm:col-span-2')).toBe(true);
     expect(fields.includes('<details className="sm:col-span-2">')).toBe(true);
+    expect(
+      fields.includes('<div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:items-end sm:gap-3">'),
+    ).toBe(true);
     expect((fields.match(/sm:col-span-2/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+/**
+ * Request-Leave popup redesign: the wordy deduction box is replaced by a compact Total badge sitting beside
+ * the Start/End date fields. Static-source only — placement, live refresh, and the 0.5 half-day figure are
+ * provable only in the browser; what is pinned here is that the badge exists, reuses the day-by-day panel's
+ * OWN string (so the two can never disagree), and that the old box and its now-dead keys are truly gone.
+ */
+describe('LeaveDurationFields: compact Total badge beside the dates', () => {
+  it('wraps the date grid so the badge sits beside it on sm+ and stacks under it on mobile', () => {
+    // The date grid keeps grid-cols-2 with NO sm prefix (two-up even on a phone) and becomes a flex-1 child.
+    expect(fields.includes('<div className="grid flex-1 grid-cols-2 gap-2">')).toBe(true);
+    expect(fields.includes('sm:flex-row sm:items-end')).toBe(true);
+  });
+
+  it('renders the badge from preview.days, reusing applyDetails.total — footer + badge, exactly twice', () => {
+    const uses = fields.split("t('applyDetails.total', { days: preview.days })").length - 1;
+    expect(uses).toBe(2); // the day-by-day panel footer AND the new badge — never the footer alone
+    // The badge lives INSIDE the date wrapper, not in a block of its own further down the form.
+    const wrapAt = fields.indexOf('sm:flex-row sm:items-end');
+    const summaryAt = fields.indexOf('{!isEmergency && (summary || isSummarizing) && (');
+    const badgeAt = fields.lastIndexOf("t('applyDetails.total', { days: preview.days })", summaryAt);
+    expect(badgeAt).toBeGreaterThan(wrapAt);
+    // Still day-based only: hourly keeps its own live hours line and never shows a day Total.
+    expect(fields.includes("previewAction && effectiveDuration !== 'hourly' && (preview || isPreviewing)")).toBe(
+      true,
+    );
+    // preview.loading is retained and reused while the debounced preview is in flight.
+    expect(fields.includes("t('preview.loading')")).toBe(true);
+  });
+
+  it('the old deduction box and its five keys are gone from the component AND all six locales', () => {
+    const DEAD = ['willDeduct', 'willDeductEmergency', 'balanceLine', 'halfScheduleDayNote', 'emergencySplitNote'];
+    for (const k of DEAD) expect(fields.includes(`preview.${k}`), `component still uses preview.${k}`).toBe(false);
+    for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
+      const m = JSON.parse(read(`messages/${loc}.json`)) as {
+        leave: { preview: Record<string, string> };
+      };
+      for (const k of DEAD) expect(m.leave.preview[k], `${loc}.leave.preview.${k} is an orphan`).toBeUndefined();
+      // loading survives — the badge reuses it.
+      expect(m.leave.preview.loading, `${loc}.leave.preview.loading`).toBeTruthy();
+    }
   });
 });
 
