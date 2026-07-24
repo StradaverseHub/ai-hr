@@ -86,13 +86,20 @@ still declares exactly one `labelKey: 'myAbsence'` row, and all six locales carr
 
 ### Outstanding
 
-- `bc9be1e8` is now the **only** item left on the board, still `approved` and still unbuildable — see r68
-  Decision 1. It was deliberately excluded from this round's build rather than left to triage, because
-  its precondition is now *half* met (`0b7eeb4b` shipped in r68) and an agent reading only the plan could
-  wrongly conclude it is buildable.
+- `bc9be1e8` remains `approved` and unbuildable — see r68 Decision 1. It was deliberately excluded from
+  this round's build rather than left to triage, because its precondition is now *half* met (`0b7eeb4b`
+  shipped in r68) and an agent reading only the plan could wrongly conclude it is buildable.
+- **The blocker behind it is now on the board as `2bba9e35`** (status `open`, raised 2026-07-25):
+  "Make Service-Based Entitlements the single place to manage company entitlement policies" — add,
+  delete, carry-forward / earning method / effective dates, and the covered-employee count, all against
+  the same policy records the old tab writes (no copy, so the two cannot disagree while both exist).
+  Framed as one concrete change so it respects the approve-carries-no-payload rule. **Build order is
+  forced: `2bba9e35` must ship before `bc9be1e8` can be built at all.**
 - Confirm `0315dac7` against live data (see the warning above) before reporting it fixed.
-- ~165 leftover `ahr_build_*` databases have accumulated on the local Postgres, one per item built since
-  roughly r40, plus `ahr_build_golden` (which is live and must be kept). Inert but growing every round.
+- ~~Leftover `ahr_build_*` databases~~ — **cleared 2026-07-25**: 170 dropped, 3.2 GB reclaimed,
+  `ahr_build_golden` deliberately kept (verified still migrated, 130 tables) because the build workflow
+  clones it as its fast-path template. Note the cleanup pattern is `ahr_build_*` only; the older
+  `ahr_r66_integration` / `ahr_r67_integration` / `ahr_preview_*` databases were left alone.
 - The hourly watcher still polls the stale `IMPROVE_SSH_HOST` default and reports `approved=0` — it
   reported nothing while 8 items queued up. Fix the plist before it hides a real backlog again.
 
