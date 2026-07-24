@@ -6,7 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 // c5ac75fa — the consolidated Organisation Assignment save composes three core writers in ONE transaction.
 import { withTenant } from '@/db/client';
-import { endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentBlacklist, setEmploymentGrade, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
+import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentBlacklist, setEmploymentGrade, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
 import { createMovementEvent, MOVEMENT_KINDS, type MovementKind } from '@/core/movement';
 import { reprojectEntitlementForEmployment } from '@/core/leave';
@@ -928,6 +928,56 @@ export async function setOrganisationAssignmentAction(formData: FormData) {
     // Runs AFTER the transaction commits (it opens its own) and is best-effort by design.
     await recomputeEntitlement(s, employmentId, 'employment_changed');
   } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Personnel — Company change before any transaction (feedback 9464bd56). Commits phase 2 of the inline
+ * company correction: the destination company (chosen in phase 1, carried as the hidden `newCompanyId`) plus
+ * the Department (required) and any position / business unit the admin re-picked, in ONE audited transaction
+ * (core changeEmploymentCompany, which re-runs the pre-transaction gate server-side). Follows
+ * setOrganisationAssignmentAction: requireAdmin, withTab redirect surfacing the error, revalidatePath,
+ * toast=Saved. Two typed errors get their own localized copy: DestinationCompanyNotAdministered (the actor
+ * does not manage the destination) and CompanyLockedError (a transaction landed since render → steer to
+ * Movement).
+ */
+export async function changeEmploymentCompanyAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const t = await getTranslations('people.detail');
+  const newCompanyId = String(formData.get('newCompanyId') ?? '').trim();
+  const departmentId = String(formData.get('departmentId') ?? '').trim();
+  // A present-but-blank value clears; absent maps the same way (these are all rendered on the phase-2 form).
+  const optional = (name: string): string | null => {
+    const v = formData.get(name);
+    const trimmed = v == null ? '' : String(v).trim();
+    return trimmed === '' ? null : trimmed;
+  };
+  if (!newCompanyId || !departmentId) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(t('employmentInfo.invalidValue'))}`));
+  }
+  try {
+    await changeEmploymentCompany(s, {
+      employmentId,
+      newCompanyId,
+      departmentId,
+      positionId: optional('positionId'),
+      businessUnitId: optional('businessUnitId'),
+      costCenterId: optional('costCenterId'),
+      locationId: optional('locationId'),
+    });
+    // Company-scoped country pack / leave floor may move the employee's entitlement — best-effort reproject.
+    await recomputeEntitlement(s, employmentId, 'company_changed');
+  } catch (e) {
+    if (e instanceof DestinationCompanyNotAdministered) {
+      redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(t('employmentInfo.destinationNotAdministered'))}`));
+    }
+    if (e instanceof CompanyLockedError) {
+      redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(t('employmentInfo.companyLockedNote'))}`));
+    }
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);

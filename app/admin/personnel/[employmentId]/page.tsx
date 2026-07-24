@@ -3,11 +3,13 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { isAdmin, requireAdmin } from '@/lib/authz';
 import {
+  adminCompanies,
   assignmentHistory,
   delegationsFor,
   directSuperiorHistoryFor,
   employeeAudit,
   employeeDetail,
+  employmentCompanyEditable,
   leaveBalances,
   leaveEntitlementBreakdown,
   leaveRequestsFor,
@@ -38,6 +40,7 @@ import {
   setComplianceFieldsAction,
   setContactAddressAction,
   setEmergencyContactAction,
+  changeEmploymentCompanyAction,
   setOrganisationAssignmentAction,
   setPaymentMethodAction,
   setEmploymentComponentAction,
@@ -148,6 +151,10 @@ export default async function EmployeePage({
     childReliefSynced?: string;
     childReliefAlert?: string;
     childReliefTo?: string;
+    // Company change before any transaction (9464bd56): `companyChange=<companyId>` is phase 1's PENDING
+    // destination — it re-scopes the Organisation Assignment dropdowns to that company and shows a banner.
+    // Nothing is committed until phase 2's Save (changeEmploymentCompanyAction).
+    companyChange?: string;
   }>;
 }) {
   const s = await requireAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
@@ -169,6 +176,7 @@ export default async function EmployeePage({
     childReliefSynced,
     childReliefAlert,
     childReliefTo,
+    companyChange,
   } = await searchParams;
   // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the
   // people directory. Keeps the `from` param flowing through so nested navigation stays consistent.
@@ -187,6 +195,23 @@ export default async function EmployeePage({
   const derivedStatusLabel = tStatus(derivedStatus);
   // b4682879 — does this employee have a profile photo the viewer may see? (existence only; never the blob).
   const photoExists = await hasPersonPhoto(s, emp.personId);
+
+  // Company change before any transaction (9464bd56) — admin-only inline correction of a mis-picked Company
+  // while the employee has NO operational activity. `companyEditable` is the pre-transaction gate; when it is
+  // false the Company field stays locked and points HR to Movement / Transfer. Phase 1 lets HR pick a
+  // destination (companyChange param) which re-scopes the org dropdowns + shows a banner (nothing committed);
+  // phase 2 Saves via changeEmploymentCompanyAction.
+  const companyEditable = admin ? await employmentCompanyEditable(s, employmentId) : false;
+  // Destinations HR may pick = companies they administer (the writer requires is_admin_for(destination), so
+  // offering only these keeps offered == acceptable). Only fetched when the field is actually editable.
+  const managedCompanies = companyEditable ? await adminCompanies(s) : [];
+  // The PENDING destination: editable, admin-managed, and different from the current company. Null otherwise.
+  const pendingCompany =
+    companyEditable && companyChange && companyChange !== emp.companyId
+      ? (managedCompanies.find((c) => c.id === companyChange) ?? null)
+      : null;
+  // The org-assignment dropdowns scope to the PENDING company when one is chosen, else the current company.
+  const orgScopeCompanyId = pendingCompany?.id ?? emp.companyId;
 
   const [history, balances, requests, departments, reporting, employees, grades, delegations, recalcAudit] = await Promise.all([
     assignmentHistory(s, employmentId),
@@ -239,6 +264,13 @@ export default async function EmployeePage({
   const businessUnits = admin ? await listBusinessUnits(s, { companyIds: [emp.companyId] }) : [];
   // ADR-0054: locations for THIS employee's company (admin-only) — the "Set location" picker options.
   const locations = admin ? await listLocations(s, [emp.companyId]) : [];
+  // Company change (9464bd56) — the Organisation Assignment selects re-scope to the PENDING company during a
+  // company change; everything else (MovementNewEvent, the Set-location picker) keeps the current-company
+  // lists. When no company is pending these ARE the current-company lists (byte-identical to before).
+  const orgDepartments = pendingCompany ? await listDepartments(s, { companyIds: [orgScopeCompanyId] }) : departments;
+  const orgPositions = pendingCompany ? await listPositions(s, { companyIds: [orgScopeCompanyId] }) : positions;
+  const orgBusinessUnits = pendingCompany ? await listBusinessUnits(s, { companyIds: [orgScopeCompanyId] }) : businessUnits;
+  const orgLocations = pendingCompany ? await listLocations(s, [orgScopeCompanyId]) : locations;
   // Current selection of the unified field: a group wins, else a single state, else company default.
   const holidayCalendarValue = emp.holidayGroupId
     ? `group:${emp.holidayGroupId}`
@@ -2621,6 +2653,89 @@ export default async function EmployeePage({
   const employmentInfoCard = admin ? (
     <Card id="section-employment-info">
       <SectionHeader title={t('employmentInfo.title')} />
+      {/* 9464bd56 — Company change before any transaction. A SELF-CONTAINED block ABOVE the consolidated
+          assignment form (which stays untouched — one form, one Save). Phase 1 (GET) picks a destination the
+          admin manages → ?companyChange=; phase 2 (POST) commits the move via changeEmploymentCompanyAction
+          with the destination-scoped Department. When neither applies it is a short note: editable → hint;
+          locked → the read-only Company field below carries the Movement / Transfer guidance. */}
+      {pendingCompany ? (
+        <form action={changeEmploymentCompanyAction} className="space-y-3 border-b border-border p-4">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="newCompanyId" value={pendingCompany.id} />
+          <input type="hidden" name="tab" value={tab ?? ''} />
+          <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
+            {t('employmentInfo.companyPendingBanner', { company: pendingCompany.name })}
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label={t('employmentInfo.department')}>
+              <select name="departmentId" defaultValue="" required className={inputCls}>
+                <option value="">{t('employmentInfo.positionNone')}</option>
+                {orgDepartments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('employmentInfo.businessUnit')}>
+              <select name="businessUnitId" defaultValue="" className={inputCls}>
+                <option value="">{t('employmentInfo.positionNone')}</option>
+                {orgBusinessUnits.map((bu) => (
+                  <option key={bu.id} value={bu.id}>
+                    {bu.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('employmentInfo.position')}>
+              <select name="positionId" defaultValue="" className={inputCls}>
+                <option value="">{t('employmentInfo.positionNone')}</option>
+                {orgPositions.map((pos) => (
+                  <option key={pos.id} value={pos.id}>
+                    {pos.title}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('locationSelect')}>
+              <select name="locationId" defaultValue="" className={inputCls}>
+                <option value="">{t('locationNone')}</option>
+                {orgLocations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name} ({l.code})
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <div className="flex items-center gap-3">
+            <button className={btnPrimary}>{t('employmentInfo.companyChangeSave')}</button>
+            <Link
+              href={`/admin/personnel/${emp.employmentId}${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`}
+              className="text-xs text-primary underline"
+            >
+              {t('employmentInfo.companyChangeCancel')}
+            </Link>
+          </div>
+        </form>
+      ) : companyEditable ? (
+        <form method="get" className="space-y-2 border-b border-border p-4">
+          <input type="hidden" name="tab" value={tab ?? ''} />
+          <Field label={t('employmentInfo.company')}>
+            <select name="companyChange" defaultValue={emp.companyId} className={inputCls}>
+              {managedCompanies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="flex items-center gap-3">
+            <button className={btnGhost}>{t('employmentInfo.companyChangeContinue')}</button>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('employmentInfo.companyChangeableHint')}</p>
+        </form>
+      ) : null}
       {/* c5ac75fa — the consolidated Organisation Assignment section: every organisation dimension in one
           grid under one heading, saved by one button. */}
       <form action={setOrganisationAssignmentAction} className="space-y-3 border-b border-border p-4">
@@ -2628,7 +2743,18 @@ export default async function EmployeePage({
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('employmentInfo.assignmentGroup')}</div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label={t('employmentInfo.company')}>
-            <input value={emp.company} disabled className={inputCls} aria-readonly="true" />
+            {/* 9464bd56 — read-only here; the correction (pre-transaction only) lives in the block above. When
+                the employee has activity the field is locked and points HR to Movement / Transfer. */}
+            <input
+              value={emp.company}
+              disabled
+              className={inputCls}
+              aria-readonly="true"
+              title={!companyEditable ? t('employmentInfo.companyLockedTooltip') : undefined}
+            />
+            {!companyEditable && (
+              <p className="text-xs text-muted-foreground">{t('employmentInfo.companyLockedNote')}</p>
+            )}
           </Field>
           {/* 1001ff61 — Business Unit, positioned immediately after Company per the requested Organisation
               hierarchy (Company → Business Unit → Division → Department → …). Company-scoped options.

@@ -1300,6 +1300,81 @@ export function upcomingHolidays(ctx: SessionContext, opts: { from: string; limi
   );
 }
 
+/**
+ * Company-change gate (feedback 9464bd56) — TRUE when this employment has at least one operational
+ * transaction, i.e. it is PAST the pre-activity window where HR may still inline-correct its Company.
+ * One greppable `exists(...) or exists(...)` chain, ONE representative head per operational module (children
+ * hang off these), matching the house `inUse` idiom (see listCompanies / listDepartments / listLeaveTypes).
+ *
+ * A saved salary (compensation) counts as activity: `compensation.set` already lands in movement history, so
+ * treating a salaried-but-unpaid employee as "no activity yet" would contradict steering HR to Movement once
+ * anything is recorded.
+ *
+ * leave_ledger: the SINGLE hire-time grant (entry_type='accrual' AND effective_on=hired_on — the row
+ * hireEmployee auto-inserts) is EXCLUDED. Any later accrual, or any adjustment/debit/in_lieu row (even an
+ * opening-balance adjustment stamped at hire), counts as activity and locks the field — conservative by
+ * intent.
+ *
+ * MODULE HEADS — one per operational module. A NEW operational module MUST add its head HERE (single edit
+ * site, so the next module cannot silently punch a hole):
+ *   payroll   → payslip · payroll_input · employee_cp38 · employment_pay_component · ea_override
+ *   attendance→ attendance            leave → leave_request · leave_cancellation_request · non-hire leave_ledger
+ *   claims    → claim_request         overtime → toil_accrual        loans → employee_loan
+ *   travel    → travel_request        roster   → roster_assignment   performance → performance_review
+ *   offboarding → resignation_request probation → employment_review  compensation → compensation (a saved salary)
+ *
+ * Runs inside the caller's tx so the company-change writer can re-run the gate as its server-side source of
+ * truth without a nested transaction. RLS still scopes every sub-select to the tenant.
+ */
+export async function employmentCompanyBlockedTx(tx: Tx, employmentId: string): Promise<boolean> {
+  const [res] = await tx
+    .select({
+      blocked: sql<boolean>`(
+        exists (select 1 from payslip t where t.employment_id = ${employmentId})
+        or exists (select 1 from payroll_input t where t.employment_id = ${employmentId})
+        or exists (select 1 from employee_cp38 t where t.employment_id = ${employmentId})
+        or exists (select 1 from employment_pay_component t where t.employment_id = ${employmentId})
+        or exists (select 1 from ea_override t where t.employment_id = ${employmentId})
+        or exists (select 1 from attendance t where t.employment_id = ${employmentId})
+        or exists (select 1 from leave_request t where t.employment_id = ${employmentId})
+        or exists (select 1 from leave_cancellation_request t where t.employment_id = ${employmentId})
+        or exists (select 1 from leave_ledger t where t.employment_id = ${employmentId} and not (t.entry_type = 'accrual' and t.effective_on = ${employment.hiredOn}))
+        or exists (select 1 from claim_request t where t.employment_id = ${employmentId})
+        or exists (select 1 from toil_accrual t where t.employment_id = ${employmentId})
+        or exists (select 1 from employee_loan t where t.employment_id = ${employmentId})
+        or exists (select 1 from travel_request t where t.employment_id = ${employmentId})
+        or exists (select 1 from roster_assignment t where t.employment_id = ${employmentId})
+        or exists (select 1 from performance_review t where t.employment_id = ${employmentId})
+        or exists (select 1 from resignation_request t where t.employment_id = ${employmentId})
+        or exists (select 1 from employment_review t where t.employment_id = ${employmentId})
+        or exists (select 1 from compensation t where t.employment_id = ${employmentId})
+      )`,
+    })
+    .from(employment)
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  return !!res?.blocked;
+}
+
+/**
+ * Company-change gate (feedback 9464bd56) — is this employment still in the pre-transaction window where HR
+ * may inline-correct its Company? True ONLY when it exists AND has no operational transactions
+ * (employmentCompanyBlockedTx). Admin-only surface (the Personnel page only calls it for an admin viewer);
+ * RLS scopes the read to the tenant. NOT folded into employeeDetail: it would run for every viewer including
+ * non-admins who can never edit, and dozens of tests toEqual that projection row.
+ */
+export function employmentCompanyEditable(ctx: SessionContext, employmentId: string): Promise<boolean> {
+  return withTenant(ctx, async (tx) => {
+    const [emp] = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(eq(employment.id, employmentId))
+      .limit(1);
+    if (!emp) return false;
+    return !(await employmentCompanyBlockedTx(tx, employmentId));
+  });
+}
+
 export function employeeDetail(ctx: SessionContext, employmentId: string) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx

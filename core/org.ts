@@ -12,6 +12,10 @@ import { requireEmployeeCode } from '../lib/employee-code';
 import { a2cFirstYearEntitledToDate, applyMaxBalance, applyRounding, buildSchemeEntitlementResolver, entitledDays, isA2cFirstYear, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
 import { labelUsableByCompany } from './system-labels';
+// Company-change gate (9464bd56): the pre-transaction check lives in core/read.ts (ONE greppable set of
+// module heads). Imported here so the company-change writer re-runs it as its server-side source of truth
+// inside the same transaction. read.ts does not import org.ts, so this adds no import cycle.
+import { employmentCompanyBlockedTx } from './read';
 import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile-options';
 import {
   person,
@@ -53,6 +57,32 @@ export class ReportingCycleError extends Error {
   constructor() {
     super('Reporting line rejected: would create an administrative cycle');
     this.name = 'ReportingCycleError';
+  }
+}
+
+/** Company-change (feedback 9464bd56): the destination company is not one the actor administers. Thrown by
+ *  changeEmploymentCompany BEFORE any write, so a company-scoped admin gets a friendly, actionable message
+ *  instead of the opaque employment_rls WITH CHECK (is_admin_for(newCompanyId)) row-level failure — moving
+ *  someone to a company you do not manage goes through the Movement / Transfer flow. */
+export class DestinationCompanyNotAdministered extends Error {
+  constructor() {
+    super(
+      'You can only move this person to a company you manage. To move them to another company, use the Movement tab to record a Transfer.',
+    );
+    this.name = 'DestinationCompanyNotAdministered';
+  }
+}
+
+/** Company-change (feedback 9464bd56): the employee already has operational activity, so the Company is
+ *  locked and the inline correction is refused — HR is steered to Movement / Transfer (which preserves
+ *  history). Thrown when the server-side gate (employmentCompanyBlockedTx) trips: the gate is the source of
+ *  truth and re-runs on submit, because a transaction may have landed between render and submit. */
+export class CompanyLockedError extends Error {
+  constructor(
+    message = 'This employee already has recorded activity, so their Company can no longer be changed here. Use the Movement tab to record a Transfer, which keeps their history intact.',
+  ) {
+    super(message);
+    this.name = 'CompanyLockedError';
   }
 }
 
@@ -1472,6 +1502,11 @@ export async function setEmploymentAssignment(
     // 1001ff61 — Business Unit on the assignment. undefined = carry forward; null = clear; a value must be a
     // live BU in THIS employee's company (validated below).
     businessUnitId?: string | null;
+    // 9464bd56 — Cost Centre on the assignment. undefined = carry forward; null = clear; a value must be a
+    // live cost centre THIS employee's company MAY use (validated below, same resolver as the other labels).
+    // Added so the company-change writer can re-home the cost centre onto the destination company through this
+    // same guarded delegate; existing callers omit it, so carry-forward keeps them byte-identical.
+    costCenterId?: string | null;
     employmentType?: EmploymentTypeValue;
     status?: AssignmentStatusValue;
     /** 78853b97 — optional movement classification tag merged into the event payload (see db/events.ts). */
@@ -1503,6 +1538,8 @@ export async function setEmploymentAssignment(
     const nextPositionId = p.positionId === undefined ? cur.positionId : p.positionId || null;
     const nextBusinessUnitId =
       p.businessUnitId === undefined ? cur.businessUnitId : p.businessUnitId || null;
+    const nextCostCenterId =
+      p.costCenterId === undefined ? cur.costCenterId : p.costCenterId || null;
     const nextEmploymentType = p.employmentType ?? cur.employmentType;
     const nextStatus = p.status ?? cur.status;
 
@@ -1515,7 +1552,8 @@ export async function setEmploymentAssignment(
     const buChanged = nextBusinessUnitId && nextBusinessUnitId !== cur.businessUnitId;
     const deptChanged = nextDepartmentId && nextDepartmentId !== cur.departmentId;
     const posChanged = nextPositionId && nextPositionId !== cur.positionId;
-    if (buChanged || deptChanged || posChanged) {
+    const ccChanged = nextCostCenterId && nextCostCenterId !== cur.costCenterId;
+    if (buChanged || deptChanged || posChanged || ccChanged) {
       const [emp] = await tx
         .select({ companyId: employment.companyId })
         .from(employment)
@@ -1566,12 +1604,28 @@ export async function setEmploymentAssignment(
           throw new Error('Selected Position is not a valid option for this employee.');
         }
       }
+      if (ccChanged) {
+        const [cc] = await tx
+          .select({ archivedAt: costCenter.archivedAt })
+          .from(costCenter)
+          .where(eq(costCenter.id, nextCostCenterId))
+          .limit(1);
+        if (
+          !cc ||
+          cc.archivedAt ||
+          !emp ||
+          !(await labelUsableByCompany(tx, ctx.tenantId, 'cost_center', nextCostCenterId, emp.companyId))
+        ) {
+          throw new Error('Selected Cost Centre is not a valid option for this employee.');
+        }
+      }
     }
 
     const unchanged =
       nextDepartmentId === cur.departmentId &&
       nextPositionId === cur.positionId &&
       nextBusinessUnitId === cur.businessUnitId &&
+      nextCostCenterId === cur.costCenterId &&
       nextEmploymentType === cur.employmentType &&
       nextStatus === cur.status;
     if (unchanged) return { assignmentId: cur.id, changed: false as const };
@@ -1586,7 +1640,7 @@ export async function setEmploymentAssignment(
         departmentId: nextDepartmentId,
         positionId: nextPositionId,
         businessUnitId: nextBusinessUnitId,
-        costCenterId: cur.costCenterId,
+        costCenterId: nextCostCenterId,
         locationId: cur.locationId,
         employmentType: nextEmploymentType,
         status: nextStatus,
@@ -1609,6 +1663,7 @@ export async function setEmploymentAssignment(
           departmentId: cur.departmentId,
           positionId: cur.positionId,
           businessUnitId: cur.businessUnitId,
+          costCenterId: cur.costCenterId,
           employmentType: cur.employmentType,
           status: cur.status,
         },
@@ -1616,6 +1671,7 @@ export async function setEmploymentAssignment(
           departmentId: nextDepartmentId,
           positionId: nextPositionId,
           businessUnitId: nextBusinessUnitId,
+          costCenterId: nextCostCenterId,
           employmentType: nextEmploymentType,
           status: nextStatus,
         },
@@ -1626,6 +1682,169 @@ export async function setEmploymentAssignment(
     return { assignmentId: next.id, changed: true as const };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
+}
+
+/**
+ * Company-change on a NEW employee (feedback 9464bd56) — the pre-transaction inline correction of an
+ * employment's Company. HR often picks the wrong company at hire; while the employee has NO operational
+ * activity (employmentCompanyBlockedTx: no payroll / attendance / leave / claim / overtime / loan / roster /
+ * review / resignation / saved salary), this re-homes them onto the correct company in ONE audited
+ * transaction. Once ANY activity exists the Company locks and HR is steered to Movement / Transfer (which
+ * preserves history) — this writer refuses with CompanyLockedError. Moving an ESTABLISHED employee between
+ * companies is NOT this path; that stays Movement's job (this deliberately does not touch transferEmployee).
+ *
+ * Authz: the actor must administer the DESTINATION company (is_admin_for(newCompanyId)) — a group-wide admin,
+ * or an admin of BOTH companies. A company-scoped admin of only the current company is rejected up front with
+ * DestinationCompanyNotAdministered (a friendly message) instead of the opaque employment_rls WITH CHECK
+ * (is_admin_for(NEW)) failure it would otherwise hit. Being able to see/administer the CURRENT employment is
+ * enforced by RLS on the reads below (an actor who cannot see it gets "Employment not found").
+ *
+ * Dependent-default refresh on the move:
+ *   • payrollPolicyId → null — a company-scoped pay template; the destination resolves its own at render.
+ *   • costAllocation  → null — inter-company cost-split JSON that pointed at the OLD company.
+ *   • the OPEN reporting line (hireEmployee inserts one to an OLD-company manager when a manager was supplied
+ *     at hire — exactly this window) is removed, so the employee does not land in the new company still
+ *     reporting across it; HR re-adds a manager via the normal flow. (reporting_line is deliberately NOT a
+ *     gate member — it would false-positive on this very row.)
+ *   • gradeId is intentionally NOT reset — job_grade is tenant-scoped (grade_id → job_grade, no company_id),
+ *     so it leaves no cross-company dangling reference.
+ *   • statutory / payroll config need no recompute — they resolve per-company at render once company_id flips.
+ *
+ * The assignment (department REQUIRED, plus optional position / business unit / cost centre) is re-homed by
+ * DELEGATING to setEmploymentAssignment inside this same transaction: after the company flip it reads the NEW
+ * company, so its labelUsableByCompany + archived guards validate every label against the destination for free
+ * (honouring shared / global labels), and it carries the business unit that transferEmployee drops. Position
+ * and cost centre are CLEARED unless HR re-picks them (a hire-time old-company value must not dangle). Location
+ * is validated directly (labelUsableByCompany has no 'location' kind): an HR-supplied location must belong to
+ * the destination; a stored old-company location is cleared.
+ */
+export async function changeEmploymentCompany(
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    newCompanyId: string;
+    departmentId: string;
+    positionId?: string | null;
+    businessUnitId?: string | null;
+    costCenterId?: string | null;
+    locationId?: string | null;
+  },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [emp] = await tx
+      .select({ companyId: employment.companyId, hiredOn: employment.hiredOn })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp) throw new Error('Employment not found');
+    // No-op guard: moving to the same company is not a change.
+    if (emp.companyId === p.newCompanyId) throw new Error('The employee is already in this company.');
+    // Destination must be a live (non-archived) company in this tenant.
+    const [dest] = await tx
+      .select({ id: company.id })
+      .from(company)
+      .where(and(eq(company.id, p.newCompanyId), isNull(company.archivedAt)))
+      .limit(1);
+    if (!dest) throw new CrossCompanyError('employment');
+    // Authz (correctness, HIGH): flipping company_id trips employment_rls WITH CHECK is_admin_for(NEW).
+    // Require it explicitly up front so a company-scoped admin gets DestinationCompanyNotAdministered, not an
+    // opaque RLS error. Group-wide admins and admins-of-both pass; admin-of-only-the-current-company does not.
+    const adminRes = await tx.execute(sql`select app.is_admin_for(${p.newCompanyId}::uuid) as ok`);
+    const canAdminDest = (adminRes as unknown as { ok: boolean }[])[0]?.ok;
+    if (!canAdminDest) throw new DestinationCompanyNotAdministered();
+    // Server-side gate — the source of truth. Never trust the client's enabled/disabled state; a transaction
+    // may have landed between render and submit.
+    if (await employmentCompanyBlockedTx(tx, p.employmentId)) throw new CompanyLockedError();
+
+    // Department MUST be usable by the destination. The delegated setEmploymentAssignment only validates a
+    // department it sees CHANGE; but on a company move the hire-time department (old company) may be RE-supplied
+    // unchanged, which would leave a cross-company dangling reference the delegate silently skips. So validate
+    // it here explicitly against the new company (origin ∪ shared ∪ global) — the same resolver, applied to
+    // the required label regardless of whether its id changed.
+    if (!(await labelUsableByCompany(tx, ctx.tenantId, 'department', p.departmentId, p.newCompanyId))) {
+      throw new CrossCompanyError('department');
+    }
+
+    // Flip the company FIRST so the delegated assignment write (and its RLS) resolve against the NEW company,
+    // and refresh the company-scoped defaults that would otherwise dangle on the old company.
+    await tx
+      .update(employment)
+      .set({ companyId: p.newCompanyId, payrollPolicyId: null, costAllocation: null })
+      .where(eq(employment.id, p.employmentId));
+
+    // Remove the open reporting line to an old-company manager (hireEmployee's hire-time edge).
+    await tx
+      .delete(reportingLine)
+      .where(
+        and(
+          eq(reportingLine.subordinateEmploymentId, p.employmentId),
+          isNull(reportingLine.validTo),
+          isNull(reportingLine.supersededAt),
+        ),
+      );
+
+    // Re-home the assignment onto the destination company via the guarded delegate (same tx). effectiveDate =
+    // the hire date (= the open assignment's valid_from in this window) keeps the dated range valid even for a
+    // future-dated hire. Position / cost centre default to null (cleared) unless HR re-picks a destination one.
+    await setEmploymentAssignment(
+      ctx,
+      {
+        employmentId: p.employmentId,
+        effectiveDate: emp.hiredOn,
+        departmentId: p.departmentId,
+        positionId: p.positionId ?? null,
+        businessUnitId: p.businessUnitId ?? null,
+        costCenterId: p.costCenterId ?? null,
+      },
+      tx,
+    );
+
+    // Location is NOT a System Label; validate it directly against the destination company. An HR-supplied
+    // location must belong to the new company; a stored old-company location is cleared.
+    const [curAssign] = await tx
+      .select({ id: assignment.id, locationId: assignment.locationId })
+      .from(assignment)
+      .where(
+        and(
+          eq(assignment.employmentId, p.employmentId),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .limit(1);
+    const desiredLocationId = p.locationId === undefined ? (curAssign?.locationId ?? null) : p.locationId;
+    let nextLocationId: string | null = null;
+    if (desiredLocationId) {
+      const [loc] = await tx
+        .select({ companyId: location.companyId })
+        .from(location)
+        .where(eq(location.id, desiredLocationId))
+        .limit(1);
+      // An EXPLICIT HR choice that is not in the destination is a hard error; a carried-forward old-company
+      // location just gets cleared.
+      if (p.locationId != null && (!loc || loc.companyId !== p.newCompanyId)) {
+        throw new CrossCompanyError('location');
+      }
+      nextLocationId = loc && loc.companyId === p.newCompanyId ? desiredLocationId : null;
+    }
+    if (curAssign && (curAssign.locationId ?? null) !== nextLocationId) {
+      await tx.update(assignment).set({ locationId: nextLocationId }).where(eq(assignment.id, curAssign.id));
+    }
+
+    // Audit (SUBSTRATE): a correction, NOT a movement — appendEvent lands it in the audit trail while it stays
+    // OUT of MOVEMENT_EVENT_TYPES, so it never appears in the Movement/Transfer history projection.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.company.changed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { before: { companyId: emp.companyId }, after: { companyId: p.newCompanyId } },
+    });
+
+    return { employmentId: p.employmentId, from: emp.companyId, to: p.newCompanyId };
+  });
 }
 
 /**
