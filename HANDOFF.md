@@ -7,6 +7,98 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## r68 — 2026-07-24 — 8 approved feedback items (a 9th deliberately not built)
+
+**Shipped:** `build/r68@d8f9869` → merged to `main` as `c008ac3`. All 8 `deployed`. `deploy.sh` applied
+migrations and restarted the service itself, 23:19:58 +08 (`✓ Ready in 139ms`, journal clean, `GET /` 401
+= the password gate).
+
+**Gate:** clean-room `cleanroom-verify.sh` **PASS** — empty DB migrated `0000` → `0311`, then
+**4609/4609 tests, 432 files** run as `ai_hr_app` under RLS · `tsc --noEmit` clean · `next build` clean.
+The receipt it writes (`.gate-receipt.json`) is what lets `improve:release` skip a redundant second suite.
+
+| id | Item |
+|---|---|
+| `adcdf215` | Anniversary→Calendar first year switched to the up-front grant (closes r66 Decision 1) |
+| `0b7eeb4b` | Service-Based Leave Entitlements restructured by company × grade |
+| `02594a47` | Grade renamed to Job Grade; Organization Label layout aligned |
+| `6574c6b4` | Medical / hospitalisation balance + YTD entitlement calculation fix |
+| `5c928c07` | Configured rounding rule now reaches the displayed balance |
+| `7648a6c7` | Leave criteria config gained the additional org-assignment fields |
+| `9464bd56` | Personnel: company change allowed before payroll / transactions exist |
+| `361e3b15` | New companies get the standard payroll-cycle catalog + a stored default (migration `0311`) |
+
+### Decisions
+
+**1. `bc9be1e8` was approved by the reporter and still deliberately NOT built — its own plan forbade it.**
+The item removes the Company Entitlements tab; the approved plan carries a hard precondition: do not remove
+it until add, edit **and delete** of a per-company policy all work inside Service-Based Entitlements. Its
+companion `0b7eeb4b` shipped this round, so the precondition was checked against the merged result rather
+than assumed. It fails. `ServiceEntitlementTable` (`components/benefit-scheme-config.tsx`) renders one row
+per grade for a chosen company — three service-band figures, one Save button — and `saveServiceEntitlement`
+writes exactly those three numbers. There is no add, no delete, no carry-forward, no accrual method, no
+effective dates and no entitled-employee count; all of those still live only in the `policies` block the
+item wants deleted. Removing that block now would destroy the only UI that can create or delete a
+per-company policy — precisely the failure the precondition exists to prevent.
+
+> **Open for the reporter:** `bc9be1e8` cannot be built until Service-Based Entitlements becomes the full
+> entitlement editor. It stays `approved`, so it will resurface every round as approved-but-unbuildable
+> until that gap lands or the item is withdrawn. The missing half is a product call, not a build detail.
+
+**2. `361e3b15` crossed the payroll pack boundary; the fix was the facade, not the allowlist.** Its build
+wired `seedPayrollCycleCatalog` into `createCompany` by importing `core/payroll-cycle` directly. That is a
+boundary module under ADR-0080 D9, `core/admin.ts` is not audited debt, and the `payroll` list in
+`test/pack-drift-allowlist.json` is documented shrink-only — so widening it was never an option.
+Repointed at `packs/payroll/service`, the sanctioned path (`packs/payroll/` is always-allowed by the
+ratchet); verified first that none of the twenty boundary modules import `./admin`, so this adds no cycle.
+Two alternatives rejected: hoisting the seed into `app/admin/actions.ts` (already allowlisted, but it
+would leave the seed outside `createCompany`'s transaction, so a failed seed strands a cycle-less
+company), and calling `db/provision.ts`'s `seedCompanyCatalogs` (also allowlisted, but it additionally
+inserts an `attendancePolicy` row — a behaviour change no approved plan asked for).
+
+**3. `adcdf215` silently invalidated an assertion inside `5c928c07`.** Both were built off `main`, blind to
+each other. `5c928c07`'s a2c rounding test hard-coded the pre-switch accrue-to-date figure — 20/365 × 199
+days worked = 10.90, rounding up to 11. `adcdf215` is the approved switch to the up-front grant, so that
+same employee's first year is now the whole join → 31 Dec slice: 20/365 × 360 = 19.73, rounding up to 20.
+The 20 the suite reported was correct new behaviour, not a regression; the expectation was stale.
+Repointed, and kept biting on what the test exists to prove — without the `up` method the figure stands at
+19.73, so it still fails if rounding stops reaching the balance.
+
+### Integration
+
+**All 8 patches applied with zero textual conflicts — and that proved nothing.** Both gate failures
+(Decisions 2 and 3) were patches that merged perfectly cleanly and still disagreed: one crossed an
+architectural boundary no diff hunk can see, the other depended on a *number whose meaning* another patch
+had changed. r66's lesson was about hand-merging textual conflicts; r68's is the complement. A clean
+three-way merge is not evidence of agreement, and on a multi-item round the full suite is the only thing
+that finds semantic collisions. Do not let a conflict-free apply talk you into a shorter gate.
+
+### Outstanding
+
+- `bc9be1e8` stays `approved` and unbuilt (Decision 1) — the board is not clear.
+- **8 further items were approved by the reporter while this round was building** and are queued for r69,
+  all with plans attached: `57840a6e` (HRDF not calculated after payroll processing), `0315dac7`
+  (incorrect leave balance), `f71dcafd` (notification icon UI), `7fe7e1ae` (action search bar),
+  `421d7551` (rename My Absence → My Leave), `9e64ac20` (leave request popup — compact summary),
+  `836118c4` (Approval → Approval Items with a combined pending count), `95aafb3c` (multi-company
+  switcher). Two are `issue`-category and money/balance-facing, so they lead.
+- Carried forward from r66, still live: local Postgres does not come up on boot (the brew
+  `postgresql@14` LaunchDaemon is registered under **root**, which Postgres refuses to run as) — use
+  `pnpm db:start`, data dir `/opt/homebrew/var/aihr-pg14`, port 5433. And the improve-loop SSH default
+  (`IMPROVE_SSH_HOST=10.20.30.20`) times out; the server is at **`203.142.6.241`** — export the override
+  or every pull/release hangs. `.improve/watch.log` shows the hourly watcher still failing on the stale
+  default, so it has been reporting `approved=0` while the board filled up.
+
+### Notes
+
+- The r66 `test/zakat-history.test.ts` flake did not recur; the `91b2e4d` substring fix has now held
+  across two full runs.
+- `cleanroom-verify.sh` refuses to start while anything else holds a client connection to the local
+  Postgres (the R46/R47 lesson: a contended gate reported phantom failures). Kill stray vitest runs and
+  the dev server first, or it exits `FAIL (contention)` without testing anything.
+
+---
+
 ## r67 — 2026-07-24 — 3 approved feedback items
 
 **Shipped:** `build/r67@038d2db` → merged to `main` as `76f3195`. All 3 `deployed`. Service restarted
@@ -72,81 +164,12 @@ HR has hidden shows as a dash, not revealed).
 
 ## r66 — 2026-07-24 — 12 approved feedback items
 
-**Shipped:** `build/r66@e76d082` → merged to `main` as `7666b2e`. All 12 items `deployed` on the board.
-
-**Gate:** `tsc --noEmit` clean · `next build` clean · **4463/4463 tests, 425 files**.
-
-| id | Item |
-|---|---|
-| `1a429431` | Organization — HRDF Contribution Rate; employer headcount restriction removed |
-| `9b0d99f3` | Approval Workflow — split Template Creation from Assignment Template; collapsed assignment list |
-| `1bd9a911` | Leave Type list — A–Z sort + fixed-height scroll panel |
-| `3c093c7a` | Removed the Statutory Minimum (MY) row |
-| `0c15db78` | Secondary Step 1 — criteria shown directly, no "Edit Rules" click |
-| `0d1a0cfc` | Leave entitlement scheme selection now references Benefit Schemes, not Grades |
-| `4e9a4d59` | Stay on the current page after saving a Leave Type |
-| `f3a64d90` | Anniversary-to-Calendar (a2c) entitlement — enablement + day-accurate accrual |
-| `18e15fc1` | a2c doc alignment (functional work shipped via `f3a64d90` — see Decisions) |
-| `eee43966` | Earning Method decoupled from the Eligibility tab |
-| `b81d3c52` | Rounding Method under Earning Method |
-| `b8fcae73` | Leave Type config workflow restructured; Eligibility step removed |
-
-### Decisions
-
-**1. The two anniversary tickets were contradictory, not merely overlapping.** Both were approved;
-both were built blind to each other off `main`; both created migration
-`0310_leave_type_year_cycle_override_a2c.sql` with **byte-identical SQL** and different rationale
-comments. They disagree on what a first-year joiner is entitled to:
-
-- `18e15fc1` — grants the whole prorated first year up front: `20/365 × 360 (join → 31 Dec)` = **19.73**
-- `f3a64d90` — accrues day-by-day to the calculation date: `20/365 × 199 (join → 23 Jul)` = **10.90**
-
-**Shipped `f3a64d90`'s semantics.** It is the later corrective ticket, it carries the reporter's
-explicit expected figures (10.90 for EMP-0003 Mei Ling), and its own ticket text says it should land
-after `18e15fc1`. `18e15fc1`'s contribution was reduced to its documentation hunks (`db/schema.ts`,
-`app/admin/actions.ts`), which were comment-only and still claimed a2c was disabled/rejected —
-stale and misleading once the feature went live.
-
-> **Open for the reporter:** this determines whether a new joiner sees their full prorated year
-> immediately or watches it build daily. Currently: **builds daily**. One-function change to flip
-> (`a2cFirstYearEntitledToDate` / `firstYearAnnualDaily` in `core/leave.ts`).
-
-**2. `b81d3c52` referenced a retired i18n key.** Cut against `main`, it used `subStep.pendingEngineNote`,
-which `eee43966` had renamed to `subStep.resignationPendingNote`. Shipped as-built it would have
-rendered a missing-key error. Repointed during the merge.
-
-**3. `eee43966`'s panel-structure tests targeted a card that `b8fcae73` deletes.** They located their
-segment by `<CardTitle>{t('categoryEligibilityEntitlement')}</CardTitle>`; `b8fcae73` removes the
-Eligibility step entirely and retires that key. Repointed at the Entitlement card the two forms
-actually moved into — **verified all four assertions still bite** (no `name="method"` select, no
-hidden method field, no `grant_on_hire_prorated` default, earned badge present) rather than passing
-vacuously against an empty segment.
-
-### Why one branch instead of 12 releases
-
-Each item was built in its own isolated worktree off `main`, so every patch assumed it was the only
-change. 9 of the 12 touch the same leave-config screens; `components/leave-type-panel.tsx` alone is
-edited by 7. Releasing them one at a time would have had each deploy overwrite the last. They were
-applied in dependency order on `build/r66`, conflicts resolved, then gated and shipped once.
-
-### Outstanding
-
-- [x] **`sudo systemctl restart aihr`** — done 2026-07-24 11:53 +08. Service `active`, `✓ Ready in
-      105ms`, no errors in the journal; `GET /` returns 401, which is the demo's password gate
-      working, not a fault. Note `deploy.sh` still declines sudo by design, but the `ubuntu` account
-      has passwordless sudo for the unit, so the restart **can** be driven over SSH from here.
-- [ ] Reporter's call on the anniversary accrual semantics (Decision 1).
-
-### Notes
-
-- `test/zakat-history.test.ts` is **flaky** and unrelated to this round. It asserts a domain-event
-  payload does not contain the substring `100` to prove a cleartext amount never leaks, but the
-  payload embeds a random company UUID — one containing `100` (e.g. `…ac1a-066711009fc2`) fails it.
-  Failed once here, passed on rerun. Should assert on the amount field, not on `JSON.stringify` of
-  the whole payload.
-- Local Postgres: the brew `postgresql@14` LaunchDaemon is registered under **root**, which Postgres
-  refuses to run as, so the cluster does not come up on boot. Use `pnpm db:start`
-  (data dir `/opt/homebrew/var/aihr-pg14`, port 5433). Fixable by re-registering it as a user
-  LaunchAgent.
-- The improve-loop SSH default (`IMPROVE_SSH_HOST=10.20.30.20`) times out; the server is reachable at
-  **`203.142.6.241`**. Export the override or the pull/release commands hang.
+`build/r66@e76d082` → `main` as `7666b2e`. All 12 `deployed`. Gate: 4463/4463 tests, 425 files. The round
+that established the one-branch rule: 9 of the 12 touched the same leave-config screens and
+`components/leave-type-panel.tsx` alone was edited by 7, so releasing them one at a time would have had
+each deploy overwrite the last. Two anniversary tickets (`18e15fc1`, `f3a64d90`) turned out to
+*contradict* each other — same migration SQL, different first-year entitlement — and shipping
+`f3a64d90`'s accrue-to-date semantics left the question open; **r68's `adcdf215` closed it** by switching
+to the up-front grant with the reporter's approval. Two further merge repairs: `b81d3c52` referenced an
+i18n key `eee43966` had renamed, and `eee43966`'s panel tests targeted a card `b8fcae73` deletes (both
+repointed, assertions verified to still bite). Its live operational notes are carried in r68's Outstanding.
