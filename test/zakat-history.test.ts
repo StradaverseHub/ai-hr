@@ -19,6 +19,7 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { closeBatch, createBatch, generatePayslips, setPayrollDeductionInput } from '../core/payroll';
 import { exportZakatTxnsCsv, listZakatElections, listZakatTxnsAcross } from '../core/payroll-view';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { leafValues } from './helpers/leaf-values';
 
 /** The cleartext zakat figure used by the export test — the value that must never reach the event log. */
 const ZAKAT_AMOUNT = 100;
@@ -26,10 +27,6 @@ const ZAKAT_AMOUNT = 100;
 /** Every leaf (non-object) value in a nested structure, at any depth, arrays included.
  *  Lets a Layer-0 assertion compare WHOLE VALUES instead of substring-scanning `JSON.stringify`, which
  *  false-positives on ids that merely contain the digits of an amount. */
-function leafValues(v: unknown): unknown[] {
-  return v !== null && typeof v === 'object' ? Object.values(v).flatMap(leafValues) : [v];
-}
-
 async function seedCompanyB(b: Base): Promise<{ companyId: string; deptId: string }> {
   const [c] = await owner.db
     .insert(schema.company)

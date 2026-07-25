@@ -28,6 +28,7 @@ import { createPosition, createJobGrade } from '../core/admin';
 import { createLocation } from '../core/location';
 import { createMovementEvent, movementDetail, movementHistory } from '../core/movement';
 import * as schema from '../db/schema';
+import { expectNoLeakedValue } from './helpers/leaf-values';
 
 let b: Base;
 beforeAll(async () => {
@@ -283,8 +284,11 @@ describe('createMovementEvent — the New Event dispatcher', () => {
     // Remarks reconstructed from the compensation row (redact-to-reference — never in the event payload).
     expect(adj[0].remarks).toBe('Market correction');
     const compEvent = (await latestEventPayload(b.tenantId, comps[1].id, 'compensation.set')) as Record<string, unknown>;
-    expect(JSON.stringify(compEvent)).not.toContain('Market correction');
-    expect(JSON.stringify(compEvent)).not.toContain('4500');
+    // By VALUE, not substring: the payload carries UUIDs, and a 4-digit decimal needle made only of
+    // hex characters collides with a random UUID about 0.04% of the time — rare enough to look like a
+    // mystery gate failure rather than a bug. See test/helpers/leaf-values.ts.
+    expectNoLeakedValue(compEvent, 'Market correction'); // free-text remark: redacted to a reference
+    expectNoLeakedValue(compEvent, 4500); // the salary amount itself
   });
 
   it('Secondment is record-only: an event with the end date kept, and NO state change', async () => {
