@@ -43,21 +43,7 @@ describe('top-bar centred search (app/layout.tsx + components/command-bar.tsx)',
     expect(trigger).toContain("aria-label={t('placeholder')}");
   });
 
-  /**
-   * Feedback 7fe7e1ae — the modal search field spilled past the popup's edge at narrow viewports.
-   * Mechanism: the input is a flex item next to a `shrink-0` icon, so it carries the implicit
-   * `min-width: auto` floor; a text input's intrinsic min-content width (the `size` attribute's
-   * default of ~20 chars) stops it shrinking once the track left after icon + gap falls under that,
-   * and the overflow lands on the modal border. `min-w-0` removes the floor, `flex-1` sizes it to
-   * exactly the remaining track.
-   *
-   * KNOWN GAP (same shape as the delegation-popup-parity width guard): this is a SOURCE-STRING
-   * guard, not a render assertion — the repo has no render harness and every command-bar guard is
-   * source-static. It cannot prove the field actually fits; a later `size={40}` attribute or a
-   * `w-[600px]` could reintroduce overflow while still passing. The narrowed claim is only that
-   * `min-w-0` (the load-bearing token) is not silently dropped. On-screen verification at a narrow
-   * viewport, not this assertion, is the real proof.
-   */
+  // min-w-0/flex-1 is a defensive shrink guard, not the overlap fix - the r69 horizontal theory was measured false.
   it('modal search input can shrink inside the popup (min-w-0 + flex-1)', () => {
     // Exactly one <input> in the file, so the bounded slice below is unambiguous.
     expect(commandBarSrc.match(/<input\b/g) ?? []).toHaveLength(1);
@@ -67,5 +53,32 @@ describe('top-bar centred search (app/layout.tsx + components/command-bar.tsx)',
     const input = commandBarSrc.slice(start, end + 2);
     expect(input, 'search input needs min-w-0 to shrink below its intrinsic width').toContain('min-w-0');
     expect(input, 'search input needs flex-1 to fill the track left beside the icon').toContain('flex-1');
+  });
+
+  /**
+   * Feedback 7fe7e1ae (the vertical fix) — the autofocused search field's focus ring collided with the
+   * popup's top edge and rounded corners because the search row carried no vertical padding; a result row
+   * (one Tab away) had the same problem at the bottom corners; and on Enter the Radix focus scope could
+   * paint a stray ring on the dialog container itself, across all four corners. The fix adds the house
+   * py-3 / p-3 spacing and an inline outline:none on the container.
+   *
+   * KNOWN GAP (same shape as the min-w-0 guard above): these prove the SPACE is declared in source, they
+   * cannot prove rendered pixels — the repo has no render harness. The recorded on-screen browser
+   * measurement, not these assertions, is the proof of the fix.
+   */
+  it('search row, results wrapper and dialog container carry the overlap-fix spacing', () => {
+    // Search row: the only "border-b border-border px-4" in the file — must now also carry py-3.
+    const rowStart = commandBarSrc.indexOf('flex items-center gap-2 border-b border-border px-4');
+    expect(rowStart, 'search row div must exist').toBeGreaterThan(-1);
+    const row = commandBarSrc.slice(rowStart, commandBarSrc.indexOf('>', rowStart));
+    expect(row, 'search row needs py-3 so the input ring clears the popup top edge').toContain('py-3');
+
+    // Results wrapper: p-2 -> p-3 so a result-row ring clears the popup bottom corners.
+    expect(commandBarSrc, 'results wrapper needs p-3').toContain('<div className="p-3">');
+
+    // Dialog.Content: inline outline:none suppresses the stray container ring across all four corners.
+    const contentStart = commandBarSrc.indexOf('<Dialog.Content');
+    const content = commandBarSrc.slice(contentStart, commandBarSrc.indexOf('>', contentStart));
+    expect(content, "Dialog.Content needs an inline outline:none").toContain("outline: 'none'");
   });
 });
