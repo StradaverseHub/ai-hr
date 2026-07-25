@@ -41,7 +41,24 @@ const defaultProvider: AuthProvider = {
   endSession: async (returnTo) => (await import('../lib/workos')).endWorkosSession(returnTo),
 };
 
-const ROLES = new Set(['employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner']);
+/**
+ * The CUSTOMER roles an invitation may carry — `operator` is deliberately absent (0294: operator grants
+ * are written by ai_hr_owner only, never invited).
+ *
+ * Exported so the boundary can be checked against the code: migration 0312 repeats this list as the
+ * `app_invitation_role_customer_set` CHECK constraint and again inside `app.consume_invitation`, and
+ * test/invitation-privesc.test.ts reads the constraint out of pg_constraint and asserts set-equality
+ * with this set. Without that pin, a role added to the enum and to this set but not to 0312 would pass
+ * TypeScript validation and then fail at the invitee's activation click.
+ */
+export const ROLES = new Set([
+  'employee',
+  'manager',
+  'hr_admin',
+  'super_admin',
+  'payroll_partner',
+  'performance_comp_partner',
+]);
 const INVITE_TTL_DAYS = 7;
 
 /**

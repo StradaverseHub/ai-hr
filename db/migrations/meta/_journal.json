@@ -1798,7 +1798,7 @@
       "idx": 306,
       "version": "7",
       "when": 1781862406000,
-"tag": "0306_subject_to_hrdf",
+      "tag": "0306_subject_to_hrdf",
       "breakpoints": true
     },
     {
@@ -1834,6 +1834,13 @@
       "version": "7",
       "when": 1781862411000,
       "tag": "0311_company_default_payroll_cycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 312,
+      "version": "7",
+      "when": 1781862412000,
+      "tag": "0312_invitation_privilege_escalation",
       "breakpoints": true
     }
   ]
