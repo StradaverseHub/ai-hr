@@ -109,6 +109,68 @@ describe('Service Based Entitlements — wiring + the first-save-safe writer', (
   });
 });
 
+describe('2bba9e35 · Service Based Entitlements is the single place to manage company entitlement policies', () => {
+  // The Entitlement card segment (its CardTitle to the Condition card's CardTitle).
+  const entitlementSegment = () => {
+    const start = panelSrc.indexOf("<CardTitle>{t('categoryEntitlement')}</CardTitle>");
+    const end = panelSrc.indexOf("<CardTitle>{t('categoryEssPolicy')}</CardTitle>");
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    return panelSrc.slice(start, end);
+  };
+  const SHARED_POLICY_GATE = "{(entitlementSubStep === 'policies' || entitlementSubStep === 'service') && (";
+
+  it('the service sub-step reaches the SAME create/update/delete policy wiring via one shared block', () => {
+    const seg = entitlementSegment();
+    // One shared JSX block, gated for BOTH sub-steps — add / edit / delete a policy from Service reaches the
+    // identical actions the Company Entitlements tab uses, over one set of records (not a copy).
+    expect(seg).toContain(SHARED_POLICY_GATE);
+    const gate = seg.indexOf(SHARED_POLICY_GATE);
+    const adjustments = seg.indexOf("{entitlementSubStep === 'adjustments' && (");
+    expect(adjustments).toBeGreaterThan(gate);
+    const shared = seg.slice(gate, adjustments);
+    for (const action of ['action={createPolicyAction}', 'action={updatePolicyAction}', 'action={deletePolicyAction}']) {
+      expect(shared.includes(action), `${action} reachable from the service sub-step`).toBe(true);
+    }
+    // …and the timeline heading + Add affordance the tab offers are in the same shared block.
+    expect(shared).toContain("t('companyEntitlements')");
+    expect(shared).toContain("t('addEntitlement')");
+  });
+
+  it('the service block mounts the earning-method front door with alwaysShowScope', () => {
+    const seg = entitlementSegment();
+    // The service-only block (its exclusive gate up to the shared gate) hosts the earning-method front door,
+    // so how days are earned through the year is set here too — over the SAME policy row (posts the SAME
+    // updatePolicyAction), one setting stored in one place.
+    const serviceGate = seg.indexOf("{entitlementSubStep === 'service' && (");
+    const sharedGate = seg.indexOf(SHARED_POLICY_GATE);
+    expect(serviceGate).toBeGreaterThan(-1);
+    expect(sharedGate).toBeGreaterThan(serviceGate);
+    const serviceBlock = seg.slice(serviceGate, sharedGate);
+    expect(serviceBlock).toContain('<PolicyFrontDoor');
+    expect(serviceBlock).toContain('alwaysShowScope');
+    expect(serviceBlock).toContain('<EarningMethodForm');
+    expect(serviceBlock).toContain('action={updatePolicyAction}');
+  });
+
+  it('PolicyFrontDoor honours alwaysShowScope so a single active policy still shows the scope picker', () => {
+    // Without it the front door defaults to active[0] and hides the picker at length 1 — a method change
+    // could then silently rewrite a different company·grade row and reproject its ledger.
+    expect(panelSrc).toContain('alwaysShowScope?: boolean');
+    expect(panelSrc).toContain('{(alwaysShowScope || active.length > 1) && (');
+  });
+
+  it('the inline edit form shows the live covered-employee count (the "before you save it" number)', () => {
+    const seg = entitlementSegment();
+    // The Edit button seeds the shared count; the edit form's scope selects recompute it via recountEditScope;
+    // the same entitledEmployeesCount paragraph renders. Reuses the add form's count state (one form open at a
+    // time) — no second store, no new locale key.
+    expect(panelSrc).toContain('const recountEditScope =');
+    expect(seg).toContain('onChange={(e) => recountEditScope(e.currentTarget.form)}');
+    expect(seg).toContain("t('entitledEmployeesCount', { count: entitledCount })");
+  });
+});
+
 describe('Service Based Entitlements — i18n in all six locales', () => {
   it('carries the new company-picker + table strings (en pins the wording)', () => {
     const en = JSON.parse(readFileSync(resolve(here, '../messages/en.json'), 'utf8')).admin.leave;
