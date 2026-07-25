@@ -9,6 +9,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
+import { expectNoLeakedValue, leafValues } from './helpers/leaf-values';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -304,13 +305,37 @@ describe('1.2.3 CP38 Deduction', () => {
     const types = await eventTypesFor(base.tenantId, id);
     expect(types).toEqual(expect.arrayContaining(['employee-cp38.added', 'employee-cp38.updated', 'employee-cp38.terminated']));
 
-    // No cleartext amount anywhere in any of the three payloads.
+    // No cleartext amount anywhere in any of the three payloads (ADR-0030 Layer 0: the amount lives
+    // on the aggregate row; the event keeps refs and dates only).
+    //
+    // Asserted by VALUE, not by substring-scanning the serialized blob. The previous
+    // `expect(JSON.stringify(payload)).not.toContain('275')` was flaky AND weak: every payload here
+    // carries an employmentId, and a random UUID's hex digits collide with a 3-digit decimal needle
+    // roughly 0.73% of the time — two needles across three payloads is the ~1% clean-room failure that
+    // was actually observed. It was weak because a substring scan only ever catches the one literal it
+    // is handed. See test/helpers/leaf-values.ts; zakat-history.test.ts hit this first (91b2e4d).
     for (const t of ['employee-cp38.added', 'employee-cp38.updated', 'employee-cp38.terminated']) {
       const payload = await latestEventPayload(base.tenantId, id, t);
-      const serialized = JSON.stringify(payload);
-      expect(serialized).not.toContain('275');
-      expect(serialized).not.toContain('280');
-      expect(serialized).toContain('CP38/EV'); // the reference IS allowed
+      expectNoLeakedValue(payload, 275); // the original amount
+      expectNoLeakedValue(payload, 280); // the updated amount
+      // …and the payload is refs/dates/field-names ONLY — a whitelist, so an amount added under ANY
+      // new key fails here even though neither literal above would catch it.
+      const keys = Object.keys(payload as Record<string, unknown>).sort();
+      const allowed = ['after', 'before', 'cp38Ref', 'diff', 'employmentId', 'validFrom', 'validTo'];
+      expect(keys.every((k) => allowed.includes(k)), `unexpected payload keys on ${t}: ${keys}`).toBe(true);
+      expect(leafValues(payload)).toContain('CP38/EV'); // the reference IS allowed
+    }
+
+    // The `updated` event is the sharp case, and the distinction its design rests on: `diff` is
+    // `Object.keys(patch)` (core/cp38.ts:229), so it records THAT the amount changed — the literal
+    // field NAME 'amount' — while never recording WHAT it changed to. Both halves asserted, because
+    // dropping the name would be a silent audit regression and adding the value would be the leak.
+    {
+      const updated = (await latestEventPayload(base.tenantId, id, 'employee-cp38.updated')) as {
+        diff: string[];
+      };
+      expect(updated.diff).toContain('amount'); // the field name IS recorded
+      expectNoLeakedValue(updated, 280); // the field VALUE is not
     }
   });
 });

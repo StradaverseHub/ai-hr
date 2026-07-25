@@ -36,6 +36,7 @@ import {
   type Base,
 } from './harness';
 import { hireEmployee, updatePerson } from '../core/org';
+import { expectNoLeakedValue } from './helpers/leaf-values';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -181,7 +182,12 @@ describe('bf953339 — mobile + home phone pair (DB round-trip)', () => {
     expect(payload!.via).toBe('copy-permanent');
     // PDPA — the audit payload must not contain any of the NEW phone values. (person.phone is the core
     // trio and keeps its existing before/after audit treatment.)
-    expect(JSON.stringify(payload)).not.toContain('7770002');
+    //
+    // By VALUE, not substring. The collision odds for a 7-digit needle inside a UUID are negligible,
+    // unlike cp38's 3-digit case — but the substring form is weak for the same reason regardless of
+    // length: it catches only the one literal it is handed, so a phone stored under a different value
+    // passes. See test/helpers/leaf-values.ts.
+    expectNoLeakedValue(payload, '7770002');
   });
 });
 
