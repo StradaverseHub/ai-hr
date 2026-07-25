@@ -110,6 +110,7 @@ export function CommandBar() {
             search list keeps its compact width. NB: the width guard is source-static — raising that table
             floor would clip again without failing a test. */}
         <Dialog.Content
+          style={{ outline: 'none' }}
           className={`fixed left-1/2 top-[12vh] z-50 max-h-[76vh] w-[calc(100%-2rem)] ${
             active === 'delegation' ? 'max-w-4xl' : 'max-w-lg'
           } -translate-x-1/2 overflow-y-auto rounded-xl border border-border bg-popover text-popover-foreground shadow-lg`}
@@ -118,13 +119,9 @@ export function CommandBar() {
           <Dialog.Description className="sr-only">{t('placeholder')}</Dialog.Description>
           {active === null ? (
             <>
-              <div className="flex items-center gap-2 border-b border-border px-4">
+              <div className="flex items-center gap-2 border-b border-border px-4 py-3">
                 <Search className="size-4 shrink-0 text-muted-foreground" />
-                {/* min-w-0 is load-bearing (feedback 7fe7e1ae): a text input is a flex item with the implicit
-                    `min-width: auto` floor, and its intrinsic min-content width (the `size` attribute's default
-                    ~20 chars) stops it shrinking once the track left after the icon + gap gets narrower than
-                    that — at which point the field spills past the modal's padding box. min-w-0 removes the
-                    floor; flex-1 makes it take exactly the remaining track (same idiom as the result row below). */}
+                {/* min-w-0/flex-1 is a defensive shrink guard, not the overlap fix - the r69 horizontal theory was measured false. */}
                 <input
                   ref={inputRef}
                   autoFocus
@@ -134,7 +131,7 @@ export function CommandBar() {
                   className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 />
               </div>
-              <div className="p-2">
+              <div className="p-3">
                 {results.length === 0 ? (
                   <div className="px-3 py-6 text-center text-sm text-muted-foreground">{t('noResults')}</div>
                 ) : (

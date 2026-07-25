@@ -575,10 +575,17 @@ function PolicyFrontDoor({
   t,
   policies,
   renderForm,
+  alwaysShowScope,
 }: {
   t: ReturnType<typeof useTranslations>;
   policies: EntitlementPolicy[];
   renderForm: (p: EntitlementPolicy) => ReactNode;
+  // Restructure Service-Based Entitlements (2bba9e35): on the Service screen a single active policy must
+  // STILL show the scope picker. Without it PolicyFrontDoor defaults polId to active[0] and hides the
+  // picker when active.length === 1, so a method change could silently rewrite a DIFFERENT company's row —
+  // and updateLeavePolicy treats a method change as entitlementChanged, reprojecting that cohort's ledger.
+  // The General mounts keep the old behaviour (picker only when there is a genuine choice).
+  alwaysShowScope?: boolean;
 }) {
   const active = activePoliciesOf(policies);
   const [polId, setPolId] = useState<string>(active[0]?.id ?? '');
@@ -588,7 +595,7 @@ function PolicyFrontDoor({
   }
   return (
     <div className="space-y-2">
-      {active.length > 1 && (
+      {(alwaysShowScope || active.length > 1) && (
         <Field label={t('subStep.frontDoorScopeLabel')}>
           <select
             value={selected.id}
@@ -1158,6 +1165,16 @@ export function LeaveTypePanel({
   };
   const toggleFrom = (list: string[], value: string) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+  // Restructure Service-Based Entitlements (2bba9e35): recompute the inline edit form's live covered count
+  // from the form's OWN scope selects. The company/grade selects are uncontrolled (defaultValue), so read
+  // the current value of BOTH off the shared form element rather than tracking a second piece of state.
+  // Empty value ⇒ empty array = countEmployeesInScope's empty-means-all semantics.
+  const recountEditScope = (form: HTMLFormElement | null) => {
+    if (!form) return;
+    const cid = (form.elements.namedItem('companyId') as HTMLSelectElement | null)?.value ?? '';
+    const gid = (form.elements.namedItem('gradeId') as HTMLSelectElement | null)?.value ?? '';
+    refreshCount(cid ? [cid] : [], gid ? [gid] : []);
+  };
 
   // Step flow (c979aa8b — was the 123c1e76 five-card accordion): ONE section visible at a time, chosen by
   // the numbered horizontal step bar (1 General … 4 Custom since b8fcae73). The active step is per-type client state,
@@ -1826,10 +1843,25 @@ export function LeaveTypePanel({
             )}
             saveAction={saveServiceEntitlementAction}
           />
-          {/* 7b945408: the Preview Scenario checker joins this sub-step as its checking tool — the SAME
-              self-contained LeaveRulePreviewDialog (d778d2d3). Server-composed slot; see the
-              previewScenarioSection prop doc. */}
-          {previewScenarioSection}
+          {/* Restructure Service-Based Entitlements (2bba9e35): the earning-method front door joins this
+              sub-step so how days are earned through the year is set HERE too, over the SAME active policy
+              row the General → Earning Method sub-step edits (one setting, one place stored — it posts the
+              SAME updatePolicyAction). Mirrors the generalSubStep === 'earning' mount above; a span (NOT a
+              CardTitle — the Entitlement card keeps exactly one title) labels it, and alwaysShowScope keeps
+              the scope picker visible even with a single active policy so the admin always sees, and can
+              always aim, which company · grade · from-date the change targets. */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('subStep.earning')}</span>
+            <PolicyFrontDoor
+              t={t}
+              policies={policies}
+              alwaysShowScope
+              renderForm={(p) => (
+                <EarningMethodForm t={t} p={p} isAnnual={isAnnual} action={updatePolicyAction} leaveTypeId={id} />
+              )}
+            />
+            <p className="text-xs text-muted-foreground">{t('subStep.earningHelp')}</p>
+          </div>
           </>
           )}
           {/* Sub-step 3 — Company Entitlements (b8fcae73): the per-company entitlement policies
@@ -1838,7 +1870,15 @@ export function LeaveTypePanel({
               grade, carry-forward, accrual method and effective dates — same state, same create/update/
               delete actions. It gets its OWN sub-step rather than joining Service Based Entitlements so
               the two similar "days per X" editors can't be confused. */}
-          {entitlementSubStep === 'policies' && (
+          {/* Restructure Service-Based Entitlements (2bba9e35): this is the SHARED policy block. The gate
+              names BOTH 'policies' and 'service', so the identical timeline · inline edit · delete · add
+              form renders on the Service Based Entitlements sub-step AND the Company Entitlements sub-step —
+              ONE JSX block, ONE React state, ONE set of create/update/delete actions. There is nothing to
+              keep in sync because there is only one of it (the reporter's "one set of records, not a copy"
+              guarantee). Do NOT lift this into its own component or hoist it above the return — that would
+              move companyEntitlements / addEntitlement / isEarned(p.method) OUT of the Entitlement card
+              slice and vacuously pass the eee43966 regression guards. */}
+          {(entitlementSubStep === 'policies' || entitlementSubStep === 'service') && (
           <>
           {/* 08bc6841: the eligibility rules block (gender / marital / min service / probation) moved
               to the Condition step's Criteria sub-step — this step now focuses purely on entitlement
@@ -1937,7 +1977,12 @@ export function LeaveTypePanel({
                       read-only earned badge on the collapsed row still shows HR the method. */}
                   {grades.length > 0 && (
                     <Field label={t('gradeLabel')}>
-                      <select name="gradeId" defaultValue={p.gradeId ?? ''} className={`${inputCls} w-40`}>
+                      <select
+                        name="gradeId"
+                        defaultValue={p.gradeId ?? ''}
+                        onChange={(e) => recountEditScope(e.currentTarget.form)}
+                        className={`${inputCls} w-40`}
+                      >
                         <option value="">{t('gradeAll')}</option>
                         {grades.map((g) => (
                           <option key={g.id} value={g.id}>
@@ -1950,7 +1995,12 @@ export function LeaveTypePanel({
                   {/* ADR-0066: per-company scope. Group default = applies to every company; a specific
                       company OVERRIDES the group default for that company (even when lower). */}
                   <Field label={t('policyCompanyLabel')}>
-                    <select name="companyId" defaultValue={p.companyId ?? ''} className={`${inputCls} w-44`}>
+                    <select
+                      name="companyId"
+                      defaultValue={p.companyId ?? ''}
+                      onChange={(e) => recountEditScope(e.currentTarget.form)}
+                      className={`${inputCls} w-44`}
+                    >
                       <option value="">{t('policyCompanyGroupDefault')}</option>
                       {companies.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -1959,6 +2009,14 @@ export function LeaveTypePanel({
                       ))}
                     </select>
                   </Field>
+                  {/* Restructure Service-Based Entitlements (2bba9e35): the SAME live covered-employee count
+                      the add form shows, now on the inline edit form — the "before you save it" number for an
+                      existing policy. Reuses entitledCount (only one form open at a time). */}
+                  {entitledCount != null && (
+                    <p className="w-full text-xs font-medium text-foreground">
+                      {t('entitledEmployeesCount', { count: entitledCount })}
+                    </p>
+                  )}
                   <ServiceBandEditor t={t} initial={p.serviceBands} />
                   {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event so HR can
                       answer the reporter's "Why the change was made" column. */}
@@ -1974,7 +2032,16 @@ export function LeaveTypePanel({
                   <Button type="submit" size="sm">
                     {t('save')}
                   </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setEditingPolicyId(null)}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingPolicyId(null);
+                      // 2bba9e35: reset the shared count when the edit form closes.
+                      setEntitledCount(null);
+                    }}
+                  >
                     {t('cancel')}
                   </Button>
                 </form>
@@ -2033,7 +2100,19 @@ export function LeaveTypePanel({
                     </span>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setEditingPolicyId(p.id)}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditingPolicyId(p.id);
+                        // Restructure Service-Based Entitlements (2bba9e35): seed the SAME entitledCount the
+                        // add form drives (only one of add/edit is open at a time ⇒ one shared state, no
+                        // second store) so the "before you save it" number appears the moment Edit opens.
+                        // Absent axis ⇒ empty array = countEmployeesInScope's empty-means-all semantics.
+                        refreshCount(p.companyId ? [p.companyId] : [], p.gradeId ? [p.gradeId] : []);
+                      }}
+                    >
                       {t('edit')}
                     </Button>
                     <form action={deletePolicyAction}>
@@ -2277,6 +2356,10 @@ export function LeaveTypePanel({
               Expiry sub-step — same form, same expiry=1 tri-state marker, same non-Annual gate. */}
           </>
           )}
+          {/* Restructure Service-Based Entitlements (2bba9e35): the Preview Scenario checker is a service-only
+              trailer AFTER the shared policy block, preserving the pre-existing rule that the preview tool
+              follows the service content. On the Company Entitlements sub-step it does not render. */}
+          {entitlementSubStep === 'service' && previewScenarioSection}
           {/* Sub-step 4 — Adjustments (7b945408): what manual adjustments apply. */}
           {entitlementSubStep === 'adjustments' && (
           <>
