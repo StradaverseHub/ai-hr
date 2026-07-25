@@ -468,6 +468,17 @@ export const appInvitation = pgTable(
   (t) => [
     uniqueIndex('app_invitation_token_hash_uq').on(t.tokenHash),
     index('app_invitation_tenant_idx').on(t.tenantId, t.status),
+    // 0312 — `role` is free TEXT here, so the DB is where the invitable set is pinned: everything in
+    // the role enum EXCEPT the installation-tier `operator`, which is inserted by ai_hr_owner only
+    // and never invited (0294). Declared here as well as in SQL so this file keeps matching the
+    // database, the way role_assignment's check above does.
+    check(
+      'app_invitation_role_customer_set',
+      sql`${t.role} IN ('employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner')`,
+    ),
+    // 0312 — the table-level mirror of role_assignment_super_admin_group_wide. Without it an
+    // invitation for a company-scoped super_admin was writable and simply un-consumable.
+    check('app_invitation_super_admin_group_wide', sql`${t.role} <> 'super_admin' OR ${t.companyId} IS NULL`),
   ],
 );
 
