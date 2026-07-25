@@ -7,6 +7,90 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## Slice 0 — 2026-07-26 — SECURITY: invitation privilege-escalation closed
+
+First slice of the ADR-0077 platform program (plan: `~/.claude/plans/resilient-greeting-ripple.md`).
+Not a feedback round — no board items. **Shipped:** `build/slice0@02511f7` → `main` as `26eebbe`.
+Deployed 05:54:58 +08 (`✓ Ready in 128ms`, `GET /` 401). Verified live on the server: the CHECK
+constraint applied and BOTH guard triggers (`app_user_subject_guard`, `app_invitation_lifecycle_guard`)
+are present.
+
+**Gate:** clean-room **PASS** — **4722/4722 tests, 437 files** · `tsc` clean · `next build` clean ·
+3 mandated adversarial rounds (13 agents, 768 tool uses), all passed · plus an independent operator-
+takeover probe run by hand against a real DB.
+
+### The vulnerability was real and was reproduced before any fix
+
+Exploits were written FIRST and run against unpatched `main`: **5 succeeded.** A customer's group
+admin — and even a single-company `hr_admin` — could mint themselves the installation-tier `operator`
+role through the invitation seam and consume it into a real grant.
+
+Two facts combined: `app_invitation_rls`'s WITH CHECK (0151:51-53) had **no role conjunct**, and
+`app.consume_invitation` is SECURITY DEFINER (0281) inserting `v_inv.role` into `role_assignment`
+uncritically — and `role_assignment` is not FORCE-RLS, so 0295's matrix **never evaluated**. The
+invitation seam was a way to write a grant the grant table itself would have refused.
+
+### Decisions
+
+**1. The initial fix was correct but badly incomplete — three further paths were found under review.**
+- **`person_id` is also a payload, and it is the sharper hole.** Consume does
+  `UPDATE app_user SET workos_user_id = <accepter>` on the target person's existing login. An
+  invitation with a *legitimate* role (hr_admin, own company) pointing at the group super_admin's
+  **person** hands the accepter that identity and every grant it carries, and locks the victim out.
+  **It needs no forbidden role at all**, so a role-only fix sails straight past it.
+- **Invitation rows were mutable after issue.** `ai_hr_app` held UPDATE on every column with a
+  scope-only USING, so a `revoked` invitation could be flipped back to `pending`, `accepted_at`
+  blanked, `expires_at` extended and `token_hash` replaced — defeating single-use, expiry and
+  `revokeInvitation` in one statement. A WITH CHECK **cannot** fix this: it sees only the new row,
+  never the transition. Required a trigger.
+- **The seam was not even the shortest path.** `app_user`'s policy (0016:191-193) lets any GROUP
+  admin run `UPDATE app_user SET workos_user_id = '<my account>'` on ANY login in the tenant —
+  including the `operator` login, which `app_user.tenant_id NOT NULL` guarantees lives in one
+  (db/seed.ts:181-193). No invitation involved. Closing the seam alone left this wide open.
+
+**2. `SECURITY DEFINER` helpers were `pg_temp`-shadowable.** Postgres searches the session's TEMP
+schema first when `pg_temp` is not named, so the house-standard `SET search_path = public` does not
+protect a definer: any `ai_hr_app` session may `CREATE TEMP TABLE employment(...)` and choose the
+answer a helper returns — defeating the new person-scope conjunct. Every function this migration
+creates uses `SET search_path = pg_catalog, public, pg_temp` **and** schema-qualifies its relations
+(both, so neither is solely load-bearing), and the two pre-existing helpers in the chain
+(`is_company_descendant`, `has_role_for`) are re-issued for the same reason.
+
+**3. Two of the first-round tests passed for the WRONG reason.** `consume_invitation` opens with
+`UPDATE app_invitation SET status='accepted'`, and a CHECK constraint is re-evaluated on the updated
+row — so with the constraint restored right after a forged insert, the *constraint* was refusing the
+row and the RAISE guard was never exercised. Green while asserting a different mechanism than
+claimed. Fixed by holding the constraint off across the whole legacy window and asserting the RAISE
+text specifically. **This is the failure mode to watch for in every later slice.**
+
+**4. Deliberate deviation from the slice plan.** The plan called for consume to refuse "company-scoped
+rows unless hr_admin". Rejected as wrong: 0295's group branch permits a group admin to grant any
+customer role at any scope (a company-scoped `manager` is legitimate), and at consume time the session
+is the INVITEE's, so inviter-context conjuncts are not re-evaluable. Consume checks only static row
+facts. Also corrected: the plan's headline `super_admin` example was already closed — 0020's
+`role_assignment_super_admin_group_wide` blocks it at the grant table. **`operator` was the open path.**
+
+### Outstanding
+
+- **Kept false positive (ops debt):** a person with an ACTIVATED login who must move to a new WorkOS
+  subject (email change, re-hire, lost account) can no longer be re-bound by invitation — the invitee
+  gets a raw 500 and recovery is owner-side only. The rejection reasoning holds (the DB cannot
+  distinguish an innocent re-bind from a takeover) but it is reachable from the shipped person
+  dropdown in `app/admin/users/page.tsx`, which does not filter people who already hold a login.
+- **Next slice candidate:** the remaining 0015/0016 definer helpers (`can_see_person`,
+  `can_admin_employment`, `can_see_employment`, `company_subtree`) still carry
+  `SET search_path = public` and read relations unqualified — same `pg_temp` defect, live elsewhere in
+  the RLS surface. Nothing 0312 guarantees routes through them.
+- **Accepted residual:** a company-scoped hr_admin may still activate an un-activated, grant-less login
+  of a person in its own subtree. Bounded by the person conjunct; closing it would break
+  `db/provision.ts` and `bootstrap-invite.ts`.
+- **Recurring flake class, spun off separately:** `test/cp38.test.ts` (and previously
+  `test/zakat-history.test.ts`) assert a secret's absence by substring-matching `JSON.stringify` of a
+  payload containing a random UUID — ~1% failure per run. Same defect class twice now; should assert
+  on parsed fields.
+
+---
+
 ## r70 — 2026-07-25 — 2 approved items (1 a re-fix of a contested r69 item)
 
 **Shipped:** `build/r70@c130ff7` → merged to `main` as `8ce75a3`. Both `deployed`. `deploy.sh` migrated +
