@@ -5258,3 +5258,153 @@ export const tenantProvisionRequest = pgTable(
   },
   (t) => [index('tenant_provision_request_status_idx').on(t.status, t.createdAt)],
 );
+
+// ─────────────────────────── ADR-0077 slice 1 — entitlements + settings ───────────────────────────
+//
+// Migration 0313. Two catalogs seeded from packs/catalog.ts by scripts/seed-catalogs.ts (never at
+// migrate time — migrations are pure SQL and cannot read TypeScript), plus the per-tenant rows that
+// join against them. Nothing READS these yet: slice 2 adds the resolver, slice 3 flips the env gates.
+//
+// The privilege shape is the substance here and is asserted in test/module-entitlement-rls.test.ts:
+// both catalogs and every entitlement table are SELECT-only to ai_hr_app (an explicit REVOKE — see
+// the migration header on why omission is not enough), tenant_setting's writes are gated on the
+// definition's `scope`, and platform_user has no grant at all.
+
+/** The catalog of things a customer can be entitled to. Installation-wide; not tenant-scoped. */
+export const module_ = pgTable('module', {
+  code: text('code').primaryKey(),
+  name: text('name').notNull(),
+  category: text('category').notNull(), // core | hr | payroll | platform
+  description: text('description').notNull().default(''),
+  dependsOn: jsonb('depends_on').$type<string[]>().notNull().default([]),
+  billable: boolean('billable').notNull(),
+  isCore: boolean('is_core').notNull(),
+  /** Set when this is a BEHAVIOUR inside a parent pack's service (toil, multi_cycle_payroll). */
+  parentModule: text('parent_module'),
+  /** True when `code` is a registered ModulePack.id. Pinned both ways by the drift test. */
+  packBacked: boolean('pack_backed').notNull().default(false),
+  sortOrder: integer('sort_order').notNull().default(0),
+});
+
+/** The catalog of per-tenant behaviour values. `scope` decides who may write the value. */
+export const settingDefinition = pgTable('setting_definition', {
+  key: text('key').primaryKey(),
+  moduleCode: text('module_code'),
+  /** 'tenant' = the customer's admin may write it; 'platform' = Stradaverse only (customer sees it). */
+  scope: text('scope').notNull(),
+  valueType: text('value_type').notNull(), // boolean | number | string | json
+  defaultValue: jsonb('default_value').notNull(),
+  /** Written as a real row when the owning module is installed, so a purchase arrives usable. */
+  defaultOnInstall: jsonb('default_on_install'),
+  customerVisible: boolean('customer_visible').notNull().default(true),
+  description: text('description').notNull().default(''),
+  sortOrder: integer('sort_order').notNull().default(0),
+});
+
+/**
+ * The entitlement. READ-ONLY to ai_hr_app — a customer may see what they have, never grant it.
+ * `companyId` NULL = tenant-wide; NON-NULL scopes the module to one company (enforced from slice 2).
+ */
+export const tenantModule = pgTable(
+  'tenant_module',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    moduleCode: text('module_code').notNull(),
+    companyId: uuid('company_id').references(() => company.id),
+    status: text('status').notNull().default('active'), // active | trial | disabled
+    activatedAt: timestamp('activated_at', { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    activatedByPlatformUserId: uuid('activated_by_platform_user_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('tenant_module_tenant_idx').on(t.tenantId, t.status)],
+);
+
+/** The per-tenant value. Writes are gated on setting_definition.scope by the RLS policy, not by code. */
+export const tenantSetting = pgTable(
+  'tenant_setting',
+  {
+    tenantId: tenantId(),
+    key: text('key').notNull(),
+    value: jsonb('value').notNull(),
+    source: text('source').notNull().default('customer'), // default | customer | platform
+    updatedBy: uuid('updated_by'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.key] })],
+);
+
+export const subscription = pgTable(
+  'subscription',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    plan: text('plan').notNull(),
+    seatsPurchased: integer('seats_purchased'),
+    periodStart: date('period_start'),
+    periodEnd: date('period_end'),
+    status: text('status').notNull().default('active'), // active | past_due | cancelled
+    amount: numeric('amount', { precision: 14, scale: 2 }),
+    currency: text('currency'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('subscription_tenant_idx').on(t.tenantId, t.status)],
+);
+
+/**
+ * What was SOLD, which is routinely broader than what has shipped. `moduleCode` is deliberately NOT
+ * FK'd to the catalog (D-15) so "SG payroll next quarter" is recordable the day it is agreed — an FK
+ * would push that record off-system into a spreadsheet.
+ */
+export const subscriptionLine = pgTable(
+  'subscription_line',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    moduleCode: text('module_code').notNull(),
+    scopeNote: text('scope_note'),
+    committedAt: timestamp('committed_at', { withTimezone: true }).defaultNow().notNull(),
+    activatableFrom: date('activatable_from'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('subscription_line_tenant_idx').on(t.tenantId, t.moduleCode)],
+);
+
+/** Over-captured on purpose (D7): the pricing unit is still open, and a bill must be reproducible. */
+export const usageSnapshot = pgTable('usage_snapshot', {
+  id: id(),
+  tenantId: tenantId(),
+  companyId: uuid('company_id')
+    .notNull()
+    .references(() => company.id),
+  capturedOn: date('captured_on').notNull(),
+  country: text('country'),
+  activeEmployments: integer('active_employments').notNull().default(0),
+  activeUsers: integer('active_users').notNull().default(0),
+  payslipsGenerated: integer('payslips_generated').notNull().default(0),
+  modulesActive: jsonb('modules_active').$type<string[]>().notNull().default([]),
+  createdAt: createdAt(),
+});
+
+/** Stradaverse staff. Deliberately NOT app_user, and invisible to ai_hr_app (no grant at all). */
+export const platformUser = pgTable('platform_user', {
+  id: id(),
+  email: text('email').notNull().unique(),
+  name: text('name').notNull().default(''),
+  role: text('role').notNull().default('readonly'), // owner | support | readonly
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  createdAt: createdAt(),
+});
+
+/** The modules an operator picked at intake, normalised so an unknown code fails on the FK. */
+export const tenantProvisionRequestModule = pgTable(
+  'tenant_provision_request_module',
+  {
+    requestId: uuid('request_id')
+      .notNull()
+      .references(() => tenantProvisionRequest.id, { onDelete: 'cascade' }),
+    moduleCode: text('module_code').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.requestId, t.moduleCode] })],
+);
