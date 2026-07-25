@@ -7,6 +7,75 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## r70 — 2026-07-25 — 2 approved items (1 a re-fix of a contested r69 item)
+
+**Shipped:** `build/r70@c130ff7` → merged to `main` as `8ce75a3`. Both `deployed`. `deploy.sh` migrated +
+restarted, 14:17:10 +08 (`✓ Ready in 136ms`, `GET /` 401 = password gate).
+
+**Gate:** clean-room **PASS** — **4678/4678 tests, 436 files** · `tsc` clean · `next build` clean. Plus a
+manual browser measurement of `7fe7e1ae` (below) — the step the automated gate structurally cannot do.
+
+| id | Item |
+|---|---|
+| `7fe7e1ae` | Action search bar — focus-ring overlap (RE-FIX; r69's attempt was a verified no-op) |
+| `2bba9e35` | Service-Based Entitlements is now the full policy editor (unblocks `bc9be1e8`) |
+
+### Decisions
+
+**1. r69's `7fe7e1ae` fix was a provable no-op, and the loop's gate could not have caught it.** The
+reporter contested it: *"It still looks the same."* Correct. r69 swapped the modal input's `w-full` for
+`min-w-0 flex-1` on a horizontal-overflow theory; measured in the running app at 1280×720 and 375×812, the
+before/after geometry is **byte-identical** (input 285px, 17px right-slack, `scrollWidth−clientWidth=0`).
+There was never any horizontal overflow. The **real** defect is vertical: the input carries
+`outline:2px, offset:2px` (a 4px-outset ring), sits flush at the modal's zero-padding top edge, and is
+`autoFocus` — so its ring paints ~3px **above** the modal, across the 24px rounded corners, every time it
+opens. r69 shipped anyway because its test was a **source-string** assertion (`min-w-0` present) that
+cannot see pixels; the build agent flagged this as a KNOWN GAP and it shipped regardless. **This is the
+loop's structural blind spot: the build phase forbids starting a dev server (hang-guard), so it literally
+cannot verify a visual fix.** The operator must do the browser measurement for any UI-geometry item.
+
+**2. The re-fix was verified by measurement, not assertion, and the panel found a bug the operator's own
+diagnosis missed.** Fix: add the house `py-3` to the search row + `p-3` to the results wrapper (this row
+was the ONLY `border-b border-border px-4` in the repo with no vertical padding — an oversight vs 35 other
+CardHeader sites), and `outline:none` on `Dialog.Content`. That last one is the missed bug: Radix renders
+`Dialog.Content` with `tabindex=-1`, so on Enter the **dialog itself** caught a focus ring across all four
+corners — a worse version of the same defect. Browser-measured after the fix (ring inset vs the modal clip
+box, positive = inside): search input **+8px** top (was −3px, outside); result row **+8px** all sides;
+dialog container ring suppressed (`outline:none`); wide delegation state (max-w-4xl) no h-overflow, +29px
+inside. The `inset-ring` alternative was rejected in planning: `app/globals.css` defines the focus rule
+**unlayered**, so it beats every Tailwind utility — `outline-none`/`ring-inset` on the input are inert, and
+routing around it would fork the app-wide focus ring for one field.
+
+**3. `2bba9e35` was built to UNBLOCK `bc9be1e8`, and `bc9be1e8` was deliberately held out of this round.**
+`bc9be1e8` (remove the Company Entitlements tab) must build off a `main` that already contains the full
+editor, or its agent reads a tree where Service-Based Entitlements still can't add/delete and either
+no-ops or deletes the only policy-management UI. Building both in one parallel batch off the *current*
+`main` would have defeated exactly that ordering. So `2bba9e35` shipped alone this round; `bc9be1e8` is now
+unblocked for r71. Browser-confirmed the new capability renders: the Service Based Entitlements sub-step
+now shows "+ Add entitlement", "Remove", and the Earning Method control, not just day figures.
+
+### Integration
+
+Trivial — the two patches share no files (command-bar vs leave-type-panel), applied clean, no locale
+overlap. The real work this round was verification, not merging.
+
+### Outstanding
+
+- **`bc9be1e8` is now BUILDABLE** — its blocker (`2bba9e35`) shipped to `main` this round. It is the only
+  approved item on the board. r71: build it off `main` (which now contains the full editor), and confirm
+  by hand that add/edit/**delete** of a per-company policy all work inside Service-Based Entitlements
+  before removing the old tab — that hand-check is the item's own precondition, see r68 Decision 1.
+- **Local dev DB drifts behind `main` between rounds.** It was a migration behind this round (`0311` from
+  r68 never applied), so the app 500'd on load — which is *why* r69's visual bug was never seen before
+  shipping. Run `npx drizzle-kit migrate` against `ai_hr_dev` (port 5433) before any browser check. An
+  `r70-integration` entry was added to this worktree's `.claude/launch.json` (port 3011) to run built code.
+- **The loop cannot self-verify UI geometry.** The build phase's hang-guard forbids a dev server, so every
+  visual/layout item needs an operator browser measurement before release. r69→r70 is the cautionary tale.
+- The hourly watcher still polls the stale `IMPROVE_SSH_HOST` default (`10.20.30.20`) and reports
+  `approved=0`. Fix the plist before it hides a real backlog again.
+
+---
+
 ## r69 — 2026-07-25 — 8 approved feedback items
 
 **Shipped:** `build/r69@f56ccb7` → merged to `main` as `93d9d18`. All 8 `deployed`. `deploy.sh` migrated
@@ -107,96 +176,20 @@ still declares exactly one `labelKey: 'myAbsence'` row, and all six locales carr
 
 ## r68 — 2026-07-24 — 8 approved feedback items (a 9th deliberately not built)
 
-**Shipped:** `build/r68@d8f9869` → merged to `main` as `c008ac3`. All 8 `deployed`. `deploy.sh` applied
-migrations and restarted the service itself, 23:19:58 +08 (`✓ Ready in 139ms`, journal clean, `GET /` 401
-= the password gate).
-
-**Gate:** clean-room `cleanroom-verify.sh` **PASS** — empty DB migrated `0000` → `0311`, then
-**4609/4609 tests, 432 files** run as `ai_hr_app` under RLS · `tsc --noEmit` clean · `next build` clean.
-The receipt it writes (`.gate-receipt.json`) is what lets `improve:release` skip a redundant second suite.
-
-| id | Item |
-|---|---|
-| `adcdf215` | Anniversary→Calendar first year switched to the up-front grant (closes r66 Decision 1) |
-| `0b7eeb4b` | Service-Based Leave Entitlements restructured by company × grade |
-| `02594a47` | Grade renamed to Job Grade; Organization Label layout aligned |
-| `6574c6b4` | Medical / hospitalisation balance + YTD entitlement calculation fix |
-| `5c928c07` | Configured rounding rule now reaches the displayed balance |
-| `7648a6c7` | Leave criteria config gained the additional org-assignment fields |
-| `9464bd56` | Personnel: company change allowed before payroll / transactions exist |
-| `361e3b15` | New companies get the standard payroll-cycle catalog + a stored default (migration `0311`) |
-
-### Decisions
-
-**1. `bc9be1e8` was approved by the reporter and still deliberately NOT built — its own plan forbade it.**
-The item removes the Company Entitlements tab; the approved plan carries a hard precondition: do not remove
-it until add, edit **and delete** of a per-company policy all work inside Service-Based Entitlements. Its
-companion `0b7eeb4b` shipped this round, so the precondition was checked against the merged result rather
-than assumed. It fails. `ServiceEntitlementTable` (`components/benefit-scheme-config.tsx`) renders one row
-per grade for a chosen company — three service-band figures, one Save button — and `saveServiceEntitlement`
-writes exactly those three numbers. There is no add, no delete, no carry-forward, no accrual method, no
-effective dates and no entitled-employee count; all of those still live only in the `policies` block the
-item wants deleted. Removing that block now would destroy the only UI that can create or delete a
-per-company policy — precisely the failure the precondition exists to prevent.
-
-> **Open for the reporter:** `bc9be1e8` cannot be built until Service-Based Entitlements becomes the full
-> entitlement editor. It stays `approved`, so it will resurface every round as approved-but-unbuildable
-> until that gap lands or the item is withdrawn. The missing half is a product call, not a build detail.
-
-**2. `361e3b15` crossed the payroll pack boundary; the fix was the facade, not the allowlist.** Its build
-wired `seedPayrollCycleCatalog` into `createCompany` by importing `core/payroll-cycle` directly. That is a
-boundary module under ADR-0080 D9, `core/admin.ts` is not audited debt, and the `payroll` list in
-`test/pack-drift-allowlist.json` is documented shrink-only — so widening it was never an option.
-Repointed at `packs/payroll/service`, the sanctioned path (`packs/payroll/` is always-allowed by the
-ratchet); verified first that none of the twenty boundary modules import `./admin`, so this adds no cycle.
-Two alternatives rejected: hoisting the seed into `app/admin/actions.ts` (already allowlisted, but it
-would leave the seed outside `createCompany`'s transaction, so a failed seed strands a cycle-less
-company), and calling `db/provision.ts`'s `seedCompanyCatalogs` (also allowlisted, but it additionally
-inserts an `attendancePolicy` row — a behaviour change no approved plan asked for).
-
-**3. `adcdf215` silently invalidated an assertion inside `5c928c07`.** Both were built off `main`, blind to
-each other. `5c928c07`'s a2c rounding test hard-coded the pre-switch accrue-to-date figure — 20/365 × 199
-days worked = 10.90, rounding up to 11. `adcdf215` is the approved switch to the up-front grant, so that
-same employee's first year is now the whole join → 31 Dec slice: 20/365 × 360 = 19.73, rounding up to 20.
-The 20 the suite reported was correct new behaviour, not a regression; the expectation was stale.
-Repointed, and kept biting on what the test exists to prove — without the `up` method the figure stands at
-19.73, so it still fails if rounding stops reaching the balance.
-
-### Integration
-
-**All 8 patches applied with zero textual conflicts — and that proved nothing.** Both gate failures
-(Decisions 2 and 3) were patches that merged perfectly cleanly and still disagreed: one crossed an
-architectural boundary no diff hunk can see, the other depended on a *number whose meaning* another patch
-had changed. r66's lesson was about hand-merging textual conflicts; r68's is the complement. A clean
-three-way merge is not evidence of agreement, and on a multi-item round the full suite is the only thing
-that finds semantic collisions. Do not let a conflict-free apply talk you into a shorter gate.
-
-### Outstanding
-
-- `bc9be1e8` stays `approved` and unbuilt (Decision 1) — the board is not clear.
-- **8 further items were approved by the reporter while this round was building** and are queued for r69,
-  all with plans attached: `57840a6e` (HRDF not calculated after payroll processing), `0315dac7`
-  (incorrect leave balance), `f71dcafd` (notification icon UI), `7fe7e1ae` (action search bar),
-  `421d7551` (rename My Absence → My Leave), `9e64ac20` (leave request popup — compact summary),
-  `836118c4` (Approval → Approval Items with a combined pending count), `95aafb3c` (multi-company
-  switcher). Two are `issue`-category and money/balance-facing, so they lead.
-- Carried forward from r66, still live: local Postgres does not come up on boot (the brew
-  `postgresql@14` LaunchDaemon is registered under **root**, which Postgres refuses to run as) — use
-  `pnpm db:start`, data dir `/opt/homebrew/var/aihr-pg14`, port 5433. And the improve-loop SSH default
-  (`IMPROVE_SSH_HOST=10.20.30.20`) times out; the server is at **`203.142.6.241`** — export the override
-  or every pull/release hangs. `.improve/watch.log` shows the hourly watcher still failing on the stale
-  default, so it has been reporting `approved=0` while the board filled up.
-
-### Notes
-
-- The r66 `test/zakat-history.test.ts` flake did not recur; the `91b2e4d` substring fix has now held
-  across two full runs.
-- `cleanroom-verify.sh` refuses to start while anything else holds a client connection to the local
-  Postgres (the R46/R47 lesson: a contended gate reported phantom failures). Kill stray vitest runs and
-  the dev server first, or it exits `FAIL (contention)` without testing anything.
-
----
-
+`build/r68@d8f9869` → `main` as `c008ac3`. All 8 `deployed`. Gate: clean-room PASS, 4609/4609 tests, 432
+files. Shipped: anniversary→up-front grant (`adcdf215`, closing r66 Decision 1), service-based entitlements
+by company×grade (`0b7eeb4b`), Grade→Job Grade (`02594a47`), medical/hosp balance fix (`6574c6b4`),
+rounding reaches the balance (`5c928c07`), leave-criteria org fields (`7648a6c7`), company-change before
+payroll (`9464bd56`), auto payroll-cycle catalog on company create + migration `0311` (`361e3b15`). Two
+integration defects the full suite caught in patches that merged with ZERO textual conflict — the round's
+lesson: **a clean three-way merge is not a clean semantic merge.** (1) `361e3b15` imported `core/payroll-
+cycle` straight into `core/admin.ts`, breaking the ADR-0080 shrink-only pack ratchet; fixed by routing
+through the `packs/payroll/service` facade, not by widening the allowlist. (2) `adcdf215` changed the a2c
+first-year figure (10.90→19.73) that `5c928c07`'s test had hard-coded, so a green-looking assertion was
+stale; repointed 11→20, kept it biting on the rounding. `bc9be1e8` was approved by the reporter but held
+back: its plan forbids removing the Company Entitlements tab until add/edit/delete work inside Service-Based
+Entitlements — verified against the merged `0b7eeb4b` that they do not yet. That gap became board item
+`2bba9e35`, shipped in r70.
 ## r67 — 2026-07-24 — 3 approved feedback items
 
 `build/r67@038d2db` → `main` as `76f3195`. All 3 `deployed`. Gate: 4515/4515 tests, 427 files. Search
