@@ -9,11 +9,34 @@
  *     rest day (2 banked days) still converts to exactly 1 day's ORP per s.60(3)(b).
  *  3. premium_equivalent banking for a First-Schedule employee surfaces a warning (the banked credit may
  *     not reproduce the exact statutory cash) without hard-blocking the consent-gated election.
+ *
+ * ADR-0077 slice 3: the whole-module gate is the per-tenant `toil` ENTITLEMENT ROW, not the TOIL_ENABLED
+ * deployment flag. Nothing in this file TESTS that gate — every invariant above is a statutory-floor rule
+ * that lives BEHIND it — so the module is simply granted for the tenant in `beforeEach`, which is exactly
+ * what the old `TOIL_ENABLED = 'true'` env write meant here. The gate itself (a missing row ⇒
+ * ToilDisabledError) is covered by test/toil.test.ts.
+ *
+ * The gated entry points (`accrueToil`, `runToilExpiry`) are driven through `entitledCtx` — a REAL
+ * snapshot resolved from this tenant's rows. `adminCtx` derives its snapshot from
+ * `legacyEnabledModulesIn(process.env)`, and `toil` is not in that parity set, so an adminCtx can never
+ * see the grant no matter what is written to the database. Un-gated setup calls (hire, compensation,
+ * roster, attendance, `setToilPolicy`) are unaffected either way.
  */
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  latestEventPayload,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut } from '../core/attendance';
@@ -37,9 +60,15 @@ const policy = (companyId: string, over: Partial<ToilPolicyInput> = {}): ToilPol
   ...over,
 });
 
-/** Hire at a basic wage and work a full rostered rest day ⇒ dayType rest_day, otMinutes 480. */
+/**
+ * Hire at a basic wage and work a full rostered rest day ⇒ dayType rest_day, otMinutes 480.
+ *
+ * Returns an `entitledCtx` (slice 3): every caller goes on to call `accrueToil`, which is module-gated,
+ * and the `toil` row granted in `beforeEach` is only visible through a real snapshot. Resolving it here
+ * is safe because the grant happened before the test body ran — the snapshot is a point-in-time read.
+ */
 async function hireWithWorkedRestDay(basic: number) {
-  const a = adminCtx(b);
+  const a = await entitledCtx(b);
   const e = await hireEmployee(a, {
     person: { fullName: 'Floor Guard', primaryEmail: uniqEmail() },
     companyId: b.companyId,
@@ -72,10 +101,12 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  process.env.TOIL_ENABLED = 'true';
-});
-afterEach(() => {
-  delete process.env.TOIL_ENABLED;
+  // ADR-0077 slice 3: TOIL is a per-tenant MODULE ENTITLEMENT, not a deployment flag. `toil` is absent
+  // from LEGACY_ENABLED_MODULE_CODES, so seedBase seeds NO row for it and a missing row is DISABLED
+  // (C7) — granting it here is precisely what the old `TOIL_ENABLED = 'true'` env write meant. No
+  // afterEach counterpart is needed: resetDb() truncates tenant_module before every test, so OFF is the
+  // baseline by construction rather than by teardown.
+  await setModule(b.tenantId, 'toil', 'active');
 });
 
 describe('TOIL OT-floor guard — safer First-Schedule default (consent)', () => {
@@ -116,7 +147,8 @@ describe('TOIL OT-floor guard — exact-quantum convert-to-pay (s.60(3))', () =>
     expect(acc.daysCredited).toBe(2); // 480/480 × 2.0 banked
     expect(await replacementBalance(employmentId)).toBe(2);
 
-    const r = await runToilExpiry(adminCtx(b), { today: AFTER_EXPIRY });
+    // `runToilExpiry` is module-gated: entitledCtx, not adminCtx, is what carries this tenant's `toil` row.
+    const r = await runToilExpiry(await entitledCtx(b), { today: AFTER_EXPIRY });
     expect(r.converted).toBe(1);
     // Exact s.60(3)(b): a full normal-hours rest day = 1 day's ORP = 3000/26 = 115.38 — NOT 2 × 115.38.
     expect(r.convertedAmount).toBe(115.38);
@@ -132,7 +164,7 @@ describe('TOIL OT-floor guard — exact-quantum convert-to-pay (s.60(3))', () =>
     const acc = await accrueToil(a, { employmentId, workedDate: REST_DAY });
     expect(acc.daysCredited).toBe(2); // 2.0 banked days
 
-    const r = await runToilExpiry(adminCtx(b), { today: AFTER_EXPIRY });
+    const r = await runToilExpiry(await entitledCtx(b), { today: AFTER_EXPIRY });
     expect(r.converted).toBe(1);
     // Generic basis: 2 banked days × (5000/26) = 2 × 192.31 = 384.62 (contractual, no statutory floor applies).
     expect(r.convertedAmount).toBe(384.62);

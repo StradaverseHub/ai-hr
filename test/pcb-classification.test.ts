@@ -17,7 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
@@ -36,7 +36,7 @@ import {
 import { DEFAULT_MY_STATUTORY, MY_STATUTORY_VERSION } from '../localization/my/statutory-tables';
 import { validateStatutoryRuleset } from '../localization/my/statutory-config';
 import { eaStatement } from '../localization/my/reports';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let base: Base;
 let a: SessionContext;
@@ -80,14 +80,30 @@ async function slipOf(batchId: string, employmentId: string) {
 beforeAll(async () => {
   await migrateTestDb();
 });
+/**
+ * ADR-0077 slice 3 — `typed_pay_components` is a per-tenant entitlement row, not an env flag.
+ *
+ * OFF is the default and needs no statement: `seedBase` seeds NO `tenant_module` row for it (the
+ * suite's env has TYPED_PAY_COMPONENTS_ENABLED unset), and a missing row is disabled (C7). The old
+ * beforeEach/afterEach env deletes are therefore gone rather than translated — there is nothing left
+ * to turn off. (Stated without the literal env expression on purpose: `module-catalog-drift.test.ts`
+ * greps every test file for one, and a mention inside a comment would read as a live mutation.)
+ *
+ * ON is stated per test with `setModule(...,'active')`, and the session must then be RE-RESOLVED
+ * through `entitledCtx`: `adminCtx`'s snapshot is synthetic (derived from the env parity helpers) and
+ * point-in-time, so a row written afterwards is invisible to it. Setup that must run with the gate
+ * still OFF keeps using the `adminCtx` value of `a`; each test flips at exactly the line the env
+ * write used to sit on, so the on/off boundary within every test is unchanged.
+ */
+const enableTypedComponents = async () => {
+  await setModule(base.tenantId, 'typed_pay_components', 'active');
+  a = await entitledCtx(base);
+};
+
 beforeEach(async () => {
   await resetDb();
   base = await seedBase();
   a = adminCtx(base);
-  delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-});
-afterEach(() => {
-  delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
 });
 afterAll(async () => {
   await closeAll();
@@ -175,7 +191,7 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     await setEmploymentPayComponent(a, { employmentId: e3.employmentId, componentId: await idByCode('LEGBONUS'), amount: 500, effectiveFrom: '2026-01-01' });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await enableTypedComponents();
     await generatePayslips(a, { batchId });
 
     const s1 = await slipOf(batchId, e1.employmentId);
@@ -206,7 +222,7 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-01' });
     await setPayrollInput(a, { batchId, employmentId: tp1Emp.employmentId, overtimeAmount: 0, tp1Deduction: 300 });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await enableTypedComponents();
     await generatePayslips(a, { batchId });
 
     const lpSlip = await slipOf(batchId, lpEmp.employmentId);
@@ -238,7 +254,7 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     const e = await hire('cc@acme.test', '900101015021', 4000);
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('CHILDCARE'), amount: 2000, effectiveFrom: '2026-01-01' });
 
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await enableTypedComponents();
     const jan = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-01' });
     await generatePayslips(a, { batchId: jan.batchId });
     const sJan = await slipOf(jan.batchId, e.employmentId);
@@ -270,7 +286,7 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('BON2012'), amount: 3000, effectiveFrom: '2026-01-01' });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await enableTypedComponents();
     await generatePayslips(a, { batchId });
     const s = await slipOf(batchId, e.employmentId);
     const st = s.statutory as { epfEmployee: number; epfEmployer: number; socsoEmployee: number };
@@ -291,7 +307,7 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('PCBONLY'), amount: 100, effectiveFrom: '2026-01-01' });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await enableTypedComponents();
     await expect(generatePayslips(a, { batchId })).rejects.toBeInstanceOf(UnsupportedPayComponentError);
 
     // Declaring the classification makes the same code computable (routed by the declaration).

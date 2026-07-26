@@ -24,7 +24,18 @@ import {
   settleLoan,
   suspendLoan,
 } from '../core/loans';
-import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  eventTypesFor,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 
 let icSeq = 0;
 const nextIc = () => `9001010${String(10000 + icSeq++).slice(-5)}`;
@@ -246,14 +257,22 @@ describe('ADR-0060 — loan lifecycle', () => {
       employmentId: e.employmentId, loanType: 'personal', principal: 1200, interestRate: 0, interestMethod: 'none', durationMonths: 12, startDate: '2026-01-01',
     });
     // The regular run must exist first; then an additional run is non-regular (multi-cycle gated on).
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    try {
-      await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-      const { batchId: bonusBatch } = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' });
-      await expect(prefillLoansForBatch(a, { batchId: bonusBatch })).rejects.toThrow();
-    } finally {
-      delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
-    }
+    //
+    // ADR-0077 slice 3: multi-cycle payroll is a per-tenant entitlement ROW, not MULTI_CYCLE_PAYROLL_ENABLED.
+    // The row alone is not enough here — `adminCtx` builds its snapshot from `legacyEnabledModulesIn(process.env)`
+    // at construction time, and test/env.ts deletes that flag, so `a` would refuse `createAdditionalRun`
+    // no matter what the database says. `entitledCtx` resolves a REAL snapshot from this tenant's rows,
+    // and snapshots point-in-time, so the grant must be written BEFORE the context is built.
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const mc = await entitledCtx(base);
+    await createBatch(mc, { companyId: base.companyId, payPeriod: '2026-05' });
+    const { batchId: bonusBatch } = await createAdditionalRun(mc, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' });
+    // Pinned to the runType refusal: multi-cycle is deliberately ON for this tenant, so a rejection here
+    // can only be the non-regular guard in prefillLoansForBatch — not a ModuleNotEnabledError from a gate
+    // that failed to open, which is exactly how this test could otherwise pass for the wrong reason.
+    await expect(prefillLoansForBatch(mc, { batchId: bonusBatch })).rejects.toThrow(
+      /only be prefilled onto a regular run/,
+    );
   });
 
   it('a terminated employee is not reserved (active-employee filter)', async () => {

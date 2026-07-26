@@ -8,7 +8,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {
-  adminCtx,
   closeAll,
   entitledCtx,
   eventTypesFor,
@@ -45,7 +44,12 @@ const policy = (companyId: string, over: Partial<ToilPolicyInput> = {}): ToilPol
 
 /** Hire at a wage, work a rest day, set the policy, and bank the TOIL (1.0 day). Returns the accrual id. */
 async function accrue(basic: number, over: Partial<ToilPolicyInput> = {}) {
-  const a = adminCtx(b);
+  // `entitledCtx`, not `adminCtx`: `accrueToil` is gated on the `toil` module, and `adminCtx` carries a
+  // snapshot derived from `legacyEnabledModulesIn(process.env)` — a set `toil` is absent from
+  // (LEGACY_MODULE_ENV_GATES.toil = 'TOIL_ENABLED', which no tracked env file sets). It therefore reports
+  // toil DISABLED no matter what rows the tenant has, so the beforeEach grant below would be invisible to
+  // it and every accrual here would throw ToilDisabledError. `entitledCtx` resolves from the actual rows.
+  const a = await entitledCtx(b);
   const e = await hireEmployee(a, {
     person: { fullName: 'Exp', primaryEmail: uniqEmail() },
     companyId: b.companyId,
@@ -94,7 +98,7 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
   it('converts an eligible employee to pay (forced), debits the credit, records the owed ORP', async () => {
     const { employmentId, accrualId } = await accrue(3000, { allowFirstScheduleEligible: true }); // ≤ ceiling ⇒ convert forced
     expect(await replacementBalance(employmentId)).toBe(1);
-    const r = await runToilExpiry(adminCtx(b), { today: AFTER_EXPIRY });
+    const r = await runToilExpiry(await entitledCtx(b), { today: AFTER_EXPIRY });
     expect(r).toMatchObject({ processed: 1, converted: 1, lapsed: 0, convertedDays: 1 });
     expect(r.convertedAmount).toBe(115.38); // 1 day × (3000 / 26)
     expect(await statusOf(accrualId)).toBe('converted_to_pay');
@@ -104,7 +108,7 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
 
   it('lapses when the policy says lapse for a non-First-Schedule employee', async () => {
     const { employmentId, accrualId } = await accrue(5000, { onExpiry: 'lapse' }); // > ceiling ⇒ policy applies
-    const r = await runToilExpiry(adminCtx(b), { today: AFTER_EXPIRY });
+    const r = await runToilExpiry(await entitledCtx(b), { today: AFTER_EXPIRY });
     expect(r).toMatchObject({ processed: 1, converted: 0, lapsed: 1, convertedAmount: 0 });
     expect(await statusOf(accrualId)).toBe('lapsed');
     expect(await replacementBalance(employmentId)).toBe(0); // forfeited
@@ -113,14 +117,14 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
 
   it('converts a non-eligible employee when the policy says convert_to_pay', async () => {
     const { accrualId } = await accrue(5000, { onExpiry: 'convert_to_pay' });
-    const r = await runToilExpiry(adminCtx(b), { today: AFTER_EXPIRY });
+    const r = await runToilExpiry(await entitledCtx(b), { today: AFTER_EXPIRY });
     expect(r).toMatchObject({ processed: 1, converted: 1, lapsed: 0 });
     expect(await statusOf(accrualId)).toBe('converted_to_pay');
   });
 
   it('leaves a not-yet-expired accrual untouched', async () => {
     const { employmentId, accrualId } = await accrue(5000, { onExpiry: 'lapse' });
-    const r = await runToilExpiry(adminCtx(b), { today: BEFORE_EXPIRY });
+    const r = await runToilExpiry(await entitledCtx(b), { today: BEFORE_EXPIRY });
     expect(r.processed).toBe(0);
     expect(await statusOf(accrualId)).toBe('active');
     expect(await replacementBalance(employmentId)).toBe(1);
@@ -128,15 +132,19 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
 
   it('is idempotent — a second run processes nothing', async () => {
     await accrue(5000, { onExpiry: 'lapse' });
-    expect((await runToilExpiry(adminCtx(b), { today: AFTER_EXPIRY })).processed).toBe(1);
-    expect((await runToilExpiry(adminCtx(b), { today: AFTER_EXPIRY })).processed).toBe(0);
+    // One snapshot, reused: the entitlement does not change between the two runs, and re-resolving would
+    // test the resolver rather than the sweep's idempotency.
+    const ctx = await entitledCtx(b);
+    expect((await runToilExpiry(ctx, { today: AFTER_EXPIRY })).processed).toBe(1);
+    expect((await runToilExpiry(ctx, { today: AFTER_EXPIRY })).processed).toBe(0);
   });
 
   it('is gated — refuses when the tenant is not entitled to the toil module', async () => {
     await accrue(5000, { onExpiry: 'lapse' });
-    // `adminCtx` is entitlementsExempt ('harness'), so it answers TRUE for every catalogued module and
-    // structurally cannot demonstrate a gate closing. Drive this one through `entitledCtx`, which carries a
-    // REAL snapshot resolved from this tenant's rows.
+    // Driven through `entitledCtx` — a REAL snapshot resolved from this tenant's rows, so revoking the row
+    // below actually changes the answer. (`adminCtx` could not show this either: its snapshot is derived
+    // from the env parity set, which never contains `toil`, so it would refuse both before AND after the
+    // revocation and prove nothing about the grant.)
     await expect(runToilExpiry(await entitledCtx(b), { today: AFTER_EXPIRY })).resolves.toMatchObject({
       processed: 1,
       lapsed: 1,

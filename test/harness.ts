@@ -330,18 +330,6 @@ export async function setSetting(tenantId: string, key: string, value: unknown):
 }
 
 /**
- * The standard fixture admin context.
- *
- * `entitlementsExempt: 'harness'` (ADR-0077 slice 2) because this is SYNCHRONOUS and 247 test files
- * call it: resolving a real snapshot would make it async and rewrite every one of them, while leaving
- * it unmarked means the first gate slice 3 installs turns the whole suite red with
- * EntitlementsUnresolvedError. The marker is the declared answer for exactly this shape of caller —
- * see ENTITLEMENTS_EXEMPT_REASONS.harness. A test that needs to exercise a GATE rather than the
- * feature behind it must use `entitledCtx` below, because an exempt context answers `true` for
- * everything catalogued AND reads every setting as its catalog default — so a `setSetting` fixture
- * driven through THIS context is silently ignored.
- */
-/**
  * The snapshot `adminCtx` carries — built from the SAME two helpers `seedBase` uses to decide which
  * rows to insert, so the context and the database cannot disagree.
  *
@@ -394,13 +382,21 @@ export function adminCtx(b: Base): SessionContext {
  * The fixture context that can actually EXERCISE A GATE — a REAL snapshot, resolved from this tenant's
  * rows, with no exemption marker.
  *
- * `adminCtx` is exempt, so it answers `true` for every catalogued module and reads every setting as its
- * catalog default. That is the right trade for the 247 files that test the feature BEHIND a gate (it
- * stays synchronous, and it does not turn the suite red the day slice 3 installs the gates) — but it
- * also means those files structurally cannot demonstrate that a gate CLOSES. Round 3's point: an
- * enforcement primitive that ships with 4,800 green tests and zero coverage of enforcement has not been
- * tested. This is the other half, and slice 3's acceptance criterion is that every gate it installs has
- * at least one test driving it through THIS context and proving the refusal.
+ * HOW THIS DIFFERS FROM `adminCtx` (corrected in slice 3 — the previous text here was wrong once the
+ * exemption was removed, and a comment that lies about a fixture's semantics is how the next
+ * conversion goes wrong):
+ *
+ * `adminCtx` carries a SYNTHETIC snapshot derived from `legacyEnabledModulesIn(process.env)` — the
+ * same helper `seedBase` uses to choose its rows — so it answers exactly what the seeded tenant has,
+ * and a gate CAN close through it. `entitledCtx` resolves the tenant's REAL rows from the database.
+ *
+ * Prefer `entitledCtx` when the test manipulates entitlements mid-test (setModule/setSetting after
+ * the context was built), because a synthetic snapshot is a point-in-time copy and will not see the
+ * change. Prefer `adminCtx` for the ~247 files that simply exercise the feature behind a gate: it is
+ * synchronous, and it is now honest about what the tenant actually has.
+ *
+ * Slice 3's acceptance criterion is unchanged: every gate it installs has at least one test proving
+ * the REFUSAL, not merely the feature behind it.
  *
  * Resolved as the OWNER, which bypasses RLS — right here, because what it fixtures is the resolver's
  * SEMANTICS, not the policies. `test/entitlement-resolver.test.ts` owns the under-RLS coverage.

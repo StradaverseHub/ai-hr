@@ -12,9 +12,17 @@
  * Fix: clamp every post-tax deduction in priority order (manual deduct → CP38 → loan) so net ≥ 0 by
  * construction, and emit a clamp warning event whenever a deduction is reduced. The no-extra-deduction path
  * must stay byte-identical.
+ *
+ * ADR-0077 slice 3 — THE GATE THIS FILE DRIVES IS A PER-TENANT ENTITLEMENT ROW, NOT AN ENV FLAG:
+ *   • `typed_pay_components` (MODULE) — was TYPED_PAY_COMPONENTS_ENABLED
+ * A MISSING row is disabled (C7). The kernel asks `isModuleEnabled(ctx, …)`, which reads the CONTEXT's
+ * snapshot, and that snapshot is POINT-IN-TIME — so a grant must be followed by a re-resolve
+ * (`entitledCtx`) before the call that has to see it, and the ungated golden must run through a real
+ * resolved snapshot too, or it proves nothing about the missing row. `adminCtx` is retained only for
+ * gate-independent fixture work (catalog seed, hiring, compensation, component rows, CP38, batch create).
  */
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -26,7 +34,17 @@ import {
   seedPayComponentCatalog,
   setEmploymentPayComponent,
 } from '../core/pay-components';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 import type { SessionContext } from '../db/client';
 
 const payslipOf = async (batchId: string) => {
@@ -71,11 +89,14 @@ describe('M#16 — EA s.24 net-floor on post-tax deductions', () => {
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+    // Both tests start with typed components OFF; the CP38 test grants the module itself.
+    // seedBase seeds no `typed_pay_components` row under the suite's env, but state that here rather
+    // than depend on it: a MISSING row is disabled (C7), and the DELETE makes the baseline a fact of
+    // this file instead of an artefact of the process environment.
+    await setModule(base.tenantId, 'typed_pay_components', null);
   });
-  afterEach(() => {
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-  });
+  // No afterEach: the gate is a tenant ROW now, and resetDb() + seedBase() give every test a brand-new
+  // tenant. There is no process-wide state left to restore.
   afterAll(async () => {
     await closeAll();
   });
@@ -92,8 +113,11 @@ describe('M#16 — EA s.24 net-floor on post-tax deductions', () => {
     await setCp38(a, { employmentId: e.employmentId, cp38Ref: 'CP38/FLOOR', amount: 2500, validFrom: '2026-01-01' });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await generatePayslips(a, { batchId });
+    // The manual DEDUCTION component only reaches the kernel on the typed path, so grant the module —
+    // then RE-RESOLVE, because `a`'s snapshot was taken before the grant and would still say off.
+    await setModule(base.tenantId, 'typed_pay_components', 'active');
+    const typed = await entitledCtx(base);
+    await generatePayslips(typed, { batchId });
     const ps = await payslipOf(batchId);
 
     // The REQUIREMENT: a payslip never persists a negative net from CP38 + a manual deduction.
@@ -112,8 +136,11 @@ describe('M#16 — EA s.24 net-floor on post-tax deductions', () => {
     const e = await hire(base, 'Plain', 3000);
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    // No CP38, no loan, no manual deduction (un-gated path).
-    await generatePayslips(a, { batchId });
+    // No CP38, no loan, no manual deduction (un-gated path). Generated through a REAL resolved
+    // snapshot: with no `typed_pay_components` row (deleted in beforeEach) the kernel takes the legacy
+    // earnings path, which is what "net = gross − statutory, no clamp event" is asserting.
+    const ungated = await entitledCtx(base);
+    await generatePayslips(ungated, { batchId });
     const ps = await payslipOf(batchId);
 
     const st = ps.statutory as Record<string, number>;

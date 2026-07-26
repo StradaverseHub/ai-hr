@@ -17,11 +17,17 @@
  *   h. CSV import round-trip carrying pay_mode / payment_term / rate_amount (+ dry-run rejection).
  *   i. Pre-flight blocks a custom_period employee BY NAME (readiness + advisory + fail-closed generate)
  *      and does not block an hourly one.
+ *
+ * GATES (ADR-0077 slice 3): (c) needs the `toil` MODULE ENTITLEMENT and (g) needs
+ * `typed_pay_components` — neither is an env flag any more. Both are granted with `setModule` and read
+ * back through `entitledCtx`, because `adminCtx` carries a snapshot derived from process.env and would
+ * not see the row. Every other test here runs on seedBase's baseline, where both modules have NO row
+ * and a missing row is disabled (C7) — which is exactly the OFF state this file always ran with.
  */
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import {
@@ -40,7 +46,17 @@ import { backfillEmploymentComponentsFromCompensation, seedPayComponentCatalog }
 import { accrueToil, setToilPolicy, ToilNotEligibleError } from '../core/toil';
 import { setRestDay } from '../core/roster';
 import { checkIn, checkOut } from '../core/attendance';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 
 let b: Base;
 let icSeq = 0;
@@ -124,12 +140,12 @@ beforeEach(async () => {
   await resetDb();
   b = await seedBase();
   icSeq = 0;
-  delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-  delete process.env.TOIL_ENABLED;
-});
-afterEach(() => {
-  delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-  delete process.env.TOIL_ENABLED;
+  // ADR-0077 slice 3: `toil` and `typed_pay_components` used to be forced OFF here by deleting their env
+  // vars. Both are now per-tenant MODULE ENTITLEMENTS and seedBase seeds NO row for either — `toil` is
+  // absent from LEGACY_ENABLED_MODULE_CODES entirely, and `typed_pay_components` is filtered out because
+  // test/env.ts deletes TYPED_PAY_COMPONENTS_ENABLED for the whole process. A missing row IS disabled
+  // (C7), so the OFF baseline is established by the fixture and needs no per-file reset; the two tests
+  // that want a gate ON grant it explicitly with setModule() and read it back through entitledCtx.
 });
 afterAll(async () => {
   await closeAll();
@@ -251,8 +267,14 @@ describe('b — one policy, mixed pay modes (the feature itself)', () => {
 
 describe('c — statutory reads keep the MONTHLY basicSalary semantics', () => {
   it('the TOIL First-Schedule wage gate reads basicSalary, never rate_amount (pinned in both directions)', async () => {
-    process.env.TOIL_ENABLED = 'true';
-    const a = adminCtx(b);
+    // ADR-0077 slice 3: TOIL is a per-tenant MODULE ENTITLEMENT, not TOIL_ENABLED. Granting the row is
+    // only half of it — `toilEnabled` reads `isModuleEnabled(ctx, 'toil')` off the SESSION snapshot, and
+    // `adminCtx`'s snapshot is derived from process.env (harness.ts harnessSnapshot), so it would never
+    // see this row and every toil entry point below would still throw ToilDisabledError. The test
+    // therefore runs on a REAL snapshot resolved from this tenant's rows, taken AFTER the grant.
+    // (`toil` dependsOn ['leave','attendance']: leave is core, attendance is in seedBase's parity set.)
+    await setModule(b.tenantId, 'toil', 'active');
+    const a = await entitledCtx(b);
     await setToilPolicy(a, {
       companyId: b.companyId,
       enabled: true,
@@ -391,7 +413,7 @@ describe('e — dated conversion keeps history intact', () => {
 });
 
 describe('g — typed pay-component path pays a daily employee identically to the legacy join', () => {
-  it('flag on (with BASIC backfilled) reproduces the legacy daily payslip byte-for-byte', async () => {
+  it('module on (with BASIC backfilled) reproduces the legacy daily payslip byte-for-byte', async () => {
     const a = adminCtx(b);
     const e = await seedPayable('TypedDaily', 4600, { payMode: 'daily', rateAmount: 250 });
     const { batchId } = await createBatch(a, {
@@ -399,17 +421,26 @@ describe('g — typed pay-component path pays a daily employee identically to th
       payPeriod: PERIOD,
       scope: { employmentIds: [e.employmentId] },
     });
-    await generatePayslips(a, { batchId });
+    // ADR-0077 slice 3: TYPED_PAY_COMPONENTS_ENABLED is now the `typed_pay_components` MODULE
+    // ENTITLEMENT, read via `isModuleEnabled(ctx, …)` off the session snapshot (core/payroll.ts:2512).
+    // BOTH legs of this comparison are therefore driven through real resolved snapshots, so the test
+    // pins gate-OFF against gate-ON on the entitlement axis and cannot be quietly satisfied by whatever
+    // `process.env` happens to hold: the legacy leg DELETES the row first (a missing row IS disabled,
+    // C7) rather than relying on seedBase having seeded none.
+    await setModule(b.tenantId, 'typed_pay_components', null);
+    await generatePayslips(await entitledCtx(b), { batchId });
     const legacy = await payslipOf(batchId, e.employmentId);
     expect(Number(legacy.basicSalary)).toBeCloseTo(250 * ELIGIBLE_MAY_2026, 2);
 
-    // Reset to draft, back-fill typed components (BASIC mirrors the MONTHLY-equivalent 4600), flag on.
+    // Reset to draft, back-fill typed components (BASIC mirrors the MONTHLY-equivalent 4600), module on.
+    // The two fixture calls stay on `a`: neither reads an entitlement (core/pay-components.ts has no
+    // gate), and they ran with the flag off before this conversion too.
     await owner.db.delete(schema.payslip).where(eq(schema.payslip.batchId, batchId));
     await owner.db.update(schema.payrollBatch).set({ status: 'draft' }).where(eq(schema.payrollBatch.id, batchId));
     await seedPayComponentCatalog(a);
     await backfillEmploymentComponentsFromCompensation(a);
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await generatePayslips(a, { batchId });
+    await setModule(b.tenantId, 'typed_pay_components', 'active');
+    await generatePayslips(await entitledCtx(b), { batchId });
     const typed = await payslipOf(batchId, e.employmentId);
     expect(typed.basicSalary).toBe(legacy.basicSalary);
     expect(typed.grossPay).toBe(legacy.grossPay);

@@ -16,11 +16,15 @@
  * Two consequences for every test in section C:
  *   - ON is `await setModule(b.tenantId, 'typed_pay_components', 'active')`; OFF is the ABSENCE of the row
  *     (a missing row is disabled — C7 — and seedBase seeds none for this module under the suite's env).
- *   - the call under test must run on `entitledCtx(b)`, a REAL resolved snapshot. `adminCtx` carries
- *     `entitlementsExempt: 'harness'`, which answers `true` for every catalogued module: driving the gate
- *     through it would make "gated off" unprovable and make "gated on" pass for the wrong reason. The
- *     snapshot is a point-in-time read, so `entitledCtx` is built AFTER the `setModule` call. Fixture work
- *     that is not the thing under test (hiring, attendance, policy, batch) keeps using `adminCtx`.
+ *   - EVERY call to `transferAllowancesToBatch` must run on `entitledCtx(b)`, a REAL snapshot resolved
+ *     from this tenant's rows — including the tests where the gate is merely a PRECONDITION (non-draft
+ *     batch, unsupported component, reversal) rather than the thing under test. `adminCtx` cannot serve
+ *     there: it carries the synthetic `legacyEnabledModulesIn(process.env)` snapshot, and test/env.ts
+ *     deletes TYPED_PAY_COMPONENTS_ENABLED, so under `adminCtx` this module is OFF and the transfer
+ *     returns `{ gated: true }` before it ever reaches the batch-status / component / reversal logic
+ *     those tests exist to prove. The snapshot is a point-in-time read, so `entitledCtx` is built AFTER
+ *     the `setModule` call. Fixture work that is not the thing under test (hiring, attendance, policy,
+ *     batch) keeps using `adminCtx`.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
@@ -344,8 +348,10 @@ describe('transferAllowancesToBatch', () => {
     expect(perfectAmount).toBe(200);
     expect(await componentAmount(batchId, absentee, componentId)).toBeNull();
 
-    // idempotent — re-run leaves one row per qualified employee at the same amount.
-    const r2 = await transferAllowancesToBatch(a, { batchId, policyId: id });
+    // idempotent — re-run leaves one row per qualified employee at the same amount. Same entitled
+    // context: `a` would resolve the module OFF and return gated:true, which would "pass" the
+    // row-count assertion below for the wrong reason (nothing written the second time either).
+    const r2 = await transferAllowancesToBatch(onCtx, { batchId, policyId: id });
     expect(r2.applied).toBe(2);
     const rows = await owner.db
       .select()
@@ -362,8 +368,12 @@ describe('transferAllowancesToBatch', () => {
     });
     const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
     await owner.db.update(schema.payrollBatch).set({ status: 'closed' }).where(eq(schema.payrollBatch.id, batchId));
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await expect(transferAllowancesToBatch(a, { batchId, policyId: id })).rejects.toThrow();
+    // The gate is a PRECONDITION here, not the subject: the gate check runs BEFORE the batch-status
+    // check, so with the module off this would return gated:true and never throw — the refusal would
+    // go unproven. Grant the row and drive the call through the resolved snapshot.
+    await setModule(b.tenantId, 'typed_pay_components', 'active');
+    const onCtx = await entitledCtx(b);
+    await expect(transferAllowancesToBatch(onCtx, { batchId, policyId: id })).rejects.toThrow();
   });
 
   it('throws UnsupportedBatchComponentError for a PCB-only non-payable component', async () => {
@@ -373,8 +383,11 @@ describe('transferAllowancesToBatch', () => {
       companyId: b.companyId, code: 'BADATT', name: 'P', amount: 200, payComponentId: bad, effectiveFrom: '2026-07-01', criteria: { maxAbsentDays: 0 },
     });
     const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await expect(transferAllowancesToBatch(a, { batchId, policyId: id })).rejects.toBeInstanceOf(UnsupportedBatchComponentError);
+    // Precondition again: the gate short-circuits ahead of the supported-component guard, so the module
+    // has to be genuinely on for this tenant or the throw under test is unreachable.
+    await setModule(b.tenantId, 'typed_pay_components', 'active');
+    const onCtx = await entitledCtx(b);
+    await expect(transferAllowancesToBatch(onCtx, { batchId, policyId: id })).rejects.toBeInstanceOf(UnsupportedBatchComponentError);
   });
 
   it('REVERSAL: qualified -> transferred -> correction disqualifies -> re-transfer removes the row', async () => {
@@ -384,8 +397,11 @@ describe('transferAllowancesToBatch', () => {
       companyId: b.companyId, code: 'ATT200', name: 'P', amount: 200, payComponentId: componentId, effectiveFrom: '2026-07-01', criteria: { maxAbsentDays: 0 },
     });
     const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await transferAllowancesToBatch(a, { batchId, policyId: id });
+    // Precondition: both transfers below must actually run, or "the row is gone" would be satisfied by
+    // a row that was never written in the first place.
+    await setModule(b.tenantId, 'typed_pay_components', 'active');
+    const onCtx = await entitledCtx(b);
+    await transferAllowancesToBatch(onCtx, { batchId, policyId: id });
     expect(await componentAmount(batchId, perfect, componentId)).toBe(200);
 
     // Correction: delete the perfect employee's EARLIEST attendance row -> now 1 absence (on a start-of-
@@ -398,7 +414,7 @@ describe('transferAllowancesToBatch', () => {
       .limit(1);
     await owner.db.delete(schema.attendance).where(eq(schema.attendance.id, oneRow.id));
 
-    const r = await transferAllowancesToBatch(a, { batchId, policyId: id });
+    const r = await transferAllowancesToBatch(onCtx, { batchId, policyId: id });
     expect(r.reversed).toBeGreaterThanOrEqual(1);
     expect(await componentAmount(batchId, perfect, componentId)).toBeNull();
   });

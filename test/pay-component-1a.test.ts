@@ -3,9 +3,21 @@
  * gated kernel (default 'none' = exact, keeping the byte-identical guarantee that typed-components-compat
  * already proves); the EA-form-line + rounding attributes persist and are validated (#14/#15); and a
  * hard-delete is GUARDED when the component is referenced, while archive stays always-safe (#21).
+ *
+ * ADR-0077 slice 3: the kernel gate is the per-tenant `typed_pay_components` module entitlement
+ * (`isModuleEnabled(ctx, …)`), not a deployment env flag. So the rounding test GRANTS the row with
+ * setModule() and then re-resolves the session through `entitledCtx` — the snapshot is point-in-time,
+ * so a context built before the grant would still say the module is off and the kernel would take the
+ * legacy earnings path (allowance 0, since compensation carries monthlyAllowance 0) instead of the
+ * typed one this test is about.
+ *
+ * The setup steps deliberately keep running on `adminCtx`, whose snapshot is derived from the same two
+ * helpers seedBase uses and therefore has `typed_pay_components` OFF under the suite's env. That
+ * preserves the original ordering exactly: the batch was created with the gate off, and only
+ * generatePayslips ever saw it on.
  */
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -19,7 +31,17 @@ import {
   setEmploymentPayComponent,
   upsertPayComponent,
 } from '../core/pay-components';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 
 let base: Base;
 const idByCode = async (b: Base, code: string) => (await listPayComponents(adminCtx(b))).find((c) => c.code === code)!.id;
@@ -29,11 +51,10 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
+  // No explicit "turn the gate off" step, and no afterEach cleanup either: seedBase seeds NO
+  // tenant_module row for `typed_pay_components` under the suite's env, and a missing row IS disabled
+  // (C7). The row lives on the per-test tenant, which resetDb truncates, so a grant cannot leak.
   base = await seedBase();
-  delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-});
-afterEach(() => {
-  delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
 });
 afterAll(async () => {
   await closeAll();
@@ -69,8 +90,11 @@ describe('ADR-0035 1A — pay-component rounding + attributes + delete guard', (
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode(base, 'RND_ALLOW'), amount: 500.75, effectiveFrom: '2026-01-01' });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await generatePayslips(a, { batchId });
+    // Gate ON for the kernel run only — grant the row, then RE-RESOLVE, because `a`'s snapshot was
+    // taken before the grant and would still route the batch down the legacy earnings path.
+    await setModule(base.tenantId, 'typed_pay_components', 'active');
+    const gated = await entitledCtx(base);
+    await generatePayslips(gated, { batchId });
     const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
     expect(Number(ps.allowance)).toBeCloseTo(expected, 2);
   });

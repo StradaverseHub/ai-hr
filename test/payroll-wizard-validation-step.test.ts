@@ -12,6 +12,14 @@
  *   • GREEN (clean) — every selected employee complete.
  * Plus: the touched-selection scope narrows the check the same way the batch scope does (a comp-less
  * employee outside the selection neither appears nor blocks).
+ *
+ * ADR-0077 slice 3: the stale-BASIC-component check inside `preProcessChecksTx` is gated on the
+ * per-tenant `typed_pay_components` module entitlement, not on a deployment env flag. The first four
+ * tests run with the gate OFF and that is now the SEEDED baseline (seedBase writes no tenant_module row
+ * for that code under the suite's env, and a missing row IS disabled — C7), so they need no gate
+ * handling at all. The fifth test needs it ON, so it grants the row with setModule() and then re-resolves
+ * the session with entitledCtx: `adminCtx`'s snapshot is derived from process.env and would report the
+ * module off no matter what rows exist.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hireEmployee } from '../core/org';
@@ -19,7 +27,16 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { preProcessAdvisoryForSelection } from '../core/payroll';
 import { backfillEmploymentComponentsFromCompensation, seedPayComponentCatalog } from '../core/pay-components';
-import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  migrateTestDb,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 
 let b: Base;
 
@@ -127,18 +144,23 @@ describe('R37 70764928 — wizard Validation step (preProcessAdvisoryForSelectio
     await backfillEmploymentComponentsFromCompensation(a);
     await setCompensation(a, { employmentId: emp.employmentId, basicSalary: 7000, effectiveFrom: '2026-02-01' });
 
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    try {
-      const checks = await preProcessAdvisoryForSelection(a, { companyIds: [b.companyId], payPeriod: PERIOD });
-      // Exactly the step's amber computation: zero blockers, the stale row counted among warnings.
-      const blockers = checks.missingCompensation.length + (checks.zeroBasic?.length ?? 0);
-      const warnings =
-        checks.missingStatutory.length + checks.missingBank.length + (checks.staleBasicComponent?.length ?? 0);
-      expect(blockers).toBe(0); // amber, not red — Process is NOT blocked
-      expect(warnings).toBeGreaterThan(0);
-      expect((checks.staleBasicComponent ?? []).map((r) => r.employmentId)).toEqual([emp.employmentId]);
-    } finally {
-      delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-    }
+    // ADR-0077 slice 3: the stale-BASIC check rides the per-tenant `typed_pay_components` module
+    // entitlement (preProcessAdvisoryForSelection passes isModuleEnabled(ctx, …) into
+    // preProcessChecksTx), not an env flag. GRANT the row, then RE-RESOLVE the session — an
+    // entitlement snapshot is point-in-time, so `a` (built above, before the grant) would still report
+    // the module off and the advisory would return no staleBasicComponent rows at all.
+    await setModule(b.tenantId, 'typed_pay_components', 'active');
+    const gated = await entitledCtx(b);
+
+    const checks = await preProcessAdvisoryForSelection(gated, { companyIds: [b.companyId], payPeriod: PERIOD });
+    // Exactly the step's amber computation: zero blockers, the stale row counted among warnings.
+    const blockers = checks.missingCompensation.length + (checks.zeroBasic?.length ?? 0);
+    const warnings =
+      checks.missingStatutory.length + checks.missingBank.length + (checks.staleBasicComponent?.length ?? 0);
+    expect(blockers).toBe(0); // amber, not red — Process is NOT blocked
+    expect(warnings).toBeGreaterThan(0);
+    expect((checks.staleBasicComponent ?? []).map((r) => r.employmentId)).toEqual([emp.employmentId]);
+    // No cleanup: the grant is a row on THIS test's tenant, and resetDb truncates tenant_module in
+    // beforeEach, so it cannot leak into the next test the way the process-wide env flag could.
   });
 });

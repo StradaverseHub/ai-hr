@@ -5,9 +5,16 @@
  *  #11 amendLoanAction must NOT wipe a loan's notes when the inline amend form omits the notes field.
  *  #19 closeReplacementLeaveYear must sweep each company at its OWN leaveCycle boundary (mixed-cycle tenant).
  *  #20 hiring with provisionalEndOn must make sweepDueReviews open a review for the new hire.
- *  #21 approving a REPLACEMENT must decrement the TOIL register even when TOIL_ENABLED is off (no later double-debit).
+ *  #21 approving a REPLACEMENT must decrement the TOIL register even when the tenant is NOT entitled to
+ *      the `toil` module (no later double-debit).
  *  #33 update/deleteIndividualTxn on an absent row must throw TxnNotFoundError, not BatchNotDraftError.
  *  #34 the raw cp38ForPeriod query must return exactly one row for a supersede boundary month (exclusive validTo).
+ *
+ * ADR-0077 slice 3: TOIL is a per-TENANT entitlement row, not the TOIL_ENABLED deployment flag. `seedBase`
+ * seeds NO `toil` row (it is absent from LEGACY_ENABLED_MODULE_CODES) and a missing row is DISABLED (C7),
+ * so the #19 / #21 blocks grant it with `setModule` and resolve a REAL snapshot with `entitledCtx`.
+ * `adminCtx` cannot stand in: its snapshot is derived from `legacyEnabledModulesIn` over this process's
+ * env, which never contains `toil`, so every gated TOIL entry point would refuse under it.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
@@ -49,13 +56,16 @@ import {
   TxnNotFoundError,
 } from '../core/payroll-individual-txn';
 import { cp38RowsForPeriod, setCp38 } from '../core/cp38';
+import { isModuleEnabled } from '../core/entitlements';
 import {
   adminCtx,
   closeAll,
+  entitledCtx,
   migrateTestDb,
   owner,
   resetDb,
   seedBase,
+  setModule,
   type Base,
 } from './harness';
 
@@ -130,8 +140,8 @@ describe('#19 closeReplacementLeaveYear sweeps each company at its own leaveCycl
     carryForwardAtYearEnd: false,
   });
 
-  async function bankRestDay(employmentId: string, companyId: string, restDay: string) {
-    const a = adminCtx(base);
+  /** `a` must be a TOIL-entitled context — `accrueToil` is gated on the `toil` module. */
+  async function bankRestDay(a: SessionContext, employmentId: string, restDay: string) {
     await setRestDay(a, { employmentId, shiftDate: restDay });
     await checkIn(a, { employmentId, date: restDay, time: '08:00:00' });
     await checkOut(a, { employmentId, date: restDay, time: '17:00:00' });
@@ -148,43 +158,44 @@ describe('#19 closeReplacementLeaveYear sweeps each company at its own leaveCycl
   }
 
   it('each company is swept at its OWN boundary: calendar at asOf, anniversary at the employee cycle start', async () => {
-    process.env.TOIL_ENABLED = 'true';
-    try {
-      const a = adminCtx(base);
-      // Company A = calendar (the seeded company); Company B = anniversary, created here.
-      await owner.db.update(schema.company).set({ leaveCycle: 'calendar' }).where(eq(schema.company.id, base.companyId));
-      const [cB] = await owner.db
-        .insert(schema.company)
-        .values({ tenantId: base.tenantId, legalName: 'Beta Sdn Bhd', leaveCycle: 'anniversary' })
-        .returning({ id: schema.company.id });
-      const [dB] = await owner.db
-        .insert(schema.department)
-        .values({ tenantId: base.tenantId, companyId: cB.id, name: 'Ops B' })
-        .returning({ id: schema.department.id });
+    // Grant the `toil` module to this tenant, then resolve a real snapshot from its rows — the
+    // entitlement replaces the old `TOIL_ENABLED = 'true'` env write. No teardown counterpart is
+    // needed: `resetDb()` truncates `tenant_module` before every test.
+    await setModule(base.tenantId, 'toil', 'active');
+    const a = await entitledCtx(base);
+    expect(isModuleEnabled(a, 'toil')).toBe(true); // the gate really is OPEN for this context
 
-      await setToilPolicy(a, policy(base.companyId));
-      await setToilPolicy(a, policy(cB.id));
+    // Company A = calendar (the seeded company); Company B = anniversary, created here.
+    await owner.db.update(schema.company).set({ leaveCycle: 'calendar' }).where(eq(schema.company.id, base.companyId));
+    const [cB] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: base.tenantId, legalName: 'Beta Sdn Bhd', leaveCycle: 'anniversary' })
+      .returning({ id: schema.company.id });
+    const [dB] = await owner.db
+      .insert(schema.department)
+      .values({ tenantId: base.tenantId, companyId: cB.id, name: 'Ops B' })
+      .returning({ id: schema.department.id });
 
-      // A: calendar company → boundary is asOf (2026-12-31).
-      const empA = await hireFT('Cal A', { hiredOn: '2024-01-01' });
-      await bankRestDay(empA.employmentId, base.companyId, '2026-07-04');
-      const accA = (await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId, empA.employmentId)))[0];
+    await setToilPolicy(a, policy(base.companyId));
+    await setToilPolicy(a, policy(cB.id));
 
-      // B: anniversary company, hired in NOVEMBER → its own cycle boundary for asOf 2026-12-31 is 2026-11-01.
-      const empB = await hireFT('Anniv B', { hiredOn: '2024-11-01', companyId: cB.id, deptId: dB.id });
-      await bankRestDay(empB.employmentId, cB.id, '2026-07-04');
-      const accB = (await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId, empB.employmentId)))[0];
+    // A: calendar company → boundary is asOf (2026-12-31).
+    const empA = await hireFT('Cal A', { hiredOn: '2024-01-01' });
+    await bankRestDay(a, empA.employmentId, '2026-07-04');
+    const accA = (await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId, empA.employmentId)))[0];
 
-      const r = await closeReplacementLeaveYear(a, { asOf: '2026-12-31' });
-      expect(r.processed).toBe(2); // both companies' accruals swept
+    // B: anniversary company, hired in NOVEMBER → its own cycle boundary for asOf 2026-12-31 is 2026-11-01.
+    const empB = await hireFT('Anniv B', { hiredOn: '2024-11-01', companyId: cB.id, deptId: dB.id });
+    await bankRestDay(a, empB.employmentId, '2026-07-04');
+    const accB = (await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId, empB.employmentId)))[0];
 
-      // Each accrual must be stamped at ITS OWN company's boundary. The pre-fix code applied one arbitrary
-      // company's leaveCycle to every row, so one of these two would carry the wrong boundary.
-      expect(await lapseBoundary(accA.id)).toBe('2026-12-31'); // calendar company
-      expect(await lapseBoundary(accB.id)).toBe('2026-11-01'); // anniversary company, own cycle start
-    } finally {
-      delete process.env.TOIL_ENABLED;
-    }
+    const r = await closeReplacementLeaveYear(a, { asOf: '2026-12-31' });
+    expect(r.processed).toBe(2); // both companies' accruals swept
+
+    // Each accrual must be stamped at ITS OWN company's boundary. The pre-fix code applied one arbitrary
+    // company's leaveCycle to every row, so one of these two would carry the wrong boundary.
+    expect(await lapseBoundary(accA.id)).toBe('2026-12-31'); // calendar company
+    expect(await lapseBoundary(accB.id)).toBe('2026-11-01'); // anniversary company, own cycle start
   });
 });
 
@@ -206,8 +217,8 @@ describe('#20 hire provisionalEndOn auto-opens a review via sweepDueReviews', ()
   });
 });
 
-// ── #21 — REPLACEMENT approval decrements the register even with TOIL_ENABLED off (no double-debit) ──
-describe('#21 REPLACEMENT consume-on-approve is decoupled from the TOIL_ENABLED flag', () => {
+// ── #21 — REPLACEMENT approval decrements the register even with the `toil` module off (no double-debit) ──
+describe('#21 REPLACEMENT consume-on-approve is decoupled from the toil module entitlement', () => {
   const policy = (companyId: string): ToilPolicyInput => ({
     companyId,
     enabled: true,
@@ -232,39 +243,43 @@ describe('#21 REPLACEMENT consume-on-approve is decoupled from the TOIL_ENABLED 
     return Number(row?.bal ?? 0);
   }
 
-  it('approving a REPLACEMENT with the flag off consumes the accrual, so a later expiry does not re-debit', async () => {
-    const a = adminCtx(base);
+  it('approving a REPLACEMENT with the module off consumes the accrual, so a later expiry does not re-debit', async () => {
+    const setup = adminCtx(base);
     const e = await hireFT('Replacement Off', { hiredOn: '2024-01-01' });
-    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2024-01-01' });
+    await setCompensation(setup, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2024-01-01' });
 
-    // Enable → accrue one rest-day credit.
-    process.env.TOIL_ENABLED = 'true';
-    await setToilPolicy(a, policy(base.companyId));
-    await setRestDay(a, { employmentId: e.employmentId, shiftDate: '2026-07-04' });
-    await checkIn(a, { employmentId: e.employmentId, date: '2026-07-04', time: '08:00:00' });
-    await checkOut(a, { employmentId: e.employmentId, date: '2026-07-04', time: '17:00:00' });
-    const acc = await accrueToil(a, { employmentId: e.employmentId, workedDate: '2026-07-04' });
+    // Entitle the tenant to `toil` → accrue one rest-day credit. Each snapshot below is resolved AFTER the
+    // row it depends on, because a snapshot is point-in-time exactly as it is for a real session.
+    await setModule(base.tenantId, 'toil', 'active');
+    const on = await entitledCtx(base);
+    expect(isModuleEnabled(on, 'toil')).toBe(true);
+    await setToilPolicy(on, policy(base.companyId));
+    await setRestDay(on, { employmentId: e.employmentId, shiftDate: '2026-07-04' });
+    await checkIn(on, { employmentId: e.employmentId, date: '2026-07-04', time: '08:00:00' });
+    await checkOut(on, { employmentId: e.employmentId, date: '2026-07-04', time: '17:00:00' });
+    const acc = await accrueToil(on, { employmentId: e.employmentId, workedDate: '2026-07-04' });
     expect(await replacementBalance(e.employmentId)).toBe(1);
 
-    // Disable the flag, then approve a REPLACEMENT leave request (1 working day).
-    delete process.env.TOIL_ENABLED;
+    // REVOKE the entitlement (no row ⇒ disabled, C7) and re-resolve, then approve a REPLACEMENT leave
+    // request (1 working day) through the now-ungated context. This is the whole point of #21 — the
+    // gate must be genuinely CLOSED here, so assert it rather than trusting the row write.
+    await setModule(base.tenantId, 'toil', null);
+    const off = await entitledCtx(base);
+    expect(isModuleEnabled(off, 'toil')).toBe(false);
     const typeId = await replacementTypeId();
-    const req = await requestLeave(a, { employmentId: e.employmentId, leaveTypeId: typeId, startDate: '2026-07-06', endDate: '2026-07-06' });
-    await decideLeave(a, { leaveRequestId: req.leaveRequestId, decision: 'approved' });
+    const req = await requestLeave(off, { employmentId: e.employmentId, leaveTypeId: typeId, startDate: '2026-07-06', endDate: '2026-07-06' });
+    await decideLeave(off, { leaveRequestId: req.leaveRequestId, decision: 'approved' });
 
-    // The register must have been decremented (accrual fully consumed) despite the flag being off.
+    // The register must have been decremented (accrual fully consumed) despite the module being off.
     const consumed = (await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.id, acc.accrualId)))[0];
     expect(consumed.status).toBe('taken');
     expect(await replacementBalance(e.employmentId)).toBe(0); // ledger debit + accrual taken net to 0
 
-    // Re-enable and run the expiry sweep: there must be NO second debit (no negative balance).
-    process.env.TOIL_ENABLED = 'true';
-    try {
-      await runToilExpiry(a, { today: '2026-12-31' });
-      expect(await replacementBalance(e.employmentId)).toBe(0); // still 0, never negative
-    } finally {
-      delete process.env.TOIL_ENABLED;
-    }
+    // Re-grant and run the expiry sweep (it is gated): there must be NO second debit (no negative balance).
+    await setModule(base.tenantId, 'toil', 'active');
+    const back = await entitledCtx(base);
+    await runToilExpiry(back, { today: '2026-12-31' });
+    expect(await replacementBalance(e.employmentId)).toBe(0); // still 0, never negative
   });
 });
 
