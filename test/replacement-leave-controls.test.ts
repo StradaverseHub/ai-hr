@@ -38,10 +38,10 @@ import {
   closeReplacementLeaveYear,
   runToilExpiry,
   setToilPolicy,
-  ToilDisabledError,
   ToilNotEligibleError,
   type ToilPolicyInput,
 } from '../core/toil';
+import { isModuleEnabled } from '../core/entitlements';
 
 let b: Base;
 /**
@@ -380,11 +380,26 @@ describe('Gate (step 9)', () => {
   // passing for some unrelated reason: the only difference between the two tests is whether the
   // `tenant_module` row exists. Each re-resolves its own snapshot rather than reusing the file-level
   // `ctx`, because a snapshot is point-in-time — a revoke written after it was resolved is not in it.
-  it('closeReplacementLeaveYear refuses when the tenant has no `toil` entitlement', async () => {
-    await accrueRestDay(5000); // banked while entitled, so there IS an active row an open gate would sweep
+  it('closeReplacementLeaveYear still settles banked days when the `toil` entitlement is gone', async () => {
+    // INVERTED IN SLICE 3, and this is the second copy of the same wrong requirement (the first was in
+    // test/toil-expiry.test.ts). Both asserted that revoking the module makes the year-end close REFUSE.
+    // Both were built carefully — note the original setup deliberately banked a row first "so there IS
+    // an active row an open gate would sweep", which is exactly the right instinct — and both passed
+    // honestly. They just pinned the wrong behaviour.
+    //
+    // The year-end close discharges an EA First Schedule obligation: an eligible employee's unused TOIL
+    // converts to pay and may never lapse. The entitlement governs whether a tenant may BANK new days,
+    // not whether days already banked ever get paid. Refusing here meant a lapsed trial or a downgrade
+    // froze a debt the employee had already earned — and app/admin/toil/page.tsx hides the button that
+    // calls this, so there was no surface left to settle it through.
+    await accrueRestDay(5000); // banked while entitled
     await setModule(b.tenantId, 'toil', null); // delete the row — a missing row IS disabled (C7)
     const revoked = await entitledCtx(b); // snapshot resolved AFTER the revoke
-    await expect(closeReplacementLeaveYear(revoked, { asOf: '2026-12-31' })).rejects.toBeInstanceOf(ToilDisabledError);
+    expect(isModuleEnabled(revoked, 'toil'), 'the fixture must really be disabled, or this proves nothing').toBe(false);
+
+    const r = await closeReplacementLeaveYear(revoked, { asOf: '2026-12-31' });
+    expect(r.alreadyClosed).toBe(false);
+    expect(r.processed, 'the banked day must still be settled after revocation').toBe(1);
   });
 
   it('and admits the same call when the tenant IS entitled', async () => {
