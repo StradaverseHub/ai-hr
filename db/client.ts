@@ -21,6 +21,14 @@ export type SessionContext = {
   roles?: string[];
   /** (role, company) grants; companyId null = group-wide. Drives company-scoped authz (ADR-0009). */
   grants?: Grant[];
+  /**
+   * ADR-0077 slice 2 — the tenant's resolved entitlement snapshot, attached by getSession(). Typed as
+   * `unknown` here so db/client stays free of a core/ import (core/entitlements imports SessionContext
+   * from this file; typing it concretely would be a cycle). core/entitlements narrows it.
+   */
+  entitlements?: unknown;
+  /** Marks a synthetic context that legitimately predates entitlements. See ENTITLEMENTS_EXEMPT_REASONS. */
+  entitlementsExempt?: string;
 };
 
 // Reuse pools across hot-reloads (dev) so HMR doesn't leak Postgres connections.

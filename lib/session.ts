@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { client, type Grant, type SessionContext } from '../db/client';
+import { resolveEntitlementsRaw } from '../core/entitlements';
 import { AuthRequiredError } from './auth-errors';
 import { demoSwitcherEnabled } from './demo-mode';
 
@@ -96,6 +97,25 @@ export async function resolveWorkosPrincipal(
   return toSession(principal.app_user_id, principal);
 }
 
+/**
+ * Attach the tenant's entitlement snapshot to a resolved session (ADR-0077 slice 2).
+ *
+ * Applied HERE rather than inside resolveDevPrincipal / resolveWorkosPrincipal because F19 is exactly
+ * that those are two different code paths — the gated demo runs the dev switcher in production — and
+ * an enforcement primitive wired into only one of them would be silently absent on the deployment we
+ * actually ship. One seam, both paths, no way to add a third without passing through it.
+ *
+ * Costs no extra round trip on the hot path in the sense that matters: getSession already queries
+ * app.principal, and this is the second statement on a connection that is already open.
+ */
+async function withEntitlements(session: SessionContext): Promise<SessionContext> {
+  const snapshot = await resolveEntitlementsRaw(
+    (q, params) => client.unsafe(q, params as never[]),
+    session.tenantId,
+  );
+  return { ...session, entitlements: snapshot } as SessionContext;
+}
+
 export async function getSession(): Promise<SessionContext> {
   // Dev switcher path: real dev, plus the gated demo (ALLOW_DEMO_SESSION — see lib/demo-mode).
   if (demoSwitcherEnabled()) {
@@ -111,7 +131,7 @@ export async function getSession(): Promise<SessionContext> {
       const [row] = await client<{ blocked: boolean }[]>`select app.login_blocked(${id}::uuid) as blocked`;
       return Boolean(row?.blocked);
     };
-    return resolveDevPrincipal(lookup, cookieUser, fallback, blocked);
+    return withEntitlements(await resolveDevPrincipal(lookup, cookieUser, fallback, blocked));
   }
 
   // Production: WorkOS is the auth. Imported lazily so the dev/test path never loads the WorkOS SDK.
@@ -122,5 +142,5 @@ export async function getSession(): Promise<SessionContext> {
     client<SubjectPrincipalRow[]>`
       select app_user_id, tenant_id, person_id, grants from app.principal_by_subject(${subject})
     `;
-  return resolveWorkosPrincipal(lookup, session.subject);
+  return withEntitlements(await resolveWorkosPrincipal(lookup, session.subject));
 }
