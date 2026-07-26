@@ -27,6 +27,7 @@ import {
   type ToilExpiryAction,
 } from '../db/schema';
 import { packFor } from '../localization/registry';
+import { isModuleEnabled } from './entitlements';
 
 export class ToilDisabledError extends Error {
   constructor(msg = 'Time off in lieu is not enabled.') {
@@ -75,7 +76,12 @@ const addDays = (date: string, n: number): string =>
 // TOIL; the exact EA ½/1-day rest-day rule governs cash pay, not in-lieu banking).
 const PREMIUM_MULT: Record<'workday' | 'rest_day' | 'holiday', number> = { workday: 1.5, rest_day: 2, holiday: 3 };
 
-const toilEnabled = () => process.env.TOIL_ENABLED === 'true';
+/**
+ * TOIL is now a per-TENANT entitlement, not a deployment flag (ADR-0077 slice 3). Same shape as the
+ * env read it replaces — a free synchronous check — because the snapshot rides on the session
+ * (core/entitlements.ts explains why that is session-scoped rather than per-transaction).
+ */
+const toilEnabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'toil');
 
 /** Idempotent: the tenant's REPLACEMENT leave type (created on first need; paid, working-day counted). */
 async function ensureReplacementLeaveType(tx: Tx, tenantId: string): Promise<string> {
@@ -401,7 +407,7 @@ export async function accrueToil(
   ctx: SessionContext,
   p: { employmentId: string; workedDate: string; firstScheduleConsent?: boolean },
 ): Promise<AccrueToilResult> {
-  if (!toilEnabled()) throw new ToilDisabledError();
+  if (!toilEnabled(ctx)) throw new ToilDisabledError();
   return withTenant(ctx, (tx) => accrueToilTx(tx, ctx, { ...p, requireDecideAuth: true }));
 }
 
@@ -417,7 +423,7 @@ export async function maybeAutoAccrueOnApprovalTx(
   ctx: SessionContext,
   p: { employmentId: string; workedDate: string; dayType: string | null },
 ): Promise<boolean> {
-  if (!toilEnabled()) return false;
+  if (!toilEnabled(ctx)) return false;
   // Cheap pre-checks before any work: must be a rest-day/holiday correction.
   if (!p.dayType || !RL_ELIGIBLE_DAY_TYPES.has(p.dayType as 'rest_day' | 'holiday')) return false;
   // Resolve the company policy gate (enabled + opted-in). RLS already scopes the row to this tenant.
@@ -714,7 +720,7 @@ async function expireAccrualsTx(
  * re-running is safe. `today` is injected for deterministic tests.
  */
 export async function runToilExpiry(ctx: SessionContext, p: { today: string }): Promise<ToilExpiryResult> {
-  if (!toilEnabled()) throw new ToilDisabledError();
+  if (!toilEnabled(ctx)) throw new ToilDisabledError();
   return withTenant(ctx, async (tx) => {
     const due = await tx
       .select({
@@ -769,7 +775,7 @@ export async function closeReplacementLeaveYear(
   ctx: SessionContext,
   p: { asOf: string },
 ): Promise<CloseReplacementYearResult> {
-  if (!toilEnabled()) throw new ToilDisabledError();
+  if (!toilEnabled(ctx)) throw new ToilDisabledError();
   return withTenant(ctx, async (tx) => {
     const empty: CloseReplacementYearResult = {
       processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0, alreadyClosed: false, carriedForward: 0,

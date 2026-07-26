@@ -78,6 +78,7 @@ import {
   workingDayRoster,
 } from './payroll-policy-config';
 import type { CutOffType } from '../db/schema';
+import { ModuleNotEnabledError, isModuleEnabled, settingEnabled } from './entitlements';
 
 export class BatchNotDraftError extends Error {
   constructor() {
@@ -663,8 +664,10 @@ export async function createAdditionalRun(
     scope?: BatchScope;
   },
 ) {
-  if (process.env.MULTI_CYCLE_PAYROLL_ENABLED !== 'true') {
-    throw new Error('Multiple payroll runs per month are not enabled.');
+  if (!isModuleEnabled(ctx, 'multi_cycle_payroll')) {
+    // Message preserved verbatim: it is user-visible and asserted by existing tests. The TYPE is now
+    // ModuleNotEnabledError so a caller can distinguish "not entitled" from any other failure.
+    throw new ModuleNotEnabledError('multi_cycle_payroll', 'Multiple payroll runs per month are not enabled.');
   }
   return withTenant(ctx, async (tx) => {
     const [period] = await tx
@@ -1571,12 +1574,22 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
 
     // Per-day classified OT minutes within the cut-off window (per-day matters: the
     // rest-day ½/1-day rule cannot be computed from monthly aggregates).
-    // ADR-0033: when TOIL is on, a day already banked as time-in-lieu is excluded here — the worked OT is
-    // compensated once, as cash XOR leave. Flag off ⇒ no clause ⇒ byte-identical.
-    const excludeToilDays =
-      process.env.TOIL_ENABLED === 'true'
-        ? sql`not exists (select 1 from toil_accrual ta where ta.employment_id = ${attendance.employmentId} and ta.worked_date = ${attendance.attendanceDate} and ta.status <> 'lapsed')`
-        : undefined;
+    // ADR-0033: a day already banked as time-in-lieu is excluded here — the worked OT is compensated
+    // once, as cash XOR leave.
+    //
+    // UNCONDITIONAL as of ADR-0077 slice 3 (finding F15), and this is a CORRECTNESS fix, not a
+    // refactor. The clause used to be gated on TOIL_ENABLED, which made the cash-XOR-TOIL invariant
+    // itself a feature flag: bank a day as TOIL while the gate is on, turn the gate off, and the SAME
+    // worked day is then also paid as overtime cash. Under the old deployment flag that took an
+    // operator editing .env; under a per-tenant entitlement it would have become a normal commercial
+    // event — a lapsed trial, an expiry, a downgrade — silently double-paying every employee who had
+    // banked TOIL. The invariant must not be switchable, so it no longer is.
+    //
+    // Safe for tenants that never used TOIL: with no toil_accrual rows the `not exists` is always
+    // true, so the query is byte-identical for them. The precedent is core/leave.ts:2709, where the
+    // same class of invariant is likewise ungated. What the entitlement still governs is NEW accrual
+    // and the UI (core/toil.ts) — you can stop banking TOIL, you cannot un-bank what was banked.
+    const excludeToilDays = sql`not exists (select 1 from toil_accrual ta where ta.employment_id = ${attendance.employmentId} and ta.worked_date = ${attendance.attendanceDate} and ta.status <> 'lapsed')`;
     const otRowsRaw = await tx
       .select({
         employmentId: attendance.employmentId,
@@ -1719,7 +1732,7 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
  * treatment when the payslip is generated.
  */
 export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p: { batchId: string }) {
-  if (process.env.TYPED_PAY_COMPONENTS_ENABLED !== 'true') return { applied: 0, gated: true as const };
+  if (!isModuleEnabled(ctx, 'typed_pay_components')) return { applied: 0, gated: true as const };
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
       .select({ id: payrollBatch.id, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, status: payrollBatch.status })
@@ -1841,7 +1854,7 @@ export async function generatePayslips(
     // statutory profile / bank details) do not block here — the operator confirms them explicitly in
     // generateAction. A subset reprocess targets a processed run that already passed this gate.
     if (!subset) {
-      const checks = await preProcessChecksTx(tx, { companyId: batch.companyId, payPeriod: batch.payPeriod, scope: batch.scope });
+      const checks = await preProcessChecksTx(tx, { companyId: batch.companyId, payPeriod: batch.payPeriod, scope: batch.scope }, isModuleEnabled(ctx, 'typed_pay_components'));
       // BLOCKER: no compensation row covering the period (a missing open row is silently dropped by the
       // earnings inner-join; an effective date past the period is a salary the period never had) OR a zero
       // basic/rate (feedback 64fb5e48 — the Personnel record would pay nothing). The old BASIC-component
@@ -2496,7 +2509,7 @@ export async function generatePayslips(
     // GATED: only when TYPED_PAY_COMPONENTS_ENABLED do we read the component tables as the earnings
     // source instead of compensation + payroll_input. The seeded component flags reproduce the legacy
     // agency split exactly, so a back-filled batch is byte-identical (proven by the compat test).
-    const typedComponents = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
+    const typedComponents = isModuleEnabled(ctx, 'typed_pay_components');
     type CompRow = {
       code: string; name: string; kind: string; amount: number; rounding: string;
       epf: boolean; socso: boolean; pcb: boolean; hrdf: boolean; nonPayable: boolean; prorates: boolean;
@@ -2596,7 +2609,7 @@ export async function generatePayslips(
     // components off there is no per-component fold to ride, so payable rows FAIL CLOSED (typed error)
     // rather than silently staying unpaid. Read-only fold — no DomainEvent (the generated event + payslip
     // rows are the audit record, as for batch components).
-    const individualTxnPay = process.env.INDIVIDUAL_TXN_PAY_ENABLED === 'true';
+    const individualTxnPay = settingEnabled(ctx, 'payroll.individual_txn_pay_enabled');
     const txnOtByEmp = new Map<string, number>();
     const txnUnpaidByEmp = new Map<string, number>();
     // Named payslip provenance for every consumed row (merged into statutory.recordLines below) so the
@@ -3690,8 +3703,8 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
  */
 export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: string; reason?: string }) {
   // Ships dark behind a flag (approved plan): enable per environment after review.
-  if (process.env.PAYROLL_RESET_ENABLED !== 'true') {
-    throw new Error('Payroll reset is not enabled.');
+  if (!settingEnabled(ctx, 'payroll.reset_enabled')) {
+    throw new ModuleNotEnabledError('payroll', 'Payroll reset is not enabled.');
   }
   // Mandatory reason (feedback d1ed1e99): reverting a processed run to draft is a sensitive, audited
   // action (zeroizes payslips/totals + unwinds loans/claims) — reject a blank/whitespace-only reason
@@ -3994,8 +4007,8 @@ async function assertPayrollPermission(tx: Tx, ctx: SessionContext, key: Payroll
  * the same-month adjustment-run correction path instead.
  */
 export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: string; reason?: string }) {
-  if (process.env.PAYROLL_UNLOCK_ENABLED !== 'true') {
-    throw new Error('Payroll unlock is not enabled.');
+  if (!settingEnabled(ctx, 'payroll.unlock_enabled')) {
+    throw new ModuleNotEnabledError('payroll', 'Payroll unlock is not enabled.');
   }
   const reason = (p.reason ?? '').trim();
   if (!reason) throw new UnlockReasonRequiredError();
@@ -4098,8 +4111,8 @@ export async function reprocessSelectedEmployees(
   ctx: SessionContext,
   p: { batchId: string; employmentIds: string[]; reason?: string; idempotencyKey?: string },
 ) {
-  if (process.env.MULTI_CYCLE_PAYROLL_ENABLED !== 'true') {
-    throw new Error('Multiple payroll runs per month are not enabled.');
+  if (!isModuleEnabled(ctx, 'multi_cycle_payroll')) {
+    throw new ModuleNotEnabledError('multi_cycle_payroll', 'Multiple payroll runs per month are not enabled.');
   }
   const requested = [...new Set(p.employmentIds.filter(Boolean))].sort();
   if (requested.length === 0) throw new Error('Select at least one employee to reprocess.');
@@ -4430,6 +4443,15 @@ export type PreProcessAdvisory = {
 async function preProcessChecksTx(
   tx: Tx,
   batch: { companyId: string; payPeriod: string; scope: unknown },
+  /**
+   * Whether the tenant has the typed-pay-components module (ADR-0077 slice 3).
+   *
+   * Passed as a BOOLEAN rather than threading a SessionContext into a Tx-level helper: this function
+   * is deliberately session-free — it takes a `tx` and plain data — and pulling an entitlement context
+   * into it would invert that layering for one predicate. Every caller has a ctx in scope and computes
+   * it there.
+   */
+  typedComponents: boolean,
 ): Promise<PreProcessAdvisory> {
   const [y, m] = batch.payPeriod.split('-').map(Number);
   const periodStart = `${batch.payPeriod}-01`;
@@ -4497,7 +4519,7 @@ async function preProcessChecksTx(
   // staleBasicComponent WARNING (pay follows Personnel either way). Gated: with the flag off the legacy
   // path never reads components, so the query is skipped entirely.
   const basicAmountsByEmp = new Map<string, number[]>();
-  if (process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true' && rows.length > 0) {
+  if (typedComponents && rows.length > 0) {
     const basicRows = await tx
       .select({ employmentId: employmentPayComponent.employmentId, amount: employmentPayComponent.amount })
       .from(employmentPayComponent)
@@ -4570,7 +4592,7 @@ export function preProcessAdvisory(ctx: SessionContext, batchId: string): Promis
       .where(eq(payrollBatch.id, batchId))
       .limit(1);
     if (!batch) return { missingCompensation: [], missingStatutory: [], missingBank: [] };
-    return preProcessChecksTx(tx, batch);
+    return preProcessChecksTx(tx, batch, isModuleEnabled(ctx, 'typed_pay_components'));
   });
 }
 
@@ -4597,7 +4619,7 @@ export function preProcessAdvisoryForSelection(
       missingBank: [],
     };
     for (const companyId of input.companyIds) {
-      const a = await preProcessChecksTx(tx, { companyId, payPeriod: input.payPeriod, scope });
+      const a = await preProcessChecksTx(tx, { companyId, payPeriod: input.payPeriod, scope }, isModuleEnabled(ctx, 'typed_pay_components'));
       merged.missingCompensation.push(...a.missingCompensation);
       merged.unpayablePayMode!.push(...(a.unpayablePayMode ?? []));
       merged.zeroBasic!.push(...(a.zeroBasic ?? []));
