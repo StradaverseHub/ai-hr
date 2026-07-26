@@ -8,6 +8,7 @@ import { PayrollTabs } from '@/components/payroll-tabs';
 import { PeriodSwitcher } from '@/components/period-switcher';
 import { deleteDraftBatchAction, resetAction } from './actions';
 import { resumeHref } from './process/selection-logic';
+import { settingEnabled } from '@/core/entitlements';
 
 const STATUS_STYLE: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -24,7 +25,7 @@ export default async function PayrollPage({
   const t = await getTranslations('payroll.list');
   // Payroll Reset (a03b2d9b) shares the batch-detail namespace so the confirm copy is written once.
   const tb = await getTranslations('payroll.batch');
-  const resetOn = process.env.PAYROLL_RESET_ENABLED === 'true';
+  const resetOn = settingEnabled(s, 'payroll.reset_enabled');
   const sp = await searchParams;
   const { error } = sp;
   const period = sp.period || '';

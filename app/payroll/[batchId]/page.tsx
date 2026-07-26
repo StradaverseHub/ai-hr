@@ -14,6 +14,7 @@ import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatActi
 import { ComponentImport } from './component-import';
 import { OtInputRow } from './ot-input-row';
 import { ReprocessPanel } from './reprocess-panel';
+import { isModuleEnabled, settingEnabled } from '@/core/entitlements';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -93,17 +94,17 @@ export default async function BatchPage({
   const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
   const periodDays = new Date(pYear, pMonth, 0).getDate(); // calendar days in the pay period
   // Bulk component import (1D) is only meaningful when the kernel reads typed components.
-  const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
+  const typedComponentsOn = isModuleEnabled(s, 'typed_pay_components');
   // Payroll Reset (feedback a03b2d9b) — ships dark behind a flag; the page is already requireAdmin-
   // gated, and resetAction + resetProcessedBatch re-assert admin (a payroll_partner never sees this).
-  const resetOn = process.env.PAYROLL_RESET_ENABLED === 'true';
+  const resetOn = settingEnabled(s, 'payroll.reset_enabled');
   // Selective reprocessing (feedback 9bc442bc, reporter ask #3) needs same-month adjustment runs.
-  const multiCycleOn = process.env.MULTI_CYCLE_PAYROLL_ENABLED === 'true';
+  const multiCycleOn = isModuleEnabled(s, 'multi_cycle_payroll');
   // Unlock Closed run (feedback 9bc442bc, reporter ask #2) — gated so an environment can keep Closed
   // permanently frozen. Single-confirm + mandatory reason + warnings live in the service; the page is
   // requireAdmin-gated and unlockClosedBatch re-asserts the granular payroll.unlock permission
   // (hr_admin + super_admin by default, per-company configurable — feedback 62e85140).
-  const unlockOn = process.env.PAYROLL_UNLOCK_ENABLED === 'true';
+  const unlockOn = settingEnabled(s, 'payroll.unlock_enabled');
   // Per-run History (reporter ask #4 "fully traceable") — this batch's lifecycle events (created /
   // processed / reset / run-added / selective-reprocess / closed / payment-summary.exported). Read-only.
   const history = await auditEvents(s, { aggregateId: batchId, limit: 50 });

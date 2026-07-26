@@ -5,6 +5,7 @@ import { listCompanies, replacementLeaveSummary } from '@/core/read';
 import { listToilPolicies } from '@/core/toil';
 import { Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
 import { setToilPolicyAction, runToilExpiryAction, closeReplacementLeaveYearAction } from '../actions';
+import { isModuleEnabled } from '@/core/entitlements';
 
 export default async function ToilPolicyPage({
   searchParams,
@@ -26,7 +27,7 @@ export default async function ToilPolicyPage({
   const t = await getTranslations('admin.toilPolicy');
   const { error, processed, converted, lapsed, closed, closedAlready, closedProcessed, closedConverted, closedLapsed, closedCarried } =
     await searchParams;
-  const envOn = process.env.TOIL_ENABLED === 'true';
+  const envOn = isModuleEnabled(s, 'toil');
 
   const companies = await listCompanies(s);
   const scopeIds = await getScopeIds(companies.map((c) => c.id));

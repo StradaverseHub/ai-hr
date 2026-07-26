@@ -33,6 +33,7 @@ import { dispatchNotifications, listNotifications, unreadNotificationCount } fro
 import { listApprovalHistory } from '@/core/read';
 import { shapeApprovalHistoryItems } from '@/lib/approval-history';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
+import { isModuleEnabled } from '@/core/entitlements';
 
 const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap' });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
@@ -92,7 +93,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // ADR-0034 34-3: when notifications are on, the bell shows the viewer's own notifications (everyone), not
   // just the approvals queue. Opportunistic catch-up — an admin loading any page dispatches the tenant's new
   // events (a cron is the production path, 34-4); non-admins can't dispatch (RLS), they read what exists.
-  const notifEnabled = process.env.NOTIFICATIONS_ENABLED === 'true';
+  const notifEnabled = isModuleEnabled(session, 'notifications');
   if (notifEnabled && isAdmin(session)) await dispatchNotifications(session).catch(() => {});
   // 3-tab bell (feedback 1514d366) — one notification framework for every role, role-scoped by the reads:
   //   • Notification tab: unread informational (non-action) notifications + their unread badge.

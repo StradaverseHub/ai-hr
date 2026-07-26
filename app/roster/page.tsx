@@ -8,6 +8,7 @@ import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } fr
 import { RosterGrid } from '@/components/roster-grid';
 import { ToilElectButton } from '@/components/toil-elect-button';
 import { copyRosterAction, generateRosterAction } from './actions';
+import { isModuleEnabled } from '@/core/entitlements';
 
 const DAY = 86_400_000;
 const mondayOf = (iso: string): string => {
@@ -59,7 +60,7 @@ export default async function RosterPage({
   const copiedCount = sp.copied && /^\d+$/.test(sp.copied) ? Number(sp.copied) : null;
   const exceptions = variance.filter((v) => v.kind !== 'on_track');
   // "Bank in lieu" appears on rest-worked rows only when TOIL is on (env kill-switch AND company policy).
-  const toilOn = process.env.TOIL_ENABLED === 'true' && (toilPolicies[0]?.enabled ?? false);
+  const toilOn = isModuleEnabled(s, 'toil') && (toilPolicies[0]?.enabled ?? false);
   const kindBadge: Record<string, string> = {
     no_show: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400',
     late: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
