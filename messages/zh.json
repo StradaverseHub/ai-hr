@@ -7225,6 +7225,7 @@
       "tenant": "创建客户账户",
       "company": "创建公司",
       "catalogs": "添加休假类型、公共假期和薪资设置",
+      "entitlements": "启用已购买的模块",
       "guides": "添加帮助指南",
       "admin": "创建管理员登录",
       "invitation": "签发激活链接"

@@ -4003,6 +4003,20 @@ export async function updateCompany(
   };
   const nextCore = { legalName, registrationNo: p.registrationNo?.trim() || null, country, currency };
   return withTenant(ctx, async (tx) => {
+    // F7, the other half. createCompany gained requirePackFor above, but EDIT is the easier route into
+    // the same state: the add-company form is a free-text 2-letter box, while the company panel renders
+    // a select over the COMPLETE ISO list (components/company-panel.tsx:625, deliberately so since
+    // 94ae7e1f). "Create as MY, then switch to SG" would otherwise land exactly the packless company
+    // the create-side guard exists to prevent — leave engines that `continue` past every employee and a
+    // holiday resolver that yields an empty calendar, with nobody told.
+    //
+    // Guarded on CHANGE, not on every save, and the difference is deliberate: a company already sitting
+    // in a packless country (legacy data, or a direct insert) must stay editable — refusing to save its
+    // phone number because of its country would be a new outage, not a fix. What is refused is MOVING a
+    // company into a jurisdiction this installation cannot compute. Slice 6's two-tier model replaces
+    // this with a declared non-statutory tier (D-14) and the guard goes away.
+    const [current] = await tx.select({ country: company.country }).from(company).where(eq(company.id, p.id));
+    if (current && current.country !== country) requirePackFor(country);
     await tx
       .update(company)
       .set({ ...nextCore, ...profileSet })

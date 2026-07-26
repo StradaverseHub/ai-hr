@@ -11,6 +11,8 @@
  * with no pack; `leave` has a pack but is core. A test that only checked one direction would let a new
  * pack ship unsellable, or a catalog row point at a pack that does not exist.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
@@ -19,10 +21,57 @@ import { afterAll } from 'vitest';
 import {
   ALL_MODULE_CODES,
   CORE_MODULE_CODES,
+  DEFAULT_PROVISION_MODULE_CODES,
+  LEGACY_ENABLED_MODULE_CODES,
+  LEGACY_ENABLED_SETTINGS,
+  LEGACY_MODULE_ENV_GATES,
+  LEGACY_SETTING_ENV_GATES,
   MODULE_CATALOG,
   SELLABLE_MODULE_CODES,
   SETTING_CATALOG,
+  missingModuleDependencies,
 } from '../packs/catalog';
+
+const repoFile = (rel: string) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
+
+/** Every .ts/.tsx file under `dir`, recursively. Used to grep the application for a gate name. */
+function collectSources(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) return e.name === 'node_modules' ? [] : collectSources(full);
+    return /\.tsx?$/.test(e.name) ? [full] : [];
+  });
+}
+
+/**
+ * Does the REPOSITORY ship this flag on? Two tracked files decide, and either one is enough:
+ *   - `.env.example`                — what a fresh install copies (an ACTIVE line, not a commented one).
+ *   - `deploy/enable-demo-flags.sh` — what the running deployment is actually set to.
+ * This is the instrument that makes the parity set checkable instead of assertable in prose.
+ */
+function repoShipsFlagOn(varName: string): boolean {
+  const shipped = new RegExp(`^${varName}=true\\s*$`, 'm').test(repoFile('.env.example'));
+  const deployed = new RegExp(`^\\s*set_flag\\s+${varName}\\s+true\\s*$`, 'm').test(
+    repoFile('deploy/enable-demo-flags.sh'),
+  );
+  return shipped || deployed;
+}
+
+/**
+ * Settings that stay OUT of the parity backfill even when the deployment has the flag on.
+ * ADR-0030 §3: enabling the audit hash chain on an existing database needs a one-time backfill of
+ * historical events before the chain is complete, so a migration or a seeder must never be what
+ * turns it on. Listed here rather than silently omitted, so the exception is visible and asserted.
+ */
+const SETTINGS_EXCLUDED_FROM_PARITY = new Set(['audit.hash_chain_enabled']);
+
+/** Slice the whole statement that begins with `header` out of a migration file. */
+function statementFrom(sqlText: string, header: string): string {
+  const start = sqlText.indexOf(header);
+  expect(start, `0313 no longer contains the statement \`${header}\``).toBeGreaterThan(-1);
+  return sqlText.slice(start, sqlText.indexOf(';', start));
+}
 import '../packs/register-all';
 import { listPacks } from '../packs/registry';
 
@@ -123,12 +172,220 @@ describe('module catalog — the pack correspondence, both directions', () => {
     }
   });
 
+  it('the parity set is sellable, real, and never core', () => {
+    // LEGACY_ENABLED_MODULE_CODES is what migration 0313 backfills onto every existing tenant. A core
+    // code in that list would be refused by the tenant_module trigger and take the whole migration down
+    // on a customer database; an unknown code would fail the module FK the same way.
+    for (const code of LEGACY_ENABLED_MODULE_CODES) {
+      expect(ALL_MODULE_CODES.includes(code), `parity module '${code}' is not in the catalog`).toBe(true);
+      expect(CORE_MODULE_CODES.includes(code), `parity module '${code}' is core — core modules take no row`).toBe(
+        false,
+      );
+    }
+  });
+
+  it('every sellable module and every setting declares what gates it TODAY', () => {
+    // The gate map is what makes the parity set checkable. A new billable module or setting that
+    // nobody maps to an env var (or to `null`, meaning "no gate — on for everyone") would drop out of
+    // the ratchet below and could be silently omitted from the backfill, which is the whole failure
+    // this slice exists to prevent.
+    for (const code of SELLABLE_MODULE_CODES) {
+      expect(code in LEGACY_MODULE_ENV_GATES, `module '${code}' has no entry in LEGACY_MODULE_ENV_GATES`).toBe(true);
+    }
+    for (const code of Object.keys(LEGACY_MODULE_ENV_GATES)) {
+      expect(SELLABLE_MODULE_CODES.includes(code), `gate map names '${code}', which is not a sellable module`).toBe(
+        true,
+      );
+    }
+    const catalogKeys = SETTING_CATALOG.map((s) => s.key);
+    for (const key of catalogKeys) {
+      expect(key in LEGACY_SETTING_ENV_GATES, `setting '${key}' has no entry in LEGACY_SETTING_ENV_GATES`).toBe(true);
+    }
+    for (const key of Object.keys(LEGACY_SETTING_ENV_GATES)) {
+      expect(catalogKeys.includes(key), `gate map names setting '${key}', which is not in the catalog`).toBe(true);
+    }
+  });
+
+  it('the parity sets equal the flags this repository actually ships', () => {
+    // THE RATCHET THAT WOULD HAVE CAUGHT THE ORIGINAL BUG. LEGACY_ENABLED_MODULE_CODES excluded
+    // multi_cycle_payroll and typed_pay_components on the stated grounds that "a fresh install does not
+    // carry them", while .env.example ships both uncommented and set true and enable-demo-flags.sh sets
+    // both on the server. Because the 0313 backfill is one-shot and slice 2's resolver is fail-closed,
+    // that would have switched two paid payroll behaviours OFF on the live deployment at slice 3 — and
+    // no test would have gone red, because test/env.ts deletes both vars so the suite sees them off
+    // either way. Prose about which flags a deployment carries cannot be trusted; reading the env
+    // files can. Both directions are asserted: absent-but-shipped-on AND present-but-shipped-off.
+    for (const [code, gate] of Object.entries(LEGACY_MODULE_ENV_GATES)) {
+      const on = gate === null || repoShipsFlagOn(gate);
+      expect(
+        LEGACY_ENABLED_MODULE_CODES.includes(code),
+        on
+          ? `'${code}' is ON in .env.example / enable-demo-flags.sh but missing from LEGACY_ENABLED_MODULE_CODES — slice 3 would switch it off for every existing customer`
+          : `'${code}' is in LEGACY_ENABLED_MODULE_CODES but no tracked env file turns ${gate} on — slice 3 would switch it ON for customers who never had it`,
+      ).toBe(on);
+    }
+    for (const [key, gate] of Object.entries(LEGACY_SETTING_ENV_GATES)) {
+      if (SETTINGS_EXCLUDED_FROM_PARITY.has(key)) {
+        expect(key in LEGACY_ENABLED_SETTINGS, `'${key}' is excluded from parity by ADR-0030 §3`).toBe(false);
+        continue;
+      }
+      const on = repoShipsFlagOn(gate);
+      expect(
+        key in LEGACY_ENABLED_SETTINGS,
+        on
+          ? `setting '${key}' is ON in a tracked env file but missing from LEGACY_ENABLED_SETTINGS — slice 3 would switch it off`
+          : `setting '${key}' is in LEGACY_ENABLED_SETTINGS but no tracked env file turns ${gate} on`,
+      ).toBe(on);
+    }
+  });
+
+  it('the 0313 backfill and its module bootstrap grant exactly the parity set', () => {
+    // THE SECOND HALF OF THE C11 RATCHET. SQL cannot import packs/catalog.ts, so migration 0313 repeats
+    // the parity codes as literals — the exact duplication this file exists to police everywhere else.
+    // Read the migration and pin both lists to the constant, so a module added to (or removed from) the
+    // parity set in TypeScript cannot silently leave the backfill behind.
+    const sql = repoFile('db/migrations/0313_module_entitlements.sql');
+
+    // Sliced from the tenant_module INSERT specifically, not by scanning for the first `CROSS JOIN` in
+    // the file: there are two backfills now (modules and settings) and a whole-file scan would silently
+    // read the wrong one the moment their order changed.
+    const moduleBackfill = statementFrom(sql, 'INSERT INTO tenant_module (tenant_id, module_code, status)');
+    const crossJoin = moduleBackfill.split('\n').find((l) => l.startsWith('CROSS JOIN (VALUES '));
+    expect(crossJoin, '0313 has no module backfill CROSS JOIN — the parity set is not being granted').toBeDefined();
+    const backfilled = [...crossJoin!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
+    expect(backfilled, 'the 0313 backfill grants a different set than LEGACY_ENABLED_MODULE_CODES').toEqual(
+      [...LEGACY_ENABLED_MODULE_CODES].sort(),
+    );
+
+    // The bootstrap rows that make the backfill's FK resolvable at migrate time (the catalog itself is
+    // seeded afterwards by scripts/seed-catalogs.ts). Same codes, or the backfill cannot insert them.
+    const bootstrap = statementFrom(sql, 'INSERT INTO module (code, name, category, billable, is_core) VALUES');
+    const bootstrapped = [...bootstrap.matchAll(/^\s*\('([a-z_]+)',/gm)].map((m) => m[1]).sort();
+    expect(bootstrapped, 'the 0313 module bootstrap does not cover every backfilled code').toEqual(
+      [...LEGACY_ENABLED_MODULE_CODES].sort(),
+    );
+
+    // …and those bootstrap rows must agree with the catalog on the two flags that carry meaning, or the
+    // seeder's ON CONFLICT DO UPDATE would be silently correcting a migration that shipped wrong.
+    for (const m of MODULE_CATALOG.filter((x) => LEGACY_ENABLED_MODULE_CODES.includes(x.code))) {
+      expect(bootstrap, `${m.code} bootstrap row`).toContain(`('${m.code}',`);
+      expect(m.isCore, `${m.code} is bootstrapped as is_core=false`).toBe(false);
+      expect(m.billable, `${m.code} is bootstrapped as billable=true`).toBe(true);
+    }
+  });
+
+  it('the 0313 SETTING backfill and its definition bootstrap carry exactly LEGACY_ENABLED_SETTINGS', () => {
+    // The module axis had a ratchet from the start and the setting axis had none — which is how three
+    // settings that are ON in this deployment ended up resolving to `false` for every existing tenant.
+    // Same instrument, one table over: read the statements the migration actually ships.
+    const sql = repoFile('db/migrations/0313_module_entitlements.sql');
+
+    const settingBackfill = statementFrom(sql, 'INSERT INTO tenant_setting (tenant_id, key, value, source)');
+    const pairs = [...settingBackfill.matchAll(/\('([a-z_.]+)',\s*'([^']*)'::jsonb\)/g)];
+    const backfilled = Object.fromEntries(pairs.map((m) => [m[1], JSON.parse(m[2]) as unknown]));
+    expect(backfilled, 'the 0313 setting backfill differs from LEGACY_ENABLED_SETTINGS').toEqual(
+      { ...LEGACY_ENABLED_SETTINGS },
+    );
+    expect(settingBackfill, "the backfilled values are Stradaverse's, not the customer's").toContain("'platform'");
+
+    // The definition rows that make the backfill's FK resolvable at migrate time. Their SCOPE has to be
+    // right in the migration and not merely corrected by the seeder afterwards: `scope` is what
+    // tenant_setting's write policy joins against, so a migration that shipped 'tenant' for a platform
+    // key would leave a window in which a customer admin could write it.
+    const defBootstrap = statementFrom(
+      sql,
+      'INSERT INTO setting_definition (key, module_code, scope, value_type, default_value) VALUES',
+    );
+    const defined = [...defBootstrap.matchAll(/^\s*\('([a-z_.]+)',\s*'[a-z_]+',\s*'([a-z]+)',/gm)].map((m) => ({
+      key: m[1],
+      scope: m[2],
+    }));
+    expect(defined.map((d) => d.key).sort(), 'the setting bootstrap does not cover every backfilled key').toEqual(
+      Object.keys(LEGACY_ENABLED_SETTINGS).sort(),
+    );
+    for (const d of defined) {
+      const cat = SETTING_CATALOG.find((s) => s.key === d.key);
+      expect(cat, `bootstrap defines unknown setting '${d.key}'`).toBeDefined();
+      expect(d.scope, `'${d.key}' is bootstrapped with the catalog's scope`).toBe(cat!.scope);
+    }
+  });
+
   it('every setting names a module that exists (or is installation-wide)', () => {
     for (const s of SETTING_CATALOG) {
       if (s.moduleCode !== null) {
         expect(ALL_MODULE_CODES.includes(s.moduleCode), `setting '${s.key}' names unknown module`).toBe(true);
       }
     }
+  });
+
+  it('every named legacy gate is an env var the APPLICATION actually reads', () => {
+    // The gate map is the pivot the whole parity argument turns on, and until now nothing checked that
+    // the names in it are real. A typo, or a var that was renamed in the app and not here, produces a
+    // map that reads plausibly, a `legacyEnabledModulesIn` that silently answers "off", and a seedBase
+    // that agrees with itself — the tautology round 3 flagged one level down. Grepping the application
+    // source for `process.env.<NAME>` is the independent check: the name has to exist where the feature
+    // is actually gated, not merely in this catalog.
+    //
+    // Deliberately scans app/core/lib/db/packs/scripts and NOT test/: a gate that only tests read is
+    // exactly the stale entry this is meant to catch.
+    const sources = ['app', 'core', 'lib', 'db', 'packs', 'scripts', 'components']
+      .flatMap((dir) => collectSources(path.resolve(__dirname, '..', dir)))
+      .map((f) => fs.readFileSync(f, 'utf8'))
+      .join('\n');
+    expect(sources.length, 'source scan found nothing — the walker has drifted').toBeGreaterThan(10_000);
+    const gates = [
+      ...Object.values(LEGACY_MODULE_ENV_GATES).filter((g): g is string => g !== null),
+      ...Object.values(LEGACY_SETTING_ENV_GATES),
+    ];
+    for (const gate of gates) {
+      // \b, not `includes`: a TRUNCATED name is the likeliest typo and the one a substring test cannot
+      // see — 'NOTIFICATIONS_ENABLE' is a substring of every `process.env.NOTIFICATIONS_ENABLED` in the
+      // tree, so `includes` accepted it (verified by mutating the map and watching this stay green).
+      expect(
+        new RegExp(`process\\.env\\.${gate}\\b`).test(sources),
+        `LEGACY_*_ENV_GATES names '${gate}', but no application source reads process.env.${gate} — ` +
+          'the gate map has drifted from the code it claims to describe',
+      ).toBe(true);
+    }
+  });
+
+  it('the operator form pre-ticks exactly the modules every customer already runs', () => {
+    // The console was the one entitlement writer with no parity story: an untouched form queued a
+    // customer with ZERO rows, which is "everything the product does today" before slice 3 and "none of
+    // it" after. DEFAULT_PROVISION_MODULE_CODES is derived from the gate map rather than listed, and
+    // pinned here in both directions so a module that gains a gate leaves the default in the same commit.
+    expect([...DEFAULT_PROVISION_MODULE_CODES].sort()).toEqual(
+      SELLABLE_MODULE_CODES.filter((c) => LEGACY_MODULE_ENV_GATES[c] === null).sort(),
+    );
+    expect(DEFAULT_PROVISION_MODULE_CODES.length, 'an empty default would restore the original hole').toBeGreaterThan(0);
+    for (const code of DEFAULT_PROVISION_MODULE_CODES) {
+      expect(CORE_MODULE_CODES.includes(code), `'${code}' is core — it takes no entitlement row`).toBe(false);
+    }
+    // …and the form has to USE it. Read-the-file, the same ratchet this suite applies to the migration:
+    // a constant nothing imports is a comment.
+    const page = repoFile('app/operator/page.tsx');
+    expect(page, 'the operator form must default-tick from the catalog constant').toContain(
+      'DEFAULT_PROVISION_MODULE_CODES.includes(m.code)',
+    );
+  });
+
+  it('an incoherent pick set names the dependencies it is missing', () => {
+    // `dependsOn` was declared, seeded, and read by nobody. Slice 2 ANDs the closure, so a module sold
+    // without its parent writes an ACTIVE row that resolves DISABLED — a paid entitlement that is
+    // silently inert. These cases pin the helper both seams now call.
+    expect(missingModuleDependencies(['multi_cycle_payroll'])).toEqual(['payroll']);
+    expect(missingModuleDependencies(['multi_cycle_payroll', 'payroll'])).toEqual([]);
+    // toil depends on leave (CORE — always satisfied, never a row) and attendance (sellable).
+    expect(missingModuleDependencies(['toil'])).toEqual(['attendance']);
+    expect(missingModuleDependencies(['toil', 'attendance'])).toEqual([]);
+    // Transitive: employees is core, so payroll alone is coherent; the closure must not report it.
+    expect(missingModuleDependencies(['payroll'])).toEqual([]);
+    expect(missingModuleDependencies([])).toEqual([]);
+    // The form's own default must be coherent, or the console ships a request that its own guard rejects.
+    expect(
+      missingModuleDependencies(DEFAULT_PROVISION_MODULE_CODES),
+      'the pre-ticked default must satisfy its own dependsOn closure',
+    ).toEqual([]);
   });
 
   it('a platform-scoped setting never arrives switched on by an install', async () => {
@@ -144,4 +401,108 @@ describe('module catalog — the pack correspondence, both directions', () => {
       .where(eq(schema.settingDefinition.scope, 'platform'));
     expect(rows.length, 'the platform-scoped settings must exist in the DB too').toBeGreaterThan(0);
   });
+});
+
+/**
+ * ── THE SLICE-3 WORKLIST ────────────────────────────────────────────────────────────────────────────
+ *
+ * Every test file that turns a tracked gate on (or off) by writing `process.env` itself.
+ *
+ * WHY THIS IS A TEST AND NOT A COMMENT. test/harness.ts used to record this as prose — "ONE PLACE THIS
+ * STILL DIVERGES, KNOWINGLY: four test files" — and it was wrong by an order of magnitude. seedBase
+ * computes the entitlement set ONCE, in beforeEach, from the env as it stands at that instant; most of
+ * these files mutate their gate INSIDE the test body, i.e. afterwards, so no row is ever seeded for it.
+ * Whether a file gets a row is therefore decided by ORDERING, not intent:
+ *   - test/payroll-reset.test.ts sets its flag BEFORE seedBase → it gets a tenant_setting row;
+ *   - test/multicycle-kernel.test.ts sets its flag AFTER → it does not.
+ * When slice 3 moves a gate from `process.env` onto the entitlement resolver, EVERY file below needs a
+ * matching `setModule(...)` / `setSetting(...)`. That is the migration list, and it has to be a fact
+ * about the tree rather than a recollection — a file added between now and then must show up in it.
+ *
+ * Pinned as an exact map, so both directions fail loudly: a new file that mutates a gate is red until
+ * it is listed, and a file that stops mutating one is red until it is removed. Regenerate by running the
+ * scan below and pasting the result; do not edit an entry to make a failure go away without also asking
+ * what changed about that file's gating.
+ *
+ * test/env.ts, test/harness.ts and test/global-setup.ts are excluded: they are the process-level setup
+ * that DEFINES the baseline every file below deviates from, not deviations themselves.
+ */
+const SLICE3_ENV_GATE_WORKLIST: Readonly<Record<string, readonly string[]>> = {
+  'attendance-adjustment-ot.test.ts': ['TOIL_ENABLED'],
+  'attendance-allowance.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'audit-hash-chain.test.ts': ['AUDIT_HASH_CHAIN_ENABLED'],
+  'cp38.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
+  'delegation-global.test.ts': ['NOTIFICATIONS_ENABLED'],
+  'employee-pay-structure.test.ts': ['TOIL_ENABLED', 'TYPED_PAY_COMPONENTS_ENABLED'],
+  'employment-review.test.ts': ['NOTIFICATIONS_ENABLED'],
+  'feedback-plan.test.ts': ['FEEDBACK_AI_PLANNING_ENABLED'],
+  'fix6-correctness.test.ts': ['TOIL_ENABLED'],
+  'fixed-transaction-action.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'fixed-transaction.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'hr-admin-leave-cancellation.test.ts': ['NOTIFICATIONS_ENABLED'],
+  'hrdf-subject.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED', 'PAYROLL_RESET_ENABLED'],
+  'leave-edit-cancel-by-status.test.ts': ['NOTIFICATIONS_ENABLED'],
+  'leave-year-config.test.ts': ['AUDIT_HASH_CHAIN_ENABLED'],
+  'loans-lifecycle.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
+  'loans-payroll.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'multicycle-kernel.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
+  'notifications.test.ts': ['NOTIFICATIONS_ENABLED'],
+  'overtime-provenance.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'overtime-rate-split.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'pay-component-1a.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'payroll-basic-fallback.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'payroll-basic-source.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'payroll-cycle.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
+  'payroll-draft-delete.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED', 'PAYROLL_RESET_ENABLED'],
+  'payroll-draft-resume.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
+  'payroll-individual-txn.test.ts': [
+    'INDIVIDUAL_TXN_PAY_ENABLED',
+    'MULTI_CYCLE_PAYROLL_ENABLED',
+    'TYPED_PAY_COMPONENTS_ENABLED',
+  ],
+  'payroll-net-floor.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'payroll-process-wizard.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
+  'payroll-reset-reason.test.ts': ['PAYROLL_RESET_ENABLED'],
+  'payroll-reset.test.ts': ['PAYROLL_RESET_ENABLED'],
+  'payroll-rule-kernel.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'payroll-unlock-reason.test.ts': ['PAYROLL_UNLOCK_ENABLED'],
+  'payroll-view.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'payroll-wizard-validation-step.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'pcb-classification.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'performance-lifecycle.test.ts': ['NOTIFICATIONS_ENABLED'],
+  'probation-review-enhancements.test.ts': ['NOTIFICATIONS_ENABLED'],
+  'replacement-leave-controls.test.ts': ['TOIL_ENABLED'],
+  'shift-differential.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'toil-expiry.test.ts': ['TOIL_ENABLED'],
+  'toil-floor-guard.test.ts': ['TOIL_ENABLED'],
+  'toil.test.ts': ['TOIL_ENABLED'],
+  'typed-components-compat.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  'zakat.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
+};
+
+describe('the env-gate divergence between seedBase and the suite', () => {
+  it('the slice-3 worklist is a pinned inventory, not a prose estimate', () => {
+    const gates = [
+      ...Object.values(LEGACY_MODULE_ENV_GATES).filter((g): g is string => g !== null),
+      ...Object.values(LEGACY_SETTING_ENV_GATES),
+    ].sort();
+    const infra = new Set(['env.ts', 'harness.ts', 'global-setup.ts']);
+    const actual: Record<string, string[]> = {};
+    for (const name of fs.readdirSync(__dirname).sort()) {
+      if (!name.endsWith('.ts') || infra.has(name)) continue;
+      const src = fs.readFileSync(path.join(__dirname, name), 'utf8');
+      // An ASSIGNMENT or a DELETE. Both move the file off seedBase's baseline; a bare read does not.
+      const hit = gates.filter((g) =>
+        new RegExp(`(process\\.env\\.${g}\\s*=[^=]|delete\\s+process\\.env\\.${g})`).test(src),
+      );
+      if (hit.length > 0) actual[name] = hit;
+    }
+    expect(
+      actual,
+      'a test file started (or stopped) mutating a tracked feature gate. Add or remove it in ' +
+        'SLICE3_ENV_GATE_WORKLIST above — that map is the list of files slice 3 has to convert from ' +
+        'env writes to setModule/setSetting calls.',
+    ).toEqual({ ...SLICE3_ENV_GATE_WORKLIST });
+  });
+
 });

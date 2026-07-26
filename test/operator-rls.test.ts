@@ -97,12 +97,18 @@ describe('0295 — operator console RLS and grants', () => {
       expect(rows.map((r) => r.id)).toEqual([ctx.tenantId]);
       expect(rows.map((r) => r.id)).not.toContain(other.tenantId);
 
-      // A new tenant carries a fresh id, which can never equal current_tenant_id() → WITH CHECK fails.
-      await expect(
-        withTenant(ctx, (tx) =>
-          tx.insert(schema.tenant).values({ workosOrgId: `org_${crypto.randomUUID()}`, name: 'Sneaky Bhd' }),
-        ),
-      ).rejects.toThrow();
+      // Refused at the GRANT layer since ADR-0077 slice 1: migration 0313 revoked INSERT/UPDATE/DELETE
+      // on `tenant` from ai_hr_app, because that migration hung the commercial columns (status, plan,
+      // trial_ends_at) off this row and 0001's policy is scope-only. Before that the refusal came from
+      // the policy's WITH CHECK — a fresh id can never equal current_tenant_id() — which is still true
+      // and still a second layer; the grant is simply reached first.
+      const err = await withTenant(ctx, (tx) =>
+        tx.insert(schema.tenant).values({ workosOrgId: `org_${crypto.randomUUID()}`, name: 'Sneaky Bhd' }),
+      ).catch((e) => e);
+      expect(err).toBeInstanceOf(Error);
+      // causeChain, not toThrow: drizzle's top-level message is only "Failed query: …", and the reason
+      // the write was refused lives on the wrapped PostgresError.
+      expect(causeChain(err)).toMatch(/permission denied/i);
     }
 
     // Nothing was created by any of the attempts above.

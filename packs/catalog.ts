@@ -112,6 +112,10 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
  * A customer sees each of them; only Stradaverse changes them. `defaultOnInstall: false` on the risk
  * switches is deliberate — a purchased module must never arrive with an escape hatch already open,
  * even though the demo deployment has all three env flags ON today (F4).
+ *
+ * That last clause is about NEW installs only. An ALREADY-PROVISIONED tenant keeps what it has via
+ * `LEGACY_ENABLED_SETTINGS` below, which 0313 backfills — `defaultOnInstall` never fires for a tenant
+ * that was provisioned before the setting existed, so the two mechanisms are not interchangeable.
  */
 export const SETTING_CATALOG: SettingCatalogEntry[] = [
   { key: 'payroll.reset_enabled', moduleCode: 'payroll', scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Allow reverting a processed payroll run to draft. Weakens payroll controls; enabling is an audited platform action.', sortOrder: 10 },
@@ -121,6 +125,139 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   { key: 'feedback.ai_planning_enabled', moduleCode: null, scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: false, description: 'In-app AI drafting of improvement plans. Operator tooling, not a customer feature.', sortOrder: 110 },
 ];
 
+/**
+ * ── THE PARITY MAPPING ──────────────────────────────────────────────────────────────────────────
+ *
+ * What this deployment ALREADY HAS ON today, before anything reads an entitlement row. This is the
+ * single definition of "what a customer already has", and it is what makes slice 3's flip from env
+ * reads to entitlement reads a no-op rather than a silent downgrade.
+ *
+ * IT IS DERIVED FROM THE FLAGS THE REPOSITORY ACTUALLY SHIPS, not from what looks reasonable. Two
+ * TRACKED files decide it, and `test/module-catalog-drift.test.ts` reads BOTH and pins the sets below
+ * against them in both directions:
+ *   - `.env.example`                 — what a fresh install copies.
+ *   - `deploy/enable-demo-flags.sh`  — what the running deployment is actually set to.
+ * A flag counts as ON when EITHER file turns it on.
+ *
+ * That ratchet exists because the first version of this constant excluded `multi_cycle_payroll` and
+ * `typed_pay_components` on the stated grounds that "a fresh install does not carry them" — while
+ * .env.example:38-39 carries both, uncommented and set true, and enable-demo-flags.sh:29-30 sets both
+ * on the server. Since the 0313 backfill is ONE-SHOT and slice 2's resolver is fail-closed, that
+ * omission would have switched Multi-Cycle Payroll and Typed Pay Components OFF on the live
+ * deployment at slice 3 — the exact regression the parity set exists to prevent — and the suite would
+ * have stayed green, because test/env.ts deletes both vars so "no row = off" matches the TEST
+ * environment perfectly. Prose cannot be trusted with this mapping; a test reading the env files can.
+ */
+
+/**
+ * The env var that gates each SELLABLE module TODAY. `null` = no whole-module gate anywhere in the
+ * tree (F20), i.e. the module is on for everyone and a parity row is mandatory.
+ *
+ * Every non-core catalog code must appear here, so a new billable module cannot be added without
+ * someone answering "what turns this on today?". The drift test asserts that coverage.
+ */
+export const LEGACY_MODULE_ENV_GATES: Readonly<Record<string, string | null>> = {
+  payroll: null,
+  attendance: null,
+  claims: null,
+  performance: null,
+  notifications: 'NOTIFICATIONS_ENABLED',
+  multi_cycle_payroll: 'MULTI_CYCLE_PAYROLL_ENABLED',
+  typed_pay_components: 'TYPED_PAY_COMPONENTS_ENABLED',
+  // TOIL_ENABLED is set in NO tracked env file, so `toil` stays out of the parity set. A missing row
+  // is disabled (C7), which is exactly today's behaviour for it.
+  toil: 'TOIL_ENABLED',
+};
+
+/** The env var that gates each catalogued SETTING today. Same coverage rule, same drift assertion. */
+export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string>> = {
+  'payroll.reset_enabled': 'PAYROLL_RESET_ENABLED',
+  'payroll.unlock_enabled': 'PAYROLL_UNLOCK_ENABLED',
+  'payroll.individual_txn_pay_enabled': 'INDIVIDUAL_TXN_PAY_ENABLED',
+  'audit.hash_chain_enabled': 'AUDIT_HASH_CHAIN_ENABLED',
+  'feedback.ai_planning_enabled': 'FEEDBACK_AI_PLANNING_ENABLED',
+};
+
+/**
+ * The modules a tenant that predates the entitlement substrate must end up entitled to. Three places
+ * must agree on it and all three derive from this constant:
+ *
+ *   1. `db/migrations/0313_module_entitlements.sql` — the one-shot BACKFILL for tenants that already
+ *      exist. (SQL cannot import TypeScript, so the codes are repeated there as literals; the test
+ *      `the 0313 backfill grants exactly the parity set` reads the file and pins them to this list.)
+ *   2. `db/seed.ts` — the demo tenant, which is created after migrations and so misses the backfill.
+ *   3. `test/harness.ts` seedBase — every test tenant.
+ *
+ * (2) and (3) run inside a real process and therefore use `legacyEnabledModulesIn(process.env)`, which
+ * narrows this list to what that process's env ACTUALLY has on — see that function's note. Only the
+ * migration takes the list whole, because SQL cannot read an env var.
+ *
+ * CORE modules are never here: they take no row at all (the 0313 trigger refuses one).
+ */
+export const LEGACY_ENABLED_MODULE_CODES: readonly string[] = [
+  'payroll',
+  'attendance',
+  'claims',
+  'performance',
+  'notifications',
+  'multi_cycle_payroll',
+  'typed_pay_components',
+];
+
+/**
+ * The SETTINGS this deployment runs with today, and their value. The module axis is not the whole
+ * parity story: three payroll behaviours are env flags that are ON right now, and every
+ * `setting_definition.default_value` is `false`, so a tenant with no row resolves to OFF. Without
+ * these rows slice 3 switches payroll reset, payroll unlock and individual-transaction pay off on the
+ * live deployment — the same failure as the module axis, one table over.
+ *
+ * `defaultOnInstall: false` does NOT cover this: it applies when a module is INSTALLED (slice 7),
+ * which never happens for an already-provisioned tenant.
+ *
+ * Backfilled with `source='platform'`: these are deployment decisions that were made by Stradaverse,
+ * not values a customer chose. For the tenant-scoped key that provenance is advisory — a customer
+ * admin may still overwrite it, which is the point of a tenant-scoped setting.
+ *
+ * DELIBERATELY ABSENT:
+ *   - `audit.hash_chain_enabled` — off in .env.example and set by no deploy script, so parity is OFF.
+ *     It would stay out even if a deployment had it on: ADR-0030 §3 says enabling the chain on an
+ *     existing database needs a one-time backfill of historical events, so a seeder must never flip it.
+ *   - `feedback.ai_planning_enabled` — operator tooling, set in no tracked env file.
+ */
+export const LEGACY_ENABLED_SETTINGS: Readonly<Record<string, unknown>> = {
+  'payroll.reset_enabled': true,
+  'payroll.unlock_enabled': true,
+  'payroll.individual_txn_pay_enabled': true,
+};
+
+/** A `process.env`-shaped bag. Taken as a parameter so this module never touches `process` itself. */
+export type EnvLike = Readonly<Record<string, string | undefined>>;
+
+/**
+ * The parity set as ONE PROCESS's environment actually sees it.
+ *
+ * The deployment set and the set a given process runs with are NOT the same, and pretending otherwise
+ * is how a "parity" fixture ends up making the suite agree with itself while production diverges —
+ * or the reverse. test/env.ts deletes MULTI_CYCLE_PAYROLL_ENABLED and TYPED_PAY_COMPONENTS_ENABLED so
+ * the suite exercises the legacy payroll path; seeding an ACTIVE row for them into every test tenant
+ * would therefore be the OPPOSITE of parity — it would switch multi-cycle payroll on for 299 test
+ * files the moment slice 3 lands. Filtering by the live env is what keeps the row and the flag saying
+ * the same thing in every environment, including the ones that opt a flag in per-test.
+ */
+export function legacyEnabledModulesIn(env: EnvLike): string[] {
+  return LEGACY_ENABLED_MODULE_CODES.filter((code) => {
+    const gate = LEGACY_MODULE_ENV_GATES[code];
+    return gate === null || env[gate] === 'true';
+  });
+}
+
+/** The setting rows this process's environment says are on. Same argument as the module helper. */
+export function legacyEnabledSettingsIn(env: EnvLike): { key: string; value: unknown }[] {
+  return Object.entries(LEGACY_ENABLED_SETTINGS)
+    .filter(([key]) => env[LEGACY_SETTING_ENV_GATES[key]] === 'true')
+    .map(([key, value]) => ({ key, value }));
+}
+
 /** Core module codes — the set `isModuleEnabled` answers true for without a query (slice 2). */
 export const CORE_MODULE_CODES: readonly string[] = MODULE_CATALOG.filter((m) => m.isCore).map((m) => m.code);
 
@@ -129,3 +266,58 @@ export const ALL_MODULE_CODES: readonly string[] = MODULE_CATALOG.map((m) => m.c
 
 /** The codes a customer can actually be sold — everything not core. */
 export const SELLABLE_MODULE_CODES: readonly string[] = MODULE_CATALOG.filter((m) => !m.isCore).map((m) => m.code);
+
+/**
+ * What the operator console PRE-TICKS on the new-customer form: the sellable modules that no env var
+ * gates anywhere in the tree today (F20), i.e. the ones every existing customer already runs.
+ *
+ * This exists because the console was the ONE entitlement writer with no parity story. The other three
+ * (0313's backfill, db/seed.ts, test/harness.ts seedBase) all derive from LEGACY_ENABLED_MODULE_CODES;
+ * `provisionTenant` inserts exactly what the operator ticked and nothing else, and the form shipped with
+ * every box empty. A customer created between slice 1 and slice 3 on an untouched form would therefore
+ * have gained payroll/attendance/claims/performance today (nothing gates them) and LOST all four the
+ * moment slice 3's resolver started reading rows — a silent downgrade nobody would attribute.
+ *
+ * Pre-ticking rather than unioning inside `provisionTenant` is deliberate: an operator who deliberately
+ * unticks Payroll must get a customer without Payroll, or the picker is theatre. The default states what
+ * today's product includes; the operator still decides.
+ *
+ * Derived, not listed: `test/module-catalog-drift.test.ts` pins it against the gate map, so a module that
+ * gains a gate (or loses one) changes the form default in the same commit.
+ */
+export const DEFAULT_PROVISION_MODULE_CODES: readonly string[] = SELLABLE_MODULE_CODES.filter(
+  (code) => LEGACY_MODULE_ENV_GATES[code] === null,
+);
+
+/**
+ * The `dependsOn` codes a pick set fails to satisfy, transitively — empty when the set is coherent.
+ *
+ * `dependsOn` was declared in the catalog, seeded into `module.depends_on` and read by NOBODY. Slice 2
+ * ANDs the closure when it resolves a module, so `multi_cycle_payroll` sold without `payroll`, or `toil`
+ * without `attendance`, records a sale and inserts an ACTIVE `tenant_module` row that then resolves
+ * DISABLED — a paid entitlement that is silently inert. That is the same failure shape the composite FK
+ * on `tenant_module.company_id` exists to prevent (0313 §3), and it deserves the same treatment: refuse
+ * at the seam, name the missing codes.
+ *
+ * CORE codes always count as satisfied — they are on for every tenant and take no row at all, so
+ * `toil`'s dependency on `leave` is met by definition.
+ */
+export function missingModuleDependencies(picked: readonly string[]): string[] {
+  const byCode = new Map(MODULE_CATALOG.map((m) => [m.code, m]));
+  const satisfied = new Set<string>([...picked, ...CORE_MODULE_CODES]);
+  const missing = new Set<string>();
+  // Breadth-first over the closure rather than one level: a future grandchild dependency must be
+  // checked too, and `seen` keeps a cycle in the catalog from hanging the request.
+  const seen = new Set<string>();
+  const queue = [...picked];
+  while (queue.length > 0) {
+    const code = queue.shift()!;
+    if (seen.has(code)) continue;
+    seen.add(code);
+    for (const dep of byCode.get(code)?.dependsOn ?? []) {
+      if (!satisfied.has(dep)) missing.add(dep);
+      queue.push(dep);
+    }
+  }
+  return [...missing].sort();
+}

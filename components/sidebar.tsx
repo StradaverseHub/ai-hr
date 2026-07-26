@@ -45,9 +45,10 @@ import {
 // ADR-0080 rungs 2-7: every module pack's nav mounts from the pack registry, so the packs must be
 // REGISTERED before this module's body runs. The five side-effect imports that used to sit here moved
 // to packs/register-all.ts — unchanged in effect, but reachable from server code too. They lived in a
-// client component, which meant a SERVER caller of listPacks('module') (the operator console's module
-// picker, ADR-0077) silently got an empty array. Each pack index stays client-safe by design, so this
-// import pulls no server-only code into the bundle. See that file's header.
+// client component, which meant any caller of listPacks('module') outside the client bundle silently
+// got an empty array; today that caller is the catalog<->registry drift ratchet (ADR-0077), and slice
+// 4's nav filter is next. Each pack index stays client-safe by design, so this import pulls no
+// server-only code into the bundle. See that file's header.
 import '@/packs/register-all';
 import { modulePackById } from '@/packs/registry';
 

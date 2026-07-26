@@ -18,9 +18,12 @@ export async function createCustomerAction(formData: FormData): Promise<void> {
     customerName: String(formData.get('customerName') ?? ''),
     adminEmail: String(formData.get('adminEmail') ?? ''),
     country: String(formData.get('country') ?? 'MY'),
+    // Carried through so the console's Retry can replay a recorded plan. The create form has no plan
+    // picker yet (slice 5 adds the commercial record), so this is null on a first submission.
+    plan: String(formData.get('plan') ?? '') || undefined,
     // getAll: the module picker is a checkbox group, so an unticked form sends nothing and a
-    // multi-tick sends repeats of the same key. core/operator validates the codes — nothing here
-    // trusts them, matching this file's existing posture.
+    // multi-tick sends repeats of the same key. Retry re-posts the same key once per replayed module.
+    // core/operator validates the codes — nothing here trusts them, matching this file's posture.
     modules: formData.getAll('modules').map(String).filter(Boolean),
   });
   revalidatePath('/operator');

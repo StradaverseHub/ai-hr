@@ -24,7 +24,7 @@ import { tenantProvisionRequest, tenantProvisionRequestModule } from '../db/sche
 import { isOperator } from '../lib/authz';
 import { isDemoDeployment } from '../lib/demo-mode';
 import { countryPacks } from '../localization/registry';
-import { ALL_MODULE_CODES, CORE_MODULE_CODES } from '../packs/catalog';
+import { ALL_MODULE_CODES, CORE_MODULE_CODES, missingModuleDependencies } from '../packs/catalog';
 import { PROVISION_STEPS, type ProvisionStep } from '../db/provision';
 
 export { PROVISION_STEPS, type ProvisionStep };
@@ -40,6 +40,11 @@ export type ProvisionRequestRow = {
   status: string;
   country: string;
   plan: string | null;
+  /**
+   * The module codes the operator ticked at intake. Carried on the row so the console's Retry can
+   * REPLAY the sale — see the note in listProvisionRequests.
+   */
+  modules: string[];
   currentStep: string | null;
   error: string | null;
   tenantId: string | null;
@@ -72,11 +77,16 @@ function assertOperator(ctx: SessionContext): void {
  * activation_url, so an unqualified `.select()` — which drizzle expands to every column — fails at
  * runtime with a permission error. Naming the columns is what keeps the withheld one out of the query.
  * Do not "simplify" this into a bare select().
+ *
+ * The picked modules come back with the row. A second SELECT rather than a join or an array_agg, so the
+ * column-grant rule above stays a flat, readable list — the queue is a handful of rows on one screen.
+ * The console needs them because RETRY re-posts the intake form: without the modules on the row, a
+ * retried request carries none and the customer is silently re-provisioned with less than they bought.
  */
 export async function listProvisionRequests(ctx: SessionContext): Promise<ProvisionRequestRow[]> {
   assertOperator(ctx);
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
       .select({
         id: tenantProvisionRequest.id,
         customerName: tenantProvisionRequest.customerName,
@@ -94,8 +104,22 @@ export async function listProvisionRequests(ctx: SessionContext): Promise<Provis
         updatedAt: tenantProvisionRequest.updatedAt,
       })
       .from(tenantProvisionRequest)
-      .orderBy(desc(tenantProvisionRequest.createdAt)),
-  );
+      .orderBy(desc(tenantProvisionRequest.createdAt));
+
+    const picked = await tx
+      .select({
+        requestId: tenantProvisionRequestModule.requestId,
+        moduleCode: tenantProvisionRequestModule.moduleCode,
+      })
+      .from(tenantProvisionRequestModule);
+    const byRequest = new Map<string, string[]>();
+    for (const p of picked) {
+      const list = byRequest.get(p.requestId);
+      if (list) list.push(p.moduleCode);
+      else byRequest.set(p.requestId, [p.moduleCode]);
+    }
+    return rows.map((r) => ({ ...r, modules: (byRequest.get(r.id) ?? []).sort() }));
+  });
 }
 
 export type CreateProvisionRequestInput = {
@@ -149,6 +173,18 @@ export async function createProvisionRequest(
   const core = modules.filter((m) => CORE_MODULE_CODES.includes(m));
   if (core.length) {
     throw new Error(`Core module(s) are always on and take no entitlement: ${core.join(', ')}`);
+  }
+  // The dependsOn closure, checked where the operator can still fix it. Slice 2 ANDs a module's
+  // dependencies when it resolves, so selling `multi_cycle_payroll` without `payroll` books a sale and
+  // writes an ACTIVE row that resolves DISABLED — an entitlement the customer paid for and cannot use,
+  // with nothing to notice it by. Refused here AND again in db/provision.ts, because the runner is the
+  // last gate and a request row can also arrive from a replay.
+  const missingDeps = missingModuleDependencies(modules);
+  if (missingDeps.length) {
+    throw new Error(
+      `Module(s) missing a required dependency: add ${missingDeps.join(', ')} — a module whose ` +
+        'dependencies are not also active resolves as disabled.',
+    );
   }
 
   return withTenant(ctx, async (tx) => {

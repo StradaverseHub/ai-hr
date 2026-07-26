@@ -14,6 +14,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { inviteUser } from '../core/auth';
 import { provisionTenant, createAdminChain, PROVISION_STEPS } from '../db/provision';
+import { createProvisionRequest, listProvisionRequests } from '../core/operator';
 import { runProvisionTick } from '../scripts/provision-runner';
 import { myPack } from '../localization/my';
 import { MY_STATE_HOLIDAYS_2026 } from '../localization/my/holidays';
@@ -453,5 +454,236 @@ describe('0295 — tenant provisioning', () => {
       .from(schema.employment)
       .where(and(eq(schema.employment.tenantId, t.id)));
     expect(employments).toHaveLength(0);
+  });
+
+  // ── (k) ADR-0077 slice 1: the sale travels the whole intake path ────────────────────────────────
+  //
+  // The widened path is form → createCustomerAction → createProvisionRequest → the new columns →
+  // claimNext → provisionOne → provisionTenant. Every hop used to drop everything but name + email, so
+  // a widened form ALONE would have changed nothing observable — and nothing here was covered: the
+  // single provisionTenant helper above passes neither country nor modules, so the entitlement insert,
+  // the unknown-code rejection and the core-code rejection all shipped untested.
+
+  async function operatorCtx(base: Base): Promise<SessionContext> {
+    const [opUser] = await owner.db
+      .insert(schema.appUser)
+      .values({ tenantId: base.tenantId, workosUserId: `op_${crypto.randomUUID()}`, personId: null })
+      .returning({ id: schema.appUser.id });
+    await owner.db
+      .insert(schema.roleAssignment)
+      .values({ tenantId: base.tenantId, appUserId: opUser.id, companyId: null, role: 'operator' });
+    return {
+      tenantId: base.tenantId,
+      userId: opUser.id,
+      roles: ['operator'],
+      grants: [{ role: 'operator', companyId: null }],
+    };
+  }
+
+  it('intake RECORDS the picked modules and refuses a country with no registered pack', async () => {
+    const op = await operatorCtx(await seedBase());
+
+    const { id } = await createProvisionRequest(op, {
+      customerName: 'Sold Everything Bhd',
+      adminEmail: 'ops@sold.test',
+      country: 'MY',
+      // Duplicate on purpose — the set is normalised. `attendance` is present because `toil` depends on
+      // it (packs/catalog.ts) and intake now refuses a pick set whose dependsOn closure is unmet; this
+      // case is about de-duplication, so it buys a coherent set.
+      modules: ['payroll', 'toil', 'payroll', 'attendance'],
+    });
+    const picked = await owner.db
+      .select({ code: schema.tenantProvisionRequestModule.moduleCode })
+      .from(schema.tenantProvisionRequestModule)
+      .where(eq(schema.tenantProvisionRequestModule.requestId, id));
+    expect(picked.map((p) => p.code).sort()).toEqual(['attendance', 'payroll', 'toil']);
+
+    // Refused at INTAKE, while the operator is still looking at the form — not an hour later in a cron
+    // log. 'ZZ' is a well-formed ISO shape, which is exactly why isoCode alone was never enough (F7).
+    await expect(
+      createProvisionRequest(op, { customerName: 'Nowhere Bhd', adminEmail: 'a@nowhere.test', country: 'ZZ' }),
+    ).rejects.toThrow(/No country pack is registered/i);
+  });
+
+  it('intake refuses an unknown module code and a CORE one, rather than silently dropping either', async () => {
+    const op = await operatorCtx(await seedBase());
+
+    // Silently filtering an unknown code would provision the customer with less than they bought and
+    // leave nothing to notice the difference by.
+    await expect(
+      createProvisionRequest(op, {
+        customerName: 'Typo Bhd',
+        adminEmail: 'a@typo.test',
+        modules: ['payrol'],
+      }),
+    ).rejects.toThrow(/Unknown module code/i);
+
+    // A core code would be accepted by the FK and then refused by the 0313 trigger mid-provision,
+    // failing the whole transaction with a database error instead of a sentence the operator can act on.
+    await expect(
+      createProvisionRequest(op, {
+        customerName: 'Core Bhd',
+        adminEmail: 'a@core.test',
+        modules: ['leave'],
+      }),
+    ).rejects.toThrow(/always on and take no entitlement/i);
+
+    expect(await owner.db.select().from(schema.tenantProvisionRequest)).toHaveLength(0);
+  });
+
+  it('intake refuses a pick set whose dependsOn closure is unmet, and NAMES what is missing', async () => {
+    const op = await operatorCtx(await seedBase());
+
+    // `dependsOn` was declared in the catalog, seeded into module.depends_on and read by nobody. Slice 2
+    // ANDs the closure when it resolves a module, so multi_cycle_payroll sold without payroll books the
+    // sale, writes an ACTIVE tenant_module row, and then resolves DISABLED — a paid entitlement that is
+    // silently inert, with nothing to notice it by. The same failure shape the composite company FK on
+    // tenant_module exists to prevent, so it gets the same treatment: refuse at the seam, name the code.
+    await expect(
+      createProvisionRequest(op, {
+        customerName: 'Half A Payroll Bhd',
+        adminEmail: 'a@half.test',
+        modules: ['multi_cycle_payroll'],
+      }),
+    ).rejects.toThrow(/missing a required dependency: add payroll\b/i);
+
+    // toil depends on leave AND attendance. `leave` is CORE — on for every tenant, and takes no row —
+    // so only `attendance` may be reported: a guard that demanded a row for a core module would be
+    // refusing a set that is in fact coherent.
+    await expect(
+      createProvisionRequest(op, {
+        customerName: 'Toil Only Bhd',
+        adminEmail: 'a@toil.test',
+        modules: ['toil'],
+      }),
+    ).rejects.toThrow(/missing a required dependency: add attendance\b/i);
+
+    // …and the coherent version goes through, or the guard has over-reached.
+    await createProvisionRequest(op, {
+      customerName: 'Toil Proper Bhd',
+      adminEmail: 'a@toilproper.test',
+      modules: ['toil', 'attendance'],
+    });
+    expect(await owner.db.select().from(schema.tenantProvisionRequest)).toHaveLength(1);
+  });
+
+  it('the RUNNER re-checks the dependsOn closure — a request written before the guard existed cannot land', async () => {
+    // provisionTenant is the LAST gate. Intake refuses an incoherent set today, but rows written before
+    // this guard shipped (and any future non-console caller) reach the runner directly, and a row that
+    // resolves disabled the day it is created is worse than a refusal.
+    const before = await owner.db.select({ id: schema.tenant.id }).from(schema.tenant);
+    const err = await owner.db
+      .transaction((tx) =>
+        provisionTenant(tx, {
+          name: 'Inert Entitlement Bhd',
+          adminEmail: 'ops@inert.test',
+          country: 'MY',
+          modules: ['typed_pay_components'],
+        }),
+      )
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/missing a required dependency: payroll/i);
+    // The whole transaction rolled back — no half-provisioned customer is left behind.
+    expect(await owner.db.select({ id: schema.tenant.id }).from(schema.tenant)).toHaveLength(before.length);
+  });
+
+  it('provisionTenant lands exactly the bought modules, and CONSUMES the country rather than recording it', async () => {
+    const r = await owner.db.transaction((tx) =>
+      provisionTenant(tx, {
+        name: 'Entitled Bhd',
+        adminEmail: 'ops@entitled.test',
+        baseUrl: 'https://hr.test',
+        country: 'MY',
+        modules: ['payroll', 'multi_cycle_payroll'],
+      }),
+    );
+    const rows = await owner.db
+      .select({ code: schema.tenantModule.moduleCode, status: schema.tenantModule.status })
+      .from(schema.tenantModule)
+      .where(eq(schema.tenantModule.tenantId, r.tenantId));
+    expect(rows.map((x) => x.code).sort()).toEqual(['multi_cycle_payroll', 'payroll']);
+    expect(rows.every((x) => x.status === 'active')).toBe(true);
+    // Nothing else was granted: a purchase is exactly what was ticked, and core modules take no row.
+    expect(rows).toHaveLength(2);
+
+    // The country is READ, not merely stored. Before this slice the company step was a hardcoded 'MY'
+    // literal, so a recorded country of 'ZZ' would have provisioned a Malaysian company regardless.
+    const packless = await owner.db
+      .transaction((tx) =>
+        provisionTenant(tx, { name: 'Nowhere Bhd', adminEmail: 'ops@nowhere.test', country: 'ZZ' }),
+      )
+      .catch((e) => e);
+    expect(packless).toBeInstanceOf(Error);
+    expect(await owner.db.select({ id: schema.company.id }).from(schema.company)).toHaveLength(1);
+  });
+
+  it('entitlements roll back with the rest when a LATER provisioning step fails', async () => {
+    // The entitlement insert is inside the single owner transaction on purpose: a tenant that exists
+    // without its entitlements reads as "everything disabled" once slice 2's resolver lands, which is a
+    // worse outcome than refusing to provision at all.
+    // Fault-injected at the 'admin' step, which runs AFTER 'entitlements' — the provisioned admin's
+    // placeholder subject is `provision:<uuid>` (db/provision.ts:189).
+    await owner.db.execute(
+      sql`alter table app_user add constraint tmp_entitlement_fault check (workos_user_id not like 'provision:%')`,
+    );
+    try {
+      await expect(
+        owner.db.transaction((tx) =>
+          provisionTenant(tx, {
+            name: 'Doomed Bhd',
+            adminEmail: 'ops@doomed.test',
+            modules: ['payroll', 'claims'],
+          }),
+        ),
+      ).rejects.toThrow();
+    } finally {
+      await owner.db.execute(sql`alter table app_user drop constraint tmp_entitlement_fault`);
+    }
+    expect(await owner.db.select({ id: schema.tenantModule.id }).from(schema.tenantModule)).toHaveLength(0);
+    expect(await owner.db.select({ id: schema.tenant.id }).from(schema.tenant)).toHaveLength(1); // system tenant
+  });
+
+  it('the RUNNER carries the picked modules from the request row through to the entitlements', async () => {
+    // The hop the widened form depends on: claimNext must SELECT the modules and provisionOne must pass
+    // them on. Both were previously typed to { id, customerName, adminEmail } and dropped everything else.
+    const op = await operatorCtx(await seedBase());
+    await createProvisionRequest(op, {
+      customerName: 'Runner Carried Bhd',
+      adminEmail: 'ops@runner.test',
+      country: 'MY',
+      modules: ['attendance', 'toil'],
+    });
+    await runProvisionTick(owner);
+
+    const [req] = await owner.db
+      .select({ status: schema.tenantProvisionRequest.status, tenantId: schema.tenantProvisionRequest.tenantId })
+      .from(schema.tenantProvisionRequest);
+    expect(req.status).toBe('done');
+    const rows = await owner.db
+      .select({ code: schema.tenantModule.moduleCode })
+      .from(schema.tenantModule)
+      .where(eq(schema.tenantModule.tenantId, req.tenantId!));
+    expect(rows.map((r) => r.code).sort()).toEqual(['attendance', 'toil']);
+  });
+
+  it('the console can replay a failed request in full — country, plan and every module', async () => {
+    // Retry re-posts the intake form, so listProvisionRequests has to hand the modules back or the
+    // retried request carries none and the customer is silently downgraded to the core set.
+    const op = await operatorCtx(await seedBase());
+    await createProvisionRequest(op, {
+      customerName: 'Replay Bhd',
+      adminEmail: 'ops@replay.test',
+      country: 'MY',
+      plan: 'growth',
+      modules: ['claims', 'performance'],
+    });
+    const [row] = await listProvisionRequests(op);
+    expect(row.country).toBe('MY');
+    expect(row.plan).toBe('growth');
+    expect(row.modules, 'the picked modules must survive the round trip to the console').toEqual([
+      'claims',
+      'performance',
+    ]);
   });
 });

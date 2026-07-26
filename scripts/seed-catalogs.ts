@@ -12,11 +12,15 @@
  * FOUR CALL SITES, ALL NAMED (C11). Every bootstrap that produces a usable database runs this:
  *   1. deploy/deploy.sh          — after `pnpm db:migrate`, before the conditional demo seed
  *   2. test/global-setup.ts      — into the TEMPLATE, before workers are stamped from it
- *   3. cleanroom-verify.sh       — after migrate, before vitest
+ *   3. cleanroom-verify.sh       — after migrate, rehearsing (1) against a virgin database
  *   4. db/seed.ts                — so a dev box that only ever runs db:seed is not a special case
- * Miss one and the omission shows up as a foreign-key violation in an unrelated test, which is a
- * miserable way to learn about it — so `test/module-catalog-drift.test.ts` asserts the DB catalog
- * equals the code catalog, and that test runs in every one of those environments.
+ * `test/module-catalog-drift.test.ts` asserts the DB catalog equals the code catalog, so (2) and (4)
+ * fail loudly if they are dropped. (1) and (3) are NOT covered by that: the clean room migrates and
+ * seeds `ai_hr_cleanroom`, but test/env.ts repoints every worker at `ai_hr_test_w<n>` and
+ * test/global-setup.ts rebuilds its own template, so vitest never reads the database the clean room
+ * seeded — what step (3) proves is that the seeder RUNS CLEANLY against a freshly migrated schema,
+ * which is exactly the deploy.sh path and the reason it is rehearsed at all. Do not read the presence
+ * of a green gate as evidence that deploy.sh's seed step is exercised end to end.
  *
  * IDEMPOTENT BY CONSTRUCTION (C3). `ON CONFLICT DO UPDATE` on the natural key: re-running reconciles
  * a changed description or sort order without duplicating rows, and never touches the per-tenant
@@ -30,7 +34,13 @@
  */
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { MODULE_CATALOG, SETTING_CATALOG } from '../packs/catalog';
+import { and, eq, inArray } from 'drizzle-orm';
+import {
+  MODULE_CATALOG,
+  SETTING_CATALOG,
+  type ModuleCatalogEntry,
+  type SettingCatalogEntry,
+} from '../packs/catalog';
 import * as schema from '../db/schema';
 
 /**
@@ -42,14 +52,52 @@ import * as schema from '../db/schema';
 type Db = ReturnType<typeof drizzle>;
 
 /**
+ * The catalogs to seed. A PARAMETER with the real catalogs as its default, for one reason: both guards
+ * below are the seeder's only fail-loud paths and neither was reachable from a test, because the rows
+ * they refuse can only be produced by EDITING packs/catalog.ts. Injecting a mutated catalog is how a
+ * test states "someone flipped this row" without a source edit. Production call sites pass nothing.
+ */
+export type CatalogSource = {
+  modules: readonly ModuleCatalogEntry[];
+  settings: readonly SettingCatalogEntry[];
+};
+
+/**
  * Upsert both catalogs. Exported so the test harness and db/seed.ts can call it inside their own
  * connection rather than shelling out to a second process.
  */
-export async function seedCatalogs(db: Db): Promise<{ modules: number; settings: number }> {
+export async function seedCatalogs(
+  db: Db,
+  catalog: CatalogSource = { modules: MODULE_CATALOG, settings: SETTING_CATALOG },
+): Promise<{ modules: number; settings: number }> {
+  // PROMOTING A MODULE billable -> core IS THE MIRROR OF THE SETTING GUARD BELOW, and until round 3 the
+  // comment there claimed this existed when it did not. `tenant_module`'s core guard is a trigger that
+  // refuses INSERT and UPDATE on any row whose module is core, so a catalog edit flipping `is_core` on
+  // a module customers already hold would sail through ON CONFLICT DO UPDATE and FREEZE every one of
+  // those rows: they stay in force, cannot be re-dated, re-statused or expired, and only DELETE is left.
+  // Refuse, and make the maintainer write a migration that decides what happens to the rows first.
+  const promotingToCore = catalog.modules.filter((m) => m.isCore).map((m) => m.code);
+  if (promotingToCore.length > 0) {
+    const held = await db
+      .selectDistinct({ code: schema.tenantModule.moduleCode })
+      .from(schema.tenantModule)
+      .where(inArray(schema.tenantModule.moduleCode, promotingToCore));
+    if (held.length > 0) {
+      const codes = held.map((r) => r.code).join(', ');
+      throw new Error(
+        `Refusing to promote ${codes} to is_core: tenant_module rows exist for those codes and the ` +
+          '0313 core guard would freeze them (no INSERT, no UPDATE — only DELETE). Write a migration ' +
+          'that removes or reassigns those entitlements first (ADR-0077 slice 1).',
+      );
+    }
+  }
+
   // Parent-before-child: `parent_module` is a self-FK, so `toil` cannot land before `leave`. Sorting
   // by (parentModule === null ? 0 : 1) is enough — the catalog is only ever one level deep, and the
   // drift test asserts that, so a future grandchild fails loudly instead of failing on insert order.
-  const modules = [...MODULE_CATALOG].sort((a, b) => Number(a.parentModule != null) - Number(b.parentModule != null));
+  const modules = [...catalog.modules].sort(
+    (a, b) => Number(a.parentModule != null) - Number(b.parentModule != null),
+  );
 
   for (const m of modules) {
     await db
@@ -82,7 +130,37 @@ export async function seedCatalogs(db: Db): Promise<{ modules: number; settings:
       });
   }
 
-  for (const s of SETTING_CATALOG) {
+  // PROMOTING A SETTING tenant -> platform IS NOT A SEEDER'S DECISION TO MAKE SILENTLY. The scope join
+  // in tenant_setting's write policy is evaluated when a row is WRITTEN and never again, so a key that
+  // gains scope='platform' leaves every value a customer already wrote in force AND unremovable (the
+  // USING arm now filters their DELETE out). This is the setting axis's half of the is_core guard at
+  // the top of this function. Refuse, and make the maintainer write a migration that decides what
+  // happens to those rows — reprovenance them, or delete them.
+  const promoting = catalog.settings.filter((s) => s.scope === 'platform').map((s) => s.key);
+  if (promoting.length > 0) {
+    const stale = await db
+      .selectDistinct({ key: schema.tenantSetting.key })
+      .from(schema.tenantSetting)
+      .innerJoin(schema.settingDefinition, eq(schema.settingDefinition.key, schema.tenantSetting.key))
+      .where(
+        and(
+          eq(schema.tenantSetting.source, 'customer'),
+          // The DB still says tenant-scoped while the code above now says platform — that IS the promotion.
+          eq(schema.settingDefinition.scope, 'tenant'),
+          inArray(schema.tenantSetting.key, promoting),
+        ),
+      );
+    if (stale.length > 0) {
+      const keys = stale.map((r) => r.key).join(', ');
+      throw new Error(
+        `Refusing to promote ${keys} to scope='platform': customer-written tenant_setting rows exist for ` +
+          'those keys and would stay in force but become uneditable. Write a migration that reprovenances ' +
+          'or removes them first (ADR-0077 slice 1).',
+      );
+    }
+  }
+
+  for (const s of catalog.settings) {
     await db
       .insert(schema.settingDefinition)
       .values({
@@ -111,7 +189,7 @@ export async function seedCatalogs(db: Db): Promise<{ modules: number; settings:
       });
   }
 
-  return { modules: MODULE_CATALOG.length, settings: SETTING_CATALOG.length };
+  return { modules: catalog.modules.length, settings: catalog.settings.length };
 }
 
 /** Run against an arbitrary connection string — used by the test template build and the clean-room. */

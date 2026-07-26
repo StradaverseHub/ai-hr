@@ -4,6 +4,7 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { randomUUID } from 'node:crypto';
 import { createDb, client as appClient, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
+import { legacyEnabledModulesIn, legacyEnabledSettingsIn } from '../packs/catalog';
 
 // Owner connection (postgres) — bypasses RLS, used only for setup/seed/reset.
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
@@ -183,29 +184,52 @@ export async function seedBase(): Promise<Base> {
     .insert(schema.roleAssignment)
     .values({ tenantId, appUserId: au.id, companyId: null, role: 'hr_admin' });
 
-  // ADR-0077 slice 1 — the tenant's default entitlements, via the OWNER connection (tenant_module is
-  // SELECT-only to ai_hr_app by design, migration 0313).
+  // ADR-0077 slice 1 — the tenant's default entitlements and settings, via the OWNER connection (both
+  // tables are SELECT-only or scope-gated to ai_hr_app by design, migration 0313).
   //
-  // The set is chosen for EXACT PARITY with what these gates do today, so slice 3's flip from env reads
-  // to entitlement reads is a genuine no-op rather than a silent behaviour change across 299 test
-  // files. Verified per module rather than assumed:
-  //   - payroll / attendance / claims / performance have NO env gate at all today (F20) — they are
-  //     unconditionally on, so they get ACTIVE rows. Omitting them would switch four modules off.
-  //   - notifications is on: .env.local sets NOTIFICATIONS_ENABLED=true and test/env.ts does NOT
-  //     delete it, so the harness inherits it as enabled.
-  //   - toil / multi_cycle_payroll / typed_pay_components get NO rows: TOIL_ENABLED is set nowhere,
-  //     and test/env.ts explicitly deletes the other two to keep the suite hermetic. A missing row is
-  //     "disabled" (C7), which is exactly today's behaviour.
-  //   - CORE modules get no rows by construction — the 0313 trigger refuses them, and isModuleEnabled
-  //     answers true for them from packs/catalog.ts without a query.
-  // Tests needing a different shape use setModule() / setSetting() below.
-  await owner.db.insert(schema.tenantModule).values(
-    ['payroll', 'attendance', 'claims', 'performance', 'notifications'].map((moduleCode) => ({
-      tenantId,
-      moduleCode,
-      status: 'active',
-    })),
-  );
+  // THE SET IS NOT DEFINED HERE. It is `LEGACY_ENABLED_MODULE_CODES` / `LEGACY_ENABLED_SETTINGS` in
+  // packs/catalog.ts, shared with migration 0313's backfill (existing tenants) and db/seed.ts (the demo
+  // tenant) — because a parity set that only the test harness knows is not parity, it is a fixture that
+  // makes the suite agree with itself while production diverges. That was the original shape of this
+  // comment and it was wrong.
+  //
+  // NARROWED BY THE LIVE ENV, and that is the point rather than a shortcut. The deployment parity set
+  // and the set THIS PROCESS runs with are different, because test/env.ts deliberately deletes
+  // MULTI_CYCLE_PAYROLL_ENABLED / TYPED_PAY_COMPONENTS_ENABLED / PAYROLL_RESET_ENABLED so the suite
+  // exercises the legacy payroll path. Seeding ACTIVE rows for those would be the OPPOSITE of parity —
+  // it would switch multi-cycle payroll on for 299 test files the moment slice 3 reads rows instead of
+  // env. `legacyEnabledModulesIn(process.env)` makes the row and the flag agree in every environment,
+  // including the files that opt a flag in per-test before calling seedBase.
+  //
+  // WHERE THIS DIVERGES, AND IT IS NOT FOUR FILES. This comment used to name four (the
+  // NOTIFICATIONS_ENABLED deleters) as the sole exception. The real number is 46, because the seed set
+  // is computed ONCE, here, in beforeEach — while most opt-in files mutate their gate INSIDE the test
+  // body, i.e. after this ran. Ordering, not intent, decides whether a row exists:
+  //   - test/payroll-reset.test.ts sets PAYROLL_RESET_ENABLED BEFORE seedBase → it gets a row;
+  //   - test/multicycle-kernel.test.ts sets MULTI_CYCLE_PAYROLL_ENABLED AFTER → it does not.
+  // And the SETTING axis diverges for everyone: under the suite's env (test/env.ts deletes
+  // PAYROLL_RESET_ENABLED / AUDIT_HASH_CHAIN_ENABLED, and nothing sets PAYROLL_UNLOCK_ENABLED or
+  // INDIVIDUAL_TXN_PAY_ENABLED) `legacyEnabledSettingsIn` returns the EMPTY set, so no test tenant in
+  // the suite carries a single tenant_setting row today.
+  //
+  // Both facts are now ASSERTED rather than described: `test/module-catalog-drift.test.ts` →
+  // 'the slice-3 worklist is a pinned inventory' greps every test file for a mutation of a tracked gate
+  // and pins the file→gates map. That map IS slice 3's worklist — each listed file needs a matching
+  // `setModule` / `setSetting` call when its gate stops being an env read — and a new file that mutates
+  // a gate turns the suite red until it is added, instead of surfacing as an unattributed failure two
+  // slices later. Prose could not be trusted with this: it was wrong by an order of magnitude.
+  const modules = legacyEnabledModulesIn(process.env);
+  if (modules.length > 0) {
+    await owner.db.insert(schema.tenantModule).values(
+      modules.map((moduleCode) => ({ tenantId, moduleCode, status: 'active' })),
+    );
+  }
+  const settings = legacyEnabledSettingsIn(process.env);
+  if (settings.length > 0) {
+    await owner.db.insert(schema.tenantSetting).values(
+      settings.map(({ key, value }) => ({ tenantId, key, value, source: 'platform' })),
+    );
+  }
 
   return {
     tenantId,

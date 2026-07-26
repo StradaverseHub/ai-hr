@@ -154,6 +154,17 @@ export const tenant = pgTable('tenant', {
   workosOrgId: text('workos_org_id').notNull().unique(),
   name: text('name').notNull(),
   createdAt: createdAt(),
+  // ADR-0077 slice 1 — the commercial columns (migration 0313 §5). Declared here with the rest of the
+  // slice's tables so slice 9's suspension overlay can read `status` without a second schema edit, and
+  // so anything that diffs this file against the database sees the columns that are actually there.
+  // ai_hr_app holds SELECT only on this table (0313 revokes the rest): these are written by the
+  // out-of-band runner and the platform plane, both on the owner connection.
+  status: text('status').notNull().default('active'), // 'active' | 'trial' | 'suspended' | 'closed'
+  suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+  plan: text('plan'),
+  primaryContactEmail: text('primary_contact_email'),
+  notes: text('notes'),
+  trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
 });
 
 // company = a legal entity WITHIN a tenant (multi-company lives here, not at the wall).
@@ -5311,6 +5322,11 @@ export const settingDefinition = pgTable('setting_definition', {
 /**
  * The entitlement. READ-ONLY to ai_hr_app — a customer may see what they have, never grant it.
  * `companyId` NULL = tenant-wide; NON-NULL scopes the module to one company (enforced from slice 2).
+ *
+ * The database FK is COMPOSITE — `(company_id, tenant_id) REFERENCES company (id, tenant_id)` — so a
+ * company-scoped entitlement cannot name another tenant's company (0313 §3). Drizzle carries it as a
+ * single-column reference because migrations here are hand-written SQL and this file is the query
+ * layer, not the schema authority; the real constraint is asserted in test/module-entitlement-rls.ts.
  */
 export const tenantModule = pgTable(
   'tenant_module',

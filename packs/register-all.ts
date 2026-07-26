@@ -5,9 +5,16 @@
  * --------------------
  * Pack registration used to live as five side-effect imports at the top of `components/sidebar.tsx`
  * (ADR-0080 rungs 2-7). That worked because the sidebar was the only consumer — but it made the
- * registry a CLIENT-COMPONENT side effect, so any SERVER module calling `listPacks('module')` got an
- * empty array. The operator console's module picker is exactly such a caller, and the failure mode is
- * the worst kind: not an error, just a form with no options.
+ * registry a CLIENT-COMPONENT side effect, so any code outside the client bundle calling
+ * `listPacks('module')` got an empty array, silently: not an error, just an empty list.
+ *
+ * The consumer that needs it TODAY is the catalog<->registry drift ratchet
+ * (`test/module-catalog-drift.test.ts`), which pins every registered pack to a catalog row in both
+ * directions and cannot run inside a client component. (An earlier version of this comment named the
+ * operator console's module picker instead — app/operator/page.tsx reads MODULE_CATALOG directly and
+ * never calls listPacks, so that justification pointed at a caller that does not exist. It is the kind
+ * of comment that gets the wrong thing deleted, hence the correction rather than a tidy-up.) Slice 4's
+ * nav filter is the next caller, and it is server-side too.
  *
  * The country axis has always had a server-side equivalent — importing `localization/registry` IS the
  * registration (its `registerPack({ kind: 'country', … })` runs at module load, which is why 30 call

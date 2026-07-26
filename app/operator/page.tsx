@@ -10,7 +10,7 @@ import { AutoRefresh } from './auto-refresh';
 import { ActivationLink } from './activation-link';
 import { createCustomerAction, requestReissueAction } from './actions';
 import { countryPacks } from '@/localization/registry';
-import { MODULE_CATALOG } from '@/packs/catalog';
+import { DEFAULT_PROVISION_MODULE_CODES, MODULE_CATALOG } from '@/packs/catalog';
 
 /**
  * Operator console — create a new customer (tenant).
@@ -101,7 +101,18 @@ export default async function OperatorPage() {
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               {sellableModules.map((m) => (
                 <label key={m.code} className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" name="modules" value={m.code} className="size-4 rounded" />
+                  {/* PRE-TICKED for the modules no env var gates today (DEFAULT_PROVISION_MODULE_CODES).
+                      An untouched form used to queue a customer with ZERO entitlement rows, which reads
+                      as "everything the customer has today" until slice 3 and as "nothing" after it.
+                      The default states what the product currently includes; unticking is still the
+                      operator's decision and is honoured verbatim by provisionTenant. */}
+                  <input
+                    type="checkbox"
+                    name="modules"
+                    value={m.code}
+                    defaultChecked={DEFAULT_PROVISION_MODULE_CODES.includes(m.code)}
+                    className="size-4 rounded"
+                  />
                   {m.name}
                 </label>
               ))}
@@ -109,7 +120,8 @@ export default async function OperatorPage() {
             {/* Core modules are deliberately absent: they are always on, take no entitlement row at
                 all, and the 0313 trigger refuses one — so offering them as a choice would be a lie. */}
             <p className="mt-1 text-xs text-muted-foreground">
-              Core modules ({coreModules.map((m) => m.name).join(', ')}) are always included.
+              Core modules ({coreModules.map((m) => m.name).join(', ')}) are always included. Ticked by
+              default are the modules every customer runs today; untick to sell less.
             </p>
           </fieldset>
         </form>
@@ -164,13 +176,19 @@ export default async function OperatorPage() {
                     <form action={createCustomerAction}>
                       <input type="hidden" name="customerName" value={r.customerName} />
                       <input type="hidden" name="adminEmail" value={r.adminEmail} />
-                      {/* Replayed too: a retry that dropped these would quietly re-provision the
-                          customer in MY with no modules — a downgrade nobody asked for. The picked
-                          modules are NOT replayed here because the failed request's rows are still
-                          in tenant_provision_request_module; re-creating them from the row would
-                          need a second read. Retry therefore re-creates the country and plan, and
-                          the modules are re-picked by the operator — visible, not silent. */}
+                      {/* THE WHOLE SALE IS REPLAYED — country, plan and every ticked module. Retry
+                          re-posts this form to the same action that created the request, so anything
+                          missing here is silently dropped: a retry carrying no modules would
+                          re-provision the customer with nothing but the core set, which is a
+                          downgrade nobody asked for and nothing to notice it by (the failed request's
+                          own rows survive in tenant_provision_request_module, but the NEW request is
+                          built from this form, not from them). listProvisionRequests reads them back
+                          onto the row precisely so this loop can exist. */}
                       <input type="hidden" name="country" value={r.country} />
+                      {r.plan ? <input type="hidden" name="plan" value={r.plan} /> : null}
+                      {r.modules.map((code) => (
+                        <input key={code} type="hidden" name="modules" value={code} />
+                      ))}
                       <button type="submit" className={btnGhost}>
                         {t('retry')}
                       </button>

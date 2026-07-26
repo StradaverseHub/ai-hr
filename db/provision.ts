@@ -40,7 +40,7 @@ import {
   tenantModule,
 } from './schema';
 import { requirePackFor } from '../localization/registry';
-import { ALL_MODULE_CODES, CORE_MODULE_CODES } from '../packs/catalog';
+import { ALL_MODULE_CODES, CORE_MODULE_CODES, missingModuleDependencies } from '../packs/catalog';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { seedProfileOptions } from '../core/profile-options';
 import { seedGuides } from './seed-guides';
@@ -351,6 +351,13 @@ export async function provisionTenant(tx: Tx, input: ProvisionInput): Promise<Pr
     if (unknown.length) throw new Error(`Unknown module code(s): ${unknown.join(', ')}`);
     const core = picked.filter((c) => CORE_MODULE_CODES.includes(c));
     if (core.length) throw new Error(`Core module(s) take no entitlement row: ${core.join(', ')}`);
+    // …and the dependsOn closure, re-checked here because this is the LAST gate. core/operator refuses
+    // an incoherent pick set at intake, but the runner also provisions from rows written before that
+    // check existed, and a row that resolves disabled the day it is created is worse than a refusal.
+    const missingDeps = missingModuleDependencies(picked);
+    if (missingDeps.length) {
+      throw new Error(`Module(s) missing a required dependency: ${missingDeps.join(', ')}`);
+    }
     if (picked.length) {
       await tx.insert(tenantModule).values(picked.map((moduleCode) => ({ tenantId, moduleCode, status: 'active' })));
     }

@@ -102,23 +102,47 @@ CREATE POLICY setting_definition_read ON setting_definition FOR SELECT USING (tr
 --
 -- No 'suspended' in `status`: suspension is a TENANT-level overlay (slice 9), not a per-module state.
 -- Two places to switch a module off would be two places to forget.
+
+-- A COMPOSITE key on company so a company-scoped entitlement can be tied to its OWN tenant's company.
+-- `company_id uuid REFERENCES company(id)` alone lets a row name a company belonging to a DIFFERENT
+-- tenant: the FK is satisfied, the grain index treats it as its own scope, and slice 2's per-company
+-- resolution never matches it — so the entitlement is silently inert instead of rejected. That is the
+-- worst shape for a commercial record. `id` is already the primary key, so this constraint adds an
+-- index and no new restriction to `company` itself; it exists purely to be the FK target below and in
+-- `usage_snapshot`, which is the table a disputed bill has to be reconstructed from.
+ALTER TABLE company ADD CONSTRAINT company_id_tenant_uq UNIQUE (id, tenant_id);--> statement-breakpoint
+
 CREATE TABLE tenant_module (
   id                             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id                      uuid NOT NULL REFERENCES tenant(id),
   module_code                    text NOT NULL REFERENCES module(code),
-  company_id                     uuid REFERENCES company(id),
+  -- MATCH SIMPLE (the default) is what makes the tenant-wide case work: with `company_id` NULL the
+  -- composite FK is satisfied trivially, so a NULL still means "the whole group" rather than needing
+  -- a second constraint to allow it.
+  company_id                     uuid,
   status                         text NOT NULL DEFAULT 'active',
   activated_at                   timestamptz NOT NULL DEFAULT now(),
   expires_at                     timestamptz,
   activated_by_platform_user_id  uuid,
   created_at                     timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT tenant_module_status_check CHECK (status IN ('active', 'trial', 'disabled'))
+  CONSTRAINT tenant_module_status_check CHECK (status IN ('active', 'trial', 'disabled')),
+  -- The grain index below stands the all-zero UUID in for a NULL company_id. That is only safe while
+  -- no COMPANY can carry that id — and "company.id defaults to gen_random_uuid()" is a statement about
+  -- a DEFAULT, not a constraint: an explicit id is still insertable, and 0151 already proves this
+  -- installation is willing to mint the all-zero uuid for a real row (the reserved system TENANT).
+  -- Without this CHECK, a company with that id turns a company-scoped grant into an upsert over the
+  -- TENANT-WIDE row: `ON CONFLICT (…, COALESCE(company_id, sentinel)) DO UPDATE` aimed at one company
+  -- silently rewrites the whole tenant's entitlement. Stated as a constraint so the sentinel is
+  -- guaranteed rather than assumed.
+  CONSTRAINT tenant_module_company_not_sentinel_check
+    CHECK (company_id IS NULL OR company_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+  CONSTRAINT tenant_module_company_same_tenant_fk FOREIGN KEY (company_id, tenant_id)
+    REFERENCES company (id, tenant_id)
 );--> statement-breakpoint
 
 -- PG14: a PRIMARY KEY cannot contain NULLs and `UNIQUE NULLS NOT DISTINCT` is 15+, so the
 -- one-row-per-(tenant, module, scope) grain is expressed as a COALESCE expression index. The all-zero
--- UUID is the tenant-wide sentinel; it is not a real company id, and company.id is
--- gen_random_uuid() so it can never collide.
+-- UUID is the tenant-wide sentinel, and the CHECK above is what keeps it out of `company_id`.
 CREATE UNIQUE INDEX tenant_module_grain_uq ON tenant_module (
   tenant_id, module_code, COALESCE(company_id, '00000000-0000-0000-0000-000000000000'::uuid)
 );--> statement-breakpoint
@@ -137,24 +161,41 @@ CREATE POLICY tenant_module_read ON tenant_module FOR SELECT USING (tenant_id = 
 -- ESS. This trigger is what keeps the two representations from disagreeing.
 --
 -- A TRIGGER, not a policy: policies do not bind the owner and are bypassed entirely by a BYPASSRLS
--- role, so the platform plane (slice 7) would sail straight through one. Triggers bind everybody.
+-- role, so the platform plane (slice 7) would sail straight through one. Triggers bind everybody —
+-- but only once it is ENABLE ALWAYS (see below), which is the difference between "binds every writer"
+-- and "binds every writer that is not replaying replication".
 CREATE OR REPLACE FUNCTION app.guard_tenant_module_core() RETURNS trigger
   LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE
-  v_code text := COALESCE(NEW.module_code, OLD.module_code);
+  v_code text;
   v_is_core boolean;
 BEGIN
+  -- DELETE is always allowed, INCLUDING for a core code. The invariant is "a core module has no row";
+  -- deleting a row can only move the table TOWARDS that, never away from it. Refusing the delete would
+  -- invert the guard: promote a billable module to core in packs/catalog.ts, let the seeder's
+  -- ON CONFLICT DO UPDATE flip `is_core`, and every existing row for that code becomes immortal —
+  -- undeletable and unupdatable — with no way to clean up short of dropping the trigger.
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  v_code := NEW.module_code;
   SELECT m.is_core INTO v_is_core FROM public.module m WHERE m.code = v_code;
   IF COALESCE(v_is_core, false) THEN
     RAISE EXCEPTION 'core module % is always enabled and takes no tenant_module row', v_code
       USING ERRCODE = 'check_violation';
   END IF;
-  RETURN COALESCE(NEW, OLD);
+  RETURN NEW;
 END;
 $$;--> statement-breakpoint
 CREATE TRIGGER tenant_module_core_guard
   BEFORE INSERT OR UPDATE OR DELETE ON tenant_module
   FOR EACH ROW EXECUTE FUNCTION app.guard_tenant_module_core();--> statement-breakpoint
+-- ENABLE ALWAYS, because the default is ENABLE ORIGIN (pg_trigger.tgenabled = 'O') and an ORIGIN
+-- trigger does NOT fire under `session_replication_role = 'replica'` — logical-replication apply, a
+-- restore tool, or any superuser session that sets it. The comment above claims this guard binds every
+-- writer; without this line that claim is false for exactly the paths a future platform plane is most
+-- likely to use. One line, and the invariant is literally true. The RLS test asserts tgenabled = 'A'.
+ALTER TABLE tenant_module ENABLE ALWAYS TRIGGER tenant_module_core_guard;--> statement-breakpoint
 
 -- ── 4. `tenant_setting` — the per-tenant value ───────────────────────────────────────────────────
 --
@@ -183,19 +224,64 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_setting TO ai_hr_app;--> statemen
 -- the boundary, writability is. The settings screen renders platform rows read-only.
 CREATE POLICY tenant_setting_read ON tenant_setting FOR SELECT
   USING (tenant_id = app.current_tenant_id());--> statement-breakpoint
--- WRITE: own tenant AND an admin AND the definition is tenant-scoped. The same predicate in USING and
--- WITH CHECK so an UPDATE can neither escape the tenant nor walk a row onto a platform-scoped key.
+-- WRITE: own tenant AND a GROUP admin AND the definition is tenant-scoped. The same predicate in USING
+-- and WITH CHECK so an UPDATE can neither escape the tenant nor walk a row onto a platform-scoped key.
+--
+-- `app.is_group_admin()`, NOT `app.is_admin()`. 0016 defines is_admin() as coarse "admin somewhere" —
+-- true for an hr_admin delegated to ONE subsidiary. tenant_setting is keyed (tenant_id, key) and has no
+-- company dimension at all, so its values govern every company in the group; a single-company admin
+-- writing one would be changing behaviour for companies they have no grant over. is_group_admin() is
+-- 0016's predicate for exactly this ("group-level config"), and 0295 tightened role_assignment the same
+-- way. Fixed here while nothing reads the table — after slice 3 it would be a live behaviour change.
+--
+-- `source` and `updated_by` are constrained too, and that is not decoration. `source` is the provenance
+-- the settings screen renders ("Stradaverse manages this") and slice 2's resolver reasons about; with
+-- ai_hr_app holding full CRUD by design, an unconstrained `source` lets a customer admin stamp their own
+-- value as platform-managed and attribute it to any uuid they like. The platform plane writes as the
+-- OWNER and does not go through this policy, so pinning the customer path to 'customer' costs it nothing.
+-- Consequence, deliberate: overwriting a platform-written value on a TENANT-scoped key requires the
+-- writer to also set source='customer' — the provenance follows the write instead of being inherited.
+-- The VALUE TYPE is checked in WITH CHECK only, never in USING. `value_type` is declared per row in the
+-- catalog and would otherwise be enforced by nothing: a group admin could store `{"nested": [1,2,3]}`
+-- in a boolean setting and slice 2's resolver would read whatever shape it found. For booleans that
+-- fails safe-ish (`=== true` is false); the first `number` or `json` setting inherits the hole outright.
+-- USING is left alone on purpose — putting the type conjunct there would make a row that is ALREADY the
+-- wrong shape undeletable and uncorrectable, which is the mistake the core-module trigger's DELETE arm
+-- exists to avoid. `json` accepts any shape by definition, which is what the value_type means.
 CREATE POLICY tenant_setting_write ON tenant_setting FOR ALL
   USING (
     tenant_id = app.current_tenant_id()
-    AND app.is_admin()
+    AND app.is_group_admin()
     AND EXISTS (SELECT 1 FROM public.setting_definition d WHERE d.key = tenant_setting.key AND d.scope = 'tenant')
   )
   WITH CHECK (
     tenant_id = app.current_tenant_id()
-    AND app.is_admin()
-    AND EXISTS (SELECT 1 FROM public.setting_definition d WHERE d.key = tenant_setting.key AND d.scope = 'tenant')
+    AND app.is_group_admin()
+    AND EXISTS (
+      SELECT 1 FROM public.setting_definition d
+      WHERE d.key = tenant_setting.key
+        AND d.scope = 'tenant'
+        AND (d.value_type = 'json' OR jsonb_typeof(tenant_setting.value) = d.value_type)
+    )
+    AND source = 'customer'
+    AND (updated_by IS NULL OR updated_by = app.current_user_id())
   );--> statement-breakpoint
+
+-- `updated_at` is PROVENANCE, so it is stamped rather than trusted: the column is writable by anyone who
+-- can write the row, and the policy above has no reason to constrain a timestamp. A customer backdating
+-- their own change is not an escalation, but it is a lie in the one column an auditor reads to establish
+-- WHEN a behaviour changed. Deliberately NOT `ENABLE ALWAYS`, unlike the core-module guard: this is a
+-- convenience, not a boundary, and a future logical restore should be able to carry the original stamp.
+CREATE OR REPLACE FUNCTION app.stamp_tenant_setting_updated_at() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER tenant_setting_stamp_updated_at
+  BEFORE INSERT OR UPDATE ON tenant_setting
+  FOR EACH ROW EXECUTE FUNCTION app.stamp_tenant_setting_updated_at();--> statement-breakpoint
 
 -- ── 5. `tenant` — the commercial columns ─────────────────────────────────────────────────────────
 --
@@ -211,6 +297,23 @@ ALTER TABLE tenant ADD CONSTRAINT tenant_status_check CHECK (status IN ('active'
 -- No country column on purpose: country is a per-COMPANY fact (company.country) and, from slice 6, a
 -- per-company entitlement. A tenant-level country would be wrong the moment an MNC adds its second
 -- jurisdiction, which is the whole point of the program.
+--
+-- THESE COLUMNS ARE COMMERCIAL, SO THE APP ROLE LOSES ITS WRITE ON `tenant` ENTIRELY.
+-- `tenant` carries 0001's blanket GRANT SELECT, INSERT, UPDATE, DELETE plus a SCOPE-ONLY policy
+-- (`tenant_isolation … USING (id = app.current_tenant_id()) WITH CHECK (same)`) and, unlike company /
+-- position / app_user / role_assignment, it was never role-gated by 0002. That was survivable while the
+-- only columns were name and workos_org_id. It is not survivable now: `status` is slice 9's suspension
+-- switch and `plan` / `trial_ends_at` are the commercial record, and the scope-only policy would let ANY
+-- authenticated principal — an ordinary employee — UPDATE their own tenant row and un-suspend the
+-- account or grant themselves an enterprise plan. That is F2 (the defect tenant_module's SELECT-only
+-- grant exists to prevent) reappearing on the table the entitlements hang off.
+--
+-- Revoking outright rather than column-gating, because the app writes NOTHING here: the only writers in
+-- the tree are db/provision.ts and db/seed.ts, both on the OWNER connection (the runner is out-of-band
+-- by design — db/provision.ts's header is explicit that ai_hr_app must not be able to create a tenant).
+-- test/module-entitlement-rls.test.ts asserts the resulting matrix, because bootstrap-db.sql's
+-- ALTER DEFAULT PRIVILEGES means nothing else in the gate would ever notice this line disappearing.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON tenant FROM ai_hr_app;--> statement-breakpoint
 
 -- ── 6. `subscription` / `subscription_line` — the commercial record ──────────────────────────────
 CREATE TABLE subscription (
@@ -251,14 +354,19 @@ CREATE INDEX subscription_line_tenant_idx ON subscription_line (tenant_id, modul
 CREATE TABLE usage_snapshot (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id          uuid NOT NULL REFERENCES tenant(id),
-  company_id         uuid NOT NULL REFERENCES company(id),
+  -- Composite FK for the same reason as tenant_module: a usage row that names another tenant's company
+  -- is a bill attributed to the wrong customer, and both columns are NOT NULL here so it is always
+  -- enforced. This is the table a disputed invoice is reconstructed from — it must not be able to lie.
+  company_id         uuid NOT NULL,
   captured_on        date NOT NULL,
   country            text,
   active_employments integer NOT NULL DEFAULT 0,
   active_users       integer NOT NULL DEFAULT 0,
   payslips_generated integer NOT NULL DEFAULT 0,
   modules_active     jsonb NOT NULL DEFAULT '[]'::jsonb,
-  created_at         timestamptz NOT NULL DEFAULT now()
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT usage_snapshot_company_same_tenant_fk FOREIGN KEY (company_id, tenant_id)
+    REFERENCES company (id, tenant_id)
 );--> statement-breakpoint
 CREATE UNIQUE INDEX usage_snapshot_grain_uq ON usage_snapshot (tenant_id, company_id, captured_on);--> statement-breakpoint
 
@@ -318,4 +426,104 @@ CREATE POLICY tenant_provision_request_module_insert ON tenant_provision_request
 -- grant does not extend to columns added later, so the two new intake columns must be named here or
 -- listProvisionRequests starts failing with a permission error the moment it selects them.
 -- activation_url remains absent, which is the point of the whole construction.
-GRANT SELECT (plan, country) ON tenant_provision_request TO ai_hr_app;
+GRANT SELECT (plan, country) ON tenant_provision_request TO ai_hr_app;--> statement-breakpoint
+
+-- ── 9. BACKFILL — the tenants that already exist ─────────────────────────────────────────────────
+--
+-- WITHOUT THIS, SLICE 1 IS ONLY A NO-OP IN THE TEST SUITE. Every other writer of these tables covers a
+-- tenant that does not exist yet: db/provision.ts fires for NEWLY provisioned customers and only for
+-- the modules an operator ticked, and test/harness.ts seedBase covers test tenants. The demo deployment
+-- and every customer provisioned before today would carry ZERO rows — and slice 2's resolver is
+-- fail-closed (a missing row is disabled, C7), so slice 3 would switch off, for exactly the customers
+-- who have them, every module and setting that is on today, while the suite stayed green because the
+-- harness is the only place the parity set was written. The parity argument has to live where the
+-- DATABASE can see it, not in a comment about test fixtures.
+--
+-- THE CODES ARE `LEGACY_ENABLED_MODULE_CODES` AND `LEGACY_ENABLED_SETTINGS` in packs/catalog.ts, where
+-- the per-flag reasoning is recorded and where a drift test pins them against the env files the repo
+-- actually ships (.env.example and deploy/enable-demo-flags.sh). SQL cannot import TypeScript, so they
+-- are repeated here as literals and test/module-catalog-drift.test.ts reads THIS FILE and pins every
+-- list equal — the same ratchet the catalog itself uses, for the same reason.
+--
+-- WHAT THIS CANNOT KNOW: a migration cannot read an env var, so it grants the set the REPOSITORY says
+-- this deployment runs. A deployment that diverged from both tracked env files — turned a parity flag
+-- off locally — would gain that module or setting at slice 3. The processes that CAN read an env
+-- (db/seed.ts, the test harness) narrow the same constants down to what their own environment actually
+-- has on, via `legacyEnabledModulesIn` / `legacyEnabledSettingsIn`.
+--
+-- THE REMEDY, WRITTEN OUT, because "must delete the row" is not something a customer can do for the two
+-- PLATFORM-scoped keys: tenant_setting's write policy filters a customer DELETE out entirely, and
+-- tenant_module is SELECT-only to ai_hr_app. So the operator runs this as ai_hr_owner, once, on any
+-- deployment whose .env does NOT carry the corresponding flag:
+--
+--   -- a module this deployment does not actually run:
+--   DELETE FROM tenant_module  WHERE module_code = 'notifications' AND company_id IS NULL;
+--   -- a setting this deployment does not actually run (the two payroll risk switches are the ones a
+--   -- customer cannot remove themselves):
+--   DELETE FROM tenant_setting WHERE key IN ('payroll.reset_enabled', 'payroll.unlock_enabled');
+--
+-- Safe to run before slice 3 lands and harmless afterwards: a missing row is disabled (C7), which is
+-- exactly what an unset env var means today.
+--
+-- ONE-SHOT, AND THAT IS WHY IT IS HERE RATHER THAN IN scripts/seed-catalogs.ts. The seeder runs on every
+-- bootstrap; a "grant the parity set to any tenant with no rows" step there would re-grant the modules
+-- to a customer who was legitimately provisioned with none, on the next deploy. A migration runs once.
+--
+-- The FKs on tenant_module.module_code and tenant_setting.key need their targets to exist, and the
+-- catalogs are TypeScript-seeded AFTER migrate (C11). So the catalog rows are bootstrapped here with
+-- their identity columns only — no description, no sort_order, no pack_backed. scripts/seed-catalogs.ts
+-- rewrites every non-key column via ON CONFLICT DO UPDATE in the very next step of all four bootstraps,
+-- and the drift test asserts the result equals packs/catalog.ts, so these literals cannot rot into a
+-- second source of truth.
+INSERT INTO module (code, name, category, billable, is_core) VALUES
+  ('payroll',              'Payroll',              'payroll',  true, false),
+  ('attendance',           'Attendance',           'hr',       true, false),
+  ('claims',               'Claims',               'hr',       true, false),
+  ('performance',          'Performance',          'hr',       true, false),
+  ('notifications',        'Notifications',        'platform', true, false),
+  ('multi_cycle_payroll',  'Multi-Cycle Payroll',  'payroll',  true, false),
+  ('typed_pay_components', 'Typed Pay Components', 'payroll',  true, false)
+ON CONFLICT (code) DO NOTHING;--> statement-breakpoint
+
+-- Tenant-wide (company_id NULL): these modules are on for the whole group today, and narrowing them to
+-- per-company grants would be a behaviour change, not a backfill.
+--
+-- The reserved system tenant (0151 §4, the nil uuid that pre-auth auth events FK to) is excluded: it
+-- holds no companies, people or employments and is not a customer. Giving it entitlements would put a
+-- fake account in every future "who is entitled to what" report the platform console runs.
+--
+-- The VALUES list stays on ONE LINE: the drift test reads this statement out of the file and parses the
+-- codes out of it.
+INSERT INTO tenant_module (tenant_id, module_code, status)
+SELECT t.id, m.code, 'active'
+FROM tenant t
+CROSS JOIN (VALUES ('payroll'), ('attendance'), ('claims'), ('performance'), ('notifications'), ('multi_cycle_payroll'), ('typed_pay_components')) AS m(code)
+WHERE t.id <> '00000000-0000-0000-0000-000000000000'::uuid
+ON CONFLICT DO NOTHING;--> statement-breakpoint
+
+-- The SETTINGS half of the same argument, and it is not optional. `setting_definition.default_value` is
+-- `false` for every row in the catalog, so a tenant with no tenant_setting row resolves to OFF — while
+-- PAYROLL_RESET_ENABLED and PAYROLL_UNLOCK_ENABLED ship `=true` in .env.example and all three of these
+-- are set true by deploy/enable-demo-flags.sh on the server. Backfilling only the module axis would have
+-- left slice 3 switching payroll reset, payroll unlock and individual-transaction pay off on the one
+-- live deployment. `defaultOnInstall` does not cover it: that fires when a module is INSTALLED (slice 7)
+-- and never for a tenant provisioned before the setting existed.
+--
+-- `audit.hash_chain_enabled` is deliberately NOT here even though it is catalogued: it is off in
+-- .env.example and set by no deploy script, and ADR-0030 §3 requires a one-time backfill of historical
+-- events before the chain is complete — so a migration must never be what turns it on.
+INSERT INTO setting_definition (key, module_code, scope, value_type, default_value) VALUES
+  ('payroll.reset_enabled',              'payroll', 'platform', 'boolean', 'false'::jsonb),
+  ('payroll.unlock_enabled',             'payroll', 'platform', 'boolean', 'false'::jsonb),
+  ('payroll.individual_txn_pay_enabled', 'payroll', 'tenant',   'boolean', 'false'::jsonb)
+ON CONFLICT (key) DO NOTHING;--> statement-breakpoint
+
+-- `source = 'platform'`: these values were decided by Stradaverse in a deploy script, not chosen by the
+-- customer, and the settings screen renders that provenance. On the tenant-scoped key it is advisory —
+-- the customer may overwrite it, which is what tenant-scoped means. Same one-line rule as above.
+INSERT INTO tenant_setting (tenant_id, key, value, source)
+SELECT t.id, s.key, s.value, 'platform'
+FROM tenant t
+CROSS JOIN (VALUES ('payroll.reset_enabled', 'true'::jsonb), ('payroll.unlock_enabled', 'true'::jsonb), ('payroll.individual_txn_pay_enabled', 'true'::jsonb)) AS s(key, value)
+WHERE t.id <> '00000000-0000-0000-0000-000000000000'::uuid
+ON CONFLICT DO NOTHING;
