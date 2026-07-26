@@ -22,6 +22,7 @@ import {
   ALL_MODULE_CODES,
   CORE_MODULE_CODES,
   DEFAULT_PROVISION_MODULE_CODES,
+  DEFERRED_ENV_GATES,
   LEGACY_ENABLED_MODULE_CODES,
   LEGACY_ENABLED_SETTINGS,
   LEGACY_MODULE_ENV_GATES,
@@ -31,6 +32,19 @@ import {
   SETTING_CATALOG,
   missingModuleDependencies,
 } from '../packs/catalog';
+
+/**
+ * The env var names slice 3 left in place on purpose (see DEFERRED_ENV_GATES for why each one).
+ * Derived, not re-listed: a typo'd name here would silently exempt nothing and be invisible, so the
+ * lookup below asserts every deferred key is a real catalogued setting gate before trusting it.
+ */
+const DEFERRED_GATE_NAMES: ReadonlySet<string> = new Set(
+  Object.keys(DEFERRED_ENV_GATES).map((key) => {
+    const gate = LEGACY_SETTING_ENV_GATES[key];
+    if (!gate) throw new Error(`DEFERRED_ENV_GATES names '${key}', which is not a catalogued setting gate`);
+    return gate;
+  }),
+);
 
 /** Strip block + line comments so prose about a gate cannot be mistaken for code that mutates it. */
 const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -391,7 +405,7 @@ describe('module catalog — the pack correspondence, both directions', () => {
     // entitlement system, would apply to every tenant at once, and would silently outrank what a
     // customer actually bought. So the map stays (slice 3's backfill and the parity helpers still
     // need it) and the assertion flips to guard the migration instead of the pre-migration state.
-    for (const gate of gates) {
+    for (const gate of gates.filter((g) => !DEFERRED_GATE_NAMES.has(g))) {
       // \b, not `includes`: a TRUNCATED name is the likeliest typo and the one a substring test cannot
       // see — 'NOTIFICATIONS_ENABLE' is a substring of every `process.env.NOTIFICATIONS_ENABLED`, so
       // `includes` accepted it (verified by mutating the map and watching this stay green).
@@ -402,6 +416,21 @@ describe('module catalog — the pack correspondence, both directions', () => {
           'tenant at once, and overrides what the customer actually bought. Use isModuleEnabled() or ' +
           'settingEnabled() with the session context instead.',
       ).toBe(false);
+    }
+
+    // The OTHER direction, and the reason DEFERRED_ENV_GATES is a policed list rather than a comment:
+    // a deferred gate must still be genuinely env-read. If someone migrates one to an entitlement and
+    // leaves the entry behind, the exemption above would silently keep excusing a gate that no longer
+    // needs excusing — and the next reintroduced env read for it would sail through. Failing here
+    // forces the entry to be deleted in the same commit that migrates the gate.
+    for (const [key, owningSlice] of Object.entries(DEFERRED_ENV_GATES)) {
+      const gate = LEGACY_SETTING_ENV_GATES[key];
+      expect(
+        new RegExp(`process\\.env\\.${gate}\\b`).test(sources),
+        `process.env.${gate} is listed in DEFERRED_ENV_GATES ("${owningSlice}") but no application ` +
+          'code reads it any more. If it was migrated to an entitlement, delete its DEFERRED_ENV_GATES ' +
+          'entry in the same commit — a stale entry is a permanent hole in the reintroduction guard above.',
+      ).toBe(true);
     }
   });
 
@@ -498,10 +527,16 @@ const SLICE3_ENV_GATE_WORKLIST: Readonly<Record<string, readonly string[]>> = {
 
 describe('the env-gate divergence between seedBase and the suite', () => {
   it('the slice-3 worklist is a pinned inventory, not a prose estimate', () => {
+    // Deferred gates excluded: they are STILL env-driven by design (DEFERRED_ENV_GATES), so a test
+    // that sets one is using the mechanism the application actually reads — correct, not a leftover.
+    // audit-hash-chain.test.ts and leave-year-config.test.ts set AUDIT_HASH_CHAIN_ENABLED for exactly
+    // that reason; listing them as unconverted work would be a lie the ratchet could never retire.
     const gates = [
       ...Object.values(LEGACY_MODULE_ENV_GATES).filter((g): g is string => g !== null),
       ...Object.values(LEGACY_SETTING_ENV_GATES),
-    ].sort();
+    ]
+      .filter((g) => !DEFERRED_GATE_NAMES.has(g))
+      .sort();
     const infra = new Set(['env.ts', 'harness.ts', 'global-setup.ts']);
     const actual: Record<string, string[]> = {};
     for (const name of fs.readdirSync(__dirname).sort()) {

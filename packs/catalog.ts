@@ -179,6 +179,27 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Gates slice 3 deliberately did NOT migrate, mapped to the slice that owns removing them.
+ *
+ * `audit.hash_chain_enabled` is not an oversight and not laziness: it is read inside `withTenant`
+ * itself (db/client.ts:83) to arm a per-transaction GUC — that is, it is consulted while BUILDING the
+ * very transaction an entitlement snapshot would have to be resolved in. Answering it from that
+ * snapshot is circular. ADR-0077 also sequences it behind the ADR-0030 redaction migration and
+ * chain-head anchoring, because turning the chain on per-tenant before those land would produce
+ * chains nobody can verify. So it stays a deployment-level env read until slice 8.
+ *
+ * This is NOT an exemption list to grow when a migration gets awkward. An entry means "still env, on
+ * purpose, with a named slice that removes it", and it is policed from both sides:
+ * test/module-catalog-drift.test.ts asserts every entry here is GENUINELY still read by application
+ * code, so migrating one without deleting its entry fails the suite rather than quietly leaving a
+ * stale carve-out behind.
+ */
+export const DEFERRED_ENV_GATES: Readonly<Record<string, string>> = {
+  'audit.hash_chain_enabled':
+    'slice 8 — read inside withTenant to arm the chain GUC (circular vs. the snapshot), and sequenced behind ADR-0030 redaction + chain-head anchoring',
+};
+
+/**
  * The modules a tenant that predates the entitlement substrate must end up entitled to. Three places
  * must agree on it and all three derive from this constant:
  *
