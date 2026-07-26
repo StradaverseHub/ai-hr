@@ -1,3 +1,34 @@
+/**
+ * ADR-0077 slice 3 — WHY THE PAYROLL-KERNEL TESTS IN THIS FILE USE `entitledCtx`, NOT `adminCtx`.
+ *
+ * This file writes no feature-gate env vars and never did; it exercises the LEGACY payroll kernel,
+ * which is what `test/env.ts` gives it by deleting TYPED_PAY_COMPONENTS_ENABLED and
+ * MULTI_CYCLE_PAYROLL_ENABLED (and by no tracked file setting TOIL_ENABLED). Slice 3 stopped those
+ * three from being env reads — `core/payroll.ts` now asks `isModuleEnabled(ctx, …)` — and `adminCtx`
+ * is `entitlementsExempt: 'harness'`, which answers TRUE for every catalogued module. So the flip
+ * would have switched typed pay components ON for every `generatePayslips` call here.
+ *
+ * That is not a cosmetic difference: with typed components on, `earningsOf` reads the component
+ * tables INSTEAD of compensation + payroll_input, and this file seeds no components — allowance,
+ * overtime and bonus would all silently resolve to 0 while `basic` kept coming from Personnel. Some
+ * assertions would have failed loudly (OT RM500, bonus RM6,000, the EA statement's RM1,000
+ * allowances); the basic-only ones would have gone on passing while testing a kernel path the file
+ * was never written for.
+ *
+ * `entitledCtx` resolves a REAL snapshot from this tenant's rows, and `seedBase` seeds exactly
+ * `legacyEnabledModulesIn(process.env)` — payroll / attendance / claims / performance active, and NO
+ * row for typed_pay_components, multi_cycle_payroll or toil (a missing row is disabled, C7). It is
+ * therefore byte-for-byte the gate state this file ran under before slice 3, and the same state a
+ * real customer on the legacy kernel has. Every test that calls `generatePayslips` (or
+ * `prefillOvertimeFromAttendance`) drives it through that context; the non-payroll tests keep the
+ * exempt `adminCtx`, which is what the marker is for.
+ *
+ * ONE NON-PAYROLL PATH IS AFFECTED TOO: `decideAttendanceCorrection` now reaches
+ * `maybeAutoAccrueOnApprovalTx`, whose first line asks `isModuleEnabled(ctx, 'toil')`. A hand-built
+ * `SessionContext` literal carries neither a snapshot nor an exemption marker, so that question throws
+ * `EntitlementsUnresolvedError` rather than answering — the approving contexts in that describe block
+ * therefore resolve real snapshots as well. See the comment at the manager-approval test.
+ */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -7,6 +38,7 @@ import {
   adminCtx,
   closeAll,
   createAppUser,
+  entitledCtx,
   eventTypesFor,
   ledgerBalance,
   migrateTestDb,
@@ -421,7 +453,7 @@ describe('Slice 4 — payroll', () => {
   });
 
   it('generates one payslip per active employee; net = gross − statutory deductions', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const { employmentId } = await hire(a, base, 'Pay');
     await setCompensation(a, { employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
 
@@ -444,7 +476,7 @@ describe('Slice 4 — payroll', () => {
   });
 
   it('forbids a duplicate period batch and re-generating a processed batch', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-07' });
     await expect(
       createBatch(a, { companyId: base.companyId, payPeriod: '2026-07' }),
@@ -454,7 +486,7 @@ describe('Slice 4 — payroll', () => {
   });
 
   it('applies the employee PCB tax profile (category + children) to generated payslips', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e1 = await hire(a, base, 'TaxA');
     const e2 = await hire(a, base, 'TaxB');
     await setCompensation(a, { employmentId: e1.employmentId, basicSalary: 8000, effectiveFrom: '2026-01-01' });
@@ -477,7 +509,7 @@ describe('Slice 4 — payroll', () => {
   });
 
   it('prorates a mid-period joiner by calendar days (EA-1955 incomplete month)', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hireEmployee(a, {
       person: { fullName: 'MidJoin', primaryEmail: 'midjoin@acme.test' },
       companyId: base.companyId,
@@ -496,7 +528,7 @@ describe('Slice 4 — payroll', () => {
   });
 
   it('includes a mid-period leaver (final prorated payslip) but excludes prior terminations', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const leaver = await hire(a, base, 'Leaver'); // hired 2026-01-01
     await setCompensation(a, { employmentId: leaver.employmentId, basicSalary: 3100, effectiveFrom: '2026-01-01' });
     await terminateEmployment(a, { employmentId: leaver.employmentId, terminationDate: '2026-05-15' });
@@ -515,7 +547,7 @@ describe('Slice 4 — payroll', () => {
   });
 
   it('adds manual overtime and auto-derives unpaid-leave deductions (statutory on reduced base)', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'OtUnpaid'); // hired 2026-01-01, full May month
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 3100, effectiveFrom: '2026-01-01' });
     // An approved UNPAID-leave request: 2 days starting in the period.
@@ -556,7 +588,7 @@ describe('Slice 4 — payroll', () => {
   });
 
   it('rejects payroll input on a non-draft batch', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'Locked');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 3000, effectiveFrom: '2026-01-01' });
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-09' });
@@ -615,7 +647,7 @@ describe('Slice 5 — payroll compliance (official MY statutory tables)', () => 
   });
 
   it('freezes a closed batch and its payslips at the DB level', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const { employmentId } = await hire(a, base, 'Lock');
     await setCompensation(a, { employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-08' });
@@ -929,7 +961,7 @@ describe('Slice 5 — bonus / additional-remuneration MTD (#68)', () => {
   });
 
   it('generated payslip taxes the bonus and records it', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'Bonus Earner');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 6000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101012222' });
@@ -951,7 +983,7 @@ describe('Slice 5 — bonus / additional-remuneration MTD (#68)', () => {
 
 describe('Slice 6A — statutory reporting (#70)', () => {
   it('previews the monthly contribution report and records an audited artefact + event', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'Report Subject');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, {
@@ -981,7 +1013,7 @@ describe('Slice 6A — statutory reporting (#70)', () => {
   });
 
   it('flags employees missing statutory identifiers in the readiness check', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'No Profile');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     // intentionally no statutory profile → IC / tax / EPF / SOCSO blank
@@ -1005,7 +1037,7 @@ describe('Slice 6A — statutory reporting (#70)', () => {
 
 describe('Slice 6B — per-agency monthly reports (#71)', () => {
   it('lists the monthly reports and keeps figures consistent across them', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'Multi Report');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 6000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101014444', epfNumber: 'EPF9', socsoNumber: 'SOC9', taxNumber: 'TAX9' });
@@ -1030,7 +1062,7 @@ describe('Slice 6B — per-agency monthly reports (#71)', () => {
   });
 
   it('each agency report flags its own missing identifier', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'Partial IDs');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015555', taxNumber: 'TAXX' }); // no EPF/SOCSO no
@@ -1046,7 +1078,7 @@ describe('Slice 6B — per-agency monthly reports (#71)', () => {
 
 describe('Slice 6C — annual Form E / CP8D (#72)', () => {
   it('aggregates the tax year across batches and computes Form E Part A counts', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'Annual Worker'); // hired 2026-01-01
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101016666', epfNumber: 'EPFY', socsoNumber: 'SOCY', taxNumber: 'TAXY' });
@@ -1072,7 +1104,7 @@ describe('Slice 6C — annual Form E / CP8D (#72)', () => {
   });
 
   it('builds a per-employee EA statement aggregating the tax year (incl. bonus)', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'EA Person');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 500, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101017777', epfNumber: 'EPFEA', socsoNumber: 'SOCEA', taxNumber: 'TAXEA' });
@@ -1168,7 +1200,7 @@ describe('Overtime monetization — EA 1955 (ORP/26, 1.5×/2×/3×, RM4,000 gate
 
   it('prefills draft-batch OT inputs from classified attendance', async () => {
     const b = await seedBase();
-    const a = adminCtx(b);
+    const a = await entitledCtx(b);
     const { employmentId } = await hire(a, b, 'Otman'); // hired 2026-01-01
     await setCompensation(a, { employmentId, basicSalary: 2600, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     const rich = await hire(a, b, 'Richman');
@@ -1322,7 +1354,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       );
 
   it('approving a correction inserts the day and re-derives it through the time engine', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const { employmentId } = await hire(a, base, 'Misspunch');
     // No row exists for Wed 2026-06-03 (a workday). Propose a full 09:00→19:30 day.
     const { correctionId } = await requestAttendanceCorrection(a, {
@@ -1349,7 +1381,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
   });
 
   it('approving over an existing row amends it (re-derived OT), not duplicates', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const { employmentId } = await hire(a, base, 'Wrongout');
     // A genuine but wrong punch: left at 17:00, recorded as 7h, no OT.
     await checkIn(a, { employmentId, date: '2026-06-04', time: '09:00' });
@@ -1391,11 +1423,20 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       checkOut: '18:00',
       reason: 'Correction',
     });
+    // ADR-0077 slice 3: a REAL manager session, so it must carry a REAL entitlement snapshot. The bare
+    // literal was fine while every gate was an env read, but `decideAttendanceCorrection` now reaches
+    // `maybeAutoAccrueOnApprovalTx`, whose first line asks `isModuleEnabled(ctx, 'toil')` — and a context
+    // with neither a snapshot nor an exemption marker throws EntitlementsUnresolvedError there, before the
+    // approval this test is asserting ever lands.
+    //
+    // `entitledCtx` resolves from THIS tenant's rows, so TOIL is off by ABSENCE (seedBase seeds only the
+    // parity set and `toil` is not in it) — exactly the state the old `TOIL_ENABLED` read gave this file,
+    // which never set that flag. Deliberately NOT `entitlementsExempt: 'harness'`: an exempt context answers
+    // true for every catalogued module, which would switch TOIL auto-accrual on for this approval.
     const mgrCtx: SessionContext = {
-      tenantId: base.tenantId,
+      ...(await entitledCtx(base, ['manager'])),
       userId: uM,
       personId: M.personId,
-      roles: ['manager'],
     };
     await decideAttendanceCorrection(mgrCtx, { correctionId, decision: 'approved' });
     const [row] = await attRow(E.employmentId, '2026-06-03');
@@ -1413,11 +1454,15 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       checkOut: '18:00',
       reason: 'Correction',
     });
+    // Entitled (not a bare literal) for the same reason as the manager-approval test above: this session
+    // reaches `decideAttendanceCorrection`, which now asks an entitlement question on the approve path.
+    // `assertCanDecide` refuses first, so the question is never reached here — but the assertion below is
+    // an exact message match, so an EntitlementsUnresolvedError would surface as a failure rather than a
+    // false pass either way. Resolving it keeps the refusal being proven the AUTHZ one.
     const selfCtx: SessionContext = {
-      tenantId: base.tenantId,
+      ...(await entitledCtx(base, ['employee'])),
       userId: uid,
       personId,
-      roles: ['employee'],
     };
     await expect(
       decideAttendanceCorrection(selfCtx, { correctionId, decision: 'approved' }),
@@ -1425,7 +1470,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
   });
 
   it('rejecting leaves attendance untouched', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const { employmentId } = await hire(a, base, 'Rejectee');
     const { correctionId } = await requestAttendanceCorrection(a, {
       employmentId,
@@ -1591,7 +1636,7 @@ describe('ESS — profile self-service (ADR-0012)', () => {
 describe('ESS — payslip detail (ADR-0012 Phase 2)', () => {
   it('an employee reads their own payslip detail; a peer is RLS-denied', async () => {
     const b = await seedBase();
-    const a = adminCtx(b);
+    const a = await entitledCtx(b);
     const E = await hire(a, b, 'Payee');
     await setCompensation(a, {
       employmentId: E.employmentId,
@@ -1756,7 +1801,7 @@ describe('PCB — LHDN 2026 computerised method, spec Exhibit 5 golden sequence'
 describe('PCB accumulators through the payroll engine (ADR-0014)', () => {
   it('replays prior payslips: Jan and Feb batches both deduct the Exhibit-5 RM110.00', async () => {
     const b = await seedBase();
-    const a = adminCtx(b);
+    const a = await entitledCtx(b);
     const e = await hire(a, b, 'Lhdn Example');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015555', taxCategory: 3, numChildren: 3 });
@@ -1779,7 +1824,7 @@ describe('PCB accumulators through the payroll engine (ADR-0014)', () => {
 
   it('TP3 opening balances seed the accumulators for a mid-year first run', async () => {
     const b = await seedBase();
-    const a = adminCtx(b);
+    const a = await entitledCtx(b);
     const e = await hire(a, b, 'Tp3 Joiner');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, {
@@ -1803,7 +1848,7 @@ describe('PCB accumulators through the payroll engine (ADR-0014)', () => {
 
   it('a TP3 record for a DIFFERENT year is ignored', async () => {
     const b = await seedBase();
-    const a = adminCtx(b);
+    const a = await entitledCtx(b);
     const e = await hire(a, b, 'Stale Tp3');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, {
@@ -1856,7 +1901,7 @@ describe('Payroll compliance round — zakat §E.5, Category 2, EIS rules, non-r
 
   it('engine: age 60+ flips SOCSO to Category 2 and stops EIS; eisEligible=false stops EIS', async () => {
     const b = await seedBase();
-    const a = adminCtx(b);
+    const a = await entitledCtx(b);
     // Senior: DOB 1960 → 66 in 2026.
     const senior = await hire(a, b, 'Senior Sixty');
     await setCompensation(a, { employmentId: senior.employmentId, basicSalary: 3000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
@@ -1884,7 +1929,7 @@ describe('Payroll compliance round — zakat §E.5, Category 2, EIS rules, non-r
 
   it('engine: TP1 deduction and zakat flow into PCB and accumulate for later months', async () => {
     const b = await seedBase();
-    const a = adminCtx(b);
+    const a = await entitledCtx(b);
     const e = await hire(a, b, 'Tp1 Zakat');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015553', taxCategory: 3, numChildren: 3 });
@@ -1979,7 +2024,7 @@ describe('CP39 text file — LHDN Exhibit 4 byte layout (Layer-B DRAFT)', () => 
 
   it('builds from a generated batch and gates on readiness (TIN, E-number)', async () => {
     const b = await seedBase();
-    const a = adminCtx(b);
+    const a = await entitledCtx(b);
     const e = await hire(a, b, 'Cp39 Earner');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101018888', taxCategory: 3, numChildren: 3 });
@@ -2096,7 +2141,7 @@ describe('UC — CSV employee import', () => {
 
 describe('UC — payment summary export', () => {
   it('exports a processed batch as CSV with bank + net pay, and logs the export', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const { employmentId, personId } = await hire(a, base, 'Payee');
     await setCompensation(a, { employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
     await setStatutoryProfileMY(a, {
@@ -2139,7 +2184,7 @@ describe('UC — payment summary export', () => {
   });
 
   it('still exports an employee with no bank details, flagging the gap', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const { employmentId } = await hire(a, base, 'NoBank');
     await setCompensation(a, { employmentId, basicSalary: 3500, effectiveFrom: '2026-01-01' });
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-08' });
@@ -2174,8 +2219,13 @@ describe('UC — employee list pagination + search', () => {
 
 describe('UC — performance: state machine, authz, pay seam', () => {
   // Employee E reports to manager M; returns sessions + the spawned review id for E.
+  //
+  // `entitledCtx`, not `adminCtx`: one test in this block ('enact is ATOMIC') drives `generatePayslips`
+  // through this session to make a batch non-draft, and an exempt context would run that through the
+  // TYPED-component kernel (see the file header). Nothing else here is gated — performance and payroll
+  // are both in seedBase's parity set — so this is otherwise the same admin session as before.
   async function setupCycle(opts?: { merit?: boolean }) {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const E = await hire(a, base, 'PerfEmp');
     const M = await hire(a, base, 'PerfMgr');
     await setCompensation(a, { employmentId: E.employmentId, basicSalary: 5000, effectiveFrom: '2026-01-01' });

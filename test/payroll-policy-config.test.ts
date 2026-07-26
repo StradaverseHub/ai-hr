@@ -10,6 +10,25 @@
  *     statutory drift, the legacy employee and the config employee always run in the SAME batch (same company,
  *     same period ⇒ same statutory month), exactly like the existing byte-identical regression test. This is
  *     what proves the kernel now actually reads the assigned policy (the inertness test alone cannot).
+ *
+ * ADR-0077 slice 3 — WHY THIS FILE DRIVES `entitledCtx`, NOT `adminCtx`.
+ * This file writes no feature-gate env var and never did. It broke anyway, because every golden-matrix
+ * number below is a LEGACY-earnings-path number, and which path `generatePayslips` takes is now decided
+ * by `isModuleEnabled(ctx, 'typed_pay_components')` instead of `process.env.TYPED_PAY_COMPONENTS_ENABLED`.
+ * The two do NOT agree for the fixture admin context: test/env.ts deletes the env var (so the old read was
+ * false), while `adminCtx` carries `entitlementsExempt: 'harness'` and an exempt context answers TRUE for
+ * every catalogued module. Under `adminCtx` the typed fold would run with ZERO component rows, and that
+ * fold reads neither `compensation.monthly_allowance` nor the `payroll_input` overtime figure
+ * (core/payroll.ts `earningsOf`) — so `grossPay` would collapse to basic-only (5000, not 5500) and the 1e
+ * OT-cap test would compare 0 against 0. The legacy/config PAIR would still match each other, which is
+ * precisely the "green for the wrong reason" this conversion must not produce.
+ *
+ * The tenant's DATA says the opposite and is what these tests mean: `seedBase` seeds no `tenant_module`
+ * row for `typed_pay_components` (LEGACY_MODULE_ENV_GATES gates it on the same env var test/env.ts
+ * deletes) and a missing row is disabled (C7). `entitledCtx` resolves a REAL snapshot from those rows, so
+ * the legacy earnings path is exercised exactly as before and every assertion below is UNCHANGED.
+ * `payroll` is seeded active, and `payroll.individual_txn_pay_enabled` has no row here — the same value
+ * the exempt context read as its catalog default — so nothing else in this flow changes.
  */
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -21,7 +40,8 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { assignPolicy, createPolicy } from '../core/payroll-policy';
 import { cleanPayrollPolicyConfig, EA_S60A_WORKDAY_OT_FLOOR, unpaidTimeOffDailyRate } from '../core/payroll-policy-config';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import type { SessionContext } from '../db/client';
+import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 describe('2.1.1 cleanPayrollPolicyConfig — validation + s.60A floor', () => {
   it('null/undefined/empty/all-default ⇒ null (an all-default config is byte-identical)', () => {
@@ -154,6 +174,9 @@ describe('2.1.1 cleanPayrollPolicyConfig — validation + s.60A floor', () => {
 // ───────────────────────────── Integration: golden matrix ─────────────────────────────
 
 let b: Base;
+/** The REAL resolved snapshot for `b` (see the header). Rebuilt in beforeEach, after seedBase. Nothing in
+ *  this file mutates an entitlement row, so one point-in-time resolution per test is the whole story. */
+let a: SessionContext;
 let icSeq = 0;
 const nextIc = () => `880202${String(220000 + icSeq++).padStart(6, '0')}`;
 let periodSeq = 0;
@@ -161,7 +184,6 @@ let periodSeq = 0;
 const nextPeriod = () => `2026-${String((periodSeq++ % 12) + 1).padStart(2, '0')}`;
 
 async function seedPayable(name: string, opts?: { hiredOn?: string; basic?: number; allowance?: number }) {
-  const a = adminCtx(b);
   const e = await hireEmployee(a, {
     person: { fullName: name, primaryEmail: `ppc_${randomUUID().slice(0, 8)}@t.local` },
     companyId: b.companyId,
@@ -196,7 +218,6 @@ async function runPair(
   seed: { hiredOn?: string; basic?: number; allowance?: number; period?: string } = {},
   prep?: (batchId: string, legacyId: string, cfgId: string) => Promise<void>,
 ) {
-  const a = adminCtx(b);
   const period = seed.period ?? nextPeriod();
   const eLegacy = await seedPayable('Legacy', seed);
   const eCfg = await seedPayable('Cfg', seed);
@@ -226,6 +247,9 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
+  // AFTER seedBase — the snapshot is a point-in-time read of this tenant's rows, exactly as for a real
+  // session. `typed_pay_components` has no row ⇒ the kernel takes the legacy earnings path (header).
+  a = await entitledCtx(b);
 });
 afterAll(async () => {
   await closeAll();
@@ -316,8 +340,8 @@ describe('2.1.1 default-equals-legacy golden matrix + non-default measurably cha
   it('1e OT caps: default==legacy; maxAmount caps the OT figure down', async () => {
     const OT = 800;
     const setOt = async (batchId: string, legacyId: string, cfgId: string) => {
-      await setPayrollInput(adminCtx(b), { batchId, employmentId: legacyId, overtimeAmount: OT });
-      await setPayrollInput(adminCtx(b), { batchId, employmentId: cfgId, overtimeAmount: OT });
+      await setPayrollInput(a, { batchId, employmentId: legacyId, overtimeAmount: OT });
+      await setPayrollInput(a, { batchId, employmentId: cfgId, overtimeAmount: OT });
     };
     // default ⇒ OT unchanged on both.
     const def = await runPair(cleanPayrollPolicyConfig({ rounding: { earnings: 'none' } }), {}, setOt);
@@ -338,7 +362,6 @@ describe('2.1.1 default-equals-legacy golden matrix + non-default measurably cha
   });
 
   it('1c salary-increment proration: a mid-period raise blends two comp rows (vs single open-row legacy)', async () => {
-    const a = adminCtx(b);
     const period = '2026-06'; // 30-day month; raise on the 16th ⇒ 15 old days + 15 new days = even split
     const mk = async (name: string) => {
       const e = await hireEmployee(a, {

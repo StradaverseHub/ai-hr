@@ -37,12 +37,14 @@ import { hireEmployee } from '../core/org';
 import {
   adminCtx,
   closeAll,
+  entitledCtx,
   eventTypesFor,
   latestEventPayload,
   migrateTestDb,
   owner,
   resetDb,
   seedBase,
+  setSetting,
   type Base,
 } from './harness';
 
@@ -52,8 +54,15 @@ const nextIc = () => `9104040${String(10000 + icSeq++).slice(-5)}`;
 let base: Base;
 
 /** payroll.unlock defaults to hr_admin + super_admin — a plain hr_admin now suffices. The unlock runs
- *  with both admin roles (same user id so the audited actor stays base.adminUserId). */
-const superCtx = () => ({ ...adminCtx(base), roles: ['hr_admin', 'super_admin'] });
+ *  with both admin roles (same user id so the audited actor stays base.adminUserId).
+ *
+ *  ADR-0077 slice 3: this MUST be `entitledCtx`, not `adminCtx`. `payroll.unlock_enabled` is now a
+ *  tenant_setting read (it was PAYROLL_UNLOCK_ENABLED), and `adminCtx` is `entitlementsExempt:
+ *  'harness'` — an exempt context reads every setting as its CATALOG DEFAULT, and this key's default is
+ *  `false`. Driving the unlock through `adminCtx` would therefore hit ModuleNotEnabledError no matter
+ *  what the tenant's row says, i.e. the `setSetting` fixture below would be silently ignored. The
+ *  snapshot is point-in-time, so this is called inside each test — after beforeEach's setSetting. */
+const superCtx = () => entitledCtx(base, ['hr_admin', 'super_admin']);
 
 async function hire(name: string, basic = 5000) {
   const a = adminCtx(base);
@@ -107,18 +116,21 @@ describe('Unlock closed payroll — single confirm, mandatory reason (unlockClos
     await migrateTestDb();
   });
   beforeEach(async () => {
-    process.env.PAYROLL_UNLOCK_ENABLED = 'true';
     await resetDb();
     base = await seedBase();
+    // The gate is a per-tenant row now, not a process-wide env flag (ADR-0077 slice 3). It has to be
+    // written EXPLICITLY: `payroll.unlock_enabled` has catalog default `false`, so the freshly seeded
+    // tenant carries no row and unlock is off. Being per-tenant, it also cannot leak into other files
+    // sharing this worker — which is what the old `delete process.env.…` in afterAll was guarding.
+    await setSetting(base.tenantId, 'payroll.unlock_enabled', true);
   });
   afterAll(async () => {
-    delete process.env.PAYROLL_UNLOCK_ENABLED; // don't leak the gate into other test files (shared worker)
     await closeAll();
   });
 
   it('a. a blank / undefined reason is rejected before the flip; batch stays closed, nothing audited', async () => {
     const batchId = await closedBatch('2026-05');
-    const su = superCtx();
+    const su = await superCtx();
 
     // Whitespace-only reason → typed error, thrown BEFORE the status flip.
     await expect(unlockClosedBatch(su, { batchId, reason: '   ' })).rejects.toBeInstanceOf(UnlockReasonRequiredError);
@@ -135,7 +147,7 @@ describe('Unlock closed payroll — single confirm, mandatory reason (unlockClos
 
   it('b. a non-blank reason succeeds (no code): Closed → Processed, period reopened, history row + events carry the trimmed reason', async () => {
     const batchId = await closedBatch('2026-06');
-    const su = superCtx();
+    const su = await superCtx();
 
     // The single-run month cascaded its pay_period closed; the unlock reopens it through the
     // app.unlock_pay_period escape hatch (migration 0202) — no OTP, just a mandatory reason.
@@ -174,7 +186,11 @@ describe('Unlock closed payroll — single confirm, mandatory reason (unlockClos
     // proving the default only widened to the two admin roles, not to specialist/ordinary roles. (A plain
     // manager/employee can't even read the batch under RLS, so it never reaches — and can't exercise —
     // the payroll.unlock gate.)
-    const notPermitted = { ...adminCtx(base), roles: ['payroll_partner'] };
+    // Entitled (not exempt) for the same reason as superCtx: the payroll.unlock_enabled setting gate is
+    // evaluated FIRST, before the batch is even read. Through an exempt context it would read the
+    // catalog default `false` and throw ModuleNotEnabledError — so this test would go green on the
+    // wrong error and never reach the payroll.unlock permission check it exists to prove.
+    const notPermitted = await entitledCtx(base, ['payroll_partner']);
 
     await expect(unlockClosedBatch(notPermitted, { batchId, reason: 'nope' })).rejects.toBeInstanceOf(
       PayrollPermissionDeniedError,

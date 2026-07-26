@@ -1,13 +1,25 @@
 /**
  * ADR-0034 34-2 — notification dispatch + recipient reads. The sweep projects mapped domain events into
  * recipient-scoped notifications; RLS confines reads/mark-read to the recipient (A cannot see B's). Keyset
- * cursor ⇒ idempotent. Gated by NOTIFICATIONS_ENABLED.
+ * cursor ⇒ idempotent. Gated by the per-tenant `notifications` MODULE (ADR-0077 slice 3) — it used to be
+ * the NOTIFICATIONS_ENABLED deployment flag, which application code no longer reads.
  */
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  createAppUser,
+  entitledCtx,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 import type { SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { requestLeave } from '../core/leave';
@@ -55,10 +67,10 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  process.env.NOTIFICATIONS_ENABLED = 'true';
-});
-afterEach(() => {
-  delete process.env.NOTIFICATIONS_ENABLED;
+  // The whole file is the ENABLED path: grant this tenant the module explicitly rather than relying on
+  // seedBase's parity set, which narrows by the live env and so seeds no notifications row under the
+  // suite's environment. (No afterEach teardown is needed — resetDb() truncates tenant_module.)
+  await setModule(b.tenantId, 'notifications', 'active');
 });
 
 describe('notification dispatch + reads (ADR-0034 34-2)', () => {
@@ -145,12 +157,24 @@ describe('notification dispatch + reads (ADR-0034 34-2)', () => {
     expect(await unreadNotificationCount(A.ctx, A.employmentId)).toBe(1); // not duplicated
   });
 
-  it('is gated — dispatch is a no-op when NOTIFICATIONS_ENABLED is off', async () => {
+  it('is gated — dispatch is a no-op when the tenant has no `notifications` entitlement', async () => {
     const A = await makeEmployee();
     await owner.db.insert(schema.domainEvent).values(event('toil.accrued', A.employmentId, { daysCredited: 1 }));
-    delete process.env.NOTIFICATIONS_ENABLED;
-    expect(await dispatchNotifications(adminCtx(b), {})).toEqual({ processed: 0, created: 0 });
+    // Revoke: setModule(..., null) DELETES the row, and a missing row is disabled (C7) — the same state
+    // a tenant that never bought the module is in.
+    await setModule(b.tenantId, 'notifications', null);
+    // A REAL snapshot, not adminCtx: that one is `entitlementsExempt: 'harness'` and answers `true` for
+    // every catalogued module, so it structurally cannot demonstrate that a gate CLOSES. Resolved AFTER
+    // the revoke, because the snapshot is a point-in-time read.
+    expect(await dispatchNotifications(await entitledCtx(b), {})).toEqual({ processed: 0, created: 0 });
     expect(await unreadNotificationCount(A.ctx, A.employmentId)).toBe(0);
+
+    // …and the same event DOES dispatch once the entitlement is granted, so the assertion above is the
+    // gate closing rather than the sweep being inert for some unrelated reason (the cursor was never
+    // advanced by the no-op, so the event is still pending).
+    await setModule(b.tenantId, 'notifications', 'active');
+    expect((await dispatchNotifications(await entitledCtx(b), {})).created).toBe(1);
+    expect(await unreadNotificationCount(A.ctx, A.employmentId)).toBe(1);
   });
 
   // ── 34-2b producers: the remaining approval decisions + the payslip-ready fan-out ──

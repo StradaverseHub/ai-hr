@@ -14,12 +14,22 @@
  *     to NULL and overwrites overtime_amount.
  *  5. Legacy gate-off: a row with only overtimeAmount flows through generatePayslips with a golden
  *     payslip.overtimePay.
- *  6. Gate-on parity: with TYPED_PAY_COMPONENTS_ENABLED, the bucket-sum produces the same golden
- *     payslip.overtimePay.
+ *  6. Gate-on parity: with the `typed_pay_components` module entitled, the bucket-sum produces the same
+ *     golden payslip.overtimePay.
  *  7. All-zero: four zeros zero overtime_amount (a manual save can always zero OT — unchanged UX).
+ *
+ * ADR-0077 slice 3 — guards 5 and 6 are a GATE-OFF/GATE-ON pair, and the gate is now the per-tenant
+ * `typed_pay_components` entitlement (`isModuleEnabled`), not TYPED_PAY_COMPONENTS_ENABLED. That makes
+ * the CONTEXT the thing that decides: `adminCtx` is `entitlementsExempt: 'harness'` and therefore
+ * answers TRUE for every catalogued module, so under it BOTH halves would take the typed path and the
+ * parity comparison would compare the typed kernel against itself. Both halves therefore call
+ * `generatePayslips` through `entitledCtx`, a REAL snapshot resolved from this tenant's rows —
+ * point-in-time, so the ON half resolves it AFTER the setModule grant. Fixture building (hire, comp,
+ * batch, inputs, backfills) keeps the exempt `adminCtx`: none of it is gated, and that is what the
+ * marker is for.
  */
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -40,12 +50,14 @@ import {
 import {
   adminCtx,
   closeAll,
+  entitledCtx,
   eventTypesFor,
   latestEventPayload,
   migrateTestDb,
   owner,
   resetDb,
   seedBase,
+  setModule,
   type Base,
 } from './harness';
 
@@ -57,10 +69,9 @@ describe('Overtime rate split — four rate-labelled RM buckets summed into over
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-  });
-  afterEach(() => {
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+    // No gate reset needed any more: seedBase seeds NO tenant_module row for `typed_pay_components`
+    // under this suite's env, and a missing row IS disabled (C7). The gate-off test asserts that state
+    // explicitly rather than relying on it.
   });
   afterAll(async () => {
     await closeAll();
@@ -218,7 +229,12 @@ describe('Overtime rate split — four rate-labelled RM buckets summed into over
     const row = await rowOf(batchId);
     expect(row.otBreakdown).toBeNull();
 
-    await generatePayslips(a, { batchId });
+    // GATE OFF = no `typed_pay_components` row for this tenant. seedBase seeds none, so this DELETE is
+    // already a no-op; it is written out because what the test asserts is the missing-row (= disabled,
+    // C7) path, not an incidental default that could quietly change. The kernel must be driven through
+    // entitledCtx — adminCtx is entitlementsExempt and would answer TRUE, i.e. run the typed path here.
+    await setModule(base.tenantId, 'typed_pay_components', null);
+    await generatePayslips(await entitledCtx(base), { batchId });
     const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
     expect(Number(ps.overtimePay)).toBe(750);
   });
@@ -235,8 +251,10 @@ describe('Overtime rate split — four rate-labelled RM buckets summed into over
     await seedPayComponentCatalog(a);
     await backfillEmploymentComponentsFromCompensation(a);
     await backfillBatchComponentsFromInput(a, batchId);
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await generatePayslips(a, { batchId });
+    // GATE ON — an active tenant_module row, then a snapshot resolved AFTER it (point-in-time).
+    await setModule(base.tenantId, 'typed_pay_components', 'active');
+    const gated = await entitledCtx(base);
+    await generatePayslips(gated, { batchId });
 
     const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
     // The bucket sum (750) lands in overtime_amount, which is exactly the scalar the gate-on path reads.

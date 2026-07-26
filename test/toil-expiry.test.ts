@@ -4,10 +4,21 @@
  * forfeit). The floor protection is verified end-to-end: an eligible employee's TOIL converts (set at accrual),
  * never lapses. Idempotent + gated. today is injected.
  */
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  eventTypesFor,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut } from '../core/attendance';
@@ -72,10 +83,11 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  process.env.TOIL_ENABLED = 'true';
-});
-afterEach(() => {
-  delete process.env.TOIL_ENABLED;
+  // ADR-0077 slice 3: TOIL is a per-tenant entitlement, not a deployment flag. `seedBase` seeds NO
+  // `toil` row (it is absent from LEGACY_ENABLED_MODULE_CODES), and a missing row is DISABLED — so the
+  // module has to be switched on for this tenant, which is what the old `TOIL_ENABLED = 'true'` meant.
+  // No teardown counterpart is needed: `resetDb()` truncates `tenant_module` before every test.
+  await setModule(b.tenantId, 'toil', 'active');
 });
 
 describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
@@ -120,9 +132,19 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     expect((await runToilExpiry(adminCtx(b), { today: AFTER_EXPIRY })).processed).toBe(0);
   });
 
-  it('is gated — refuses when TOIL_ENABLED is off', async () => {
+  it('is gated — refuses when the tenant is not entitled to the toil module', async () => {
     await accrue(5000, { onExpiry: 'lapse' });
-    delete process.env.TOIL_ENABLED;
-    await expect(runToilExpiry(adminCtx(b), { today: AFTER_EXPIRY })).rejects.toBeInstanceOf(ToilDisabledError);
+    // `adminCtx` is entitlementsExempt ('harness'), so it answers TRUE for every catalogued module and
+    // structurally cannot demonstrate a gate closing. Drive this one through `entitledCtx`, which carries a
+    // REAL snapshot resolved from this tenant's rows.
+    await expect(runToilExpiry(await entitledCtx(b), { today: AFTER_EXPIRY })).resolves.toMatchObject({
+      processed: 1,
+      lapsed: 1,
+    });
+    // Now revoke the entitlement (no row ⇒ disabled, C7) and re-resolve — the snapshot is point-in-time.
+    await setModule(b.tenantId, 'toil', null);
+    const revoked = await entitledCtx(b);
+    // Nothing is left to sweep, so an OPEN gate would return processed: 0 here. Only the closed gate throws.
+    await expect(runToilExpiry(revoked, { today: AFTER_EXPIRY })).rejects.toBeInstanceOf(ToilDisabledError);
   });
 });

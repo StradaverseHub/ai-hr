@@ -29,10 +29,12 @@ import {
   adminCtx,
   closeAll,
   createAppUser,
+  entitledCtx,
   latestEventPayload,
   migrateTestDb,
   resetDb,
   seedBase,
+  setModule,
   type Base,
 } from './harness';
 
@@ -388,39 +390,46 @@ describe('1.2.4 Zakat Deduction', () => {
 
   // ── 9. Multi-cycle (ADR-0024) — no double-apply ───────────────────────────────
   it('multi-cycle: an additional bonus run does not double-apply zakat', async () => {
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    try {
-      const a = adminCtx(base);
-      const e = await hire(a, base, 'Zakat Multi');
-      await setCompensation(a, { employmentId: e.employmentId, basicSalary: 6000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
-      await setStatutoryProfileMY(a, {
-        personId: e.personId,
-        icNumber: '900101010020',
-        zakatActive: true,
-        zakatMethod: 'fixed',
-        zakatFixed: 90,
-      });
+    // ADR-0077 slice 3: the gate is the `multi_cycle_payroll` MODULE ENTITLEMENT, not
+    // MULTI_CYCLE_PAYROLL_ENABLED. seedBase seeds NO row for it (it narrows the parity set by the live
+    // env and test/env.ts deletes the flag), and a missing row is DISABLED (C7) — so this test states
+    // its own grant, and there is nothing to tear down afterwards because resetDb truncates the row.
+    //
+    // Driven through `entitledCtx`, NOT `adminCtx`: adminCtx carries `entitlementsExempt: 'harness'`,
+    // which answers TRUE for every catalogued module, so the grant below would be ignored and the gate
+    // would not be what lets createAdditionalRun through. It also matters for the FIGURES — under an
+    // exempt context `typed_pay_components` reads ON too, moving generatePayslips off the legacy
+    // earnings path this file's zakat/PCB expectations were written against. The grant must be written
+    // BEFORE the context is built, because the snapshot is point-in-time.
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(base);
+    const e = await hire(a, base, 'Zakat Multi');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 6000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, {
+      personId: e.personId,
+      icNumber: '900101010020',
+      zakatActive: true,
+      zakatMethod: 'fixed',
+      zakatFixed: 90,
+    });
 
-      const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' });
-      await generatePayslips(a, { batchId: reg.batchId });
-      const bonus = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-06', runType: 'bonus' });
-      await generatePayslips(a, { batchId: bonus.batchId });
+    const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' });
+    await generatePayslips(a, { batchId: reg.batchId });
+    const bonus = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-06', runType: 'bonus' });
+    await generatePayslips(a, { batchId: bonus.batchId });
 
-      const slips = await withTenant(a, (tx) =>
-        tx
-          .select({ runType: schema.payrollBatch.runType, statutory: schema.payslip.statutory })
-          .from(schema.payslip)
-          .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payslip.batchId))
-          .where(and(eq(schema.payslip.employmentId, e.employmentId), eq(schema.payrollBatch.payPeriod, '2026-06'))),
-      );
-      const regSt = slips.find((s) => s.runType === 'regular')!.statutory as Record<string, number>;
-      const bonusSt = slips.find((s) => s.runType === 'bonus')!.statutory as Record<string, number>;
-      // Zakat rides the regular run; the additional run carries the manual-input zakat (0 here) — not 90 again.
-      expect(Number(regSt.zakat)).toBe(90);
-      expect(Number(bonusSt.zakat ?? 0)).toBe(0);
-    } finally {
-      delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
-    }
+    const slips = await withTenant(a, (tx) =>
+      tx
+        .select({ runType: schema.payrollBatch.runType, statutory: schema.payslip.statutory })
+        .from(schema.payslip)
+        .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payslip.batchId))
+        .where(and(eq(schema.payslip.employmentId, e.employmentId), eq(schema.payrollBatch.payPeriod, '2026-06'))),
+    );
+    const regSt = slips.find((s) => s.runType === 'regular')!.statutory as Record<string, number>;
+    const bonusSt = slips.find((s) => s.runType === 'bonus')!.statutory as Record<string, number>;
+    // Zakat rides the regular run; the additional run carries the manual-input zakat (0 here) — not 90 again.
+    expect(Number(regSt.zakat)).toBe(90);
+    expect(Number(bonusSt.zakat ?? 0)).toBe(0);
   });
 
   // ── 10. RLS ───────────────────────────────────────────────────────────────────

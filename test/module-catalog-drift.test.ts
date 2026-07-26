@@ -474,31 +474,47 @@ const SLICE3_ENV_GATE_WORKLIST: Readonly<Record<string, readonly string[]>> = {
   'delegation-global.test.ts': ['NOTIFICATIONS_ENABLED'],
   'employee-pay-structure.test.ts': ['TOIL_ENABLED', 'TYPED_PAY_COMPONENTS_ENABLED'],
   'employment-review.test.ts': ['NOTIFICATIONS_ENABLED'],
-  'feedback-plan.test.ts': ['FEEDBACK_AI_PLANNING_ENABLED'],
+  // 'feedback-plan.test.ts' — CONVERTED (slice 3): it now writes the `feedback.ai_planning_enabled`
+  // setting with setSetting() and drives the agent through entitledCtx instead of writing
+  // FEEDBACK_AI_PLANNING_ENABLED, so it no longer deviates from seedBase's baseline.
   'fix6-correctness.test.ts': ['TOIL_ENABLED'],
   'fixed-transaction-action.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
   'fixed-transaction.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
   'hr-admin-leave-cancellation.test.ts': ['NOTIFICATIONS_ENABLED'],
-  'hrdf-subject.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED', 'PAYROLL_RESET_ENABLED'],
+  // 'hrdf-subject.test.ts' — CONVERTED (slice 3): (e)/(j) now grant the `multi_cycle_payroll` module
+  // with setModule() and (i) grants the `payroll.reset_enabled` setting with setSetting(), and every
+  // payslip-generating test drives entitledCtx so those rows (and the ABSENT typed_pay_components row)
+  // actually decide the outcome.
   'leave-edit-cancel-by-status.test.ts': ['NOTIFICATIONS_ENABLED'],
   'leave-year-config.test.ts': ['AUDIT_HASH_CHAIN_ENABLED'],
   'loans-lifecycle.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
   'loans-payroll.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
   'multicycle-kernel.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
-  'notifications.test.ts': ['NOTIFICATIONS_ENABLED'],
-  'overtime-provenance.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
-  'overtime-rate-split.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
+  // 'notifications.test.ts' — CONVERTED (slice 3): it now grants the `notifications` module with
+  // setModule() in beforeEach and revokes it (row DELETE) in the gate test, driving the closed gate
+  // through entitledCtx, so it no longer writes NOTIFICATIONS_ENABLED.
+  // 'overtime-provenance.test.ts' — CONVERTED (slice 3): the typed-components gate is now the ABSENCE
+  // of a tenant_module row (an explicit setModule(..., null) in beforeEach), and the two payslip guards
+  // drive generatePayslips through entitledCtx so that missing row actually decides the earnings path.
+  // 'overtime-rate-split.test.ts' — CONVERTED (slice 3): its gate-off/gate-on pair now sets the
+  // `typed_pay_components` module row with setModule() and drives generatePayslips through
+  // entitledCtx, so it no longer writes TYPED_PAY_COMPONENTS_ENABLED.
   'pay-component-1a.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
   'payroll-basic-fallback.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
   'payroll-basic-source.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
   'payroll-cycle.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
-  'payroll-draft-delete.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED', 'PAYROLL_RESET_ENABLED'],
+  // 'payroll-draft-delete.test.ts' — CONVERTED (slice 3): test d grants the `multi_cycle_payroll`
+  // module with setModule() and test f grants `payroll.reset_enabled` with setSetting(), both driven
+  // through entitledCtx so the row (not an exempt context) is what decides the gate. Neither writes
+  // process.env any more.
   'payroll-draft-resume.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
-  'payroll-individual-txn.test.ts': [
-    'INDIVIDUAL_TXN_PAY_ENABLED',
-    'MULTI_CYCLE_PAYROLL_ENABLED',
-    'TYPED_PAY_COMPONENTS_ENABLED',
-  ],
+  // 'payroll-individual-txn.test.ts' — CONVERTED (slice 3): all three gates are now rows. The outer
+  // beforeEach writes `payroll.individual_txn_pay_enabled` false with setSetting() and clears the
+  // `typed_pay_components` row with setModule(..., null); the Phase-3 anchor grants both and the two
+  // multi-cycle tests grant `multi_cycle_payroll`. Every assertion that depends on a gate's VALUE runs
+  // through entitledCtx, because the exempt adminCtx reads settings as catalog defaults and answers
+  // TRUE for every module — under it the gate-off guard, the component-required refusals and the
+  // typed-components fail-closed branch would all be unreachable.
   'payroll-net-floor.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
   'payroll-process-wizard.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
   'payroll-reset-reason.test.ts': ['PAYROLL_RESET_ENABLED'],
@@ -510,13 +526,16 @@ const SLICE3_ENV_GATE_WORKLIST: Readonly<Record<string, readonly string[]>> = {
   'pcb-classification.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
   'performance-lifecycle.test.ts': ['NOTIFICATIONS_ENABLED'],
   'probation-review-enhancements.test.ts': ['NOTIFICATIONS_ENABLED'],
-  'replacement-leave-controls.test.ts': ['TOIL_ENABLED'],
+  // 'replacement-leave-controls.test.ts' — CONVERTED (slice 3): it now grants/revokes the `toil` module
+  // with setModule() instead of writing TOIL_ENABLED, so it no longer deviates from seedBase's baseline.
   'shift-differential.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
   'toil-expiry.test.ts': ['TOIL_ENABLED'],
   'toil-floor-guard.test.ts': ['TOIL_ENABLED'],
   'toil.test.ts': ['TOIL_ENABLED'],
   'typed-components-compat.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
-  'zakat.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
+  // 'zakat.test.ts' — CONVERTED (slice 3): its multi-cycle no-double-apply test now grants the
+  // `multi_cycle_payroll` module with setModule() and drives the run through entitledCtx instead of
+  // writing MULTI_CYCLE_PAYROLL_ENABLED, so it no longer deviates from seedBase's baseline.
 };
 
 describe('the env-gate divergence between seedBase and the suite', () => {

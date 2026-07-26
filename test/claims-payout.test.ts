@@ -4,6 +4,23 @@
  *                   (PCB/EPF/SOCSO/EIS), marked paid when the batch processes.
  *   • non-taxable → off-cycle reimbursement: list due, export bank CSV, mark paid.
  * Plus the equivalence guarantee: no prefilled claims ⇒ payroll is unperturbed.
+ *
+ * ADR-0077 slice 3 — WHY THIS FILE DRIVES `entitledCtx`, NOT `adminCtx`.
+ * This file writes no feature-gate env var and never did. It broke anyway, because the payslip
+ * assertions below are only true on the LEGACY earnings path, and which path `generatePayslips` takes
+ * is now decided by `isModuleEnabled(ctx, 'typed_pay_components')` instead of
+ * `process.env.TYPED_PAY_COMPONENTS_ENABLED`. Those two do NOT agree for the fixture admin context:
+ * test/env.ts deletes the env var (so the old read was false), while `adminCtx` carries
+ * `entitlementsExempt: 'harness'` and an exempt context answers TRUE for every catalogued module — so
+ * `adminCtx` silently switches the typed-component path ON, and the typed fold reads neither
+ * `compensation.monthly_allowance` nor `payroll_input.claim_allowance` (core/payroll.ts `earningsOf`),
+ * making the allowance/gross/EPF figures 0 / basic-only.
+ *
+ * The tenant's DATA says the opposite and is what these tests mean: `seedBase` seeds no
+ * `tenant_module` row for `typed_pay_components` (LEGACY_MODULE_ENV_GATES gates it on the same env var
+ * test/env.ts deletes), and a missing row is disabled (C7). `entitledCtx` resolves a REAL snapshot from
+ * those rows, so the legacy path is exercised exactly as before and every assertion below is unchanged.
+ * `claims` and `payroll` are both seeded active, so nothing else in this flow closes.
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -21,7 +38,7 @@ import {
 import { setCompensation } from '../core/comp';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { hireEmployee } from '../core/org';
-import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { closeAll, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const hire = (ctx: SessionContext, b: Base, name: string) =>
   hireEmployee(ctx, {
@@ -67,7 +84,7 @@ describe('ADR-0021 — claim payout', () => {
   });
 
   it('equivalence: no prefilled claims ⇒ payroll is unperturbed', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'NoClaim');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 500, effectiveFrom: '2026-01-01' });
     // A taxable claim exists and is even approved — but is NEVER prefilled onto the batch.
@@ -91,7 +108,7 @@ describe('ADR-0021 — claim payout', () => {
   });
 
   it('prefills an approved taxable claim onto the batch → taxable allowance base + marked paid', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'Taxable');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     const { id: typeId } = await createClaimType(a, { code: 'PHONE', name: 'Phone allowance', defaultTaxable: true, requiresReceipt: false });
@@ -124,7 +141,7 @@ describe('ADR-0021 — claim payout', () => {
   });
 
   it('prefill is idempotent and ignores non-taxable claims', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'Mixed');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     const { id: taxableType } = await createClaimType(a, { code: 'PHONE', name: 'Phone', defaultTaxable: true, requiresReceipt: false });
@@ -143,7 +160,7 @@ describe('ADR-0021 — claim payout', () => {
   });
 
   it('lists, exports and pays non-taxable reimbursements', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'Reimburse');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
     await owner.db.insert(schema.employeeStatutoryMy).values({
@@ -181,7 +198,7 @@ describe('ADR-0021 — claim payout', () => {
   });
 
   it('markReimbursementsPaid ignores taxable claims (payroll-routed)', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'WrongRoute');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
     const { id: typeId } = await createClaimType(a, { code: 'PHONE', name: 'Phone', defaultTaxable: true, requiresReceipt: false });

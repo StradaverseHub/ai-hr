@@ -30,6 +30,7 @@ import {
   isPayrollPartner,
   isPerfCompPartner,
 } from '../lib/authz';
+import { resolveEntitlementsTx } from '../core/entitlements';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { roleEnum } from '../db/schema';
 import en from '../messages/en.json';
@@ -38,6 +39,28 @@ import ms from '../messages/ms.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import vi from '../messages/vi.json';
+
+/**
+ * The tenant's REAL entitlement snapshot (ADR-0077 slice 3).
+ *
+ * Every context in this file is hand-built rather than produced by getSession(), because what it tests
+ * is a GRANT shape (a company-scoped partner role) that the fixture helpers do not express. Once slice 3
+ * moved the payroll gates off `process.env` and onto the session snapshot, a grant-only context stopped
+ * being well-formed: `generatePayslips` asks `isModuleEnabled(ctx, 'typed_pay_components')` and a context
+ * with neither a snapshot nor an exemption marker raises EntitlementsUnresolvedError.
+ *
+ * Resolved from the tenant's rows (not marked `entitlementsExempt`) ON PURPOSE. The exempt marker answers
+ * TRUE for every catalogued module, which would silently switch this payroll run from the legacy earnings
+ * path to the typed-pay-components one — a different code path from the one the RLS assertions below were
+ * written against. seedBase seeds no `typed_pay_components` row under the suite's env, so a real snapshot
+ * reproduces exactly the behaviour these tests had when the gate was an (unset) env var.
+ *
+ * Resolved as the owner, matching `entitledCtx` in the harness: what it fixtures is the snapshot, not the
+ * policies that guard the entitlement tables.
+ */
+async function tenantEntitlements(base: Base) {
+  return owner.db.transaction((tx) => resolveEntitlementsTx(tx, base.tenantId));
+}
 
 /** Grant a (company-scoped) role to a fresh app_user, returning a SessionContext carrying that grant. */
 async function partnerCtx(
@@ -53,7 +76,13 @@ async function partnerCtx(
   await owner.db
     .insert(schema.roleAssignment)
     .values({ tenantId: base.tenantId, appUserId: u.id, companyId, role });
-  return { tenantId: base.tenantId, userId: u.id, personId, grants: [{ role, companyId }] };
+  return {
+    tenantId: base.tenantId,
+    userId: u.id,
+    personId,
+    grants: [{ role, companyId }],
+    entitlements: await tenantEntitlements(base),
+  };
 }
 
 async function mkUser(base: Base): Promise<string> {
@@ -317,10 +346,13 @@ describe('job-function partner roles (ADR-0049)', () => {
       const target = await mkUser(base);
 
       // A delegated (subtree) hr_admin for Co A — NOT a group admin.
+      // Carries the real snapshot (see tenantEntitlements) so the `rejects` below can only be the RLS
+      // denial this test is about, never an EntitlementsUnresolvedError from a malformed context.
       const delegated: SessionContext = {
         tenantId: base.tenantId,
         userId: base.adminUserId,
         grants: [{ role: 'hr_admin', companyId: coA }],
+        entitlements: await tenantEntitlements(base),
       };
       // Tightened branch only allows minting subtree hr_admin → a partner mint is denied by RLS.
       await expect(
@@ -412,7 +444,12 @@ describe('job-function partner roles (ADR-0049)', () => {
     it('a plain employee (no partner grant) sees neither company employment', async () => {
       const { empA, empB } = await twoCompanies();
       const empUserId = await mkUser(base);
-      const empCtx: SessionContext = { tenantId: base.tenantId, userId: empUserId, grants: [{ role: 'employee', companyId: null }] };
+      const empCtx: SessionContext = {
+        tenantId: base.tenantId,
+        userId: empUserId,
+        grants: [{ role: 'employee', companyId: null }],
+        entitlements: await tenantEntitlements(base),
+      };
       expect(await employeeDetail(empCtx, empA.employmentId)).toBeNull();
       expect(await employeeDetail(empCtx, empB.employmentId)).toBeNull();
     });

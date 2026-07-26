@@ -25,6 +25,29 @@
  * levy; (k) the corrective step reclassifies only the provably-accidental No rows (log-discriminated),
  * leaves a deliberate No alone, and a corrected employee's next run generates HRDF. (e) additionally
  * asserts the batch total, and (f)/(g) now assert the three-option select contract ('' / yes / no).
+ *
+ * ── ADR-0077 slice 3 — CONTEXTS, and why most of this file moved off `adminCtx` ──────────────────────
+ * The two deployment flags this file used to write (MULTI_CYCLE_PAYROLL_ENABLED for (e)/(j),
+ * PAYROLL_RESET_ENABLED for (i)) are per-tenant entitlement rows now, so the writes went to nothing.
+ * Replacing them is not just a helper swap, because of WHICH CONTEXT reads them:
+ *
+ *   • `adminCtx` carries `entitlementsExempt: 'harness'`. An exempt context answers TRUE for every
+ *     catalogued MODULE and reads every SETTING as its catalog default. So a `setModule` fixture behind
+ *     it is silently ignored, and `payroll.reset_enabled` (catalog default false) can never be opened.
+ *   • Worse for THIS file's arithmetic: exempt also turns `typed_pay_components` ON, which moves the
+ *     earnings source from compensation+payroll_input to the pay-component tables. Nothing here seeds a
+ *     component row, so `setCompensation`'s monthlyAllowance would vanish from the HRDF base and every
+ *     signed-off figure below (45.00 on 4000+500, 16.00 on 3000+200, the 90.00 batch total) would
+ *     silently drop to the basic-only number. That is exactly the "green for the wrong reason" failure.
+ *   • `entitledCtx` resolves a REAL snapshot from this tenant's rows. `seedBase` seeds the parity set
+ *     narrowed by the live env (payroll/attendance/claims/performance active; NO multi_cycle_payroll,
+ *     NO typed_pay_components, NO settings — test/env.ts deletes those flags), which reproduces the
+ *     pre-slice-3 deployment state this file's figures were signed off against, exactly.
+ *
+ * Every test that GENERATES PAYSLIPS therefore drives `entitledCtx`, taken AFTER the setModule/setSetting
+ * that decides its outcome (the snapshot is point-in-time, like a real session). (f)/(f2) touch no gate
+ * and no payroll, so they keep `adminCtx` — as does the module-level `ADMIN` the server action resolves
+ * through, whose path (setOthersStatutoryMY) has no entitlement check at all.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -51,7 +74,19 @@ import {
 } from '../core/payroll';
 import { hireEmployee } from '../core/org';
 import { setOthersStatutoryAction } from '../app/admin/personnel/[employmentId]/actions';
-import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  latestEventPayload,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  setSetting,
+  type Base,
+} from './harness';
 
 // requireAdmin() (Clerk/session) is unavailable in the harness — return the seeded admin ctx.
 let ADMIN: ReturnType<typeof adminCtx>;
@@ -179,7 +214,9 @@ describe('Others Statutory — kernel + card behaviour (0df0c635)', () => {
   };
 
   it('(b) default-null parity: a mandatory company with an untouched flag pays exactly the pre-change levy, with NO snapshot key', async () => {
-    const a = adminCtx(base);
+    // Real snapshot, not the exempt `adminCtx`: parity is the whole point of this test, and an exempt
+    // context would switch `typed_pay_components` on and drop the RM500 allowance out of the HRDF base.
+    const a = await entitledCtx(base);
     await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'mandatory' });
     const e = await hire(a, 'Hrdf Null');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 500, effectiveFrom: '2026-01-01' });
@@ -198,7 +235,7 @@ describe('Others Statutory — kernel + card behaviour (0df0c635)', () => {
   });
 
   it('(c) explicit exclude zeroes the employee\'s levy: payslip, batch total, and employer cost all drop it', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'mandatory' });
     const e = await hire(a, 'Hrdf Excluded');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 500, effectiveFrom: '2026-01-01' });
@@ -220,7 +257,7 @@ describe('Others Statutory — kernel + card behaviour (0df0c635)', () => {
   });
 
   it('(d) explicit include under optional status: the levy stays at the optional 0.5% band and is snapshotted', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'optional' });
     const e = await hire(a, 'Hrdf Included');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 3000, monthlyAllowance: 200, effectiveFrom: '2026-01-01' });
@@ -237,41 +274,39 @@ describe('Others Statutory — kernel + card behaviour (0df0c635)', () => {
   });
 
   it('(e) additional-run zero regression: a bonus run charges no HRDF even for an explicitly-subject employee', async () => {
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    try {
-      const a = adminCtx(base);
-      await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'mandatory' });
-      const e = await hire(a, 'Hrdf Multi');
-      await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
-      await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015033' });
-      await setOthersStatutoryMY(a, { personId: e.personId, subjectToHrdf: true });
+    // The bonus run needs the multi-cycle gate OPEN — a per-tenant entitlement row now, granted before
+    // the snapshot is taken (a grant written after `entitledCtx` would not be in it).
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(base);
+    await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'mandatory' });
+    const e = await hire(a, 'Hrdf Multi');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015033' });
+    await setOthersStatutoryMY(a, { personId: e.personId, subjectToHrdf: true });
 
-      const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-      await generatePayslips(a, { batchId: reg.batchId });
-      const bonus = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' });
-      await generatePayslips(a, { batchId: bonus.batchId });
+    const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId: reg.batchId });
+    const bonus = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' });
+    await generatePayslips(a, { batchId: bonus.batchId });
 
-      const slips = await withTenant(a, (tx) =>
-        tx
-          .select({ runType: schema.payrollBatch.runType, statutory: schema.payslip.statutory })
-          .from(schema.payslip)
-          .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payslip.batchId))
-          .where(and(eq(schema.payslip.employmentId, e.employmentId), eq(schema.payrollBatch.payPeriod, '2026-05'))),
-      );
-      const regSt = slips.find((s) => s.runType === 'regular')!.statutory as Record<string, number>;
-      const bonusSt = slips.find((s) => s.runType === 'bonus')!.statutory as Record<string, number>;
-      expect(regSt.hrdf).toBeCloseTo(50, 2); // 1% of 5000, regular run only
-      expect(bonusSt.hrdf ?? 0).toBe(0);
-      // 57840a6e — the BATCH total is zeroed too, not just the slip: an off-cycle/bonus run producing no
-      // HRDF is by design (isAdditionalRun), never a symptom of a mis-set rate. Guards both zeroing sites.
-      const [bonusBatch] = await owner.db
-        .select()
-        .from(schema.payrollBatch)
-        .where(eq(schema.payrollBatch.id, bonus.batchId));
-      expect((bonusBatch.totals as Record<string, number>).hrdfEmployer).toBe(0);
-    } finally {
-      delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
-    }
+    const slips = await withTenant(a, (tx) =>
+      tx
+        .select({ runType: schema.payrollBatch.runType, statutory: schema.payslip.statutory })
+        .from(schema.payslip)
+        .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payslip.batchId))
+        .where(and(eq(schema.payslip.employmentId, e.employmentId), eq(schema.payrollBatch.payPeriod, '2026-05'))),
+    );
+    const regSt = slips.find((s) => s.runType === 'regular')!.statutory as Record<string, number>;
+    const bonusSt = slips.find((s) => s.runType === 'bonus')!.statutory as Record<string, number>;
+    expect(regSt.hrdf).toBeCloseTo(50, 2); // 1% of 5000, regular run only
+    expect(bonusSt.hrdf ?? 0).toBe(0);
+    // 57840a6e — the BATCH total is zeroed too, not just the slip: an off-cycle/bonus run producing no
+    // HRDF is by design (isAdditionalRun), never a symptom of a mis-set rate. Guards both zeroing sites.
+    const [bonusBatch] = await owner.db
+      .select()
+      .from(schema.payrollBatch)
+      .where(eq(schema.payrollBatch.id, bonus.batchId));
+    expect((bonusBatch.totals as Record<string, number>).hrdfEmployer).toBe(0);
   });
 
   it('(f) card save round-trip: the action updates ONLY subject_to_hrdf, leaves the rest intact, and fires employee.others-statutory.updated', async () => {
@@ -367,76 +402,73 @@ describe('Others Statutory — kernel + card behaviour (0df0c635)', () => {
 
   // ── Feedback 57840a6e — "HRDF not calculated after payroll processing" ────────────────────────────────
   it('(i) rate set AFTER processing: reset-to-draft + full reprocess recalculates the levy from the CURRENT company rate', async () => {
-    process.env.PAYROLL_RESET_ENABLED = 'true';
-    try {
-      const a = adminCtx(base);
-      // The company processed its run while still on "No Contribution" — the most common cause of the
-      // reported zero.
-      await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'not_registered' });
-      const e = await hire(a, 'Hrdf Late Rate');
-      await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 500, effectiveFrom: '2026-01-01' });
-      await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015040' });
+    // `resetProcessedBatch` is gated on the `payroll.reset_enabled` SETTING now. Its catalog default is
+    // false and `seedBase` seeds no row, so the tenant must be granted it explicitly — exactly as an
+    // operator would — BEFORE the snapshot is resolved.
+    await setSetting(base.tenantId, 'payroll.reset_enabled', true);
+    const a = await entitledCtx(base);
+    // The company processed its run while still on "No Contribution" — the most common cause of the
+    // reported zero.
+    await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'not_registered' });
+    const e = await hire(a, 'Hrdf Late Rate');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 500, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015040' });
 
-      const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-      await generatePayslips(a, { batchId });
-      expect(st(await payslipFor(batchId)).hrdf).toBe(0);
-      let [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
-      expect((batch.totals as Record<string, number>).hrdfEmployer).toBe(0);
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId });
+    expect(st(await payslipFor(batchId)).hrdf).toBe(0);
+    let [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+    expect((batch.totals as Record<string, number>).hrdfEmployer).toBe(0);
 
-      // HR then sets the rate on Organization > Statutory.
-      await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'mandatory' });
+    // HR then sets the rate on Organization > Statutory.
+    await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'mandatory' });
 
-      // Revert to draft and reprocess — generatePayslips re-reads hrdf_status on EVERY run, so the levy
-      // appears without any further action.
-      await resetProcessedBatch(a, { batchId, reason: 'HRDF rate configured after processing' });
-      await generatePayslips(a, { batchId });
+    // Revert to draft and reprocess — generatePayslips re-reads hrdf_status on EVERY run, so the levy
+    // appears without any further action.
+    await resetProcessedBatch(a, { batchId, reason: 'HRDF rate configured after processing' });
+    await generatePayslips(a, { batchId });
 
-      expect(st(await payslipFor(batchId)).hrdf).toBeCloseTo(45, 2);
-      [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
-      expect((batch.totals as Record<string, number>).hrdfEmployer).toBeCloseTo(45, 2);
-    } finally {
-      delete process.env.PAYROLL_RESET_ENABLED;
-    }
+    expect(st(await payslipFor(batchId)).hrdf).toBeCloseTo(45, 2);
+    [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+    expect((batch.totals as Record<string, number>).hrdfEmployer).toBeCloseTo(45, 2);
   });
 
   it('(j) SUBSET reprocess after a rate change moves the batch total by exactly the selected employees\' levy', async () => {
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    try {
-      const a = adminCtx(base);
-      await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'not_registered' });
-      const picked = await hire(a, 'Hrdf Subset One');
-      const other = await hire(a, 'Hrdf Subset Two');
-      for (const [i, e] of [picked, other].entries()) {
-        await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 500, effectiveFrom: '2026-01-01' });
-        await setStatutoryProfileMY(a, { personId: e.personId, icNumber: `90010101504${i + 1}` });
-      }
-
-      const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-      await generatePayslips(a, { batchId });
-      const [before] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
-      expect((before.totals as Record<string, number>).hrdfEmployer).toBe(0);
-
-      await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'mandatory' });
-      await reprocessSelectedEmployees(a, {
-        batchId,
-        employmentIds: [picked.employmentId],
-        reason: 'HRDF rate configured after processing',
-      });
-
-      const slips = await slipsByEmp(batchId);
-      expect(st(slips.get(picked.employmentId)!).hrdf).toBeCloseTo(45, 2);
-      // The untouched employee's slip is not recomputed — the subset path must not silently widen.
-      expect(st(slips.get(other.employmentId)!).hrdf).toBe(0);
-      const [after] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
-      // Delta-updated totals: 0 → exactly the selected employee's new levy.
-      expect((after.totals as Record<string, number>).hrdfEmployer).toBeCloseTo(45, 2);
-    } finally {
-      delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
+    // `reprocessSelectedEmployees` sits behind the same `multi_cycle_payroll` module gate as
+    // `createAdditionalRun` (core/payroll.ts) — granted to this tenant before the snapshot is taken.
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(base);
+    await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'not_registered' });
+    const picked = await hire(a, 'Hrdf Subset One');
+    const other = await hire(a, 'Hrdf Subset Two');
+    for (const [i, e] of [picked, other].entries()) {
+      await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 500, effectiveFrom: '2026-01-01' });
+      await setStatutoryProfileMY(a, { personId: e.personId, icNumber: `90010101504${i + 1}` });
     }
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId });
+    const [before] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+    expect((before.totals as Record<string, number>).hrdfEmployer).toBe(0);
+
+    await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'mandatory' });
+    await reprocessSelectedEmployees(a, {
+      batchId,
+      employmentIds: [picked.employmentId],
+      reason: 'HRDF rate configured after processing',
+    });
+
+    const slips = await slipsByEmp(batchId);
+    expect(st(slips.get(picked.employmentId)!).hrdf).toBeCloseTo(45, 2);
+    // The untouched employee's slip is not recomputed — the subset path must not silently widen.
+    expect(st(slips.get(other.employmentId)!).hrdf).toBe(0);
+    const [after] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+    // Delta-updated totals: 0 → exactly the selected employee's new levy.
+    expect((after.totals as Record<string, number>).hrdfEmployer).toBeCloseTo(45, 2);
   });
 
   it('(k) corrective step: an accidental No (written while not_registered) is reset to follow-default and pays the levy; a deliberate No is left alone', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'not_registered' });
     const accidental = await hire(a, 'Hrdf Accidental');
     const deliberate = await hire(a, 'Hrdf Deliberate');

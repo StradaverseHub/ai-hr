@@ -7,12 +7,25 @@
  *  - active-vs-expired ledger read reconciles to the netted leaveBalances figure;
  *  - year-end rollover: expire-unless-configured, frozen carry-forward, idempotent close marker, ORP owed event;
  *  - payroll interaction: a converted day is not also paid as cash OT.
- * Gated by TOIL_ENABLED. today/asOf are injected.
+ * Gated by the `toil` MODULE ENTITLEMENT (ADR-0077 slice 3 — no longer the TOIL_ENABLED env flag).
+ * today/asOf are injected.
  */
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, eventTypesFor, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  eventTypesFor,
+  latestEventPayload,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection } from '../core/attendance';
@@ -107,10 +120,11 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  process.env.TOIL_ENABLED = 'true';
-});
-afterEach(() => {
-  delete process.env.TOIL_ENABLED;
+  // TOIL is a per-tenant entitlement now. seedBase seeds NO `toil` row (it is not in the parity set), so
+  // this file has to grant it explicitly — the row, not an env var, is what a real session resolves.
+  // `attendance` (toil's dependsOn) is already active from seedBase, so this genuinely resolves ON for a
+  // non-exempt context; the `Gate (step 9)` block below proves that both ways.
+  await setModule(b.tenantId, 'toil', 'active');
 });
 
 describe('RL consumption → register (step 0)', () => {
@@ -339,9 +353,22 @@ describe('Coordination (step 7)', () => {
 });
 
 describe('Gate (step 9)', () => {
-  it('closeReplacementLeaveYear refuses when TOIL_ENABLED is unset', async () => {
+  // Driven through `entitledCtx` (a REAL resolved snapshot), not `adminCtx`: the fixture admin context is
+  // `entitlementsExempt: 'harness'`, which answers true for every catalogued module, so it structurally
+  // cannot show a gate CLOSING. Both directions are asserted so the refusal below cannot be passing for
+  // some unrelated reason.
+  it('closeReplacementLeaveYear refuses when the tenant has no `toil` entitlement', async () => {
     await accrueRestDay(5000);
-    delete process.env.TOIL_ENABLED;
-    await expect(closeReplacementLeaveYear(adminCtx(b), { asOf: '2026-12-31' })).rejects.toBeInstanceOf(ToilDisabledError);
+    await setModule(b.tenantId, 'toil', null); // delete the row — a missing row IS disabled (C7)
+    const ctx = await entitledCtx(b); // snapshot resolved AFTER the revoke
+    await expect(closeReplacementLeaveYear(ctx, { asOf: '2026-12-31' })).rejects.toBeInstanceOf(ToilDisabledError);
+  });
+
+  it('and admits the same call when the tenant IS entitled', async () => {
+    await accrueRestDay(5000);
+    const ctx = await entitledCtx(b); // `toil` active (beforeEach) + `attendance` active (seedBase)
+    const r = await closeReplacementLeaveYear(ctx, { asOf: '2026-12-31' });
+    expect(r.alreadyClosed).toBe(false);
+    expect(r.processed).toBe(1);
   });
 });

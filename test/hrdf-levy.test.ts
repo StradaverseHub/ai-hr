@@ -5,6 +5,20 @@
  *     cost; the HRDF base is basic + FIXED allowance net of unpaid leave — NOT the EPF/SOCSO wage
  *     (overtime and bonus are excluded); and a not-registered company is byte-identical to pre-HRDF.
  * Sourced + re-verified in docs/wave2-payroll-design.md.
+ *
+ * ADR-0077 slice 3 — WHY THIS FILE DRIVES THE KERNEL THROUGH `entitledCtx`, NOT `adminCtx`.
+ * Every assertion below is about the LEGACY earnings path: the HRDF base is `compensation.basic +
+ * compensation.monthly_allowance`, and overtime/bonus come from `payroll_input`. That path is selected
+ * by `typed_pay_components` being OFF (core/payroll.ts `earningsOf`) — under the typed path the kernel
+ * reads the component tables instead, and a tenant with no `employment_pay_component` rows would
+ * contribute a ZERO allowance, silently turning the 4500 base into 4000 and the 3200 base into 3000.
+ * The gate used to be `process.env.TYPED_PAY_COMPONENTS_ENABLED`, which test/env.ts deletes, so
+ * `adminCtx` was fine. It is now a per-tenant entitlement, and `adminCtx` is
+ * `entitlementsExempt: 'harness'` — an exempt context answers TRUE for every catalogued module, so it
+ * would put this file on the TYPED path and break the very arithmetic it exists to pin.
+ * `entitledCtx` resolves a REAL snapshot from this tenant's rows; seedBase seeds no
+ * `typed_pay_components` row (it is not in this process's parity set), and a missing row is disabled
+ * (C7), so the legacy path is genuinely selected. Not a weakening: no assertion changed.
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -15,7 +29,7 @@ import { setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { setCompensation } from '../core/comp';
 import { createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { hireEmployee } from '../core/org';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const hire = (ctx: SessionContext, b: Base, name: string) =>
   hireEmployee(ctx, {
@@ -68,7 +82,7 @@ describe('Wave 2A — HRDF in the payroll kernel', () => {
   });
 
   it('not-registered company ⇒ no levy, byte-identical to pre-HRDF', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(a, base, 'NoHrdf');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 500, effectiveFrom: '2026-01-01' });
 
@@ -82,7 +96,7 @@ describe('Wave 2A — HRDF in the payroll kernel', () => {
   });
 
   it('mandatory (1%): levy = 1% of basic + fixed allowance; on the payslip, batch total, and employer cost', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'mandatory' });
     const e = await hire(a, base, 'Hrdf1');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 500, effectiveFrom: '2026-01-01' });
@@ -104,7 +118,7 @@ describe('Wave 2A — HRDF in the payroll kernel', () => {
   });
 
   it('optional (0.5%): HRDF base EXCLUDES overtime and bonus (unlike the SOCSO/PCB base)', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'optional' });
     const e = await hire(a, base, 'Hrdf2');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 3000, monthlyAllowance: 200, effectiveFrom: '2026-01-01' });

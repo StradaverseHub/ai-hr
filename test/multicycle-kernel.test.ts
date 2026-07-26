@@ -5,16 +5,24 @@
  *   - the regular run is normal remuneration; the bonus run is additional remuneration (Steps 1–5);
  *   - SOCSO/EIS are charged ONCE (only the regular run); the bonus run adds RM0 (Act 4 s.6(7)/6(9));
  *   - EPF is the combined-month round-up, employer rate anchored to the normal wage.
- * Gated behind MULTI_CYCLE_PAYROLL_ENABLED, so it never runs for real payroll until the §7 sign-off.
+ * Gated behind the `multi_cycle_payroll` MODULE ENTITLEMENT (ADR-0077 slice 3 — it was the
+ * MULTI_CYCLE_PAYROLL_ENABLED deployment flag until the gate moved into `tenant_module`), so it never
+ * runs for real payroll until the §7 sign-off.
+ *
+ * BOTH TESTS DRIVE `entitledCtx`, NOT `adminCtx`. `adminCtx` carries `entitlementsExempt: 'harness'`,
+ * which answers TRUE for every catalogued module — so a `setModule` fixture behind it is silently
+ * ignored, the gate can never be shown to close, and (for the worksheet test) `typed_pay_components`
+ * would also read as ON, moving the earnings source off the legacy path this file's figures were signed
+ * off against. `entitledCtx` resolves a REAL snapshot from this tenant's rows, so the row IS the gate.
  */
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const stOf = async (batchId: string): Promise<Record<string, number>> => {
@@ -29,18 +37,21 @@ describe('Wave 2C #4 — multi-cycle kernel (ADR-0024 §7 sign-off figures)', ()
   });
   beforeEach(async () => {
     await resetDb();
+    // No module grant here: `seedBase` seeds NO `multi_cycle_payroll` row (it narrows the parity set by
+    // the live env, and test/env.ts deletes the flag), and a missing row is DISABLED (C7). Each test
+    // states its own gate — on via `setModule(..., 'active')`, off by leaving the row absent — so the
+    // per-test grant is visible at the assertion it supports rather than hidden in a shared hook.
     base = await seedBase();
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-  });
-  afterEach(() => {
-    delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
   });
   afterAll(async () => {
     await closeAll();
   });
 
   it('May RM5,000 regular + RM10,000 bonus: per-run deltas reproduce the §7 worksheet and sum to the month', async () => {
-    const a = adminCtx(base);
+    // Gate ON for this tenant — the entitlement row IS what createAdditionalRun now reads.
+    // `entitledCtx` snapshots point-in-time, so the grant must be written BEFORE the context is built.
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(base);
     const e = await hireEmployee(a, {
       person: { fullName: 'Worksheet', primaryEmail: 'ws@acme.test' },
       companyId: base.companyId,
@@ -95,9 +106,12 @@ describe('Wave 2C #4 — multi-cycle kernel (ADR-0024 §7 sign-off figures)', ()
     expect(round2(r1.epfEmployer + r2.epfEmployer)).toBe(1950);
   });
 
-  it('createAdditionalRun is GATED behind MULTI_CYCLE_PAYROLL_ENABLED', async () => {
-    delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
-    const a = adminCtx(base);
+  it('createAdditionalRun is GATED behind the multi_cycle_payroll entitlement', async () => {
+    // Gate OFF = NO row (C7: a missing row is disabled, and that is a different state from an explicit
+    // status='disabled' row). Written explicitly rather than relying on seedBase's omission, so the
+    // disabled state this test asserts is stated where it is asserted.
+    await setModule(base.tenantId, 'multi_cycle_payroll', null);
+    const a = await entitledCtx(base);
     await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await expect(
       createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' }),

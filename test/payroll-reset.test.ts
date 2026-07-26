@@ -16,7 +16,17 @@
  *   b. Guards — resetting a draft batch and a closed batch both throw BatchNotResettableError and
  *      mutate nothing; the closed-batch freeze holds even against a direct status UPDATE (0011 trigger).
  *   c. RBAC — a payroll_partner session is rejected (admin-only); the batch stays processed.
- *   d. Feature flag — PAYROLL_RESET_ENABLED off ⇒ the service refuses before touching anything.
+ *   d. Feature gate — the `payroll.reset_enabled` SETTING off ⇒ the service refuses before touching
+ *      anything. (ADR-0077 slice 3: this was the PAYROLL_RESET_ENABLED env flag; it is now a
+ *      per-tenant entitlement row.)
+ *
+ * ADR-0077 slice 3 note on CONTEXTS. `adminCtx` is `entitlementsExempt: 'harness'`, and an exempt
+ * context reads every setting as its CATALOG DEFAULT — which for `payroll.reset_enabled` is `false`
+ * (packs/catalog.ts). So the gate is unreachable through it in BOTH directions: it can never be
+ * opened, and a test "proving" it closed would be proving only that the harness is exempt. Every
+ * `resetProcessedBatch` call below therefore runs through `entitledCtx`, a REAL snapshot resolved
+ * from this tenant's rows, taken AFTER the `setSetting` that decides the outcome. `adminCtx` is kept
+ * for the setup/processing calls so the payroll behaviour under test is unchanged from before.
  */
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -38,12 +48,14 @@ import { hireEmployee } from '../core/org';
 import {
   adminCtx,
   closeAll,
+  entitledCtx,
   eventTypesFor,
   latestEventPayload,
   migrateTestDb,
   owner,
   resetDb,
   seedBase,
+  setSetting,
   type Base,
 } from './harness';
 
@@ -85,12 +97,16 @@ describe('Payroll Reset — resetProcessedBatch (DB)', () => {
     await migrateTestDb();
   });
   beforeEach(async () => {
-    process.env.PAYROLL_RESET_ENABLED = 'true';
     await resetDb();
     base = await seedBase();
+    // The gate, on, for THIS tenant. seedBase seeds no `payroll.reset_enabled` row (the suite's env has
+    // the legacy flag deleted, so legacyEnabledSettingsIn returns the empty set) and the catalog default
+    // is false — so tests a–c must turn it on explicitly, exactly as an operator would. Test d overrides
+    // it back to false. Written AFTER seedBase because it needs the tenant id; nothing leaks into other
+    // test files any more, since the state is a row in this tenant that resetDb truncates.
+    await setSetting(base.tenantId, 'payroll.reset_enabled', true);
   });
   afterAll(async () => {
-    delete process.env.PAYROLL_RESET_ENABLED; // don't leak the gate into later test files (shared worker)
     await closeAll();
   });
 
@@ -163,8 +179,9 @@ describe('Payroll Reset — resetProcessedBatch (DB)', () => {
     expect(claimAfterGen.status).toBe('paid');
     expect(claimAfterGen.payoutRef).toBe('payroll:2026-05');
 
-    // ── Reset ──
-    const res = await resetProcessedBatch(a, { batchId, reason: 'wrong OT keyed' });
+    // ── Reset ── (through a REAL snapshot: the gate is on for this tenant — see the header note)
+    const gated = await entitledCtx(base);
+    const res = await resetProcessedBatch(gated, { batchId, reason: 'wrong OT keyed' });
     expect(res).toEqual({ payslipsCleared: firstSlips.length, loanInstalmentsReversed: 1, claimsReverted: 1 });
 
     // Batch back to draft, results zeroized.
@@ -264,19 +281,22 @@ describe('Payroll Reset — resetProcessedBatch (DB)', () => {
 
   it('b. guards: draft and closed batches throw BatchNotResettableError; the 0011 trigger backstops closed even against direct SQL', async () => {
     const a = adminCtx(base);
+    // Real snapshot with the gate ON, so the STATUS guard is what these calls reach — an exempt or
+    // gate-off context would refuse earlier and this test would pass for the wrong reason.
+    const gated = await entitledCtx(base);
     await hire('Guard Reset');
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
 
     // Draft: nothing to reset. (Reason supplied so the status guard — not the mandatory-reason guard,
     // d1ed1e99 — is what fires here.)
-    await expect(resetProcessedBatch(a, { batchId, reason: 'x' })).rejects.toBeInstanceOf(BatchNotResettableError);
+    await expect(resetProcessedBatch(gated, { batchId, reason: 'x' })).rejects.toBeInstanceOf(BatchNotResettableError);
     expect((await batchRow(batchId)).status).toBe('draft');
 
     await generatePayslips(a, { batchId }); // → processed
     await closeBatch(a, { batchId }); // → closed
 
     // Closed: permanently immutable — the app guard refuses…
-    await expect(resetProcessedBatch(a, { batchId, reason: 'x' })).rejects.toBeInstanceOf(BatchNotResettableError);
+    await expect(resetProcessedBatch(gated, { batchId, reason: 'x' })).rejects.toBeInstanceOf(BatchNotResettableError);
     expect((await batchRow(batchId)).status).toBe('closed');
     const slips = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
     expect(slips.length).toBeGreaterThanOrEqual(1); // payslips untouched
@@ -307,10 +327,12 @@ describe('Payroll Reset — resetProcessedBatch (DB)', () => {
     await owner.db
       .insert(schema.roleAssignment)
       .values({ tenantId: base.tenantId, appUserId: u.id, companyId: base.companyId, role: 'payroll_partner' });
+    // The partner session carries a REAL entitlement snapshot (gate ON) — otherwise the setting read at
+    // the top of resetProcessedBatch throws EntitlementsUnresolvedError and this test would "pass" on an
+    // unresolved-context error instead of on the RBAC denial it is about.
     const partner: SessionContext = {
-      tenantId: base.tenantId,
+      ...(await entitledCtx(base, ['payroll_partner'])),
       userId: u.id,
-      roles: ['payroll_partner'],
       grants: [{ role: 'payroll_partner', companyId: base.companyId }],
     };
 
@@ -321,14 +343,17 @@ describe('Payroll Reset — resetProcessedBatch (DB)', () => {
     expect(await eventTypesFor(base.tenantId, batchId)).not.toContain('payroll-batch.reset');
   });
 
-  it('d. feature flag: PAYROLL_RESET_ENABLED off ⇒ the service refuses before touching anything', async () => {
+  it('d. feature gate: payroll.reset_enabled off ⇒ the service refuses before touching anything', async () => {
     const a = adminCtx(base);
     await hire('Flag Off');
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId });
 
-    process.env.PAYROLL_RESET_ENABLED = 'false';
-    await expect(resetProcessedBatch(a, { batchId })).rejects.toThrow(/not enabled/);
+    // Turn the tenant's setting OFF (an explicit `false` row, not a missing one — so the refusal is the
+    // gate answering, not the catalog default filling a hole), then resolve the snapshot AFTER it.
+    await setSetting(base.tenantId, 'payroll.reset_enabled', false);
+    const gated = await entitledCtx(base);
+    await expect(resetProcessedBatch(gated, { batchId })).rejects.toThrow(/not enabled/);
     expect((await batchRow(batchId)).status).toBe('processed');
   });
 });

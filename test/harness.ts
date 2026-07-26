@@ -6,6 +6,7 @@ import { createDb, client as appClient, type SessionContext } from '../db/client
 import * as schema from '../db/schema';
 import { legacyEnabledModulesIn, legacyEnabledSettingsIn } from '../packs/catalog';
 import { resolveEntitlementsTx } from '../core/entitlements';
+import type { EntitlementSnapshot } from '../core/entitlement-types';
 
 // Owner connection (postgres) — bypasses RLS, used only for setup/seed/reset.
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
@@ -340,8 +341,53 @@ export async function setSetting(tenantId: string, key: string, value: unknown):
  * everything catalogued AND reads every setting as its catalog default — so a `setSetting` fixture
  * driven through THIS context is silently ignored.
  */
+/**
+ * The snapshot `adminCtx` carries — built from the SAME two helpers `seedBase` uses to decide which
+ * rows to insert, so the context and the database cannot disagree.
+ *
+ * Synthetic and synchronous on purpose: `adminCtx` is called inline by ~247 files and cannot become
+ * async without touching all of them. It is safe precisely because it is derived, not guessed —
+ * `seedBase` inserts `legacyEnabledModulesIn(process.env)` and `legacyEnabledSettingsIn(process.env)`,
+ * and this reads the same two functions against the same env.
+ */
+function harnessSnapshot(tenantId: string): EntitlementSnapshot {
+  return {
+    // The snapshot names the tenant it belongs to — slice 2's attribution guard refuses a snapshot
+    // resolved for one tenant being asked about another.
+    tenantId,
+    enabledModules: legacyEnabledModulesIn(process.env),
+    scopedModules: {},
+    settings: Object.fromEntries(legacyEnabledSettingsIn(process.env).map((s) => [s.key, s.value])),
+    tenantStatus: 'active',
+  };
+}
+
+/**
+ * The standard admin fixture context.
+ *
+ * WHY THIS CARRIES A REAL SNAPSHOT AND NOT `entitlementsExempt: 'harness'`
+ * -----------------------------------------------------------------------
+ * It used to carry the exemption marker, and that was a genuine defect rather than a convenience.
+ * An exempt context answers TRUE for every catalogued module, so the moment slice 3 made the kernel
+ * read entitlements instead of env, all 247 adminCtx files silently switched FOUR modules ON that the
+ * suite had always run with OFF — `typed_pay_components`, `multi_cycle_payroll`, `toil`,
+ * `notifications`.
+ *
+ * That is not a cosmetic difference. With `typed_pay_components` on, `earningsOf`
+ * (core/payroll.ts) sources allowance/overtime/bonus ONLY from typed component rows, which no test
+ * tenant has — so `compensation.monthlyAllowance` and payroll_input overtime were being silently
+ * DROPPED from every payslip. Worse, most assertions did not notice: comparisons between two
+ * employees stayed byte-identical because both lost the allowance equally, and only an absolute-figure
+ * assertion caught it. Anyone "fixing" those absolute figures downward would have baked a silent
+ * allowance loss into a fully green suite.
+ *
+ * `seedBase` already goes to real trouble to seed exactly the env-parity set (see its comment). The
+ * exemption defeated that from the other side: the two halves of the harness contradicted each other.
+ * Deriving the snapshot from the same helpers makes them agree by construction — and, as a bonus, lets
+ * these files actually demonstrate a gate CLOSING, which an exempt context structurally never could.
+ */
 export function adminCtx(b: Base): SessionContext {
-  return { tenantId: b.tenantId, userId: b.adminUserId, roles: ['hr_admin'], entitlementsExempt: 'harness' };
+  return { tenantId: b.tenantId, userId: b.adminUserId, roles: ['hr_admin'], entitlements: harnessSnapshot(b.tenantId) };
 }
 
 /**
