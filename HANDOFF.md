@@ -7,6 +7,78 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## Slice 1 — 2026-07-26 — entitlement + settings substrate (no behaviour change)
+
+**Shipped:** `build/slice1@1be70fa`. 26 files, +1528 lines. Nothing READS these tables yet — slice 2
+adds the resolver, slice 3 flips the env gates onto it. **Gate:** clean-room PASS ·
+**441 files / 4785 tests** · `tsc` clean · `next build` clean · 3 adversarial rounds (13 agents,
+1054 tool uses), all passed.
+
+**Built:** migration `0313` (module + setting_definition catalogs, tenant_module, tenant_setting,
+subscription, subscription_line, usage_snapshot, platform_user, tenant_provision_request_module,
+tenant extended); `packs/catalog.ts` (14 modules — 6 core, 8 billable; 5 settings, 4 platform-scoped);
+`scripts/seed-catalogs.ts` wired into all four bootstraps; `packs/register-all.ts`; harness defaults +
+`setModule`/`setSetting`; provisioning and operator intake carrying country + modules end to end.
+
+### Decisions
+
+**1. The catalog is NOT the pack registry, and conflating them was the plan's original error.** A
+`ModulePack` is a CODE identity; a catalog row is a COMMERCIAL one. They diverge both ways: `toil`,
+`multi_cycle_payroll` and `typed_pay_components` are billable with **no pack** (they are behaviours
+inside a parent pack's service), while `leave` **has** a pack but is core and must never be sellable.
+So the catalog is its own table with `parentModule` + `packBacked`, seeded from a code manifest, and
+`test/module-catalog-drift.test.ts` pins the correspondence in BOTH directions — a new pack without a
+catalog row can never be sold; a row pointing at a non-existent pack fails the suite.
+
+**2. The privilege matrix is the slice's real deliverable, and the gate structurally cannot check it.**
+`bootstrap-db.sql:50-54` auto-grants full CRUD on every new table to `ai_hr_app`, and
+`cleanroom-verify.sh:47-52` **reproduces that grant** — so the clean-room masks a missing GRANT and can
+never catch a missing REVOKE. Delete a REVOKE from 0313 and every other test still passes while any
+hr_admin can grant themselves Payroll. `test/module-entitlement-rls.test.ts` reads `information_schema`
+directly. The round-3 judge **mutation-tested** this: deleted a REVOKE, exactly one test went red, and
+nothing else in 4785 did.
+
+**3. `tenant_setting`'s scope join is what makes "every flag in the database" safe.** Writes require own
+tenant AND `app.is_admin()` AND an EXISTS proving `setting_definition.scope = 'tenant'` — in BOTH the
+USING and WITH CHECK arms, closing INSERT, UPDATE (walking a row onto another key), DELETE and
+ON CONFLICT. So a customer can SEE that their audit chain is on and cannot switch it off. Enforced in
+Postgres, not in a server action, so it binds any path that reaches the table.
+
+**4. Core modules are code, not rows — enforced by a TRIGGER, not a policy.** Policies do not bind the
+owner and are bypassed entirely by a `BYPASSRLS` role, so the slice-7 platform plane would sail through
+one. A tenant with zero entitlement rows still has Leave and ESS by construction.
+
+**5. Local and production run different Postgres majors** — 14.17 vs 16.14. `UNIQUE NULLS NOT DISTINCT`
+is PG15+, so the nullable `company_id` grain uses a COALESCE expression index. Anything written for 16
+would pass on the server and fail the gate.
+
+**6. Corrections made during the build, recorded so they are not repeated:**
+- The plan's "GRANT SELECT on customer-visible columns only" conflates a ROW property with a COLUMN
+  grant. `customer_visible` drives rendering; the resolver needs `default_value` for hidden rows too.
+- I invented `CountryPack.currency`, which does not exist. Currency-from-pack is slice 6's job;
+  provisioning keeps `'MYR'` with the reasoning recorded rather than shipping untested slice-6 work.
+- `packs/*/index.ts` inside a block comment contains `*/` and **closes the comment early**. Rewrote as
+  `packs/<name>/index.ts`.
+- My divergence inventory was wrong by ~9x: **46** test files mutate a tracked gate, not 4. It is no
+  longer prose — `SLICE3_ENV_GATE_WORKLIST` recomputes the file→gates map from the tree and compares
+  both ways.
+- Two tests were green only because this box leaves `INDIVIDUAL_TXN_PAY_ENABLED` unset. Fixed, and
+  re-verified under the **live deployment's full flag set**.
+
+### Outstanding
+
+- **Slice 3 must inspect all 46 files individually.** The worklist detects THAT a file mutates a gate,
+  not WHETHER the mutation lands before or after `seedBase` — hook-registration order is not
+  statically decidable.
+- **The 0313 setting backfill is one-shot and env-blind.** Parity-correct for the documented
+  `cp .env.example .env.local` flow and for the one live deployment; on any OTHER populated database
+  whose env lacks those flags it GRANTS payroll reset/unlock rather than preserving them. Remediation
+  DELETE is inline at `0313:463` but must be run by hand, and nothing detects the divergence.
+- The "admin can READ their own entitlements" test remains formula-equivalent to `seedBase`'s own
+  computation; its independence rests on the two drift ratchets. Stated honestly in the test.
+
+---
+
 ## Slice 0 — 2026-07-26 — SECURITY: invitation privilege-escalation closed
 
 First slice of the ADR-0077 platform program (plan: `~/.claude/plans/resilient-greeting-ripple.md`).
