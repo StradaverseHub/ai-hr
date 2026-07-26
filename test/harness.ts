@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { createDb, client as appClient, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { legacyEnabledModulesIn, legacyEnabledSettingsIn } from '../packs/catalog';
+import { resolveEntitlementsTx } from '../core/entitlements';
 
 // Owner connection (postgres) — bypasses RLS, used only for setup/seed/reset.
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
@@ -327,6 +328,41 @@ export async function setSetting(tenantId: string, key: string, value: unknown):
     });
 }
 
+/**
+ * The standard fixture admin context.
+ *
+ * `entitlementsExempt: 'harness'` (ADR-0077 slice 2) because this is SYNCHRONOUS and 247 test files
+ * call it: resolving a real snapshot would make it async and rewrite every one of them, while leaving
+ * it unmarked means the first gate slice 3 installs turns the whole suite red with
+ * EntitlementsUnresolvedError. The marker is the declared answer for exactly this shape of caller —
+ * see ENTITLEMENTS_EXEMPT_REASONS.harness. A test that needs to exercise a GATE rather than the
+ * feature behind it must use `entitledCtx` below, because an exempt context answers `true` for
+ * everything catalogued AND reads every setting as its catalog default — so a `setSetting` fixture
+ * driven through THIS context is silently ignored.
+ */
 export function adminCtx(b: Base): SessionContext {
-  return { tenantId: b.tenantId, userId: b.adminUserId, roles: ['hr_admin'] };
+  return { tenantId: b.tenantId, userId: b.adminUserId, roles: ['hr_admin'], entitlementsExempt: 'harness' };
+}
+
+/**
+ * The fixture context that can actually EXERCISE A GATE — a REAL snapshot, resolved from this tenant's
+ * rows, with no exemption marker.
+ *
+ * `adminCtx` is exempt, so it answers `true` for every catalogued module and reads every setting as its
+ * catalog default. That is the right trade for the 247 files that test the feature BEHIND a gate (it
+ * stays synchronous, and it does not turn the suite red the day slice 3 installs the gates) — but it
+ * also means those files structurally cannot demonstrate that a gate CLOSES. Round 3's point: an
+ * enforcement primitive that ships with 4,800 green tests and zero coverage of enforcement has not been
+ * tested. This is the other half, and slice 3's acceptance criterion is that every gate it installs has
+ * at least one test driving it through THIS context and proving the refusal.
+ *
+ * Resolved as the OWNER, which bypasses RLS — right here, because what it fixtures is the resolver's
+ * SEMANTICS, not the policies. `test/entitlement-resolver.test.ts` owns the under-RLS coverage.
+ *
+ * Call it AFTER the `setModule`/`setSetting` calls a test needs: the snapshot is a point-in-time read,
+ * exactly as it is for a real session, so a grant written afterwards is not in it.
+ */
+export async function entitledCtx(b: Base, roles: string[] = ['hr_admin']): Promise<SessionContext> {
+  const entitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, b.tenantId));
+  return { tenantId: b.tenantId, userId: b.adminUserId, roles, entitlements };
 }

@@ -10,6 +10,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import * as schema from './schema';
+import type { EntitlementSnapshot, EntitlementsExemptReason } from '../core/entitlement-types';
 
 export type Grant = { role: string; companyId: string | null };
 
@@ -22,13 +23,28 @@ export type SessionContext = {
   /** (role, company) grants; companyId null = group-wide. Drives company-scoped authz (ADR-0009). */
   grants?: Grant[];
   /**
-   * ADR-0077 slice 2 — the tenant's resolved entitlement snapshot, attached by getSession(). Typed as
-   * `unknown` here so db/client stays free of a core/ import (core/entitlements imports SessionContext
-   * from this file; typing it concretely would be a cycle). core/entitlements narrows it.
+   * ADR-0077 slice 2 — the tenant's resolved entitlement snapshot, attached by getSession().
+   *
+   * Typed CONCRETELY, from a leaf module (core/entitlement-types.ts) that imports nothing. The first
+   * attempt typed this `unknown` to keep db/client free of a core/ import, and round 1 review showed
+   * that inverted the guard it was meant to provide: `unknown` is not assignable to
+   * `EntitlementSnapshot | undefined`, so passing a real session to `isModuleEnabled` was a compile
+   * error while a bare object literal type-checked. Every gate would have carried a cast.
    */
-  entitlements?: unknown;
+  entitlements?: EntitlementSnapshot;
   /** Marks a synthetic context that legitimately predates entitlements. See ENTITLEMENTS_EXEMPT_REASONS. */
-  entitlementsExempt?: string;
+  entitlementsExempt?: EntitlementsExemptReason;
+  /**
+   * Set when resolution was ATTEMPTED for this session and FAILED — carries the underlying cause.
+   *
+   * Round 2's finding: `withEntitlements` swallows every failure and returns a snapshot-less session so
+   * that /login stays reachable, which is right — but the resulting gate error was
+   * `EntitlementsUnresolvedError`, whose message tells the reader to go fix a synthetic SessionContext.
+   * During a real outage (0313 not applied, pool exhausted, a revoked GRANT) that sends every on-call
+   * engineer after a wiring bug that does not exist. This field keeps "never resolved" and "resolution
+   * failed, here is why" distinguishable at the point of use.
+   */
+  entitlementsError?: string;
 };
 
 // Reuse pools across hot-reloads (dev) so HMR doesn't leak Postgres connections.

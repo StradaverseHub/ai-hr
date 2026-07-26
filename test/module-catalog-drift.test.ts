@@ -165,6 +165,45 @@ describe('module catalog — the pack correspondence, both directions', () => {
     }
   });
 
+  it('the dependsOn graph is ACYCLIC — slice 2\'s resolver walks it', () => {
+    // core/entitlements.ts used to say "the drift test forbids cycles". It did not: only the assertion
+    // above existed, which checks the TARGETS are real, not that the graph terminates. Round 1 pushed a
+    // 2-cycle into the catalog and reproduced a RangeError from the closure walk. The resolver is now
+    // cycle-SAFE on its own (the visited set is threaded through the recursion, so a cycle returns an
+    // answer instead of blowing the stack), but a cyclic catalog is still nonsense — "A requires B
+    // requires A" cannot be provisioned or sold in any order — so it is refused here as well. Belt and
+    // braces on purpose: the resolver must not hang on bad data, AND the data must not be bad.
+    const deps = new Map(MODULE_CATALOG.map((m) => [m.code, m.dependsOn]));
+    const VISITING = 1;
+    const DONE = 2;
+    const state = new Map<string, number>();
+    const walk = (code: string, path: string[]): void => {
+      if (state.get(code) === DONE) return;
+      expect(state.get(code), `dependsOn cycle: ${[...path, code].join(' → ')}`).not.toBe(VISITING);
+      state.set(code, VISITING);
+      for (const dep of deps.get(code) ?? []) walk(dep, [...path, code]);
+      state.set(code, DONE);
+    };
+    for (const m of MODULE_CATALOG) walk(m.code, []);
+  });
+
+  it('a CORE module depends only on CORE modules — slice 2\'s kill lever relies on it', () => {
+    // core/entitlements.ts walks a core module's dependsOn closure so MODULE_KILL is transitive through
+    // core (killing `employees` must take `leave` and `ess` down with it — round 3 found it did not).
+    // That walk deliberately SKIPS a non-core dependency, because deciding one needs the snapshot and a
+    // core code must stay answerable without one. The skip is only safe while no core module has such a
+    // dependency, so it is refused here rather than left as an assumption in a comment.
+    for (const m of MODULE_CATALOG.filter((x) => x.isCore)) {
+      for (const dep of m.dependsOn) {
+        expect(
+          CORE_MODULE_CODES.includes(dep),
+          `core module '${m.code}' depends on non-core '${dep}' — the resolver's core branch would ` +
+            'skip it, so either make the dependency core or teach moduleEnabled to resolve it',
+        ).toBe(true);
+      }
+    }
+  });
+
   it('core and sellable partition the catalog, and no core module is billable', () => {
     expect([...CORE_MODULE_CODES, ...SELLABLE_MODULE_CODES].sort()).toEqual([...ALL_MODULE_CODES].sort());
     for (const m of MODULE_CATALOG.filter((x) => x.isCore)) {

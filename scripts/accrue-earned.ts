@@ -30,7 +30,7 @@ async function main() {
     try {
       // SYSTEM context: no userId, so actorOf(ctx) records the event actor as `system`. accrueEarnedLeave
       // runs through the app-role connection (RLS enforced); the hr_admin role authorizes the writes.
-      const { granted } = await accrueEarnedLeave({ tenantId: t.id, roles: ['hr_admin'] }, { asOf });
+      const { granted } = await accrueEarnedLeave({ tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' }, { asOf });
       totalGranted += granted;
       console.log(`  ✓ ${t.name} (${t.id}): ${granted} grant(s)`);
     } catch (e) {

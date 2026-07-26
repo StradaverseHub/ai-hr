@@ -12,7 +12,7 @@
 // Idempotent: a re-run opens nothing already open (and escalation fires once per (group, step) ever).
 // Schedule daily, e.g.
 //   0 3 * * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/review-sweep.ts
-import { createDb } from '../db/client';
+import { createDb, type SessionContext } from '../db/client';
 import { tenant } from '../db/schema';
 import { sweepDueReviews, sweepReviewReminders } from '../core/employment-review';
 import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
@@ -42,7 +42,7 @@ async function main() {
     try {
       // SYSTEM context: no userId, so actorOf(ctx) records the event actor as `system`. The group-wide
       // hr_admin role authorizes the writes and lets the sweep see every tenant employment.
-      const ctx = { tenantId: t.id, roles: ['hr_admin'] };
+      const ctx: SessionContext = { tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' };
       const { opened } = await sweepDueReviews(ctx, { today });
       // 6522d26a Fn 2 — chase still-open reviews at the configured cadence (default 30/14/7 days before
       // the end date). Idempotent per (review, offset); runs AFTER the opener so a just-opened review is

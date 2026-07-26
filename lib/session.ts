@@ -1,6 +1,7 @@
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { client, type Grant, type SessionContext } from '../db/client';
-import { resolveEntitlementsRaw } from '../core/entitlements';
+import { TENANT_STATUS_UNRESOLVED, resolveEntitlementsInTenantTx } from '../core/entitlements';
 import { AuthRequiredError } from './auth-errors';
 import { demoSwitcherEnabled } from './demo-mode';
 
@@ -105,18 +106,108 @@ export async function resolveWorkosPrincipal(
  * an enforcement primitive wired into only one of them would be silently absent on the deployment we
  * actually ship. One seam, both paths, no way to add a third without passing through it.
  *
- * Costs no extra round trip on the hot path in the sense that matters: getSession already queries
- * app.principal, and this is the second statement on a connection that is already open.
+ * INSIDE A TRANSACTION, AND THAT IS THE WHOLE POINT (round 1's critical finding). This used to run
+ * `client.unsafe(...)` straight on the pool. `client` is the non-privileged `ai_hr_app` role, and the
+ * three tables the snapshot reads are all gated by `USING (… = app.current_tenant_id())` — which is
+ * NULL outside a `withTenant`-style transaction, so the comparison is NULL, so the app role saw zero
+ * rows. Every production session silently resolved to an empty snapshot: no modules, no settings, and
+ * a suspended tenant reading as active. `client.begin` opens the transaction; the set_config is issued
+ * inside `resolveEntitlementsInTenantTx` next to the SELECT that depends on it.
+ *
+ * NOT free, and the old comment saying otherwise was wrong: this is BEGIN + set_config + SELECT +
+ * COMMIT on a connection getSession already holds, on every getSession call. See core/entitlements.ts.
+ *
+ * DEGRADES, DOES NOT 500. getSession is the entry point for every page, so an exception here — the
+ * 0313 tables not yet applied on a code-ahead-of-migration deploy, a revoked grant, a connection blip
+ * — would take down authentication itself, including /login, since app/layout.tsx only converts
+ * AuthRequiredError into a redirect. Instead the session is returned WITHOUT a snapshot, which makes
+ * every entitlement gate refuse at the point of use (fail-closed, and core modules still answer true)
+ * rather than making the whole app unreachable.
+ *
+ * IT RECORDS THE CAUSE (round 2). Returning a bare session made a genuine outage indistinguishable
+ * from a hand-built synthetic context: both produced EntitlementsUnresolvedError, whose message sends
+ * the reader after a nonexistent wiring bug while the real fault goes unnamed. `entitlementsError`
+ * carries the underlying message onto the session, so the gate raises
+ * EntitlementsResolutionFailedError naming the tenant and the cause instead.
+ *
+ * LOGGED ONCE PER FAULT PER INTERVAL, not once per request. A per-request console.error during an
+ * outage is one line per page render across every user — the signal that matters (something broke, for
+ * this tenant, with this message) drowns in it, which is the opposite of "logged loudly".
+ *
+ * Exported so the test can assert the composed behaviour — transaction, GUC, RLS and all — through the
+ * exact function production calls, rather than through a re-implementation of it.
  */
-async function withEntitlements(session: SessionContext): Promise<SessionContext> {
-  const snapshot = await resolveEntitlementsRaw(
-    (q, params) => client.unsafe(q, params as never[]),
-    session.tenantId,
-  );
-  return { ...session, entitlements: snapshot } as SessionContext;
+const FAILURE_LOG_INTERVAL_MS = 60_000;
+// Bounded: the key includes the driver's message, which can vary per failure, and an unbounded map on
+// the auth path would turn a database outage into a memory leak. Dropped wholesale rather than by LRU —
+// the cost of forgetting is at most one extra log line.
+const FAILURE_LOG_MAX_KEYS = 200;
+const lastLoggedFailure = new Map<string, number>();
+
+/** One throttled line per distinct fault, so an outage does not produce one log per page render. */
+function logThrottled(key: string, message: string, detail?: unknown): void {
+  const now = Date.now();
+  if ((lastLoggedFailure.get(key) ?? 0) + FAILURE_LOG_INTERVAL_MS > now) return;
+  if (lastLoggedFailure.size >= FAILURE_LOG_MAX_KEYS) lastLoggedFailure.clear();
+  lastLoggedFailure.set(key, now);
+  if (detail === undefined) console.error(message);
+  else console.error(message, detail);
 }
 
-export async function getSession(): Promise<SessionContext> {
+export async function withEntitlements(session: SessionContext): Promise<SessionContext> {
+  try {
+    const snapshot = await client.begin((tx) =>
+      resolveEntitlementsInTenantTx((q, params) => tx.unsafe(q, params as never[]), session.tenantId),
+    );
+    // THE SILENT FAILURE, WHICH IS THE ONE ROUND 1 ACTUALLY SHIPPED (round 3's finding). The catch below
+    // covers the loud path — an exception. The dangerous state is the query SUCCEEDING and returning no
+    // tenant row: `toSnapshot` records TENANT_STATUS_UNRESOLVED, every billable module closes, and until
+    // now nothing was logged, so a database-side regression (an RLS policy edit, a partially-applied
+    // migration, a tenant row invisible for any reason) was indistinguishable in monitoring from a
+    // healthy resolve. That is exactly the shape of the defect round 1 found — an empty snapshot on
+    // every session — and the instrumentation added for it did not cover it. This status is BY
+    // DEFINITION a fault: a real tenant row always carries one of 0313's four statuses.
+    if (snapshot.tenantStatus === TENANT_STATUS_UNRESOLVED) {
+      logThrottled(
+        `${session.tenantId}:unresolved`,
+        `[entitlements] tenant ${session.tenantId} resolved with NO tenant row (status ` +
+          `'${TENANT_STATUS_UNRESOLVED}'): the snapshot query succeeded but returned nothing, so every ` +
+          `billable module will refuse. Check the 0313 tables, the tenant row and tenant_isolation. ` +
+          `(further identical warnings suppressed for ${FAILURE_LOG_INTERVAL_MS / 1000}s)`,
+      );
+    }
+    return { ...session, entitlements: snapshot };
+  } catch (e) {
+    const cause = e instanceof Error ? e.message : String(e);
+    logThrottled(
+      `${session.tenantId}:${cause}`,
+      `[entitlements] snapshot resolution FAILED for tenant ${session.tenantId}; the session carries ` +
+        `no entitlements and every gated module will refuse until this is fixed. ` +
+        `(further identical failures suppressed for ${FAILURE_LOG_INTERVAL_MS / 1000}s)`,
+      e,
+    );
+    return { ...session, entitlementsError: cause };
+  }
+}
+
+/**
+ * MEMOISED PER REQUEST with React `cache()` (round 2).
+ *
+ * Two problems, one fix. The cost: `withEntitlements` reserves a pooled connection for a full
+ * BEGIN/set_config/SELECT/COMMIT, and getSession is called by the root layout, by 61 of the 105
+ * `page.tsx` guards, and again by every server action — so an authenticated render paid that
+ * transaction several times over. The correctness half matters more: without memoisation the
+ * resolution is per-CALL, not per-request, so two components in the same render could observe
+ * DIFFERENT snapshots. "Session-scoped" has to mean the snapshot is stable for the request, and only
+ * memoisation makes that true.
+ *
+ * `cache` is a no-op passthrough outside a React request scope (react's non-`react-server` build
+ * returns `fn.apply(null, arguments)` unchanged), so scripts and the test suite are unaffected — they
+ * get exactly today's behaviour, one resolution per call.
+ */
+export const getSession = cache(resolveSession);
+
+async function resolveSession(): Promise<SessionContext> {
   // Dev switcher path: real dev, plus the gated demo (ALLOW_DEMO_SESSION — see lib/demo-mode).
   if (demoSwitcherEnabled()) {
     const cookieStore = await cookies();

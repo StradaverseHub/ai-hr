@@ -29,7 +29,7 @@ async function main() {
     try {
       // SYSTEM context: no userId, so actorOf(ctx) records the event actor as `system`. expireAgedLeave
       // runs through the app-role connection (RLS enforced); the hr_admin role authorizes the writes.
-      const { swept, forfeited } = await expireAgedLeave({ tenantId: t.id, roles: ['hr_admin'] }, { today });
+      const { swept, forfeited } = await expireAgedLeave({ tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' }, { today });
       totalSwept += swept;
       totalForfeited = Math.round((totalForfeited + forfeited) * 100) / 100;
       console.log(`  ✓ ${t.name} (${t.id}): ${swept} sweep(s), ${forfeited} day(s) forfeited`);
