@@ -24,7 +24,7 @@ async function main() {
   for (const t of tenants) {
     try {
       // SYSTEM context (hr_admin authorizes the component writes; no userId → event actor is `system`).
-      const { employments } = await backfillEmploymentComponentsFromCompensation({ tenantId: t.id, roles: ['hr_admin'] });
+      const { employments } = await backfillEmploymentComponentsFromCompensation({ tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' });
       total += employments;
       console.log(`  ✓ ${t.name} (${t.id}): seeded BASIC+ALLOWANCE for ${employments} employment(s)`);
     } catch (e) {

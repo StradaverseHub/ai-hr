@@ -47,7 +47,7 @@ async function main() {
     for (const c of companies) {
       try {
         // SYSTEM context (hr_admin authorises the statutory write; no userId → the event actor is `system`).
-        const r = await pack.statutory.correctAccidentalHrdfOptOuts({ tenantId: t.id, roles: ['hr_admin'] }, { companyId: c.id, apply });
+        const r = await pack.statutory.correctAccidentalHrdfOptOuts({ tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' }, { companyId: c.id, apply });
         corrected += r.corrected.length;
         kept += r.kept.length;
         unclassified += r.unclassified.length;

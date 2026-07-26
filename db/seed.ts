@@ -133,7 +133,11 @@ async function main() {
   const leaveTypeIds = await owner.db.transaction(async (tx) => {
     const ids = await seedTenantCatalogs(tx, DEV_TENANT_ID);
     await seedCompanyCatalogs(tx, DEV_TENANT_ID, company.id);
-    await seedPayrollCycleCatalog({ tenantId: DEV_TENANT_ID }, holding.id, tx);
+    // `entitlementsExempt: 'seeding'` for the same reason as every other synthetic context in this
+    // file: the seeder runs as the owner with no session. Round 3 caught this ONE call unmarked while
+    // the identical call in db/provision.ts:140 was marked — `seedPayrollCycleCatalog` is payroll-module
+    // functionality, so the first gate slice 3 puts on it would have killed `pnpm db:seed`.
+    await seedPayrollCycleCatalog({ tenantId: DEV_TENANT_ID, entitlementsExempt: 'seeding' }, holding.id, tx);
     return ids;
   });
   const annual = { id: leaveTypeIds.ANNUAL };
@@ -219,7 +223,15 @@ async function main() {
     }
   });
 
-  const admin: SessionContext = { tenantId: DEV_TENANT_ID, userId: DEV_ADMIN_USER_ID, roles: ['hr_admin'] };
+  // ADR-0077 slice 2: the seeder builds contexts directly and runs before any session exists, so it
+  // carries the 'seeding' exemption. See ENTITLEMENTS_EXEMPT_REASONS — the marker is checked for
+  // MEMBERSHIP at runtime, and a drift test reads this file to prove the exemption names real code.
+  const admin: SessionContext = {
+    tenantId: DEV_TENANT_ID,
+    userId: DEV_ADMIN_USER_ID,
+    roles: ['hr_admin'],
+    entitlementsExempt: 'seeding',
+  };
   // Rung 5c — the demo company's country pack (MY); the statutory profile writes go through it.
   const countryPack = requirePackFor('MY');
   // ADR-0040 (2D): demo ANNUAL *accrues monthly* (earned), not as a lump on hire — so balances grow
@@ -293,7 +305,13 @@ async function main() {
       .values({ tenantId: DEV_TENANT_ID, appUserId: u.id, role, companyId: null });
     // Their own session — used below so leave requests are authored by the employee (and
     // approvals by their manager), giving the audit trail real, differentiated actors.
-    const session: SessionContext = { tenantId: DEV_TENANT_ID, userId: u.id, roles: [role], personId };
+    const session: SessionContext = {
+      tenantId: DEV_TENANT_ID,
+      userId: u.id,
+      roles: [role],
+      personId,
+      entitlementsExempt: 'seeding',
+    };
     hired.push({ employmentId, personId, session });
 
     // ADR-0078 — payMode/paymentTerm/rateAmount are omitted on every seed call: the service defaults a
@@ -532,7 +550,13 @@ async function main() {
       days: '14.00',
       effectiveOn: '2026-01-06',
     });
-    const pdSession: SessionContext = { tenantId: DEV_TENANT_ID, userId: pdUser.id, roles: ['employee'], personId: pdSub.personId };
+    const pdSession: SessionContext = {
+      tenantId: DEV_TENANT_ID,
+      userId: pdUser.id,
+      roles: ['employee'],
+      personId: pdSub.personId,
+      entitlementsExempt: 'seeding',
+    };
     // 3 consecutive working days (Mon–Wed) — left PENDING so the manager can approve some / reject others.
     await requestLeave(pdSession, {
       employmentId: pdSub.employmentId,
