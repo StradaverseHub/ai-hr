@@ -42,6 +42,12 @@ NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=3072" pnpm build
 echo "▸ Applying database migrations (as ai_hr_owner)…"
 pnpm db:migrate
 
+# ADR-0077 C11 — UNCONDITIONAL, and deliberately above the demo-seed `if` below: that branch is skipped
+# on every normal update, so seeding the catalogs inside it would leave an updated deployment with an
+# empty module catalog and every entitlement lookup failing closed. Idempotent (ON CONFLICT DO UPDATE).
+echo "▸ Seeding module + setting catalogs…"
+node --env-file=.env.production --import tsx scripts/seed-catalogs.ts
+
 # Seed only if the demo tenant is absent, so updates preserve whatever the consultant has been testing.
 if [ "${1:-}" = "--reseed" ] || ! psql "$MIGRATION_DATABASE_URL" -tAc "SELECT 1 FROM tenant WHERE id='$DEV_TENANT_ID'" 2>/dev/null | grep -q 1; then
   echo "▸ Seeding demo data…"

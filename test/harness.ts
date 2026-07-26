@@ -82,6 +82,16 @@ const ALL_TABLES = [
   // FK, so truncating `tenant` would cascade it away, but list it explicitly per the convention above:
   // a request row leaking between test files would be counted by the RLS/claim assertions.
   'tenant_provision_request',
+  // ADR-0077 slice 1 — entitlement + settings rows. All of these would CASCADE from `tenant` (or from
+  // `tenant_provision_request`) anyway, but they are listed explicitly per the convention above: a
+  // leaked entitlement row would silently change what a later test file's module gate resolves to,
+  // which is the hardest class of cross-file bug to attribute.
+  //
+  // `module` and `setting_definition` are DELIBERATELY ABSENT. They are installation-wide CATALOGS
+  // seeded once into the template by scripts/seed-catalogs.ts (C11), not test data — truncating them
+  // here would empty the catalog on the first resetDb() and every later FK insert would fail.
+  'tenant_module', 'tenant_setting', 'subscription', 'subscription_line', 'usage_snapshot',
+  'platform_user', 'tenant_provision_request_module',
 ];
 
 /**
@@ -173,6 +183,30 @@ export async function seedBase(): Promise<Base> {
     .insert(schema.roleAssignment)
     .values({ tenantId, appUserId: au.id, companyId: null, role: 'hr_admin' });
 
+  // ADR-0077 slice 1 — the tenant's default entitlements, via the OWNER connection (tenant_module is
+  // SELECT-only to ai_hr_app by design, migration 0313).
+  //
+  // The set is chosen for EXACT PARITY with what these gates do today, so slice 3's flip from env reads
+  // to entitlement reads is a genuine no-op rather than a silent behaviour change across 299 test
+  // files. Verified per module rather than assumed:
+  //   - payroll / attendance / claims / performance have NO env gate at all today (F20) — they are
+  //     unconditionally on, so they get ACTIVE rows. Omitting them would switch four modules off.
+  //   - notifications is on: .env.local sets NOTIFICATIONS_ENABLED=true and test/env.ts does NOT
+  //     delete it, so the harness inherits it as enabled.
+  //   - toil / multi_cycle_payroll / typed_pay_components get NO rows: TOIL_ENABLED is set nowhere,
+  //     and test/env.ts explicitly deletes the other two to keep the suite hermetic. A missing row is
+  //     "disabled" (C7), which is exactly today's behaviour.
+  //   - CORE modules get no rows by construction — the 0313 trigger refuses them, and isModuleEnabled
+  //     answers true for them from packs/catalog.ts without a query.
+  // Tests needing a different shape use setModule() / setSetting() below.
+  await owner.db.insert(schema.tenantModule).values(
+    ['payroll', 'attendance', 'claims', 'performance', 'notifications'].map((moduleCode) => ({
+      tenantId,
+      moduleCode,
+      status: 'active',
+    })),
+  );
+
   return {
     tenantId,
     companyId: c.id,
@@ -235,6 +269,38 @@ export async function latestEventPayload(
   if (rows.length === 0) return null;
   rows.sort((a, b) => Number(a.seq) - Number(b.seq));
   return (rows[rows.length - 1].payload ?? null) as Record<string, unknown> | null;
+}
+
+/**
+ * Turn a module on or off for a tenant (owner connection — the app role can never write these).
+ * `status: null` DELETES the row, which is how a test asserts the disabled path: a missing row is
+ * disabled (C7), and that is a different state from an explicit `status='disabled'` row.
+ */
+export async function setModule(
+  tenantId: string,
+  moduleCode: string,
+  status: 'active' | 'trial' | 'disabled' | null,
+  companyId: string | null = null,
+): Promise<void> {
+  await owner.db.execute(
+    sql`DELETE FROM tenant_module WHERE tenant_id = ${tenantId} AND module_code = ${moduleCode}
+        AND COALESCE(company_id, '00000000-0000-0000-0000-000000000000'::uuid)
+          = COALESCE(${companyId}::uuid, '00000000-0000-0000-0000-000000000000'::uuid)`,
+  );
+  if (status !== null) {
+    await owner.db.insert(schema.tenantModule).values({ tenantId, moduleCode, companyId, status });
+  }
+}
+
+/** Set a tenant's value for a setting key (owner connection — bypasses the scope policy on purpose). */
+export async function setSetting(tenantId: string, key: string, value: unknown): Promise<void> {
+  await owner.db
+    .insert(schema.tenantSetting)
+    .values({ tenantId, key, value, source: 'platform' })
+    .onConflictDoUpdate({
+      target: [schema.tenantSetting.tenantId, schema.tenantSetting.key],
+      set: { value, source: 'platform' },
+    });
 }
 
 export function adminCtx(b: Base): SessionContext {

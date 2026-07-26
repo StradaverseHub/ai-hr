@@ -42,24 +42,13 @@ import {
   isParentActive,
   type FlyoutChild,
 } from '@/components/nav-flyout';
-// ADR-0080 rung 2: the Attendance nav node mounts from the pack registry. The side-effect import
-// evaluates the pack's wiring file (static `registerPack` at module load — the D8 convention), so
-// `modulePackById('attendance')` below is guaranteed to resolve. packs/attendance/index.ts is
-// client-safe by design (flat descriptors + lucide refs only; the service facade lives elsewhere).
-import '@/packs/attendance';
-// ADR-0080 rung 3: the Claims nav rows mount from the pack registry the same way — claims is flat
-// links (navLinks), not a collapsible node. packs/claims/index.ts is client-safe by design too.
-import '@/packs/claims';
-// ADR-0080 rung 4: the Performance nav row mounts from the pack registry the same way — a single
-// flat Manage-group row. packs/performance/index.ts is client-safe by design too.
-import '@/packs/performance';
-// ADR-0080 rung 6: the Leave nav rows mount from the pack registry the same way — leave is two flat
-// rows (navLinks), a My-Absence self-service row (top group) and a leave-config row (Admin group).
-// packs/leave/index.ts is client-safe by design too.
-import '@/packs/leave';
-// ADR-0080 rung 7 (the final retrofit): the Payroll nav row mounts from the pack registry the same
-// way — a single flat Administration-group row. packs/payroll/index.ts is client-safe by design too.
-import '@/packs/payroll';
+// ADR-0080 rungs 2-7: every module pack's nav mounts from the pack registry, so the packs must be
+// REGISTERED before this module's body runs. The five side-effect imports that used to sit here moved
+// to packs/register-all.ts — unchanged in effect, but reachable from server code too. They lived in a
+// client component, which meant a SERVER caller of listPacks('module') (the operator console's module
+// picker, ADR-0077) silently got an empty array. Each pack index stays client-safe by design, so this
+// import pulls no server-only code into the bundle. See that file's header.
+import '@/packs/register-all';
 import { modulePackById } from '@/packs/registry';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.

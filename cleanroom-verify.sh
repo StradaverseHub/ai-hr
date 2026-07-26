@@ -56,6 +56,10 @@ cp -f "$ENVFILE" "$BACKUP"
 } > "$ENVFILE"
 pnpm exec drizzle-kit migrate 2>&1 | tail -20; MIG=${PIPESTATUS[0]}
 [ "$MIG" -ne 0 ] && { echo "CLEANROOM_RESULT=FAIL (migrate)"; exit 1; }
+# ADR-0077 C11: catalogs are code-seeded, so a clean room that only migrates is NOT a usable database.
+echo "== seed module + setting catalogs =="
+node --env-file="$ENVFILE" --import tsx scripts/seed-catalogs.ts; SC=$?
+[ "$SC" -ne 0 ] && { echo "CLEANROOM_RESULT=FAIL (seed-catalogs)"; exit 1; }
 echo "== full vitest as $APPROLE under RLS =="
 # hookTimeout bumped to 120s: each file's beforeAll applies ~190 migrations; under load the default 30s flakes.
 pnpm exec vitest run --hookTimeout=120000 --testTimeout=60000 2>&1 | tail -40; VT=${PIPESTATUS[0]}

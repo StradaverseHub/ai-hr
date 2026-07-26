@@ -19,6 +19,7 @@ import { requirePackFor } from '../localization/registry';
 import { seedGuides } from './seed-guides';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { createAdminChain, seedCompanyCatalogs, seedTenantCatalogs } from './provision';
+import { seedCatalogs } from '../scripts/seed-catalogs';
 
 const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 const DEV_ADMIN_USER_ID = '22222222-2222-2222-2222-222222222222';
@@ -105,6 +106,10 @@ async function main() {
   // provisioning. `holding` takes the payroll cycle catalog but NOT an attendance policy, exactly as
   // before this refactor (only the operating company has ever had one, and the demo's attendance
   // fixtures are built on that).
+  // ADR-0077 C11: the installation-wide catalogs, before anything tenant-scoped can reference them.
+  // Outside the transaction below because it is installation-level, not part of this tenant's seed.
+  await seedCatalogs(owner.db);
+
   const leaveTypeIds = await owner.db.transaction(async (tx) => {
     const ids = await seedTenantCatalogs(tx, DEV_TENANT_ID);
     await seedCompanyCatalogs(tx, DEV_TENANT_ID, company.id);
