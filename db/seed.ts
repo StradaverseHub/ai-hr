@@ -19,6 +19,8 @@ import { requirePackFor } from '../localization/registry';
 import { seedGuides } from './seed-guides';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { createAdminChain, seedCompanyCatalogs, seedTenantCatalogs } from './provision';
+import { seedCatalogs } from '../scripts/seed-catalogs';
+import { legacyEnabledModulesIn, legacyEnabledSettingsIn } from '../packs/catalog';
 
 const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 const DEV_ADMIN_USER_ID = '22222222-2222-2222-2222-222222222222';
@@ -105,6 +107,29 @@ async function main() {
   // provisioning. `holding` takes the payroll cycle catalog but NOT an attendance policy, exactly as
   // before this refactor (only the operating company has ever had one, and the demo's attendance
   // fixtures are built on that).
+  // ADR-0077 C11: the installation-wide catalogs, before anything tenant-scoped can reference them.
+  // Outside the transaction below because it is installation-level, not part of this tenant's seed.
+  await seedCatalogs(owner.db);
+
+  // ADR-0077 slice 1 — the demo tenant's entitlements and settings. It is created HERE, after
+  // migrations, so 0313's backfill (which covers tenants that already existed) never sees it; without
+  // these rows the demo would be the one deployment that reads as "everything disabled" once slice 2's
+  // fail-closed resolver lands. Same constants the backfill and the test harness use, so all three
+  // cannot drift — but narrowed to what THIS process's env actually has on, which the migration cannot
+  // do and which is what keeps the row and the flag saying the same thing on every box.
+  const seedModules = legacyEnabledModulesIn(process.env);
+  if (seedModules.length > 0) {
+    await owner.db.insert(schema.tenantModule).values(
+      seedModules.map((moduleCode) => ({ tenantId: DEV_TENANT_ID, moduleCode, status: 'active' })),
+    );
+  }
+  const seedSettings = legacyEnabledSettingsIn(process.env);
+  if (seedSettings.length > 0) {
+    await owner.db.insert(schema.tenantSetting).values(
+      seedSettings.map(({ key, value }) => ({ tenantId: DEV_TENANT_ID, key, value, source: 'platform' })),
+    );
+  }
+
   const leaveTypeIds = await owner.db.transaction(async (tx) => {
     const ids = await seedTenantCatalogs(tx, DEV_TENANT_ID);
     await seedCompanyCatalogs(tx, DEV_TENANT_ID, company.id);

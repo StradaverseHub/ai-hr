@@ -27,6 +27,7 @@
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { seedCatalogs } from '../scripts/seed-catalogs';
 
 /** Swap the database name on a postgres:// URL, preserving credentials, host, port and params. */
 export function withDatabase(url: string, dbName: string): string {
@@ -100,6 +101,12 @@ export default async function setup({ provide }: { provide?: (k: string, v: unkn
   const migrator = postgres(templateUrl, { max: 1 });
   try {
     await migrate(drizzle(migrator), { migrationsFolder: 'db/migrations' });
+    // ADR-0077 C11: the module + setting catalogs are code-seeded (migrations are pure SQL and cannot
+    // read packs/catalog.ts), and every worker DB is CLONED from this template — so the rows must land
+    // here, before the clone, or all 299 seedBase importers hit a foreign-key violation the moment
+    // anything references a module code. Reuses `migrator` deliberately: the template must have no
+    // open connections when CREATE DATABASE ... TEMPLATE runs (see this file's header).
+    await seedCatalogs(drizzle(migrator));
   } finally {
     await migrator.end({ timeout: 10 });
   }

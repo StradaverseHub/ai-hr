@@ -20,9 +20,11 @@
  */
 import { desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { tenantProvisionRequest } from '../db/schema';
+import { tenantProvisionRequest, tenantProvisionRequestModule } from '../db/schema';
 import { isOperator } from '../lib/authz';
 import { isDemoDeployment } from '../lib/demo-mode';
+import { countryPacks } from '../localization/registry';
+import { ALL_MODULE_CODES, CORE_MODULE_CODES, missingModuleDependencies } from '../packs/catalog';
 import { PROVISION_STEPS, type ProvisionStep } from '../db/provision';
 
 export { PROVISION_STEPS, type ProvisionStep };
@@ -36,6 +38,13 @@ export type ProvisionRequestRow = {
   customerName: string;
   adminEmail: string;
   status: string;
+  country: string;
+  plan: string | null;
+  /**
+   * The module codes the operator ticked at intake. Carried on the row so the console's Retry can
+   * REPLAY the sale — see the note in listProvisionRequests.
+   */
+  modules: string[];
   currentStep: string | null;
   error: string | null;
   tenantId: string | null;
@@ -68,16 +77,23 @@ function assertOperator(ctx: SessionContext): void {
  * activation_url, so an unqualified `.select()` — which drizzle expands to every column — fails at
  * runtime with a permission error. Naming the columns is what keeps the withheld one out of the query.
  * Do not "simplify" this into a bare select().
+ *
+ * The picked modules come back with the row. A second SELECT rather than a join or an array_agg, so the
+ * column-grant rule above stays a flat, readable list — the queue is a handful of rows on one screen.
+ * The console needs them because RETRY re-posts the intake form: without the modules on the row, a
+ * retried request carries none and the customer is silently re-provisioned with less than they bought.
  */
 export async function listProvisionRequests(ctx: SessionContext): Promise<ProvisionRequestRow[]> {
   assertOperator(ctx);
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
       .select({
         id: tenantProvisionRequest.id,
         customerName: tenantProvisionRequest.customerName,
         adminEmail: tenantProvisionRequest.adminEmail,
         status: tenantProvisionRequest.status,
+        country: tenantProvisionRequest.country,
+        plan: tenantProvisionRequest.plan,
         currentStep: tenantProvisionRequest.currentStep,
         error: tenantProvisionRequest.error,
         tenantId: tenantProvisionRequest.tenantId,
@@ -88,11 +104,33 @@ export async function listProvisionRequests(ctx: SessionContext): Promise<Provis
         updatedAt: tenantProvisionRequest.updatedAt,
       })
       .from(tenantProvisionRequest)
-      .orderBy(desc(tenantProvisionRequest.createdAt)),
-  );
+      .orderBy(desc(tenantProvisionRequest.createdAt));
+
+    const picked = await tx
+      .select({
+        requestId: tenantProvisionRequestModule.requestId,
+        moduleCode: tenantProvisionRequestModule.moduleCode,
+      })
+      .from(tenantProvisionRequestModule);
+    const byRequest = new Map<string, string[]>();
+    for (const p of picked) {
+      const list = byRequest.get(p.requestId);
+      if (list) list.push(p.moduleCode);
+      else byRequest.set(p.requestId, [p.moduleCode]);
+    }
+    return rows.map((r) => ({ ...r, modules: (byRequest.get(r.id) ?? []).sort() }));
+  });
 }
 
-export type CreateProvisionRequestInput = { customerName: string; adminEmail: string };
+export type CreateProvisionRequestInput = {
+  customerName: string;
+  adminEmail: string;
+  /** ISO alpha-2. Validated against the REGISTERED country packs — see the note in the body. */
+  country?: string;
+  plan?: string;
+  /** Sellable module codes the customer bought. Core modules are never listed (they take no rows). */
+  modules?: string[];
+};
 
 /**
  * Queue a new customer. Validation only — no uniqueness check of any kind:
@@ -113,12 +151,52 @@ export async function createProvisionRequest(
   const adminEmail = input.adminEmail.trim().toLowerCase();
   if (!customerName) throw new Error('A customer name is required.');
   if (!adminEmail || !adminEmail.includes('@')) throw new Error('A valid admin email is required.');
+  const country = (input.country ?? 'MY').trim().toUpperCase();
+  const plan = input.plan?.trim() || null;
+
+  // Validated at INTAKE, not at provisioning time: a request that cannot succeed should be refused
+  // while the operator is still looking at the form, not an hour later in a cron log. This is an
+  // interim guard — slice 6's two-tier model deliberately relaxes it so a company can onboard in a
+  // country whose statutory pack has not shipped (D-14).
+  const registered = countryPacks().map((p) => p.country.toUpperCase());
+  if (!registered.includes(country)) {
+    throw new Error(
+      `No country pack is registered for '${country}'. Available: ${registered.join(', ') || '(none)'}.`,
+    );
+  }
+
+  // Unknown or core codes are refused rather than filtered out. Silently dropping a ticked module
+  // would provision the customer with less than they bought and leave no trace of the difference.
+  const modules = [...new Set(input.modules ?? [])];
+  const unknown = modules.filter((m) => !ALL_MODULE_CODES.includes(m));
+  if (unknown.length) throw new Error(`Unknown module code(s): ${unknown.join(', ')}`);
+  const core = modules.filter((m) => CORE_MODULE_CODES.includes(m));
+  if (core.length) {
+    throw new Error(`Core module(s) are always on and take no entitlement: ${core.join(', ')}`);
+  }
+  // The dependsOn closure, checked where the operator can still fix it. Slice 2 ANDs a module's
+  // dependencies when it resolves, so selling `multi_cycle_payroll` without `payroll` books a sale and
+  // writes an ACTIVE row that resolves DISABLED — an entitlement the customer paid for and cannot use,
+  // with nothing to notice it by. Refused here AND again in db/provision.ts, because the runner is the
+  // last gate and a request row can also arrive from a replay.
+  const missingDeps = missingModuleDependencies(modules);
+  if (missingDeps.length) {
+    throw new Error(
+      `Module(s) missing a required dependency: add ${missingDeps.join(', ')} — a module whose ` +
+        'dependencies are not also active resolves as disabled.',
+    );
+  }
 
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(tenantProvisionRequest)
-      .values({ customerName, adminEmail, requestedBy: ctx.userId ?? null })
+      .values({ customerName, adminEmail, country, plan, requestedBy: ctx.userId ?? null })
       .returning({ id: tenantProvisionRequest.id });
+    if (modules.length) {
+      await tx
+        .insert(tenantProvisionRequestModule)
+        .values(modules.map((moduleCode) => ({ requestId: row.id, moduleCode })));
+    }
     return { id: row.id };
   });
 }

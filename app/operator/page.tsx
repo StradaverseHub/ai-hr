@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { AutoRefresh } from './auto-refresh';
 import { ActivationLink } from './activation-link';
 import { createCustomerAction, requestReissueAction } from './actions';
+import { countryPacks } from '@/localization/registry';
+import { DEFAULT_PROVISION_MODULE_CODES, MODULE_CATALOG } from '@/packs/catalog';
 
 /**
  * Operator console — create a new customer (tenant).
@@ -34,6 +36,11 @@ export default async function OperatorPage() {
   const t = await getTranslations('operator');
   const locale = await getLocale();
   const requests = await listProvisionRequests(s);
+  // Registered packs only — see the form comment. countryPacks() works in a server component because
+  // importing localization/registry IS the registration (its registerPack call runs at module load).
+  const countries = countryPacks().map((p) => p.country.toUpperCase()).sort();
+  const sellableModules = MODULE_CATALOG.filter((m) => !m.isCore).sort((a, b) => a.sortOrder - b.sortOrder);
+  const coreModules = MODULE_CATALOG.filter((m) => m.isCore).sort((a, b) => a.sortOrder - b.sortOrder);
   const dateTime = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' });
 
   const inFlight = requests.some((r) => r.status === 'pending' || r.status === 'running');
@@ -74,6 +81,49 @@ export default async function OperatorPage() {
               {t('create')}
             </button>
           </div>
+          {/* ADR-0077 slice 1 — the sale, captured at intake. Both fields span the whole grid so the
+              existing two-column name/email row keeps its shape.
+              The country list comes from the REGISTERED country packs, so it shows exactly what this
+              installation can actually provision (one entry today) rather than a hopeful list of ISO
+              codes that would fail in the runner an hour later. core/operator re-validates both. */}
+          <label className="block sm:col-span-3">
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">Country</span>
+            <select name="country" defaultValue="MY" className={inputCls}>
+              {countries.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <fieldset className="block sm:col-span-3">
+            <legend className="mb-1 block text-xs font-medium text-muted-foreground">Modules</legend>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {sellableModules.map((m) => (
+                <label key={m.code} className="flex items-center gap-2 text-sm">
+                  {/* PRE-TICKED for the modules no env var gates today (DEFAULT_PROVISION_MODULE_CODES).
+                      An untouched form used to queue a customer with ZERO entitlement rows, which reads
+                      as "everything the customer has today" until slice 3 and as "nothing" after it.
+                      The default states what the product currently includes; unticking is still the
+                      operator's decision and is honoured verbatim by provisionTenant. */}
+                  <input
+                    type="checkbox"
+                    name="modules"
+                    value={m.code}
+                    defaultChecked={DEFAULT_PROVISION_MODULE_CODES.includes(m.code)}
+                    className="size-4 rounded"
+                  />
+                  {m.name}
+                </label>
+              ))}
+            </div>
+            {/* Core modules are deliberately absent: they are always on, take no entitlement row at
+                all, and the 0313 trigger refuses one — so offering them as a choice would be a lie. */}
+            <p className="mt-1 text-xs text-muted-foreground">
+              Core modules ({coreModules.map((m) => m.name).join(', ')}) are always included. Ticked by
+              default are the modules every customer runs today; untick to sell less.
+            </p>
+          </fieldset>
         </form>
         <p className="mt-2 text-xs text-muted-foreground">{t('formNote')}</p>
       </Card>
@@ -126,6 +176,19 @@ export default async function OperatorPage() {
                     <form action={createCustomerAction}>
                       <input type="hidden" name="customerName" value={r.customerName} />
                       <input type="hidden" name="adminEmail" value={r.adminEmail} />
+                      {/* THE WHOLE SALE IS REPLAYED — country, plan and every ticked module. Retry
+                          re-posts this form to the same action that created the request, so anything
+                          missing here is silently dropped: a retry carrying no modules would
+                          re-provision the customer with nothing but the core set, which is a
+                          downgrade nobody asked for and nothing to notice it by (the failed request's
+                          own rows survive in tenant_provision_request_module, but the NEW request is
+                          built from this form, not from them). listProvisionRequests reads them back
+                          onto the row precisely so this loop can exist. */}
+                      <input type="hidden" name="country" value={r.country} />
+                      {r.plan ? <input type="hidden" name="plan" value={r.plan} /> : null}
+                      {r.modules.map((code) => (
+                        <input key={code} type="hidden" name="modules" value={code} />
+                      ))}
                       <button type="submit" className={btnGhost}>
                         {t('retry')}
                       </button>

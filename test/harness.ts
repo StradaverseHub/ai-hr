@@ -4,6 +4,7 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { randomUUID } from 'node:crypto';
 import { createDb, client as appClient, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
+import { legacyEnabledModulesIn, legacyEnabledSettingsIn } from '../packs/catalog';
 
 // Owner connection (postgres) — bypasses RLS, used only for setup/seed/reset.
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
@@ -82,6 +83,16 @@ const ALL_TABLES = [
   // FK, so truncating `tenant` would cascade it away, but list it explicitly per the convention above:
   // a request row leaking between test files would be counted by the RLS/claim assertions.
   'tenant_provision_request',
+  // ADR-0077 slice 1 — entitlement + settings rows. All of these would CASCADE from `tenant` (or from
+  // `tenant_provision_request`) anyway, but they are listed explicitly per the convention above: a
+  // leaked entitlement row would silently change what a later test file's module gate resolves to,
+  // which is the hardest class of cross-file bug to attribute.
+  //
+  // `module` and `setting_definition` are DELIBERATELY ABSENT. They are installation-wide CATALOGS
+  // seeded once into the template by scripts/seed-catalogs.ts (C11), not test data — truncating them
+  // here would empty the catalog on the first resetDb() and every later FK insert would fail.
+  'tenant_module', 'tenant_setting', 'subscription', 'subscription_line', 'usage_snapshot',
+  'platform_user', 'tenant_provision_request_module',
 ];
 
 /**
@@ -173,6 +184,53 @@ export async function seedBase(): Promise<Base> {
     .insert(schema.roleAssignment)
     .values({ tenantId, appUserId: au.id, companyId: null, role: 'hr_admin' });
 
+  // ADR-0077 slice 1 — the tenant's default entitlements and settings, via the OWNER connection (both
+  // tables are SELECT-only or scope-gated to ai_hr_app by design, migration 0313).
+  //
+  // THE SET IS NOT DEFINED HERE. It is `LEGACY_ENABLED_MODULE_CODES` / `LEGACY_ENABLED_SETTINGS` in
+  // packs/catalog.ts, shared with migration 0313's backfill (existing tenants) and db/seed.ts (the demo
+  // tenant) — because a parity set that only the test harness knows is not parity, it is a fixture that
+  // makes the suite agree with itself while production diverges. That was the original shape of this
+  // comment and it was wrong.
+  //
+  // NARROWED BY THE LIVE ENV, and that is the point rather than a shortcut. The deployment parity set
+  // and the set THIS PROCESS runs with are different, because test/env.ts deliberately deletes
+  // MULTI_CYCLE_PAYROLL_ENABLED / TYPED_PAY_COMPONENTS_ENABLED / PAYROLL_RESET_ENABLED so the suite
+  // exercises the legacy payroll path. Seeding ACTIVE rows for those would be the OPPOSITE of parity —
+  // it would switch multi-cycle payroll on for 299 test files the moment slice 3 reads rows instead of
+  // env. `legacyEnabledModulesIn(process.env)` makes the row and the flag agree in every environment,
+  // including the files that opt a flag in per-test before calling seedBase.
+  //
+  // WHERE THIS DIVERGES, AND IT IS NOT FOUR FILES. This comment used to name four (the
+  // NOTIFICATIONS_ENABLED deleters) as the sole exception. The real number is 46, because the seed set
+  // is computed ONCE, here, in beforeEach — while most opt-in files mutate their gate INSIDE the test
+  // body, i.e. after this ran. Ordering, not intent, decides whether a row exists:
+  //   - test/payroll-reset.test.ts sets PAYROLL_RESET_ENABLED BEFORE seedBase → it gets a row;
+  //   - test/multicycle-kernel.test.ts sets MULTI_CYCLE_PAYROLL_ENABLED AFTER → it does not.
+  // And the SETTING axis diverges for everyone: under the suite's env (test/env.ts deletes
+  // PAYROLL_RESET_ENABLED / AUDIT_HASH_CHAIN_ENABLED, and nothing sets PAYROLL_UNLOCK_ENABLED or
+  // INDIVIDUAL_TXN_PAY_ENABLED) `legacyEnabledSettingsIn` returns the EMPTY set, so no test tenant in
+  // the suite carries a single tenant_setting row today.
+  //
+  // Both facts are now ASSERTED rather than described: `test/module-catalog-drift.test.ts` →
+  // 'the slice-3 worklist is a pinned inventory' greps every test file for a mutation of a tracked gate
+  // and pins the file→gates map. That map IS slice 3's worklist — each listed file needs a matching
+  // `setModule` / `setSetting` call when its gate stops being an env read — and a new file that mutates
+  // a gate turns the suite red until it is added, instead of surfacing as an unattributed failure two
+  // slices later. Prose could not be trusted with this: it was wrong by an order of magnitude.
+  const modules = legacyEnabledModulesIn(process.env);
+  if (modules.length > 0) {
+    await owner.db.insert(schema.tenantModule).values(
+      modules.map((moduleCode) => ({ tenantId, moduleCode, status: 'active' })),
+    );
+  }
+  const settings = legacyEnabledSettingsIn(process.env);
+  if (settings.length > 0) {
+    await owner.db.insert(schema.tenantSetting).values(
+      settings.map(({ key, value }) => ({ tenantId, key, value, source: 'platform' })),
+    );
+  }
+
   return {
     tenantId,
     companyId: c.id,
@@ -235,6 +293,38 @@ export async function latestEventPayload(
   if (rows.length === 0) return null;
   rows.sort((a, b) => Number(a.seq) - Number(b.seq));
   return (rows[rows.length - 1].payload ?? null) as Record<string, unknown> | null;
+}
+
+/**
+ * Turn a module on or off for a tenant (owner connection — the app role can never write these).
+ * `status: null` DELETES the row, which is how a test asserts the disabled path: a missing row is
+ * disabled (C7), and that is a different state from an explicit `status='disabled'` row.
+ */
+export async function setModule(
+  tenantId: string,
+  moduleCode: string,
+  status: 'active' | 'trial' | 'disabled' | null,
+  companyId: string | null = null,
+): Promise<void> {
+  await owner.db.execute(
+    sql`DELETE FROM tenant_module WHERE tenant_id = ${tenantId} AND module_code = ${moduleCode}
+        AND COALESCE(company_id, '00000000-0000-0000-0000-000000000000'::uuid)
+          = COALESCE(${companyId}::uuid, '00000000-0000-0000-0000-000000000000'::uuid)`,
+  );
+  if (status !== null) {
+    await owner.db.insert(schema.tenantModule).values({ tenantId, moduleCode, companyId, status });
+  }
+}
+
+/** Set a tenant's value for a setting key (owner connection — bypasses the scope policy on purpose). */
+export async function setSetting(tenantId: string, key: string, value: unknown): Promise<void> {
+  await owner.db
+    .insert(schema.tenantSetting)
+    .values({ tenantId, key, value, source: 'platform' })
+    .onConflictDoUpdate({
+      target: [schema.tenantSetting.tenantId, schema.tenantSetting.key],
+      set: { value, source: 'platform' },
+    });
 }
 
 export function adminCtx(b: Base): SessionContext {

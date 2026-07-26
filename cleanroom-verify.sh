@@ -56,6 +56,10 @@ cp -f "$ENVFILE" "$BACKUP"
 } > "$ENVFILE"
 pnpm exec drizzle-kit migrate 2>&1 | tail -20; MIG=${PIPESTATUS[0]}
 [ "$MIG" -ne 0 ] && { echo "CLEANROOM_RESULT=FAIL (migrate)"; exit 1; }
+# ADR-0077 C11: catalogs are code-seeded, so a clean room that only migrates is NOT a usable database.
+echo "== seed module + setting catalogs =="
+node --env-file="$ENVFILE" --import tsx scripts/seed-catalogs.ts; SC=$?
+[ "$SC" -ne 0 ] && { echo "CLEANROOM_RESULT=FAIL (seed-catalogs)"; exit 1; }
 echo "== full vitest as $APPROLE under RLS =="
 # hookTimeout bumped to 120s: each file's beforeAll applies ~190 migrations; under load the default 30s flakes.
 pnpm exec vitest run --hookTimeout=120000 --testTimeout=60000 2>&1 | tail -40; VT=${PIPESTATUS[0]}
@@ -65,7 +69,17 @@ pnpm exec vitest run --hookTimeout=120000 --testTimeout=60000 2>&1 | tail -40; V
 # Record WHICH commit just passed, so `improve:release` can skip re-running an identical suite. Before this,
 # every round ran the full suite twice on the same tree — once here, once in release.ts's final gate — for
 # no extra information. release.ts re-runs the suite itself whenever this sha doesn't match HEAD.
+#
+# A DIRTY TREE GETS NO RECEIPT. The suite that just passed ran against the WORKING TREE, not against
+# HEAD — so stamping HEAD's sha when files are modified or untracked records PASS for a commit that
+# does not contain the code under test, and release.ts then skips its own gate on that basis. Write
+# "dirty" instead: the receipt is still informative, and it can never match `git rev-parse HEAD`.
 SHA=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+  echo "⚠ working tree is dirty — the suite passed against uncommitted code, so the receipt is not"
+  echo "  attributable to $SHA. Commit and re-run to earn a skippable receipt."
+  SHA=dirty
+fi
 cat > "$ROOT/.gate-receipt.json" <<JSON
 {"sha":"$SHA","result":"PASS","at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","suite":"cleanroom-verify.sh"}
 JSON

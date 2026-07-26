@@ -7225,6 +7225,7 @@
       "tenant": "Create the customer account",
       "company": "Create the company",
       "catalogs": "Add leave types, holidays and payroll settings",
+      "entitlements": "Activate the purchased modules",
       "guides": "Add the help guides",
       "admin": "Create the administrator login",
       "invitation": "Issue the activation link"

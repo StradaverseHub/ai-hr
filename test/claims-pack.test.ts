@@ -96,7 +96,14 @@ describe('ADR-0080 rung 3: nav parity with the pre-retrofit sidebar', () => {
 
   it('sidebar.tsx mounts both rows via the registry and hardcodes neither', () => {
     const sidebar = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
-    expect(sidebar, 'registers the pack (static side-effect import)').toContain(`import '@/packs/claims'`);
+    // The registration moved out of the sidebar into packs/register-all.ts (ADR-0077 slice 1) so that
+    // SERVER code can enumerate module packs too — a client-component side effect left listPacks()
+    // empty on the server. The property under test is unchanged and still end-to-end: the pack is
+    // registered, AND the sidebar pulls in the file that registers it. Asserting only the first half
+    // would pass with the sidebar importing nothing at all.
+    const registerAll = fs.readFileSync(path.resolve(__dirname, '../packs/register-all.ts'), 'utf8');
+    expect(registerAll, 'registers the pack (static side-effect import)').toContain(`import '@/packs/claims'`);
+    expect(sidebar, 'sidebar pulls in the shared pack wiring').toContain(`import '@/packs/register-all'`);
     expect(sidebar, 'resolves the rows through the registry').toContain(`modulePackById('claims')`);
     for (const { href } of EXPECTED) {
       expect(sidebar.includes(`'${href}'`), `${href} no longer hardcoded in sidebar.tsx`).toBe(false);

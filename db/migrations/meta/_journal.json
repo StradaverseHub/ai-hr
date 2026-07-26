@@ -1842,6 +1842,13 @@
       "when": 1781862412000,
       "tag": "0312_invitation_privilege_escalation",
       "breakpoints": true
+    },
+    {
+      "idx": 313,
+      "version": "7",
+      "when": 1781862413000,
+      "tag": "0313_module_entitlements",
+      "breakpoints": true
     }
   ]
 }
