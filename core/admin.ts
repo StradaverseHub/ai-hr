@@ -39,7 +39,7 @@ import {
   type LeaveRoundingMethod,
   type ServiceBand,
 } from './leave';
-import { countryPacks } from '../localization/registry';
+import { countryPacks, requirePackFor } from '../localization/registry';
 import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
 import { MARITAL_STATUSES } from './profile';
 import {
@@ -270,6 +270,14 @@ export async function createCompany(
 ) {
   const legalName = cleanName(p.legalName, 'Legal name');
   const country = isoCode(p.country, 'MY', 'Country');
+  // F7 — the add-company seam was open: isoCode is a SHAPE check only ('ZZ' and 'XX' pass), so a
+  // company could be created in a country with no statutory pack. Payroll fails closed for such a
+  // company (core/payroll.ts:1546-1547), but LEAVE fails SILENT — the engines `continue` past a
+  // packless employee and the holiday resolver yields an empty calendar, so the employee accrues
+  // nothing and nobody is told. Refusing at creation closes that window until slice 6 replaces this
+  // with the two-tier model (D-14), where a non-statutory company is a deliberate, declared choice
+  // rather than an accident. isoCode is shared with `currency`, so the check lives here, not in it.
+  requirePackFor(country);
   const currency = isoCode(p.currency, 'MYR', 'Currency');
   // Organization Module (361e3b15): the chosen default, resolved against the standard catalog we are about to
   // seed. Defaults to 'Monthly' (the column default) so the common case is a single accept-and-move-on step.

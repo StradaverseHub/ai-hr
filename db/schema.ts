@@ -5251,6 +5251,13 @@ export const tenantProvisionRequest = pgTable(
     /** The RUNNER's claim stamp (status → 'running'), read by the stale-reclaim sweep. */
     claimedAt: timestamp('claimed_at', { withTimezone: true }),
     reissueRequestedAt: timestamp('reissue_requested_at', { withTimezone: true }),
+    /**
+     * ADR-0077 slice 1 — the sale, recorded at intake. Both are in 0313's added column grant; the
+     * console reads them back to replay a failed request, so omitting them there would surface as a
+     * permission error on the Retry path rather than anywhere near this line.
+     */
+    country: text('country').notNull().default('MY'),
+    plan: text('plan'),
     /** The operator's app_user id. No FK by design — a global row must not depend on a tenant table. */
     requestedBy: uuid('requested_by'),
     createdAt: createdAt(),

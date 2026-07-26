@@ -20,9 +20,11 @@
  */
 import { desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { tenantProvisionRequest } from '../db/schema';
+import { tenantProvisionRequest, tenantProvisionRequestModule } from '../db/schema';
 import { isOperator } from '../lib/authz';
 import { isDemoDeployment } from '../lib/demo-mode';
+import { countryPacks } from '../localization/registry';
+import { ALL_MODULE_CODES, CORE_MODULE_CODES } from '../packs/catalog';
 import { PROVISION_STEPS, type ProvisionStep } from '../db/provision';
 
 export { PROVISION_STEPS, type ProvisionStep };
@@ -36,6 +38,8 @@ export type ProvisionRequestRow = {
   customerName: string;
   adminEmail: string;
   status: string;
+  country: string;
+  plan: string | null;
   currentStep: string | null;
   error: string | null;
   tenantId: string | null;
@@ -78,6 +82,8 @@ export async function listProvisionRequests(ctx: SessionContext): Promise<Provis
         customerName: tenantProvisionRequest.customerName,
         adminEmail: tenantProvisionRequest.adminEmail,
         status: tenantProvisionRequest.status,
+        country: tenantProvisionRequest.country,
+        plan: tenantProvisionRequest.plan,
         currentStep: tenantProvisionRequest.currentStep,
         error: tenantProvisionRequest.error,
         tenantId: tenantProvisionRequest.tenantId,
@@ -92,7 +98,15 @@ export async function listProvisionRequests(ctx: SessionContext): Promise<Provis
   );
 }
 
-export type CreateProvisionRequestInput = { customerName: string; adminEmail: string };
+export type CreateProvisionRequestInput = {
+  customerName: string;
+  adminEmail: string;
+  /** ISO alpha-2. Validated against the REGISTERED country packs — see the note in the body. */
+  country?: string;
+  plan?: string;
+  /** Sellable module codes the customer bought. Core modules are never listed (they take no rows). */
+  modules?: string[];
+};
 
 /**
  * Queue a new customer. Validation only — no uniqueness check of any kind:
@@ -113,12 +127,40 @@ export async function createProvisionRequest(
   const adminEmail = input.adminEmail.trim().toLowerCase();
   if (!customerName) throw new Error('A customer name is required.');
   if (!adminEmail || !adminEmail.includes('@')) throw new Error('A valid admin email is required.');
+  const country = (input.country ?? 'MY').trim().toUpperCase();
+  const plan = input.plan?.trim() || null;
+
+  // Validated at INTAKE, not at provisioning time: a request that cannot succeed should be refused
+  // while the operator is still looking at the form, not an hour later in a cron log. This is an
+  // interim guard — slice 6's two-tier model deliberately relaxes it so a company can onboard in a
+  // country whose statutory pack has not shipped (D-14).
+  const registered = countryPacks().map((p) => p.country.toUpperCase());
+  if (!registered.includes(country)) {
+    throw new Error(
+      `No country pack is registered for '${country}'. Available: ${registered.join(', ') || '(none)'}.`,
+    );
+  }
+
+  // Unknown or core codes are refused rather than filtered out. Silently dropping a ticked module
+  // would provision the customer with less than they bought and leave no trace of the difference.
+  const modules = [...new Set(input.modules ?? [])];
+  const unknown = modules.filter((m) => !ALL_MODULE_CODES.includes(m));
+  if (unknown.length) throw new Error(`Unknown module code(s): ${unknown.join(', ')}`);
+  const core = modules.filter((m) => CORE_MODULE_CODES.includes(m));
+  if (core.length) {
+    throw new Error(`Core module(s) are always on and take no entitlement: ${core.join(', ')}`);
+  }
 
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(tenantProvisionRequest)
-      .values({ customerName, adminEmail, requestedBy: ctx.userId ?? null })
+      .values({ customerName, adminEmail, country, plan, requestedBy: ctx.userId ?? null })
       .returning({ id: tenantProvisionRequest.id });
+    if (modules.length) {
+      await tx
+        .insert(tenantProvisionRequestModule)
+        .values(modules.map((moduleCode) => ({ requestId: row.id, moduleCode })));
+    }
     return { id: row.id };
   });
 }

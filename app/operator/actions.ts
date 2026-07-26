@@ -17,6 +17,11 @@ export async function createCustomerAction(formData: FormData): Promise<void> {
   await createProvisionRequest(s, {
     customerName: String(formData.get('customerName') ?? ''),
     adminEmail: String(formData.get('adminEmail') ?? ''),
+    country: String(formData.get('country') ?? 'MY'),
+    // getAll: the module picker is a checkbox group, so an unticked form sends nothing and a
+    // multi-tick sends repeats of the same key. core/operator validates the codes — nothing here
+    // trusts them, matching this file's existing posture.
+    modules: formData.getAll('modules').map(String).filter(Boolean),
   });
   revalidatePath('/operator');
 }

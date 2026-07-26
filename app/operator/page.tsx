@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { AutoRefresh } from './auto-refresh';
 import { ActivationLink } from './activation-link';
 import { createCustomerAction, requestReissueAction } from './actions';
+import { countryPacks } from '@/localization/registry';
+import { MODULE_CATALOG } from '@/packs/catalog';
 
 /**
  * Operator console — create a new customer (tenant).
@@ -34,6 +36,11 @@ export default async function OperatorPage() {
   const t = await getTranslations('operator');
   const locale = await getLocale();
   const requests = await listProvisionRequests(s);
+  // Registered packs only — see the form comment. countryPacks() works in a server component because
+  // importing localization/registry IS the registration (its registerPack call runs at module load).
+  const countries = countryPacks().map((p) => p.country.toUpperCase()).sort();
+  const sellableModules = MODULE_CATALOG.filter((m) => !m.isCore).sort((a, b) => a.sortOrder - b.sortOrder);
+  const coreModules = MODULE_CATALOG.filter((m) => m.isCore).sort((a, b) => a.sortOrder - b.sortOrder);
   const dateTime = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' });
 
   const inFlight = requests.some((r) => r.status === 'pending' || r.status === 'running');
@@ -74,6 +81,37 @@ export default async function OperatorPage() {
               {t('create')}
             </button>
           </div>
+          {/* ADR-0077 slice 1 — the sale, captured at intake. Both fields span the whole grid so the
+              existing two-column name/email row keeps its shape.
+              The country list comes from the REGISTERED country packs, so it shows exactly what this
+              installation can actually provision (one entry today) rather than a hopeful list of ISO
+              codes that would fail in the runner an hour later. core/operator re-validates both. */}
+          <label className="block sm:col-span-3">
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">Country</span>
+            <select name="country" defaultValue="MY" className={inputCls}>
+              {countries.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <fieldset className="block sm:col-span-3">
+            <legend className="mb-1 block text-xs font-medium text-muted-foreground">Modules</legend>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {sellableModules.map((m) => (
+                <label key={m.code} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="modules" value={m.code} className="size-4 rounded" />
+                  {m.name}
+                </label>
+              ))}
+            </div>
+            {/* Core modules are deliberately absent: they are always on, take no entitlement row at
+                all, and the 0313 trigger refuses one — so offering them as a choice would be a lie. */}
+            <p className="mt-1 text-xs text-muted-foreground">
+              Core modules ({coreModules.map((m) => m.name).join(', ')}) are always included.
+            </p>
+          </fieldset>
         </form>
         <p className="mt-2 text-xs text-muted-foreground">{t('formNote')}</p>
       </Card>
@@ -126,6 +164,13 @@ export default async function OperatorPage() {
                     <form action={createCustomerAction}>
                       <input type="hidden" name="customerName" value={r.customerName} />
                       <input type="hidden" name="adminEmail" value={r.adminEmail} />
+                      {/* Replayed too: a retry that dropped these would quietly re-provision the
+                          customer in MY with no modules — a downgrade nobody asked for. The picked
+                          modules are NOT replayed here because the failed request's rows are still
+                          in tenant_provision_request_module; re-creating them from the row would
+                          need a second read. Retry therefore re-creates the country and plan, and
+                          the modules are re-picked by the operator — visible, not silent. */}
+                      <input type="hidden" name="country" value={r.country} />
                       <button type="submit" className={btnGhost}>
                         {t('retry')}
                       </button>

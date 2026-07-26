@@ -37,8 +37,10 @@ import {
   person,
   roleAssignment,
   tenant,
+  tenantModule,
 } from './schema';
 import { requirePackFor } from '../localization/registry';
+import { ALL_MODULE_CODES, CORE_MODULE_CODES } from '../packs/catalog';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { seedProfileOptions } from '../core/profile-options';
 import { seedGuides } from './seed-guides';
@@ -60,6 +62,7 @@ export const PROVISION_STEPS = [
   { key: 'tenant', i18nKey: 'tenant' },
   { key: 'company', i18nKey: 'company' },
   { key: 'catalogs', i18nKey: 'catalogs' },
+  { key: 'entitlements', i18nKey: 'entitlements' },
   { key: 'guides', i18nKey: 'guides' },
   { key: 'admin', i18nKey: 'admin' },
   { key: 'invitation', i18nKey: 'invitation' },
@@ -259,7 +262,23 @@ async function mintActivationInvitation(
   return base ? `${base}/invite/${raw}` : `/invite/${raw}`;
 }
 
-export type ProvisionInput = { name: string; adminEmail: string; baseUrl?: string };
+export type ProvisionInput = {
+  name: string;
+  adminEmail: string;
+  baseUrl?: string;
+  /**
+   * ISO alpha-2. Consumed IMMEDIATELY (ADR-0077 slice 1) rather than recorded and ignored: leaving a
+   * window where intake stores a country the runner discards is how a customer ends up provisioned
+   * under the wrong jurisdiction with nothing in the logs to say so. Defaults to 'MY', so behaviour is
+   * identical while MY is the only registered pack.
+   */
+  country?: string;
+  /**
+   * The SELLABLE modules this customer bought. Core modules are never listed — they take no rows at
+   * all (the 0313 trigger refuses them) and resolve enabled from packs/catalog.ts.
+   */
+  modules?: string[];
+};
 export type ProvisionResult = {
   tenantId: string;
   companyId: string;
@@ -283,6 +302,7 @@ export type ProvisionResult = {
  */
 export async function provisionTenant(tx: Tx, input: ProvisionInput): Promise<ProvisionResult> {
   const name = input.name.trim();
+  const country = (input.country ?? 'MY').trim().toUpperCase();
   const adminEmail = input.adminEmail.trim().toLowerCase();
   const baseUrl = input.baseUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? '';
 
@@ -295,16 +315,45 @@ export async function provisionTenant(tx: Tx, input: ProvisionInput): Promise<Pr
   });
 
   const companyId = await step('company', async () => {
+    // The country the operator recorded at intake, resolved through the pack registry so an
+    // unregistered jurisdiction fails closed here rather than producing a company whose statutory
+    // engines silently do nothing (ADR-0080 D3). Previously this was a hardcoded 'MY' literal and the
+    // recorded country was never read.
+    //
+    // `currency` stays 'MYR' for now, deliberately: CountryPack carries no currency field, and
+    // inventing one here would be slice 6's "company currency tied to the country module" arriving
+    // early and untested. Wrong only for a non-MY company, which cannot exist until a second pack
+    // ships — and slice 6 is the slice that ships one.
+    const pack = requirePackFor(country);
     const [c] = await tx
       .insert(company)
-      .values({ tenantId, legalName: name, country: 'MY', currency: 'MYR' })
+      .values({ tenantId, legalName: name, country: pack.country, currency: 'MYR' })
       .returning({ id: company.id });
     return c.id;
   });
 
   await step('catalogs', async () => {
-    await seedTenantCatalogs(tx, tenantId);
+    // `country` was previously omitted here, so seedTenantCatalogs silently fell back to its 'MY'
+    // default even if intake had recorded something else.
+    await seedTenantCatalogs(tx, tenantId, country);
     await seedCompanyCatalogs(tx, tenantId, companyId);
+  });
+
+  // ADR-0077 slice 1 — entitlements land inside the SAME transaction as the tenant row, so no tenant
+  // can exist without them. A tenant with no rows would read as "everything disabled" once slice 2's
+  // fail-closed resolver lands (C7), which is a far worse failure than refusing to provision.
+  //
+  // Unknown codes are rejected rather than ignored: silently dropping a module the operator ticked
+  // would hand the customer less than they bought, with nothing to notice it by.
+  await step('entitlements', async () => {
+    const picked = [...new Set(input.modules ?? [])];
+    const unknown = picked.filter((c) => !ALL_MODULE_CODES.includes(c));
+    if (unknown.length) throw new Error(`Unknown module code(s): ${unknown.join(', ')}`);
+    const core = picked.filter((c) => CORE_MODULE_CODES.includes(c));
+    if (core.length) throw new Error(`Core module(s) take no entitlement row: ${core.join(', ')}`);
+    if (picked.length) {
+      await tx.insert(tenantModule).values(picked.map((moduleCode) => ({ tenantId, moduleCode, status: 'active' })));
+    }
   });
 
   await step('guides', async () => {

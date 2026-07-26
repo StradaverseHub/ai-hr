@@ -20,7 +20,7 @@
 import { createDb } from '../db/client';
 import { ProvisionStepError, provisionTenant, INVITE_TTL_DAYS } from '../db/provision';
 import { appendEvent } from '../db/events';
-import { appInvitation, appUser, person, tenantProvisionRequest } from '../db/schema';
+import { appInvitation, appUser, person, tenantProvisionRequest, tenantProvisionRequestModule } from '../db/schema';
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -81,7 +81,7 @@ async function reclaimStale(db: ReturnType<typeof createDb>['db']): Promise<numb
  */
 async function claimNext(
   db: ReturnType<typeof createDb>['db'],
-): Promise<{ id: string; customerName: string; adminEmail: string } | null> {
+): Promise<{ id: string; customerName: string; adminEmail: string; country: string; modules: string[] } | null> {
   const rows = await db
     .update(tenantProvisionRequest)
     .set({ status: 'running', claimedAt: new Date(), updatedAt: new Date() })
@@ -101,8 +101,18 @@ async function claimNext(
       id: tenantProvisionRequest.id,
       customerName: tenantProvisionRequest.customerName,
       adminEmail: tenantProvisionRequest.adminEmail,
+      // ADR-0077 slice 1: intake records the country and the picked modules, so the runner has to
+      // SELECT them. Every hop in this chain previously dropped everything but name + email, so a
+      // widened form alone would have changed nothing observable.
+      country: tenantProvisionRequest.country,
     });
-  return rows[0] ?? null;
+  const claimed = rows[0];
+  if (!claimed) return null;
+  const picked = await db
+    .select({ moduleCode: tenantProvisionRequestModule.moduleCode })
+    .from(tenantProvisionRequestModule)
+    .where(eq(tenantProvisionRequestModule.requestId, claimed.id));
+  return { ...claimed, modules: picked.map((p) => p.moduleCode) };
 }
 
 /**
@@ -168,7 +178,7 @@ async function markFailed(
  */
 async function provisionOne(
   owner: ReturnType<typeof createDb>,
-  req: { id: string; customerName: string; adminEmail: string },
+  req: { id: string; customerName: string; adminEmail: string; country: string; modules: string[] },
 ): Promise<void> {
   if (await emailAlreadyUsed(owner.db, req.adminEmail)) {
     await markFailed(
@@ -182,7 +192,12 @@ async function provisionOne(
 
   try {
     await owner.db.transaction(async (tx) => {
-      const result = await provisionTenant(tx, { name: req.customerName, adminEmail: req.adminEmail });
+      const result = await provisionTenant(tx, {
+        name: req.customerName,
+        adminEmail: req.adminEmail,
+        country: req.country,
+        modules: req.modules,
+      });
       await tx
         .update(tenantProvisionRequest)
         .set({
