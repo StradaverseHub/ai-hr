@@ -34,10 +34,12 @@ import {
   adminCtx,
   closeAll,
   createAppUser,
+  entitledCtx,
   migrateTestDb,
   owner,
   resetDb,
   seedBase,
+  setModule,
   type Base,
 } from './harness';
 
@@ -222,32 +224,42 @@ describe('sweepReviewReminders', () => {
   });
 
   it('notifies the assigned manager + HR admins (kind review.reminder)', async () => {
-    process.env.NOTIFICATIONS_ENABLED = 'true';
-    try {
-      const a = adminCtx(b);
-      const HR = await hire('HrRem');
-      await createAppUser(b.tenantId, HR.personId, 'hr_admin');
-      const M = await hire('MgrRem');
-      const E = await hire('SubjRem');
-      await setReportingLine(a, {
-        subordinateEmploymentId: E.employmentId,
-        managerEmploymentId: M.employmentId,
-        lineType: 'administrative',
-        validFrom: '2026-01-01',
-      });
-      await openReview(E.employmentId, '2026-04-30');
-      await dispatchNotifications(a); // drain the .started event first
+    // ADR-0077 slice 3: `notifications` is a per-tenant MODULE ROW now, not NOTIFICATIONS_ENABLED —
+    // application code no longer reads the env var at all, so writing it here would gate nothing.
+    //
+    // Both halves of the replacement matter. seedBase's parity set is narrowed by the LIVE env
+    // (`legacyEnabledModulesIn(process.env)`), so whether this tenant carries a notifications row would
+    // otherwise depend on whether the machine running the suite happens to have NOTIFICATIONS_ENABLED in
+    // .env.local. And `adminCtx` derives its snapshot from that SAME env, so wherever no row was seeded
+    // it reports the module OFF, `dispatchNotifications` returns early, and the three assertions below
+    // pass VACUOUSLY — with zero notification rows, `recipients` is empty, so the negative assertion is
+    // satisfied for the wrong reason and the two positives would (correctly) fail only by luck of the
+    // machine. The setModule + entitledCtx pair takes the environment out of the question entirely: the
+    // ROW is what opens the gate. entitledCtx is a point-in-time read, so it is built AFTER the grant.
+    //
+    // No try/finally: resetDb() truncates tenant_module between tests, so there is nothing to restore.
+    await setModule(b.tenantId, 'notifications', 'active');
+    const a = await entitledCtx(b);
+    const HR = await hire('HrRem');
+    await createAppUser(b.tenantId, HR.personId, 'hr_admin');
+    const M = await hire('MgrRem');
+    const E = await hire('SubjRem');
+    await setReportingLine(a, {
+      subordinateEmploymentId: E.employmentId,
+      managerEmploymentId: M.employmentId,
+      lineType: 'administrative',
+      validFrom: '2026-01-01',
+    });
+    await openReview(E.employmentId, '2026-04-30');
+    await dispatchNotifications(a); // drain the .started event first
 
-      await sweepReviewReminders(sweepCtx(), { today: '2026-04-01' });
-      await dispatchNotifications(a);
-      const notifs = await owner.db.select().from(schema.notification).where(eq(schema.notification.kind, 'review.reminder'));
-      const recipients = new Set(notifs.map((n) => n.recipientEmploymentId));
-      expect(recipients.has(M.employmentId)).toBe(true);
-      expect(recipients.has(HR.employmentId)).toBe(true);
-      expect(recipients.has(E.employmentId)).toBe(false); // the subject is not nagged
-    } finally {
-      delete process.env.NOTIFICATIONS_ENABLED;
-    }
+    await sweepReviewReminders(sweepCtx(), { today: '2026-04-01' });
+    await dispatchNotifications(a);
+    const notifs = await owner.db.select().from(schema.notification).where(eq(schema.notification.kind, 'review.reminder'));
+    const recipients = new Set(notifs.map((n) => n.recipientEmploymentId));
+    expect(recipients.has(M.employmentId)).toBe(true);
+    expect(recipients.has(HR.employmentId)).toBe(true);
+    expect(recipients.has(E.employmentId)).toBe(false); // the subject is not nagged
   });
 });
 
@@ -387,26 +399,27 @@ describe('review_document RLS + ESS visibility', () => {
 
 describe('issue-letter follow-up task (Fn 5.2)', () => {
   it('a decided review fans out "review.issue-letter" to HR admins, deep-linked to the profile', async () => {
-    process.env.NOTIFICATIONS_ENABLED = 'true';
-    try {
-      const a = adminCtx(b);
-      const HR = await hire('HrIssue');
-      await createAppUser(b.tenantId, HR.personId, 'hr_admin');
-      const E = await hire('SubjIssue');
-      const reviewId = await openReview(E.employmentId, '2026-04-30');
-      await completeReview(reviewId);
-      await dispatchNotifications(a);
+    // ADR-0077 slice 3 — same conversion as the reminder fan-out above: grant the `notifications` module
+    // ROW, then resolve the session from it with `entitledCtx`. `adminCtx`'s snapshot comes from
+    // `legacyEnabledModulesIn(process.env)` and would leave dispatch a no-op on any machine without
+    // NOTIFICATIONS_ENABLED, which would make `not.toContain(E.employmentId)` true against an EMPTY
+    // table (and blow up on `issue[0]` only by accident). The row is what proves the fan-out.
+    await setModule(b.tenantId, 'notifications', 'active');
+    const a = await entitledCtx(b);
+    const HR = await hire('HrIssue');
+    await createAppUser(b.tenantId, HR.personId, 'hr_admin');
+    const E = await hire('SubjIssue');
+    const reviewId = await openReview(E.employmentId, '2026-04-30');
+    await completeReview(reviewId);
+    await dispatchNotifications(a);
 
-      const issue = await owner.db.select().from(schema.notification).where(eq(schema.notification.kind, 'review.issue-letter'));
-      expect(issue.map((n) => n.recipientEmploymentId)).toContain(HR.employmentId);
-      expect(issue.map((n) => n.recipientEmploymentId)).not.toContain(E.employmentId);
-      expect(issue[0].linkPath).toBe(`/admin/personnel/${E.employmentId}`);
+    const issue = await owner.db.select().from(schema.notification).where(eq(schema.notification.kind, 'review.issue-letter'));
+    expect(issue.map((n) => n.recipientEmploymentId)).toContain(HR.employmentId);
+    expect(issue.map((n) => n.recipientEmploymentId)).not.toContain(E.employmentId);
+    expect(issue[0].linkPath).toBe(`/admin/personnel/${E.employmentId}`);
 
-      // The subject still gets the plain "complete" notification.
-      const decided = await owner.db.select().from(schema.notification).where(eq(schema.notification.kind, 'review.decided'));
-      expect(decided.map((n) => n.recipientEmploymentId)).toContain(E.employmentId);
-    } finally {
-      delete process.env.NOTIFICATIONS_ENABLED;
-    }
+    // The subject still gets the plain "complete" notification.
+    const decided = await owner.db.select().from(schema.notification).where(eq(schema.notification.kind, 'review.decided'));
+    expect(decided.map((n) => n.recipientEmploymentId)).toContain(E.employmentId);
   });
 });

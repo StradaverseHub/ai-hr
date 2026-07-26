@@ -1,7 +1,7 @@
 /**
  * 1.2.8 loan ⊥ payroll (ADR-0060):
- *   (a) un-gated path — with TYPED_PAY_COMPONENTS_ENABLED UNSET, a reserved+generated loan reduces
- *       otherDeductions / netPay by the instalment and changes NO statutory contribution (post-tax).
+ *   (a) un-gated path — with the `typed_pay_components` module NOT entitled, a reserved+generated loan
+ *       reduces otherDeductions / netPay by the instalment and changes NO statutory contribution (post-tax).
  *   (b) zero-loans byte-identical golden — a batch with no loans produces byte-identical payslips to the
  *       pre-loan path (the input query + the otherDeductions/totalDeductions sums touch ALL batches; matches
  *       the #148 / 9-3 byte-identical precedent).
@@ -11,9 +11,29 @@
  *       scheduled due, the loan stays ACTIVE with the TRUE residual outstanding (NOT settled, NOT written
  *       off), the shortfall RE-SCHEDULES, and the loan settles (status='settled', outstanding 0.00) ONLY
  *       once a later cycle clears the balance to zero.
+ *
+ * ── THE TYPED-PAY-COMPONENTS GATE, AND WHAT IT IS AND IS NOT DOING HERE (ADR-0077 slice 3) ──────────
+ *
+ * (a) calls itself the "un-gated path", and until slice 3 that was expressed as
+ * `delete process.env.TYPED_PAY_COMPONENTS_ENABLED` in beforeEach. The gate is now a per-tenant
+ * entitlement, so the OFF state is the ABSENCE of a `tenant_module` row (a missing row is disabled,
+ * C7) — cleared explicitly in beforeEach rather than inherited from the process environment, and read
+ * through `entitledCtx`, a snapshot resolved from THIS tenant's real rows. `adminCtx` would answer
+ * "off" too, but from `legacyEnabledModulesIn(process.env)`; routing the payroll calls through
+ * `entitledCtx` is what makes the ROW, not the env, decide. `adminCtx` survives only inside `hire`,
+ * whose three calls touch no gate.
+ *
+ * BE HONEST ABOUT WHAT THAT PROVES: nothing, on its own. These four tests seed NO pay components, and
+ * set allowance/OT/bonus to zero; BASIC always pays from the Personnel compensation record on both
+ * paths (feedback 64fb5e48, core/payroll.ts), and pre-processing's component query is skipped rather
+ * than blocking. So the typed path would produce the SAME figures here — the gate is a declared
+ * PRECONDITION of this fixture, not something any assertion below discriminates. It is stated anyway,
+ * and stated in the fixture, so that a future change to the seed set (or to what the typed path sources)
+ * cannot move this file onto the component earnings path with nothing noticing. The tests that actually
+ * prove the gate open and closed are typed-components-compat / fixed-transaction / overtime-provenance.
  */
 import { and, eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -21,7 +41,17 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { setCp38 } from '../core/cp38';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { createLoan, prefillLoansForBatch, getLoanWithSchedule } from '../core/loans';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 
 const payslipOf = async (batchId: string) => {
   const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
@@ -57,17 +87,20 @@ describe('ADR-0060 — loan ⊥ payroll', () => {
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED; // prove the UN-GATED path
+    // The UN-GATED earnings path, as a row rather than an env var. seedBase seeds NO tenant_module
+    // row for this code under the suite's env, so this DELETE is a no-op today — kept explicit
+    // because it is this fixture's declared precondition (see the header note on what it does and
+    // does not prove), and a precondition inherited silently from the seed set is one nothing checks.
+    await setModule(base.tenantId, 'typed_pay_components', null);
   });
-  afterEach(() => {
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-  });
+  // No afterEach: the gate is a row now, and resetDb truncates tenant_module before every test, so OFF
+  // is the baseline by construction rather than something this file has to restore.
   afterAll(async () => {
     await closeAll();
   });
 
   it('(a) un-gated: a loan instalment reduces otherDeductions/net and changes NO statutory contribution', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     // Two identical employees in the SAME batch so statutory context (period, PCB replay) is identical: one
     // carries a loan, one does not. The only difference must be the loan instalment on net/otherDeductions.
     const noLoanEmp = await hire(base, 'NoLoanTwin', 5000);
@@ -92,7 +125,7 @@ describe('ADR-0060 — loan ⊥ payroll', () => {
   });
 
   it('(b) zero-loans byte-identical golden: no loans ⇒ payslips byte-identical to the pre-loan path', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     const e = await hire(base, 'NoLoan', 4321);
 
     // Capture a golden by generating a batch that has no loan rows AND no loan input at all.
@@ -118,7 +151,7 @@ describe('ADR-0060 — loan ⊥ payroll', () => {
   });
 
   it('(c) audit C1 — a loan + a large CP38 on a low salary never persists net < 0', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     // The audit probe verbatim: basic 3000, CP38 2500, loan instalment 1400 ⇒ untreated net −1272.80. The
     // loan must yield to statutory + CP38; net pay on the persisted payslip must stay >= 0.
     const e = await hire(base, 'Drowning', 3000);
@@ -136,7 +169,7 @@ describe('ADR-0060 — loan ⊥ payroll', () => {
   });
 
   it('(d) audit C2/H1/H3 — a clamped instalment never writes off the loan; shortfall re-schedules; settles only at balance 0', async () => {
-    const a = adminCtx(base);
+    const a = await entitledCtx(base);
     // Low salary with a CP38 that swallows most of net, and a 1-month loan whose full instalment cannot be
     // recovered. On the buggy code the loan auto-settles (instalmentsPaid >= durationMonths) → silent
     // write-off. The fix: clamp the applied amount, re-schedule the shortfall, keep the loan ACTIVE with the

@@ -14,7 +14,7 @@ import { createAdditionalRun, createBatch, defaultPaymentDate, generatePayslips 
 import { listEmployeesForPayrollRun } from '../core/read';
 import { setCompensation } from '../core/comp';
 import { hireEmployee, terminateEmployment } from '../core/org';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 describe('Payroll Process wizard — defaultPaymentDate (1d, pure)', () => {
   it('clamps payDay=31 into a 30-day month to the 30th', () => {
@@ -56,8 +56,12 @@ describe('Payroll Process wizard — engine + population (DB)', () => {
   });
 
   it('createAdditionalRun persists scope/remarks/paymentDate; generation narrows to scope', async () => {
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    const a = adminCtx(base);
+    // ADR-0077 slice 3: the additional-run gate is a tenant_module ROW, not MULTI_CYCLE_PAYROLL_ENABLED.
+    // `adminCtx` cannot carry it — its snapshot is legacyEnabledModulesIn(process.env), and test/env.ts
+    // deletes MULTI_CYCLE_PAYROLL_ENABLED, so under it createAdditionalRun would throw
+    // ModuleNotEnabledError. Grant the row, then resolve the session from it via entitledCtx.
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(base);
     const e1 = await hireEmployee(a, {
       person: { fullName: 'Bonus1', primaryEmail: 'bonus1@acme.test' },
       companyId: base.companyId,

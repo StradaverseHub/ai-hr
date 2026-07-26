@@ -31,6 +31,7 @@ import {
   adminCtx,
   closeAll,
   createAppUser,
+  entitledCtx,
   eventTypesFor,
   latestEventPayload,
   ledgerBalance,
@@ -38,6 +39,7 @@ import {
   owner,
   resetDb,
   seedBase,
+  setModule,
   type Base,
 } from './harness';
 
@@ -221,23 +223,25 @@ describe('cancelOwnLeave — pending withdraw', () => {
 
 describe('cancelOwnLeave — notification (req 4.v: notify the approver and HR)', () => {
   it('fans out one leave.self-cancelled notice to the manager; the withdrawing employee holds none', async () => {
-    const prev = process.env.NOTIFICATIONS_ENABLED;
-    process.env.NOTIFICATIONS_ENABLED = 'true';
-    try {
-      const id = await pendingThreeDay();
-      await cancelOwnLeave(subjectCtx, { leaveRequestId: id });
-      await dispatchNotifications(adminCtx(b));
+    // ADR-0077 slice 3: the notifications gate is a per-tenant entitlement row, not NOTIFICATIONS_ENABLED.
+    // Grant it explicitly rather than leaning on seedBase's parity set — that set narrows by the LIVE env,
+    // so whether this tenant gets a notifications row depends on the machine's .env.local. This test is
+    // about the fan-out, so it states its own precondition. (No teardown: resetDb truncates tenant_module.)
+    await setModule(b.tenantId, 'notifications', 'active');
+    const id = await pendingThreeDay();
+    await cancelOwnLeave(subjectCtx, { leaveRequestId: id });
+    // A REAL snapshot resolved AFTER the grant, not adminCtx: adminCtx's snapshot is derived from
+    // process.env, so it would neither see this row nor be trustworthy in an environment where the old
+    // flag happens to be unset.
+    await dispatchNotifications(await entitledCtx(b));
 
-      const notes = await owner.db
-        .select({ recipient: schema.notification.recipientEmploymentId })
-        .from(schema.notification)
-        .where(eq(schema.notification.kind, 'leave.self-cancelled'));
-      const recipients = notes.map((n) => n.recipient);
-      expect(recipients).toContain(other.employmentId); // the approver (subject's manager)
-      expect(recipients).not.toContain(subject.employmentId); // never the person who withdrew
-    } finally {
-      process.env.NOTIFICATIONS_ENABLED = prev;
-    }
+    const notes = await owner.db
+      .select({ recipient: schema.notification.recipientEmploymentId })
+      .from(schema.notification)
+      .where(eq(schema.notification.kind, 'leave.self-cancelled'));
+    const recipients = notes.map((n) => n.recipient);
+    expect(recipients).toContain(other.employmentId); // the approver (subject's manager)
+    expect(recipients).not.toContain(subject.employmentId); // never the person who withdrew
   });
 });
 

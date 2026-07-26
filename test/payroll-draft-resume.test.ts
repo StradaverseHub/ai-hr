@@ -36,7 +36,17 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { hireEmployee } from '../core/org';
 import { resumeHref, materializeToggle } from '../app/payroll/process/selection-logic';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 
 let icSeq = 0;
 const nextIc = () => `9002020${String(10000 + icSeq++).slice(-5)}`;
@@ -282,8 +292,11 @@ describe('Payroll draft-resume — updateBatchScope (DB)', () => {
   });
 
   it('g. off-cycle draft resume: cycle/paymentDate/remarks survive an updateBatchScope round-trip unchanged', async () => {
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    const a = adminCtx(base);
+    // ADR-0077 slice 3: the off-cycle run is gated on the `multi_cycle_payroll` MODULE, which seedBase
+    // does not seed. Grant the row, then resolve the context from the database (`entitledCtx`) — the
+    // synthetic snapshot `adminCtx` builds is derived from process.env and would not see this grant.
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(base);
     const e1 = await hire(base, 'OffCycle One');
     const e2 = await hire(base, 'OffCycle Two');
     await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' }); // regular must exist first

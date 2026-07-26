@@ -31,6 +31,7 @@ import {
   adminCtx,
   closeAll,
   createAppUser,
+  entitledCtx,
   eventTypesFor,
   latestEventPayload,
   ledgerBalance,
@@ -38,6 +39,7 @@ import {
   owner,
   resetDb,
   seedBase,
+  setModule,
   type Base,
 } from './harness';
 
@@ -422,21 +424,20 @@ describe('adminCancelLeave — supersede open give-back', () => {
 
 describe('adminCancelLeave — notification', () => {
   it('the employee holds one leave.admin-cancelled notification; the HR actor holds none', async () => {
-    const prev = process.env.NOTIFICATIONS_ENABLED;
-    process.env.NOTIFICATIONS_ENABLED = 'true';
-    try {
-      const reqId = await approvedThreeDay();
-      await adminCancelLeave(adminCtx(b), { leaveRequestId: reqId });
-      await dispatchNotifications(adminCtx(b));
+    // ADR-0077 slice 3: notifications is a per-tenant module ROW now, not NOTIFICATIONS_ENABLED. The
+    // dispatch call must run on `entitledCtx` — a REAL snapshot resolved from this tenant's rows,
+    // built AFTER the grant — because `adminCtx` derives its snapshot from
+    // `legacyEnabledModulesIn(process.env)` and would not see this row.
+    await setModule(b.tenantId, 'notifications', 'active');
+    const reqId = await approvedThreeDay();
+    await adminCancelLeave(adminCtx(b), { leaveRequestId: reqId });
+    await dispatchNotifications(await entitledCtx(b));
 
-      const notes = await owner.db
-        .select({ kind: schema.notification.kind, recipient: schema.notification.recipientEmploymentId })
-        .from(schema.notification)
-        .where(eq(schema.notification.kind, 'leave.admin-cancelled'));
-      expect(notes).toHaveLength(1);
-      expect(notes[0].recipient).toBe(subject.employmentId);
-    } finally {
-      process.env.NOTIFICATIONS_ENABLED = prev;
-    }
+    const notes = await owner.db
+      .select({ kind: schema.notification.kind, recipient: schema.notification.recipientEmploymentId })
+      .from(schema.notification)
+      .where(eq(schema.notification.kind, 'leave.admin-cancelled'));
+    expect(notes).toHaveLength(1);
+    expect(notes[0].recipient).toBe(subject.employmentId);
   });
 });

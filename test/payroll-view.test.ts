@@ -64,7 +64,15 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
     await resetDb();
     base = await seedBase();
     companyB = await seedCompanyB(base);
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+    // ADR-0077 slice 3: the typed-pay-components gate is a `tenant_module` row, not an env var. This
+    // beforeEach used to unset TYPED_PAY_COMPONENTS_ENABLED to keep the legacy earnings path selected
+    // for the history fixtures; that is now the fixture BASELINE rather than something this file
+    // forces — `seedBase` seeds no `typed_pay_components` row (a missing row is disabled, C7) and
+    // `resetDb` truncates `tenant_module` between tests, so OFF is true by construction.
+    //
+    // (No `setModule(..., null)` replaces it: this file builds sessions with `adminCtx`, whose snapshot
+    // is derived rather than resolved from rows, so deleting an already-absent row would not be what
+    // decides the gate. Nothing here exercises that gate — see the note in module-catalog-drift.)
   });
   afterAll(async () => {
     await closeAll();

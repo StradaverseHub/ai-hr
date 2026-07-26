@@ -163,7 +163,7 @@ describe('notification dispatch + reads (ADR-0034 34-2)', () => {
     // Revoke: setModule(..., null) DELETES the row, and a missing row is disabled (C7) — the same state
     // a tenant that never bought the module is in.
     await setModule(b.tenantId, 'notifications', null);
-    // A REAL snapshot, not adminCtx: that one is `entitlementsExempt: 'harness'` and answers `true` for
+    // A REAL snapshot resolved from this tenant's rows. (adminCtx is no longer exempt as of slice 3 —
     // every catalogued module, so it structurally cannot demonstrate that a gate CLOSES. Resolved AFTER
     // the revoke, because the snapshot is a point-in-time read.
     expect(await dispatchNotifications(await entitledCtx(b), {})).toEqual({ processed: 0, created: 0 });

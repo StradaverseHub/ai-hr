@@ -111,6 +111,8 @@ export async function migrateTestDb() {
 }
 
 export async function resetDb() {
+  // Overrides are per-test state; leaking them across files is the ADR-0071 isolation bug in a new coat.
+  clearHarnessEntitlementOverrides();
   await owner.db.execute(sql.raw(`TRUNCATE ${ALL_TABLES.join(', ')} RESTART IDENTITY CASCADE`));
   // ADR-0072: TRUNCATE tenant also drops the reserved system tenant that pre-auth auth events FK to
   // (app.append_auth_event stamps tenant 0…0 for login-failed / reset-request). Re-seed it (idempotent)
@@ -316,10 +318,21 @@ export async function setModule(
   if (status !== null) {
     await owner.db.insert(schema.tenantModule).values({ tenantId, moduleCode, companyId, status });
   }
+  // Mirror it, so a context built AFTER this call sees it (see HARNESS_MODULE_OVERRIDES). Only the
+  // tenant-wide grain feeds adminCtx's synthetic snapshot; a company-scoped grant needs entitledCtx,
+  // which resolves the real rows.
+  if (companyId == null) {
+    const m = HARNESS_MODULE_OVERRIDES.get(tenantId) ?? new Map<string, string | null>();
+    m.set(moduleCode, status);
+    HARNESS_MODULE_OVERRIDES.set(tenantId, m);
+  }
 }
 
 /** Set a tenant's value for a setting key (owner connection — bypasses the scope policy on purpose). */
 export async function setSetting(tenantId: string, key: string, value: unknown): Promise<void> {
+  const sm = HARNESS_SETTING_OVERRIDES.get(tenantId) ?? new Map<string, unknown>();
+  sm.set(key, value);
+  HARNESS_SETTING_OVERRIDES.set(tenantId, sm);
   await owner.db
     .insert(schema.tenantSetting)
     .values({ tenantId, key, value, source: 'platform' })
@@ -338,14 +351,48 @@ export async function setSetting(tenantId: string, key: string, value: unknown):
  * `seedBase` inserts `legacyEnabledModulesIn(process.env)` and `legacyEnabledSettingsIn(process.env)`,
  * and this reads the same two functions against the same env.
  */
+/**
+ * What `setModule` / `setSetting` have changed for a tenant, mirrored in memory.
+ *
+ * WHY THIS EXISTS. `adminCtx` is SYNCHRONOUS (247 files call it inline), so its snapshot cannot query
+ * the database. Deriving it from `process.env` alone made it agree with a freshly-seeded tenant but
+ * NOT with one a test had since modified: a test could `await setModule(t, 'notifications', 'active')`
+ * and then dispatch through `adminCtx(b)`, which still answered from the env and never saw the row.
+ * That is invisible rather than red — the grant silently does nothing, and on a machine whose
+ * .env.local happens to set the flag the test passes for the wrong reason while failing in CI.
+ * test/notifications.test.ts was exactly this shape.
+ *
+ * Mirroring the writes keeps the two in step without making adminCtx async: `setModule` updates the
+ * row AND this map, so any context built afterwards reflects it. `entitledCtx` still resolves the real
+ * rows and remains the stricter choice; this just removes the trap from the common one.
+ */
+const HARNESS_MODULE_OVERRIDES = new Map<string, Map<string, string | null>>();
+const HARNESS_SETTING_OVERRIDES = new Map<string, Map<string, unknown>>();
+
+/** Cleared by resetDb, so overrides can never leak between test files. */
+export function clearHarnessEntitlementOverrides(): void {
+  HARNESS_MODULE_OVERRIDES.clear();
+  HARNESS_SETTING_OVERRIDES.clear();
+}
+
 function harnessSnapshot(tenantId: string): EntitlementSnapshot {
   return {
     // The snapshot names the tenant it belongs to — slice 2's attribution guard refuses a snapshot
     // resolved for one tenant being asked about another.
     tenantId,
-    enabledModules: legacyEnabledModulesIn(process.env),
+    enabledModules: (() => {
+      const set = new Set(legacyEnabledModulesIn(process.env));
+      for (const [code, status] of HARNESS_MODULE_OVERRIDES.get(tenantId) ?? []) {
+        if (status === null || status === 'disabled') set.delete(code);
+        else set.add(code);
+      }
+      return [...set];
+    })(),
     scopedModules: {},
-    settings: Object.fromEntries(legacyEnabledSettingsIn(process.env).map((s) => [s.key, s.value])),
+    settings: {
+      ...Object.fromEntries(legacyEnabledSettingsIn(process.env).map((s) => [s.key, s.value])),
+      ...Object.fromEntries(HARNESS_SETTING_OVERRIDES.get(tenantId) ?? []),
+    },
     tenantStatus: 'active',
   };
 }

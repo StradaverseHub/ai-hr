@@ -32,6 +32,9 @@ import {
   missingModuleDependencies,
 } from '../packs/catalog';
 
+/** Strip block + line comments so prose about a gate cannot be mistaken for code that mutates it. */
+const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
 const repoFile = (rel: string) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
 
 /** Every .ts/.tsx file under `dir`, recursively. Used to grep the application for a gate name. */
@@ -376,15 +379,29 @@ describe('module catalog — the pack correspondence, both directions', () => {
       ...Object.values(LEGACY_MODULE_ENV_GATES).filter((g): g is string => g !== null),
       ...Object.values(LEGACY_SETTING_ENV_GATES),
     ];
+    // INVERTED BY SLICE 3, deliberately — and this is the more valuable direction.
+    //
+    // Before slice 3 this asserted that every named gate IS still read by application code, which is
+    // what you want while the map describes live env reads. Slice 3 migrated all eight onto
+    // isModuleEnabled/settingEnabled, so the original assertion could only ever fail from here on —
+    // it had done its job. The useful question afterwards is the opposite one: has anyone
+    // REINTRODUCED an env read for a gate that is now a per-tenant entitlement?
+    //
+    // That is a real regression risk, not a hypothetical: an env read would be invisible to the
+    // entitlement system, would apply to every tenant at once, and would silently outrank what a
+    // customer actually bought. So the map stays (slice 3's backfill and the parity helpers still
+    // need it) and the assertion flips to guard the migration instead of the pre-migration state.
     for (const gate of gates) {
       // \b, not `includes`: a TRUNCATED name is the likeliest typo and the one a substring test cannot
-      // see — 'NOTIFICATIONS_ENABLE' is a substring of every `process.env.NOTIFICATIONS_ENABLED` in the
-      // tree, so `includes` accepted it (verified by mutating the map and watching this stay green).
+      // see — 'NOTIFICATIONS_ENABLE' is a substring of every `process.env.NOTIFICATIONS_ENABLED`, so
+      // `includes` accepted it (verified by mutating the map and watching this stay green).
       expect(
         new RegExp(`process\\.env\\.${gate}\\b`).test(sources),
-        `LEGACY_*_ENV_GATES names '${gate}', but no application source reads process.env.${gate} — ` +
-          'the gate map has drifted from the code it claims to describe',
-      ).toBe(true);
+        `process.env.${gate} is read by application code again. That gate is a per-tenant entitlement ` +
+          'as of ADR-0077 slice 3 — an env read bypasses the entitlement system, applies to every ' +
+          'tenant at once, and overrides what the customer actually bought. Use isModuleEnabled() or ' +
+          'settingEnabled() with the session context instead.',
+      ).toBe(false);
     }
   });
 
@@ -467,133 +484,16 @@ describe('module catalog — the pack correspondence, both directions', () => {
  * that DEFINES the baseline every file below deviates from, not deviations themselves.
  */
 const SLICE3_ENV_GATE_WORKLIST: Readonly<Record<string, readonly string[]>> = {
-  // 'attendance-adjustment-ot.test.ts' — CONVERTED (slice 3): the TOIL auto-accrual test now grants the
-  // `toil` module with setModule() and drives the rest-day correction + approval through entitledCtx,
-  // instead of writing TOIL_ENABLED. The env write was in fact already inert for this file — `toil` is
-  // absent from LEGACY_ENABLED_MODULE_CODES, so `legacyEnabledModulesIn` never returned it and neither
-  // seedBase nor adminCtx's snapshot could ever see the flag. The afterEach that deleted the var is gone
-  // too: resetDb truncates tenant_module, so "off" is the baseline by construction.
-  // 'attendance-allowance.test.ts' — CONVERTED (slice 3): every transfer test now grants (or explicitly
-  // withholds) the `typed_pay_components` module with setModule() and drives transferAllowancesToBatch
-  // through entitledCtx, including the three where the module is only a PRECONDITION — the gate check
-  // runs first, so under adminCtx's env-derived snapshot (TYPED_PAY_COMPONENTS_ENABLED is deleted by
-  // test/env.ts) those calls would return gated:true and the refusals they exist to prove would be
-  // unreachable. No process.env write remains.
-  'audit-hash-chain.test.ts': ['AUDIT_HASH_CHAIN_ENABLED'],
-  'cp38.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
-  'delegation-global.test.ts': ['NOTIFICATIONS_ENABLED'],
-  // 'employee-pay-structure.test.ts' — CONVERTED (slice 3): its TOIL wage-gate test grants the `toil`
-  // module and its typed-component parity test grants `typed_pay_components`, both with setModule() and
-  // both driven through entitledCtx. The former beforeEach/afterEach deletes are gone: seedBase seeds no
-  // row for either module, so the OFF baseline it used to force is now the fixture default.
-
-  'employment-review.test.ts': ['NOTIFICATIONS_ENABLED'],
-  // 'feedback-plan.test.ts' — CONVERTED (slice 3): it now writes the `feedback.ai_planning_enabled`
-  // setting with setSetting() and drives the agent through entitledCtx instead of writing
-  // FEEDBACK_AI_PLANNING_ENABLED, so it no longer deviates from seedBase's baseline.
-  // 'fix6-correctness.test.ts' — CONVERTED (slice 3): #19 and #21 now grant/revoke the `toil` module
-  // with setModule() and drive every gated TOIL entry point through entitledCtx instead of writing
-  // TOIL_ENABLED, so the file no longer deviates from seedBase's baseline.
-  'fixed-transaction-action.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
-  // 'fixed-transaction.test.ts' — CONVERTED (slice 3): its five payslip-generating sites now grant the
-  // `typed_pay_components` module with setModule() and run generatePayslips through entitledCtx, so the
-  // row (not an env var, and not an exempt context) is what puts the kernel on the component earnings
-  // path. The beforeEach/afterEach that deleted the var are gone: seedBase seeds no row for this code,
-  // and a missing row is already disabled (C7).
-  'hr-admin-leave-cancellation.test.ts': ['NOTIFICATIONS_ENABLED'],
-  // 'hrdf-subject.test.ts' — CONVERTED (slice 3): (e)/(j) now grant the `multi_cycle_payroll` module
-  // with setModule() and (i) grants the `payroll.reset_enabled` setting with setSetting(), and every
-  // payslip-generating test drives entitledCtx so those rows (and the ABSENT typed_pay_components row)
-  // actually decide the outcome.
-  'leave-edit-cancel-by-status.test.ts': ['NOTIFICATIONS_ENABLED'],
-  'leave-year-config.test.ts': ['AUDIT_HASH_CHAIN_ENABLED'],
-  // 'loans-lifecycle.test.ts' — CONVERTED (slice 3): the non-regular-batch refusal now grants the
-  // `multi_cycle_payroll` module with setModule() and drives createBatch / createAdditionalRun /
-  // prefillLoansForBatch through entitledCtx, so the row (not MULTI_CYCLE_PAYROLL_ENABLED) is what
-  // opens the additional run. The try/finally that restored the env var is gone: resetDb truncates
-  // tenant_module, so "off" is the baseline by construction.
-  'loans-payroll.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
-  'multicycle-kernel.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
-  // 'notifications.test.ts' — CONVERTED (slice 3): it now grants the `notifications` module with
-  // setModule() in beforeEach and revokes it (row DELETE) in the gate test, driving the closed gate
-  // through entitledCtx, so it no longer writes NOTIFICATIONS_ENABLED.
-  // 'overtime-provenance.test.ts' — CONVERTED (slice 3): the typed-components gate is now the ABSENCE
-  // of a tenant_module row (an explicit setModule(..., null) in beforeEach), and the two payslip guards
-  // drive generatePayslips through entitledCtx so that missing row actually decides the earnings path.
-  // 'overtime-rate-split.test.ts' — CONVERTED (slice 3): its gate-off/gate-on pair now sets the
-  // `typed_pay_components` module row with setModule() and drives generatePayslips through
-  // entitledCtx, so it no longer writes TYPED_PAY_COMPONENTS_ENABLED.
-  // 'pay-component-1a.test.ts' — CONVERTED (slice 3): the rounding test now grants the
-  // `typed_pay_components` module with setModule() and re-resolves through entitledCtx before
-  // generatePayslips, so the row (not an env flag) selects the typed earnings path. The beforeEach /
-  // afterEach gate resets are gone — seedBase seeds no row for that module and resetDb truncates the
-  // tenant, so "off" is already the baseline.
-  'payroll-basic-fallback.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
-  // 'payroll-basic-source.test.ts' — CONVERTED (slice 3): the two typed-path tests (the
-  // staleBasicComponent WARNING and its matching-component negative) now grant `typed_pay_components`
-  // with setModule() and re-resolve through entitledCtx before createBatch, so the ROW decides whether
-  // pre-processing reads the component tables at all. The beforeEach/afterEach env resets are gone:
-  // seedBase seeds no row for that module, and a missing row IS disabled.
-  'payroll-cycle.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
-  // 'payroll-draft-delete.test.ts' — CONVERTED (slice 3): test d grants the `multi_cycle_payroll`
-  // module with setModule() and test f grants `payroll.reset_enabled` with setSetting(), both driven
-  // through entitledCtx so the row (not an exempt context) is what decides the gate. Neither writes
-  // process.env any more.
-  'payroll-draft-resume.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
-  // 'payroll-individual-txn.test.ts' — CONVERTED (slice 3): all three gates are now rows. The outer
-  // beforeEach writes `payroll.individual_txn_pay_enabled` false with setSetting() and clears the
-  // `typed_pay_components` row with setModule(..., null); the Phase-3 anchor grants both and the two
-  // multi-cycle tests grant `multi_cycle_payroll`. Every assertion that depends on a gate's VALUE runs
-  // through entitledCtx, because the exempt adminCtx reads settings as catalog defaults and answers
-  // TRUE for every module — under it the gate-off guard, the component-required refusals and the
-  // typed-components fail-closed branch would all be unreachable.
-  // 'payroll-net-floor.test.ts' — CONVERTED (slice 3): the typed-components gate is now a tenant row.
-  // beforeEach clears it with setModule(..., null) and the CP38 clamp test grants it with
-  // setModule(..., 'active'); both tests generate payslips through entitledCtx, so the row (present or
-  // absent) is what decides the earnings path rather than a process-wide env flag.
-  'payroll-process-wizard.test.ts': ['MULTI_CYCLE_PAYROLL_ENABLED'],
-  'payroll-reset-reason.test.ts': ['PAYROLL_RESET_ENABLED'],
-  'payroll-reset.test.ts': ['PAYROLL_RESET_ENABLED'],
-  // 'payroll-rule-kernel.test.ts' — CONVERTED (slice 3): every test in it needs the kernel on the TYPED
-  // path (a pay RULE is only read inside that block), so beforeEach grants `typed_pay_components` with
-  // setModule() and resolves entitledCtx AFTER the grant; the two `process.env.… = 'true'` writes that
-  // sat immediately before generatePayslips are gone, as are the beforeEach/afterEach deletes — seedBase
-  // seeds no row for that module and resetDb truncates tenant_module, so OFF is the baseline anyway.
-  'payroll-unlock-reason.test.ts': ['PAYROLL_UNLOCK_ENABLED'],
-  'payroll-view.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
-  // 'payroll-wizard-validation-step.test.ts' — CONVERTED (slice 3): the stale-BASIC amber test now
-  // grants `typed_pay_components` with setModule() and re-resolves through entitledCtx before calling
-  // preProcessAdvisoryForSelection, so the ROW decides whether the advisory reads the component tables.
-  // The try/finally that restored TYPED_PAY_COMPONENTS_ENABLED is gone: seedBase seeds no row for that
-  // module and resetDb truncates tenant_module, so OFF is the baseline the other four tests already run
-  // under, by construction rather than by cleanup.
-  // 'pcb-classification.test.ts' — CONVERTED (slice 3): all five payslip-generating tests now grant
-  // `typed_pay_components` with setModule() and re-resolve the session through entitledCtx at exactly
-  // the line the env write used to sit on, so the ROW is what puts the kernel on the typed earnings
-  // path (the classification the whole file is about is only read inside that block). The
-  // beforeEach/afterEach deletes are gone: seedBase seeds no row for that module, so OFF is the
-  // fixture default rather than something the file has to force.
-  'performance-lifecycle.test.ts': ['NOTIFICATIONS_ENABLED'],
-  'probation-review-enhancements.test.ts': ['NOTIFICATIONS_ENABLED'],
-  // 'replacement-leave-controls.test.ts' — CONVERTED (slice 3): it now grants/revokes the `toil` module
-  // with setModule() instead of writing TOIL_ENABLED, so it no longer deviates from seedBase's baseline.
-  'shift-differential.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
-  // 'toil-expiry.test.ts' — CONVERTED (slice 3): beforeEach grants the `toil` module with setModule()
-  // instead of writing TOIL_ENABLED, and every gated call (accrueToil in the `accrue` helper, plus all
-  // six runToilExpiry sites) now runs through entitledCtx. adminCtx could not carry the grant: its
-  // snapshot is legacyEnabledModulesIn(process.env), and LEGACY_MODULE_ENV_GATES.toil = 'TOIL_ENABLED'
-  // is set by no tracked env file, so it reports toil DISABLED whatever rows the tenant holds.
-  // 'toil-floor-guard.test.ts' — CONVERTED (slice 3): beforeEach grants the `toil` module with
-  // setModule() instead of writing TOIL_ENABLED, and the two gated entry points it exercises
-  // (accrueToil, runToilExpiry) run through entitledCtx — adminCtx derives its snapshot from
-  // legacyEnabledModulesIn(process.env), which can never return `toil`, so under it every test in the
-  // file would fail on ToilDisabledError before reaching the statutory-floor assertion it exists for.
-  // The afterEach delete is gone: resetDb truncates tenant_module, so OFF is the baseline.
-  'toil.test.ts': ['TOIL_ENABLED'],
-  'typed-components-compat.test.ts': ['TYPED_PAY_COMPONENTS_ENABLED'],
-  // 'zakat.test.ts' — CONVERTED (slice 3): its multi-cycle no-double-apply test now grants the
-  // `multi_cycle_payroll` module with setModule() and drives the run through entitledCtx instead of
-  // writing MULTI_CYCLE_PAYROLL_ENABLED, so it no longer deviates from seedBase's baseline.
+  // EMPTY, and that is slice 3's completion criterion rather than a disabled test.
+  //
+  // This map began as a 46-file inventory of every test that moved itself off seedBase's baseline by
+  // writing a feature-gate env var. Slice 3 converted all of them to setModule()/setSetting(), so no
+  // test mutates a tracked gate any more and the computed map below is {} too.
+  //
+  // The assertion stays live and still bites in BOTH directions: adding a `process.env.<GATE> = ...`
+  // to any test file now fails this test. That is the point — an env write is invisible to the
+  // entitlement system, so a test using one would be asserting against a mechanism the application no
+  // longer reads, and would pass or fail for reasons unrelated to what it claims to prove.
 };
 
 describe('the env-gate divergence between seedBase and the suite', () => {
@@ -606,7 +506,12 @@ describe('the env-gate divergence between seedBase and the suite', () => {
     const actual: Record<string, string[]> = {};
     for (const name of fs.readdirSync(__dirname).sort()) {
       if (!name.endsWith('.ts') || infra.has(name)) continue;
-      const src = fs.readFileSync(path.join(__dirname, name), 'utf8');
+      // COMMENTS STRIPPED FIRST. Without this the scan counts prose: a converted file whose docblock
+      // explains "this used to `delete process.env.TYPED_PAY_COMPONENTS_ENABLED`" was still being
+      // reported as mutating the gate, so the worklist could never reach empty and the ratchet would
+      // have had to permanently list files that no longer touch env at all. Found while draining the
+      // list in slice 3 — loans-payroll and overtime-provenance were flagged for their docblocks alone.
+      const src = stripComments(fs.readFileSync(path.join(__dirname, name), 'utf8'));
       // An ASSIGNMENT or a DELETE. Both move the file off seedBase's baseline; a bare read does not.
       const hit = gates.filter((g) =>
         new RegExp(`(process\\.env\\.${g}\\s*=[^=]|delete\\s+process\\.env\\.${g})`).test(src),

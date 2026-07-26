@@ -25,11 +25,19 @@
  * as `delete process.env.TYPED_PAY_COMPONENTS_ENABLED`; under ADR-0077 slice 3 it is the ABSENCE of a
  * `tenant_module` row (a missing row is disabled, C7), asserted explicitly in beforeEach.
  *
- * That also forces the CONTEXT choice: `adminCtx` is `entitlementsExempt: 'harness'` and answers TRUE
- * for every catalogued module, so it can build fixtures but structurally cannot express "this module is
- * off". Guards 4 and 4b therefore drive `generatePayslips` through `entitledCtx`, a real snapshot
- * resolved from this tenant's (row-less) entitlements. Everything else in the file touches no gate, so
- * it keeps the synchronous exempt fixture context.
+ * THE CONTEXT CHOICE, STATED ACCURATELY. This paragraph used to say `adminCtx` is
+ * `entitlementsExempt: 'harness'` and therefore answers TRUE for every catalogued module. That WAS true
+ * when this file was converted and it is no longer: `test/harness.ts` now gives `adminCtx` a snapshot
+ * derived from `legacyEnabledModulesIn(process.env)` — the same helper `seedBase` uses to choose its
+ * rows — precisely because the exemption was silently switching four modules ON for 247 files. So a
+ * gate CAN close through `adminCtx` today, and the fixture and the database agree by construction.
+ *
+ * Guards 4 and 4b nevertheless keep `entitledCtx`, and that is still the right call rather than
+ * leftover scaffolding: `beforeEach` mutates this tenant's entitlements (the explicit
+ * `setModule(..., null)`) AFTER the point a synthetic snapshot would have been frozen, and only
+ * `entitledCtx` reads the tenant's REAL rows. It is the context that makes the ABSENT
+ * `typed_pay_components` row — not an env var, not an assumption baked into a fixture — decide the
+ * earnings path. Everything else in the file touches no gate, so it keeps the synchronous `adminCtx`.
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';

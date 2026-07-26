@@ -32,10 +32,12 @@ import {
   adminCtx,
   closeAll,
   createAppUser,
+  entitledCtx,
   migrateTestDb,
   owner,
   resetDb,
   seedBase,
+  setModule,
   type Base,
 } from './harness';
 
@@ -267,43 +269,50 @@ describe('events + PII', () => {
 
 describe('notifications', () => {
   it('started notifies manager + HR; decided notifies the subject; a no-manager review notifies HR only', async () => {
-    process.env.NOTIFICATIONS_ENABLED = 'true';
-    try {
-      const a = adminCtx(b);
-      // Need an HR-admin EMPLOYMENT in the same company so hrAdminsForCompany resolves a recipient.
-      const HR = await hire('HrAdmin');
-      await createAppUser(b.tenantId, HR.personId, 'hr_admin');
-      const E = await hire('Subj');
-      const M = await hire('TheMgr');
-      await setReportingLine(a, { subordinateEmploymentId: E.employmentId, managerEmploymentId: M.employmentId, lineType: 'administrative', validFrom: '2026-01-01' });
-      await setEnd(E.employmentId, 'probationEndDate', '2026-04-30');
+    // ADR-0077 slice 3: `notifications` is a per-tenant MODULE now, not NOTIFICATIONS_ENABLED. Grant the
+    // row, then resolve the session from it.
+    //
+    // Both halves matter. seedBase's parity set is narrowed by the live env
+    // (`legacyEnabledModulesIn(process.env)`), so whether this tenant carries a notifications row depends
+    // on whether the machine running the suite happens to have NOTIFICATIONS_ENABLED in .env.local —
+    // green here, red in CI. And `adminCtx` derives its snapshot from that same env, so it would report
+    // the module OFF exactly where no row was seeded, making `dispatchNotifications` a silent no-op and
+    // every assertion below vacuously true (no notification rows ⇒ nothing to contradict them). The
+    // setModule + entitledCtx pair removes the environment from the question entirely: the ROW is what
+    // turns dispatch on. entitledCtx is a point-in-time read, so it is built AFTER the grant.
+    await setModule(b.tenantId, 'notifications', 'active');
+    const a = await entitledCtx(b);
+    // Need an HR-admin EMPLOYMENT in the same company so hrAdminsForCompany resolves a recipient.
+    const HR = await hire('HrAdmin');
+    await createAppUser(b.tenantId, HR.personId, 'hr_admin');
+    const E = await hire('Subj');
+    const M = await hire('TheMgr');
+    await setReportingLine(a, { subordinateEmploymentId: E.employmentId, managerEmploymentId: M.employmentId, lineType: 'administrative', validFrom: '2026-01-01' });
+    await setEnd(E.employmentId, 'probationEndDate', '2026-04-30');
 
-      const { reviewId } = await startReview(a, { employmentId: E.employmentId });
-      await dispatchNotifications(a);
-      const startedNotifs = await owner.db.select().from(schema.notification).where(eq(schema.notification.kind, 'review.started'));
-      const recipients = new Set(startedNotifs.map((n) => n.recipientEmploymentId));
-      expect(recipients.has(M.employmentId)).toBe(true); // manager
-      expect(recipients.has(HR.employmentId)).toBe(true); // HR admin
+    const { reviewId } = await startReview(a, { employmentId: E.employmentId });
+    await dispatchNotifications(a);
+    const startedNotifs = await owner.db.select().from(schema.notification).where(eq(schema.notification.kind, 'review.started'));
+    const recipients = new Set(startedNotifs.map((n) => n.recipientEmploymentId));
+    expect(recipients.has(M.employmentId)).toBe(true); // manager
+    expect(recipients.has(HR.employmentId)).toBe(true); // HR admin
 
-      await submitManagerEvaluation(a, { reviewId, recommendation: 'recommend_confirm' });
-      await decideReview(a, { reviewId, decision: 'confirm' });
-      await dispatchNotifications(a);
-      const decided = await owner.db.select().from(schema.notification).where(eq(schema.notification.kind, 'review.decided'));
-      expect(decided.map((n) => n.recipientEmploymentId)).toContain(E.employmentId); // subject
+    await submitManagerEvaluation(a, { reviewId, recommendation: 'recommend_confirm' });
+    await decideReview(a, { reviewId, decision: 'confirm' });
+    await dispatchNotifications(a);
+    const decided = await owner.db.select().from(schema.notification).where(eq(schema.notification.kind, 'review.decided'));
+    expect(decided.map((n) => n.recipientEmploymentId)).toContain(E.employmentId); // subject
 
-      // a no-manager review notifies HR only
-      const E2 = await hire('NoMgr');
-      await setEnd(E2.employmentId, 'probationEndDate', '2026-04-30');
-      const r2 = await startReview(a, { employmentId: E2.employmentId });
-      await dispatchNotifications(a);
-      const started2 = await owner.db
-        .select()
-        .from(schema.notification)
-        .where(and(eq(schema.notification.kind, 'review.started'), eq(schema.notification.sourceEventId, (await firstStartedEventId(r2.reviewId)))));
-      expect(started2.every((n) => n.recipientEmploymentId === HR.employmentId)).toBe(true);
-    } finally {
-      delete process.env.NOTIFICATIONS_ENABLED;
-    }
+    // a no-manager review notifies HR only
+    const E2 = await hire('NoMgr');
+    await setEnd(E2.employmentId, 'probationEndDate', '2026-04-30');
+    const r2 = await startReview(a, { employmentId: E2.employmentId });
+    await dispatchNotifications(a);
+    const started2 = await owner.db
+      .select()
+      .from(schema.notification)
+      .where(and(eq(schema.notification.kind, 'review.started'), eq(schema.notification.sourceEventId, (await firstStartedEventId(r2.reviewId)))));
+    expect(started2.every((n) => n.recipientEmploymentId === HR.employmentId)).toBe(true);
   });
 });
 
