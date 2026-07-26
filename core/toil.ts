@@ -714,13 +714,27 @@ async function expireAccrualsTx(
 }
 
 /**
- * Expire active TOIL accruals whose expiry date has arrived (gated). Each follows its FROZEN expiry_action via
+ * Expire active TOIL accruals whose expiry date has arrived. Each follows its FROZEN expiry_action via
  * `expireAccrualsTx`. Only the still-unspent remainder (`daysCredited − daysTaken`) is debited — consumed days
  * already flipped to 'taken' on consumption. Idempotent — only `status='active'` rows are touched, so
  * re-running is safe. `today` is injected for deterministic tests.
+ *
+ * UNGATED as of ADR-0077 slice 3 (F15), deliberately, and for the same reason as payroll's
+ * `excludeToilDays`. This sweep is how an ALREADY-INCURRED liability gets discharged: for a
+ * First-Schedule-eligible employee, unused TOIL must convert to pay and may never lapse (see
+ * ELIGIBLE_FLOOR / `onExpiry: 'convert_to_pay'` above) — that is statutory, not a product feature.
+ *
+ * Gating it on the entitlement would have meant a tenant whose TOIL module lapses (trial end,
+ * downgrade, non-payment) can no longer settle the days its employees already banked: the sweep
+ * throws, and app/admin/toil/page.tsx hides the button that calls it, so the obligation becomes
+ * unreachable through every path while the debt stays on the books. Under the old deployment flag
+ * that took an operator editing .env; a per-tenant entitlement makes it an ordinary commercial event.
+ *
+ * What the entitlement still governs is NEW accrual and the UI — you can stop banking TOIL, you
+ * cannot strand what was already banked. Safe when the module is off and always was: with no accrual
+ * rows there is nothing due and this returns zeros.
  */
 export async function runToilExpiry(ctx: SessionContext, p: { today: string }): Promise<ToilExpiryResult> {
-  if (!toilEnabled(ctx)) throw new ToilDisabledError();
   return withTenant(ctx, async (tx) => {
     const due = await tx
       .select({
@@ -771,11 +785,12 @@ export type CloseReplacementYearResult = ToilExpiryResult & {
  * Idempotency beyond "no active rows left": a `replacement-leave-year.closed` marker event per (boundary key)
  * makes a re-fire (or a race against `runToilExpiry`) a true no-op rather than incidentally safe.
  */
+/** UNGATED for the same reason as `runToilExpiry` — the year-end floor settles an incurred statutory
+ *  liability, so a lapsed entitlement must not be able to strand it. See that function's note. */
 export async function closeReplacementLeaveYear(
   ctx: SessionContext,
   p: { asOf: string },
 ): Promise<CloseReplacementYearResult> {
-  if (!toilEnabled(ctx)) throw new ToilDisabledError();
   return withTenant(ctx, async (tx) => {
     const empty: CloseReplacementYearResult = {
       processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0, alreadyClosed: false, carriedForward: 0,

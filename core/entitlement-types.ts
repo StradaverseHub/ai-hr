@@ -110,7 +110,14 @@ export const TENANT_STATUS_UNRESOLVED = 'unresolved';
  *
  * WHAT A MARKER COSTS, STATED SO SLICE 3 CANNOT WALK INTO IT (round 3). The marker means "entitlements
  * do not apply to me", and that answers the two questions differently:
- *   - `isModuleEnabled` → TRUE (open). A module is a gate, and an exempt caller is not gated.
+ *   - `isModuleEnabled` → TRUE for a CORE module (answered from the registry, no snapshot needed), and
+ *     THROWS `EntitlementsExemptForBillableError` for a billable one. AMENDED IN SLICE 3: this used to
+ *     return TRUE for everything, on the reasoning that "a module is a gate, and an exempt caller is not
+ *     gated". That reasoning holds only for core. For a BILLABLE module it meant any marked caller
+ *     silently received every paid module for every tenant — and `scripts/review-sweep.ts` did exactly
+ *     that, dispatching notifications to tenants that never bought them. Nothing failed, because the
+ *     failure mode is a customer being GIVEN something; a silent grant is the one outcome no test
+ *     notices. The honest answer for a caller with no entitlement data is "I cannot know", never "yes".
  *   - `getSetting`      → THE CATALOG DEFAULT, not the tenant's configured value. A setting is a VALUE,
  *     and there is no "open" for a value; the only answer available without a snapshot is the default.
  *     Every catalogued default is `false` today, so a marked caller reads every setting as OFF.
@@ -136,8 +143,16 @@ export const ENTITLEMENTS_EXEMPT_REASONS = {
       'scripts/accrue-earned.ts',
       'scripts/expire-aged-leave.ts',
       'scripts/expire-carry.ts',
-      'scripts/review-sweep.ts',
-      'scripts/feedback-plan.ts',
+      // scripts/review-sweep.ts is NOT here any more either: it calls `dispatchNotifications`, gated on
+      // the BILLABLE `notifications` module, and an exempt context reads every module as ENABLED — so it
+      // would have dispatched for tenants that never bought it. Same fix, opposite failure direction to
+      // feedback-plan below: that one refused a customer who HAD paid, this one served one who had not.
+      //
+      // scripts/feedback-plan.ts is NOT here any more, and its removal is the worked example of the
+      // trap described above. It sits behind a SETTING (feedback.ai_planning_enabled), so once slice 3
+      // migrated that gate the marker made it read the catalog default (false) and refuse every item
+      // even for a tenant that had the setting on. It now resolves a real snapshot with
+      // resolveEntitlementsTx and carries no marker — exactly the swap this note prescribed.
       'scripts/backfill-basic-components.ts',
       'scripts/correct-hrdf-opt-outs.ts',
     ],

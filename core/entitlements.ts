@@ -137,6 +137,31 @@ export class EntitlementsUnresolvedError extends EntitlementError {
 }
 
 /**
+ * Thrown when an `entitlementsExempt` context is asked about a BILLABLE module.
+ *
+ * Its own class rather than `EntitlementsUnresolvedError` because that error's message ends "…must be
+ * built with resolveEntitlements() OR MARKED entitlementsExempt", which is the one instruction the
+ * caller has already followed — it would send a reader to add the marker that caused the throw. The
+ * distinction is real: unresolved means "nobody gave me data", this means "you told me the question
+ * does not apply, and for a paid module that cannot be true".
+ */
+export class EntitlementsExemptForBillableError extends EntitlementError {
+  readonly code: string;
+  readonly marker: string;
+  constructor(code: string, marker: string) {
+    super(
+      `Context marked entitlementsExempt: '${marker}' was asked whether the BILLABLE module '${code}' is ` +
+        `enabled. An exemption means "entitlements do not apply to me", which is only true of core modules; ` +
+        `answering yes for a paid one would grant it to every tenant regardless of what they bought. ` +
+        `Resolve a real snapshot with resolveEntitlementsTx(tx, tenantId) and drop the marker.`,
+    );
+    this.name = 'EntitlementsExemptForBillableError';
+    this.code = code;
+    this.marker = marker;
+  }
+}
+
+/**
  * Thrown when resolution was ATTEMPTED for this session and failed — a missing GRANT, a
  * code-ahead-of-migration deploy, pool exhaustion, a statement timeout.
  *
@@ -664,7 +689,28 @@ function moduleEnabled(
   if (!CATALOG.has(code)) return false;
 
   const snap = snapshotOf(ctx, code);
-  if (snap === null) return true; // exempt path — see step 4
+  if (snap === null) {
+    // EXEMPT CONTEXT, BILLABLE MODULE ⇒ THROW. Amended in slice 3, after this branch produced three
+    // real defects in one slice.
+    //
+    // It used to `return true`, on the reasoning that "a module is a gate, and an exempt caller is not
+    // gated". That holds for CORE modules — and they never reach here, because step 2 answers them
+    // without a snapshot. Everything that gets this far is non-core and catalogued, which by
+    // construction means BILLABLE (the drift test pins core ∪ billable = the whole catalog). So the old
+    // answer meant: any caller carrying a marker silently receives every paid module, for every tenant,
+    // whether or not they bought it — the exact enforcement bypass this slice exists to close.
+    //
+    // It was not hypothetical. `scripts/review-sweep.ts` dispatched notifications for every tenant on
+    // the box via this branch, and nothing failed, because the failure mode is a customer being GIVEN
+    // something. A silent grant is the one outcome no test notices.
+    //
+    // Throwing is the same fail-loud rule the no-snapshot case already follows: the honest answer for a
+    // caller with no entitlement data is "I cannot know", never "yes". A sweep that legitimately needs
+    // the answer resolves a real snapshot (resolveEntitlementsTx) and drops its marker; one that has no
+    // business asking gets a stack trace pointing at the line that asked, on its first run, instead of
+    // shipping unpurchased features quietly for a year.
+    throw new EntitlementsExemptForBillableError(code, ctx.entitlementsExempt as string);
+  }
 
   if (!TENANT_STATUS_GOOD_STANDING.has(snap.tenantStatus)) return false;
 

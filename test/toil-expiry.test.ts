@@ -23,6 +23,7 @@ import { setCompensation } from '../core/comp';
 import { checkIn, checkOut } from '../core/attendance';
 import { setRestDay } from '../core/roster';
 import { accrueToil, runToilExpiry, setToilPolicy, ToilDisabledError, type ToilPolicyInput } from '../core/toil';
+import { isModuleEnabled } from '../core/entitlements';
 
 let b: Base;
 const REST_DAY = '2026-07-04';
@@ -139,20 +140,48 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     expect((await runToilExpiry(ctx, { today: AFTER_EXPIRY })).processed).toBe(0);
   });
 
-  it('is gated — refuses when the tenant is not entitled to the toil module', async () => {
-    await accrue(5000, { onExpiry: 'lapse' });
-    // Driven through `entitledCtx` — a REAL snapshot resolved from this tenant's rows, so revoking the row
-    // below actually changes the answer. (`adminCtx` could not show this either: its snapshot is derived
-    // from the env parity set, which never contains `toil`, so it would refuse both before AND after the
-    // revocation and prove nothing about the grant.)
-    await expect(runToilExpiry(await entitledCtx(b), { today: AFTER_EXPIRY })).resolves.toMatchObject({
-      processed: 1,
-      lapsed: 1,
-    });
-    // Now revoke the entitlement (no row ⇒ disabled, C7) and re-resolve — the snapshot is point-in-time.
+  it('still settles banked days after the toil entitlement is revoked — the statutory floor is not switchable', async () => {
+    // The obligation this sweep discharges is EA First Schedule, not a product feature: an eligible
+    // employee's unused TOIL must convert to pay and may never lapse. So revoking the module must not
+    // be able to strand it.
+    //
+    // This test replaces one that asserted the opposite (`rejects.toBeInstanceOf(ToilDisabledError)`).
+    // That test was carefully built and passed honestly — it just encoded the wrong requirement. Under
+    // the old deployment flag the scenario was unreachable (nobody edits .env mid-month), but a
+    // per-tenant entitlement lapses on a trial ending, a downgrade, or non-payment, and at that moment
+    // the employee is still owed the day they worked. app/admin/toil/page.tsx also hides the button
+    // that calls this, so a throw here left the debt with no path to settle through ANY surface.
+    const { employmentId, accrualId } = await accrue(3000, { allowFirstScheduleEligible: true });
+    expect(await replacementBalance(employmentId)).toBe(1);
+
+    // Revoke the entitlement (no row ⇒ disabled, C7) and re-resolve — the snapshot is point-in-time,
+    // so this context genuinely answers `toil: false`.
     await setModule(b.tenantId, 'toil', null);
     const revoked = await entitledCtx(b);
-    // Nothing is left to sweep, so an OPEN gate would return processed: 0 here. Only the closed gate throws.
-    await expect(runToilExpiry(revoked, { today: AFTER_EXPIRY })).rejects.toBeInstanceOf(ToilDisabledError);
+    expect(isModuleEnabled(revoked, 'toil'), 'the fixture must actually be disabled, or this proves nothing').toBe(false);
+
+    // The money still moves. Asserted on the AMOUNT, not just `processed` — a sweep that ran but
+    // converted nothing would satisfy a count-only assertion while still stranding the liability.
+    const r = await runToilExpiry(revoked, { today: AFTER_EXPIRY });
+    expect(r).toMatchObject({ processed: 1, converted: 1, lapsed: 0, convertedDays: 1 });
+    expect(r.convertedAmount).toBe(115.38); // 1 day × (3000 / 26) — the ORP owed
+    expect(await statusOf(accrualId)).toBe('converted_to_pay');
+    expect(await replacementBalance(employmentId)).toBe(0);
+    expect(await eventTypesFor(b.tenantId, accrualId)).toContain('toil.converted');
+  });
+
+  it('still refuses NEW accrual once the entitlement is revoked', async () => {
+    // The other half of the rule, and the reason the test above is not simply "the gate was deleted":
+    // revoking TOIL must still stop the tenant BANKING more days. Settling a debt already incurred and
+    // incurring a new one are different acts, and only the second is a purchased capability. Without
+    // this, "make the sweep unconditional" could be over-applied into ungating accrual too.
+    // 5000 is above the First Schedule wage ceiling, so the default policy permits banking without the
+    // `allowFirstScheduleEligible` override — this test is about the entitlement gate, not eligibility.
+    const { employmentId } = await accrue(5000); // banked while entitled
+    await setModule(b.tenantId, 'toil', null);
+    const revoked = await entitledCtx(b);
+    await expect(
+      accrueToil(revoked, { employmentId, workedDate: REST_DAY, firstScheduleConsent: true }),
+    ).rejects.toBeInstanceOf(ToilDisabledError);
   });
 });

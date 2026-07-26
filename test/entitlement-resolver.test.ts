@@ -54,6 +54,7 @@ import {
   EntitlementsContextMalformedError,
   EntitlementsResolutionFailedError,
   EntitlementsTenantMismatchError,
+  EntitlementsExemptForBillableError,
   EntitlementsUnresolvedError,
   ModuleNotEnabledError,
   TENANT_STATUS_UNRESOLVED,
@@ -382,10 +383,37 @@ describe('slice 2 — isModuleEnabled', () => {
     expect(() => isModuleEnabled(bare, 'payroll')).toThrow(EntitlementsUnresolvedError);
   });
 
-  it('an EXEMPT context resolves open — provisioning must be able to create a tenant', () => {
+  it('an EXEMPT context answers CORE modules open, and THROWS for a billable one', () => {
     const exempt: EntitledContext = { tenantId: base.tenantId, entitlementsExempt: 'provisioning' };
-    expect(isModuleEnabled(exempt, 'payroll')).toBe(true);
-    // …but a kill switch still binds it, so exemption is not a bypass of the incident lever.
+
+    // Core is answered from the registry with no snapshot — provisioning must be able to create a
+    // tenant, and that is the whole job the marker exists to do.
+    expect(isModuleEnabled(exempt, 'leave')).toBe(true);
+    expect(isModuleEnabled(exempt, 'ess')).toBe(true);
+
+    // AMENDED IN SLICE 3. This used to assert `isModuleEnabled(exempt, 'payroll') === true`, which meant
+    // any marked caller silently received every PAID module for every tenant. scripts/review-sweep.ts
+    // reached this branch and dispatched notifications to tenants that had not bought them; nothing
+    // failed, because the failure mode is a customer being GIVEN something.
+    //
+    // Note the consistency argument, which is why this is a correction and not a new policy: the BARE
+    // context two tests up ALREADY throws for 'payroll' and answers core true. "No entitlement data +
+    // billable module" was always an error; the marker was the one path that answered "yes" instead.
+    expect(() => isModuleEnabled(exempt, 'payroll')).toThrow(EntitlementsExemptForBillableError);
+
+    // The message must name the offending module AND the marker, or the stack trace sends the reader
+    // hunting through every exempt call site to find which one asked.
+    try {
+      isModuleEnabled(exempt, 'payroll');
+      expect.unreachable('should have thrown');
+    } catch (e) {
+      expect((e as Error).message).toContain('payroll');
+      expect((e as Error).message).toContain('provisioning');
+    }
+
+    // The kill lever still binds and still WINS over the throw — `killed()` is step 1, before any
+    // snapshot question is asked. An incident lever that raised instead of forcing OFF would be useless
+    // in the incident it exists for.
     process.env.MODULE_KILL = 'payroll';
     expect(isModuleEnabled(exempt, 'payroll')).toBe(false);
     delete process.env.MODULE_KILL;
@@ -650,8 +678,20 @@ describe('slice 2 — isModuleEnabled', () => {
       }
     }
     // Not vacuous: if `owners` were emptied everywhere the loop above would assert nothing at all.
-    expect(wired, 'the exemptions must collectively name at least the sweeps, the seeder and provisioning')
-      .toBeGreaterThanOrEqual(10);
+    //
+    // Stated as "each bootstrap category keeps at least one wired owner" rather than a total count.
+    // It was `>= 10`, pinned to the then-current tally, which made the ratchet fight the direction we
+    // actually want: slice 3 REMOVED two exemptions (review-sweep and feedback-plan both resolve real
+    // snapshots now) and a floor on the total turned that improvement into a failure. A count cannot
+    // tell shrinking-because-fixed from gutting; naming the categories can, and it still fails loudly
+    // if provisioning or the seeder ever quietly loses its marker.
+    expect(wired, 'the loop must have asserted something').toBeGreaterThan(0);
+    for (const key of ['provisioning', 'seeding', 'sweeps', 'harness'] as const) {
+      expect(
+        ENTITLEMENTS_EXEMPT_REASONS[key].owners.length,
+        `exemption '${key}' has no wired owner — bootstrap paths cannot resolve entitlements and must keep one`,
+      ).toBeGreaterThan(0);
+    }
     // `platform` is the ONE deliberately unwired entry (slice 7 builds that plane). Pinned so it cannot
     // become a second unwired exemption by accident, and so slice 7 has to change this line on purpose.
     expect(ENTITLEMENTS_EXEMPT_REASONS.platform.owners, 'slice 7 wires the platform plane').toEqual([]);
