@@ -122,7 +122,11 @@ export async function seedTenantCatalogs(
   // Profile dropdown catalogs (religion / race / nationality / state / country / relationship).
   // ctx carries only the tenant id: the injected handle is what the seeder actually writes through, and
   // actorOf() with no userId yields a 'system' actor, which is what a provisioning run is.
-  await seedProfileOptions({ tenantId }, tx);
+  // `entitlementsExempt: 'provisioning'` (ADR-0077 slice 2): this runs while the tenant is being
+  // CREATED, so its entitlement rows do not exist yet by definition and a gate that failed closed
+  // here would make a tenant impossible to provision. A drift test reads this file to prove the
+  // 'provisioning' exemption names real code rather than describing an intention.
+  await seedProfileOptions({ tenantId, entitlementsExempt: 'provisioning' }, tx);
 
   return leaveTypeIds;
 }
@@ -133,7 +137,7 @@ export async function seedTenantCatalogs(
  */
 export async function seedCompanyCatalogs(tx: Tx, tenantId: string, companyId: string): Promise<void> {
   await tx.insert(attendancePolicy).values({ tenantId, companyId });
-  await seedPayrollCycleCatalog({ tenantId }, companyId, tx);
+  await seedPayrollCycleCatalog({ tenantId, entitlementsExempt: 'provisioning' }, companyId, tx);
 }
 
 export type AdminChain = { personId: string; appUserId: string };

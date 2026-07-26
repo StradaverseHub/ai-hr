@@ -4,7 +4,7 @@
 // to review. Runs with a SYSTEM context (no userId → the plan's domain event actor is `agent` via
 // setFeedbackPlan). A tenant with no AI config is skipped (logged). Schedule on the deploy host, e.g.
 //   0 */3 * * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/feedback-plan.ts
-import { createDb } from '../db/client';
+import { createDb, type SessionContext } from '../db/client';
 import { tenant } from '../db/schema';
 import { generateFeedbackPlan, listPlannableFeedback } from '../core/feedback';
 
@@ -21,7 +21,7 @@ async function main() {
   let planned = 0;
   let failures = 0;
   for (const t of tenants) {
-    const ctx = { tenantId: t.id, roles: ['hr_admin'] };
+    const ctx: SessionContext = { tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' };
     let ids: string[] = [];
     try {
       ids = await listPlannableFeedback(ctx);
