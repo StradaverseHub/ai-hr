@@ -2042,6 +2042,7 @@
     "bulkRejectedAll": "{done, plural, other {Đã từ chối thành công # yêu cầu.}}",
     "bulkRejectedPartial": "Đã từ chối {done}, bỏ qua {skipped} (ngoài thẩm quyền phê duyệt của bạn).",
     "categoryAll": "Tất cả phê duyệt",
+    "approvalHistory": "Lịch sử phê duyệt",
     "categoryGroupLeave": "Nghỉ phép",
     "categoryGroupAttendance": "Chấm công",
     "categoryGroupTravel": "Công tác",

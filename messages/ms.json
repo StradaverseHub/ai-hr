@@ -2042,6 +2042,7 @@
     "bulkRejectedAll": "{done, plural, other {# permohonan berjaya ditolak.}}",
     "bulkRejectedPartial": "{done} ditolak, {skipped} dilangkau (di luar kuasa kelulusan anda).",
     "categoryAll": "Semua kelulusan",
+    "approvalHistory": "Sejarah kelulusan",
     "categoryGroupLeave": "Cuti",
     "categoryGroupAttendance": "Kehadiran",
     "categoryGroupTravel": "Perjalanan",

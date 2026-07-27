@@ -2042,6 +2042,7 @@
     "bulkRejectedAll": "{done, plural, other {ปฏิเสธ # คำขอเรียบร้อยแล้ว}}",
     "bulkRejectedPartial": "ปฏิเสธ {done} รายการ ข้าม {skipped} รายการ (นอกเหนืออำนาจอนุมัติของคุณ)",
     "categoryAll": "การอนุมัติทั้งหมด",
+    "approvalHistory": "ประวัติการอนุมัติ",
     "categoryGroupLeave": "การลา",
     "categoryGroupAttendance": "การเข้างาน",
     "categoryGroupTravel": "การเดินทาง",
