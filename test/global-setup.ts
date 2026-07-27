@@ -24,6 +24,8 @@
  *    own ACL. Database-level `GRANT CONNECT` therefore has to be re-issued on every copy, or the app role
  *    gets "permission denied for database" the moment a test tries to connect under RLS.
  */
+import { createHash } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
@@ -55,6 +57,101 @@ export { templateDb, workerDb, workerDbPrefix };
 
 /** Role the tests connect as (RLS applies to it); the migrator connects as the owner instead. */
 const APP_ROLE = 'ai_hr_app';
+
+/** Table stamped into the template recording what built it, so a later run can tell whether to reuse it. */
+const FINGERPRINT_TABLE = '_test_template_fingerprint';
+
+/**
+ * A hash of everything that determines the template's SHAPE: the migration files, and packs/catalog.ts,
+ * because the catalogs are code-seeded into the template (ADR-0077 C11) and a catalog edit changes its
+ * rows.
+ *
+ * This is what makes reuse safe. The rebuild below was unconditional, with the note that "a stale
+ * template that predates a new migration would hand every worker the wrong schema, and the failure would
+ * look like a code bug" — a correct fear, and the reason it was done by brute force. A fingerprint
+ * answers that fear directly instead: if the inputs are byte-identical the template cannot be stale, and
+ * if anything changed the hash changes and the rebuild happens.
+ *
+ * Worth doing because DROP/CREATE DATABASE each force a Postgres CHECKPOINT and checkpoints do not run
+ * concurrently — 22 of them per invocation is why two suites started together both sit in
+ * IPC/CheckpointStart instead of testing.
+ */
+function templateFingerprint(): string {
+  const h = createHash('sha256');
+  for (const f of readdirSync('db/migrations').sort()) {
+    if (!f.endsWith('.sql')) continue;
+    h.update(f).update(readFileSync(`db/migrations/${f}`));
+  }
+  h.update(readFileSync('packs/catalog.ts'));
+  return h.digest('hex');
+}
+
+/**
+ * True only if the template AND every worker database already exist and were built from these exact
+ * inputs. Any doubt returns false and the caller rebuilds — the cheap answer is the safe one, since a
+ * wrong `true` hands every worker a stale schema.
+ */
+async function templateIsReusable(
+  adminUrl: string,
+  templateName: string,
+  fingerprint: string,
+  workerPrefix: string,
+  workers: number,
+): Promise<boolean> {
+  try {
+    const expected = [templateName, ...Array.from({ length: workers }, (_, i) => `${workerPrefix}${i + 1}`)];
+    const present = await adminSql(adminUrl, (sql) =>
+      sql.unsafe(`SELECT datname FROM pg_database WHERE datname = ANY('{${expected.join(',')}}')`),
+    );
+    // A PARTIAL set (one dropped by hand, or a previous run killed mid-loop) is NOT reusable: reusing it
+    // leaves one worker pointed at a database that does not exist, and the failure lands in whichever
+    // test file happened to draw that pool id.
+    if ((present as unknown as unknown[]).length !== expected.length) return false;
+
+    const rows = (await adminSql(withDatabase(adminUrl, templateName), (sql) =>
+      sql.unsafe(`SELECT fingerprint FROM ${FINGERPRINT_TABLE} LIMIT 1`),
+    )) as unknown as { fingerprint: string }[];
+    return rows[0]?.fingerprint === fingerprint;
+  } catch {
+    // Missing database, missing table (a template built before this mechanism existed), no permission —
+    // all mean "cannot prove it is current", which is the same answer as "rebuild".
+    return false;
+  }
+}
+
+/**
+ * Empty every table in `public` on the given database, without dropping it.
+ *
+ * `module` and `setting_definition` SURVIVE, matching resetDb's ALL_TABLES, which omits them
+ * deliberately: they are installation-wide CATALOGS seeded into the template by scripts/seed-catalogs.ts
+ * (C11), not per-test data. Truncating them would delete the rows every tenant_module / tenant_setting
+ * foreign key points at, and every seedBase importer would fail on insert.
+ *
+ * Enumerated from pg_tables rather than from harness's hand-maintained ALL_TABLES: that list is
+ * maintained by hand, and a table added to the schema but forgotten there would silently keep its rows
+ * across runs — exactly the leak this exists to prevent.
+ */
+async function wipeAllTables(url: string): Promise<void> {
+  await adminSql(url, async (sql) => {
+    const rows = (await sql.unsafe(
+      `SELECT tablename FROM pg_tables
+       WHERE schemaname = 'public' AND tablename NOT IN ('module', 'setting_definition')`,
+    )) as unknown as { tablename: string }[];
+    if (rows.length === 0) return;
+    const list = rows.map((r) => `"public"."${r.tablename}"`).join(', ');
+    // ONE statement: TRUNCATE takes an AccessExclusiveLock per table, and issuing them separately is how
+    // the lock-ordering deadlock this suite already sees gets created. One statement takes them together.
+    await sql.unsafe(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
+    // Re-seed the reserved system tenant exactly as resetDb does after its own TRUNCATE: pre-auth auth
+    // events (app.append_auth_event stamps tenant 0…0) carry a foreign key to it. A freshly-CLONED worker
+    // database inherited it from the template; a WIPED one would not.
+    await sql.unsafe(
+      `INSERT INTO tenant (id, workos_org_id, name)
+       VALUES ('00000000-0000-0000-0000-000000000000'::uuid, 'org_system_auth_audit', 'System (auth audit)')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+  });
+}
 
 async function adminSql<T>(adminUrl: string, fn: (sql: postgres.Sql) => Promise<T>): Promise<T> {
   // `onnotice: noop` — DROP DATABASE IF EXISTS emits a NOTICE per missing database, which at one per worker
@@ -101,8 +198,31 @@ export default async function setup({ provide }: { provide?: (k: string, v: unkn
 
   const t0 = Date.now();
 
-  // 1. Rebuild the template from scratch. Always rebuilt rather than reused: a stale template that predates
-  //    a new migration would hand every worker the wrong schema, and the failure would look like a code bug.
+  // 0. CAN THE REBUILD BE SKIPPED ENTIRELY?
+  //
+  // Steps 1-3 drop and recreate the template AND all ten worker databases on every invocation. Correct,
+  // but each DROP/CREATE DATABASE forces a Postgres CHECKPOINT, and checkpoints do not run concurrently
+  // — 22 per run is why two suites started together sit in IPC/CheckpointStart rather than testing.
+  // `templateFingerprint()` answers the staleness question directly, so a match keeps the databases and
+  // only WIPES them.
+  const fingerprint = templateFingerprint();
+  if (await templateIsReusable(adminUrl, templateName, fingerprint, workerPrefix, workers)) {
+    // WIPED, not merely reused, and this half is load-bearing: only 301 of the 443 test files call
+    // resetDb() in a beforeEach — the other 142 rely on arriving at a database that is already empty,
+    // which a freshly-CREATEd one always was. Handing those a database holding the previous run's rows
+    // is the textbook "passes for the wrong reason" setup, and it would surface in a file nobody touched.
+    // TRUNCATE gives the same clean slate without forcing a checkpoint.
+    for (let i = 1; i <= workers; i++) {
+      await wipeAllTables(withDatabase(migrationUrl, `${workerPrefix}${i}`));
+    }
+    console.log(
+      `[global-setup] template ${templateName} reused (fingerprint match), ${workers} worker DBs wiped in ${Date.now() - t0}ms`,
+    );
+    provide?.('workerDbPrefix', workerPrefix);
+    return;
+  }
+
+  // 1. Rebuild the template from scratch — the fingerprint changed, or there was nothing to reuse.
   await adminSql(adminUrl, async (sql) => {
     await sql.unsafe(
       `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
@@ -125,6 +245,14 @@ export default async function setup({ provide }: { provide?: (k: string, v: unkn
     // anything references a module code. Reuses `migrator` deliberately: the template must have no
     // open connections when CREATE DATABASE ... TEMPLATE runs (see this file's header).
     await seedCatalogs(drizzle(migrator));
+    // Stamp what built this template, so the NEXT run can skip everything above when nothing changed.
+    // Written on the migrator connection inside the template, so it is cloned into every worker database
+    // too — harmless there, and it means a stray worker DB can be identified later.
+    await migrator.unsafe(
+      `CREATE TABLE IF NOT EXISTS ${FINGERPRINT_TABLE} (fingerprint text NOT NULL, built_at timestamptz NOT NULL DEFAULT now())`,
+    );
+    await migrator.unsafe(`DELETE FROM ${FINGERPRINT_TABLE}`);
+    await migrator.unsafe(`INSERT INTO ${FINGERPRINT_TABLE} (fingerprint) VALUES ($1)`, [fingerprint]);
   } finally {
     await migrator.end({ timeout: 10 });
   }
