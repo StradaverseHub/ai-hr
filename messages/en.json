@@ -1177,6 +1177,7 @@
     "requestsEmptyFiltered": "No {status} requests.",
     "requestLeaveToggle": "+ Request leave",
     "requestLeave": "Request leave",
+    "submittedToast": "Leave request submitted successfully.",
     "fieldEmployee": "Employee",
     "fieldLeaveType": "Leave type",
     "fieldStartDate": "Start date",
@@ -1938,7 +1939,7 @@
       "pending": "Pending",
       "reason": "Reason"
     },
-    "myLeaveHeading": "My Leave",
+    "myLeaveHeading": "My Leave Balance",
     "otherLeaveHeading": "Other leave types",
     "detailedTable": "Detailed balance table",
     "leaveGroups": {

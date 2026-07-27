@@ -1177,6 +1177,7 @@
     "requestsEmptyFiltered": "{status} கோரிக்கைகள் இல்லை.",
     "requestLeaveToggle": "+ விடுப்பு கோரு",
     "requestLeave": "விடுப்பு கோரு",
+    "submittedToast": "விடுப்பு விண்ணப்பம் வெற்றிகரமாக சமர்ப்பிக்கப்பட்டது.",
     "fieldEmployee": "பணியாளர்",
     "fieldLeaveType": "விடுப்பு வகை",
     "fieldStartDate": "தொடக்கத் தேதி",
@@ -1938,7 +1939,7 @@
       "pending": "நிலுவையில்",
       "reason": "காரணம்"
     },
-    "myLeaveHeading": "என் விடுப்பு",
+    "myLeaveHeading": "என் விடுப்பு இருப்பு",
     "otherLeaveHeading": "பிற விடுப்பு வகைகள்",
     "detailedTable": "விரிவான இருப்பு அட்டவணை",
     "leaveGroups": {

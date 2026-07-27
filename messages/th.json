@@ -1177,6 +1177,7 @@
     "requestsEmptyFiltered": "ไม่มีคำขอ{status}",
     "requestLeaveToggle": "+ ขอลา",
     "requestLeave": "ขอลา",
+    "submittedToast": "ส่งคำขอลาเรียบร้อยแล้ว",
     "fieldEmployee": "พนักงาน",
     "fieldLeaveType": "ประเภทการลา",
     "fieldStartDate": "วันที่เริ่ม",
@@ -1938,7 +1939,7 @@
       "pending": "รอดำเนินการ",
       "reason": "เหตุผล"
     },
-    "myLeaveHeading": "การลาของฉัน",
+    "myLeaveHeading": "ยอดวันลาของฉัน",
     "otherLeaveHeading": "ประเภทการลาอื่น ๆ",
     "detailedTable": "ตารางยอดคงเหลือโดยละเอียด",
     "leaveGroups": {

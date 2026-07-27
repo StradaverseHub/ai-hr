@@ -1177,6 +1177,7 @@
     "requestsEmptyFiltered": "Tiada permohonan {status}.",
     "requestLeaveToggle": "+ Mohon cuti",
     "requestLeave": "Mohon cuti",
+    "submittedToast": "Permohonan cuti berjaya dihantar.",
     "fieldEmployee": "Pekerja",
     "fieldLeaveType": "Jenis cuti",
     "fieldStartDate": "Tarikh mula",
@@ -1938,7 +1939,7 @@
       "pending": "Menunggu",
       "reason": "Sebab"
     },
-    "myLeaveHeading": "Cuti Saya",
+    "myLeaveHeading": "Baki Cuti Saya",
     "otherLeaveHeading": "Jenis cuti lain",
     "detailedTable": "Jadual baki terperinci",
     "leaveGroups": {

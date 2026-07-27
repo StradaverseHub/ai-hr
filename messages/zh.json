@@ -1177,6 +1177,7 @@
     "requestsEmptyFiltered": "无{status}申请。",
     "requestLeaveToggle": "+ 申请休假",
     "requestLeave": "申请休假",
+    "submittedToast": "请假申请已成功提交。",
     "fieldEmployee": "员工",
     "fieldLeaveType": "休假类型",
     "fieldStartDate": "开始日期",
@@ -1938,7 +1939,7 @@
       "pending": "待处理",
       "reason": "原因"
     },
-    "myLeaveHeading": "我的休假",
+    "myLeaveHeading": "我的假期余额",
     "otherLeaveHeading": "其他休假类型",
     "detailedTable": "详细余额表",
     "leaveGroups": {

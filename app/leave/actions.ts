@@ -184,7 +184,13 @@ export async function requestLeaveAction(formData: FormData) {
     redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e, selected?.name))}`);
   }
   revalidatePath('/leave');
-  redirect(`/leave${warnQuery}`);
+  // Success marker (feedback 45c781e2) — until now a successful submission was SILENT: the dialog closed
+  // and the page refreshed, which is indistinguishable from having dismissed it. The marker rides the
+  // redirect rather than being raised in the client, so it fires only on CONFIRMED success — this line is
+  // reached only after the service call returned without throwing, and the failure path above redirects to
+  // ?error= instead. Appended rather than assigned, because the holiday-warning query may already be set
+  // and a submission can legitimately produce both.
+  redirect(`/leave${warnQuery}${warnQuery ? '&' : '?'}toast=leaveSubmitted`);
 }
 
 // Partial Leave Cancellation (ADR-0065): an employee gives back a SUBSET of an approved leave's dates. The

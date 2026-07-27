@@ -1177,6 +1177,7 @@
     "requestsEmptyFiltered": "Không có yêu cầu {status}.",
     "requestLeaveToggle": "+ Yêu cầu nghỉ phép",
     "requestLeave": "Yêu cầu nghỉ phép",
+    "submittedToast": "Đã gửi đơn xin nghỉ thành công.",
     "fieldEmployee": "Nhân viên",
     "fieldLeaveType": "Loại phép",
     "fieldStartDate": "Ngày bắt đầu",
@@ -1938,7 +1939,7 @@
       "pending": "Đang chờ",
       "reason": "Lý do"
     },
-    "myLeaveHeading": "Nghỉ phép của tôi",
+    "myLeaveHeading": "Số dư phép của tôi",
     "otherLeaveHeading": "Loại nghỉ phép khác",
     "detailedTable": "Bảng số dư chi tiết",
     "leaveGroups": {
