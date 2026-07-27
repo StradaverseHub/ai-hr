@@ -7,6 +7,77 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## Slice 3 — 2026-07-28 — deployment env gates become per-tenant entitlements
+
+**Shipped:** `main@a664e5e` (merge `499e79e`, branch `build/slice3@8d1f18d`). 101 files, +6305 lines.
+**Gate:** `tsc` clean · **442 files / 4865 tests** · `next build` clean. Deployed via the documented
+two-phase sequence (`--migrate-only`, reconciliation checked, then finish); verified live — `GET /`
+returns the 401 password gate and all three `toil_accrual` policies are present on production.
+
+**Built:** eight `process.env.*_ENABLED` flags moved onto `isModuleEnabled` / `settingEnabled`;
+migration `0314`; `scripts/reconcile-entitlement-parity.ts`; `scripts/check-audit-chain-gate.ts`;
+`deploy.sh --migrate-only`; ~58 test files converted from env writes to entitlement rows.
+
+### Decisions
+
+**1. The cash-XOR-TOIL invariant was still switchable — by WHO RUNS PAYROLL — and that is the whole
+reason this slice needed three review rounds.** Making the exclusion unconditional was not enough.
+`EXCLUDE_TOIL_BANKED_DAYS` is a correlated subquery, so it runs under the CALLER's RLS. `0099` widened
+attendance / payslip / compensation to the payroll capability but never `toil_accrual`, because nothing
+in the payroll path read it then — this slice is what made that gap live. For a `payroll_partner` the
+attendance row was visible and the accrual was not, so `not exists` read trivially TRUE and every banked
+rest day would have been prefilled as overtime CASH while the leave credit stayed on the ledger: the
+employee paid twice for one day. `0314` widens the read. **A guarantee that holds for one role and not
+another is not a guarantee**, and no amount of unconditional application code fixes a visibility gap
+underneath it.
+
+**2. Widening a `FOR ALL` policy's `USING` clause cannot express "read only".** `0314`'s first attempt
+did exactly that and asserted in its own header that it was safe "because WITH CHECK is unchanged".
+That is false: **PostgreSQL authorises DELETE from `USING` alone** — a DELETE produces no new row, so
+WITH CHECK is never consulted. Since `0076` grants `ai_hr_app` full DML, the USING clause was the only
+thing standing between a payroll session and destroying an employee's banked-leave ledger. The shipped
+form is a separate `FOR SELECT` policy (permissive policies are OR'd per command) plus a RESTRICTIVE
+DELETE policy that also closes a pre-existing hole where an employee could delete their own accrual.
+
+**3. The entitlement-parity reconciliation was removed from `deploy.sh` as an automated gate, on
+purpose.** It could never reach a clean state: `provision.ts` deliberately writes ZERO `tenant_setting`
+rows for a new tenant, while `enable-demo-flags.sh` sets three switches true on the box — so the
+preflight counted every post-`0313` tenant as three rows short, permanently and by design. The first
+customer provisioned after this deploy would have blocked every deploy after it, and both escapes were
+worse than the check (`--apply` writes platform-scoped rows `ai_hr_app` cannot close again;
+`ENTITLEMENT_PARITY_ACKNOWLEDGED` disables it forever). **A check whose only correct resolution is human
+sign-off cannot be an automated `set -e` gate.** It is a one-shot for the maintenance window, and
+`--migrate-only` exists to give it the stop point DEPLOY.md always described. This deploy verified it
+was unnecessary rather than skipping it: the only tenants are the demo group (pre-`0313`, backfilled,
+7 module rows) and the reserved system tenant.
+
+**4. Eight separate guards in this slice could not see what they claimed to check.** The pattern, not
+any single instance, is the finding: `adminCtx` exempting itself from the entitlements it was meant to
+prove; the drift ratchet counting docblock prose as code; a test asserting a row count where only a
+settled AMOUNT distinguishes converted from lapsed; and — the subtlest — the ratchet missing
+`defaultProvisionModuleCodesIn(process.env)` because it matches literal gate NAMES in the scanned file
+and the lookup happened one call away against a parameter. **A guard that checks a proxy for the
+property is not checking the property.**
+
+**5. Ruled PASS by hand, and the reason is recorded rather than hidden.** Round 1 passed, round 2
+FAILED, and round 3's judge died on a network error without ruling. Rather than treat an unruled round
+as a pass, the verdict was made explicitly: the gate above, `0314` **mutation-proven** load-bearing
+(stubbed to `USING (false)` the payroll-partner tests redden; restored they pass), correct journaling,
+and three of round 2's open findings confirmed fixed in code. Two LOW findings were not individually
+re-verified — stated so the next reader knows the edge of what was checked.
+
+### Outstanding
+
+- `scripts/upgrade-rehearsal.sh` is committed on `build/r71` but **has never completed a run**. Every
+  gate here tests the INSTALL (schema-only template, clean-room migrates an EMPTY database); nothing
+  tests the UPGRADE against populated data. This deploy was exactly its use case.
+- `build/r71` carries a DUPLICATE test-DB namespacing implementation; `main`'s (`a664e5e`) wins, since
+  it also fixes `cleanroom-verify.sh`, which runs its own vitest and clobbered the shared template.
+- Test isolation: `resetDb()` truncates ~90 tables **per test** at ~175ms — measured at ≈22% of total
+  suite compute, and the source of the TRUNCATE deadlocks that produce phantom failures.
+
+---
+
 ## Slice 1 — 2026-07-26 — entitlement + settings substrate (no behaviour change)
 
 **Shipped:** `build/slice1@1be70fa`. 26 files, +1528 lines. Nothing READS these tables yet — slice 2
