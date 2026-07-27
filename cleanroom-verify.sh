@@ -53,6 +53,15 @@ cp -f "$ENVFILE" "$BACKUP"
   echo "TEST_MIGRATION_DATABASE_URL=postgres://$SUPER@$PGHOST:$PGPORT/$CLEANDB"
   echo "DATABASE_URL=postgres://$APPROLE:$APPPASS@$PGHOST:$PGPORT/$CLEANDB"
   echo "TEST_DATABASE_URL=postgres://$APPROLE:$APPPASS@$PGHOST:$PGPORT/$CLEANDB"
+  # Give the gate its OWN template + worker databases (test/db-names.ts). Without this, the vitest run
+  # below DROPs and RECREATEs the same ai_hr_test_tpl / ai_hr_test_w<n> that any other vitest on this
+  # machine uses — the gate would clobber a developer's run and be clobbered by one, in both directions,
+  # regardless of CLEANDB pointing somewhere else entirely.
+  #
+  # This does NOT replace the contention guard above, and that guard is deliberately left as strict as it
+  # was: namespacing removes the name COLLISION, but a busy instance can still redden this gate through
+  # lock contention and hook timeouts, which is what R46/R47 actually died of. Two different problems.
+  echo "TEST_DB_NAMESPACE=_cleanroom"
 } > "$ENVFILE"
 pnpm exec drizzle-kit migrate 2>&1 | tail -20; MIG=${PIPESTATUS[0]}
 [ "$MIG" -ne 0 ] && { echo "CLEANROOM_RESULT=FAIL (migrate)"; exit 1; }

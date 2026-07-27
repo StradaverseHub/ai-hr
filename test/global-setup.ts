@@ -36,9 +36,22 @@ export function withDatabase(url: string, dbName: string): string {
   return u.toString();
 }
 
-export const TEMPLATE_DB = 'ai_hr_test_tpl';
-/** Worker databases are `${WORKER_DB_PREFIX}${VITEST_POOL_ID}` — see test/env.ts. */
-export const WORKER_DB_PREFIX = 'ai_hr_test_w';
+/**
+ * Database names come from test/db-names.ts, which derives them from TEST_DB_NAMESPACE.
+ *
+ * They are FUNCTIONS, not the constants that used to live here, and they are called INSIDE `setup()`
+ * rather than at module scope. Both details matter: `setup()` is where `.env.local` gets loaded, and a
+ * name captured at import time would predate it. See test/db-names.ts for the full reasoning.
+ *
+ * Imported AND re-exported: `export … from` alone would re-export without binding them in this module's
+ * scope, so the calls below would not resolve. Re-exported so anything that used to reach for the old
+ * TEMPLATE_DB / WORKER_DB_PREFIX constants still has one place to look — but they must now be CALLED,
+ * and a stale constant-style reference will not typecheck. That is the point: silently reading a
+ * different name than the one that was created is exactly the failure this is meant to prevent.
+ */
+import { templateDb, workerDb, workerDbPrefix } from './db-names';
+
+export { templateDb, workerDb, workerDbPrefix };
 
 /** Role the tests connect as (RLS applies to it); the migrator connects as the owner instead. */
 const APP_ROLE = 'ai_hr_app';
@@ -81,6 +94,11 @@ export default async function setup({ provide }: { provide?: (k: string, v: unkn
   const workers = Number(process.env.VITEST_MAX_WORKERS ?? 0) || 8;
   const adminUrl = withDatabase(migrationUrl, 'postgres');
 
+  // Resolved HERE, after `.env.local` has been loaded above — see test/db-names.ts on why these are
+  // called rather than imported as constants. Bound to locals so every statement below uses one value.
+  const templateName = templateDb();
+  const workerPrefix = workerDbPrefix();
+
   const t0 = Date.now();
 
   // 1. Rebuild the template from scratch. Always rebuilt rather than reused: a stale template that predates
@@ -88,16 +106,16 @@ export default async function setup({ provide }: { provide?: (k: string, v: unkn
   await adminSql(adminUrl, async (sql) => {
     await sql.unsafe(
       `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
-       WHERE datname = '${TEMPLATE_DB}' AND pid <> pg_backend_pid()`,
+       WHERE datname = '${templateName}' AND pid <> pg_backend_pid()`,
     );
-    await sql.unsafe(`DROP DATABASE IF EXISTS "${TEMPLATE_DB}" WITH (FORCE)`);
-    await sql.unsafe(`CREATE DATABASE "${TEMPLATE_DB}"`);
+    await sql.unsafe(`DROP DATABASE IF EXISTS "${templateName}" WITH (FORCE)`);
+    await sql.unsafe(`CREATE DATABASE "${templateName}"`);
   });
-  await grantAppRole(adminUrl, TEMPLATE_DB);
+  await grantAppRole(adminUrl, templateName);
 
   // 2. Migrate the template ONCE — the whole point of the exercise. This connection must be closed before
   //    any copy is taken (Postgres refuses to copy a database that has connections).
-  const templateUrl = withDatabase(migrationUrl, TEMPLATE_DB);
+  const templateUrl = withDatabase(migrationUrl, templateName);
   const migrator = postgres(templateUrl, { max: 1 });
   try {
     await migrate(drizzle(migrator), { migrationsFolder: 'db/migrations' });
@@ -116,19 +134,21 @@ export default async function setup({ provide }: { provide?: (k: string, v: unkn
   //    trip "source database is being accessed by other users", and a copy is fast enough that the loop
   //    costs less than debugging that race.
   for (let i = 1; i <= workers; i++) {
-    const dbName = `${WORKER_DB_PREFIX}${i}`;
+    // Through the shared helper, so the name created here and the name test/env.ts connects to are
+    // produced by the same function rather than two literals that happened to match.
+    const dbName = workerDb(i);
     await adminSql(adminUrl, async (sql) => {
       await sql.unsafe(
         `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
          WHERE datname = '${dbName}' AND pid <> pg_backend_pid()`,
       );
       await sql.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
-      await sql.unsafe(`CREATE DATABASE "${dbName}" TEMPLATE "${TEMPLATE_DB}"`);
+      await sql.unsafe(`CREATE DATABASE "${dbName}" TEMPLATE "${templateName}"`);
     });
     await grantAppRole(adminUrl, dbName);
   }
 
-  provide?.('workerDbPrefix', WORKER_DB_PREFIX);
+  provide?.('workerDbPrefix', workerPrefix);
   console.log(
     `[global-setup] template migrated in ${(migratedMs / 1000).toFixed(1)}s, ` +
       `${workers} worker DBs ready in ${((Date.now() - t0) / 1000).toFixed(1)}s total`,

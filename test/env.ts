@@ -1,5 +1,6 @@
 // Vitest setup — point the app singleton at the TEST database before anything imports it.
 import process from 'node:process';
+import { workerDb } from './db-names';
 
 try {
   process.loadEnvFile('.env.local');
@@ -18,10 +19,13 @@ if (!process.env.TEST_DATABASE_URL || !process.env.TEST_MIGRATION_DATABASE_URL) 
 // Escape hatch: WORKER_DB=0 keeps the old single shared database, for debugging a suspected isolation bug.
 const poolId = process.env.VITEST_POOL_ID ?? process.env.VITEST_WORKER_ID;
 if (poolId && process.env.WORKER_DB !== '0') {
-  const workerDb = `ai_hr_test_w${poolId}`;
+  // From the SAME helper global-setup stamps the databases with, rather than the third hardcoded
+  // spelling of the name that used to live here. Called after `loadEnvFile` above, so TEST_DB_NAMESPACE
+  // set in .env.local is honoured — see test/db-names.ts on why these are functions and not constants.
+  const dbName = workerDb(poolId);
   const swap = (url: string) => {
     const u = new URL(url);
-    u.pathname = `/${workerDb}`;
+    u.pathname = `/${dbName}`;
     return u.toString();
   };
   process.env.TEST_DATABASE_URL = swap(process.env.TEST_DATABASE_URL);
