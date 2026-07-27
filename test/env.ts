@@ -1,5 +1,6 @@
 // Vitest setup — point the app singleton at the TEST database before anything imports it.
 import process from 'node:process';
+import { workerDbPrefix } from './db-names';
 
 try {
   process.loadEnvFile('.env.local');
@@ -18,7 +19,12 @@ if (!process.env.TEST_DATABASE_URL || !process.env.TEST_MIGRATION_DATABASE_URL) 
 // Escape hatch: WORKER_DB=0 keeps the old single shared database, for debugging a suspected isolation bug.
 const poolId = process.env.VITEST_POOL_ID ?? process.env.VITEST_WORKER_ID;
 if (poolId && process.env.WORKER_DB !== '0') {
-  const workerDb = `ai_hr_test_w${poolId}`;
+  // Derived from the SAME helper global-setup creates the databases with. This line used to spell the
+  // prefix out itself, which meant the creator and the connector each carried their own copy of the
+  // name — the shape where a change to one silently points the workers at databases that do not exist.
+  // (global-setup also `provide()`s the prefix, but nothing ever consumed it, so it was decoration.)
+  // Called here, after loadEnvFile above, so a namespace set in .env.local is visible.
+  const workerDb = `${workerDbPrefix()}${poolId}`;
   const swap = (url: string) => {
     const u = new URL(url);
     u.pathname = `/${workerDb}`;
