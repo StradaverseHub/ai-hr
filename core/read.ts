@@ -511,7 +511,26 @@ export function listLeaveTypes(
       .where(opts.includeArchived ? undefined : isNull(leaveType.archivedAt));
     // R37: localize the display name to the viewer's locale. Admin callers pass no locale, so the
     // config screens keep the default English name (which is what gets edited).
-    return rows.map(({ i18n, ...r }) => ({ ...r, name: pickName(r.name, i18n, opts.locale) }));
+    //
+    // SORTED A-Z BY DISPLAY NAME (feedback c2a48426), and sorted HERE rather than in SQL for a reason
+    // the query cannot express: the name a viewer actually reads is resolved just above, in JS, from
+    // the i18n column. An `ORDER BY leave_type.name` would order by the ENGLISH name while the screen
+    // showed translated ones — alphabetical to nobody. Sorting the projected rows sorts what is read.
+    //
+    // Server-side rather than in the page, so the order is identical on first paint and after a
+    // revalidation. The item calls out that a newly created type must appear in its alphabetical place
+    // rather than at the end, and a client-only sort leaves it briefly misplaced on the round trip.
+    //
+    // localeCompare, not `<`: raw code-unit ordering puts every capital ahead of every lowercase letter
+    // ("Unpaid" before "annual") and files accented names past Z, neither of which is what an
+    // administrator scanning a list expects.
+    //
+    // There was no ordering at all before this — rows arrived in Postgres heap order, which is
+    // arbitrary and can change as rows are updated. So this is strictly more deterministic for every
+    // caller, including listVisibleLeaveTypes, which filters this same projection.
+    return rows
+      .map(({ i18n, ...r }) => ({ ...r, name: pickName(r.name, i18n, opts.locale) }))
+      .sort((a, b) => a.name.localeCompare(b.name, opts.locale));
   });
 }
 
