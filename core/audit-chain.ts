@@ -22,6 +22,14 @@
  * instead of the same one. `valid` deliberately still means "the chained rows link correctly": it is
  * the tamper verdict, not a coverage verdict, and conflating the two would make an ordinary
  * chain-was-off-then-on deployment indistinguishable from an actual mutation.
+ *
+ * AND THE COUNT ALONE DOES NOT DISCRIMINATE, which review r3 caught and which is why
+ * `unchainedInsideChain` exists. 0074:5 defers the backfill of pre-existing events by design, so every
+ * event a tenant recorded before the chain was first armed stays `chain_seq IS NULL` forever — meaning
+ * `checked > 0 && unchained > 0`, the shape this file called "dangerous", is also the shape of every
+ * perfectly healthy tenant that predates the arming. Position is what separates the two: unchained
+ * events that occurred AFTER the first chained one are inside the chain's coverage and can only be a
+ * hole. That is the figure the DPO surface renders.
  */
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
@@ -32,10 +40,23 @@ export type ChainVerification = {
   checked: number;
   /**
    * Events for this tenant with NO chain columns — appended while the gate was off. Not a tamper
-   * signal; a COVERAGE signal. `checked > 0 && unchained > 0` is the dangerous shape: the tenant has a
-   * chain, and part of its history sits outside it.
+   * signal; a COVERAGE signal.
    */
   unchained: number;
+  /**
+   * The subset of `unchained` that occurred AFTER this tenant's first chained event — i.e. a genuine
+   * HOLE inside the chain's coverage, as opposed to ordinary history from before the chain was ever
+   * armed.
+   *
+   * WHY THE POSITION AND NOT THE COUNT (ADR-0077 slice 3 review). `checked > 0 && unchained > 0` was
+   * documented here as "the dangerous shape" and rendered as such — but 0074:5 states by design that
+   * "backfill of pre-existing events is deferred to the historical-redaction migration (ADR-0030 §3)",
+   * so every event a tenant recorded before the chain was first switched on is permanently
+   * `chain_seq IS NULL`. Any tenant that predates the arming therefore matches that shape FOREVER, with
+   * or without a hole, which makes it a banner nobody can act on and the arm→disarm→re-arm window
+   * indistinguishable from ordinary pre-chain history. Non-zero on THIS figure is unambiguous.
+   */
+  unchainedInsideChain: number;
   firstBadSeq: number | null;
   issues: ChainIssue[];
 };
@@ -48,14 +69,30 @@ function ctxIsAdmin(ctx: SessionContext): boolean {
 export async function verifyTenantChain(ctx: SessionContext): Promise<ChainVerification> {
   if (!ctxIsAdmin(ctx)) throw new Error('verifyTenantChain is admin-only (needs the full event log).');
   return withTenant(ctx, async (tx) => {
-    // BOTH counts in one pass, so they are read from the same snapshot and cannot disagree.
+    // ALL THREE counts in one pass, so they are read from the same snapshot and cannot disagree.
+    //
+    // The third is positional, keyed on `sequence` — the table's bigserial — and NOT on `occurred_at`.
+    // `occurred_at` defaults to `now()`, which in Postgres is the TRANSACTION timestamp, so every event
+    // appended inside one transaction shares it and a strict comparison would silently drop a whole
+    // batch onto the wrong side of the boundary. `sequence` is assigned per row at INSERT and is the
+    // append order this is actually asking about.
+    //
+    // When the tenant has no chained event the scalar subquery is NULL, the comparison is NULL rather
+    // than true, and the count is 0 — the right answer, because a tenant with no chain has no hole in
+    // one. `>`, not `>=`, because the minimum is itself a chained row.
     const countRes = await tx.execute(sql`
       SELECT count(*) FILTER (WHERE chain_seq IS NOT NULL)::int AS chained,
-             count(*) FILTER (WHERE chain_seq IS NULL)::int     AS unchained
+             count(*) FILTER (WHERE chain_seq IS NULL)::int     AS unchained,
+             count(*) FILTER (
+               WHERE chain_seq IS NULL
+                 AND sequence > (SELECT min(sequence) FROM domain_event c
+                                  WHERE c.tenant_id = ${ctx.tenantId} AND c.chain_seq IS NOT NULL)
+             )::int AS unchained_inside
         FROM domain_event WHERE tenant_id = ${ctx.tenantId}`);
-    const counts = (countRes as unknown as { chained: number; unchained: number }[])[0];
+    const counts = (countRes as unknown as { chained: number; unchained: number; unchained_inside: number }[])[0];
     const checked = Number(counts?.chained ?? 0);
     const unchained = Number(counts?.unchained ?? 0);
+    const unchainedInsideChain = Number(counts?.unchained_inside ?? 0);
 
     // Returns only the BROKEN rows (empty result ⇒ intact chain). No boolean columns to parse across drivers.
     const badRes = await tx.execute(sql`
@@ -84,6 +121,6 @@ export async function verifyTenantChain(ctx: SessionContext): Promise<ChainVerif
       problem: r.problem,
     }));
     const firstBadSeq = issues.length ? Math.min(...issues.map((i) => i.chainSeq)) : null;
-    return { valid: issues.length === 0, checked, unchained, firstBadSeq, issues };
+    return { valid: issues.length === 0, checked, unchained, unchainedInsideChain, firstBadSeq, issues };
   });
 }

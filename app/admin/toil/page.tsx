@@ -5,7 +5,7 @@ import { listCompanies, replacementLeaveSummary } from '@/core/read';
 import { listToilPolicies } from '@/core/toil';
 import { Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
 import { setToilPolicyAction, runToilExpiryAction, closeReplacementLeaveYearAction } from '../actions';
-import { isModuleEnabled } from '@/core/entitlements';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
 export default async function ToilPolicyPage({
   searchParams,
@@ -15,6 +15,7 @@ export default async function ToilPolicyPage({
     processed?: string;
     converted?: string;
     lapsed?: string;
+    skipped?: string;
     closed?: string;
     closedAlready?: string;
     closedProcessed?: string;
@@ -25,9 +26,9 @@ export default async function ToilPolicyPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.toilPolicy');
-  const { error, processed, converted, lapsed, closed, closedAlready, closedProcessed, closedConverted, closedLapsed, closedCarried } =
+  const { error, processed, converted, lapsed, skipped, closed, closedAlready, closedProcessed, closedConverted, closedLapsed, closedCarried } =
     await searchParams;
-  const moduleOn = isModuleEnabled(s, 'toil');
+  const moduleOn = isModuleEnabledOrFalse(s, 'toil');
 
   const companies = await listCompanies(s);
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
@@ -66,6 +67,17 @@ export default async function ToilPolicyPage({
         </div>
       )}
 
+      {/* THE PARTIAL SWEEP, SAID OUT LOUD (review r3). `runToilExpiry` reads only accruals this caller
+          can settle (core/toil.ts SETTLEABLE_BY_CALLER) so a dual-scoped operator no longer rolls the
+          whole transaction back — but that turns "another company's statutory convert-to-pay is
+          overdue and you may not settle it" into the same green banner as "nothing was due". AMBER,
+          not emerald: an unsettled statutory obligation is not a success. */}
+      {Number(skipped ?? 0) > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          {t('processedSkipped', { skipped: Number(skipped) })}
+        </div>
+      )}
+
       {closed !== undefined && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
           {Number(closedAlready) === 1
@@ -86,18 +98,25 @@ export default async function ToilPolicyPage({
       )}
 
       {/*
-        THE POLICY EDITOR IS GATED; the ledger and the settlement card below are NOT, and the split is
-        the whole point of the wind-down argument (review r2 caught this half missing). What the
-        entitlement governs is NEW accrual — and every field in this form is frozen onto each accrual at
-        accrual time, so a tenant without the module editing it would be tuning a capability it does not
-        have, ready to take effect the day it buys one. What the entitlement must NOT govern is settling
-        days already banked, which is why `showSettlement` keys off `outstanding` as well as `moduleOn`.
-        `setToilPolicy` asserts the same thing server-side; this is so the UI does not offer a control
-        that would be refused.
+        THE POLICY EDITOR IS READ-ONLY WITHOUT THE MODULE; the ledger and the settlement card below are
+        fully live. The split is the whole point of the wind-down argument (review r2 caught this half
+        missing) — what the entitlement governs is NEW accrual, and every field in this form is frozen
+        onto each accrual at accrual time, so a tenant without the module EDITING it would be tuning a
+        capability it has not bought, ready to take effect the day it does. `setToilPolicy` asserts the
+        same thing server-side; disabling the controls is so the UI does not offer one that would be
+        refused.
+
+        READ-ONLY RATHER THAN HIDDEN (review r3). The first version of this gate rendered `null`, which
+        contradicted the banner directly above it — `moduleOff` says, in all six locales, "You can review
+        policies here, but no new time will be banked" — and it undercut the wind-down argument it was
+        part of: every accrual freezes `expiryAction` and `carryForwardAtYearEnd` FROM THIS POLICY, so an
+        admin asked to settle an outstanding liability could no longer see the settings that decide how
+        it settles. Since `toil` is in no parity set, every existing tenant lands in this branch at the
+        flip. Reviewing is not configuring; only the second one is what the entitlement withholds.
       */}
       {visible.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('noCompanies')}</p>
-      ) : !moduleOn ? null : (
+      ) : (
         visible.map((c) => {
           const p = byCompany.get(c.id);
           if (!p) return null;
@@ -119,7 +138,7 @@ export default async function ToilPolicyPage({
                 <input type="hidden" name="companyId" value={c.id} />
 
                 <label className="flex items-start gap-2.5">
-                  <input type="checkbox" name="enabled" defaultChecked={p.enabled} className="mt-0.5 h-4 w-4 accent-primary" />
+                  <input type="checkbox" name="enabled" defaultChecked={p.enabled} disabled={!moduleOn} className="mt-0.5 h-4 w-4 accent-primary disabled:opacity-60" />
                   <span>
                     <span className="text-sm font-medium text-foreground">{t('enabledLabel')}</span>
                     <span className="block text-xs text-muted-foreground">{t('enabledHint')}</span>
@@ -128,16 +147,16 @@ export default async function ToilPolicyPage({
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <Field label={t('accrualBasis')}>
-                    <select name="accrualBasis" defaultValue={p.accrualBasis} className={inputCls}>
+                    <select name="accrualBasis" defaultValue={p.accrualBasis} disabled={!moduleOn} className={inputCls}>
                       <option value="hours_worked">{t('basisHoursWorked')}</option>
                       <option value="premium_equivalent">{t('basisPremiumEquivalent')}</option>
                     </select>
                   </Field>
                   <Field label={t('expiryDays')}>
-                    <input type="number" name="expiryDays" min={1} max={730} required defaultValue={p.expiryDays} className={inputCls} />
+                    <input type="number" name="expiryDays" min={1} max={730} required defaultValue={p.expiryDays} disabled={!moduleOn} className={inputCls} />
                   </Field>
                   <Field label={t('onExpiry')}>
-                    <select name="onExpiry" defaultValue={p.onExpiry} className={inputCls}>
+                    <select name="onExpiry" defaultValue={p.onExpiry} disabled={!moduleOn} className={inputCls}>
                       <option value="convert_to_pay">{t('expiryConvertToPay')}</option>
                       <option value="lapse">{t('expiryLapse')}</option>
                     </select>
@@ -149,7 +168,7 @@ export default async function ToilPolicyPage({
                     type="checkbox"
                     name="allowFirstScheduleEligible"
                     defaultChecked={p.allowFirstScheduleEligible}
-                    className="mt-0.5 h-4 w-4 accent-amber-600"
+                    disabled={!moduleOn} className="mt-0.5 h-4 w-4 accent-amber-600 disabled:opacity-60"
                   />
                   <span>
                     <span className="text-sm font-medium text-foreground">{t('allowEligibleLabel')}</span>
@@ -162,7 +181,7 @@ export default async function ToilPolicyPage({
                     type="checkbox"
                     name="autoAccrueOnApproval"
                     defaultChecked={p.autoAccrueOnApproval}
-                    className="mt-0.5 h-4 w-4 accent-primary"
+                    disabled={!moduleOn} className="mt-0.5 h-4 w-4 accent-primary disabled:opacity-60"
                   />
                   <span>
                     <span className="text-sm font-medium text-foreground">{t('autoAccrueLabel')}</span>
@@ -175,7 +194,7 @@ export default async function ToilPolicyPage({
                     type="checkbox"
                     name="carryForwardAtYearEnd"
                     defaultChecked={p.carryForwardAtYearEnd}
-                    className="mt-0.5 h-4 w-4 accent-primary"
+                    disabled={!moduleOn} className="mt-0.5 h-4 w-4 accent-primary disabled:opacity-60"
                   />
                   <span>
                     <span className="text-sm font-medium text-foreground">{t('carryForwardLabel')}</span>
@@ -183,7 +202,7 @@ export default async function ToilPolicyPage({
                   </span>
                 </label>
 
-                <button className={btnPrimary}>{t('save')}</button>
+                {moduleOn && <button className={btnPrimary}>{t('save')}</button>}
               </form>
             </Card>
           );

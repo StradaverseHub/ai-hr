@@ -4680,6 +4680,7 @@
       "processHint": "按每笔记录的固定规则，将逾期的调休转为支付或作失效处理。针对今天运行；日后将由计划任务自动执行。",
       "processedBanner": "已处理 {processed} 笔到期：{converted} 转为支付，{lapsed} 失效。",
       "processedNone": "没有到期的调休。",
+      "processedSkipped": "另有 {skipped} 笔到期属于您无权管理的公司，未予结算。需由该公司的管理员运行此处理。",
       "autoAccrueLabel": "考勤获批准时自动创建补假",
       "autoAccrueHint": "开启后，批准休息日或公共假期的考勤更正将自动记入补假——无需手动从排班中选取。",
       "carryForwardLabel": "年终结转未使用的补假",

@@ -385,11 +385,29 @@ export async function provisionTenant(tx: Tx, input: ProvisionInput): Promise<Pr
     // `tenant_setting_write` policy requires `scope='tenant'`, so `ai_hr_app` can never delete them;
     // the plane that could is slice 7. An over-grant here is permanent in a way an under-grant is not.
     //
-    // Tenants created BETWEEN slice 1 and slice 3 are the real gap, and they are
-    // `scripts/reconcile-entitlement-parity.ts`'s job — a one-shot, sign-off-gated, dry-run-by-default
-    // reconciliation over tenants that exist. Two questions, two mechanisms, neither substituting for
-    // the other. `source: 'platform'`, matching what 0313 wrote: an install default is Stradaverse's
-    // decision, not a value the customer chose.
+    // THAT SAME ARGUMENT IS WHY THIS WRITES ALMOST NOTHING. `settingsOnInstallFor` emits a row only for
+    // a setting whose install value DIFFERS from its catalog default, so a new tenant gets ONE row —
+    // `payroll.individual_txn_pay_enabled`, when payroll is bought — and every other key resolves to its
+    // default with no row at all. The first version wrote all three payroll keys as explicit `false`,
+    // which is behaviourally identical to no row and strictly worse: the ROW is unwritable by
+    // `ai_hr_app` for the two platform-scoped keys, and `scripts/reconcile-entitlement-parity.ts` reads
+    // any existing row as "a decision was recorded, leave it alone". A row that changes nothing and
+    // forecloses both levers is the definition of a bad default. See settingsOnInstallFor for the
+    // full reasoning.
+    //
+    // THE ONE ROW IS NOT A PARITY LEAK (review r3). `payroll.individual_txn_pay_enabled` is emitted
+    // because its CATALOG entry says so, not because this box has INDIVIDUAL_TXN_PAY_ENABLED set — the
+    // env is never read here, and the value would be the same on a box that has the flag off. It is
+    // `scope: 'tenant'` and it decides payslip arithmetic rather than opening a control hatch; the
+    // reasoning is recorded on the catalog entry itself. Without it a customer provisioned tomorrow
+    // would be the only tenant on the deployment whose one-off transactions silently stop being paid.
+    //
+    // Tenants created BETWEEN slice 1 and slice 3 are still the gap for the two PLATFORM risk switches,
+    // and they are `scripts/reconcile-entitlement-parity.ts`'s job — a one-shot, sign-off-gated,
+    // dry-run-by-default reconciliation over tenants that exist, bounded by `--created-before` so it
+    // cannot reach a tenant provisioned after the flip. Two questions, two mechanisms, neither
+    // substituting for the other. `source: 'platform'`, matching what 0313 wrote: an install default is
+    // Stradaverse's decision, not a value the customer chose.
     const installSettings = settingsOnInstallFor(picked);
     if (installSettings.length) {
       await tx

@@ -4680,6 +4680,7 @@
       "processHint": "Convert or lapse time in lieu past its expiry, following each accrual's frozen rule. Runs for today; a scheduled job will automate this later.",
       "processedBanner": "Processed {processed} expirations: {converted} converted to pay, {lapsed} lapsed.",
       "processedNone": "No time in lieu was due for expiry.",
+      "processedSkipped": "{skipped} further expiry(ies) were due but belong to a company you do not administer — they were left unsettled. An administrator for those companies must run this sweep.",
       "autoAccrueLabel": "Auto-create credit when attendance is approved",
       "autoAccrueHint": "When on, approving a rest-day or public-holiday attendance correction automatically banks the replacement leave — no manual roster election needed.",
       "carryForwardLabel": "Carry forward unused credit at year-end",

@@ -607,6 +607,23 @@ describe('0295 — tenant provisioning', () => {
     // Nothing else was granted: a purchase is exactly what was ticked, and core modules take no row.
     expect(rows).toHaveLength(2);
 
+    // …AND THE SETTINGS AXIS, which had no assertion here at all (review r3). Buying `payroll` must
+    // land `payroll.individual_txn_pay_enabled = true`, because that key decides whether the one-off
+    // transaction ledger reaches the payslip and EVERY tenant already on this deployment has it on
+    // (0313 backfilled it). Without the row a customer provisioned tomorrow would be the only one whose
+    // one-off transactions silently stop being paid. Asserted as the whole set, not an `includes`: the
+    // two payroll RISK switches are `scope: 'platform'` and must NOT arrive — `ai_hr_app` could never
+    // close them again, so an over-grant here is permanent in a way an under-grant is not.
+    const settings = await owner.db
+      .select({ key: schema.tenantSetting.key, value: schema.tenantSetting.value, source: schema.tenantSetting.source })
+      .from(schema.tenantSetting)
+      .where(eq(schema.tenantSetting.tenantId, r.tenantId));
+    expect(settings.map((x) => x.key)).toEqual(['payroll.individual_txn_pay_enabled']);
+    expect(settings[0].value, 'the install default is the VALUE, not merely a row').toBe(true);
+    expect(settings[0].source, "an install default is Stradaverse's decision, matching 0313's backfill").toBe(
+      'platform',
+    );
+
     // The country is READ, not merely stored. Before this slice the company step was a hardcoded 'MY'
     // literal, so a recorded country of 'ZZ' would have provisioned a Malaysian company regardless.
     const packless = await owner.db

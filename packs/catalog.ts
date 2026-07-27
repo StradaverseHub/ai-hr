@@ -105,25 +105,71 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
 /**
  * SETTINGS — the per-tenant behaviour values.
  *
- * The three `platform`-scoped rows here are the ones that must NOT be customer-writable, and the
+ * The FOUR `platform`-scoped rows here are the ones that must NOT be customer-writable, and the
  * reasoning is recorded per row rather than in a design doc nobody reads at 2am:
- *   - the two payroll risk switches reopen or wipe a finalised payroll run, and
- *   - `audit_hash_chain` is the tamper-evidence itself.
- * A customer sees each of them; only Stradaverse changes them. `defaultOnInstall: false` on the risk
- * switches is deliberate — a purchased module must never arrive with an escape hatch already open,
- * even though the demo deployment has all three env flags ON today (F4).
+ *   - the two payroll risk switches reopen or wipe a finalised payroll run,
+ *   - `audit.hash_chain_enabled` is the tamper-evidence itself, and
+ *   - `feedback.ai_planning_enabled` is operator tooling, not a customer feature.
+ * A customer sees the first three; only Stradaverse changes any of them. `defaultOnInstall: false` on
+ * the risk switches is deliberate — a purchased module must never arrive with an escape hatch already
+ * open, even though the demo deployment has both env flags ON today (F4).
  *
- * That last clause is about NEW installs only. An ALREADY-PROVISIONED tenant keeps what it has via
- * `LEGACY_ENABLED_SETTINGS` below, which 0313 backfills — `defaultOnInstall` never fires for a tenant
- * that was provisioned before the setting existed, so the two mechanisms are not interchangeable.
+ * `payroll.individual_txn_pay_enabled` is the odd one out and is `scope: 'tenant'` on purpose: it is
+ * not a hatch, it is payslip arithmetic, and it is the ONE entry whose `defaultOnInstall` differs from
+ * its default. Its own comment below carries the reasoning.
+ *
+ * The install-default clause is about NEW installs only. An ALREADY-PROVISIONED tenant keeps what it
+ * has via `LEGACY_ENABLED_SETTINGS` below, which 0313 backfills — `defaultOnInstall` never fires for a
+ * tenant provisioned before the setting existed, so the two mechanisms are not interchangeable.
  */
 export const SETTING_CATALOG: SettingCatalogEntry[] = [
   { key: 'payroll.reset_enabled', moduleCode: 'payroll', scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Allow reverting a processed payroll run to draft. Weakens payroll controls; enabling is an audited platform action.', sortOrder: 10 },
   { key: 'payroll.unlock_enabled', moduleCode: 'payroll', scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Allow unlocking a closed payroll run back to processed. Reverses the statutory freeze; enabling is an audited platform action.', sortOrder: 20 },
-  { key: 'payroll.individual_txn_pay_enabled', moduleCode: 'payroll', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the payroll kernel pay and deduct the one-off transaction ledger, instead of keeping it record-only.', sortOrder: 30 },
+  // `defaultOnInstall: true` — the ONLY entry that differs from its bare default, and deliberately so
+  // (review r3). This is not a risk switch: it decides whether the one-off transaction ledger is paid or
+  // record-only, i.e. ordinary payslip arithmetic (core/payroll.ts reads it inside the payslip
+  // computation). Every tenant on this deployment runs it ON via INDIVIDUAL_TXN_PAY_ENABLED, and 0313
+  // backfilled a `true` row for every tenant that existed at migrate time — so leaving it `false` at
+  // install would have made a customer provisioned TOMORROW the only one whose one-off transactions
+  // silently stop reaching the payslip, with no error and no way to notice. That is the same
+  // silent-downgrade shape the parity set exists to prevent, and unlike the two switches above it is
+  // `scope: 'tenant'`, so 0313's `tenant_setting_write` policy lets `ai_hr_app` change it once slice 7
+  // ships a settings screen. The two platform risk switches stay `false`: a purchased module must not
+  // arrive able to revert a processed run or unlock a closed one.
+  { key: 'payroll.individual_txn_pay_enabled', moduleCode: 'payroll', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: true, customerVisible: true, description: 'Let the payroll kernel pay and deduct the one-off transaction ledger, instead of keeping it record-only.', sortOrder: 30 },
   { key: 'audit.hash_chain_enabled', moduleCode: null, scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Tamper-evident hash chaining over the audit log. Integrity control — Stradaverse-managed, and one-way once enabled (slice 8).', sortOrder: 100 },
   { key: 'feedback.ai_planning_enabled', moduleCode: null, scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: false, description: 'In-app AI drafting of improvement plans. Operator tooling, not a customer feature.', sortOrder: 110 },
 ];
+
+/*
+ * NO IN-PRODUCT WRITER EXISTS FOR A `platform` KEY UNTIL SLICE 7, and `feedback.ai_planning_enabled`
+ * is the one where that matters today — so it is written here rather than left to be discovered.
+ *
+ * `scope: 'platform'` means 0313's `tenant_setting_write` policy refuses `ai_hr_app` outright, and there
+ * is no settings screen yet in any case (nothing under app/, core/ or lib/ touches `tenant_setting`).
+ *
+ * WHAT THAT MEANS FOR THE THREE PAYROLL KEYS, STATED EXACTLY (review r3 — the earlier wording here said
+ * they were "fine" because the backfill plus the reconcile script covered them, which is true only up to
+ * the moment the reconcile runs):
+ *   - `payroll.individual_txn_pay_enabled` is `scope: 'tenant'` and now carries `defaultOnInstall: true`,
+ *     so `provisionTenant` writes it for every tenant that buys `payroll`, forever. Covered.
+ *   - `payroll.reset_enabled` / `payroll.unlock_enabled` are covered for tenants that EXISTED at 0313
+ *     (its backfill) and for tenants created before the flip (the reconcile script, which iterates the
+ *     `tenant` table at run time and therefore cannot reach a tenant that does not exist yet). A tenant
+ *     created AFTER the reconcile has no row and resolves `false` — deliberately: they are the risk
+ *     switches, and `defaultOnInstall: false` is the recorded decision. Switching one on for such a
+ *     tenant is an owner-connection INSERT until slice 7, exactly as for the key below.
+ *
+ * This key is covered by NONE of those — it is absent from the backfill, absent from
+ * `LEGACY_ENABLED_SETTINGS` (operator tooling, set
+ * in no tracked env file, so `legacyEnabledSettingsIn` can never emit it), and `moduleCode: null` keeps
+ * it out of `settingsOnInstallFor`. `ADR-0044` documented `FEEDBACK_AI_PLANNING_ENABLED=true` as the
+ * enable knob; slice 3 migrated that knob here, so until slice 7 the ONLY way to switch AI planning on
+ * is an owner-connection INSERT. deploy/DEPLOY.md → "Switching a platform-scoped setting on (until
+ * slice 7)" carries the statement to run; `scripts/feedback-plan.ts` and the admin "generate plan"
+ * button refuse for every tenant until someone runs it. Stated, not silently shipped: a gate with no
+ * enable path is worse than a removed feature, because the code still looks live.
+ */
 
 /**
  * ── THE PARITY MAPPING ──────────────────────────────────────────────────────────────────────────
@@ -304,13 +350,50 @@ export function legacyEnabledSettingsIn(env: EnvLike): { key: string; value: unk
  * Filtered by the picked modules because that is what `defaultOnInstall` means — "applied when the
  * owning module is INSTALLED". An installation-wide setting (`moduleCode: null`) is nobody's purchase
  * and is left to its catalog default.
+ *
+ * A ROW IS ONLY EMITTED WHEN IT SAYS SOMETHING THE DEFAULT DOES NOT (slice 3 review), and the reason is
+ * that on this table a row is far more than a value:
+ *
+ *   - `defaultOnInstall === defaultValue` ⇒ NO ROW. The resolver already falls back to `defaultValue`
+ *     when a tenant has no row, so the row would be behaviourally identical — and NOT identical in every
+ *     other respect. Both payroll risk switches are `scope='platform'`, and 0313's `tenant_setting_write`
+ *     policy requires `scope='tenant'`, so `ai_hr_app` can never update or delete what provisioning
+ *     writes here; until slice 7 builds the platform plane, an operator's only remaining lever is an
+ *     owner-connection statement. `scripts/reconcile-entitlement-parity.ts` also treats an existing row
+ *     as "hands off, a decision was recorded", so an identical-to-default row would silently opt a brand
+ *     new tenant out of a reconciliation it should have been eligible for. Writing a row that changes
+ *     nothing and forecloses everything is pure downside.
+ *   - `defaultOnInstall === null` ⇒ NO ROW, per the column's declared contract:
+ *     0313:78-80 makes `default_on_install` nullable and documents NULL as "nothing to apply on install".
+ *     `tenant_setting.value` is `NOT NULL`, so passing NULL through would abort the whole provisioning
+ *     transaction with a 23502 the first time a catalog entry uses the documented form.
+ *
+ * The install default therefore still fires for exactly the case it exists for: a setting a purchased
+ * module should arrive with SWITCHED ON, i.e. one whose install value differs from its bare default.
+ *
+ * `catalog` IS A TEST SEAM, and it exists because the rule was unobservable against the real catalog
+ * when it was written (review r2): no entry had `defaultOnInstall !== defaultValue`, so every call
+ * returned [] and a test written against SETTING_CATALOG could only ever compare [] with [] — which is
+ * what the test guarding this function did, with an expected side that re-implemented the filter
+ * verbatim. Passing a synthetic catalog lets all four branches above be asserted against hand-written
+ * literals. The seam is still worth keeping now that the real catalog exercises the emit branch
+ * (`payroll.individual_txn_pay_enabled`, review r3): one live entry proves ONE branch, and the pin on
+ * the real catalog — which now names that key rather than asserting emptiness — stays the separate
+ * tripwire it already was, so a second entry gaining a non-default install value is a deliberate edit.
  */
-export function settingsOnInstallFor(moduleCodes: readonly string[]): { key: string; value: unknown }[] {
+export function settingsOnInstallFor(
+  moduleCodes: readonly string[],
+  catalog: readonly SettingCatalogEntry[] = SETTING_CATALOG,
+): { key: string; value: unknown }[] {
   const picked = new Set(moduleCodes);
-  return SETTING_CATALOG.filter((s) => s.moduleCode !== null && picked.has(s.moduleCode)).map((s) => ({
-    key: s.key,
-    value: s.defaultOnInstall,
-  }));
+  return catalog.filter(
+    (s) =>
+      s.moduleCode !== null &&
+      picked.has(s.moduleCode) &&
+      s.defaultOnInstall !== null &&
+      s.defaultOnInstall !== undefined &&
+      s.defaultOnInstall !== s.defaultValue,
+  ).map((s) => ({ key: s.key, value: s.defaultOnInstall }));
 }
 
 /** Core module codes — the set `isModuleEnabled` answers true for without a query (slice 2). */
@@ -323,52 +406,54 @@ export const ALL_MODULE_CODES: readonly string[] = MODULE_CATALOG.map((m) => m.c
 export const SELLABLE_MODULE_CODES: readonly string[] = MODULE_CATALOG.filter((m) => !m.isCore).map((m) => m.code);
 
 /**
- * What the operator console PRE-TICKS on the new-customer form: the sellable modules that no env var
- * gates anywhere in the tree today (F20), i.e. the ones every existing customer already runs.
+ * What the operator console PRE-TICKS on the new-customer form: every sellable module this deployment
+ * already runs, i.e. `LEGACY_ENABLED_MODULE_CODES` narrowed to the codes a customer can be sold.
  *
  * This exists because the console was the ONE entitlement writer with no parity story. The other three
  * (0313's backfill, db/seed.ts, test/harness.ts seedBase) all derive from LEGACY_ENABLED_MODULE_CODES;
  * `provisionTenant` inserts exactly what the operator ticked and nothing else, and the form shipped with
  * every box empty. A customer created between slice 1 and slice 3 on an untouched form would therefore
  * have gained payroll/attendance/claims/performance today (nothing gates them) and LOST all four the
- * moment slice 3's resolver started reading rows — a silent downgrade nobody would attribute.
+ * moment slice 3's resolver started reading rows — a silent downgrade nobody would attribute. The same
+ * hole existed for `notifications` / `multi_cycle_payroll` / `typed_pay_components`, which the live box
+ * also runs (deploy/enable-demo-flags.sh) — and `typed_pay_components` is the one that hurts, because
+ * core/payroll.ts switches the earnings source on it, so that tenant's next payslip run changes numbers.
  *
  * Pre-ticking rather than unioning inside `provisionTenant` is deliberate: an operator who deliberately
  * unticks Payroll must get a customer without Payroll, or the picker is theatre. The default states what
  * today's product includes; the operator still decides.
  *
- * Derived, not listed: `test/module-catalog-drift.test.ts` pins it against the gate map, so a module that
- * gains a gate (or loses one) changes the form default in the same commit.
+ * DERIVED FROM THE TRACKED PARITY SET, NOT FROM `process.env` (review r3). This used to be a function,
+ * `defaultProvisionModuleCodesIn(env)`, that the operator page called as
+ * `defaultProvisionModuleCodesIn(process.env)` — a LIVE read of NOTIFICATIONS_ENABLED,
+ * MULTI_CYCLE_PAYROLL_ENABLED and TYPED_PAY_COMPONENTS_ENABLED, three of the eight gates this slice
+ * migrated, sitting in application source. Two things were wrong with it:
+ *
+ *   - It broke G1 ("no application source reads a migrated gate from env any more") and did so
+ *     INVISIBLY: the drift test's gate checks all need the gate NAME as a literal in the scanned file,
+ *     and the page contained none — the lookup happened here, indexing a PARAMETER (`env[gate]`), which
+ *     is not even a candidate for COMPUTED_ENV_KEY_OWNERS.
+ *   - Retiring those three env vars — the entire point of this slice — would then have silently
+ *     degraded the form to the four ungated codes, and every newly provisioned customer would arrive
+ *     without notifications, multi-cycle payroll and typed pay components. The runtime value came from
+ *     `.env.production`, which `deploy/.env.production.example` does not set and `deploy/deploy.sh`
+ *     never writes; the flags exist on the box only because someone once ran `enable-demo-flags.sh` by
+ *     hand. A form default whose correctness depends on an untracked file nobody maintains is the
+ *     silent-downgrade shape the parity machinery exists to prevent, relocated to provisioning.
+ *
+ * The env filter was justified on the grounds that "pre-ticking a module this box does NOT run would
+ * sell a capability that then resolves inert". After the flip that is no longer true: the ROW is the
+ * capability — `isModuleEnabled` reads `tenant_module`, not the env — so the filter bought nothing and
+ * cost the guarantee. `LEGACY_ENABLED_MODULE_CODES` is the tracked statement of what this deployment
+ * runs, pinned in BOTH directions against `.env.example` and `deploy/enable-demo-flags.sh` by
+ * test/module-catalog-drift.test.ts, so retiring a flag now fails a test instead of changing a form.
+ *
+ * Derived, not listed, for the same reason as before: a module that gains or loses a gate changes the
+ * parity set and therefore the form default in the same commit.
  */
-export const DEFAULT_PROVISION_MODULE_CODES: readonly string[] = SELLABLE_MODULE_CODES.filter(
-  (code) => LEGACY_MODULE_ENV_GATES[code] === null,
+export const DEFAULT_PROVISION_MODULE_CODES: readonly string[] = SELLABLE_MODULE_CODES.filter((code) =>
+  LEGACY_ENABLED_MODULE_CODES.includes(code),
 );
-
-/**
- * What the operator console pre-ticks ON THIS DEPLOYMENT — the constant above UNIONED with the modules
- * this process's env actually has switched on.
- *
- * THE CONSTANT ABOVE WAS ONLY HALF THE PARITY STORY, and the missing half is the same defect it was
- * written to fix. `DEFAULT_PROVISION_MODULE_CODES` covers the four modules NO env var gates, on the
- * reasoning that "every existing customer already runs them". But the live box also runs
- * NOTIFICATIONS_ENABLED, MULTI_CYCLE_PAYROLL_ENABLED and TYPED_PAY_COMPONENTS_ENABLED (see
- * deploy/enable-demo-flags.sh), so a customer provisioned from an untouched form since slice 1 has
- * ALSO been running those three — nothing read a row yet — and loses all three the moment slice 3's
- * resolver starts reading rows. `typed_pay_components` is the one that hurts: core/payroll.ts switches
- * the earnings source on it, so that tenant's next payslip run silently changes numbers.
- *
- * 0313's backfill cannot cover it — a migration runs once, and these tenants are created afterwards.
- *
- * Env-derived rather than listed, for the reason `legacyEnabledModulesIn` states: the deployment set
- * and the set a given process runs with are different, and pre-ticking a module this box does NOT run
- * would sell a capability that then resolves inert. Passed the env by the caller so this module still
- * never touches `process` itself.
- */
-export function defaultProvisionModuleCodesIn(env: EnvLike): string[] {
-  const set = new Set<string>([...DEFAULT_PROVISION_MODULE_CODES, ...legacyEnabledModulesIn(env)]);
-  // Order by the catalog so the form's ticks are stable and the drift test can compare sorted sets.
-  return SELLABLE_MODULE_CODES.filter((c) => set.has(c));
-}
 
 /**
  * The `dependsOn` codes a pick set fails to satisfy, transitively — empty when the set is coherent.

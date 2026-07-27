@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { Card, PageHeader } from '@/components/ui';
 import { PayrollTabs } from '@/components/payroll-tabs';
-import { isModuleEnabled } from '@/core/entitlements';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
 /**
  * Feature 1.2 — Transaction hub (information architecture over existing payroll capability).
@@ -19,7 +19,7 @@ import { isModuleEnabled } from '@/core/entitlements';
 export default async function PayrollTransactionsPage() {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.transactions');
-  const typedComponentsOn = isModuleEnabled(s, 'typed_pay_components');
+  const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">

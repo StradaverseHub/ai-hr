@@ -12,7 +12,7 @@ import {
   endFixedTransactionAction,
   archiveFixedTransactionAction,
 } from './actions';
-import { isModuleEnabled } from '@/core/entitlements';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
 /**
  * Fixed Transaction (feedback b7fc8583) — a SELF-CONTAINED screen. Pick an employee (mandatory, via
@@ -33,7 +33,7 @@ export default async function FixedTransactionPage({
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.transactions');
   const { employmentId, error } = await searchParams;
-  const typedComponentsOn = isModuleEnabled(s, 'typed_pay_components');
+  const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
 
   const employees = await listEmployees(s, scopeIds);
   // SCOPE-GUARD the param (mirror individual/page.tsx line 36): the ?employmentId= must be in the admin's

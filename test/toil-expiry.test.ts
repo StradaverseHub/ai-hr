@@ -232,16 +232,57 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     // 4. THE OTHER SIDE OF THE SPLIT, which the wind-down argument does NOT extend to (review r2).
     //    Ungating the ledger and the two sweeps is about settling days already banked. The per-company
     //    POLICY EDITOR is about future accrual — every field in it is frozen onto each accrual at
-    //    accrual time — so an unentitled tenant editing it is configuring a module it has not bought,
-    //    ready to take effect the day it does. It was left rendering unconditionally; it is now gated,
-    //    and `setToilPolicy` asserts the same server-side (test/toil.test.ts covers the refusal).
+    //    accrual time — so an unentitled tenant EDITING it is configuring a module it has not bought,
+    //    ready to take effect the day it does. `setToilPolicy` asserts the same server-side
+    //    (test/toil.test.ts covers the refusal).
+    //
+    //    READ-ONLY, NOT HIDDEN (review r3). The first version of this gate rendered `null`, and this
+    //    assertion pinned that — while the banner immediately above the cards says, in all six locales,
+    //    "You can review policies here, but no new time will be banked". Hiding the cards made that copy
+    //    false and undercut the wind-down argument the gate belongs to: every accrual freezes
+    //    `expiryAction` and `carryForwardAtYearEnd` from this policy, so the admin being asked to settle
+    //    an outstanding liability could not see the settings that govern HOW it settles. `toil` is in no
+    //    parity set, so every existing tenant lands in this branch at the flip. What the entitlement
+    //    withholds is the write, and that is what these assert.
     const formAt = src.indexOf('action={setToilPolicyAction}');
     expect(formAt, 'the policy form must still exist').toBeGreaterThan(-1);
     expect(
       src.slice(0, formAt),
-      'the policy editor must be behind the module gate — the wind-down exemption covers settlement, not configuration',
-    ).toMatch(/!moduleOn\s*\?\s*null\s*:/);
-    // …and it must be gated ABOVE the settlement card, so gating it cannot drag the sweeps with it.
+      'the policy cards must render for an unentitled tenant — the banner promises a review surface',
+    ).not.toMatch(/!moduleOn\s*\?\s*null\s*:/);
+    const formEnd = src.indexOf('</form>', formAt);
+    const form = src.slice(formAt, formEnd);
+    // Every named control in the form is disabled without the module — asserted PER CONTROL, by name.
+    //
+    // This used to be arithmetic: `disabled === controls - 1`, with the -1 explained as "the hidden
+    // companyId input" (review r2). That encodes "there is exactly one hidden field", so adding a second
+    // one — or rendering a control through a component instead of a raw tag — fails the test for a reason
+    // that has nothing to do with the entitlement gate. A guard that cries wolf is a guard people
+    // weaken, which this same file argues against two assertions up. Naming the exemptions says the
+    // actual rule, and a new ungated field now fails with a message naming the field.
+    const EXEMPT_CONTROLS = new Set([
+      'companyId', // hidden, carries the row identity — not something the user edits
+    ]);
+    // No `s` flag needed (and tsconfig's target forbids it): `[^>]` is a negated class, so it already
+    // crosses newlines — which multi-line JSX controls like `allowFirstScheduleEligible` require.
+    const tags = [...form.matchAll(/<(?:input|select)\b[^>]*>/g)].map((m) => m[0]);
+    expect(tags.length, 'the policy form must still have controls').toBeGreaterThan(5);
+    let gated = 0;
+    for (const tag of tags) {
+      const name = /name="([^"]+)"/.exec(tag)?.[1];
+      expect(name, `a control in the policy form has no name= attribute: ${tag.slice(0, 60)}`).toBeDefined();
+      if (EXEMPT_CONTROLS.has(name!)) continue;
+      gated += 1;
+      expect(
+        tag.includes('disabled={!moduleOn}'),
+        `the '${name}' control in the TOIL policy form is not disabled without the module. Every field ` +
+          'here is frozen onto each accrual at accrual time, so an unentitled tenant editing it is ' +
+          'configuring a module it has not bought.',
+      ).toBe(true);
+    }
+    expect(gated, 'the control scan found no editable fields — the regex has drifted').toBeGreaterThan(4);
+    expect(form, 'and the submit must not be offered at all').toContain('{moduleOn && <button');
+    // …and the form must sit ABOVE the settlement card, so gating it cannot drag the sweeps with it.
     expect(formAt, 'the policy form is expected before the settlement card').toBeLessThan(guard);
   });
 });

@@ -10,7 +10,7 @@ import { listPayrollCycles } from '@/core/payroll-cycle';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { Wizard, type ResumeBatch } from './wizard';
 import type { CycleOption } from './steps/step-period';
-import { isModuleEnabled } from '@/core/entitlements';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
 /** Map a run_type back to the wizard's cycle code. Advance/Mid-Month off-cycle presets are persisted as
  *  run_type='off_cycle' with a remarks label, so a resumed off-cycle draft re-enters as 'off_cycle' (the
@@ -37,7 +37,7 @@ export default async function PayrollProcessPage({ searchParams }: { searchParam
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.process');
   const { error, resume } = await searchParams;
-  const multiCycle = isModuleEnabled(s, 'multi_cycle_payroll');
+  const multiCycle = isModuleEnabledOrFalse(s, 'multi_cycle_payroll');
   const thisMonth = new Date().toISOString().slice(0, 7);
 
   // Resume a DRAFT batch (the "who's in this run" step, formerly bypassed for drafts). Fetch under the

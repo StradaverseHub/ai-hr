@@ -240,6 +240,63 @@ describe('TOIL core (ADR-0033 33-3)', () => {
     expect((await prefillOvertimeFromAttendance(A.a, { batchId })).applied).toBe(1);
   });
 
+  it('KNOWN GAP: OT-then-TOIL pays the same day twice — the invariant is one-directional', async () => {
+    // A CHARACTERIZATION TEST, NOT AN APPROVAL. It asserts what the code does today so the gap is a
+    // fixture rather than a paragraph, and so closing it is a visible, deliberate edit to a named
+    // assertion instead of a silent behaviour change nobody attributes.
+    //
+    // The two tests around this one cover TOIL-then-cash, which `EXCLUDE_TOIL_BANKED_DAYS` closes
+    // unconditionally. The REVERSE ordering has no guard at all: prefill a rest day's OT into
+    // `payroll_input`, then bank the same day as TOIL, and the employee is compensated twice for one
+    // worked day — cash on the payslip AND a replacement-leave credit. `accrueTx` reads neither
+    // `payroll_input` nor `payslip`, and `maybeAutoAccrueOnApprovalTx` (core/attendance.ts) fires on
+    // approval of an attendance correction, which routinely lands after a draft batch is prefilled.
+    //
+    // WHY IT IS SLICE 3'S PROBLEM even though the code is older: both accrual entry points used to open
+    // with `if (!toilEnabled()) throw`, and TOIL_ENABLED is set in no tracked env file — so no accrual
+    // could exist and this sequence was unreachable on every deployment. A per-tenant entitlement makes
+    // it reachable for the first customer who buys the module. Migration 0314's header makes exactly
+    // this argument about the payroll-partner read gap.
+    //
+    // WHY THE MIRROR GUARD IS NOT ONE LINE: `payroll_input.overtime_amount` is a single per-(batch,
+    // employment) aggregate with no per-day attribution, so "does an OT row exist for this employment?"
+    // cannot distinguish this rest day from any other overtime in the cycle and would refuse almost
+    // every legitimate accrual. Payroll's exclusion works only because `toil_accrual` IS per-day.
+    // Closing this is an ADR-0033 question about draft-batch state — see core/toil.ts's duplicate check.
+    const ctx = await toilOnCtx();
+    const { a, employmentId } = await hireWithWorkedRestDay(3000);
+    await setToilPolicy(a, policy(b.companyId, { allowFirstScheduleEligible: true }));
+
+    // 1 · CASH FIRST. Nothing is banked yet, so the rest day is monetised into the draft batch.
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
+    expect((await prefillOvertimeFromAttendance(a, { batchId })).applied).toBe(1);
+    const [paid] = await owner.db
+      .select({ overtime: schema.payrollInput.overtimeAmount })
+      .from(schema.payrollInput)
+      .where(and(eq(schema.payrollInput.batchId, batchId), eq(schema.payrollInput.employmentId, employmentId)));
+    expect(Number(paid.overtime), 'the rest day must actually be in the batch as cash').toBeGreaterThan(0);
+
+    // 2 · THEN BANK THE SAME DAY. This SHOULD refuse and does not.
+    const r = await accrueToil(ctx, { employmentId, workedDate: REST_DAY, firstScheduleConsent: true });
+    expect(r.daysCredited).toBe(1);
+
+    // 3 · THE DOUBLE COMPENSATION, stated as the fact it is: the cash is still in the batch AND the
+    //     leave credit exists. When this gap is closed, step 2 will throw and THIS is the assertion to
+    //     rewrite — deliberately, with the ADR-0033 decision recorded.
+    const [stillPaid] = await owner.db
+      .select({ overtime: schema.payrollInput.overtimeAmount })
+      .from(schema.payrollInput)
+      .where(and(eq(schema.payrollInput.batchId, batchId), eq(schema.payrollInput.employmentId, employmentId)));
+    expect(
+      Number(stillPaid.overtime),
+      'KNOWN GAP: banking TOIL does not retract the cash already prefilled for the same worked day',
+    ).toBe(Number(paid.overtime));
+    expect(
+      await replacementBalance(employmentId),
+      'KNOWN GAP: …and the leave credit is held on top of that cash, for one worked day',
+    ).toBe(1);
+  });
+
   it('cash-XOR-TOIL survives REVOKING the module — the exclusion is not switchable', async () => {
     // THE DIRECTION SLICE 3 ACTUALLY CHANGED, and until now the one with no test at all.
     //
@@ -310,12 +367,31 @@ describe('TOIL core (ADR-0033 33-3)', () => {
     // needed: with the OT in a single cycle the correct and the buggy weight vectors coincide.
     const BANKED = '2026-07-04'; // week 1
     const CASH = '2026-07-25'; //   week 4
-    const { a, employmentId } = await hireWithWorkedRestDays(5000, [BANKED, CASH]); // > RM4,000 ⇒ TOIL free
-    await setToilPolicy(a, policy(b.companyId));
-    await accrueToil(ctx, { employmentId, workedDate: BANKED });
+    //
+    // RM3,000 — BELOW the RM4,000 statutory OT wage ceiling, and this test CANNOT WORK above it.
+    //
+    // The first version hired at 5,000 with the note "> RM4,000 ⇒ TOIL free", choosing that figure to
+    // skip the First-Schedule consent machinery. But `overtimePay` returns `eligible: false` above the
+    // ceiling, so nothing was monetised at all: `prefillOvertimeFromAttendance` reported
+    // `applied: 0, ineligible: 1` and the `toBe(1)` below failed outright. The oracle underneath needs
+    // real OT cash for a second reason — it feeds `overtime: Number(slip.overtimePay)` into
+    // `disburseNetAcrossCycles`, and with that at zero the "with exclusion" and "without exclusion"
+    // vectors produce the SAME split, so the assertion that they differ could never hold either.
+    //
+    // Under the ceiling the employee IS First-Schedule eligible, so banking in lieu needs the policy
+    // opt-in and recorded per-election consent (ADR-0033 / Phase-B #14). That is the more honest
+    // fixture anyway: a day banked as leave and then also weighted as cash hurts precisely the employee
+    // whose overtime pay is statutory.
+    const { a, employmentId } = await hireWithWorkedRestDays(3000, [BANKED, CASH]);
+    await setToilPolicy(a, policy(b.companyId, { allowFirstScheduleEligible: true, onExpiry: 'convert_to_pay' }));
+    await accrueToil(ctx, { employmentId, workedDate: BANKED, firstScheduleConsent: true });
 
     const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
-    expect((await prefillOvertimeFromAttendance(a, { batchId })).applied, 'only the cash day is monetised').toBe(1);
+    // `ineligible: 0` as well, so this cannot pass again by the employee simply being out of scope.
+    expect(
+      await prefillOvertimeFromAttendance(a, { batchId }),
+      'only the cash day is monetised — the banked one is excluded, not merely ineligible',
+    ).toMatchObject({ applied: 1, ineligible: 0 });
     await generatePayslips(a, { batchId });
 
     const [slip] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));

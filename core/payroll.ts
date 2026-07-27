@@ -167,7 +167,10 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  * THE INVARIANT IS ONE-DIRECTIONAL, and saying otherwise would be false. This closes TOIL-then-cash. The
  * reverse ordering — prefill a rest day's OT, then bank the same day as TOIL — is not closed here or in
  * `accrueToilTx`, which reads neither `payroll_input` nor `payslip`; see the note at core/toil.ts's
- * duplicate check. That ordering predates ADR-0077 and is an ADR-0033 question, not an entitlement one.
+ * duplicate check, which also records why slice 3 is what makes that ordering REACHABLE (the accrual
+ * path used to refuse everyone) and why the mirror guard cannot be a `payroll_input` existence test:
+ * `overtime_amount` is a per-batch aggregate with no per-day attribution. Closing it is an ADR-0033
+ * question about payroll-run state, not an entitlement one; test/toil.ts pins the current behaviour.
  */
 const EXCLUDE_TOIL_BANKED_DAYS = sql`not exists (
   select 1 from toil_accrual ta

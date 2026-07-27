@@ -331,19 +331,48 @@ export async function setModule(
   if (status !== null) {
     await owner.db.insert(schema.tenantModule).values({ tenantId, moduleCode, companyId, status, expiresAt });
   }
-  // Mirror it, so a context built AFTER this call sees it (see HARNESS_MODULE_OVERRIDES). Only the
-  // tenant-wide grain feeds adminCtx's synthetic snapshot; a company-scoped grant needs entitledCtx,
-  // which resolves the real rows.
+  // Mirror it, so a context built AFTER this call sees it (see HARNESS_MODULE_OVERRIDES).
   //
   // An ALREADY-EXPIRED grant is mirrored as absent, matching the resolver. Note the mirror is a
   // point-in-time copy either way: a grant that expires later in the test's wall-clock life stays ON in
   // a snapshot resolved before it lapsed, which is exactly how a real session behaves too.
+  const live = status !== null && (expiresAt === null || expiresAt.getTime() > Date.now());
   if (companyId == null) {
     const m = HARNESS_MODULE_OVERRIDES.get(tenantId) ?? new Map<string, string | null>();
-    const live = expiresAt === null || expiresAt.getTime() > Date.now();
     m.set(moduleCode, live ? status : 'disabled');
     HARNESS_MODULE_OVERRIDES.set(tenantId, m);
+  } else {
+    // THE COMPANY GRAIN, mirrored too (slice 3 review). It used to be dropped with the note "a
+    // company-scoped grant needs entitledCtx" — which described a limitation rather than removing one:
+    // `toSnapshot` builds `scopedModules` from exactly these rows and `moduleEnabled` step 6 reads them,
+    // so a fixture that silently modelled none of it answered a narrower question than the application
+    // for the ~247 files that use adminCtx. Mirroring costs nothing and closes the axis.
+    const sc = HARNESS_SCOPED_MODULE_OVERRIDES.get(tenantId) ?? new Map<string, Set<string>>();
+    const forCode = sc.get(moduleCode) ?? new Set<string>();
+    if (live) forCode.add(companyId);
+    else forCode.delete(companyId);
+    sc.set(moduleCode, forCode);
+    HARNESS_SCOPED_MODULE_OVERRIDES.set(tenantId, sc);
   }
+}
+
+/**
+ * Set a tenant's commercial standing, mirroring it the same way `setModule` mirrors a grant.
+ *
+ * WHY IT EXISTS (slice 3 review). `moduleEnabled` step 5 is
+ * `if (!TENANT_STATUS_GOOD_STANDING.has(snap.tenantStatus)) return false` — the branch that closes EVERY
+ * billable module for a suspended or closed tenant, and the branch `toSnapshot`'s
+ * TENANT_STATUS_UNRESOLVED fail-closed fix feeds. `harnessSnapshot` hardcoded `tenantStatus: 'active'`,
+ * so no test could suspend a tenant and then drive a call through `adminCtx`: the fixture said ON where
+ * a real session said OFF. That is the same class of defect as the exemption marker this slice removed,
+ * one axis over. Slice 9's suspension overlay hangs off this field, so it needed a fixture before then.
+ */
+export async function setTenantStatus(
+  tenantId: string,
+  status: 'active' | 'trial' | 'suspended' | 'closed',
+): Promise<void> {
+  await owner.db.execute(sql`UPDATE tenant SET status = ${status} WHERE id = ${tenantId}`);
+  HARNESS_TENANT_STATUS.set(tenantId, status);
 }
 
 /** Set a tenant's value for a setting key (owner connection — bypasses the scope policy on purpose). */
@@ -386,6 +415,10 @@ export async function setSetting(tenantId: string, key: string, value: unknown):
  */
 const HARNESS_MODULE_OVERRIDES = new Map<string, Map<string, string | null>>();
 const HARNESS_SETTING_OVERRIDES = new Map<string, Map<string, unknown>>();
+/** tenantId → moduleCode → the companyIds holding a live company-scoped grant (`toSnapshot`'s shape). */
+const HARNESS_SCOPED_MODULE_OVERRIDES = new Map<string, Map<string, Set<string>>>();
+/** tenantId → `tenant.status`. Absent = 'active', which is what `seedBase` inserts. */
+const HARNESS_TENANT_STATUS = new Map<string, string>();
 
 /**
  * The statuses that resolve ENABLED — an ALLOW-list, mirroring `snapshotQuery`'s
@@ -405,8 +438,16 @@ const MODULE_STATUS_ENABLED: ReadonlySet<string> = new Set(['active', 'trial']);
 export function clearHarnessEntitlementOverrides(): void {
   HARNESS_MODULE_OVERRIDES.clear();
   HARNESS_SETTING_OVERRIDES.clear();
+  HARNESS_SCOPED_MODULE_OVERRIDES.clear();
+  HARNESS_TENANT_STATUS.clear();
 }
 
+/**
+ * The snapshot `adminCtx` carries. Every field the resolver reads is modelled — the four axes are
+ * tenant-wide grants, COMPANY-SCOPED grants, settings and TENANT STANDING — because a fixture used by
+ * ~247 files that models three of them answers a narrower question than the application does, silently.
+ * `test/entitlement-resolver.test.ts` pins the mirror against the real resolver over all four.
+ */
 function harnessSnapshot(tenantId: string): EntitlementSnapshot {
   return {
     // The snapshot names the tenant it belongs to — slice 2's attribution guard refuses a snapshot
@@ -420,12 +461,16 @@ function harnessSnapshot(tenantId: string): EntitlementSnapshot {
       }
       return [...set];
     })(),
-    scopedModules: {},
+    scopedModules: Object.fromEntries(
+      [...(HARNESS_SCOPED_MODULE_OVERRIDES.get(tenantId) ?? [])]
+        .filter(([, companies]) => companies.size > 0)
+        .map(([code, companies]) => [code, [...companies]]),
+    ),
     settings: {
       ...Object.fromEntries(legacyEnabledSettingsIn(process.env).map((s) => [s.key, s.value])),
       ...Object.fromEntries(HARNESS_SETTING_OVERRIDES.get(tenantId) ?? []),
     },
-    tenantStatus: 'active',
+    tenantStatus: HARNESS_TENANT_STATUS.get(tenantId) ?? 'active',
   };
 }
 

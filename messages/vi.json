@@ -4680,6 +4680,7 @@
       "processHint": "Chuyển thành tiền hoặc cho mất hiệu lực ngày nghỉ bù đã quá hạn, theo quy tắc cố định của từng khoản. Chạy cho hôm nay; một tác vụ theo lịch sẽ tự động hóa việc này sau.",
       "processedBanner": "Đã xử lý {processed} khoản hết hạn: {converted} chuyển thành tiền, {lapsed} mất hiệu lực.",
       "processedNone": "Không có ngày nghỉ bù nào đến hạn hết hiệu lực.",
+      "processedSkipped": "Còn {skipped} khoản đến hạn thuộc công ty bạn không quản trị — chưa được xử lý. Quản trị viên của các công ty đó phải chạy tác vụ này.",
       "autoAccrueLabel": "Tự động tạo tín dụng khi chấm công được duyệt",
       "autoAccrueHint": "Khi bật, việc duyệt điều chỉnh chấm công ngày nghỉ hằng tuần hoặc ngày lễ sẽ tự động ghi có ngày nghỉ bù — không cần chọn thủ công từ lịch trực.",
       "carryForwardLabel": "Chuyển tiếp tín dụng chưa dùng vào cuối năm",

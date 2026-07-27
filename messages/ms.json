@@ -4680,6 +4680,7 @@
       "processHint": "Tukar atau luputkan cuti ganti yang telah tamat tempoh, mengikut peraturan tetap setiap rekod. Dijalankan untuk hari ini; kerja berjadual akan mengautomasikannya kemudian.",
       "processedBanner": "Diproses {processed} tamat tempoh: {converted} ditukar kepada bayaran, {lapsed} luput.",
       "processedNone": "Tiada cuti ganti yang perlu ditamatkan tempoh.",
+      "processedSkipped": "{skipped} tamat tempoh lagi telah tiba tetapi milik syarikat yang anda tidak tadbir — ia dibiarkan belum diselesaikan. Pentadbir syarikat tersebut perlu menjalankan sapuan ini.",
       "autoAccrueLabel": "Cipta kredit secara automatik apabila kehadiran diluluskan",
       "autoAccrueHint": "Apabila dihidupkan, meluluskan pembetulan kehadiran hari rehat atau cuti umum akan membank cuti ganti secara automatik — tanpa pemilihan roster manual.",
       "carryForwardLabel": "Bawa ke hadapan kredit tidak digunakan pada hujung tahun",

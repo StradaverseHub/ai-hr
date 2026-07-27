@@ -47,6 +47,7 @@ import {
   seedBase,
   setModule,
   setSetting,
+  setTenantStatus,
   type Base,
 } from './harness';
 import {
@@ -204,6 +205,56 @@ describe('slice 2 — isModuleEnabled', () => {
     expect(isModuleEnabled(adminCtx(base), 'notifications')).toBe(true);
     await setModule(base.tenantId, 'notifications', 'disabled');
     expect(isModuleEnabled(adminCtx(base), 'notifications')).toBe(false);
+  });
+
+  it('the harness MIRROR also matches on the COMPANY grain and on TENANT STANDING', async () => {
+    // THE OTHER TWO AXES THE RESOLVER READS, and which the mirror modelled as constants until the
+    // slice-3 review: `scopedModules` was the literal `{}` and `tenantStatus` the literal `'active'`.
+    // The test above varied only `tenant_module.status` and `expires_at`, so it established equivalence
+    // over a strictly narrower matrix than its name claimed — a suspended tenant read ON through
+    // `adminCtx` and OFF through a real session, and a company-scoped grant read OFF through `adminCtx`
+    // and ON through a real one for that company. Both are branches ~247 files could hit.
+
+    // ── company grain (moduleEnabled step 6) ──────────────────────────────────────────────────────
+    // `notifications` has no dependsOn, so this isolates the grain from the closure.
+    await setModule(base.tenantId, 'notifications', null); // no tenant-wide row
+    await setModule(base.tenantId, 'notifications', 'active', base.companyId);
+    for (const [companyId, label] of [
+      [base.companyId, 'the entitled company'],
+      [null, 'no company named'],
+      ['00000000-0000-0000-0000-0000000000ff', 'a different company'],
+    ] as const) {
+      const real = isModuleEnabled(await ctxFor(base.tenantId), 'notifications', companyId);
+      const mirrored = isModuleEnabled(adminCtx(base), 'notifications', companyId);
+      expect(mirrored, `adminCtx and the resolver disagree for a company-scoped grant asked with ${label}`).toBe(real);
+    }
+    // Both answers really occur, so the agreement above is not "always false".
+    expect(isModuleEnabled(adminCtx(base), 'notifications', base.companyId), 'entitled company ⇒ ON').toBe(true);
+    expect(isModuleEnabled(adminCtx(base), 'notifications'), 'asking without a company ⇒ OFF (step 6)').toBe(false);
+    // Revoking the scoped grant must clear the mirror too, not merely stop adding to it.
+    await setModule(base.tenantId, 'notifications', null, base.companyId);
+    expect(isModuleEnabled(adminCtx(base), 'notifications', base.companyId)).toBe(
+      isModuleEnabled(await ctxFor(base.tenantId), 'notifications', base.companyId),
+    );
+
+    // ── tenant standing (moduleEnabled step 5) ────────────────────────────────────────────────────
+    for (const status of ['suspended', 'closed', 'trial', 'active'] as const) {
+      await setTenantStatus(base.tenantId, status);
+      const real = await ctxFor(base.tenantId);
+      expect(real.entitlements!.tenantStatus, 'the real snapshot must carry the status we set').toBe(status);
+      for (const code of ['payroll', 'leave']) {
+        expect(
+          isModuleEnabled(adminCtx(base), code),
+          `adminCtx and the resolver disagree about '${code}' for a '${status}' tenant`,
+        ).toBe(isModuleEnabled(real, code));
+      }
+    }
+    // …and the standing axis really flips a billable module, so the loop is not vacuous.
+    await setTenantStatus(base.tenantId, 'suspended');
+    expect(isModuleEnabled(adminCtx(base), 'payroll'), 'suspended ⇒ billable OFF through the mirror too').toBe(false);
+    expect(isModuleEnabled(adminCtx(base), 'leave'), 'core is decided before the status check').toBe(true);
+    await setTenantStatus(base.tenantId, 'active');
+    expect(isModuleEnabled(adminCtx(base), 'payroll')).toBe(true);
   });
 
   it('a lapsed DEPENDENCY disables its dependents', async () => {

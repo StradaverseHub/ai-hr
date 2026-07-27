@@ -87,7 +87,9 @@ function auditHashChainArmed(): boolean {
         `including the '=false' line .env.example shipped. If this deployment WAS chaining events, the ` +
         `events appended from now on carry no chain columns and verifyTenantChain() cannot see them: it ` +
         `will keep reporting the older rows as intact while the new ones sit outside the chain entirely. ` +
-        `Run 'scripts/check-audit-chain-gate.ts' against this database to find out which case you are in. ` +
+        `Run 'scripts/check-audit-chain-gate.ts' against this database — with MIGRATION_DATABASE_URL, the ` +
+        `OWNER role, because domain_event is RLS-bound for the app role and a filtered zero reads as "no ` +
+        `chain" — to find out which case you are in. ` +
         `Set the value to the literal 'true' to keep the chain armed, or unset the variable to silence this.`,
     );
   }

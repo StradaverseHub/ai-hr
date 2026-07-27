@@ -41,15 +41,23 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Prom
           </div>
         )}
         {/*
-          COVERAGE, shown SEPARATELY from the tamper verdict and only when both kinds of row exist.
-          `verifyTenantChain` can only inspect rows that carry chain columns, and an event appended
-          while AUDIT_HASH_CHAIN_ENABLED was off carries none — so "intact, N events verified" was
-          previously rendered over a log that might be mostly unprotected, with the unprotected part
-          silently excluded from N. A tenant with a chain AND unchained events has a real evidentiary
-          hole; a tenant with only unchained events simply never had the chain on (the branch above).
+          COVERAGE, shown SEPARATELY from the tamper verdict. `verifyTenantChain` can only inspect rows
+          that carry chain columns, and an event appended while AUDIT_HASH_CHAIN_ENABLED was off carries
+          none — so "intact, N events verified" was previously rendered over a log that might be mostly
+          unprotected, with the unprotected part silently excluded from N.
+
+          RENDERED ON THE POSITIONAL FIGURE, not on `unchained` (review r3). The predicate here used to
+          be `checked > 0 && unchained > 0`, which is ALSO the permanent shape of every healthy tenant
+          that predates the chain: 0074 defers the historical backfill by design, so pre-arming events
+          stay unchained forever. That banner would have been on for those tenants for good, saying
+          nothing an admin could act on, and an actual arm→disarm→re-arm hole would have looked
+          identical. `unchainedInsideChain` counts only events recorded AFTER the chain started, which
+          is a hole and nothing else.
         */}
-        {chain.checked > 0 && chain.unchained > 0 && (
-          <p className="text-sm text-amber-700 dark:text-amber-400">{t('chainPartial', { n: chain.unchained })}</p>
+        {chain.unchainedInsideChain > 0 && (
+          <p className="text-sm text-amber-700 dark:text-amber-400">
+            {t('chainPartial', { n: chain.unchainedInsideChain })}
+          </p>
         )}
         <p className="text-xs text-muted-foreground">{t('integrityNote')}</p>
       </Card>

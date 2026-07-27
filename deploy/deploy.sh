@@ -1,14 +1,40 @@
 #!/usr/bin/env bash
 # AI HR — build, migrate, (first-time) seed, and restart the gated demo. Re-run any time to deploy an
-# update. Pass --reseed to wipe + reseed the demo data (destroys tester changes). See deploy/DEPLOY.md.
+# update. Pass --reseed to wipe + reseed the demo data (destroys tester changes), or --migrate-only to
+# stop after the migrations + catalog seed without seeding demo data or restarting. See deploy/DEPLOY.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# ARGUMENTS, parsed rather than positional. `--migrate-only` exists because DEPLOY.md has always told
+# the operator to run the ADR-0077 slice-3 parity reconciliation "after migrate, before restarting the
+# service, in the same window" — and until this flag there was no way to do that (review r3). This is a
+# single `set -e` script that runs install → chain check → build → migrate → seed → restart with no stop
+# point, so the achievable sequence was migrate-AND-restart, then reconcile: a window in which every
+# tenant created after 0313 is live on slice-3 code with typed_pay_components / multi_cycle_payroll /
+# notifications resolving OFF. A payroll run in that window produces different numbers with no error,
+# which is the exact harm the reconciliation exists to prevent.
+RESEED=0
+MIGRATE_ONLY=0
+for arg in "$@"; do
+  case "$arg" in
+    --reseed) RESEED=1 ;;
+    --migrate-only) MIGRATE_ONLY=1 ;;
+    *) echo "✗ Unknown argument: $arg (expected --reseed and/or --migrate-only)"; exit 1 ;;
+  esac
+done
 
 # Use the isolated Node toolchain if present (keeps the host's system Node untouched, and means
 # pnpm/node are found even when /opt/node20/bin isn't on the invoking shell's PATH).
 [ -d /opt/node20/bin ] && export PATH="/opt/node20/bin:$PATH"
 
-[ -f .env.production ] || { echo "✗ Missing .env.production — copy .env.example, fill it in, and re-run."; exit 1; }
+# deploy/.env.production.example, NOT .env.example. The pointer was changed to .env.example during the
+# ADR-0077 slice-3 remediation and that was a regression: .env.example is the DEVELOPER template — it
+# carries a superuser MIGRATION_DATABASE_URL against ai_hr_dev, TEST_* URLs, no SHARE_PASSWORD, and it
+# ships MULTI_CYCLE_PAYROLL_ENABLED / TYPED_PAY_COMPONENTS_ENABLED / PAYROLL_RESET_ENABLED /
+# PAYROLL_UNLOCK_ENABLED all active and true. A .env.production built from it, run through the parity
+# reconciliation DEPLOY.md prescribes, would hand every customer two payroll risk switches that
+# 0313's tenant_setting_write policy then makes ai_hr_app unable to close.
+[ -f .env.production ] || { echo "✗ Missing .env.production — copy deploy/.env.production.example, fill it in, and re-run."; exit 1; }
 # Load the production env so db:migrate (MIGRATION_DATABASE_URL) and the seed pick it up.
 set -a; . ./.env.production; set +a
 : "${MIGRATION_DATABASE_URL:?set in .env.production}"; : "${DEV_TENANT_ID:?set in .env.production}"
@@ -27,6 +53,21 @@ else
   pnpm install --frozen-lockfile --prod=false
   echo "$LOCK_HASH" > "$LOCK_MARKER"
 fi
+
+# ADR-0030 / ADR-0077 slice 3 — BLOCKING, and deliberately BEFORE the build. Slice 3 changed
+# AUDIT_HASH_CHAIN_ENABLED from a truthiness test to `=== 'true'`, which is correct and which DISARMS
+# the chain on every box that copied .env.example's active `=false` line (the string 'false' is truthy).
+# Disarming is not something verifyTenantChain() can report — it only inspects rows that carry chain
+# columns — so the log would go on rendering "intact" over an unverifiable window. This compares the env
+# against what the database actually holds and exits non-zero if they disagree. `set -e` stops the deploy.
+#
+# ORDER MATTERS. It used to sit after build + migrate + catalog-seed, so a refusal left the box serving
+# the OLD code against a MIGRATED schema — a half-applied state nothing rolls back, recoverable only by
+# editing .env.production over SSH. The check needs an env file and a database connection and nothing
+# else, so running it here makes a refusal free: nothing has been touched yet. It sits after the install
+# only because `node --import tsx` needs node_modules.
+echo "▸ Checking the audit hash-chain gate against the database…"
+node --env-file=.env.production --import tsx scripts/check-audit-chain-gate.ts
 
 echo "▸ Building production server…"
 # Heap headroom for `next build`'s TypeScript pass. Node's default old-space cap (~2 GB on this box) was
@@ -48,17 +89,47 @@ pnpm db:migrate
 echo "▸ Seeding module + setting catalogs…"
 node --env-file=.env.production --import tsx scripts/seed-catalogs.ts
 
-# ADR-0030 / ADR-0077 slice 3 — BLOCKING. Slice 3 changed AUDIT_HASH_CHAIN_ENABLED from a truthiness
-# test to `=== 'true'`, which is correct and which DISARMS the chain on every box that copied
-# .env.example's active `=false` line (the string 'false' is truthy). Disarming is not something
-# verifyTenantChain() can report — it only inspects rows that carry chain columns — so the log would go
-# on rendering "intact" over an unverifiable window. This compares the env against what the database
-# actually holds and exits non-zero if they disagree, BEFORE the restart. `set -e` stops the deploy.
-echo "▸ Checking the audit hash-chain gate against the database…"
-node --env-file=.env.production --import tsx scripts/check-audit-chain-gate.ts
+# ADR-0077 slice 3 — ENTITLEMENT PARITY IS NOT CHECKED HERE, DELIBERATELY. A blocking
+# `reconcile-entitlement-parity.ts --preflight` sat at this line and had to come out (review r2): it
+# could never reach a clean state, and both of its escapes were worse than the thing it guarded.
+#
+# `packs/catalog.ts` gives every catalogued setting `defaultOnInstall: false` alongside
+# `defaultValue: false`, and `settingsOnInstallFor` emits a row only when those two DIFFER — so
+# `db/provision.ts` writes ZERO `tenant_setting` rows for a new tenant, on purpose and after a long
+# argument recorded at that call site. Meanwhile `deploy/enable-demo-flags.sh` sets PAYROLL_RESET_ENABLED,
+# PAYROLL_UNLOCK_ENABLED and INDIVIDUAL_TXN_PAY_ENABLED true on this box, so the preflight counted every
+# tenant created after 0313 as three setting rows short — permanently, and by design rather than by
+# accident. The FIRST customer provisioned after this deploy would therefore have blocked every deploy
+# after it, and the two ways out were to run `--apply` (which writes `payroll.reset_enabled=true` and
+# `payroll.unlock_enabled=true` for a brand-new tenant — `scope='platform'` rows that 0313's
+# `tenant_setting_write` policy makes `ai_hr_app` unable to close again, i.e. exactly the over-grant
+# provision.ts refuses) or to set ENTITLEMENT_PARITY_ACKNOWLEDGED=true and disable the check forever.
+#
+# The deeper reason is that the script is not a gate-shaped thing at all. Its own header says it cannot
+# tell "this tenant predates the row" from "the operator deliberately left this module unticked", and its
+# plan asks a human to read the list against the customer records before applying. A check whose only
+# correct resolution is human sign-off cannot be an automated `set -e` gate. It is a one-shot for the
+# slice-3 maintenance window, run by hand, and deploy/DEPLOY.md documents it there — which is also what
+# DEPLOY.md said while this line contradicted it. `--preflight` still exists for an operator who wants a
+# scripted "did I finish?" after `--apply`.
+
+# THE STOP POINT the reconciliation needs. Everything the script writes has a foreign key into the
+# catalogs seeded immediately above, and nothing below this line has run — so the database is migrated,
+# the catalogs are present, and the service is still serving the OLD code. That is precisely the state
+# DEPLOY.md's "after migrate, before restarting the service" describes. The command to run here is in
+# deploy/DEPLOY.md rather than echoed: it takes a --created-before date only the operator knows, and
+# reproducing it here would make this script look like it runs the reconciliation, which it must not.
+if [ "$MIGRATE_ONLY" = "1" ]; then
+  echo ""
+  echo "⏸  --migrate-only: stopped after migrate + catalog seed. The service is NOT restarted and is"
+  echo "    still serving the previous build."
+  echo "    Run the ADR-0077 slice-3 entitlement-parity reconciliation now — deploy/DEPLOY.md,"
+  echo "    'ONE-SHOT: entitlement parity' — then finish with:  ./deploy/deploy.sh"
+  exit 0
+fi
 
 # Seed only if the demo tenant is absent, so updates preserve whatever the consultant has been testing.
-if [ "${1:-}" = "--reseed" ] || ! psql "$MIGRATION_DATABASE_URL" -tAc "SELECT 1 FROM tenant WHERE id='$DEV_TENANT_ID'" 2>/dev/null | grep -q 1; then
+if [ "$RESEED" = "1" ] || ! psql "$MIGRATION_DATABASE_URL" -tAc "SELECT 1 FROM tenant WHERE id='$DEV_TENANT_ID'" 2>/dev/null | grep -q 1; then
   echo "▸ Seeding demo data…"
   node --env-file=.env.production --import tsx db/seed.ts
 else

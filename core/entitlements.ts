@@ -623,8 +623,13 @@ function snapshotOf(ctx: EntitledContext, what: string): EntitlementSnapshot | n
  *      Their CORE dependencies are still walked, so MODULE_KILL reaches `leave` through `employees`.
  *   3. Unknown code ⇒ FALSE. A typo disables rather than enables. Checked BEFORE the exempt branch —
  *      otherwise an exempt context answers TRUE for a module that does not exist (round 1).
- *   4. An exempt context is TRUE: provisioning and the seeder run before entitlements exist, and
- *      failing them closed would make a tenant impossible to create.
+ *   4. An exempt context THROWS `EntitlementsExemptForBillableError` for a billable code. Everything
+ *      that reaches step 4 is non-core and catalogued, which by construction means billable (core is
+ *      already answered at step 2, without a snapshot, which is what lets provisioning and the seeder
+ *      run before entitlements exist). It used to `return true` here, and that meant any caller
+ *      carrying a marker silently received every paid module for every tenant — see the branch itself
+ *      for the sweep that did exactly that. A sweep that legitimately needs the answer resolves a real
+ *      snapshot and drops its marker.
  *   5. The tenant must be in GOOD STANDING — an ALLOW-list, so 'suspended', 'closed', a row that could
  *      not be read, and any status a future migration adds all resolve closed.
  *   6. Tenant-wide row ⇒ true. Otherwise a company-scoped row for `companyId` ⇒ true, and asking
@@ -811,8 +816,21 @@ export function getSetting<T = unknown>(ctx: EntitledContext, key: string): T {
 export const settingEnabled = (ctx: EntitledContext, key: string): boolean => getSetting(ctx, key) === true;
 
 /**
- * `isModuleEnabled`, but an INFRASTRUCTURE failure answers FALSE instead of throwing. For CHROME —
- * the shell every authenticated page renders — and nothing else.
+ * `isModuleEnabled`, but an INFRASTRUCTURE failure answers FALSE instead of throwing. For PAGES — the
+ * shell and the server components that decide what to RENDER — and never for a service entry point.
+ *
+ * WHERE THE LINE IS (extended from "the root layout only" by the slice-3 review). A page-level read is
+ * a DISPLAY decision: the honest degraded answer is "do not offer this control", and false is that
+ * answer. A service-level read is an AUTHORIZATION decision, where "I could not find out" must be loud —
+ * so `assertModuleEnabled` and every core/ gate keep the throwing form. The two are not
+ * interchangeable, and using the quiet form in a service would convert an incident into a silent
+ * refusal that looks like a plan change.
+ *
+ * The original restriction to `app/layout.tsx` alone left nine other pages calling the throwing form
+ * with no `app/error.tsx` anywhere under app/, so the very incident lib/session.ts's degrade path is
+ * designed for — a pool blip, a statement timeout, a code-ahead-of-migration deploy — rendered the
+ * shell and then 500'd /payroll, /roster, /admin/toil and the transaction pages outright. That is the
+ * opposite of "refuse the feature, keep the app navigable".
  *
  * WHY THIS EXISTS. lib/session.ts's `withEntitlements` deliberately swallows a resolution failure and
  * returns the session carrying `entitlementsError`, on the stated grounds that getSession is the entry
@@ -839,6 +857,35 @@ export function isModuleEnabledOrFalse(ctx: EntitledContext, code: string, compa
     return isModuleEnabled(ctx, code, companyId);
   } catch (e) {
     if (e instanceof EntitlementsResolutionFailedError) return false;
+    throw e;
+  }
+}
+
+/**
+ * `settingEnabled`, degraded the same way and for the same callers — the settings axis of
+ * `isModuleEnabledOrFalse`. See that function for where the page/service line is drawn.
+ *
+ * The CATALOG DEFAULT, not a hardcoded `false`, because that is what "this value was never decided for
+ * this tenant" already means everywhere else in this file (`getSetting` falls back to it when a tenant
+ * has no row). Every catalogued default is `false` today, so the two coincide; expressing it as the
+ * default keeps them coinciding for the right reason rather than by accident, and keeps a future
+ * default-on setting from silently switching off during an incident.
+ *
+ * ONE ASYMMETRY WITH THE MODULE SIDE, STATED RATHER THAN GLOSSED (review r2). `moduleEnabled` answers
+ * FALSE for an unknown module CODE — a typo disables rather than enables, and no snapshot is needed to
+ * decide it. An unknown setting KEY is different: `getSetting` throws a bare `Error` for a key absent
+ * from SETTING_CATALOG, deliberately not an `EntitlementError`, so the catch below cannot see it and it
+ * reaches the caller. That is on purpose — a mistyped key is a wiring bug, and the catalog is the
+ * definition of what a setting IS — but it means a typo'd literal in one of the pages that call this
+ * 500s the route rather than degrading the feature, and there is no app/error.tsx to catch it. The
+ * drift test pins every literal key passed to `settingEnabled`/`settingEnabledOrDefault` under `app/`
+ * against SETTING_CATALOG, so the typo fails the suite instead of the request.
+ */
+export function settingEnabledOrDefault(ctx: EntitledContext, key: string): boolean {
+  try {
+    return settingEnabled(ctx, key);
+  } catch (e) {
+    if (e instanceof EntitlementsResolutionFailedError) return SETTING_DEFAULTS.get(key) === true;
     throw e;
   }
 }

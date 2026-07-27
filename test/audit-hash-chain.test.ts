@@ -167,6 +167,36 @@ describe('domain_event hash chain (ADR-0030 Layer 2, #159)', () => {
     expect(v.valid, 'no link is broken: the unchained events are not IN the chain to break it').toBe(true);
     expect(v.checked, 'only the chained rows are verified…').toBe(4);
     expect(v.unchained, '…and the three written while the gate was off are counted, not silently dropped').toBe(3);
+    // THE POSITIONAL FIGURE — the one the DPO surface renders. All three fell strictly after the first
+    // chained event, so all three are inside the chain's coverage: an unambiguous hole.
+    expect(v.unchainedInsideChain, 'the whole window sits inside the chain, so it is a hole, not history').toBe(3);
+  });
+
+  it('PRE-CHAIN history is reported as coverage, not as a hole — the count alone cannot tell them apart', async () => {
+    // WHY THIS EXISTS (review r3). `checked > 0 && unchained > 0` was documented as "the dangerous
+    // shape" and was what the admin banner rendered on. But 0074:5 defers the backfill of pre-existing
+    // events by design, so every event a tenant recorded BEFORE the chain was first armed stays
+    // `chain_seq IS NULL` permanently — i.e. every tenant that predates the arming matches that shape
+    // forever, with or without a hole, and a real arm→disarm→re-arm window looks identical to ordinary
+    // history. Position is the only thing that separates them.
+    const ctx = adminCtx(b);
+    const saved = process.env.AUDIT_HASH_CHAIN_ENABLED;
+    delete process.env.AUDIT_HASH_CHAIN_ENABLED;
+    try {
+      await appendN(ctx, 3); // history from before the chain was ever switched on
+    } finally {
+      process.env.AUDIT_HASH_CHAIN_ENABLED = saved;
+    }
+    await appendN(ctx, 2); // …then the chain is armed and never disarmed again
+
+    const v = await verifyTenantChain(ctx);
+    expect(v.valid).toBe(true);
+    expect(v.checked, 'the chained rows').toBe(2);
+    expect(v.unchained, 'the bare count matches the "dangerous shape" — which is exactly the problem').toBe(3);
+    expect(
+      v.unchainedInsideChain,
+      'nothing was recorded after the chain started without being chained, so there is NO hole',
+    ).toBe(0);
   });
 
   it('reports unchained events even when the chain has never run', async () => {
@@ -180,6 +210,9 @@ describe('domain_event hash chain (ADR-0030 Layer 2, #159)', () => {
       // case above, where a chain exists and part of the history sits outside it.
       expect(v).toMatchObject({ valid: true, checked: 0 });
       expect(v.unchained).toBeGreaterThanOrEqual(2);
+      // With no chained row at all the positional subquery is NULL, so nothing counts as inside — the
+      // right answer, and the branch that would otherwise NULL-compare its way to a wrong one.
+      expect(v.unchainedInsideChain, 'no chain ⇒ no hole in one').toBe(0);
     } finally {
       process.env.AUDIT_HASH_CHAIN_ENABLED = saved;
     }
