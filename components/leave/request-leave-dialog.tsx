@@ -1,7 +1,8 @@
 'use client';
 
-import { type ComponentProps, useState } from 'react';
+import { type ComponentProps, useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Plus } from 'lucide-react';
 import { Button, Field, btnPrimary, inputCls } from '../ui';
@@ -43,6 +44,33 @@ export function RequestLeaveDialog({
 }) {
   const t = useTranslations('leave');
   const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const params = useSearchParams();
+  const openedFromUrl = useRef(false);
+
+  /**
+   * Open on arrival when the dashboard's Apply Leave shortcut sent us here with `?apply=1`
+   * (feedback a46fe0c0).
+   *
+   * The dialog is opened HERE rather than rendered on the dashboard, and that is the point of the item:
+   * this form needs the employee's leave types, balances and policy data, which My Leave already loads
+   * and the dashboard does not. Mounting it on the dashboard would mean duplicating that loading — the
+   * "do not create a new leave application page or duplicate function" the item asks us to avoid. The
+   * employee still sees the pop-up open in one click; it just opens on the page that already has the data.
+   *
+   * The marker is STRIPPED once consumed, so a refresh or a Back navigation does not silently re-open a
+   * form the employee deliberately closed. `openedFromUrl` guards React's dev double-invoke, which would
+   * otherwise re-open it immediately after the first close.
+   */
+  useEffect(() => {
+    if (params.get('apply') !== '1' || openedFromUrl.current) return;
+    openedFromUrl.current = true;
+    setOpen(true);
+    const next = new URLSearchParams(params.toString());
+    next.delete('apply');
+    const qs = next.toString();
+    router.replace(qs ? `/leave?${qs}` : '/leave', { scroll: false });
+  }, [params, router]);
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
