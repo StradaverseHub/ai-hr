@@ -1723,6 +1723,7 @@
     "proposedChildren": "Số con",
     "proposedChange": "thay đổi",
     "myPayslips": "Phiếu lương của tôi",
+    "noPayslipsYet": "Chưa có phiếu lương. Phiếu lương sẽ xuất hiện sau khi kỳ lương được chốt và phát hành.",
     "selectMonth": "Tháng trả lương",
     "selectCycle": "Chu kỳ trả lương",
     "cycleLabel": "{runType} #{seq}",

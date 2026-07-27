@@ -1723,6 +1723,7 @@
     "proposedChildren": "குழந்தைகள்",
     "proposedChange": "மாற்றம்",
     "myPayslips": "என் ஊதியச் சீட்டுகள்",
+    "noPayslipsYet": "இதுவரை ஊதியச் சீட்டு இல்லை. ஊதியச் செயலாக்கம் முடிந்து வெளியிடப்பட்ட பின் இங்கு தோன்றும்.",
     "selectMonth": "ஊதிய மாதம்",
     "selectCycle": "ஊதியச் சுழற்சி",
     "cycleLabel": "{runType} #{seq}",

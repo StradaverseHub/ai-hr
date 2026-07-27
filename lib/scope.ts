@@ -17,12 +17,23 @@ export async function getScopeIds(allowedIds: string[]): Promise<string[]> {
   return scoped.length ? scoped : allowedIds;
 }
 
-/** The session plus the active company-context scope — what every page filters its lists by. */
-export async function scopedSession(): Promise<{ s: SessionContext; scopeIds: string[] }> {
+/**
+ * The session plus the active company-context scope — what every page filters its lists by.
+ *
+ * `allowedCount` is the number of companies this user may reach AT ALL, as distinct from the
+ * `scopeIds` subset they currently have selected. Returned because a caller showing "N of M" has no
+ * other honest source for M: `listCompanies` is scoped to the TENANT, not to the user, so using it
+ * told someone who can only reach 2 companies that they were seeing "2 of 8" (feedback ab77dc1f) —
+ * implying six were being withheld, and incidentally disclosing how many companies the organisation
+ * has to a user whose access does not otherwise reveal that.
+ *
+ * Additive, so the 17 existing callers destructuring `{ s, scopeIds }` are unaffected.
+ */
+export async function scopedSession(): Promise<{ s: SessionContext; scopeIds: string[]; allowedCount: number }> {
   const s = await getSession();
   const allowed = await allowedCompanies(s);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
-  return { s, scopeIds };
+  return { s, scopeIds, allowedCount: allowed.length };
 }
 
 /** Admin-gated variant: redirects non-admins, then returns the session + active company scope. */

@@ -1723,6 +1723,7 @@
     "proposedChildren": "บุตร",
     "proposedChange": "เปลี่ยนแปลง",
     "myPayslips": "สลิปเงินเดือนของฉัน",
+    "noPayslipsYet": "ยังไม่มีสลิปเงินเดือน สลิปจะแสดงที่นี่เมื่อรอบการจ่ายเงินเดือนปิดและเผยแพร่แล้ว",
     "selectMonth": "เดือนจ่ายเงินเดือน",
     "selectCycle": "รอบการจ่ายเงิน",
     "cycleLabel": "{runType} #{seq}",

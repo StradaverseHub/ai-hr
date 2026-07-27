@@ -1723,6 +1723,7 @@
     "proposedChildren": "Anak",
     "proposedChange": "perubahan",
     "myPayslips": "Slip gaji saya",
+    "noPayslipsYet": "Tiada slip gaji lagi. Slip gaji akan dipaparkan di sini setelah pemprosesan gaji ditutup dan dikeluarkan.",
     "selectMonth": "Bulan gaji",
     "selectCycle": "Kitaran gaji",
     "cycleLabel": "{runType} #{seq}",

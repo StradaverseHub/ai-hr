@@ -1723,6 +1723,7 @@
     "proposedChildren": "Children",
     "proposedChange": "change",
     "myPayslips": "My payslips",
+    "noPayslipsYet": "No payslips available yet. A payslip appears here once its payroll run is closed and released.",
     "selectMonth": "Payroll month",
     "selectCycle": "Pay cycle",
     "cycleLabel": "{runType} #{seq}",

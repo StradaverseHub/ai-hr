@@ -1723,6 +1723,7 @@
     "proposedChildren": "子女",
     "proposedChange": "变更",
     "myPayslips": "我的工资单",
+    "noPayslipsYet": "暂无工资单。工资单将在薪资批次关闭并发布后显示。",
     "selectMonth": "工资月份",
     "selectCycle": "发薪周期",
     "cycleLabel": "{runType} #{seq}",
