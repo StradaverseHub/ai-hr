@@ -392,21 +392,45 @@ describe('Gate (step 9)', () => {
     // not whether days already banked ever get paid. Refusing here meant a lapsed trial or a downgrade
     // froze a debt the employee had already earned — and app/admin/toil/page.tsx hides the button that
     // calls this, so there was no surface left to settle it through.
-    await accrueRestDay(5000); // banked while entitled
+    const { employmentId, accrualId } = await accrueRestDay(5000); // banked while entitled
+    expect(await replacementBalance(employmentId)).toBe(1);
     await setModule(b.tenantId, 'toil', null); // delete the row — a missing row IS disabled (C7)
     const revoked = await entitledCtx(b); // snapshot resolved AFTER the revoke
     expect(isModuleEnabled(revoked, 'toil'), 'the fixture must really be disabled, or this proves nothing').toBe(false);
 
+    // ASSERTED ON THE SETTLED AMOUNT, not on `processed`. `processed` is `converted + lapsed`, so a run
+    // that took the LAPSE arm — forfeiting the day, which is the exact statutory harm this test exists
+    // to forbid — increments it and satisfies a count-only assertion. The file's default policy is
+    // `onExpiry: 'convert_to_pay'` (see `policy` above), so every figure here is deterministic.
     const r = await closeReplacementLeaveYear(revoked, { asOf: '2026-12-31' });
     expect(r.alreadyClosed).toBe(false);
-    expect(r.processed, 'the banked day must still be settled after revocation').toBe(1);
+    expect(r, 'the banked day must be CONVERTED, not merely swept').toMatchObject({
+      processed: 1,
+      converted: 1,
+      lapsed: 0,
+      convertedDays: 1,
+      carriedForward: 0,
+    });
+    expect(r.convertedAmount, '1 day × (5000 / 26) — the ORP owed').toBe(192.31);
+    expect((await accrualRow(accrualId)).status).toBe('converted_to_pay');
+    expect(await replacementBalance(employmentId), 'the leave credit is discharged, not left dangling').toBe(0);
+    expect(await eventTypesFor(b.tenantId, accrualId)).toContain('toil.converted');
   });
 
   it('and admits the same call when the tenant IS entitled', async () => {
-    await accrueRestDay(5000);
+    // ASSERTED ON THE SETTLED AMOUNT here too, for the reason its twin above states: `processed` is
+    // `converted + lapsed`, so a run that FORFEITED the day would satisfy a count-only check. This is
+    // the control half of the pair — the two tests differ only in whether the `tenant_module` row
+    // exists, so if the entitled case is not pinned to the same figures the comparison proves nothing
+    // about the entitlement and only that the sweep ran.
+    const { employmentId, accrualId } = await accrueRestDay(5000);
     const granted = await entitledCtx(b); // `toil` active (beforeEach) + `attendance` active (seedBase)
     const r = await closeReplacementLeaveYear(granted, { asOf: '2026-12-31' });
     expect(r.alreadyClosed).toBe(false);
-    expect(r.processed).toBe(1);
+    expect(r).toMatchObject({ processed: 1, converted: 1, lapsed: 0, convertedDays: 1, carriedForward: 0 });
+    expect(r.convertedAmount, '1 day × (5000 / 26) — identical to the unentitled case, which is the point').toBe(192.31);
+    expect((await accrualRow(accrualId)).status).toBe('converted_to_pay');
+    expect(await replacementBalance(employmentId)).toBe(0);
+    expect(await eventTypesFor(b.tenantId, accrualId)).toContain('toil.converted');
   });
 });

@@ -9,12 +9,14 @@
  * This file writes no feature-gate env var and never did. It broke anyway, because the payslip
  * assertions below are only true on the LEGACY earnings path, and which path `generatePayslips` takes
  * is now decided by `isModuleEnabled(ctx, 'typed_pay_components')` instead of
- * `process.env.TYPED_PAY_COMPONENTS_ENABLED`. Those two do NOT agree for the fixture admin context:
- * test/env.ts deletes the env var (so the old read was false), while `adminCtx` carries
- * `entitlementsExempt: 'harness'` and an exempt context answers TRUE for every catalogued module — so
- * `adminCtx` silently switches the typed-component path ON, and the typed fold reads neither
- * `compensation.monthly_allowance` nor `payroll_input.claim_allowance` (core/payroll.ts `earningsOf`),
- * making the allowance/gross/EPF figures 0 / basic-only.
+ * `process.env.TYPED_PAY_COMPONENTS_ENABLED`. When this file was converted the two did NOT agree for
+ * the fixture admin context: test/env.ts deletes the env var (so the old read was false), while
+ * `adminCtx` still carried `entitlementsExempt: 'harness'` and an exempt context answered TRUE for every
+ * catalogued module — so `adminCtx` silently switched the typed-component path ON, and the typed fold
+ * reads neither `compensation.monthly_allowance` nor `payroll_input.claim_allowance` (core/payroll.ts
+ * `earningsOf`), making the allowance/gross/EPF figures 0 / basic-only. `adminCtx` now derives its
+ * snapshot from `legacyEnabledModulesIn(process.env)` and agrees with the env read again; the hazard is
+ * recorded because it is what the figures below are defended against.
  *
  * The tenant's DATA says the opposite and is what these tests mean: `seedBase` seeds no
  * `tenant_module` row for `typed_pay_components` (LEGACY_MODULE_ENV_GATES gates it on the same env var

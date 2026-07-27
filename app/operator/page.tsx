@@ -10,7 +10,7 @@ import { AutoRefresh } from './auto-refresh';
 import { ActivationLink } from './activation-link';
 import { createCustomerAction, requestReissueAction } from './actions';
 import { countryPacks } from '@/localization/registry';
-import { DEFAULT_PROVISION_MODULE_CODES, MODULE_CATALOG } from '@/packs/catalog';
+import { defaultProvisionModuleCodesIn, MODULE_CATALOG } from '@/packs/catalog';
 
 /**
  * Operator console — create a new customer (tenant).
@@ -101,16 +101,20 @@ export default async function OperatorPage() {
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               {sellableModules.map((m) => (
                 <label key={m.code} className="flex items-center gap-2 text-sm">
-                  {/* PRE-TICKED for the modules no env var gates today (DEFAULT_PROVISION_MODULE_CODES).
-                      An untouched form used to queue a customer with ZERO entitlement rows, which reads
-                      as "everything the customer has today" until slice 3 and as "nothing" after it.
-                      The default states what the product currently includes; unticking is still the
-                      operator's decision and is honoured verbatim by provisionTenant. */}
+                  {/* PRE-TICKED for everything a customer provisioned TODAY would actually run:
+                      the modules no env var gates, plus the env-gated ones this deployment has on
+                      (defaultProvisionModuleCodesIn). An untouched form used to queue a customer with
+                      ZERO entitlement rows, which reads as "everything the customer has today" until
+                      slice 3 and as "nothing" after it — and pre-ticking only the ungated four left
+                      the same hole for notifications / multi-cycle payroll / typed pay components,
+                      which this box runs via env. The default states what the product currently
+                      includes; unticking is still the operator's decision and is honoured verbatim by
+                      provisionTenant. */}
                   <input
                     type="checkbox"
                     name="modules"
                     value={m.code}
-                    defaultChecked={DEFAULT_PROVISION_MODULE_CODES.includes(m.code)}
+                    defaultChecked={defaultProvisionModuleCodesIn(process.env).includes(m.code)}
                     className="size-4 rounded"
                   />
                   {m.name}
@@ -121,7 +125,7 @@ export default async function OperatorPage() {
                 all, and the 0313 trigger refuses one — so offering them as a choice would be a lie. */}
             <p className="mt-1 text-xs text-muted-foreground">
               Core modules ({coreModules.map((m) => m.name).join(', ')}) are always included. Ticked by
-              default are the modules every customer runs today; untick to sell less.
+              default are the modules every customer runs on this deployment today; untick to sell less.
             </p>
           </fieldset>
         </form>

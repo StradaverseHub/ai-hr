@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 # pnpm/node are found even when /opt/node20/bin isn't on the invoking shell's PATH).
 [ -d /opt/node20/bin ] && export PATH="/opt/node20/bin:$PATH"
 
-[ -f .env.production ] || { echo "✗ Missing .env.production — copy deploy/.env.production.example, fill it in, and re-run."; exit 1; }
+[ -f .env.production ] || { echo "✗ Missing .env.production — copy .env.example, fill it in, and re-run."; exit 1; }
 # Load the production env so db:migrate (MIGRATION_DATABASE_URL) and the seed pick it up.
 set -a; . ./.env.production; set +a
 : "${MIGRATION_DATABASE_URL:?set in .env.production}"; : "${DEV_TENANT_ID:?set in .env.production}"
@@ -47,6 +47,15 @@ pnpm db:migrate
 # empty module catalog and every entitlement lookup failing closed. Idempotent (ON CONFLICT DO UPDATE).
 echo "▸ Seeding module + setting catalogs…"
 node --env-file=.env.production --import tsx scripts/seed-catalogs.ts
+
+# ADR-0030 / ADR-0077 slice 3 — BLOCKING. Slice 3 changed AUDIT_HASH_CHAIN_ENABLED from a truthiness
+# test to `=== 'true'`, which is correct and which DISARMS the chain on every box that copied
+# .env.example's active `=false` line (the string 'false' is truthy). Disarming is not something
+# verifyTenantChain() can report — it only inspects rows that carry chain columns — so the log would go
+# on rendering "intact" over an unverifiable window. This compares the env against what the database
+# actually holds and exits non-zero if they disagree, BEFORE the restart. `set -e` stops the deploy.
+echo "▸ Checking the audit hash-chain gate against the database…"
+node --env-file=.env.production --import tsx scripts/check-audit-chain-gate.ts
 
 # Seed only if the demo tenant is absent, so updates preserve whatever the consultant has been testing.
 if [ "${1:-}" = "--reseed" ] || ! psql "$MIGRATION_DATABASE_URL" -tAc "SELECT 1 FROM tenant WHERE id='$DEV_TENANT_ID'" 2>/dev/null | grep -q 1; then

@@ -161,10 +161,11 @@ describe('ADR-0080 rung 3 (D9): the claims PayrollInputContributor kernel contra
   // compensation + payroll_input fold (core/payroll.ts `earningsOf`, its `!typedComponents` branch).
   // With `typed_pay_components` ON the kernel reads the component tables as the earnings source and
   // never consults `payroll_input.claim_allowance` at all, so the 300 would silently vanish from the
-  // slip. `adminCtx` is `entitlementsExempt: 'harness'`, which answers TRUE for every catalogued
-  // module — it would run this block on the typed path, i.e. the OPPOSITE kernel from the one
-  // test/claims-payout.test.ts pins these very figures against. `entitledCtx` resolves a REAL snapshot
-  // instead, and seedBase seeds no `typed_pay_components` row (test/env.ts deletes
+  // slip. Until slice 3 `adminCtx` was `entitlementsExempt: 'harness'` and answered TRUE for every
+  // catalogued module — it would have run this block on the typed path, i.e. the OPPOSITE kernel from
+  // the one test/claims-payout.test.ts pins these very figures against. `entitledCtx` resolves a REAL
+  // snapshot from the tenant's rows instead, and seedBase seeds no `typed_pay_components` row
+  // (test/env.ts deletes
   // TYPED_PAY_COMPONENTS_ENABLED, so it is not in this process's parity set); a missing row is disabled
   // (C7), which is exactly the state this block ran in before the flip.
   describe('contribute() is prefillClaimsForBatch behind the contract (live-batch equivalence)', () => {

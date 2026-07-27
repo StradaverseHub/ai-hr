@@ -13,9 +13,11 @@
  * reads the component tables instead, and a tenant with no `employment_pay_component` rows would
  * contribute a ZERO allowance, silently turning the 4500 base into 4000 and the 3200 base into 3000.
  * The gate used to be `process.env.TYPED_PAY_COMPONENTS_ENABLED`, which test/env.ts deletes, so
- * `adminCtx` was fine. It is now a per-tenant entitlement, and `adminCtx` is
- * `entitlementsExempt: 'harness'` — an exempt context answers TRUE for every catalogued module, so it
- * would put this file on the TYPED path and break the very arithmetic it exists to pin.
+ * `adminCtx` was fine. It is a per-tenant entitlement now, and when this file was converted `adminCtx`
+ * was `entitlementsExempt: 'harness'` — an exempt context answered TRUE for every catalogued module,
+ * which would have put this file on the TYPED path and broken the very arithmetic it exists to pin.
+ * (`adminCtx` now derives its snapshot from `legacyEnabledModulesIn(process.env)` and agrees with the
+ * old env read; the hazard is recorded because it is what these figures are defended against.)
  * `entitledCtx` resolves a REAL snapshot from this tenant's rows; seedBase seeds no
  * `typed_pay_components` row (it is not in this process's parity set), and a missing row is disabled
  * (C7), so the legacy path is genuinely selected. Not a weakening: no assertion changed.

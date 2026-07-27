@@ -11,11 +11,13 @@
  *   • `typed_pay_components`                (MODULE)  — was TYPED_PAY_COMPONENTS_ENABLED
  *   • `multi_cycle_payroll`                 (MODULE)  — was MULTI_CYCLE_PAYROLL_ENABLED
  *
- * WHICH CONTEXT A TEST USES IS THEREFORE PART OF ITS MEANING. `adminCtx` is `entitlementsExempt:
- * 'harness'`: it answers TRUE for every catalogued module AND reads every setting as its CATALOG
- * DEFAULT. So under `adminCtx` a `setSetting('payroll.individual_txn_pay_enabled', true)` is silently
- * ignored (the default is false) and `typed_pay_components` is unconditionally on — an exempt context
- * can express neither half of this file's flag matrix. Every assertion that depends on a gate's value
+ * WHICH CONTEXT A TEST USES IS THEREFORE PART OF ITS MEANING. `adminCtx` carries a SYNTHETIC snapshot
+ * derived from `legacyEnabledModulesIn(process.env)` / `legacyEnabledSettingsIn(process.env)` — under
+ * the suite's env that is the four ungated modules and NO settings, so `typed_pay_components` reads OFF
+ * and every setting reads its CATALOG DEFAULT (`false`). A `setSetting` or `setModule` written
+ * afterwards reaches it only through the harness's in-memory mirror, never from the row. (Until slice 3
+ * it was `entitlementsExempt: 'harness'`, which answered TRUE for every module and could express
+ * neither half of this file's flag matrix.) Every assertion that depends on a gate's value
  * therefore runs through `entitledCtx` (a REAL resolved snapshot), resolved AFTER the setModule /
  * setSetting writes it must see, because the snapshot is point-in-time. `adminCtx` is retained only for
  * gate-independent fixture work (hiring, compensation, batch creation, plain ledger CRUD).
@@ -1039,11 +1041,15 @@ describe('1.2.2 Individual Transaction', () => {
      * Generate `batchId` in the ANCHOR configuration and read back the payslip.
      *
      * ADR-0077 slice 3: the anchor is now a real entitlement state — a `typed_pay_components` module row
-     * plus a `payroll.individual_txn_pay_enabled` setting row — read through a REAL snapshot. It cannot be
-     * expressed with `adminCtx`: that context is entitlementsExempt, so the setting reads its catalog
-     * default (false) and the kernel would never consume the ledger, silently turning every delta
-     * assertion below into an assertion about an inert ledger. Both writes are idempotent, and the
-     * snapshot is resolved AFTER them because it is point-in-time.
+     * plus a `payroll.individual_txn_pay_enabled` setting row — read through a REAL snapshot resolved
+     * AFTER those writes, because a snapshot is point-in-time. Both writes are idempotent.
+     *
+     * (This note used to say `adminCtx` "is entitlementsExempt, so the setting reads its catalog
+     * default". That described an earlier draft; slice 3 removed the exemption and gave adminCtx a
+     * snapshot derived from the same helpers seedBase uses. The conclusion is unchanged — under the
+     * suite's env adminCtx answers both of these DISABLED, so the kernel would never consume the ledger
+     * and every delta assertion below would silently become an assertion about an inert one — but the
+     * reason is now the derived snapshot, not an exemption.)
      */
     async function generateAndRead(batchId: string) {
       await setModule(base.tenantId, 'typed_pay_components', 'active');

@@ -4,6 +4,8 @@
  * forfeit). The floor protection is verified end-to-end: an eligible employee's TOIL converts (set at accrual),
  * never lapses. Idempotent + gated. today is injected.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
@@ -149,8 +151,9 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     // That test was carefully built and passed honestly — it just encoded the wrong requirement. Under
     // the old deployment flag the scenario was unreachable (nobody edits .env mid-month), but a
     // per-tenant entitlement lapses on a trial ending, a downgrade, or non-payment, and at that moment
-    // the employee is still owed the day they worked. app/admin/toil/page.tsx also hides the button
-    // that calls this, so a throw here left the debt with no path to settle through ANY surface.
+    // the employee is still owed the day they worked. app/admin/toil/page.tsx ALSO hid the button that
+    // calls this — see the surface test at the bottom of this file, which is the half that makes
+    // ungating the service mean anything in production.
     const { employmentId, accrualId } = await accrue(3000, { allowFirstScheduleEligible: true });
     expect(await replacementBalance(employmentId)).toBe(1);
 
@@ -183,5 +186,62 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     await expect(
       accrueToil(revoked, { employmentId, workedDate: REST_DAY, firstScheduleConsent: true }),
     ).rejects.toBeInstanceOf(ToilDisabledError);
+  });
+
+  it('the ADMIN SURFACE stays reachable with the module off — a service-level test cannot see this', () => {
+    /*
+     * WHY A SOURCE-LEVEL TEST, AND WHY IT IS THE IMPORTANT ONE.
+     *
+     * Ungating `runToilExpiry` / `closeReplacementLeaveYear` changed NOTHING in production on its own.
+     * app/admin/toil/page.tsx is their only caller — there is no cron; app/admin/actions.ts says so
+     * ("manual; a scheduled job will do this later") and deploy/DEPLOY.md's crontab lists four jobs,
+     * none of them a TOIL sweep. The page rendered both buttons, and the outstanding-liability ledger,
+     * inside `{envOn && …}` where `envOn` was the very predicate that used to throw. So a tenant whose
+     * `toil` entitlement lapsed still could not SEE the debt, let alone settle it: the service no longer
+     * refused a call that no surface could make.
+     *
+     * The two service tests above pass by calling the function directly, which is exactly the blind spot
+     * — they cannot distinguish "reachable" from "reachable only by a test". Reading the page is the
+     * same ratchet this suite already applies to migrations and to the operator form.
+     */
+    const src = fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/toil/page.tsx'), 'utf8');
+
+    // 1. The ledger read is UNCONDITIONAL — an admin can always see what is outstanding.
+    expect(src, 'the replacement-leave summary must not be gated on the module').toContain(
+      'const summary = await replacementLeaveSummary(',
+    );
+    expect(src, 'the old `moduleOn ? … : null` read hid the outstanding liability').not.toMatch(
+      /(moduleOn|envOn)\s*\?\s*await replacementLeaveSummary/,
+    );
+
+    // 2. Settlement is shown when the module is on OR a banked credit is still outstanding.
+    expect(src).toContain('const showSettlement = moduleOn || outstanding;');
+    expect(src).toContain('const outstanding = summary.activeAccruals > 0;');
+
+    // 3. …and BOTH settle actions live inside that block, not inside a module-only one.
+    const guard = src.indexOf('{showSettlement && visible.length > 0 && (');
+    expect(guard, 'the settlement card must be guarded by showSettlement').toBeGreaterThan(-1);
+    const card = src.slice(guard);
+    expect(card).toContain('action={runToilExpiryAction}');
+    expect(card).toContain('action={closeReplacementLeaveYearAction}');
+    // The wind-down region must contain no module-only gate of its own — that would restore the hole
+    // one level down, which is precisely how the original fix came to be illusory.
+    const cardEnd = card.indexOf('{t(\'footnote\')}');
+    expect(card.slice(0, cardEnd)).not.toMatch(/\{\s*moduleOn\s*&&/);
+
+    // 4. THE OTHER SIDE OF THE SPLIT, which the wind-down argument does NOT extend to (review r2).
+    //    Ungating the ledger and the two sweeps is about settling days already banked. The per-company
+    //    POLICY EDITOR is about future accrual — every field in it is frozen onto each accrual at
+    //    accrual time — so an unentitled tenant editing it is configuring a module it has not bought,
+    //    ready to take effect the day it does. It was left rendering unconditionally; it is now gated,
+    //    and `setToilPolicy` asserts the same server-side (test/toil.test.ts covers the refusal).
+    const formAt = src.indexOf('action={setToilPolicyAction}');
+    expect(formAt, 'the policy form must still exist').toBeGreaterThan(-1);
+    expect(
+      src.slice(0, formAt),
+      'the policy editor must be behind the module gate — the wind-down exemption covers settlement, not configuration',
+    ).toMatch(/!moduleOn\s*\?\s*null\s*:/);
+    // …and it must be gated ABOVE the settlement card, so gating it cannot drag the sweeps with it.
+    expect(formAt, 'the policy form is expected before the settlement card').toBeLessThan(guard);
   });
 });

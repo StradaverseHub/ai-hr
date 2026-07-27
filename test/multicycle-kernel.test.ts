@@ -9,11 +9,14 @@
  * MULTI_CYCLE_PAYROLL_ENABLED deployment flag until the gate moved into `tenant_module`), so it never
  * runs for real payroll until the §7 sign-off.
  *
- * BOTH TESTS DRIVE `entitledCtx`, NOT `adminCtx`. `adminCtx` carries `entitlementsExempt: 'harness'`,
- * which answers TRUE for every catalogued module — so a `setModule` fixture behind it is silently
- * ignored, the gate can never be shown to close, and (for the worksheet test) `typed_pay_components`
- * would also read as ON, moving the earnings source off the legacy path this file's figures were signed
- * off against. `entitledCtx` resolves a REAL snapshot from this tenant's rows, so the row IS the gate.
+ * BOTH TESTS DRIVE `entitledCtx`, NOT `adminCtx`. `adminCtx` carries a SYNTHETIC snapshot derived from
+ * `legacyEnabledModulesIn(process.env)` — the same helper `seedBase` uses — so it reads
+ * `multi_cycle_payroll` and `typed_pay_components` OFF under the suite's env, and a `setModule` grant
+ * reaches it only through the harness's in-memory mirror of that write. `entitledCtx` resolves a REAL
+ * snapshot from this tenant's ROWS, so the row IS the gate with nothing in between. (Until slice 3
+ * `adminCtx` was `entitlementsExempt: 'harness'` and answered TRUE for every catalogued module, which
+ * would have moved the earnings source off the legacy path these figures were signed off against —
+ * the reason this file was converted, kept on the record.)
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';

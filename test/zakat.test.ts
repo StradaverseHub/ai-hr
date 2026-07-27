@@ -395,12 +395,14 @@ describe('1.2.4 Zakat Deduction', () => {
     // env and test/env.ts deletes the flag), and a missing row is DISABLED (C7) — so this test states
     // its own grant, and there is nothing to tear down afterwards because resetDb truncates the row.
     //
-    // Driven through `entitledCtx`, NOT `adminCtx`: adminCtx carries `entitlementsExempt: 'harness'`,
-    // which answers TRUE for every catalogued module, so the grant below would be ignored and the gate
-    // would not be what lets createAdditionalRun through. It also matters for the FIGURES — under an
-    // exempt context `typed_pay_components` reads ON too, moving generatePayslips off the legacy
-    // earnings path this file's zakat/PCB expectations were written against. The grant must be written
-    // BEFORE the context is built, because the snapshot is point-in-time.
+    // Driven through `entitledCtx`, NOT `adminCtx`: adminCtx's snapshot is SYNTHETIC (derived from
+    // `legacyEnabledModulesIn(process.env)`), so the grant below reaches it only through the harness's
+    // in-memory mirror rather than from the row itself, and the gate would not be what lets
+    // createAdditionalRun through. Until slice 3 it was worse — the context was
+    // `entitlementsExempt: 'harness'` and answered TRUE for every catalogued module, which also read
+    // `typed_pay_components` ON and moved generatePayslips off the legacy earnings path this file's
+    // zakat/PCB expectations were written against. The grant must be written BEFORE the context is
+    // built, because the snapshot is point-in-time.
     await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
     const a = await entitledCtx(base);
     const e = await hire(a, base, 'Zakat Multi');

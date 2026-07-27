@@ -7,10 +7,13 @@
  * for a full month and a prorated mid-month joiner.
  *
  * ADR-0077 slice 3: the gate is a per-tenant entitlement row, not TYPED_PAY_COMPONENTS_ENABLED. This file
- * therefore drives the kernel through `entitledCtx` (a REAL resolved snapshot) rather than `adminCtx`,
- * which is `entitlementsExempt: 'harness'` and so answers TRUE for every catalogued module — under an
- * exempt context BOTH halves of this comparison would take the typed path and the test would compare the
- * typed kernel against itself. The snapshot is point-in-time, so the ON half re-resolves after setModule.
+ * therefore drives the kernel through `entitledCtx` (a snapshot resolved from this tenant's ROWS)
+ * rather than `adminCtx`, whose snapshot is SYNTHETIC — derived from `legacyEnabledModulesIn(process.env)`,
+ * so a `setModule` grant reaches it only through the harness's in-memory mirror of that write. The
+ * snapshot is point-in-time, so the ON half re-resolves after setModule. (Until slice 3 `adminCtx` was
+ * `entitlementsExempt: 'harness'` and answered TRUE for every catalogued module, under which BOTH halves
+ * of this comparison would have taken the typed path and the test would have compared the typed kernel
+ * against itself — the reason this file was converted.)
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';

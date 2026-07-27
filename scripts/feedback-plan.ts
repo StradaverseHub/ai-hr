@@ -34,10 +34,18 @@ async function main() {
     //
     // Resolving properly is the fix the exemption's own docs prescribe. Safe on the owner connection:
     // RLS does not bind the owner role, so the snapshot query sees the tenant's rows.
-    const entitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, t.id));
-    const ctx: SessionContext = { tenantId: t.id, roles: ['hr_admin'], entitlements };
+    //
+    // INSIDE THE PER-TENANT try, which the first version of this fix was not. The line it replaced was
+    // an object literal that could not throw; `resolveEntitlementsTx` runs a real transaction and can
+    // (statement timeout, pool exhaustion, a code-ahead-of-migration deploy). Outside the try that
+    // exception escapes the loop AND `main()`, so one unreadable tenant silently skips every tenant
+    // after it and the pool is never closed. Counted as a per-tenant failure instead, matching
+    // scripts/review-sweep.ts, which got the mirror-image fix.
     let ids: string[] = [];
+    let ctx: SessionContext;
     try {
+      const entitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, t.id));
+      ctx = { tenantId: t.id, roles: ['hr_admin'], entitlements };
       ids = await listPlannableFeedback(ctx);
     } catch (e) {
       failures += 1;

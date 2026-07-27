@@ -20,13 +20,14 @@
  *
  * ADR-0077 slice 3 — guards 5 and 6 are a GATE-OFF/GATE-ON pair, and the gate is now the per-tenant
  * `typed_pay_components` entitlement (`isModuleEnabled`), not TYPED_PAY_COMPONENTS_ENABLED. That makes
- * the CONTEXT the thing that decides: `adminCtx` is `entitlementsExempt: 'harness'` and therefore
- * answers TRUE for every catalogued module, so under it BOTH halves would take the typed path and the
- * parity comparison would compare the typed kernel against itself. Both halves therefore call
- * `generatePayslips` through `entitledCtx`, a REAL snapshot resolved from this tenant's rows —
- * point-in-time, so the ON half resolves it AFTER the setModule grant. Fixture building (hire, comp,
- * batch, inputs, backfills) keeps the exempt `adminCtx`: none of it is gated, and that is what the
- * marker is for.
+ * the CONTEXT the thing that decides. When this file was converted `adminCtx` was
+ * `entitlementsExempt: 'harness'` and answered TRUE for every catalogued module, so under it BOTH
+ * halves would have taken the typed path and the parity comparison would have compared the typed kernel
+ * against itself. `adminCtx` now derives its snapshot from `legacyEnabledModulesIn(process.env)` and
+ * reads the module OFF — but both halves still call `generatePayslips` through `entitledCtx`, a REAL
+ * snapshot resolved from this tenant's ROWS rather than a synthetic mirror of them, point-in-time, so
+ * the ON half resolves it AFTER the setModule grant. Fixture building (hire, comp, batch, inputs,
+ * backfills) keeps `adminCtx`: none of it is gated.
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -231,8 +232,11 @@ describe('Overtime rate split — four rate-labelled RM buckets summed into over
 
     // GATE OFF = no `typed_pay_components` row for this tenant. seedBase seeds none, so this DELETE is
     // already a no-op; it is written out because what the test asserts is the missing-row (= disabled,
-    // C7) path, not an incidental default that could quietly change. The kernel must be driven through
-    // entitledCtx — adminCtx is entitlementsExempt and would answer TRUE, i.e. run the typed path here.
+    // C7) path, not an incidental default that could quietly change. The kernel is driven through
+    // entitledCtx because the snapshot must be resolved AFTER the DELETE — a snapshot is point-in-time.
+    // (This line used to say adminCtx "is entitlementsExempt and would answer TRUE". That was true of
+    // an earlier draft; slice 3 removed the exemption and gave adminCtx a derived snapshot, so it now
+    // answers this module DISABLED under the suite's env — the opposite of what the note claimed.)
     await setModule(base.tenantId, 'typed_pay_components', null);
     await generatePayslips(await entitledCtx(base), { batchId });
     const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));

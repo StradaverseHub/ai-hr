@@ -211,10 +211,17 @@ export async function seedBase(): Promise<Base> {
   // body, i.e. after this ran. Ordering, not intent, decides whether a row exists:
   //   - test/payroll-reset.test.ts sets PAYROLL_RESET_ENABLED BEFORE seedBase → it gets a row;
   //   - test/multicycle-kernel.test.ts sets MULTI_CYCLE_PAYROLL_ENABLED AFTER → it does not.
-  // And the SETTING axis diverges for everyone: under the suite's env (test/env.ts deletes
-  // PAYROLL_RESET_ENABLED / AUDIT_HASH_CHAIN_ENABLED, and nothing sets PAYROLL_UNLOCK_ENABLED or
-  // INDIVIDUAL_TXN_PAY_ENABLED) `legacyEnabledSettingsIn` returns the EMPTY set, so no test tenant in
-  // the suite carries a single tenant_setting row today.
+  // And the SETTING axis is EMPTY for everyone: test/env.ts deletes all nine tracked gates, so
+  // `legacyEnabledSettingsIn` returns the empty set and no test tenant in the suite carries a
+  // tenant_setting row until a test writes one with `setSetting`.
+  //
+  // That last sentence used to read "…and nothing sets PAYROLL_UNLOCK_ENABLED or
+  // INDIVIDUAL_TXN_PAY_ENABLED", which was a claim about an UNTRACKED file (test/env.ts loads
+  // `.env.local`) that .env.example directly contradicted — it ships PAYROLL_UNLOCK_ENABLED
+  // uncommented, and a developer who copied it seeded a tenant_setting row into every test tenant and
+  // into adminCtx's snapshot while CI ran with neither. test/env.ts now deletes the whole set and
+  // test/module-catalog-drift.test.ts → "the suite's entitlement BASELINE is empty" ASSERTS it, so this
+  // paragraph describes a pinned fact rather than a hope about someone's machine.
   //
   // Both facts are now ASSERTED rather than described: `test/module-catalog-drift.test.ts` →
   // 'the slice-3 worklist is a pinned inventory' greps every test file for a mutation of a tracked gate
@@ -303,12 +310,18 @@ export async function latestEventPayload(
  * Turn a module on or off for a tenant (owner connection — the app role can never write these).
  * `status: null` DELETES the row, which is how a test asserts the disabled path: a missing row is
  * disabled (C7), and that is a different state from an explicit `status='disabled'` row.
+ *
+ * `expiresAt` is the second half of what the resolver actually reads (`expires_at IS NULL OR expires_at
+ * > now()`). It is a parameter rather than something a test writes by hand precisely so the in-memory
+ * mirror below can stay in step with it: an expired grant that reached the table by raw SQL would read
+ * ON through `adminCtx` and OFF through a real session.
  */
 export async function setModule(
   tenantId: string,
   moduleCode: string,
   status: 'active' | 'trial' | 'disabled' | null,
   companyId: string | null = null,
+  expiresAt: Date | null = null,
 ): Promise<void> {
   await owner.db.execute(
     sql`DELETE FROM tenant_module WHERE tenant_id = ${tenantId} AND module_code = ${moduleCode}
@@ -316,14 +329,19 @@ export async function setModule(
           = COALESCE(${companyId}::uuid, '00000000-0000-0000-0000-000000000000'::uuid)`,
   );
   if (status !== null) {
-    await owner.db.insert(schema.tenantModule).values({ tenantId, moduleCode, companyId, status });
+    await owner.db.insert(schema.tenantModule).values({ tenantId, moduleCode, companyId, status, expiresAt });
   }
   // Mirror it, so a context built AFTER this call sees it (see HARNESS_MODULE_OVERRIDES). Only the
   // tenant-wide grain feeds adminCtx's synthetic snapshot; a company-scoped grant needs entitledCtx,
   // which resolves the real rows.
+  //
+  // An ALREADY-EXPIRED grant is mirrored as absent, matching the resolver. Note the mirror is a
+  // point-in-time copy either way: a grant that expires later in the test's wall-clock life stays ON in
+  // a snapshot resolved before it lapsed, which is exactly how a real session behaves too.
   if (companyId == null) {
     const m = HARNESS_MODULE_OVERRIDES.get(tenantId) ?? new Map<string, string | null>();
-    m.set(moduleCode, status);
+    const live = expiresAt === null || expiresAt.getTime() > Date.now();
+    m.set(moduleCode, live ? status : 'disabled');
     HARNESS_MODULE_OVERRIDES.set(tenantId, m);
   }
 }
@@ -369,6 +387,20 @@ export async function setSetting(tenantId: string, key: string, value: unknown):
 const HARNESS_MODULE_OVERRIDES = new Map<string, Map<string, string | null>>();
 const HARNESS_SETTING_OVERRIDES = new Map<string, Map<string, unknown>>();
 
+/**
+ * The statuses that resolve ENABLED — an ALLOW-list, mirroring `snapshotQuery`'s
+ * `status IN ('active','trial')` rather than restating it as a deny-list.
+ *
+ * The first mirror asked "is it null or 'disabled'?" and treated everything else as on. That is not the
+ * same predicate: `setModule(t, code, 'suspended')` — or any status a later migration adds to the
+ * `tenant_module.status` CHECK — read ON through `adminCtx` and OFF through a real session. A fixture
+ * used by ~247 files answering a different question than the application is the exact defect this slice
+ * exists to remove, reintroduced one level down; it was latent only because the suite happens to use
+ * just 'active' / 'trial' / 'disabled' / null today. `test/entitlement-resolver.test.ts` now asserts the
+ * two agree over a status matrix rather than trusting this comment.
+ */
+const MODULE_STATUS_ENABLED: ReadonlySet<string> = new Set(['active', 'trial']);
+
 /** Cleared by resetDb, so overrides can never leak between test files. */
 export function clearHarnessEntitlementOverrides(): void {
   HARNESS_MODULE_OVERRIDES.clear();
@@ -383,8 +415,8 @@ function harnessSnapshot(tenantId: string): EntitlementSnapshot {
     enabledModules: (() => {
       const set = new Set(legacyEnabledModulesIn(process.env));
       for (const [code, status] of HARNESS_MODULE_OVERRIDES.get(tenantId) ?? []) {
-        if (status === null || status === 'disabled') set.delete(code);
-        else set.add(code);
+        if (status !== null && MODULE_STATUS_ENABLED.has(status)) set.add(code);
+        else set.delete(code);
       }
       return [...set];
     })(),

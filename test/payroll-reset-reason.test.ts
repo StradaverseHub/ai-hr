@@ -52,13 +52,15 @@ const nextIc = () => `9204040${String(10000 + icSeq++).slice(-5)}`;
 let base: Base;
 /**
  * ADR-0077 slice 3 — the reset gate is a per-tenant SETTING row (`payroll.reset_enabled`), not
- * PAYROLL_RESET_ENABLED. It therefore cannot be driven through `adminCtx`: that context is
- * `entitlementsExempt: 'harness'`, and an exempt context reads EVERY setting as its catalog default
- * (`false` here), so a `setSetting` fixture behind it is silently ignored and the reset would refuse.
- * Every call in this file goes through a REAL snapshot (`entitledCtx`), resolved in beforeEach AFTER
- * the grant is written — which is also what keeps the rest of the run on the same code path as before:
- * seedBase seeds no `multi_cycle_payroll` / `typed_pay_components` row under the suite env, exactly as
- * test/env.ts deleted those flags, whereas the exempt context would have answered TRUE for both.
+ * PAYROLL_RESET_ENABLED. It therefore cannot be driven through `adminCtx`: that context carries a
+ * SYNTHETIC snapshot whose `settings` map is `legacyEnabledSettingsIn(process.env)`, which test/env.ts
+ * makes EMPTY — so every setting reads its catalog default (`false` here) and a `setSetting` fixture is
+ * only visible to a context built after it. Every call in this file goes through a REAL snapshot
+ * (`entitledCtx`), resolved in beforeEach AFTER the grant is written, which reads the tenant's ROWS and
+ * needs no mirror. It also keeps the rest of the run on the same code path as before: seedBase seeds no
+ * `multi_cycle_payroll` / `typed_pay_components` row under the suite env, exactly as test/env.ts
+ * deleted those flags. (Until slice 3 `adminCtx` was `entitlementsExempt: 'harness'` and would have
+ * answered TRUE for both modules — the hazard this file was converted against.)
  */
 let ctx: SessionContext;
 

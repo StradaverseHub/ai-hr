@@ -49,11 +49,13 @@ import vi from '../messages/vi.json';
  * being well-formed: `generatePayslips` asks `isModuleEnabled(ctx, 'typed_pay_components')` and a context
  * with neither a snapshot nor an exemption marker raises EntitlementsUnresolvedError.
  *
- * Resolved from the tenant's rows (not marked `entitlementsExempt`) ON PURPOSE. The exempt marker answers
- * TRUE for every catalogued module, which would silently switch this payroll run from the legacy earnings
- * path to the typed-pay-components one — a different code path from the one the RLS assertions below were
- * written against. seedBase seeds no `typed_pay_components` row under the suite's env, so a real snapshot
- * reproduces exactly the behaviour these tests had when the gate was an (unset) env var.
+ * Resolved from the tenant's rows (not marked `entitlementsExempt`) ON PURPOSE. An exemption cannot
+ * answer a BILLABLE module question honestly: before slice 3 the marker answered TRUE for every
+ * catalogued module, which would silently switch this payroll run from the legacy earnings path to the
+ * typed-pay-components one — a different code path from the one the RLS assertions below were written
+ * against — and as of slice 3 it THROWS EntitlementsExemptForBillableError instead. seedBase seeds no
+ * `typed_pay_components` row under the suite's env, so a real snapshot reproduces exactly the behaviour
+ * these tests had when the gate was an (unset) env var.
  *
  * Resolved as the owner, matching `entitledCtx` in the harness: what it fixtures is the snapshot, not the
  * policies that guard the entitlement tables.

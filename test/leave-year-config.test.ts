@@ -459,7 +459,7 @@ describe('deleteLeaveYear + leaveYearsWithRecords (dcd8e32f)', () => {
     const a = adminCtx(b);
     const { id } = await upsertLeaveYearConfig(a, { year: 2034 });
     const saved = process.env.AUDIT_HASH_CHAIN_ENABLED;
-    process.env.AUDIT_HASH_CHAIN_ENABLED = '1';
+    process.env.AUDIT_HASH_CHAIN_ENABLED = 'true';
     try {
       await deleteLeaveYear(a, { year: 2034, reasons: ['duplicate'] });
     } finally {

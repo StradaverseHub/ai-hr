@@ -234,6 +234,54 @@ HR Admin / Manager / Employee, the 文A button for language, and the **?** tour.
 Re-sync the code (step 1) and re-run `./deploy/deploy.sh` — it rebuilds, applies any new migrations,
 keeps the data, and restarts the service. Reset the demo with `--reseed`.
 
+### ONE-SHOT: entitlement parity, at the ADR-0077 slice-3 deploy only
+
+Slice 3 turns eight `*_ENABLED` env flags into per-tenant entitlement rows. Migration 0313 already
+backfilled those rows for every tenant that existed **when it ran** — but a migration runs once, and
+any tenant provisioned through the operator console **after** that has been running
+`notifications`, `multi_cycle_payroll`, `typed_pay_components` and the three payroll settings on the
+strength of `.env.production` alone, with no row to inherit. Those six would switch off silently at the
+flip; `typed_pay_components` changes payroll numbers when it does.
+
+Run this **after `migrate`, before restarting the service**, in the same window. It is a **dry run by
+default** — it prints a per-tenant plan and writes nothing until you pass `--apply`:
+
+```bash
+cd /opt/ai-hr
+/opt/node20/bin/node --env-file=.env.production --import tsx scripts/reconcile-entitlement-parity.ts
+# read the plan against your customer list, then:
+/opt/node20/bin/node --env-file=.env.production --import tsx scripts/reconcile-entitlement-parity.ts --apply
+```
+
+Read the plan properly rather than skimming it. The script grants only what `.env.production` actually
+has on and never revokes, but a grant is **permanent** and it cannot tell "this tenant predates the
+row" from "the operator deliberately left this module unticked" — before slice 3 an untick had no
+effect, because nothing read the row, so both look identical in the data. The plan lists every tenant
+with its creation date; anything you do not want granted, resolve by inserting a `disabled` row for
+that tenant and code first (the script skips any tenant that already has a row at any grain, including
+a company-scoped one). Safe to re-run. It is **not** a cron entry — delete the script once slice 7
+ships the plan-management plane.
+
+**The audit hash chain is checked automatically and blocks the deploy.** `AUDIT_HASH_CHAIN_ENABLED`
+used to be read with a truthiness test, so the literal `AUDIT_HASH_CHAIN_ENABLED=false` that
+`.env.example` shipped **armed** the ADR-0030 hash chain. It is now `=== 'true'`, which stops the chain
+on any box that copied the template — and stopping it is **not** something the verifier can report:
+`verifyTenantChain()` only inspects rows that carry chain columns, so events written while the gate is
+off are absent from the chain rather than a break in it, and re-arming later links contiguously across
+the hole. A green "chain intact" over an unverifiable window is the failure mode.
+
+So `deploy.sh` runs `scripts/check-audit-chain-gate.ts` after `migrate` and before the restart. It
+compares the env value against what the database already holds and **exits non-zero** — halting the
+deploy — when the database has a chain this env would not keep. To resolve it, either:
+
+- set `AUDIT_HASH_CHAIN_ENABLED=true` in `.env.production` (keeps doing what the box does today), or
+- leave the gate off and add `AUDIT_CHAIN_STOP_ACKNOWLEDGED=true`, which records the stop as a
+  decision. The admin **Data Privacy & Audit Integrity** page then reports the unchained event count
+  alongside the verdict, so the window is visible rather than silent.
+
+There is no way back afterwards: ADR-0030 §3's historical backfill, the only thing that could chain the
+window retroactively, is not built.
+
 ## Optional: HTTPS / cleaner URL
 
 No domain is required to run, but to remove the plain-HTTP caveat you can either:

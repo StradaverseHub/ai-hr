@@ -31,10 +31,13 @@
  * PAYROLL_RESET_ENABLED for (i)) are per-tenant entitlement rows now, so the writes went to nothing.
  * Replacing them is not just a helper swap, because of WHICH CONTEXT reads them:
  *
- *   • `adminCtx` carries `entitlementsExempt: 'harness'`. An exempt context answers TRUE for every
- *     catalogued MODULE and reads every SETTING as its catalog default. So a `setModule` fixture behind
- *     it is silently ignored, and `payroll.reset_enabled` (catalog default false) can never be opened.
- *   • Worse for THIS file's arithmetic: exempt also turns `typed_pay_components` ON, which moves the
+ *   • `adminCtx` carries a SYNTHETIC snapshot derived from `legacyEnabledModulesIn(process.env)` /
+ *     `legacyEnabledSettingsIn(process.env)` — the four ungated modules and NO settings under the
+ *     suite's env — so `payroll.reset_enabled` reads its catalog default (false) and a `setModule`
+ *     fixture reaches it only through the harness's in-memory mirror, never from the row.
+ *   • Until slice 3 it was `entitlementsExempt: 'harness'`, and an exempt context answered TRUE for
+ *     every catalogued MODULE. That was worse for THIS file's arithmetic: it turned
+ *     `typed_pay_components` ON, which moves the
  *     earnings source from compensation+payroll_input to the pay-component tables. Nothing here seeds a
  *     component row, so `setCompensation`'s monthlyAllowance would vanish from the HRDF base and every
  *     signed-off figure below (45.00 on 4000+500, 16.00 on 3000+200, the 90.00 batch total) would

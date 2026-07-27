@@ -38,6 +38,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {
+  adminCtx,
   closeAll,
   entitledCtx,
   migrateTestDb,
@@ -103,13 +104,27 @@ describe('slice 2 — isModuleEnabled', () => {
   });
 
   it('reflects the seeded default set — enabled where a row exists, disabled where none does', async () => {
+    // `notifications` USED TO BE IN THE ON LIST, AND THAT WAS A REAL DEFECT of exactly the shape this
+    // slice keeps finding. seedBase seeds `legacyEnabledModulesIn(process.env)`, and `notifications` is
+    // gated on NOTIFICATIONS_ENABLED — an env var a developer's untracked `.env.local` commonly sets and
+    // CI never does. So this assertion passed on the machine slice 3 was written on and would have FAILED
+    // in CI, for a reason nothing in the test stated. (test/env.ts deleted only five of the nine tracked
+    // gates; it now deletes all nine, and test/module-catalog-drift.test.ts asserts the resulting
+    // baseline, so the environment can no longer decide what this file means.)
+    //
+    // The ON list is now the four modules NO env var gates anywhere (F20) — the ones every tenant has by
+    // construction — and the OFF list is everything the suite's env leaves without a row.
     const ctx = await ctxFor(base.tenantId);
-    for (const on of ['payroll', 'attendance', 'claims', 'performance', 'notifications']) {
+    for (const on of ['payroll', 'attendance', 'claims', 'performance']) {
       expect(isModuleEnabled(ctx, on), `${on} should be enabled`).toBe(true);
     }
-    for (const off of ['toil', 'multi_cycle_payroll', 'typed_pay_components']) {
+    for (const off of ['toil', 'multi_cycle_payroll', 'typed_pay_components', 'notifications']) {
       expect(isModuleEnabled(ctx, off), `${off} should be disabled (no row)`).toBe(false);
     }
+    // …and the ON half is decided by a ROW, not by a default: granting one of the OFF codes flips it.
+    // Without this the test could pass against a resolver that answered from the catalog.
+    await setModule(base.tenantId, 'notifications', 'active');
+    expect(isModuleEnabled(await ctxFor(base.tenantId), 'notifications')).toBe(true);
   });
 
   it('CORE modules are true without any row — a zero-row tenant keeps Leave and ESS', async () => {
@@ -155,6 +170,40 @@ describe('slice 2 — isModuleEnabled', () => {
           WHERE tenant_id = ${base.tenantId} AND module_code = 'payroll'`,
     );
     expect(isModuleEnabled(await ctxFor(base.tenantId), 'payroll')).toBe(true);
+  });
+
+  it('the harness MIRROR answers exactly what the resolver answers, over a status × expiry matrix', async () => {
+    // WHY THIS IS HERE AND NOT IN A HARNESS TEST. `adminCtx` is synchronous (≈247 files call it inline),
+    // so it cannot query — it carries a synthetic snapshot that RESTATES the resolver's predicate in
+    // TypeScript. A restated predicate is a second implementation, and the first one had already
+    // drifted: it asked "is the status null or 'disabled'?" and treated everything else as ENABLED,
+    // while the resolver asks `status IN ('active','trial') AND (expires_at IS NULL OR expires_at >
+    // now())`. So a 'suspended' or expired grant read ON through the fixture and OFF through a real
+    // session — a fixture answering a different question than the application, which is the exact
+    // defect ADR-0077 slice 3 exists to remove, reintroduced inside the thing 247 files trust.
+    //
+    // It was LATENT, not live, because the suite only ever writes 'active'/'trial'/'disabled'/null. A
+    // comment saying "keep these in step" would not have caught it; this compares the two.
+    const cases: { status: 'active' | 'trial' | 'disabled' | null; expiresAt: Date | null; label: string }[] = [
+      { status: 'active', expiresAt: null, label: 'active, no expiry' },
+      { status: 'trial', expiresAt: null, label: 'trial, no expiry' },
+      { status: 'disabled', expiresAt: null, label: 'disabled' },
+      { status: null, expiresAt: null, label: 'no row at all' },
+      { status: 'active', expiresAt: new Date(Date.now() + 30 * 86_400_000), label: 'active, expires in 30d' },
+      { status: 'active', expiresAt: new Date(Date.now() - 86_400_000), label: 'active but EXPIRED' },
+      { status: 'trial', expiresAt: new Date(Date.now() - 3_600_000), label: 'trial but EXPIRED' },
+    ];
+    for (const { status, expiresAt, label } of cases) {
+      await setModule(base.tenantId, 'notifications', status, null, expiresAt);
+      const real = isModuleEnabled(await ctxFor(base.tenantId), 'notifications');
+      const mirrored = isModuleEnabled(adminCtx(base), 'notifications');
+      expect(mirrored, `adminCtx and the resolver disagree for '${label}'`).toBe(real);
+    }
+    // …and the matrix must actually exercise both answers, or an always-false mirror would pass it.
+    await setModule(base.tenantId, 'notifications', 'active');
+    expect(isModuleEnabled(adminCtx(base), 'notifications')).toBe(true);
+    await setModule(base.tenantId, 'notifications', 'disabled');
+    expect(isModuleEnabled(adminCtx(base), 'notifications')).toBe(false);
   });
 
   it('a lapsed DEPENDENCY disables its dependents', async () => {
@@ -507,7 +556,9 @@ describe('slice 2 — isModuleEnabled', () => {
     expect(() => isModuleEnabled(forged, 'leave')).toThrow(/Unrecognised entitlementsExempt marker/);
     delete process.env.MODULE_KILL;
     // Prototype keys must not satisfy a hasOwnProperty-based allow-list either.
-    for (const key of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'PROVISIONING']) {
+    // 'harness' is in this list on purpose: it WAS a valid marker until slice 3 deleted the entry, and
+    // a retired marker that stays in the vocabulary is a bootstrap exemption anyone can still forge.
+    for (const key of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'PROVISIONING', 'harness']) {
       const proto = { tenantId: base.tenantId, entitlementsExempt: key } as unknown as EntitledContext;
       expect(() => isModuleEnabled(proto, 'leave'), `'${key}' must not be a valid marker`).toThrow(
         /Unrecognised entitlementsExempt marker/,
@@ -650,8 +701,11 @@ describe('slice 2 — isModuleEnabled', () => {
     // The file's header used to claim a drift test pinned this list. It did not exist, so the
     // "reviewable rather than ambient" property the design rests on was documentation only. Each key
     // must also carry a reason: an exemption without a stated justification is the thing this prevents.
+    // `harness` was DELETED in slice 3: adminCtx was its only consumer and now carries a real
+    // snapshot. Removing the key (rather than leaving it as vocabulary with no owner) is what stops a
+    // hand-built context forging `entitlementsExempt: 'harness'` and being treated as a bootstrap path.
     expect(Object.keys(ENTITLEMENTS_EXEMPT_REASONS).sort()).toEqual(
-      ['harness', 'platform', 'provisioning', 'seeding', 'sweeps'],
+      ['platform', 'provisioning', 'seeding', 'sweeps'],
     );
     for (const [key, entry] of Object.entries(ENTITLEMENTS_EXEMPT_REASONS)) {
       expect(entry.why.length, `exemption '${key}' needs a real reason`).toBeGreaterThan(30);
@@ -668,10 +722,19 @@ describe('slice 2 — isModuleEnabled', () => {
     //
     // This reads each named file off disk and requires the literal marker. It fails if a sweep loses
     // its marker, if a new exemption is declared without wiring, or if a file is renamed.
+    //
+    // COMMENTS ARE STRIPPED FIRST, and round 1 of the slice-3 review is why. Slice 3 removed the marker
+    // from test/harness.ts's `adminCtx` and left a docblock headed "WHY THIS CARRIES A REAL SNAPSHOT AND
+    // NOT `entitlementsExempt: 'harness'`" — which the raw-text version of this assertion matched. The
+    // guard written to stop an exemption naming a call site that does not carry it was passing on prose
+    // saying the call site does not carry it, and would have excused db/provision.ts or db/seed.ts
+    // losing their markers the same way. Same `stripComments` shape as test/module-catalog-drift.ts,
+    // which had already been hardened against exactly this in the sibling ratchet.
+    const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     let wired = 0;
     for (const [key, entry] of Object.entries(ENTITLEMENTS_EXEMPT_REASONS)) {
       for (const owner_ of entry.owners) {
-        const src = readFileSync(new URL(`../${owner_}`, import.meta.url), 'utf8');
+        const src = stripComments(readFileSync(new URL(`../${owner_}`, import.meta.url), 'utf8'));
         expect(src, `${owner_} is declared as an owner of exemption '${key}' but does not carry the marker`)
           .toContain(`entitlementsExempt: '${key}'`);
         wired += 1;
@@ -686,7 +749,7 @@ describe('slice 2 — isModuleEnabled', () => {
     // tell shrinking-because-fixed from gutting; naming the categories can, and it still fails loudly
     // if provisioning or the seeder ever quietly loses its marker.
     expect(wired, 'the loop must have asserted something').toBeGreaterThan(0);
-    for (const key of ['provisioning', 'seeding', 'sweeps', 'harness'] as const) {
+    for (const key of ['provisioning', 'seeding', 'sweeps'] as const) {
       expect(
         ENTITLEMENTS_EXEMPT_REASONS[key].owners.length,
         `exemption '${key}' has no wired owner — bootstrap paths cannot resolve entitlements and must keep one`,
@@ -727,12 +790,16 @@ describe('slice 2 — isModuleEnabled', () => {
   });
 
   it('the harness can build a context that makes a gate CLOSE — enforcement is testable at all', async () => {
-    // ROUND 3: `adminCtx` is entitlementsExempt: 'harness', so it answers TRUE for every catalogued
-    // module and reads every setting as its catalog default. That is the right trade for the 247 files
-    // that test the feature BEHIND a gate — but it also means those files structurally cannot show a
-    // gate REFUSING, and an enforcement primitive that ships with 4,800 green tests and no coverage of
-    // enforcement has not been tested. `entitledCtx` is the other half, and slice 3's acceptance
-    // criterion is that every gate it installs has at least one test driven through it.
+    // ROUND 3 wrote this when `adminCtx` was entitlementsExempt: 'harness' and therefore answered TRUE
+    // for every catalogued module — which meant the 247 files that test a feature BEHIND a gate
+    // structurally could not show that gate REFUSING, and an enforcement primitive shipping with 4,800
+    // green tests and no coverage of enforcement has not been tested.
+    //
+    // Slice 3 removed that marker: `adminCtx` now carries a SYNTHETIC snapshot derived from
+    // `legacyEnabledModulesIn(process.env)`, so a gate can close through it too. `entitledCtx` remains
+    // the stricter half — it resolves the tenant's REAL rows rather than a mirror of the writes a test
+    // made — and slice 3's acceptance criterion is unchanged: every gate it installs has at least one
+    // test driven through a resolved snapshot.
     const gateable = await entitledCtx(base);
     expect(gateable.entitlementsExempt, 'it must NOT be exempt, or it proves nothing').toBeUndefined();
     expect(gateable.entitlements, 'and it must carry a real, resolved snapshot').toBeDefined();

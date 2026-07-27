@@ -30,7 +30,11 @@ import {
   MODULE_CATALOG,
   SELLABLE_MODULE_CODES,
   SETTING_CATALOG,
+  defaultProvisionModuleCodesIn,
+  legacyEnabledModulesIn,
+  legacyEnabledSettingsIn,
   missingModuleDependencies,
+  settingsOnInstallFor,
 } from '../packs/catalog';
 
 /**
@@ -59,6 +63,49 @@ function collectSources(dir: string): string[] {
     if (e.isDirectory()) return e.name === 'node_modules' ? [] : collectSources(full);
     return /\.tsx?$/.test(e.name) ? [full] : [];
   });
+}
+
+/**
+ * Directories the env-read guard deliberately does NOT scan. THE EXCLUSION LIST IS THE EXPLICIT ONE,
+ * and inverting it that way round is the fix for a real hole (review r2).
+ *
+ * The guard used to walk a hand-maintained INCLUSION list — app, core, lib, db, packs, scripts,
+ * components — which silently omitted `localization/` and `i18n/`. Both are application code, and
+ * localization/ already reaches for `process.env` in three places, so `process.env.TOIL_ENABLED ===
+ * 'true'` added to a country pack would have been invisible to the guard while applying to every tenant
+ * at once: precisely the failure the guard exists to catch. A missing directory cannot be detected by
+ * the walker's own size tripwire either — 10k characters of app/ swamps it.
+ *
+ * So the scan now enumerates every top-level directory and subtracts these. A new top-level directory
+ * of application code is covered the day it appears, and omitting one becomes a deliberate edit here.
+ *   - test        — a gate only tests read is exactly the stale entry this is meant to catch, and
+ *                   test/env.ts legitimately deletes the vars.
+ *   - node_modules, .next, .git — not ours / build output.
+ *   - public, content, messages, docs, deploy — no .ts sources; listed so their absence is a decision.
+ */
+const UNSCANNED_DIRS: ReadonlySet<string> = new Set([
+  'test',
+  'node_modules',
+  '.next',
+  '.git',
+  'public',
+  'content',
+  'messages',
+  'docs',
+  'deploy',
+]);
+
+/** Every top-level directory that is not explicitly excluded, plus root-level .ts/.tsx files. */
+function applicationSourceFiles(): string[] {
+  const root = path.resolve(__dirname, '..');
+  const entries = fs.readdirSync(root, { withFileTypes: true });
+  const dirs = entries
+    .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !UNSCANNED_DIRS.has(e.name))
+    .map((e) => path.join(root, e.name));
+  // middleware.ts and friends live at the root and run on every request; the original list named
+  // middleware.ts by hand and would have missed a sibling.
+  const rootFiles = entries.filter((e) => e.isFile() && /\.tsx?$/.test(e.name)).map((e) => path.join(root, e.name));
+  return [...dirs.flatMap(collectSources), ...rootFiles];
 }
 
 /**
@@ -382,13 +429,53 @@ describe('module catalog — the pack correspondence, both directions', () => {
     // source for `process.env.<NAME>` is the independent check: the name has to exist where the feature
     // is actually gated, not merely in this catalog.
     //
-    // Deliberately scans app/core/lib/db/packs/scripts and NOT test/: a gate that only tests read is
-    // exactly the stale entry this is meant to catch.
-    const sources = ['app', 'core', 'lib', 'db', 'packs', 'scripts', 'components']
-      .flatMap((dir) => collectSources(path.resolve(__dirname, '..', dir)))
-      .map((f) => fs.readFileSync(f, 'utf8'))
-      .join('\n');
+    // Scans every top-level directory EXCEPT the explicit `UNSCANNED_DIRS` — notably not test/, since a
+    // gate that only tests read is exactly the stale entry this is meant to catch. The inclusion list
+    // this replaced omitted localization/ and i18n/, which are application code that already reads
+    // process.env; see UNSCANNED_DIRS for why the exclusion list is the explicit one.
+    //
+    // COMMENTS ARE STRIPPED and root-level .ts files are included. Both were holes: this file's own
+    // `stripComments` was applied to the worklist scan below but not here, so (a) the deferred half of
+    // this check could be satisfied by PROSE mentioning `process.env.AUDIT_HASH_CHAIN_ENABLED`, keeping
+    // a stale carve-out — and therefore a permanent hole in the reintroduction guard — alive after the
+    // gate was migrated, and (b) the reintroduction half could fail on a comment, which is a false
+    // positive that teaches people to weaken the guard. middleware.ts runs on every request and sat
+    // outside the walk entirely.
+    const files = applicationSourceFiles();
+    const sources = stripComments(files.map((f) => fs.readFileSync(f, 'utf8')).join('\n'));
     expect(sources.length, 'source scan found nothing — the walker has drifted').toBeGreaterThan(10_000);
+    // Name-check a file from each corner of the walk. The size tripwire above cannot see a MISSING
+    // DIRECTORY (app/ alone swamps 10k chars), which is how localization/ stayed unscanned; these pin
+    // the specific directories that were absent plus the root file that was hand-listed.
+    const rel = files.map((f) => path.relative(path.resolve(__dirname, '..'), f));
+    for (const expected of ['middleware.ts', 'localization/statutory-pack/trust.ts', 'i18n/request.ts']) {
+      expect(
+        rel.includes(expected),
+        `${expected} must be inside the env-read scan — if it moved, keep the directory in the walk`,
+      ).toBe(true);
+    }
+    expect(rel.some((f) => f.startsWith('test/')), 'test/ must stay OUT of the scan').toBe(false);
+    /**
+     * Every way application code can reach `process.env.<GATE>`.
+     *
+     * The original guard matched only the dotted member form, and the access FORM is the easier bypass
+     * to miss — harder to see than the truncated-name case its own comment argues about.
+     * `process.env['TOIL_ENABLED']` and `const { TOIL_ENABLED } = process.env` both reintroduce a
+     * deployment-level gate that outranks what the customer bought, and both sailed through.
+     *
+     * A fully general answer needs the TypeScript compiler API (an aliased `const env = process.env`
+     * defeats any regex). This covers the three forms anyone actually writes; the aliased case is
+     * deliberately left, because a guard that is honest about its edges beats one that claims more than
+     * it checks.
+     */
+    const envReadRe = (gate: string) =>
+      new RegExp(
+        // process.env.GATE   |   process.env['GATE'] / process.env["GATE"]
+        `process\\s*\\.\\s*env\\s*(?:\\.\\s*${gate}\\b|\\[\\s*['"\`]${gate}['"\`]\\s*\\])` +
+          // const { …, GATE, … } = process.env
+          `|\\{[^}]*\\b${gate}\\b[^}]*\\}\\s*=\\s*process\\s*\\.\\s*env\\b`,
+        's',
+      );
     const gates = [
       ...Object.values(LEGACY_MODULE_ENV_GATES).filter((g): g is string => g !== null),
       ...Object.values(LEGACY_SETTING_ENV_GATES),
@@ -410,11 +497,11 @@ describe('module catalog — the pack correspondence, both directions', () => {
       // see — 'NOTIFICATIONS_ENABLE' is a substring of every `process.env.NOTIFICATIONS_ENABLED`, so
       // `includes` accepted it (verified by mutating the map and watching this stay green).
       expect(
-        new RegExp(`process\\.env\\.${gate}\\b`).test(sources),
-        `process.env.${gate} is read by application code again. That gate is a per-tenant entitlement ` +
-          'as of ADR-0077 slice 3 — an env read bypasses the entitlement system, applies to every ' +
-          'tenant at once, and overrides what the customer actually bought. Use isModuleEnabled() or ' +
-          'settingEnabled() with the session context instead.',
+        envReadRe(gate).test(sources),
+        `process.env.${gate} is read by application code again (dotted, bracketed or destructured). ` +
+          'That gate is a per-tenant entitlement as of ADR-0077 slice 3 — an env read bypasses the ' +
+          'entitlement system, applies to every tenant at once, and overrides what the customer ' +
+          'actually bought. Use isModuleEnabled() or settingEnabled() with the session context instead.',
       ).toBe(false);
     }
 
@@ -426,10 +513,24 @@ describe('module catalog — the pack correspondence, both directions', () => {
     for (const [key, owningSlice] of Object.entries(DEFERRED_ENV_GATES)) {
       const gate = LEGACY_SETTING_ENV_GATES[key];
       expect(
-        new RegExp(`process\\.env\\.${gate}\\b`).test(sources),
+        envReadRe(gate).test(sources),
         `process.env.${gate} is listed in DEFERRED_ENV_GATES ("${owningSlice}") but no application ` +
           'code reads it any more. If it was migrated to an entitlement, delete its DEFERRED_ENV_GATES ' +
           'entry in the same commit — a stale entry is a permanent hole in the reintroduction guard above.',
+      ).toBe(true);
+      // …AND IT MUST BE READ AS `=== 'true'`. Presence of the name is not enough: db/client.ts read
+      // AUDIT_HASH_CHAIN_ENABLED with a bare truthiness test, so `.env.example`'s own `=false` line
+      // ARMED the ADR-0030 chain — the string 'false' is truthy. The parity value slice 3 records for
+      // this gate (OFF, in packs/catalog.ts and 0313) was therefore wrong for every deployment that
+      // copied the template, and slice 8 would have disarmed a chain it believed had never run. The
+      // FORM is the thing that was wrong, so the form is what this asserts.
+      expect(
+        new RegExp(`process\\s*\\.\\s*env\\s*(?:\\.\\s*${gate}\\b|\\[\\s*['"\`]${gate}['"\`]\\s*\\])\\s*===\\s*'true'`).test(
+          sources,
+        ),
+        `process.env.${gate} must be compared with === 'true'. A truthiness test makes the literal ` +
+          "string 'false' enable the feature, which is how this gate shipped armed on every deployment " +
+          'that copied .env.example while every document recorded it as off.',
       ).toBe(true);
     }
   });
@@ -449,9 +550,132 @@ describe('module catalog — the pack correspondence, both directions', () => {
     // …and the form has to USE it. Read-the-file, the same ratchet this suite applies to the migration:
     // a constant nothing imports is a comment.
     const page = repoFile('app/operator/page.tsx');
-    expect(page, 'the operator form must default-tick from the catalog constant').toContain(
-      'DEFAULT_PROVISION_MODULE_CODES.includes(m.code)',
+    expect(page, 'the operator form must default-tick from the catalog helper').toContain(
+      'defaultProvisionModuleCodesIn(process.env).includes(m.code)',
     );
+
+    // THE ENV-GATED HALF, which the constant alone did not cover. The four null-gate modules are only
+    // the modules that are on for everyone REGARDLESS of env; the live box additionally runs
+    // NOTIFICATIONS_ENABLED / MULTI_CYCLE_PAYROLL_ENABLED / TYPED_PAY_COMPONENTS_ENABLED via
+    // deploy/enable-demo-flags.sh. A tenant provisioned from an untouched form since slice 1 has been
+    // running those three too (no row was read yet) and would lose them at the flip — with
+    // `typed_pay_components` silently changing payroll numbers. So the default is the UNION of the
+    // ungated set and what this process's env actually has on, and it is pinned against the deploy
+    // script's own env rather than against the test process's (which test/env.ts empties on purpose).
+    const deployEnv = {
+      NOTIFICATIONS_ENABLED: 'true',
+      MULTI_CYCLE_PAYROLL_ENABLED: 'true',
+      TYPED_PAY_COMPONENTS_ENABLED: 'true',
+    };
+    expect(
+      [...defaultProvisionModuleCodesIn(deployEnv)].sort(),
+      'the form default must cover every module this deployment runs, or the flip is a silent downgrade',
+    ).toEqual(['attendance', 'claims', 'multi_cycle_payroll', 'notifications', 'payroll', 'performance', 'typed_pay_components']);
+    // The deploy script is the source of that env — read it, so a flag added there without touching the
+    // parity story fails here rather than on deploy day.
+    const flags = repoFile('deploy/enable-demo-flags.sh');
+    for (const [gate] of Object.entries(deployEnv)) {
+      expect(flags, `deploy/enable-demo-flags.sh no longer sets ${gate} — re-derive the parity default`).toContain(
+        `set_flag ${gate} true`,
+      );
+    }
+    // With no env at all it must degrade to exactly the ungated set (a CI box, or a fresh deployment).
+    expect([...defaultProvisionModuleCodesIn({})].sort()).toEqual([...DEFAULT_PROVISION_MODULE_CODES].sort());
+    expect(missingModuleDependencies(defaultProvisionModuleCodesIn(deployEnv))).toEqual([]);
+  });
+
+  it('provisionTenant seeds settings from defaultOnInstall — NEVER from what this box is booted with', () => {
+    // INVERTED (review r2). The first version of this test asserted the opposite and was the same
+    // wrong-requirement shape as D5: it pinned that provisionTenant writes `legacyEnabledSettingsIn(
+    // process.env)`, i.e. that every NEW customer arrives with whatever the deployment's env has on.
+    // On the live box that is PAYROLL_RESET_ENABLED and PAYROLL_UNLOCK_ENABLED, so every customer
+    // created from then on could revert a processed payroll run and unlock a closed one on day one.
+    //
+    // packs/catalog.ts records the opposite decision explicitly — `defaultOnInstall: false` on the risk
+    // switches, "a purchased module must never arrive with an escape hatch already open, even though
+    // the demo deployment has all three env flags ON today" — and confines the parity argument to an
+    // ALREADY-PROVISIONED tenant. Parity is about tenants that exist; `defaultOnInstall` is about
+    // tenants being created. The gap for tenants created between slice 1 and slice 3 belongs to
+    // scripts/reconcile-entitlement-parity.ts, which is one-shot and sign-off gated.
+    //
+    // An over-grant here is also irreversible through the product: both keys are scope='platform', and
+    // 0313's tenant_setting_write policy requires scope='tenant', so ai_hr_app can never delete them.
+    // COMMENTS STRIPPED, the same lesson this file already learned twice in this slice: the negative
+    // assertions below fail on PROSE otherwise, and the code they police is correct precisely because
+    // someone wrote a paragraph naming the mechanism it must not use. The positive ones are stripped
+    // too, so a docblock quoting the right call can never satisfy them either.
+    const src = stripComments(repoFile('db/provision.ts'));
+    expect(src, 'provisionTenant must seed the install defaults').toContain('settingsOnInstallFor(picked)');
+    expect(src, '…into tenant_setting').toContain('.insert(tenantSetting)');
+    expect(src, "…with platform provenance, matching 0313's backfill").toContain("source: 'platform'");
+    expect(
+      src,
+      'provisioning must NOT seed the env parity set — that is the reconcile script\'s job, for tenants that already exist',
+    ).not.toContain('legacyEnabledSettingsIn');
+    expect(src, 'nor the raw constant').not.toContain('LEGACY_ENABLED_SETTINGS');
+
+    // …and the helper itself must never hand a platform-scoped switch out ON at install, whatever the
+    // module set. Read-the-file pins the call; this pins the VALUE, which is the thing that hurts.
+    for (const codes of [SELLABLE_MODULE_CODES, ['payroll'], ['payroll', 'attendance', 'notifications']]) {
+      for (const { key, value } of settingsOnInstallFor(codes)) {
+        const def = SETTING_CATALOG.find((s) => s.key === key);
+        expect(def, `settingsOnInstallFor produced an uncatalogued key '${key}'`).toBeDefined();
+        expect(value, `install default for '${key}' must equal its catalog defaultOnInstall`).toBe(def!.defaultOnInstall);
+        if (def!.scope === 'platform') {
+          expect(value, `platform-scoped '${key}' must never arrive ON at install — ai_hr_app cannot turn it off`).not.toBe(
+            true,
+          );
+        }
+      }
+    }
+    // A module the tenant did NOT buy contributes nothing: `defaultOnInstall` means "when the owning
+    // module is installed", and an installation-wide setting (moduleCode null) is nobody's purchase.
+    expect(settingsOnInstallFor([]).map((s) => s.key)).toEqual([]);
+    expect(settingsOnInstallFor(['payroll']).map((s) => s.key).sort()).toEqual(
+      SETTING_CATALOG.filter((s) => s.moduleCode === 'payroll')
+        .map((s) => s.key)
+        .sort(),
+    );
+  });
+
+  it('the DEPLOY.md parity step names a script the repo actually ships', () => {
+    // deploy/DEPLOY.md is TRACKED and instructs the operator to run
+    // scripts/reconcile-entitlement-parity.ts in the slice-3 maintenance window. That script is the only
+    // remedy for tenants provisioned after 0313 ran — the population that would otherwise lose
+    // notifications, multi_cycle_payroll and typed_pay_components at the flip, with typed_pay_components
+    // silently changing payslip numbers. Review r2 found it UNTRACKED: a git-based deploy would pull the
+    // instruction and not the file, and the step would fail with ENOENT at exactly the wrong moment.
+    // Same read-the-file ratchet this suite already applies to 0313, provision.ts and the operator form.
+    const md = repoFile('deploy/DEPLOY.md');
+    expect(md).toContain('scripts/reconcile-entitlement-parity.ts');
+    expect(
+      fs.existsSync(path.resolve(__dirname, '..', 'scripts/reconcile-entitlement-parity.ts')),
+      'DEPLOY.md tells the operator to run scripts/reconcile-entitlement-parity.ts — it must exist in the repo',
+    ).toBe(true);
+    // DRY RUN BY DEFAULT. Its failure direction is a silent, permanent grant, so the bare invocation
+    // must be the one that cannot cause it and the runbook must not tell anyone otherwise.
+    const script = repoFile('scripts/reconcile-entitlement-parity.ts');
+    expect(script, 'writing must be opt-in via --apply, not the default').toContain("process.argv.includes('--apply')");
+    expect(script, "…and there must be no '--dry-run' opt-out left to imply the inverse").not.toContain("'--dry-run'");
+
+    // The audit-chain preflight is the other tracked-instruction-needs-a-real-file case, and it is
+    // stronger: deploy.sh RUNS it, so an ENOENT there aborts the deploy under `set -e`.
+    expect(
+      fs.existsSync(path.resolve(__dirname, '..', 'scripts/check-audit-chain-gate.ts')),
+      'deploy/deploy.sh runs scripts/check-audit-chain-gate.ts before the restart — it must exist',
+    ).toBe(true);
+    const sh = repoFile('deploy/deploy.sh');
+    expect(sh, 'the chain preflight must run in deploy.sh, not merely be documented').toContain(
+      'scripts/check-audit-chain-gate.ts',
+    );
+    // The INVOCATION, not a mention of the path: a comment naming the script would otherwise satisfy
+    // the ordering check while the deploy never ran it. (deploy.sh is shell, so `stripComments` — which
+    // knows `//` and `/* */` — cannot help here; matching the command line is the equivalent.)
+    const restartAt = sh.indexOf('systemctl restart');
+    const checkAt = sh.indexOf('node --env-file=.env.production --import tsx scripts/check-audit-chain-gate.ts');
+    expect(checkAt, 'deploy.sh must INVOKE the preflight, not merely mention it').toBeGreaterThan(-1);
+    expect(checkAt, 'the preflight must run BEFORE the restart, or it is checking the wrong thing').toBeLessThan(restartAt);
+    expect(sh, 'deploy.sh referenced a template that does not exist in the repo').not.toContain('.env.production.example');
   });
 
   it('an incoherent pick set names the dependencies it is missing', () => {
@@ -561,4 +785,44 @@ describe('the env-gate divergence between seedBase and the suite', () => {
     ).toEqual({ ...SLICE3_ENV_GATE_WORKLIST });
   });
 
+  it("the suite's entitlement BASELINE is empty — asserted, not described", () => {
+    // WHY THIS IS AN ASSERTION AND NOT A COMMENT. test/harness.ts's seedBase derives every test
+    // tenant's `tenant_module` / `tenant_setting` rows — and `adminCtx`'s snapshot — from
+    // `legacyEnabledModulesIn(process.env)` / `legacyEnabledSettingsIn(process.env)`. So the contents of
+    // the ENVIRONMENT decide the entitlement baseline of ~247 files. test/env.ts loads `.env.local`,
+    // which is untracked, and .env.example ships PAYROLL_RESET_ENABLED and PAYROLL_UNLOCK_ENABLED as
+    // active lines — so before slice 3's round-1 review, a developer whose .env.local set
+    // NOTIFICATIONS_ENABLED ran the whole suite with the `notifications` module ON while CI ran it OFF.
+    // The harness docblock stated the opposite ("no test tenant in the suite carries a single
+    // tenant_setting row today") as a FACT about a file nobody can see from here.
+    //
+    // The worklist scan above cannot catch this: it greps test files for env MUTATIONS, and this is
+    // about env PRESENCE at process start. test/env.ts now deletes all nine tracked gates; this pins
+    // the consequence, so adding a tenth gate to the map without adding the delete turns the suite red
+    // here — with a message that says which — instead of somewhere unrelated on one machine only.
+    expect(
+      legacyEnabledModulesIn(process.env).filter((c) => LEGACY_MODULE_ENV_GATES[c] !== null),
+      'a tracked module gate survived test/env.ts — delete it there, or the whole suite silently ' +
+        'runs with a module the baseline does not have',
+    ).toEqual([]);
+    expect(
+      legacyEnabledSettingsIn(process.env),
+      'a tracked setting gate survived test/env.ts — delete it there; every catalogued default is ' +
+        'false and the suite is written against that baseline',
+    ).toEqual([]);
+    // The null-gate modules (payroll/attendance/claims/performance) are NOT env-driven and must stay:
+    // they are what every tenant runs, and dropping them would be a different failure entirely.
+    expect([...legacyEnabledModulesIn(process.env)].sort()).toEqual(
+      LEGACY_ENABLED_MODULE_CODES.filter((c) => LEGACY_MODULE_ENV_GATES[c] === null).sort(),
+    );
+    // …and every tracked gate really is absent, named individually so the failure says which.
+    // DEFERRED gates are excluded: they are still genuinely env-read (DEFERRED_ENV_GATES), and
+    // test/audit-hash-chain.test.ts legitimately sets AUDIT_HASH_CHAIN_ENABLED for its own run.
+    for (const gate of [
+      ...Object.values(LEGACY_MODULE_ENV_GATES).filter((g): g is string => g !== null),
+      ...Object.values(LEGACY_SETTING_ENV_GATES),
+    ].filter((g) => !DEFERRED_GATE_NAMES.has(g))) {
+      expect(process.env[gate], `${gate} must be deleted in test/env.ts`).toBeUndefined();
+    }
+  });
 });

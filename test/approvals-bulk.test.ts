@@ -157,9 +157,10 @@ describe('bulk approval — integration (real decide services + events + authori
     //
     // `entitledCtx` resolves the snapshot from THIS tenant's rows, so TOIL is off by ABSENCE (seedBase seeds
     // only the parity set, and `toil` is not in it) — exactly the state the old `TOIL_ENABLED` env read had in
-    // this file, which never set that flag. Deliberately NOT `entitlementsExempt: 'harness'`: an exempt context
-    // answers true for every catalogued module, which would switch TOIL auto-accrual ON here and change what
-    // these assertions exercise.
+    // this file, which never set that flag. Deliberately a RESOLVED context and not an exempt one: as of
+    // slice 3 an exempt context THROWS EntitlementsExemptForBillableError when asked about a billable
+    // module, so it could not run this approval at all — and before that it answered TRUE, which would
+    // have switched TOIL auto-accrual ON here and changed what these assertions exercise.
     const mgrCtx: SessionContext = {
       ...(await entitledCtx(base, ['manager'])),
       userId: uM,

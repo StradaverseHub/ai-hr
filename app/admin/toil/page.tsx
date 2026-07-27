@@ -27,7 +27,7 @@ export default async function ToilPolicyPage({
   const t = await getTranslations('admin.toilPolicy');
   const { error, processed, converted, lapsed, closed, closedAlready, closedProcessed, closedConverted, closedLapsed, closedCarried } =
     await searchParams;
-  const envOn = isModuleEnabled(s, 'toil');
+  const moduleOn = isModuleEnabled(s, 'toil');
 
   const companies = await listCompanies(s);
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
@@ -35,7 +35,23 @@ export default async function ToilPolicyPage({
   const policies = await listToilPolicies(s, visible.map((c) => c.id));
   const byCompany = new Map(policies.map((p) => [p.companyId, p]));
   // RL Control Engine (0113): the active-vs-expired ledger split across everyone in scope.
-  const summary = envOn ? await replacementLeaveSummary(s, visible.map((c) => c.id)) : null;
+  //
+  // READ UNCONDITIONALLY as of ADR-0077 slice 3. It used to be `moduleOn ? … : null`, which is the UI
+  // half of the defect that ungating `runToilExpiry` / `closeReplacementLeaveYear` (core/toil.ts) was
+  // meant to close: a tenant whose `toil` entitlement lapses (trial end, downgrade, non-payment) still
+  // owes its employees the days they already banked — for a First-Schedule-eligible employee that debt
+  // is STATUTORY and must convert to pay, never lapse — and hiding the ledger meant an admin could not
+  // even SEE the outstanding liability, let alone settle it. Ungating the services alone changed
+  // nothing in production, because this page is their ONLY caller (there is no cron; see
+  // app/admin/actions.ts runToilExpiryAction). The read itself is ungated (core/read.ts) and costs one
+  // query; with no accruals it returns zeros.
+  const summary = await replacementLeaveSummary(s, visible.map((c) => c.id));
+  // Is there an already-incurred obligation still on the books? `activeAccruals` counts accruals with
+  // unspent days remaining, which is exactly what the two sweeps below would settle.
+  const outstanding = summary.activeAccruals > 0;
+  // WHAT THE ENTITLEMENT STILL GOVERNS is NEW accrual (the policy editor above, and the roster's
+  // "bank in lieu" affordance). WHAT IT MUST NOT GOVERN is winding down what was already banked.
+  const showSettlement = moduleOn || outstanding;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -63,15 +79,25 @@ export default async function ToilPolicyPage({
         </div>
       )}
 
-      {!envOn && (
+      {!moduleOn && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-          {t('envGateOff')}
+          {outstanding ? t('moduleOffWindDown', { accruals: summary.activeAccruals }) : t('moduleOff')}
         </div>
       )}
 
+      {/*
+        THE POLICY EDITOR IS GATED; the ledger and the settlement card below are NOT, and the split is
+        the whole point of the wind-down argument (review r2 caught this half missing). What the
+        entitlement governs is NEW accrual — and every field in this form is frozen onto each accrual at
+        accrual time, so a tenant without the module editing it would be tuning a capability it does not
+        have, ready to take effect the day it buys one. What the entitlement must NOT govern is settling
+        days already banked, which is why `showSettlement` keys off `outstanding` as well as `moduleOn`.
+        `setToilPolicy` asserts the same thing server-side; this is so the UI does not offer a control
+        that would be refused.
+      */}
       {visible.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('noCompanies')}</p>
-      ) : (
+      ) : !moduleOn ? null : (
         visible.map((c) => {
           const p = byCompany.get(c.id);
           if (!p) return null;
@@ -164,7 +190,7 @@ export default async function ToilPolicyPage({
         })
       )}
 
-      {envOn && summary && (
+      {showSettlement && (
         <Card className="p-4">
           <h2 className="text-sm font-semibold text-foreground">{t('ledgerTitle')}</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">{t('ledgerHint')}</p>
@@ -180,7 +206,7 @@ export default async function ToilPolicyPage({
         </Card>
       )}
 
-      {envOn && visible.length > 0 && (
+      {showSettlement && visible.length > 0 && (
         <Card className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">

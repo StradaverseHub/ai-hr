@@ -279,6 +279,40 @@ export function legacyEnabledSettingsIn(env: EnvLike): { key: string; value: unk
     .map(([key, value]) => ({ key, value }));
 }
 
+/**
+ * The `tenant_setting` rows a NEWLY provisioned tenant should arrive with, given the modules it bought.
+ *
+ * THE DISTINCTION THIS EXISTS TO KEEP, because slice 3 briefly collapsed it (review r2). There are two
+ * different questions and they have two different answers:
+ *
+ *   - "What does a tenant that ALREADY EXISTS have today?"  → `legacyEnabledSettingsIn(env)`. Parity.
+ *     A tenant that has been running on `.env.production` must not lose a behaviour at the flip. That is
+ *     0313's backfill for tenants that predate it, and `scripts/reconcile-entitlement-parity.ts` for the
+ *     ones created after it ran.
+ *   - "What should a tenant created TOMORROW arrive with?"  → `defaultOnInstall`. Product policy.
+ *
+ * Answering the second question with the first hands every new customer whatever the box happens to be
+ * booted with — and on the live deployment that is `payroll.reset_enabled` and `payroll.unlock_enabled`,
+ * i.e. every new customer arrives able to revert a processed payroll run and unlock a closed one. The
+ * SETTING_CATALOG note above says the opposite in as many words: `defaultOnInstall: false` on the risk
+ * switches is deliberate, "a purchased module must never arrive with an escape hatch already open, even
+ * though the demo deployment has all three env flags ON today", and it confines the parity argument to
+ * an ALREADY-PROVISIONED tenant. Both switches are `scope='platform'`, so 0313's write policy forbids
+ * `ai_hr_app` from ever deleting them — the customer could not close a hatch opened this way, and the
+ * plane that could is slice 7.
+ *
+ * Filtered by the picked modules because that is what `defaultOnInstall` means — "applied when the
+ * owning module is INSTALLED". An installation-wide setting (`moduleCode: null`) is nobody's purchase
+ * and is left to its catalog default.
+ */
+export function settingsOnInstallFor(moduleCodes: readonly string[]): { key: string; value: unknown }[] {
+  const picked = new Set(moduleCodes);
+  return SETTING_CATALOG.filter((s) => s.moduleCode !== null && picked.has(s.moduleCode)).map((s) => ({
+    key: s.key,
+    value: s.defaultOnInstall,
+  }));
+}
+
 /** Core module codes — the set `isModuleEnabled` answers true for without a query (slice 2). */
 export const CORE_MODULE_CODES: readonly string[] = MODULE_CATALOG.filter((m) => m.isCore).map((m) => m.code);
 
@@ -309,6 +343,32 @@ export const SELLABLE_MODULE_CODES: readonly string[] = MODULE_CATALOG.filter((m
 export const DEFAULT_PROVISION_MODULE_CODES: readonly string[] = SELLABLE_MODULE_CODES.filter(
   (code) => LEGACY_MODULE_ENV_GATES[code] === null,
 );
+
+/**
+ * What the operator console pre-ticks ON THIS DEPLOYMENT — the constant above UNIONED with the modules
+ * this process's env actually has switched on.
+ *
+ * THE CONSTANT ABOVE WAS ONLY HALF THE PARITY STORY, and the missing half is the same defect it was
+ * written to fix. `DEFAULT_PROVISION_MODULE_CODES` covers the four modules NO env var gates, on the
+ * reasoning that "every existing customer already runs them". But the live box also runs
+ * NOTIFICATIONS_ENABLED, MULTI_CYCLE_PAYROLL_ENABLED and TYPED_PAY_COMPONENTS_ENABLED (see
+ * deploy/enable-demo-flags.sh), so a customer provisioned from an untouched form since slice 1 has
+ * ALSO been running those three — nothing read a row yet — and loses all three the moment slice 3's
+ * resolver starts reading rows. `typed_pay_components` is the one that hurts: core/payroll.ts switches
+ * the earnings source on it, so that tenant's next payslip run silently changes numbers.
+ *
+ * 0313's backfill cannot cover it — a migration runs once, and these tenants are created afterwards.
+ *
+ * Env-derived rather than listed, for the reason `legacyEnabledModulesIn` states: the deployment set
+ * and the set a given process runs with are different, and pre-ticking a module this box does NOT run
+ * would sell a capability that then resolves inert. Passed the env by the caller so this module still
+ * never touches `process` itself.
+ */
+export function defaultProvisionModuleCodesIn(env: EnvLike): string[] {
+  const set = new Set<string>([...DEFAULT_PROVISION_MODULE_CODES, ...legacyEnabledModulesIn(env)]);
+  // Order by the catalog so the form's ticks are stable and the drift test can compare sorted sets.
+  return SELLABLE_MODULE_CODES.filter((c) => set.has(c));
+}
 
 /**
  * The `dependsOn` codes a pick set fails to satisfy, transitively — empty when the set is coherent.

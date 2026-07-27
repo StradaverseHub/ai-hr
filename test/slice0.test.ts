@@ -4,9 +4,12 @@
  * This file writes no feature-gate env vars and never did; it exercises the LEGACY payroll kernel,
  * which is what `test/env.ts` gives it by deleting TYPED_PAY_COMPONENTS_ENABLED and
  * MULTI_CYCLE_PAYROLL_ENABLED (and by no tracked file setting TOIL_ENABLED). Slice 3 stopped those
- * three from being env reads — `core/payroll.ts` now asks `isModuleEnabled(ctx, …)` — and `adminCtx`
- * is `entitlementsExempt: 'harness'`, which answers TRUE for every catalogued module. So the flip
- * would have switched typed pay components ON for every `generatePayslips` call here.
+ * three from being env reads — `core/payroll.ts` now asks `isModuleEnabled(ctx, …)` — and at the time
+ * this file was converted `adminCtx` was `entitlementsExempt: 'harness'`, which answered TRUE for every
+ * catalogued module. So the flip would have switched typed pay components ON for every
+ * `generatePayslips` call here. (`adminCtx` now derives its snapshot from
+ * `legacyEnabledModulesIn(process.env)` and reads all three OFF, which is why the figures below hold;
+ * the hazard is kept on the record because it is what they are defended against.)
  *
  * That is not a cosmetic difference: with typed components on, `earningsOf` reads the component
  * tables INSTEAD of compensation + payroll_input, and this file seeds no components — allowance,
@@ -1431,8 +1434,9 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
     //
     // `entitledCtx` resolves from THIS tenant's rows, so TOIL is off by ABSENCE (seedBase seeds only the
     // parity set and `toil` is not in it) — exactly the state the old `TOIL_ENABLED` read gave this file,
-    // which never set that flag. Deliberately NOT `entitlementsExempt: 'harness'`: an exempt context answers
-    // true for every catalogued module, which would switch TOIL auto-accrual on for this approval.
+    // which never set that flag. Deliberately a RESOLVED context and not an exempt one: an exempt context
+    // answers TRUE for every core module and THROWS for a billable one (slice 3), so it could neither run
+    // this approval nor prove anything about TOIL auto-accrual.
     const mgrCtx: SessionContext = {
       ...(await entitledCtx(base, ['manager'])),
       userId: uM,

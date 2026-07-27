@@ -57,11 +57,11 @@ let base: Base;
  *  with both admin roles (same user id so the audited actor stays base.adminUserId).
  *
  *  ADR-0077 slice 3: this MUST be `entitledCtx`, not `adminCtx`. `payroll.unlock_enabled` is now a
- *  tenant_setting read (it was PAYROLL_UNLOCK_ENABLED), and `adminCtx` is `entitlementsExempt:
- *  'harness'` — an exempt context reads every setting as its CATALOG DEFAULT, and this key's default is
- *  `false`. Driving the unlock through `adminCtx` would therefore hit ModuleNotEnabledError no matter
- *  what the tenant's row says, i.e. the `setSetting` fixture below would be silently ignored. The
- *  snapshot is point-in-time, so this is called inside each test — after beforeEach's setSetting. */
+ *  tenant_setting read (it was PAYROLL_UNLOCK_ENABLED), and `adminCtx` carries a SYNTHETIC snapshot
+ *  whose settings map is `legacyEnabledSettingsIn(process.env)` — EMPTY under the suite's env — so every
+ *  setting reads its CATALOG DEFAULT, and this key's default is `false`. `entitledCtx` resolves the
+ *  tenant's actual rows. The snapshot is point-in-time, so this is called inside each test — after
+ *  beforeEach's setSetting. */
 const superCtx = () => entitledCtx(base, ['hr_admin', 'super_admin']);
 
 async function hire(name: string, basic = 5000) {
@@ -188,7 +188,7 @@ describe('Unlock closed payroll — single confirm, mandatory reason (unlockClos
     // the payroll.unlock gate.)
     // Entitled (not exempt) for the same reason as superCtx: the payroll.unlock_enabled setting gate is
     // evaluated FIRST, before the batch is even read. Through an exempt context it would read the
-    // catalog default `false` and throw ModuleNotEnabledError — so this test would go green on the
+    // catalog default `false` and throw SettingNotEnabledError — so this test would go green on the
     // wrong error and never reach the payroll.unlock permission check it exists to prove.
     const notPermitted = await entitledCtx(base, ['payroll_partner']);
 

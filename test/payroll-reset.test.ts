@@ -20,10 +20,13 @@
  *      anything. (ADR-0077 slice 3: this was the PAYROLL_RESET_ENABLED env flag; it is now a
  *      per-tenant entitlement row.)
  *
- * ADR-0077 slice 3 note on CONTEXTS. `adminCtx` is `entitlementsExempt: 'harness'`, and an exempt
- * context reads every setting as its CATALOG DEFAULT — which for `payroll.reset_enabled` is `false`
- * (packs/catalog.ts). So the gate is unreachable through it in BOTH directions: it can never be
- * opened, and a test "proving" it closed would be proving only that the harness is exempt. Every
+ * ADR-0077 slice 3 note on CONTEXTS. `adminCtx` carries a synthetic snapshot whose `settings` map is
+ * `legacyEnabledSettingsIn(process.env)`, which test/env.ts makes EMPTY — so every setting reads its
+ * CATALOG DEFAULT, and `payroll.reset_enabled`'s default is `false` (packs/catalog.ts). A test
+ * "proving" the gate closed through it would therefore be proving only that the suite seeds no row.
+ * (It reaches that answer by an empty snapshot now, not by the `entitlementsExempt: 'harness'` marker
+ * this paragraph used to cite — slice 3 removed the marker; the consequence for this file is the
+ * same.) Every
  * `resetProcessedBatch` call below therefore runs through `entitledCtx`, a REAL snapshot resolved
  * from this tenant's rows, taken AFTER the `setSetting` that decides the outcome. `adminCtx` is kept
  * for the setup/processing calls so the payroll behaviour under test is unchanged from before.

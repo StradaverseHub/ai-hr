@@ -54,10 +54,11 @@ let base: Base;
 /**
  * The context the agent runs on. It is `entitledCtx`, NOT `adminCtx`, and that is load-bearing after
  * ADR-0077 slice 3: the gate is now `settingEnabled(ctx, 'feedback.ai_planning_enabled')`, and
- * `adminCtx` carries `entitlementsExempt: 'harness'`, which reads EVERY setting as its catalog default
- * — `false` for this key. Driven through `adminCtx` these tests would not fail loudly, they would all
- * take the disabled branch, so the fixture below has to resolve a REAL snapshot. The snapshot is a
- * point-in-time read, so it is built AFTER the `setSetting` that turns the agent on.
+ * `adminCtx` carries a SYNTHETIC snapshot whose settings map is `legacyEnabledSettingsIn(process.env)`,
+ * which the suite makes EMPTY — so it reads EVERY setting as its catalog default, `false` for this key.
+ * Driven through `adminCtx` these tests would not fail loudly, they would all take the disabled branch,
+ * so the fixture below resolves a REAL snapshot from the tenant's rows. The snapshot is a point-in-time
+ * read, so it is built AFTER the `setSetting` that turns the agent on.
  */
 let planCtx: SessionContext;
 beforeAll(async () => {

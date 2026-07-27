@@ -7,12 +7,38 @@
  *
  * Admin-only: it relies on the admin's unfiltered domain_event RLS read to see the whole chain (a
  * subject-scoped non-admin would see a partial chain and report false gaps).
+ *
+ * WHAT THIS CANNOT SEE, STATED BECAUSE SLICE 3 BRIEFLY CLAIMED THE OPPOSITE (ADR-0077 review r2).
+ * Every query below filters `chain_seq IS NOT NULL`, and the trigger only assigns those columns while
+ * the `app.audit_hash_chain` GUC is on. So an event appended with the chain DISARMED is not a broken
+ * link — it is not in the chain at all, and no `gap`/`reorder`/`mutated` check can ever see it. Worse,
+ * the trigger takes the chain head from `max(chain_seq)` over CHAINED rows only, so re-arming the gate
+ * links the next event straight onto the last chained one: an arm → disarm → re-arm window leaves a
+ * contiguous chain, a matching prev_hash link, and a green `valid: true`.
+ *
+ * That window is a real hole in the tamper evidence — events written inside it carry no digest — and it
+ * used to be invisible. `unchained` is therefore counted and reported alongside `checked`, so "intact
+ * over N chained events" and "N chained, M unprotected" are different answers on the DPO surface
+ * instead of the same one. `valid` deliberately still means "the chained rows link correctly": it is
+ * the tamper verdict, not a coverage verdict, and conflating the two would make an ordinary
+ * chain-was-off-then-on deployment indistinguishable from an actual mutation.
  */
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 
 export type ChainIssue = { chainSeq: number; problem: 'gap' | 'reorder' | 'mutated' };
-export type ChainVerification = { valid: boolean; checked: number; firstBadSeq: number | null; issues: ChainIssue[] };
+export type ChainVerification = {
+  valid: boolean;
+  checked: number;
+  /**
+   * Events for this tenant with NO chain columns — appended while the gate was off. Not a tamper
+   * signal; a COVERAGE signal. `checked > 0 && unchained > 0` is the dangerous shape: the tenant has a
+   * chain, and part of its history sits outside it.
+   */
+  unchained: number;
+  firstBadSeq: number | null;
+  issues: ChainIssue[];
+};
 
 function ctxIsAdmin(ctx: SessionContext): boolean {
   const roles = ctx.roles ?? (ctx.grants ?? []).map((g) => g.role);
@@ -22,10 +48,14 @@ function ctxIsAdmin(ctx: SessionContext): boolean {
 export async function verifyTenantChain(ctx: SessionContext): Promise<ChainVerification> {
   if (!ctxIsAdmin(ctx)) throw new Error('verifyTenantChain is admin-only (needs the full event log).');
   return withTenant(ctx, async (tx) => {
-    const countRes = await tx.execute(
-      sql`SELECT count(*)::int AS n FROM domain_event WHERE tenant_id = ${ctx.tenantId} AND chain_seq IS NOT NULL`,
-    );
-    const checked = Number((countRes as unknown as { n: number }[])[0]?.n ?? 0);
+    // BOTH counts in one pass, so they are read from the same snapshot and cannot disagree.
+    const countRes = await tx.execute(sql`
+      SELECT count(*) FILTER (WHERE chain_seq IS NOT NULL)::int AS chained,
+             count(*) FILTER (WHERE chain_seq IS NULL)::int     AS unchained
+        FROM domain_event WHERE tenant_id = ${ctx.tenantId}`);
+    const counts = (countRes as unknown as { chained: number; unchained: number }[])[0];
+    const checked = Number(counts?.chained ?? 0);
+    const unchained = Number(counts?.unchained ?? 0);
 
     // Returns only the BROKEN rows (empty result ⇒ intact chain). No boolean columns to parse across drivers.
     const badRes = await tx.execute(sql`
@@ -54,6 +84,6 @@ export async function verifyTenantChain(ctx: SessionContext): Promise<ChainVerif
       problem: r.problem,
     }));
     const firstBadSeq = issues.length ? Math.min(...issues.map((i) => i.chainSeq)) : null;
-    return { valid: issues.length === 0, checked, firstBadSeq, issues };
+    return { valid: issues.length === 0, checked, unchained, firstBadSeq, issues };
   });
 }

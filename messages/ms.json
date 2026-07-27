@@ -3338,6 +3338,7 @@
       "chainDisabled": "Rantaian cincang bukti-gangguan belum didayakan. Peristiwa baharu akan dirantai sebaik AUDIT_HASH_CHAIN_ENABLED dihidupkan.",
       "chainIntact": "Utuh — {n} peristiwa disahkan, tiada gangguan dikesan.",
       "chainBroken": "Rantaian putus dari peristiwa #{seq} — log mungkin telah diubah.",
+      "chainPartial": "{n} peristiwa terdahulu berada di luar rantaian — ia direkodkan semasa perantaian hash dimatikan dan tidak boleh disahkan.",
       "issueLine": "Peristiwa #{seq}: {problem}",
       "integrityNote": "Setiap peristiwa dipaut-cincang ke yang sebelumnya, jadi baris yang disisip, dipadam, disusun semula atau diubah boleh dikesan.",
       "erasureTitle": "Pemadaman data PDPA",
@@ -4656,7 +4657,8 @@
     "toilPolicy": {
       "pageTitle": "Cuti ganti",
       "pageDescription": "Benarkan kerja pada hari rehat, cuti umum atau lebih masa disimpan sebagai cuti ganti dan bukan dibayar tunai, mengikut syarikat. Kontraktual, bukan statutori: hari yang dikerjakan dibayar atau disimpan, tidak kedua-duanya.",
-      "envGateOff": "Cuti ganti dimatikan untuk seluruh platform (TOIL_ENABLED). Anda boleh mengkonfigurasi dasar di sini, tetapi tiada masa akan disimpan sehingga ia diaktifkan.",
+      "moduleOff": "Cuti ganti tiada dalam pelan akaun ini. Anda boleh menyemak dasar di sini, tetapi tiada masa baharu akan disimpan.",
+      "moduleOffWindDown": "Cuti ganti tiada dalam pelan akaun ini, jadi tiada masa baharu disimpan. {accruals} kredit tersimpan masih belum diselesaikan dan boleh diselesaikan di bawah — hari yang telah diperoleh tidak akan dilupuskan kerana perubahan pelan.",
       "noCompanies": "Tiada syarikat dalam skop.",
       "on": "Hidup",
       "off": "Mati",

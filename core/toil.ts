@@ -27,7 +27,7 @@ import {
   type ToilExpiryAction,
 } from '../db/schema';
 import { packFor } from '../localization/registry';
-import { isModuleEnabled } from './entitlements';
+import { assertModuleEnabled, isModuleEnabled } from './entitlements';
 
 export class ToilDisabledError extends Error {
   constructor(msg = 'Time off in lieu is not enabled.') {
@@ -120,8 +120,25 @@ export type ToilPolicyInput = {
   carryForwardAtYearEnd: boolean;
 };
 
-/** Upsert one company's TOIL policy (admin-gated by RLS). Enabling ensures the REPLACEMENT leave type. */
+/**
+ * Upsert one company's TOIL policy (admin-gated by RLS). Enabling ensures the REPLACEMENT leave type.
+ *
+ * ENTITLEMENT-GATED as of ADR-0077 slice 3 (review r2). This was the one exported TOIL entry point with
+ * no `toil` check — `accrueToil` and `maybeAutoAccrueOnApprovalTx` had one, this did not — so a tenant
+ * with no `toil` row could still tick "enabled", choose an accrual basis, set the expiry action and
+ * allow First-Schedule staff, and have all of it written and audited. No capability leaked (both accrual
+ * paths still refuse), but the customer was configuring a module they had not bought, and every field
+ * here is FROZEN onto each accrual at accrual time — so the settings would take effect verbatim the
+ * moment the module was later purchased.
+ *
+ * NOT covered by the D3 wind-down argument, which is deliberately narrow. Ungating `runToilExpiry` and
+ * `closeReplacementLeaveYear` was about SETTLING a debt already incurred: an eligible employee's banked
+ * days must convert to pay and may never lapse, and both sweeps read the per-accrual `expiryAction` /
+ * `carryForwardAtYearEnd` frozen at accrual, not this policy. Winding down needs the ledger and the two
+ * sweeps; it does not need to re-tune FUTURE accrual, which is precisely what the entitlement governs.
+ */
 export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
+  assertModuleEnabled(ctx, 'toil');
   if (!Number.isInteger(p.expiryDays) || p.expiryDays < 1 || p.expiryDays > 730)
     throw new Error('Expiry days must be a whole number between 1 and 730.');
   return withTenant(ctx, async (tx) => {
@@ -287,6 +304,22 @@ export async function accrueToilTx(
   if (!policy || !policy.enabled) throw new ToilDisabledError('Time off in lieu is not enabled for this company.');
 
   // 3 · no double-banking (the unique index also guards; this is the friendly error).
+  //
+  // THE CASH-XOR-TOIL INVARIANT IS ONE-SIDED, AND THAT IS WORTH STATING WHERE SOMEONE WILL SEE IT.
+  // core/payroll.ts's `EXCLUDE_TOIL_BANKED_DAYS` closes the TOIL-then-cash ordering: BOTH reads of
+  // `attendance.otMinutes` — the OT prefill and the weekly/bi-weekly cross-cycle weighting — skip any
+  // day that already carries a non-lapsed accrual, and slice 3 made that clause unconditional so a
+  // lapsed entitlement cannot re-monetise a banked day.
+  //
+  // There is NO mirror guard here: prefill a rest day's OT into `payroll_input` first, then bank the
+  // same day as TOIL, and the day is compensated twice — nothing below reads `payroll_input` or
+  // `payslip`. Nor is that ordering exotic. `maybeAutoAccrueOnApprovalTx` banks on approval of an
+  // attendance correction (core/attendance.ts), which routinely lands after a draft batch has been
+  // prefilled. It predates ADR-0077 and is untouched by it, so it is not a slice-3 regression; but the
+  // invariant is not symmetric, and a claim that it is would be wrong. Closing it means deciding what a
+  // legitimate correction (prefill, then elect TOIL instead, then re-prefill) should do — an ADR-0033
+  // question about payroll-run state, not an entitlement one. Recorded here so it is a known gap and
+  // not a discovery.
   const [dupe] = await tx
     .select({ id: toilAccrual.id })
     .from(toilAccrual)

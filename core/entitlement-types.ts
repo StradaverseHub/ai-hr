@@ -104,9 +104,12 @@ export const TENANT_STATUS_UNRESOLVED = 'unresolved';
  * no gates — the first gate slice 3 adds inside a sweep would have taken every nightly cron down.
  *
  * The markers are now applied (see each `owners` entry), and `test/entitlement-resolver.test.ts` READS
- * each named file and asserts it literally contains `entitlementsExempt: '<key>'`. An exemption can no
- * longer name a call site that does not carry it, and deleting the marker from a sweep fails the suite
- * rather than surfacing as a 3am cron failure after slice 3.
+ * each named file, STRIPS ITS COMMENTS, and asserts the remaining code literally contains
+ * `entitlementsExempt: '<key>'`. An exemption can no longer name a call site that does not carry it,
+ * and deleting the marker from a sweep fails the suite rather than surfacing as a 3am cron failure
+ * after slice 3. The comment-stripping is not fastidiousness: slice 3 removed the `harness` marker and
+ * left a docblock EXPLAINING the removal, which satisfied the raw-text version of this check — the
+ * ratchet regressed to precisely the condition it was written to prevent, and stayed green.
  *
  * WHAT A MARKER COSTS, STATED SO SLICE 3 CANNOT WALK INTO IT (round 3). The marker means "entitlements
  * do not apply to me", and that answers the two questions differently:
@@ -134,7 +137,11 @@ export const ENTITLEMENTS_EXEMPT_REASONS = {
     owners: ['db/provision.ts'],
   },
   seeding: {
-    why: 'db/seed.ts and scripts/seed-catalogs.ts — bootstrap, owner role, no session.',
+    // `scripts/seed-catalogs.ts` used to be named here too, and the ratchet iterates `owners` — so the
+    // half of the claim that lived in prose was exactly the half the guard was built to stop being
+    // prose. It builds no `SessionContext` at all (it writes the catalogs on the owner connection), so
+    // it carries no marker and never could; it is dropped from the reason rather than added to owners.
+    why: 'db/seed.ts — bootstrap, owner role, no session.',
     owners: ['db/seed.ts'],
   },
   sweeps: {
@@ -157,10 +164,19 @@ export const ENTITLEMENTS_EXEMPT_REASONS = {
       'scripts/correct-hrdf-opt-outs.ts',
     ],
   },
-  harness: {
-    why: 'test/harness.ts — fixtures build contexts directly.',
-    owners: ['test/harness.ts'],
-  },
+  /*
+   * `harness` IS GONE as of slice 3, and its removal is the point rather than a tidy-up.
+   *
+   * test/harness.ts's `adminCtx` was its only consumer, and slice 3 replaced that marker with a real
+   * synthetic snapshot (see that function's note — an exempt fixture silently switched four modules on
+   * for 247 files). What the round-1 review then found is worse than a stale entry: the drift test
+   * asserts each owner file literally CONTAINS `entitlementsExempt: '<key>'`, and it read the file with
+   * its comments in, so the ratchet kept passing on the DOCBLOCK that explains why the marker was
+   * removed. The guard whose stated purpose is "an exemption can no longer name a call site that does
+   * not carry it" was doing exactly that. The test now strips comments first, and this entry is deleted
+   * rather than papered over — which also removes `'harness'` from `EntitlementsExemptReason`, so a
+   * hand-built context can no longer forge a bootstrap exemption with it.
+   */
   /**
    * The ONE entry with no owner file yet, and deliberately so: slice 7 builds the platform plane. It is
    * declared here rather than added later because the resolver's membership check has to know the full

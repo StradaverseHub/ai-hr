@@ -15,9 +15,13 @@
  * This file writes no feature-gate env var and never did. It broke anyway, because every golden-matrix
  * number below is a LEGACY-earnings-path number, and which path `generatePayslips` takes is now decided
  * by `isModuleEnabled(ctx, 'typed_pay_components')` instead of `process.env.TYPED_PAY_COMPONENTS_ENABLED`.
- * The two do NOT agree for the fixture admin context: test/env.ts deletes the env var (so the old read was
- * false), while `adminCtx` carries `entitlementsExempt: 'harness'` and an exempt context answers TRUE for
- * every catalogued module. Under `adminCtx` the typed fold would run with ZERO component rows, and that
+ * When this file was converted the two did NOT agree for the fixture admin context: test/env.ts deletes
+ * the env var (so the old read was false), while `adminCtx` still carried `entitlementsExempt: 'harness'`
+ * and an exempt context answered TRUE for every catalogued module. That is fixed at the source —
+ * `adminCtx` now derives its snapshot from `legacyEnabledModulesIn(process.env)`, the same helper
+ * `seedBase` uses, so it reads `typed_pay_components` OFF exactly like the old env read did. The hazard
+ * is recorded rather than deleted because it is what the numbers below are defended against: under an
+ * exempt context the typed fold would run with ZERO component rows, and that
  * fold reads neither `compensation.monthly_allowance` nor the `payroll_input` overtime figure
  * (core/payroll.ts `earningsOf`) — so `grossPay` would collapse to basic-only (5000, not 5500) and the 1e
  * OT-cap test would compare 0 against 0. The legacy/config PAIR would still match each other, which is

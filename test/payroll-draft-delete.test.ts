@@ -242,10 +242,10 @@ describe('Payroll draft delete — deleteDraftBatch (DB)', () => {
     // operator would make it. Nothing leaks into the shared worker any more — the state is a row in
     // this tenant that `resetDb` truncates, which is why the old try/finally is gone.
     await setSetting(base.tenantId, 'payroll.reset_enabled', true);
-    // …and it must be driven through a REAL snapshot. `adminCtx` is `entitlementsExempt: 'harness'`,
-    // and an exempt context reads every setting as its CATALOG DEFAULT — so the row above would be
-    // silently ignored and the reset would throw. `entitledCtx` snapshots point-in-time, hence after
-    // the grant.
+    // …and it must be driven through a REAL snapshot. `adminCtx`'s snapshot is synthetic: its settings
+    // map is `legacyEnabledSettingsIn(process.env)`, which the suite makes EMPTY, so every setting reads
+    // its CATALOG DEFAULT and the row above reaches it only via the harness's in-memory mirror.
+    // `entitledCtx` reads the tenant's rows, point-in-time, hence after the grant.
     const a = await entitledCtx(base);
     const e1 = await hire('Revert Delete', 4200);
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-07' });

@@ -4,11 +4,14 @@
  * SHIFT_DIFFERENTIAL batch component. Gated by the `typed_pay_components` MODULE entitlement
  * (ADR-0077 slice 3 — no row / not active ⇒ no-op).
  *
- * The gate is `isModuleEnabled(ctx, 'typed_pay_components')`, so the CONTEXT decides: `adminCtx` is
- * `entitlementsExempt: 'harness'` and answers `true` for every catalogued module, which is right for
- * building fixtures but structurally cannot exercise the gate. Every call to the function UNDER TEST
- * therefore goes through `entitledCtx`, which carries a real snapshot resolved from this tenant's rows
- * — built AFTER the `setModule` call that establishes the state being asserted.
+ * The gate is `isModuleEnabled(ctx, 'typed_pay_components')`, so the CONTEXT decides. `adminCtx`
+ * carries a SYNTHETIC snapshot derived from `legacyEnabledModulesIn(process.env)` — the same helper
+ * `seedBase` uses to pick its rows — which under the suite's env excludes `typed_pay_components`, so it
+ * reads the module OFF. (It used to carry `entitlementsExempt: 'harness'` and answer TRUE for every
+ * catalogued module; slice 3 removed that, and this paragraph said so for a while after it stopped
+ * being true.) Every call to the function UNDER TEST still goes through `entitledCtx`, which resolves a
+ * real snapshot from this tenant's ROWS rather than from a synthetic mirror of them — built AFTER the
+ * `setModule` call that establishes the state being asserted.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';

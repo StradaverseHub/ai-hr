@@ -40,6 +40,17 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Prom
             </ul>
           </div>
         )}
+        {/*
+          COVERAGE, shown SEPARATELY from the tamper verdict and only when both kinds of row exist.
+          `verifyTenantChain` can only inspect rows that carry chain columns, and an event appended
+          while AUDIT_HASH_CHAIN_ENABLED was off carries none — so "intact, N events verified" was
+          previously rendered over a log that might be mostly unprotected, with the unprotected part
+          silently excluded from N. A tenant with a chain AND unchained events has a real evidentiary
+          hole; a tenant with only unchained events simply never had the chain on (the branch above).
+        */}
+        {chain.checked > 0 && chain.unchained > 0 && (
+          <p className="text-sm text-amber-700 dark:text-amber-400">{t('chainPartial', { n: chain.unchained })}</p>
+        )}
         <p className="text-xs text-muted-foreground">{t('integrityNote')}</p>
       </Card>
 

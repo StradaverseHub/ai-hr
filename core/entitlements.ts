@@ -120,6 +120,31 @@ export class ModuleNotEnabledError extends EntitlementError {
 }
 
 /**
+ * Thrown at a service entry point when a per-tenant SETTING is off — the risk-switch counterpart to
+ * `ModuleNotEnabledError`.
+ *
+ * WHY IT IS NOT JUST `ModuleNotEnabledError` WITH A DIFFERENT MESSAGE. Slice 3 moved four gates onto
+ * settings, and the two payroll risk switches (`payroll.reset_enabled`, `payroll.unlock_enabled`)
+ * refused with `new ModuleNotEnabledError('payroll', …)`. `moduleCode` is a public readonly field that
+ * exists precisely so a caller can render "this module is not on your plan" — so a customer who owns
+ * Payroll outright, and merely has an operator-controlled escape hatch switched off, would be told
+ * Payroll is not on their plan. That is a false billing statement produced by an internal safety
+ * setting, and the two facts are as different as `ModuleNotEnabledError` and
+ * `EntitlementsResolutionFailedError` are from each other — the same argument that kept those apart.
+ *
+ * Shares the `EntitlementError` supertype, so a single catch still covers the family, and the message
+ * keeps the existing "… is not enabled." wording so nothing downstream changes shape.
+ */
+export class SettingNotEnabledError extends EntitlementError {
+  readonly settingKey: string;
+  constructor(settingKey: string, msg?: string) {
+    super(msg ?? `The '${settingKey}' setting is not enabled for this account.`);
+    this.name = 'SettingNotEnabledError';
+    this.settingKey = settingKey;
+  }
+}
+
+/**
  * Thrown when an entitlement question is asked of a context that carries no snapshot AND no record of
  * a failed attempt — i.e. a synthetic context that was never resolved at all. Never silently open and
  * never silently closed: that is a wiring bug, and the only safe answer is to say so loudly.
@@ -784,3 +809,36 @@ export function getSetting<T = unknown>(ctx: EntitledContext, key: string): T {
 
 /** Boolean convenience — the shape the env-flag reads it replaces already had. */
 export const settingEnabled = (ctx: EntitledContext, key: string): boolean => getSetting(ctx, key) === true;
+
+/**
+ * `isModuleEnabled`, but an INFRASTRUCTURE failure answers FALSE instead of throwing. For CHROME —
+ * the shell every authenticated page renders — and nothing else.
+ *
+ * WHY THIS EXISTS. lib/session.ts's `withEntitlements` deliberately swallows a resolution failure and
+ * returns the session carrying `entitlementsError`, on the stated grounds that getSession is the entry
+ * point for every page and throwing there "would take down authentication itself"; gates are then
+ * supposed to "refuse AT THE POINT OF USE (fail-closed)". That contract silently breaks when the point
+ * of use IS the root layout: `app/layout.tsx` gates the notification bell on the billable
+ * `notifications` module, sits outside the only try/catch there (which converts AuthRequiredError to a
+ * redirect), and there is no app/error.tsx — so a pool blip, a statement timeout or a
+ * code-ahead-of-migration deploy would 500 EVERY authenticated route rather than degrade one feature.
+ * Before slice 3 that line was `process.env.NOTIFICATIONS_ENABLED === 'true'` and could not throw.
+ *
+ * WHAT IT DOES NOT SWALLOW, which is the whole reason it is not a bare try/catch at the call site:
+ * only `EntitlementsResolutionFailedError` — the one state that means "we tried to read the tenant's
+ * commercial data and the infrastructure said no". A malformed context, a snapshot attributed to
+ * another tenant, an exempt context asking about a billable module and a never-resolved synthetic
+ * context are all WIRING BUGS; converting those to a quiet `false` would hide exactly the class of
+ * defect slice 2's guards exist to surface, so they still throw.
+ *
+ * FALSE, not true: an unreadable snapshot must never open a billable feature. The customer loses the
+ * bell for the duration of the incident and keeps the rest of the application.
+ */
+export function isModuleEnabledOrFalse(ctx: EntitledContext, code: string, companyId?: string | null): boolean {
+  try {
+    return isModuleEnabled(ctx, code, companyId);
+  } catch (e) {
+    if (e instanceof EntitlementsResolutionFailedError) return false;
+    throw e;
+  }
+}
