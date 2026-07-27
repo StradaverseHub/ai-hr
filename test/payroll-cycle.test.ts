@@ -3,14 +3,34 @@
  * (tenant-wide read, admin-for-payroll write via can_admin_payroll_for), the two app-level validations
  * (case-insensitive duplicate name; only one active regular-mapped cycle), and the delete-guard that
  * blocks deleting a cycle matched against EXISTING payroll_batch rows by run_type — proving the historical-
- * data case, not just new-row tracing. Plus the wizard flag-filter rule (visibility gated by
- * MULTI_CYCLE_PAYROLL_ENABLED) exercised through the real service.
+ * data case, not just new-row tracing. Plus the wizard flag-filter rule (visibility gated by the
+ * `multi_cycle_payroll` MODULE ENTITLEMENT) exercised through the real service.
+ *
+ * ADR-0077 slice 3 — the wizard/kernel gate moved from the MULTI_CYCLE_PAYROLL_ENABLED deployment flag
+ * into `tenant_module`, so the three tests that care about it now write a ROW (setModule) and read it
+ * back through `entitledCtx` + the real `isModuleEnabled` predicate. `adminCtx` cannot carry the grant:
+ * its snapshot is `legacyEnabledModulesIn(process.env)`, a point-in-time copy taken before the row is
+ * written, and test/env.ts deletes the flag — so under it `multi_cycle_payroll` reads DISABLED whatever
+ * rows the tenant holds. The afterEach that deleted the env var is gone: resetDb truncates
+ * tenant_module and seedBase seeds no row for this code, so OFF is the baseline by construction.
  */
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  eventTypesFor,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
+import { isModuleEnabled } from '../core/entitlements';
 import { createCompany } from '../core/admin';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -61,10 +81,11 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
+  // No `multi_cycle_payroll` grant here, and no cleanup hook either: `seedBase` seeds NO row for that
+  // code (it narrows the parity set by the live env, and test/env.ts deletes the flag) and a missing
+  // row is DISABLED (C7), while `resetDb` truncates `tenant_module` between tests. So OFF is the
+  // baseline by construction, and the three tests that need it ON state their own grant inline.
   b = await seedBase();
-});
-afterEach(() => {
-  delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
 });
 
 describe('payroll cycle master (ADR-0069)', () => {
@@ -148,8 +169,10 @@ describe('payroll cycle master (ADR-0069)', () => {
   });
 
   it('delete-guard blocks deletion of a cycle referenced by EXISTING payroll history (matched by run_type)', async () => {
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    const a = adminCtx(b);
+    // `createAdditionalRun` below is gated on the `multi_cycle_payroll` entitlement, so grant the ROW —
+    // and resolve the session AFTER it, because a snapshot is a point-in-time read.
+    await setModule(b.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(b);
     await seedPayrollCycleCatalog(a, b.companyId);
     // Build real payroll history: a regular run (creates the pay_period) + a bonus run.
     const e = await hireEmployee(a, {
@@ -178,8 +201,10 @@ describe('payroll cycle master (ADR-0069)', () => {
   });
 
   it('delete-guard: an off_cycle preset only owns batches carrying its own remarks label', async () => {
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    const a = adminCtx(b);
+    // Same gate as the test above: the off_cycle batch this test traces is created by the entitled
+    // `createAdditionalRun` path, so grant the row first and resolve the snapshot after it.
+    await setModule(b.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(b);
     await seedPayrollCycleCatalog(a, b.companyId);
     const e = await hireEmployee(a, {
       person: { fullName: 'Preset Emp', primaryEmail: 'preset@acme.test' },
@@ -387,23 +412,33 @@ describe('payroll cycle master (ADR-0069)', () => {
     expect(await owner.db.select().from(schema.payrollCycle).where(eq(schema.payrollCycle.companyId, coX.id))).toHaveLength(0);
   });
 
-  it('wizard flag-filter: with MULTI_CYCLE off, only regular-mapped cycles are exposed even when non-regular are active', async () => {
-    // The service returns the full active list; the wizard filter is the flag rule. Assert the rule the
-    // wizard applies (page.tsx / wizard.tsx): regular-only when the flag is off.
+  it('wizard flag-filter: with multi_cycle_payroll off, only regular-mapped cycles are exposed even when non-regular are active', async () => {
+    // The service returns the full active list; the wizard filter is the entitlement rule. Assert the
+    // rule the wizard applies (app/payroll/process/page.tsx:40 —
+    // `const multiCycle = isModuleEnabled(s, 'multi_cycle_payroll')`) using the REAL predicate against
+    // a REAL snapshot, so the branch is decided by the tenant's row rather than by re-reading whatever
+    // this test just wrote into the environment (which is what the pre-slice-3 version did).
     const a = adminCtx(b);
     await seedPayrollCycleCatalog(a, b.companyId);
     const active = await listPayrollCycles(a, b.companyId, { activeOnly: true });
     expect(active.length).toBe(DEFAULT_PAYROLL_CYCLES.length); // all active
 
-    delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
-    const multiCycle = process.env.MULTI_CYCLE_PAYROLL_ENABLED === 'true';
+    // Gate OFF = NO row (C7: a missing row is disabled, and that is a different state from an explicit
+    // status='disabled' row). Stated explicitly rather than leaning on seedBase's omission, so the
+    // disabled state this half asserts is written where it is asserted.
+    await setModule(b.tenantId, 'multi_cycle_payroll', null);
+    const off = await entitledCtx(b);
+    const multiCycle = isModuleEnabled(off, 'multi_cycle_payroll');
+    expect(multiCycle).toBe(false); // the gate really is closed — not a filter that happens to match
     const shown = multiCycle ? active : active.filter((c) => c.runType === 'regular');
     expect(shown.every((c) => c.runType === 'regular')).toBe(true);
     expect(shown.map((c) => c.name)).toEqual(['Monthly']); // only the one regular-mapped cycle
 
-    // With the flag ON, the full active list is shown (no code change — the same list).
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    const multiOn = process.env.MULTI_CYCLE_PAYROLL_ENABLED === 'true';
+    // With the module ON, the full active list is shown (no code change — the same list).
+    await setModule(b.tenantId, 'multi_cycle_payroll', 'active');
+    const on = await entitledCtx(b);
+    const multiOn = isModuleEnabled(on, 'multi_cycle_payroll');
+    expect(multiOn).toBe(true); // the grant really did open the gate
     const shownOn = multiOn ? active : active.filter((c) => c.runType === 'regular');
     expect(shownOn.length).toBe(DEFAULT_PAYROLL_CYCLES.length);
   });

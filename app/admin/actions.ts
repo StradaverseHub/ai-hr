@@ -1617,8 +1617,15 @@ export async function deleteLeaveTypeAction(fd: FormData) {
 }
 
 // ADR-0033 33-4 — run the TOIL expiry sweep for today (manual; a scheduled job will do this later).
+//
+// requireAdmin(), not getSession() (ADR-0077 slice 3 review). Until slice 3 the service's first line was
+// `if (!toilEnabled()) throw`, which was doing duty as the only check on this path — and since
+// TOIL_ENABLED is set in no tracked env file it refused everyone. Slice 3 removed that gate deliberately
+// (a lapsed entitlement must not strand a settlement the employer already owes), which left a mutating
+// statutory sweep behind a bare session on a directly-POSTable server action. Same correction as
+// deleteLeaveYearAction above. The service asserts it too — a redirect is a UX gate, not authority.
 export async function runToilExpiryAction() {
-  const s = await getSession();
+  const s = await requireAdmin();
   const today = new Date().toISOString().slice(0, 10);
   let result;
   try {
@@ -1627,14 +1634,23 @@ export async function runToilExpiryAction() {
     fail(TOIL_POLICY, e);
   }
   revalidatePath(TOIL_POLICY);
-  redirect(`${TOIL_POLICY}?processed=${result!.processed}&converted=${result!.converted}&lapsed=${result!.lapsed}`);
+  // `skipped` carries core/toil.ts's `skippedOutOfScope` to the banner. Dropping it here would put the
+  // partial-sweep signal back where it was: a company-scoped admin would see the same success banner
+  // whether nothing was due or another company's statutory settlements were silently left behind.
+  redirect(
+    `${TOIL_POLICY}?processed=${result!.processed}&converted=${result!.converted}&lapsed=${result!.lapsed}` +
+      `&skipped=${result!.skippedOutOfScope}`,
+  );
 }
 
 // RL Control Engine (0113) — year-end rollover: expire (or carry-forward, per each accrual's frozen flag) the
 // replacement-leave balance at the year boundary. Supervised admin click; no cron. `asOf` defaults to this
 // year's 31 Dec for calendar tenants (the service recomputes per-employment boundaries for anniversary).
+// requireAdmin() for the reason given on runToilExpiryAction, and more sharply here: this writes a
+// `replacement-leave-year.closed` marker, and `domain_event` has UPDATE/DELETE REVOKEd from ai_hr_app, so
+// a marker written by the wrong caller cannot be undone through the product.
 export async function closeReplacementLeaveYearAction() {
-  const s = await getSession();
+  const s = await requireAdmin();
   const asOf = `${new Date().getUTCFullYear()}-12-31`;
   let result;
   try {

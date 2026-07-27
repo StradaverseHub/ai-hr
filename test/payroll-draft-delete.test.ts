@@ -46,12 +46,15 @@ import { wizardInitialStep } from '../app/payroll/process/selection-logic';
 import {
   adminCtx,
   closeAll,
+  entitledCtx,
   eventTypesFor,
   latestEventPayload,
   migrateTestDb,
   owner,
   resetDb,
   seedBase,
+  setModule,
+  setSetting,
   type Base,
 } from './harness';
 
@@ -232,88 +235,94 @@ describe('Payroll draft delete — deleteDraftBatch (DB)', () => {
     // ('rollback') rows that FK-reference the batch with NO onDelete cascade, so the final
     // tx.delete(payroll_batch) threw a foreign-key violation and leaked the raw SQL. teardownDraftChildren
     // must now clear EVERY batch-keyed audit/control child so the hard delete completes.
-    process.env.PAYROLL_RESET_ENABLED = 'true';
-    try {
-      const a = adminCtx(base);
-      const e1 = await hire('Revert Delete', 4200);
-      const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-07' });
-      await generatePayslips(a, { batchId }); // → 'processed'
+    // The Reset gate, ON for THIS tenant (ADR-0077 slice 3). `resetProcessedBatch` reads
+    // `payroll.reset_enabled` from the tenant's rows now, not from the environment: seedBase seeds no
+    // row for it (the suite's env has the legacy flag deleted, so `legacyEnabledSettingsIn` is empty)
+    // and the catalog default is FALSE, so the revert below needs an explicit grant, exactly as an
+    // operator would make it. Nothing leaks into the shared worker any more — the state is a row in
+    // this tenant that `resetDb` truncates, which is why the old try/finally is gone.
+    await setSetting(base.tenantId, 'payroll.reset_enabled', true);
+    // …and it must be driven through a REAL snapshot. `adminCtx`'s snapshot is synthetic: its settings
+    // map is `legacyEnabledSettingsIn(process.env)`, which the suite makes EMPTY, so every setting reads
+    // its CATALOG DEFAULT and the row above reaches it only via the harness's in-memory mirror.
+    // `entitledCtx` reads the tenant's rows, point-in-time, hence after the grant.
+    const a = await entitledCtx(base);
+    const e1 = await hire('Revert Delete', 4200);
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-07' });
+    await generatePayslips(a, { batchId }); // → 'processed'
 
-      // Revert to draft — this writes the 'rollback' payroll_status_history row that caused the FK leak.
-      await resetProcessedBatch(a, { batchId, reason: 'correcting a keyed figure' });
-      expect((await batchRows(batchId))[0].status).toBe('draft');
+    // Revert to draft — this writes the 'rollback' payroll_status_history row that caused the FK leak.
+    await resetProcessedBatch(a, { batchId, reason: 'correcting a keyed figure' });
+    expect((await batchRows(batchId))[0].status).toBe('draft');
 
-      const statusHistBefore = await owner.db
+    const statusHistBefore = await owner.db
+      .select()
+      .from(schema.payrollStatusHistory)
+      .where(eq(schema.payrollStatusHistory.batchId, batchId));
+    expect(statusHistBefore.length).toBeGreaterThanOrEqual(1); // the rollback snapshot — reproduces the bug
+
+    // Also plant the OTHER batch-keyed children an unlock-then-reprocess path can leave, so the teardown
+    // is proven to clear all four FK tables (result-history, reprocess-job, step-up challenge), not just
+    // status-history. Owner client bypasses RLS for the fixture insert.
+    await owner.db.insert(schema.payrollEmployeeResultHistory).values({
+      tenantId: base.tenantId,
+      batchId,
+      employmentId: e1.employmentId,
+      action: 'reprocess',
+      actorType: 'user',
+      actorId: null,
+    });
+    await owner.db.insert(schema.payrollReprocessJob).values({
+      tenantId: base.tenantId,
+      batchId,
+      idempotencyKey: `idem_${randomUUID()}`,
+      status: 'completed',
+      employmentIds: [e1.employmentId],
+    });
+    await owner.db.insert(schema.payrollStepUpChallenge).values({
+      tenantId: base.tenantId,
+      userId: randomUUID(),
+      batchId,
+      purpose: 'unlock',
+      codeHash: 'x'.repeat(16),
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    // The delete now succeeds where it previously threw the FK "Failed query" error.
+    const res = await deleteDraftBatch(a, { batchId });
+    expect(res.id).toBe(batchId);
+
+    // Batch gone, and EVERY batch-keyed child cleared (no orphan pointing at the deleted batch).
+    expect(await batchRows(batchId)).toHaveLength(0);
+    expect(
+      await owner.db.select().from(schema.payrollStatusHistory).where(eq(schema.payrollStatusHistory.batchId, batchId)),
+    ).toHaveLength(0);
+    expect(
+      await owner.db
         .select()
-        .from(schema.payrollStatusHistory)
-        .where(eq(schema.payrollStatusHistory.batchId, batchId));
-      expect(statusHistBefore.length).toBeGreaterThanOrEqual(1); // the rollback snapshot — reproduces the bug
+        .from(schema.payrollEmployeeResultHistory)
+        .where(eq(schema.payrollEmployeeResultHistory.batchId, batchId)),
+    ).toHaveLength(0);
+    expect(
+      await owner.db.select().from(schema.payrollReprocessJob).where(eq(schema.payrollReprocessJob.batchId, batchId)),
+    ).toHaveLength(0);
+    expect(
+      await owner.db.select().from(schema.payrollStepUpChallenge).where(eq(schema.payrollStepUpChallenge.batchId, batchId)),
+    ).toHaveLength(0);
 
-      // Also plant the OTHER batch-keyed children an unlock-then-reprocess path can leave, so the teardown
-      // is proven to clear all four FK tables (result-history, reprocess-job, step-up challenge), not just
-      // status-history. Owner client bypasses RLS for the fixture insert.
-      await owner.db.insert(schema.payrollEmployeeResultHistory).values({
-        tenantId: base.tenantId,
-        batchId,
-        employmentId: e1.employmentId,
-        action: 'reprocess',
-        actorType: 'user',
-        actorId: null,
-      });
-      await owner.db.insert(schema.payrollReprocessJob).values({
-        tenantId: base.tenantId,
-        batchId,
-        idempotencyKey: `idem_${randomUUID()}`,
-        status: 'completed',
-        employmentIds: [e1.employmentId],
-      });
-      await owner.db.insert(schema.payrollStepUpChallenge).values({
-        tenantId: base.tenantId,
-        userId: randomUUID(),
-        batchId,
-        purpose: 'unlock',
-        codeHash: 'x'.repeat(16),
-        expiresAt: new Date(Date.now() + 60_000),
-      });
-
-      // The delete now succeeds where it previously threw the FK "Failed query" error.
-      const res = await deleteDraftBatch(a, { batchId });
-      expect(res.id).toBe(batchId);
-
-      // Batch gone, and EVERY batch-keyed child cleared (no orphan pointing at the deleted batch).
-      expect(await batchRows(batchId)).toHaveLength(0);
-      expect(
-        await owner.db.select().from(schema.payrollStatusHistory).where(eq(schema.payrollStatusHistory.batchId, batchId)),
-      ).toHaveLength(0);
-      expect(
-        await owner.db
-          .select()
-          .from(schema.payrollEmployeeResultHistory)
-          .where(eq(schema.payrollEmployeeResultHistory.batchId, batchId)),
-      ).toHaveLength(0);
-      expect(
-        await owner.db.select().from(schema.payrollReprocessJob).where(eq(schema.payrollReprocessJob.batchId, batchId)),
-      ).toHaveLength(0);
-      expect(
-        await owner.db.select().from(schema.payrollStepUpChallenge).where(eq(schema.payrollStepUpChallenge.batchId, batchId)),
-      ).toHaveLength(0);
-
-      // The deletion is audited (durable trail survives the hard delete) with the child counts.
-      const payload = (await latestEventPayload(base.tenantId, batchId, 'payroll-batch.deleted')) as {
-        deletedChildCounts: {
-          statusHistory: number;
-          resultHistory: number;
-          reprocessJobs: number;
-          stepUpChallenges: number;
-        };
+    // The deletion is audited (durable trail survives the hard delete) with the child counts.
+    const payload = (await latestEventPayload(base.tenantId, batchId, 'payroll-batch.deleted')) as {
+      deletedChildCounts: {
+        statusHistory: number;
+        resultHistory: number;
+        reprocessJobs: number;
+        stepUpChallenges: number;
       };
-      expect(payload.deletedChildCounts.statusHistory).toBeGreaterThanOrEqual(1);
-      expect(payload.deletedChildCounts.resultHistory).toBe(1);
-      expect(payload.deletedChildCounts.reprocessJobs).toBe(1);
-      expect(payload.deletedChildCounts.stepUpChallenges).toBe(1);
-    } finally {
-      delete process.env.PAYROLL_RESET_ENABLED; // don't leak the gate into the shared worker
-    }
+    };
+    expect(payload.deletedChildCounts.statusHistory).toBeGreaterThanOrEqual(1);
+    expect(payload.deletedChildCounts.resultHistory).toBe(1);
+    expect(payload.deletedChildCounts.reprocessJobs).toBe(1);
+    expect(payload.deletedChildCounts.stepUpChallenges).toBe(1);
   });
 
   it('c. draft-only guard: processed and closed batches throw BatchNotDraftError and mutate nothing', async () => {
@@ -333,8 +342,15 @@ describe('Payroll draft delete — deleteDraftBatch (DB)', () => {
   });
 
   it('d. deleting one of two sibling runs leaves the shared pay_period and the other run intact', async () => {
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    const a = adminCtx(base);
+    // Multi-cycle ON for THIS tenant (ADR-0077 slice 3): `createAdditionalRun` reads the
+    // `multi_cycle_payroll` entitlement row now, not MULTI_CYCLE_PAYROLL_ENABLED. seedBase seeds no row
+    // (it narrows the parity set by the live env, and test/env.ts deletes the flag), so the second run
+    // below needs an explicit grant — and it is driven through a REAL snapshot because `adminCtx` is
+    // entitlements-exempt and would answer true for the module whether or not the grant existed.
+    // `entitledCtx` reads point-in-time, hence after `setModule`. (The old env write was never cleaned
+    // up and leaked into the shared worker; the row is truncated by `resetDb`.)
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(base);
     await hire('Sibling One');
     const { batchId: regularId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     const { batchId: offCycleId } = await createAdditionalRun(a, {

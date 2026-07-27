@@ -1,7 +1,12 @@
 /**
  * Leave-in-lieu (TOIL) — ADR-0033. A contractual replacement-leave engine: elected+approved rest-day /
  * holiday / OT work becomes a REPLACEMENT-type leave credit, mutually exclusive with OT pay. Gated by
- * TOIL_ENABLED (off ⇒ every entry point refuses, nothing reads the tables). The statutory boundary is
+ * the per-tenant `toil` MODULE ENTITLEMENT as of ADR-0077 slice 3 — not the TOIL_ENABLED env flag, and
+ * NOT uniformly: ACCRUAL and configuration refuse without it, while the two WIND-DOWN sweeps
+ * (`runToilExpiry`, `closeReplacementLeaveYear`) deliberately do not, because a lapsed entitlement must
+ * not strand a settlement the employer already owes. Those two are admin-gated instead — see
+ * `ToilSweepForbiddenError`, which replaced the check the entitlement gate had been doing by accident.
+ * The statutory boundary is
  * welded in: a First-Schedule-eligible (≤ wage ceiling) employee can only accrue TOIL when the company
  * policy's allowFirstScheduleEligible toggle is on, and then only with a compliance warning + the intent
  * to convert unused TOIL to pay on expiry (never lapse). The same worked day is cash XOR TOIL — the OT-pay
@@ -27,6 +32,8 @@ import {
   type ToilExpiryAction,
 } from '../db/schema';
 import { packFor } from '../localization/registry';
+import { assertModuleEnabled, isModuleEnabled } from './entitlements';
+import { isAdmin } from '../lib/authz';
 
 export class ToilDisabledError extends Error {
   constructor(msg = 'Time off in lieu is not enabled.') {
@@ -66,6 +73,40 @@ export class ToilAlreadyAccruedError extends Error {
     this.name = 'ToilAlreadyAccruedError';
   }
 }
+/**
+ * A non-admin tried to run one of the two statutory sweeps (`runToilExpiry`,
+ * `closeReplacementLeaveYear`).
+ *
+ * WHY THIS EXISTS AT ALL, AND WHY IT ARRIVED WITH ADR-0077 SLICE 3. Both sweeps are mutating,
+ * tenant-scoped and reachable as bare POSTs — `app/admin/actions.ts` exports them as server actions,
+ * and until slice 3 the FIRST line of each service was `if (!toilEnabled()) throw`. That gate was
+ * doing double duty as the only check on the path, and since `TOIL_ENABLED` is set in no tracked env
+ * file (packs/catalog.ts), it refused everyone on every deployment. Slice 3 removed it on purpose —
+ * a lapsed entitlement must not be able to strand a settlement the employer already owes — which
+ * left two statutory sweeps in front of an ordinary `getSession()`.
+ *
+ * Checked in the SERVICE and not only at the surface because the surface is one `redirect()` away
+ * from being bypassed by a direct action POST, and because `closeReplacementLeaveYear` writes a
+ * marker that `domain_event` REVOKEs UPDATE/DELETE on: there is no in-product undo for a wrong one.
+ */
+export class ToilSweepForbiddenError extends Error {
+  constructor(msg = 'Only an HR administrator may run the replacement-leave sweeps.') {
+    super(msg);
+    this.name = 'ToilSweepForbiddenError';
+  }
+}
+
+/**
+ * Is this caller an admin, for a context that may carry EITHER shape?
+ *
+ * `isAdmin` reads `s.roles` only, and a real company-scoped session carries `grants` with no `roles`
+ * array at all — `withTenant` normalises the two (`ctx.roles ?? grants.map(g => g.role)`) and
+ * `core/audit-chain.ts` does the same. Checking `roles` alone would refuse exactly the delegated
+ * hr_admin the per-company marker below exists to support, which is the opposite of the intent.
+ */
+function isAdminCtx(ctx: SessionContext): boolean {
+  return isAdmin({ ...ctx, roles: ctx.roles ?? (ctx.grants ?? []).map((g) => g.role) });
+}
 
 const STD_DAY_MINUTES = 480; // 8h — the ORP/standard-day convention (wages / 26 / 8) used across payroll
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -75,7 +116,12 @@ const addDays = (date: string, n: number): string =>
 // TOIL; the exact EA ½/1-day rest-day rule governs cash pay, not in-lieu banking).
 const PREMIUM_MULT: Record<'workday' | 'rest_day' | 'holiday', number> = { workday: 1.5, rest_day: 2, holiday: 3 };
 
-const toilEnabled = () => process.env.TOIL_ENABLED === 'true';
+/**
+ * TOIL is now a per-TENANT entitlement, not a deployment flag (ADR-0077 slice 3). Same shape as the
+ * env read it replaces — a free synchronous check — because the snapshot rides on the session
+ * (core/entitlements.ts explains why that is session-scoped rather than per-transaction).
+ */
+const toilEnabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'toil');
 
 /** Idempotent: the tenant's REPLACEMENT leave type (created on first need; paid, working-day counted). */
 async function ensureReplacementLeaveType(tx: Tx, tenantId: string): Promise<string> {
@@ -114,8 +160,25 @@ export type ToilPolicyInput = {
   carryForwardAtYearEnd: boolean;
 };
 
-/** Upsert one company's TOIL policy (admin-gated by RLS). Enabling ensures the REPLACEMENT leave type. */
+/**
+ * Upsert one company's TOIL policy (admin-gated by RLS). Enabling ensures the REPLACEMENT leave type.
+ *
+ * ENTITLEMENT-GATED as of ADR-0077 slice 3 (review r2). This was the one exported TOIL entry point with
+ * no `toil` check — `accrueToil` and `maybeAutoAccrueOnApprovalTx` had one, this did not — so a tenant
+ * with no `toil` row could still tick "enabled", choose an accrual basis, set the expiry action and
+ * allow First-Schedule staff, and have all of it written and audited. No capability leaked (both accrual
+ * paths still refuse), but the customer was configuring a module they had not bought, and every field
+ * here is FROZEN onto each accrual at accrual time — so the settings would take effect verbatim the
+ * moment the module was later purchased.
+ *
+ * NOT covered by the D3 wind-down argument, which is deliberately narrow. Ungating `runToilExpiry` and
+ * `closeReplacementLeaveYear` was about SETTLING a debt already incurred: an eligible employee's banked
+ * days must convert to pay and may never lapse, and both sweeps read the per-accrual `expiryAction` /
+ * `carryForwardAtYearEnd` frozen at accrual, not this policy. Winding down needs the ledger and the two
+ * sweeps; it does not need to re-tune FUTURE accrual, which is precisely what the entitlement governs.
+ */
 export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
+  assertModuleEnabled(ctx, 'toil');
   if (!Number.isInteger(p.expiryDays) || p.expiryDays < 1 || p.expiryDays > 730)
     throw new Error('Expiry days must be a whole number between 1 and 730.');
   return withTenant(ctx, async (tx) => {
@@ -281,6 +344,42 @@ export async function accrueToilTx(
   if (!policy || !policy.enabled) throw new ToilDisabledError('Time off in lieu is not enabled for this company.');
 
   // 3 · no double-banking (the unique index also guards; this is the friendly error).
+  //
+  // THE CASH-XOR-TOIL INVARIANT IS ONE-SIDED, AND THAT IS WORTH STATING WHERE SOMEONE WILL SEE IT.
+  // core/payroll.ts's `EXCLUDE_TOIL_BANKED_DAYS` closes the TOIL-then-cash ordering: BOTH reads of
+  // `attendance.otMinutes` — the OT prefill and the weekly/bi-weekly cross-cycle weighting — skip any
+  // day that already carries a non-lapsed accrual, and slice 3 made that clause unconditional so a
+  // lapsed entitlement cannot re-monetise a banked day.
+  //
+  // There is NO mirror guard here: prefill a rest day's OT into `payroll_input` first, then bank the
+  // same day as TOIL, and the day is compensated twice — nothing below reads `payroll_input` or
+  // `payslip`. Nor is that ordering exotic. `maybeAutoAccrueOnApprovalTx` banks on approval of an
+  // attendance correction (core/attendance.ts), which routinely lands after a draft batch has been
+  // prefilled.
+  //
+  // SLICE 3 IS WHAT MAKES IT REACHABLE, and an earlier version of this comment claimed the opposite
+  // ("it predates ADR-0077 and is untouched by it, so it is not a slice-3 regression"). That is the
+  // same argument 0314's header refuses on the identical facts: both `accrueToil` and
+  // `maybeAutoAccrueOnApprovalTx` used to open with `if (!toilEnabled()) throw`, and TOIL_ENABLED is
+  // set in NO tracked env file (packs/catalog.ts), so no accrual could ever be created and the double
+  // payment could not happen on any deployment. Replacing that with a per-tenant `toil` entitlement
+  // means the first customer who buys the module makes this reachable for the first time. The CODE is
+  // untouched by slice 3; the REACHABILITY is created by it, and only the second one matters.
+  //
+  // WHY IT IS NOT CLOSED HERE, concretely rather than as a deferral. The obvious mirror — "refuse if a
+  // `payroll_input` OT row already exists for this employment" — cannot be written, because
+  // `payroll_input.overtime_amount` is a single per-(batch, employment) AGGREGATE with no per-day
+  // breakdown (db/schema.ts). It carries no attribution back to a worked date, so that test cannot
+  // tell "this rest day is already in the prefill" from "this employee had overtime on some OTHER day
+  // this cycle" and would refuse nearly every legitimate accrual in a month where anyone worked any
+  // overtime. That asymmetry is real: payroll's `EXCLUDE_TOIL_BANKED_DAYS` works because
+  // `toil_accrual` IS per-day. Closing this properly means deciding what a legitimate correction
+  // (prefill, then elect TOIL instead, then re-prefill) does to a draft batch — an ADR-0033 question
+  // about payroll-run state, not an entitlement one.
+  //
+  // test/toil.test.ts pins the double payment as a characterization test ("OT-then-TOIL"), so the next
+  // change to this area starts from a fixture rather than a paragraph and closing the gap is a visible,
+  // deliberate edit to a named assertion.
   const [dupe] = await tx
     .select({ id: toilAccrual.id })
     .from(toilAccrual)
@@ -401,7 +500,7 @@ export async function accrueToil(
   ctx: SessionContext,
   p: { employmentId: string; workedDate: string; firstScheduleConsent?: boolean },
 ): Promise<AccrueToilResult> {
-  if (!toilEnabled()) throw new ToilDisabledError();
+  if (!toilEnabled(ctx)) throw new ToilDisabledError();
   return withTenant(ctx, (tx) => accrueToilTx(tx, ctx, { ...p, requireDecideAuth: true }));
 }
 
@@ -417,7 +516,7 @@ export async function maybeAutoAccrueOnApprovalTx(
   ctx: SessionContext,
   p: { employmentId: string; workedDate: string; dayType: string | null },
 ): Promise<boolean> {
-  if (!toilEnabled()) return false;
+  if (!toilEnabled(ctx)) return false;
   // Cheap pre-checks before any work: must be a rest-day/holiday correction.
   if (!p.dayType || !RL_ELIGIBLE_DAY_TYPES.has(p.dayType as 'rest_day' | 'holiday')) return false;
   // Resolve the company policy gate (enabled + opted-in). RLS already scopes the row to this tenant.
@@ -549,6 +648,30 @@ export type ToilExpiryResult = {
   lapsed: number;
   convertedDays: number;
   convertedAmount: number;
+  /**
+   * Accruals that were DUE and VISIBLE to this caller but that `SETTLEABLE_BY_CALLER` left behind
+   * because the caller cannot administer their company (review r3). Zero for a platform-wide admin.
+   *
+   * Reported rather than inferred because the alternative is indistinguishable from success. Narrowing
+   * the read to the write set is what stops a dual-scoped operator rolling the whole transaction back —
+   * but it also turns "three employees' statutory convert-to-pay obligations were skipped" into the same
+   * `processed: 0` an admin sees when nothing was due. `closeReplacementLeaveYear` has never had this
+   * problem: it writes a per-company `replacement-leave-year.closed` marker naming exactly what it
+   * swept, so a partial run is legible in the event log. This is that signal, for the sweep that
+   * discharges an already-incurred statutory liability.
+   *
+   * WHAT IT DELIBERATELY DOES NOT COUNT, because a figure that overstated its own reach would be worse
+   * than no figure. The counting query runs inside the same `withTenant` transaction as the sweep, so
+   * both are bounded by `toil_accrual`'s base READ policy. It therefore measures exactly the rows
+   * `SETTLEABLE_BY_CALLER` removes ON TOP of what the caller could already see — the predicate slice 3
+   * added, and the only new blindness. Rows the base policy hides (an hr_admin scoped to company A
+   * simply cannot see company B's accruals at all) were never visible to this sweep before slice 3
+   * either; counting them would require a privilege this session does not hold, and pretending to
+   * would be the reassuring-figure failure this slice keeps finding. So: non-zero means "you can see
+   * work you may not do"; zero means "nothing was hidden from you by the settle predicate", NOT
+   * "nothing is outstanding anywhere in the tenant".
+   */
+  skippedOutOfScope: number;
 };
 
 /** One accrual to sweep. `remaining` = daysCredited − daysTaken (only the still-unspent in-lieu days).
@@ -579,7 +702,8 @@ async function expireAccrualsTx(
   rows: SweepRow[],
   asOf: string,
 ): Promise<ToilExpiryResult> {
-  if (rows.length === 0) return { processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0 };
+  if (rows.length === 0)
+    return { processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0, skippedOutOfScope: 0 };
 
   // Current s.2 wages for the employees whose TOIL converts to pay (ORP = wages / 26 per day).
   const convertEmpIds = [...new Set(rows.filter((d) => d.expiryAction === 'convert_to_pay').map((d) => d.employmentId))];
@@ -704,17 +828,61 @@ async function expireAccrualsTx(
       lapsed += 1;
     }
   }
-  return { processed: converted + lapsed, converted, lapsed, convertedDays, convertedAmount };
+  // `skippedOutOfScope: 0` — this helper is handed the rows to sweep and knows nothing about which ones
+  // a caller could not see. `runToilExpiry` owns that question and overlays the real figure.
+  return { processed: converted + lapsed, converted, lapsed, convertedDays, convertedAmount, skippedOutOfScope: 0 };
 }
 
 /**
- * Expire active TOIL accruals whose expiry date has arrived (gated). Each follows its FROZEN expiry_action via
+ * SELECT WHAT YOU MAY WRITE. Both statutory sweeps below read a set of `status='active'` accruals and
+ * then UPDATE every row they got back, i.e. they assume visibility implies writability. On
+ * `toil_accrual` those are two DIFFERENT predicates and always have been: the read side is
+ * `app.can_see_employment` (admin-for-company OR SELF OR the recursive administrative-manager chain,
+ * 0109) while the write side is `app.can_admin_employment` (admin-for-company only, 0016), and 0314
+ * adds `app.can_admin_payroll_employment` to the read side as well.
+ *
+ * So a caller who clears `isAdminCtx` but holds hr_admin in company A while ALSO being an employee of,
+ * or a manager in, or a payroll partner for, company B selects B's rows and cannot update them. The
+ * UPDATE does not skip those rows — it raises "new row violates row-level security policy" and rolls
+ * the whole transaction back, taking company A's settlement with it. G5 claims the TOIL statutory floor
+ * is reachable when the module is revoked; for a dual-scoped operator it would not have been reachable
+ * at all, and the failure is an unhandled 500 rather than a partial result.
+ *
+ * Slice 3 is what makes this live, exactly as with the payroll-partner read gap: both functions used to
+ * open with `if (!toilEnabled()) throw`, and TOIL_ENABLED is set in no tracked env file, so the path
+ * refused everyone. Adding the write predicate to the read makes the two sets identical, so a row this
+ * caller cannot settle is never picked up and the companies they CAN settle still settle.
+ */
+const SETTLEABLE_BY_CALLER = sql`app.can_admin_employment(${toilAccrual.employmentId})`;
+
+/**
+ * Expire active TOIL accruals whose expiry date has arrived. Each follows its FROZEN expiry_action via
  * `expireAccrualsTx`. Only the still-unspent remainder (`daysCredited − daysTaken`) is debited — consumed days
  * already flipped to 'taken' on consumption. Idempotent — only `status='active'` rows are touched, so
  * re-running is safe. `today` is injected for deterministic tests.
+ *
+ * UNGATED as of ADR-0077 slice 3 (F15), deliberately, and for the same reason as payroll's
+ * `excludeToilDays`. This sweep is how an ALREADY-INCURRED liability gets discharged: for a
+ * First-Schedule-eligible employee, unused TOIL must convert to pay and may never lapse (see
+ * ELIGIBLE_FLOOR / `onExpiry: 'convert_to_pay'` above) — that is statutory, not a product feature.
+ *
+ * Gating it on the entitlement would have meant a tenant whose TOIL module lapses (trial end,
+ * downgrade, non-payment) can no longer settle the days its employees already banked: the sweep
+ * throws, and app/admin/toil/page.tsx hides the button that calls it, so the obligation becomes
+ * unreachable through every path while the debt stays on the books. Under the old deployment flag
+ * that took an operator editing .env; a per-tenant entitlement makes it an ordinary commercial event.
+ *
+ * What the entitlement still governs is NEW accrual and the UI — you can stop banking TOIL, you
+ * cannot strand what was already banked. Safe when the module is off and always was: with no accrual
+ * rows there is nothing due and this returns zeros.
+ *
+ * UNGATED IS NOT UNGUARDED. Removing the entitlement check removed the only check that was on this
+ * path, so an explicit admin assertion replaces it — see `ToilSweepForbiddenError`. The two are
+ * different questions ("did this tenant buy TOIL?" vs. "may this caller settle it?") and only the
+ * second one should have been answered here all along.
  */
 export async function runToilExpiry(ctx: SessionContext, p: { today: string }): Promise<ToilExpiryResult> {
-  if (!toilEnabled()) throw new ToilDisabledError();
+  if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError();
   return withTenant(ctx, async (tx) => {
     const due = await tx
       .select({
@@ -729,7 +897,7 @@ export async function runToilExpiry(ctx: SessionContext, p: { today: string }): 
         otMinutes: toilAccrual.otMinutes,
       })
       .from(toilAccrual)
-      .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, p.today)));
+      .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, p.today), SETTLEABLE_BY_CALLER));
     const rows: SweepRow[] = due.map((d) => ({
       id: d.id,
       employmentId: d.employmentId,
@@ -739,7 +907,19 @@ export async function runToilExpiry(ctx: SessionContext, p: { today: string }): 
       dayType: d.dayType as 'workday' | 'rest_day' | 'holiday',
       otMinutes: d.otMinutes,
     }));
-    return expireAccrualsTx(tx, ctx, rows, p.today);
+    // THE RESIDUE, COUNTED (review r3). Identical predicate MINUS `SETTLEABLE_BY_CALLER`, so the
+    // difference is exactly the accruals that were due and that this caller's company scope hid. Both
+    // reads run inside the same `withTenant` transaction, so tenant RLS still applies to both and this
+    // can never count another tenant's rows. Without it a company-scoped admin sees the same
+    // `processed: 0` for "nothing was due" and for "someone else's statutory convert-to-pay obligations
+    // are three days overdue and I am not allowed to settle them" — and a sweep that silently settles a
+    // subset should say which subset.
+    const [dueAll] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(toilAccrual)
+      .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, p.today)));
+    const result = await expireAccrualsTx(tx, ctx, rows, p.today);
+    return { ...result, skippedOutOfScope: Math.max(0, Number(dueAll?.n ?? 0) - rows.length) };
   });
 }
 
@@ -762,23 +942,47 @@ export type CloseReplacementYearResult = ToilExpiryResult & {
  * for `anniversary` leave-cycle tenants each employment's boundary is computed from `earnedCycleStart` so RL
  * expiry stays in sync with the rest of that employee's balance roll.
  *
- * Idempotency beyond "no active rows left": a `replacement-leave-year.closed` marker event per (boundary key)
- * makes a re-fire (or a race against `runToilExpiry`) a true no-op rather than incidentally safe.
+ * Idempotency beyond "no active rows left": a `replacement-leave-year.closed` marker event per
+ * (boundary, COMPANY) makes a re-fire (or a race against `runToilExpiry`) a true no-op rather than
+ * incidentally safe.
+ */
+/**
+ * UNGATED for the same reason as `runToilExpiry` — the year-end floor settles an incurred statutory
+ * liability, so a lapsed entitlement must not be able to strand it. See that function's note. And
+ * ADMIN-ONLY for the same reason too: the entitlement gate was the only check on this path, so removing
+ * it needed an authorization check to replace it, not nothing.
+ *
+ * THE MARKER IS PER COMPANY, AND THE GRAIN IS THE WHOLE POINT (ADR-0077 slice 3 review). It used to be
+ * one tenant-wide marker keyed on `payload->>'asOf'` alone, while the accrual SELECT below runs under
+ * `toil_accrual_rls` → `can_see_employment` → `is_admin_for(company)`, which is COMPANY-SCOPED. Those
+ * two grains do not match, and the mismatch is not academic: an hr_admin delegated to one company of a
+ * group swept only that company's accruals and wrote a marker that claimed the entire tenant. Every
+ * later close for that boundary — including the group admin's — returned `alreadyClosed: true` and
+ * settled nothing, and `domain_event` has UPDATE/DELETE REVOKEd from `ai_hr_app`, so there is no way
+ * back through the product. The First-Schedule convert-to-pay obligation that ungating this function
+ * exists to protect would have been permanently unreachable for every other company in the group.
+ *
+ * So a marker now claims exactly what it swept: one per company that had visible active accruals at
+ * this boundary, carrying `companyId` in the payload. A marker with NO `companyId` is a pre-slice-3
+ * tenant-wide one and is still honoured as closing everything, so an already-closed boundary on a live
+ * deployment does not silently re-open.
  */
 export async function closeReplacementLeaveYear(
   ctx: SessionContext,
   p: { asOf: string },
 ): Promise<CloseReplacementYearResult> {
-  if (!toilEnabled()) throw new ToilDisabledError();
+  if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError();
   return withTenant(ctx, async (tx) => {
     const empty: CloseReplacementYearResult = {
-      processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0, alreadyClosed: false, carriedForward: 0,
+      processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0, skippedOutOfScope: 0,
+      alreadyClosed: false, carriedForward: 0,
     };
 
     // Idempotency guard beyond "no active rows left": a prior close marker for this exact boundary ⇒ true
     // no-op (so a re-fire, or a race against runToilExpiry, is genuinely idempotent, not incidentally safe).
-    const [marker] = await tx
-      .select({ id: domainEvent.id })
+    // Read ALL of them, not `limit(1)`, because the grain is per company now.
+    const markers = await tx
+      .select({ companyId: sql<string | null>`${domainEvent.payload} ->> 'companyId'` })
       .from(domainEvent)
       .where(
         and(
@@ -786,9 +990,12 @@ export async function closeReplacementLeaveYear(
           eq(domainEvent.eventType, 'replacement-leave-year.closed'),
           sql`${domainEvent.payload} ->> 'asOf' = ${p.asOf}`,
         ),
-      )
-      .limit(1);
-    if (marker) return { ...empty, alreadyClosed: true };
+      );
+    const closedCompanies = new Set(markers.map((m) => m.companyId).filter((c): c is string => c != null));
+    // A legacy marker (no companyId) closed the whole tenant. Honour it verbatim rather than re-opening
+    // a boundary an earlier release already recorded as closed.
+    const closedTenantWide = markers.some((m) => m.companyId == null);
+    if (closedTenantWide) return { ...empty, alreadyClosed: true };
 
     // The leave cycle drives the boundary, and it is PER-COMPANY: a mixed-cycle tenant must sweep each
     // company at its OWN boundary. Join `company` so each accrual carries its own employment's leave cycle
@@ -806,18 +1013,36 @@ export async function closeReplacementLeaveYear(
         dayType: toilAccrual.dayType,
         otMinutes: toilAccrual.otMinutes,
         hiredOn: employment.hiredOn,
+        companyId: employment.companyId,
         leaveCycle: company.leaveCycle,
       })
       .from(toilAccrual)
       .innerJoin(employment, eq(employment.id, toilAccrual.employmentId))
       .innerJoin(company, eq(company.id, employment.companyId))
-      .where(eq(toilAccrual.status, 'active'));
+      .where(and(eq(toilAccrual.status, 'active'), SETTLEABLE_BY_CALLER));
+
+    // Companies this caller can actually see accruals for. A company with no visible active accrual is
+    // NOT in scope and gets no marker — that is what stops a partial sweep from claiming the group.
+    const inScope = active.filter((a) => !closedCompanies.has(a.companyId));
+    const scopeCompanies = [...new Set(inScope.map((a) => a.companyId))].sort();
+    // Everything this caller could close at this boundary already carries a marker ⇒ a genuine
+    // idempotent re-fire.
+    //
+    // DECIDED FROM THE MARKERS, NOT FROM THE LEFTOVER ACCRUALS (slice 3 review r2). This used to read
+    // `active.length > 0 && scopeCompanies.length === 0`, which silently skipped the ORDINARY re-fire:
+    // once a close has actually settled everything, `expireAccrualsTx` has flipped every row to
+    // 'converted_to_pay'/'lapsed', so `active` is EMPTY, the condition never fires, no marker is
+    // consulted, and the function returns `alreadyClosed: false` — the marker guard this docblock calls
+    // "a true no-op rather than incidentally safe" was back to being incidentally safe on the one path
+    // that matters. app/admin/toil/page.tsx branches on exactly this field, so a re-run of a completed
+    // close reported "closed 0 accruals" instead of "already closed".
+    if (markers.length > 0 && scopeCompanies.length === 0) return { ...empty, alreadyClosed: true };
 
     let carriedForward = 0;
     // Each row carries its own per-company boundary; calendar rows resolve to `asOf`, anniversary rows to the
     // employee's own cycle start. We branch per row so a mixed-cycle tenant closes every company correctly.
-    const rows: (SweepRow & { boundary: string })[] = [];
-    for (const a of active) {
+    const rows: (SweepRow & { boundary: string; companyId: string })[] = [];
+    for (const a of inScope) {
       if (a.carryForwardAtYearEnd) {
         carriedForward += 1;
         continue; // survives the close — frozen opt-in carry-forward
@@ -826,6 +1051,7 @@ export async function closeReplacementLeaveYear(
       rows.push({
         id: a.id,
         employmentId: a.employmentId,
+        companyId: a.companyId,
         remaining: round2(Number(a.daysCredited) - Number(a.daysTaken)),
         expiryAction: a.expiryAction,
         workedDate: a.workedDate,
@@ -835,33 +1061,52 @@ export async function closeReplacementLeaveYear(
       });
     }
 
-    // Sweep each row at its own per-company boundary.
-    let agg: ToilExpiryResult = { processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0 };
+    // Sweep each row at its own per-company boundary, accumulating a PER-COMPANY subtotal as well as the
+    // run total: the marker each company gets below must describe what was settled for THAT company, or
+    // it is the same overstatement one grain down.
+    const zero = (): ToilExpiryResult => ({ processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0, skippedOutOfScope: 0 });
+    const add = (x: ToilExpiryResult, y: ToilExpiryResult): ToilExpiryResult => ({
+      processed: x.processed + y.processed,
+      converted: x.converted + y.converted,
+      lapsed: x.lapsed + y.lapsed,
+      convertedDays: round2(x.convertedDays + y.convertedDays),
+      convertedAmount: round2(x.convertedAmount + y.convertedAmount),
+      // Always 0 on this path, and that is a statement rather than an oversight: this sweep already
+      // reports its scope truthfully, by writing one `replacement-leave-year.closed` marker per company
+      // it actually swept. `runToilExpiry` has no such marker, which is why it needs the count.
+      skippedOutOfScope: x.skippedOutOfScope + y.skippedOutOfScope,
+    });
+    let agg = zero();
+    const perCompany = new Map<string, ToilExpiryResult>();
     for (const r of rows) {
       const part = await expireAccrualsTx(tx, ctx, [r], r.boundary);
-      agg = {
-        processed: agg.processed + part.processed,
-        converted: agg.converted + part.converted,
-        lapsed: agg.lapsed + part.lapsed,
-        convertedDays: round2(agg.convertedDays + part.convertedDays),
-        convertedAmount: round2(agg.convertedAmount + part.convertedAmount),
-      };
+      agg = add(agg, part);
+      perCompany.set(r.companyId, add(perCompany.get(r.companyId) ?? zero(), part));
     }
 
-    // One summary marker event; the per-accrual toil.converted/toil.lapsed rows are the audit (mirrors the
-    // leave-year.opened skip comment). The fixed aggregateId is the idempotency key for this boundary.
-    // The marker is keyed to the tenant (like leave-year.opened) with the boundary in the payload; the
-    // idempotency guard above matches on payload->>'asOf', so a re-fire for the same boundary is a no-op.
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'replacement-leave-year',
-      aggregateId: ctx.tenantId,
-      eventType: 'replacement-leave-year.closed',
-      actor: actorOf(ctx),
-      // leaveCycle is now per-company (bug #19): record the distinct cycles swept rather than one arbitrary
-      // company's value. The idempotency guard keys on payload->>'asOf', so this field is descriptive only.
-      payload: { asOf: p.asOf, leaveCycles: [...new Set(active.map((a) => a.leaveCycle))].sort(), ...agg, carriedForward },
-    });
+    // ONE MARKER PER COMPANY SWEPT; the per-accrual toil.converted/toil.lapsed rows are the audit (mirrors
+    // the leave-year.opened skip comment). `aggregateId` is the COMPANY, so the event log reads as "this
+    // company's replacement-leave year was closed" — which is the fact, and which the previous version's
+    // tenant aggregateId overstated.
+    for (const companyId of scopeCompanies) {
+      const ofCompany = inScope.filter((a) => a.companyId === companyId);
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'replacement-leave-year',
+        aggregateId: companyId,
+        eventType: 'replacement-leave-year.closed',
+        actor: actorOf(ctx),
+        // leaveCycle is per-company (bug #19), so with the marker per company it is a single value rather
+        // than a set. `companyId` is the idempotency key alongside `asOf`.
+        payload: {
+          asOf: p.asOf,
+          companyId,
+          leaveCycle: ofCompany[0]?.leaveCycle ?? null,
+          carriedForward: ofCompany.filter((a) => a.carryForwardAtYearEnd).length,
+          ...(perCompany.get(companyId) ?? zero()),
+        },
+      });
+    }
     return { ...agg, alreadyClosed: false, carriedForward };
   });
 }

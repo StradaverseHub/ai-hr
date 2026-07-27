@@ -53,6 +53,52 @@ const globalForPg = globalThis as unknown as {
 };
 const pgPools = (globalForPg.__aihrPgPools ??= new Map<string, ReturnType<typeof postgres>>());
 
+/**
+ * Is the ADR-0030 hash chain armed for this process?
+ *
+ * Separate from the call site so the ONE-TIME warning below has somewhere to live. A deployment that
+ * was running with a non-'true' value (`false`, `0`, `no`) had the chain ARMED under the old truthiness
+ * test and loses it at this deploy. That is the correct end state — the value says off and every doc
+ * agrees — but it MUST NOT happen silently, and the first version of this warning was wrong about why.
+ *
+ * IT CLAIMED `verifyTenantChain()` WOULD REPORT A BOUNDARY. IT WILL NOT. The verifier only inspects
+ * rows with `chain_seq IS NOT NULL`, and an event appended with the gate off has no chain columns at
+ * all — it is not a broken link, it is absent from the chain. The trigger likewise takes its head from
+ * `max(chain_seq)` over chained rows, so re-arming links straight onto the last chained event: the
+ * chain stays contiguous, every prev_hash matches, and the DPO surface renders a green "intact" over a
+ * log with an unprotected hole in the middle. A silent failure with a green verdict is strictly worse
+ * than a loud one, so the detection is now REAL rather than asserted:
+ *   - `verifyTenantChain` counts and reports `unchained` (core/audit-chain.ts), and the privacy page
+ *     renders it, so the hole is visible after the fact; and
+ *   - `scripts/check-audit-chain-gate.ts` compares this gate against the database BEFORE the restart
+ *     and exits non-zero, so `deploy/deploy.sh` cannot restart the service into the hole in the first
+ *     place. That script — not this warning, and not a grep in a runbook — is the control.
+ *
+ * Logged once per process, not per transaction.
+ */
+let auditGateWarned = false;
+function auditHashChainArmed(): boolean {
+  const raw = process.env.AUDIT_HASH_CHAIN_ENABLED;
+  if (raw !== undefined && raw !== 'true' && !auditGateWarned) {
+    auditGateWarned = true;
+    console.warn(
+      `[audit-chain] AUDIT_HASH_CHAIN_ENABLED='${raw}' is NOT 'true', so the ADR-0030 hash chain is OFF. ` +
+        `Before ADR-0077 slice 3 this gate was a truthiness test, so ANY non-empty value armed it — ` +
+        `including the '=false' line .env.example shipped. If this deployment WAS chaining events, the ` +
+        `events appended from now on carry no chain columns and verifyTenantChain() cannot see them: it ` +
+        `will keep reporting the older rows as intact while the new ones sit outside the chain entirely. ` +
+        `Run 'scripts/check-audit-chain-gate.ts' against this database — with MIGRATION_DATABASE_URL, the ` +
+        `OWNER role, because domain_event is RLS-bound for the app role and a filtered zero reads as "no ` +
+        `chain" — to find out which case you are in. ` +
+        `Set the value to the literal 'true' to keep the chain armed, or unset the variable to silence this.`,
+    );
+  }
+  // Written out in full rather than `raw === 'true'` so the gate FORM is greppable: the drift test
+  // asserts every DEFERRED_ENV_GATES entry is compared against the literal 'true', which is exactly
+  // the check that would have caught the truthiness bug this function exists to fix.
+  return process.env.AUDIT_HASH_CHAIN_ENABLED === 'true';
+}
+
 export function createDb(connectionString: string, options?: { max?: number }) {
   let client = pgPools.get(connectionString);
   if (!client) {
@@ -80,7 +126,16 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       await tx.execute(sql`select set_config('app.grants', ${JSON.stringify(grants)}, true)`);
       // ADR-0030 Layer 2 gate: the domain_event hash-chain trigger only fires when this GUC is 'on'.
       // Off by default → chain columns stay NULL → byte-identical behaviour (deployment flag).
-      if (process.env.AUDIT_HASH_CHAIN_ENABLED) {
+      //
+      // `=== 'true'`, NOT a truthiness test, and this was a live defect until ADR-0077 slice 3.
+      // `.env.example` shipped `AUDIT_HASH_CHAIN_ENABLED=false` as an ACTIVE line, and the string
+      // 'false' is truthy — so every deployment that copied the template ARMED the chain while both the
+      // template's own comment and packs/catalog.ts's parity note recorded it as OFF. It is the one gate
+      // slice 3 defers rather than migrates (DEFERRED_ENV_GATES), so slice 8 would have inherited a
+      // parity value that was simply wrong and disarmed a chain it believed had never run. Every other
+      // gate in this migration uses `=== 'true'`; this one now does too, and the drift test asserts the
+      // FORM as well as the presence so the next deferred entry cannot repeat it.
+      if (auditHashChainArmed()) {
         await tx.execute(sql`select set_config('app.audit_hash_chain', 'on', true)`);
       }
       return fn(tx);

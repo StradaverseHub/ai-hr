@@ -1,13 +1,22 @@
 /**
- * Wave 3 #9-3 — the byte-identical gate. With TYPED_PAY_COMPONENTS_ENABLED the kernel reads the typed
- * component tables instead of compensation + payroll_input; back-filled from the legacy data it must
- * produce IDENTICAL payslips. We generate a batch with the flag off, reset it, back-fill components,
- * regenerate with the flag on, and assert every payslip column + the full statutory object match.
- * Exercised across basic + allowance + overtime + bonus + taxable claim + HRDF + EPF/SOCSO/EIS/PCB,
+ * Wave 3 #9-3 — the byte-identical gate. With the `typed_pay_components` module entitled, the kernel
+ * reads the typed component tables instead of compensation + payroll_input; back-filled from the legacy
+ * data it must produce IDENTICAL payslips. We generate a batch with the module OFF, reset it, back-fill
+ * components, regenerate with the module ON, and assert every payslip column + the full statutory object
+ * match. Exercised across basic + allowance + overtime + bonus + taxable claim + HRDF + EPF/SOCSO/EIS/PCB,
  * for a full month and a prorated mid-month joiner.
+ *
+ * ADR-0077 slice 3: the gate is a per-tenant entitlement row, not TYPED_PAY_COMPONENTS_ENABLED. This file
+ * therefore drives the kernel through `entitledCtx` (a snapshot resolved from this tenant's ROWS)
+ * rather than `adminCtx`, whose snapshot is SYNTHETIC — derived from `legacyEnabledModulesIn(process.env)`,
+ * so a `setModule` grant reaches it only through the harness's in-memory mirror of that write. The
+ * snapshot is point-in-time, so the ON half re-resolves after setModule. (Until slice 3 `adminCtx` was
+ * `entitlementsExempt: 'harness'` and answered TRUE for every catalogued module, under which BOTH halves
+ * of this comparison would have taken the typed path and the test would have compared the typed kernel
+ * against itself — the reason this file was converted.)
  */
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
@@ -23,7 +32,7 @@ import {
   setEmploymentPayComponent,
   upsertPayComponent,
 } from '../core/pay-components';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 const payslipOf = async (batchId: string) => {
   const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
@@ -43,18 +52,18 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
   });
   beforeEach(async () => {
     await resetDb();
+    // No explicit "turn it off" step: seedBase seeds NO tenant_module row for typed_pay_components
+    // (test/env.ts deletes TYPED_PAY_COMPONENTS_ENABLED, so it is not in this process's parity set),
+    // and a missing row IS disabled (C7). Each test grants the row when it wants the typed path.
     base = await seedBase();
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-  });
-  afterEach(() => {
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
   });
   afterAll(async () => {
     await closeAll();
   });
 
   async function runCompat(b: Base, hiredOn: string) {
-    const a = adminCtx(b);
+    // Snapshot resolved with NO typed_pay_components row ⇒ the module is genuinely off for this context.
+    const a = await entitledCtx(b);
     await setCompanyStatutoryMY(a, { companyId: b.companyId, hrdfStatus: 'mandatory' }); // exercise HRDF
     const e = await hireEmployee(a, {
       person: { fullName: 'Compat', primaryEmail: 'compat@acme.test' },
@@ -71,7 +80,7 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
     // A taxable claim allowance (ADR-0021) — set directly so the backfill picks it up as a CLAIM component.
     await owner.db.update(schema.payrollInput).set({ claimAllowance: '200.00' }).where(eq(schema.payrollInput.batchId, batchId));
 
-    // ── Legacy path (flag off) ──
+    // ── Legacy path (module off) ──
     await generatePayslips(a, { batchId });
     const legacy = snap(await payslipOf(batchId));
 
@@ -79,12 +88,14 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
     await owner.db.delete(schema.payslip).where(eq(schema.payslip.batchId, batchId));
     await owner.db.update(schema.payrollBatch).set({ status: 'draft' }).where(eq(schema.payrollBatch.id, batchId));
 
-    // ── Back-fill the components, then the typed path (flag on) ──
+    // ── Back-fill the components, then the typed path (module on) ──
     await seedPayComponentCatalog(a);
     await backfillEmploymentComponentsFromCompensation(a);
     await backfillBatchComponentsFromInput(a, batchId);
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await generatePayslips(a, { batchId });
+    // Grant the module, then RE-RESOLVE: the snapshot is point-in-time, so `a` would still say off.
+    await setModule(b.tenantId, 'typed_pay_components', 'active');
+    const on = await entitledCtx(b);
+    await generatePayslips(on, { batchId });
     const typed = snap(await payslipOf(batchId));
 
     return { legacy, typed };
@@ -120,7 +131,10 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
   });
 
   it('RECORD-ONLY: a non-payable, non-taxable component is recorded on the payslip with zero gross/net delta', async () => {
-    const a = adminCtx(base);
+    // This test runs entirely on the typed path (both the baseline and the with-BIK batch), so the
+    // module is granted up front and the snapshot resolved after it.
+    await setModule(base.tenantId, 'typed_pay_components', 'active');
+    const a = await entitledCtx(base);
     const e = await hireEmployee(a, {
       person: { fullName: 'Rec', primaryEmail: 'rec@acme.test' },
       companyId: base.companyId,
@@ -132,7 +146,6 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
     await seedPayComponentCatalog(a);
     await backfillEmploymentComponentsFromCompensation(a);
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
 
     // ── Baseline (no non-payable component) ──
     const { batchId: baseBatch } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
@@ -160,7 +173,9 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
   });
 
   it('FAIL-CLOSED: a taxable non-payable (BIK) component is rejected, not silently under-taxed', async () => {
-    const a = adminCtx(base);
+    // The refusal is a property of the TYPED path, so the module is granted before the snapshot.
+    await setModule(base.tenantId, 'typed_pay_components', 'active');
+    const a = await entitledCtx(base);
     const e = await hireEmployee(a, {
       person: { fullName: 'Bik', primaryEmail: 'bik@acme.test' },
       companyId: base.companyId,
@@ -178,7 +193,6 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: bikId, amount: 250, effectiveFrom: '2026-01-01' });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
     await expect(generatePayslips(a, { batchId })).rejects.toBeInstanceOf(UnsupportedPayComponentError);
   });
 });

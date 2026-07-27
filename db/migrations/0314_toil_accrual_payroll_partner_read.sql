@@ -1,0 +1,58 @@
+-- ADR-0077 slice 3 / ADR-0033 — let the payroll function READ toil_accrual, so the cash-XOR-TOIL
+-- invariant stops depending on WHO runs the batch.
+--
+-- THE DEFECT. core/payroll.ts's `EXCLUDE_TOIL_BANKED_DAYS` is a
+--   not exists (select 1 from toil_accrual ta where ta.employment_id = … and ta.worked_date = … )
+-- correlated subquery, and a subquery runs under the CALLER's row-level security. 0076 gave
+-- toil_accrual `USING (tenant_id = app.current_tenant_id() AND app.can_see_employment(employment_id))`,
+-- and 0099:66-67 records in terms that `is_admin_for` inside `can_see_employment` does NOT include
+-- partners. 0099 then widened attendance, payslip, payroll_input, compensation and employment to the
+-- payroll capability — and did not widen toil_accrual, because nothing in the payroll path read it yet.
+--
+-- Slice 3 is what makes that gap live. The exclusion clause used to sit inside
+-- `process.env.TOIL_ENABLED === 'true'`, which packs/catalog.ts records is set in no tracked env file,
+-- so it never ran. It is unconditional now. For a payroll_partner the attendance rows are visible and
+-- the toil_accrual rows are not, so `not exists` is trivially TRUE and every TOIL-banked rest day is
+-- prefilled as overtime CASH while the leave credit stays on the ledger — the employee is compensated
+-- twice for one day, and the invariant slice 3 claims is "no longer switchable" turns out to be
+-- switchable by which role presses the button.
+--
+-- WHY WIDEN THE POLICY RATHER THAN WRAP THE SUBQUERY IN A SECURITY DEFINER HELPER. A helper would hide
+-- the rows from the policy while still letting the money decision see them, i.e. it would put a second,
+-- invisible visibility rule beside the declared one. Widening says the true thing: computing a payslip
+-- REQUIRES knowing which of this employee's days were banked as leave, so the payroll function needs
+-- read access, exactly as it needs read access to attendance. This is the same edit 0099 made for
+-- attendance/payslip, in the same shape, for the same reason.
+--
+-- ══ WHY THIS IS A SEPARATE `FOR SELECT` POLICY AND NOT A WIDER `USING` ON 0076's `FOR ALL` ══
+--
+-- The first version of this migration widened `toil_accrual_rls`'s USING clause in place and asserted in
+-- its own header that it was "READ ONLY, because WITH CHECK is unchanged". That claim is FALSE, and the
+-- review caught it against a scratch database. PostgreSQL authorises a DELETE from the USING expression
+-- ALONE — WITH CHECK is never consulted for DELETE, because a DELETE produces no new row to check. 0076
+-- also grants `ai_hr_app` full DML on this table, so the USING clause was the only thing standing
+-- between a payroll_partner session and destroying an employee's banked-leave ledger. Widening a FOR ALL
+-- policy's USING cannot express "read only"; it widens SELECT, UPDATE-target-selection and DELETE at
+-- once.
+--
+-- So 0076's policy is left exactly as it was, and the read widening is added BESIDE it. Permissive
+-- policies are OR'd per command, and a FOR SELECT policy is consulted for no other command, so the
+-- payroll capability gains reads and nothing else.
+CREATE POLICY "toil_accrual_payroll_read" ON "toil_accrual" FOR SELECT
+  USING (tenant_id = app.current_tenant_id() AND app.can_admin_payroll_employment(employment_id));--> statement-breakpoint
+
+-- ══ AND THE DELETE SIDE, MADE TRUE RATHER THAN ASSERTED ══
+--
+-- Banking a day in lieu is an HR/leave decision: 0076 already restricts who may CREATE or ALTER an
+-- accrual to `app.can_admin_employment` via WITH CHECK. Deletion was never restricted at all — 0076's
+-- FOR ALL policy authorises it from `can_see_employment`, whose self and administrative-manager branches
+-- (0109) mean an employee could delete their own accrual row and a manager a report's, silently erasing
+-- a settled or pending statutory obligation. No application code deletes from this table, so nothing
+-- regresses; the hole is simply closed before the payroll capability is anywhere near it.
+--
+-- RESTRICTIVE, not permissive, and that is the whole mechanism: permissive policies are OR'd (a new one
+-- could only widen DELETE), restrictive policies are AND'd on top. UPDATE and SELECT are untouched — in
+-- particular UPDATE still fails LOUDLY through 0076's WITH CHECK for a non-admin rather than silently
+-- matching zero rows, which is the behaviour core/toil.ts's sweeps are written against.
+CREATE POLICY "toil_accrual_delete_admin_only" ON "toil_accrual" AS RESTRICTIVE FOR DELETE
+  USING (app.can_admin_employment(employment_id));

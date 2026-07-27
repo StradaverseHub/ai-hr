@@ -40,7 +40,7 @@ import {
 import { dispatchNotifications } from '../core/notifications';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 const hire = (ctx: SessionContext, b: Base, name: string, deptId?: string) =>
   hireEmployee(ctx, {
@@ -257,23 +257,29 @@ describe('performance lifecycle', () => {
     await expect(closeReview(a, { reviewId: r1, abcClass: 'A' })).rejects.toBeInstanceOf(PerfError);
   });
 
-  it('notification projection: closeReview → a notification row for the subject (NOTIFICATIONS_ENABLED)', async () => {
-    const prev = process.env.NOTIFICATIONS_ENABLED;
-    process.env.NOTIFICATIONS_ENABLED = 'true';
-    try {
-      const { a, E1, r1 } = await toReleased();
-      await closeReview(a, { reviewId: r1, abcClass: 'A' });
-      await dispatchNotifications(a);
-      const notes = await owner.db
-        .select()
-        .from(schema.notification)
-        .where(and(eq(schema.notification.recipientEmploymentId, E1.employmentId), eq(schema.notification.kind, 'performance.closed')));
-      expect(notes.length).toBe(1);
-      // Release-safe body: never the class.
-      expect(notes[0].body).not.toContain('A');
-    } finally {
-      process.env.NOTIFICATIONS_ENABLED = prev;
-    }
+  it('notification projection: closeReview → a notification row for the subject (notifications module)', async () => {
+    const { a, E1, r1 } = await toReleased();
+    await closeReview(a, { reviewId: r1, abcClass: 'A' });
+    // ADR-0077 slice 3: `notifications` is a per-tenant MODULE now, not NOTIFICATIONS_ENABLED — the
+    // service reads the session's entitlement snapshot, so writing the env var here would set nothing.
+    //
+    // Both halves of the pair are load-bearing. seedBase's parity set is narrowed by the live env
+    // (`legacyEnabledModulesIn(process.env)`), so whether this tenant already carries a notifications
+    // row depends on whether the machine running the suite happens to have NOTIFICATIONS_ENABLED in
+    // .env.local — green here, red in CI. And `adminCtx` derives its snapshot from that same env, so it
+    // would report the module OFF exactly where no row was seeded, making `dispatchNotifications` a
+    // silent no-op and `notes.length` 0 instead of 1. Granting the ROW and resolving a REAL snapshot
+    // from it takes the environment out of the question. `entitledCtx` is a point-in-time read, so it
+    // is built AFTER the grant.
+    await setModule(base.tenantId, 'notifications', 'active');
+    await dispatchNotifications(await entitledCtx(base));
+    const notes = await owner.db
+      .select()
+      .from(schema.notification)
+      .where(and(eq(schema.notification.recipientEmploymentId, E1.employmentId), eq(schema.notification.kind, 'performance.closed')));
+    expect(notes.length).toBe(1);
+    // Release-safe body: never the class.
+    expect(notes[0].body).not.toContain('A');
   });
 
   it('regression: a YER-only cycle still calibrates, rolls up merit, releases, acknowledges; distribution unchanged', async () => {

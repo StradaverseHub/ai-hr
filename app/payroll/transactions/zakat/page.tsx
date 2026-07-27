@@ -9,6 +9,7 @@ import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inp
 import { employeeLabel } from '@/lib/employee-code';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { saveZakatElectionAction } from './election-actions';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
 /**
  * Zakat screen (feedback 58755260; simplified by feedback d435673e) — the single home for zakat.
@@ -69,7 +70,7 @@ export default async function ZakatTransactionPage({
   const tList = await getTranslations('payroll.list');
   const sp = await searchParams;
   const { employmentId, error } = sp;
-  const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
+  const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
 
   // ── Section A data — employee election ─────────────────────────────────────
   const [allEmployees, companies] = await Promise.all([listEmployees(s, scopeIds), listCompanies(s)]);

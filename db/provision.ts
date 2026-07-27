@@ -38,9 +38,10 @@ import {
   roleAssignment,
   tenant,
   tenantModule,
+  tenantSetting,
 } from './schema';
 import { requirePackFor } from '../localization/registry';
-import { ALL_MODULE_CODES, CORE_MODULE_CODES, missingModuleDependencies } from '../packs/catalog';
+import { ALL_MODULE_CODES, CORE_MODULE_CODES, missingModuleDependencies, settingsOnInstallFor } from '../packs/catalog';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { seedProfileOptions } from '../core/profile-options';
 import { seedGuides } from './seed-guides';
@@ -364,6 +365,54 @@ export async function provisionTenant(tx: Tx, input: ProvisionInput): Promise<Pr
     }
     if (picked.length) {
       await tx.insert(tenantModule).values(picked.map((moduleCode) => ({ tenantId, moduleCode, status: 'active' })));
+    }
+
+    // THE SETTINGS AXIS, which this step was missing entirely — written from `defaultOnInstall`, and
+    // deliberately NOT from the env parity set.
+    //
+    // The first attempt here used `legacyEnabledSettingsIn(process.env)`, reasoning that a tenant
+    // provisioned since slice 1 has been running the three payroll switches on the strength of
+    // .env.production and would lose them at the flip. That reasoning is sound and it is about tenants
+    // that ALREADY EXIST — which this function does not create. Applied here it hands every FUTURE
+    // customer whatever the box happens to be booted with, and on the live deployment that means
+    // arriving able to revert a processed payroll run (`payroll.reset_enabled`) and unlock a closed one
+    // (`payroll.unlock_enabled`). packs/catalog.ts records the opposite decision in terms: those two
+    // carry `defaultOnInstall: false` because "a purchased module must never arrive with an escape
+    // hatch already open, even though the demo deployment has all three env flags ON today", and it
+    // confines the parity argument to an already-provisioned tenant.
+    //
+    // The hatch would also be unclosable. Both keys are `scope='platform'`, and 0313's
+    // `tenant_setting_write` policy requires `scope='tenant'`, so `ai_hr_app` can never delete them;
+    // the plane that could is slice 7. An over-grant here is permanent in a way an under-grant is not.
+    //
+    // THAT SAME ARGUMENT IS WHY THIS WRITES ALMOST NOTHING. `settingsOnInstallFor` emits a row only for
+    // a setting whose install value DIFFERS from its catalog default, so a new tenant gets ONE row —
+    // `payroll.individual_txn_pay_enabled`, when payroll is bought — and every other key resolves to its
+    // default with no row at all. The first version wrote all three payroll keys as explicit `false`,
+    // which is behaviourally identical to no row and strictly worse: the ROW is unwritable by
+    // `ai_hr_app` for the two platform-scoped keys, and `scripts/reconcile-entitlement-parity.ts` reads
+    // any existing row as "a decision was recorded, leave it alone". A row that changes nothing and
+    // forecloses both levers is the definition of a bad default. See settingsOnInstallFor for the
+    // full reasoning.
+    //
+    // THE ONE ROW IS NOT A PARITY LEAK (review r3). `payroll.individual_txn_pay_enabled` is emitted
+    // because its CATALOG entry says so, not because this box has INDIVIDUAL_TXN_PAY_ENABLED set — the
+    // env is never read here, and the value would be the same on a box that has the flag off. It is
+    // `scope: 'tenant'` and it decides payslip arithmetic rather than opening a control hatch; the
+    // reasoning is recorded on the catalog entry itself. Without it a customer provisioned tomorrow
+    // would be the only tenant on the deployment whose one-off transactions silently stop being paid.
+    //
+    // Tenants created BETWEEN slice 1 and slice 3 are still the gap for the two PLATFORM risk switches,
+    // and they are `scripts/reconcile-entitlement-parity.ts`'s job — a one-shot, sign-off-gated,
+    // dry-run-by-default reconciliation over tenants that exist, bounded by `--created-before` so it
+    // cannot reach a tenant provisioned after the flip. Two questions, two mechanisms, neither
+    // substituting for the other. `source: 'platform'`, matching what 0313 wrote: an install default is
+    // Stradaverse's decision, not a value the customer chose.
+    const installSettings = settingsOnInstallFor(picked);
+    if (installSettings.length) {
+      await tx
+        .insert(tenantSetting)
+        .values(installSettings.map(({ key, value }) => ({ tenantId, key, value, source: 'platform' })));
     }
   });
 

@@ -26,6 +26,7 @@ import {
 import { attendanceMonthSummary, type MonthSummaryRow } from './attendance';
 import { BatchNotDraftError } from './payroll';
 import { setPayrollBatchComponent, UnsupportedBatchComponentError } from './pay-components';
+import { isModuleEnabled } from './entitlements';
 
 // v1 accepts only the Monthly method. Text tag (app-side check); Daily deferred.
 export const ALLOWANCE_METHODS = ['monthly'] as const;
@@ -512,7 +513,7 @@ export async function transferAllowancesToBatch(
   p: { batchId: string; policyId: string },
 ): Promise<TransferResult> {
   // 2. Gate check first — no session/DB work when the pipeline is off.
-  if (process.env.TYPED_PAY_COMPONENTS_ENABLED !== 'true') {
+  if (!isModuleEnabled(ctx, 'typed_pay_components')) {
     return { applied: 0, ineligible: 0, reversed: 0, gated: true };
   }
   return withTenant(ctx, async (tx) => {

@@ -6,6 +6,7 @@ import { listPayComponents } from '@/core/pay-components';
 import { ErrorBanner, PageHeader } from '@/components/ui';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { TxnGrid, type WizardBatch, type WizardEmployee } from './txn-grid';
+import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 
 /**
  * 1.2.2 Individual Transaction — a guided four-step flow for one-off payroll items (feedback 65377ed0).
@@ -27,11 +28,11 @@ export default async function IndividualTransactionPage({
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.transactions');
   const { error } = await searchParams;
-  const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
+  const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
   // f1564110 Phase 3 — with the kernel consuming this ledger, a NEW payable (earning/deduction) row must
   // name a Payroll Item Master item (its statutory flags drive the treatment). The wizard hides the generic
   // earning/deduction options accordingly; the service re-enforces (ComponentRequiredError).
-  const individualTxnPayOn = process.env.INDIVIDUAL_TXN_PAY_ENABLED === 'true';
+  const individualTxnPayOn = settingEnabledOrDefault(s, 'payroll.individual_txn_pay_enabled');
 
   const [allBatches, employees, companies, payComponents] = await Promise.all([
     listBatches(s, scopeIds),

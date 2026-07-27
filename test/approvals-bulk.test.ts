@@ -14,7 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { requestLeave, decideLeave } from '../core/leave';
 import { createClaimType, submitClaim, decideClaim } from '../core/claims';
@@ -148,7 +148,24 @@ describe('bulk approval — integration (real decide services + events + authori
       lineType: 'administrative',
       validFrom: '2024-01-01',
     });
-    const mgrCtx: SessionContext = { tenantId: base.tenantId, userId: uM, personId: M.personId, roles: ['manager'] };
+    // ADR-0077 slice 3: this is a REAL manager session, not a fixture shortcut, so it must carry a REAL
+    // entitlement snapshot. It used to be a bare literal, which was fine while every gate was an env read —
+    // but decideAttendanceCorrection now reaches maybeAutoAccrueOnApprovalTx, which asks `isModuleEnabled(ctx,
+    // 'toil')`, and a context with neither a snapshot nor an exemption marker throws EntitlementsUnresolvedError
+    // there. runBulkDecide would swallow that as a per-item skip, so the batch counts below would silently
+    // become {approved:1, skipped:4} — a wrong-reason failure, not a gate.
+    //
+    // `entitledCtx` resolves the snapshot from THIS tenant's rows, so TOIL is off by ABSENCE (seedBase seeds
+    // only the parity set, and `toil` is not in it) — exactly the state the old `TOIL_ENABLED` env read had in
+    // this file, which never set that flag. Deliberately a RESOLVED context and not an exempt one: as of
+    // slice 3 an exempt context THROWS EntitlementsExemptForBillableError when asked about a billable
+    // module, so it could not run this approval at all — and before that it answered TRUE, which would
+    // have switched TOIL auto-accrual ON here and changed what these assertions exercise.
+    const mgrCtx: SessionContext = {
+      ...(await entitledCtx(base, ['manager'])),
+      userId: uM,
+      personId: M.personId,
+    };
     return { a, E, M, P, mgrCtx };
   }
 

@@ -120,6 +120,31 @@ export class ModuleNotEnabledError extends EntitlementError {
 }
 
 /**
+ * Thrown at a service entry point when a per-tenant SETTING is off — the risk-switch counterpart to
+ * `ModuleNotEnabledError`.
+ *
+ * WHY IT IS NOT JUST `ModuleNotEnabledError` WITH A DIFFERENT MESSAGE. Slice 3 moved four gates onto
+ * settings, and the two payroll risk switches (`payroll.reset_enabled`, `payroll.unlock_enabled`)
+ * refused with `new ModuleNotEnabledError('payroll', …)`. `moduleCode` is a public readonly field that
+ * exists precisely so a caller can render "this module is not on your plan" — so a customer who owns
+ * Payroll outright, and merely has an operator-controlled escape hatch switched off, would be told
+ * Payroll is not on their plan. That is a false billing statement produced by an internal safety
+ * setting, and the two facts are as different as `ModuleNotEnabledError` and
+ * `EntitlementsResolutionFailedError` are from each other — the same argument that kept those apart.
+ *
+ * Shares the `EntitlementError` supertype, so a single catch still covers the family, and the message
+ * keeps the existing "… is not enabled." wording so nothing downstream changes shape.
+ */
+export class SettingNotEnabledError extends EntitlementError {
+  readonly settingKey: string;
+  constructor(settingKey: string, msg?: string) {
+    super(msg ?? `The '${settingKey}' setting is not enabled for this account.`);
+    this.name = 'SettingNotEnabledError';
+    this.settingKey = settingKey;
+  }
+}
+
+/**
  * Thrown when an entitlement question is asked of a context that carries no snapshot AND no record of
  * a failed attempt — i.e. a synthetic context that was never resolved at all. Never silently open and
  * never silently closed: that is a wiring bug, and the only safe answer is to say so loudly.
@@ -133,6 +158,31 @@ export class EntitlementsUnresolvedError extends EntitlementError {
         `A synthetic SessionContext must be built with resolveEntitlements() or marked entitlementsExempt.`,
     );
     this.name = 'EntitlementsUnresolvedError';
+  }
+}
+
+/**
+ * Thrown when an `entitlementsExempt` context is asked about a BILLABLE module.
+ *
+ * Its own class rather than `EntitlementsUnresolvedError` because that error's message ends "…must be
+ * built with resolveEntitlements() OR MARKED entitlementsExempt", which is the one instruction the
+ * caller has already followed — it would send a reader to add the marker that caused the throw. The
+ * distinction is real: unresolved means "nobody gave me data", this means "you told me the question
+ * does not apply, and for a paid module that cannot be true".
+ */
+export class EntitlementsExemptForBillableError extends EntitlementError {
+  readonly code: string;
+  readonly marker: string;
+  constructor(code: string, marker: string) {
+    super(
+      `Context marked entitlementsExempt: '${marker}' was asked whether the BILLABLE module '${code}' is ` +
+        `enabled. An exemption means "entitlements do not apply to me", which is only true of core modules; ` +
+        `answering yes for a paid one would grant it to every tenant regardless of what they bought. ` +
+        `Resolve a real snapshot with resolveEntitlementsTx(tx, tenantId) and drop the marker.`,
+    );
+    this.name = 'EntitlementsExemptForBillableError';
+    this.code = code;
+    this.marker = marker;
   }
 }
 
@@ -573,8 +623,13 @@ function snapshotOf(ctx: EntitledContext, what: string): EntitlementSnapshot | n
  *      Their CORE dependencies are still walked, so MODULE_KILL reaches `leave` through `employees`.
  *   3. Unknown code ⇒ FALSE. A typo disables rather than enables. Checked BEFORE the exempt branch —
  *      otherwise an exempt context answers TRUE for a module that does not exist (round 1).
- *   4. An exempt context is TRUE: provisioning and the seeder run before entitlements exist, and
- *      failing them closed would make a tenant impossible to create.
+ *   4. An exempt context THROWS `EntitlementsExemptForBillableError` for a billable code. Everything
+ *      that reaches step 4 is non-core and catalogued, which by construction means billable (core is
+ *      already answered at step 2, without a snapshot, which is what lets provisioning and the seeder
+ *      run before entitlements exist). It used to `return true` here, and that meant any caller
+ *      carrying a marker silently received every paid module for every tenant — see the branch itself
+ *      for the sweep that did exactly that. A sweep that legitimately needs the answer resolves a real
+ *      snapshot and drops its marker.
  *   5. The tenant must be in GOOD STANDING — an ALLOW-list, so 'suspended', 'closed', a row that could
  *      not be read, and any status a future migration adds all resolve closed.
  *   6. Tenant-wide row ⇒ true. Otherwise a company-scoped row for `companyId` ⇒ true, and asking
@@ -664,7 +719,28 @@ function moduleEnabled(
   if (!CATALOG.has(code)) return false;
 
   const snap = snapshotOf(ctx, code);
-  if (snap === null) return true; // exempt path — see step 4
+  if (snap === null) {
+    // EXEMPT CONTEXT, BILLABLE MODULE ⇒ THROW. Amended in slice 3, after this branch produced three
+    // real defects in one slice.
+    //
+    // It used to `return true`, on the reasoning that "a module is a gate, and an exempt caller is not
+    // gated". That holds for CORE modules — and they never reach here, because step 2 answers them
+    // without a snapshot. Everything that gets this far is non-core and catalogued, which by
+    // construction means BILLABLE (the drift test pins core ∪ billable = the whole catalog). So the old
+    // answer meant: any caller carrying a marker silently receives every paid module, for every tenant,
+    // whether or not they bought it — the exact enforcement bypass this slice exists to close.
+    //
+    // It was not hypothetical. `scripts/review-sweep.ts` dispatched notifications for every tenant on
+    // the box via this branch, and nothing failed, because the failure mode is a customer being GIVEN
+    // something. A silent grant is the one outcome no test notices.
+    //
+    // Throwing is the same fail-loud rule the no-snapshot case already follows: the honest answer for a
+    // caller with no entitlement data is "I cannot know", never "yes". A sweep that legitimately needs
+    // the answer resolves a real snapshot (resolveEntitlementsTx) and drops its marker; one that has no
+    // business asking gets a stack trace pointing at the line that asked, on its first run, instead of
+    // shipping unpurchased features quietly for a year.
+    throw new EntitlementsExemptForBillableError(code, ctx.entitlementsExempt as string);
+  }
 
   if (!TENANT_STATUS_GOOD_STANDING.has(snap.tenantStatus)) return false;
 
@@ -738,3 +814,78 @@ export function getSetting<T = unknown>(ctx: EntitledContext, key: string): T {
 
 /** Boolean convenience — the shape the env-flag reads it replaces already had. */
 export const settingEnabled = (ctx: EntitledContext, key: string): boolean => getSetting(ctx, key) === true;
+
+/**
+ * `isModuleEnabled`, but an INFRASTRUCTURE failure answers FALSE instead of throwing. For PAGES — the
+ * shell and the server components that decide what to RENDER — and never for a service entry point.
+ *
+ * WHERE THE LINE IS (extended from "the root layout only" by the slice-3 review). A page-level read is
+ * a DISPLAY decision: the honest degraded answer is "do not offer this control", and false is that
+ * answer. A service-level read is an AUTHORIZATION decision, where "I could not find out" must be loud —
+ * so `assertModuleEnabled` and every core/ gate keep the throwing form. The two are not
+ * interchangeable, and using the quiet form in a service would convert an incident into a silent
+ * refusal that looks like a plan change.
+ *
+ * The original restriction to `app/layout.tsx` alone left nine other pages calling the throwing form
+ * with no `app/error.tsx` anywhere under app/, so the very incident lib/session.ts's degrade path is
+ * designed for — a pool blip, a statement timeout, a code-ahead-of-migration deploy — rendered the
+ * shell and then 500'd /payroll, /roster, /admin/toil and the transaction pages outright. That is the
+ * opposite of "refuse the feature, keep the app navigable".
+ *
+ * WHY THIS EXISTS. lib/session.ts's `withEntitlements` deliberately swallows a resolution failure and
+ * returns the session carrying `entitlementsError`, on the stated grounds that getSession is the entry
+ * point for every page and throwing there "would take down authentication itself"; gates are then
+ * supposed to "refuse AT THE POINT OF USE (fail-closed)". That contract silently breaks when the point
+ * of use IS the root layout: `app/layout.tsx` gates the notification bell on the billable
+ * `notifications` module, sits outside the only try/catch there (which converts AuthRequiredError to a
+ * redirect), and there is no app/error.tsx — so a pool blip, a statement timeout or a
+ * code-ahead-of-migration deploy would 500 EVERY authenticated route rather than degrade one feature.
+ * Before slice 3 that line was `process.env.NOTIFICATIONS_ENABLED === 'true'` and could not throw.
+ *
+ * WHAT IT DOES NOT SWALLOW, which is the whole reason it is not a bare try/catch at the call site:
+ * only `EntitlementsResolutionFailedError` — the one state that means "we tried to read the tenant's
+ * commercial data and the infrastructure said no". A malformed context, a snapshot attributed to
+ * another tenant, an exempt context asking about a billable module and a never-resolved synthetic
+ * context are all WIRING BUGS; converting those to a quiet `false` would hide exactly the class of
+ * defect slice 2's guards exist to surface, so they still throw.
+ *
+ * FALSE, not true: an unreadable snapshot must never open a billable feature. The customer loses the
+ * bell for the duration of the incident and keeps the rest of the application.
+ */
+export function isModuleEnabledOrFalse(ctx: EntitledContext, code: string, companyId?: string | null): boolean {
+  try {
+    return isModuleEnabled(ctx, code, companyId);
+  } catch (e) {
+    if (e instanceof EntitlementsResolutionFailedError) return false;
+    throw e;
+  }
+}
+
+/**
+ * `settingEnabled`, degraded the same way and for the same callers — the settings axis of
+ * `isModuleEnabledOrFalse`. See that function for where the page/service line is drawn.
+ *
+ * The CATALOG DEFAULT, not a hardcoded `false`, because that is what "this value was never decided for
+ * this tenant" already means everywhere else in this file (`getSetting` falls back to it when a tenant
+ * has no row). Every catalogued default is `false` today, so the two coincide; expressing it as the
+ * default keeps them coinciding for the right reason rather than by accident, and keeps a future
+ * default-on setting from silently switching off during an incident.
+ *
+ * ONE ASYMMETRY WITH THE MODULE SIDE, STATED RATHER THAN GLOSSED (review r2). `moduleEnabled` answers
+ * FALSE for an unknown module CODE — a typo disables rather than enables, and no snapshot is needed to
+ * decide it. An unknown setting KEY is different: `getSetting` throws a bare `Error` for a key absent
+ * from SETTING_CATALOG, deliberately not an `EntitlementError`, so the catch below cannot see it and it
+ * reaches the caller. That is on purpose — a mistyped key is a wiring bug, and the catalog is the
+ * definition of what a setting IS — but it means a typo'd literal in one of the pages that call this
+ * 500s the route rather than degrading the feature, and there is no app/error.tsx to catch it. The
+ * drift test pins every literal key passed to `settingEnabled`/`settingEnabledOrDefault` under `app/`
+ * against SETTING_CATALOG, so the typo fails the suite instead of the request.
+ */
+export function settingEnabledOrDefault(ctx: EntitledContext, key: string): boolean {
+  try {
+    return settingEnabled(ctx, key);
+  } catch (e) {
+    if (e instanceof EntitlementsResolutionFailedError) return SETTING_DEFAULTS.get(key) === true;
+    throw e;
+  }
+}

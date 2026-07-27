@@ -18,6 +18,7 @@ import {
   type FeedbackCategory,
   type FeedbackStatus,
 } from '../db/schema';
+import { settingEnabled } from './entitlements';
 
 export class FeedbackError extends Error {
   constructor(message: string) {
@@ -167,7 +168,7 @@ export async function generateFeedbackPlan(ctx: SessionContext, p: { feedbackId:
   // Disabled by default — planning now runs in the operator-side improvement loop (ADR-0044), which
   // drafts + adversarially refines the plan locally and pushes it back. Set FEEDBACK_AI_PLANNING_ENABLED
   // to use this single-shot in-app agent instead.
-  if (process.env.FEEDBACK_AI_PLANNING_ENABLED !== 'true') {
+  if (!settingEnabled(ctx, 'feedback.ai_planning_enabled')) {
     throw new FeedbackError('In-app AI planning is disabled — plans are produced by the improvement loop.');
   }
   const gathered = await withTenant(ctx, async (tx) => {

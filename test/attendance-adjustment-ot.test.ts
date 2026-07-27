@@ -8,11 +8,24 @@
  *    raw engine figure) when an OT approval and a rest-day/holiday auto-accrual coincide;
  *  • payroll OT prefill picks up the approved value;
  *  • the one-pending-request-per-(employment,date) rule.
+ *
+ * ADR-0077 slice 3 — TOIL is a PER-TENANT ENTITLEMENT ROW now, not TOIL_ENABLED. The auto-accrual test
+ * below therefore does two things instead of one env write:
+ *   - ON is `await setModule(b.tenantId, 'toil', 'active')`; OFF is the ABSENCE of the row (C7), which
+ *     is what seedBase leaves behind — `toil` is not in LEGACY_ENABLED_MODULE_CODES, so no test tenant
+ *     carries the row unless the test writes it.
+ *   - the calls under test must run on `entitledCtx(b)`, a REAL snapshot resolved from this tenant's
+ *     rows, built AFTER the `setModule` call (a snapshot is a point-in-time read). `adminCtx` derives
+ *     its snapshot from `legacyEnabledModulesIn(process.env)`, and that helper filters
+ *     LEGACY_ENABLED_MODULE_CODES — which omits `toil` entirely. So `adminCtx` can NEVER report toil as
+ *     entitled, no matter what env says, and driving the accrual through it would silently assert the
+ *     gated-OFF path while claiming to test the gated-ON one. Fixture work that is not the thing under
+ *     test (hiring, compensation) keeps using `adminCtx`.
  */
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import {
@@ -98,9 +111,9 @@ beforeEach(async () => {
   await resetDb();
   b = await seedBase();
 });
-afterEach(() => {
-  delete process.env.TOIL_ENABLED;
-});
+// No afterEach: the TOIL gate used to be an env var that had to be unset between tests. It is a
+// tenant_module ROW now, and beforeEach's resetDb() TRUNCATEs tenant_module before seeding a brand-new
+// tenant — so the "off" state is restored by construction and there is nothing left to clean up.
 
 describe('resolveApprovedOt (pure) — worked examples', () => {
   const cases: [OtApprovalMethod, number, number | null, number][] = [
@@ -227,8 +240,11 @@ describe('attendance OT approval — 3 calculation settings', () => {
 
 describe('TOIL auto-accrual reads the POLICY-ADJUSTED approved OT (ADR-0069 pinned decision)', () => {
   it('rest-day OT approval with requested-method credits RL off the APPROVED figure, not the raw engine figure', async () => {
-    process.env.TOIL_ENABLED = 'true';
-    const { a, employmentId } = await hire();
+    const { employmentId } = await hire(); // hiring is fixture work — it runs on adminCtx inside hire()
+    // TOIL ON for this tenant, then resolve the snapshot: `entitledCtx` is a point-in-time read, so the
+    // row must exist first. Everything from here runs on `a`, the entitled context.
+    await setModule(b.tenantId, 'toil', 'active');
+    const a = await entitledCtx(b);
     // requested-method policy: the approved OT will be the employee's REQUESTED figure.
     await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: 'requested' });
     await setToilPolicy(a, toilPolicy(b.companyId)); // autoAccrueOnApproval on

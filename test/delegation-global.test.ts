@@ -8,7 +8,7 @@
  *   • notification dispatch for delegation.started / delegation.ended targets the STAND-IN.
  */
 import { randomUUID } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq, and, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
@@ -24,7 +24,18 @@ import { delegationsScoped } from '../core/read';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { requestLeave, decideLeave } from '../core/leave';
 import { dispatchNotifications } from '../core/notifications';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  createAppUser,
+  entitledCtx,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
 
 let b: Base;
 const A = (base: Base) => adminCtx(base);
@@ -63,9 +74,10 @@ beforeEach(async () => {
   await resetDb();
   b = await seedBase();
 });
-afterEach(() => {
-  delete process.env.NOTIFICATIONS_ENABLED;
-});
+// ADR-0077 slice 3: `notifications` is a per-tenant module row now, so there is no process-wide flag left
+// to clean up here — the former `afterEach` delete of NOTIFICATIONS_ENABLED is gone. resetDb() truncates
+// tenant_module between tests, and the one test that needs the module grants it explicitly with
+// setModule(); every other test in this file is indifferent to it (nothing else calls into dispatch).
 
 describe('Global Delegation (Phase 1)', () => {
   it('hasDownline: true for a manager with reports, false for a leaf employee', async () => {
@@ -202,7 +214,13 @@ describe('Global Delegation (Phase 1)', () => {
   });
 
   it('dispatches delegation.started to the stand-in on create, and delegation.ended on revoke', async () => {
-    process.env.NOTIFICATIONS_ENABLED = 'true';
+    // Grant the `notifications` module to THIS tenant (ADR-0077 slice 3 — dispatchNotifications is gated
+    // on isModuleEnabled(ctx, 'notifications'), not on NOTIFICATIONS_ENABLED). The dispatch calls must run
+    // under a context resolved AFTER the grant: adminCtx carries a synthetic snapshot derived from
+    // legacyEnabledModulesIn(process.env), which would report the module on or off depending on whether the
+    // ambient NOTIFICATIONS_ENABLED happens to be set, so the row — not the env — is what opens the gate here.
+    await setModule(b.tenantId, 'notifications', 'active');
+    const notifyCtx = await entitledCtx(b);
     const mgr = await hire('NMgr');
     const stand = await hire('NStand');
     const { reportingLineId } = await setReportingLine(A(b), {
@@ -212,14 +230,14 @@ describe('Global Delegation (Phase 1)', () => {
       validFrom: '2026-07-01',
       validTo: '2026-07-31',
     });
-    await dispatchNotifications(A(b), {});
+    await dispatchNotifications(notifyCtx, {});
     let notes = await notificationsFor(stand.employmentId);
     expect(notes.map((n) => n.kind)).toContain('delegation.started');
     // The delegator (mgr) is NOT notified.
     expect((await notificationsFor(mgr.employmentId)).map((n) => n.kind)).not.toContain('delegation.started');
 
     await endReportingLine(A(b), { reportingLineId, endDate: '2026-07-15' });
-    await dispatchNotifications(A(b), {});
+    await dispatchNotifications(notifyCtx, {});
     notes = await notificationsFor(stand.employmentId);
     expect(notes.map((n) => n.kind)).toContain('delegation.ended');
   });

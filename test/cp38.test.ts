@@ -27,12 +27,14 @@ import {
   adminCtx,
   closeAll,
   createAppUser,
+  entitledCtx,
   eventTypesFor,
   latestEventPayload,
   migrateTestDb,
   owner,
   resetDb,
   seedBase,
+  setModule,
   type Base,
 } from './harness';
 
@@ -221,41 +223,47 @@ describe('1.2.3 CP38 Deduction', () => {
   });
 
   it('additional run does NOT re-charge CP38 (regular=200, bonus=0 in the same period)', async () => {
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    try {
-      const a = adminCtx(base);
-      const e = await hire(a, base, 'CP38 Multi');
-      await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
-      await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101014444' });
-      await setCp38(a, { employmentId: e.employmentId, cp38Ref: 'CP38/M', amount: 200, validFrom: '2026-05-01' });
+    // ADR-0077 slice 3: multi-cycle payroll is a per-tenant entitlement row now, not a deployment env
+    // flag — `createAdditionalRun` reads `isModuleEnabled(ctx, 'multi_cycle_payroll')` off the session's
+    // snapshot (core/payroll.ts:667). Two consequences, both load-bearing here:
+    //   1. the grant must be written BEFORE the context is built, because a snapshot is a point-in-time
+    //      read (harness.ts, entitledCtx);
+    //   2. it must be `entitledCtx`, not `adminCtx`. adminCtx's snapshot is derived from
+    //      `legacyEnabledModulesIn(process.env)`, and test/env.ts:37 deletes MULTI_CYCLE_PAYROLL_ENABLED
+    //      — so adminCtx would still answer "off" no matter what row this test writes, and the
+    //      createAdditionalRun call below would throw ModuleNotEnabledError.
+    // No teardown needed: the row is truncated by resetDb() in beforeEach.
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(base);
+    const e = await hire(a, base, 'CP38 Multi');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101014444' });
+    await setCp38(a, { employmentId: e.employmentId, cp38Ref: 'CP38/M', amount: 200, validFrom: '2026-05-01' });
 
-      const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-      await generatePayslips(a, { batchId: reg.batchId });
-      const bonus = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' });
-      await generatePayslips(a, { batchId: bonus.batchId });
+    const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId: reg.batchId });
+    const bonus = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-05', runType: 'bonus' });
+    await generatePayslips(a, { batchId: bonus.batchId });
 
-      // Read the two payslips of the period for this employment.
-      const slips = await withTenant(a, (tx) =>
-        tx
-          .select({ runType: schema.payrollBatch.runType, statutory: schema.payslip.statutory })
-          .from(schema.payslip)
-          .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payslip.batchId))
-          .where(and(eq(schema.payslip.employmentId, e.employmentId), eq(schema.payrollBatch.payPeriod, '2026-05'))),
-      );
-      const regSt = slips.find((s) => s.runType === 'regular')!.statutory as Record<string, number>;
-      const bonusSt = slips.find((s) => s.runType === 'bonus')!.statutory as Record<string, number>;
-      expect(regSt.cp38).toBe(200);
-      expect(bonusSt.cp38 ?? 0).toBe(0);
+    // Read the two payslips of the period for this employment.
+    const slips = await withTenant(a, (tx) =>
+      tx
+        .select({ runType: schema.payrollBatch.runType, statutory: schema.payslip.statutory })
+        .from(schema.payslip)
+        .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payslip.batchId))
+        .where(and(eq(schema.payslip.employmentId, e.employmentId), eq(schema.payrollBatch.payPeriod, '2026-05'))),
+    );
+    const regSt = slips.find((s) => s.runType === 'regular')!.statutory as Record<string, number>;
+    const bonusSt = slips.find((s) => s.runType === 'bonus')!.statutory as Record<string, number>;
+    expect(regSt.cp38).toBe(200);
+    expect(bonusSt.cp38 ?? 0).toBe(0);
 
-      // Cross-run invariant: the CP39 file for the period counts ONE instalment (200), not two.
-      await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101014444', taxNumber: 'IG 531367080' });
-      await setCompanyStatutoryMY(a, { companyId: base.companyId, lhdnEmployerNo: 'E 908915-10' });
-      const f = await cp39FileForBatch(a, { companyId: base.companyId, periodKey: '2026-05' });
-      expect(f.totals.cp38Cents).toBe(20000); // RM200.00 once
-      expect(f.totals.cp38Records).toBe(1);
-    } finally {
-      delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
-    }
+    // Cross-run invariant: the CP39 file for the period counts ONE instalment (200), not two.
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101014444', taxNumber: 'IG 531367080' });
+    await setCompanyStatutoryMY(a, { companyId: base.companyId, lhdnEmployerNo: 'E 908915-10' });
+    const f = await cp39FileForBatch(a, { companyId: base.companyId, periodKey: '2026-05' });
+    expect(f.totals.cp38Cents).toBe(20000); // RM200.00 once
+    expect(f.totals.cp38Records).toBe(1);
   });
 
   it('CP39 file carries a non-zero CP38 header + detail field end-to-end', async () => {

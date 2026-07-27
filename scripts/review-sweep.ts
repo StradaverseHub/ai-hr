@@ -19,6 +19,7 @@ import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
 import { dispatchNotifications } from '../core/notifications';
 import { todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
+import { resolveEntitlementsTx } from '../core/entitlements';
 
 async function main() {
   const startedAt = Date.now();
@@ -42,7 +43,23 @@ async function main() {
     try {
       // SYSTEM context: no userId, so actorOf(ctx) records the event actor as `system`. The group-wide
       // hr_admin role authorizes the writes and lets the sweep see every tenant employment.
-      const ctx: SessionContext = { tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' };
+      //
+      // A REAL snapshot, not `entitlementsExempt: 'sweeps'`, because this sweep calls
+      // `dispatchNotifications`, which is gated on the BILLABLE `notifications` module. The exempt
+      // marker makes `isModuleEnabled` answer TRUE unconditionally, so an exempt context would have
+      // dispatched notifications for every tenant on the box — including tenants that never bought the
+      // module. That is the exact enforcement bypass ADR-0077 slice 3 exists to close, and it fails
+      // silently in the direction nobody notices: the customer gets a feature, not an error.
+      //
+      // (No live regression today — NOTIFICATIONS_ENABLED is on in the demo deployment and the backfill
+      // grants the module to every pre-existing tenant at env value — but the first tenant provisioned
+      // WITHOUT notifications would have received them anyway, via this cron only.)
+      //
+      // Safe on the owner connection: RLS does not bind the owner role, so the snapshot query sees the
+      // tenant's rows. The other three sweeps below it are core/ungated surfaces, but resolving once per
+      // tenant is cheap and keeps every gated call this loop makes honest as more gates land.
+      const entitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, t.id));
+      const ctx: SessionContext = { tenantId: t.id, roles: ['hr_admin'], entitlements };
       const { opened } = await sweepDueReviews(ctx, { today });
       // 6522d26a Fn 2 — chase still-open reviews at the configured cadence (default 30/14/7 days before
       // the end date). Idempotent per (review, offset); runs AFTER the opener so a just-opened review is
@@ -51,7 +68,8 @@ async function main() {
       // R51 722904dc/71b9143a — chase leave approval steps sitting past the company's escalation
       // threshold (once per (group, step) ever; the escalation-due events fan out below).
       const { escalated } = await sweepLeaveApprovalEscalations(ctx, { today });
-      // Project the new started/reminder/escalation events into notifications now (gated by NOTIFICATIONS_ENABLED).
+      // Project the new started/reminder/escalation events into notifications now — gated on the
+      // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
       await dispatchNotifications(ctx);
       totalOpened += opened;
       totalReminders += reminders;

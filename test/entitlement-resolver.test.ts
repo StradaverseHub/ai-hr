@@ -38,6 +38,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {
+  adminCtx,
   closeAll,
   entitledCtx,
   migrateTestDb,
@@ -46,6 +47,7 @@ import {
   seedBase,
   setModule,
   setSetting,
+  setTenantStatus,
   type Base,
 } from './harness';
 import {
@@ -54,6 +56,7 @@ import {
   EntitlementsContextMalformedError,
   EntitlementsResolutionFailedError,
   EntitlementsTenantMismatchError,
+  EntitlementsExemptForBillableError,
   EntitlementsUnresolvedError,
   ModuleNotEnabledError,
   TENANT_STATUS_UNRESOLVED,
@@ -102,13 +105,27 @@ describe('slice 2 — isModuleEnabled', () => {
   });
 
   it('reflects the seeded default set — enabled where a row exists, disabled where none does', async () => {
+    // `notifications` USED TO BE IN THE ON LIST, AND THAT WAS A REAL DEFECT of exactly the shape this
+    // slice keeps finding. seedBase seeds `legacyEnabledModulesIn(process.env)`, and `notifications` is
+    // gated on NOTIFICATIONS_ENABLED — an env var a developer's untracked `.env.local` commonly sets and
+    // CI never does. So this assertion passed on the machine slice 3 was written on and would have FAILED
+    // in CI, for a reason nothing in the test stated. (test/env.ts deleted only five of the nine tracked
+    // gates; it now deletes all nine, and test/module-catalog-drift.test.ts asserts the resulting
+    // baseline, so the environment can no longer decide what this file means.)
+    //
+    // The ON list is now the four modules NO env var gates anywhere (F20) — the ones every tenant has by
+    // construction — and the OFF list is everything the suite's env leaves without a row.
     const ctx = await ctxFor(base.tenantId);
-    for (const on of ['payroll', 'attendance', 'claims', 'performance', 'notifications']) {
+    for (const on of ['payroll', 'attendance', 'claims', 'performance']) {
       expect(isModuleEnabled(ctx, on), `${on} should be enabled`).toBe(true);
     }
-    for (const off of ['toil', 'multi_cycle_payroll', 'typed_pay_components']) {
+    for (const off of ['toil', 'multi_cycle_payroll', 'typed_pay_components', 'notifications']) {
       expect(isModuleEnabled(ctx, off), `${off} should be disabled (no row)`).toBe(false);
     }
+    // …and the ON half is decided by a ROW, not by a default: granting one of the OFF codes flips it.
+    // Without this the test could pass against a resolver that answered from the catalog.
+    await setModule(base.tenantId, 'notifications', 'active');
+    expect(isModuleEnabled(await ctxFor(base.tenantId), 'notifications')).toBe(true);
   });
 
   it('CORE modules are true without any row — a zero-row tenant keeps Leave and ESS', async () => {
@@ -154,6 +171,90 @@ describe('slice 2 — isModuleEnabled', () => {
           WHERE tenant_id = ${base.tenantId} AND module_code = 'payroll'`,
     );
     expect(isModuleEnabled(await ctxFor(base.tenantId), 'payroll')).toBe(true);
+  });
+
+  it('the harness MIRROR answers exactly what the resolver answers, over a status × expiry matrix', async () => {
+    // WHY THIS IS HERE AND NOT IN A HARNESS TEST. `adminCtx` is synchronous (≈247 files call it inline),
+    // so it cannot query — it carries a synthetic snapshot that RESTATES the resolver's predicate in
+    // TypeScript. A restated predicate is a second implementation, and the first one had already
+    // drifted: it asked "is the status null or 'disabled'?" and treated everything else as ENABLED,
+    // while the resolver asks `status IN ('active','trial') AND (expires_at IS NULL OR expires_at >
+    // now())`. So a 'suspended' or expired grant read ON through the fixture and OFF through a real
+    // session — a fixture answering a different question than the application, which is the exact
+    // defect ADR-0077 slice 3 exists to remove, reintroduced inside the thing 247 files trust.
+    //
+    // It was LATENT, not live, because the suite only ever writes 'active'/'trial'/'disabled'/null. A
+    // comment saying "keep these in step" would not have caught it; this compares the two.
+    const cases: { status: 'active' | 'trial' | 'disabled' | null; expiresAt: Date | null; label: string }[] = [
+      { status: 'active', expiresAt: null, label: 'active, no expiry' },
+      { status: 'trial', expiresAt: null, label: 'trial, no expiry' },
+      { status: 'disabled', expiresAt: null, label: 'disabled' },
+      { status: null, expiresAt: null, label: 'no row at all' },
+      { status: 'active', expiresAt: new Date(Date.now() + 30 * 86_400_000), label: 'active, expires in 30d' },
+      { status: 'active', expiresAt: new Date(Date.now() - 86_400_000), label: 'active but EXPIRED' },
+      { status: 'trial', expiresAt: new Date(Date.now() - 3_600_000), label: 'trial but EXPIRED' },
+    ];
+    for (const { status, expiresAt, label } of cases) {
+      await setModule(base.tenantId, 'notifications', status, null, expiresAt);
+      const real = isModuleEnabled(await ctxFor(base.tenantId), 'notifications');
+      const mirrored = isModuleEnabled(adminCtx(base), 'notifications');
+      expect(mirrored, `adminCtx and the resolver disagree for '${label}'`).toBe(real);
+    }
+    // …and the matrix must actually exercise both answers, or an always-false mirror would pass it.
+    await setModule(base.tenantId, 'notifications', 'active');
+    expect(isModuleEnabled(adminCtx(base), 'notifications')).toBe(true);
+    await setModule(base.tenantId, 'notifications', 'disabled');
+    expect(isModuleEnabled(adminCtx(base), 'notifications')).toBe(false);
+  });
+
+  it('the harness MIRROR also matches on the COMPANY grain and on TENANT STANDING', async () => {
+    // THE OTHER TWO AXES THE RESOLVER READS, and which the mirror modelled as constants until the
+    // slice-3 review: `scopedModules` was the literal `{}` and `tenantStatus` the literal `'active'`.
+    // The test above varied only `tenant_module.status` and `expires_at`, so it established equivalence
+    // over a strictly narrower matrix than its name claimed — a suspended tenant read ON through
+    // `adminCtx` and OFF through a real session, and a company-scoped grant read OFF through `adminCtx`
+    // and ON through a real one for that company. Both are branches ~247 files could hit.
+
+    // ── company grain (moduleEnabled step 6) ──────────────────────────────────────────────────────
+    // `notifications` has no dependsOn, so this isolates the grain from the closure.
+    await setModule(base.tenantId, 'notifications', null); // no tenant-wide row
+    await setModule(base.tenantId, 'notifications', 'active', base.companyId);
+    for (const [companyId, label] of [
+      [base.companyId, 'the entitled company'],
+      [null, 'no company named'],
+      ['00000000-0000-0000-0000-0000000000ff', 'a different company'],
+    ] as const) {
+      const real = isModuleEnabled(await ctxFor(base.tenantId), 'notifications', companyId);
+      const mirrored = isModuleEnabled(adminCtx(base), 'notifications', companyId);
+      expect(mirrored, `adminCtx and the resolver disagree for a company-scoped grant asked with ${label}`).toBe(real);
+    }
+    // Both answers really occur, so the agreement above is not "always false".
+    expect(isModuleEnabled(adminCtx(base), 'notifications', base.companyId), 'entitled company ⇒ ON').toBe(true);
+    expect(isModuleEnabled(adminCtx(base), 'notifications'), 'asking without a company ⇒ OFF (step 6)').toBe(false);
+    // Revoking the scoped grant must clear the mirror too, not merely stop adding to it.
+    await setModule(base.tenantId, 'notifications', null, base.companyId);
+    expect(isModuleEnabled(adminCtx(base), 'notifications', base.companyId)).toBe(
+      isModuleEnabled(await ctxFor(base.tenantId), 'notifications', base.companyId),
+    );
+
+    // ── tenant standing (moduleEnabled step 5) ────────────────────────────────────────────────────
+    for (const status of ['suspended', 'closed', 'trial', 'active'] as const) {
+      await setTenantStatus(base.tenantId, status);
+      const real = await ctxFor(base.tenantId);
+      expect(real.entitlements!.tenantStatus, 'the real snapshot must carry the status we set').toBe(status);
+      for (const code of ['payroll', 'leave']) {
+        expect(
+          isModuleEnabled(adminCtx(base), code),
+          `adminCtx and the resolver disagree about '${code}' for a '${status}' tenant`,
+        ).toBe(isModuleEnabled(real, code));
+      }
+    }
+    // …and the standing axis really flips a billable module, so the loop is not vacuous.
+    await setTenantStatus(base.tenantId, 'suspended');
+    expect(isModuleEnabled(adminCtx(base), 'payroll'), 'suspended ⇒ billable OFF through the mirror too').toBe(false);
+    expect(isModuleEnabled(adminCtx(base), 'leave'), 'core is decided before the status check').toBe(true);
+    await setTenantStatus(base.tenantId, 'active');
+    expect(isModuleEnabled(adminCtx(base), 'payroll')).toBe(true);
   });
 
   it('a lapsed DEPENDENCY disables its dependents', async () => {
@@ -382,10 +483,37 @@ describe('slice 2 — isModuleEnabled', () => {
     expect(() => isModuleEnabled(bare, 'payroll')).toThrow(EntitlementsUnresolvedError);
   });
 
-  it('an EXEMPT context resolves open — provisioning must be able to create a tenant', () => {
+  it('an EXEMPT context answers CORE modules open, and THROWS for a billable one', () => {
     const exempt: EntitledContext = { tenantId: base.tenantId, entitlementsExempt: 'provisioning' };
-    expect(isModuleEnabled(exempt, 'payroll')).toBe(true);
-    // …but a kill switch still binds it, so exemption is not a bypass of the incident lever.
+
+    // Core is answered from the registry with no snapshot — provisioning must be able to create a
+    // tenant, and that is the whole job the marker exists to do.
+    expect(isModuleEnabled(exempt, 'leave')).toBe(true);
+    expect(isModuleEnabled(exempt, 'ess')).toBe(true);
+
+    // AMENDED IN SLICE 3. This used to assert `isModuleEnabled(exempt, 'payroll') === true`, which meant
+    // any marked caller silently received every PAID module for every tenant. scripts/review-sweep.ts
+    // reached this branch and dispatched notifications to tenants that had not bought them; nothing
+    // failed, because the failure mode is a customer being GIVEN something.
+    //
+    // Note the consistency argument, which is why this is a correction and not a new policy: the BARE
+    // context two tests up ALREADY throws for 'payroll' and answers core true. "No entitlement data +
+    // billable module" was always an error; the marker was the one path that answered "yes" instead.
+    expect(() => isModuleEnabled(exempt, 'payroll')).toThrow(EntitlementsExemptForBillableError);
+
+    // The message must name the offending module AND the marker, or the stack trace sends the reader
+    // hunting through every exempt call site to find which one asked.
+    try {
+      isModuleEnabled(exempt, 'payroll');
+      expect.unreachable('should have thrown');
+    } catch (e) {
+      expect((e as Error).message).toContain('payroll');
+      expect((e as Error).message).toContain('provisioning');
+    }
+
+    // The kill lever still binds and still WINS over the throw — `killed()` is step 1, before any
+    // snapshot question is asked. An incident lever that raised instead of forcing OFF would be useless
+    // in the incident it exists for.
     process.env.MODULE_KILL = 'payroll';
     expect(isModuleEnabled(exempt, 'payroll')).toBe(false);
     delete process.env.MODULE_KILL;
@@ -479,7 +607,9 @@ describe('slice 2 — isModuleEnabled', () => {
     expect(() => isModuleEnabled(forged, 'leave')).toThrow(/Unrecognised entitlementsExempt marker/);
     delete process.env.MODULE_KILL;
     // Prototype keys must not satisfy a hasOwnProperty-based allow-list either.
-    for (const key of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'PROVISIONING']) {
+    // 'harness' is in this list on purpose: it WAS a valid marker until slice 3 deleted the entry, and
+    // a retired marker that stays in the vocabulary is a bootstrap exemption anyone can still forge.
+    for (const key of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'PROVISIONING', 'harness']) {
       const proto = { tenantId: base.tenantId, entitlementsExempt: key } as unknown as EntitledContext;
       expect(() => isModuleEnabled(proto, 'leave'), `'${key}' must not be a valid marker`).toThrow(
         /Unrecognised entitlementsExempt marker/,
@@ -622,8 +752,11 @@ describe('slice 2 — isModuleEnabled', () => {
     // The file's header used to claim a drift test pinned this list. It did not exist, so the
     // "reviewable rather than ambient" property the design rests on was documentation only. Each key
     // must also carry a reason: an exemption without a stated justification is the thing this prevents.
+    // `harness` was DELETED in slice 3: adminCtx was its only consumer and now carries a real
+    // snapshot. Removing the key (rather than leaving it as vocabulary with no owner) is what stops a
+    // hand-built context forging `entitlementsExempt: 'harness'` and being treated as a bootstrap path.
     expect(Object.keys(ENTITLEMENTS_EXEMPT_REASONS).sort()).toEqual(
-      ['harness', 'platform', 'provisioning', 'seeding', 'sweeps'],
+      ['platform', 'provisioning', 'seeding', 'sweeps'],
     );
     for (const [key, entry] of Object.entries(ENTITLEMENTS_EXEMPT_REASONS)) {
       expect(entry.why.length, `exemption '${key}' needs a real reason`).toBeGreaterThan(30);
@@ -640,18 +773,39 @@ describe('slice 2 — isModuleEnabled', () => {
     //
     // This reads each named file off disk and requires the literal marker. It fails if a sweep loses
     // its marker, if a new exemption is declared without wiring, or if a file is renamed.
+    //
+    // COMMENTS ARE STRIPPED FIRST, and round 1 of the slice-3 review is why. Slice 3 removed the marker
+    // from test/harness.ts's `adminCtx` and left a docblock headed "WHY THIS CARRIES A REAL SNAPSHOT AND
+    // NOT `entitlementsExempt: 'harness'`" — which the raw-text version of this assertion matched. The
+    // guard written to stop an exemption naming a call site that does not carry it was passing on prose
+    // saying the call site does not carry it, and would have excused db/provision.ts or db/seed.ts
+    // losing their markers the same way. Same `stripComments` shape as test/module-catalog-drift.ts,
+    // which had already been hardened against exactly this in the sibling ratchet.
+    const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     let wired = 0;
     for (const [key, entry] of Object.entries(ENTITLEMENTS_EXEMPT_REASONS)) {
       for (const owner_ of entry.owners) {
-        const src = readFileSync(new URL(`../${owner_}`, import.meta.url), 'utf8');
+        const src = stripComments(readFileSync(new URL(`../${owner_}`, import.meta.url), 'utf8'));
         expect(src, `${owner_} is declared as an owner of exemption '${key}' but does not carry the marker`)
           .toContain(`entitlementsExempt: '${key}'`);
         wired += 1;
       }
     }
     // Not vacuous: if `owners` were emptied everywhere the loop above would assert nothing at all.
-    expect(wired, 'the exemptions must collectively name at least the sweeps, the seeder and provisioning')
-      .toBeGreaterThanOrEqual(10);
+    //
+    // Stated as "each bootstrap category keeps at least one wired owner" rather than a total count.
+    // It was `>= 10`, pinned to the then-current tally, which made the ratchet fight the direction we
+    // actually want: slice 3 REMOVED two exemptions (review-sweep and feedback-plan both resolve real
+    // snapshots now) and a floor on the total turned that improvement into a failure. A count cannot
+    // tell shrinking-because-fixed from gutting; naming the categories can, and it still fails loudly
+    // if provisioning or the seeder ever quietly loses its marker.
+    expect(wired, 'the loop must have asserted something').toBeGreaterThan(0);
+    for (const key of ['provisioning', 'seeding', 'sweeps'] as const) {
+      expect(
+        ENTITLEMENTS_EXEMPT_REASONS[key].owners.length,
+        `exemption '${key}' has no wired owner — bootstrap paths cannot resolve entitlements and must keep one`,
+      ).toBeGreaterThan(0);
+    }
     // `platform` is the ONE deliberately unwired entry (slice 7 builds that plane). Pinned so it cannot
     // become a second unwired exemption by accident, and so slice 7 has to change this line on purpose.
     expect(ENTITLEMENTS_EXEMPT_REASONS.platform.owners, 'slice 7 wires the platform plane').toEqual([]);
@@ -687,12 +841,16 @@ describe('slice 2 — isModuleEnabled', () => {
   });
 
   it('the harness can build a context that makes a gate CLOSE — enforcement is testable at all', async () => {
-    // ROUND 3: `adminCtx` is entitlementsExempt: 'harness', so it answers TRUE for every catalogued
-    // module and reads every setting as its catalog default. That is the right trade for the 247 files
-    // that test the feature BEHIND a gate — but it also means those files structurally cannot show a
-    // gate REFUSING, and an enforcement primitive that ships with 4,800 green tests and no coverage of
-    // enforcement has not been tested. `entitledCtx` is the other half, and slice 3's acceptance
-    // criterion is that every gate it installs has at least one test driven through it.
+    // ROUND 3 wrote this when `adminCtx` was entitlementsExempt: 'harness' and therefore answered TRUE
+    // for every catalogued module — which meant the 247 files that test a feature BEHIND a gate
+    // structurally could not show that gate REFUSING, and an enforcement primitive shipping with 4,800
+    // green tests and no coverage of enforcement has not been tested.
+    //
+    // Slice 3 removed that marker: `adminCtx` now carries a SYNTHETIC snapshot derived from
+    // `legacyEnabledModulesIn(process.env)`, so a gate can close through it too. `entitledCtx` remains
+    // the stricter half — it resolves the tenant's REAL rows rather than a mirror of the writes a test
+    // made — and slice 3's acceptance criterion is unchanged: every gate it installs has at least one
+    // test driven through a resolved snapshot.
     const gateable = await entitledCtx(base);
     expect(gateable.entitlementsExempt, 'it must NOT be exempt, or it proves nothing').toBeUndefined();
     expect(gateable.entitlements, 'and it must carry a real, resolved snapshot').toBeDefined();

@@ -7,6 +7,7 @@
 import { createDb, type SessionContext } from '../db/client';
 import { tenant } from '../db/schema';
 import { generateFeedbackPlan, listPlannableFeedback } from '../core/feedback';
+import { resolveEntitlementsTx } from '../core/entitlements';
 
 async function main() {
   const ownerUrl = process.env.MIGRATION_DATABASE_URL;
@@ -21,9 +22,30 @@ async function main() {
   let planned = 0;
   let failures = 0;
   for (const t of tenants) {
-    const ctx: SessionContext = { tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' };
+    // A REAL snapshot, not `entitlementsExempt: 'sweeps'` — this sweep sits behind a SETTING.
+    //
+    // The exempt marker answers the two entitlement questions differently: `isModuleEnabled` reads
+    // TRUE (an exempt caller is not gated), but `getSetting` can only return the CATALOG DEFAULT,
+    // because there is no "open" for a value and inventing one would fabricate a value no operator
+    // set. Every catalogued default is false. So once slice 3 moved this cron's gate from
+    // FEEDBACK_AI_PLANNING_ENABLED to `settingEnabled(ctx, 'feedback.ai_planning_enabled')`, an
+    // exempt context made `generateFeedbackPlan` refuse EVERY item — including for a tenant that has
+    // the setting switched on. The admin button would work and the cron would not, silently.
+    //
+    // Resolving properly is the fix the exemption's own docs prescribe. Safe on the owner connection:
+    // RLS does not bind the owner role, so the snapshot query sees the tenant's rows.
+    //
+    // INSIDE THE PER-TENANT try, which the first version of this fix was not. The line it replaced was
+    // an object literal that could not throw; `resolveEntitlementsTx` runs a real transaction and can
+    // (statement timeout, pool exhaustion, a code-ahead-of-migration deploy). Outside the try that
+    // exception escapes the loop AND `main()`, so one unreadable tenant silently skips every tenant
+    // after it and the pool is never closed. Counted as a per-tenant failure instead, matching
+    // scripts/review-sweep.ts, which got the mirror-image fix.
     let ids: string[] = [];
+    let ctx: SessionContext;
     try {
+      const entitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, t.id));
+      ctx = { tenantId: t.id, roles: ['hr_admin'], entitlements };
       ids = await listPlannableFeedback(ctx);
     } catch (e) {
       failures += 1;

@@ -5,9 +5,32 @@
  * prorate override (inherit/yes/no) against the EA-1955 employee tenure factor, the period window with its
  * inclusive/exclusive boundaries, the legacy-window no-op, supersession-vs-end-date reconciliation, the
  * active/ended list distinction, and the event payload (carries the new refs, never `amount`).
+ *
+ * TYPED PAY COMPONENTS — HOW THIS FILE TURNS THE GATE ON (ADR-0077 slice 3).
+ * Every payslip-producing helper/test below needs `typed_pay_components` ON, because that gate is what
+ * makes the kernel source earnings from the component tables at all — with it off, `earningsOf` reads
+ * compensation + payroll_input and the payslip `allowance` column would be the compensation allowance
+ * (0 here), so every window/prorate assertion would read 0 and the file would prove nothing.
+ *
+ * That used to be an env write of the TYPED_PAY_COMPONENTS_ENABLED flag immediately before
+ * `generatePayslips`. (Spelled without the `process.env.` prefix on purpose: the slice-3 worklist scan
+ * in test/module-catalog-drift.test.ts greps this tree for env-gate assignments, and a comment quoting
+ * one verbatim would re-list this file as still unconverted.)
+ *
+ * It is now a `tenant_module` ROW (`setModule(tenantId, 'typed_pay_components',
+ * 'active')`) plus the CONTEXT that can see it. The context half is not optional: `adminCtx` carries a
+ * SYNTHETIC snapshot derived from `legacyEnabledModulesIn(process.env)` (test/harness.ts), and
+ * test/env.ts deletes that var — so an `adminCtx` would report the module OFF no matter what row
+ * exists. `generatePayslips` is therefore driven through `entitledCtx`, a real snapshot resolved from
+ * this tenant's rows, and it is resolved AFTER the `setModule` write (the snapshot is point-in-time).
+ *
+ * The `beforeEach`/`afterEach` that used to `delete` the var are gone rather than translated: seedBase
+ * seeds NO `tenant_module` row for this code under the suite's env, and a missing row is disabled (C7),
+ * so the pre-test state this file starts from is already "off" — and `resetDb()` truncates
+ * `tenant_module` between tests, so a grant cannot leak into the next one.
  */
 import { and, eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
@@ -28,7 +51,29 @@ import {
   setEmploymentPayComponent,
   updateEmploymentPayComponent,
 } from '../core/pay-components';
-import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import {
+  adminCtx,
+  closeAll,
+  entitledCtx,
+  latestEventPayload,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  setModule,
+  type Base,
+} from './harness';
+
+/**
+ * Grant `typed_pay_components` to the fixture tenant and hand back a context that can SEE the grant.
+ *
+ * Resolved after the write on purpose — `entitledCtx` is a point-in-time read, exactly like a real
+ * session, so a row written afterwards would not be in the snapshot.
+ */
+async function typedComponentsCtx(b: Base): Promise<SessionContext> {
+  await setModule(b.tenantId, 'typed_pay_components', 'active');
+  return entitledCtx(b);
+}
 
 const hire = (ctx: SessionContext, b: Base, name: string, hiredOn: string) =>
   hireEmployee(ctx, {
@@ -65,10 +110,8 @@ describe('1.2.1 Fixed Transaction', () => {
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-  });
-  afterEach(() => {
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+    // No gate reset needed: seedBase seeds no `typed_pay_components` row under the suite's env and a
+    // missing row is disabled (C7), so each test starts with the module OFF. See the file header.
   });
   afterAll(async () => {
     await closeAll();
@@ -130,8 +173,7 @@ describe('1.2.1 Fixed Transaction', () => {
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 1000, effectiveFrom: '2026-05-16', prorateOverride });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await generatePayslips(a, { batchId });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
     const ps = await payslipOf(batchId);
     return Number(ps.allowance);
   }
@@ -167,8 +209,7 @@ describe('1.2.1 Fixed Transaction', () => {
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: validFrom, effectiveTo: validTo, prorateOverride: false });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await generatePayslips(a, { batchId });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
     return Number((await payslipOf(batchId)).allowance);
   }
 
@@ -439,8 +480,7 @@ describe('1.2.1 Fixed Transaction', () => {
     const withoutId = await allowanceOf('CycleCalcNo', '900202022345', false);
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await generatePayslips(a, { batchId });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
 
     const slips = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
     const withSlip = slips.find((p) => p.employmentId === withId)!;
@@ -517,8 +557,7 @@ describe('1.2.1 Fixed Transaction', () => {
     expect((await listEmploymentPayComponents(a, e.employmentId)).some((r) => r.id === id)).toBe(false);
     // Gone from payroll: the May payslip pays 0 allowance (kernel requires supersededAt IS NULL).
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await generatePayslips(a, { batchId });
+    await generatePayslips(await typedComponentsCtx(base), { batchId });
     expect(Number((await payslipOf(batchId)).allowance)).toBeCloseTo(0, 2);
   });
 
@@ -567,12 +606,14 @@ describe('1.2.1 Fixed Transaction', () => {
 
     // Pays in May (validTo == periodEnd is inclusive) …
     const may = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    await generatePayslips(a, { batchId: may.batchId });
+    // One grant, one snapshot, reused for BOTH runs — the June run must see the module ON too, or its
+    // 0 allowance would be the gate being off rather than the end-date taking effect.
+    const gated = await typedComponentsCtx(base);
+    await generatePayslips(gated, { batchId: may.batchId });
     expect(Number((await payslipOf(may.batchId)).allowance)).toBeCloseTo(500, 2);
     // … and NOT in June (validTo < periodStart).
     const jun = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' });
-    await generatePayslips(a, { batchId: jun.batchId });
+    await generatePayslips(gated, { batchId: jun.batchId });
     const junSlip = (await owner.db.select().from(schema.payslip).where(and(eq(schema.payslip.batchId, jun.batchId), eq(schema.payslip.employmentId, e.employmentId))))[0];
     expect(Number(junSlip.allowance)).toBeCloseTo(0, 2);
   });

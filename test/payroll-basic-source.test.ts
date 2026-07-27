@@ -15,14 +15,14 @@
  *     missingCompensation; a future-dated REVISION whose predecessor covers the period does not.
  */
 import { and, eq, isNull } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { PreProcessBlockedError, createBatch, generatePayslips, preProcessAdvisory } from '../core/payroll';
 import { backfillEmploymentComponentsFromCompensation, seedPayComponentCatalog } from '../core/pay-components';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let b: Base;
 const PERIOD = '2026-07';
@@ -49,11 +49,11 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
+  // ADR-0077 slice 3 — no explicit "turn typed components off" step. `seedBase` seeds NO
+  // `tenant_module` row for typed_pay_components (test/env.ts deletes TYPED_PAY_COMPONENTS_ENABLED, so
+  // it is outside this process's parity set) and a MISSING row is disabled (C7). The two tests that
+  // need the typed path grant the row themselves and re-resolve the snapshot.
   b = await seedBase();
-  delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-});
-afterEach(() => {
-  delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
 });
 afterAll(async () => {
   await closeAll();
@@ -70,9 +70,13 @@ describe('feedback 64fb5e48 — stale BASIC pay item never overrides the Personn
     await backfillEmploymentComponentsFromCompensation(a);
     await setCompensation(a, { employmentId: emp.employmentId, basicSalary: 7000, effectiveFrom: '2026-02-01' });
 
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
-    const checks = await preProcessAdvisory(a, batchId);
+    // Grant typed_pay_components to THIS tenant and re-resolve: the snapshot is point-in-time, so the
+    // setup context `a` would still read the module as off. The typed path is what makes the BASIC
+    // component visible to pre-processing at all — the whole point of this test.
+    await setModule(b.tenantId, 'typed_pay_components', 'active');
+    const on = await entitledCtx(b);
+    const { batchId } = await createBatch(on, { companyId: b.companyId, payPeriod: PERIOD });
+    const checks = await preProcessAdvisory(on, batchId);
     // WARNING, not a blocker — and precisely this employee.
     expect((checks.staleBasicComponent ?? []).map((r) => r.employmentId)).toEqual([emp.employmentId]);
     expect(checks.missingCompensation).toHaveLength(0);
@@ -80,7 +84,7 @@ describe('feedback 64fb5e48 — stale BASIC pay item never overrides the Personn
 
     // The run processes (warnings never fail closed) and the PERSONNEL record wins: 7000, not the stale 6500
     // the old component-precedence would have paid.
-    await generatePayslips(a, { batchId });
+    await generatePayslips(on, { batchId });
     expect((await payslipOf(batchId, emp.employmentId))?.basicSalary).toBe('7000.00');
   });
 
@@ -91,9 +95,13 @@ describe('feedback 64fb5e48 — stale BASIC pay item never overrides the Personn
     await seedPayComponentCatalog(a);
     await backfillEmploymentComponentsFromCompensation(a);
 
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
-    const checks = await preProcessAdvisory(a, batchId);
+    // Same grant + re-resolve as above: with the module OFF pre-processing never reads the component
+    // tables, so an empty staleBasicComponent list would prove nothing. It must be empty WITH the typed
+    // path live and the backfilled BASIC component in scope.
+    await setModule(b.tenantId, 'typed_pay_components', 'active');
+    const on = await entitledCtx(b);
+    const { batchId } = await createBatch(on, { companyId: b.companyId, payPeriod: PERIOD });
+    const checks = await preProcessAdvisory(on, batchId);
     expect(checks.staleBasicComponent ?? []).toHaveLength(0);
   });
 });

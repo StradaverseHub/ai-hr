@@ -16,9 +16,31 @@
  * Guard (L#29):
  *  5. batchInputRows surfaces the s.60I(1A) ORP (wages/26) + hourly (ORP/8) basis and an
  *     `otEligible=false` flag for a >RM4,000 earner so the editor can show the eligibility note.
+ *
+ * TYPED PAY COMPONENTS ARE OFF FOR THIS WHOLE FILE, and that is load-bearing rather than incidental.
+ * The kernel's earnings source is gated (`isModuleEnabled(ctx, 'typed_pay_components')`,
+ * core/payroll.ts): with it ON the payslip's OT figure comes from the COMPONENT tables, and this file
+ * seeds no components — so the slip's overtime would be 0 and `statutory.otSource` (stamped only when
+ * `slipOvertime > 0`) would never appear, silently gutting guards 4 and 4b. This used to be expressed
+ * as `delete process.env.TYPED_PAY_COMPONENTS_ENABLED`; under ADR-0077 slice 3 it is the ABSENCE of a
+ * `tenant_module` row (a missing row is disabled, C7), asserted explicitly in beforeEach.
+ *
+ * THE CONTEXT CHOICE, STATED ACCURATELY. This paragraph used to say `adminCtx` is
+ * `entitlementsExempt: 'harness'` and therefore answers TRUE for every catalogued module. That WAS true
+ * when this file was converted and it is no longer: `test/harness.ts` now gives `adminCtx` a snapshot
+ * derived from `legacyEnabledModulesIn(process.env)` — the same helper `seedBase` uses to choose its
+ * rows — precisely because the exemption was silently switching four modules ON for 247 files. So a
+ * gate CAN close through `adminCtx` today, and the fixture and the database agree by construction.
+ *
+ * Guards 4 and 4b nevertheless keep `entitledCtx`, and that is still the right call rather than
+ * leftover scaffolding: `beforeEach` mutates this tenant's entitlements (the explicit
+ * `setModule(..., null)`) AFTER the point a synthetic snapshot would have been frozen, and only
+ * `entitledCtx` reads the tenant's REAL rows. It is the context that makes the ABSENT
+ * `typed_pay_components` row — not an env var, not an assumption baked into a fixture — decide the
+ * earnings path. Everything else in the file touches no gate, so it keeps the synchronous `adminCtx`.
  */
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -34,10 +56,12 @@ import {
 import {
   adminCtx,
   closeAll,
+  entitledCtx,
   migrateTestDb,
   owner,
   resetDb,
   seedBase,
+  setModule,
   type Base,
 } from './harness';
 
@@ -49,10 +73,10 @@ describe('Overtime provenance (ot_source) + eligibility surface', () => {
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-  });
-  afterEach(() => {
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+    // seedBase seeds NO tenant_module row for this code under the suite's env, so this DELETE is a
+    // no-op today — kept explicit because what the file asserts is the disabled (missing-row) path,
+    // and a future change to the seed set must not silently switch the legacy earnings path off.
+    await setModule(base.tenantId, 'typed_pay_components', null);
   });
   afterAll(async () => {
     await closeAll();
@@ -164,7 +188,9 @@ describe('Overtime provenance (ot_source) + eligibility surface', () => {
     });
     await prefillOvertimeFromAttendance(a, { batchId });
 
-    await generatePayslips(a, { batchId });
+    // Real snapshot (typed_pay_components has no row ⇒ disabled), so the kernel takes the legacy
+    // comp+payroll_input earnings path and the OT figure — hence otSource — reaches the slip.
+    await generatePayslips(await entitledCtx(base), { batchId });
     const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
     const stat = ps.statutory as Record<string, unknown>;
     expect(stat.otSource).toBe('attendance');
@@ -178,7 +204,8 @@ describe('Overtime provenance (ot_source) + eligibility surface', () => {
       overtimeAmount: 300,
       otBreakdown: { flat: 300, normal: 0, rest: 0, holiday: 0 },
     });
-    await generatePayslips(a, { batchId });
+    // Same reason as guard 4 — see the file header on why this one call cannot use the exempt adminCtx.
+    await generatePayslips(await entitledCtx(base), { batchId });
     const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
     const stat = ps.statutory as Record<string, unknown>;
     expect(stat.otSource).toBe('manual');

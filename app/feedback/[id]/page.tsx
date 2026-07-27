@@ -12,6 +12,7 @@ import {
   refuteDeploymentAction,
   restoreFeedbackAction,
 } from '../actions';
+import { settingEnabledOrDefault } from '@/core/entitlements';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   if (value == null || value === '') return null;
@@ -46,7 +47,7 @@ export default async function FeedbackDetailPage({
   // Close the loop: a deployed result the reporter (or admin) judges below standard can be sent back (ADR-0051).
   const canRefute = (isReporter || isAdmin) && fb.status === 'deployed';
   // In-app planning is disabled by default — plans come from the operator-side improvement loop (ADR-0044).
-  const inAppPlanning = process.env.FEEDBACK_AI_PLANNING_ENABLED === 'true';
+  const inAppPlanning = settingEnabledOrDefault(s, 'feedback.ai_planning_enabled');
   const canGeneratePlan = inAppPlanning && isAdmin && (fb.status === 'open' || fb.status === 'contested');
 
   return (

@@ -25,6 +25,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { company, employment, payComponent, payrollBatch, payrollIndividualTxn, person, type PayrollTxnKind } from '../db/schema';
 import { BatchNotDraftError, daysInMonth, resolveBatchScopeFilter, type BatchScope } from './payroll';
+import { settingEnabled } from './entitlements';
 
 const money = (v: number) => Number(v).toFixed(2);
 
@@ -164,7 +165,8 @@ export const isPayPeriod = (v: unknown): v is string => typeof v === 'string' &&
 
 /** True when the payroll kernel consumes this ledger (INDIVIDUAL_TXN_PAY_ENABLED). Read per call, not at
  *  module load, so tests (and a restarted server) see the live env value — mirrors the kernel's own read. */
-export const individualTxnPayEnabled = (): boolean => process.env.INDIVIDUAL_TXN_PAY_ENABLED === 'true';
+export const individualTxnPayEnabled = (ctx: SessionContext): boolean =>
+  settingEnabled(ctx, 'payroll.individual_txn_pay_enabled');
 
 /** The two payable ledger kinds — the only kinds that may (and, flag-on, must) carry a component. */
 export const PAYABLE_TXN_KINDS: readonly TxnKind[] = ['earning', 'deduction'];
@@ -206,9 +208,12 @@ async function assertTxnComponents(
   rows: Array<{ kind: TxnKind; componentId?: string | null }>,
   // Create paths require a component on payable rows when the pay flag is on; the EDIT path passes false
   // (patching a legacy componentless row is not a NEW payable row — it keeps folding with defaults).
-  requireForPayable: boolean = individualTxnPayEnabled(),
+  // Was `= individualTxnPayEnabled()` — a DEFAULT ARGUMENT reading process.env. That cannot survive
+  // the move to a per-tenant setting: a default is evaluated without the caller's session. Now
+  // required, and computed at each call site where the ctx actually is.
+  requireForPayable: boolean,
 ): Promise<void> {
-  const requirePayableComponent = requireForPayable && individualTxnPayEnabled();
+  const requirePayableComponent = requireForPayable;
   for (const r of rows) {
     const payable = PAYABLE_TXN_KINDS.includes(r.kind);
     if (r.componentId != null && !payable) throw new InvalidTxnComponentError('not_payable_kind');
@@ -358,7 +363,7 @@ export function createIndividualTxn(
     if (p.unit != null && !isTxnUnit(p.unit)) throw new InvalidTxnUnitError(p.unit);
     // Phase 3 — component pick: validated (exists / not archived / kind match), and REQUIRED for a new
     // payable (earning/deduction) row while INDIVIDUAL_TXN_PAY_ENABLED is on.
-    await assertTxnComponents(tx, [{ kind: p.kind, componentId: p.componentId }]);
+    await assertTxnComponents(tx, [{ kind: p.kind, componentId: p.componentId }], individualTxnPayEnabled(ctx));
     const target = await resolveTxnTarget(tx, p);
     assertDateInPeriod(p.txnDate, target.payPeriod);
     // C3 backstop on the unattached path too: the employment must belong to the target company (the batch
@@ -502,7 +507,7 @@ export function createIndividualTxnsBulk(
     }
     // Phase 3 — component picks validated in ONE query (exists / not archived / kind match); a new payable
     // (earning/deduction) row REQUIRES a component while INDIVIDUAL_TXN_PAY_ENABLED is on.
-    await assertTxnComponents(tx, validated);
+    await assertTxnComponents(tx, validated, individualTxnPayEnabled(ctx));
 
     // Cartesian insert: the validated grid is recorded once per selected employee. Outer loop = employees so
     // each row's subjectEmploymentId / payload employmentId names the right payee.

@@ -24,7 +24,7 @@ import {
   summarize,
   type CompanyOutcome,
 } from '../core/payroll-run-group';
-import { closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 describe('multi-company payroll — pure helpers', () => {
   it('reasonForError maps the known engine throws to stable codes', () => {
@@ -71,10 +71,33 @@ describe('multi-company payroll — orchestration (DB)', () => {
   /** company B (base.companyId is company A) + a paid employee in each. */
   let companyB: string;
   let deptB: string;
+  /**
+   * ADR-0077 slice 3 — this tenant's REAL entitlement snapshot, resolved once per test in `beforeEach`.
+   *
+   * This file mutates no gate and never did (it carries no env write), but it is still affected by the
+   * flip: both contexts below are hand-built literals, and `generatePayslips` now asks
+   * `isModuleEnabled(ctx, 'typed_pay_components')` (core/payroll.ts:1857, :2512) plus
+   * `settingEnabled(ctx, 'payroll.individual_txn_pay_enabled')` (:2612). A context carrying neither a
+   * snapshot nor an exempt marker makes those throw `EntitlementsUnresolvedError`, so the whole
+   * orchestration describe block failed for a wiring reason, not a behavioural one.
+   *
+   * A real snapshot is attached rather than an exemption marker because an exempt context cannot
+   * answer a BILLABLE module question at all: before slice 3 it answered TRUE — silently switching the
+   * typed-pay-component earnings source ON for a test that has always exercised the legacy path, i.e.
+   * making the file green while changing what it proves — and as of slice 3 it THROWS
+   * EntitlementsExemptForBillableError instead. Resolved from the tenant's rows, `typed_pay_components`
+   * has NO row (test/env.ts deletes TYPED_PAY_COMPONENTS_ENABLED, so `seedBase` seeds none) and a
+   * missing row is disabled — exactly the pre-slice-3 env answer.
+   *
+   * Only `entitlements` is taken from `entitledCtx`, NOT the whole context: `entitledCtx` also sets
+   * `roles: ['hr_admin']`, and spreading that into the company-SCOPED admin below would hand it a
+   * group-wide role alongside its single-company grant — the precise widening HAZARD 1 asserts against.
+   */
+  let entitlements: SessionContext['entitlements'];
 
   /** A GROUP admin (grants: company-null hr_admin) — allowedCompanies returns every company in the tenant. */
   function groupAdmin(): SessionContext {
-    return { tenantId: base.tenantId, userId: base.adminUserId, grants: [{ role: 'hr_admin', companyId: null }] };
+    return { tenantId: base.tenantId, userId: base.adminUserId, grants: [{ role: 'hr_admin', companyId: null }], entitlements };
   }
 
   /** A COMPANY-SCOPED admin (grant to a single company) — allowedCompanies returns only that company. */
@@ -84,7 +107,7 @@ describe('multi-company payroll — orchestration (DB)', () => {
       .values({ tenantId: base.tenantId, workosUserId: `user_${randomUUID()}`, personId: null })
       .returning({ id: schema.appUser.id });
     await owner.db.insert(schema.roleAssignment).values({ tenantId: base.tenantId, appUserId: u.id, companyId, role: 'hr_admin' });
-    return { tenantId: base.tenantId, userId: u.id, grants: [{ role: 'hr_admin', companyId }] };
+    return { tenantId: base.tenantId, userId: u.id, grants: [{ role: 'hr_admin', companyId }], entitlements };
   }
 
   async function seedPaidEmployee(ctx: SessionContext, companyId: string, departmentId: string, name: string) {
@@ -114,6 +137,9 @@ describe('multi-company payroll — orchestration (DB)', () => {
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
+    // Point-in-time read, exactly as a real session takes it — so it must come after seedBase has
+    // written the tenant's rows and before the first context is built from it.
+    entitlements = (await entitledCtx(base)).entitlements;
     const a = groupAdmin();
     const [c2] = await owner.db
       .insert(schema.company)

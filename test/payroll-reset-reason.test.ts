@@ -21,6 +21,7 @@ import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
+import type { SessionContext } from '../db/client';
 import {
   ResetReasonRequiredError,
   createBatch,
@@ -33,14 +34,15 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { hireEmployee } from '../core/org';
 import {
-  adminCtx,
   closeAll,
+  entitledCtx,
   eventTypesFor,
   latestEventPayload,
   migrateTestDb,
   owner,
   resetDb,
   seedBase,
+  setSetting,
   type Base,
 } from './harness';
 
@@ -48,9 +50,22 @@ let icSeq = 0;
 const nextIc = () => `9204040${String(10000 + icSeq++).slice(-5)}`;
 
 let base: Base;
+/**
+ * ADR-0077 slice 3 — the reset gate is a per-tenant SETTING row (`payroll.reset_enabled`), not
+ * PAYROLL_RESET_ENABLED. It therefore cannot be driven through `adminCtx`: that context carries a
+ * SYNTHETIC snapshot whose `settings` map is `legacyEnabledSettingsIn(process.env)`, which test/env.ts
+ * makes EMPTY — so every setting reads its catalog default (`false` here) and a `setSetting` fixture is
+ * only visible to a context built after it. Every call in this file goes through a REAL snapshot
+ * (`entitledCtx`), resolved in beforeEach AFTER the grant is written, which reads the tenant's ROWS and
+ * needs no mirror. It also keeps the rest of the run on the same code path as before: seedBase seeds no
+ * `multi_cycle_payroll` / `typed_pay_components` row under the suite env, exactly as test/env.ts
+ * deleted those flags. (Until slice 3 `adminCtx` was `entitlementsExempt: 'harness'` and would have
+ * answered TRUE for both modules — the hazard this file was converted against.)
+ */
+let ctx: SessionContext;
 
 async function hire(name: string, basic = 5000) {
-  const a = adminCtx(base);
+  const a = ctx;
   const e = await hireEmployee(a, {
     person: { fullName: name, primaryEmail: `${name.toLowerCase().replace(/\s+/g, '')}@acme.test` },
     companyId: base.companyId,
@@ -79,7 +94,7 @@ const rollbackHistoryRows = async (batchId: string) =>
  * reset has real side-effects to reverse. Returns the ids the assertions probe.
  */
 async function processedBatchWithSideEffects(period: string) {
-  const a = adminCtx(base);
+  const a = ctx;
   const e1 = await hire(`Reset Reason ${period}`, 5000);
 
   await createLoan(a, {
@@ -130,17 +145,19 @@ describe('Payroll Reset — mandatory reason (resetProcessedBatch)', () => {
     await migrateTestDb();
   });
   beforeEach(async () => {
-    process.env.PAYROLL_RESET_ENABLED = 'true';
     await resetDb();
     base = await seedBase();
+    // The gate this file needs ON, as a row on THIS tenant. No cleanup hook any more: the grant dies
+    // with the tenant at the next resetDb, so unlike the env var it cannot leak into another file.
+    await setSetting(base.tenantId, 'payroll.reset_enabled', true);
+    ctx = await entitledCtx(base); // resolved AFTER the grant — the snapshot is point-in-time.
   });
   afterAll(async () => {
-    delete process.env.PAYROLL_RESET_ENABLED; // don't leak the gate into other test files (shared worker)
     await closeAll();
   });
 
   it('a. a blank / undefined reason is rejected before the flip; batch stays processed, nothing zeroized, nothing audited, side-effects intact', async () => {
-    const a = adminCtx(base);
+    const a = ctx;
     const { batchId, claimId, repId } = await processedBatchWithSideEffects('2026-05');
 
     // Whitespace-only reason → typed error, thrown BEFORE any deletion / status change.
@@ -169,7 +186,7 @@ describe('Payroll Reset — mandatory reason (resetProcessedBatch)', () => {
   });
 
   it('b. a non-blank reason succeeds: Processed → Draft, zeroized, loan/claim reversed, history row + event carry the trimmed reason', async () => {
-    const a = adminCtx(base);
+    const a = ctx;
     const { batchId, claimId, repId } = await processedBatchWithSideEffects('2026-06');
 
     const res = await resetProcessedBatch(a, { batchId, reason: '  fix keyed OT  ' });

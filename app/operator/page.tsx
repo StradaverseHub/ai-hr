@@ -101,11 +101,22 @@ export default async function OperatorPage() {
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               {sellableModules.map((m) => (
                 <label key={m.code} className="flex items-center gap-2 text-sm">
-                  {/* PRE-TICKED for the modules no env var gates today (DEFAULT_PROVISION_MODULE_CODES).
-                      An untouched form used to queue a customer with ZERO entitlement rows, which reads
-                      as "everything the customer has today" until slice 3 and as "nothing" after it.
-                      The default states what the product currently includes; unticking is still the
-                      operator's decision and is honoured verbatim by provisionTenant. */}
+                  {/* PRE-TICKED for everything a customer provisioned TODAY would actually run —
+                      DEFAULT_PROVISION_MODULE_CODES, the tracked parity set narrowed to sellable
+                      codes. An untouched form used to queue a customer with ZERO entitlement rows,
+                      which reads as "everything the customer has today" until slice 3 and as
+                      "nothing" after it. The default states what the product currently includes;
+                      unticking is still the operator's decision and is honoured verbatim by
+                      provisionTenant.
+
+                      A CONSTANT, NOT `process.env` (review r3). This read `defaultProvisionModuleCodesIn(
+                      process.env)`, which resolved NOTIFICATIONS_ENABLED / MULTI_CYCLE_PAYROLL_ENABLED /
+                      TYPED_PAY_COMPONENTS_ENABLED at request time — three gates slice 3 migrated, read
+                      from env in application source, and invisible to every gate check in
+                      test/module-catalog-drift.test.ts because the names appeared in neither file as a
+                      literal. It also meant that retiring those vars would silently drop three modules
+                      from every new customer's ticks. See DEFAULT_PROVISION_MODULE_CODES for why the
+                      env filter bought nothing after the flip. */}
                   <input
                     type="checkbox"
                     name="modules"
@@ -121,7 +132,7 @@ export default async function OperatorPage() {
                 all, and the 0313 trigger refuses one — so offering them as a choice would be a lie. */}
             <p className="mt-1 text-xs text-muted-foreground">
               Core modules ({coreModules.map((m) => m.name).join(', ')}) are always included. Ticked by
-              default are the modules every customer runs today; untick to sell less.
+              default are the modules every customer runs on this deployment today; untick to sell less.
             </p>
           </fieldset>
         </form>

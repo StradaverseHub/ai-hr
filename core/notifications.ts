@@ -23,6 +23,7 @@ import {
   type NotificationSeverity,
 } from '../db/schema';
 import { resolveSubjectHead } from './leave';
+import { isModuleEnabled } from './entitlements';
 
 /** All HR-admin employments in the same company as `employmentId` (0110, employment-review fan-out).
  *  Resolves via role_assignment (hr_admin/super_admin) → app_user → person → that company's employment.
@@ -140,7 +141,8 @@ export async function approverEmploymentsForKind(
   }
 }
 
-const enabled = () => process.env.NOTIFICATIONS_ENABLED === 'true';
+/** Notifications are a per-tenant module now (ADR-0077 slice 3), not a deployment flag. */
+const enabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'notifications');
 
 type Rendered = { severity: NotificationSeverity; title: string; body: string; linkPath: string };
 type EventRef = { aggregateId: string; subjectEmploymentId: string | null };
@@ -496,7 +498,7 @@ export type DispatchResult = { processed: number; created: number };
  * per-tenant cursor; idempotent (only events after the cursor are processed). Gated ⇒ no-op.
  */
 export async function dispatchNotifications(ctx: SessionContext, opts: { limit?: number } = {}): Promise<DispatchResult> {
-  if (!enabled()) return { processed: 0, created: 0 };
+  if (!enabled(ctx)) return { processed: 0, created: 0 };
   const limit = Math.min(Math.max(opts.limit ?? 1000, 1), 5000);
   return withTenant(ctx, async (tx) => {
     const [cur] = await tx.select().from(notificationCursor).where(eq(notificationCursor.tenantId, ctx.tenantId)).limit(1);

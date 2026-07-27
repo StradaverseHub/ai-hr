@@ -5,12 +5,28 @@
  * (no writes once a batch is processed); no-carry-forward (batch-scoped FK); the byte-identical invariant
  * (the ledger is inert w.r.t. computed pay in this slice); RLS (non-admin / wrong-company can't read/write);
  * and i18n dynamic-key parity (the kind.* / unit.* labels resolve non-empty in all 6 locales).
+ *
+ * ADR-0077 slice 3 — THE THREE GATES THIS FILE DRIVES ARE PER-TENANT ENTITLEMENT ROWS, NOT ENV FLAGS:
+ *   • `payroll.individual_txn_pay_enabled`  (SETTING) — was INDIVIDUAL_TXN_PAY_ENABLED
+ *   • `typed_pay_components`                (MODULE)  — was TYPED_PAY_COMPONENTS_ENABLED
+ *   • `multi_cycle_payroll`                 (MODULE)  — was MULTI_CYCLE_PAYROLL_ENABLED
+ *
+ * WHICH CONTEXT A TEST USES IS THEREFORE PART OF ITS MEANING. `adminCtx` carries a SYNTHETIC snapshot
+ * derived from `legacyEnabledModulesIn(process.env)` / `legacyEnabledSettingsIn(process.env)` — under
+ * the suite's env that is the four ungated modules and NO settings, so `typed_pay_components` reads OFF
+ * and every setting reads its CATALOG DEFAULT (`false`). A `setSetting` or `setModule` written
+ * afterwards reaches it only through the harness's in-memory mirror, never from the row. (Until slice 3
+ * it was `entitlementsExempt: 'harness'`, which answered TRUE for every module and could express
+ * neither half of this file's flag matrix.) Every assertion that depends on a gate's value
+ * therefore runs through `entitledCtx` (a REAL resolved snapshot), resolved AFTER the setModule /
+ * setSetting writes it must see, because the snapshot is point-in-time. `adminCtx` is retained only for
+ * gate-independent fixture work (hiring, compensation, batch creation, plain ledger CRUD).
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
@@ -44,11 +60,14 @@ import {
   adminCtx,
   closeAll,
   createAppUser,
+  entitledCtx,
   eventTypesFor,
   migrateTestDb,
   owner,
   resetDb,
   seedBase,
+  setModule,
+  setSetting,
   type Base,
 } from './harness';
 
@@ -60,10 +79,19 @@ describe('1.2.2 Individual Transaction', () => {
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
-    // f1564110 Phase 3 — every test in this file starts FLAG OFF (the codebase default); the Phase-3
-    // describe below sets the flags per test and clears them again in its afterEach.
-    delete process.env.INDIVIDUAL_TXN_PAY_ENABLED;
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+    // f1564110 Phase 3 — every test in this file starts with kernel consumption OFF (the product
+    // default); the Phase-3 describe below grants what it needs per test. Two different mechanisms,
+    // both written out rather than assumed, because they fail differently:
+    //   • `payroll.individual_txn_pay_enabled` is a SETTING whose catalog default is false — but
+    //     seedBase writes a platform row with value TRUE on any box whose env carries
+    //     INDIVIDUAL_TXN_PAY_ENABLED (the live deployment sets it, see deploy/enable-demo-flags.sh),
+    //     so "no row" is NOT a reliable off here. The row is written false to make the baseline
+    //     environment-independent instead of ordering-dependent.
+    //   • `typed_pay_components` is a MODULE, where a MISSING row is disabled (C7). seedBase seeds
+    //     none under the suite's env (test/env.ts deletes TYPED_PAY_COMPONENTS_ENABLED), and the
+    //     DELETE below states that rather than relying on it.
+    await setSetting(base.tenantId, 'payroll.individual_txn_pay_enabled', false);
+    await setModule(base.tenantId, 'typed_pay_components', null);
   });
   afterAll(async () => {
     await closeAll();
@@ -205,10 +233,15 @@ describe('1.2.2 Individual Transaction', () => {
 
   // ───────────────────── byte-identical invariant ─────────────────────
 
-  it('FLAG-OFF GUARD: with INDIVIDUAL_TXN_PAY_ENABLED off (default) the rows are INERT w.r.t. computed pay', async () => {
-    // f1564110 Phase 3 repurposed this byte-identical invariant as the FLAG-OFF guard: kernel consumption
-    // exists behind INDIVIDUAL_TXN_PAY_ENABLED, and with the flag off (deleted in beforeEach) the payslip
-    // figures must remain identical with vs without ledger rows — proving flag-off payroll is untouched.
+  it('GATE-OFF GUARD: with payroll.individual_txn_pay_enabled off the rows are INERT w.r.t. computed pay', async () => {
+    // f1564110 Phase 3 repurposed this byte-identical invariant as the GATE-OFF guard: kernel consumption
+    // exists behind `payroll.individual_txn_pay_enabled`, and with that setting off (written false in
+    // beforeEach) the payslip figures must remain identical with vs without ledger rows — proving
+    // gate-off payroll is untouched.
+    //
+    // ADR-0077 slice 3: generation runs through `entitledCtx`, a REAL snapshot, so the OFF really is the
+    // tenant's row. Under `adminCtx` this guard would be vacuous — an exempt context reads every setting
+    // as its catalog default, so the ledger could never be switched on for it whatever the row said.
     // Two equivalent employees in two equivalent batches; one batch gets a full set of individual-txn rows.
     // The generated payslip figures must be identical — proving the ledger does not fold into pay in this slice.
     // Same period (so the period-derived statutory metadata is identical) but two separate companies in the
@@ -243,7 +276,10 @@ describe('1.2.2 Individual Transaction', () => {
           await createIndividualTxn(a, { batchId, employmentId: e.employmentId, kind, txnDate: '2026-05-15', amount: 999, quantity: 8, unit: 'hours', notes: kind });
         }
       }
-      await generatePayslips(a, { batchId });
+      // Real snapshot: `payroll.individual_txn_pay_enabled` is false and there is no `typed_pay_components`
+      // row (both set in beforeEach) ⇒ the ledger is genuinely un-consumed on BOTH halves.
+      const off = await entitledCtx(base);
+      await generatePayslips(off, { batchId });
       const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
       // Strip row identity (id / batch / employment / created); the money figures + statutory JSONB remain.
       const { id: _id, batchId: _b, employmentId: _e, createdAt: _c, ...figures } = ps;
@@ -627,23 +663,24 @@ describe('1.2.2 Individual Transaction', () => {
   });
 
   it('multi-cycle disambiguation (C1): two draft runs same period+runType, different runSeq are each targetable', async () => {
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    try {
-      const { a, employmentId, batchId: regularBatch } = await hireWithBatch('2026-05');
-      // Two off_cycle runs in the SAME period → runSeq 2 and 3 (regular is runSeq 1). Same (period, runType),
-      // distinguished only by runSeq — the exact ambiguous case the wizard's run selector must resolve.
-      const off1 = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-05', runType: 'off_cycle' });
-      const off2 = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-05', runType: 'off_cycle' });
-      expect(off1.batchId).not.toBe(off2.batchId);
+    // ADR-0077 slice 3 — `createAdditionalRun` is gated on the `multi_cycle_payroll` MODULE entitlement.
+    // Granted as a row, and the run creation is driven through `entitledCtx` (resolved AFTER the grant)
+    // so the row is what actually opens the gate; under the exempt `adminCtx` the grant would be inert
+    // decoration and this test would pass with no entitlement at all.
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const { a, employmentId, batchId: regularBatch } = await hireWithBatch('2026-05');
+    const multi = await entitledCtx(base);
+    // Two off_cycle runs in the SAME period → runSeq 2 and 3 (regular is runSeq 1). Same (period, runType),
+    // distinguished only by runSeq — the exact ambiguous case the wizard's run selector must resolve.
+    const off1 = await createAdditionalRun(multi, { companyId: base.companyId, payPeriod: '2026-05', runType: 'off_cycle' });
+    const off2 = await createAdditionalRun(multi, { companyId: base.companyId, payPeriod: '2026-05', runType: 'off_cycle' });
+    expect(off1.batchId).not.toBe(off2.batchId);
 
-      // A row saved against the CHOSEN batch lands on exactly that batch, not a sibling with the same runType.
-      await createIndividualTxnsBulk(a, { batchId: off2.batchId, employmentIds: [employmentId], rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 42 }] });
-      expect(await listIndividualTxns(a, { batchId: off2.batchId })).toHaveLength(1);
-      expect(await listIndividualTxns(a, { batchId: off1.batchId })).toHaveLength(0);
-      expect(await listIndividualTxns(a, { batchId: regularBatch })).toHaveLength(0);
-    } finally {
-      delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
-    }
+    // A row saved against the CHOSEN batch lands on exactly that batch, not a sibling with the same runType.
+    await createIndividualTxnsBulk(a, { batchId: off2.batchId, employmentIds: [employmentId], rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 42 }] });
+    expect(await listIndividualTxns(a, { batchId: off2.batchId })).toHaveLength(1);
+    expect(await listIndividualTxns(a, { batchId: off1.batchId })).toHaveLength(0);
+    expect(await listIndividualTxns(a, { batchId: regularBatch })).toHaveLength(0);
   });
 
   it('date boundary (C9): last day of a short month accepted, an over-the-end date rejected via bulk save', async () => {
@@ -792,33 +829,32 @@ describe('1.2.2 Individual Transaction', () => {
   });
 
   it('attach-on-generate targets the REGULAR run only: an off-cycle generation leaves rows unattached', async () => {
-    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
-    try {
-      const { a, employmentId, batchId: regularId } = await hireWithBatch('2026-05');
-      const { ids } = await createIndividualTxnsBulk(a, {
-        companyId: base.companyId,
-        payPeriod: '2026-05',
-        employmentIds: [employmentId],
-        rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 42 }],
-      });
+    // Same conversion as the C1 test above: the `multi_cycle_payroll` entitlement row is what lets the
+    // off-cycle run exist, and `multi` (resolved after the grant) is the context that can see it.
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const { a, employmentId, batchId: regularId } = await hireWithBatch('2026-05');
+    const multi = await entitledCtx(base);
+    const { ids } = await createIndividualTxnsBulk(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      employmentIds: [employmentId],
+      rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 42 }],
+    });
 
-      const off = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-05', runType: 'off_cycle' });
-      await generatePayslips(a, { batchId: off.batchId });
-      const [afterOff] = await owner.db
-        .select()
-        .from(schema.payrollIndividualTxn)
-        .where(eq(schema.payrollIndividualTxn.id, ids[0]));
-      expect(afterOff.batchId).toBeNull(); // NOT collected by the off-cycle run
+    const off = await createAdditionalRun(multi, { companyId: base.companyId, payPeriod: '2026-05', runType: 'off_cycle' });
+    await generatePayslips(multi, { batchId: off.batchId });
+    const [afterOff] = await owner.db
+      .select()
+      .from(schema.payrollIndividualTxn)
+      .where(eq(schema.payrollIndividualTxn.id, ids[0]));
+    expect(afterOff.batchId).toBeNull(); // NOT collected by the off-cycle run
 
-      await generatePayslips(a, { batchId: regularId });
-      const [afterRegular] = await owner.db
-        .select()
-        .from(schema.payrollIndividualTxn)
-        .where(eq(schema.payrollIndividualTxn.id, ids[0]));
-      expect(afterRegular.batchId).toBe(regularId); // collected exactly once, by the regular run
-    } finally {
-      delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
-    }
+    await generatePayslips(multi, { batchId: regularId });
+    const [afterRegular] = await owner.db
+      .select()
+      .from(schema.payrollIndividualTxn)
+      .where(eq(schema.payrollIndividualTxn.id, ids[0]));
+    expect(afterRegular.batchId).toBe(regularId); // collected exactly once, by the regular run
   });
 
   it('attach-on-generate honours batch scope: out-of-scope unattached rows stay unattached', async () => {
@@ -960,18 +996,16 @@ describe('1.2.2 Individual Transaction', () => {
       }
     }
   });
-  // ───────────────────── f1564110 Phase 3 — flag-gated kernel consumption ─────────────────────
-  // Golden per-kind fixtures with INDIVIDUAL_TXN_PAY_ENABLED + TYPED_PAY_COMPONENTS_ENABLED on (the anchor
-  // configuration). Each test builds a BASELINE employee (no ledger rows) and a WITH-ROWS employee in
-  // separate fresh companies (same tenant, same period — the inert-test pattern) and compares payslips, so
-  // the assertions are deltas, robust to statutory-pack changes. Flag-off byte-identity is guarded by the
-  // FLAG-OFF GUARD test above.
-  describe('Phase 3 — kernel consumption (INDIVIDUAL_TXN_PAY_ENABLED)', () => {
-    afterEach(() => {
-      delete process.env.INDIVIDUAL_TXN_PAY_ENABLED;
-      delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-    });
-
+  // ───────────────────── f1564110 Phase 3 — gated kernel consumption ─────────────────────
+  // Golden per-kind fixtures with the `payroll.individual_txn_pay_enabled` setting AND the
+  // `typed_pay_components` module entitled (the anchor configuration). Each test builds a BASELINE
+  // employee (no ledger rows) and a WITH-ROWS employee in separate fresh companies (same tenant, same
+  // period — the inert-test pattern) and compares payslips, so the assertions are deltas, robust to
+  // statutory-pack changes. Gate-off byte-identity is guarded by the GATE-OFF GUARD test above.
+  //
+  // No afterEach reset is needed any more: the gates are tenant ROWS, and resetDb() + seedBase() in the
+  // outer beforeEach give every test a brand-new tenant. There is no process-wide state left to leak.
+  describe('Phase 3 — kernel consumption (payroll.individual_txn_pay_enabled)', () => {
     let seq = 0;
     /** Hire one employee (comp 5000 / allowance 0 + statutory profile) in a FRESH company with its own
      *  draft batch for 2026-05; seed the component catalog + backfill BASIC/ALLOWANCE (typed substrate). */
@@ -1003,10 +1037,25 @@ describe('1.2.2 Individual Transaction', () => {
     }
 
     type Stat = Record<string, number> & { recordLines?: { code: string; name: string; amount: number }[]; otSource?: string };
-    async function generateAndRead(a: SessionContext, batchId: string) {
-      process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
-      process.env.INDIVIDUAL_TXN_PAY_ENABLED = 'true';
-      await generatePayslips(a, { batchId });
+    /**
+     * Generate `batchId` in the ANCHOR configuration and read back the payslip.
+     *
+     * ADR-0077 slice 3: the anchor is now a real entitlement state — a `typed_pay_components` module row
+     * plus a `payroll.individual_txn_pay_enabled` setting row — read through a REAL snapshot resolved
+     * AFTER those writes, because a snapshot is point-in-time. Both writes are idempotent.
+     *
+     * (This note used to say `adminCtx` "is entitlementsExempt, so the setting reads its catalog
+     * default". That described an earlier draft; slice 3 removed the exemption and gave adminCtx a
+     * snapshot derived from the same helpers seedBase uses. The conclusion is unchanged — under the
+     * suite's env adminCtx answers both of these DISABLED, so the kernel would never consume the ledger
+     * and every delta assertion below would silently become an assertion about an inert one — but the
+     * reason is now the derived snapshot, not an exemption.)
+     */
+    async function generateAndRead(batchId: string) {
+      await setModule(base.tenantId, 'typed_pay_components', 'active');
+      await setSetting(base.tenantId, 'payroll.individual_txn_pay_enabled', true);
+      const on = await entitledCtx(base);
+      await generatePayslips(on, { batchId });
       const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
       return { ps, st: ps.statutory as Stat };
     }
@@ -1022,10 +1071,12 @@ describe('1.2.2 Individual Transaction', () => {
     it('componentless LEGACY earning folds with conservative defaults (EPF/SOCSO/PCB-liable wages) + named record line', async () => {
       const b = await setupEmployee();
       const w = await setupEmployee();
-      // Created while the flag is OFF (beforeEach) ⇒ a legacy componentless payable row.
+      // Created through the exempt `adminCtx`, for which `payroll.individual_txn_pay_enabled` reads its
+      // catalog default (false) — so the component requirement does not fire and this is a legacy
+      // componentless payable row, exactly as one keyed before the gate existed.
       await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 500, notes: 'Spot award' });
-      const { ps: bp, st: bs } = await generateAndRead(b.a, b.batchId);
-      const { ps: wp, st: ws } = await generateAndRead(w.a, w.batchId);
+      const { ps: bp, st: bs } = await generateAndRead(b.batchId);
+      const { ps: wp, st: ws } = await generateAndRead(w.batchId);
       expect(Number(wp.grossPay)).toBeCloseTo(Number(bp.grossPay) + 500, 2); // paid
       expect(Number(wp.allowance)).toBeCloseTo(Number(bp.allowance) + 500, 2); // wage-allowance bucket
       expect(ws.epfEmployee).toBeGreaterThan(bs.epfEmployee); // EPF base includes it (5500 vs 5000)
@@ -1037,8 +1088,8 @@ describe('1.2.2 Individual Transaction', () => {
       const b = await setupEmployee();
       const w = await setupEmployee();
       await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'deduction', txnDate: '2026-05-12', amount: 300, notes: 'Damage recovery' });
-      const { ps: bp, st: bs } = await generateAndRead(b.a, b.batchId);
-      const { ps: wp, st: ws } = await generateAndRead(w.a, w.batchId);
+      const { ps: bp, st: bs } = await generateAndRead(b.batchId);
+      const { ps: wp, st: ws } = await generateAndRead(w.batchId);
       expect(Number(wp.grossPay)).toBeCloseTo(Number(bp.grossPay), 2); // gross untouched
       expect(Number(wp.netPay)).toBeCloseTo(Number(bp.netPay) - 300, 2);
       expect(Number(wp.totalDeductions)).toBeCloseTo(Number(bp.totalDeductions) + 300, 2);
@@ -1053,10 +1104,14 @@ describe('1.2.2 Individual Transaction', () => {
       const b = await setupEmployee();
       const w = await setupEmployee();
       const bonusId = await componentIdByCode('BONUS');
-      process.env.INDIVIDUAL_TXN_PAY_ENABLED = 'true'; // component required (and provided) on a new payable row
-      await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'earning', componentId: bonusId, txnDate: '2026-05-15', amount: 1000, notes: 'Ad-hoc bonus' });
-      const { ps: bp, st: bs } = await generateAndRead(b.a, b.batchId);
-      const { ps: wp, st: ws } = await generateAndRead(w.a, w.batchId);
+      // Gate ON for the WRITE too: with `payroll.individual_txn_pay_enabled` set, a new payable row
+      // requires a component — provided here. Written through `entitledCtx` because the exempt fixture
+      // context reads the setting as its catalog default and would not apply the requirement at all.
+      await setSetting(base.tenantId, 'payroll.individual_txn_pay_enabled', true);
+      const on = await entitledCtx(base);
+      await createIndividualTxn(on, { batchId: w.batchId, employmentId: w.employmentId, kind: 'earning', componentId: bonusId, txnDate: '2026-05-15', amount: 1000, notes: 'Ad-hoc bonus' });
+      const { ps: bp, st: bs } = await generateAndRead(b.batchId);
+      const { ps: wp, st: ws } = await generateAndRead(w.batchId);
       expect(Number(wp.bonus)).toBeCloseTo(Number(bp.bonus) + 1000, 2); // (EPF && !SOCSO) ⇒ the bonus bucket
       expect(Number(wp.grossPay)).toBeCloseTo(Number(bp.grossPay) + 1000, 2);
       expect(ws.epfEmployee).toBeGreaterThan(bs.epfEmployee); // EPF-liable per the catalog flag
@@ -1068,8 +1123,8 @@ describe('1.2.2 Individual Transaction', () => {
       const b = await setupEmployee();
       const w = await setupEmployee();
       await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'overtime', txnDate: '2026-05-08', amount: 200, notes: 'Ad-hoc OT' });
-      const { ps: bp, st: bs } = await generateAndRead(b.a, b.batchId);
-      const { ps: wp, st: ws } = await generateAndRead(w.a, w.batchId);
+      const { ps: bp, st: bs } = await generateAndRead(b.batchId);
+      const { ps: wp, st: ws } = await generateAndRead(w.batchId);
       expect(Number(wp.overtimePay)).toBeCloseTo(Number(bp.overtimePay) + 200, 2);
       expect(ws.otSource).toBe('individual-txn');
       expect(ws.epfEmployee).toBeCloseTo(bs.epfEmployee, 2); // EPF excludes overtime
@@ -1080,8 +1135,8 @@ describe('1.2.2 Individual Transaction', () => {
       const b = await setupEmployee();
       const w = await setupEmployee();
       await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'unpaid', txnDate: '2026-05-20', amount: 150, notes: 'Absent day' });
-      const { ps: bp, st: bs } = await generateAndRead(b.a, b.batchId);
-      const { ps: wp, st: ws } = await generateAndRead(w.a, w.batchId);
+      const { ps: bp, st: bs } = await generateAndRead(b.batchId);
+      const { ps: wp, st: ws } = await generateAndRead(w.batchId);
       // The unpaid figure rides otherDeductions (slipUnpaid) on the payslip.
       expect(Number(wp.otherDeductions)).toBeCloseTo(Number(bp.otherDeductions) + 150, 2);
       expect(Number(wp.netPay)).toBeLessThan(Number(bp.netPay));
@@ -1093,8 +1148,8 @@ describe('1.2.2 Individual Transaction', () => {
       const b = await setupEmployee();
       const w = await setupEmployee();
       await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'leave', txnDate: '2026-05-21', amount: 99, notes: 'Comp leave note' });
-      const { ps: bp, st: bs } = await generateAndRead(b.a, b.batchId);
-      const { ps: wp, st: ws } = await generateAndRead(w.a, w.batchId);
+      const { ps: bp, st: bs } = await generateAndRead(b.batchId);
+      const { ps: wp, st: ws } = await generateAndRead(w.batchId);
       expect(Number(wp.grossPay)).toBeCloseTo(Number(bp.grossPay), 2);
       expect(Number(wp.netPay)).toBeCloseTo(Number(bp.netPay), 2);
       expect(Number(wp.totalDeductions)).toBeCloseTo(Number(bp.totalDeductions), 2);
@@ -1104,34 +1159,45 @@ describe('1.2.2 Individual Transaction', () => {
       expect((ws.recordLines ?? []).some((l) => l.code === 'TXN_LEAVE' && l.name === 'Comp leave note')).toBe(true);
     });
 
-    it('flag on: a NEW payable row REQUIRES a component (create + bulk); non-payable kinds do not; component on a non-payable kind is rejected', async () => {
-      const { a, employmentId, batchId } = await setupEmployee();
+    it('gate on: a NEW payable row REQUIRES a component (create + bulk); non-payable kinds do not; component on a non-payable kind is rejected', async () => {
+      const { employmentId, batchId } = await setupEmployee();
       const bonusId = await componentIdByCode('BONUS');
-      process.env.INDIVIDUAL_TXN_PAY_ENABLED = 'true';
+      // The requirement is driven by the `payroll.individual_txn_pay_enabled` ROW, so every call below
+      // goes through `entitledCtx` — resolved after the write. Under `adminCtx` the setting would read
+      // its catalog default (false) and NONE of the four refusals below would fire: this is precisely
+      // the test that must not be left on an exempt context.
+      await setSetting(base.tenantId, 'payroll.individual_txn_pay_enabled', true);
+      const on = await entitledCtx(base);
       await expect(
-        createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 50 }),
+        createIndividualTxn(on, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 50 }),
       ).rejects.toBeInstanceOf(ComponentRequiredError);
       await expect(
-        createIndividualTxnsBulk(a, { batchId, employmentIds: [employmentId], rows: [{ kind: 'deduction', txnDate: '2026-05-10', amount: 50 }] }),
+        createIndividualTxnsBulk(on, { batchId, employmentIds: [employmentId], rows: [{ kind: 'deduction', txnDate: '2026-05-10', amount: 50 }] }),
       ).rejects.toBeInstanceOf(ComponentRequiredError);
       await expect(
-        createIndividualTxn(a, { batchId, employmentId, kind: 'overtime', txnDate: '2026-05-10', amount: 50 }),
+        createIndividualTxn(on, { batchId, employmentId, kind: 'overtime', txnDate: '2026-05-10', amount: 50 }),
       ).resolves.toMatchObject({ id: expect.any(String) });
       await expect(
-        createIndividualTxn(a, { batchId, employmentId, kind: 'overtime', componentId: bonusId, txnDate: '2026-05-11', amount: 50 }),
+        createIndividualTxn(on, { batchId, employmentId, kind: 'overtime', componentId: bonusId, txnDate: '2026-05-11', amount: 50 }),
       ).rejects.toBeInstanceOf(InvalidTxnComponentError);
       // Kind-mismatch: a deduction row cannot carry an allowance-kind component.
       await expect(
-        createIndividualTxn(a, { batchId, employmentId, kind: 'deduction', componentId: bonusId, txnDate: '2026-05-11', amount: 50 }),
+        createIndividualTxn(on, { batchId, employmentId, kind: 'deduction', componentId: bonusId, txnDate: '2026-05-11', amount: 50 }),
       ).rejects.toBeInstanceOf(InvalidTxnComponentError);
     });
 
-    it('FAIL-CLOSED: flag on + typed components OFF + payable rows present ⇒ generation throws (documented dependency)', async () => {
+    it('FAIL-CLOSED: gate on + typed components OFF + payable rows present ⇒ generation throws (documented dependency)', async () => {
       const w = await setupEmployee();
+      // Keyed while the gate is off (adminCtx reads the catalog default) ⇒ a componentless payable row.
       await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 100 });
-      process.env.INDIVIDUAL_TXN_PAY_ENABLED = 'true';
-      delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-      await expect(generatePayslips(w.a, { batchId: w.batchId })).rejects.toBeInstanceOf(IndividualTxnRequiresTypedComponentsError);
+      // The exact dependency this test names: the ledger setting ON while the `typed_pay_components`
+      // MODULE has no row. `entitledCtx` is mandatory here — `adminCtx` is exempt, which answers TRUE
+      // for every catalogued module, so typed components could never be off and the fail-closed branch
+      // would be unreachable.
+      await setSetting(base.tenantId, 'payroll.individual_txn_pay_enabled', true);
+      await setModule(base.tenantId, 'typed_pay_components', null);
+      const on = await entitledCtx(base);
+      await expect(generatePayslips(on, { batchId: w.batchId })).rejects.toBeInstanceOf(IndividualTxnRequiresTypedComponentsError);
     });
   });
 });

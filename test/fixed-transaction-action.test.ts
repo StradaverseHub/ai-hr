@@ -6,10 +6,29 @@
  *
  * next/navigation redirect + next/cache are stubbed inert (the action returns at each back() so it does not
  * fall through). lib/scope.scopedAdmin is stubbed to a session whose scopeIds cover only company A.
+ *
+ * TYPED PAY COMPONENTS (ADR-0077 slice 3) — WHY THERE IS NO GATE CALL IN THIS FILE.
+ * The beforeEach/afterEach used to clear the TYPED_PAY_COMPONENTS_ENABLED flag (spelled without the
+ * `process.env.` prefix on purpose: the slice-3 worklist scan in test/module-catalog-drift.test.ts greps
+ * this tree for env-gate mutations, and a comment quoting one verbatim would re-list this file as still
+ * unconverted). Those two lines are DELETED rather than translated into a setModule() call, and the
+ * reason is stronger than "a missing row is already disabled":
+ *
+ *   nothing on this file's code path reads that gate at all. `createFixedTransactionAction` →
+ *   `listEmployees` (the scope re-validation) → `setEmploymentPayComponent` contain no
+ *   `isModuleEnabled` check; the typed-components gate lives on the payroll KERNEL (core/payroll.ts
+ *   earningsOf / pre-processing) and on the Fixed Transaction PAGE's read model
+ *   (app/payroll/transactions/fixed/page.tsx), neither of which this file exercises. The env writes were
+ *   therefore inert hygiene even before slice 3, and both assertions below (the out-of-scope refusal and
+ *   the in-scope write) are decided purely by the scope guard.
+ *
+ * Consequently the OFF state is now the fixture baseline by construction: seedBase seeds no
+ * `tenant_module` row for this code under the suite's env, a missing row is disabled (C7), and resetDb()
+ * truncates `tenant_module` between tests so nothing can leak in from an earlier file.
  */
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Hoisted so the vi.mock factories (hoisted to top-of-file) can reference them safely.
 const { redirect, scope } = vi.hoisted(() => ({
@@ -61,10 +80,6 @@ describe('Fixed Transaction action — scope guard', () => {
       .returning({ id: schema.department.id });
     deptB = d.id;
     redirect.mockClear();
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-  });
-  afterEach(() => {
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
   });
   afterAll(async () => {
     await closeAll();

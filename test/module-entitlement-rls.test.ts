@@ -241,10 +241,11 @@ describe('slice 1 — entitlement substrate privileges and policies', () => {
 
   it('an admin can READ their own SETTINGS, and they match what this process\'s GATES resolve to', async () => {
     // THE SETTING AXIS HAD NO READ ASSERTION AT ALL. Under this suite's env `legacyEnabledSettingsIn`
-    // returns the EMPTY set (test/env.ts deletes PAYROLL_RESET_ENABLED and AUDIT_HASH_CHAIN_ENABLED;
-    // nothing sets PAYROLL_UNLOCK_ENABLED or INDIVIDUAL_TXN_PAY_ENABLED), so no test tenant carries a
-    // single tenant_setting row — a fact that was true, load-bearing for the "slice 3 is a no-op" claim,
-    // and asserted nowhere. Same shape as the module case: computed from LEGACY_SETTING_ENV_GATES so it
+    // returns the EMPTY set — test/env.ts deletes all nine tracked gates, which it did NOT do until the
+    // slice-3 review: it stopped after five, and .env.example ships PAYROLL_UNLOCK_ENABLED uncommented,
+    // so a developer's box could carry rows CI did not. So no test tenant carries a single
+    // tenant_setting row — a fact that was true, load-bearing for the "slice 3 is a no-op" claim, and
+    // asserted nowhere. Same shape as the module case: computed from LEGACY_SETTING_ENV_GATES so it
     // stays true on a box that DOES carry the deployment's flags instead of pinning today's emptiness.
     const rows = await withTenant(admin, (tx) =>
       tx.select({ key: schema.tenantSetting.key }).from(schema.tenantSetting),

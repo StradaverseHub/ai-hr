@@ -232,7 +232,152 @@ HR Admin / Manager / Employee, the 文A button for language, and the **?** tour.
 ## Updating later
 
 Re-sync the code (step 1) and re-run `./deploy/deploy.sh` — it rebuilds, applies any new migrations,
-keeps the data, and restarts the service. Reset the demo with `--reseed`.
+keeps the data, and restarts the service. Reset the demo with `--reseed`. `--migrate-only` stops after
+the migrations and the catalog seed, without seeding demo data or restarting, for a deploy that needs a
+manual step in between (see the entitlement-parity one-shot below); run it again with no arguments to
+finish.
+
+### ONE-SHOT: entitlement parity, at the ADR-0077 slice-3 deploy only
+
+Slice 3 turns eight `*_ENABLED` env flags into per-tenant entitlement rows. Migration 0313 already
+backfilled those rows for every tenant that existed **when it ran** — but a migration runs once, and
+any tenant provisioned through the operator console **after** that has been running
+`notifications`, `multi_cycle_payroll`, `typed_pay_components` and the three payroll settings on the
+strength of `.env.production` alone, with no row to inherit. Those six would switch off silently at the
+flip; `typed_pay_components` changes payroll numbers when it does.
+
+Run this **after `migrate`, before restarting the service**, in the same window. `./deploy/deploy.sh
+--migrate-only` stops at exactly that point — migrations applied, catalogs seeded, service still on the
+previous build — so the documented ordering is reachable rather than aspirational. Finish with a plain
+`./deploy/deploy.sh` afterwards.
+
+The reconcile is a **dry run by default** — it prints a per-tenant plan and writes nothing until you
+pass `--apply`. `--created-before` is the **flip date**, and `--apply` refuses without it:
+
+```bash
+cd /opt/ai-hr
+./deploy/deploy.sh --migrate-only
+/opt/node20/bin/node --env-file=.env.production --import tsx \
+  scripts/reconcile-entitlement-parity.ts --created-before=YYYY-MM-DD
+# read the plan against your customer list, then:
+/opt/node20/bin/node --env-file=.env.production --import tsx \
+  scripts/reconcile-entitlement-parity.ts --created-before=YYYY-MM-DD --apply
+./deploy/deploy.sh          # build the rest of the way and restart
+```
+
+Use **today's date** when you run this inside the deploy window; use the date the slice-3 deploy went
+out if you are reconciling later. The boundary is what separates the two populations: a tenant created
+**before** the flip was running on `.env.production` and needs its rows; a tenant created **after** it
+already got correct install defaults from `db/provision.ts`, and granting the env set on top of that
+would write `payroll.reset_enabled=true` and `payroll.unlock_enabled=true` for a brand-new customer —
+`scope='platform'` rows `ai_hr_app` can never close again.
+
+Read the plan properly rather than skimming it. The script grants only what `.env.production` actually
+has on and never revokes, but a grant is **permanent** and it cannot tell "this tenant predates the
+row" from "the operator deliberately left this module unticked" — before slice 3 an untick had no
+effect, because nothing read the row, so both look identical in the data. The plan lists every tenant
+with its creation date; anything you do not want granted, record that decision first — see "If you
+decide a tenant should stay without something the plan proposes" below, which gives the statement for
+each axis (a `disabled` row is a **module** remedy; `tenant_setting` has no status column). The script
+skips any tenant that already has a row at any grain, including a company-scoped one. Safe to re-run.
+It is **not** a cron entry — delete the script once slice 7 ships the plan-management plane.
+
+To confirm afterwards, `--preflight` re-plans and exits non-zero if anything is still outstanding. Pass
+the same `--created-before` — without it the verdict can never be green (see below):
+
+```bash
+/opt/node20/bin/node --env-file=.env.production --import tsx \
+  scripts/reconcile-entitlement-parity.ts --created-before=YYYY-MM-DD --preflight
+```
+
+`deploy.sh` deliberately does **not** run that check. `db/provision.ts` writes no **platform-scoped**
+`tenant_setting` row for a new tenant — `payroll.reset_enabled` and `payroll.unlock_enabled` keep
+`defaultOnInstall: false` because a purchased module must never arrive with a risk switch already open —
+while this box has both flags set to true. So every tenant created from now on is "missing" those two
+rows forever, by design. Unbounded, that made the preflight permanently red: as a blocking gate the
+first customer provisioned after this deploy would block every deploy after it, and the only ways out
+were to grant two platform-scoped switches `ai_hr_app` can never close again, or to switch the gate off
+permanently. `--created-before` removes those tenants from the question; the reconciliation still needs
+you to read a plan against your customer list, which is what keeps it a step in this runbook rather than
+something a script can decide.
+
+The **third** payroll key, `payroll.individual_txn_pay_enabled`, is not in that group. It is
+`scope: 'tenant'`, it decides ordinary payslip arithmetic rather than opening a control hatch, and it
+carries `defaultOnInstall: true` — so every tenant that buys payroll gets it, before and after the flip
+alike, and it needs nothing from you.
+
+If you decide a tenant should stay **without** something the plan proposes, record that decision before
+you `--apply`:
+
+- a **module**: insert a `disabled` `tenant_module` row for that tenant and code.
+- a **setting**: `tenant_setting` has no status column, so the equivalent is an explicit OFF row,
+  written on the **owner** connection (`ai_hr_app` cannot write a platform-scoped key at all):
+
+```bash
+psql "$MIGRATION_DATABASE_URL" -c \
+  "INSERT INTO tenant_setting (tenant_id, key, value, source)
+   VALUES ('<TENANT-UUID>', 'payroll.reset_enabled', 'false'::jsonb, 'platform')
+   ON CONFLICT DO NOTHING;"
+```
+
+**The audit hash chain is checked automatically and blocks the deploy.** `AUDIT_HASH_CHAIN_ENABLED`
+used to be read with a truthiness test, so the literal `AUDIT_HASH_CHAIN_ENABLED=false` that
+`.env.example` shipped **armed** the ADR-0030 hash chain. It is now `=== 'true'`, which stops the chain
+on any box that copied the template — and stopping it is **not** something the verifier can report:
+`verifyTenantChain()` only inspects rows that carry chain columns, so events written while the gate is
+off are absent from the chain rather than a break in it, and re-arming later links contiguously across
+the hole. A green "chain intact" over an unverifiable window is the failure mode.
+
+So `deploy.sh` runs `scripts/check-audit-chain-gate.ts` **before the build**, not just before the
+restart: it needs only the env file and a database connection, so refusing there costs nothing and
+leaves the box exactly as it was, rather than serving the old code against an already-migrated
+schema. Run it by hand with `MIGRATION_DATABASE_URL` (the **owner** role) — `domain_event` is
+RLS-bound for `ai_hr_app`, and a filtered zero would read as "this database has no chain". It
+compares the env value against what the database already holds and **exits non-zero** — halting the
+deploy — when the database has a chain this env would not keep. To resolve it, either:
+
+- set `AUDIT_HASH_CHAIN_ENABLED=true` in `.env.production` (keeps doing what the box does today), or
+- leave the gate off and add `AUDIT_CHAIN_STOP_ACKNOWLEDGED=true`, which records the stop as a
+  decision. The admin **Data Privacy & Audit Integrity** page then reports, alongside the verdict, how
+  many events were recorded **after** the chain started without being chained — a genuine hole, as
+  distinct from ordinary history predating the chain, which is permanently unchained by design
+  (0074 defers that backfill to ADR-0030 §3). So the window is visible rather than silent, and the
+  banner means something an admin can act on.
+
+There is no way back afterwards: ADR-0030 §3's historical backfill, the only thing that could chain the
+window retroactively, is not built.
+
+The parity reconciliation above is the other half of this window, and unlike the chain check it is
+**yours to run**, for the reason given there: only you can tell a tenant that predates the row from one
+whose module was deliberately left unticked.
+
+### Switching a platform-scoped setting on (until slice 7)
+
+Four keys in `packs/catalog.ts` are `scope: 'platform'`, which migration 0313 enforces in Postgres: the
+`tenant_setting_write` policy requires `scope='tenant'`, so **`ai_hr_app` can never write them** and no
+screen in the product can either. That is deliberate — `payroll.reset_enabled` and
+`payroll.unlock_enabled` reopen or wipe a finalised payroll run, `audit.hash_chain_enabled` is the
+tamper evidence itself, and `feedback.ai_planning_enabled` is operator tooling rather than a customer
+feature. The plane that will manage these properly is ADR-0077 slice 7.
+
+Until then the only writer is the **owner** connection, by hand. `feedback.ai_planning_enabled` in
+particular has no other path at all: it is absent from 0313's backfill, absent from
+`LEGACY_ENABLED_SETTINGS` (so the reconcile script never emits it), and excluded from the install
+defaults, so `scripts/feedback-plan.ts` and the admin "generate plan" button stay off for every tenant
+on every deployment until someone runs this:
+
+```bash
+psql "$MIGRATION_DATABASE_URL" -c \
+  "INSERT INTO tenant_setting (tenant_id, key, value, source)
+   VALUES ('<TENANT-UUID>', 'feedback.ai_planning_enabled', 'true'::jsonb, 'platform')
+   ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value"
+```
+
+Substitute the key to switch a different platform setting on, and `'false'::jsonb` to switch one off.
+Do **not** use this for `audit.hash_chain_enabled`: that gate is still read from the environment until
+slice 8 (see `DEFERRED_ENV_GATES`), so a row for it changes nothing today, and ADR-0030 §3 requires a
+historical backfill that is not built before the chain can legitimately be turned on for an existing
+database.
 
 ## Optional: HTTPS / cleaner URL
 

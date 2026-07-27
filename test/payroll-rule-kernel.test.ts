@@ -1,13 +1,24 @@
 /**
- * Payroll Setup — kernel wiring of the configurable pay-rule (core/payroll.ts), flag ON. Asserts that a
- * rule-bearing component flows into BOTH the cash payslip AND the statutory base (the double-read site:
- * c.amount is read at the gross line AND the basicRaw accumulator — a divergence would fail here), that a
- * partial period does NOT double-prorate a per_day rule, that an unsupported-PCB component still throws even
- * when it carries a rule (precedence), and that a per_hour rule with zero attendance resolves to 0 without
- * aborting the batch.
+ * Payroll Setup — kernel wiring of the configurable pay-rule (core/payroll.ts), typed pay components ON.
+ * Asserts that a rule-bearing component flows into BOTH the cash payslip AND the statutory base (the
+ * double-read site: c.amount is read at the gross line AND the basicRaw accumulator — a divergence would
+ * fail here), that a partial period does NOT double-prorate a per_day rule, that an unsupported-PCB
+ * component still throws even when it carries a rule (precedence), and that a per_hour rule with zero
+ * attendance resolves to 0 without aborting the batch.
+ *
+ * ADR-0077 slice 3: the gate is the per-tenant `typed_pay_components` entitlement row, not
+ * TYPED_PAY_COMPONENTS_ENABLED. Every one of these tests needs the kernel on the TYPED path (a pay RULE
+ * lives on a pay_component row and is only read inside the typed block), so the module is granted once per
+ * test right after `seedBase` and the context is a REAL resolved snapshot via `entitledCtx` — `adminCtx`
+ * derives its snapshot from `process.env`, where test/env.ts deletes the legacy flag, so it would read the
+ * module as OFF and every assertion below would silently measure the LEGACY kernel instead. The snapshot is
+ * point-in-time, so it is resolved AFTER `setModule`. Nothing in the fixture path (hireEmployee /
+ * setCompensation / seedPayComponentCatalog / backfill / upsertPayComponent / setEmploymentPayComponent)
+ * reads this gate, so granting it up front rather than immediately before `generatePayslips` — where the old
+ * env write sat — changes no fixture behaviour.
  */
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
@@ -22,7 +33,7 @@ import {
   upsertPayComponent,
 } from '../core/pay-components';
 import type { PayRule } from '../core/pay-rule';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 const payslipOf = async (batchId: string) => {
   const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
@@ -30,7 +41,7 @@ const payslipOf = async (batchId: string) => {
 };
 const stat = (ps: Record<string, unknown>) => ps.statutory as Record<string, number>;
 
-describe('Payroll Setup — pay-rule kernel (flag ON)', () => {
+describe('Payroll Setup — pay-rule kernel (typed_pay_components entitled)', () => {
   let base: Base;
   let a: SessionContext;
   beforeAll(async () => {
@@ -39,17 +50,18 @@ describe('Payroll Setup — pay-rule kernel (flag ON)', () => {
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
-    a = adminCtx(base);
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
-  });
-  afterEach(() => {
-    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+    // Grant the module, THEN resolve — `entitledCtx` is a point-in-time read, exactly as a real session is.
+    // seedBase seeds no row for this module (test/env.ts deletes the legacy flag, so it is not in this
+    // process's parity set) and a missing row is disabled (C7), so this grant is what puts the kernel on the
+    // typed path for every test below.
+    await setModule(base.tenantId, 'typed_pay_components', 'active');
+    a = await entitledCtx(base);
   });
   afterAll(async () => {
     await closeAll();
   });
 
-  // Hire one employee with BASIC 5000, the typed catalog seeded + BASIC backfilled, flag ON.
+  // Hire one employee with BASIC 5000, the typed catalog seeded + BASIC backfilled.
   async function setupEmployee(hiredOn = '2026-01-01') {
     const e = await hireEmployee(a, {
       person: { fullName: 'Rule', primaryEmail: 'rule@acme.test' },
@@ -87,7 +99,6 @@ describe('Payroll Setup — pay-rule kernel (flag ON)', () => {
 
   async function runBatch(period: string) {
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: period });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
     await generatePayslips(a, { batchId });
     return payslipOf(batchId);
   }
@@ -170,7 +181,6 @@ describe('Payroll Setup — pay-rule kernel (flag ON)', () => {
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: compId, amount: 0, effectiveFrom: '2026-01-01', allowZeroAmount: true });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-07' });
-    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
     await expect(generatePayslips(a, { batchId })).rejects.toBeInstanceOf(UnsupportedPayComponentError);
   });
 });
