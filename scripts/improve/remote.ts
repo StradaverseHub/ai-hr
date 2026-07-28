@@ -134,7 +134,14 @@ export function pushPlan(p: {
   assertUuid(p.reporterEmploymentId, 'reporter employment id');
   const sql = [
     'BEGIN;',
+    // Close whatever version is still open. A contest already stamped its own outcome WITH the reporter's
+    // words, and `outcome IS NULL` keeps this from overwriting it — a re-plan must never erase the
+    // objection that prompted it, which is precisely how the old history was lost.
+    `UPDATE feedback_plan_revision SET outcome = 'superseded', outcome_at = now() WHERE feedback_request_id = '${p.id}' AND outcome IS NULL;`,
     `UPDATE feedback_request SET plan = ${dq(p.plan)}, plan_revision = plan_revision + 1, plan_model = ${dq(p.model)}, contest_reason = NULL, status = 'planned', updated_at = now() WHERE id = '${p.id}';`,
+    // The history row, written in the SAME transaction as the plan itself so the two cannot diverge.
+    // Without this the operator loop would push plans straight past the history the reporter reads.
+    `INSERT INTO feedback_plan_revision (tenant_id, feedback_request_id, revision, plan, plan_model) SELECT '${p.tenantId}', '${p.id}', plan_revision, ${dq(p.plan)}, ${dq(p.model)} FROM feedback_request WHERE id = '${p.id}' ON CONFLICT (feedback_request_id, revision) DO NOTHING;`,
     `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.plan.drafted', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ model: p.model, via: 'improvement-loop' }))}::jsonb);`,
     'COMMIT;',
   ].join('\n');
