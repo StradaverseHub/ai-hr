@@ -486,6 +486,12 @@ export async function transferEmployee(
         departmentId: p.departmentId ?? cur.departmentId,
         positionId: p.positionId ?? cur.positionId,
         costCenterId: p.costCenterId ?? cur.costCenterId,
+        // Carried, not settable. This line was MISSING, so every CLOSE+INSERT through this path wrote a
+        // new assignment version with a NULL business unit — silently wiping it. Both live callers hit
+        // it: "Set location" names only a location, "Transfer" only a department, and neither has any
+        // reason to expect an unrelated field to be cleared. There is no `p.businessUnitId` because no
+        // caller moves a business unit here; the bug was purely the omission of the carry-forward.
+        businessUnitId: cur.businessUnitId,
         locationId: nextLocationId,
         employmentType: cur.employmentType,
         status: cur.status,
