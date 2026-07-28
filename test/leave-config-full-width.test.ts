@@ -16,7 +16,8 @@
  *   legitimate inner elements — dialogs (max-w-lg / max-w-xl with fixed + translate centering,
  *   no mx-auto) and form fields (e.g. max-w-md in leave-type-panel.tsx) cap their own width
  *   without centering the page, and a future small centered empty-state remains permitted.
- * - application-rules' max-w-56 span is intentionally out of reach: it has no mx-auto.
+ * - The Leave Year row's max-w-56 span (on entitlements since 1e4eb8af relocated the section) is
+ *   intentionally out of reach: it has no mx-auto.
  * - Classes composed via cn() or variables escape a source check like this one; the manual
  *   browser walk of all tabs is the real backstop for those.
  */
@@ -64,9 +65,11 @@ const capsPage = (cls: string) => /\bmx-auto\b/.test(cls) && /\bmax-w-\d*xl\b/.t
 describe('leave configuration — no page-level width caps', () => {
   const files = [...leavePages(), ...TAB_CONTENT_COMPONENTS];
 
-  it('covers the six tabs plus the import page', () => {
+  it('covers the five tabs plus the import page and the retired-tab stub', () => {
     // Coverage floor, not an exact list: a new leave sub-page is welcome (the glob picks it up
-    // automatically), but if a route refactor moves these seven the glob must be updated with it.
+    // automatically), but if a route refactor moves these the glob must be updated with it.
+    // 1e4eb8af retired the Application Rules TAB; its route stays in the list as a redirect stub, which
+    // is exactly what a width cap can never reappear in — cheap to keep, so it stays covered.
     expect(leavePages()).toEqual(
       expect.arrayContaining([
         'app/admin/leave/page.tsx',

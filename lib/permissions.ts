@@ -210,11 +210,12 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'nav.leaveConfig',
     guard: 'requireAdmin',
     // R13 0d147b78: leave config split into route-based tabs (approval tab is scopedSession → own screen below).
+    // 1e4eb8af retired the Application Rules tab; /admin/leave/application-rules is now an unguarded redirect
+    // stub, so it is deliberately NOT listed here (a stub has nothing to guard — the fbdeee87 precedent).
     routes: [
       '/admin/leave',
       '/admin/leave/import',
       '/admin/leave/entitlements',
-      '/admin/leave/application-rules',
       '/admin/leave/payroll',
       '/admin/leave/audit',
     ],

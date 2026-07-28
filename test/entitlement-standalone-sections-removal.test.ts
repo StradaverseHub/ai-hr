@@ -16,6 +16,14 @@
  * No data, accrual behaviour or cycle semantics change — the wrapped components are byte-identical
  * tools in new frames.
  *
+ * 1e4eb8af (Restructure Leave Year Configuration): the Application Rules tab is RETIRED, and with it the
+ * per-company Leave Cycle card — it was a second place to decide what each leave type's Leave Year Type
+ * override already decides (Custom Settings → Leave Year Configuration, whose a2a / a2c / c2c choices
+ * cover every shape the company card offered). So the d778d2d3 relocation assertions below invert: the
+ * card, its action and its strings must be gone from BOTH pages, and the route must be a redirect stub.
+ * The two dialog relocations above are untouched. core/admin.setCompanyLeaveCycle is deliberately still
+ * there — it is the write path stored cycles came from, and the DB tests exercise it directly.
+ *
  * R64 962077a8 (after 7b945408): the two dialog buttons left the PageHeader again — they now open ONLY
  * from the Entitlement step's sub-steps (Run Accrual in Adjustments, Preview Scenario in Service Based
  * Entitlements). The header keeps just + Import. The dialogs, their wrapped tools and the page-level
@@ -35,7 +43,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const entitlementsPage = read('/app/admin/leave/entitlements/page.tsx');
-const applicationRulesPage = read('/app/admin/leave/application-rules/page.tsx');
+// 1e4eb8af — the route is a redirect stub now, kept only so old bookmarks resolve.
+const applicationRulesStub = read('/app/admin/leave/application-rules/page.tsx');
 const accrualDialog = read('/components/leave/earned-accrual-dialog.tsx');
 const previewDialog = read('/components/leave/leave-rule-preview-dialog.tsx');
 const accrualCard = read('/components/earned-accrual-card.tsx');
@@ -135,47 +144,57 @@ describe('d778d2d3: the dialogs wrap the UNCHANGED tools', () => {
   });
 });
 
-describe('d778d2d3: the Leave Cycle card lives on the Application Rules tab now', () => {
-  it('renders the per-company cycle rows with the same options and the same action', () => {
-    expect(applicationRulesPage).toMatch(/SectionHeader title=\{t\('leaveCycleTitle'\)\} count=\{companies\.length\}/);
-    expect(applicationRulesPage).toMatch(/\{t\('leaveCycleHelp'\)\}/);
-    expect(applicationRulesPage).toMatch(/action=\{setCompanyLeaveCycleAction\}/);
-    expect(applicationRulesPage).toMatch(/<input type="hidden" name="companyId" value=\{c\.id\} \/>/);
-    expect(applicationRulesPage).toMatch(/name="cycle" defaultValue=\{c\.leaveCycle \?\? 'calendar'\}/);
-    expect(applicationRulesPage).toMatch(/<option value="calendar">\{t\('cycleCalendar'\)\}<\/option>/);
-    expect(applicationRulesPage).toMatch(/<option value="anniversary">\{t\('cycleAnniversary'\)\}<\/option>/);
+describe('1e4eb8af: the Leave Cycle card is retired with the Application Rules tab', () => {
+  it('the route is a bare redirect stub — no card, no data reads, no guard of its own', () => {
+    expect(applicationRulesStub).toContain("import { redirect } from 'next/navigation'");
+    expect(applicationRulesStub).toContain("redirect(`/admin/leave/entitlements");
+    // Nothing survives of the page it replaced.
+    expect(applicationRulesStub.includes('leaveCycleTitle')).toBe(false);
+    expect(applicationRulesStub.includes('leaveYearTitle')).toBe(false);
+    expect(applicationRulesStub.includes('<LeaveTabs')).toBe(false);
+    expect(applicationRulesStub.includes('requireAdmin')).toBe(false);
   });
 
-  it('sits beside the kindred company-calendar rules (Leave Year card on the same page)', () => {
-    expect(applicationRulesPage).toMatch(/leaveYearTitle/);
-    const leaveYearIdx = applicationRulesPage.indexOf("t('leaveYearTitle')");
-    const cycleIdx = applicationRulesPage.indexOf("t('leaveCycleTitle')");
-    expect(leaveYearIdx).toBeGreaterThan(-1);
-    expect(cycleIdx).toBeGreaterThan(leaveYearIdx);
+  it('no page renders the per-company cycle form any more (one home: the per-type Leave Year Type)', () => {
+    for (const src of [entitlementsPage, applicationRulesStub]) {
+      expect(src.includes('setCompanyLeaveCycleAction')).toBe(false);
+      expect(src.includes('leaveCycleTitle')).toBe(false);
+      expect(src.includes('cycleCalendar')).toBe(false);
+      expect(src.includes('name="cycle"')).toBe(false);
+    }
   });
 
-  it('setCompanyLeaveCycleAction redirects back to the Application Rules route (R45 precedent)', () => {
-    const fnStart = actions.indexOf('export async function setCompanyLeaveCycleAction');
-    expect(fnStart).toBeGreaterThan(-1);
-    const fn = actions.slice(fnStart, actions.indexOf('\n}', fnStart));
-    expect(fn).toMatch(/fail\(APPLICATION_RULES, e\)/);
-    expect(fn).toMatch(/ok\(APPLICATION_RULES\)/);
-    // The cycle WRITE is untouched — same core call, same field coercion.
-    expect(fn).toMatch(/setCompanyLeaveCycle\(s, \{/);
-    expect(fn).toMatch(/cycle: String\(formData\.get\('cycle'\) \|\| 'calendar'\)/);
+  it('setCompanyLeaveCycleAction is gone from the admin actions (nothing posts it)', () => {
+    expect(actions.includes('export async function setCompanyLeaveCycleAction')).toBe(false);
+    // …but the core write it wrapped is untouched: stored company cycles still drive every leave type
+    // left on "Company default", and the DB tests set them through it.
+    const core = read('/core/admin.ts');
+    expect(core).toContain('export async function setCompanyLeaveCycle(');
+  });
+
+  it('the retired tab is not a guarded route any more (a redirect stub guards nothing)', () => {
+    const permissions = read('/lib/permissions.ts');
+    expect(permissions.includes("'/admin/leave/application-rules'")).toBe(false);
+    const tabs = read('/components/leave-tabs.tsx');
+    expect(tabs.includes('application-rules')).toBe(false);
+    expect(tabs.includes('applicationRules')).toBe(false);
   });
 });
 
-describe('d778d2d3: i18n — new button keys added, cycle keys kept, in all 6 locales', () => {
+describe('d778d2d3 / 1e4eb8af: i18n — button keys added, retired cycle keys pruned, in all 6 locales', () => {
   for (const locale of LOCALES) {
-    it(`${locale}.json carries the new action keys and keeps the relocated/reused section keys`, () => {
+    it(`${locale}.json carries the new action keys and has dropped the retired cycle keys`, () => {
       const leave = JSON.parse(read(`/messages/${locale}.json`)).admin.leave as Record<string, unknown>;
       for (const key of ['runAccrualAction', 'previewScenarioAction', 'close']) {
         expect(leave, `${locale}: ${key} must exist`).toHaveProperty(key);
       }
-      // Reused unchanged: dialog titles + the relocated Leave Cycle card's strings.
-      for (const key of ['runEarnedAccrual', 'previewTitle', 'leaveCycleTitle', 'leaveCycleHelp', 'cycleCalendar', 'cycleAnniversary']) {
+      // Reused unchanged: the two dialog titles.
+      for (const key of ['runEarnedAccrual', 'previewTitle']) {
         expect(leave, `${locale}: ${key} must remain`).toHaveProperty(key);
+      }
+      // 1e4eb8af retired the Leave Cycle card, so its strings go with it (the pendingEngineNote precedent).
+      for (const key of ['leaveCycleTitle', 'leaveCycleHelp', 'cycleCalendar', 'cycleAnniversary']) {
+        expect(leave, `${locale}: ${key} must be pruned`).not.toHaveProperty(key);
       }
     });
   }

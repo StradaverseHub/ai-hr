@@ -120,7 +120,11 @@ const DOC_MIME_OPTIONS = [
  *  remaining content (the per-company entitlement policies timeline) moved to the Entitlement step's
  *  Company Entitlements sub-step. The keys are the SAME storage keys the pre-step accordion used ('ess' is
  *  Condition's historical key — kept deliberately so persisted state survives, see the leaveTypeCards
- *  migration in LeaveTypePanel). */
+ *  migration in LeaveTypePanel).
+ *
+ *  1e4eb8af widened step 4: Custom Settings now opens with Leave Year Configuration — this type's Leave
+ *  Year Type override (moved out of the General walk) plus the managed leave-year records (moved off the
+ *  retired Application Rules tab, as the leaveYearSection slot). The step list itself is unchanged. */
 const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const;
 type StepKey = (typeof STEP_KEYS)[number];
 /** The storage key of the step b8fcae73 retired. Kept ONLY so a persisted leaveTypeCards:<id> payload that
@@ -145,17 +149,22 @@ const methodValue = (m?: string) => (isEarned(m) ? m! : 'grant_on_hire_prorated'
 const roundingMethodValue = (m?: LeaveRoundingMethod | null): LeaveRoundingMethod =>
   m === 'up' || m === 'down' ? m : 'none';
 
-/** General step sub-flow (e1a51aea): the five sub-steps of step 1, in walk order — 1 Details, 2 Leave Year
- *  Type, 3 Earning Method, 4 Carry Forward Policy, 5 Approval Workflow. The keys are storage keys (persisted
- *  as `generalSubStep` in the leaveTypeCards:<id> localStorage shape, next to activeStep) — 'workflow' is
- *  deliberately NOT named after the retired accordion card keys (approval/display/calculation), which must
- *  never reappear in this file (see leave-type-config-categories.test.ts). */
-const GENERAL_SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry', 'workflow'] as const;
+/** General step sub-flow (e1a51aea, shortened by 1e4eb8af): the four sub-steps of step 1, in walk order —
+ *  1 Details, 2 Earning Method, 3 Carry Forward Policy, 4 Approval Workflow. The keys are storage keys
+ *  (persisted as `generalSubStep` in the leaveTypeCards:<id> localStorage shape, next to activeStep) —
+ *  'workflow' is deliberately NOT named after the retired accordion card keys (approval/display/calculation),
+ *  which must never reappear in this file (see leave-type-config-categories.test.ts).
+ *
+ *  1e4eb8af dropped the Leave Year Type sub-step: leave-year decisions are now made in ONE place, the
+ *  Custom Settings step's Leave Year Configuration section, beside the managed leave-year records the
+ *  retired Application Rules tab used to host. A persisted payload still pointing at the old 'yearType'
+ *  key needs no migration — the hydration guard below only restores keys present in this list, so such a
+ *  payload falls back to sub-step 1 (Details) exactly as an unknown key always has. */
+const GENERAL_SUB_STEP_KEYS = ['details', 'earning', 'carry', 'workflow'] as const;
 type GeneralSubStepKey = (typeof GENERAL_SUB_STEP_KEYS)[number];
 /** Sub-step → its admin.leave title key (all 6 locales). */
 const GENERAL_SUB_STEP_TITLE_KEY: Record<GeneralSubStepKey, string> = {
   details: 'subStep.details',
-  yearType: 'subStep.yearType',
   earning: 'subStep.earning',
   carry: 'subStep.carry',
   workflow: 'subStep.workflow',
@@ -954,6 +963,7 @@ export function LeaveTypePanel({
   festiveGrantSection,
   approvalWorkflowSection,
   halfDaySection,
+  leaveYearSection,
   previewScenarioSection,
   accrualSection,
   updateTypeAction,
@@ -1093,6 +1103,13 @@ export function LeaveTypePanel({
    *  applies-company-wide badge). Slot-shaped like benefitSchemeSection: the rows are per-COMPANY (not
    *  per-type), so ONE node is prepared at page level and shared by every panel. */
   halfDaySection?: ReactNode;
+  /** 1e4eb8af: the managed Leave Year records (Draft → Open → Closed, their two control dates, the
+   *  per-row Advance-Rules / Edit / Delete controls) — a server-composed slot carrying what the retired
+   *  Application Rules TAB used to host. It joins the per-type Leave Year Type override inside Custom
+   *  Settings, so every leave-year decision is made from the leave type being configured. Slot-shaped
+   *  like halfDaySection: the records are per-TENANT (not per-type), so ONE node is prepared at page
+   *  level and shared by every panel, and its applies-company-wide badge says so. */
+  leaveYearSection?: ReactNode;
   /** 7b945408: the Preview Scenario checker (d778d2d3's LeaveRulePreviewDialog), joining the Service Based
    *  Entitlements sub-step as its checking tool — a server-composed slot (page-level data prep, one shared
    *  node). The PageHeader button is removed separately by item 962077a8; this slot is its new home. */
@@ -1647,45 +1664,11 @@ export function LeaveTypePanel({
           </div>
           </>
           )}
-          {/* Sub-step 2 — Leave Year Type (e1a51aea): a per-TYPE cycle override of the company leave cycle
-              (Application Rules tab). Its own sub-form + `yearCycle=1` tri-state marker so an unrelated save
-              never resets it. f3a64d90 switched Anniversary-to-Calendar ON: its engine semantics now exist
-              (calendar leave year + a day-by-day first-year ANNUAL build-up), and saving it immediately
-              re-corrects every employee on the type — so the option is selectable and its pending note gone. */}
-          {generalSubStep === 'yearType' && (
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('subStep.yearType')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the year_cycle_override column (tri-state guard) */}
-              <input type="hidden" name="yearCycle" value="1" />
-              <Field label={t('subStep.yearTypeLabel')}>
-                <select
-                  name="yearCycleValue"
-                  defaultValue={
-                    yearCycleOverride === 'a2a' || yearCycleOverride === 'c2c' || yearCycleOverride === 'a2c'
-                      ? yearCycleOverride
-                      : ''
-                  }
-                  aria-label={t('subStep.yearTypeLabel')}
-                  className={`${inputCls} w-72`}
-                >
-                  <option value="">{t('subStep.yearTypeCompanyDefault')}</option>
-                  <option value="a2a">{t('subStep.yearTypeA2a')}</option>
-                  <option value="a2c">{t('subStep.yearTypeA2c')}</option>
-                  <option value="c2c">{t('subStep.yearTypeC2c')}</option>
-                </select>
-              </Field>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('subStep.yearTypeHelp')}</p>
-          </div>
-          )}
-          {/* Sub-step 3 — Earning Method (e1a51aea): a front door to the ACTIVE policy's per-policy method
+          {/* 1e4eb8af — the Leave Year Type sub-step that used to sit HERE (sub-step 2) moved into the
+              Custom Settings step's Leave Year Configuration section, beside the managed leave-year
+              records relocated off the retired Application Rules tab. Same sub-form, same `yearCycle=1`
+              tri-state marker — only its home changed. */}
+          {/* Sub-step 2 — Earning Method (e1a51aea): a front door to the ACTIVE policy's per-policy method
               (posts the SAME updatePolicyAction as the Eligibility edit form — no new storage; the
               per-policy selects there keep working, the policy row is the single source of truth). */}
           {generalSubStep === 'earning' && (
@@ -1701,7 +1684,7 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('subStep.earningHelp')}</p>
           </div>
           )}
-          {/* Sub-step 4 — Carry Forward Policy (e1a51aea): the same front-door pattern over the active
+          {/* Sub-step 3 — Carry Forward Policy (e1a51aea): the same front-door pattern over the active
               policy's carry fields (enable + cap + the existing CarryExpiryFields days/months switch).
               Carry-forward is an ANNUAL-engine concept (expireCarriedLeave / openLeaveYear read it for the
               ANNUAL code only), so non-annual types get an explanatory note instead of a dead form. */}
@@ -1722,7 +1705,7 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('subStep.carryStepHelp')}</p>
           </div>
           )}
-          {/* Sub-step 5 — Approval Workflow (e1a51aea): this type's approval rules from the rule matrix,
+          {/* Sub-step 4 — Approval Workflow (e1a51aea): this type's approval rules from the rule matrix,
               editable right here (server-composed slot, scoped to this leaveTypeId), with company-wide
               chains + templates one click away on the Approval tab. */}
           {generalSubStep === 'workflow' && (
@@ -2897,6 +2880,46 @@ export function LeaveTypePanel({
               <CardTitle>{t('categoryCustom')}</CardTitle>
             </CardHeader>
             <CardContent id={`cat-custom-${id}`} className="space-y-3">
+          {/* Leave Year Configuration (1e4eb8af) — the single home for every leave-year decision, first in
+              Custom Settings because HR sets the year before the display/visibility switches below it.
+              Two parts that used to live apart: (1) this type's Leave Year Type override, moved verbatim
+              from General · sub-step 2 (same `yearCycle=1` tri-state marker, so an unrelated save still
+              cannot reset year_cycle_override), and (2) the managed leave-year records, moved off the
+              retired Application Rules tab as the server-composed leaveYearSection slot. The records are
+              tenant-wide, hence the applies-company-wide badge — the same honesty the relocated Half-Day
+              Deduction card carries in the Condition step. */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('leaveYearConfigTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the year_cycle_override column (tri-state guard) */}
+              <input type="hidden" name="yearCycle" value="1" />
+              <Field label={t('subStep.yearTypeLabel')}>
+                <select
+                  name="yearCycleValue"
+                  defaultValue={
+                    yearCycleOverride === 'a2a' || yearCycleOverride === 'c2c' || yearCycleOverride === 'a2c'
+                      ? yearCycleOverride
+                      : ''
+                  }
+                  aria-label={t('subStep.yearTypeLabel')}
+                  className={`${inputCls} w-72`}
+                >
+                  <option value="">{t('subStep.yearTypeCompanyDefault')}</option>
+                  <option value="a2a">{t('subStep.yearTypeA2a')}</option>
+                  <option value="a2c">{t('subStep.yearTypeA2c')}</option>
+                  <option value="c2c">{t('subStep.yearTypeC2c')}</option>
+                </select>
+              </Field>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('subStep.yearTypeHelp')}</p>
+            {leaveYearSection}
+          </div>
           {/* Restructure (123c1e76): the former "Leave Information Display" card's sub-forms (view
               configuration, employee visibility, ESS placement) live INSIDE the Custom Settings card. */}
           {/* Consolidated Employee Leave View Configuration (2bc2f2a3): the 65dec703 checklist and the

@@ -1,8 +1,8 @@
 /**
  * Enhance Leave Type Configuration Flow Structure and Move Approval Workflow (feedback e1a51aea).
  *
- * The General step (step 1 of the c979aa8b workspace flow) becomes a guided FIVE-SUB-STEP walk —
- * 1 Details · 2 Leave Year Type · 3 Earning Method · 4 Carry Forward Policy · 5 Approval Workflow —
+ * The General step (step 1 of the c979aa8b workspace flow) becomes a guided sub-step walk —
+ * 1 Details · 2 Earning Method · 3 Carry Forward Policy · 4 Approval Workflow —
  * switched by a REUSABLE sub-step control (components/leave-sub-step-bar.tsx, the R61 step-bar mechanism
  * generalized; the Condition/Entitlements secondary flows filed separately MUST reuse it). The active
  * sub-step persists per type ALONGSIDE activeStep in the leaveTypeCards:<id> localStorage shape
@@ -13,8 +13,10 @@
  *    the read-only statutory-floor row was removed by feedback 3c093c7a) — the
  *    leave-type-config-categories.test.ts anchors keep guarding it.
  *  - Leave Year Type: a per-type override select posting the `yearCycle=1` tri-state marker
- *    (leave_type.year_cycle_override, migration 0303); the Anniversary-to-Calendar option renders
- *    DISABLED pending engine work (no hybrid-year semantics ship in this restructure).
+ *    (leave_type.year_cycle_override, migration 0303). Item 1e4eb8af MOVED this sub-form out of the
+ *    General walk into the Custom Settings step's Leave Year Configuration section, so every leave-year
+ *    decision is made in one place beside the managed leave-year records the retired Application Rules
+ *    tab used to host. The form itself is unchanged — the assertions below simply follow it there.
  *  - Earning Method + Carry Forward Policy are FRONT DOORS to the ACTIVE policy row: they post the SAME
  *    updatePolicyAction the Eligibility edit form posts (no new storage; the per-policy field stays the
  *    single source of truth), and the Earn-Upon-Resignation option renders DISABLED pending engine work.
@@ -40,7 +42,7 @@ const approvalPageSrc = readFileSync(resolve(here, '../app/admin/leave/approval/
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-const SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry', 'workflow'] as const;
+const SUB_STEP_KEYS = ['details', 'earning', 'carry', 'workflow'] as const;
 
 /** Slice the General card's segment (its CardTitle to the next card's CardTitle — the Entitlement card
  *  since b8fcae73 removed the Eligibility card that used to sit between them). */
@@ -50,6 +52,14 @@ function generalSegment(): string {
   expect(start).toBeGreaterThan(-1);
   expect(end).toBeGreaterThan(start);
   return panelSrc.slice(start, end);
+}
+
+/** 1e4eb8af — the Custom Settings card's segment (its CardTitle to the end of the panel: it is the last
+ *  step card). The Leave Year Type sub-form now lives in here. */
+function customSegment(): string {
+  const start = panelSrc.indexOf("<CardTitle>{t('categoryCustom')}</CardTitle>");
+  expect(start).toBeGreaterThan(-1);
+  return panelSrc.slice(start);
 }
 
 describe('e1a51aea · reusable sub-step control', () => {
@@ -64,10 +74,11 @@ describe('e1a51aea · reusable sub-step control', () => {
     expect(subStepBarSrc).toContain('steps: SubStep[]');
   });
 
-  it('the panel renders the SubStepBar inside the General card with the five sub-steps in walk order', () => {
+  it('the panel renders the SubStepBar inside the General card with the sub-steps in walk order', () => {
     expect(panelSrc).toMatch(/import \{ SubStepBar \} from '\.\/leave-sub-step-bar'/);
+    // 1e4eb8af dropped 'yearType' (moved to Custom Settings); the remaining walk order is unchanged.
     expect(panelSrc).toContain(
-      "const GENERAL_SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry', 'workflow'] as const",
+      "const GENERAL_SUB_STEP_KEYS = ['details', 'earning', 'carry', 'workflow'] as const",
     );
     const seg = generalSegment();
     expect(seg).toContain('<SubStepBar');
@@ -93,16 +104,16 @@ describe('e1a51aea · reusable sub-step control', () => {
 describe('e1a51aea · Details keeps the existing General content', () => {
   it('the identity form, leave unit and per-date approval live in the details sub-step', () => {
     const seg = generalSegment();
-    const details = seg.slice(seg.indexOf("generalSubStep === 'details'"), seg.indexOf("generalSubStep === 'yearType'"));
+    const details = seg.slice(seg.indexOf("generalSubStep === 'details'"), seg.indexOf("generalSubStep === 'earning'"));
     for (const needle of ['name="identity"', 'name="leaveUnit"', 'name="partialApproval"']) {
       expect(details.includes(needle), `${needle} inside details`).toBe(true);
     }
   });
 });
 
-describe('e1a51aea · Leave Year Type sub-step (per-type cycle override)', () => {
+describe('e1a51aea · Leave Year Type (per-type cycle override) — relocated by 1e4eb8af', () => {
   it('posts the yearCycle tri-state marker + the yearCycleValue select through updateTypeAction', () => {
-    const seg = generalSegment();
+    const seg = customSegment();
     expect(seg).toContain('<input type="hidden" name="yearCycle" value="1" />');
     expect(seg).toContain('name="yearCycleValue"');
     // The three cycle options + the company-default fallback.
@@ -114,12 +125,29 @@ describe('e1a51aea · Leave Year Type sub-step (per-type cycle override)', () =>
   // f3a64d90 switched Anniversary-to-Calendar ON (its engine semantics shipped with that item), so the
   // option is now SELECTABLE and its pending-engine note is gone — the inverse of the e1a51aea assertion.
   it('renders Anniversary-to-Calendar SELECTABLE with no pending-engine note (f3a64d90)', () => {
-    const seg = generalSegment();
+    const seg = customSegment();
     expect(seg).not.toMatch(/value="a2c" disabled/);
     expect(seg).toContain('<option value="a2c">');
     expect(seg).not.toContain("t('subStep.pendingEngineNote')");
     // The stored value must round-trip into the select's defaultValue, or the choice renders as lost.
     expect(seg).toContain("yearCycleOverride === 'a2c'");
+  });
+
+  // 1e4eb8af — the sub-form has exactly ONE home. Two copies would be two tri-state markers writing the
+  // same column from different screens, which is how a saved override silently gets reset.
+  it('lives ONLY in Custom Settings — the General walk no longer hosts it or its sub-step', () => {
+    const seg = generalSegment();
+    expect(seg.includes('name="yearCycleValue"')).toBe(false);
+    expect(seg.includes("generalSubStep === 'yearType'")).toBe(false);
+    expect(panelSrc.match(/name="yearCycleValue"/g)).toHaveLength(1);
+  });
+
+  it('sits beside the relocated leave-year records slot (one Leave Year Configuration section)', () => {
+    const seg = customSegment();
+    expect(seg).toContain("t('leaveYearConfigTitle')");
+    expect(seg).toContain('{leaveYearSection}');
+    // The slot is declared as a server-composed ReactNode, like halfDaySection.
+    expect(panelSrc).toContain('leaveYearSection?: ReactNode;');
   });
 });
 
@@ -239,10 +267,14 @@ describe('e1a51aea · i18n — all six locales', () => {
       const msgs = JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'));
       const leave = msgs?.admin?.leave ?? {};
       expect(typeof leave.workspaceSubStepsLabel, `${loc} workspaceSubStepsLabel`).toBe('string');
+      // 1e4eb8af — the Leave Year Configuration section title in Custom Settings, hosting the relocated
+      // Leave Year Type sub-form and the leave-year records slot.
+      expect(typeof leave.leaveYearConfigTitle, `${loc} leaveYearConfigTitle`).toBe('string');
       const sub = leave.subStep ?? {};
       for (const key of [
         'details',
-        'yearType',
+        // 'yearType' (the sub-step TITLE) is gone with the sub-step itself — 1e4eb8af moved the form to
+        // Custom Settings under leaveYearConfigTitle. Its field keys below are all still in use.
         'earning',
         'carry',
         'workflow',

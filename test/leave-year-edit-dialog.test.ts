@@ -25,7 +25,9 @@ import { describe, expect, it } from 'vitest';
 
 const root = join(__dirname, '..');
 const dialog = readFileSync(join(root, 'components/leave/leave-year-edit-dialog.tsx'), 'utf8');
-const page = readFileSync(join(root, 'app/admin/leave/application-rules/page.tsx'), 'utf8');
+// 1e4eb8af — the Leave Year Configuration section (and this dialog with it) moved off the retired
+// Application Rules tab into each leave type's Custom Settings step, composed on the Entitlements page.
+const page = readFileSync(join(root, 'app/admin/leave/entitlements/page.tsx'), 'utf8');
 
 describe('leave-year edit dialog (7903c197)', () => {
   it('is a Radix Dialog', () => {

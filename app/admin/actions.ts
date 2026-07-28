@@ -34,7 +34,6 @@ import {
   revokeRole,
   setCompanyParent,
   setCompanyDefaultPayrollCycle,
-  setCompanyLeaveCycle,
   setCompanyLogo,
   removeCompanyLogo,
   setLeaveHalfDayFullDeduction,
@@ -117,10 +116,11 @@ import { ENTITLEMENTS, fail, ok, okToast, okEntitlements } from './_redirects';
 
 const ORG = '/admin/organization';
 const LEAVE = '/admin/leave';
-// R45 cc816207 — the managed Leave-Year table RELOCATED from the Entitlements tab to the Application Rules
-// tab, so its create/edit/open/close/delete/opening-rule actions revalidate/redirect HERE (the page reads
-// ?error= for the ErrorBanner).
-const APPLICATION_RULES = '/admin/leave/application-rules';
+// R45 cc816207 moved the managed Leave-Year table from the Entitlements tab to the Application Rules tab;
+// 1e4eb8af retired that tab and moved the table BACK — into each leave type's Custom Settings step — so its
+// create/edit/open/close/delete/opening-rule actions revalidate/redirect to ENTITLEMENTS again (the page
+// reads ?error= for the ErrorBanner). Landing on the bare route is deliberate: the workspace's leave-type
+// selection is client state on the SAME route, so it survives the soft navigation.
 const USERS = '/admin/users';
 const HOLIDAYS = '/admin/holidays';
 // 66b8f5a8 — the Holiday Group tab + its dedicated add/edit pages.
@@ -778,22 +778,12 @@ export async function runEarnedAccrualAction(
   }
 }
 
-/** ADR-0040 (2D-2): set a company's earned-accrual cycle (calendar vs hire anniversary).
- *  R61 d778d2d3 — the Leave Cycle card RELOCATED from the Entitlements tab to the Application Rules tab,
- *  so this redirects/revalidates THERE (mirroring the R45 cc816207 leave-year precedent; the page reads
- *  ?error= for its ErrorBanner). The cycle write itself (core setCompanyLeaveCycle) is untouched. */
-export async function setCompanyLeaveCycleAction(formData: FormData) {
-  const s = await getSession();
-  try {
-    await setCompanyLeaveCycle(s, {
-      companyId: String(formData.get('companyId')),
-      cycle: String(formData.get('cycle') || 'calendar'),
-    });
-  } catch (e) {
-    fail(APPLICATION_RULES, e);
-  }
-  ok(APPLICATION_RULES);
-}
+// 1e4eb8af — setCompanyLeaveCycleAction is GONE with the Application Rules tab that hosted its only form.
+// The per-COMPANY calendar-vs-anniversary card was a second place to decide the same thing the per-TYPE
+// Leave Year Type override decides (Custom Settings → Leave Year Configuration), and that override's three
+// explicit choices (a2a / a2c / c2c) cover every shape the company card offered. Nothing posts the action
+// any more, so it is removed rather than left dangling; core/admin.setCompanyLeaveCycle is UNCHANGED and
+// still the write path — stored company cycles keep driving types left on "Company default".
 
 /** Feedback request 31474452: set a company's half-day leave-deduction toggle (checkbox posts "on" or is
  *  absent — mirrors the existing checkbox-action convention in this file, e.g. autoAccrueOnApproval above). */
@@ -996,9 +986,9 @@ export async function upsertLeaveYearConfigAction(formData: FormData) {
       employeeApplicationStartDate: String(formData.get('employeeApplicationStartDate') ?? '') || null,
     });
   } catch (e) {
-    fail(APPLICATION_RULES, e);
+    fail(ENTITLEMENTS, e);
   }
-  okToast(APPLICATION_RULES, t('leaveYearSavedToast'));
+  okToast(ENTITLEMENTS, t('leaveYearSavedToast'));
 }
 
 // Leave Year Configuration (9aa894a4): transition a managed leave-year's status. →open runs the existing
@@ -1013,12 +1003,12 @@ export async function setLeaveYearStatusAction(formData: FormData) {
     if (!isLeaveYearStatus(status)) throw new Error('Invalid leave-year status');
     res = await setLeaveYearStatus(s, { year, status });
   } catch (e) {
-    fail(APPLICATION_RULES, e);
+    fail(ENTITLEMENTS, e);
   }
-  revalidatePath(APPLICATION_RULES);
+  revalidatePath(ENTITLEMENTS);
   const opened = res?.opened;
   redirect(
-    `${APPLICATION_RULES}?toast=${encodeURIComponent(
+    `${ENTITLEMENTS}?toast=${encodeURIComponent(
       opened
         ? `Leave year ${year} opened: ${opened.granted} grant${opened.granted === 1 ? '' : 's'} posted` +
             (opened.skipped ? `, ${opened.skipped} already open` : '') +
@@ -1045,9 +1035,9 @@ export async function saveFutureOpeningRuleAction(formData: FormData) {
       unit: String(formData.get('openBeforeUnit') ?? '') || null,
     });
   } catch (e) {
-    fail(APPLICATION_RULES, e);
+    fail(ENTITLEMENTS, e);
   }
-  ok(APPLICATION_RULES);
+  ok(ENTITLEMENTS);
 }
 
 // R45 fd71fa38 — delete a mistakenly-created DRAFT leave-year record. The service enforces the guard (draft
@@ -1080,10 +1070,10 @@ export async function deleteLeaveYearAction(formData: FormData) {
                 ? t('deleteLeaveYearBlockedRequests')
                 : null
         : null;
-    fail(APPLICATION_RULES, localised ? new Error(localised) : e);
+    fail(ENTITLEMENTS, localised ? new Error(localised) : e);
   }
   // Success toast stays plain English by this file's convention (mirrors setLeaveYearStatusAction).
-  okToast(APPLICATION_RULES, `Leave year ${year} deleted`);
+  okToast(ENTITLEMENTS, `Leave year ${year} deleted`);
 }
 
 export async function assignRoleAction(formData: FormData) {

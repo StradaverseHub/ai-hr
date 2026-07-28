@@ -46,6 +46,9 @@ import { ORG_ASSIGNMENT_CRITERIA } from '../core/leave-org-criteria';
 const here = dirname(fileURLToPath(import.meta.url));
 const panelSrc = readFileSync(resolve(here, '../components/leave-type-panel.tsx'), 'utf8');
 const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page.tsx'), 'utf8');
+// 1e4eb8af retired the Application Rules tab entirely; the route is a redirect stub now, so the
+// "half-day card is gone from there" guard below holds a fortiori — kept as the tripwire against the card
+// ever being re-added to that route.
 const appRulesSrc = readFileSync(resolve(here, '../app/admin/leave/application-rules/page.tsx'), 'utf8');
 const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
 

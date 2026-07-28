@@ -6,17 +6,21 @@ import Link from 'next/link';
  * Mirrors `components/payroll-tabs.tsx` exactly (same markup + active-tab styling) so the leave
  * admin surface reads consistently with Payroll: a row of tabs across the top instead of one long
  * scroll. Each tab is a real sub-route (server component) that loads only its own data.
+ *
+ * 1e4eb8af — the Application Rules tab is GONE. Its two cards had no home of their own left: Leave Year
+ * Configuration moved into each leave type's Custom Settings step (beside that type's Leave Year Type
+ * override), and the per-company Leave Cycle card was retired as a duplicate of that override. The old
+ * route survives as a redirect stub so bookmarks still land somewhere real.
  */
 export async function LeaveTabs({
   active,
 }: {
-  active: 'types' | 'entitlements' | 'application-rules' | 'approval' | 'payroll' | 'audit';
+  active: 'types' | 'entitlements' | 'approval' | 'payroll' | 'audit';
 }) {
   const t = await getTranslations('admin.leaveTabs');
   const tabs = [
     { key: 'types', href: '/admin/leave', label: t('types') },
     { key: 'entitlements', href: '/admin/leave/entitlements', label: t('entitlements') },
-    { key: 'application-rules', href: '/admin/leave/application-rules', label: t('applicationRules') },
     { key: 'approval', href: '/admin/leave/approval', label: t('approval') },
     { key: 'payroll', href: '/admin/leave/payroll', label: t('payroll') },
     { key: 'audit', href: '/admin/leave/audit', label: t('audit') },
