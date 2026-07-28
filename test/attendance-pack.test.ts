@@ -80,7 +80,10 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
   ] as const;
 
-  const nav = attendancePack.nav!;
+  // Resolved by group since 895c80f9 made the slot an array. Asserting the group here is the point:
+  // it pins that the contract change did NOT move the node, which is what the 0bb0e303 decision
+  // promised — the split into an Admin node comes later, as its own visible change.
+  const nav = attendancePack.navNodes!.find((n) => n.group === 'main')!;
 
   it('keeps the parent node identical (nav.attendance label, Clock icon)', () => {
     expect(nav.labelKey).toBe('attendance');

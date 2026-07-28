@@ -108,7 +108,7 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('declares no collapsible nav node (leave is flat links by design)', () => {
-    expect(leavePack.nav).toBeUndefined();
+    expect(leavePack.navNodes).toBeUndefined();
   });
 
   it('sidebar.tsx mounts both rows via the registry and hardcodes neither', () => {

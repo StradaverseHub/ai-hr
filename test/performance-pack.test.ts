@@ -87,7 +87,7 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('declares no collapsible nav node (performance is a flat row by design)', () => {
-    expect(performancePack.nav).toBeUndefined();
+    expect(performancePack.navNodes).toBeUndefined();
   });
 
   it('sidebar.tsx mounts the row via the registry and hardcodes it nowhere', () => {

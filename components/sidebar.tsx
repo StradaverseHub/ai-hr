@@ -77,7 +77,9 @@ type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; item
 // type-checks against the sidebar's own Row machinery unchanged.
 const ATTENDANCE_NODE: CollapsibleGroupItem = {
   collapsible: true,
-  ...modulePackById('attendance')!.nav!,
+  // Since 895c80f9 a pack contributes an ARRAY of group-tagged nodes, so this resolves by group
+  // rather than taking the one-and-only node. Same idiom the flat-row packs already use below.
+  ...modulePackById('attendance')!.navNodes!.find((n) => n.group === 'main')!,
 };
 
 // Claims nav rows (ADR-0080 rung 3): two flat rows the claims pack contributes

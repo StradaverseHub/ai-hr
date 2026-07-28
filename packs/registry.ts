@@ -46,6 +46,21 @@ export type NavNodeDescriptor = {
 };
 
 /**
+ * A collapsible node the pack places in a NAMED sidebar group — the node analogue of
+ * NavLinkDescriptor, and the reason `nav?: NavNodeDescriptor` was retired (895c80f9).
+ *
+ * The old slot held exactly ONE node and carried no group, so the sidebar decided where it landed.
+ * That made two approved items unbuildable: Attendance needs an admin node for its settings AND a
+ * staff-facing one outside Admin (0bb0e303), and Payroll needs its flat admin row to become a
+ * fly-out node with sub-items (1459e116). Neither is expressible with one untagged node, and a
+ * pack contributing flat rows could not express them either — `navLinks` rows cannot nest.
+ *
+ * Same division of labour as NavLinkDescriptor: the pack declares WHICH group; position WITHIN the
+ * group stays the sidebar's concern.
+ */
+export type NavNodeGroupDescriptor = NavNodeDescriptor & { group: 'main' | 'manage' | 'admin' };
+
+/**
  * A STANDALONE (non-collapsible) sidebar row a module pack contributes, added at rung 3 for
  * Claims — a module whose nav is flat links, not a node: one everyone-visible row in the top
  * day-to-day group ('main') and one row in the Administration group ('admin'); rung 4
@@ -79,8 +94,12 @@ export interface ModulePack {
    */
   id: string;
   kind: 'module';
-  /** The module's sidebar node, rendered via the registry (ADR-0080 D8; closes ADR-0077 gap #6). */
-  nav?: NavNodeDescriptor;
+  /**
+   * The module's collapsible sidebar nodes, rendered via the registry (ADR-0080 D8; closes ADR-0077
+   * gap #6). An ARRAY since 895c80f9 — a pack may place a node in Admin and another outside it.
+   * Replaces the former single untagged `nav`; see NavNodeGroupDescriptor for why.
+   */
+  navNodes?: NavNodeGroupDescriptor[];
   /** Standalone sidebar rows for modules whose nav is flat links, not a node (rung 3, claims). */
   navLinks?: NavLinkDescriptor[];
   /** Tables this pack owns (ADR-0080 D11 criterion 2). */

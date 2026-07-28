@@ -104,7 +104,10 @@ const ATTENDANCE_NAV: NavNodeDescriptor = {
 export const attendancePack: ModulePack = {
   id: 'attendance',
   kind: 'module',
-  nav: ATTENDANCE_NAV,
+  // group 'main' reproduces exactly where the sidebar mounted this node before 895c80f9 made the slot
+  // an array: the untitled top group, between My Absence and Claims. The contract change is a pure
+  // refactor — 0bb0e303 is what later splits this into an Admin node plus a staff-facing one.
+  navNodes: [{ ...ATTENDANCE_NAV, group: 'main' }],
   // Pack-owned satellite tables (D5/D11 criterion 2 — documentation, not DDL). Audited from
   // db/schema.ts 2026-07-23. shift/roster_assignment/toil_* stay OUTSIDE (roster + TOIL services
   // are not part of this pack, mirroring the nav note above).

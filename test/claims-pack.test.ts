@@ -91,7 +91,7 @@ describe('ADR-0080 rung 3: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('declares no collapsible nav node (claims is flat links by design)', () => {
-    expect(claimsPack.nav).toBeUndefined();
+    expect(claimsPack.navNodes).toBeUndefined();
   });
 
   it('sidebar.tsx mounts both rows via the registry and hardcodes neither', () => {

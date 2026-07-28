@@ -128,7 +128,7 @@ describe('ADR-0080 rung 7: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('declares no collapsible nav node (payroll is a single flat link by design)', () => {
-    expect(payrollPack.nav).toBeUndefined();
+    expect(payrollPack.navNodes).toBeUndefined();
   });
 
   it('sidebar.tsx mounts the row via the registry and hardcodes it nowhere', () => {
