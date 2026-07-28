@@ -25,6 +25,9 @@ import {
 } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { isAdmin } from '../lib/authz';
+import { todayInKualaLumpur } from '../lib/hr-date';
+// 9cbf5e0d — one Employee Status engine; the dashboard reads it instead of the legacy stored enum.
+import { employmentStatusSql } from './employment-status-sql';
 import {
   CARRY_FORFEIT_REASON_CAP,
   CARRY_FORFEIT_REASON_EXPIRY,
@@ -97,7 +100,9 @@ const isUuid = (v: string | null | undefined): v is string => !!v && UUID_RE.tes
 /** The unified dashboard filter set. Every field narrows on top of RLS-scoped rows (never widens).
  *  Two distinct status concepts (kept un-blurred):
  *   - `lifecycleStatus`: employment.terminatedOn lifecycle (active vs terminated) — the date-range filter.
- *   - `assignmentStatus`: the 5-way assignment.status enum (active/on_leave/probation/offboarding/terminated). */
+ *   - `assignmentStatus`: the DERIVED Employee Status bucket (9cbf5e0d) — probation / active /
+ *     active_serving_notice / resigned / blacklisted. The query-string name is kept so existing saved
+ *     dashboard links keep working; the retired stored-enum values simply no longer match anything. */
 export type AnalyticsFilters = {
   companyId?: string;
   departmentId?: string;
@@ -107,7 +112,7 @@ export type AnalyticsFilters = {
   workState?: string; // location proxy
   managerEmploymentId?: string;
   lifecycleStatus?: 'active' | 'terminated';
-  assignmentStatus?: string; // assignment_status enum value
+  assignmentStatus?: string; // an EmploymentStatus bucket (see core/employment-status.ts)
   q?: string;
 };
 
@@ -186,8 +191,8 @@ const managerLineWhere = (managerEmploymentId: string): SQL =>
 /** The shared WHERE clause for every dashboard aggregation. All employment-level + person-level +
  *  current-assignment predicates compose with AND (so each filter strictly narrows). Functions that
  *  add their own per-event temporal predicate (e.g. movementByMonth) pass `withAssignment=false` and
- *  rely on their own joins; the assignment-derived filters (department/costCentre/assignmentStatus)
- *  apply only when the caller has joined the current assignment. */
+ *  rely on their own joins; the assignment-derived filters (department/costCentre) apply only when the
+ *  caller has joined the current assignment. */
 export function analyticsWhere(
   filters: AnalyticsFilters,
   scopeIds: string[] | undefined,
@@ -218,8 +223,14 @@ export function analyticsWhere(
     parts.push(
       filters.departmentId ? eq(assignment.departmentId, filters.departmentId) : undefined,
       filters.costCenterId ? eq(assignment.costCenterId, filters.costCenterId) : undefined,
-      filters.assignmentStatus ? eq(assignment.status, filters.assignmentStatus as never) : undefined,
     );
+  }
+  // 9cbf5e0d — the Employee Status filter narrows on the DERIVED status (employmentStatusSql), not the
+  // legacy stored assignment.status: the dashboard must offer the same five buckets every other screen
+  // shows, and must not offer the retired On Leave / Offboarding / Terminated values. It reads `employment`
+  // columns only, so unlike the department/cost-centre filters it does NOT need the assignment join.
+  if (filters.assignmentStatus) {
+    parts.push(sql`${employmentStatusSql(asOf ?? todayInKualaLumpur())} = ${filters.assignmentStatus}`);
   }
   return and(...parts.filter((p): p is SQL => p != null));
 }
@@ -622,7 +633,9 @@ function dimensionRows(
         dateOfBirth: person.dateOfBirth,
         workState: employment.workState,
         costCenterName: costCenter.name,
-        assignmentStatus: assignment.status,
+        // 9cbf5e0d — the DERIVED Employee Status as of asOf, so the chart shows what the Personnel screens
+        // show. The legacy stored assignment.status is not read here any more.
+        employmentStatus: employmentStatusSql(asOf),
         departmentName: department.name,
       })
       .from(employment)
@@ -658,7 +671,7 @@ export type Demographics = {
   byAgeBand: DimensionCount[];
   byLocation: DimensionCount[];
   byCostCentre: DimensionCount[];
-  byEmploymentStatus: DimensionCount[]; // 5-way assignment.status
+  byEmploymentStatus: DimensionCount[]; // the five DERIVED Employee Status buckets (9cbf5e0d)
   byDepartment: DimensionCount[];
 };
 
@@ -687,7 +700,9 @@ export async function workforceDemographics(
     // assignment-derived → no current assignment folds to UNASSIGNED_BUCKET (so the chart sums to total).
     byCostCentre: tally(rows.map((r) => r.costCenterName), UNASSIGNED_BUCKET),
     byDepartment: tally(rows.map((r) => r.departmentName), UNASSIGNED_BUCKET),
-    byEmploymentStatus: tally(rows.map((r) => r.assignmentStatus), UNASSIGNED_BUCKET),
+    // Derived from the employment's own lifecycle, so — unlike the other assignment-derived dimensions —
+    // an employee with no current assignment still lands in a real bucket, never "Unassigned".
+    byEmploymentStatus: tally(rows.map((r) => r.employmentStatus)),
   };
 }
 

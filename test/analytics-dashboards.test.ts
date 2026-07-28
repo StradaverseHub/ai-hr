@@ -4,7 +4,8 @@
  *    (NULL-DOB/NULL-gender employee) and the Unassigned bucket (employee with no current assignment);
  *  - demographicsByNationality counts DISTINCT person (concurrent-employment counted once), maps a
  *    no-statutory-row person to Unknown (not dropped, not defaulted to citizen), and is admin-gated;
- *  - headcountByEmploymentStatus returns the 5-way assignment status (on_leave / probation seeded);
+ *  - byEmploymentStatus returns the DERIVED Employee Status (9cbf5e0d) — the same five buckets Personnel
+ *    shows — and NEVER the retired stored assignment.status values (on_leave / offboarding / terminated);
  *  - the manager filter uses the open-line predicate (a superseded reporting line is NOT matched);
  *  - leaveUtilisation separates granted vs taken; leaveBalancesSummary equals core/leave.ts#leaveBalance;
  *    sickLeaveTrend returns "not configured" when no sick-coded type exists;
@@ -14,7 +15,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import { assignment, employeeStatutoryMy, leaveLedger, leaveType, person, reportingLine } from '../db/schema';
-import { hireEmployee, setReportingLine, terminateEmployment } from '../core/org';
+import { hireEmployee, setEmploymentInfo, setReportingLine, terminateEmployment } from '../core/org';
 import { leaveBalance } from '../core/leave';
 import {
   demographicsByNationality,
@@ -95,18 +96,44 @@ describe('Reporting & Analytics — dashboards aggregation', () => {
     expect(sumCounts(d.byEmploymentStatus)).toBe(4);
   });
 
-  it('headcountByEmploymentStatus returns the 5-way assignment status (on_leave / probation visible)', async () => {
-    const a1 = await hire('Active One');
-    const onLeave = await hire('Leave Two');
+  // 9cbf5e0d — this used to assert the stored 5-way assignment.status (on_leave / probation). The dashboard
+  // now shows the ONE derived Employee Status, so the vectors are driven by the employment LIFECYCLE and the
+  // retired stored values must not survive into the tally even when a legacy row still carries them.
+  it('byEmploymentStatus returns the derived Employee Status, never the retired stored values', async () => {
+    const active = await hire('Active One');
+    const stale = await hire('Leave Two');
     const prob = await hire('Prob Three');
-    await setStatus(onLeave.employmentId, 'on_leave');
+    // A legacy row still carrying the retired stored status — it must derive to 'active', not 'on_leave'.
+    await setStatus(stale.employmentId, 'on_leave');
     await setStatus(prob.employmentId, 'probation');
-    void a1;
+    // Probation is a LIFECYCLE fact now: a confirmation date still ahead of asOf.
+    await setEmploymentInfo(a, { employmentId: prob.employmentId, confirmationDate: '2026-12-01' });
+    void active;
 
     const d = await workforceDemographics(a, undefined, { asOf: ASOF });
-    expect(countFor(d.byEmploymentStatus, 'active')).toBe(1);
-    expect(countFor(d.byEmploymentStatus, 'on_leave')).toBe(1);
+    expect(countFor(d.byEmploymentStatus, 'active')).toBe(2);
     expect(countFor(d.byEmploymentStatus, 'probation')).toBe(1);
+    expect(countFor(d.byEmploymentStatus, 'on_leave')).toBe(0);
+    expect(d.byEmploymentStatus.map((r) => r.name).sort()).toEqual(['active', 'probation']);
+  });
+
+  it('the Employee Status filter narrows on the derived bucket, not the stored enum', async () => {
+    await hire('Filter Active');
+    const prob = await hire('Filter Probation');
+    await setEmploymentInfo(a, { employmentId: prob.employmentId, confirmationDate: '2026-12-01' });
+
+    const onlyProbation = await workforceDemographics(a, undefined, {
+      asOf: ASOF,
+      filters: { assignmentStatus: 'probation' },
+    });
+    expect(onlyProbation.total).toBe(1);
+    expect(countFor(onlyProbation.byEmploymentStatus, 'probation')).toBe(1);
+    // A retired value can no longer select anybody.
+    const retired = await workforceDemographics(a, undefined, {
+      asOf: ASOF,
+      filters: { assignmentStatus: 'on_leave' },
+    });
+    expect(retired.total).toBe(0);
   });
 
   it('demographicsByNationality: distinct person, Unknown for no-statutory-row, admin-gated', async () => {

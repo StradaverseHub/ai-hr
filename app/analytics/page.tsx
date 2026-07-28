@@ -29,6 +29,8 @@ import { ChartCard } from '@/components/charts/ChartCard';
 import { FilterBar } from './FilterBar';
 import { YearSelect } from './YearSelect';
 import { bucketLabel, localizeDimension } from './labels';
+// 9cbf5e0d — one Employee Status vocabulary, shared with the Personnel badges.
+import type { EmploymentStatus } from '@/core/employment-status';
 
 export default async function AnalyticsPage({
   searchParams,
@@ -37,6 +39,7 @@ export default async function AnalyticsPage({
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('analytics');
+  const tEmployeeStatus = await getTranslations('people.employeeStatus');
   const sp = await searchParams;
   const get = (k: string) => sp[k];
   const { from, to } = analyticsDateRange(get);
@@ -118,7 +121,13 @@ export default async function AnalyticsPage({
   const deptData = localizeDimension(demographics.byDepartment, t, 'plain');
   const locationData = localizeDimension(demographics.byLocation, t, 'plain');
   const costCentreData = localizeDimension(demographics.byCostCentre, t, 'plain');
-  const statusData = localizeDimension(demographics.byEmploymentStatus, t, 'assignment');
+  // 9cbf5e0d — the Employee Status chart labels come from the ONE shared vocabulary
+  // (people.employeeStatus), the same strings the Personnel badges use, instead of a second analytics-only
+  // copy that could drift or keep naming retired statuses.
+  const statusData = {
+    categories: demographics.byEmploymentStatus.map((r) => tEmployeeStatus(r.name as EmploymentStatus)),
+    values: demographics.byEmploymentStatus.map((r) => r.count),
+  };
   // Distinct work-states present in the scoped roster → the Location filter options.
   const locationOptions = [...new Set(demographics.byLocation.map((r) => r.name).filter((n) => n !== '__unknown__'))]
     .sort()

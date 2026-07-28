@@ -10,14 +10,14 @@ type T = Awaited<ReturnType<typeof getTranslations>>;
 
 /** Map a single bucket key → localized label. Falls back to the raw key for free-text values
  *  (locations, cost-centre names, department names) that have no enum translation. */
-export function bucketLabel(key: string, t: T, kind: 'gender' | 'marital' | 'nationality' | 'assignment' | 'plain'): string {
+export function bucketLabel(key: string, t: T, kind: 'gender' | 'marital' | 'nationality' | 'plain'): string {
   if (key === UNKNOWN_BUCKET) return t('bucketUnknown');
   if (key === UNASSIGNED_BUCKET) return t('bucketUnassigned');
   if (kind === 'plain') return key;
   // The data layer can hand us free-text / non-canonical enum values (e.g. 'M', 'Lelaki') that have no
   // translation key. Guard with t.has() so we never render the raw key path (e.g. "analytics.gender_M")
   // on a chart — fall back to the raw human value instead.
-  const prefix = kind; // 'gender' | 'marital' | 'nationality' | 'assignment'
+  const prefix = kind; // 'gender' | 'marital' | 'nationality'
   const tk = `${prefix}_${key}`;
   return t.has(tk) ? t(tk) : key;
 }
@@ -26,7 +26,7 @@ export function bucketLabel(key: string, t: T, kind: 'gender' | 'marital' | 'nat
 export function localizeDimension(
   rows: DimensionCount[],
   t: T,
-  kind: 'gender' | 'marital' | 'nationality' | 'assignment' | 'plain',
+  kind: 'gender' | 'marital' | 'nationality' | 'plain',
 ): { categories: string[]; values: number[] } {
   return {
     categories: rows.map((r) => bucketLabel(r.name, t, kind)),
