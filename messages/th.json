@@ -1461,7 +1461,9 @@
         "hr_admin": "ผู้ดูแล HR"
       },
       "decidedByLine": "ตัดสินใจโดย {name}",
-      "pendingWithLine": "รออยู่ที่ {stage}"
+      "pendingWithLine": "รออยู่ที่ {stage}",
+      "selectAll": "เลือกทั้งหมด",
+      "deselectAll": "ยกเลิกเลือกทั้งหมด"
     },
     "editButton": "แก้ไข",
     "editDialogTitle": "แก้ไขใบลา",
@@ -1473,7 +1475,34 @@
     "selfCancelKeep": "เก็บไว้",
     "selfCancelConfirm": "ยกเลิกการลา",
     "selfCancelPillAffordanceLabel": "ยกเลิกการลานี้",
-    "approvalPillAffordanceLabel": "ไปที่การอนุมัติ"
+    "approvalPillAffordanceLabel": "ไปที่การอนุมัติ",
+    "inquiry": {
+      "navLabel": "การสอบถามข้อมูลการลา",
+      "employeeDetails": "รายละเอียดพนักงาน",
+      "employeeBalances": "ยอดวันลาของพนักงาน",
+      "employeeLeaveRecord": "บันทึกการลาของพนักงาน",
+      "balancesTitle": "ยอดวันลาของพนักงาน",
+      "balancesDescription": "สถานะวันลาทุกประเภทของพนักงานหนึ่งคน ณ วันที่ที่คุณเลือก",
+      "recordsTitle": "บันทึกการลาของพนักงาน",
+      "recordsDescription": "คำขอลาทุกรายการที่อยู่เบื้องหลังยอดคงเหลือ เรียงจากคำขอล่าสุด",
+      "employee": "พนักงาน",
+      "searchPlaceholder": "ค้นหารหัสการลา",
+      "recordsSearchPlaceholder": "ค้นหารหัสพนักงาน ชื่อ หรือรหัสการลา",
+      "colLeaveCode": "รหัสการลา",
+      "colEntitlementYear": "ปีสิทธิ",
+      "colBroughtForward": "ยกยอดมา",
+      "colPendingApproval": "รออนุมัติ",
+      "colForfeitedBf": "ยอดยกมาที่ถูกริบ",
+      "colDate": "วันที่",
+      "colReason": "เหตุผล",
+      "colAttachment": "เอกสารแนบ",
+      "colFinalApproval": "วันที่อนุมัติขั้นสุดท้าย",
+      "viewAttachment": "ดู",
+      "attachmentYes": "ใช่",
+      "noRows": "ไม่มีประเภทการลาที่จะแสดงสำหรับพนักงานคนนี้",
+      "noRecords": "ไม่มีบันทึกการลาที่จะแสดง",
+      "noEmployees": "ไม่มีพนักงานในขอบเขตบริษัทปัจจุบัน"
+    }
   },
   "attendance": {
     "title": "การเข้างาน",

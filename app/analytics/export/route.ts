@@ -91,9 +91,12 @@ export async function GET(req: Request) {
       const reasonLabel = (code: 'cap' | 'expiry') =>
         code === 'cap' ? 'Exceeded carry-forward limit' : 'Auto forfeit due to expiry';
       data = {
-        title: 'Carry-forward & forfeiture',
+        // 37a1141e: the report and its amount column name the BALANCE, so both say brought forward. The
+        // reason label below still names the RULE (the carry-forward limit) and keeps its wording, and the
+        // `carry-forward` report id / filename are identifiers, not labels.
+        title: 'Brought-forward & forfeiture',
         filename: `carry-forward_${year}`,
-        columns: ['Employee', 'Company', 'Department', 'Leave year', 'Carried forward', 'Expiry date', 'Forfeited at open', 'Forfeited at expiry', 'Reason'],
+        columns: ['Employee', 'Company', 'Department', 'Leave year', 'Brought forward', 'Expiry date', 'Forfeited at open', 'Forfeited at expiry', 'Reason'],
         rows: rows.map((r) => [
           r.employeeName,
           r.company,

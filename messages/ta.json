@@ -1461,7 +1461,9 @@
         "hr_admin": "HR நிர்வாகி"
       },
       "decidedByLine": "{name} தீர்மானித்தார்",
-      "pendingWithLine": "{stage} இடம் நிலுவையில்"
+      "pendingWithLine": "{stage} இடம் நிலுவையில்",
+      "selectAll": "அனைத்தையும் தேர்ந்தெடு",
+      "deselectAll": "அனைத்தையும் நீக்கு"
     },
     "editButton": "திருத்து",
     "editDialogTitle": "விடுப்பு விண்ணப்பத்தைத் திருத்து",
@@ -1473,7 +1475,34 @@
     "selfCancelKeep": "வைத்திரு",
     "selfCancelConfirm": "விடுப்பை ரத்துசெய்",
     "selfCancelPillAffordanceLabel": "இந்த விடுப்பை ரத்துசெய்",
-    "approvalPillAffordanceLabel": "ஒப்புதலுக்குச் செல்"
+    "approvalPillAffordanceLabel": "ஒப்புதலுக்குச் செல்",
+    "inquiry": {
+      "navLabel": "விடுப்பு விசாரணை",
+      "employeeDetails": "ஊழியர் விவரங்கள்",
+      "employeeBalances": "ஊழியர் விடுப்பு இருப்பு",
+      "employeeLeaveRecord": "ஊழியர் விடுப்புப் பதிவு",
+      "balancesTitle": "ஊழியர் விடுப்பு இருப்பு",
+      "balancesDescription": "நீங்கள் தேர்ந்தெடுக்கும் தேதியின்படி, ஒரு ஊழியரின் ஒவ்வொரு விடுப்பு வகையின் நிலை.",
+      "recordsTitle": "ஊழியர் விடுப்புப் பதிவு",
+      "recordsDescription": "இருப்புக்குப் பின்னால் உள்ள ஒவ்வொரு விடுப்பு விண்ணப்பமும், புதியது முதலில்.",
+      "employee": "ஊழியர்",
+      "searchPlaceholder": "விடுப்புக் குறியீட்டைத் தேடு",
+      "recordsSearchPlaceholder": "ஊழியர் ஐடி, பெயர் அல்லது விடுப்புக் குறியீட்டைத் தேடு",
+      "colLeaveCode": "விடுப்புக் குறியீடு",
+      "colEntitlementYear": "உரிமை ஆண்டு",
+      "colBroughtForward": "முன்கொண்டு செல்லப்பட்டது",
+      "colPendingApproval": "ஒப்புதலுக்குக் காத்திருப்பு",
+      "colForfeitedBf": "பறிமுதலான முன்கொணர்வு",
+      "colDate": "தேதி",
+      "colReason": "காரணம்",
+      "colAttachment": "இணைப்பு",
+      "colFinalApproval": "இறுதி ஒப்புதல் தேதி",
+      "viewAttachment": "பார்",
+      "attachmentYes": "ஆம்",
+      "noRows": "இந்த ஊழியருக்குக் காட்ட விடுப்பு வகைகள் இல்லை.",
+      "noRecords": "காட்ட விடுப்புப் பதிவுகள் இல்லை.",
+      "noEmployees": "தற்போதைய நிறுவன வரம்பில் ஊழியர்கள் இல்லை."
+    }
   },
   "attendance": {
     "title": "கலந்துகொள்வு",

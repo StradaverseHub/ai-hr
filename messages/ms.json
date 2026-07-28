@@ -1461,7 +1461,9 @@
         "hr_admin": "Pentadbir HR"
       },
       "decidedByLine": "Diputuskan oleh {name}",
-      "pendingWithLine": "Menunggu {stage}"
+      "pendingWithLine": "Menunggu {stage}",
+      "selectAll": "Pilih semua",
+      "deselectAll": "Nyahpilih semua"
     },
     "editButton": "Sunting",
     "editDialogTitle": "Sunting permohonan cuti",
@@ -1473,7 +1475,34 @@
     "selfCancelKeep": "Kekalkan",
     "selfCancelConfirm": "Batal cuti",
     "selfCancelPillAffordanceLabel": "Batalkan cuti ini",
-    "approvalPillAffordanceLabel": "Pergi ke kelulusan"
+    "approvalPillAffordanceLabel": "Pergi ke kelulusan",
+    "inquiry": {
+      "navLabel": "Pertanyaan cuti",
+      "employeeDetails": "Butiran Pekerja",
+      "employeeBalances": "Baki Cuti Pekerja",
+      "employeeLeaveRecord": "Rekod Cuti Pekerja",
+      "balancesTitle": "Baki Cuti Pekerja",
+      "balancesDescription": "Kedudukan seorang pekerja bagi setiap jenis cuti, pada tarikh yang anda pilih.",
+      "recordsTitle": "Rekod Cuti Pekerja",
+      "recordsDescription": "Setiap permohonan cuti di sebalik baki, permohonan terbaharu dahulu.",
+      "employee": "Pekerja",
+      "searchPlaceholder": "Cari kod cuti",
+      "recordsSearchPlaceholder": "Cari ID pekerja, nama atau kod cuti",
+      "colLeaveCode": "Kod Cuti",
+      "colEntitlementYear": "Tahun Kelayakan",
+      "colBroughtForward": "Dibawa Ke Hadapan",
+      "colPendingApproval": "Menunggu Kelulusan",
+      "colForfeitedBf": "Bawa Hadapan Dilucut",
+      "colDate": "Tarikh",
+      "colReason": "Sebab",
+      "colAttachment": "Lampiran",
+      "colFinalApproval": "Tarikh Kelulusan Akhir",
+      "viewAttachment": "Lihat",
+      "attachmentYes": "Ya",
+      "noRows": "Tiada jenis cuti untuk dipaparkan bagi pekerja ini.",
+      "noRecords": "Tiada rekod cuti untuk dipaparkan.",
+      "noEmployees": "Tiada pekerja dalam skop syarikat semasa."
+    }
   },
   "attendance": {
     "title": "Kehadiran",

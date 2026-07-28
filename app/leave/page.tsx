@@ -67,6 +67,9 @@ const REQ_STATUS: Record<string, string> = {
 // Admin search/filter/sort page size — mirrors /personnel (feedback 0773bda9).
 const PAGE = 25;
 const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
+// Days-column filter (feedback 8ec63139) — the ADR-0048 duration vocabulary, whitelisted here and again in
+// listLeaveRequestsPage so an unknown value narrows to nothing rather than reaching SQL.
+const LEAVE_DURATIONS = ['full_day', 'half_day_am', 'half_day_pm', 'hourly'] as const;
 // Approval Information — "Pending with" stages (feedback 0773bda9). The approval chain stores a ROLE
 // (approver_kind), not a named person, so this filter narrows by the stage a pending request awaits.
 const PENDING_STAGES = ['direct_manager', 'hr_admin'] as const;
@@ -101,10 +104,14 @@ export default async function LeavePage({
     // holiday warning, so the org filters below use distinct keys. type/status repeat for multi-select.
     q?: string;
     page?: string;
-    company?: string;
-    bu?: string;
-    dept?: string;
-    loc?: string;
+    // Filter on every column (feedback 8ec63139): the org narrowings are multi-select now, so each of
+    // these repeats in the query string exactly as type/status already did.
+    company?: string | string[];
+    bu?: string | string[];
+    dept?: string | string[];
+    loc?: string | string[];
+    emp?: string | string[];
+    duration?: string | string[];
     type?: string | string[];
     status?: string | string[];
     from?: string;
@@ -146,10 +153,12 @@ export default async function LeavePage({
   const arr = (v?: string | string[]): string[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
   const q = sp.q?.trim() || undefined;
   const page = Math.max(0, Number(sp.page) || 0);
-  const company = sp.company || undefined;
-  const bu = sp.bu || undefined;
-  const dept = sp.dept || undefined;
-  const loc = sp.loc || undefined;
+  const companyIdsFilter = arr(sp.company);
+  const buIds = arr(sp.bu);
+  const deptIds = arr(sp.dept);
+  const locIds = arr(sp.loc);
+  const empIds = arr(sp.emp);
+  const durations = arr(sp.duration).filter((d) => (LEAVE_DURATIONS as readonly string[]).includes(d));
   const typeIds = arr(sp.type);
   const statuses = arr(sp.status).filter((s) => (LEAVE_STATUSES as readonly string[]).includes(s));
   const from = sp.from || undefined;
@@ -165,10 +174,12 @@ export default async function LeavePage({
     admin &&
     !!(
       q ||
-      company ||
-      bu ||
-      dept ||
-      loc ||
+      companyIdsFilter.length ||
+      buIds.length ||
+      deptIds.length ||
+      locIds.length ||
+      empIds.length ||
+      durations.length ||
       typeIds.length ||
       statuses.length ||
       from ||
@@ -225,9 +236,15 @@ export default async function LeavePage({
   // per-type rows via deriveBalanceRow + a per-row EntitlementBreakdown side-sheet + ONE shared as-at-date
   // GET form. Scoped to the viewer via the per-employment leaveBalances (NOT the all-employee pivot), so
   // permissions/calculations are unchanged and identical to what /me showed. An invalid/empty ?asOf= ⇒ today.
+  // Feedback 8ec63139: the ESS half of this page (My Balances, the Requests section, Request Leave) is gone
+  // for an HR admin — this route is their employee-inquiry landing page, and their own leave duplicated the
+  // Approval Items surface. `ess` is the single gate: it suppresses the READS as well as the markup, so an
+  // admin page load no longer pays for balances/breakdowns nobody renders. Nothing about leave application,
+  // approval or balance calculation changes — only who is shown their own figures here.
+  const ess = !admin;
   const breakdownAsOf = sp.asOf && /^\d{4}-\d{2}-\d{2}$/.test(sp.asOf) ? sp.asOf : today;
-  const selfBalances = me ? await leaveBalances(session, me.employmentId, locale) : [];
-  const selfRequests = me ? await leaveRequestsFor(session, me.employmentId, locale) : [];
+  const selfBalances = ess && me ? await leaveBalances(session, me.employmentId, locale) : [];
+  const selfRequests = ess && me ? await leaveRequestsFor(session, me.employmentId, locale) : [];
   const selfBreakdowns = me
     ? await Promise.all(
         selfBalances.map((b) => leaveEntitlementBreakdown(session, me.employmentId, b.leaveTypeId, breakdownAsOf, locale)),
@@ -304,10 +321,12 @@ export default async function LeavePage({
           listLeaveRequestsPage(session, {
             companyIds: scopeIds,
             q,
-            companyId: company,
-            businessUnitId: bu,
-            departmentId: dept,
-            locationId: loc,
+            filterCompanyIds: companyIdsFilter,
+            businessUnitIds: buIds,
+            departmentIds: deptIds,
+            locationIds: locIds,
+            employmentIds: empIds,
+            durationTypes: durations,
             leaveTypeIds: typeIds.length ? typeIds : undefined,
             statuses: statuses.length ? statuses : undefined,
             from,
@@ -465,10 +484,12 @@ export default async function LeavePage({
   const filterParams = () => {
     const p = new URLSearchParams();
     if (q) p.set('q', q);
-    if (company) p.set('company', company);
-    if (bu) p.set('bu', bu);
-    if (dept) p.set('dept', dept);
-    if (loc) p.set('loc', loc);
+    for (const id of companyIdsFilter) p.append('company', id);
+    for (const id of buIds) p.append('bu', id);
+    for (const id of deptIds) p.append('dept', id);
+    for (const id of locIds) p.append('loc', id);
+    for (const id of empIds) p.append('emp', id);
+    for (const d of durations) p.append('duration', d);
     for (const id of typeIds) p.append('type', id);
     for (const st of statuses) p.append('status', st);
     if (from) p.set('from', from);
@@ -513,41 +534,56 @@ export default async function LeavePage({
       ariaLabel: t('filters.searchAria'),
       removeAriaLabel: t('filters.removeFilter', { label: t('filters.search') }),
     },
+    // Feedback 8ec63139: every org narrowing is MULTI-select now (with Select all / Deselect all in the
+    // panel) — "one department at a time" was the limitation the reporter hit. Same option sources.
     {
-      kind: 'select',
+      kind: 'multi',
       name: 'company',
       label: t('filters.company'),
       ariaLabel: t('filters.company'),
-      allLabel: t('filters.allCompanies'),
       options: companies.map((c) => ({ value: c.id, label: c.name })),
       removeAriaLabel: t('filters.removeFilter', { label: t('filters.company') }),
     },
     {
-      kind: 'select',
+      kind: 'multi',
       name: 'bu',
       label: t('filters.businessUnit'),
       ariaLabel: t('filters.businessUnit'),
-      allLabel: t('filters.allBusinessUnits'),
       options: businessUnits.map((b) => ({ value: b.id, label: b.name })),
       removeAriaLabel: t('filters.removeFilter', { label: t('filters.businessUnit') }),
     },
     {
-      kind: 'select',
+      kind: 'multi',
       name: 'dept',
       label: t('filters.department'),
       ariaLabel: t('filters.department'),
-      allLabel: t('filters.allDepartments'),
       options: departments.map((d) => ({ value: d.id, label: d.name })),
       removeAriaLabel: t('filters.removeFilter', { label: t('filters.department') }),
     },
     {
-      kind: 'select',
+      kind: 'multi',
       name: 'loc',
       label: t('filters.location'),
       ariaLabel: t('filters.location'),
-      allLabel: t('filters.allLocations'),
       options: locations.map((l) => ({ value: l.id, label: l.name })),
       removeAriaLabel: t('filters.removeFilter', { label: t('filters.location') }),
+    },
+    // The Employee and Days columns had no filter of their own — the reporter asked for one per column.
+    {
+      kind: 'multi',
+      name: 'emp',
+      label: t('colEmployee'),
+      ariaLabel: t('colEmployee'),
+      options: active.map((e) => ({ value: e.employmentId, label: e.name })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('colEmployee') }),
+    },
+    {
+      kind: 'multi',
+      name: 'duration',
+      label: t('colDays'),
+      ariaLabel: t('colDays'),
+      options: LEAVE_DURATIONS.map((d) => ({ value: d, label: t(`duration.${d}`) })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('colDays') }),
     },
     {
       kind: 'multi',
@@ -617,10 +653,12 @@ export default async function LeavePage({
   ];
   const filterValues: Record<string, string | string[] | undefined> = {
     q,
-    company,
-    bu,
-    dept,
-    loc,
+    company: companyIdsFilter,
+    bu: buIds,
+    dept: deptIds,
+    loc: locIds,
+    emp: empIds,
+    duration: durations,
     type: typeIds,
     status: statuses,
     from,
@@ -630,15 +668,18 @@ export default async function LeavePage({
     pendingWith,
     approvedBy,
   };
+  // A field counts ONCE however many values it holds — same rule the panel's own badge uses.
   const activeFilterCount =
-    [q, company, bu, dept, loc, from, to, appliedFrom, appliedTo, approvedBy, pendingWith].filter(Boolean).length +
-    (typeIds.length ? 1 : 0) +
-    (statuses.length ? 1 : 0);
+    [q, from, to, appliedFrom, appliedTo, approvedBy, pendingWith].filter(Boolean).length +
+    [companyIdsFilter, buIds, deptIds, locIds, empIds, durations, typeIds, statuses].filter((v) => v.length > 0)
+      .length;
   const filterLabels = {
     filter: t('filters.filter'),
     apply: t('filters.apply'),
     clearAll: t('filters.clearAll'),
     activeCount: t('filters.activeCount', { count: activeFilterCount }),
+    selectAll: t('filters.selectAll'),
+    deselectAll: t('filters.deselectAll'),
   };
   // Hidden inputs so the top search box preserves every other active filter + sort when submitted.
   const searchHiddenParams = [...withSort(filterParams())].filter(([k]) => k !== 'q');
@@ -739,6 +780,14 @@ export default async function LeavePage({
                   </Button>
                 </form>
                 <FilterPanel action="/leave" fields={filterFields} values={filterValues} labels={filterLabels} />
+                {/* Employee inquiry (feedback 20c699f8): the way from this page into one employee's leave
+                    position. The Employee Details listing it opens FROM is item 650b6eb8's. */}
+                <Link
+                  href="/leave/employee-balances"
+                  className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+                >
+                  {t('inquiry.employeeBalances')}
+                </Link>
                 {/* Export the filtered set (reporter: Excel + CSV). Plain links → admin-gated route. */}
                 <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs">
                   <span className="text-muted-foreground">{t('filters.export')}:</span>
@@ -752,16 +801,22 @@ export default async function LeavePage({
                 </div>
                 </>
               )}
-              {/* Request Leave (feedback 48e69709): primary "+" trigger for EVERY viewer (employees too, not
-                  just admins) — opens the apply form in a modal. Replaces the old bottom inline Card. */}
-              <RequestLeaveDialog
-                types={requestLeaveTypeOptions}
-                startDefault={today}
-                employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}
-                submitAction={requestLeaveAction}
-                previewAction={previewLeaveDeductionAction}
-                summaryAction={leaveApplySummaryAction}
-              />
+              {/* Request Leave (feedback 48e69709): primary "+" trigger opening the apply form in a modal.
+                  Feedback 8ec63139 narrowed it to the SELF-SERVICE viewer — on the HR-admin landing page it
+                  was one of the three own-leave affordances the reporter asked to remove. The action, the
+                  form and the on-behalf-of employee selector are untouched; only this trigger's audience
+                  changed. Managers keep it (they are not `admin`), so applying on behalf of a report still
+                  works from here. */}
+              {ess && (
+                <RequestLeaveDialog
+                  types={requestLeaveTypeOptions}
+                  startDefault={today}
+                  employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}
+                  submitAction={requestLeaveAction}
+                  previewAction={previewLeaveDeductionAction}
+                  summaryAction={leaveApplySummaryAction}
+                />
+              )}
             </div>
           }
         />
@@ -802,7 +857,7 @@ export default async function LeavePage({
           Clicking a card opens THAT type's details in the right-side slide-out panel, exactly as on /me.
           The `me-leave` tour anchor moves with the cards so the My Profile walkthrough still lands on them
           (its step now routes here — see lib/module-tours.json). Empty ⇒ row omitted (e.g. not linked). */}
-      {primaryCards.length > 0 && (
+      {ess && primaryCards.length > 0 && (
         <Card className="p-5" data-tour="me-leave">
           <LeaveCards entries={primaryCards} />
         </Card>
@@ -815,7 +870,9 @@ export default async function LeavePage({
           breakdowns, calculations and visibility are unchanged. Feedback 56a0deb9: the section folds
           behind its header (CollapsibleCardSection — CLOSED by default, cookie-persisted per browser) so
           the page opens tidy; the data-tour anchor stays on the Card, whose summary bar remains visible
-          when closed, so the leave-balance tour step keeps a target either way. */}
+          when closed, so the leave-balance tour step keeps a target either way. Feedback 8ec63139: the whole
+          section is self-service only — an HR admin's own balances do not belong on their inquiry page. */}
+      {ess && (
       <Card className="overflow-hidden" data-tour="leave-balance">
         <CollapsibleCardSection
           title={t('myBalancesTitle')}
@@ -872,6 +929,7 @@ export default async function LeavePage({
         )}
         </CollapsibleCardSection>
       </Card>
+      )}
 
       {/* Self-service view — compact card history (feedback 657962ec, replacing the 56a0deb9 list): the
           "Other leave" breakdown beside the leave history, each in its own column on wide screens,
@@ -897,10 +955,9 @@ export default async function LeavePage({
         </div>
       )}
 
-      {/* HR admins: their own "Other leave" breakdown card renders full-width — their history below is the
-          org-wide sortable/paginated table, which needs the room, so the side-by-side pairing above applies
-          to the personal view only (feedback 56a0deb9). */}
-      {admin && secondaryBreakdownCard()}
+      {/* Feedback 8ec63139: the HR admin's own full-width "Other leave" breakdown card (56a0deb9) is gone —
+          it was the third face of My Balances on a page that is now about employees, not the viewer. The
+          self-service pairing above is untouched. */}
       {/* Admin request history — the full-width sortable/paginated table (feedback 0773bda9), unchanged. */}
       {admin && (
       <Card className="overflow-hidden" data-tour="leave-requests">

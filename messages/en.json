@@ -1315,9 +1315,9 @@
       "apply": "Apply",
       "currentYearEntitlement": "This year's entitlement",
       "monthlyAccrued": "Accrued so far this year",
-      "carriedForward": "Carried forward",
-      "carryForwardRemaining": "Carry-forward remaining",
-      "carryForwardExpiry": "Carry-forward expiry",
+      "carriedForward": "Brought forward",
+      "carryForwardRemaining": "Brought-forward remaining",
+      "carryForwardExpiry": "Brought-forward expiry",
       "noExpiry": "Does not expire",
       "forfeited": "Forfeited",
       "totalAvailable": "Total available",
@@ -1350,7 +1350,7 @@
         "entitlementToDate": "Entitlement to date",
         "broughtForward": "Brought forward",
         "expiredBroughtForward": "Expired brought forward",
-        "carryForwardExpiry": "Carry-forward expiry date",
+        "carryForwardExpiry": "Brought-forward expiry date",
         "forfeited": "Forfeited balance",
         "unplanned": "Unplanned",
         "overutilized": "Overutilized",
@@ -1461,7 +1461,9 @@
         "hr_admin": "HR admin"
       },
       "decidedByLine": "Decided by {name}",
-      "pendingWithLine": "Pending with {stage}"
+      "pendingWithLine": "Pending with {stage}",
+      "selectAll": "Select all",
+      "deselectAll": "Deselect all"
     },
     "editButton": "Edit",
     "editDialogTitle": "Edit leave application",
@@ -1473,7 +1475,34 @@
     "selfCancelKeep": "Keep",
     "selfCancelConfirm": "Cancel leave",
     "selfCancelPillAffordanceLabel": "Cancel this leave",
-    "approvalPillAffordanceLabel": "Go to approval"
+    "approvalPillAffordanceLabel": "Go to approval",
+    "inquiry": {
+      "navLabel": "Leave inquiry",
+      "employeeDetails": "Employee Details",
+      "employeeBalances": "Employee Balances",
+      "employeeLeaveRecord": "Employee Leave Record",
+      "balancesTitle": "Employee Balances",
+      "balancesDescription": "One employee's position for every leave type, as at the date you choose.",
+      "recordsTitle": "Employee Leave Record",
+      "recordsDescription": "Every leave request behind a balance, newest request first.",
+      "employee": "Employee",
+      "searchPlaceholder": "Search leave code",
+      "recordsSearchPlaceholder": "Search employee ID, name or leave code",
+      "colLeaveCode": "Leave Code",
+      "colEntitlementYear": "Entitlement Year",
+      "colBroughtForward": "Brought Forward",
+      "colPendingApproval": "Pending Approval",
+      "colForfeitedBf": "Forfeited BF",
+      "colDate": "Date",
+      "colReason": "Reason",
+      "colAttachment": "Attachment",
+      "colFinalApproval": "Final Approval Date",
+      "viewAttachment": "View",
+      "attachmentYes": "Yes",
+      "noRows": "No leave types to show for this employee.",
+      "noRecords": "No leave records to show.",
+      "noEmployees": "No employees in the current company scope."
+    }
   },
   "attendance": {
     "title": "Attendance",
@@ -1703,16 +1732,16 @@
       "asAtDate": "As at",
       "apply": "Apply",
       "colAccrued": "Accrued",
-      "colCarriedForward": "Carried Forward",
+      "colCarriedForward": "Brought Forward",
       "colBalance": "Balance",
       "tip": {
-        "ytdEntitled": "Total leave granted so far this year, including any carried forward.",
+        "ytdEntitled": "Total leave granted so far this year, including any brought forward.",
         "accrued": "Leave you can take now, after pending requests are set aside.",
-        "carriedForward": "Unused leave carried into this year from last year.",
+        "carriedForward": "Unused leave brought forward into this year from last year.",
         "taken": "Leave you have already used.",
         "adjustment": "Manual or one-off changes to your balance, such as festive grants.",
         "overutilized": "How far your balance has gone below zero, if at all.",
-        "balance": "Your remaining balance: total entitlement, including any carried forward and adjustments, minus leave taken."
+        "balance": "Your remaining balance: total entitlement, including any brought forward and adjustments, minus leave taken."
       }
     },
     "typeLabel": "Type",
@@ -4136,7 +4165,7 @@
         "overutilized": "Overutilized",
         "ytdEntitled": "YTD Entitled",
         "pendingApproval": "Pending Approval",
-        "carryForwardExpiry": "Carry Forward Expiry Date",
+        "carryForwardExpiry": "Brought Forward Expiry Date",
         "forfeited": "Forfeited Balance",
         "groupOther": "Other",
         "transactionHistory": "Transaction History",
@@ -4242,9 +4271,9 @@
         "component": {
           "currentYearEntitlement": "This Year's Entitlement",
           "monthlyAccrued": "Accrued So Far This Year",
-          "carriedForward": "Carried Forward",
-          "carryForwardRemaining": "Carry-Forward Remaining",
-          "carryForwardExpiry": "Carry-Forward Expiry",
+          "carriedForward": "Brought Forward",
+          "carryForwardRemaining": "Brought-Forward Remaining",
+          "carryForwardExpiry": "Brought-Forward Expiry",
           "forfeited": "Forfeited",
           "totalAvailable": "Total Available"
         }
@@ -5620,10 +5649,10 @@
     "exportChart": "Export chart",
     "sickNotConfigured": "No sick-leave type is configured for this tenant.",
     "nationalityFootnote": "Nationality uses EPF citizenship as a proxy; it defaults to Citizen when unset.",
-    "carryForwardTitle": "Carry-forward & forfeiture",
-    "carryForwardDesc": "Annual-leave amounts carried into each leave year, their expiry date, and what was forfeited — at year/cycle open (exceeded the carry-forward limit) and at expiry (unused carry lapsed).",
+    "carryForwardTitle": "Brought-forward & forfeiture",
+    "carryForwardDesc": "Annual-leave amounts brought forward into each leave year, their expiry date, and what was forfeited — at year/cycle open (exceeded the carry-forward limit) and at expiry (unused brought-forward days lapsed).",
     "carryForwardYear": "Leave year",
-    "carryForwardCarried": "Carried forward",
+    "carryForwardCarried": "Brought forward",
     "carryForwardExpiryDate": "Expiry date",
     "carryForwardForfeitedOpen": "Forfeited at open",
     "carryForwardForfeitedExpiry": "Forfeited at expiry",
@@ -7256,8 +7285,8 @@
         "description": "Forfeits earned leave that has passed its expiry age."
       },
       "leave-expire-carry": {
-        "name": "Carried-forward leave expiry",
-        "description": "Forfeits carried-forward days whose expiry date has passed."
+        "name": "Brought-forward leave expiry",
+        "description": "Forfeits brought-forward days whose expiry date has passed."
       }
     }
   },

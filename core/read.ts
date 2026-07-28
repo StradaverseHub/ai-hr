@@ -694,6 +694,10 @@ const leaveRequestSelection = {
   // request is decided (pending rows). Kept in the SHARED projection so the flat + paginated reads agree.
   decidedByEmploymentId: leaveRequest.decidedByEmploymentId,
   decidedByName: sql<string | null>`(select p.full_name from employment de join person p on p.id = de.person_id where de.id = leave_request.decided_by_employment_id)`,
+  // Employee Leave Record (feedback 953be4b0): WHEN the request reached its final decision — the
+  // "Final Approval Date" column. Stamped alongside decided_by, so a row that has a decider has a date;
+  // NULL while pending. In the SHARED projection so the flat and paginated reads agree.
+  decidedAt: leaveRequest.decidedAt,
   stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
   // R23 (2F-3): the applicant's current balance for THIS leave type — the key context an approver
   // needs ("do they have the days?"). Ledger sum (accrual + − debit −).
@@ -802,6 +806,19 @@ export function listLeaveRequestsPage(
     businessUnitId?: string;
     departmentId?: string;
     locationId?: string;
+    // Filter on EVERY column (feedback 8ec63139): the org narrowings became multi-select, so each also
+    // accepts a list. The singular forms above are kept — they are a different question ("exactly this
+    // one") that the fence test and the flat callers still ask — and both are ANDed when both are given.
+    // `filterCompanyIds` carries the clumsy prefix because `companyIds` is already taken by the fence:
+    // conflating "what the switcher lets you see" with "what you asked to see" would be a security bug.
+    filterCompanyIds?: string[];
+    businessUnitIds?: string[];
+    departmentIds?: string[];
+    locationIds?: string[];
+    /** Employee column filter, and the (employment, type) narrowing the Employee Leave Record page reads. */
+    employmentIds?: string[];
+    /** Days column filter — validated against full_day|half_day_am|half_day_pm|hourly. */
+    durationTypes?: string[];
     leaveTypeIds?: string[]; // multi
     statuses?: string[]; // multi — validated against pending|approved|rejected|cancelled
     // Approval Information (feedback 0773bda9). `approvedBy` = the FINAL decider's employment id
@@ -835,6 +852,10 @@ export function listLeaveRequestsPage(
     const validStatuses = (p.statuses ?? []).filter((s) =>
       (leaveRequestStatusEnum.enumValues as readonly string[]).includes(s),
     ) as (typeof leaveRequestStatusEnum.enumValues)[number][];
+    // duration_type is a plain text column (ADR-0048), so the allow-list IS the validation.
+    const validDurations = (p.durationTypes ?? []).filter((d) =>
+      (['full_day', 'half_day_am', 'half_day_pm', 'hourly'] as readonly string[]).includes(d),
+    );
     // uuid-prefix reference search: strip a leading '#', match when it looks like a (partial) uuid.
     const refTerm = q?.replace(/^#/, '');
     const isRef = !!refTerm && /^[0-9a-f-]{6,}$/i.test(refTerm);
@@ -844,6 +865,14 @@ export function listLeaveRequestsPage(
       p.businessUnitId ? eq(department.businessUnitId, p.businessUnitId) : undefined,
       p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
       p.locationId ? eq(assignment.locationId, p.locationId) : undefined,
+      // Multi-select column filters (feedback 8ec63139) — OR within a field, AND across fields, the same
+      // shape leaveTypeIds/statuses already had.
+      p.filterCompanyIds?.length ? inArray(employment.companyId, p.filterCompanyIds) : undefined,
+      p.businessUnitIds?.length ? inArray(department.businessUnitId, p.businessUnitIds) : undefined,
+      p.departmentIds?.length ? inArray(assignment.departmentId, p.departmentIds) : undefined,
+      p.locationIds?.length ? inArray(assignment.locationId, p.locationIds) : undefined,
+      p.employmentIds?.length ? inArray(leaveRequest.employmentId, p.employmentIds) : undefined,
+      validDurations.length ? inArray(leaveRequest.durationType, validDurations) : undefined,
       p.leaveTypeIds && p.leaveTypeIds.length ? inArray(leaveRequest.leaveTypeId, p.leaveTypeIds) : undefined,
       validStatuses.length ? inArray(leaveRequest.status, validStatuses) : undefined,
       // Approval Information — "Approved by" is the stored final decider (exact match on a named person).
@@ -861,10 +890,12 @@ export function listLeaveRequestsPage(
       // Application-date range compares on created_at::date (calendar day, TZ-agnostic for the admin view).
       p.appliedFrom ? sql`${leaveRequest.createdAt}::date >= ${p.appliedFrom}` : undefined,
       p.appliedTo ? sql`${leaveRequest.createdAt}::date <= ${p.appliedTo}` : undefined,
+      // Employee Leave Record (feedback 953be4b0) asks to search by leave CODE alongside employee id/name,
+      // so the code joins the existing OR. Widening only — every term that matched before still matches.
       q
         ? isRef
-          ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'} or ${leaveRequest.id}::text ilike ${refTerm + '%'})`
-          : sql`(${person.fullName} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'})`
+          ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'} or ${leaveType.code} ilike ${'%' + q + '%'} or ${leaveRequest.id}::text ilike ${refTerm + '%'})`
+          : sql`(${person.fullName} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'} or ${leaveType.code} ilike ${'%' + q + '%'})`
         : undefined,
     );
     // Sort whitelist — NEVER interpolate user input into the ORDER BY.

@@ -1461,7 +1461,9 @@
         "hr_admin": "Quản trị HR"
       },
       "decidedByLine": "Quyết định bởi {name}",
-      "pendingWithLine": "Đang chờ {stage}"
+      "pendingWithLine": "Đang chờ {stage}",
+      "selectAll": "Chọn tất cả",
+      "deselectAll": "Bỏ chọn tất cả"
     },
     "editButton": "Chỉnh sửa",
     "editDialogTitle": "Chỉnh sửa đơn xin nghỉ",
@@ -1473,7 +1475,34 @@
     "selfCancelKeep": "Giữ lại",
     "selfCancelConfirm": "Hủy nghỉ phép",
     "selfCancelPillAffordanceLabel": "Hủy đơn nghỉ này",
-    "approvalPillAffordanceLabel": "Đi đến phê duyệt"
+    "approvalPillAffordanceLabel": "Đi đến phê duyệt",
+    "inquiry": {
+      "navLabel": "Tra cứu nghỉ phép",
+      "employeeDetails": "Thông tin nhân viên",
+      "employeeBalances": "Số dư phép của nhân viên",
+      "employeeLeaveRecord": "Hồ sơ nghỉ phép của nhân viên",
+      "balancesTitle": "Số dư phép của nhân viên",
+      "balancesDescription": "Tình trạng của một nhân viên với mọi loại phép, tính đến ngày bạn chọn.",
+      "recordsTitle": "Hồ sơ nghỉ phép của nhân viên",
+      "recordsDescription": "Mọi đơn xin nghỉ đứng sau số dư, đơn mới nhất trước.",
+      "employee": "Nhân viên",
+      "searchPlaceholder": "Tìm mã loại phép",
+      "recordsSearchPlaceholder": "Tìm mã nhân viên, tên hoặc mã loại phép",
+      "colLeaveCode": "Mã loại phép",
+      "colEntitlementYear": "Năm hưởng phép",
+      "colBroughtForward": "Chuyển sang",
+      "colPendingApproval": "Chờ duyệt",
+      "colForfeitedBf": "Số chuyển sang bị mất",
+      "colDate": "Ngày",
+      "colReason": "Lý do",
+      "colAttachment": "Tệp đính kèm",
+      "colFinalApproval": "Ngày duyệt cuối",
+      "viewAttachment": "Xem",
+      "attachmentYes": "Có",
+      "noRows": "Không có loại phép nào để hiển thị cho nhân viên này.",
+      "noRecords": "Không có hồ sơ nghỉ phép nào để hiển thị.",
+      "noEmployees": "Không có nhân viên nào trong phạm vi công ty hiện tại."
+    }
   },
   "attendance": {
     "title": "Chấm công",
