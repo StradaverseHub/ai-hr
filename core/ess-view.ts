@@ -13,20 +13,31 @@
 // components/leave-type-panel.tsx, and the ESS gating in app/me + components/leave/EntitlementBreakdown.
 
 /**
- * The 14 configurable component keys (union of 65dec703's 13 + 1fedb473's Transaction History + Entitlement
- * Calculation Breakdown, minus 11876072's removed Upcoming Approved Leave — the §5 Upcoming section was
- * dropped from the employee panel, so its toggle is gone too; a legacy stored `upcomingApprovedLeave` entry
- * is simply ignored on read by resolveEssView, exactly like any other unknown key). The admin checklist no
- * longer renders this list flat — it groups the keys by the employee panel's sections via
- * ESS_VIEW_CHECKLIST_GROUPS (components/leave/entitlement-panel-config.ts). i18n labels live under
- * `admin.leave.essView.<key>`.
+ * The configurable component keys. Every key here gates a row the employee panel can actually render, and
+ * every gated row has a key here — that two-way property is the whole point of the list and is pinned by
+ * test/leave-ess-view-config.test.ts.
+ *
+ * It has shrunk twice, both times because a row was removed from the panel and its switch was left behind:
+ * 11876072 dropped `upcomingApprovedLeave` with the §5 Upcoming section, and feedback 1f6fd6d8 dropped three
+ * more whose rows had already gone —
+ *   • `entitlementToDate` and `expiredBroughtForward`: columns removed from the balance table (776cd1b5),
+ *     and §2 Entitlement Breakdown, the panel's other home for them, removed by e503f284;
+ *   • `transactionHistory`: §6 Transaction History was removed UNIVERSALLY (1dd4d827), not per type, so the
+ *     toggle could not re-surface it however it was set.
+ * Each was a switch an HR admin could tick with no effect anywhere — the reporter's "obsolete fields".
+ *
+ * Removing a key is safe for stored data: resolveEssView ignores keys it does not know, so a tenant's other
+ * selections survive untouched, and the admin form builds its submission from THIS list so a dropped key
+ * simply stops being posted.
+ *
+ * The admin checklist does not render this list flat — it groups the keys by the employee panel's sections
+ * via ESS_VIEW_CHECKLIST_GROUPS (components/leave/entitlement-panel-config.ts), so the configuration reads in
+ * the panel's own display order. i18n labels live under `admin.leave.essView.<key>`.
  */
 export const ESS_VIEW_COMPONENT_KEYS = [
   'available',
   'taken',
-  'entitlementToDate',
   'broughtForward',
-  'expiredBroughtForward',
   'unplanned',
   'adjustment',
   'overutilized',
@@ -34,7 +45,6 @@ export const ESS_VIEW_COMPONENT_KEYS = [
   'pendingApproval',
   'carryForwardExpiry',
   'forfeited',
-  'transactionHistory',
   'entitlementCalcBreakdown',
 ] as const;
 

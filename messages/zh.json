@@ -4139,9 +4139,7 @@
         "help": "选择员工在“我的资料 → 休假”中可见的此休假类型的应享和余额数字，并在同一处为每项填写说明：勾选某项后，其说明和公式栏会显示在旁边——员工将鼠标悬停在该项的信息图标上即可看到这些文字。未勾选的项目仅在自助服务中隐藏；HR 始终可见全部。说明仅更改文字，不会改变任何休假数字。",
         "available": "可用",
         "taken": "已使用",
-        "entitlementToDate": "截至目前应享",
         "broughtForward": "结转",
-        "expiredBroughtForward": "已过期结转",
         "unplanned": "未计划",
         "adjustment": "调整",
         "overutilized": "超额使用",
@@ -4150,7 +4148,6 @@
         "carryForwardExpiry": "结转到期日",
         "forfeited": "已作废余额",
         "groupOther": "其他",
-        "transactionHistory": "交易历史",
         "entitlementCalcBreakdown": "应享额计算明细"
       },
       "dayTypeInclusion": {

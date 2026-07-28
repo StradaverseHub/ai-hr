@@ -981,16 +981,26 @@ async function pendingLeaveDays(
 }
 
 /**
- * Employee apply-popup entitlement summary (Pending / Taken / Balance) for ONE (employment, leave type) pair.
+ * Employee apply-popup entitlement summary (Pending / Taken / Balance / Available) for ONE
+ * (employment, leave type) pair.
  *
  * Deliberately NOT routed through core/read.ts leaveBalances: that function drops visible_to_employee=false
  * types and filters its no-activity tail through isLeaveEligible, while the apply dropdown renders the
  * unfiltered listLeaveTypes — so a selectable type could have no row at all there. Aggregating over one pair
  * means a type with no ledger and no pending rows returns 0 / 0 / 0 rather than nothing.
  *
- * `balance` is the RAW ledger balance — the SAME leaveBalance() call previewLeaveDeduction assigns to
- * balanceAvailable — so the summary's Balance and the preview line's "balance before", rendered 40px apart in
- * the same popup, are one number by construction (no third Balance formula, no asOf drift).
+ * `balance` is the RAW ledger balance, GROSS of pending — the same figure the balance table surfaces as
+ * Balance (6574c6b4) and the same leaveBalance() call previewLeaveDeduction assigns to balanceAvailable.
+ *
+ * `available` is that balance MINUS the pending reservation — feedback 082fa566's re-fix. r74 renamed the
+ * popup's third column from Balance to Available and left the value alone, so the popup read 13.5 where the
+ * leave type's own Leave Summary card read 8.5; the 5.0 difference was the employee's own submitted-but-
+ * undecided request, which the word "Available" promises has already been taken off. It is computed from the
+ * SAME `balance` and the SAME pendingLeaveDays() the guard uses, so it is availableLeaveBalance() by
+ * construction rather than by coincidence — the r72 (cdf9ca48) invariant that the popup and the submit-time
+ * guard cannot diverge now covers the figure the employee actually reads, not just the Pending line. Both are
+ * returned so the popup can show the subtraction (Balance − Pending Approval = Available) rather than a bare
+ * result the reporter had no way to check.
  *
  * ESS gating is NOT applied here: essViewConfig is returned raw and the caller decides (app/leave/actions.ts),
  * because the admin on-behalf path must never be gated. substrate: read-only, no event.
@@ -1002,6 +1012,7 @@ export async function leaveTypeApplySummary(
   pending: number;
   taken: number;
   balance: number;
+  available: number;
   essViewConfig: Record<string, boolean> | null;
 }> {
   return withTenant(ctx, async (tx) => {
@@ -1027,6 +1038,9 @@ export async function leaveTypeApplySummary(
       pending: round2(pending),
       taken: round2(Number(tk?.taken ?? 0)),
       balance: round2(balance),
+      // Not clamped at zero: an overdrawn type must read the same negative figure the guard measures, or the
+      // popup would understate how far the employee is already committed.
+      available: round2(balance - pending),
       essViewConfig: (lt?.essViewConfig ?? null) as Record<string, boolean> | null,
     };
   });

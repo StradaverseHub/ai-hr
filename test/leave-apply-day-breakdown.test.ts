@@ -304,7 +304,10 @@ describe('leaveTypeApplySummary: Pending / Taken / Balance', () => {
     expect(s.pending).toBe(2);
     expect(s.taken).toBe(0);
     expect(s.balance).toBe(10);
-    // The summary's Balance IS the preview line's "balance before" — one number by construction.
+    // 082fa566: Available is the balance NET of that 2-day reservation — the figure the leave type's own
+    // Leave Summary shows, and the one the submit-time guard measures against.
+    expect(s.available).toBe(8);
+    // Balance (gross) IS the preview line's "balance before" — one number by construction.
     const p = await rowsOf(adminCtx(b), e.employmentId, THU, FRI);
     expect(p.balanceAvailable).toBe(s.balance);
   });
@@ -333,7 +336,8 @@ describe('leaveApplySummaryAction: ESS gating vs the on-behalf escape hatch', ()
   it('a self-service employee gets their OWN figures, gated by ess_view_config', async () => {
     const e = await hire('Self');
     await grantLedger(e.employmentId, annualId, '10.00');
-    // HR hid "Pending approval" from the employee view; Balance has no essKey and is never gated.
+    // HR hid "Pending approval" from the employee view; Available and Taken stay visible, so Balance — which
+    // 082fa566 made the row Available is derived from — stays visible with them.
     await owner.db
       .update(schema.leaveType)
       .set({ essViewConfig: { pendingApproval: false } })
@@ -346,7 +350,27 @@ describe('leaveApplySummaryAction: ESS gating vs the on-behalf escape hatch', ()
     expect(s).not.toBeNull();
     expect(s!.pending).toBeNull(); // gated out ⇒ renders as a dash
     expect(s!.taken).toBe(0);
-    expect(s!.balance).toBe(10); // never gated, and equal to the preview line below it
+    expect(s!.balance).toBe(10);
+    expect(s!.available).toBe(10);
+  });
+
+  it('hiding Available hides the gross Balance with it (082fa566: no leak through the derivation)', async () => {
+    const e = await hire('GatedAvail');
+    await grantLedger(e.employmentId, annualId, '10.00');
+    // Balance carries no ess-view key of its own, but it is now the figure Available is visibly derived FROM.
+    // Handing it back while Available is hidden would show HR's hidden number in the next column along — the
+    // same leak deriveBalanceRow closes on the balance table with the same two-key test.
+    await owner.db
+      .update(schema.leaveType)
+      .set({ essViewConfig: { available: false } })
+      .where(eq(schema.leaveType.id, annualId));
+    const uid = await createAppUser(b.tenantId, e.personId, 'employee');
+    actionCtx = { tenantId: b.tenantId, userId: uid, personId: e.personId, roles: ['employee'] };
+
+    const s = await leaveApplySummaryAction({ employmentId: '', leaveTypeId: annualId });
+    expect(s!.available).toBeNull();
+    expect(s!.balance).toBeNull();
+    expect(s!.taken).toBe(0); // its own key is untouched
   });
 
   it('an admin applying ON BEHALF gets that employee\'s figures UNGATED', async () => {
@@ -359,7 +383,8 @@ describe('leaveApplySummaryAction: ESS gating vs the on-behalf escape hatch', ()
     actionCtx = adminCtx(b); // hr_admin, personId absent ⇒ not the caller's own employment
 
     const s = await leaveApplySummaryAction({ employmentId: e.employmentId, leaveTypeId: annualId });
-    expect(s).toEqual({ pending: 0, taken: 0, balance: 10 });
+    // 082fa566: Available rides along with the other three, and on the on-behalf path none of them is gated.
+    expect(s).toEqual({ pending: 0, taken: 0, balance: 10, available: 10 });
   });
 
   it('returns null (never throws) with no leave type', async () => {

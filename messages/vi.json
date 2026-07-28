@@ -4139,9 +4139,7 @@
         "help": "Chọn các số liệu quyền lợi và số dư mà nhân viên thấy cho loại nghỉ phép này trong Hồ sơ của tôi → Nghỉ phép, và giải thích từng mục ngay tại đây: đánh dấu một mục thì các ô Mô tả và Công thức sẽ hiện bên cạnh — nhân viên thấy nội dung đó khi di chuột vào biểu tượng thông tin của mục. Các mục không chọn chỉ bị ẩn trong tự phục vụ; HR luôn thấy tất cả. Phần giải thích chỉ thay đổi câu chữ, không thay đổi bất kỳ số liệu nghỉ phép nào.",
         "available": "Khả dụng",
         "taken": "Đã nghỉ",
-        "entitlementToDate": "Quyền lợi đến nay",
         "broughtForward": "Chuyển sang",
-        "expiredBroughtForward": "Chuyển sang đã hết hạn",
         "unplanned": "Không kế hoạch",
         "adjustment": "Điều chỉnh",
         "overutilized": "Sử dụng vượt mức",
@@ -4150,7 +4148,6 @@
         "carryForwardExpiry": "Ngày hết hạn chuyển sang",
         "forfeited": "Số dư bị mất",
         "groupOther": "Khác",
-        "transactionHistory": "Lịch sử giao dịch",
         "entitlementCalcBreakdown": "Chi tiết tính toán quyền lợi"
       },
       "dayTypeInclusion": {

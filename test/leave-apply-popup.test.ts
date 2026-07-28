@@ -157,14 +157,28 @@ describe('LeaveDurationFields: summary + day-by-day disclosure', () => {
     expect(fields.includes('summaryAction?:')).toBe(false);
   });
 
-  it('renders the three summary figures from the reused breakdown keys', () => {
-    // `available`, not `balance`, since feedback 082fa566: the third figure is the same number the leave
-    // type's own summary calls Available, and showing it under two different words reads as two different
-    // numbers. Pinned here so a revert to `balance` re-opens exactly the inconsistency that was reported.
-    for (const k of ['breakdown.field.pendingApproval', 'breakdown.field.taken', 'breakdown.field.available']) {
+  it('renders the four summary figures from the reused breakdown keys', () => {
+    // Feedback 082fa566's re-fix: Balance is BACK — not as a rename of Available, but beside it. r74 put the
+    // word Available over the gross ledger figure and the reporter read 13.5 where their Leave Summary said
+    // 8.5. Available now carries the net figure and Balance the gross one it is derived from, so the popup
+    // shows the subtraction (Balance − Pending approval = Available) instead of a result to be taken on
+    // trust. All four labels are pinned: dropping Balance again would hide the derivation, and pointing
+    // Available back at the gross figure would re-open the reported inconsistency.
+    for (const k of [
+      'breakdown.field.taken',
+      'breakdown.field.pendingApproval',
+      'breakdown.field.balance',
+      'breakdown.field.available',
+    ]) {
       expect(fields.includes(`t('${k}')`), k).toBe(true);
     }
-    expect(fields.includes("t('breakdown.field.balance')"), 'the old Balance label must be gone').toBe(false);
+    // Reading order IS the arithmetic — the header cells must appear in that order.
+    const order = ['taken', 'pendingApproval', 'balance', 'available'].map((k) =>
+      fields.indexOf(`t('breakdown.field.${k}')`),
+    );
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    // Available is the LAST cell in the body row, and it reads summary.available (not summary.balance).
+    expect(fields.includes('{daysValue(summary.available)}')).toBe(true);
     // The "{value} Days" format the mock-up asks for — reused, not re-invented.
     expect(fields.includes("tMe('leaveBalanceTable.daysValue'")).toBe(true);
     expect(fields.includes('tabular-nums')).toBe(true);

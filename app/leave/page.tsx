@@ -39,7 +39,6 @@ import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-di
 import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
 import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
-import { LeaveSubmitToast } from '@/components/leave/submit-toast';
 import { LeaveBalanceTable } from '@/components/leave/leave-balance-table';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 // My Absence merge (a7cbd895): the /me Leave tab's primary summary cards + per-request extras now live here.
@@ -892,9 +891,10 @@ export default async function LeavePage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      {/* Raises the success toast for feedback 45c781e2 when requestLeaveAction redirects with its
-          confirmed-success marker, then strips the param so a refresh cannot re-fire it. Renders nothing. */}
-      <LeaveSubmitToast />
+      {/* The submission success toast (45c781e2) is NOT raised here any more — feedback 29710798. This page
+          mounted its own listener for `?toast=leaveSubmitted` while the globally-mounted ToastFromQuery
+          (app/layout.tsx) answered the same param, so one submission produced two pop-ups. requestLeaveAction
+          now redirects with the already-localised sentence, which the global listener alone renders. */}
       <div data-tour="leave-intro">
         <PageHeader
           // a7cbd895: the page is the "My Absence" first-level destination now — title follows the nav rename.
