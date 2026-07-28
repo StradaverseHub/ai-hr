@@ -7,6 +7,66 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## r74 — 2026-07-29 — 10 approved items (payroll nav, attendance rules, leave inquiry, entitlements)
+
+**Shipped:** `main@0230bbf` (branch `build/r74`). Migration `0319`.
+**Gate:** `tsc` clean · **459 files / 5115 tests** · `next build` clean · **upgrade rehearsal PASS**.
+Verified live: `GET /` 401, all 9 attendance rules converted tenant-wide on production.
+
+**Shipped:** 1459e116 (Payroll tabs → sidebar fly-out) · 6da67ab7 (attendance rules tenant-wide) ·
+8ec63139 · 20c699f8 · 953be4b0 · 650b6eb8 (the four-part HR-admin leave inquiry surface) · 37a1141e
+(Carried Forward → Brought Forward) · 23ad620e (multiple emergency contacts) · 9cbf5e0d (employee
+status follows the derived default) · a03eff24 (entitlement setup as a grade-group matrix). Plus
+0bb0e303 and the 895c80f9 nav contract, built ahead of the round.
+
+### Decisions
+
+**1. A third nav node exists to stop a silent access regression.** 0bb0e303 splits Attendance by
+audience. The obvious two-way split — staff rows and admin rows — puts Roster and Import under Admin,
+but both are `managerUp` and the Administration sidebar group is gated `adminOnly` AS A WHOLE, so every
+manager who reaches them today would have lost them with no error and no ticket. They get a third node
+in the per-row-gated Manage group. Pinned as its own named test, because it is the one way that change
+could quietly take access away.
+
+**2. `0319` drops the company axis, and that — not a new shift link — is what the item actually needed.**
+The reporter asked to "bind attendance policy directly to shift setting". A shift ALREADY picks its rule
+via `shift.rule_id`; the blocker was that a shift is tenant-wide while the rule library was per-company,
+so one shared shift could only ever point at one company's rules while employees of every other company
+were rostered onto it. Conversion is non-destructive: the Standard of the company with the most
+employments wins tenant-wide, every other company's Standard survives renamed `Standard — <Company>`,
+and name collisions are suffixed rather than merged. `attendance_policy` was deliberately NOT touched —
+it is the fallback for days with no assigned shift, the branch b7b886e2 left on legacy duration math.
+
+**3. Three defects reached integration that no agent's own tests could have caught.** Each is an argument
+for the full-suite gate over per-agent targeted runs:
+- Two `scopedAdmin` screens shipped with **no permission-matrix column**, so Security & Permissions could
+  neither grant nor revoke them. Caught by the reverse-completeness guard in `function-access.test.ts`.
+- `FilterPanel` was mounted INSIDE another `<form>` on both new inquiry pages. Nested forms are invalid
+  HTML that browsers do not report — the parser discards the inner tags, the panel's fields are absorbed
+  into the outer form, and its Apply button submits that one. It worked only because both targeted the
+  same action, and wave 2 then added a `hidden` prop for the two-listing page, which is exactly the case
+  where merged forms submit the wrong field set. Guarded by `filter-panel-not-nested.test.ts`.
+- Two defects in my own 0bb0e303 work, both from verifying with a hand-picked file list: a tsc error from
+  an edit I re-ran vitest but not tsc after, and a source-static guard that could not even COLLECT because
+  it read a const the split renamed — a file I never ran.
+
+**4. An item was held back for being part of a set, and the refusal was right.** 650b6eb8's plan says it
+is part 2 of 4 and must ship with its three siblings; the grouping split them across two agents. Building
+the shell alone meant a three-tab navigation with two tabs 404ing, or that agent silently building its
+siblings and colliding with the other. It wrote nothing and said why. Its siblings shipped in wave 1, so
+it built cleanly in wave 2 — the sequencing, not the item, was the problem.
+
+**5. OPEN, for the reporter not us:** `/leave` now opens on Employee Details but KEEPS the org-wide
+leave-request table below it. The item reads as though the landing page becomes the inquiry surface, but
+removing that table would undo 8ec63139 from this same round — same reporter, who asked for multi-select
+filters on every one of its columns — and orphan `/leave/export`. Reversible if they disagree.
+
+**Carried, still not done:** r71–r74 UI changes have never been browser-verified. This round moved
+Payroll's entire navigation to a fly-out, split the Attendance menu three ways, renamed leave labels
+across screens and added four inquiry surfaces. Tests and `next build` prove wiring, not layout.
+
+---
+
 ## Plan history — 2026-07-28 — the request→plan→push-back→re-plan trail is kept (0318)
 
 **Shipped:** `main@e3ef2bf`. Migration `0318`, new table `feedback_plan_revision`, backfill wired into
