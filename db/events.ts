@@ -24,6 +24,12 @@ export type MovementTag = {
   remarks?: string | null;
   endDate?: string | null;
   secondary?: boolean;
+  /** 08913328 — correlates every leg of ONE movement submitted from the comparison form (assignment,
+   *  grade, flat org columns, reporting line, pay). The history detail needs it because the flat
+   *  `employment` columns are not effective-dated and therefore cannot be reconstructed as-of: their
+   *  before/after has to come from the sibling `employment.info.updated` event of the SAME movement.
+   *  Absent on legacy events and on single-leg writes made outside the Movement module. */
+  groupId?: string;
 };
 
 export type AppendEventArgs = {

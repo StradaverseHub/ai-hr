@@ -135,7 +135,8 @@ export async function setCompensation(
     /** Per-day / per-hour rate (RM). Pass null to clear it (only valid for monthly/custom_period). */
     rateAmount?: number | null;
     effectiveFrom: string;
-    /** 78853b97 — optional movement classification tag. Only `type` is merged into the event payload:
+    /** 78853b97 — optional movement classification tag. Only the structural keys are merged into the
+     *  event payload (`type`, `secondary`, `groupId`):
      *  the tag NEVER carries pay or remark text for comp events (ADR-0030 redact-to-reference — remarks
      *  live on the compensation row and are reconstructed at read time). */
     movement?: MovementTag;
@@ -226,12 +227,23 @@ export async function setCompensation(
       subjectEmploymentId: p.employmentId,
       // PDPA redact-to-reference (ADR-0030 Layer 0): the salary AND the remarks text live on
       // compensation[aggregateId]; the event keeps who/what/when + a reference, never cleartext pay or
-      // remark text in the append-only log. The 78853b97 movement tag is stripped to its `type` alone.
+      // remark text in the append-only log. The 78853b97 movement tag is stripped to its STRUCTURAL keys:
+      // `type` plus (08913328) `secondary` and `groupId`, which carry no free text — a boolean and a
+      // random correlation id. Dropping those two made a pay leg submitted as part of a Promotion render
+      // as a SECOND, contradictory history row; `remarks` and `endDate` stay stripped.
       payload: {
         employmentId: p.employmentId,
         effectiveFrom: p.effectiveFrom,
         fieldsChanged,
-        ...(p.movement ? { movement: { type: p.movement.type } } : {}),
+        ...(p.movement
+          ? {
+              movement: {
+                type: p.movement.type,
+                ...(p.movement.secondary ? { secondary: true } : {}),
+                ...(p.movement.groupId ? { groupId: p.movement.groupId } : {}),
+              },
+            }
+          : {}),
       },
     });
     return { compensationId: row.id };

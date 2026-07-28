@@ -1066,7 +1066,20 @@
           "grade": "Job Grade",
           "employmentType": "Employment Type",
           "manager": "Reporting Manager",
-          "salary": "Salary"
+          "salary": "Salary",
+          "orgDivision": "Division",
+          "employmentCategory": "Category",
+          "orgRegion": "Region",
+          "orgBranch": "Branch",
+          "orgTeam": "Team",
+          "orgSection": "Section",
+          "orgLine": "Line",
+          "orgBase": "Base",
+          "directSuperior": "Direct Superior",
+          "basicSalary": "Basic Salary",
+          "currency": "Currency",
+          "payMode": "Pay Mode",
+          "paymentTerm": "Payment Term"
         },
         "eventType": {
           "hired": "Hired",
@@ -1105,12 +1118,15 @@
           "blacklistStatus": "Blacklist Status",
           "blacklistSet": "Blacklist this employee",
           "blacklistClear": "Clear the blacklist",
-          "keepCurrent": "Keep current",
           "none": "None",
           "save": "Save Event",
           "cancel": "Cancel",
           "terminateConfirmTitle": "Terminate employment?",
-          "terminateConfirmDescription": "This ends the employment on the effective date and closes the current assignment. The action is recorded in the audit trail."
+          "terminateConfirmDescription": "This ends the employment on the effective date and closes the current assignment. The action is recorded in the audit trail.",
+          "currentInformation": "Current Information",
+          "afterInformation": "After (New Information)",
+          "comparisonHint": "Only the fields you change are recorded. A value left as it is stays untouched and creates no history entry.",
+          "companyReadOnly": "Changed on the Employment tab"
         }
       },
       "salaryCurrency": "Currency"

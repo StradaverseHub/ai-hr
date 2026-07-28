@@ -1,17 +1,51 @@
 'use client';
 
-// Movement tab redesign (78853b97) — client half of "New Event": the event-type select drives
-// progressive disclosure of the type-specific fields (precedent: documents-manager.tsx). Every option
-// list is pre-loaded and pre-translated by the server page; this island owns only the disclosure state.
-// The submit posts to createMovementEventAction (admin-gated + audited in core/movement.ts, which
-// delegates to the existing writers). The tab shell injects the hidden `tab` field on submit, so the
-// save lands back on the Movement tab.
+// Movement tab redesign (78853b97), comparison redesign (08913328) — client half of "New Event".
+//
+// The event-type select still drives the form, but for the CHANGE kinds (Transfer, Promotion, Demotion,
+// Increment, Salary Adjustment, Organisation Assignment Change, Employment Type Change, Reporting Line
+// Change) it now renders a Current / After (New) comparison instead of a short list of type-specific
+// pickers. The left column is the employee's current record, read-only; the right column is pre-filled
+// with the same values, and HR edits only what moves. The dispatcher (core/movement.ts) diffs the two, so
+// an untouched field writes nothing — no phantom assignment version, no history row that says nothing.
+//
+// The LIFECYCLE kinds (Confirmation, Probation Extension, Resignation, Termination, Blacklist, Secondment,
+// Acting Position) keep their dedicated inputs: a before/after grid would be meaningless for them.
+//
+// Every option list is pre-loaded and pre-translated by the server page; this island owns only the form
+// state. The tab shell injects the hidden `tab` field on submit, so the save lands back on the Movement tab.
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { CurrencySelect } from '@/components/currency-select';
+import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structure-fields';
 import { createMovementEventAction } from './actions';
 
 export type MovementOption = { id: string; name: string };
+
+/** The employee's current record, as the server read it — ids for pickers, text for the flat columns. */
+export type MovementCurrentValues = {
+  companyName: string | null;
+  departmentId: string | null;
+  positionId: string | null;
+  businessUnitId: string | null;
+  locationId: string | null;
+  employmentType: string | null;
+  gradeId: string | null;
+  managerEmploymentId: string | null;
+  basicSalary: string | null;
+  currency: string | null;
+  payMode: string | null;
+  paymentTerm: string | null;
+  orgDivision: string | null;
+  employmentCategory: string | null;
+  orgRegion: string | null;
+  orgBranch: string | null;
+  orgTeam: string | null;
+  orgSection: string | null;
+  orgLine: string | null;
+  orgBase: string | null;
+};
 
 // Literal styling tokens (documents-manager precedent — never import a server module into this bundle).
 const inputCls =
@@ -21,7 +55,7 @@ const btnPrimary =
 const btnGhost =
   'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-transparent px-4 py-2 text-sm font-medium transition hover:bg-accent';
 
-// This round's creatable event set (mirrors core/movement.ts MOVEMENT_KINDS; Rehire/Custom deferred).
+// Mirrors core/movement.ts MOVEMENT_KINDS (Rehire/Custom deferred).
 const KINDS = [
   'transfer',
   'promotion',
@@ -40,11 +74,23 @@ const KINDS = [
   'employmentTypeChange',
 ] as const;
 
+// Mirrors core/movement.ts COMPARISON_KINDS — the kinds that render the Current / After grid.
+const COMPARISON_KINDS: readonly string[] = [
+  'transfer',
+  'promotion',
+  'demotion',
+  'increment',
+  'salaryAdjustment',
+  'orgAssignmentChange',
+  'employmentTypeChange',
+  'reportingLineChange',
+];
+
 export function MovementNewEvent({
   employmentId,
   today,
   isBlacklisted,
-  defaultGradeId,
+  current,
   departments,
   positions,
   businessUnits,
@@ -58,7 +104,7 @@ export function MovementNewEvent({
   employmentId: string;
   today: string;
   isBlacklisted: boolean;
-  defaultGradeId: string;
+  current: MovementCurrentValues;
   departments: MovementOption[];
   positions: MovementOption[];
   businessUnits: MovementOption[];
@@ -71,6 +117,7 @@ export function MovementNewEvent({
   cancelHref: string;
 }) {
   const t = useTranslations('people.detail.movement');
+  const tPay = useTranslations('people.detail');
   const [kind, setKind] = useState<string>('transfer');
 
   // Static-key label map with a humanized fallback for future kinds — no dynamic t() keys, so a raw
@@ -96,143 +143,197 @@ export function MovementNewEvent({
     }
   };
 
-  const showOrgPickers = ['transfer', 'promotion', 'demotion', 'orgAssignmentChange'].includes(kind);
-  const showBusinessUnit = ['promotion', 'demotion', 'orgAssignmentChange'].includes(kind);
-  const showLocation = kind === 'transfer';
-  const showGrade = ['promotion', 'demotion'].includes(kind);
-  const showEmploymentType = kind === 'employmentTypeChange';
-  const showSalary = ['increment', 'salaryAdjustment'].includes(kind);
-  const showManager = kind === 'reportingLineChange';
+  const isComparison = COMPARISON_KINDS.includes(kind);
   const showTerminationType = kind === 'termination';
   const showBlacklist = kind === 'blacklist';
   const showEndDate = ['probationExtension', 'secondment', 'actingPosition', 'resignation'].includes(kind);
   const showEffectiveDate = kind !== 'blacklist';
 
-  const optionSelect = (name: string, label: string, options: MovementOption[], emptyLabel: string, defaultValue = '') => (
-    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-      {label}
-      <select name={name} defaultValue={defaultValue} className={inputCls}>
-        <option value="">{emptyLabel}</option>
-        {options.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.name}
-          </option>
-        ))}
-      </select>
-    </label>
+  const payModeLabel = (v: string | null): string | null =>
+    v == null ? null : PAY_MODE_OPTIONS.includes(v as 'monthly') ? tPay(`payMode_${v}` as 'payMode_monthly') : v;
+  const paymentTermLabel = (v: string | null): string | null =>
+    v == null ? null : PAYMENT_TERM_OPTIONS.includes(v as 'monthly') ? tPay(`paymentTerm_${v}` as 'paymentTerm_monthly') : v;
+
+  const nameOf = (options: MovementOption[], id: string | null): string | null =>
+    id ? (options.find((o) => o.id === id)?.name ?? null) : null;
+  const dash = (v: string | null | undefined) => (v == null || v === '' ? '—' : v);
+
+  /** One comparison row: the field label, the read-only current value, and the editable new value. */
+  const row = (key: string, label: string, currentDisplay: string | null, control: React.ReactNode) => (
+    <div
+      key={key}
+      className="grid grid-cols-1 gap-1 border-b border-border px-4 py-2.5 last:border-b-0 sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-4"
+    >
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="text-sm text-foreground">{dash(currentDisplay)}</div>
+      <div>{control}</div>
+    </div>
   );
 
+  const select = (
+    name: string,
+    value: string | null,
+    options: MovementOption[],
+    emptyLabel: string | null,
+  ) => (
+    <select name={name} defaultValue={value ?? ''} className={inputCls}>
+      {emptyLabel != null && <option value="">{emptyLabel}</option>}
+      {options.map((o) => (
+        <option key={o.id} value={o.id}>
+          {o.name}
+        </option>
+      ))}
+    </select>
+  );
+
+  const text = (name: string, value: string | null) => (
+    <input name={name} defaultValue={value ?? ''} maxLength={120} className={inputCls} />
+  );
+
+  // The requested field order, top to bottom (feedback 08913328).
+  const comparisonRows: React.ReactNode[] = [
+    // Company is read-only here on purpose: moving an employee between legal entities is its own audited
+    // flow on the Employment tab, with its own pre-transaction gate.
+    row(
+      'company',
+      t('field.company'),
+      current.companyName,
+      <span className="text-sm text-muted-foreground">{t('form.companyReadOnly')}</span>,
+    ),
+    row('businessUnit', t('field.businessUnit'), nameOf(businessUnits, current.businessUnitId),
+      select('businessUnitId', current.businessUnitId, businessUnits, t('form.none'))),
+    row('orgDivision', t('field.orgDivision'), current.orgDivision, text('orgDivision', current.orgDivision)),
+    row('department', t('field.department'), nameOf(departments, current.departmentId),
+      select('departmentId', current.departmentId, departments, null)),
+    row('position', t('field.position'), nameOf(positions, current.positionId),
+      select('positionId', current.positionId, positions, t('form.none'))),
+    row('grade', t('field.grade'), nameOf(grades, current.gradeId),
+      select('gradeId', current.gradeId, grades, t('form.none'))),
+    row('category', t('field.employmentCategory'), current.employmentCategory,
+      text('employmentCategory', current.employmentCategory)),
+    row('orgRegion', t('field.orgRegion'), current.orgRegion, text('orgRegion', current.orgRegion)),
+    row('orgBranch', t('field.orgBranch'), current.orgBranch, text('orgBranch', current.orgBranch)),
+    row('orgTeam', t('field.orgTeam'), current.orgTeam, text('orgTeam', current.orgTeam)),
+    row('orgSection', t('field.orgSection'), current.orgSection, text('orgSection', current.orgSection)),
+    row('orgLine', t('field.orgLine'), current.orgLine, text('orgLine', current.orgLine)),
+    row('orgBase', t('field.orgBase'), current.orgBase, text('orgBase', current.orgBase)),
+    row('location', t('form.location'), nameOf(locations, current.locationId),
+      select('locationId', current.locationId, locations, t('form.none'))),
+    row('employmentType', t('field.employmentType'),
+      employmentTypes.find((o) => o.value === current.employmentType)?.label ?? null,
+      <select name="employmentType" defaultValue={current.employmentType ?? ''} className={inputCls}>
+        {employmentTypes.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>),
+    row('manager', t('field.directSuperior'), nameOf(managers, current.managerEmploymentId),
+      select('managerEmploymentId', current.managerEmploymentId, managers, t('form.none'))),
+    row('basicSalary', t('field.basicSalary'), current.basicSalary,
+      <input
+        name="basicSalary"
+        type="number"
+        min={0}
+        step="0.01"
+        defaultValue={current.basicSalary ?? ''}
+        className={inputCls}
+      />),
+    row('currency', t('field.currency'), current.currency,
+      <CurrencySelect name="currency" value={current.currency} />),
+    // Labels via the KNOWN option lists only — a stored value outside them falls back to itself rather
+    // than rendering a raw i18n key (same rule as the event-type label map above).
+    row('payMode', t('field.payMode'), payModeLabel(current.payMode),
+      <select name="payMode" defaultValue={current.payMode ?? 'monthly'} className={inputCls}>
+        {PAY_MODE_OPTIONS.map((m) => (
+          <option key={m} value={m}>
+            {tPay(`payMode_${m}` as 'payMode_monthly')}
+          </option>
+        ))}
+      </select>),
+    row('paymentTerm', t('field.paymentTerm'), paymentTermLabel(current.paymentTerm),
+      <select name="paymentTerm" defaultValue={current.paymentTerm ?? 'monthly'} className={inputCls}>
+        {PAYMENT_TERM_OPTIONS.map((f) => (
+          <option key={f} value={f}>
+            {tPay(`paymentTerm_${f}` as 'paymentTerm_monthly')}
+          </option>
+        ))}
+      </select>),
+  ];
+
   return (
-    <form action={createMovementEventAction} className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
+    <form action={createMovementEventAction}>
       <input type="hidden" name="employmentId" value={employmentId} />
 
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {t('form.eventType')}
-        <select name="kind" value={kind} onChange={(e) => setKind(e.target.value)} className={inputCls}>
-          {KINDS.map((k) => (
-            <option key={k} value={k}>
-              {kindLabel(k)}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {showEffectiveDate && (
+      <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t('form.effectiveDate')}
-          <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
-        </label>
-      )}
-
-      {showEndDate && (
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t('form.endDate')}
-          <input name="endDate" type="date" required={kind === 'probationExtension'} className={inputCls} />
-        </label>
-      )}
-
-      {showOrgPickers && optionSelect('departmentId', t('form.department'), departments, t('form.keepCurrent'))}
-      {showOrgPickers && optionSelect('positionId', t('form.position'), positions, t('form.keepCurrent'))}
-      {showBusinessUnit && optionSelect('businessUnitId', t('form.businessUnit'), businessUnits, t('form.keepCurrent'))}
-      {showLocation && optionSelect('locationId', t('form.location'), locations, t('form.keepCurrent'))}
-
-      {showGrade && (
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t('form.grade')}
-          <select name="gradeId" defaultValue={defaultGradeId} className={inputCls}>
-            <option value="">{t('form.none')}</option>
-            {grades.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
+          {t('form.eventType')}
+          <select name="kind" value={kind} onChange={(e) => setKind(e.target.value)} className={inputCls}>
+            {KINDS.map((k) => (
+              <option key={k} value={k}>
+                {kindLabel(k)}
               </option>
             ))}
           </select>
         </label>
-      )}
 
-      {showEmploymentType && (
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t('form.employmentType')}
-          <select name="employmentType" required className={inputCls}>
-            {employmentTypes.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+        {showEffectiveDate && (
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {t('form.effectiveDate')}
+            <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
+          </label>
+        )}
+
+        {showEndDate && (
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {t('form.endDate')}
+            <input name="endDate" type="date" required={kind === 'probationExtension'} className={inputCls} />
+          </label>
+        )}
+
+        {showTerminationType && (
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {t('form.terminationType')}
+            <select name="terminationType" defaultValue="" className={inputCls}>
+              {terminationTypes.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {showBlacklist && (
+          // The folded-in Blacklist box: Set / Clear map to the same audited service the old card used.
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {t('form.blacklistStatus')}
+            <select name="blacklisted" defaultValue={isBlacklisted ? 'false' : 'true'} className={inputCls}>
+              <option value="true">{t('form.blacklistSet')}</option>
+              <option value="false">{t('form.blacklistClear')}</option>
+            </select>
+          </label>
+        )}
+
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
+          {t('form.remarks')}
+          <input name="remarks" maxLength={200} className={inputCls} />
         </label>
+      </div>
+
+      {isComparison && (
+        <div className="border-t border-border">
+          <div className="hidden bg-muted/50 px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
+            <div className="font-medium">{t('detail.field')}</div>
+            <div className="font-medium">{t('form.currentInformation')}</div>
+            <div className="font-medium">{t('form.afterInformation')}</div>
+          </div>
+          {comparisonRows}
+          <p className="px-4 py-3 text-xs text-muted-foreground">{t('form.comparisonHint')}</p>
+        </div>
       )}
 
-      {showSalary && (
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t('form.basicSalary')}
-          <input name="basicSalary" type="number" min={0} step="0.01" required className={inputCls} />
-        </label>
-      )}
-
-      {showManager && (
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t('form.manager')}
-          <select name="managerEmploymentId" required className={inputCls}>
-            {managers.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      {showTerminationType && (
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t('form.terminationType')}
-          <select name="terminationType" defaultValue="" className={inputCls}>
-            {terminationTypes.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      {showBlacklist && (
-        // The folded-in Blacklist box: Set / Clear map to the same audited service the old card used.
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {t('form.blacklistStatus')}
-          <select name="blacklisted" defaultValue={isBlacklisted ? 'false' : 'true'} className={inputCls}>
-            <option value="true">{t('form.blacklistSet')}</option>
-            <option value="false">{t('form.blacklistClear')}</option>
-          </select>
-        </label>
-      )}
-
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
-        {t('form.remarks')}
-        <input name="remarks" maxLength={200} className={inputCls} />
-      </label>
-
-      <div className="flex items-center justify-end gap-2 sm:col-span-2">
+      <div className="flex items-center justify-end gap-2 border-t border-border p-4">
         <a href={cancelHref} className={btnGhost}>
           {t('form.cancel')}
         </a>
