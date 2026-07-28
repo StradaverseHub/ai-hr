@@ -123,6 +123,21 @@ const PAYROLL_NODE: CollapsibleGroupItem = {
   ...modulePackById('payroll')!.navNodes!.find((n) => n.group === 'admin')!,
 };
 
+/**
+ * Which module owns each nav row (ADR-0077 slice 4), built from the pack descriptors already resolved
+ * above rather than a hand-written list — a second list would drift the first time a pack adds a row.
+ *
+ * Only SELLABLE modules appear. leave, employees, org, ess, approvals and knowledge_base are core:
+ * a tenant cannot not-have them, so their rows are never candidates for hiding and are absent here.
+ */
+const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
+  ...ATTENDANCE_NODES.flatMap((n) => n.children.map((c) => [c.href, 'attendance'] as const)),
+  ...CLAIMS_LINKS.map((l) => [l.href, 'claims'] as const),
+  ...(modulePackById('payroll')!.navNodes ?? []).flatMap((n) => n.children.map((c) => [c.href, 'payroll'] as const)),
+  ...(modulePackById('payroll')!.navLinks ?? []).map((l) => [l.href, 'payroll'] as const),
+  ...(modulePackById('performance')!.navLinks ?? []).map((l) => [l.href, 'performance'] as const),
+]);
+
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
 // map to the reporter's categories; each opens the Reports hub filtered to that category, where the
 // predefined reports AND the custom report builder live. Admin-only (every report surface is admin-gated).
@@ -242,11 +257,20 @@ export function Sidebar({
   isAdmin,
   canApprove = false,
   approvalCount = 0,
+  enabledModules = null,
   defaultCollapsed,
 }: {
   isAdmin: boolean;
   /** Manager-and-up: shows the Approvals inbox. */
   canApprove?: boolean;
+  /**
+   * ADR-0077 slice 4 — module codes whose rows may be shown. `null` means "no opinion, show
+   * everything", which is NOT the same as `[]` ("show nothing"): a session whose entitlement snapshot
+   * failed to resolve passes null on purpose, so an infrastructure blip degrades to the pre-slice-4
+   * rail rather than emptying the menu of a paying customer. Hiding is cosmetic either way — every
+   * page these rows point at refuses on its own (D3).
+   */
+  enabledModules?: string[] | null;
   /** Pending items awaiting THIS viewer's decision (feedback 836118c4) — badge on the
    *  "Approval Items" row. Computed once in app/layout.tsx as listPendingTasks(...).length; the rail
    *  never queries. 0 (or a viewer without the row) renders no badge. */
@@ -273,9 +297,22 @@ export function Sidebar({
   useEffect(() => {
     setOpenKey(null);
   }, [pathname]);
-  // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating).
+  /**
+   * Is this row's owning module on the tenant's plan? (ADR-0077 slice 4.)
+   *
+   * `enabledModules === null` means the session could not resolve a snapshot, so the rail expresses no
+   * opinion and shows everything — see lib/nav-entitlements.ts for why nav fails open where services
+   * fail closed. A row belonging to no sellable module (core rows, hardcoded rows) is always shown.
+   */
+  const moduleAllows = (href: string) => {
+    if (enabledModules === null) return true;
+    const owner = MODULE_OF_HREF.get(href);
+    return owner == null || enabledModules.includes(owner);
+  };
+  // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
+  // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true;
+    moduleAllows(c.href) && (c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
   const groups = GROUPS
     // Group-level flags still supported (the Admin group uses adminOnly).
     .filter((g) => (g.adminOnly ? isAdmin : g.managerUp ? isAdmin || canApprove : true))

@@ -18,6 +18,7 @@ import { TourLauncher } from '@/components/tour-launcher';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
+import { visibleModuleCodes } from '@/lib/nav-entitlements';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
 import { canManagePayroll, canManagePerfComp, isAdmin } from '@/lib/authz';
@@ -146,6 +147,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // self-excluding, admin-only categories gated inside listPendingTasks. NOT the bell's
               // taskCount below, which also folds in unread action notifications (not approval records).
               approvalCount={pendingTasks.length}
+              // ADR-0077 slice 4 — which module-owned rows the rail may advertise. A plain string array
+              // (or null), never the snapshot itself: Sidebar is a client component, and passing the
+              // entitlement context would drag the resolver into the client bundle. null means "no
+              // opinion, show everything" and is what a degraded session produces on purpose — see
+              // lib/nav-entitlements.ts for why nav fails OPEN while every service gate fails closed.
+              enabledModules={visibleModuleCodes(session)}
               defaultCollapsed={railCollapsed}
             />
             <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">

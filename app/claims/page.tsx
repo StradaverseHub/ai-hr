@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
+import { requireModule } from '@/lib/authz';
 import { myEmployment } from '@/core/read';
 import { getEmployeeClaimTypes, listClaimsForEmployment } from '@/core/claims';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
@@ -27,6 +28,11 @@ export default async function ClaimsPage({
     size?: string;
   }>;
 }) {
+  // ADR-0077 slice 4 — a courtesy redirect when the tenant has not bought this module, so they get
+  // an explanation instead of the service error. NOT the control: the reads below refuse on their
+  // own (D3), and this guard fails open on an unresolved snapshot. Applied at the module ENTRY
+  // point; a deep link skips it and meets the service refusal, which is the correct outcome.
+  await requireModule('claims');
   const s = await getSession();
   const t = await getTranslations('claims');
   const sp = await searchParams;
