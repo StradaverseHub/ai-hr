@@ -108,7 +108,9 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   it('preserves the pre-retrofit relative order WITHIN each node', () => {
     // Rows may land in different nodes, but a row that came before another must not come after it now.
     // Asserted per node, because across nodes the order is the sidebar's group layout, not the pack's.
-    const wantOrder = EXPECTED.map((r) => r.href);
+    // Widened to string[]: EXPECTED is `as const`, so map() yields a union of the ten literal hrefs
+    // and indexOf() then refuses a plain string. The comparison is by position, not by literal type.
+    const wantOrder: string[] = EXPECTED.map((r) => r.href);
     for (const n of NODES) {
       const positions = n.children.map((c) => wantOrder.indexOf(c.href));
       expect(positions, `${n.group} node keeps pre-retrofit order`).toEqual([...positions].sort((a, b) => a - b));

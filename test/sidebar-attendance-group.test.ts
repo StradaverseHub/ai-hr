@@ -6,12 +6,22 @@
  * must all live under the single collapsible "Attendance" parent (built by b3dc0f78), in that
  * relative order, each admin-gated, and none of them duplicated elsewhere in the rail.
  *
- * Since ADR-0080 rung 2 the node's rows live on the attendance PACK (packs/attendance/index.ts,
- * `ATTENDANCE_NAV`) and mount into components/sidebar.tsx through the pack registry, so the node
- * checks read the pack source and the no-duplicate checks span BOTH files (a row must appear
- * exactly once across the rail's combined sources). Every assertion below is the pre-rung-2 guard
- * unchanged; only where the node's source text lives moved. Nav parity of the mounting itself is
- * covered in test/attendance-pack.test.ts.
+ * Since ADR-0080 rung 2 the node's rows live on the attendance PACK (packs/attendance/index.ts) and
+ * mount into components/sidebar.tsx through the pack registry, so the node checks read the pack source
+ * and the no-duplicate checks span BOTH files (a row must appear exactly once across the rail's
+ * combined sources).
+ *
+ * 0bb0e303 then split the ONE node into three by audience — MY_ATTENDANCE_NAV (staff),
+ * ATTENDANCE_MANAGE_NAV (roster + import), ATTENDANCE_ADMIN_NAV (the five config screens). This guard
+ * was written when they shared a node and read the single `ATTENDANCE_NAV` literal, which no longer
+ * exists.
+ *
+ * WHAT SURVIVES THE SPLIT, and is what is asserted below: the five config screens still travel TOGETHER
+ * in one node, in the ticket's order, each still admin-gated, and every row still appears exactly once
+ * across the rail. Those were the ticket's actual guarantees. What could not survive is
+ * "Records precedes the config rows WITHIN one node" — Records now lives in a different node, and
+ * across nodes the order is the sidebar's group layout rather than the pack's. That ordering is
+ * asserted per node in test/attendance-pack.test.ts instead, so nothing was dropped, only relocated.
  *
  * Deliberately order-of-SUBSEQUENCE, not adjacency: item e776d17d reserves an "Overtime
  * Configuration" child slot between Clocking Location and TOIL, and future children may be
@@ -35,12 +45,12 @@ const TICKET_HREFS = [
   '/admin/toil',
 ] as const;
 
-/** The ATTENDANCE_NAV literal (packs/attendance/index.ts): declaration to the closing `};`. */
-function attendanceNodeBlock(): string {
-  const start = PACK.indexOf('const ATTENDANCE_NAV');
-  expect(start, 'ATTENDANCE_NAV declaration exists in packs/attendance/index.ts').toBeGreaterThan(-1);
+/** One of the three node literals (packs/attendance/index.ts): declaration to the closing `};`. */
+function nodeBlock(constName: string): string {
+  const start = PACK.indexOf(`const ${constName}`);
+  expect(start, `${constName} declaration exists in packs/attendance/index.ts`).toBeGreaterThan(-1);
   const end = PACK.indexOf('\n};', start);
-  expect(end, 'ATTENDANCE_NAV literal is terminated').toBeGreaterThan(start);
+  expect(end, `${constName} literal is terminated`).toBeGreaterThan(start);
   return PACK.slice(start, end);
 }
 
@@ -48,8 +58,9 @@ function attendanceNodeBlock(): string {
 const countQuoted = (haystack: string, href: string) =>
   haystack.split(`'${href}'`).length - 1;
 
-describe('sidebar Attendance group (5cb199b3 consolidation)', () => {
-  const node = attendanceNodeBlock();
+describe('sidebar Attendance group (5cb199b3 consolidation, after the 0bb0e303 split)', () => {
+  // The five config screens moved WHOLESALE into the admin node — that is the node this guard follows.
+  const node = nodeBlock('ATTENDANCE_ADMIN_NAV');
 
   it('keeps the parent labelled with the existing nav.attendance key', () => {
     expect(node).toMatch(/labelKey:\s*'attendance'/);
@@ -79,33 +90,28 @@ describe('sidebar Attendance group (5cb199b3 consolidation)', () => {
     }
   });
 
-  // f60cd403: day-to-day rows first, administrative bulk-upload Import always last. (5249d43f inserted
-  // Clock in/out ABOVE Records — see the dedicated describe below — so Records now leads the REST.)
-  it('keeps Records (/attendance) ahead of the config/roster/import children', () => {
-    const first = node.indexOf(`'/attendance'`);
-    expect(first, 'Records is a child of the Attendance node').toBeGreaterThan(-1);
-    const others = ["'/attendance/import'", "'/roster'", ...TICKET_HREFS.map((h) => `'${h}'`)];
-    for (const q of others) {
-      const idx = node.indexOf(q);
-      expect(idx, `${q} present`).toBeGreaterThan(-1);
-      expect(first, `Records precedes ${q}`).toBeLessThan(idx);
+  it('keeps the five config screens TOGETHER — none leaked into the staff or manager node', () => {
+    // The consolidation ticket's real guarantee: an administrator finds all five in one place. The
+    // split moved the node they live in; it must not have scattered them across nodes.
+    const staff = nodeBlock('MY_ATTENDANCE_NAV');
+    const manage = nodeBlock('ATTENDANCE_MANAGE_NAV');
+    for (const href of TICKET_HREFS) {
+      expect(staff.indexOf(`'${href}'`), `${href} is NOT in My Attendance`).toBe(-1);
+      expect(manage.indexOf(`'${href}'`), `${href} is NOT in the Manage node`).toBe(-1);
     }
   });
 
-  it('keeps Import (/attendance/import) as the last child of the Attendance node', () => {
-    const importIdx = node.indexOf(`'/attendance/import'`);
-    expect(importIdx, 'Import is a child of the Attendance node').toBeGreaterThan(-1);
-    // Every other quoted href in the node appears before Import.
-    const others = [`'/attendance'`, `'/roster'`, ...TICKET_HREFS.map((h) => `'${h}'`)];
-    for (const q of others) {
-      const idx = node.indexOf(q);
-      expect(idx, `${q} present`).toBeGreaterThan(-1);
-      expect(idx, `${q} precedes Import (Import stays last)`).toBeLessThan(importIdx);
-    }
-  });
+  it('keeps Import (/attendance/import) last in the manager node, still manager-gated', () => {
+    // f60cd403: administrative bulk-upload stays last. Import moved to the Manage node with Roster
+    // (0bb0e303), so "last" is now measured there — the rule is unchanged, the node is not.
+    const manage = nodeBlock('ATTENDANCE_MANAGE_NAV');
+    const importIdx = manage.indexOf(`'/attendance/import'`);
+    expect(importIdx, 'Import is a child of the Manage node').toBeGreaterThan(-1);
+    const rosterIdx = manage.indexOf(`'/roster'`);
+    expect(rosterIdx, 'Roster present').toBeGreaterThan(-1);
+    expect(rosterIdx, 'Roster precedes Import (Import stays last)').toBeLessThan(importIdx);
 
-  it('keeps the Import row manager-gated (permissions unchanged by the reorder)', () => {
-    const line = node.split('\n').find((l) => l.includes(`'/attendance/import'`));
+    const line = manage.split('\n').find((l) => l.includes(`'/attendance/import'`));
     expect(line, 'Import row exists').toBeDefined();
     expect(line, 'Import keeps managerUp visibility').toMatch(/managerUp:\s*true/);
   });
@@ -114,17 +120,15 @@ describe('sidebar Attendance group (5cb199b3 consolidation)', () => {
 // Feedback 5249d43f: the employee-facing "Clock in/out" page is the PRIMARY day-to-day action, so it sits
 // FIRST in the Attendance node — above Records — visible to every employee (self-service, like /me).
 describe('sidebar Attendance group — Clock in/out first (5249d43f)', () => {
-  const node = attendanceNodeBlock();
+  // Clock in/out and Records are the staff node since 0bb0e303; the "clock first" rule is measured there.
+  const node = nodeBlock('MY_ATTENDANCE_NAV');
 
-  it('inserts Clock in/out (/attendance/clock) as the FIRST child of the Attendance node', () => {
+  it('inserts Clock in/out (/attendance/clock) as the FIRST child of the staff node', () => {
     const clockIdx = node.indexOf(`'/attendance/clock'`);
-    expect(clockIdx, 'Clock in/out is a child of the Attendance node').toBeGreaterThan(-1);
-    const others = [`'/attendance'`, `'/roster'`, `'/attendance/import'`, ...TICKET_HREFS.map((h) => `'${h}'`)];
-    for (const q of others) {
-      const idx = node.indexOf(q);
-      expect(idx, `${q} present`).toBeGreaterThan(-1);
-      expect(clockIdx, `Clock in/out precedes ${q}`).toBeLessThan(idx);
-    }
+    expect(clockIdx, 'Clock in/out is a child of My Attendance').toBeGreaterThan(-1);
+    const recordsIdx = node.indexOf(`'/attendance'`);
+    expect(recordsIdx, 'Records present').toBeGreaterThan(-1);
+    expect(clockIdx, 'Clock in/out precedes Records').toBeLessThan(recordsIdx);
   });
 
   it('keeps Clock in/out visible to every employee (no adminOnly/managerUp gate)', () => {
