@@ -7,6 +7,87 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## r75 — 2026-07-29 — 10 approved items (approval config, leave surfaces, HRDF, movement, pagination)
+
+**Shipped:** `main@778821c` (branch `build/r75`). Migration `0320`.
+**Gate:** `tsc` clean · **466 files / 5202 tests** · `next build` clean · **upgrade rehearsal PASS**.
+Verified live: `GET /` 401, both `app.approval_history` and the new `app.approval_history_count`
+present on production.
+
+**Shipped:** 9816a5ad + 22de47c4 (Job Grade gives way to Benefit Scheme, entitlements and approval
+assignment) · 082fa566 (Available nets off committed leave) · 29710798 (one success message) ·
+1f6fd6d8 (leave view config matches the revised summary) · efece4ce (say "not registered for HRDF"
+instead of showing nothing) · e3c733df (Criteria column restored on Job Grade) · 66a63bd6 (Employment
+History Edit + Delete as visible reversals) · deec1691 (record relationship explorer, operator plane) ·
+fc776376 (one pagination framework).
+**Held, returned to the reporter as re-plans:** 4b90e548 · c4339f4c.
+
+### Decisions
+
+**1. An agent refused a removal and corrected my brief while doing it.** `4b90e548` asked to delete the
+Approval Workflows and Company Defaults subsections. Three things live only there: the ONLY switch that
+turns multi-step approval OFF (the Assign Template button posts a hardcoded `value="1"` — it can only
+turn it on), the ONLY editor for the escalation settings the overnight sweep reads live, and the
+wildcard any-type approval rules, which render read-only elsewhere. Removing the section would not stop
+escalation — it would FREEZE it, permanently and unchangeably.
+
+I had told the agent that removing the company-default fallback would leave requests unroutable. That
+was wrong, and it checked: resolution falls through to a built-in `['direct_manager','hr_admin']` chain.
+The real failure mode is SILENT RE-ROUTING — employees covered by a company default would quietly change
+approver with nothing surfacing it. Worse than unroutable, because unroutable fails loudly. The item now
+asks the reporter one question: where do those two settings live once their section is gone.
+
+**2. The fourth non-reproducing report, and the first with a mechanism found.** `c4339f4c` claimed Leave
+History shows only Annual Leave. There is no leave-type predicate anywhere in that path, proven with a
+test seeding six types that all return. But the agent then found the likely real cause: EMERGENCY LEAVE
+NEVER APPEARS UNDER ITS OWN NAME — `requestEmergencyLeave` decomposes an EL request into ANNUAL + UNPAID
+child rows when EL has no configured balance source. The reporter is probably looking for an EL
+application that genuinely is not there as "Emergency Leave". Asked for one specific example rather than
+guessing; the six-type test is kept as a regression guard.
+
+**3. HRDF was never a calculation fault.** The levy computes correctly (2026-08 Chin Hin Construction
+Engineering = RM56). SIX of eight companies have no HRDF registration at all, including ISEDECOR BINA —
+the largest active payroll. And the real bug: an employee there has "Subject to HRDF" ticked while the
+company is unregistered, so the tick is SILENTLY DISCARDED (`hrdfSubject` returns the explicit flag,
+then the levy yields 0 for `not_registered` — the function's own header says so). Someone set something
+and nothing happened, with no message anywhere. Fixed by saying so on screen, not by changing the levy.
+
+**4. Pagination held back TEN surfaces and named every one.** The dangerous class: six client-side
+sortable grids sort and filter IN THE BROWSER over the full fetched set, so server-paging their rows
+would silently demote column sorting to sorting-within-the-current-page — a behaviour regression
+disguised as a display change. Three more were excluded for the reason import previews are: `/approvals`
+(paging a bulk-decision surface makes "approve all" mean "approve all on this page"),
+`/admin/claims/reimbursements` (a footer total covering rows you cannot see), `/leave/employee-balances`
+(a single-record breakdown). And it caught a same-round conflict: the `/leave` Employee Details listing
+pages at exactly TEN because 650b6eb8 asked for ten — the shared default of 25 would have reverted an
+approved item.
+
+**5. Two promises to the reporter that the build did not fully keep, recorded rather than buried.** The
+pagination plan said three releases; it shipped as one commit (nothing staged back — the phrasing was
+about risk containment). And it promised every list screen would load faster "because the page fetches
+25 rows instead of all of them" — true for the seven screens that page in SQL, NOT yet true for the ten
+that use `paginateRows()` and still fetch everything before slicing. The reader-visible contract is
+identical and the 2,000-row ceiling still protects the browser; the SQL push-down is the follow-up.
+
+**Carried, still not done:** r71–r75 UI changes have never been browser-verified. This round alone added
+pagination to ~17 screens, moved Job Grade to Benefit Scheme on two config screens, and added Edit and
+Delete to Employment History.
+
+**Operational finding, not a product one.** The r75 gate showed the test template taking 1308s to
+migrate, against 1-7s in every prior round, which looked like migration 0320 being catastrophically
+slow. It was not. DROP DATABASE and CREATE DATABASE were hanging: the local cluster had accumulated
+379 databases, 366 of them test databases, because TEST_DB_NAMESPACE has no teardown and every
+parallel agent round permanently adds a template plus ten workers. 280 leaked workers and 27 leaked
+templates across r73-r75. After dropping them the same rehearsal ran in SEVEN SECONDS.
+
+Worth recording for two reasons. Production was never at risk - it holds a handful of databases and
+0320 is a CREATE OR REPLACE FUNCTION - so reporting a 22-minute production migration window would
+have been wrong. And the isolation strategy that made six concurrent agents possible leaks: without a
+teardown it gets slower every round until someone meets it during an incident. The harness should drop
+a namespace's databases when its run ends.
+
+---
+
 ## r74 — 2026-07-29 — 10 approved items (payroll nav, attendance rules, leave inquiry, entitlements)
 
 **Shipped:** `main@0230bbf` (branch `build/r74`). Migration `0319`.
