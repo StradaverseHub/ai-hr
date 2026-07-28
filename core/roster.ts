@@ -140,9 +140,9 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   const crossesMidnight = shiftCrossesMidnight(startTime, endTime);
   const span = shiftSpan(startTime, endTime, crossesMidnight);
 
-  // Multi-break is STORAGE-ONLY in Phase 1: the periods are saved and shown, but the deducted hours are the
-  // canonical breakMinutes scalar (their sum) — workedFromSpan's all-or-nothing 6h-cliff behaviour is
-  // unchanged. True per-window deduction is a deferred Phase-2+ item.
+  // b7b886e2 — the periods are no longer storage-only: the day derivation deducts the window minutes a
+  // clocking actually spanned. The breakMinutes scalar below stays canonical (Σ durations) and is what
+  // scheduled/normal hours are built from, so it must keep being written in step with the windows.
   //
   // f3321963 — per-break Flexible / Clocking-Required flags. A Semi-Flexi shift FORCES flexible=true and
   // clockingRequired=false on EVERY break (the reporter's fixed, non-editable rule); Normal/Full-Flexi keep
