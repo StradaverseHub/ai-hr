@@ -7331,6 +7331,23 @@
       "guides": "Tambah panduan bantuan",
       "admin": "Cipta log masuk pentadbir",
       "invitation": "Keluarkan pautan pengaktifan"
+    },
+    "explorer": {
+      "title": "Hubungan rekod",
+      "description": "Pilih satu jenis rekod untuk melihat apa yang merujuknya, apa yang dirujuknya, dan modul mana yang memilikinya. Dibaca terus daripada pangkalan data setiap kali, jadi ia tidak pernah lapuk.",
+      "recordType": "Jenis rekod",
+      "choose": "Pilih jenis rekod…",
+      "show": "Papar",
+      "formNote": "{count} jenis rekod dalam pemasangan ini. Jenis berkaitan ialah pautan — ikut satu untuk bergerak merentasi peta.",
+      "unknownTable": "Tiada jenis rekod bernama “{table}” dalam pemasangan ini.",
+      "sharedSpine": "Tulang belakang dikongsi (tiada modul tunggal)",
+      "primaryKey": "Kunci utama",
+      "none": "Tiada",
+      "references": "Merujuk kepada",
+      "noReferences": "Jenis rekod ini tidak merujuk apa-apa.",
+      "referencedBy": "Dirujuk oleh",
+      "noReferencedBy": "Tiada apa-apa merujuk jenis rekod ini.",
+      "onDelete": "Semasa dipadam"
     }
   },
   "currencySelect": {
