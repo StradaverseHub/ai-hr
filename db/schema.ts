@@ -5166,6 +5166,43 @@ export const feedbackRequest = pgTable(
   (t) => [index('feedback_request_reporter_idx').on(t.tenantId, t.reporterEmploymentId, t.status)],
 );
 
+/**
+ * One row per plan version, with the reporter's response recorded on the version it answered (0318).
+ *
+ * Before this table the negotiation was destroyed as it happened: `feedback_request` holds one `plan`
+ * and one `contest_reason`, both overwritten on every re-plan, and the events carried only the revision
+ * number — never the text. An item that went several rounds could not answer "I asked for X, you
+ * proposed Y, I objected — why does the plan now say Z?"
+ *
+ * Read-only to the app role by design; the services write it alongside the matching domain_event.
+ */
+export const feedbackPlanRevision = pgTable(
+  'feedback_plan_revision',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    feedbackRequestId: uuid('feedback_request_id')
+      .notNull()
+      .references(() => feedbackRequest.id, { onDelete: 'cascade' }),
+    /** Mirrors feedback_request.plan_revision when this version was drafted, so a gap is visible. */
+    revision: integer('revision').notNull(),
+    plan: text('plan').notNull(),
+    planModel: text('plan_model'),
+    draftedAt: timestamp('drafted_at', { withTimezone: true }).defaultNow().notNull(),
+    /** When the reporter approved it. Separate from `outcome`: approval does not end a plan version. */
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    /** 'contested' | 'refuted' | 'superseded'. NULL ⇒ still the current plan. */
+    outcome: text('outcome'),
+    /** The reporter's own words. NULL for approved/superseded, which carry no message. */
+    outcomeReason: text('outcome_reason'),
+    outcomeAt: timestamp('outcome_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('feedback_plan_revision_uq').on(t.feedbackRequestId, t.revision),
+    index('feedback_plan_revision_item_idx').on(t.tenantId, t.feedbackRequestId, t.revision),
+  ],
+);
+
 export const feedbackAttachment = pgTable(
   'feedback_attachment',
   {

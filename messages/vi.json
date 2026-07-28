@@ -6359,7 +6359,17 @@
     "refutePrompt": "Đã triển khai nhưng chưa đạt yêu cầu?",
     "refuteLabel": "Còn điều gì cần thay đổi?",
     "refutePlaceholder": "Mô tả điều gì vẫn còn sai hoặc thiếu trong kết quả đã triển khai…",
-    "refute": "Yêu cầu thay đổi"
+    "refute": "Yêu cầu thay đổi",
+    "historyTitle": "Yêu cầu này đã thay đổi thế nào",
+    "historyRequest": "Yêu cầu của bạn",
+    "historyPlanV": "Kế hoạch của chúng tôi, phiên bản {n}",
+    "historyApproved": "Bạn đã duyệt",
+    "historyContested": "Bạn đã phản hồi lại",
+    "historyRefuted": "Bạn gửi lại sau khi đã triển khai",
+    "historySuperseded": "Đã được thay bằng kế hoạch mới",
+    "historyCurrent": "Kế hoạch hiện tại — chờ bạn xem xét",
+    "historyGap": "{n} phiên bản trước của kế hoạch này không được lưu. Lịch sử kế hoạch bắt đầu được ghi từ 28/07/2026.",
+    "historyEmpty": "Chưa ghi nhận lịch sử kế hoạch."
   },
   "taxRelief": {
     "title": "Giảm trừ thuế cá nhân (TP1)",

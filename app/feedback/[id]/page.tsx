@@ -14,6 +14,32 @@ import {
 } from '../actions';
 import { settingEnabledOrDefault } from '@/core/entitlements';
 
+/** Which label names the reporter's answer to a plan version (0318). */
+function outcomeKey(outcome: string): string {
+  switch (outcome) {
+    case 'contested':
+      return 'historyContested';
+    case 'refuted':
+      return 'historyRefuted';
+    default:
+      return 'historySuperseded';
+  }
+}
+
+/** Approval reads green, push-back rose, a silent replacement stays neutral — it carries no reporter voice. */
+function outcomeTone(outcome: string): string {
+  switch (outcome) {
+    case 'contested':
+    case 'refuted':
+      return 'bg-rose-50 text-rose-800 dark:bg-rose-500/10 dark:text-rose-300';
+    default:
+      return 'bg-muted/40 text-muted-foreground';
+  }
+}
+
+const fmtDate = (d: Date | string) =>
+  new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   if (value == null || value === '') return null;
   return (
@@ -90,6 +116,72 @@ export default async function FeedbackDetailPage({
           </div>
         )}
       </Card>
+
+      {/* 0318 — the negotiation, oldest first. Before this existed, each re-plan overwrote the previous
+          plan and cleared the push-back that caused it, so a reporter could not see why the current plan
+          says what it says. */}
+      {(fb.planHistory.length > 0 || fb.planRevision > 0) && (
+        <Card className="p-5">
+          <SectionHeader title={t('historyTitle')} />
+
+          {/* The request itself is the first entry — the history starts with what was asked for, not
+              with our first answer to it. */}
+          <ol className="mt-3 space-y-4">
+            <li className="relative border-l-2 border-border pl-4">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('historyRequest')}</div>
+              <div className="mt-1 whitespace-pre-wrap text-sm">{fb.description}</div>
+            </li>
+
+            {fb.planHistory.map((rev) => (
+              <li key={rev.id} className="relative border-l-2 border-border pl-4">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {t('historyPlanV', { n: rev.revision })}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{fmtDate(rev.draftedAt)}</span>
+                </div>
+                <div className="mt-1 whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                  {rev.plan}
+                </div>
+
+                {/* Approval is shown separately from how the version ended: a plan can be approved AND
+                    later sent back after shipping, and both are things the reporter did to it. */}
+                {rev.approvedAt && (
+                  <div className="mt-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300">
+                    <div className="text-xs font-medium uppercase tracking-wide">{t('historyApproved')}</div>
+                    <div className="mt-1 text-xs opacity-70">{fmtDate(rev.approvedAt)}</div>
+                  </div>
+                )}
+
+                {/* How the reporter answered THIS version, attached to it rather than floating loose —
+                    the point of the whole table. */}
+                {rev.outcome && (
+                  <div className={`mt-2 rounded-lg p-3 text-sm ${outcomeTone(rev.outcome)}`}>
+                    <div className="text-xs font-medium uppercase tracking-wide">{t(outcomeKey(rev.outcome))}</div>
+                    {rev.outcomeReason && <div className="mt-0.5 whitespace-pre-wrap">{rev.outcomeReason}</div>}
+                    {rev.outcomeAt && <div className="mt-1 text-xs opacity-70">{fmtDate(rev.outcomeAt)}</div>}
+                  </div>
+                )}
+                {!rev.outcome && !rev.approvedAt && (
+                  <div className="mt-2 text-xs text-muted-foreground">{t('historyCurrent')}</div>
+                )}
+              </li>
+            ))}
+          </ol>
+
+          {/* Say the gap out loud. planRevision counts every version ever drafted; planHistory only has
+              the ones recorded since 0318. Showing a partial history as if it were whole is exactly the
+              failure this section exists to fix. */}
+          {fb.planRevision > fb.planHistory.length && (
+            <p className="mt-4 rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+              {t('historyGap', { n: fb.planRevision - fb.planHistory.length })}
+            </p>
+          )}
+          {fb.planHistory.length === 0 && fb.planRevision === 0 && (
+            <p className="mt-3 text-sm text-muted-foreground">{t('historyEmpty')}</p>
+          )}
+        </Card>
+      )}
 
       {/* The AI-written implementation plan */}
       <Card className="p-5">

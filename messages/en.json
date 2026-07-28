@@ -6359,7 +6359,17 @@
     "refutePrompt": "Deployed but not up to standard?",
     "refuteLabel": "What still needs to change?",
     "refutePlaceholder": "Describe what's still wrong or missing in the deployed result…",
-    "refute": "Request changes"
+    "refute": "Request changes",
+    "historyTitle": "How this request evolved",
+    "historyRequest": "Your request",
+    "historyPlanV": "Our plan, version {n}",
+    "historyApproved": "You approved this",
+    "historyContested": "You pushed back",
+    "historyRefuted": "You sent this back after it shipped",
+    "historySuperseded": "Replaced by a newer plan",
+    "historyCurrent": "Current plan — awaiting your review",
+    "historyGap": "{n} earlier version(s) of this plan were not kept. Plan history started being recorded on 28 July 2026; anything before that was overwritten.",
+    "historyEmpty": "No plan history recorded yet."
   },
   "taxRelief": {
     "title": "Personal Tax Relief (TP1)",

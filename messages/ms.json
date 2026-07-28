@@ -6359,7 +6359,17 @@
     "refutePrompt": "Telah diterap tetapi tidak memenuhi standard?",
     "refuteLabel": "Apa yang masih perlu diubah?",
     "refutePlaceholder": "Terangkan apa yang masih salah atau tiada dalam hasil yang diterap…",
-    "refute": "Minta perubahan"
+    "refute": "Minta perubahan",
+    "historyTitle": "Bagaimana permintaan ini berkembang",
+    "historyRequest": "Permintaan anda",
+    "historyPlanV": "Pelan kami, versi {n}",
+    "historyApproved": "Anda meluluskan ini",
+    "historyContested": "Anda membantah",
+    "historyRefuted": "Anda menghantarnya semula selepas ia dilancarkan",
+    "historySuperseded": "Digantikan oleh pelan yang lebih baharu",
+    "historyCurrent": "Pelan semasa — menunggu semakan anda",
+    "historyGap": "{n} versi terdahulu pelan ini tidak disimpan. Sejarah pelan mula direkodkan pada 28 Julai 2026; sebelum itu ia ditulis ganti.",
+    "historyEmpty": "Tiada sejarah pelan direkodkan lagi."
   },
   "taxRelief": {
     "title": "Pelepasan Cukai Peribadi (TP1)",

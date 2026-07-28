@@ -5,7 +5,7 @@
  * transition appends a DomainEvent (user / agent actor). RLS scopes reads via can_see_employment; the
  * review authority (only the reporter approves/contests) is enforced here.
  */
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { generateDraft, redactPII } from '../lib/ai';
@@ -13,6 +13,7 @@ import { resolveActiveAiConfig } from './ai-config';
 import {
   employment,
   feedbackAttachment,
+  feedbackPlanRevision,
   feedbackRequest,
   person,
   type FeedbackCategory,
@@ -135,17 +136,39 @@ export async function setFeedbackPlan(
     if (fb.status !== 'open' && fb.status !== 'contested') {
       throw new FeedbackError(`A plan can only be drafted while the item is open or contested (it is ${fb.status}).`);
     }
+    const nextRevision = fb.planRevision + 1;
+    // Close the outgoing version FIRST. A contest already stamped its own outcome (with the reporter's
+    // words); anything still open was replaced without one, which is `superseded` — an operator re-plan.
+    // Guarded on outcome IS NULL so a re-plan can never overwrite the reporter's recorded objection.
+    await tx
+      .update(feedbackPlanRevision)
+      .set({ outcome: 'superseded', outcomeAt: sql`now()` })
+      .where(
+        and(
+          eq(feedbackPlanRevision.feedbackRequestId, fb.id),
+          isNull(feedbackPlanRevision.outcome),
+        ),
+      );
     await tx
       .update(feedbackRequest)
       .set({
         plan,
-        planRevision: fb.planRevision + 1,
+        planRevision: nextRevision,
         planModel: p.model ?? null,
         contestReason: null,
         status: 'planned',
         updatedAt: sql`now()`,
       })
       .where(eq(feedbackRequest.id, fb.id));
+    // The history row is what the reporter reads; `feedback_request.plan` stays the fast path for "the
+    // current plan". They are written together so the two can never disagree.
+    await tx.insert(feedbackPlanRevision).values({
+      tenantId: ctx.tenantId,
+      feedbackRequestId: fb.id,
+      revision: nextRevision,
+      plan,
+      planModel: p.model ?? null,
+    });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'feedback',
@@ -153,7 +176,7 @@ export async function setFeedbackPlan(
       eventType: 'feedback.plan.drafted',
       actor: { type: 'agent' },
       subjectEmploymentId: fb.reporterEmploymentId,
-      payload: { revision: fb.planRevision + 1, model: p.model ?? null },
+      payload: { revision: nextRevision, model: p.model ?? null },
     });
   });
 }
@@ -235,6 +258,25 @@ export function listPlannableFeedback(ctx: SessionContext, limit = 50): Promise<
   });
 }
 
+/**
+ * END the live plan revision (0318). Approval is NOT an ending — see markLiveRevisionApproved.
+ *
+ * Guarded on `outcome IS NULL` so it only ever touches the open version: replaying a contest cannot
+ * rewrite a disposition already recorded. A no-op when the item predates this table, which is the honest
+ * behaviour — there is no revision row to answer, and inventing one would fabricate history.
+ */
+async function closeLiveRevision(
+  tx: Tx,
+  feedbackId: string,
+  outcome: 'contested' | 'refuted' | 'superseded',
+  reason?: string | null,
+): Promise<void> {
+  await tx
+    .update(feedbackPlanRevision)
+    .set({ outcome, outcomeReason: reason ?? null, outcomeAt: sql`now()` })
+    .where(and(eq(feedbackPlanRevision.feedbackRequestId, feedbackId), isNull(feedbackPlanRevision.outcome)));
+}
+
 // ── Review (reporter-only) ──
 
 /** The reporter approves the plan (planned → approved), unlocking the build. */
@@ -247,6 +289,14 @@ export async function approveFeedbackPlan(ctx: SessionContext, p: { feedbackId: 
       .update(feedbackRequest)
       .set({ status: 'approved', decidedAt: sql`now()`, updatedAt: sql`now()` })
       .where(eq(feedbackRequest.id, fb.id));
+    // Stamped, NOT closed. An approved plan is the one being built, so it stays the live revision until
+    // something actually replaces it — which is what leaves a post-deploy refute somewhere to attach to.
+    // No reason recorded: approving carries no payload by design, and the history must not imply the
+    // reporter said something they did not.
+    await tx
+      .update(feedbackPlanRevision)
+      .set({ approvedAt: sql`now()` })
+      .where(and(eq(feedbackPlanRevision.feedbackRequestId, fb.id), isNull(feedbackPlanRevision.outcome)));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'feedback',
@@ -271,6 +321,9 @@ export async function contestFeedbackPlan(ctx: SessionContext, p: { feedbackId: 
       .update(feedbackRequest)
       .set({ status: 'contested', contestReason: reason, updatedAt: sql`now()` })
       .where(eq(feedbackRequest.id, fb.id));
+    // THE push-back. Recorded against the plan it answers, so the next re-plan cannot erase it — the
+    // whole reason this table exists.
+    await closeLiveRevision(tx, fb.id, 'contested', reason);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'feedback',
@@ -278,7 +331,9 @@ export async function contestFeedbackPlan(ctx: SessionContext, p: { feedbackId: 
       eventType: 'feedback.plan.contested',
       actor: actorOf(ctx),
       subjectEmploymentId: fb.reporterEmploymentId,
-      payload: { revision: fb.planRevision, decidedBy: onBehalf ? 'admin' : 'reporter' },
+      // The reason travels in the event too, not only in the row: the event stream is the audit record,
+      // and it carried only a revision number before, which is how the old push-backs were lost.
+      payload: { revision: fb.planRevision, reason, decidedBy: onBehalf ? 'admin' : 'reporter' },
     });
   });
 }
@@ -496,6 +551,10 @@ export async function refuteDeployment(ctx: SessionContext, p: { feedbackId: str
         updatedAt: sql`now()`,
       })
       .where(eq(feedbackRequest.id, fb.id));
+    // A post-deploy push-back answers the plan that WAS shipped, so it closes that revision rather than
+    // opening a new one. Kept distinct from 'contested' in the history for the same reason the event is
+    // distinct: "you built the wrong thing" and "we shipped it and it missed" are different complaints.
+    await closeLiveRevision(tx, fb.id, 'refuted', reason);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'feedback',
@@ -592,10 +651,21 @@ export function listFeedback(
   );
 }
 
+/** One entry in the negotiation: a plan version and how the reporter answered it (0318). */
+export type FeedbackPlanRevisionRow = typeof feedbackPlanRevision.$inferSelect;
+
 export type FeedbackDetail = typeof feedbackRequest.$inferSelect & {
   attachments: { id: string; fileName: string; sizeBytes: number }[];
   /** Resolved from blockedById so the board can name what it is waiting on rather than show a bare id. */
   blockedBy: { id: string; title: string; status: FeedbackStatus } | null;
+  /**
+   * The full plan history, oldest first — what was proposed each round and what the reporter said back.
+   *
+   * EMPTY does not mean "never re-planned". Items planned before 0318 have no rows at all, because the
+   * earlier plan texts were overwritten and are genuinely unrecoverable. The UI compares this length
+   * against `planRevision` and says so, rather than presenting a partial history as a complete one.
+   */
+  planHistory: FeedbackPlanRevisionRow[];
 };
 
 export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDetail | null> {
@@ -606,6 +676,11 @@ export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDe
       .select({ id: feedbackAttachment.id, fileName: feedbackAttachment.fileName, sizeBytes: feedbackAttachment.sizeBytes })
       .from(feedbackAttachment)
       .where(eq(feedbackAttachment.feedbackRequestId, id));
+    const planHistory = await tx
+      .select()
+      .from(feedbackPlanRevision)
+      .where(eq(feedbackPlanRevision.feedbackRequestId, id))
+      .orderBy(asc(feedbackPlanRevision.revision));
     let blockedBy: FeedbackDetail['blockedBy'] = null;
     if (row.blockedById) {
       const [b] = await tx
@@ -615,7 +690,7 @@ export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDe
         .limit(1);
       blockedBy = b ?? null; // tenant-scoped by RLS; a cross-tenant id simply resolves to nothing
     }
-    return { ...row, attachments: atts, blockedBy };
+    return { ...row, attachments: atts, blockedBy, planHistory };
   });
 }
 

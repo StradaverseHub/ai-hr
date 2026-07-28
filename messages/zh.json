@@ -6359,7 +6359,17 @@
     "refutePrompt": "已部署但未达标？",
     "refuteLabel": "还有什么需要修改？",
     "refutePlaceholder": "描述已部署结果中仍然存在的问题或缺失…",
-    "refute": "要求修改"
+    "refute": "要求修改",
+    "historyTitle": "此請求的演變",
+    "historyRequest": "您的請求",
+    "historyPlanV": "我們的方案，第 {n} 版",
+    "historyApproved": "您已批准",
+    "historyContested": "您提出了異議",
+    "historyRefuted": "上線後您退回了此項",
+    "historySuperseded": "已被新方案取代",
+    "historyCurrent": "目前方案 — 等待您審閱",
+    "historyGap": "此方案有 {n} 個較早版本未保留。方案歷史自 2026 年 7 月 28 日起記錄，之前的版本已被覆寫。",
+    "historyEmpty": "尚未記錄方案歷史。"
   },
   "taxRelief": {
     "title": "个人税务减免 (TP1)",
