@@ -7,6 +7,51 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## Slice 4 — 2026-07-29 — nav + page gating from entitlements (ADR-0077)
+
+**Shipped:** `main@14cbdcf`. No migration.
+**Gate:** `tsc` clean · **467 files / 5209 tests** · `next build` clean. Verified live: `GET /` 401.
+
+The rail stops advertising modules the customer has not bought, and a module entry page redirects with
+an explanation instead of an error screen.
+
+### Decisions
+
+**1. BOTH LAYERS FAIL OPEN — the opposite of every service gate, and the decision worth reviewing.**
+getSession degrades to a session with NO snapshot on a migration-lag deploy, a revoked grant or a
+connection blip. Services must refuse in that state: a service that guesses moves money. If nav did the
+same, that same blip would empty the sidebar for every user of a paying tenant WHILE THEIR PAGES STILL
+WORKED, and the product would look uninstalled. So `visibleModuleCodes` returns `null` ("no opinion,
+show everything") as a value genuinely distinct from `[]` ("hide everything"), and a test pins that the
+two differ. Showing a link to something you cannot use is a worse menu; hiding everything is a worse
+outage — and the service layer is the control either way.
+
+**2. Hiding is NOT the control, and that is asserted rather than assumed.** A hidden module's service
+call still throws `ModuleNotEnabledError` (D3). If that test ever stops throwing, slice 4 has quietly
+become enforcement and an unpurchased module is reachable by typing its address. A deep link skips the
+redirect entirely and meets the service refusal — correct, and precisely why this layer is allowed to
+be incomplete. Completeness here would imply the redirect is what protects the module.
+
+**3. Core modules are never hidden**, even when a snapshot explicitly disables them. A rail without My
+Absence is a broken product, not a downgraded one. `leave` contributes nav and is core; the four
+sellable ones (attendance, claims, payroll, performance) are the only hiding candidates.
+
+**4. The plan was written against a contract that no longer exists.** It assumed `nav?:
+NavNodeDescriptor` — one untagged node per pack. r74 replaced that with `navNodes`, an array of
+group-tagged nodes, and split Attendance three ways. Slice 4 gates against the new shape. The
+row-to-module map is derived from the pack descriptors the sidebar already resolves rather than a
+hand-written list, so it cannot drift the next time a pack adds a row.
+
+**Process note.** The first test fixture invented a per-module status map where `EntitlementSnapshot`
+actually carries `enabledModules: string[]`. The fail-open catch turned that malformed context into
+"show everything" — correct in production, and indistinguishable from a passing design in a test. Every
+case now asserts a NON-null result first, so a fixture that stops matching the real shape fails loudly
+instead of quietly exercising the degraded path.
+
+**Carried:** slice 4 hides menu rows and has never been browser-verified, along with r71-r75.
+
+---
+
 ## r75 — 2026-07-29 — 10 approved items (approval config, leave surfaces, HRDF, movement, pagination)
 
 **Shipped:** `main@778821c` (branch `build/r75`). Migration `0320`.
