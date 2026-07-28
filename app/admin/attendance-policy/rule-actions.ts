@@ -13,9 +13,9 @@ import {
 
 /**
  * 88e94371 · Server actions for the "Lateness, Early Out & Overtime Settings" rule library. Writes are
- * admin-gated at the DB layer (attendance_rule RLS WITH CHECK app.is_admin_for(company_id)); the pages are
- * gated by requireAdmin(). The OT rows post as one JSON array (the client island's hidden field), mirroring
- * the shift-form break-periods pattern.
+ * admin-gated at the DB layer (attendance_rule RLS WITH CHECK app.is_admin() since 6da67ab7 / migration
+ * 0319 made the library tenant-wide); the pages are gated by requireAdmin(). The OT rows post as one JSON
+ * array (the client island's hidden field), mirroring the shift-form break-periods pattern.
  */
 const LIST = '/admin/attendance-policy';
 const num = (fd: FormData, key: string): number => Math.trunc(Number(fd.get(key) ?? 0)) || 0;
@@ -44,7 +44,6 @@ function parseOtRows(raw: string): OtRowInput[] {
 
 function ruleFields(fd: FormData): AttendanceRuleInput {
   return {
-    companyId: String(fd.get('companyId') ?? ''),
     name: String(fd.get('name') ?? '').trim(),
     description: String(fd.get('description') ?? '').trim() || null,
     status: fd.get('status') === 'inactive' ? 'inactive' : 'active',

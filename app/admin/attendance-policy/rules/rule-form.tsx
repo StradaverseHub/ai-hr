@@ -11,15 +11,16 @@ const LIST = '/admin/attendance-policy';
  * 88e94371 · Add / Edit form for one "Lateness, Early Out & Overtime Settings" rule. Three sections
  * (Lateness, Early Out, Overtime). Server component: it RENDERS the AttendanceRuleOtEditor client island as
  * JSX (never imports+calls it), keeping the RSC boundary clean. Standard (is_default) rules are editable but
- * their name/company are locked and they can't be deleted.
+ * their name is locked and they can't be deleted.
+ *
+ * 6da67ab7 — no Company field: a rule belongs to the tenant and reaches employees through the shift that
+ * selects it (Shift Settings → Attendance rule).
  */
 export async function RuleForm({
   rule,
-  companies,
   error,
 }: {
   rule: AttendanceRuleView | null;
-  companies: { id: string; name: string }[];
   error?: string;
 }) {
   const t = await getTranslations('admin.attendanceRule');
@@ -69,9 +70,6 @@ export async function RuleForm({
 
       <form action={editing ? updateAttendanceRuleAction : createAttendanceRuleAction} className="space-y-6">
         {editing && <input type="hidden" name="ruleId" value={rule!.id} />}
-        {editing ? (
-          <input type="hidden" name="companyId" value={rule!.companyId} />
-        ) : null}
 
         <Card className="space-y-4 p-4">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -84,17 +82,6 @@ export async function RuleForm({
                 className={`${inputCls} ${isDefault ? 'opacity-70' : ''}`}
               />
             </Field>
-            {!editing && (
-              <Field label={t('company')}>
-                <select name="companyId" required className={inputCls} defaultValue={companies[0]?.id ?? ''}>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            )}
             <Field label={t('status')}>
               <select name="status" defaultValue={rule?.status ?? 'active'} className={inputCls}>
                 <option value="active">{t('statusActive')}</option>

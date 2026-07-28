@@ -1,8 +1,9 @@
 /**
  * 88e94371 — "Lateness, Early Out & Overtime Settings" rule library. Golden tests:
  *   1. applyOtRuleRows (pure): OT-band rounding + early-OT inclusion; Standard/no-rows leaves OT untouched.
- *   2. Standard fallback — a shift with no rule_id resolves to the company Standard rule's grace in the REAL
- *      engine (checkIn status), not a display figure.
+ *   2. Standard fallback — a shift with no rule_id resolves to the TENANT Standard rule's grace in the REAL
+ *      engine (checkIn status), not a display figure. (6da67ab7 made the library tenant-wide; before that
+ *      the fallback was the employee's-company Standard.)
  *   3. Per-shift rule override — a shift pointing at a custom rule uses ITS grace, beating the Standard.
  *   4. OT rows drive workday OT rounding through checkOut (deriveAttendance) — rule with a rounding band
  *      rounds ot_minutes; no rule leaves it raw.
@@ -94,15 +95,14 @@ describe('applyOtRuleRows (pure)', () => {
 });
 
 describe('Standard fallback + per-shift override in the engine', () => {
-  it('a shift with no rule uses the company Standard rule grace', async () => {
+  it('a shift with no rule uses the tenant Standard rule grace', async () => {
     const a = adminCtx(b);
-    const { id: stdId } = await ensureStandardRule(a, b.companyId);
+    const { id: stdId } = await ensureStandardRule(a);
     // Widen the Standard grace to 20 minutes.
     const std = await getAttendanceRule(a, stdId);
     await import('../core/attendance-rule').then((m) =>
       m.updateAttendanceRule(a, {
         ruleId: stdId,
-        companyId: b.companyId,
         name: std!.name,
         description: std!.description,
         status: 'active',
@@ -132,13 +132,12 @@ describe('Standard fallback + per-shift override in the engine', () => {
 
   it('a per-shift rule overrides the Standard grace', async () => {
     const a = adminCtx(b);
-    const { id: stdId } = await ensureStandardRule(a, b.companyId);
+    const { id: stdId } = await ensureStandardRule(a);
     // Standard grace 60 (very lenient); the shift's own rule is strict (0).
     const std = await getAttendanceRule(a, stdId);
     const { updateAttendanceRule } = await import('../core/attendance-rule');
     await updateAttendanceRule(a, {
       ruleId: stdId,
-      companyId: b.companyId,
       name: std!.name,
       description: null,
       status: 'active',
@@ -154,7 +153,6 @@ describe('Standard fallback + per-shift override in the engine', () => {
       otRows: [],
     });
     const strict = await createAttendanceRule(a, {
-      companyId: b.companyId,
       name: 'Strict',
       status: 'active',
       lateGracePeriodMinutes: 0,
@@ -180,7 +178,6 @@ describe('OT rows drive workday OT rounding through checkOut', () => {
   it('rounds ot_minutes to the band round-to value; no rule leaves it raw', async () => {
     const a = adminCtx(b);
     const rounded = await createAttendanceRule(a, {
-      companyId: b.companyId,
       name: 'Round30',
       status: 'active',
       lateGracePeriodMinutes: 0,
@@ -224,7 +221,7 @@ describe('policy → Standard conversion + un-deletable + substrate', () => {
       workEnd: '18:00:00',
       breakMinutes: 60,
     });
-    const { id } = await ensureStandardRule(a, b.companyId);
+    const { id } = await ensureStandardRule(a);
     const std = await getAttendanceRule(a, id);
     expect(std!.isDefault).toBe(true);
     expect(std!.lateGracePeriodMinutes).toBe(20);
@@ -232,12 +229,11 @@ describe('policy → Standard conversion + un-deletable + substrate', () => {
 
   it('the Standard rule is un-deletable; custom rules delete + all writes append events', async () => {
     const a = adminCtx(b);
-    const { id: stdId } = await ensureStandardRule(a, b.companyId);
+    const { id: stdId } = await ensureStandardRule(a);
     await expect(deleteAttendanceRule(a, { ruleId: stdId })).rejects.toBeInstanceOf(StandardRuleUndeletableError);
     expect(await eventTypesFor(b.tenantId, stdId)).toContain('attendance-rule.created');
 
     const custom = await createAttendanceRule(a, {
-      companyId: b.companyId,
       name: 'Temp',
       status: 'active',
       lateGracePeriodMinutes: 5,
@@ -260,7 +256,6 @@ describe('policy → Standard conversion + un-deletable + substrate', () => {
   it('assigning a rule to a shift appends shift.updated with the ruleId', async () => {
     const a = adminCtx(b);
     const rule = await createAttendanceRule(a, {
-      companyId: b.companyId,
       name: 'Assignable',
       status: 'active',
       lateGracePeriodMinutes: 0,

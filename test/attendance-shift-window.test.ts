@@ -129,7 +129,6 @@ describe('b7b886e2 — OT is the time worked past the shift END, not a duration 
 describe('b7b886e2 — pre-shift minutes reach OT only through the rule that opts into them', () => {
   /** A rule identical to Standard except for the early-OT opt-in. */
   const ruleInput = (name: string, applyToEarlyOt: boolean) => ({
-    companyId: b.companyId,
     name,
     status: 'active' as const,
     lateGracePeriodMinutes: 60, // keep every case 'present' so status never clouds the OT figure
