@@ -1507,7 +1507,15 @@
       "attachmentYes": "Có",
       "noRows": "Không có loại phép nào để hiển thị cho nhân viên này.",
       "noRecords": "Không có hồ sơ nghỉ phép nào để hiển thị.",
-      "noEmployees": "Không có nhân viên nào trong phạm vi công ty hiện tại."
+      "noEmployees": "Không có nhân viên nào trong phạm vi công ty hiện tại.",
+      "detailsSearchPlaceholder": "Tìm mã hoặc tên nhân viên",
+      "colEmployeeName": "Tên nhân viên",
+      "colPosition": "Chức danh",
+      "openBalances": "Mở số dư nghỉ phép của {name}",
+      "pagePrev": "Trước",
+      "pageNext": "Tiếp",
+      "pageAria": "Trang {page}",
+      "noEmployeesFiltered": "Không có nhân viên nào khớp với bộ lọc."
     }
   },
   "attendance": {

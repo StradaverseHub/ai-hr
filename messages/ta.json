@@ -1507,7 +1507,15 @@
       "attachmentYes": "ஆம்",
       "noRows": "இந்த ஊழியருக்குக் காட்ட விடுப்பு வகைகள் இல்லை.",
       "noRecords": "காட்ட விடுப்புப் பதிவுகள் இல்லை.",
-      "noEmployees": "தற்போதைய நிறுவன வரம்பில் ஊழியர்கள் இல்லை."
+      "noEmployees": "தற்போதைய நிறுவன வரம்பில் ஊழியர்கள் இல்லை.",
+      "detailsSearchPlaceholder": "ஊழியர் ஐடி அல்லது பெயரைத் தேடுக",
+      "colEmployeeName": "ஊழியர் பெயர்",
+      "colPosition": "பதவி",
+      "openBalances": "{name} இன் விடுப்பு இருப்பைத் திறக்கவும்",
+      "pagePrev": "முந்தையது",
+      "pageNext": "அடுத்தது",
+      "pageAria": "பக்கம் {page}",
+      "noEmployeesFiltered": "வடிகட்டிகளுக்கு பொருந்தும் ஊழியர் யாரும் இல்லை."
     }
   },
   "attendance": {

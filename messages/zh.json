@@ -1507,7 +1507,15 @@
       "attachmentYes": "是",
       "noRows": "该员工没有可显示的假期类型。",
       "noRecords": "没有可显示的假期记录。",
-      "noEmployees": "当前公司范围内没有员工。"
+      "noEmployees": "当前公司范围内没有员工。",
+      "detailsSearchPlaceholder": "搜索員工編號或姓名",
+      "colEmployeeName": "員工姓名",
+      "colPosition": "職位",
+      "openBalances": "開啟 {name} 的休假結餘",
+      "pagePrev": "上一頁",
+      "pageNext": "下一頁",
+      "pageAria": "第 {page} 頁",
+      "noEmployeesFiltered": "沒有符合篩選條件的員工。"
     }
   },
   "attendance": {

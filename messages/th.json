@@ -1507,7 +1507,15 @@
       "attachmentYes": "ใช่",
       "noRows": "ไม่มีประเภทการลาที่จะแสดงสำหรับพนักงานคนนี้",
       "noRecords": "ไม่มีบันทึกการลาที่จะแสดง",
-      "noEmployees": "ไม่มีพนักงานในขอบเขตบริษัทปัจจุบัน"
+      "noEmployees": "ไม่มีพนักงานในขอบเขตบริษัทปัจจุบัน",
+      "detailsSearchPlaceholder": "ค้นหารหัสหรือชื่อพนักงาน",
+      "colEmployeeName": "ชื่อพนักงาน",
+      "colPosition": "ตำแหน่ง",
+      "openBalances": "เปิดยอดวันลาของ {name}",
+      "pagePrev": "ก่อนหน้า",
+      "pageNext": "ถัดไป",
+      "pageAria": "หน้า {page}",
+      "noEmployeesFiltered": "ไม่มีพนักงานที่ตรงกับตัวกรอง"
     }
   },
   "attendance": {

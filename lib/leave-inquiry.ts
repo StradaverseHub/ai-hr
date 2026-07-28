@@ -35,3 +35,25 @@ export function sortInquiryEmployees<T extends InquiryEmployee>(rows: T[], local
 export function pickInquiryEmployee<T extends InquiryEmployee>(sorted: T[], requestedId?: string): T | undefined {
   return (requestedId ? sorted.find((e) => e.employmentId === requestedId) : undefined) ?? sorted[0];
 }
+
+/**
+ * The page numbers a numbered pager should print — "1 2 3 Next >" (650b6eb8 §ii) — for a 0-based `page`
+ * out of `pageCount`. `null` marks a gap: the first and last page are always offered so a long list still
+ * has one click to either end, and `span` pages either side of the current one keep the neighbourhood
+ * reachable. Everything between collapses to an ellipsis rather than printing a hundred links.
+ *
+ * Pure and here rather than in the page, so the windowing is unit-testable without a database or a render.
+ */
+export function inquiryPageWindow(page: number, pageCount: number, span = 2): (number | null)[] {
+  if (pageCount <= 0) return [];
+  const shown = new Set<number>([0, pageCount - 1]);
+  for (let p = page - span; p <= page + span; p++) if (p >= 0 && p < pageCount) shown.add(p);
+  const out: (number | null)[] = [];
+  let previous = -1;
+  for (const p of [...shown].sort((a, b) => a - b)) {
+    if (previous >= 0 && p - previous > 1) out.push(null);
+    out.push(p);
+    previous = p;
+  }
+  return out;
+}

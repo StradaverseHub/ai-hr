@@ -69,6 +69,8 @@ import { visibleLabelIdsCondition } from './system-labels';
 import { resolveEssView, type ResolvedEssView } from './ess-view';
 import { resolveLeaveFormula, type LeaveFormulaEntry, type ResolvedLeaveFormula } from './leave-formula';
 import { resolvePlacement, type EssPlacement } from '../lib/leave-groups';
+import type { EmploymentStatus } from './employment-status';
+import { employmentStatusSql } from './employment-status-sql';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
@@ -158,6 +160,19 @@ export function listEmployeesPage(
     departmentId?: string;
     status?: 'active' | 'terminated';
     employmentType?: string;
+    // Employee Details listing (feedback 650b6eb8) — the SAME narrowings, multi-select. They sit
+    // ALONGSIDE the singular ones rather than replacing them: /personnel and /admin/personnel drive
+    // single-value pickers, and `filterCompanyIds` carries the clumsy prefix for the reason 8ec63139
+    // gave on the leave read — conflating "what the switcher lets you see" (`companyIds`) with "what
+    // you asked to see" would be a security bug, not a tidy-up.
+    filterCompanyIds?: string[];
+    departmentIds?: string[];
+    /** Derived Employee Status buckets (9cbf5e0d). A WHERE predicate cannot call the TypeScript
+     *  deriver, so it narrows through employmentStatusSql — the twin pinned equal by
+     *  test/personnel-status-sync.test.ts. Never the legacy stored assignment.status. */
+    employmentStatuses?: EmploymentStatus[];
+    /** 'company' = company A→Z then employee name A→Z (650b6eb8's reading order); default is name. */
+    sort?: 'name' | 'company';
     limit: number;
     offset: number;
   },
@@ -174,7 +189,14 @@ export function listEmployeesPage(
     const where = and(
       p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
       p.companyId ? eq(employment.companyId, p.companyId) : undefined,
+      p.filterCompanyIds && p.filterCompanyIds.length
+        ? inArray(employment.companyId, p.filterCompanyIds)
+        : undefined,
       p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
+      p.departmentIds && p.departmentIds.length ? inArray(assignment.departmentId, p.departmentIds) : undefined,
+      p.employmentStatuses && p.employmentStatuses.length
+        ? inArray(employmentStatusSql(), p.employmentStatuses)
+        : undefined,
       p.status === 'terminated'
         ? isNotNull(employment.terminatedOn)
         : p.status === 'active'
@@ -213,7 +235,13 @@ export function listEmployeesPage(
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
       .where(where)
-      .orderBy(person.fullName)
+      // lower() rather than the raw columns: the reading order must not put "acme" in a different half of
+      // the list from "Acme" — the same case-insensitivity lib/leave-inquiry.ts applies in TypeScript.
+      .orderBy(
+        ...(p.sort === 'company'
+          ? [sql`lower(${company.legalName})`, sql`lower(${person.fullName})`]
+          : [person.fullName]),
+      )
       .limit(p.limit)
       .offset(p.offset)) as EmployeeListRow[];
     // count(distinct employment.id): the assignment join is ≤1/employment, but distinct is the safe guard.

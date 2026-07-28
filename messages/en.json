@@ -1507,7 +1507,15 @@
       "attachmentYes": "Yes",
       "noRows": "No leave types to show for this employee.",
       "noRecords": "No leave records to show.",
-      "noEmployees": "No employees in the current company scope."
+      "noEmployees": "No employees in the current company scope.",
+      "detailsSearchPlaceholder": "Search employee ID or name",
+      "colEmployeeName": "Employee Name",
+      "colPosition": "Position",
+      "openBalances": "Open leave balances for {name}",
+      "pagePrev": "Previous",
+      "pageNext": "Next",
+      "pageAria": "Page {page}",
+      "noEmployeesFiltered": "No employees match the filters."
     }
   },
   "attendance": {

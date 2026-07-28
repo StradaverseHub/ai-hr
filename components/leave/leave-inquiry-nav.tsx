@@ -9,9 +9,9 @@ import { getTranslations } from 'next-intl/server';
  * `LeaveTabs` strip because the reporter asked for an internal LEFT-side nav, and because a balance row
  * drills into the record page — a hierarchy the flat tab strip would flatten.
  *
- * Employee Details points at `/leave`, which is the landing page today; item 650b6eb8 turns it into the
- * paginated employee listing. Keeping the entry here (rather than waiting for that page) means the two
- * inquiry screens are navigable the moment they exist, and 650b6eb8 has one place to repoint.
+ * Employee Details points at `/leave`, the HR-admin landing page, which item 650b6eb8 turned into the
+ * paginated employee listing an admin picks from. It stayed on that route rather than moving to one of its
+ * own because "My Leave" is the menu entry the reporter wants to LAND on Employee Details.
  *
  * `emp` is threaded through every link so switching tab keeps the employee you are looking at — losing the
  * selection on each hop is the thing that makes an inquiry screen unusable.
