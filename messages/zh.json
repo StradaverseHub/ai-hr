@@ -6146,6 +6146,7 @@
     "customRole": "自定义角色",
     "dragToReorder": "拖动以重新排序",
     "templatesTitle": "审批模板",
+    "requireMultiStep": "需要多级审批",
     "templatesHint": "可重复使用的审批链，构建一次即可分配给多种假期类型和公司。",
     "addTemplate": "添加模板",
     "editTemplate": "编辑",

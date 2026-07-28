@@ -25,6 +25,8 @@ export type AssignmentRow = {
 };
 
 export type TemplateManagerLabels = {
+  /** "Require multi-step approval" (d4735493) — the explicit single-vs-chain choice. */
+  requireMultiStep: string;
   templatesTitle: string;
   templatesHint: string;
   addTemplate: string;
@@ -386,6 +388,33 @@ function TemplateForm({
   onCancel: () => void;
 }) {
   const [levels, setLevels] = useState<string[]>(template?.levels ?? ['direct_manager', 'hr_admin']);
+  /**
+   * "Require multi-step approval" (feedback d4735493).
+   *
+   * The engine has always supported an ordered chain — `ApprovalTemplate.levels` is a list and
+   * resolveApprovalChain consumes it in order — and this form has always let you add and remove steps.
+   * What was missing is the DECISION being explicit. The editor simply opened on a two-step default, so
+   * an administrator who wanted one approver had to notice a second row and delete it, and one who
+   * wanted several had no signal that was expected rather than accidental.
+   *
+   * DERIVED from the template being edited rather than defaulted to a constant, so opening an existing
+   * single-step template does not silently present it as multi-step (and vice versa). A new template
+   * opens multi-step, preserving today's two-step default exactly — this adds a control, it does not
+   * change what a new template starts as.
+   */
+  const [multiStep, setMultiStep] = useState<boolean>((template?.levels?.length ?? 2) > 1);
+
+  /** Collapse to the first step, or restore a second, WITHOUT discarding what was already chosen. */
+  function toggleMultiStep(next: boolean) {
+    setMultiStep(next);
+    setLevels((prev) => {
+      if (next) return prev.length > 1 ? prev : [...prev, 'hr_admin'];
+      // Keep the FIRST step rather than resetting to a default: unticking the box means "one approver",
+      // not "start again", and silently replacing a chosen first approver would be a data change the
+      // administrator did not ask for.
+      return prev.slice(0, 1);
+    });
+  }
 
   return (
     <form
@@ -407,10 +436,22 @@ function TemplateForm({
         <input name="description" defaultValue={template?.description ?? ''} className={inputCls} />
       </label>
 
-      <StepListEditor levels={levels} setLevels={setLevels} labels={stepLabels} />
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={multiStep}
+          onChange={(e) => toggleMultiStep(e.target.checked)}
+          className="size-4 rounded border-border"
+        />
+        <span>{labels.requireMultiStep}</span>
+      </label>
+
+      {/* Single-step still renders the SAME editor, capped at one row, rather than a separate control:
+          two ways to pick an approver would be two places for the value to diverge. */}
+      <StepListEditor levels={levels} setLevels={setLevels} labels={stepLabels} maxSteps={multiStep ? undefined : 1} />
 
       <div className="flex items-center gap-2">
-        <Button type="submit" size="sm" disabled={levels.length === 0}>
+        <Button type="submit" size="sm" disabled={levels.length === 0 || (multiStep && levels.length < 2)}>
           {labels.save}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>

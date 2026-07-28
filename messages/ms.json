@@ -6146,6 +6146,7 @@
     "customRole": "Peranan Tersuai",
     "dragToReorder": "Seret untuk susun semula",
     "templatesTitle": "Templat kelulusan",
+    "requireMultiStep": "Perlukan kelulusan berbilang peringkat",
     "templatesHint": "Rantaian kelulusan boleh guna semula yang anda bina sekali dan tetapkan kepada banyak jenis cuti dan syarikat.",
     "addTemplate": "Tambah templat",
     "editTemplate": "Edit",

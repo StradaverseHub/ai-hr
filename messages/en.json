@@ -6146,6 +6146,7 @@
     "customRole": "Custom Role",
     "dragToReorder": "Drag to reorder",
     "templatesTitle": "Approval templates",
+    "requireMultiStep": "Require multi-step approval",
     "templatesHint": "Reusable approval chains you build once and assign to many leave types and companies.",
     "addTemplate": "Add template",
     "editTemplate": "Edit",

@@ -137,6 +137,7 @@ export default async function LeaveApprovalTabPage({
     },
   };
   const templateLabels: TemplateManagerLabels = {
+    requireMultiStep: t('requireMultiStep'),
     templatesTitle: t('templatesTitle'),
     templatesHint: t('templatesHint'),
     addTemplate: t('addTemplate'),

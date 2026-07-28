@@ -6146,6 +6146,7 @@
     "customRole": "Vai trò tùy chỉnh",
     "dragToReorder": "Kéo để sắp xếp lại",
     "templatesTitle": "Mẫu phê duyệt",
+    "requireMultiStep": "Yêu cầu phê duyệt nhiều bước",
     "templatesHint": "Chuỗi phê duyệt có thể tái sử dụng, bạn xây dựng một lần và gán cho nhiều loại nghỉ phép và công ty.",
     "addTemplate": "Thêm mẫu",
     "editTemplate": "Sửa",

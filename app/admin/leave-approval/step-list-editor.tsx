@@ -45,13 +45,19 @@ export function StepListEditor({
   setLevels,
   labels,
   disabled,
+  maxSteps,
 }: {
   levels: string[];
   setLevels: (next: string[]) => void;
   labels: StepListLabels;
   disabled?: boolean;
+  /** Cap on the chain length (feedback d4735493). Undefined = unlimited, today's behaviour. When the
+   *  cap is reached the add control is hidden rather than disabled: a greyed-out "Add" invites the user
+   *  to hunt for why it will not work, whereas its absence matches the single-step choice they made. */
+  maxSteps?: number;
 }) {
   const [addKind, setAddKind] = useState<string>('hr_admin');
+  const atCap = maxSteps !== undefined && levels.length >= maxSteps;
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const kindLabel = (k: string): string => {
@@ -145,6 +151,7 @@ export function StepListEditor({
           ))}
         </ol>
       )}
+      {!atCap && (
       <div className="flex items-center gap-2">
         <select value={addKind} onChange={(e) => setAddKind(e.target.value)} className={inputCls}>
           {KIND_OPTIONS.map((k) => (
@@ -157,6 +164,7 @@ export function StepListEditor({
           {labels.add}
         </Button>
       </div>
+      )}
     </div>
   );
 }
