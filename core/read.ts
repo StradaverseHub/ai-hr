@@ -654,6 +654,36 @@ const leaveRequestSelection = {
   hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
   currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
   currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+  // WHO the request is currently sitting with (feedback 567333b7). The panel could say "Pending" but not
+  // with whom, so an employee had no way to know who to chase.
+  //
+  // Resolved ONLY for a `direct_manager` step, and that limit is the design rather than a shortcut. A step
+  // stores an approver KIND, not a person: 'direct_manager' resolves to exactly one well-defined employee
+  // (the subject's open administrative reporting edge), while 'hr_admin', 'payroll' and the head kinds
+  // resolve to a SET whose membership is decided by the authorization rules in decideLeave. Naming one of
+  // those would tell the employee something untrue about who can act, and enumerating them would publish
+  // the tenant's HR roster to every employee. Those keep their role label via currentStepKind; only the
+  // manager case earns a name and a face.
+  //
+  // Reads the SAME edge reportingLinesFor uses (administrative, still open) rather than inventing a second
+  // notion of "manager" that could drift from the one the rest of the app shows.
+  currentApproverName: sql<string | null>`(
+    select mp.full_name from leave_approval_step s
+    join reporting_line rl on rl.subordinate_employment_id = leave_request.employment_id
+      and rl.line_type = 'administrative' and rl.valid_to is null
+    join employment me on me.id = rl.manager_employment_id
+    join person mp on mp.id = me.person_id
+    where s.leave_request_id = leave_request.id and s.status = 'pending'
+      and s.approver_kind = 'direct_manager'
+    order by s.step_index limit 1)`,
+  currentApproverPersonId: sql<string | null>`(
+    select me.person_id from leave_approval_step s
+    join reporting_line rl on rl.subordinate_employment_id = leave_request.employment_id
+      and rl.line_type = 'administrative' and rl.valid_to is null
+    join employment me on me.id = rl.manager_employment_id
+    where s.leave_request_id = leave_request.id and s.status = 'pending'
+      and s.approver_kind = 'direct_manager'
+    order by s.step_index limit 1)`,
   // Approval Information (feedback 0773bda9): the final decider's employment id + name, so the admin
   // history table can show "Approved by" and the advanced filter can narrow by approver. NULL until a
   // request is decided (pending rows). Kept in the SHARED projection so the flat + paginated reads agree.

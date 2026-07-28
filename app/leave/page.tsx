@@ -429,6 +429,11 @@ export default async function LeavePage({
             ? tMe('stageManager')
             : tMe('stageHr')
           : null,
+      // WHO it is sitting with (feedback 567333b7), alongside the stage line that already said WHAT the
+      // stage is. Populated only for a direct-manager step — see the projection in core/read.ts on why the
+      // role-based kinds deliberately keep their label instead of naming or enumerating people.
+      approverName: r.status === 'pending' ? (r.currentApproverName ?? null) : null,
+      approverPersonId: r.status === 'pending' ? (r.currentApproverPersonId ?? null) : null,
       // Partial Leave Cancellation (ADR-0065): a pending give-back request shows a pill in the panel.
       cancelPendingLabel: r.pendingCancellationId ? t('cancelPendingBadge') : null,
       documentHref: r.hasDocument ? `/me/leave/attachment/${r.id}?inline=1` : null,
