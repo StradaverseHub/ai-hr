@@ -7,6 +7,60 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## r71 — 2026-07-28 — 12 approved items (leave entitlements, counts, labels)
+
+**Shipped:** `main@5c1d6bf` (branch `build/r71-clean@fe2bb0c`). 28 files, +565 lines, migration `0315`.
+**Gate:** `tsc` clean · **443 files / 4869 tests** · `next build` clean · **upgrade rehearsal PASS** —
+the first release gated against a POPULATED database rather than an empty one. Deployed and verified
+live: `GET /` 401, `job_grade.description` present on production, no errors since restart.
+
+**Shipped:** 783bf55a · baea8e5b · c2a48426 · 77a4049f · 45c781e2 · 7f9fbf50 · 082fa566 · ab77dc1f ·
+9b25b094 · a46fe0c0 · 567333b7 · e3c733df.
+
+### Decisions
+
+**1. Two reported bugs were one, and the allowlist was asking the wrong question.** `openLeaveYear`
+selected what to grant with `code IN STANDING_LEAVE_CODES` — ANNUAL, SICK, HOSPITALIZATION and nothing
+else — so a Service-Based Entitlement on Caregiver or Study Leave saved successfully and never reached
+an employee (783bf55a), and leave taken against the resulting non-existent grant drove the ledger below
+zero (baea8e5b). The allowlist itself was correct: ADR-0066 keeps FESTIVE types out of the accrual and
+forfeit engines deliberately. What was wrong was the discriminator. It now asks **"did an administrator
+configure entitlement days for this type"** rather than "is this code one of three strings". Festive
+types have neither a policy nor a scheme entitlement, so they are still excluded.
+
+**2. Three items were HELD because the report did not survive contact with the data.** Each would have
+changed money or reversed a decision on a reading that turned out to be wrong:
+- `4c6f69bd` → raised **3282eccc**. Wants 11.34 days where the system deliberately grants 19.73 up
+  front (decision `adcdf215`). A different MODEL, not a rounding bug.
+- `7a348d34` → raised **d7455ed2**. The reported SKBBK fault **does not reproduce** — T100009's July and
+  June payslips are both 0.00; only the stale May run carries 44.65. The real gap found instead: an
+  employee with NO statutory record is treated as covered while one with an all-unticked record is
+  exempt, so saving an empty form differs from never opening it. Affects 5 of 20 active employees.
+- `1459e116`. The Payroll nav row is contributed by the payroll PACK, not the sidebar, so a fly-out
+  changes the pack's nav contract — and the component renders one child level where the request draws
+  three.
+
+**3. Two items needed a reading of the request other than the literal one, both recorded on the board so
+the reporter can overrule.** `e3c733df` asked to rename Grade Name → Description and add a new Label;
+done literally, every existing grade name moves under "Description" and Label — the field people read —
+is blank on every row. The item's stated GOAL was to match the other System Label categories, whose
+pattern is `label` = name shown, `description` = optional detail. Also declined the Criteria column:
+`job_grade` is tenant-global, and the existing code records that hosting it in the company-scoped grid
+"still rendered a meaningless Criteria column". `082fa566` got a NEW `available` key rather than
+redefining `balance`, so anything that genuinely means a balance keeps its word.
+
+**4. `useSearchParams` is gated by `next build`, not `tsc`.** It typechecks fine and fails at BUILD time
+outside a Suspense boundary. Both new client components using it (`submit-toast`, the dialog's
+open-on-arrival) were verified with a real build rather than assumed safe.
+
+### Outstanding
+
+- 22 approved items remain, including the pairs that must ship as single changes
+  (`cdf9ca48`+`a7fab30b` touches pay; `bc9be1e8`+`0d9cf710` both remove the same tab).
+- The r71 UI changes have NOT been browser-verified.
+
+---
+
 ## Slice 3 — 2026-07-28 — deployment env gates become per-tenant entitlements
 
 **Shipped:** `main@a664e5e` (merge `499e79e`, branch `build/slice3@8d1f18d`). 101 files, +6305 lines.
