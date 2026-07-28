@@ -9,10 +9,11 @@
  * component; it never calls a function out of a 'use client' module).
  *
  * Normal mode: render the employee's selected cards in their saved order + a "Customize Dashboard" button.
- * Customize mode (feedback dashgrid → 2806443b): a @dnd-kit 2-D grid in THREE areas — a draggable top row
- *   of up to 4 cards, a fixed full-width second row holding ONLY the Leave Calendar (FIXED_ROW_KEYS), and
- *   a flexible third area below the calendar for every remaining selected card (also draggable — the top
- *   row and third area share one flat order; the 4-card slice decides which grid a card lands in).
+ * Customize mode (feedback dashgrid → 2806443b, Shortcuts row 3d2bc793): a @dnd-kit 2-D grid in FOUR areas
+ *   — a draggable top row of up to 4 cards, the Shortcuts row, a fixed full-width row holding ONLY the
+ *   Leave Calendar (FIXED_ROW_KEYS), and a flexible area below the calendar for every remaining selected
+ *   card (also draggable — the top row and that area share one flat order; the 4-card slice decides which
+ *   grid a card lands in).
  *   The live render IS the preview, plus
  *   • Add Card — a menu of employee-selectable cards not currently shown.
  *   • Remove (×) on each optional card; mandatory cards refuse removal with a shake + the message
@@ -22,6 +23,9 @@
  *
  * Action / Shortcut cards (cardType 'action' | 'shortcut') that have no bespoke server node render as a
  * clickable ShortcutCard linking straight to their configured destination (leave / claims / payslip / ...).
+ * Shortcut-typed cards additionally gather into their own SHORTCUTS row between the top row and the pinned
+ * calendar (feedback 3d2bc793): up to MAX_SHORTCUTS of them, ordered by the employee, reorderable within
+ * that row only. 'action' cards stay ordinary top-row cards — Pending Tasks renders a bespoke node.
  */
 
 import { type ReactNode, useMemo, useRef, useState, useTransition } from 'react';
@@ -48,7 +52,12 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ArrowUpRight, GripVertical, Pin, Plus, X } from 'lucide-react';
 import { Button, Card } from '@/components/ui';
-import { isFixedRowKey, partitionDashboardRows, type DashboardLayout } from '@/lib/dashboard-layout';
+import {
+  MAX_SHORTCUTS,
+  isFixedRowKey,
+  partitionDashboardRows,
+  type DashboardLayout,
+} from '@/lib/dashboard-layout';
 
 /**
  * Column classes derived from the ACTUAL number of cards in a row (feedback 84d1233d step 1), so two
@@ -128,9 +137,13 @@ function SortableCard({
       } ${shaking ? 'animate-shake border-destructive/60' : ''}`}
     >
       <div className="mb-2 flex items-center gap-2">
+        {/* The handle carries dnd-kit's KeyboardSensor activator as well as the pointer one, so this button
+            IS the keyboard route: focus it, press Space, arrow to the new slot, Space again. Naming it
+            "Reorder {card}" instead of just the card name is what makes that route findable by screen
+            reader (feedback 3d2bc793). */}
         <button
           type="button"
-          aria-label={label}
+          aria-label={t('reorderCardAria', { card: label })}
           className="grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-primary/40"
           {...attributes}
           {...listeners}
@@ -219,38 +232,69 @@ export function DashboardCustomizer({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const addable = cards.filter((c) => c.employeeSelectable && !visible.includes(c.key));
-
-  // Row assignment (feedback dashgrid → 2806443b) is DERIVED, never persisted: ONLY the Leave Calendar
-  // (lib/dashboard-layout FIXED_ROW_KEYS) is pinned to the full-width second row. Shortcut/action cards
-  // (incl. Pending Tasks) are ordinary draggable/removable cards; a card HR marked mandatory still refuses
-  // removal with the shake. See lib/dashboard-layout.partitionDashboardRows.
+  // Row assignment (feedback dashgrid → 2806443b, Shortcuts row 3d2bc793) is DERIVED, never persisted:
+  // the Leave Calendar (lib/dashboard-layout FIXED_ROW_KEYS) is pinned to the full-width second row, and
+  // cards HR typed 'shortcut' gather into the Shortcuts row. Everything else — including the 'action'
+  // Pending Tasks card, which has a bespoke node and belongs in the top row — is an ordinary
+  // draggable/removable card; a card HR marked mandatory still refuses removal with the shake.
   const isPinned = (key: string): boolean => isFixedRowKey(key);
-  const pinnedKeys = useMemo(() => new Set(visible.filter((k) => isFixedRowKey(k))), [visible]);
-  const { row1: row1Keys, row2: fixedKeys, row3: row3Keys } = partitionDashboardRows(
-    { selected: visible, order: visible },
-    pinnedKeys,
+  const isShortcut = (key: string): boolean => byKey.get(key)?.cardType === 'shortcut';
+  const pinnedKeys = useMemo(() => new Set(visible.filter(isPinned)), [visible]);
+  const shortcutKeys = useMemo(
+    () => new Set(visible.filter((k) => byKey.get(k)?.cardType === 'shortcut')),
+    [visible, byKey],
   );
+  const {
+    row1: row1Keys,
+    shortcuts: shortcutRowKeys,
+    row2: fixedKeys,
+    row3: row3Keys,
+  } = partitionDashboardRows({ selected: visible, order: visible }, pinnedKeys, shortcutKeys);
   // The flat draggable order shared by the top row and the third area — row membership re-derives from the
   // MAX_FIRST_ROW slice, so a drag between the two grids is just a move within this flat sequence.
   const sortableKeys = [...row1Keys, ...row3Keys];
 
+  // At the cap, the Add menu still LISTS the remaining shortcuts but refuses them, with the reason spelled
+  // out — a silently vanishing menu entry reads as a bug.
+  const shortcutLimitReached = shortcutRowKeys.length >= MAX_SHORTCUTS;
+  const addable = cards.filter((c) => c.employeeSelectable && !visible.includes(c.key));
+
+  /**
+   * Move `activeId` to `overId`'s slot WITHIN its own group (the Shortcuts row, or the top row + third
+   * area), leaving every other card's position in `cur` untouched. Written as a slot rewrite rather than
+   * filter-move-concat so a reorder inside one group can never renumber the other — the two groups render
+   * as separate grids, and a drag that lands on the wrong group's card is a no-op spring-back.
+   */
+  const moveWithinGroup = (cur: string[], inGroup: (k: string) => boolean, activeId: string, overId: string) => {
+    const slots: number[] = [];
+    cur.forEach((k, i) => {
+      if (inGroup(k)) slots.push(i);
+    });
+    const group = slots.map((i) => cur[i]);
+    const from = group.indexOf(activeId);
+    const to = group.indexOf(overId);
+    if (from < 0 || to < 0) return cur;
+    const moved = arrayMove(group, from, to);
+    const next = [...cur];
+    slots.forEach((slot, j) => {
+      next[slot] = moved[j];
+    });
+    return next;
+  };
+
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
-    setVisible((cur) => {
-      // 2-D grid reorder: dnd-kit's rectSortingStrategy maps the grid geometry onto the flat non-pinned
-      // order (top row + third area), so a straight arrayMove over it is the correct L/R + up/down move —
-      // including a drag between the two grids, which simply crosses the MAX_FIRST_ROW slice boundary.
-      const nonPinned = cur.filter((k) => !isPinned(k));
-      const pinned = cur.filter((k) => isPinned(k));
-      const from = nonPinned.indexOf(active.id as string);
-      const to = nonPinned.indexOf(over.id as string);
-      if (from < 0 || to < 0) return cur; // over a pinned/absent target → spring back (no-op)
-      const nextNonPinned = arrayMove(nonPinned, from, to);
-      // Rebuild visible as the flat non-pinned order followed by the fixed-row cards.
-      return [...nextNonPinned, ...pinned];
-    });
+    const activeId = active.id as string;
+    const overId = over.id as string;
+    // 2-D grid reorder: dnd-kit's rectSortingStrategy maps the grid geometry onto the group's flat order,
+    // so a straight arrayMove over it is the correct L/R + up/down move — including a drag between the top
+    // row and the third area, which simply crosses the MAX_FIRST_ROW slice boundary.
+    const shortcutDrag = isShortcut(activeId);
+    if (shortcutDrag !== isShortcut(overId)) return; // across the two grids → spring back (no-op)
+    setVisible((cur) =>
+      moveWithinGroup(cur, shortcutDrag ? isShortcut : (k) => !isPinned(k) && !isShortcut(k), activeId, overId),
+    );
   };
 
   const triggerShake = (id: string) => {
@@ -285,6 +329,10 @@ export function DashboardCustomizer({
   const cancelRemove = () => setPendingRemoveKey(null);
 
   const addCard = (id: string) => {
+    if (isShortcut(id) && shortcutLimitReached) {
+      toast.error(t('shortcutsLimitToast', { max: MAX_SHORTCUTS }));
+      return;
+    }
     setVisible((cur) => (cur.includes(id) ? cur : [...cur, id]));
     setAddOpen(false);
   };
@@ -372,22 +420,32 @@ export function DashboardCustomizer({
                     role="menu"
                     className="absolute right-0 z-30 mt-1 max-h-72 w-64 overflow-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
                   >
-                    {addable.map((c) => (
-                      <button
-                        key={c.key}
-                        type="button"
-                        role="menuitem"
-                        onClick={() => addCard(c.key)}
-                        className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
-                      >
-                        <span className="truncate">{c.label}</span>
-                        {(c.cardType === 'shortcut' || c.cardType === 'action') && (
-                          <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-primary/80">
-                            {t('shortcutBadge')}
-                          </span>
-                        )}
-                      </button>
-                    ))}
+                    {addable.map((c) => {
+                      const blocked = c.cardType === 'shortcut' && shortcutLimitReached;
+                      return (
+                        <button
+                          key={c.key}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => addCard(c.key)}
+                          disabled={blocked}
+                          title={blocked ? t('shortcutsLimitToast', { max: MAX_SHORTCUTS }) : undefined}
+                          className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+                        >
+                          <span className="truncate">{c.label}</span>
+                          {(c.cardType === 'shortcut' || c.cardType === 'action') && (
+                            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-primary/80">
+                              {t('shortcutBadge')}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                    {shortcutLimitReached && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">
+                        {t('shortcutsLimitHint', { max: MAX_SHORTCUTS })}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -438,9 +496,10 @@ export function DashboardCustomizer({
 
       {customizing ? (
         <div className="space-y-6">
-          {/* One DndContext + SortableContext over the FLAT non-pinned order: row 1 (first 4) renders
-              above the fixed calendar row, row 3 (the rest) below it. A drag between the two grids is a
-              plain move within the flat order — the MAX_FIRST_ROW slice re-derives the grids. */}
+          {/* One DndContext holding TWO sortable groups: the flat non-pinned, non-shortcut order (row 1 =
+              first 4, row 3 = the rest) and the Shortcuts row. A drag between row 1 and row 3 is a plain
+              move within the first group — the MAX_FIRST_ROW slice re-derives the grids — while shortcuts
+              reorder only among themselves, so arranging them can never disturb the rest of the layout. */}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={sortableKeys} strategy={rectSortingStrategy}>
               {/* Row 1 — the draggable top-row grid (up to 4 across on desktop). */}
@@ -458,9 +517,42 @@ export function DashboardCustomizer({
                     {nodeFor(key)}
                   </SortableCard>
                 ))}
-                {row1Keys.length === 0 && (
+                {row1Keys.length === 0 && shortcutRowKeys.length === 0 && (
                   <p className="col-span-full rounded-2xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground">
                     {t('emptyDashboardHint')}
+                  </p>
+                )}
+              </div>
+              {/* Shortcuts — always shown while customizing (even empty) so the section is a findable place
+                  to put shortcuts, which is the whole point of the request (feedback 3d2bc793). */}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <p className="text-xs font-semibold text-foreground">{t('shortcutsRowTitle')}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('shortcutsRowHint', { max: MAX_SHORTCUTS })}
+                  </p>
+                </div>
+                {shortcutRowKeys.length > 0 ? (
+                  <SortableContext items={shortcutRowKeys} strategy={rectSortingStrategy}>
+                    <div className={`grid gap-4 ${gridColsFor(shortcutRowKeys.length)}`}>
+                      {shortcutRowKeys.map((key) => (
+                        <SortableCard
+                          key={key}
+                          id={key}
+                          label={labelFor(key)}
+                          mandatory={byKey.get(key)?.mandatory ?? false}
+                          shaking={shakeKey === key}
+                          mandatoryMessage={t('mandatoryCardMessage')}
+                          onRemove={requestRemove}
+                        >
+                          {nodeFor(key)}
+                        </SortableCard>
+                      ))}
+                    </div>
+                  </SortableContext>
+                ) : (
+                  <p className="rounded-2xl border-2 border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                    {t('shortcutsEmptyHint', { max: MAX_SHORTCUTS })}
                   </p>
                 )}
               </div>
@@ -504,6 +596,15 @@ export function DashboardCustomizer({
           {row1Keys.length > 0 && (
             <div className={`grid gap-6 ${gridColsFor(row1Keys.length)}`}>
               {row1Keys.map((key) => (
+                <div key={key} className="h-full">{nodeFor(key)}</div>
+              ))}
+            </div>
+          )}
+          {/* Shortcuts — the employee's mini-card row, in their saved order. Hidden when empty so a
+              dashboard with no shortcuts renders exactly as it did before (feedback 3d2bc793). */}
+          {shortcutRowKeys.length > 0 && (
+            <div className={`grid gap-6 ${gridColsFor(shortcutRowKeys.length)}`}>
+              {shortcutRowKeys.map((key) => (
                 <div key={key} className="h-full">{nodeFor(key)}</div>
               ))}
             </div>
