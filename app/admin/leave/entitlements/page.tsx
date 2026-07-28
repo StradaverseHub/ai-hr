@@ -270,6 +270,11 @@ export default async function LeaveEntitlementsPage({
   const schemeCompanyNameById = new Map(
     benefitSchemes.map((sc) => [sc.id, companyNameById.get(sc.companyId) ?? null] as const),
   );
+  // a03eff24 — the matrix's ROW identity: the scheme's grade group and employment type. Same already-loaded
+  // benefitSchemes rows (listBenefitSchemes left-joins grade_group for the name) — no extra query.
+  const schemeAxesById = new Map(
+    benefitSchemes.map((sc) => [sc.id, { gradeGroupName: sc.gradeGroupName, employmentType: sc.employmentType }] as const),
+  );
   const poolBySchemeType = new Map<string, { name: string; totalLimitDays: number }>();
   for (const cl of schemeCombinedLimits) {
     for (const ltId of cl.leaveTypeIds) {
@@ -284,6 +289,8 @@ export default async function LeaveEntitlementsPage({
       benefitSchemeId: e.benefitSchemeId,
       schemeName: schemeNameById.get(e.benefitSchemeId) ?? '—',
       companyName: schemeCompanyNameById.get(e.benefitSchemeId) ?? null,
+      gradeGroupName: schemeAxesById.get(e.benefitSchemeId)?.gradeGroupName ?? null,
+      employmentType: schemeAxesById.get(e.benefitSchemeId)?.employmentType ?? 'full_time',
       leaveTypeId: e.leaveTypeId,
       leaveTypeName: e.leaveTypeName,
       serviceBands: e.serviceBands,

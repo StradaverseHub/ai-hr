@@ -215,15 +215,28 @@ describe('123c1e76 · per-type Entitlement card reuses the benefit-scheme table 
     expect(panelSrc).toMatch(/import \{[\s\S]*type LeaveTypeSchemeEntitlement[\s\S]*\} from '\.\/benefit-scheme-config'/);
   });
 
-  it('benefit-scheme-config exports the per-type table and it reuses the row edit dialog + tier reader', () => {
+  it('benefit-scheme-config exports the per-type table and it reuses the shared writer, not a fork', () => {
     expect(schemeSrc).toContain('export function LeaveTypeEntitlementTable');
     expect(schemeSrc).toContain('export type LeaveTypeSchemeEntitlement');
-    const start = schemeSrc.indexOf('export function LeaveTypeEntitlementTable');
-    const body = schemeSrc.slice(start, schemeSrc.indexOf('function EntitlementForm', start));
-    // Reuse, not re-implementation: the SAME edit dialog (and thus the SAME upsert FormData contract)
-    // and the SAME defensive tier reader the per-scheme table renders with.
+    const start = schemeSrc.indexOf('export type LeaveTypeSchemeEntitlement');
+    // a03eff24 made this section a matrix whose row is its own component, so the window starts at the row
+    // TYPE and stops at the banner opening the sibling company × grade table.
+    const body = schemeSrc.slice(
+      start,
+      schemeSrc.indexOf('// ─────────────────── Service-Based Entitlements (company × grade) ───────────────────', start),
+    );
+    // Reuse, not re-implementation: the SAME edit dialog still opens from here for the band shapes the grid
+    // cannot lay out.
     expect(body).toContain('<EntitlementEditDialog');
-    expect(body).toContain('tiersFromBands');
+    // a03eff24 replaced the `tiersFromBands` read with a direct read of the row's stored bands — that reader
+    // collapses any non-three-band shape to a blank 2/5 template, which is exactly what the matrix must not
+    // do. So the reuse claim is now asserted where it actually lives: the inline cells post the SAME
+    // upsertSchemeEntitlement FormData contract the dialog's form posts, byte for byte.
+    expect(body).toContain('name="benefitSchemeId"');
+    expect(body).toContain('name="leaveTypeId"');
+    expect(body).toContain('name="serviceBands"');
+    // …and the defensive tier reader itself is still shipped for the dialog path (not deleted).
+    expect(schemeSrc).toContain('function tiersFromBands(');
   });
 
   it('the entitlements page feeds the panel the filtered rows and the SAME upsert action', () => {
