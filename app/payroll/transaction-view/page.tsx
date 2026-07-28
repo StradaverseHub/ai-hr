@@ -12,6 +12,7 @@ import {
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
 import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { employeeLabel } from '@/lib/employee-code';
+import { packFor } from '@/localization/registry';
 import { IndividualTxnTable } from './individual-table';
 import { HistoryTable } from './history-table';
 
@@ -136,6 +137,17 @@ export default async function TransactionViewPage({
       ? listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle })
       : Promise.resolve([]),
   ]);
+
+  // Feedback efece4ce — which companies are actually registered for the HRD Corp levy. The breakdown used
+  // to drop its HRDF line whenever the amount was 0, so a company that legitimately pays nothing (no HRDF
+  // Contribution Rate set) looked exactly like a levy that failed to compute. Read once per render for the
+  // History tab only; `packFor('MY')` follows the Organization page — the levy is Malaysia-specific.
+  const hrdfRegisteredCompanyIds =
+    tab === 'history'
+      ? ((await packFor('MY')?.companyStatutory.list(s)) ?? [])
+          .filter((r) => r.hrdfStatus !== 'not_registered')
+          .map((r) => r.companyId)
+      : [];
 
   const today = new Date().toISOString().slice(0, 10);
   const nowYear = new Date().getFullYear();
@@ -407,7 +419,7 @@ export default async function TransactionViewPage({
       {tab === 'history' && (
         <Card className="overflow-hidden">
           <SectionHeader title={t('view.tabs.history')} count={historyRows.length} />
-          <HistoryTable rows={historyRows} />
+          <HistoryTable rows={historyRows} hrdfRegisteredCompanyIds={hrdfRegisteredCompanyIds} />
         </Card>
       )}
     </div>

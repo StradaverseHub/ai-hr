@@ -249,11 +249,17 @@ export default async function EmployeePage({
   // (union-read, the rung-5a `countryPacks()` precedent). MY-only ⇒ byte-identical to the old MY_STATES.
   const stateOptions = countryPacks().flatMap((p) => p.states);
   const statutory = admin ? ((await countryPack?.statutory.get(s, emp.personId)) ?? null) : null;
-  // Feedback 57840a6e — the company's HRDF registration band is NO LONGER read here. The Others Statutory
-  // control used to pre-tick its checkbox from that band, which is exactly how an untouched card pinned an
-  // employee to an explicit No while the company was not_registered. The control is now a tri-state select
+  // Feedback 57840a6e — the company's HRDF registration band never again feeds the Others Statutory
+  // control's defaultValue. Pre-ticking its checkbox from that band is exactly how an untouched card pinned
+  // an employee to an explicit No while the company was not_registered. The control is a tri-state select
   // whose "" option persists null (follow the company default, resolved at payroll time), so the page needs
   // no company-side default at all.
+  // Feedback efece4ce — the band IS read again, for DISPLAY ONLY: an explicit "Subject to HRDF = Yes" on a
+  // company with no HRDF Contribution Rate is accepted by the save and then silently discarded at payroll
+  // time (pack.payroll.hrdfSubject honours the flag, but hrdfLevy rates not_registered to 0). HR set
+  // something and nothing happened, with nothing on any screen saying why. Must NOT touch defaultValue.
+  const companyHrdf = admin ? ((await countryPack?.companyStatutory.get(s, emp.companyId)) ?? null) : null;
+  const companyHrdfUnregistered = (companyHrdf?.hrdfStatus ?? 'not_registered') === 'not_registered';
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
   const holidayGroups = admin ? await listHolidayGroups(s) : [];
   // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
@@ -2290,6 +2296,17 @@ export default async function EmployeePage({
           </select>
         </Field>
         <p className="text-xs text-muted-foreground">{t('subjectToHrdfHint')}</p>
+        {/* Feedback efece4ce — the contradiction the reporter hit: an explicit Yes on a company with no HRDF
+            Contribution Rate. The save is honest (the flag IS stored, and starts levying the moment the
+            company registers), so this is a warning, not a blocker — refusing the save would strand HR who
+            are setting employees up ahead of the company registration. What it must never do again is stay
+            silent. Rendered from the STORED value, so it survives the post-save redirect and every later
+            visit; a null/No employee sees nothing. */}
+        {statutory?.subjectToHrdf === true && companyHrdfUnregistered && (
+          <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+            {t('subjectToHrdfCompanyNotRegistered')}
+          </p>
+        )}
         <div className="flex items-end justify-end">
           <button className={btnPrimary}>{t('othersStatutorySave')}</button>
         </div>

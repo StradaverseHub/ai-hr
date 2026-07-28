@@ -33,7 +33,16 @@ function Row({ label, value, muted }: { label: string; value: React.ReactNode; m
 
 const COL_COUNT = 13; // toggle + 12 summary columns
 
-export function HistoryTable({ rows }: { rows: ProcessedPayslipViewRow[] }) {
+export function HistoryTable({
+  rows,
+  hrdfRegisteredCompanyIds,
+}: {
+  rows: ProcessedPayslipViewRow[];
+  /** Feedback efece4ce — companies whose HRDF Contribution Rate is set (0.5% / 1.0%). Everything else is
+   *  unregistered and levies nothing, which the breakdown must SAY rather than leave blank. */
+  hrdfRegisteredCompanyIds: string[];
+}) {
+  const hrdfRegistered = new Set(hrdfRegisteredCompanyIds);
   const t = useTranslations('payroll.transactions');
   const tList = useTranslations('payroll.list');
   const tBatch = useTranslations('payroll.batch');
@@ -166,14 +175,21 @@ export function HistoryTable({ rows }: { rows: ProcessedPayslipViewRow[] }) {
                           <Row label={tSlip('epf')} value={rm(b.employerContributions.epf)} muted />
                           <Row label={tSlip('socso')} value={rm(b.employerContributions.socso)} muted />
                           <Row label={tSlip('eis')} value={rm(b.employerContributions.eis)} muted />
-                          {/* HRDF (feedback efece4ce). Shown ONLY when the company actually levies it —
-                              an unregistered company resolves to 0, and a permanent "HRDF 0.00" row on
-                              every payslip of every company that does not pay it is noise that makes the
-                              figure easier to miss where it does apply. Same conditional idiom the SKBBK
-                              and CP38 rows above already use. */}
-                          {Number(b.employerContributions.hrdf) > 0 && (
-                            <Row label={tSlip('hrdf')} value={rm(b.employerContributions.hrdf)} muted />
-                          )}
+                          {/* HRDF (feedback efece4ce). The row was previously hidden whenever the amount
+                              was 0, which made an UNREGISTERED company indistinguishable from a levy that
+                              failed to compute — the reporter's "HRDF not calculated" is exactly that
+                              ambiguity. The line is always present now: an amount where the company is
+                              registered, the reason in words where it is not. Unlike SKBBK/CP38 above, a
+                              zero here is a policy statement, not an absent item. */}
+                          <Row
+                            label={tSlip('hrdf')}
+                            value={
+                              hrdfRegistered.has(r.companyId)
+                                ? rm(b.employerContributions.hrdf)
+                                : t('view.history.hrdfNotRegistered')
+                            }
+                            muted
+                          />
                           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
                             <span>{t('view.history.totalEmployerContributions')}</span>
                             <span className="tabular-nums">{rm(b.employerContributions.total)}</span>

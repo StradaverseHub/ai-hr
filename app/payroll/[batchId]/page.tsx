@@ -15,6 +15,7 @@ import { ComponentImport } from './component-import';
 import { OtInputRow } from './ot-input-row';
 import { ReprocessPanel } from './reprocess-panel';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
+import { packFor } from '@/localization/registry';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -108,6 +109,14 @@ export default async function BatchPage({
   // Per-run History (reporter ask #4 "fully traceable") — this batch's lifecycle events (created /
   // processed / reset / run-added / selective-reprocess / closed / payment-summary.exported). Read-only.
   const history = await auditEvents(s, { aggregateId: batchId, limit: 50 });
+  // Feedback efece4ce — this run's company HRDF registration. The levy tile was shown only when the total
+  // was > 0, so "this company pays no HRDF because it is not registered" and "the levy failed to compute"
+  // rendered identically: as nothing at all. That ambiguity IS the reported bug. Read for display only —
+  // the figure on the payslips stays whatever the run computed. `packFor('MY')` mirrors the Organization
+  // page: the levy, like this page's RM formatting, is Malaysia-specific.
+  const hrdfRegistered =
+    ((await packFor('MY')?.companyStatutory.get(s, batch.companyId))?.hrdfStatus ?? 'not_registered') !==
+    'not_registered';
   // Payroll Process wizard: this draft is presented as "Step 3 of 3" when it arrived straight from the
   // wizard's terminal create action. A compact one-shot holiday-warning code list rides the query string
   // ('country|state|year|loaded|required' ';'-joined) — the domain event appended in createBatch is the
@@ -607,24 +616,31 @@ export default async function BatchPage({
 
       {batch.status !== 'draft' &&
         (() => {
-          // HRD Corp levy is an employer-only cost; show its tile only when the company is registered.
-          const tiles: [string, number][] = [
-            ['totalGross', totals.gross],
-            ['totalDeductions', totals.deductions],
-            ['totalNet', totals.net],
+          // HRD Corp levy is an employer-only cost. Feedback efece4ce — the tile is ALWAYS present now: a
+          // registered company shows the amount, an unregistered one says so in words. Hiding it left the
+          // reporter unable to tell "not registered" from "the calculation never ran". The value is a
+          // string so the not-registered tile can carry copy instead of RM 0.00, which reads as a fault.
+          const tiles: [string, string][] = [
+            ['totalGross', rm(totals.gross)],
+            ['totalDeductions', rm(totals.deductions)],
+            ['totalNet', rm(totals.net)],
+            ['totalHrdf', hrdfRegistered ? rm(totals.hrdfEmployer) : t('totalHrdfNotRegistered')],
+            ['totalEmployerCost', rm(totals.employerCost)],
           ];
-          if (Number(totals.hrdfEmployer) > 0) tiles.push(['totalHrdf', totals.hrdfEmployer]);
-          tiles.push(['totalEmployerCost', totals.employerCost]);
           return (
-            <div
-              className={`grid grid-cols-2 divide-x divide-border rounded-lg border border-border ${
-                tiles.length === 5 ? 'sm:grid-cols-5' : 'sm:grid-cols-4'
-              }`}
-            >
+            <div className="grid grid-cols-2 divide-x divide-border rounded-lg border border-border sm:grid-cols-5">
               {tiles.map(([key, v]) => (
                 <div key={key} className="p-4">
                   <div className="text-xs text-muted-foreground">{t(key)}</div>
-                  <div className="text-lg font-semibold tabular-nums">{rm(v)}</div>
+                  <div
+                    className={`font-semibold ${
+                      key === 'totalHrdf' && !hrdfRegistered
+                        ? 'text-sm text-muted-foreground'
+                        : 'text-lg tabular-nums'
+                    }`}
+                  >
+                    {v}
+                  </div>
                 </div>
               ))}
             </div>

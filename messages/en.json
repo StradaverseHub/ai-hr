@@ -448,6 +448,7 @@
       "subjectToHrdf": "Subject to HRDF",
       "subjectToHrdfHint": "When checked, this employee's qualifying earnings are included in the HRD Corp (HRDF) levy calculation during payroll; when unchecked, the employee is excluded entirely.",
       "subjectToHrdfFollowingDefault": "Following the company's HRDF registration default. Save to set an explicit choice for this employee.",
+      "subjectToHrdfCompanyNotRegistered": "Set to Yes, but this employee’s company has no HRDF Contribution Rate (Organization ▸ Statutory), so payroll charges no levy for them. The choice is saved and takes effect once the company is registered.",
       "othersStatutorySave": "Save others statutory",
       "assignmentHistory": "Assignment history",
       "periodValidTime": "Period (valid time)",
@@ -2469,6 +2470,7 @@
       "proratedDays": "prorated · {worked}/{total} days",
       "noPayslips": "No payslips in this batch.",
       "totalHrdf": "HRD Corp levy",
+      "totalHrdfNotRegistered": "Not registered",
       "componentImport": {
         "title": "Import pay components (CSV)",
         "description": "Bulk-add one-off allowances, deductions, OT or bonuses to this draft batch. Columns: employee (email), component (code), amount, notes.",
@@ -3131,7 +3133,8 @@
           "empty": "No processed payroll results match the selected filters.",
           "showBreakdown": "Show breakdown",
           "hideBreakdown": "Hide breakdown",
-          "totalEmployerContributions": "Total employer contributions"
+          "totalEmployerContributions": "Total employer contributions",
+          "hrdfNotRegistered": "Not registered"
         },
         "exportCsv": "Export CSV"
       }
@@ -3524,6 +3527,8 @@
       "hrdfNotRegistered": "No Contribution",
       "hrdfMandatory": "1.0% Contribution",
       "hrdfOptional": "0.5% Contribution",
+      "statutoryMissingTitle": "Missing statutory registration",
+      "statutoryMissingHint": "These companies have no Malaysia statutory record. Payroll treats them as having no HRDF Contribution Rate, so no HRD Corp levy is charged. Open the company and complete its Statutory tab.",
       "businessUnitsCount": "Business units ({count})",
       "fieldBusinessUnit": "Business unit",
       "businessUnitNone": "— None —",

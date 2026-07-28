@@ -448,6 +448,7 @@
       "subjectToHrdf": "Tertakluk kepada HRDF",
       "subjectToHrdfHint": "Apabila ditanda, pendapatan layak pekerja ini dimasukkan dalam pengiraan levi HRD Corp (HRDF) semasa penggajian; jika tidak ditanda, pekerja dikecualikan sepenuhnya.",
       "subjectToHrdfFollowingDefault": "Mengikut tetapan lalai pendaftaran HRDF syarikat. Simpan untuk menetapkan pilihan khusus bagi pekerja ini.",
+      "subjectToHrdfCompanyNotRegistered": "Ditetapkan kepada Ya, tetapi syarikat pekerja ini tiada Kadar Caruman HRDF (Organisasi ▸ Berkanun), jadi penggajian tidak mengenakan sebarang levi untuknya. Pilihan ini disimpan dan berkuat kuasa sebaik sahaja syarikat didaftarkan.",
       "othersStatutorySave": "Simpan statutori lain",
       "assignmentHistory": "Sejarah penugasan",
       "periodValidTime": "Tempoh (masa sah)",
@@ -2704,6 +2705,7 @@
       "proratedDays": "diprorata · {worked}/{total} hari",
       "noPayslips": "Tiada slip gaji dalam kelompok ini.",
       "totalHrdf": "Levi HRD Corp",
+      "totalHrdfNotRegistered": "Tidak berdaftar",
       "componentImport": {
         "title": "Import komponen gaji (CSV)",
         "description": "Tambah elaun, potongan, OT atau bonus sekali-gus ke kelompok draf ini. Lajur: employee (e-mel), component (kod), amount, notes.",
@@ -3131,7 +3133,8 @@
           "empty": "Tiada keputusan gaji diproses yang sepadan dengan penapis dipilih.",
           "showBreakdown": "Tunjuk pecahan",
           "hideBreakdown": "Sembunyikan pecahan",
-          "totalEmployerContributions": "Jumlah caruman majikan"
+          "totalEmployerContributions": "Jumlah caruman majikan",
+          "hrdfNotRegistered": "Tidak berdaftar"
         },
         "exportCsv": "Eksport CSV"
       }
@@ -3524,6 +3527,8 @@
       "hrdfNotRegistered": "Tiada Caruman",
       "hrdfMandatory": "Caruman 1.0%",
       "hrdfOptional": "Caruman 0.5%",
+      "statutoryMissingTitle": "Pendaftaran berkanun tiada",
+      "statutoryMissingHint": "Syarikat ini tiada rekod berkanun Malaysia. Penggajian menganggapnya tiada Kadar Caruman HRDF, jadi tiada levi HRD Corp dikenakan. Buka syarikat dan lengkapkan tab Berkanun.",
       "businessUnitsCount": "Unit perniagaan ({count})",
       "fieldBusinessUnit": "Unit perniagaan",
       "businessUnitNone": "— Tiada —",
