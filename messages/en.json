@@ -6241,7 +6241,13 @@
     "assignmentTemplateHint": "Decide which companies, leave types and employees each approval flow applies to.",
     "leaveTypesMore": "{n, plural, one {+# more} other {+# more}}",
     "companyDefaultsTitle": "Company defaults and escalation",
-    "companyDefaultsHint": "Open a company to edit its base approval chain, its multi-step approval switch and its escalation settings."
+    "companyDefaultsHint": "Open a company to edit its base approval chain, its multi-step approval switch and its escalation settings.",
+    "selectGrades": "Grades",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "panelNoneMeansAll": "None selected = applies to all",
+    "noGrades": "No job grades configured yet.",
+    "panelPickAtLeastOne": "Pick at least one"
   },
   "feedback": {
     "title": "Feedback",

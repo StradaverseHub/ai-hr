@@ -6241,7 +6241,13 @@
     "assignmentTemplateHint": "Quyết định mỗi luồng phê duyệt áp dụng cho công ty, loại nghỉ phép và nhân viên nào.",
     "leaveTypesMore": "{n, plural, other {+# nữa}}",
     "companyDefaultsTitle": "Mặc định công ty và leo thang",
-    "companyDefaultsHint": "Mở một công ty để sửa chuỗi phê duyệt cơ bản, công tắc phê duyệt nhiều bước và cài đặt leo thang của công ty đó."
+    "companyDefaultsHint": "Mở một công ty để sửa chuỗi phê duyệt cơ bản, công tắc phê duyệt nhiều bước và cài đặt leo thang của công ty đó.",
+    "selectGrades": "Bậc công việc",
+    "selectAll": "Chọn tất cả",
+    "deselectAll": "Bỏ chọn tất cả",
+    "panelNoneMeansAll": "Không chọn = áp dụng cho tất cả",
+    "noGrades": "Chưa cấu hình bậc công việc nào.",
+    "panelPickAtLeastOne": "Chọn ít nhất một mục"
   },
   "feedback": {
     "title": "Phản hồi",
