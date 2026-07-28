@@ -39,6 +39,7 @@ export type GradeGridRecord = {
   id: string;
   code: string;
   name: string;
+  description: string | null;
   rank: number;
   archivedAt: Date | null;
   inUse: boolean;
@@ -49,6 +50,8 @@ type RowState = {
   id: string;
   code: string;
   name: string;
+  /** Held as '' rather than null while editing; the server collapses blank back to NULL on save. */
+  description: string;
   /** Kept as text while editing so a half-typed / non-numeric rank round-trips to its own row error
    *  instead of being silently coerced to 0 on the way in. */
   rank: string;
@@ -60,8 +63,8 @@ type RowState = {
 
 export type GradeGridActions = {
   save: (payload: {
-    creates: { key: string; code: string; name: string; rank: string }[];
-    updates: { key: string; id: string; code: string; name: string; rank: string; setArchived: boolean | null }[];
+    creates: { key: string; code: string; name: string; description: string; rank: string }[];
+    updates: { key: string; id: string; code: string; name: string; description: string; rank: string; setArchived: boolean | null }[];
   }) => Promise<
     | { ok: true; created: number; updated: number; createdIds: { key: string; id: string }[] }
     | { ok: false; rowErrors: { key: string; field?: string; message: string }[]; message?: string }
@@ -77,6 +80,9 @@ function toRow(r: GradeGridRecord): RowState {
     id: r.id,
     code: r.code,
     name: r.name,
+    // NULL renders as an empty box; the server turns blank back into NULL on save, so a description
+    // nobody typed never round-trips as an empty string.
+    description: r.description ?? '',
     rank: String(r.rank),
     archived: r.archivedAt != null,
     inUse: r.inUse,
@@ -106,7 +112,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
   const hasChanges = drafts.length > 0 || dirtyExisting.length > 0;
   const activeFilterCount = (search.trim() ? 1 : 0) + (statusFilter !== 'active' ? 1 : 0);
 
-  function updateCell(key: string, field: 'code' | 'name' | 'rank', value: string) {
+  function updateCell(key: string, field: 'code' | 'name' | 'description' | 'rank', value: string) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, [field]: value, dirty: true } : r)));
   }
   function toggleArchive(key: string) {
@@ -122,6 +128,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
         id: '',
         code: '',
         name: '',
+        description: '',
         rank: String(nextRank),
         archived: false,
         inUse: false,
@@ -158,6 +165,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
       key: r.key,
       code: r.code.trim(),
       name: r.name.trim(),
+      description: r.description.trim(),
       rank: r.rank,
     }));
     const baseline = new Map(data.map((r) => [r.id, r]));
@@ -169,6 +177,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
         id: r.id,
         code: r.code.trim(),
         name: r.name.trim(),
+        description: r.description.trim(),
         rank: r.rank,
         // Only send an archive flip when the row's status ACTUALLY changed, so a plain rename never emits
         // a spurious job-grade.archived / .unarchived event.
@@ -352,9 +361,16 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
               <th className={sortableThCls} onClick={() => toggleSort('code')}>
                 {t('col.code')} *{sortIcon('code')}
               </th>
+              {/* "Label", not "Grade Name" (e3c733df) — the other System Label categories call the
+                  human-readable name Label, and this table is being standardised to match them. The
+                  COLUMN is renamed; the stored field stays `name`, which employees, leave policies,
+                  approval rules, claim limits and grade groups all reference. */}
               <th className={sortableThCls} onClick={() => toggleSort('name')}>
-                {t('col.name')} *{sortIcon('name')}
+                {t('col.label')} *{sortIcon('name')}
               </th>
+              {/* New optional detail column, mirroring Profile Options. Not sortable: it is free text
+                  nobody orders a grade list by, and a sortable header would imply otherwise. */}
+              <th className={thCls}>{t('col.description')}</th>
               <th className={`${sortableThCls} w-20`} onClick={() => toggleSort('rank')}>
                 {t('col.rank')}
                 {sortIcon('rank')}
@@ -401,6 +417,18 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                       onKeyDown={(e) => onCellKey(e, rowIdx, 'name')}
                       title={err && err.field === 'name' ? err.message : r.name}
                       className={`${cellInput} w-full min-w-0 ${err?.field === 'name' ? 'border-destructive' : ''}`}
+                    />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    {/* Optional (e3c733df) — no `*`, and no row error can land on it: it is free text with
+                        no format, no uniqueness and no downstream reader. */}
+                    <input
+                      data-cell={`description:${rowIdx}`}
+                      value={r.description}
+                      onChange={(e) => updateCell(r.key, 'description', e.target.value)}
+                      onKeyDown={(e) => onCellKey(e, rowIdx, 'description')}
+                      title={r.description}
+                      className={`${cellInput} w-full min-w-0`}
                     />
                   </td>
                   <td className="px-3 py-1.5">

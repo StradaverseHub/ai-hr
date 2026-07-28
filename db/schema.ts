@@ -1232,7 +1232,14 @@ export const jobGrade = pgTable(
     id: id(),
     tenantId: tenantId(),
     code: text('code').notNull(),
+    // `name` is the LABEL people read — the column the Job Grade table shows under "Label" (e3c733df).
+    // Kept as `name` rather than renamed: it is referenced by employees, leave policies, approval rules,
+    // claim limits and grade groups, and a rename buys nothing the heading does not already give.
     name: text('name').notNull(),
+    // Optional detail, mirroring profile_option.description (migration 0206) so Job Grade matches the
+    // System Label pattern it is meant to follow. Display-only, nullable, part of no uniqueness rule —
+    // two grades may legitimately share a description. See migration 0315.
+    description: text('description'),
     rank: integer('rank').notNull().default(0),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),

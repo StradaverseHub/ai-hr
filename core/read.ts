@@ -1585,6 +1585,9 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
         id: jobGrade.id,
         code: jobGrade.code,
         name: jobGrade.name,
+        // e3c733df — MUST be projected or the Description cell renders empty on every reload, the same
+        // trap the leave-type projection documents field by field.
+        description: jobGrade.description,
         rank: jobGrade.rank,
         archivedAt: jobGrade.archivedAt,
         // Grade relocation to System Labels (b1b81a08): the in-use predicate spans ALL FIVE referencing
