@@ -106,6 +106,36 @@ describe('validateReportSpec', () => {
       expect(gIds.has(id)).toBe(true);
   });
 
+  it('the Payroll Register dataset carries the reporter template groups + fields (622e12eb)', () => {
+    const ds = getDataset('payroll_register');
+    expect(ds).toBeDefined();
+    const byId = new Map(ds!.fields.map((f) => [f.id, f]));
+    // The six groups the reporter listed, in template order.
+    expect([...new Set(ds!.fields.map((f) => f.group))]).toEqual([
+      'Employee & Organisation Info',
+      'Earnings',
+      'Total Earnings',
+      'Deductions',
+      'Total Deductions & Nett Wage',
+      'Employer Contributions',
+    ]);
+    for (const id of ['employeeCode', 'employeeName', 'department', 'jobGrade', 'employmentStatus', 'payPeriod', 'payrollCycle'])
+      expect(byId.get(id)?.group).toBe('Employee & Organisation Info');
+    // Employee share vs employer contribution are DISTINCT columns — the point of a register.
+    for (const id of ['epfEmployee', 'socsoEmployee', 'socsoSkbbk', 'eisEmployee', 'pcb', 'cp38', 'zakat', 'otherDeductions'])
+      expect(byId.get(id)?.group).toBe('Deductions');
+    for (const id of ['epfEmployer', 'socsoEmployer', 'eisEmployer', 'hrdf', 'employerCost'])
+      expect(byId.get(id)?.group).toBe('Employer Contributions');
+    expect(byId.get('net')?.group).toBe('Total Deductions & Nett Wage');
+    // Every filter names a real field so the shared contains-filter path in runReportSpec can apply it.
+    for (const f of ds!.filters) expect(byId.has(f.id)).toBe(true);
+  });
+
+  it('Payroll offers the register FIRST so "New report" seeds it, with history still selectable', () => {
+    const list = datasetsForCategory('payroll');
+    expect(list.map((d) => d.id)).toEqual(['payroll_register', 'payroll_history']);
+  });
+
   it('default alignment follows the reporter rule (names left, dates/status center, numbers/currency right)', async () => {
     const { defaultAlign } = await import('../core/report-registry');
     expect(defaultAlign('text')).toBe('left');
