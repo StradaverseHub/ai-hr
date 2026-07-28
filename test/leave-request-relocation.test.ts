@@ -38,13 +38,20 @@ describe('Request Leave: relocated to a top-right primary "+" button', () => {
     expect(page.includes('previewAction={previewLeaveDeductionAction}')).toBe(true);
   });
 
-  it('exposes the trigger to EVERY viewer, not only admins', () => {
-    // The dialog is rendered OUTSIDE the `admin && (...)` branch inside the actions wrapper, so employees
-    // (admin === false) still get the button. Assert the dialog tag sits after the admin-guarded block close.
+  it('exposes the trigger to every SELF-SERVICE viewer — employees and managers, not admins (8ec63139)', () => {
+    // 48e69709 put the trigger outside the `admin && (...)` block so employees got it too; 8ec63139 then
+    // removed it from the HR-admin landing page, which is an employee-inquiry surface now. So the tag still
+    // sits after the admin-guarded search/filter/export block, but inside the `ess` (= !admin) guard.
     const adminGuardAt = page.indexOf('{admin && (');
     const dialogAt = page.indexOf('<RequestLeaveDialog');
     expect(adminGuardAt).toBeGreaterThan(-1);
-    expect(dialogAt).toBeGreaterThan(adminGuardAt); // dialog comes after the admin-only search/filter/export
+    expect(dialogAt).toBeGreaterThan(adminGuardAt);
+    expect(page).toMatch(/const ess = !admin;/);
+    // The guard wraps the dialog — the `{ess && (` immediately preceding it is the nearest opening guard.
+    const guardAt = page.lastIndexOf('{ess && (', dialogAt);
+    expect(guardAt).toBeGreaterThan(adminGuardAt);
+    // A manager is not `admin`, so on-behalf-of application from this page is unaffected.
+    expect(page).toContain('employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}');
   });
 });
 

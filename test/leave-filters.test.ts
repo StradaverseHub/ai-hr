@@ -194,6 +194,55 @@ describe('0773bda9 — leave advanced search & filter (data layer)', () => {
     expect(ids(bogus.rows).has(reqA)).toBe(true);
   });
 
+  // ── 8ec63139 (filter on every column, multi-select) + 953be4b0 (per-employee record page) ──────────
+  it('multi employmentIds narrows to those employees (the Employee column filter)', async () => {
+    const r = await page({ employmentIds: [empA.employmentId, empB.employmentId], limit: 200, offset: 0 });
+    expect(ids(r.rows).has(reqA)).toBe(true);
+    expect(ids(r.rows).has(reqB)).toBe(true);
+    expect(ids(r.rows).has(reqC)).toBe(false); // empC
+  });
+
+  it('multi departmentIds ORs within the field where the singular departmentId could not', async () => {
+    const r = await page({ departmentIds: [b.deptA, b.deptB], limit: 200, offset: 0 });
+    expect(ids(r.rows).has(reqA)).toBe(true); // deptA
+    expect(ids(r.rows).has(reqB)).toBe(true); // deptB
+    expect(ids(r.rows).has(reqD)).toBe(false); // company2's own department
+  });
+
+  it('multi filterCompanyIds narrows without being confused for the scope fence', async () => {
+    const r = await page({ filterCompanyIds: [company2], limit: 200, offset: 0 });
+    expect(ids(r.rows).has(reqD)).toBe(true);
+    expect(ids(r.rows).has(reqA)).toBe(false);
+    // Fence still wins: asking for company2 while fenced to company1 yields nothing.
+    const fenced = await page({ companyIds: [b.companyId], filterCompanyIds: [company2], limit: 200, offset: 0 });
+    expect(fenced.rows.length).toBe(0);
+  });
+
+  it('durationTypes narrows by the Days column, and an unknown value is whitelisted away', async () => {
+    const full = await page({ durationTypes: ['full_day'], limit: 200, offset: 0 });
+    expect(ids(full.rows).has(reqA)).toBe(true); // every seeded row defaults to full_day
+    const hourly = await page({ durationTypes: ['hourly'], limit: 200, offset: 0 });
+    expect(ids(hourly.rows).has(reqA)).toBe(false);
+    // Unknown value ⇒ the filter is simply not applied (no throw, nothing interpolated).
+    const bogus = await page({ durationTypes: ["x' or '1'='1"], limit: 200, offset: 0 });
+    expect(ids(bogus.rows).has(reqA)).toBe(true);
+  });
+
+  it('search also matches the leave CODE (953be4b0), without narrowing what matched before', async () => {
+    const r = await page({ q: 'SICK', limit: 200, offset: 0 });
+    expect(ids(r.rows).has(reqB)).toBe(true); // the sick request, found by its type code
+    expect(ids(r.rows).has(reqA)).toBe(false); // annual
+    // The pre-existing employee-name match is unaffected.
+    const byName = await page({ q: 'Filter Alpha', limit: 200, offset: 0 });
+    expect(ids(byName.rows).has(reqA)).toBe(true);
+  });
+
+  it('projects the final decision date so the record page can show "Final Approval Date"', async () => {
+    const r = await page({ employmentIds: [empB.employmentId], limit: 200, offset: 0 });
+    const row = r.rows.find((x) => x.id === reqB)!;
+    expect('decidedAt' in row).toBe(true);
+  });
+
   it('paginates with a stable total', async () => {
     const first = await page({ ...scoped, limit: 2, offset: 0 });
     expect(first.rows.length).toBe(2);

@@ -1,0 +1,292 @@
+/**
+ * The HR-admin leave inquiry rebuild — feedback 8ec63139, 20c699f8, 953be4b0 — plus the
+ * Carried Forward → Brought Forward rename (37a1141e).
+ *
+ * The RSC pages cannot render in this suite, so the composition, the gating and the i18n are asserted
+ * statically (precedent: test/my-absence-layout-restore.test.ts). The employee-selection rule IS pure, so
+ * it is exercised for real. The read-layer filters these screens depend on are proven end-to-end in
+ * test/leave-filters.test.ts.
+ */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { pickInquiryEmployee, sortInquiryEmployees, type InquiryEmployee } from '../lib/leave-inquiry';
+
+const root = fileURLToPath(new URL('..', import.meta.url));
+const read = (rel: string) => readFileSync(root + rel, 'utf8');
+const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
+const msgs = (loc: string) => JSON.parse(read(`messages/${loc}.json`)) as Record<string, never>;
+
+const leavePage = read('app/leave/page.tsx');
+const balancesPage = read('app/leave/employee-balances/page.tsx');
+const recordsPage = read('app/leave/employee-records/page.tsx');
+const panel = read('components/filter-panel.tsx');
+
+describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
+  it('gates every own-leave surface behind `ess` (= !admin), reads included', () => {
+    expect(leavePage).toMatch(/const ess = !admin;/);
+    // The two balance reads no longer run for an admin — the item asks for the BACKEND dependency to go,
+    // not only the markup.
+    expect(leavePage).toContain('const selfBalances = ess && me ? await leaveBalances(session, me.employmentId, locale) : []');
+    expect(leavePage).toContain('const selfRequests = ess && me ?');
+    // My Balances: the primary cards and the detailed balance card.
+    expect(leavePage).toContain('{ess && primaryCards.length > 0 && (');
+    expect(leavePage).toMatch(/\{ess && \(\s*\n\s*<Card className="overflow-hidden" data-tour="leave-balance">/);
+    // Request Leave.
+    expect(leavePage).toMatch(/\{ess && \(\s*\n\s*<RequestLeaveDialog/);
+  });
+
+  it('leaves leave application, approval and balance calculation untouched', () => {
+    // Same server actions, same on-behalf-of options, same balance derivation helper.
+    for (const kept of [
+      'submitAction={requestLeaveAction}',
+      'previewAction={previewLeaveDeductionAction}',
+      'deriveBalanceRow(b, bd ?? null)',
+      '<AdminCancelLeaveDialog',
+    ]) {
+      expect(leavePage.includes(kept), kept).toBe(true);
+    }
+  });
+
+  it('offers a filter for every column, all multi-select', () => {
+    // Employee and Days had no filter at all; company / BU / department / location were single-select.
+    for (const name of ["name: 'company'", "name: 'bu'", "name: 'dept'", "name: 'loc'", "name: 'emp'", "name: 'duration'", "name: 'type'", "name: 'status'"]) {
+      expect(leavePage.includes(name), name).toBe(true);
+    }
+    expect(leavePage.includes("kind: 'select',\n      name: 'company'")).toBe(false);
+    // Every one of them reaches the read as a list.
+    for (const param of ['filterCompanyIds:', 'businessUnitIds:', 'departmentIds:', 'locationIds:', 'employmentIds:', 'durationTypes:']) {
+      expect(leavePage.includes(param), param).toBe(true);
+    }
+  });
+
+  it('the panel renders Select all / Deselect all on a multi fieldset when both labels are supplied', () => {
+    expect(panel).toContain('const bulk = labels.selectAll && labels.deselectAll;');
+    expect(panel).toContain('{labels.selectAll}');
+    expect(panel).toContain('{labels.deselectAll}');
+    // Uncontrolled: the bulk buttons flip the checkboxes in place, so the no-JS GET form is unchanged.
+    expect(panel).toContain("closest('fieldset')");
+    expect(panel).toContain('type="checkbox"');
+    // Optional, so pages that have not adopted them are not forced to supply two more strings.
+    expect(panel).toContain('selectAll?: string;');
+  });
+
+  it('ships the bulk labels in every locale', () => {
+    for (const loc of LOCALES) {
+      const filters = (msgs(loc) as unknown as { leave: { filters: Record<string, string> } }).leave.filters;
+      expect(filters.selectAll, `${loc} leave.filters.selectAll`).toBeTruthy();
+      expect(filters.deselectAll, `${loc} leave.filters.deselectAll`).toBeTruthy();
+    }
+  });
+});
+
+describe('20c699f8 / 953be4b0: which employee an inquiry screen shows', () => {
+  const rows: InquiryEmployee[] = [
+    { employmentId: 'e3', name: 'zara', company: 'Beta Sdn Bhd', employeeCode: 'C', terminatedOn: null },
+    { employmentId: 'e1', name: 'Mei Ling', company: 'beta sdn bhd', employeeCode: 'A', terminatedOn: null },
+    { employmentId: 'e2', name: 'Aaron', company: 'Alpha Holdings', employeeCode: 'B', terminatedOn: null },
+  ];
+
+  it('orders by company A→Z then employee name A→Z, case-insensitively', () => {
+    expect(sortInquiryEmployees(rows).map((r) => r.employmentId)).toEqual(['e2', 'e1', 'e3']);
+  });
+
+  it('with no employee picked, shows the first one', () => {
+    expect(pickInquiryEmployee(sortInquiryEmployees(rows))?.employmentId).toBe('e2');
+  });
+
+  it('shows the requested employee when they are in the (already access-fenced) list', () => {
+    expect(pickInquiryEmployee(sortInquiryEmployees(rows), 'e3')?.employmentId).toBe('e3');
+  });
+
+  it('falls back to the first employee for an id outside the list — never leaks one in', () => {
+    // A stale bookmark or a hand-edited URL must not error and must not select anything unlisted.
+    expect(pickInquiryEmployee(sortInquiryEmployees(rows), 'not-in-scope')?.employmentId).toBe('e2');
+    expect(pickInquiryEmployee([], 'e1')).toBeUndefined();
+  });
+});
+
+describe('20c699f8: Employee Balances', () => {
+  const rowsHelper = read('app/leave/employee-balances/rows.ts');
+
+  it('derives from the SAME reads and the SAME helper the employee sees on their own page', () => {
+    expect(rowsHelper).toContain('leaveBalances(ctx, employmentId, locale)');
+    expect(rowsHelper).toContain('leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale)');
+    expect(rowsHelper).toContain('deriveBalanceRow(');
+    // ESS per-component hiding is a self-service rule; HR sees the figure.
+    expect(rowsHelper).toContain('essView: {}');
+  });
+
+  it('renders all eleven requested columns', () => {
+    for (const col of [
+      "tInq('colLeaveCode')",
+      "tInq('colEntitlementYear')",
+      "tMe('leaveBalanceTable.colYtdEntitled')",
+      "tInq('colBroughtForward')",
+      "tMe('leaveBalanceTable.colTaken')",
+      "tInq('colPendingApproval')",
+      "tMe('leaveBalanceTable.colAdjustment')",
+      "tMe('leaveBalanceTable.colOverutilized')",
+      "tInq('colForfeitedBf')",
+      "tMe('leaveBalanceTable.colBalance')",
+      "tInq('colDate')",
+    ]) {
+      expect(balancesPage.includes(col), col).toBe(true);
+    }
+    expect(balancesPage).toContain('colSpan={11}');
+  });
+
+  it('re-runs the breakdown when the as-at date changes (nothing is cached against another date)', () => {
+    expect(balancesPage).toContain('name="asOf"');
+    expect(balancesPage).toContain('employeeBalanceRows(session, selected.employmentId, asOf, locale');
+  });
+
+  it('sorts by leave code A→Z by default and can flip to Z→A', () => {
+    expect(rowsHelper).toContain("const mul = filter.dir === 'desc' ? -1 : 1;");
+    expect(balancesPage).toContain("const dir: 'asc' | 'desc' = sp.dir === 'desc' ? 'desc' : 'asc';");
+  });
+
+  it('carries search, a multi-select filter with bulk controls, and both export formats', () => {
+    expect(balancesPage).toContain("tInq('searchPlaceholder')");
+    expect(balancesPage).toContain("kind: 'multi'");
+    expect(balancesPage).toContain("selectAll: t('filters.selectAll')");
+    expect(balancesPage).toContain('/leave/employee-balances/export?');
+  });
+
+  it('a leave row opens that type’s records for the same employee', () => {
+    expect(balancesPage).toContain('/leave/employee-records?emp=');
+  });
+});
+
+describe('953be4b0: Employee Leave Record', () => {
+  it('reads the existing projection narrowed to (employment, leave type)', () => {
+    expect(recordsPage).toContain('listLeaveRequestsPage(session, {');
+    expect(recordsPage).toContain('employmentIds: [selected.employmentId]');
+    expect(recordsPage).toContain('leaveTypeIds: typeIds.length ? typeIds : undefined');
+  });
+
+  it('defaults to newest request first', () => {
+    expect(recordsPage).toContain("const sort = sp.sort || 'applied';");
+    expect(recordsPage).toContain("const dir: 'asc' | 'desc' = sp.dir === 'asc' ? 'asc' : 'desc';");
+  });
+
+  it('renders all ten requested columns', () => {
+    for (const col of [
+      "t('filters.employeeId')",
+      "t('colEmployee')",
+      "t('filters.dateFrom')",
+      "t('filters.dateTo')",
+      "t('colDays')",
+      "tInq('colLeaveCode')",
+      "tInq('colReason')",
+      "tInq('colAttachment')",
+      "t('colApplied')",
+      "tInq('colFinalApproval')",
+    ]) {
+      expect(recordsPage.includes(col), col).toBe(true);
+    }
+    expect(recordsPage).toContain('colSpan={10}');
+  });
+
+  it('reuses the existing per-request attachment route and its authorization', () => {
+    expect(recordsPage).toContain('/me/leave/attachment/${r.id}?inline=1');
+  });
+
+  it('offers leave code / date range / status filters and both export formats', () => {
+    expect(recordsPage).toContain("name: 'type'");
+    expect(recordsPage).toContain("name: 'status'");
+    expect(recordsPage).toContain("name: 'from'");
+    expect(recordsPage).toContain("name: 'to'");
+    expect(recordsPage).toContain('/leave/employee-records/export?');
+  });
+
+  it('both export routes are admin-gated and event-free', () => {
+    for (const rel of ['app/leave/employee-balances/export/route.ts', 'app/leave/employee-records/export/route.ts']) {
+      const src = read(rel);
+      expect(src.includes('isAdmin(session)'), rel).toBe(true);
+      expect(src.includes('403'), rel).toBe(true);
+      expect(src.includes('appendEvent'), rel).toBe(false);
+    }
+  });
+
+  it('ships every inquiry string in every locale', () => {
+    const keys = [
+      'navLabel', 'employeeDetails', 'employeeBalances', 'employeeLeaveRecord', 'balancesTitle',
+      'balancesDescription', 'recordsTitle', 'recordsDescription', 'employee', 'searchPlaceholder',
+      'recordsSearchPlaceholder', 'colLeaveCode', 'colEntitlementYear', 'colBroughtForward',
+      'colPendingApproval', 'colForfeitedBf', 'colDate', 'colReason', 'colAttachment',
+      'colFinalApproval', 'viewAttachment', 'attachmentYes', 'noRows', 'noRecords', 'noEmployees',
+    ];
+    for (const loc of LOCALES) {
+      const inquiry = (msgs(loc) as unknown as { leave: { inquiry: Record<string, string> } }).leave.inquiry;
+      for (const k of keys) expect(inquiry?.[k], `${loc} leave.inquiry.${k}`).toBeTruthy();
+    }
+  });
+});
+
+describe('37a1141e: Carried Forward → Brought Forward (English labels only)', () => {
+  const en = msgs('en') as unknown as Record<string, Record<string, never>>;
+  const at = (dotted: string): string =>
+    dotted.split('.').reduce<never>((o, k) => (o as never as Record<string, never>)[k], en as never);
+
+  it('every label naming the BALANCE now says brought forward', () => {
+    expect(at('leave.breakdown.carriedForward')).toBe('Brought forward');
+    expect(at('leave.breakdown.carryForwardRemaining')).toBe('Brought-forward remaining');
+    expect(at('leave.breakdown.carryForwardExpiry')).toBe('Brought-forward expiry');
+    expect(at('leave.breakdown.field.carryForwardExpiry')).toBe('Brought-forward expiry date');
+    expect(at('me.leaveBalanceTable.colCarriedForward')).toBe('Brought Forward');
+    expect(at('admin.leave.essView.carryForwardExpiry')).toBe('Brought Forward Expiry Date');
+    expect(at('admin.leave.formula.component.carriedForward')).toBe('Brought Forward');
+    expect(at('admin.leave.formula.component.carryForwardRemaining')).toBe('Brought-Forward Remaining');
+    expect(at('admin.leave.formula.component.carryForwardExpiry')).toBe('Brought-Forward Expiry');
+    expect(at('analytics.carryForwardCarried')).toBe('Brought forward');
+    expect(at('analytics.carryForwardTitle')).toBe('Brought-forward & forfeiture');
+  });
+
+  it('the panel no longer shows one figure under two names on the same screen', () => {
+    // The breakdown row and the reconciliation row both select breakdown.broughtForward; before this item
+    // one was labelled "Carried forward" and the other "Brought forward".
+    const cfg = read('components/leave/entitlement-panel-config.ts');
+    expect(cfg).toContain("{ key: 'carriedForward', labelKey: 'carriedForward', select: (d) => d.breakdown.broughtForward }");
+    expect(at('leave.breakdown.carriedForward')).toBe(at('leave.breakdown.reconcile.broughtForward'));
+  });
+
+  it('the RULE that produces the balance deliberately keeps its wording', () => {
+    // Renaming these would lose the distinction between the forward-looking setting and its result — the
+    // very confusion the item is removing.
+    expect(at('admin.leave.subStep.carry')).toBe('Carry Forward Policy');
+    expect(at('admin.leave.carryEnabledLabel')).toBe('Carry forward rule');
+    expect(at('admin.leave.bandColCarryDays')).toBe('Carry-forward days');
+    expect(at('admin.leave.carryCapLabel')).toBe('Carry cap');
+  });
+
+  it('the two unrelated features that share the English phrase are untouched', () => {
+    expect(at('payrollPolicy.config.negativeCarryForward')).toBe('Carry the balance forward to the next cycle');
+    expect(at('admin.toilPolicy.carryForwardLabel')).toBe('Carry forward unused credit at year-end');
+  });
+
+  it('no English leave-balance label still says "carried forward"', () => {
+    const stale = [
+      'leave.breakdown.carriedForward',
+      'me.leaveBalanceTable.colCarriedForward',
+      'admin.leave.formula.component.carriedForward',
+      'analytics.carryForwardCarried',
+    ].filter((k) => /carr(y|ied)[\s-]*forward/i.test(at(k)));
+    expect(stale, stale.join(', ')).toEqual([]);
+  });
+
+  it('the other five locales are unchanged — they already said brought forward', () => {
+    // Spot-check the headline label in each: none of them is an English string.
+    const expected: Record<string, string> = {
+      ms: 'Dibawa ke hadapan',
+      th: 'ยกยอดมา',
+      vi: 'Chuyển sang',
+      zh: '结转',
+      ta: 'முன்னெடுத்துச் செல்லப்பட்டது',
+    };
+    for (const [loc, value] of Object.entries(expected)) {
+      const leave = (msgs(loc) as unknown as { leave: { breakdown: Record<string, string> } }).leave.breakdown;
+      expect(leave.carriedForward, loc).toBe(value);
+    }
+  });
+});

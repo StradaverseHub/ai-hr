@@ -1467,7 +1467,9 @@
         "hr_admin": "HR 管理员"
       },
       "decidedByLine": "由 {name} 决定",
-      "pendingWithLine": "待 {stage} 审批"
+      "pendingWithLine": "待 {stage} 审批",
+      "selectAll": "全选",
+      "deselectAll": "取消全选"
     },
     "editButton": "编辑",
     "editDialogTitle": "编辑请假申请",
@@ -1479,7 +1481,34 @@
     "selfCancelKeep": "保留",
     "selfCancelConfirm": "取消请假",
     "selfCancelPillAffordanceLabel": "取消此请假",
-    "approvalPillAffordanceLabel": "前往审批"
+    "approvalPillAffordanceLabel": "前往审批",
+    "inquiry": {
+      "navLabel": "假期查询",
+      "employeeDetails": "员工资料",
+      "employeeBalances": "员工假期余额",
+      "employeeLeaveRecord": "员工假期记录",
+      "balancesTitle": "员工假期余额",
+      "balancesDescription": "按你选择的日期，显示某位员工每种假期的状况。",
+      "recordsTitle": "员工假期记录",
+      "recordsDescription": "余额背后的每一笔假期申请，最新申请在前。",
+      "employee": "员工",
+      "searchPlaceholder": "搜索假期代码",
+      "recordsSearchPlaceholder": "搜索员工编号、姓名或假期代码",
+      "colLeaveCode": "假期代码",
+      "colEntitlementYear": "权益年度",
+      "colBroughtForward": "结转",
+      "colPendingApproval": "待审批",
+      "colForfeitedBf": "结转没收",
+      "colDate": "日期",
+      "colReason": "原因",
+      "colAttachment": "附件",
+      "colFinalApproval": "最终审批日期",
+      "viewAttachment": "查看",
+      "attachmentYes": "是",
+      "noRows": "该员工没有可显示的假期类型。",
+      "noRecords": "没有可显示的假期记录。",
+      "noEmployees": "当前公司范围内没有员工。"
+    }
   },
   "attendance": {
     "title": "考勤",

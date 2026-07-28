@@ -15,7 +15,7 @@
  * with starting:* enter transition) mirrors components/company-switcher.tsx for visual consistency.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import Link from 'next/link';
 import { Filter, X } from 'lucide-react';
 import { Button, inputCls } from '@/components/ui';
@@ -73,6 +73,13 @@ export type FilterPanelLabels = {
   clearAll: string;
   /** Resolved ICU count string, e.g. "2 filters" — screen-reader text for the badge/chip row. */
   activeCount: string;
+  /**
+   * Bulk tick/untick controls on every `multi` fieldset (feedback 8ec63139). OPTIONAL on purpose: a page
+   * that has not adopted them keeps today's plain checkbox group rather than being forced to supply two
+   * more strings. Both must be present for the pair to render — one without the other is a half control.
+   */
+  selectAll?: string;
+  deselectAll?: string;
 };
 
 export type FilterPanelProps = {
@@ -94,6 +101,18 @@ const countActive = (fields: FilterField[], values: FilterPanelProps['values']) 
 export function FilterPanel({ action, fields, values, labels, dataTour }: FilterPanelProps) {
   const [open, setOpen] = useState(false);
   const active = countActive(fields, values);
+  const bulk = labels.selectAll && labels.deselectAll;
+
+  // Tick/untick every box in ONE fieldset (feedback 8ec63139). Driven off the submitted event's own
+  // fieldset rather than a ref map or controlled state, so the group stays uncontrolled — the plain
+  // `defaultChecked` checkboxes (and therefore the no-JS GET submit) are untouched.
+  const setAll = (e: MouseEvent<HTMLButtonElement>, checked: boolean) => {
+    const group = e.currentTarget.closest('fieldset');
+    if (!group) return;
+    for (const box of group.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')) {
+      box.checked = checked;
+    }
+  };
 
   // Close on Escape while open (backdrop click handles pointer dismissal).
   useEffect(() => {
@@ -137,7 +156,30 @@ export function FilterPanel({ action, fields, values, labels, dataTour }: Filter
                 f.kind === 'multi' ? (
                   // Checkbox group: one repeated GET param per checked value (no-JS friendly).
                   <fieldset key={f.name} className="flex flex-col gap-1.5" aria-label={f.ariaLabel}>
-                    <span className="text-xs font-medium text-muted-foreground">{f.label}</span>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">{f.label}</span>
+                      {bulk && (
+                        <span className="flex items-center gap-1.5 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={(e) => setAll(e, true)}
+                            className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                          >
+                            {labels.selectAll}
+                          </button>
+                          <span aria-hidden className="text-muted-foreground/50">
+                            ·
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => setAll(e, false)}
+                            className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                          >
+                            {labels.deselectAll}
+                          </button>
+                        </span>
+                      )}
+                    </div>
                     <div className="flex flex-col gap-1">
                       {f.options.map((o) => (
                         <label key={o.value} className="flex items-center gap-2 text-sm">
