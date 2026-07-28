@@ -787,6 +787,16 @@ export default async function LeaveEntitlementsPage({
               perDateApproval={lt.perDateApproval ?? false}
               duplicateApplicationPolicy={lt.duplicateApplicationPolicy ?? null}
               allowNegativeBalance={lt.allowNegativeBalance ?? false}
+              balanceSourceTypeId={lt.balanceSourceTypeId ?? null}
+              allowUnpaidLeave={lt.allowUnpaidLeave ?? false}
+              /* Balance Deduction Source (cdf9ca48): the candidates THIS type may point at. Derived from the
+                 one page-level `types` read (no N+1): exclude self, exclude archived types, and exclude any
+                 type that already borrows — the service refuses chains, so offering one would only produce a
+                 rejected save. A type that is already somebody's source is still offered: pointing a second
+                 borrower at it is a perfectly ordinary setup (several types all drawing on Annual Leave). */
+              balanceSourceOptions={types
+                .filter((x) => x.id !== lt.id && !x.archivedAt && x.balanceSourceTypeId == null)
+                .map((x) => ({ id: x.id, name: x.name }))}
               policies={polByType.get(lt.id) ?? []}
               grades={gradeOptions}
               companies={companyOptions}

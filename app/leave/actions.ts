@@ -118,7 +118,11 @@ export async function requestLeaveAction(formData: FormData) {
   // ANNUAL+UNPAID child rows that hard-code employeeRemark:null and never carry a document. Attaching here
   // would dangle a file on a hidden child. So for EL we hide the fields (LeaveDurationFields) AND ignore any
   // posted file/remark here as a server-side backstop against a stale form.
-  const isEL = selected?.code === 'EMERGENCY';
+  // Balance Deduction Source (cdf9ca48): the short-circuit only happens while EL has NO configured balance
+  // source. Once HR points it at another type's balance it goes through the ordinary single-request path,
+  // which persists a real EMERGENCY row that CAN carry a document and a remark — so this backstop must
+  // narrow with it, otherwise it would silently discard an attachment the form legitimately offered.
+  const isEL = selected?.code === 'EMERGENCY' && selected?.balanceSourceTypeId == null;
   const attach = hasFile && !isEL;
   // Phase-B #15: a non-blocking holiday-completeness warning is surfaced via ?warn= when the request's
   // (state, year) has fewer than the s.60D minimum of 11 gazetted holidays loaded.

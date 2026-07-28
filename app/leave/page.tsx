@@ -209,6 +209,9 @@ export default async function LeavePage({
     code: lt.code,
     // Feedback 9d8cf621: HR-authored apply-time notice for this leave type (shown under the select).
     applyNotice: (lt.customMessages as Record<string, string> | null)?.applyNotice ?? null,
+    // Balance Deduction Source (cdf9ca48): lets the form drop Emergency Leave's decomposition-specific
+    // controls once EL has been pointed at another type's balance — see LeaveTypeOption.borrowsBalance.
+    borrowsBalance: lt.balanceSourceTypeId != null,
   }));
   const requestLeaveEmployeeOptions = active.map((e) => ({ id: e.employmentId, name: e.name }));
   // Employee selector visibility (item 69088c13): only an on-behalf-of applicant (an HR admin or a line

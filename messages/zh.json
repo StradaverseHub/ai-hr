@@ -1385,6 +1385,9 @@
       "no": "否",
       "total": "合计：{days} 天"
     },
+    "unpaidSplit": {
+      "notice": "您的余额可覆盖 {paid} 天，其余 {unpaid} 天将按无薪假处理。"
+    },
     "applyDayStatus": {
       "working_day": "工作日",
       "half_working_day": "半个工作日",
@@ -4198,6 +4201,18 @@
       "negativeBalanceYes": "是 — 即使余额变为负数，员工仍可申请",
       "negativeBalanceNo": "否 — 阻止超过可用余额的申请",
       "negativeBalanceHelp": "控制员工是否可以提交或编辑超过其可用余额的此类假期申请。“否”将在提交和编辑时阻止超额申请（计入尚待批准的假期）；“是”则允许余额变为负数。",
+      "balanceSourceSectionTitle": "余额扣减来源",
+      "balanceSourceLabel": "余额扣减来源",
+      "balanceSourceOwn": "本假期类型自身余额",
+      "balanceSourceOther": "从其他假期类型扣减",
+      "balanceSourceMapLabel": "指定扣减来源",
+      "balanceSourceMapPlaceholder": "选择假期类型…",
+      "balanceSourceHelp": "选择此假期类型的申请将依据哪一份余额进行校验和扣减。默认使用本假期类型自身的余额。若选择其他假期类型，本类型将不再保留自己的余额：申请会依据该类型的余额校验并从中扣减，而请假记录仍显示为本假期类型。一个假期类型不能指向自身、指向已从其他类型扣减的类型，也不能指向已从本类型扣减的类型。",
+      "allowUplSectionTitle": "无薪假（UPL）",
+      "allowUplLabel": "允许无薪假（UPL）",
+      "allowUplYes": "是 — 允许提交申请，余额未覆盖的天数按无薪假处理",
+      "allowUplNo": "否 — 照常校验可用余额",
+      "allowUplHelp": "控制员工是否可以申请超过其可用余额的天数。“否”保持当前行为。“是”允许该申请作为一份申请通过：余额可覆盖的天数从本假期类型（或其扣减来源）扣除，仅超出部分按无薪假处理并传递给薪资。",
       "eligibilityChipAddPlaceholder": "添加…",
       "categoryGeneral": "常规",
       "categoryEntitlement": "额度",

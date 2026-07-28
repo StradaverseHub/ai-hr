@@ -896,38 +896,83 @@ export async function leaveBalance(tx: Tx, employmentId: string, leaveTypeId: st
   return Number(row?.bal ?? 0);
 }
 
+/** Balance Deduction Source (feedback cdf9ca48) — the leave type whose BALANCE an application of
+ *  `leaveTypeId` is checked against and debited from. Returns `leaveTypeId` itself when the type has no
+ *  configured source, which is every type until an administrator changes one, so every existing caller keeps
+ *  reading the same ledger it always did.
+ *
+ *  ONE read, no walk: updateLeaveType refuses a source that itself has a source, so the graph is at most one
+ *  hop deep and cycles cannot exist. Resolving here rather than at each call site matters because the
+ *  submit-time guard and the approval-time debit MUST agree on which ledger they are talking about — if they
+ *  ever disagreed, an application could clear submission and then be refused at approval, or debit a balance
+ *  nobody had checked. substrate: read-only, no event. */
+export async function resolveBalanceSourceTypeId(tx: Tx, leaveTypeId: string): Promise<string> {
+  const [row] = await tx
+    .select({ src: leaveType.balanceSourceTypeId })
+    .from(leaveType)
+    .where(eq(leaveType.id, leaveTypeId))
+    .limit(1);
+  return row?.src ?? leaveTypeId;
+}
+
+/** Every leave type that SPENDS `sourceTypeId`'s balance — the source itself plus each type configured to
+ *  deduct from it. The pending reservation has to cover all of them: once Emergency Leave draws on Annual,
+ *  a pending Emergency application reserves Annual days just as surely as a pending Annual one does, and
+ *  counting only one of the two would let a stack of applications collectively overshoot the balance.
+ *  Returns just [sourceTypeId] when nothing borrows (today's shape). */
+async function balanceSpenderTypeIds(tx: Tx, sourceTypeId: string): Promise<string[]> {
+  const borrowers = await tx
+    .select({ id: leaveType.id })
+    .from(leaveType)
+    .where(eq(leaveType.balanceSourceTypeId, sourceTypeId));
+  return [sourceTypeId, ...borrowers.map((b) => b.id)];
+}
+
 // Configurable Negative Leave Balance Validation (0ef0defd): the "available" balance for the SUBMIT/EDIT-time
 // guard = leaveBalance (approved ledger only) MINUS the sum of this employee's OTHER PENDING requests of the
 // same leave type (days already reserved but not yet approved, so they post no ledger entry). Subtracting the
 // pending reservation stops an employee stacking several pending applications that individually pass but
 // collectively overshoot. `excludeRequestId` drops the request being edited from its own pending sum (the edit
 // path re-checks the NEW days against everything else). Rounded to 2dp to match the rest of the leave math.
+//
+// Balance Deduction Source (cdf9ca48): the ledger read and the pending reservation both move to the RESOLVED
+// source type, so a borrowing type is measured against the balance it will actually spend. With no source
+// configured anywhere this resolves to leaveTypeId and one spender, i.e. exactly the query it ran before.
 export async function availableLeaveBalance(
   tx: Tx,
   employmentId: string,
   leaveTypeId: string,
   excludeRequestId?: string,
 ): Promise<number> {
-  const bal = await leaveBalance(tx, employmentId, leaveTypeId);
-  return round2(bal - (await pendingLeaveDays(tx, employmentId, leaveTypeId, excludeRequestId)));
+  const sourceTypeId = await resolveBalanceSourceTypeId(tx, leaveTypeId);
+  const bal = await leaveBalance(tx, employmentId, sourceTypeId);
+  const spenders = await balanceSpenderTypeIds(tx, sourceTypeId);
+  return round2(bal - (await pendingLeaveDays(tx, employmentId, spenders, excludeRequestId)));
 }
 
-/** The days already RESERVED by this employee's other PENDING requests of the same leave type — extracted
+/** The days already RESERVED by this employee's other PENDING requests of the given leave type(s) — extracted
  *  verbatim from availableLeaveBalance (no behaviour change) so the apply-popup summary's "Pending" figure is
- *  byte-identical to what the submit-time negative-balance guard reserves. substrate: read-only, no event. */
+ *  byte-identical to what the submit-time negative-balance guard reserves. substrate: read-only, no event.
+ *
+ *  Allow Unpaid Leave (a7fab30b): a request reserves days - unpaid_days, not days. Its unpaid portion was
+ *  never going to touch the balance, so reserving it would understate what is still available and refuse a
+ *  later application that in fact fits. unpaid_days is NULL on every pre-existing row ⇒ the sum is unchanged. */
 async function pendingLeaveDays(
   tx: Tx,
   employmentId: string,
-  leaveTypeId: string,
+  leaveTypeIds: string | string[],
   excludeRequestId?: string,
 ): Promise<number> {
+  const ids = Array.isArray(leaveTypeIds) ? leaveTypeIds : [leaveTypeIds];
   const [row] = await tx
-    .select({ pending: sql<string>`coalesce(sum(${leaveRequest.days}), 0)` })
+    .select({
+      pending: sql<string>`coalesce(sum(${leaveRequest.days} - coalesce(${leaveRequest.unpaidDays}, 0)), 0)`,
+    })
     .from(leaveRequest)
     .where(
       and(
         eq(leaveRequest.employmentId, employmentId),
-        eq(leaveRequest.leaveTypeId, leaveTypeId),
+        inArray(leaveRequest.leaveTypeId, ids),
         eq(leaveRequest.status, 'pending'),
         ...(excludeRequestId ? [sql`${leaveRequest.id} <> ${excludeRequestId}`] : []),
       ),
@@ -960,15 +1005,19 @@ export async function leaveTypeApplySummary(
   essViewConfig: Record<string, boolean> | null;
 }> {
   return withTenant(ctx, async (tx) => {
-    const balance = await leaveBalance(tx, p.employmentId, p.leaveTypeId);
-    const pending = await pendingLeaveDays(tx, p.employmentId, p.leaveTypeId);
+    // Balance Deduction Source (cdf9ca48): report the balance the employee will actually spend. A borrowing
+    // type has no ledger of its own, so reading its own would show a flat 0.0 Available directly above a real
+    // day count — the same "0.0 / 0.0 / 0.0" nonsense the panel already suppresses for Emergency Leave.
+    const sourceTypeId = await resolveBalanceSourceTypeId(tx, p.leaveTypeId);
+    const balance = await leaveBalance(tx, p.employmentId, sourceTypeId);
+    const pending = await pendingLeaveDays(tx, p.employmentId, await balanceSpenderTypeIds(tx, sourceTypeId));
     // Same expression core/read.ts leaveBalances uses for `taken`, so the two never disagree.
     const [tk] = await tx
       .select({
         taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
       })
       .from(leaveLedger)
-      .where(and(eq(leaveLedger.employmentId, p.employmentId), eq(leaveLedger.leaveTypeId, p.leaveTypeId)));
+      .where(and(eq(leaveLedger.employmentId, p.employmentId), eq(leaveLedger.leaveTypeId, sourceTypeId)));
     const [lt] = await tx
       .select({ essViewConfig: leaveType.essViewConfig })
       .from(leaveType)
@@ -1319,6 +1368,9 @@ async function insertLeaveRequest(
     // Phase-B #12 (ADR-0061): set on the UNPAID child of a consented Emergency-Leave submission only.
     unpaidConsentAt?: Date | null;
     unpaidConsentBy?: string | null;
+    // Allow Unpaid Leave (a7fab30b): the part of `days` the balance could not cover. Absent/0 ⇒ stored NULL
+    // (fully paid), which is every request of a type that has not opted in.
+    unpaidDays?: number | null;
     // Phase-B #13 (ADR-0062): EA s.37 maternity paid-allowance facts + per-request override. Non-null only
     // for a MATERNITY request; maternityAllowanceEvent carries the decision onto the submitted event.
     survivingChildren?: number | null;
@@ -1364,6 +1416,7 @@ async function insertLeaveRequest(
       parentGroupId: v.parentGroupId,
       unpaidConsentAt: v.unpaidConsentAt ?? null,
       unpaidConsentBy: v.unpaidConsentBy ?? null,
+      unpaidDays: v.unpaidDays ? v.unpaidDays.toFixed(2) : null,
       survivingChildren: v.survivingChildren ?? null,
       confinementDate: v.confinementDate ?? null,
       allowanceEligible: v.allowanceEligible ?? null,
@@ -1391,6 +1444,10 @@ async function insertLeaveRequest(
       ...(v.toTime ? { toTime: v.toTime } : {}),
       mandatoryAfterDays: v.mandatoryAfterDays,
       hasRemark: !!v.employeeRemark,
+      // Allow Unpaid Leave (a7fab30b): stamp the paid/unpaid split so an auditor can see what the balance
+      // covered AT SUBMISSION — the balance moves afterwards, so the figure cannot be recomputed later. Only
+      // present when some days are unpaid ⇒ the ordinary payload is byte-identical to before.
+      ...(v.unpaidDays ? { unpaidDays: v.unpaidDays, paidDays: round2(v.days - v.unpaidDays) } : {}),
       ...(v.parentGroupId ? { parentGroupId: v.parentGroupId } : {}),
       // Phase-B #13 (ADR-0062): the s.37 paid-allowance decision for the audit trail / approver view.
       ...(v.maternityAllowanceEvent ? { maternityAllowance: v.maternityAllowanceEvent } : {}),
@@ -1511,6 +1568,11 @@ export async function requestLeave(
         // Configurable Negative Leave Balance Validation (0ef0defd): false ⇒ reject a submit that would take
         // the balance negative (enforced below, after `days` is known); true ⇒ skip the submit-time check.
         allowNegativeBalance: leaveType.allowNegativeBalance,
+        // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): the two settings that decide
+        // WHICH balance this application is measured against and what happens to the part it cannot cover.
+        // Both are read here and used together below — see the balance guard.
+        balanceSourceTypeId: leaveType.balanceSourceTypeId,
+        allowUnpaidLeave: leaveType.allowUnpaidLeave,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
@@ -1518,7 +1580,15 @@ export async function requestLeave(
 
     // Emergency Leave (0106): an application type only — decompose into ANNUAL + UNPAID children over the
     // same dates before the normal single-request path. No EMERGENCY row is ever persisted.
-    if (lt?.code === EMERGENCY_LEAVE_CODE) {
+    //
+    // Balance Deduction Source (cdf9ca48): UNLESS an administrator has given EL an explicit balance source.
+    // The reporter's whole ask is that Emergency Leave draw down Annual Leave and still appear in the leave
+    // history AS Emergency Leave — which is precisely what the hardcoded decomposition cannot do, since it
+    // persists ANNUAL + UNPAID rows and no EMERGENCY row at all. Offering the setting on EL and then ignoring
+    // it would be the config-trap this panel already goes out of its way to avoid (see the hidden backdating /
+    // advance-notice fields for EL). So: no source configured ⇒ the decomposition, byte-identical to today and
+    // still the default; a source configured ⇒ EL takes the ordinary single-request path like any other type.
+    if (lt?.code === EMERGENCY_LEAVE_CODE && lt.balanceSourceTypeId == null) {
       return requestEmergencyLeave(tx, ctx, p);
     }
 
@@ -1768,7 +1838,21 @@ export async function requestLeave(
     // the same type (availableLeaveBalance). allow_negative_balance=true skips this (employees may go negative;
     // the pre-existing approval-time guard is unaffected). Fires for admins too — this is a data rule about the
     // balance, mirroring the duplicate-application gate above. round2 matches the leave math (leavePreview).
-    if (lt?.allowNegativeBalance === false) {
+    //
+    // Allow Unpaid Leave (a7fab30b) takes precedence over this gate when it is on. The point of the setting is
+    // that the application PROCEEDS past the balance, so refusing it here and then converting the excess would
+    // be self-contradictory; instead the uncovered part is measured and carried on the request as unpaid days.
+    // The measurement is against the resolved BALANCE SOURCE (cdf9ca48) — availableLeaveBalance now resolves
+    // it — so a type that both borrows and allows unpaid leave overflows the borrowed balance, not its own.
+    //
+    // PART-COVERED IS THE CASE THAT MATTERS: 3 days requested with 1 day of balance splits 1 paid + 2 unpaid.
+    // Math.max(0, available) rather than `available` itself so an already-negative balance (permitted earlier
+    // under allow_negative_balance) makes the whole request unpaid rather than manufacturing extra paid days.
+    let unpaidDays = 0;
+    if (lt?.allowUnpaidLeave === true) {
+      const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
+      unpaidDays = round2(Math.max(0, days - Math.max(0, available)));
+    } else if (lt?.allowNegativeBalance === false) {
       const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
       if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
     }
@@ -1885,7 +1969,13 @@ export async function requestLeave(
       !!lt?.perDateApproval &&
       lt?.code !== 'REPLACEMENT' &&
       p.startDate !== p.endDate &&
-      coCfg?.multi === false;
+      coCfg?.multi === false &&
+      // Allow Unpaid Leave (a7fab30b): a part-unpaid request is excluded, for the same reason REPLACEMENT is —
+      // the two features have no agreed answer between them. The paid/unpaid boundary is a QUANTITY of days,
+      // not an attribution to particular dates, so "approve Tuesday, reject Wednesday" cannot say which of the
+      // two was the unpaid one, and any rule we invented would silently change what the employee is paid.
+      // The request still goes through normally, just as one whole-span decision.
+      unpaidDays === 0;
 
     const { id } = await insertLeaveRequest(tx, ctx, {
       employmentId: p.employmentId,
@@ -1901,6 +1991,9 @@ export async function requestLeave(
       employeeRemark,
       parentGroupId: null,
       mandatoryAfterDays: lt?.mandatoryAfterDays ?? null,
+      // Allow Unpaid Leave (a7fab30b): the uncovered portion measured at the balance guard above. 0 ⇒ stored
+      // as NULL (fully paid), so a type with the setting off writes exactly what it writes today.
+      unpaidDays,
       survivingChildren: maternity?.survivingChildren ?? null,
       confinementDate: maternity?.confinementDate ?? null,
       allowanceEligible: maternity?.allowanceEligible ?? null,
@@ -2016,18 +2109,34 @@ export async function previewLeaveDeduction(
   hasHalfScheduleDate: boolean;
   isEmergencySplit: boolean;
   dayRows?: LeaveApplyDayRow[];
+  /** Allow Unpaid Leave (a7fab30b): how many of `days` the balance will NOT cover, so the employee is told
+   *  BEFORE submitting rather than discovering it on a payslip. 0 (and absent on every type that has not
+   *  opted in) ⇒ the whole request is paid. Computed from the same availableLeaveBalance the submit-time
+   *  guard uses, so the warning and the outcome agree. */
+  unpaidDays?: number;
 }> {
   return withTenant(ctx, async (tx) => {
     const durationType: LeaveDurationType = p.durationType ?? 'full_day';
     const [lt] = await tx
       // Day Type Inclusion (feedback ef6d7146): projected so the preview's day-count matches what submission
       // will deduct (both run through workingDaysWeighted with the same inclusion vector — no preview drift).
-      .select({ code: leaveType.code, counting: leaveType.counting, dayTypeInclusion: leaveType.dayTypeInclusion })
+      .select({
+        code: leaveType.code,
+        counting: leaveType.counting,
+        dayTypeInclusion: leaveType.dayTypeInclusion,
+        // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): the preview must read the same
+        // two settings requestLeave does, or the "balance before/after" line describes a ledger the
+        // application will not touch.
+        balanceSourceTypeId: leaveType.balanceSourceTypeId,
+        allowUnpaidLeave: leaveType.allowUnpaidLeave,
+      })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
       .limit(1);
-    const isEmergencySplit = lt?.code === EMERGENCY_LEAVE_CODE;
-    const balanceAvailable = await leaveBalance(tx, p.employmentId, p.leaveTypeId);
+    // Balance Deduction Source (cdf9ca48): EL only decomposes while it has NO configured source — the same
+    // condition requestLeave branches on, so the preview never promises a split the submission will not make.
+    const isEmergencySplit = lt?.code === EMERGENCY_LEAVE_CODE && lt.balanceSourceTypeId == null;
+    const balanceAvailable = await leaveBalance(tx, p.employmentId, lt?.balanceSourceTypeId ?? p.leaveTypeId);
 
     let days = 0;
     let hasHalfScheduleDate = false;
@@ -2068,13 +2177,25 @@ export async function previewLeaveDeduction(
       });
     }
 
+    // Allow Unpaid Leave (a7fab30b): the same measurement requestLeave will make — availableLeaveBalance
+    // (ledger minus everything already reserved), not the raw ledger balance above, because a pending
+    // application the employee already filed is a day they no longer have. Only computed for an opted-in
+    // type, so no extra query on any other type.
+    const unpaidDays =
+      lt?.allowUnpaidLeave === true
+        ? round2(Math.max(0, days - Math.max(0, await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId))))
+        : 0;
+
     return {
       days,
       balanceAvailable,
-      balanceAfter: round2(balanceAvailable - days),
+      // Only the covered part comes off the balance (a7fab30b) — subtracting the unpaid days too would show
+      // the employee a balance the approval will never produce. unpaidDays is 0 for every other type.
+      balanceAfter: round2(balanceAvailable - (days - unpaidDays)),
       hasHalfScheduleDate,
       isEmergencySplit,
       ...(dayRows ? { dayRows } : {}),
+      ...(unpaidDays > 0 ? { unpaidDays } : {}),
     };
   });
 }
@@ -2711,7 +2832,10 @@ export async function resolveSubjectHead(
 
 // endDate is widened in (alongside days/startDate) for the on-approval payroll-impact enrichment below. At
 // runtime decideLeave passes the full leave_request row, so endDate is always present; the type just exposes it.
-type DecidableLeave = { id: string; employmentId: string; leaveTypeId: string; days: string; startDate: string; endDate: string };
+// unpaidDays (a7fab30b) is widened in for the same reason: at runtime every caller passes the full
+// leave_request row, so it is always present; the type just exposes it. Optional so a hand-built test row
+// (or a caller predating the column) still type-checks as fully paid.
+type DecidableLeave = { id: string; employmentId: string; leaveTypeId: string; days: string; startDate: string; endDate: string; unpaidDays?: string | null };
 
 /** Final approval: balance gate + ledger debit + status flip + event. daysOverride (ADR-0068 §4E) lets the
  *  per-date finalization debit only the sum of APPROVED dates instead of the whole request span; it defaults
@@ -2737,23 +2861,53 @@ async function finalizeLeaveApproval(
   mixed = false,
   perDateOutcome?: PerDateOutcome,
 ) {
-  const balance = await leaveBalance(tx, req.employmentId, req.leaveTypeId);
-  const need = daysOverride ?? Number(req.days);
+  // Unpaid-leave payroll-impact: fetch the type's code + payroll-signal gate once — plus (cdf9ca48) the
+  // balance source, which the gate and the debit below both need. Both approval paths (multi-step final
+  // clearance and single-step) funnel through this function, so the enrichment fires exactly once at terminal
+  // approval and never at intermediate leave-request.step.approved.
+  const [lt] = await tx
+    .select({
+      code: leaveType.code,
+      paid: leaveType.paid,
+      sendToPayroll: leaveType.sendToPayroll,
+      balanceSourceTypeId: leaveType.balanceSourceTypeId,
+    })
+    .from(leaveType)
+    .where(eq(leaveType.id, req.leaveTypeId))
+    .limit(1);
+  // Balance Deduction Source (cdf9ca48): the ledger this approval actually moves. Resolved from the SAME
+  // column availableLeaveBalance read at submission, so the gate below and the guard the employee already
+  // passed are talking about one balance. NULL ⇒ the request's own type (every type until one is switched).
+  const balanceTypeId = lt?.balanceSourceTypeId ?? req.leaveTypeId;
+  const balance = await leaveBalance(tx, req.employmentId, balanceTypeId);
+  // Allow Unpaid Leave (a7fab30b): only the covered part is a balance movement. The unpaid excess was
+  // measured against the balance at submission and is settled through payroll, so debiting it here would
+  // charge the employee twice — once in days, once in pay. NULL/absent ⇒ the full span, as before.
+  const unpaid = Number(req.unpaidDays ?? 0);
+  // approvedDays = the days actually being approved (the whole span, or the per-date subset). `need` is the
+  // subset of THOSE that draws on the balance. They differ only for a part-unpaid request; keeping them
+  // separate matters because the combined-pool limit and the payroll advisory below count leave TAKEN, which
+  // includes the unpaid days, while the ledger counts only what was paid for out of the balance.
+  const approvedDays = daysOverride ?? Number(req.days);
+  const need = round2(Math.max(0, approvedDays - unpaid));
   if (balance - need < 0) throw new InsufficientLeaveBalanceError();
   // Combined Leave Type Limit (R44 4c48fd1f, Stage 2): re-check the shared pool at approval time (a second
   // approver / stale pending set could otherwise breach it). Exclude THIS request from the usage sum and add
-  // its `need` back, so the pending row it represents is counted exactly once.
+  // its days back, so the pending row it represents is counted exactly once. Counts the days TAKEN
+  // (approvedDays), unpaid ones included — a combined-limit pool caps absence, not balance spend.
   await enforceCombinedLeaveLimit(tx, {
     employmentId: req.employmentId,
     leaveTypeId: req.leaveTypeId,
     startDate: req.startDate,
-    requestedDays: need,
+    requestedDays: approvedDays,
     excludeRequestId: req.id,
   });
   await tx.insert(leaveLedger).values({
     tenantId: ctx.tenantId,
     employmentId: req.employmentId,
-    leaveTypeId: req.leaveTypeId,
+    // Balance Deduction Source (cdf9ca48): the SOURCE type's ledger — the borrowing type keeps none of its
+    // own. The leave_request row is untouched, so leave history still reads as the type applied for.
+    leaveTypeId: balanceTypeId,
     entryType: 'debit',
     days: (-need).toFixed(2),
     sourceRequestId: req.id,
@@ -2763,14 +2917,6 @@ async function finalizeLeaveApproval(
     .update(leaveRequest)
     .set({ status: 'approved', decidedByEmploymentId: deciderEmploymentId ?? null, decidedAt: sql`now()` })
     .where(eq(leaveRequest.id, req.id));
-  // Unpaid-leave payroll-impact: fetch the type's code + payroll-signal gate once. Both approval paths
-  // (multi-step final clearance and single-step) funnel through this function, so the enrichment fires
-  // exactly once at terminal approval and never at intermediate leave-request.step.approved.
-  const [lt] = await tx
-    .select({ code: leaveType.code, paid: leaveType.paid, sendToPayroll: leaveType.sendToPayroll })
-    .from(leaveType)
-    .where(eq(leaveType.id, req.leaveTypeId))
-    .limit(1);
   // RL Control Engine (0113): when the consumed type is REPLACEMENT, decrement the toil_accrual register
   // FIFO-by-expiry so the active/expired split stays authoritative and the year-end close never double-debits
   // already-spent credits. The ledger debit above is the balance authority; this only updates the register.
@@ -2822,8 +2968,8 @@ async function finalizeLeaveApproval(
               leaveTypeId: req.leaveTypeId,
               leaveTypeCode: lt.code,
               // ADR-0068 §4E: for a per-date request the payroll-impact advisory reflects the APPROVED days,
-              // not the raw request span (need === sum of approved dates when daysOverride is passed).
-              days: daysOverride !== undefined ? need : req.days,
+              // not the raw request span (approvedDays === sum of approved dates when daysOverride is passed).
+              days: daysOverride !== undefined ? approvedDays : req.days,
               startDate: req.startDate,
               endDate: req.endDate,
               approvalStatus: 'approved' as const,
@@ -3503,6 +3649,15 @@ export async function decideLeaveCancellation(
     ) {
       throw new LeaveCancellationNotAllowedError('the leave is no longer in a cancellable state');
     }
+    // Allow Unpaid Leave (a7fab30b): a part-unpaid request cannot go through the give-back SPLIT. This path
+    // works by reversing the whole-span debit and re-debiting each surviving segment — which only balances
+    // because sum(segment days) === req.days. On a part-unpaid request the original debit was smaller than
+    // req.days, and there is no fact on the row saying WHICH dates were the unpaid ones, so any split would
+    // restore days the employee was never charged for. Refused rather than silently mis-restored; whole-request
+    // cancellation (which reverses the actual net ledger movement) still works and is the correct route.
+    if (Number(req.unpaidDays ?? 0) > 0) {
+      throw new LeaveCancellationNotAllowedError('leave with unpaid days cannot be partially cancelled');
+    }
 
     const cancelDates = (cr.cancelDates as string[]) ?? [];
     const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
@@ -3530,11 +3685,15 @@ export async function decideLeaveCancellation(
     // debit over the whole span (finalizeLeaveApproval), so we first reverse that whole-span debit, then give
     // each segment its own debit — net zero for survivors, net +1×cancelled-days restored for cancelled ones.
     const parentGroupId = randomUUID();
+    // Balance Deduction Source (cdf9ca48): the reversal and the per-segment re-debits below must land on the
+    // SAME ledger finalizeLeaveApproval debited, or a give-back would credit a balance that was never charged
+    // and leave the borrowed one permanently short. Resolved once for the whole split.
+    const cancelBalanceTypeId = await resolveBalanceSourceTypeId(tx, req.leaveTypeId);
     // 1) Reverse the original whole-span debit (inverse of finalizeLeaveApproval's single debit).
     await tx.insert(leaveLedger).values({
       tenantId: ctx.tenantId,
       employmentId: req.employmentId,
-      leaveTypeId: req.leaveTypeId,
+      leaveTypeId: cancelBalanceTypeId,
       entryType: 'debit',
       days: Number(req.days).toFixed(2), // positive = reversal of the original negative debit
       sourceRequestId: req.id,
@@ -3605,7 +3764,7 @@ export async function decideLeaveCancellation(
         await tx.insert(leaveLedger).values({
           tenantId: ctx.tenantId,
           employmentId: req.employmentId,
-          leaveTypeId: req.leaveTypeId,
+          leaveTypeId: cancelBalanceTypeId,
           entryType: 'debit',
           days: (-segDays).toFixed(2),
           sourceRequestId: rowId,
@@ -3763,7 +3922,9 @@ export async function adminCancelLeave(
       await tx.insert(leaveLedger).values({
         tenantId: ctx.tenantId,
         employmentId: req.employmentId,
-        leaveTypeId: req.leaveTypeId,
+        // Balance Deduction Source (cdf9ca48): give the days back to the ledger they came out of. The net
+        // above already covers the unpaid split correctly — it reverses what was actually debited.
+        leaveTypeId: await resolveBalanceSourceTypeId(tx, req.leaveTypeId),
         entryType: 'debit',
         days: restoredDays.toFixed(2), // positive = reversal of the original negative debit
         sourceRequestId: req.id,
@@ -3924,6 +4085,10 @@ export async function editLeaveRequest(
         // Configurable Negative Leave Balance Validation (0ef0defd): submit/edit-time balance guard flag —
         // enforced below (excluding this very request from its own pending reservation). false ⇒ block.
         allowNegativeBalance: leaveType.allowNegativeBalance,
+        // Allow Unpaid Leave (a7fab30b): the edit re-splits paid/unpaid from scratch. An edit can change the
+        // type, the dates, or the duration, any of which moves the boundary — carrying the old split forward
+        // would leave the request claiming unpaid days it no longer has (or paying for days it cannot cover).
+        allowUnpaidLeave: leaveType.allowUnpaidLeave,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
@@ -4076,7 +4241,14 @@ export async function editLeaveRequest(
     // requestLeave check. availableLeaveBalance EXCLUDES this very request (req.id) from its own pending
     // reservation, so the NEW days are re-checked against everything else. allow_negative_balance=false ⇒ block
     // an edit that would take the balance negative; =true ⇒ skip. round2 matches the leave math.
-    if (lt.allowNegativeBalance === false) {
+    // Allow Unpaid Leave (a7fab30b) mirrors requestLeave: when on it supersedes the block and re-measures the
+    // uncovered part instead, against the resolved balance source (cdf9ca48) and excluding this request's own
+    // reservation. Recomputed rather than carried, since the edit may have changed the days or the type.
+    let unpaidDays = 0;
+    if (lt.allowUnpaidLeave === true) {
+      const available = await availableLeaveBalance(tx, req.employmentId, p.leaveTypeId, req.id);
+      unpaidDays = round2(Math.max(0, days - Math.max(0, available)));
+    } else if (lt.allowNegativeBalance === false) {
       const available = await availableLeaveBalance(tx, req.employmentId, p.leaveTypeId, req.id);
       if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
     }
@@ -4121,6 +4293,10 @@ export async function editLeaveRequest(
         toTime,
         reason: p.reason?.trim() || null,
         employeeRemark,
+        // Allow Unpaid Leave (a7fab30b): the re-measured split. Written unconditionally (0 ⇒ NULL) so an edit
+        // that moves the request onto a type without the setting, or back inside the balance, CLEARS a stale
+        // unpaid portion rather than leaving it to be honoured at approval.
+        unpaidDays: unpaidDays ? unpaidDays.toFixed(2) : null,
       })
       .where(eq(leaveRequest.id, req.id));
 
@@ -4211,7 +4387,8 @@ export async function cancelOwnLeave(
       await tx.insert(leaveLedger).values({
         tenantId: ctx.tenantId,
         employmentId: req.employmentId,
-        leaveTypeId: req.leaveTypeId,
+        // Balance Deduction Source (cdf9ca48): same ledger the approval debited (see the give-back path).
+        leaveTypeId: await resolveBalanceSourceTypeId(tx, req.leaveTypeId),
         entryType: 'debit',
         days: restoredDays.toFixed(2),
         sourceRequestId: req.id,

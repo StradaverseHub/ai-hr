@@ -1385,6 +1385,9 @@
       "no": "No",
       "total": "Total: {days} day(s)"
     },
+    "unpaidSplit": {
+      "notice": "Your balance covers {paid} day(s). The remaining {unpaid} day(s) will be taken as unpaid leave."
+    },
     "applyDayStatus": {
       "working_day": "Working day",
       "half_working_day": "Half working day",
@@ -4198,6 +4201,18 @@
       "negativeBalanceYes": "Yes — employees may apply even if the balance goes negative",
       "negativeBalanceNo": "No — block applications that exceed the available balance",
       "negativeBalanceHelp": "Controls whether an employee can submit or edit a leave application of this type that exceeds their available balance. 'No' blocks over-application at submission and edit (counting leave already pending); 'Yes' allows the balance to go negative.",
+      "balanceSourceSectionTitle": "Balance deduction source",
+      "balanceSourceLabel": "Balance Deduction Source",
+      "balanceSourceOwn": "Own Leave Balance",
+      "balanceSourceOther": "Deduct from Another Leave Type",
+      "balanceSourceMapLabel": "Map deduction source",
+      "balanceSourceMapPlaceholder": "Select a leave type…",
+      "balanceSourceHelp": "Choose which balance an application of this leave type is checked against and deducted from. 'Own Leave Balance' is the default. Pick another leave type and this type keeps no balance of its own: the application is validated against that type's balance and reduces it, while the leave history still shows this leave type. A leave type cannot point at itself, at a type that already deducts from another, or at one that already deducts from this one.",
+      "allowUplSectionTitle": "Unpaid leave (UPL)",
+      "allowUplLabel": "Allow Unpaid Leave (UPL)",
+      "allowUplYes": "Yes — allow the application and treat the uncovered days as unpaid leave",
+      "allowUplNo": "No — validate the available balance as usual",
+      "allowUplHelp": "Controls whether an employee may apply for more days than their available balance. 'No' keeps the current behaviour. 'Yes' lets the application through as a single request: the days the balance covers are deducted from this leave type (or from its deduction source), and only the excess is treated as unpaid leave and passed to payroll.",
       "eligibilityChipAddPlaceholder": "Add…",
       "categoryGeneral": "General",
       "categoryEntitlement": "Entitlement",

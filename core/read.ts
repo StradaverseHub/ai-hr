@@ -469,6 +469,11 @@ export function listLeaveTypes(
         // Configurable Negative Leave Balance Validation (0ef0defd): feeds the admin panel's "Allow Negative
         // Balance" Yes/No radio (MUST be projected or the radio renders at its default on every reload).
         allowNegativeBalance: leaveType.allowNegativeBalance,
+        // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): feed the admin panel's two new
+        // Leave Application Rules cards (MUST be projected or both render at their defaults on every reload —
+        // the "my setting didn't save" report this list has already had twice).
+        balanceSourceTypeId: leaveType.balanceSourceTypeId,
+        allowUnpaidLeave: leaveType.allowUnpaidLeave,
         // Custom validation messages (custom-messages migration): feeds the admin panel's "Custom system
         // message" textarea (MUST be projected or the textarea renders empty on every reload).
         customMessages: leaveType.customMessages,

@@ -19,6 +19,9 @@ export type LeavePreview = {
   isEmergencySplit: boolean;
   /** Present only when the caller asked for the day-by-day detail (the /leave apply popup does). */
   dayRows?: LeaveApplyDayRow[];
+  /** Allow Unpaid Leave (a7fab30b): how many of `days` the balance will not cover. Present only when the
+   *  selected type allows unpaid leave AND the request actually overflows — absent means fully paid. */
+  unpaidDays?: number;
 };
 
 /** Employee apply-popup entitlement summary. A null figure means HR gated that component out of the employee
@@ -41,6 +44,11 @@ export type LeaveTypeOption = {
   /** Feedback 9d8cf621: optional HR-authored custom message shown to the employee when this type is selected
    *  on the apply form. Absent/empty ⇒ no notice. */
   applyNotice?: string | null;
+  /** Balance Deduction Source (cdf9ca48): true when HR has pointed this type at another type's balance.
+   *  Only consulted for EMERGENCY, whose special apply UI (reason category + unpaid-consent tick) belongs to
+   *  the hardcoded ANNUAL+UNPAID decomposition — a configured source replaces that decomposition with the
+   *  ordinary single-request path, so the special UI would collect answers nothing reads. Absent ⇒ false. */
+  borrowsBalance?: boolean;
 };
 
 /**
@@ -129,7 +137,10 @@ export function LeaveDurationFields({
   // Emergency Leave (Phase-B #12, ADR-0061): when EL is selected, surface the reason-category select (illness
   // routes through paid SICK first) and the unpaid-days acknowledgement. The server is the authoritative gate
   // — it throws UnpaidConsentRequiredError when the cascade would create an UNPAID child without this consent.
-  const isEmergency = selected?.code === 'EMERGENCY';
+  // Balance Deduction Source (cdf9ca48): …unless HR has given EL an explicit balance source, in which case
+  // the server takes the ordinary single-request path and there is no cascade to consent to — so the special
+  // UI comes off and the type renders like any other (balance summary and document fields included).
+  const isEmergency = selected?.code === 'EMERGENCY' && !selected?.borrowsBalance;
   // Maternity (Phase-B #13, ADR-0062): when MATERNITY is selected, capture the EA s.37 paid-allowance facts —
   // surviving-children count + confinement date. The 98-day leave is always granted; the server computes
   // whether the paid ALLOWANCE is withheld (qualifying-service / 5th-child) and, if so, grants the leave
@@ -379,6 +390,20 @@ export function LeaveDurationFields({
           </div>
         )}
       </div>
+
+      {/* Allow Unpaid Leave (a7fab30b): tell the employee how many days will be UNPAID before they submit —
+          the reporter's point is that this must not first appear on a payslip. Rendered only when the split
+          is real (the server omits unpaidDays for a fully-covered request, and for every leave type that has
+          not opted in), so no other type gains a line. The figures come straight from the same measurement
+          the submission will make — nothing is recomputed here, so the notice and the outcome cannot drift. */}
+      {preview && (preview.unpaidDays ?? 0) > 0 && (
+        <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-foreground sm:col-span-2">
+          {t('unpaidSplit.notice', {
+            paid: Math.round((preview.days - preview.unpaidDays!) * 100) / 100,
+            unpaid: preview.unpaidDays!,
+          })}
+        </p>
+      )}
 
       {/* Employee apply-popup enhancement: compact Pending / Taken / Balance for the selected leave type,
           refreshed on every type change. Suppressed for EMERGENCY — EL keeps no ledger of its own (it is

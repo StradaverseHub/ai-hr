@@ -1414,6 +1414,30 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const negativeBalanceFields = touchNegativeBalance
     ? { allowNegativeBalance: fd.get('allowNegativeBalanceValue') === 'yes' }
     : {};
+  // Balance Deduction Source (cdf9ca48): its own sub-form posts `balanceSource=1` (marker) plus a mode radio
+  // (`balanceSourceMode` = own | other) and, for 'other', the chosen `balanceSourceTypeId`. Mode 'own' — and
+  // 'other' with nothing picked — both clear the column, so the dropdown can never leave a half-configured
+  // "deduct from another type, but which one?" state. Any other sub-form save omits the marker ⇒ the column
+  // stays untouched (same tri-state guard as negativeBalance). The service validates self-reference + chains.
+  // Both are annotated with an OPTIONAL-property type rather than left to inference: an un-annotated
+  // `cond ? {k: v} : {}` is a two-member union, and this call site already spreads ~18 of them — two more
+  // doubled the union twice over and tipped tsc into TS2590 ("union type too complex"). One declared type
+  // per field object keeps the spread a single shape.
+  const touchBalanceSource = fd.get('balanceSource') === '1';
+  const balanceSourceModeRaw = String(fd.get('balanceSourceMode') ?? '');
+  const balanceSourceIdRaw = String(fd.get('balanceSourceTypeId') ?? '').trim();
+  const balanceSourceFields: { balanceSourceTypeId?: string | null } = touchBalanceSource
+    ? {
+        balanceSourceTypeId:
+          balanceSourceModeRaw === 'other' && balanceSourceIdRaw !== '' ? balanceSourceIdRaw : null,
+      }
+    : {};
+  // Allow Unpaid Leave (a7fab30b): its own sub-form posts `allowUpl=1` (marker) plus a Yes/No radio
+  // (`allowUnpaidLeaveValue`). Forwarded as a concrete boolean; mirrors negativeBalance exactly.
+  const touchAllowUpl = fd.get('allowUpl') === '1';
+  const allowUplFields: { allowUnpaidLeave?: boolean } = touchAllowUpl
+    ? { allowUnpaidLeave: fd.get('allowUnpaidLeaveValue') === 'yes' }
+    : {};
   // Employee Leave View Configuration (65dec703 / dup 1fedb473): the ESS-view checklist posts `essView=1`
   // (marker) plus one checkbox per component (`essView_<key>`). An unchecked box does not post, so we build
   // the COMPLETE map from the closed key list (checked ⇒ true/visible, absent ⇒ false/hidden) and replace
@@ -1562,6 +1586,8 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...partialFields,
       ...duplicatePolicyFields,
       ...negativeBalanceFields,
+      ...balanceSourceFields,
+      ...allowUplFields,
       ...essViewFields,
       ...formulaFields,
       ...dayTypeInclusionFields,
