@@ -89,6 +89,13 @@ pnpm db:migrate
 echo "▸ Seeding module + setting catalogs…"
 node --env-file=.env.production --import tsx scripts/seed-catalogs.ts
 
+# 0318 — seed feedback_plan_revision from what survived. Idempotent (ON CONFLICT DO NOTHING), so it
+# stays here permanently rather than being a one-shot: a deploy that adds the table to a database it has
+# not run against yet must still populate it. It PRINTS how many earlier plan versions it could not
+# recover, so the gap is reported on every deploy instead of being discovered by a confused reporter.
+echo "▸ Seeding feedback plan history…"
+node --env-file=.env.production --import tsx scripts/backfill-plan-history.ts
+
 # ADR-0077 slice 3 — ENTITLEMENT PARITY IS NOT CHECKED HERE, DELIBERATELY. A blocking
 # `reconcile-entitlement-parity.ts --preflight` sat at this line and had to come out (review r2): it
 # could never reach a clean state, and both of its escapes were worse than the thing it guarded.

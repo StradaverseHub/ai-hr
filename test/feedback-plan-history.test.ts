@@ -30,6 +30,7 @@ import {
   submitFeedback,
 } from '../core/feedback';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { backfillPlanHistory } from '../scripts/backfill-plan-history';
 
 let base: Base;
 beforeAll(async () => {
@@ -244,5 +245,74 @@ describe('feedback plan history (0318)', () => {
       /permission denied/i,
     );
     expect(await revisions(id)).toHaveLength(1);
+  });
+
+  describe('backfill — recovers what survived, invents nothing', () => {
+    /** Rewind an item to the pre-0318 world: a plan on the request, no revision rows at all. */
+    async function asLegacyItem(id: string, opts: { revision: number; status: string; contest?: string }) {
+      await owner.db.execute(sql`DELETE FROM feedback_plan_revision WHERE feedback_request_id = ${id}::uuid`);
+      await owner.db.execute(
+        sql`UPDATE feedback_request
+               SET plan_revision = ${opts.revision},
+                   status = ${opts.status}::feedback_status,
+                   contest_reason = ${opts.contest ?? null},
+                   decided_at = now()
+             WHERE id = ${id}::uuid`,
+      );
+    }
+
+    it('writes the current plan as the item’s latest revision', async () => {
+      const { id, rctx } = await reporterOn();
+      await setFeedbackPlan(adminCtx(base), { feedbackId: id, plan: 'the surviving plan' });
+      await approveFeedbackPlan(rctx, { feedbackId: id });
+      await asLegacyItem(id, { revision: 3, status: 'approved' });
+
+      const r = await backfillPlanHistory(owner.db);
+      expect(r.planted).toBeGreaterThanOrEqual(1);
+
+      const rows = await revisions(id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].plan).toBe('the surviving plan');
+      // Numbered 3, not 1: the item really did go three rounds, and renumbering it to 1 would erase the
+      // evidence that two versions are missing — which is what the UI reads to report the gap.
+      expect(rows[0].revision).toBe(3);
+      expect(rows[0].approvedAt).not.toBeNull();
+      expect(rows[0].outcome).toBeNull(); // approved, still the live plan
+    });
+
+    it('keeps a contested item’s push-back and marks the version contested', async () => {
+      const { id } = await reporterOn();
+      await setFeedbackPlan(adminCtx(base), { feedbackId: id, plan: 'the rejected plan' });
+      await asLegacyItem(id, { revision: 2, status: 'contested', contest: 'this misses the point' });
+
+      await backfillPlanHistory(owner.db);
+      const [row] = await revisions(id);
+      expect(row.outcome).toBe('contested');
+      expect(row.outcomeReason).toBe('this misses the point');
+      expect(row.approvedAt).toBeNull();
+    });
+
+    it('does NOT invent the versions it cannot recover, and says how many are missing', async () => {
+      const { id } = await reporterOn();
+      await setFeedbackPlan(adminCtx(base), { feedbackId: id, plan: 'v6' });
+      await asLegacyItem(id, { revision: 6, status: 'approved' });
+
+      const r = await backfillPlanHistory(owner.db);
+      // Six rounds happened; one plan text survived. The other five are gone and are NOT fabricated.
+      expect(await revisions(id)).toHaveLength(1);
+      expect(r.unrecoverable).toBeGreaterThanOrEqual(5);
+    });
+
+    it('is idempotent — a second run changes nothing', async () => {
+      const { id } = await reporterOn();
+      await setFeedbackPlan(adminCtx(base), { feedbackId: id, plan: 'once' });
+      await asLegacyItem(id, { revision: 1, status: 'planned' });
+
+      await backfillPlanHistory(owner.db);
+      const first = await revisions(id);
+      const second = await backfillPlanHistory(owner.db);
+      expect(second.planted).toBe(0);
+      expect(await revisions(id)).toEqual(first);
+    });
   });
 });

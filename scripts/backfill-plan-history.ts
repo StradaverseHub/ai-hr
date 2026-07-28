@@ -26,14 +26,14 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { sql } from 'drizzle-orm';
 
-async function main() {
-  // MIGRATION_DATABASE_URL, not the app connection: 0318 REVOKEs INSERT/UPDATE/DELETE on this table
-  // from ai_hr_app on purpose — a history the app can rewrite is not a history. Only the owner role
-  // writes it, here and in the services.
-  const url = process.env.MIGRATION_DATABASE_URL;
-  if (!url) throw new Error('MIGRATION_DATABASE_URL is required — feedback_plan_revision is owner-writable only.');
-  const client = postgres(url, { max: 1 });
-  const db = drizzle(client);
+/** Minimal shape this needs — any drizzle handle on an owner-role connection. */
+type Executor = { execute: (q: ReturnType<typeof sql>) => Promise<unknown> };
+
+/**
+ * Exported so the suite can run the REAL statements against a pre-0318 fixture rather than a paraphrase
+ * of them. A backfill verified only by reading it is a backfill nobody has run.
+ */
+export async function backfillPlanHistory(db: Executor): Promise<{ planted: number; refuted: number; unrecoverable: number }> {
   // 1. The current plan becomes the item's latest revision. Its outcome is derived from where the item
   //    actually sits — an approved item's live plan was approved, a contested one's was contested — so
   //    the backfilled history agrees with the item's own status rather than asserting a separate one.
@@ -89,17 +89,37 @@ async function main() {
     WHERE fr.plan IS NOT NULL AND btrim(fr.plan) <> ''
   `)) as unknown as { multi_round_items: number; unrecoverable_versions: number }[];
 
-  console.log(`▸ plan history: ${planted.count ?? 0} current plans recorded, ${refuted.count ?? 0} refute reasons recovered.`);
+  return {
+    planted: Number((planted as { count?: number }).count ?? 0),
+    refuted: Number((refuted as { count?: number }).count ?? 0),
+    unrecoverable: Number(gap.unrecoverable_versions ?? 0),
+  };
+}
+
+async function main() {
+  // MIGRATION_DATABASE_URL, not the app connection: 0318 lets ai_hr_app append and close but never
+  // rewrite, and this script rewrites history wholesale from the surviving columns — owner work.
+  const url = process.env.MIGRATION_DATABASE_URL;
+  if (!url) throw new Error('MIGRATION_DATABASE_URL is required — the plan-history backfill is owner-only.');
+  const client = postgres(url, { max: 1 });
+  const db = drizzle(client);
+  const r = await backfillPlanHistory(db);
+  console.log(`▸ plan history: ${r.planted} current plan(s) recorded, ${r.refuted} refute reason(s) recovered.`);
   console.log(
-    `▸ plan history: ${gap.multi_round_items} item(s) went more than one round; ` +
-      `${gap.unrecoverable_versions} earlier plan version(s) predate this table and were NOT reconstructed.`,
+    `▸ plan history: ${r.unrecoverable} earlier plan version(s) predate this table and were NOT reconstructed.`,
   );
   await client.end();
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((e) => {
-    console.error('backfill-plan-history failed:', e);
-    process.exit(1);
-  });
+// Only when run as a command. Without this guard, importing backfillPlanHistory (which the suite does,
+// so it exercises the REAL statements) also fires main(), which has no MIGRATION_DATABASE_URL under
+// vitest and kills the worker with process.exit(1).
+const invokedDirectly = process.argv[1]?.includes('backfill-plan-history');
+if (invokedDirectly) {
+  main()
+    .then(() => process.exit(0))
+    .catch((e) => {
+      console.error('backfill-plan-history failed:', e);
+      process.exit(1);
+    });
+}
