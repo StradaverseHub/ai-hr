@@ -60,7 +60,7 @@ import {
   setOthersStatutoryAction,
 } from './actions';
 // Movement tab redesign (78853b97): Employment History projection + New Event dispatcher.
-import { movementHistory, movementDetail } from '@/core/movement';
+import { movementHistory, movementDetail, movementCurrentState, MOVEMENT_FLAT_FIELDS } from '@/core/movement';
 import { MovementNewEvent } from './movement-new-event';
 import { serviceYearsMonthsAt, serviceYearsMonthsDaysAt } from '@/core/leave';
 // 9d13221c — Age beside Date of Birth: shared completed-years helper (kept a separate import so the
@@ -342,6 +342,8 @@ export default async function EmployeePage({
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
   const movements = admin ? await movementHistory(s, employmentId) : [];
   const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
+  // 08913328 — the Current column of the New Event comparison screen. Only read when that screen is open.
+  const movementCurrent = admin && spNewEvent ? await movementCurrentState(s, employmentId) : null;
   // 7d309da7 — configurable profile-field dropdown catalogs (religion / race / nationality / state /
   // country / relationship). Active options only for the pickers; the ProfileOptionSelect renders any
   // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
@@ -2481,6 +2483,13 @@ export default async function EmployeePage({
         { key: 'employmentType', label: t('movement.field.employmentType'), before: movementEmpTypeLabel(movementDetailData.before?.employmentType ?? null), after: movementEmpTypeLabel(movementDetailData.after.employmentType) },
         { key: 'manager', label: t('movement.field.manager'), before: movementDetailData.before?.manager, after: movementDetailData.after.manager },
         { key: 'salary', label: t('movement.field.salary'), before: movementDetailData.before?.salary, after: movementDetailData.after.salary },
+        // 08913328 — the flat, non-dated columns THIS movement moved (Division … Category). They cannot be
+        // reconstructed as-of, so they appear only when the movement's own event recorded a before/after —
+        // never as today's value pretending to be part of a years-old change.
+        ...MOVEMENT_FLAT_FIELDS.flatMap((f) => {
+          const c = movementDetailData.flatChanges.find((x) => x.field === f);
+          return c ? [{ key: f, label: t(`movement.field.${f}` as 'movement.field.orgDivision'), before: c.before, after: c.after }] : [];
+        }),
       ]
     : [];
   const movementDetailCard = movementDetailData ? (
@@ -2527,15 +2536,22 @@ export default async function EmployeePage({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {movementComparisonRows.map((r) => (
-            <tr key={r.key}>
-              <td className="px-4 py-2.5 text-muted-foreground">{r.label}</td>
-              <td className="px-4 py-2.5 text-foreground">
-                {movementDetailData.before ? (r.before ?? '—') : t('movement.detail.firstRecord')}
-              </td>
-              <td className="px-4 py-2.5 font-medium text-foreground">{r.after ?? '—'}</td>
-            </tr>
-          ))}
+          {movementComparisonRows.map((r) => {
+            // 08913328 — tint the fields this movement actually moved, so "what changed" is readable at a
+            // glance instead of being a diff the reader has to perform themselves.
+            const changed = !!movementDetailData.before && (r.before ?? null) !== (r.after ?? null);
+            return (
+              <tr key={r.key} className={changed ? 'bg-primary/5' : undefined}>
+                <td className="px-4 py-2.5 text-muted-foreground">{r.label}</td>
+                <td className="px-4 py-2.5 text-foreground">
+                  {movementDetailData.before ? (r.before ?? '—') : t('movement.detail.firstRecord')}
+                </td>
+                <td className={`px-4 py-2.5 font-medium ${changed ? 'text-primary' : 'text-foreground'}`}>
+                  {r.after ?? '—'}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       <div className="p-4">
@@ -2549,14 +2565,16 @@ export default async function EmployeePage({
   // New Event (?newEvent=1): one entry point for every movement, replacing the separate Transfer /
   // Terminate / Blacklist boxes. Option lists reuse the data this page already loads; employment-type
   // and termination-type labels are pre-translated here (parent namespace) and passed down.
-  const newEventCard = canCreateMovement && spNewEvent ? (
-    <Card id="section-movement-new-event">
+  const newEventCard = canCreateMovement && spNewEvent && movementCurrent ? (
+    <Card id="section-movement-new-event" className="overflow-hidden">
       <SectionHeader title={t('movement.newEvent')} />
       <MovementNewEvent
         employmentId={emp.employmentId}
         today={today}
         isBlacklisted={!!emp.blacklistedAt}
-        defaultGradeId={emp.gradeId ?? ''}
+        // 08913328 — the read-only left column AND the pre-fill of the editable right column. One read,
+        // so the two sides cannot disagree about what "current" means.
+        current={movementCurrent}
         departments={departments.map((d) => ({ id: d.id, name: d.name }))}
         positions={positions.map((pos) => ({ id: pos.id, name: pos.title }))}
         businessUnits={businessUnits.map((bu) => ({ id: bu.id, name: bu.name }))}
@@ -3271,9 +3289,9 @@ export default async function EmployeePage({
   ) : null;
 
   /* Movement tab redesign (78853b97): the former Transfer + Terminate cards are folded into the New
-     Event form — kinds "Transfer" (via transferEmployee, so location/cost-centre carry) and
-     "Termination" (via terminateEmployment, confirmation-gated in the island) reuse the same audited
-     services and DomainEvents; only the entry point changed. */
+     Event form — kinds "Transfer" (via setEmploymentAssignment since 08913328, so location, cost centre
+     AND business unit all carry) and "Termination" (via terminateEmployment, confirmation-gated in the
+     island) reuse the same audited services and DomainEvents; only the entry point changed. */
 
   const leaveRequestsCard = (
     <Card id="section-leave-requests" className="overflow-hidden">

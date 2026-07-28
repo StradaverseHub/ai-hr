@@ -16,6 +16,10 @@ const PAGE = fs.readFileSync(
   'utf8',
 );
 const TABS = fs.readFileSync(path.resolve(__dirname, '../components/personnel-tabs.tsx'), 'utf8');
+const NEW_EVENT = fs.readFileSync(
+  path.resolve(__dirname, '../app/admin/personnel/[employmentId]/movement-new-event.tsx'),
+  'utf8',
+);
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 // Slice out the panels object body so we can assert WHICH panel each card lives in, not just that the
@@ -98,6 +102,39 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     expect(PAGE.includes("t('movement.detail.beforeChanges')")).toBe(true);
     expect(PAGE.includes("t('movement.detail.afterChanges')")).toBe(true);
     expect(PAGE.includes("t('movement.detail.firstRecord')")).toBe(true);
+  });
+
+  // 08913328 — the New Event screen is now a Current / After comparison for the change kinds.
+  it('the New Event island renders the Current / After comparison over the full requested field list', () => {
+    for (const f of [
+      'businessUnit', 'orgDivision', 'department', 'position', 'grade', 'employmentCategory',
+      'orgRegion', 'orgBranch', 'orgTeam', 'orgSection', 'orgLine', 'orgBase', 'employmentType',
+      'directSuperior', 'basicSalary', 'currency', 'payMode', 'paymentTerm',
+    ]) {
+      expect(NEW_EVENT.includes(`t('field.${f}')`), `missing comparison field ${f}`).toBe(true);
+    }
+    // Company is displayed but NOT editable here — moving legal entity is its own gated flow.
+    expect(NEW_EVENT.includes("t('form.companyReadOnly')")).toBe(true);
+    expect(NEW_EVENT.includes("t('form.currentInformation')")).toBe(true);
+    expect(NEW_EVENT.includes("t('form.afterInformation')")).toBe(true);
+    // The grid is only for the change kinds; lifecycle kinds keep their dedicated inputs.
+    expect(NEW_EVENT.includes('const isComparison = COMPARISON_KINDS.includes(kind);')).toBe(true);
+  });
+
+  it('has the comparison labels in all six locales (no raw key at runtime)', () => {
+    for (const loc of LOCALES) {
+      const msg = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));
+      const mv = msg?.people?.detail?.movement ?? {};
+      for (const f of [
+        'orgDivision', 'employmentCategory', 'orgRegion', 'orgBranch', 'orgTeam', 'orgSection',
+        'orgLine', 'orgBase', 'directSuperior', 'basicSalary', 'currency', 'payMode', 'paymentTerm',
+      ]) {
+        expect(typeof mv.field?.[f], `messages/${loc}.json missing movement.field.${f}`).toBe('string');
+      }
+      for (const k of ['currentInformation', 'afterInformation', 'comparisonHint', 'companyReadOnly']) {
+        expect(typeof mv.form?.[k], `messages/${loc}.json missing movement.form.${k}`).toBe('string');
+      }
+    }
   });
 
   it('has the movement labels in all six locales (no raw key at runtime)', () => {

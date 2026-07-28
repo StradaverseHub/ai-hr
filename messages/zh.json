@@ -1066,7 +1066,20 @@
           "grade": "职级",
           "employmentType": "雇佣类型",
           "manager": "汇报经理",
-          "salary": "薪资"
+          "salary": "薪资",
+          "orgDivision": "事业部",
+          "employmentCategory": "员工类别",
+          "orgRegion": "区域",
+          "orgBranch": "分行",
+          "orgTeam": "团队",
+          "orgSection": "科别",
+          "orgLine": "生产线",
+          "orgBase": "基地",
+          "directSuperior": "直属上级",
+          "basicSalary": "基本薪资",
+          "currency": "币种",
+          "payMode": "支付方式",
+          "paymentTerm": "支付周期"
         },
         "eventType": {
           "hired": "入职",
@@ -1105,12 +1118,15 @@
           "blacklistStatus": "黑名单状态",
           "blacklistSet": "将该员工列入黑名单",
           "blacklistClear": "移出黑名单",
-          "keepCurrent": "保持当前",
           "none": "无",
           "save": "保存事件",
           "cancel": "取消",
           "terminateConfirmTitle": "终止雇佣？",
-          "terminateConfirmDescription": "这将在生效日期终止雇佣并关闭当前任职安排。该操作会记录在审计日志中。"
+          "terminateConfirmDescription": "这将在生效日期终止雇佣并关闭当前任职安排。该操作会记录在审计日志中。",
+          "currentInformation": "当前信息",
+          "afterInformation": "变更后（新信息）",
+          "comparisonHint": "仅记录你实际修改的字段。保持原值的字段不会被改动，也不会产生历史记录。",
+          "companyReadOnly": "在“雇佣”标签页中变更"
         }
       },
       "salaryCurrency": "货币"
