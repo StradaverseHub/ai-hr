@@ -358,6 +358,15 @@
       "used": "ใช้ไป {taken}",
       "usedWithPending": "ใช้ไป {taken} · รออนุมัติ {pending}",
       "noLeaveRecords": "ไม่มีบันทึกการลา",
+      "leaveSummary": {
+        "title": "สรุปการลา",
+        "viewCalendar": "ดูปฏิทิน",
+        "colType": "ประเภทการลา",
+        "colBalance": "คงเหลือ",
+        "colPending": "รอดำเนินการ",
+        "colUpcoming": "ที่จะถึง",
+        "days": "{days} วัน"
+      },
       "compensation": "เงินเดือนพื้นฐาน",
       "compMeta": "พื้นฐาน / เดือน · ตั้งแต่ {validFrom}",
       "noCompensation": "ยังไม่ได้ตั้งค่าตอบแทน",

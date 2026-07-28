@@ -358,6 +358,15 @@
       "used": "{taken} used",
       "usedWithPending": "{taken} used · {pending} pending",
       "noLeaveRecords": "No leave records.",
+      "leaveSummary": {
+        "title": "Leave Summary",
+        "viewCalendar": "View Calendar",
+        "colType": "Leave Type",
+        "colBalance": "Balance",
+        "colPending": "Pending",
+        "colUpcoming": "Upcoming",
+        "days": "{days} Days"
+      },
       "compensation": "Basic Salary",
       "compMeta": "basic / mo · since {validFrom}",
       "noCompensation": "No compensation set.",

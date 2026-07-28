@@ -358,6 +358,15 @@
       "used": "{taken} பயன்படுத்தப்பட்டது",
       "usedWithPending": "{taken} பயன்படுத்தப்பட்டது · {pending} நிலுவையில்",
       "noLeaveRecords": "விடுப்புப் பதிவுகள் இல்லை.",
+      "leaveSummary": {
+        "title": "விடுப்புச் சுருக்கம்",
+        "viewCalendar": "நாட்காட்டியைப் பார்",
+        "colType": "விடுப்பு வகை",
+        "colBalance": "மீதி",
+        "colPending": "நிலுவையில்",
+        "colUpcoming": "வரவிருப்பவை",
+        "days": "{days} நாட்கள்"
+      },
       "compensation": "அடிப்படை சம்பளம்",
       "compMeta": "அடிப்படை / மாதம் · {validFrom} முதல்",
       "noCompensation": "ஊதியம் அமைக்கப்படவில்லை.",

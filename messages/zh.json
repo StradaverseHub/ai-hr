@@ -358,6 +358,15 @@
       "used": "已用 {taken}",
       "usedWithPending": "已用 {taken} · 待审 {pending}",
       "noLeaveRecords": "无休假记录。",
+      "leaveSummary": {
+        "title": "假期摘要",
+        "viewCalendar": "查看日历",
+        "colType": "假期类型",
+        "colBalance": "余额",
+        "colPending": "待批",
+        "colUpcoming": "即将到来",
+        "days": "{days} 天"
+      },
       "compensation": "基本薪资",
       "compMeta": "基本工资 / 月 · 自 {validFrom} 起",
       "noCompensation": "未设置薪酬。",
