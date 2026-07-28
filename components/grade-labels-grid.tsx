@@ -12,15 +12,28 @@
  * copy-to-companies, sharing panel, per-row scope duplication…), so hosting grade there needed a synthetic
  * record mapper plus ~ten `kind === 'grade'` suppressions and still rendered a meaningless Criteria column.
  * ProfileOptionsGrid's header already describes job_grade verbatim — "a FLAT tenant-wide catalog with NO
- * company scope, NO sharing, and NO Criteria column" — so the rail swaps the BODY instead.
+ * company scope, NO sharing, and NO Criteria column" — so the rail swaps the BODY instead. (The Criteria
+ * column below is a fixed read-only label, not that grid's editable scope cell; see the note on it.)
  *
  * A SIBLING of ProfileOptionsGrid rather than a reuse of it: Profile Options enforces value immutability
  * (Code is read-only once saved), whereas grade codes became editable in 728a7db6. That is a behavioural
  * divergence, not a cosmetic one, so ProfileOptionsGrid is left untouched.
  *
- * Columns are Code · Grade Name · Rank · Status · Actions — Rank takes the slot the company-scoped kinds
- * give to Criteria, and sorts NUMERICALLY (the company grid's String(...).localeCompare would order
- * 1, 10, 11, 2, 3). Archive/restore batches into Save and is undoable via Discard, so it carries no confirm
+ * Columns are Code · Label · Description · Rank · Criteria · Status · Actions. Rank sorts NUMERICALLY (the
+ * company grid's String(...).localeCompare would order 1, 10, 11, 2, 3).
+ *
+ * CRITERIA IS BACK, READ-ONLY (e3c733df round 2). The first round dropped it as "meaningless"; the reporter
+ * asked for it again, "exactly like other category". On the four company-scoped kinds Criteria is NOT free
+ * text — it is the SHARING SCOPE cell (a pill reading Global / Own company / N companies, opening the
+ * company-assignment popover). Following it exactly for a tenant-global catalog therefore means rendering
+ * that same pill at its one possible value: every grade applies to every company, so it reads "Global" and
+ * has no popover to open. That is the honest column, and it needs no `criteria` field — the free-text slot
+ * the reporter also asked for is Description, added in round 1 and sitting one column to the left. Two
+ * free-text boxes for one idea would be the wrong outcome. NOTE this deliberately stops short of company
+ * scope for grades: job_grade still has no company_id, no is_global and no assignment junction, and none of
+ * the sharing wiring is imported here.
+ *
+ * Archive/restore batches into Save and is undoable via Discard, so it carries no confirm
  * dialog of its own; hard Delete keeps one, and is disabled with an explanatory tooltip when the grade is
  * still referenced by an employee, leave policy, approval rule, claim limit or grade group.
  *
@@ -375,6 +388,9 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                 {t('col.rank')}
                 {sortIcon('rank')}
               </th>
+              {/* Criteria, restored beside Rank (e3c733df round 2). Not sortable: it reads the same on
+                  every row, so a sort affordance would promise an ordering that does not exist. */}
+              <th className={thCls}>{t('col.scope')}</th>
               <th className={sortableThCls} onClick={() => toggleSort('archived')}>
                 {t('col.status')}
                 {sortIcon('archived')}
@@ -385,7 +401,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
           <tbody className={tbodyCls}>
             {view.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={8} className="px-3 py-8 text-center text-sm text-muted-foreground">
                   {t('noRows')}
                 </td>
               </tr>
@@ -441,6 +457,18 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                       title={err && err.field === 'rank' ? err.message : undefined}
                       className={`${cellInput} w-16 tabular-nums ${err?.field === 'rank' ? 'border-destructive' : ''}`}
                     />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    {/* Same pill the company-scoped kinds show for a global row, minus the chevron — there
+                        is no per-company assignment to open, so a clickable control would be a dead end.
+                        Rendered for drafts too: a grade is tenant-wide the moment it exists, so unlike the
+                        company grid there is nothing to "save first" before the scope is known. */}
+                    <span
+                      title={t('assignmentAll')}
+                      className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+                    >
+                      {t('scopeGlobal')}
+                    </span>
                   </td>
                   <td className="px-3 py-1.5">
                     <StatusBadge
