@@ -98,8 +98,9 @@ describe('deriveHistoryBreakdown', () => {
 
   it('reports a zero HRDF levy for a company that does not pay it, without dropping the key', () => {
     // A company with no HRDF Contribution Rate resolves to 'not_registered', so the engine stores 0
-    // rather than omitting the key. The breakdown must carry that 0 through — the TABLE decides not to
-    // draw a row for it, which is a presentation choice; the derivation stays honest.
+    // rather than omitting the key. The breakdown must carry that 0 through; how the TABLE presents it is
+    // a separate decision (efece4ce re-fix: it now labels the row "Not registered" rather than hiding it,
+    // because a hidden row read as a failed calculation — see test/hrdf-registration-visibility.test.ts).
     const b = deriveHistoryBreakdown(
       row({ statutory: { epfEmployer: 390, socsoEmployer: 65.25, eisEmployer: 7.9, hrdf: 0 } }),
     );

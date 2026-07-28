@@ -448,6 +448,7 @@
       "subjectToHrdf": "须缴纳 HRDF",
       "subjectToHrdfHint": "勾选后，该员工的合格收入将在薪资处理时计入 HRD Corp（HRDF）征费计算；未勾选则完全排除该员工。",
       "subjectToHrdfFollowingDefault": "目前跟随公司 HRDF 注册默认设置。保存后将为该员工设定明确的选择。",
+      "subjectToHrdfCompanyNotRegistered": "已设为“是”，但该员工所属公司未设置 HRDF 缴纳率（组织 ▸ 法定），因此薪资不会为其征收该征费。此设置已保存，公司完成注册后即生效。",
       "othersStatutorySave": "保存其他法定项目",
       "assignmentHistory": "任职历史",
       "periodValidTime": "期间（有效时间）",
@@ -2704,6 +2705,7 @@
       "proratedDays": "按比例 · {worked}/{total} 天",
       "noPayslips": "此批次中无工资单。",
       "totalHrdf": "HRD Corp 征费",
+      "totalHrdfNotRegistered": "未注册",
       "componentImport": {
         "title": "导入薪资项目（CSV）",
         "description": "批量为此草稿批次添加一次性津贴、扣除、加班或花红。列：employee（邮箱）、component（代码）、amount、notes。",
@@ -3131,7 +3133,8 @@
           "empty": "没有符合所选筛选条件的已处理薪资结果。",
           "showBreakdown": "显示明细",
           "hideBreakdown": "隐藏明细",
-          "totalEmployerContributions": "雇主缴纳总额"
+          "totalEmployerContributions": "雇主缴纳总额",
+          "hrdfNotRegistered": "未注册"
         },
         "exportCsv": "导出 CSV"
       }
@@ -3524,6 +3527,8 @@
       "hrdfNotRegistered": "不缴纳",
       "hrdfMandatory": "缴纳 1.0%",
       "hrdfOptional": "缴纳 0.5%",
+      "statutoryMissingTitle": "缺少法定登记",
+      "statutoryMissingHint": "这些公司没有马来西亚法定记录。薪资将其视为未设置 HRDF 缴纳率，因此不征收 HRD Corp 征费。请打开公司并填写其“法定”标签页。",
       "businessUnitsCount": "业务单位（{count}）",
       "fieldBusinessUnit": "业务单位",
       "businessUnitNone": "— 无 —",
