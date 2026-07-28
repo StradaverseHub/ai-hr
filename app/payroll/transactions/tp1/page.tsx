@@ -5,6 +5,8 @@ import { listEmployeesPage, listCompanies, listDepartments, employmentSubject } 
 import { getTp1ForPerson, listTp1YearsForPerson } from '@/core/tax-relief';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { Tp1DeclarationForm } from '@/components/tp1-declaration-form';
+import { Pager } from '@/components/pager';
+import { pageState, parsePageQuery } from '@/lib/pagination';
 import { adminSaveTp1Draft, adminSubmitTp1 } from '../deductions-actions';
 
 /**
@@ -35,11 +37,14 @@ export default async function Tp1DeclarationPage({
     year?: string;
     error?: string;
     toast?: string;
+    page?: string;
+    size?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.transactions');
-  const { q, companyId, departmentId, employmentId, year: spYear, error } = await searchParams;
+  const sp = await searchParams;
+  const { q, companyId, departmentId, employmentId, year: spYear, error } = sp;
 
   const subject = employmentId ? await employmentSubject(s, employmentId) : null;
 
@@ -56,7 +61,15 @@ export default async function Tp1DeclarationPage({
       {subject ? (
         <EmployeeDeclaration s={s} subject={subject} spYear={spYear} />
       ) : (
-        <EmployeeSearch s={s} scopeIds={scopeIds} q={q} companyId={companyId} departmentId={departmentId} />
+        <EmployeeSearch
+          s={s}
+          scopeIds={scopeIds}
+          q={q}
+          companyId={companyId}
+          departmentId={departmentId}
+          page={sp.page}
+          size={sp.size}
+        />
       )}
     </div>
   );
@@ -69,12 +82,16 @@ async function EmployeeSearch({
   q,
   companyId,
   departmentId,
+  page,
+  size,
 }: {
   s: Awaited<ReturnType<typeof scopedAdmin>>['s'];
   scopeIds: string[];
   q?: string;
   companyId?: string;
   departmentId?: string;
+  page?: string;
+  size?: string;
 }) {
   const t = await getTranslations('payroll.transactions');
   const [companies, departments] = await Promise.all([
@@ -83,16 +100,19 @@ async function EmployeeSearch({
   ]);
   // Only run the search once the admin has entered/selected something — a bare screen shows the prompt.
   const hasQuery = !!(q?.trim() || companyId || departmentId);
-  const { rows } = hasQuery
+  // fc776376 — the results are a genuine list; they used to stop dead at a hard-coded 50 with nothing on
+  // screen to say so. Now they page, with a real total.
+  const pq = parsePageQuery({ page, size });
+  const { rows, total } = hasQuery
     ? await listEmployeesPage(s, {
         companyIds: scopeIds,
         q: q?.trim() || undefined,
         companyId: companyId || undefined,
         departmentId: departmentId || undefined,
-        limit: 50,
-        offset: 0,
+        limit: pq.limit,
+        offset: pq.offset,
       })
-    : { rows: [] };
+    : { rows: [], total: 0 };
 
   return (
     <>
@@ -131,7 +151,7 @@ async function EmployeeSearch({
 
       {hasQuery && (
         <Card className="overflow-hidden">
-          <SectionHeader title={t('tp1.results')} count={rows.length} />
+          <SectionHeader title={t('tp1.results')} count={total} />
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -170,6 +190,11 @@ async function EmployeeSearch({
               </tbody>
             </table>
           </div>
+          <Pager
+            basePath="/payroll/transactions/tp1"
+            params={{ q, companyId, departmentId }}
+            state={pageState(pq, total, rows.length)}
+          />
         </Card>
       )}
     </>

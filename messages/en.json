@@ -7372,5 +7372,16 @@
     "searchPlaceholder": "Search currency…",
     "noResults": "No currency found",
     "legacySuffix": "(existing value)"
+  },
+  "pagination": {
+    "rowsPerPage": "Rows",
+    "all": "All",
+    "range": "{from}–{to} of {total, number}",
+    "rangeEmpty": "0 of {total, number}",
+    "previous": "← Previous",
+    "next": "Next →",
+    "truncated": "Showing the first {shown, number} of {total, number} rows.",
+    "truncatedHint": "Use Reports → Export for the complete set.",
+    "truncatedExport": "Export the complete set"
   }
 }

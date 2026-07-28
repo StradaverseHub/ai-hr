@@ -1,41 +1,44 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { auditAggregateTypes, auditEvents } from '@/core/read';
+import { auditAggregateTypes, auditEvents, auditEventsCount } from '@/core/read';
 import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { AuditTable } from '@/components/audit-table';
 import { aggregateLabel } from '@/lib/audit-format';
-
-const PAGE = 100;
+import { Pager } from '@/components/pager';
+import { pageState, parsePageQuery } from '@/lib/pagination';
 
 export default async function AuditPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; q?: string; from?: string; to?: string; page?: string }>;
+  searchParams: Promise<{
+    type?: string;
+    q?: string;
+    from?: string;
+    to?: string;
+    page?: string;
+    size?: string;
+  }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.audit');
   const sp = await searchParams;
-  const page = Math.max(0, Number(sp.page) || 0);
+  const pq = parsePageQuery(sp);
+  // fc776376 — the SAME filter object drives the page and its COUNT, so "26-50 of 312" can never
+  // disagree with the rows on screen (this replaced a fetch-one-extra next-page probe).
   const filters = {
     aggregateType: sp.type || undefined,
     eventQuery: sp.q || undefined,
     from: /^\d{4}-\d{2}-\d{2}$/.test(sp.from ?? '') ? sp.from : undefined,
     to: /^\d{4}-\d{2}-\d{2}$/.test(sp.to ?? '') ? sp.to : undefined,
-    limit: PAGE + 1, // fetch one extra to know if there's a next page
-    offset: page * PAGE,
   };
-  const [rowsPlusOne, types] = await Promise.all([auditEvents(s, filters), auditAggregateTypes(s)]);
-  const hasNext = rowsPlusOne.length > PAGE;
-  const rows = rowsPlusOne.slice(0, PAGE);
+  const [rows, total, types] = await Promise.all([
+    auditEvents(s, { ...filters, limit: pq.limit, offset: pq.offset }),
+    auditEventsCount(s, filters),
+    auditAggregateTypes(s),
+  ]);
+  const pgState = pageState(pq, total, rows.length);
   const nowMs = Date.now();
-
-  const qs = (over: Record<string, string | number | undefined>) => {
-    const merged = { type: sp.type, q: sp.q, from: sp.from, to: sp.to, page: sp.page, ...over };
-    const p = new URLSearchParams();
-    for (const [k, v] of Object.entries(merged)) if (v) p.set(k, String(v));
-    return `/admin/audit?${p.toString()}`;
-  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -76,25 +79,11 @@ export default async function AuditPage({
       <Card data-tour="admin-audit-table" className="overflow-hidden">
         <SectionHeader title={t('events')} count={rows.length} />
         <AuditTable rows={rows} nowMs={nowMs} />
-        {(page > 0 || hasNext) && (
-          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
-            {page > 0 ? (
-              <Link href={qs({ page: page - 1 || undefined })} className="text-primary hover:underline">
-                ← {t('newer')}
-              </Link>
-            ) : (
-              <span />
-            )}
-            <span className="text-xs text-muted-foreground">{t('pageIndicator', { page: page + 1 })}</span>
-            {hasNext ? (
-              <Link href={qs({ page: page + 1 })} className="text-primary hover:underline">
-                {t('older')} →
-              </Link>
-            ) : (
-              <span />
-            )}
-          </div>
-        )}
+        <Pager
+          basePath="/admin/audit"
+          params={{ type: sp.type, q: sp.q, from: sp.from, to: sp.to }}
+          state={pgState}
+        />
       </Card>
     </div>
   );

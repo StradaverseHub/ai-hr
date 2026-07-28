@@ -7372,5 +7372,16 @@
     "searchPlaceholder": "நாணயத்தைத் தேடுங்கள்…",
     "noResults": "நாணயம் ஏதுவும் கிடைக்கவில்லை",
     "legacySuffix": "(தற்போதைய மதிப்பு)"
+  },
+  "pagination": {
+    "rowsPerPage": "வரிசைகள்",
+    "all": "அனைத்தும்",
+    "range": "{total, number} இல் {from}–{to}",
+    "rangeEmpty": "{total, number} இல் 0",
+    "previous": "← முந்தையது",
+    "next": "அடுத்தது →",
+    "truncated": "மொத்தம் {total, number} வரிசைகளில் முதல் {shown, number} மட்டுமே காட்டப்படுகிறது.",
+    "truncatedHint": "முழுத் தொகுப்பிற்கு அறிக்கைகள் → ஏற்றுமதி பயன்படுத்தவும்.",
+    "truncatedExport": "முழுத் தொகுப்பை ஏற்றுமதி செய்"
   }
 }

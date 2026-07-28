@@ -7372,5 +7372,16 @@
     "searchPlaceholder": "ค้นหาสกุลเงิน…",
     "noResults": "ไม่พบสกุลเงิน",
     "legacySuffix": "(ค่าที่มีอยู่)"
+  },
+  "pagination": {
+    "rowsPerPage": "แถว",
+    "all": "ทั้งหมด",
+    "range": "{from}–{to} จาก {total, number}",
+    "rangeEmpty": "0 จาก {total, number}",
+    "previous": "← ก่อนหน้า",
+    "next": "ถัดไป →",
+    "truncated": "แสดง {shown, number} แถวแรกจากทั้งหมด {total, number} แถว",
+    "truncatedHint": "ใช้ รายงาน → ส่งออก เพื่อดูข้อมูลทั้งหมด",
+    "truncatedExport": "ส่งออกข้อมูลทั้งหมด"
   }
 }

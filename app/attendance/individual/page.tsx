@@ -6,6 +6,8 @@ import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag 
 import { listEmployees } from '@/core/read';
 import { Card, ErrorBanner, PageHeader, SectionHeader, inputCls, Button } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
+import { Pager } from '@/components/pager';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
 
 const fmtMin = (m: number | null | undefined) =>
   m == null ? '—' : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
@@ -30,7 +32,14 @@ const dayName = (iso: string) =>
 export default async function IndividualAttendancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; emp?: string; from?: string; to?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    emp?: string;
+    from?: string;
+    to?: string;
+    page?: string;
+    size?: string;
+  }>;
 }) {
   const t = await getTranslations('attendance');
   const { s, scopeIds } = await scopedSession();
@@ -57,6 +66,8 @@ export default async function IndividualAttendancePage({
   const selectedEmp = sp.emp && employees.some((e) => e.employmentId === sp.emp) ? sp.emp : undefined;
   const selected = employees.find((e) => e.employmentId === selectedEmp);
   const rows = selectedEmp ? await attendanceForEmploymentRange(s, selectedEmp, from, to) : [];
+  // fc776376 — one row per day over the chosen range: a genuine list that grows with the range.
+  const { rows: dayPage, state: pgState } = paginateRows(rows, parsePageQuery(sp));
   // R45 92bdf77a — the full punch trail per day (multiple clocking). Keyed by attendanceId; the summary
   // columns still use the row's first-in / last-out, this only expands the audit detail below a multi-punch day.
   const punchesByAttendance = selectedEmp ? await attendancePunchesForRange(s, selectedEmp, from, to) : new Map();
@@ -122,7 +133,7 @@ export default async function IndividualAttendancePage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {rows.map((r) => {
+                {dayPage.map((r) => {
                   const ot = otByRate(r);
                   const status = statusOf(r);
                   const flag = flagOf(r);
@@ -185,7 +196,7 @@ export default async function IndividualAttendancePage({
                     </Fragment>
                   );
                 })}
-                {rows.length === 0 && (
+                {dayPage.length === 0 && (
                   <tr>
                     <td colSpan={13} className="px-4 py-8 text-center text-muted-foreground">
                       {t('noRecords')}
@@ -194,6 +205,11 @@ export default async function IndividualAttendancePage({
                 )}
               </tbody>
             </table>
+            <Pager
+              basePath="/attendance/individual"
+              params={{ emp: sp.emp, from: sp.from, to: sp.to }}
+              state={pgState}
+            />
           </div>
         )}
       </Card>

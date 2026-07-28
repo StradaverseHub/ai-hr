@@ -5,6 +5,8 @@ import { listBatches } from '@/core/payroll';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { PeriodSwitcher } from '@/components/period-switcher';
+import { Pager } from '@/components/pager';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { deleteDraftBatchAction, resetAction } from './actions';
 import { resumeHref } from './process/selection-logic';
 import { settingEnabledOrDefault } from '@/core/entitlements';
@@ -18,7 +20,7 @@ const STATUS_STYLE: Record<string, string> = {
 export default async function PayrollPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; period?: string }>;
+  searchParams: Promise<{ error?: string; period?: string; page?: string; size?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.list');
@@ -37,6 +39,8 @@ export default async function PayrollPage({
   const periodOptions = [...new Set(allBatches.map((b) => b.payPeriod))];
   const activePeriod = period && periodOptions.includes(period) ? period : '';
   const batches = activePeriod ? allBatches.filter((b) => b.payPeriod === activePeriod) : allBatches;
+  // fc776376 — payroll runs accumulate every period, so the list pages like every other list.
+  const { rows: batchPage, state: pgState } = paginateRows(batches, parsePageQuery(sp));
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -76,7 +80,7 @@ export default async function PayrollPage({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {batches.map((b) => {
+            {batchPage.map((b) => {
               const totals = b.totals as { net?: number } | null;
               return (
                 <tr key={b.id} className="hover:bg-muted/40">
@@ -151,7 +155,7 @@ export default async function PayrollPage({
                 </tr>
               );
             })}
-            {batches.length === 0 && (
+            {batchPage.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   {activePeriod ? t('filteredEmpty') : t('empty')}
@@ -160,6 +164,7 @@ export default async function PayrollPage({
             )}
           </tbody>
         </table>
+        <Pager basePath="/payroll" params={{ period: sp.period }} state={pgState} />
       </Card>
     </div>
   );

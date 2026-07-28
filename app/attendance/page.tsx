@@ -6,6 +6,8 @@ import { attendanceMonthSummary, listAttendanceCorrections, resolveApprovedOt } 
 import { Avatar, Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { OtReportExport } from '@/components/ot-report-export';
 import { AttendanceTabs } from '@/components/attendance-tabs';
+import { Pager } from '@/components/pager';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { decideCorrectionAction } from './actions';
 
 function Pill({ label, cls }: { label: string; cls: string }) {
@@ -38,7 +40,16 @@ const shiftMonth = (month: string, by: number) => {
 export default async function AttendancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; month?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    month?: string;
+    page?: string;
+    size?: string;
+    // The pending-corrections worklist pages independently of the month summary below it, so paging one
+    // never sends the other back to its first page (the /leave `edPage` convention).
+    cPage?: string;
+    cSize?: string;
+  }>;
 }) {
   const t = await getTranslations('attendance');
   const { s, scopeIds } = await scopedSession();
@@ -50,6 +61,9 @@ export default async function AttendancePage({
     listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
   ]);
   const monthHref = (m: string) => `/attendance?month=${m}`;
+  // fc776376 — both tables are genuine lists: corrections grow with requests, the summary with headcount.
+  const corrPage = paginateRows(corrections, parsePageQuery({ page: sp.cPage, size: sp.cSize }));
+  const summaryPage = paginateRows(summary, parsePageQuery(sp));
   const isAdmin = (s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
 
   return (
@@ -87,7 +101,7 @@ export default async function AttendancePage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {corrections.map((c) => {
+                {corrPage.rows.map((c) => {
                   // No self-approval (the service enforces it too — this just hides the buttons).
                   const canAct = s.personId == null || c.personId !== s.personId;
                   // R45 3707cba9 — surface the "Actual vs Approved" OT the decide path already computes:
@@ -151,6 +165,12 @@ export default async function AttendancePage({
               </tbody>
             </table>
           </div>
+          <Pager
+            basePath="/attendance"
+            params={{ month: sp.month, page: sp.page, size: sp.size }}
+            paramNames={{ page: 'cPage', size: 'cSize' }}
+            state={corrPage.state}
+          />
           <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
             {t('correctionsNote')}
           </p>
@@ -208,7 +228,7 @@ export default async function AttendancePage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {summary.map((r) => (
+              {summaryPage.rows.map((r) => (
                 <tr key={r.employmentId}>
                   {/* Employee ID left-of-name (feedback 38668d9b) */}
                   <td className="px-4 py-2.5 font-medium"><EmployeeName code={r.employeeCode} name={r.name} /></td>
@@ -245,7 +265,7 @@ export default async function AttendancePage({
                   </td>
                 </tr>
               ))}
-              {summary.length === 0 && (
+              {summaryPage.rows.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                     {t('noEmployees')}
@@ -255,6 +275,11 @@ export default async function AttendancePage({
             </tbody>
           </table>
         </div>
+        <Pager
+          basePath="/attendance"
+          params={{ month: sp.month, cPage: sp.cPage, cSize: sp.cSize }}
+          state={summaryPage.state}
+        />
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
           {t('summaryNote')}
         </p>

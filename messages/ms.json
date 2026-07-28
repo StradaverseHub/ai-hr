@@ -7372,5 +7372,16 @@
     "searchPlaceholder": "Cari mata wang…",
     "noResults": "Tiada mata wang ditemui",
     "legacySuffix": "(nilai sedia ada)"
+  },
+  "pagination": {
+    "rowsPerPage": "Baris",
+    "all": "Semua",
+    "range": "{from}–{to} daripada {total, number}",
+    "rangeEmpty": "0 daripada {total, number}",
+    "previous": "← Sebelumnya",
+    "next": "Seterusnya →",
+    "truncated": "Memaparkan {shown, number} baris pertama daripada {total, number} baris.",
+    "truncatedHint": "Guna Laporan → Eksport untuk set lengkap.",
+    "truncatedExport": "Eksport set lengkap"
   }
 }
