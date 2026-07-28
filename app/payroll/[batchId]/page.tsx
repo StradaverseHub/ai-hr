@@ -9,6 +9,8 @@ import { loanSummaryForBatch } from '@/core/loans';
 import { listAllowancePolicies, auditEvents } from '@/core/read';
 import { humanizeEvent } from '@/lib/audit-format';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Pager } from '@/components/pager';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, resetAction, transferAllowancesAction, unlockAction } from '../actions';
 import { ComponentImport } from './component-import';
@@ -25,18 +27,32 @@ export default async function BatchPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; from?: string; hw?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    from?: string;
+    hw?: string;
+    page?: string;
+    size?: string;
+    // The draft-run inputs table pages independently of the payslips table below it.
+    iPage?: string;
+    iSize?: string;
+  }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
   const { batchId } = await params;
-  const { error, from, hw } = await searchParams;
+  const sp = await searchParams;
+  const { error, from, hw } = sp;
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
   const { batch, slips } = data;
   const totals = (batch.totals ?? {}) as Record<string, number>;
   const inputs = batch.status === 'draft' ? await batchInputRows(s, batchId) : [];
   const leavers = batch.status === 'draft' ? await leaverAdvisory(s, batchId) : [];
+  // fc776376 — both per-employee tables on this run are genuine lists that grow with headcount. The
+  // payslip BREAKDOWN (one payslip's own lines) is deliberately not paged: it is one record, not a list.
+  const slipPage = paginateRows(slips, parsePageQuery(sp));
+  const inputPage = paginateRows(inputs, parsePageQuery({ page: sp.iPage, size: sp.iSize }));
   // Pre-processing checks (feedback f1564110, Phase 1): validate employee master data BEFORE the run
   // is calculated. Blockers (no salary record) disable Generate outright; warnings (no statutory
   // profile / no bank details) swap Generate for a ConfirmSubmit that posts ackWarnings=1.
@@ -559,7 +575,7 @@ export default async function BatchPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {inputs.map((r) => (
+                {inputPage.rows.map((r) => (
                   <tr key={r.employmentId}>
                     <td className="px-4 py-2.5">
                       <EmployeeCode code={r.employeeCode} />
@@ -591,7 +607,7 @@ export default async function BatchPage({
                     </td>
                   </tr>
                 ))}
-                {inputs.length === 0 && (
+                {inputPage.rows.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                       {t('noActiveEmployees')}
@@ -601,6 +617,12 @@ export default async function BatchPage({
               </tbody>
             </table>
           </div>
+          <Pager
+            basePath={`/payroll/${batchId}`}
+            params={{ from, hw, page: sp.page, size: sp.size }}
+            paramNames={{ page: 'iPage', size: 'iSize' }}
+            state={inputPage.state}
+          />
         </Card>
       )}
 
@@ -666,7 +688,7 @@ export default async function BatchPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {slips.map((sl) => {
+              {slipPage.rows.map((sl) => {
                 const st = sl.statutory as Record<string, number>;
                 return (
                   <tr key={sl.id}>
@@ -694,7 +716,7 @@ export default async function BatchPage({
                   </tr>
                 );
               })}
-              {slips.length === 0 && (
+              {slipPage.rows.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                     {t('noPayslips')}
@@ -704,6 +726,11 @@ export default async function BatchPage({
             </tbody>
           </table>
         </div>
+        <Pager
+          basePath={`/payroll/${batchId}`}
+          params={{ from, hw, iPage: sp.iPage, iSize: sp.iSize }}
+          state={slipPage.state}
+        />
       </Card>
 
       {/* Selective reprocessing (feedback 9bc442bc, reporter ask #3): pick specific employees on a

@@ -26,7 +26,7 @@ import { createClaimType, decideClaim, submitClaim } from '../core/claims';
 import { decideAttendanceCorrection, requestAttendanceCorrection } from '../core/attendance';
 import { decideResignation, submitResignation } from '../core/offboarding';
 import { setEncashmentPolicy } from '../core/leave-encashment';
-import { listApprovalHistory } from '../core/read';
+import { approvalHistoryCount, listApprovalHistory } from '../core/read';
 import { actionKeyOf } from '../lib/approval-history';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -319,6 +319,15 @@ describe('Approval activity history (44a89810)', () => {
     const mine = await listApprovalHistory(mgrACtx);
     expect(mine.some((r) => r.aggregateId === lrSub)).toBe(true);
     expect(mine.some((r) => r.aggregateId === lrOwn)).toBe(false);
+
+    // fc776376 — the pager's total runs the SAME definer function, so it counts exactly the rows this
+    // viewer can reach: the unrelated manager's total is 0, and a paged read never promises more.
+    expect(await approvalHistoryCount(mgrBCtx)).toBe(0);
+    expect(await approvalHistoryCount(mgrACtx)).toBe(mine.length);
+    expect(await approvalHistoryCount(A(b))).toBe(adminRows.length);
+    const firstPage = await listApprovalHistory(A(b), { limit: 1, offset: 0 });
+    expect(firstPage).toHaveLength(1);
+    expect(await approvalHistoryCount(A(b))).toBe(adminRows.length);
   });
 
   it('(i) timezone boundary: 23:30 MYT on the window\'s last day is on-behalf; the next MYT day is not', async () => {

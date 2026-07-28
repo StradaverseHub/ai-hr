@@ -7372,5 +7372,16 @@
     "searchPlaceholder": "Tìm tiền tệ…",
     "noResults": "Không tìm thấy tiền tệ",
     "legacySuffix": "(giá trị hiện có)"
+  },
+  "pagination": {
+    "rowsPerPage": "Số dòng",
+    "all": "Tất cả",
+    "range": "{from}–{to} trong {total, number}",
+    "rangeEmpty": "0 trong {total, number}",
+    "previous": "← Trước",
+    "next": "Sau →",
+    "truncated": "Đang hiển thị {shown, number} dòng đầu tiên trong tổng số {total, number} dòng.",
+    "truncatedHint": "Dùng Báo cáo → Xuất dữ liệu để lấy toàn bộ.",
+    "truncatedExport": "Xuất toàn bộ dữ liệu"
   }
 }

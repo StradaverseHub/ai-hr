@@ -7,6 +7,8 @@ import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { employeeLabel } from '@/lib/employee-code';
+import { Pager } from '@/components/pager';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { saveZakatElectionAction } from './election-actions';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
@@ -62,6 +64,11 @@ export default async function ZakatTransactionPage({
     hMonth?: string;
     hCycle?: string;
     hStatus?: string;
+    // Two independently paged lists sit below the editor, so each carries its own page/size pair.
+    ePage?: string;
+    eSize?: string;
+    hPage?: string;
+    hSize?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
@@ -102,6 +109,19 @@ export default async function ZakatTransactionPage({
       status: hStatus,
     }),
   ]);
+
+  // fc776376 — both read-only history lists grow with headcount and with every processed run.
+  const electionPage = paginateRows(elections, parsePageQuery({ page: sp.ePage, size: sp.eSize }));
+  const appliedPage = paginateRows(appliedRows, parsePageQuery({ page: sp.hPage, size: sp.hSize }));
+  const historyParams = {
+    employmentId: sp.employmentId,
+    hCompanyId: sp.hCompanyId,
+    hEmploymentId: sp.hEmploymentId,
+    hYear: sp.hYear,
+    hMonth: sp.hMonth,
+    hCycle: sp.hCycle,
+    hStatus: sp.hStatus,
+  };
 
   const nowYear = new Date().getFullYear();
   const years = Array.from({ length: 11 }, (_, i) => nowYear + 1 - i);
@@ -299,7 +319,7 @@ export default async function ZakatTransactionPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {elections.map((r) => {
+              {electionPage.rows.map((r) => {
                 const amount =
                   r.zakatMethod === 'fixed'
                     ? rm(r.zakatFixed)
@@ -331,7 +351,7 @@ export default async function ZakatTransactionPage({
                   </tr>
                 );
               })}
-              {elections.length === 0 && (
+              {electionPage.rows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     {t('zakat.history.electionsEmpty')}
@@ -341,6 +361,12 @@ export default async function ZakatTransactionPage({
             </tbody>
           </table>
         </div>
+        <Pager
+          basePath="/payroll/transactions/zakat"
+          params={{ ...historyParams, hPage: sp.hPage, hSize: sp.hSize }}
+          paramNames={{ page: 'ePage', size: 'eSize' }}
+          state={electionPage.state}
+        />
       </Card>
 
       {/* B2 — Applied in payroll (zakat deducted in each processed run) — filterable + CSV export */}
@@ -452,7 +478,7 @@ export default async function ZakatTransactionPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {appliedRows.map((r) => (
+              {appliedPage.rows.map((r) => (
                 <tr key={r.id}>
                   <td className="px-4 py-2.5 tabular-nums">{r.payPeriod}</td>
                   <td className="px-4 py-2.5">
@@ -473,7 +499,7 @@ export default async function ZakatTransactionPage({
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.createdOn}</td>
                 </tr>
               ))}
-              {appliedRows.length === 0 && (
+              {appliedPage.rows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     {t('zakat.history.appliedEmpty')}
@@ -483,6 +509,12 @@ export default async function ZakatTransactionPage({
             </tbody>
           </table>
         </div>
+        <Pager
+          basePath="/payroll/transactions/zakat"
+          params={{ ...historyParams, ePage: sp.ePage, eSize: sp.eSize }}
+          paramNames={{ page: 'hPage', size: 'hSize' }}
+          state={appliedPage.state}
+        />
       </Card>
     </div>
   );

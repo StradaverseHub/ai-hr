@@ -7,6 +7,8 @@ import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { durationLabel } from '@/lib/leave-duration';
+import { Pager, type PagerHrefOver } from '@/components/pager';
+import { pageState, parsePageQuery } from '@/lib/pagination';
 
 /**
  * Employee Leave Record (feedback 953be4b0) — the transactions behind a balance: every leave request for
@@ -19,7 +21,6 @@ import { durationLabel } from '@/lib/leave-duration';
  * not by itself grant the document behind it.
  */
 
-const PAGE = 25;
 const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
 
 export default async function EmployeeLeaveRecordPage({
@@ -35,6 +36,7 @@ export default async function EmployeeLeaveRecordPage({
     sort?: string;
     dir?: string;
     page?: string;
+    size?: string;
   }>;
 }) {
   const { s: session, scopeIds } = await scopedAdmin();
@@ -55,7 +57,7 @@ export default async function EmployeeLeaveRecordPage({
   // Default order is newest REQUEST first — `applied` desc is exactly that (leave_request.created_at).
   const sort = sp.sort || 'applied';
   const dir: 'asc' | 'desc' = sp.dir === 'asc' ? 'asc' : 'desc';
-  const page = Math.max(0, Number(sp.page) || 0);
+  const pq = parsePageQuery(sp);
 
   const [leaveTypes, result] = await Promise.all([
     listLeaveTypes(session, { locale }),
@@ -70,8 +72,8 @@ export default async function EmployeeLeaveRecordPage({
           to,
           sort,
           dir,
-          limit: PAGE,
-          offset: page * PAGE,
+          limit: pq.limit,
+          offset: pq.offset,
         })
       : Promise.resolve({ rows: [], total: 0 }),
   ]);
@@ -94,13 +96,17 @@ export default async function EmployeeLeaveRecordPage({
   };
   const sortHref = (key: string) => {
     const p = params();
+    p.set('size', String(pq.size));
     p.set('sort', key);
     p.set('dir', sort === key && dir === 'asc' ? 'desc' : 'asc');
     return `/leave/employee-records?${p.toString()}`;
   };
-  const pageHref = (n: number) => {
+  // fc776376 — the shared pager builds its links here: this address carries REPEATED params (the
+  // multi-select type / status filters), which a flat key/value builder would flatten.
+  const pagerHref = ({ page: n, size }: PagerHrefOver) => {
     const p = withSort(params());
     if (n > 0) p.set('page', String(n));
+    p.set('size', String(size ?? pq.size));
     return `/leave/employee-records?${p.toString()}`;
   };
   const exportHref = (format: 'csv' | 'xlsx') => {
@@ -308,29 +314,11 @@ export default async function EmployeeLeaveRecordPage({
                 </tbody>
               </table>
             </div>
-            {(page > 0 || (page + 1) * PAGE < total) && (
-              <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-                <span>
-                  {t('filters.rangeOf', {
-                    from: total === 0 ? 0 : page * PAGE + 1,
-                    to: Math.min((page + 1) * PAGE, total),
-                    total,
-                  })}
-                </span>
-                <span className="flex gap-2">
-                  {page > 0 && (
-                    <Link href={pageHref(page - 1)} className="hover:text-foreground">
-                      {t('filters.newer')}
-                    </Link>
-                  )}
-                  {(page + 1) * PAGE < total && (
-                    <Link href={pageHref(page + 1)} className="hover:text-foreground">
-                      {t('filters.older')}
-                    </Link>
-                  )}
-                </span>
-              </div>
-            )}
+            <Pager
+              hrefFor={pagerHref}
+              state={pageState(pq, total, rows.length)}
+              exportHref={exportHref('csv')}
+            />
           </Card>
         </div>
       </div>
