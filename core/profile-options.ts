@@ -77,6 +77,19 @@ export const EMPLOYMENT_PROFILE_CATEGORIES = [
   'category',
 ] as const satisfies readonly ProfileOptionCategory[];
 
+/**
+ * c9986927 — the categories that stay on the Profile Options tab. The eight organisation categories above
+ * are ORGANISATION master data, so their maintenance screen moved onto the Organization Labels tab beside
+ * Departments / Positions / Cost Centres / Business Units. Derived as the complement of
+ * EMPLOYMENT_PROFILE_CATEGORIES so a future category lands on exactly one of the two surfaces.
+ *
+ * This is a maintenance-SURFACE move only: storage (profile_option), the core mutations, the DomainEvent
+ * substrate and every value already stored on a person or employment row are untouched.
+ */
+export const PERSON_PROFILE_CATEGORIES: readonly ProfileOptionCategory[] = PROFILE_OPTION_CATEGORIES.filter(
+  (c) => !(EMPLOYMENT_PROFILE_CATEGORIES as readonly string[]).includes(c),
+);
+
 export function isProfileOptionCategory(v: string): v is ProfileOptionCategory {
   return (PROFILE_OPTION_CATEGORIES as readonly string[]).includes(v);
 }

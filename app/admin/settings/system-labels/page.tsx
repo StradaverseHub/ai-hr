@@ -9,10 +9,13 @@ import {
   listPositionsForLabels,
 } from '@/core/admin';
 import { listLabelAssignments } from '@/core/system-labels';
+import { EMPLOYMENT_PROFILE_CATEGORIES, listAllProfileOptions } from '@/core/profile-options';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { SystemLabelsGrid, type GridKind, type GridRecord } from '@/components/system-labels-grid';
 import { GradeLabelsGrid } from '@/components/grade-labels-grid';
+import { ProfileOptionsGrid } from '@/components/profile-options-grid';
 import { SystemLabelsTabs } from '@/components/system-labels-tabs';
+import { removeProfileOptionAction, saveProfileOptionsAction } from './profile-options/actions';
 import {
   assignLabelCompaniesAction,
   copyLabelsToCompaniesAction,
@@ -32,8 +35,11 @@ export default async function SystemLabelsPage({
   const { s, scopeIds } = await scopedAdmin();
   const { error } = await searchParams;
   const t = await getTranslations('admin.systemLabels');
+  // c9986927 — the relocated organisation categories keep their own existing i18n namespace; only their
+  // maintenance surface moved, not their wording.
+  const tp = await getTranslations('admin.profileOptions');
 
-  const [companies, departments, positions, costCenters, businessUnits, deptAssign, posAssign, ccAssign, buAssign, grades] =
+  const [companies, departments, positions, costCenters, businessUnits, deptAssign, posAssign, ccAssign, buAssign, grades, profileOptions] =
     await Promise.all([
       listCompanies(s, { includeArchived: true }),
       listDepartmentsForLabels(s),
@@ -48,6 +54,9 @@ export default async function SystemLabelsPage({
       // restore them. NOTE: grades are TENANT-WIDE, so they must NOT pass through inScope(...) below —
       // job_grade has no company_id to narrow on.
       listJobGrades(s, { includeArchived: true }),
+      // c9986927 — Division / Branch / Region / Line / Section / Team / Base / Category are maintained
+      // here now. Like grades they are TENANT-WIDE, so they must NOT pass through inScope(...) below.
+      listAllProfileOptions(s, { activeOnly: false }),
     ]);
 
   const scopedCompanies = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
@@ -145,6 +154,24 @@ export default async function SystemLabelsPage({
     />
   );
 
+  // c9986927 — one rail entry per relocated organisation category, each with the SAME editor Profile
+  // Options used (create / edit / delete / activate / deactivate, value immutability, the in-use delete
+  // guard) pointed at a single category. Nothing about the catalog itself changes — the same core
+  // mutations run through the same actions, so stored employment values keep resolving untouched.
+  const optionSlots = EMPLOYMENT_PROFILE_CATEGORIES.map((c) => ({
+    key: c,
+    label: tp(`category.${c}`),
+    count: (profileOptions[c] ?? []).filter((r) => r.isActive).length,
+    body: (
+      <ProfileOptionsGrid
+        hideRail
+        categories={[c]}
+        data={{ [c]: profileOptions[c] ?? [] }}
+        actions={{ save: saveProfileOptionsAction, remove: removeProfileOptionAction }}
+      />
+    ),
+  }));
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
@@ -168,6 +195,7 @@ export default async function SystemLabelsPage({
         actions={actions}
         gradesSlot={gradesSlot}
         gradesActiveCount={grades.filter((g) => g.archivedAt == null).length}
+        optionSlots={optionSlots}
       />
     </div>
   );

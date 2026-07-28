@@ -166,6 +166,7 @@ export function SystemLabelsGrid({
   actions,
   gradesSlot,
   gradesActiveCount = 0,
+  optionSlots = [],
 }: {
   data: Record<GridKind, GridRecord[]>;
   companies: GridCompany[];
@@ -181,12 +182,21 @@ export function SystemLabelsGrid({
   gradesSlot?: ReactNode;
   /** Live count beside the rail's Grades entry (active, i.e. non-archived grades). */
   gradesActiveCount?: number;
+  /** c9986927 — the eight organisation categories relocated here from Profile Options (Division, Branch,
+   *  Region, Line, Section, Team, Base, Category). Each is a further rail entry whose body is supplied by
+   *  the page, exactly as Grades is. They are a SEPARATE mechanism from gradesSlot on purpose: their body
+   *  is the flat tenant-wide profile_option editor, so — like job_grade — they cannot be synthetic
+   *  GridKinds without a meaningless Criteria column and a fake company scope. Empty ⇒ rail unchanged. */
+  optionSlots?: { key: string; label: string; count: number; body: ReactNode }[];
 }) {
   const t = useTranslations('admin.systemLabels');
   const [kind, setKind] = useState<GridKind>('department');
   // b1b81a08 — which BODY the rail is showing. `kind` keeps its last company-scoped value throughout, so
   // switching to Grades and back restores the category the admin was on.
   const [showGrades, setShowGrades] = useState(false);
+  // c9986927 — the selected relocated-option category, or null when the rail is on a kind / on Grades.
+  // The three selections are mutually exclusive; every rail button clears the other two.
+  const [optionKey, setOptionKey] = useState<string | null>(null);
   const [rowsByKind, setRowsByKind] = useState<Record<GridKind, RowState[]>>(() => {
     const seed = {} as Record<GridKind, RowState[]>;
     for (const k of KINDS) seed[k] = data[k].map((r) => ({ ...r, key: r.id, isNew: false, dirty: false }));
@@ -478,20 +488,25 @@ export function SystemLabelsGrid({
       <nav className="shrink-0 lg:w-52">
         <div className="rounded-xl border border-border bg-card p-2">
           <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('categories')}</div>
-          <ul className="mt-1 space-y-0.5">
+          {/* c9986927 — the rail now carries up to thirteen entries (four kinds + Grades + eight relocated
+              organisation categories), so it scrolls in place rather than pushing the page. */}
+          <ul className="mt-1 max-h-[60vh] space-y-0.5 overflow-y-auto">
             {KINDS.map((k) => (
               <li key={k}>
                 <button
                   type="button"
                   onClick={() => {
                     setShowGrades(false);
+                    setOptionKey(null);
                     setKind(k);
                     setSelected(new Set());
                     setRowErrors({});
                     setError(null);
                   }}
                   className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-                    !showGrades && kind === k ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
+                    !showGrades && optionKey === null && kind === k
+                      ? 'bg-primary/10 font-medium text-primary'
+                      : 'text-foreground hover:bg-muted'
                   }`}
                 >
                   <span>{t(`category.${k}`)}</span>
@@ -507,6 +522,7 @@ export function SystemLabelsGrid({
                   type="button"
                   onClick={() => {
                     setShowGrades(true);
+                    setOptionKey(null);
                     setSelected(new Set());
                     setRowErrors({});
                     setError(null);
@@ -520,6 +536,29 @@ export function SystemLabelsGrid({
                 </button>
               </li>
             )}
+            {/* c9986927 — the relocated organisation categories, same rail treatment and live count. Their
+                labels come from the page (they keep their existing admin.profileOptions.category.* strings,
+                so nothing is re-translated for the move). */}
+            {optionSlots.map((slot) => (
+              <li key={slot.key}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGrades(false);
+                    setOptionKey(slot.key);
+                    setSelected(new Set());
+                    setRowErrors({});
+                    setError(null);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                    optionKey === slot.key ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
+                  }`}
+                >
+                  <span>{slot.label}</span>
+                  <span className="tabular-nums text-xs text-muted-foreground">{slot.count}</span>
+                </button>
+              </li>
+            ))}
           </ul>
         </div>
         <button
@@ -557,6 +596,10 @@ export function SystemLabelsGrid({
           have no meaning for tenant-global grade rows, so the grade body is its own component. */}
       {showGrades && gradesSlot !== undefined ? (
         gradesSlot
+      ) : optionKey !== null ? (
+        // c9986927 — the relocated organisation category's own editor, supplied by the page. Same swap as
+        // Grades: the company toolbar and Criteria column have no meaning for a flat tenant-wide catalog.
+        optionSlots.find((s) => s.key === optionKey)?.body
       ) : (
       <div className="min-w-0 flex-1 space-y-3">
         {/* Toolbar — 797e3523: filters collapse behind a Filter button (hidden by default). */}

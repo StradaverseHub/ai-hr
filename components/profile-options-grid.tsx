@@ -77,10 +77,16 @@ export function ProfileOptionsGrid({
   categories,
   data,
   actions,
+  hideRail = false,
 }: {
   categories: ProfileGridCategory[];
   data: Record<string, ProfileGridRecord[]>;
   actions: ProfileGridActions;
+  /** c9986927 — set when this grid is the BODY of another surface's rail (the Organization Labels tab
+   *  renders one instance per relocated org category). The host rail already names the category, so the
+   *  local rail would be a redundant second one; everything else — toolbar, table, Save, delete — is
+   *  identical, which is how "no existing functionality is removed" is met by construction. */
+  hideRail?: boolean;
 }) {
   const t = useTranslations('admin.profileOptions');
   const [category, setCategory] = useState<ProfileGridCategory>(categories[0]);
@@ -275,8 +281,9 @@ export function ProfileOptionsGrid({
   const cellInput = `${inputCls} h-8`;
 
   return (
-    <div className="flex flex-col gap-4 lg:flex-row">
+    <div className={`flex flex-col gap-4 lg:flex-row${hideRail ? ' min-w-0 flex-1' : ''}`}>
       {/* Left rail: categories */}
+      {!hideRail && (
       <nav className="shrink-0 lg:w-52">
         <div className="rounded-xl border border-border bg-card p-2">
           <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('categoriesHeading')}</div>
@@ -302,6 +309,7 @@ export function ProfileOptionsGrid({
           </ul>
         </div>
       </nav>
+      )}
 
       {/* Main grid */}
       <div className="min-w-0 flex-1 space-y-3">
