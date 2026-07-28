@@ -6233,7 +6233,13 @@
     "assignmentTemplateHint": "决定每条审批流程适用于哪些公司、假期类型与员工。",
     "leaveTypesMore": "{n, plural, other {+# 项}}",
     "companyDefaultsTitle": "公司默认设置与升级",
-    "companyDefaultsHint": "展开某家公司即可编辑其基础审批链、多级审批开关与升级设置。"
+    "companyDefaultsHint": "展开某家公司即可编辑其基础审批链、多级审批开关与升级设置。",
+    "selectGrades": "职级",
+    "selectAll": "全选",
+    "deselectAll": "取消全选",
+    "panelNoneMeansAll": "未选择 = 适用于全部",
+    "noGrades": "尚未配置职级。",
+    "panelPickAtLeastOne": "至少选择一项"
   },
   "feedback": {
     "title": "反馈",

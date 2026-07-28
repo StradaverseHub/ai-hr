@@ -162,6 +162,22 @@ export default async function LeaveApprovalTabPage({
     selectTemplate: t('selectTemplate'),
     selectCompanies: t('selectCompanies'),
     selectLeaveTypes: t('selectLeaveTypes'),
+    // bb3938b9 — Grade + Conditions criteria panels and their shared panel controls.
+    selectGrades: t('selectGrades'),
+    selectAll: t('selectAll'),
+    deselectAll: t('deselectAll'),
+    panelNoneMeansAll: t('panelNoneMeansAll'),
+    panelPickAtLeastOne: t('panelPickAtLeastOne'),
+    noGrades: t('noGrades'),
+    conditions: t('conditions'),
+    addCondition: t('addCondition'),
+    conditionOperator: t('conditionOperator'),
+    conditionValue: t('conditionValue'),
+    opGreaterThan: t('opGreaterThan'),
+    opLessThan: t('opLessThan'),
+    opBetween: t('opBetween'),
+    leaveDuration: t('leaveDuration'),
+    valueDays: t('valueDays'),
     templateCol: t('templateCol'),
     leaveTypeCol: t('leaveType'),
     companyCol: t('company'),
@@ -242,9 +258,13 @@ export default async function LeaveApprovalTabPage({
                 templateId: a.templateId,
                 companyId: a.companyId,
                 leaveTypeId: a.leaveTypeId,
+                gradeId: a.gradeId,
+                minDays: a.minDays,
+                maxDays: a.maxDays,
               }))}
               companies={companies.map((c) => ({ id: c.id, label: c.name }))}
               leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
+              grades={gradesAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` }))}
               companyMultiApproval={companyMultiApproval}
               actions={{
                 assign: assignApprovalTemplateAction,

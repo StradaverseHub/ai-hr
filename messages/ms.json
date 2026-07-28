@@ -6233,7 +6233,13 @@
     "assignmentTemplateHint": "Tentukan syarikat, jenis cuti dan pekerja yang terpakai bagi setiap aliran kelulusan.",
     "leaveTypesMore": "{n, plural, other {+# lagi}}",
     "companyDefaultsTitle": "Lalai syarikat dan eskalasi",
-    "companyDefaultsHint": "Buka sesebuah syarikat untuk mengedit rantaian kelulusan asasnya, suis kelulusan berbilang langkah dan tetapan eskalasinya."
+    "companyDefaultsHint": "Buka sesebuah syarikat untuk mengedit rantaian kelulusan asasnya, suis kelulusan berbilang langkah dan tetapan eskalasinya.",
+    "selectGrades": "Gred",
+    "selectAll": "Pilih semua",
+    "deselectAll": "Nyahpilih semua",
+    "panelNoneMeansAll": "Tiada dipilih = terpakai kepada semua",
+    "noGrades": "Belum ada gred pekerjaan dikonfigurasi.",
+    "panelPickAtLeastOne": "Pilih sekurang-kurangnya satu"
   },
   "feedback": {
     "title": "Maklum Balas",
