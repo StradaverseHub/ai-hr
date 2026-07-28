@@ -21,6 +21,10 @@ import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from 
 import { hireEmployee, setEmploymentBlacklist, setEmploymentInfo } from '../core/org';
 import { employeeDetail, listEmployeesPage, recentHires } from '../core/read';
 import { deriveEmploymentStatus, EMPLOYMENT_STATUSES, type EmploymentStatus } from '../core/employment-status';
+import { employmentStatusSql } from '../core/employment-status-sql';
+import { workforceDemographics } from '../core/analytics';
+import { withTenant } from '../db/client';
+import { employment } from '../db/schema';
 
 let b: Base;
 beforeAll(async () => {
@@ -110,6 +114,31 @@ describe('Employee Status sync — one derived status across every payload (5afc
     }
   });
 
+  // 9cbf5e0d — the two surfaces that could not call the TS function (a WHERE predicate and a wide report
+  // projection) use employmentStatusSql instead. The rule is now written once per LANGUAGE, so this pins the
+  // two implementations equal across every vector — a change to one that is not mirrored fails here.
+  it('the SQL twin (employmentStatusSql) agrees with the TypeScript deriver on every vector', async () => {
+    const rows = await withTenant(adminCtx(b), (tx) =>
+      tx
+        .select({ employmentId: employment.id, derived: employmentStatusSql(TODAY) })
+        .from(employment),
+    );
+    const seen = new Map(rows.map((r) => [r.employmentId, r.derived]));
+    for (const [employmentId, bucket] of expected) {
+      expect(seen.get(employmentId), `sql for ${bucket}`).toBe(bucket);
+    }
+  });
+
+  it('the analytics Employee Status chart tallies the same buckets (no retired stored values)', async () => {
+    const d = await workforceDemographics(adminCtx(b), undefined, { asOf: TODAY });
+    const counts = new Map(d.byEmploymentStatus.map((r) => [r.name, r.count]));
+    for (const bucket of EMPLOYMENT_STATUSES) {
+      expect(counts.get(bucket), `chart bucket ${bucket}`).toBe(1);
+    }
+    // Nothing outside the five derived buckets may reach the chart.
+    expect(d.byEmploymentStatus.every((r) => (EMPLOYMENT_STATUSES as readonly string[]).includes(r.name))).toBe(true);
+  });
+
   it('dashboard Onboarding payload (recentHires) carries the deriver inputs and agrees', async () => {
     const hires = await recentHires(adminCtx(b), [b.companyId], { since: HIRED_ON, limit: 50 });
     for (const [employmentId, bucket] of expected) {
@@ -145,6 +174,21 @@ describe('drift guard — no surface renders the obsolete statuses', () => {
   it('the dashboard Onboarding card derives status instead of showing raw assignment.status', () => {
     expect(DASHBOARD).toContain('deriveEmploymentStatus');
     expect(DASHBOARD).not.toMatch(/StatusBadge\s+status=\{h\.status\}/);
+  });
+
+  // 9cbf5e0d — the two surfaces that were still reading the legacy stored enum. Source-level, because the
+  // failure mode is a future edit quietly reintroducing `assignment.status` into either projection.
+  it('the analytics dashboard and the Payroll Register read the derived status, not assignment.status', () => {
+    const ANALYTICS = read('core/analytics.ts');
+    const PAYROLL_VIEW = read('core/payroll-view.ts');
+    expect(ANALYTICS).toContain('employmentStatusSql');
+    expect(ANALYTICS).not.toMatch(/assignmentStatus:\s*assignment\.status/);
+    expect(PAYROLL_VIEW).toContain('employmentStatusSql');
+    expect(PAYROLL_VIEW).not.toMatch(/employmentStatus:\s*assignment\.status/);
+    // The dashboard filter must offer the derived buckets, never the retired stored ones.
+    const FILTER_BAR = read('app/analytics/FilterBar.tsx');
+    expect(FILTER_BAR).toContain('EMPLOYMENT_STATUSES');
+    expect(FILTER_BAR).not.toMatch(/on_leave|offboarding/);
   });
 
   it('the StatusBadge vocabulary contains exactly the five derived buckets — no legacy keys', () => {
