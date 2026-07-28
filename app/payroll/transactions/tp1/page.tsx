@@ -4,7 +4,6 @@ import { scopedAdmin } from '@/lib/scope';
 import { listEmployeesPage, listCompanies, listDepartments, employmentSubject } from '@/core/read';
 import { getTp1ForPerson, listTp1YearsForPerson } from '@/core/tax-relief';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { PayrollTabs } from '@/components/payroll-tabs';
 import { Tp1DeclarationForm } from '@/components/tp1-declaration-form';
 import { adminSaveTp1Draft, adminSubmitTp1 } from '../deductions-actions';
 
@@ -51,7 +50,6 @@ export default async function Tp1DeclarationPage({
         title={t('tp1.title')}
         description={t('tp1.subtitle')}
       />
-      <PayrollTabs active="transactions" />
 
       <ErrorBanner message={error} />
 

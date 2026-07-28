@@ -72,9 +72,13 @@ describe('Personnel filter panel: component fundamentals', () => {
   it('keeps the GET-form semantics (no-JS submit, URL-carried filters)', () => {
     expect(src.includes('method="get"')).toBe(true);
     expect(src).toMatch(/action=\{action\}/);
-    // Apply is a real submit; Clear all is a plain link back to the bare path.
+    // Apply is a real submit; Clear all is a plain link back to the page's own base path. Feedback
+    // 650b6eb8 gave that base an optional set of FOREIGN params (`hidden`) so a page carrying two
+    // independently filtered listings can clear one without clearing the other — hence the helper rather
+    // than the bare `action` this used to assert. A page that passes no `hidden` still links to `action`.
     expect(src.includes('type="submit"')).toBe(true);
-    expect(src).toMatch(/href=\{action\}/);
+    expect(src).toMatch(/href=\{baseHref\(action, hidden\)\}/);
+    expect(src).toContain('return s ? `${action}?${s}` : action;');
   });
 
   it('has the popover a11y hooks (mirrors company-switcher pattern)', () => {

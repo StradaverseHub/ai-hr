@@ -8,10 +8,13 @@
  * so there are no overlapping per-keystroke re-queries even on a large tenant.
  *
  * One control per underlying column (no business-unit/cost-centre duplication; nationality == citizenship
- * relabelled): company, department, cost-centre, lifecycle-status, assignment-status, gender, nationality,
+ * relabelled): company, department, cost-centre, lifecycle-status, employee-status, gender, nationality,
  * location(workState), manager, date-range.
  */
 import { useTranslations } from 'next-intl';
+// 9cbf5e0d — the Employee Status filter offers the five DERIVED buckets, labelled from the ONE shared
+// vocabulary (people.employeeStatus), so the dashboard can never name a status differently from Personnel.
+import { EMPLOYMENT_STATUSES } from '@/core/employment-status';
 
 type Opt = { value: string; label: string };
 
@@ -41,10 +44,10 @@ export type FilterBarProps = {
 const GENDERS = ['male', 'female', 'undisclosed'];
 const NATIONALITIES = ['citizen', 'pr', 'non_citizen'];
 const LIFECYCLE = ['active', 'terminated'];
-const ASSIGNMENT_STATUSES = ['active', 'on_leave', 'probation', 'offboarding', 'terminated'];
 
 export function FilterBar({ from, to, values, options }: FilterBarProps) {
   const t = useTranslations('analytics');
+  const tStatus = useTranslations('people.employeeStatus');
   const inputCls =
     'h-9 w-full rounded-lg border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40';
   const auto = (e: React.ChangeEvent<HTMLSelectElement>) => e.currentTarget.form?.requestSubmit();
@@ -98,12 +101,12 @@ export function FilterBar({ from, to, values, options }: FilterBarProps) {
         />
       </label>
       <label className="space-y-1">
-        <span className="text-xs font-medium text-muted-foreground">{t('filterAssignmentStatus')}</span>
+        <span className="text-xs font-medium text-muted-foreground">{t('chartEmploymentStatus')}</span>
         <Select
           name="assignmentStatus"
           value={values.assignmentStatus}
           allLabel={t('allStatuses')}
-          opts={ASSIGNMENT_STATUSES.map((v) => ({ value: v, label: t(`assignment_${v}`) }))}
+          opts={EMPLOYMENT_STATUSES.map((v) => ({ value: v, label: tStatus(v) }))}
         />
       </label>
       <label className="space-y-1">

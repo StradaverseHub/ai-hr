@@ -75,10 +75,17 @@ type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; item
 // registered by the static side-effect import above, so the non-null assertions cannot fire.
 // NavChildDescriptor mirrors ChildItem by construction (packs/registry.ts), so the spread
 // type-checks against the sidebar's own Row machinery unchanged.
-const ATTENDANCE_NODE: CollapsibleGroupItem = {
+// 0bb0e303 split the one Attendance node into three, by audience. Since 895c80f9 a pack contributes an
+// ARRAY of group-tagged nodes, so each resolves by its group — the same idiom the flat-row packs use
+// below. The rows, hrefs, icons and gates are the pack's verbatim; only which node they hang under moved.
+const ATTENDANCE_NODES = modulePackById('attendance')!.navNodes!;
+const node = (group: string): CollapsibleGroupItem => ({
   collapsible: true,
-  ...modulePackById('attendance')!.nav!,
-};
+  ...ATTENDANCE_NODES.find((n) => n.group === group)!,
+});
+const MY_ATTENDANCE_NODE = node('main');
+const ATTENDANCE_MANAGE_NODE = node('manage');
+const ATTENDANCE_ADMIN_NODE = node('admin');
 
 // Claims nav rows (ADR-0080 rung 3): two flat rows the claims pack contributes
 // (packs/claims/index.ts, CLAIMS_NAV_LINKS — provenance comments moved with them), placed at
@@ -105,12 +112,16 @@ const LEAVE_LINKS = modulePackById('leave')!.navLinks!;
 const LEAVE_ABSENCE_ROW: ChildItem = LEAVE_LINKS.find((l) => l.group === 'main')!;
 const LEAVE_CONFIG_ROW: ChildItem = LEAVE_LINKS.find((l) => l.group === 'admin')!;
 
-// Payroll nav row (ADR-0080 rung 7): the single Administration-group row the payroll pack contributes
-// (packs/payroll/index.ts, PAYROLL_NAV_LINKS — provenance comments moved with it), placed at its
-// pre-rung-7 position in the Admin group below, between Claims config and Analytics (group-gated
-// adminOnly, no per-row flag — unchanged). The `group` tag is the pack's placement declaration;
-// position WITHIN the group stays this file's concern.
-const PAYROLL_ROW: ChildItem = modulePackById('payroll')!.navLinks!.find((l) => l.group === 'admin')!;
+// Payroll nav node (1459e116): payroll's own horizontal tab strip (components/payroll-tabs.tsx) is
+// retired in favour of this flyout, so the payroll pack's Administration-group contribution went from
+// a single flat row (rung 7) to a NODE carrying the strip's six destinations
+// (packs/payroll/index.ts, PAYROLL_ADMIN_NAV — including why there is no second level and which
+// requested entries were left out). Placement is unchanged: same Admin group, same position between
+// Claims config and Analytics, same reliance on the group's wholesale adminOnly gate.
+const PAYROLL_NODE: CollapsibleGroupItem = {
+  collapsible: true,
+  ...modulePackById('payroll')!.navNodes!.find((n) => n.group === 'admin')!,
+};
 
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
 // map to the reporter's categories; each opens the Reports hub filtered to that category, where the
@@ -163,7 +174,7 @@ const GROUPS: Group[] = [
       // tab merged into /leave. Since ADR-0080 rung 6 the row lives on the leave pack and mounts here
       // by const reference (LEAVE_ABSENCE_ROW).
       LEAVE_ABSENCE_ROW,
-      ATTENDANCE_NODE,
+      MY_ATTENDANCE_NODE,
       CLAIMS_ROW,
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
@@ -181,6 +192,9 @@ const GROUPS: Group[] = [
       { href: '/personnel', labelKey: 'people', icon: Users },
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
       PERFORMANCE_ROW,
+      // Roster + Import (0bb0e303). Here rather than under the Admin node because both are managerUp and
+      // the Admin group is gated adminOnly as a whole — placing them there would hide them from managers.
+      ATTENDANCE_MANAGE_NODE,
     ],
   },
   {
@@ -196,11 +210,14 @@ const GROUPS: Group[] = [
       // into its Approval Workflow tab). Since ADR-0080 rung 6 the row lives on the leave pack and
       // mounts here by const reference (LEAVE_CONFIG_ROW).
       LEAVE_CONFIG_ROW,
-      // Holidays lives under the Attendance node above (5cb199b3), not in the flat admin list.
+      // 0bb0e303: the attendance settings (Holidays, Shift settings, Policy, Allowance, Clocking
+      // location, TOIL) moved here from the day-to-day group. Holidays still lives inside this node
+      // rather than the flat admin list (5cb199b3).
+      ATTENDANCE_ADMIN_NODE,
       CLAIMS_CONFIG_ROW,
-      // Since ADR-0080 rung 7 the payroll row lives on the payroll pack and mounts here by const
-      // reference (PAYROLL_ROW).
-      PAYROLL_ROW,
+      // Since ADR-0080 rung 7 the payroll nav lives on the payroll pack and mounts here by const
+      // reference (PAYROLL_NODE — a flyout node since 1459e116, a flat row before that).
+      PAYROLL_NODE,
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
       REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
@@ -277,6 +294,15 @@ export function Sidebar({
   const openNode = openKey
     ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey) ?? null
     : null;
+  const openChildren = openNode ? openNode.children.filter(canSeeChild) : [];
+  // Inside a panel the LONGEST matching href wins, so exactly one row ever reads as the current page
+  // (1459e116 requirement 3). isHrefActive matches a path prefix, which is what makes a parent row a
+  // valid nav target at all — but it also means Payroll's "Payroll Process" (/payroll) matches while
+  // the viewer is on /payroll/setup, lighting it up next to "Settings". Ranking by path length picks
+  // the more specific row; the rail's own parent highlighting (isParentActive) is unaffected.
+  const activeChildHref = openChildren
+    .filter((c) => isActive(c.href))
+    .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0]?.href;
 
   const toggle = () =>
     setCollapsed((c) => {
@@ -431,8 +457,8 @@ export function Sidebar({
       {openNode && (
         <NavFlyoutPanel
           labelKey={openNode.labelKey}
-          items={openNode.children.filter(canSeeChild) as FlyoutChild[]}
-          isActive={isActive}
+          items={openChildren as FlyoutChild[]}
+          isActive={(href) => href === activeChildHref}
           rowBase={rowBase}
           panelId={`nav-flyout-${openNode.labelKey}`}
           onClose={() => setOpenKey(null)}

@@ -4,7 +4,6 @@ import { listBatches } from '@/core/payroll';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
 import { ErrorBanner, PageHeader } from '@/components/ui';
-import { PayrollTabs } from '@/components/payroll-tabs';
 import { TxnGrid, type WizardBatch, type WizardEmployee } from './txn-grid';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 
@@ -97,7 +96,6 @@ export default async function IndividualTransactionPage({
         title={t('individual.title')}
         description={t('individual.subtitle')}
       />
-      <PayrollTabs active="transactions" />
 
       {!typedComponentsOn && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">

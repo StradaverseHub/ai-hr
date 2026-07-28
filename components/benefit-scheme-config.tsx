@@ -1307,24 +1307,196 @@ function EntitlementEditDialog({
 
 /**
  * Restructure Leave Type Configuration Tabs (feedback 123c1e76) — the per-leave-type "Entitlement" card's
- * read-and-edit view of this type's benefit-scheme entitlement rows. One row per scheme that configures the
- * type: Scheme | the three service-tier day figures | Edit. Edit reuses EntitlementEditDialog — the SAME
- * upsertSchemeEntitlement action the shared Benefit Schemes table posts, so the two surfaces can never
+ * read-and-edit view of this type's benefit-scheme entitlement rows. Edit reuses EntitlementEditDialog — the
+ * SAME upsertSchemeEntitlement action the shared Benefit Schemes table posts, so the two surfaces can never
  * diverge (both read scheme_leave_entitlement live). Scheme-wide management — adding/removing entitlements,
  * copying between schemes and combined-limit (shared-cap) grouping — deliberately stays on the Benefit
  * Schemes section of the Entitlements tab; a row inside a combined pool shows its shared cap read-only here.
+ *
+ * a03eff24 (Grade Group Matrix) — the flat "one row per scheme, company name repeated on every row" list is
+ * now a MATRIX: company down the side (printed once per company block, blank on its following rows), the
+ * scheme's grade group × employment type as the row, service tenure across the top, days typed straight into
+ * the cells. That IS the shape the data already has — a benefit scheme is (company, employment type, grade
+ * group), so the grade group is the row identity and the company is the only thing that repeats. Nothing
+ * about storage or resolution moved: cells read and write the same scheme_leave_entitlement.serviceBands
+ * through the same upsert action.
  */
 export type LeaveTypeSchemeEntitlement = Entitlement & {
-  /** Owning scheme's display name — the per-type table's first column. */
+  /** Owning scheme's display name — the secondary line under the grade group (a scheme name is free text,
+   *  so it stays visible: it is the only label an admin can search for). */
   schemeName: string;
-  /** Feedback 0d1a0cfc — the owning scheme's COMPANY name, shown beside the scheme name so this column
-   *  matches the company-grouped Scheme picker above. Derived on the page from the already-loaded company
-   *  list (never stored); null when the company cannot be resolved. */
+  /** Feedback 0d1a0cfc — the owning scheme's COMPANY name. a03eff24 promoted it to the matrix's merged
+   *  first column. Derived on the page from the already-loaded company list (never stored); null when the
+   *  company cannot be resolved. */
   companyName: string | null;
+  /** a03eff24 — the scheme's grade group and employment type: together they are the matrix ROW (the unique
+   *  index on benefit_scheme is (company, employment_type, grade_group), so no two rows of one company can
+   *  collide). gradeGroupName is null for a scheme that targets an ungrouped population. Both come from the
+   *  benefit-scheme rows the page already loads — no new query, nothing stored. */
+  gradeGroupName: string | null;
+  employmentType: string;
   /** Combined-limit pool this leave type belongs to within that scheme; null = not pooled. Read-only here. */
   poolName: string | null;
   poolTotalLimitDays: number | null;
 };
+
+/** One tenure COLUMN of the matrix — a service-band bracket read off the rows that are actually stored. */
+export type TenureColumn = { fromYears: number; toYears: number | null };
+
+/** Boundary fingerprint of a band list. Days are deliberately excluded: two schemes share a column set when
+ *  their brackets start and stop in the same places, whatever days they grant. */
+export function bandShapeKey(bands: ServiceBand[]): string {
+  return bands.map((b) => `${Number(b.fromYears)}:${b.toYears == null ? '*' : Number(b.toYears)}`).join('|');
+}
+
+/** The bands a matrix cell edit SUBMITS: each stored band spread, with only `days` replaced by what was
+ *  typed. Spreading is the whole point — a band may also carry carryForwardDays / expiry / maxBalanceDays,
+ *  and rebuilding the list from scratch (the dialog form's approach) would drop them. Blank or unparseable
+ *  input reads as 0, matching the `required` number inputs' own floor. */
+export function matrixBandsWithDays(stored: ServiceBand[], days: string[]): ServiceBand[] {
+  return stored.map((b, i) => ({ ...b, days: Number(days[i] || 0) }));
+}
+
+/** a03eff24 — the tenure columns are DERIVED, never hardcoded to 0/2/5. A tenant that configured 3/7, or
+ *  four brackets, must see its own brackets; rewriting them to the reporter's example would silently change
+ *  what employees are entitled to. The column set is the bracket shape the most rows already use (ties go to
+ *  the first row, which is scheme-name order, so the choice is deterministic); a row on any OTHER shape keeps
+ *  its own brackets and is edited through the dialog rather than flattened into columns it does not have —
+ *  the same refusal isConformingServiceShape makes for the sibling company × grade table. */
+export function deriveTenureColumns(
+  ents: { serviceBands: ServiceBand[] }[],
+): { columns: TenureColumn[]; shapeKey: string } {
+  const toColumns = (bands: ServiceBand[]): TenureColumn[] =>
+    bands.map((b) => ({ fromYears: Number(b.fromYears), toYears: b.toYears == null ? null : Number(b.toYears) }));
+  const byShape = new Map<string, { bands: ServiceBand[]; count: number }>();
+  for (const e of ents) {
+    if (!Array.isArray(e.serviceBands) || e.serviceBands.length === 0) continue;
+    const key = bandShapeKey(e.serviceBands);
+    const hit = byShape.get(key);
+    if (hit) hit.count += 1;
+    else byShape.set(key, { bands: e.serviceBands, count: 1 });
+  }
+  let best: { key: string; bands: ServiceBand[]; count: number } | null = null;
+  for (const [key, v] of byShape) if (!best || v.count > best.count) best = { key, bands: v.bands, count: v.count };
+  if (!best) {
+    // Every row's band list is empty or malformed — head the matrix with the 0/2/5 template the add form
+    // writes, so the columns still read sensibly instead of collapsing to none.
+    const template: ServiceBand[] = [
+      { fromYears: 0, toYears: 2, days: 0 },
+      { fromYears: 2, toYears: 5, days: 0 },
+      { fromYears: 5, toYears: null, days: 0 },
+    ];
+    return { columns: toColumns(template), shapeKey: bandShapeKey(template) };
+  }
+  return { columns: toColumns(best.bands), shapeKey: best.key };
+}
+
+/** Column heading for one bracket, reusing the parameterised tier strings (0aa304a1) so a 3/7 tenant reads
+ *  "Under 3 years / 3 to under 7 years / 7 years and over" with no new vocabulary. */
+function tenureColumnLabel(c: TenureColumn, t: ReturnType<typeof useTranslations>): string {
+  if (c.toYears == null) return c.fromYears === 0 ? t('tierAll') : t('tierOver', { n1: c.fromYears, n2: c.fromYears });
+  if (c.fromYears === 0) return t('tierUnder', { n1: c.toYears, n2: c.toYears });
+  return t('tierMid', { n1: c.fromYears, n2: c.toYears });
+}
+
+/** Grid shared by the matrix header and every row: company · grade group · the tenure cells · action. The
+ *  tenure cells live in ONE flex track so the column COUNT can vary per tenant without a dynamic class. */
+const matrixGridCls = 'grid grid-cols-[minmax(6rem,0.8fr)_minmax(9rem,1.4fr)_auto_auto] items-start gap-2';
+
+/**
+ * One matrix row = one scheme's entitlement for this leave type.
+ *
+ * Self-contained state so an UNTOUCHED row is never written (Save stays disabled until a figure changes) —
+ * the ServiceGradeRow precedent, and the reason a re-render cannot fire a spurious cohort recalc. The
+ * submitted bands SPREAD each stored band and override only `days`, so per-band carry-forward and
+ * max-balance settings survive a cell edit instead of being rebuilt away.
+ */
+function SchemeEntitlementMatrixRow({
+  ent,
+  columns,
+  editableInline,
+  companyLabel,
+  gradeGroupLabel,
+  action,
+  t,
+}: {
+  ent: LeaveTypeSchemeEntitlement;
+  columns: TenureColumn[];
+  /** false when this scheme's brackets differ from the matrix columns — days show read-only under their OWN
+   *  labels and the dialog (which round-trips the row's own cutoffs) is the way to change them. */
+  editableInline: boolean;
+  /** Null on every row but the first of its company block — that blank is the "merged" company cell. */
+  companyLabel: string | null;
+  gradeGroupLabel: string;
+  action: (fd: FormData) => void | Promise<void>;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const stored = ent.serviceBands;
+  const [days, setDays] = useState<string[]>(() => stored.map((b) => String(b.days ?? '')));
+  const dirty = days.some((v, i) => Number(v || 0) !== Number(stored[i]?.days ?? 0));
+  const bands = matrixBandsWithDays(stored, days);
+
+  const identity = (
+    <>
+      <span className="text-sm font-medium">{companyLabel ?? ''}</span>
+      <span className="flex flex-col">
+        <span className="text-sm font-medium">{gradeGroupLabel}</span>
+        <span className="text-xs font-normal text-muted-foreground">{ent.schemeName}</span>
+        {ent.poolName != null && ent.poolTotalLimitDays != null && (
+          <span className="text-xs font-normal text-muted-foreground">
+            {t('perTypeSharedPool', { name: ent.poolName, days: ent.poolTotalLimitDays })}
+          </span>
+        )}
+      </span>
+    </>
+  );
+
+  if (!editableInline) {
+    return (
+      <div className={`${matrixGridCls} border-b border-border px-3 py-2 last:border-0`}>
+        {identity}
+        <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+          {stored.map((b, i) => (
+            <span key={i} className="tabular-nums">
+              {tenureColumnLabel({ fromYears: Number(b.fromYears), toYears: b.toYears == null ? null : Number(b.toYears) }, t)}
+              {': '}
+              {Number(b.days ?? 0)}
+            </span>
+          ))}
+          <span className="basis-full text-[11px]">{t('perTypeOtherTenure')}</span>
+        </span>
+        <EntitlementEditDialog entitlement={ent} action={action} t={t} />
+      </div>
+    );
+  }
+
+  return (
+    <form action={action} className={`${matrixGridCls} border-b border-border px-3 py-2 last:border-0`}>
+      <input type="hidden" name="benefitSchemeId" value={ent.benefitSchemeId} />
+      <input type="hidden" name="leaveTypeId" value={ent.leaveTypeId} />
+      <input type="hidden" name="serviceBands" value={JSON.stringify(bands)} />
+      {identity}
+      <span className="flex gap-2">
+        {columns.map((c, i) => (
+          <input
+            key={i}
+            type="number"
+            min="0"
+            step="0.5"
+            required
+            value={days[i] ?? ''}
+            onChange={(e) => setDays((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))}
+            aria-label={t('perTypeDaysAria', { scheme: gradeGroupLabel, band: tenureColumnLabel(c, t) })}
+            className={`${inputCls} w-16`}
+          />
+        ))}
+      </span>
+      <Button type="submit" size="sm" disabled={!dirty}>
+        {t('save')}
+      </Button>
+    </form>
+  );
+}
 
 export function LeaveTypeEntitlementTable({
   ents,
@@ -1334,58 +1506,63 @@ export function LeaveTypeEntitlementTable({
   upsertEntitlement: (fd: FormData) => void | Promise<void>;
 }) {
   const t = useTranslations('admin.benefitScheme');
+  const empTypeLabel = (v: string) => t(`empType_${v}` as `empType_${(typeof EMPLOYMENT_TYPES)[number]}`);
+  const { columns, shapeKey } = useMemo(() => deriveTenureColumns(ents), [ents]);
+  // Company blocks: every scheme of one company sits together so the name can be printed once. Unnamed
+  // companies sink to the bottom rather than heading the matrix with a blank label.
+  const companyBlocks = useMemo(() => {
+    const byCompany = new Map<string, LeaveTypeSchemeEntitlement[]>();
+    for (const e of ents) {
+      const key = e.companyName ?? '';
+      const arr = byCompany.get(key);
+      if (arr) arr.push(e);
+      else byCompany.set(key, [e]);
+    }
+    return [...byCompany.entries()]
+      .sort((a, b) => (a[0] === '' ? 1 : b[0] === '' ? -1 : a[0].localeCompare(b[0])))
+      .map(([key, rows]) => ({ key, companyName: rows[0].companyName, rows }));
+  }, [ents]);
+
   if (ents.length === 0) {
     return <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">{t('perTypeEmpty')}</p>;
   }
-  // Shared tier headers derive from the first row (the per-scheme table's exact compromise — tiersFromBands
-  // is defensive, odd shapes fall back to 2/5); each row's day VALUES always read its own stored bands.
-  const headerTiers = tiersFromBands(ents[0].serviceBands);
   return (
     <div className="space-y-1.5">
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="px-3 py-2 font-medium">{t('perTypeColScheme')}</th>
-              <th className="px-3 py-2 font-medium">{t('tierUnder', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
-              <th className="px-3 py-2 font-medium">{t('tierMid', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
-              <th className="px-3 py-2 font-medium">{t('tierOver', { n1: headerTiers.n1, n2: headerTiers.n2 })}</th>
-              <th className="px-3 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {ents.map((e) => {
-              const ti = tiersFromBands(e.serviceBands);
-              return (
-                <tr key={e.id} className="border-b border-border last:border-0">
-                  <td className="px-3 py-2 font-medium">
-                    <span className="flex flex-col">
-                      {/* Feedback 0d1a0cfc — company name beside the scheme name, mirroring the
-                          company-grouped Scheme picker so both surfaces name the same thing. */}
-                      <span className="flex flex-wrap items-baseline gap-x-1.5">
-                        {e.schemeName}
-                        {e.companyName != null && (
-                          <span className="text-xs font-normal text-muted-foreground">{e.companyName}</span>
-                        )}
-                      </span>
-                      {e.poolName != null && e.poolTotalLimitDays != null && (
-                        <span className="text-xs font-normal text-muted-foreground">
-                          {t('perTypeSharedPool', { name: e.poolName, days: e.poolTotalLimitDays })}
-                        </span>
-                      )}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">{ti.d0 || '0'}</td>
-                  <td className="px-3 py-2">{ti.d1 || '0'}</td>
-                  <td className="px-3 py-2">{ti.d2 || '0'}</td>
-                  <td className="px-3 py-2 text-right">
-                    <EntitlementEditDialog entitlement={e} action={upsertEntitlement} t={t} />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="min-w-[44rem]">
+          <div className={`${matrixGridCls} border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground`}>
+            <span>{t('colCompany')}</span>
+            <span>{t('colGradeGroup')}</span>
+            <span className="flex gap-2">
+              {columns.map((c, i) => (
+                <span key={i} className="w-16 text-[11px] leading-tight">
+                  {tenureColumnLabel(c, t)}
+                </span>
+              ))}
+            </span>
+            <span />
+          </div>
+          {companyBlocks.map((block) =>
+            block.rows.map((e, i) => (
+              <SchemeEntitlementMatrixRow
+                // The stored days are part of the key (the ServiceGradeRow remount precedent): a row holds
+                // its typed values in local state, so when the server sends a different figure — after this
+                // admin's own save, or someone else's — the row remounts and re-seeds from the truth
+                // instead of showing a stale draft.
+                key={`${e.id}:${e.serviceBands.map((b) => b.days).join(',')}`}
+                ent={e}
+                columns={columns}
+                editableInline={
+                  Array.isArray(e.serviceBands) && e.serviceBands.length > 0 && bandShapeKey(e.serviceBands) === shapeKey
+                }
+                companyLabel={i === 0 ? block.companyName : null}
+                gradeGroupLabel={`${e.gradeGroupName ?? t('perTypeAllGrades')} (${empTypeLabel(e.employmentType)})`}
+                action={upsertEntitlement}
+                t={t}
+              />
+            )),
+          )}
+        </div>
       </div>
       <p className="text-xs text-muted-foreground">{t('perTypeManageNote')}</p>
     </div>

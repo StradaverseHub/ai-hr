@@ -4,7 +4,6 @@ import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { PayrollTabs } from '@/components/payroll-tabs';
 import { PeriodSwitcher } from '@/components/period-switcher';
 import { deleteDraftBatchAction, resetAction } from './actions';
 import { resumeHref } from './process/selection-logic';
@@ -53,7 +52,6 @@ export default async function PayrollPage({
           }
         />
       </div>
-      <PayrollTabs active="batches" />
       <div className="flex justify-end">
         <PeriodSwitcher options={periodOptions} active={activePeriod} />
       </div>

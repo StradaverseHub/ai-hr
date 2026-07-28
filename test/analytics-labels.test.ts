@@ -45,21 +45,19 @@ describe('analytics bucketLabel (#27 — no raw key paths for free-text values)'
     expect(out).not.toContain('analytics.');
   });
 
-  it('falls back to the raw value for an unknown nationality and assignment code', () => {
+  it('falls back to the raw value for an unknown nationality code', () => {
     expect(bucketLabel('Foreign', fakeT(dict), 'nationality')).toBe('Foreign');
-    expect(bucketLabel('seconded', fakeT(dict), 'assignment')).toBe('seconded');
   });
 
   it('still translates canonical enum values when the key exists', () => {
     expect(bucketLabel('male', fakeT(dict), 'gender')).toBe('Male');
     expect(bucketLabel('married', fakeT(dict), 'marital')).toBe('Married');
     expect(bucketLabel('MY', fakeT(dict), 'nationality')).toBe('Malaysian');
-    expect(bucketLabel('active', fakeT(dict), 'assignment')).toBe('Active');
   });
 
   it('maps the sentinel buckets to their translated labels', () => {
     expect(bucketLabel(UNKNOWN_BUCKET, fakeT(dict), 'gender')).toBe('Unknown');
-    expect(bucketLabel(UNASSIGNED_BUCKET, fakeT(dict), 'assignment')).toBe('Unassigned');
+    expect(bucketLabel(UNASSIGNED_BUCKET, fakeT(dict), 'plain')).toBe('Unassigned');
   });
 
   it('passes plain free-text (department/location names) through verbatim', () => {

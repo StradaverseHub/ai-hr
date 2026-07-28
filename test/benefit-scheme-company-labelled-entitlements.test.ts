@@ -51,12 +51,15 @@ function schemePickerSelect(): string {
   return schemeSrc.slice(openAt, closeAt + '</select>'.length);
 }
 
-/** The LeaveTypeEntitlementTable body (up to the next top-level component). */
+/** The per-type entitlement section — the row type, the matrix row and LeaveTypeEntitlementTable itself.
+ *  a03eff24 turned the flat table into a matrix whose row lives in its own component, so the window starts
+ *  at the row TYPE and ends at the banner opening the sibling company × grade table. */
 function perTypeTableBody(): string {
-  const start = schemeSrc.indexOf('export function LeaveTypeEntitlementTable');
-  expect(start, 'LeaveTypeEntitlementTable must exist').toBeGreaterThan(-1);
-  const end = schemeSrc.indexOf('function EntitlementForm', start);
-  expect(end, 'LeaveTypeEntitlementTable body must be delimited').toBeGreaterThan(start);
+  const start = schemeSrc.indexOf('export type LeaveTypeSchemeEntitlement');
+  expect(start, 'LeaveTypeSchemeEntitlement must exist').toBeGreaterThan(-1);
+  expect(schemeSrc.indexOf('export function LeaveTypeEntitlementTable', start), 'the table must still be exported').toBeGreaterThan(start);
+  const end = schemeSrc.indexOf('// ─────────────────── Service-Based Entitlements (company × grade) ───────────────────', start);
+  expect(end, 'per-type section must be delimited by the company × grade banner').toBeGreaterThan(start);
   return schemeSrc.slice(start, end);
 }
 
@@ -107,21 +110,31 @@ describe('0d1a0cfc · the Service Based Entitlements table names the company bes
     expect(typeAt).toBeGreaterThan(-1);
     const decl = schemeSrc.slice(typeAt, schemeSrc.indexOf('};', typeAt));
     expect(decl).toMatch(/companyName: string \| null;/);
-    // The layout contract is unchanged: scheme name + pool note still belong to the same first column.
+    // The scheme name and pool note are still carried on the row (a03eff24 moved them to the second column,
+    // under the grade group — it did not drop them).
     expect(decl).toContain('schemeName: string;');
     expect(decl).toContain('poolName: string | null;');
   });
 
-  it('renders companyName next to schemeName in the Benefit scheme column', () => {
+  // a03eff24 SUPERSEDES the original assertion here. That version required the company name to be reprinted
+  // beside the scheme name on EVERY row — which is precisely the repetition the reporter of a03eff24 asked
+  // us to remove. The requirement 0d1a0cfc actually protects is "this surface says which company a scheme
+  // belongs to", and the matrix still satisfies it, more strongly: the company is a merged block heading
+  // rather than a muted suffix. So the check is re-pointed, not relaxed — it still fails if the company
+  // stops being named, and it now also fails if the repetition comes back.
+  it('names the company ONCE as a merged block heading, with the scheme still identified per row', () => {
     const body = perTypeTableBody();
-    const cellAt = body.indexOf('{e.schemeName}');
-    expect(cellAt, 'the scheme-name cell must exist').toBeGreaterThan(-1);
-    const cell = body.slice(cellAt, cellAt + 400);
-    expect(cell).toContain('{e.companyName}');
-    expect(cell).toMatch(/e\.companyName != null &&/);
-    // Same column, same header key — the table layout is not restructured and no new string is introduced.
-    expect(body).toContain("t('perTypeColScheme')");
+    // The block a row belongs to is keyed on its companyName…
+    expect(body).toContain('const companyBlocks = useMemo(');
+    expect(body).toMatch(/const key = e\.companyName \?\? '';/);
+    // …the name prints on the block's first row only, and the row renders that prop.
+    expect(body).toContain('companyLabel={i === 0 ? block.companyName : null}');
+    expect(body).toContain("{companyLabel ?? ''}");
+    // The scheme is still named on its own row, and the shared-pool note survived the restructure.
+    expect(body).toContain('{ent.schemeName}');
     expect(body).toContain("t('perTypeSharedPool'");
+    // The pre-a03eff24 per-row company suffix must not come back.
+    expect(body).not.toMatch(/e\.companyName != null &&/);
   });
 
   it('the page populates companyName from rows it already loads (no new query)', () => {

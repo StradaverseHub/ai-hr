@@ -112,6 +112,27 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/leave'],
     hasScopeNote: true,
   },
+  // 20c699f8 / 953be4b0 — the two HR-admin leave inquiry screens. They are scopedAdmin-guarded pages, so
+  // without a matrix column an administrator could reach them but Security & Permissions could neither
+  // grant nor revoke them: the reverse-completeness guard in test/function-access.test.ts is what caught
+  // it. Labels live under admin.users.screen.* rather than nav.* because neither screen is a sidebar row —
+  // both are reached from My Absence.
+  {
+    screenKey: 'leaveEmployeeBalances',
+    href: '/leave/employee-balances',
+    labelKey: 'admin.users.screen.leaveEmployeeBalances',
+    guard: 'scopedAdmin',
+    routes: ['/leave/employee-balances'],
+    hasScopeNote: false,
+  },
+  {
+    screenKey: 'leaveEmployeeRecords',
+    href: '/leave/employee-records',
+    labelKey: 'admin.users.screen.leaveEmployeeRecords',
+    guard: 'scopedAdmin',
+    routes: ['/leave/employee-records'],
+    hasScopeNote: false,
+  },
   {
     screenKey: 'attendance',
     href: '/attendance',

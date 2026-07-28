@@ -34,9 +34,11 @@ const section = read('components/collapsible-card-section.tsx');
 const historyCmp = read('components/leave/leave-history-cards.tsx');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
+/** Where the admin history table begins — everything after it is the admin branch. 8ec63139 removed the
+ *  admin's own `{admin && secondaryBreakdownCard()}` card, which used to be this boundary. */
+const ADMIN_MARKER = '{/* Admin request history';
 /** The self-service render branch: breakdown + history columns. */
-const selfBranch = () =>
-  leavePage.slice(leavePage.indexOf('{!admin && ('), leavePage.indexOf('{admin && secondaryBreakdownCard()'));
+const selfBranch = () => leavePage.slice(leavePage.indexOf('{!admin && ('), leavePage.indexOf(ADMIN_MARKER));
 /** The RSC entries builder that feeds LeaveHistoryCards (pre-translated data + action/outcome nodes). */
 const entriesBuilder = () =>
   leavePage.slice(leavePage.indexOf('const historyEntries'), leavePage.indexOf('{!admin && ('));
@@ -151,13 +153,20 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     expect(selfBranch().includes("t('requestsEmpty')")).toBe(true);
   });
 
-  it('the admin path keeps the full-width sortable/paginated table below its own breakdown card', () => {
-    const adminPart = leavePage.slice(leavePage.indexOf('{admin && secondaryBreakdownCard()'));
+  it('the admin path keeps the full-width sortable/paginated table', () => {
+    const adminPart = leavePage.slice(leavePage.indexOf(ADMIN_MARKER));
     expect(adminPart).toContain('data-tour="leave-requests"');
     expect(adminPart).toContain("sortableTh('name'");
     expect(adminPart).toContain('<AdminCancelLeaveDialog');
     expect(adminPart).toContain("t('filters.rangeOf'"); // pager untouched
     expect(adminPart).toContain('colSpan={7}');
+  });
+
+  it('8ec63139: the admin no longer gets their OWN breakdown card above that table', () => {
+    // The self-service branch still calls it; the admin-side call is gone (it was the third face of My
+    // Balances on a page that is now about employees).
+    expect(leavePage.includes('{admin && secondaryBreakdownCard()')).toBe(false);
+    expect(selfBranch()).toContain('{secondaryBreakdownCard(');
   });
 
   it('both branches carry the leave-requests tour anchor (one renders per role)', () => {

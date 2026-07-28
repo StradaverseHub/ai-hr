@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { Badge, Card, ErrorBanner, EmployeeCode, PageHeader } from '@/components/ui';
-import { PayrollTabs } from '@/components/payroll-tabs';
 import { listEmployeesForPayrollRun } from '@/core/read';
 import { decodeRunGroupResult, type RunGroupReasonCode } from '@/core/payroll-run-group';
 
@@ -25,7 +24,6 @@ export default async function PayrollProcessResultPage({ searchParams }: { searc
     return (
       <div className="mx-auto max-w-5xl space-y-6">
         <PageHeader title={t('resultTitle')} description={t('resultSubtitle')} />
-        <PayrollTabs active="batches" />
         <ErrorBanner message={t('resultExpired')} />
         <Link href="/payroll/process" className="text-sm font-medium text-primary hover:underline">
           {t('resultBackToProcess')}
@@ -61,7 +59,6 @@ export default async function PayrollProcessResultPage({ searchParams }: { searc
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('resultTitle')} description={t('resultSubtitle')} />
-      <PayrollTabs active="batches" />
 
       <Card className="p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">

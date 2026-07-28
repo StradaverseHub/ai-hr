@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 /**
  * Sub-navigation within the Statutory Configuration module (31646c85 — Statutory Configuration UI
- * Redesign). Mirrors `components/leave-tabs.tsx` / `components/payroll-tabs.tsx` exactly (same markup +
+ * Redesign). Mirrors `components/leave-tabs.tsx` exactly (same markup +
  * active-tab styling, precedent 0d147b78 Leave Settings Reorganization) so the statutory admin surface
  * reads as one long scroll no more: an Overview tab plus one tab per statutory body. Each tab is a real
  * sub-route (server component) that loads only its own body's data and surfaces that body's own built-in

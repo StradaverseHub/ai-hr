@@ -24,6 +24,9 @@ export async function GET(req: Request) {
   const one = (k: string) => sp.get(k)?.trim() || undefined;
   const statuses = sp.getAll('status').filter((s) => LEAVE_STATUSES.includes(s));
   const typeIds = sp.getAll('type').filter(Boolean);
+  // Feedback 8ec63139: the org narrowings are multi-select on the page now, so the export must read them
+  // the same way — a single get() would have exported a WIDER set than the screen showed.
+  const many = (k: string) => sp.getAll(k).filter(Boolean);
   const dir = sp.get('dir') === 'asc' ? 'asc' : 'desc';
 
   const t = await getTranslations('leave');
@@ -31,10 +34,12 @@ export async function GET(req: Request) {
   const { rows } = await listLeaveRequestsPage(session, {
     companyIds: scopeIds,
     q: one('q'),
-    companyId: one('company'),
-    businessUnitId: one('bu'),
-    departmentId: one('dept'),
-    locationId: one('loc'),
+    filterCompanyIds: many('company'),
+    businessUnitIds: many('bu'),
+    departmentIds: many('dept'),
+    locationIds: many('loc'),
+    employmentIds: many('emp'),
+    durationTypes: many('duration'),
     leaveTypeIds: typeIds.length ? typeIds : undefined,
     statuses: statuses.length ? statuses : undefined,
     from: one('from'),

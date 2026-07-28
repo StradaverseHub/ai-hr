@@ -224,14 +224,15 @@ type Policy = typeof DEFAULTS;
 
 /**
  * The fallback work schedule for an employee: the company's saved attendance policy, or the engine
- * DEFAULTS where none exists yet. Holiday resolution no longer lives here — it is delegated to the unified
+ * DEFAULTS where none exists yet. This is the schedule for a day with NO shift — a shift cannot supply hours
+ * for a day it was never assigned to — which is why 6da67ab7 left it company-scoped while moving the
+ * CALCULATION rules tenant-wide. Holiday resolution no longer lives here — it is delegated to the unified
  * resolver `holidayDatesFor` (ADR-0055), so attendance classifies the same calendar leave does and the
  * country/state inputs that used to be carried on the Policy are gone.
  */
-async function policyFor(tx: Tx, employmentId: string): Promise<Policy & { companyId: string | null }> {
+async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
   const [row] = await tx
     .select({
-      companyId: employment.companyId,
       lateAfter: attendancePolicy.lateAfter,
       halfDayBefore: attendancePolicy.halfDayBefore,
       workStart: attendancePolicy.workStart,
@@ -245,7 +246,6 @@ async function policyFor(tx: Tx, employmentId: string): Promise<Policy & { compa
     .where(eq(employment.id, employmentId))
     .limit(1);
   return {
-    companyId: row?.companyId ?? null,
     lateAfter: row?.lateAfter ?? DEFAULTS.lateAfter,
     halfDayBefore: row?.halfDayBefore ?? DEFAULTS.halfDayBefore,
     workStart: row?.workStart ?? DEFAULTS.workStart,
@@ -345,9 +345,10 @@ type ResolvedSchedule = {
   // policy branch and whenever the shift carries no rule ⇒ byte-identical legacy OT.
   otRule: ShiftOtRule | null;
   // 88e94371 — the resolved attendance rule ("Lateness, Early Out & Overtime Settings"): the shift's rule_id
-  // when set, else the employee's-company Standard rule, else null (⇒ legacy behaviour). Its OT rows drive
-  // OT-minute rounding + early-OT inclusion in deriveAttendance; its grace periods feed the late/early
-  // thresholds below (as a fallback UNDER any explicit per-shift grace, so existing shifts stay identical).
+  // when set, else the tenant's Standard rule (6da67ab7 — the library is no longer company-scoped), else null
+  // (⇒ legacy behaviour). Its OT rows drive OT-minute rounding + early-OT inclusion in deriveAttendance; its
+  // grace periods feed the late/early thresholds below (as a fallback UNDER any explicit per-shift grace, so
+  // existing shifts stay identical).
   rule: ResolvedAttendanceRule | null;
   crossesMidnight: boolean;
   // ec4cbf63: 'default-shift' / 'default-shift-rest' = resolved from employment.default_shift_id (no roster
@@ -368,14 +369,15 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   // resolveHolidaySet), so attendance OT day-type classification can never disagree with leave. A
   // business-group override REPLACES nat+state; no company/state rows ⇒ national-only = today's behaviour.
   const isHoliday = (await holidayDatesFor(tx, { employmentId, startDate: date, endDate: date })).has(date);
-  // 88e94371 — the employee's-company Standard ("Lateness, Early Out & Overtime Settings") rule. Used by the
-  // policy/rest branches AND as the fallback when a resolved shift carries no explicit rule_id. Null when the
-  // company has no rule yet ⇒ byte-identical legacy behaviour.
-  const companyRule = await resolveRuleTx(tx, { ruleId: null, companyId: pol.companyId });
+  // 88e94371 — the Standard ("Lateness, Early Out & Overtime Settings") rule. Used by the policy/rest branches
+  // AND as the fallback when a resolved shift carries no explicit rule_id. Null when the tenant has no rule
+  // yet ⇒ byte-identical legacy behaviour. 6da67ab7: one Standard per TENANT, not per company — the rule is
+  // chosen by the shift, and shifts are tenant-wide, so the employee's company no longer selects it.
+  const defaultRule = await resolveRuleTx(tx, { ruleId: null });
   // The effective late/early grace for a shift branch: an explicit per-shift grace wins (R17, unchanged); else
   // the rule's grace-period section; else the policy-derived grace / midpoint heuristic (null ⇒ legacy).
   const ruleFor = (ruleId: string | null): Promise<ResolvedAttendanceRule | null> =>
-    ruleId ? resolveRuleTx(tx, { ruleId, companyId: pol.companyId }) : Promise.resolve(companyRule);
+    ruleId ? resolveRuleTx(tx, { ruleId }) : Promise.resolve(defaultRule);
   const [ra] = await tx
     .select({
       isRestDay: rosterAssignment.isRestDay,
@@ -406,7 +408,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     breakPeriods: null,
     normalMinutesOverride: null,
     otRule: null,
-    rule: companyRule,
+    rule: defaultRule,
     crossesMidnight: false,
     source: 'policy',
   });

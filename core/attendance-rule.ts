@@ -1,11 +1,15 @@
 /**
  * 88e94371 · "Lateness, Early Out & Overtime Settings" — named-rule library service.
  *
- * A per-company library of reusable attendance CALCULATION rules (renamed/expanded from the single
+ * A TENANT-WIDE library of reusable attendance CALCULATION rules (renamed/expanded from the single
  * Attendance Policy). Each rule bundles a Lateness section, an Early Out section, and an Overtime table
- * (attendance_rule_ot_row). A shift picks ONE rule; a shift with no rule resolves to the company's
+ * (attendance_rule_ot_row). A shift picks ONE rule; a shift with no rule resolves to the tenant's
  * un-deletable "Standard" (is_default) rule. See db/schema.ts (attendanceRule) for the scope note on which
  * fields are wired into the time engine vs. stored-for-future.
+ *
+ * 6da67ab7 (migration 0319) dropped the company axis: the rule is selected by the SHIFT, and the shift
+ * library is already tenant-wide, so scoping rules per company only stopped a shared shift from offering
+ * every company's rules. Nothing here takes a companyId any more.
  *
  * Substrate: every write appends a DomainEvent (attendance-rule.created / .updated / .deleted). Reads are
  * documented skips.
@@ -87,22 +91,18 @@ const toResolved = (
 
 /**
  * Resolve the attendance rule the time engine should apply for a shift: an explicit rule_id wins; otherwise
- * the employee's-company `is_default` (Standard) rule. Returns null when neither exists (⇒ legacy behaviour,
- * byte-identical). Runs inside an existing engine transaction (Tx).
+ * the tenant's `is_default` (Standard) rule. Returns null when neither exists (⇒ legacy behaviour,
+ * byte-identical). Runs inside an existing engine transaction (Tx) — RLS already pins the tenant.
  */
 export async function resolveRuleTx(
   tx: Tx,
-  opts: { ruleId: string | null; companyId: string | null },
+  opts: { ruleId: string | null },
 ): Promise<ResolvedAttendanceRule | null> {
   let rule: typeof attendanceRule.$inferSelect | undefined;
   if (opts.ruleId) {
     [rule] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, opts.ruleId)).limit(1);
-  } else if (opts.companyId) {
-    [rule] = await tx
-      .select()
-      .from(attendanceRule)
-      .where(and(eq(attendanceRule.companyId, opts.companyId), eq(attendanceRule.isDefault, true)))
-      .limit(1);
+  } else {
+    [rule] = await tx.select().from(attendanceRule).where(eq(attendanceRule.isDefault, true)).limit(1);
   }
   if (!rule) return null;
   const rows = await tx.select().from(attendanceRuleOtRow).where(eq(attendanceRuleOtRow.ruleId, rule.id));
@@ -112,14 +112,12 @@ export async function resolveRuleTx(
 // ── Read layer (UI) ───────────────────────────────────────────────────────────────────────────────────
 export type AttendanceRuleView = typeof attendanceRule.$inferSelect & { otRows: (typeof attendanceRuleOtRow.$inferSelect)[] };
 
-/** All rules for the given companies (with their OT rows), Standard first then by name. Read-only — no event. */
-export function listAttendanceRules(ctx: SessionContext, companyIds: string[]): Promise<AttendanceRuleView[]> {
+/** Every rule in the tenant (with its OT rows), Standard first then by name. Read-only — no event. */
+export function listAttendanceRules(ctx: SessionContext): Promise<AttendanceRuleView[]> {
   return withTenant(ctx, async (tx) => {
-    if (companyIds.length === 0) return [];
     const rules = await tx
       .select()
       .from(attendanceRule)
-      .where(inArray(attendanceRule.companyId, companyIds))
       .orderBy(sql`${attendanceRule.isDefault} desc`, asc(attendanceRule.name));
     if (rules.length === 0) return [];
     const rows = await tx
@@ -148,33 +146,34 @@ export function getAttendanceRule(ctx: SessionContext, ruleId: string): Promise<
 }
 
 /**
- * Ensure a company has its un-deletable "Standard" (is_default) rule, seeding one if missing (idempotent via
- * the partial unique index). The rule-library page calls this per visible company so every company always has
- * a Standard — this is the runtime complement of migration 0203's one-off conversion (covers companies created
- * after the migration and companies that never had an attendance_policy row). Appends an event ONLY when it
- * actually creates the row.
+ * Ensure the TENANT has its un-deletable "Standard" (is_default) rule, seeding one if missing (idempotent via
+ * the partial unique index). The rule-library page calls this once so the shift picker's "Standard" fallback
+ * always resolves — the runtime complement of migration 0203's one-off conversion (covers tenants created
+ * after it and tenants that never had an attendance_policy row). Appends an event ONLY when it creates the row.
+ *
+ * 6da67ab7: the seed's late grace still comes from an attendance_policy (late_after − work_start, migration
+ * 0203's formula) so a runtime-created Standard preserves today's late threshold. With the library now
+ * tenant-wide the source policy is the tenant's OLDEST — deterministic, and on the single-company tenants this
+ * path actually fires for it is the same row as before.
  */
-export function ensureStandardRule(ctx: SessionContext, companyId: string): Promise<{ id: string; created: boolean }> {
+export function ensureStandardRule(ctx: SessionContext): Promise<{ id: string; created: boolean }> {
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
       .select({ id: attendanceRule.id })
       .from(attendanceRule)
-      .where(and(eq(attendanceRule.companyId, companyId), eq(attendanceRule.isDefault, true)))
+      .where(eq(attendanceRule.isDefault, true))
       .limit(1);
     if (existing) return { id: existing.id, created: false };
-    // Seed the late grace from the company attendance policy (late_after − work_start), matching the migration
-    // 0203 conversion so a company whose Standard rule is created at runtime preserves today's late threshold.
     const [pol] = await tx
       .select({ lateAfter: attendancePolicy.lateAfter, workStart: attendancePolicy.workStart })
       .from(attendancePolicy)
-      .where(eq(attendancePolicy.companyId, companyId))
+      .orderBy(asc(attendancePolicy.createdAt))
       .limit(1);
     const lateGrace = pol ? Math.max(0, timeToMin(pol.lateAfter) - timeToMin(pol.workStart)) : 0;
     const [row] = await tx
       .insert(attendanceRule)
       .values({
         tenantId: ctx.tenantId,
-        companyId,
         name: 'Standard',
         description: 'Default attendance calculation rule.',
         isDefault: true,
@@ -188,7 +187,7 @@ export function ensureStandardRule(ctx: SessionContext, companyId: string): Prom
       const [again] = await tx
         .select({ id: attendanceRule.id })
         .from(attendanceRule)
-        .where(and(eq(attendanceRule.companyId, companyId), eq(attendanceRule.isDefault, true)))
+        .where(eq(attendanceRule.isDefault, true))
         .limit(1);
       return { id: again!.id, created: false };
     }
@@ -198,7 +197,7 @@ export function ensureStandardRule(ctx: SessionContext, companyId: string): Prom
       aggregateId: row.id,
       eventType: 'attendance-rule.created',
       actor: actorOf(ctx),
-      payload: { companyId, name: 'Standard', isDefault: true, seeded: true },
+      payload: { name: 'Standard', isDefault: true, seeded: true },
     });
     return { id: row.id, created: true };
   });
@@ -227,7 +226,6 @@ export type OtRowInput = {
   roundToMinutes: number | null;
 };
 export type AttendanceRuleInput = {
-  companyId: string;
   name: string;
   description?: string | null;
   status?: 'active' | 'inactive';
@@ -300,7 +298,6 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
         .insert(attendanceRule)
         .values({
           tenantId: ctx.tenantId,
-          companyId: p.companyId,
           name: n.name,
           description: n.description,
           isDefault: false, // only the seeded Standard is default
@@ -318,7 +315,7 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
         .returning({ id: attendanceRule.id });
       ruleId = row.id;
     } catch (e) {
-      if (isUniqueViolation(e)) throw new Error(`A rule named “${n.name}” already exists for this company.`);
+      if (isUniqueViolation(e)) throw new Error(`A rule named “${n.name}” already exists.`);
       throw e;
     }
     if (n.otRows.length > 0) {
@@ -330,7 +327,7 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
       aggregateId: ruleId,
       eventType: 'attendance-rule.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, name: n.name, status: n.status, otRowCount: n.otRows.length, applyToEarlyOt: n.applyToEarlyOt },
+      payload: { name: n.name, status: n.status, otRowCount: n.otRows.length, applyToEarlyOt: n.applyToEarlyOt },
     });
     return { id: ruleId };
   });
@@ -361,7 +358,7 @@ export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } 
         })
         .where(eq(attendanceRule.id, p.ruleId));
     } catch (e) {
-      if (isUniqueViolation(e)) throw new Error(`A rule named “${n.name}” already exists for this company.`);
+      if (isUniqueViolation(e)) throw new Error(`A rule named “${n.name}” already exists.`);
       throw e;
     }
     // Replace the OT rows wholesale (small, admin-authored set).
@@ -386,7 +383,7 @@ export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } 
 export function deleteAttendanceRule(ctx: SessionContext, p: { ruleId: string }): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
     const [rule] = await tx
-      .select({ id: attendanceRule.id, isDefault: attendanceRule.isDefault, companyId: attendanceRule.companyId, name: attendanceRule.name })
+      .select({ id: attendanceRule.id, isDefault: attendanceRule.isDefault, name: attendanceRule.name })
       .from(attendanceRule)
       .where(eq(attendanceRule.id, p.ruleId))
       .limit(1);
@@ -401,7 +398,7 @@ export function deleteAttendanceRule(ctx: SessionContext, p: { ruleId: string })
       aggregateId: p.ruleId,
       eventType: 'attendance-rule.deleted',
       actor: actorOf(ctx),
-      payload: { companyId: rule.companyId, name: rule.name },
+      payload: { name: rule.name },
     });
     return { id: p.ruleId };
   });

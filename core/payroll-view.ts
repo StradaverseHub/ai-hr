@@ -29,6 +29,8 @@ import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { toCsv } from '../lib/csv';
+// 9cbf5e0d — one Employee Status engine, shared with Personnel and the dashboard.
+import { employmentStatusSql } from './employment-status-sql';
 import {
   appUser,
   assignment,
@@ -492,7 +494,9 @@ export function listPayrollRegisterAcross(
         department: department.name,
         position: position.title,
         jobGrade: jobGrade.name,
-        employmentStatus: assignment.status,
+        // 9cbf5e0d — the DERIVED Employee Status, so the Payroll Register agrees with Personnel instead of
+        // printing the retired stored enum (On Leave / Offboarding / Terminated).
+        employmentStatus: employmentStatusSql(),
         employmentType: assignment.employmentType,
         payPeriod: payrollBatch.payPeriod,
         payrollCycle: payrollBatch.runType,

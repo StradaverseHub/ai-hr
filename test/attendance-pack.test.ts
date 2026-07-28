@@ -80,23 +80,59 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
   ] as const;
 
-  const nav = attendancePack.nav!;
+  // 0bb0e303 split the node three ways, so parity is no longer "one node with ten rows in order".
+  // The guarantee that MATTERS survives intact and is what is asserted below: every pre-retrofit row
+  // still exists exactly once, with its icon and gates untouched, and the relative order is preserved.
+  // Regrouping rows is the visible change the reporter asked for; losing one, or quietly widening a
+  // gate while moving it, is not — and only the second kind of change should be able to fail here.
+  const NODES = attendancePack.navNodes!;
+  const flattened = NODES.flatMap((n) => n.children);
 
-  it('keeps the parent node identical (nav.attendance label, Clock icon)', () => {
-    expect(nav.labelKey).toBe('attendance');
-    expect(nav.icon).toBe(Clock);
+  it('splits into exactly three nodes, one per audience, each in its declared group', () => {
+    expect(NODES.map((n) => n.group)).toEqual(['main', 'manage', 'admin']);
+    expect(NODES.map((n) => n.labelKey)).toEqual(['myAttendance', 'attendance', 'attendance']);
   });
 
-  it('carries exactly the pre-retrofit rows, in order, with identical icon refs and gates', () => {
-    expect(nav.children).toHaveLength(EXPECTED.length);
-    EXPECTED.forEach((want, i) => {
-      const got = nav.children[i];
-      expect(got.href, `row ${i} href`).toBe(want.href);
-      expect(got.labelKey, `${want.href} labelKey`).toBe(want.labelKey);
-      expect(got.icon, `${want.href} icon ref`).toBe(want.icon);
-      expect(got.adminOnly, `${want.href} adminOnly`).toBe('adminOnly' in want ? want.adminOnly : undefined);
-      expect(got.managerUp, `${want.href} managerUp`).toBe('managerUp' in want ? want.managerUp : undefined);
+  it('keeps every pre-retrofit row exactly once, with identical icon refs and gates', () => {
+    expect(flattened).toHaveLength(EXPECTED.length);
+    EXPECTED.forEach((want) => {
+      const got = flattened.filter((c) => c.href === want.href);
+      expect(got, `${want.href} appears exactly once`).toHaveLength(1);
+      expect(got[0].labelKey, `${want.href} labelKey`).toBe(want.labelKey);
+      expect(got[0].icon, `${want.href} icon ref`).toBe(want.icon);
+      expect(got[0].adminOnly, `${want.href} adminOnly`).toBe('adminOnly' in want ? want.adminOnly : undefined);
+      expect(got[0].managerUp, `${want.href} managerUp`).toBe('managerUp' in want ? want.managerUp : undefined);
     });
+  });
+
+  it('preserves the pre-retrofit relative order WITHIN each node', () => {
+    // Rows may land in different nodes, but a row that came before another must not come after it now.
+    // Asserted per node, because across nodes the order is the sidebar's group layout, not the pack's.
+    // Widened to string[]: EXPECTED is `as const`, so map() yields a union of the ten literal hrefs
+    // and indexOf() then refuses a plain string. The comparison is by position, not by literal type.
+    const wantOrder: string[] = EXPECTED.map((r) => r.href);
+    for (const n of NODES) {
+      const positions = n.children.map((c) => wantOrder.indexOf(c.href));
+      expect(positions, `${n.group} node keeps pre-retrofit order`).toEqual([...positions].sort((a, b) => a - b));
+      expect(positions.every((i) => i >= 0), `${n.group} node has no unknown row`).toBe(true);
+    }
+  });
+
+  it('THE REGRESSION GUARD: the two managerUp rows stay OUT of the admin node', () => {
+    // The Administration sidebar group is gated adminOnly as a WHOLE. A managerUp row placed inside it
+    // renders for nobody but admins, silently removing Roster and Import from every manager who can
+    // reach them today. That is the one way this split could quietly take access away, so it is pinned.
+    const admin = NODES.find((n) => n.group === 'admin')!;
+    expect(admin.children.every((c) => c.adminOnly === true)).toBe(true);
+    const manage = NODES.find((n) => n.group === 'manage')!;
+    expect(manage.children.map((c) => c.href)).toEqual(['/roster', '/attendance/import']);
+    expect(manage.children.every((c) => c.managerUp === true)).toBe(true);
+  });
+
+  it('My Attendance carries self-service ONLY — no admin or manager row leaked in', () => {
+    const mine = NODES.find((n) => n.group === 'main')!;
+    expect(mine.children.map((c) => c.href)).toEqual(['/attendance/clock', '/attendance']);
+    expect(mine.children.every((c) => !c.adminOnly && !c.managerUp)).toBe(true);
   });
 
   it('sidebar.tsx mounts the node via the registry and hardcodes none of the rows', () => {

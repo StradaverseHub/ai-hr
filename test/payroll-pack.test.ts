@@ -3,10 +3,11 @@
  *
  * Verifies the mechanical halves of the retrofit with behaviour unchanged:
  *   1. Registry: `packs/payroll` registers a module pack the registry resolves by id.
- *   2. Nav parity: the pack's navLinks are ROW-FOR-ROW the sidebar's pre-rung-7 payroll row — same
- *      labelKey, href, icon ref (Wallet), same (absence of) visibility flags, same group placement —
- *      and components/sidebar.tsx mounts it via the registry instead of hardcoding it (the EXPECTED
- *      literal below is the pre-change value, captured verbatim; any drift is a rendering change).
+ *   2. Nav: the pack owns payroll's sidebar presence and components/sidebar.tsx mounts it via the
+ *      registry instead of hardcoding it. The rung-7 shape (a single flat Administration row) became
+ *      a flyout NODE at 1459e116 when payroll's own tab strip was retired; the node's rows, order and
+ *      hrefs are asserted in test/payroll-flyout-nav.test.ts, which owns that item. What stays here
+ *      is the pack-boundary property: payroll's nav is the pack's, in the Administration group.
  *   3. Facade: `packs/payroll/service` re-exports the twenty implementation modules — outside callers
  *      get the exact same function references, so switching import paths cannot change behaviour.
  *   4. Boundary honesty: comp.ts is spine (not a satellite, not re-exported); the country statutory
@@ -104,34 +105,24 @@ describe('ADR-0080 rung 7: payroll pack registration', () => {
   });
 });
 
-describe('ADR-0080 rung 7: nav parity with the pre-retrofit sidebar', () => {
-  // components/sidebar.tsx payroll row as of the commit before rung 7, captured VERBATIM. Like claims'
-  // config row this is a SINGLE flat row in the Administration group, not a collapsible node:
-  //   admin group: { href: '/payroll', labelKey: 'payroll', icon: Wallet } (no per-row gate — the
-  //     Administration group is gated adminOnly wholesale, unchanged by the move).
-  const EXPECTED = [{ group: 'admin', href: '/payroll', labelKey: 'payroll', icon: Wallet }] as const;
-
-  const links = payrollPack.navLinks!;
-
-  it('carries exactly the pre-retrofit row, with identical icon ref and gate', () => {
-    expect(links).toHaveLength(EXPECTED.length);
-    EXPECTED.forEach((want, i) => {
-      const got = links[i];
-      expect(got.group, `row ${i} group placement`).toBe(want.group);
-      expect(got.href, `row ${i} href`).toBe(want.href);
-      expect(got.labelKey, `${want.href} labelKey`).toBe(want.labelKey);
-      expect(got.icon, `${want.href} icon ref`).toBe(want.icon);
-      // The row relied on the admin GROUP gate, not a per-row flag — unchanged by the move.
-      expect(got.adminOnly, `${want.href} adminOnly`).toBeUndefined();
-      expect(got.managerUp, `${want.href} managerUp`).toBeUndefined();
-    });
+describe('ADR-0080 rung 7: payroll’s sidebar presence belongs to the pack', () => {
+  it('contributes exactly one Administration-group node, labelled and iconed as before', () => {
+    // 1459e116 turned the rung-7 flat row into a flyout node. The parent row a viewer sees in the
+    // rail is unchanged — same nav.payroll label, same Wallet icon, still in the Administration
+    // group — so this stays the pack-boundary assertion; the node's CHILDREN are that item's test.
+    const nodes = payrollPack.navNodes!;
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].group).toBe('admin');
+    expect(nodes[0].labelKey).toBe('payroll');
+    expect(nodes[0].icon).toBe(Wallet);
   });
 
-  it('declares no collapsible nav node (payroll is a single flat link by design)', () => {
-    expect(payrollPack.nav).toBeUndefined();
+  it('declares no standalone nav links (payroll’s whole nav presence is the node)', () => {
+    // A leftover navLinks entry would render a SECOND payroll row beside the node.
+    expect(payrollPack.navLinks).toBeUndefined();
   });
 
-  it('sidebar.tsx mounts the row via the registry and hardcodes it nowhere', () => {
+  it('sidebar.tsx mounts the nav via the registry and hardcodes it nowhere', () => {
     const sidebar = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
     // The registration moved out of the sidebar into packs/register-all.ts (ADR-0077 slice 1) so that
     // SERVER code can enumerate module packs too — a client-component side effect left listPacks()

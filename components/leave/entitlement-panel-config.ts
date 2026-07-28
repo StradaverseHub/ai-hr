@@ -180,11 +180,14 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
     fields: [
       { key: 'currentYearEntitlement', labelKey: 'currentYearEntitlement', select: (d) => d.breakdown.currentYearEntitlement },
       { key: 'monthlyAccrued', labelKey: 'monthlyAccrued', omitWhenNull: true, select: (d) => d.breakdown.monthlyAccruedToDate },
-      // 0315dac7: "Carried forward" now shows broughtForward — the RAW signed balance that crossed the cycle
-      // boundary — so the panel carries ONE carried number, the same one the reconciliation block adds up.
-      // The derived `carriedForward` (post-cap, floored at 0) conflicted with it: after a year-open cap
-      // forfeit the two disagreed and neither closed the sum. carryForwardRemaining + carryForwardExpiry stay
-      // below as the annual-carry detail they always were.
+      // 0315dac7: this row shows broughtForward — the RAW signed balance that crossed the cycle boundary —
+      // so the panel carries ONE carried number, the same one the reconciliation block adds up. The derived
+      // `carriedForward` (post-cap, floored at 0) conflicted with it: after a year-open cap forfeit the two
+      // disagreed and neither closed the sum. carryForwardRemaining + carryForwardExpiry stay below as the
+      // annual-carry detail they always were.
+      // 37a1141e closed the last inconsistency: this row was still LABELLED "Carried forward" while the
+      // reconciliation row below labelled the identical figure "Brought forward". Both now read brought
+      // forward. Keys are untouched — only the English label moved.
       { key: 'carriedForward', labelKey: 'carriedForward', select: (d) => d.breakdown.broughtForward },
       { key: 'carryForwardRemaining', labelKey: 'carryForwardRemaining', select: (d) => d.breakdown.carryForwardRemaining },
       { key: 'carryForwardExpiry', labelKey: 'carryForwardExpiry', format: 'date', select: (d) => d.breakdown.carryForwardExpiryDate },
