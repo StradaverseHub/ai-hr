@@ -337,6 +337,73 @@ export async function restoreFeedback(ctx: SessionContext, p: { feedbackId: stri
 
 // ── Build (F4 — agent/admin; the app only tracks status, never self-modifies) ──
 
+/**
+ * Park an approved item that turns out to depend on an unanswered question (approved → blocked).
+ *
+ * This is NOT a rejection and NOT a contest: the plan is agreed and will be built as written. What is
+ * missing is an input only the reporter can supply — normally a DECISION NEEDED item, named by
+ * `blockedById`, so the board can link the two instead of describing the dependency in prose.
+ *
+ * Blocking is the mechanism that keeps `approved` honest. startFeedbackBuild below accepts ONLY
+ * `approved`, so parking an item here also removes it from every build round until it is unblocked —
+ * the block cannot be forgotten and worked around by an agent that never saw the question.
+ */
+export async function blockFeedback(
+  ctx: SessionContext,
+  p: { feedbackId: string; reason: string; blockedById?: string | null },
+): Promise<void> {
+  const reason = p.reason?.trim();
+  if (!reason) throw new FeedbackError('Please say what this item is waiting on.');
+  await withTenant(ctx, async (tx) => {
+    const fb = await loadDecidable(tx, p.feedbackId);
+    if (fb.status !== 'approved') {
+      throw new FeedbackError(`Only an approved item can be blocked (it is ${fb.status}).`);
+    }
+    // Self-blocking would strand the item: nothing could ever resolve it, since resolving it is what
+    // unblocks it. Cheap to check here, and the alternative is an item no status change can rescue.
+    if (p.blockedById && p.blockedById === fb.id) {
+      throw new FeedbackError('An item cannot be blocked by itself.');
+    }
+    if (p.blockedById) await loadDecidable(tx, p.blockedById); // the blocker must exist and be in-tenant
+    await tx
+      .update(feedbackRequest)
+      .set({ status: 'blocked', blockedById: p.blockedById ?? null, blockedReason: reason, updatedAt: sql`now()` })
+      .where(eq(feedbackRequest.id, fb.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'feedback',
+      aggregateId: fb.id,
+      eventType: 'feedback.blocked',
+      actor: actorOf(ctx),
+      subjectEmploymentId: fb.reporterEmploymentId,
+      payload: { reason, blockedById: p.blockedById ?? null },
+    });
+  });
+}
+
+/** The blocker was settled — return the item to the build queue (blocked → approved). */
+export async function unblockFeedback(ctx: SessionContext, p: { feedbackId: string; note?: string | null }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const fb = await loadDecidable(tx, p.feedbackId);
+    if (fb.status !== 'blocked') throw new FeedbackError(`Only a blocked item can be unblocked (it is ${fb.status}).`);
+    await tx
+      .update(feedbackRequest)
+      // blockedReason/blockedById are cleared: they describe a CURRENT wait, and a stale one would keep
+      // rendering "waiting on …" on an item that is queued. The history stays in the event stream.
+      .set({ status: 'approved', blockedById: null, blockedReason: null, updatedAt: sql`now()` })
+      .where(eq(feedbackRequest.id, fb.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'feedback',
+      aggregateId: fb.id,
+      eventType: 'feedback.unblocked',
+      actor: actorOf(ctx),
+      subjectEmploymentId: fb.reporterEmploymentId,
+      payload: { note: p.note?.trim() || null, wasBlockedBy: fb.blockedById ?? null },
+    });
+  });
+}
+
 /** Mark that a build agent has started on an approved item (approved → building). */
 export async function startFeedbackBuild(ctx: SessionContext, p: { feedbackId: string; buildRef?: string | null }): Promise<void> {
   await withTenant(ctx, async (tx) => {
@@ -527,6 +594,8 @@ export function listFeedback(
 
 export type FeedbackDetail = typeof feedbackRequest.$inferSelect & {
   attachments: { id: string; fileName: string; sizeBytes: number }[];
+  /** Resolved from blockedById so the board can name what it is waiting on rather than show a bare id. */
+  blockedBy: { id: string; title: string; status: FeedbackStatus } | null;
 };
 
 export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDetail | null> {
@@ -537,7 +606,16 @@ export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDe
       .select({ id: feedbackAttachment.id, fileName: feedbackAttachment.fileName, sizeBytes: feedbackAttachment.sizeBytes })
       .from(feedbackAttachment)
       .where(eq(feedbackAttachment.feedbackRequestId, id));
-    return { ...row, attachments: atts };
+    let blockedBy: FeedbackDetail['blockedBy'] = null;
+    if (row.blockedById) {
+      const [b] = await tx
+        .select({ id: feedbackRequest.id, title: feedbackRequest.title, status: feedbackRequest.status })
+        .from(feedbackRequest)
+        .where(eq(feedbackRequest.id, row.blockedById))
+        .limit(1);
+      blockedBy = b ?? null; // tenant-scoped by RLS; a cross-tenant id simply resolves to nothing
+    }
+    return { ...row, attachments: atts, blockedBy };
   });
 }
 
@@ -550,6 +628,7 @@ type DecidableFeedback = {
   reporterUserId: string | null;
   planRevision: number;
   statusBeforeCancel: FeedbackStatus | null;
+  blockedById: string | null;
 };
 
 async function loadDecidable(tx: Tx, feedbackId: string): Promise<DecidableFeedback> {
@@ -561,6 +640,7 @@ async function loadDecidable(tx: Tx, feedbackId: string): Promise<DecidableFeedb
       reporterUserId: feedbackRequest.reporterUserId,
       planRevision: feedbackRequest.planRevision,
       statusBeforeCancel: feedbackRequest.statusBeforeCancel,
+      blockedById: feedbackRequest.blockedById,
     })
     .from(feedbackRequest)
     .where(eq(feedbackRequest.id, feedbackId))

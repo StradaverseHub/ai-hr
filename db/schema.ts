@@ -5110,6 +5110,11 @@ export const feedbackStatusEnum = pgEnum('feedback_status', [
   'planned', // the agent wrote a plan; awaiting the reporter's review
   'approved', // reporter approved the plan; awaiting build
   'contested', // reporter pushed back; the agent will re-plan
+  // APPROVED but not buildable — something outside the item has to be settled first, normally a
+  // DECISION NEEDED item named by blocked_by_id. Distinct from `contested` (the plan is wrong) and from
+  // `open` (nobody has planned it). Without this, a blocked item sat in `approved` looking exactly like
+  // work that was merely waiting its turn, and each build round re-derived the difference from memory.
+  'blocked',
   'building', // a build agent is implementing it (out-of-app)
   'done', // built (build_ref points at the PR), awaiting release
   'deployed', // built AND released to the server (the improvement loop closes the item here)
@@ -5146,6 +5151,10 @@ export const feedbackRequest = pgTable(
     // Snapshot of `status` at the moment cancelFeedback ran, so restoreFeedback can put the item back
     // exactly where it was (rather than guessing/always resetting to `open`). Null except while cancelled.
     statusBeforeCancel: feedbackStatusEnum('status_before_cancel'),
+    /** What this item is waiting on while `blocked` — normally a DECISION NEEDED item. See 0317. */
+    blockedById: uuid('blocked_by_id'),
+    /** Why it is parked, for the cases blockedById cannot express. Cleared on unblock. */
+    blockedReason: text('blocked_reason'),
     buildRef: text('build_ref'), // PR / branch link once a build agent runs (F4)
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),

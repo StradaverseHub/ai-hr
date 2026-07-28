@@ -65,8 +65,17 @@ function selectFeedback(whereStatus: string): RemoteFeedback[] {
 
 /** Items awaiting a (re)plan. */
 export const pullPlannable = (): RemoteFeedback[] => selectFeedback(`'open','contested'`);
-/** Items the reporter has approved (ready to build + release). */
+/**
+ * Items the reporter has approved AND that are actually startable.
+ *
+ * `blocked` is excluded on purpose. It is approved work whose plan is agreed but which waits on a
+ * question only the reporter can answer, so returning it here would put it in front of a build agent
+ * every round and invite exactly the guess the block exists to prevent. Use pullBlocked() to see them.
+ */
 export const pullApproved = (): RemoteFeedback[] => selectFeedback(`'approved'`);
+
+/** Approved but waiting on something outside the item — see the `blocked` status note in db/schema.ts. */
+export const pullBlocked = (): RemoteFeedback[] => selectFeedback(`'blocked'`);
 
 /**
  * Raise a NEW feedback item on the deployed board on a reporter's behalf (operator-side), for when a
@@ -127,6 +136,52 @@ export function pushPlan(p: {
     'BEGIN;',
     `UPDATE feedback_request SET plan = ${dq(p.plan)}, plan_revision = plan_revision + 1, plan_model = ${dq(p.model)}, contest_reason = NULL, status = 'planned', updated_at = now() WHERE id = '${p.id}';`,
     `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.plan.drafted', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ model: p.model, via: 'improvement-loop' }))}::jsonb);`,
+    'COMMIT;',
+  ].join('\n');
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
+}
+
+/**
+ * Park an approved item on an unanswered question (status → blocked + a feedback.blocked event).
+ *
+ * This exists so parking an item is a COMMAND rather than hand-written SQL over SSH. The board learned
+ * about blocked items before this did, and the gap was filled by ad-hoc UPDATEs — which append no event,
+ * so the reason for the park lived only in whichever session ran them.
+ *
+ * The `AND status = 'approved'` guard is the same one every mutator here carries: a no-op beats
+ * clobbering an item someone already moved on.
+ */
+export function markBlocked(p: {
+  id: string;
+  tenantId: string;
+  reporterEmploymentId: string;
+  reason: string;
+  blockedById?: string | null;
+}): void {
+  assertUuid(p.id, 'feedback id');
+  assertUuid(p.tenantId, 'tenant id');
+  assertUuid(p.reporterEmploymentId, 'reporter employment id');
+  if (p.blockedById) assertUuid(p.blockedById, 'blocked-by id');
+  if (!p.reason?.trim()) throw new Error('A reason is required — say what the item is waiting on.');
+  const blocker = p.blockedById ? `'${p.blockedById}'` : 'NULL';
+  const sql = [
+    'BEGIN;',
+    `UPDATE feedback_request SET status = 'blocked', blocked_reason = ${dq(p.reason)}, blocked_by_id = ${blocker}, updated_at = now() WHERE id = '${p.id}' AND status = 'approved';`,
+    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.blocked', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ reason: p.reason, blockedById: p.blockedById ?? null, via: 'improvement-loop' }))}::jsonb);`,
+    'COMMIT;',
+  ].join('\n');
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
+}
+
+/** The question was answered — return the item to the build queue (status → approved). */
+export function markUnblocked(p: { id: string; tenantId: string; reporterEmploymentId: string; note?: string | null }): void {
+  assertUuid(p.id, 'feedback id');
+  assertUuid(p.tenantId, 'tenant id');
+  assertUuid(p.reporterEmploymentId, 'reporter employment id');
+  const sql = [
+    'BEGIN;',
+    `UPDATE feedback_request SET status = 'approved', blocked_reason = NULL, blocked_by_id = NULL, updated_at = now() WHERE id = '${p.id}' AND status = 'blocked';`,
+    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.unblocked', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ note: p.note ?? null, via: 'improvement-loop' }))}::jsonb);`,
     'COMMIT;',
   ].join('\n');
   remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);

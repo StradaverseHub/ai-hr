@@ -10,7 +10,9 @@ import { BulkTable } from './bulk-table';
 const CATEGORIES = ['issue', 'enhancement', 'new_function'] as const;
 // Dashboard chip order; statuses with a zero count are hidden. Includes every feedbackStatusEnum value
 // so the chips sum to the "All" total and any ?status= filter is honoured (e.g. ?status=rejected).
-const BOARD_STATUSES = ['open', 'planned', 'contested', 'approved', 'building', 'done', 'deployed', 'rejected', 'cancelled'] as const;
+// `blocked` sits next to approved deliberately: it IS approved work, just not startable yet. Placing it
+// after `approved` keeps the board reading in lifecycle order rather than alphabetically.
+const BOARD_STATUSES = ['open', 'planned', 'contested', 'approved', 'blocked', 'building', 'done', 'deployed', 'rejected', 'cancelled'] as const;
 
 export function statusTone(status: string): string {
   switch (status) {
@@ -23,6 +25,10 @@ export function statusTone(status: string): string {
     case 'approved':
     case 'building':
       return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400';
+    // Amber, not indigo: blocked reads as "needs you", which is the same signal `open` carries, rather
+    // than as a shade of in-progress work that needs nothing from the reporter.
+    case 'blocked':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300';
     case 'done':
     case 'deployed':
       return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400';

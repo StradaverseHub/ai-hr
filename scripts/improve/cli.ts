@@ -4,12 +4,24 @@
  *
  *   pnpm improve:pull              → JSON array of feedback awaiting a plan (open/contested)
  *   pnpm improve:pull-approved     → JSON array of approved feedback (ready to build + release)
+ *   pnpm improve:pull-blocked      → JSON array of approved-but-parked feedback (waiting on an answer)
  *   echo '{"id","tenantId","reporterEmploymentId","plan","model"}' | pnpm improve:push-plan
  *   echo '{"id","tenantId","reporterEmploymentId","buildRef"}'     | pnpm improve:mark-deployed
  *
  * push-plan / mark-deployed read their argument as JSON on stdin (plans contain newlines/quotes).
  */
-import { markBuildCompleted, markBuildStarted, markDeployed, pullApproved, pullPlannable, pushPlan, raiseFeedback } from './remote';
+import {
+  markBlocked,
+  markBuildCompleted,
+  markBuildStarted,
+  markDeployed,
+  markUnblocked,
+  pullApproved,
+  pullBlocked,
+  pullPlannable,
+  pushPlan,
+  raiseFeedback,
+} from './remote';
 import { releaseBuiltItem } from './release';
 
 function readStdin(): Promise<string> {
@@ -31,6 +43,24 @@ async function main() {
     case 'pull-approved':
       process.stdout.write(JSON.stringify(pullApproved(), null, 2) + '\n');
       break;
+    case 'pull-blocked':
+      process.stdout.write(JSON.stringify(pullBlocked(), null, 2) + '\n');
+      break;
+    case 'block': {
+      // Park an approved item on an unanswered question (status → blocked), so it stops surfacing in
+      // pull-approved as buildable. Reads {id, tenantId, reporterEmploymentId, reason, blockedById?}.
+      const p = JSON.parse(await readStdin());
+      markBlocked(p);
+      console.log(`blocked ${p.id} (status → blocked): ${p.reason}`);
+      break;
+    }
+    case 'unblock': {
+      // The question was answered — return it to the build queue. Reads {id, tenantId, reporterEmploymentId, note?}.
+      const p = JSON.parse(await readStdin());
+      markUnblocked(p);
+      console.log(`unblocked ${p.id} (status → approved)`);
+      break;
+    }
     case 'raise': {
       // Operator-raised feedback (status → open), e.g. a decision the pipeline surfaced that the reporter
       // must own. Reads {tenantId, reporterEmploymentId, reporterUserId?, category, title, description,
@@ -72,7 +102,7 @@ async function main() {
     }
     default:
       console.error(
-        'usage: improve <pull | pull-approved | push-plan | build-start | build-complete | release | mark-deployed>',
+        'usage: improve <pull | pull-approved | pull-blocked | raise | push-plan | block | unblock | build-start | build-complete | release | mark-deployed>',
       );
       process.exit(2);
   }
