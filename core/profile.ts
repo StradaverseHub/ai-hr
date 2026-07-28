@@ -11,6 +11,8 @@ import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { employeeStatutoryMy, employment, person, profileChangeRequest } from '../db/schema';
 import { assertCanDecide } from './approvals';
+// 23ad620e — the emergency contact lives in its own per-person register; /me reads and writes the primary.
+import { primaryEmergencyContactSql, writeSingleEmergencyContactInTx } from './emergency-contacts';
 
 const clean = (v: unknown): string | null => {
   const s = String(v ?? '').trim();
@@ -79,8 +81,10 @@ export function myProfile(ctx: SessionContext) {
         dateOfBirth: person.dateOfBirth,
         gender: person.gender,
         maritalStatus: person.maritalStatus,
-        emergencyContactName: person.emergencyContactName,
-        emergencyContactPhone: person.emergencyContactPhone,
+        // 23ad620e — the emergency contact moved to its own per-person register; /me still shows ONE, so
+        // these five resolve to the highest-priority live record (Primary → Secondary → Other).
+        emergencyContactName: primaryEmergencyContactSql('full_name'),
+        emergencyContactPhone: primaryEmergencyContactSql('mobile_phone'),
         // b4682879 — structured home address + extended emergency contact (self-maintained on /me).
         personalEmail: person.personalEmail,
         addressLine1: person.addressLine1,
@@ -90,9 +94,9 @@ export function myProfile(ctx: SessionContext) {
         city: person.city,
         state: person.state,
         country: person.country,
-        emergencyContactRelationship: person.emergencyContactRelationship,
-        emergencyContactPhone2: person.emergencyContactPhone2,
-        emergencyContactAddress: person.emergencyContactAddress,
+        emergencyContactRelationship: primaryEmergencyContactSql('relationship'),
+        emergencyContactPhone2: primaryEmergencyContactSql('home_phone'),
+        emergencyContactAddress: primaryEmergencyContactSql('address'),
       })
       .from(person)
       .where(eq(person.id, ctx.personId))
@@ -150,13 +154,19 @@ export async function updateOwnContact(
         city: clean(p.city),
         state: clean(p.state),
         country: clean(p.country),
-        emergencyContactName: clean(p.emergencyContactName),
-        emergencyContactRelationship: clean(p.emergencyContactRelationship),
-        emergencyContactPhone: clean(p.emergencyContactPhone),
-        emergencyContactPhone2: clean(p.emergencyContactPhone2),
-        emergencyContactAddress: clean(p.emergencyContactAddress),
       })
       .where(eq(person.id, personId));
+    // 23ad620e — the emergency block no longer lives on `person`. /me still edits ONE contact, so the five
+    // field names route into the highest-priority record of the register, in this same transaction. The
+    // RLS write check on person_emergency_contact is is_admin OR is_self_person — the same rule person_rls
+    // applies, so an employee's self-edit reaches exactly as far as it did before.
+    await writeSingleEmergencyContactInTx(tx, ctx, personId, {
+      emergencyContactName: clean(p.emergencyContactName),
+      emergencyContactRelationship: clean(p.emergencyContactRelationship),
+      emergencyContactPhone: clean(p.emergencyContactPhone),
+      emergencyContactPhone2: clean(p.emergencyContactPhone2),
+      emergencyContactAddress: clean(p.emergencyContactAddress),
+    });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'person',

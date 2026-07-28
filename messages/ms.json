@@ -921,12 +921,6 @@
       "country": "Negara",
       "saveContact": "Simpan hubungan",
       "emergencyTitle": "Hubungan kecemasan",
-      "emergencyName": "Nama hubungan",
-      "emergencyRelationship": "Hubungan",
-      "emergencyPhone1": "Nombor telefon 1",
-      "emergencyPhone2": "Nombor telefon 2",
-      "emergencyAddress": "Alamat",
-      "saveEmergency": "Simpan hubungan kecemasan",
       "photoUpload": "Muat naik foto",
       "photoReplace": "Ganti foto",
       "photoRemove": "Buang foto",
@@ -1130,7 +1124,32 @@
           "companyReadOnly": "Diubah pada tab Pekerjaan"
         }
       },
-      "salaryCurrency": "Mata wang"
+      "salaryCurrency": "Mata wang",
+      "emergency": {
+        "add": "Tambah hubungan kecemasan",
+        "addTitle": "Tambah hubungan kecemasan",
+        "editTitle": "Edit hubungan kecemasan",
+        "viewTitle": "Lihat hubungan kecemasan",
+        "view": "Lihat",
+        "edit": "Edit",
+        "save": "Simpan",
+        "delete": "Padam",
+        "deleteConfirmTitle": "Padam hubungan kecemasan",
+        "deleteConfirmBody": "Buang hubungan ini? Hubungan kecemasan pekerja yang lain tidak terjejas.",
+        "none": "Tiada hubungan kecemasan direkodkan.",
+        "name": "Nama hubungan",
+        "relationship": "Hubungan",
+        "mobilePhone": "Telefon bimbit",
+        "homePhone": "Telefon rumah",
+        "address": "Alamat",
+        "remarks": "Catatan",
+        "priority": "Keutamaan",
+        "priorityPrimary": "Utama",
+        "prioritySecondary": "Kedua",
+        "priorityOther": "Lain-lain",
+        "primaryHint": "Hanya satu hubungan boleh menjadi utama. Memilih Utama di sini akan mengalihkan penanda daripada hubungan sebelumnya.",
+        "actions": "Tindakan"
+      }
     },
     "import": {
       "title": "Import pekerja",

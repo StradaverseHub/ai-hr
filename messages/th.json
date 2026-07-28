@@ -921,12 +921,6 @@
       "country": "ประเทศ",
       "saveContact": "บันทึกการติดต่อ",
       "emergencyTitle": "ผู้ติดต่อฉุกเฉิน",
-      "emergencyName": "ชื่อผู้ติดต่อ",
-      "emergencyRelationship": "ความสัมพันธ์",
-      "emergencyPhone1": "หมายเลขโทรศัพท์ 1",
-      "emergencyPhone2": "หมายเลขโทรศัพท์ 2",
-      "emergencyAddress": "ที่อยู่",
-      "saveEmergency": "บันทึกผู้ติดต่อฉุกเฉิน",
       "photoUpload": "อัปโหลดรูปภาพ",
       "photoReplace": "เปลี่ยนรูปภาพ",
       "photoRemove": "ลบรูปภาพ",
@@ -1130,7 +1124,32 @@
           "companyReadOnly": "เปลี่ยนได้ที่แท็บการจ้างงาน"
         }
       },
-      "salaryCurrency": "สกุลเงิน"
+      "salaryCurrency": "สกุลเงิน",
+      "emergency": {
+        "add": "เพิ่มผู้ติดต่อฉุกเฉิน",
+        "addTitle": "เพิ่มผู้ติดต่อฉุกเฉิน",
+        "editTitle": "แก้ไขผู้ติดต่อฉุกเฉิน",
+        "viewTitle": "ดูผู้ติดต่อฉุกเฉิน",
+        "view": "ดู",
+        "edit": "แก้ไข",
+        "save": "บันทึก",
+        "delete": "ลบ",
+        "deleteConfirmTitle": "ลบผู้ติดต่อฉุกเฉิน",
+        "deleteConfirmBody": "ต้องการลบผู้ติดต่อนี้หรือไม่ ผู้ติดต่อฉุกเฉินรายอื่นของพนักงานจะไม่ได้รับผลกระทบ",
+        "none": "ยังไม่มีการบันทึกผู้ติดต่อฉุกเฉิน",
+        "name": "ชื่อผู้ติดต่อ",
+        "relationship": "ความสัมพันธ์",
+        "mobilePhone": "โทรศัพท์มือถือ",
+        "homePhone": "โทรศัพท์บ้าน",
+        "address": "ที่อยู่",
+        "remarks": "หมายเหตุ",
+        "priority": "ลำดับความสำคัญ",
+        "priorityPrimary": "หลัก",
+        "prioritySecondary": "รอง",
+        "priorityOther": "อื่น ๆ",
+        "primaryHint": "มีผู้ติดต่อหลักได้เพียงรายเดียว การเลือก “หลัก” ที่นี่จะย้ายเครื่องหมายออกจากผู้ติดต่อรายก่อนหน้า",
+        "actions": "การดำเนินการ"
+      }
     },
     "import": {
       "title": "นำเข้าพนักงาน",

@@ -921,12 +921,6 @@
       "country": "Country",
       "saveContact": "Save contact",
       "emergencyTitle": "Emergency contact",
-      "emergencyName": "Contact name",
-      "emergencyRelationship": "Relationship",
-      "emergencyPhone1": "Phone number 1",
-      "emergencyPhone2": "Phone number 2",
-      "emergencyAddress": "Address",
-      "saveEmergency": "Save emergency contact",
       "photoUpload": "Upload photo",
       "photoReplace": "Replace photo",
       "photoRemove": "Remove photo",
@@ -1130,7 +1124,32 @@
           "companyReadOnly": "Changed on the Employment tab"
         }
       },
-      "salaryCurrency": "Currency"
+      "salaryCurrency": "Currency",
+      "emergency": {
+        "add": "Add emergency contact",
+        "addTitle": "Add emergency contact",
+        "editTitle": "Edit emergency contact",
+        "viewTitle": "View emergency contact",
+        "view": "View",
+        "edit": "Edit",
+        "save": "Save",
+        "delete": "Delete",
+        "deleteConfirmTitle": "Delete emergency contact",
+        "deleteConfirmBody": "Remove this contact? The employee's other emergency contacts are unaffected.",
+        "none": "No emergency contacts recorded.",
+        "name": "Contact name",
+        "relationship": "Relationship",
+        "mobilePhone": "Mobile phone",
+        "homePhone": "Home phone",
+        "address": "Address",
+        "remarks": "Remark",
+        "priority": "Priority",
+        "priorityPrimary": "Primary",
+        "prioritySecondary": "Secondary",
+        "priorityOther": "Other",
+        "primaryHint": "Only one contact can be the primary. Choosing Primary here moves the marker off the previous contact.",
+        "actions": "Actions"
+      }
     },
     "import": {
       "title": "Import employees",

@@ -921,12 +921,6 @@
       "country": "国家",
       "saveContact": "保存联系方式",
       "emergencyTitle": "紧急联系人",
-      "emergencyName": "联系人姓名",
-      "emergencyRelationship": "关系",
-      "emergencyPhone1": "电话号码 1",
-      "emergencyPhone2": "电话号码 2",
-      "emergencyAddress": "地址",
-      "saveEmergency": "保存紧急联系人",
       "photoUpload": "上传照片",
       "photoReplace": "更换照片",
       "photoRemove": "移除照片",
@@ -1130,7 +1124,32 @@
           "companyReadOnly": "在“雇佣”标签页中变更"
         }
       },
-      "salaryCurrency": "货币"
+      "salaryCurrency": "货币",
+      "emergency": {
+        "add": "添加紧急联系人",
+        "addTitle": "添加紧急联系人",
+        "editTitle": "编辑紧急联系人",
+        "viewTitle": "查看紧急联系人",
+        "view": "查看",
+        "edit": "编辑",
+        "save": "保存",
+        "delete": "删除",
+        "deleteConfirmTitle": "删除紧急联系人",
+        "deleteConfirmBody": "移除此联系人？该员工的其他紧急联系人不受影响。",
+        "none": "尚未记录紧急联系人。",
+        "name": "联系人姓名",
+        "relationship": "关系",
+        "mobilePhone": "手机号码",
+        "homePhone": "住宅电话",
+        "address": "地址",
+        "remarks": "备注",
+        "priority": "优先级",
+        "priorityPrimary": "首要",
+        "prioritySecondary": "次要",
+        "priorityOther": "其他",
+        "primaryHint": "只能有一位首要联系人。在此选择“首要”会把标记从上一位联系人移走。",
+        "actions": "操作"
+      }
     },
     "import": {
       "title": "导入员工",
