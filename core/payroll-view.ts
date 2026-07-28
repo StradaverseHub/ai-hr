@@ -33,10 +33,12 @@ import {
   appUser,
   assignment,
   company,
+  department,
   domainEvent,
   employeeStatutoryMy,
   employment,
   employmentPayComponent,
+  jobGrade,
   payComponent,
   payrollBatch,
   payrollIndividualTxn,
@@ -44,6 +46,7 @@ import {
   payrollTxnKindEnum,
   payslip,
   person,
+  position,
   type PayrollTxnKind,
 } from '../db/schema';
 
@@ -414,6 +417,146 @@ export function listProcessedPayslipsAcross(
       )
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName)),
   );
+}
+
+// ───────────────────── 4. Payroll Register (feedback 622e12eb) ─────────────────────
+
+export type PayrollRegisterRow = {
+  employeeCode: string | null;
+  employeeName: string;
+  company: string;
+  department: string | null;
+  position: string | null;
+  jobGrade: string | null;
+  employmentStatus: string | null;
+  employmentType: string | null;
+  payPeriod: string;
+  payrollCycle: RunType;
+  runSeq: number;
+  daysWorked: string | null;
+  // Earnings
+  basic: string;
+  allowance: string;
+  overtime: string;
+  bonus: string;
+  // Total earnings
+  gross: string;
+  // Deductions (employee share)
+  epfEmployee: number;
+  socsoEmployee: number;
+  socsoSkbbk: number;
+  eisEmployee: number;
+  pcb: number;
+  cp38: number;
+  zakat: number;
+  otherDeductions: string;
+  // Total deductions & nett wage
+  totalDeductions: string;
+  net: string;
+  // Employer contributions
+  epfEmployer: number;
+  socsoEmployer: number;
+  eisEmployer: number;
+  hrdf: number;
+  employerCost: string;
+};
+
+/**
+ * The Payroll Register (feedback 622e12eb) — one row per processed payslip with the earnings, employee
+ * deductions and EMPLOYER contributions broken out, plus the employee/organisation columns the register
+ * template groups by. Backs the `payroll_register` custom-report dataset; `listProcessedPayslipsAcross`
+ * stays as it is (it powers the transaction-view screen and its CSV, whose column set must not drift).
+ *
+ * The statutory figures live in the payslip's immutable `statutory` jsonb snapshot rather than in columns,
+ * so they are read out of the blob here — a closed payslip reports the contributions AS COMPUTED, which is
+ * exactly what a register is for. Missing keys read as 0 (legacy/imported slips predating a key).
+ *
+ * Organisation columns resolve from the CURRENT assignment, matching masterDataExport — a register run for
+ * an old period therefore shows today's department. Resolving the assignment as-of the pay period is a
+ * deliberate follow-up, not an oversight: it needs the same dated-join machinery analytics uses for events.
+ *
+ * Read-only, no domain event (pure SELECT). Empty `companyIds` fails CLOSED, like every read in this file.
+ */
+export function listPayrollRegisterAcross(
+  ctx: SessionContext,
+  p: { companyIds: string[]; year?: number; month?: number; cycle?: string },
+): Promise<PayrollRegisterRow[]> {
+  if (p.companyIds.length === 0) return Promise.resolve([]);
+  const cycle = cleanRunType(p.cycle);
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        employeeCode: employment.employeeCode,
+        employeeName: person.fullName,
+        company: company.legalName,
+        department: department.name,
+        position: position.title,
+        jobGrade: jobGrade.name,
+        employmentStatus: assignment.status,
+        employmentType: assignment.employmentType,
+        payPeriod: payrollBatch.payPeriod,
+        payrollCycle: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
+        daysWorked: payslip.daysWorked,
+        basic: payslip.basicSalary,
+        allowance: payslip.allowance,
+        overtime: payslip.overtimePay,
+        bonus: payslip.bonus,
+        gross: payslip.grossPay,
+        statutory: payslip.statutory,
+        otherDeductions: payslip.otherDeductions,
+        totalDeductions: payslip.totalDeductions,
+        net: payslip.netPay,
+        employerCost: payslip.employerCost,
+      })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
+      .where(
+        and(
+          inArray(payrollBatch.companyId, p.companyIds),
+          periodFilter(p.year, p.month),
+          cycle ? eq(payrollBatch.runType, cycle) : undefined,
+        ),
+      )
+      .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName));
+
+    return rows.map((r) => {
+      const st = (r.statutory ?? {}) as Record<string, unknown>;
+      const n = (k: string): number => {
+        const v = Number(st[k] ?? 0);
+        return Number.isFinite(v) ? v : 0;
+      };
+      const { statutory: _statutory, ...rest } = r;
+      return {
+        ...rest,
+        epfEmployee: n('epfEmployee'),
+        socsoEmployee: n('socsoEmployee'),
+        socsoSkbbk: n('socsoSkbbk'),
+        eisEmployee: n('eisEmployee'),
+        pcb: n('pcb'),
+        cp38: n('cp38'),
+        zakat: n('zakat'),
+        epfEmployer: n('epfEmployer'),
+        socsoEmployer: n('socsoEmployer'),
+        eisEmployer: n('eisEmployer'),
+        hrdf: n('hrdf'),
+      };
+    });
+  });
 }
 
 // ───────────────────── Individual Transaction History — CSV export ─────────────────────

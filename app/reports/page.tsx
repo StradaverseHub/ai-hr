@@ -119,14 +119,17 @@ export default async function ReportsPage({
                         key={r.id}
                         className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm"
                       >
-                        <Link href={`/reports/builder/${r.id}`} className="flex min-w-0 items-center gap-2 hover:underline">
+                        {/* Same click-through affordance as the predefined rows above (feedback 622e12eb):
+                            label on the left, → on the right; the row actions menu keeps its own slot. */}
+                        <Link href={`/reports/builder/${r.id}`} className="flex min-w-0 flex-1 items-center gap-2">
                           {r.isFavourite && <span aria-hidden className="text-amber-500">★</span>}
-                          <span className="truncate">{r.name}</span>
+                          <span className="truncate hover:underline">{r.name}</span>
                           {r.shared && (
                             <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                               {t('shared')}
                             </span>
                           )}
+                          <span aria-hidden className="ml-auto pl-2 text-muted-foreground">→</span>
                         </Link>
                         <ReportRowActions
                           id={r.id}

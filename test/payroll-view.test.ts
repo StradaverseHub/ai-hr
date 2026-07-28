@@ -23,6 +23,7 @@ import {
   listFixedTransactionsAcross,
   listIndividualTxnCreators,
   listIndividualTxnsAcross,
+  listPayrollRegisterAcross,
   listProcessedPayslipsAcross,
 } from '../core/payroll-view';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -340,5 +341,63 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
     expect(junk).toHaveLength(1); // ignored ⇒ same as no cycle filter
 
     expect(await listProcessedPayslipsAcross(a, { companyIds: [] })).toEqual([]);
+  });
+
+  // ───────────────────── 4. Payroll Register (feedback 622e12eb) ─────────────────────
+
+  it('register: breaks the statutory blob out into employee deductions + employer contributions', async () => {
+    const a = adminCtx(base);
+    await hirePayrollReady(a, base.companyId, base.deptA, 'Reg One', '900101011234');
+    const bMay = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    expect(await listPayrollRegisterAcross(a, { companyIds: [base.companyId] })).toEqual([]);
+
+    await generatePayslips(a, { batchId: bMay.batchId });
+    const rows = await listPayrollRegisterAcross(a, { companyIds: [base.companyId] });
+    expect(rows).toHaveLength(1);
+    const r = rows[0];
+    expect(r).toMatchObject({
+      employeeName: 'Reg One',
+      company: 'Acme Sdn Bhd',
+      department: 'Finance',
+      payPeriod: '2026-05',
+      payrollCycle: 'regular',
+    });
+    // The register's reason for existing: EPF/SOCSO/EIS/PCB split into the employee's deduction and the
+    // employer's contribution, both read off the payslip's immutable statutory snapshot.
+    expect(r.epfEmployee).toBeGreaterThan(0);
+    expect(r.epfEmployer).toBeGreaterThan(0);
+    expect(r.socsoEmployee).toBeGreaterThan(0);
+    expect(r.socsoEmployer).toBeGreaterThan(0);
+    expect(r.eisEmployee).toBeGreaterThan(0);
+    expect(r.eisEmployer).toBeGreaterThan(0);
+    // Keys a plain monthly slip never stamps must read as 0, not NaN/undefined.
+    expect(r.cp38).toBe(0);
+    expect(r.zakat).toBe(0);
+    // Totals reconcile: gross − total deductions = nett wage.
+    expect(Number(r.gross) - Number(r.totalDeductions)).toBeCloseTo(Number(r.net), 2);
+    expect(Number(r.employerCost)).toBeGreaterThan(0);
+  });
+
+  it('register: period + cycle filters narrow; scope fencing holds; empty scope fails closed', async () => {
+    const a = adminCtx(base);
+    await hirePayrollReady(a, base.companyId, base.deptA, 'Reg A', '900101011234');
+    await hirePayrollReady(a, companyB.companyId, companyB.deptId, 'Reg B', '900202021235');
+    const bA = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    const bB = await createBatch(a, { companyId: companyB.companyId, payPeriod: '2026-06' });
+    await generatePayslips(a, { batchId: bA.batchId });
+    await generatePayslips(a, { batchId: bB.batchId });
+
+    const scoped = [base.companyId, companyB.companyId];
+    expect(await listPayrollRegisterAcross(a, { companyIds: scoped })).toHaveLength(2);
+    expect((await listPayrollRegisterAcross(a, { companyIds: [base.companyId] })).map((r) => r.company)).toEqual([
+      'Acme Sdn Bhd',
+    ]);
+    expect((await listPayrollRegisterAcross(a, { companyIds: scoped, year: 2026, month: 5 })).map((r) => r.payPeriod)).toEqual([
+      '2026-05',
+    ]);
+    expect(await listPayrollRegisterAcross(a, { companyIds: scoped, cycle: 'bonus' })).toEqual([]);
+    // An unknown cycle is IGNORED rather than cast to the pg enum (which would throw).
+    expect(await listPayrollRegisterAcross(a, { companyIds: scoped, cycle: 'DROP TABLE' })).toHaveLength(2);
+    expect(await listPayrollRegisterAcross(a, { companyIds: [] })).toEqual([]);
   });
 });
