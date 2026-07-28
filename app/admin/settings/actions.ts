@@ -391,12 +391,13 @@ export type GradeGridSaveResult =
   | { ok: true; created: number; updated: number; createdIds: { key: string; id: string }[] }
   | { ok: false; rowErrors: { key: string; field?: string; message: string }[]; message?: string };
 
-export type GradeGridCreate = { key: string; code: string; name: string; rank: string };
+export type GradeGridCreate = { key: string; code: string; name: string; description: string; rank: string };
 export type GradeGridUpdate = {
   key: string;
   id: string;
   code: string;
   name: string;
+  description: string;
   rank: string;
   setArchived: boolean | null;
 };
@@ -438,7 +439,7 @@ export async function saveJobGradesGridAction(payload: {
       // Each of these is its own withTenant transaction. Every throw class becomes a row error on the
       // right field: DuplicateError (code or name), the /^[A-Z][A-Z0-9_]{0,31}$/ format Error (typing
       // "G-1" or "Band 1a" is the single most likely HR input), and cleanName's blank/oversize Error.
-      const { id } = await createJobGrade(s, { code: c.code, name: c.name, rank });
+      const { id } = await createJobGrade(s, { code: c.code, name: c.name, rank, description: c.description });
       createdIds.push({ key: c.key, id });
       created += 1;
     } catch (e) {
@@ -453,7 +454,7 @@ export async function saveJobGradesGridAction(payload: {
       continue;
     }
     try {
-      await updateJobGrade(s, { id: u.id, code: u.code, name: u.name, rank });
+      await updateJobGrade(s, { id: u.id, code: u.code, name: u.name, rank, description: u.description });
       // Archive lives on its own core mutation (its own archived/unarchived event); only fire it when the
       // row's archived state actually CHANGED, so a plain rename never emits a spurious status event.
       if (u.setArchived !== null) {

@@ -141,9 +141,13 @@ describe('LeaveDurationFields: summary + day-by-day disclosure', () => {
   });
 
   it('renders the three summary figures from the reused breakdown keys', () => {
-    for (const k of ['breakdown.field.pendingApproval', 'breakdown.field.taken', 'breakdown.field.balance']) {
+    // `available`, not `balance`, since feedback 082fa566: the third figure is the same number the leave
+    // type's own summary calls Available, and showing it under two different words reads as two different
+    // numbers. Pinned here so a revert to `balance` re-opens exactly the inconsistency that was reported.
+    for (const k of ['breakdown.field.pendingApproval', 'breakdown.field.taken', 'breakdown.field.available']) {
       expect(fields.includes(`t('${k}')`), k).toBe(true);
     }
+    expect(fields.includes("t('breakdown.field.balance')"), 'the old Balance label must be gone').toBe(false);
     // The "{value} Days" format the mock-up asks for — reused, not re-invented.
     expect(fields.includes("tMe('leaveBalanceTable.daysValue'")).toBe(true);
     expect(fields.includes('tabular-nums')).toBe(true);

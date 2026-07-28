@@ -1177,6 +1177,7 @@
     "requestsEmptyFiltered": "No {status} requests.",
     "requestLeaveToggle": "+ Request leave",
     "requestLeave": "Request leave",
+    "submittedToast": "Leave request submitted successfully.",
     "fieldEmployee": "Employee",
     "fieldLeaveType": "Leave type",
     "fieldStartDate": "Start date",
@@ -1722,6 +1723,7 @@
     "proposedChildren": "Children",
     "proposedChange": "change",
     "myPayslips": "My payslips",
+    "noPayslipsYet": "No payslips available yet. A payslip appears here once its payroll run is closed and released.",
     "selectMonth": "Payroll month",
     "selectCycle": "Pay cycle",
     "cycleLabel": "{runType} #{seq}",
@@ -1938,7 +1940,7 @@
       "pending": "Pending",
       "reason": "Reason"
     },
-    "myLeaveHeading": "My Leave",
+    "myLeaveHeading": "My Leave Balance",
     "otherLeaveHeading": "Other leave types",
     "detailedTable": "Detailed balance table",
     "leaveGroups": {
@@ -2042,6 +2044,7 @@
     "bulkRejectedAll": "{done, plural, one {# request rejected successfully.} other {# requests rejected successfully.}}",
     "bulkRejectedPartial": "{done} rejected, {skipped} skipped (outside your approval authority).",
     "categoryAll": "All approvals",
+    "approvalHistory": "Approval history",
     "categoryGroupLeave": "Leave",
     "categoryGroupAttendance": "Attendance",
     "categoryGroupTravel": "Travel",

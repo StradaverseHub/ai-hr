@@ -128,7 +128,7 @@ export default async function DashboardPage({
   // stored assignment.status.
   const tEmployeeStatus = await getTranslations('people.employeeStatus');
   const locale = await getLocale(); // R37: render leave-type names in the viewer's language
-  const { s, scopeIds } = await scopedSession();
+  const { s, scopeIds, allowedCount } = await scopedSession();
   const sp = await searchParams;
   // Leave Calendar window (item 8c739dda → ee55f5fe → ed76f6b0): ?abs=YYYY-MM-DD (from the timeline nav
   // / date picker) anchors the window; ?cal=month — falling back to the session cookie the range switch
@@ -566,9 +566,14 @@ export default async function DashboardPage({
     <PageHeader
       title={t('title')}
       description={
-        scopeIds.length >= companies.length
+        // Counted against what this user may REACH, not against every company in the tenant
+        // (feedback ab77dc1f). `companies` comes from listCompanies, which is tenant-scoped, so a user
+        // allowed 2 of 8 was told "2 of 8" — reading as six companies withheld, and telling them the
+        // organisation's company count, which their access does not otherwise reveal. With the right
+        // denominator that same user now sees "all", because they genuinely are seeing all of theirs.
+        scopeIds.length >= allowedCount
           ? t('overviewAll')
-          : t('overviewScoped', { count: scopeIds.length, total: companies.length })
+          : t('overviewScoped', { count: scopeIds.length, total: allowedCount })
       }
     />
   );

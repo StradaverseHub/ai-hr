@@ -4985,10 +4985,54 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
   return withTenant(ctx, async (tx) => {
     const yearStart = `${p.year}-01-01`;
 
-    const types = await tx
+    // WHICH TYPES THIS SWEEP GRANTS — items 783bf55a and baea8e5b.
+    //
+    // This used to be `code IN STANDING_LEAVE_CODES` and nothing else, so ANNUAL, SICK and
+    // HOSPITALIZATION were the only leave types a year-open could ever grant. Any other type was
+    // never visited, which meant an administrator could configure a Service-Based Entitlement or a
+    // grade policy on (say) Caregiver Leave, watch it save successfully, and never see a day of it
+    // reach an employee. Worse, once someone took that leave the ledger had no grant to draw down,
+    // so the balance went BELOW zero — the negative Medical / Hospitalisation / Special figures
+    // reported on My Leave.
+    //
+    // The allowlist itself was not wrong, only the question it asked. ADR-0066 keeps FESTIVE and
+    // one-off grant types out of the accrual / carry-cap / forfeit engines on purpose (see
+    // grantAdHocLeave's header), and that must not change. But "is this code one of three hardcoded
+    // strings" is not the same question as "did an administrator configure entitlement days for
+    // this type", and it is the second one that decides whether a year-open owes the employee days.
+    //
+    // So the set is now: the statutory standing types, PLUS any non-archived type that carries a
+    // real configuration — an active grade policy at the year boundary, or a benefit-scheme
+    // entitlement. A festive type has neither, so it is still untouched here and still escapes
+    // carry-cap and forfeit exactly as ADR-0066 intends.
+    //
+    // Nothing downstream needed widening to match: the statutory floor returns 0 for an unrecognised
+    // code (localization/my/leave.ts entitlement default), the carry cap is already ANNUAL-only so a
+    // newly-granted custom type resets each year rather than accruing a carry it has no rule for,
+    // and earned-method types still divert to accrueEarnedLeave. A type configured at 0 days is
+    // skipped by the existing `days <= 0` guard, so this widens what CAN be granted without granting
+    // anything that was not configured.
+    const allTypes = await tx
       .select({ id: leaveType.id, code: leaveType.code })
       .from(leaveType)
-      .where(and(inArray(leaveType.code, [...STANDING_LEAVE_CODES]), isNull(leaveType.archivedAt)));
+      .where(isNull(leaveType.archivedAt));
+    const policyConfigured = await tx
+      .selectDistinct({ id: leavePolicy.leaveTypeId })
+      .from(leavePolicy)
+      .where(
+        and(
+          lte(leavePolicy.validFrom, yearStart),
+          or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, yearStart)),
+        ),
+      );
+    const schemeConfigured = await tx
+      .selectDistinct({ id: schemeLeaveEntitlement.leaveTypeId })
+      .from(schemeLeaveEntitlement);
+    // Filtered in memory rather than as a SQL subquery: leave_type is a small per-tenant table, and
+    // an empty configured set is a normal state that several drizzle `inArray` forms handle badly.
+    const configuredIds = new Set([...policyConfigured, ...schemeConfigured].map((r) => r.id));
+    const standing = new Set<string>([...STANDING_LEAVE_CODES]);
+    const types = allTypes.filter((t) => standing.has(t.code) || configuredIds.has(t.id));
     const emps = await tx
       .select({
         employmentId: employment.id,

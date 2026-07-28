@@ -50,6 +50,11 @@ export type LeaveHistoryEntry = {
   statusLabel: string;
   /** Pre-translated pending-approval stage line (Manager review / HR review); null unless pending. */
   stageLabel: string | null;
+  /** The person this pending request is waiting on (feedback 567333b7). Null unless the current step is a
+   *  direct-manager one — the role-based kinds stay described by `stageLabel` rather than named, because
+   *  they resolve to a SET of people and naming one of them would be untrue. */
+  approverName: string | null;
+  approverPersonId: string | null;
   /** Pre-translated ADR-0065 pending-cancellation pill; null when none. */
   cancelPendingLabel: string | null;
   /** Own-attachment link + pre-translated label; null when the request carries no document. */
@@ -195,7 +200,34 @@ export function LeaveHistoryCards({ entries, locale }: { entries: LeaveHistoryEn
                         )}
                       </span>
                       {selected.stageLabel && (
-                        <span className="mt-1 block text-xs text-muted-foreground">{selected.stageLabel}</span>
+                        <span className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                          {selected.stageLabel}
+                          {/* Who it is waiting on (feedback 567333b7). Rendered only when the step resolved
+                              to ONE named person — a direct manager. The role-based steps show the stage
+                              wording alone, because they resolve to a set of people and naming one would
+                              be untrue while listing them all would publish the HR roster.
+                              `title` carries the full name on hover, as the item asks; initials are the
+                              fallback so a colleague with no photo renders a circle rather than a broken
+                              image. */}
+                          {selected.approverName && (
+                            <span
+                              title={selected.approverName}
+                              className="inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-[10px] font-medium text-foreground"
+                            >
+                              {selected.approverPersonId ? (
+                                // eslint-disable-next-line @next/next/no-img-element -- same raw <img> the
+                                // rest of the app uses for this route; it streams bytes, not a static asset.
+                                <img
+                                  src={`/personnel/photo/${selected.approverPersonId}`}
+                                  alt={selected.approverName}
+                                  className="size-full object-cover"
+                                />
+                              ) : (
+                                selected.approverName.slice(0, 1).toUpperCase()
+                              )}
+                            </span>
+                          )}
+                        </span>
                       )}
                     </>,
                   )}

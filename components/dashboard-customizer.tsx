@@ -318,11 +318,30 @@ export function DashboardCustomizer({
     });
   };
 
+  /**
+   * Shortcut destinations that should OPEN something on arrival rather than just land on the page.
+   *
+   * The Apply Leave shortcut is configured with href `/leave` (feedback a46fe0c0), so clicking it put the
+   * employee on My Leave and left them to find "+ Leave Request" themselves — two clicks to do the thing
+   * the shortcut is named after. Appending the marker makes the destination page open the existing dialog
+   * on arrival.
+   *
+   * Keyed on the card KEY rather than by rewriting the stored href, deliberately: the href lives in
+   * per-tenant `dashboard_card_config` rows, so editing it would mean a data migration for every tenant
+   * and would silently diverge for any tenant that had customised it. Keying on the card's identity
+   * applies the behaviour everywhere and stays correct if an administrator repoints the card.
+   */
+  const OPENS_ON_ARRIVAL: Record<string, string> = { applyLeave: 'apply=1' };
+
   /** Resolve the render node for a card: bespoke server block, else a generic shortcut link, else null. */
   const nodeFor = (key: string): ReactNode => {
     if (blocks[key] !== undefined) return blocks[key];
     const card = byKey.get(key);
-    if (card && card.href) return <ShortcutCard label={card.label} href={card.href} badge={t('shortcutBadge')} />;
+    if (card && card.href) {
+      const marker = OPENS_ON_ARRIVAL[key];
+      const href = marker ? `${card.href}${card.href.includes('?') ? '&' : '?'}${marker}` : card.href;
+      return <ShortcutCard label={card.label} href={href} badge={t('shortcutBadge')} />;
+    }
     return null;
   };
 

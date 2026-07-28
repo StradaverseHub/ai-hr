@@ -615,7 +615,9 @@ export async function createLeaveType(
 // ── Job grades (ADR-0041 2E) ──────────────────────────────────────────────────────────────────────
 export async function createJobGrade(
   ctx: SessionContext,
-  p: { code: string; name: string; rank?: number },
+  // `description` (e3c733df): optional display-only detail, mirroring profile_option.description. Omitted
+  // ⇒ NULL, so every existing caller is unchanged.
+  p: { code: string; name: string; rank?: number; description?: string | null },
 ) {
   const code = cleanName(p.code, 'Grade code').toUpperCase().replace(/ /g, '_');
   if (!/^[A-Z][A-Z0-9_]{0,31}$/.test(code)) {
@@ -623,10 +625,13 @@ export async function createJobGrade(
   }
   const name = cleanName(p.name, 'Grade name');
   const rank = Number.isFinite(p.rank) ? Number(p.rank) : 0;
+  // Trimmed, and blank collapses to NULL so an empty box and an untouched field mean the same thing in
+  // the database rather than one storing '' and the other NULL.
+  const description = p.description?.trim() ? p.description.trim() : null;
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(jobGrade)
-      .values({ tenantId: ctx.tenantId, code, name, rank })
+      .values({ tenantId: ctx.tenantId, code, name, rank, description })
       .returning({ id: jobGrade.id })
       .catch((e) => {
         // Grade Management (728a7db6): two partial-unique indexes now guard the row — map each to its own
@@ -656,7 +661,9 @@ export async function updateJobGrade(
   // 728a7db6 — `code` is now editable too (reporter: "Update Grade Code"). Optional/undefined ⇒ leave the
   // code untouched (rank/name-only edits stay backward compatible); when present it is normalized +
   // re-validated + uniqueness-checked exactly like createJobGrade.
-  p: { id: string; name: string; rank?: number; code?: string; reason?: string | null },
+  // e3c733df — `description` follows the same optional/undefined rule as `code`: undefined leaves the
+  // stored value alone, so a rank-or-name-only edit can never blank a description someone wrote.
+  p: { id: string; name: string; rank?: number; code?: string; reason?: string | null; description?: string | null },
 ) {
   const name = cleanName(p.name, 'Grade name');
   const rank = Number.isFinite(p.rank) ? Number(p.rank) : 0;
@@ -682,7 +689,14 @@ export async function updateJobGrade(
       .limit(1);
     await tx
       .update(jobGrade)
-      .set({ name, rank, ...(code === undefined ? {} : { code }) })
+      .set({
+        name,
+        rank,
+        ...(code === undefined ? {} : { code }),
+        ...(p.description === undefined
+          ? {}
+          : { description: p.description?.trim() ? p.description.trim() : null }),
+      })
       .where(eq(jobGrade.id, p.id))
       .catch((e) => {
         // 728a7db6 — same dual-index mapping as create: name clash vs code clash → distinct message.

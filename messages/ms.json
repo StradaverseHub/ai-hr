@@ -1177,6 +1177,7 @@
     "requestsEmptyFiltered": "Tiada permohonan {status}.",
     "requestLeaveToggle": "+ Mohon cuti",
     "requestLeave": "Mohon cuti",
+    "submittedToast": "Permohonan cuti berjaya dihantar.",
     "fieldEmployee": "Pekerja",
     "fieldLeaveType": "Jenis cuti",
     "fieldStartDate": "Tarikh mula",
@@ -1722,6 +1723,7 @@
     "proposedChildren": "Anak",
     "proposedChange": "perubahan",
     "myPayslips": "Slip gaji saya",
+    "noPayslipsYet": "Tiada slip gaji lagi. Slip gaji akan dipaparkan di sini setelah pemprosesan gaji ditutup dan dikeluarkan.",
     "selectMonth": "Bulan gaji",
     "selectCycle": "Kitaran gaji",
     "cycleLabel": "{runType} #{seq}",
@@ -1938,7 +1940,7 @@
       "pending": "Menunggu",
       "reason": "Sebab"
     },
-    "myLeaveHeading": "Cuti Saya",
+    "myLeaveHeading": "Baki Cuti Saya",
     "otherLeaveHeading": "Jenis cuti lain",
     "detailedTable": "Jadual baki terperinci",
     "leaveGroups": {
@@ -2042,6 +2044,7 @@
     "bulkRejectedAll": "{done, plural, other {# permohonan berjaya ditolak.}}",
     "bulkRejectedPartial": "{done} ditolak, {skipped} dilangkau (di luar kuasa kelulusan anda).",
     "categoryAll": "Semua kelulusan",
+    "approvalHistory": "Sejarah kelulusan",
     "categoryGroupLeave": "Cuti",
     "categoryGroupAttendance": "Kehadiran",
     "categoryGroupTravel": "Perjalanan",

@@ -632,7 +632,22 @@ export default async function MePage({
             <>
       {/* Payslips */}
       <Card className="overflow-hidden" data-tour="me-payslips">
-        <SectionHeader title={t('myPayslips')} count={payslips.length} />
+        {/* Counted from the SAME list that renders below (feedback 9b25b094). It used to count
+            `payslips.length` — every payslip the employee has — while the list only ever shows
+            `finalizedPayslips` (status closed AND released). An employee whose payslips were not yet
+            released therefore saw a header reading 3 above an empty space, with nothing to explain the
+            gap.
+
+            The count follows the list rather than the list following the count, deliberately: an
+            unreleased payslip is not something the employee is entitled to open yet, so the answer is
+            to stop promising it, not to start showing it. No payslip is being withheld from anyone who
+            should have it — this was the header over-counting, not the list under-returning. */}
+        <SectionHeader title={t('myPayslips')} count={finalizedPayslips.length} />
+        {payslipMonths.length === 0 && (
+          // Said rather than implied. Previously nothing at all rendered here, so "no payslips yet" and
+          // "something failed to load" looked identical.
+          <p className="p-4 text-sm text-muted-foreground">{t('noPayslipsYet')}</p>
+        )}
         {payslipMonths.length > 0 && (
           // Select by payroll month + pay cycle (server component, GET round-trip — no client JS).
           // Mirrors app/payroll/reports/page.tsx: <form method="get"> + native <select> + submit.

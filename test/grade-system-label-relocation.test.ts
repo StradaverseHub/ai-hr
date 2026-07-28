@@ -179,9 +179,9 @@ describe('b1b81a08 · the save fan-out — good rows commit, only the bad row is
     await createJobGrade(ctx(), { code: 'EXEC', name: 'Executive' });
     const res = await saveJobGradesGridAction({
       creates: [
-        { key: 'r1', code: 'JNR', name: 'Junior', rank: '1' },
-        { key: 'r2', code: 'EXEC', name: 'Executive Two', rank: '2' },
-        { key: 'r3', code: 'SNR', name: 'Senior', rank: '3' },
+        { key: 'r1', code: 'JNR', name: 'Junior', description: '', rank: '1' },
+        { key: 'r2', code: 'EXEC', name: 'Executive Two', description: '', rank: '2' },
+        { key: 'r3', code: 'SNR', name: 'Senior', description: '', rank: '3' },
       ],
       updates: [],
     });
@@ -202,9 +202,9 @@ describe('b1b81a08 · the save fan-out — good rows commit, only the bad row is
     await createJobGrade(ctx(), { code: 'EXEC', name: 'Executive' });
     const res = await saveJobGradesGridAction({
       creates: [
-        { key: 'a', code: 'AAA', name: 'Band A', rank: '1' },
-        { key: 'b', code: 'BBB', name: 'executive', rank: '2' },
-        { key: 'c', code: 'CCC', name: 'Band C', rank: '3' },
+        { key: 'a', code: 'AAA', name: 'Band A', description: '', rank: '1' },
+        { key: 'b', code: 'BBB', name: 'executive', description: '', rank: '2' },
+        { key: 'c', code: 'CCC', name: 'Band C', description: '', rank: '3' },
       ],
       updates: [],
     });
@@ -224,7 +224,7 @@ describe('b1b81a08 · the save fan-out — good rows commit, only the bad row is
 
   it('returns a CODE row error (not a thrown banner) for a badly-shaped code like "G-1"', async () => {
     const res = await saveJobGradesGridAction({
-      creates: [{ key: 'x', code: 'G-1', name: 'Grade One', rank: '1' }],
+      creates: [{ key: 'x', code: 'G-1', name: 'Grade One', description: '', rank: '1' }],
       updates: [],
     });
     expect(res.ok).toBe(false);
@@ -234,7 +234,7 @@ describe('b1b81a08 · the save fan-out — good rows commit, only the bad row is
 
   it('persists a rank typed as text as a real number (Number.isFinite("3") is false)', async () => {
     const res = await saveJobGradesGridAction({
-      creates: [{ key: 'x', code: 'MGR', name: 'Manager', rank: '3' }],
+      creates: [{ key: 'x', code: 'MGR', name: 'Manager', description: '', rank: '3' }],
       updates: [],
     });
     expect(res.ok).toBe(true);
@@ -244,7 +244,7 @@ describe('b1b81a08 · the save fan-out — good rows commit, only the bad row is
 
   it('returns a RANK row error for a non-numeric rank instead of silently storing 0', async () => {
     const res = await saveJobGradesGridAction({
-      creates: [{ key: 'x', code: 'MGR', name: 'Manager', rank: 'ten' }],
+      creates: [{ key: 'x', code: 'MGR', name: 'Manager', description: '', rank: 'ten' }],
       updates: [],
     });
     expect(res.ok).toBe(false);
@@ -257,14 +257,14 @@ describe('b1b81a08 · the save fan-out — good rows commit, only the bad row is
     const g = await createJobGrade(ctx(), { code: 'EXEC', name: 'Executive', rank: 1 });
     const renamed = await saveJobGradesGridAction({
       creates: [],
-      updates: [{ key: g.id, id: g.id, code: 'EXEC', name: 'Executive Band', rank: '1', setArchived: null }],
+      updates: [{ key: g.id, id: g.id, code: 'EXEC', name: 'Executive Band', description: '', rank: '1', setArchived: null }],
     });
     expect(renamed.ok).toBe(true);
     expect(await eventTypesFor(b.tenantId, g.id)).not.toContain('job-grade.archived');
 
     const archivedRes = await saveJobGradesGridAction({
       creates: [],
-      updates: [{ key: g.id, id: g.id, code: 'EXEC', name: 'Executive Band', rank: '1', setArchived: true }],
+      updates: [{ key: g.id, id: g.id, code: 'EXEC', name: 'Executive Band', description: '', rank: '1', setArchived: true }],
     });
     expect(archivedRes.ok).toBe(true);
     expect(await eventTypesFor(b.tenantId, g.id)).toContain('job-grade.archived');

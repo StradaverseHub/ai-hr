@@ -397,7 +397,13 @@ export function LeaveDurationFields({
                     {t('breakdown.field.taken')}
                   </th>
                   <th scope="col" className="pb-0.5 text-right font-medium">
-                    {t('breakdown.field.balance')}
+                    {/* "Available", not "Balance" (feedback 082fa566) — the same figure is called Available
+                        on the leave type's own summary, and two names for one number reads as two numbers.
+                        A NEW key rather than an edit to breakdown.field.balance, so anything that genuinely
+                        means a balance keeps its word. The VALUE is unchanged: summary.balance already
+                        comes from the same server action the summary card reads, so this is a label fix
+                        and not a recalculation. */}
+                    {t('breakdown.field.available')}
                   </th>
                 </tr>
               </thead>

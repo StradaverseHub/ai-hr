@@ -1177,6 +1177,7 @@
     "requestsEmptyFiltered": "Không có yêu cầu {status}.",
     "requestLeaveToggle": "+ Yêu cầu nghỉ phép",
     "requestLeave": "Yêu cầu nghỉ phép",
+    "submittedToast": "Đã gửi đơn xin nghỉ thành công.",
     "fieldEmployee": "Nhân viên",
     "fieldLeaveType": "Loại phép",
     "fieldStartDate": "Ngày bắt đầu",
@@ -1722,6 +1723,7 @@
     "proposedChildren": "Số con",
     "proposedChange": "thay đổi",
     "myPayslips": "Phiếu lương của tôi",
+    "noPayslipsYet": "Chưa có phiếu lương. Phiếu lương sẽ xuất hiện sau khi kỳ lương được chốt và phát hành.",
     "selectMonth": "Tháng trả lương",
     "selectCycle": "Chu kỳ trả lương",
     "cycleLabel": "{runType} #{seq}",
@@ -1938,7 +1940,7 @@
       "pending": "Đang chờ",
       "reason": "Lý do"
     },
-    "myLeaveHeading": "Nghỉ phép của tôi",
+    "myLeaveHeading": "Số dư phép của tôi",
     "otherLeaveHeading": "Loại nghỉ phép khác",
     "detailedTable": "Bảng số dư chi tiết",
     "leaveGroups": {
@@ -2042,6 +2044,7 @@
     "bulkRejectedAll": "{done, plural, other {Đã từ chối thành công # yêu cầu.}}",
     "bulkRejectedPartial": "Đã từ chối {done}, bỏ qua {skipped} (ngoài thẩm quyền phê duyệt của bạn).",
     "categoryAll": "Tất cả phê duyệt",
+    "approvalHistory": "Lịch sử phê duyệt",
     "categoryGroupLeave": "Nghỉ phép",
     "categoryGroupAttendance": "Chấm công",
     "categoryGroupTravel": "Công tác",

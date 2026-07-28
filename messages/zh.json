@@ -1177,6 +1177,7 @@
     "requestsEmptyFiltered": "无{status}申请。",
     "requestLeaveToggle": "+ 申请休假",
     "requestLeave": "申请休假",
+    "submittedToast": "请假申请已成功提交。",
     "fieldEmployee": "员工",
     "fieldLeaveType": "休假类型",
     "fieldStartDate": "开始日期",
@@ -1722,6 +1723,7 @@
     "proposedChildren": "子女",
     "proposedChange": "变更",
     "myPayslips": "我的工资单",
+    "noPayslipsYet": "暂无工资单。工资单将在薪资批次关闭并发布后显示。",
     "selectMonth": "工资月份",
     "selectCycle": "发薪周期",
     "cycleLabel": "{runType} #{seq}",
@@ -1938,7 +1940,7 @@
       "pending": "待处理",
       "reason": "原因"
     },
-    "myLeaveHeading": "我的休假",
+    "myLeaveHeading": "我的假期余额",
     "otherLeaveHeading": "其他休假类型",
     "detailedTable": "详细余额表",
     "leaveGroups": {
@@ -2042,6 +2044,7 @@
     "bulkRejectedAll": "{done, plural, other {已成功拒绝 # 项申请。}}",
     "bulkRejectedPartial": "已拒绝 {done} 项，跳过 {skipped} 项（超出您的审批权限）。",
     "categoryAll": "全部审批",
+    "approvalHistory": "审批历史",
     "categoryGroupLeave": "休假",
     "categoryGroupAttendance": "考勤",
     "categoryGroupTravel": "出差",

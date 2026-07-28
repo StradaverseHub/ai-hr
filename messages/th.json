@@ -1177,6 +1177,7 @@
     "requestsEmptyFiltered": "ไม่มีคำขอ{status}",
     "requestLeaveToggle": "+ ขอลา",
     "requestLeave": "ขอลา",
+    "submittedToast": "ส่งคำขอลาเรียบร้อยแล้ว",
     "fieldEmployee": "พนักงาน",
     "fieldLeaveType": "ประเภทการลา",
     "fieldStartDate": "วันที่เริ่ม",
@@ -1722,6 +1723,7 @@
     "proposedChildren": "บุตร",
     "proposedChange": "เปลี่ยนแปลง",
     "myPayslips": "สลิปเงินเดือนของฉัน",
+    "noPayslipsYet": "ยังไม่มีสลิปเงินเดือน สลิปจะแสดงที่นี่เมื่อรอบการจ่ายเงินเดือนปิดและเผยแพร่แล้ว",
     "selectMonth": "เดือนจ่ายเงินเดือน",
     "selectCycle": "รอบการจ่ายเงิน",
     "cycleLabel": "{runType} #{seq}",
@@ -1938,7 +1940,7 @@
       "pending": "รอดำเนินการ",
       "reason": "เหตุผล"
     },
-    "myLeaveHeading": "การลาของฉัน",
+    "myLeaveHeading": "ยอดวันลาของฉัน",
     "otherLeaveHeading": "ประเภทการลาอื่น ๆ",
     "detailedTable": "ตารางยอดคงเหลือโดยละเอียด",
     "leaveGroups": {
@@ -2042,6 +2044,7 @@
     "bulkRejectedAll": "{done, plural, other {ปฏิเสธ # คำขอเรียบร้อยแล้ว}}",
     "bulkRejectedPartial": "ปฏิเสธ {done} รายการ ข้าม {skipped} รายการ (นอกเหนืออำนาจอนุมัติของคุณ)",
     "categoryAll": "การอนุมัติทั้งหมด",
+    "approvalHistory": "ประวัติการอนุมัติ",
     "categoryGroupLeave": "การลา",
     "categoryGroupAttendance": "การเข้างาน",
     "categoryGroupTravel": "การเดินทาง",
