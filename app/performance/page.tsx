@@ -12,18 +12,21 @@ import {
   scheduleCheckInAction,
 } from './actions';
 import { NewCycleForm } from './new-cycle-form';
+import { Pager } from '@/components/pager';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
 
 export default async function PerformancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; page?: string; size?: string }>;
 }) {
   const { s } = await scopedSession();
   const t = await getTranslations('performance.list');
   const admin = isAdmin(s);
   const manager = (s.roles ?? []).includes('manager');
   if (!admin && !manager) redirect('/');
-  const { error } = await searchParams;
+  const sp = await searchParams;
+  const { error } = sp;
   const today = new Date().toISOString().slice(0, 10);
 
   const [cycles, pending, companies, checkinData] = await Promise.all([
@@ -33,6 +36,8 @@ export default async function PerformancePage({
     managerCheckIns(s),
   ]);
   const { checkins, reports } = checkinData;
+  // fc776376 — review cycles accumulate every period; the rest of this screen is a fixed worklist.
+  const { rows: cyclePage, state: pgState } = paginateRows(cycles, parsePageQuery(sp));
   const checkinTone = (status: string) =>
     status === 'completed'
       ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
@@ -158,7 +163,7 @@ export default async function PerformancePage({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {cycles.map((c) => (
+                  {cyclePage.map((c) => (
                     <tr key={c.id} className="hover:bg-muted/40">
                       <td className="px-4 py-3">
                         <Link href={`/performance/${c.id}`} className="font-medium text-foreground hover:text-primary">
@@ -191,6 +196,7 @@ export default async function PerformancePage({
                 </tbody>
               </table>
             )}
+            <Pager basePath="/performance" state={pgState} />
           </Card>
 
           <Card data-tour="performance-new-cycle">

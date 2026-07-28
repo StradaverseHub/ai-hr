@@ -48,7 +48,6 @@ import {
   deleteLeavePolicyAction,
   deleteLeaveTypeAction,
   updateLeavePolicyAction,
-  saveServiceEntitlementAction,
   updateLeaveTypeAction,
   createGradeGroupAction,
   updateGradeGroupAction,
@@ -915,7 +914,12 @@ export default async function LeaveEntitlementsPage({
               deletePolicyAction={deleteLeavePolicyAction}
               countInScopeAction={countEmployeesInScopeAction}
               upsertSchemeEntitlementAction={upsertSchemeEntitlementAction}
-              saveServiceEntitlementAction={saveServiceEntitlementAction}
+              /* 9816a5ad — Service Based Entitlements now lists BENEFIT SCHEMES per company instead of job
+                 grades. Both props are the arrays schemeConfigProps already prepared once at page level, so
+                 the sub-step costs no extra query and cannot show a different scheme list than the Benefit
+                 Schemes surface beside it. */
+              benefitSchemes={schemeConfigProps.schemes}
+              gradeGroups={schemeConfigProps.gradeGroups}
               />,
             ]),
           )}

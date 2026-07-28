@@ -448,6 +448,7 @@
       "subjectToHrdf": "Subject to HRDF",
       "subjectToHrdfHint": "When checked, this employee's qualifying earnings are included in the HRD Corp (HRDF) levy calculation during payroll; when unchecked, the employee is excluded entirely.",
       "subjectToHrdfFollowingDefault": "Following the company's HRDF registration default. Save to set an explicit choice for this employee.",
+      "subjectToHrdfCompanyNotRegistered": "Set to Yes, but this employee’s company has no HRDF Contribution Rate (Organization ▸ Statutory), so payroll charges no levy for them. The choice is saved and takes effect once the company is registered.",
       "othersStatutorySave": "Save others statutory",
       "assignmentHistory": "Assignment history",
       "periodValidTime": "Period (valid time)",
@@ -1133,8 +1134,22 @@
           "currentInformation": "Current Information",
           "afterInformation": "After (New Information)",
           "comparisonHint": "Only the fields you change are recorded. A value left as it is stays untouched and creates no history entry.",
-          "companyReadOnly": "Changed on the Employment tab"
-        }
+          "companyReadOnly": "Changed on the Employment tab",
+          "editHint": "Saving a correction rolls this event back and records the corrected version. The original stays in Employment History, marked as corrected — it is never removed.",
+          "payrollWarning": "A processed payroll run already covered this period. Payslips are not reprocessed automatically.",
+          "correctionReason": "Reason for the correction (optional)",
+          "saveCorrection": "Save Correction"
+        },
+        "edit": "Edit",
+        "delete": "Delete",
+        "editTitle": "Edit Movement Event",
+        "reversedBadge": "Reversed",
+        "correctedBadge": "Corrected",
+        "deleteConfirmTitle": "Roll this movement event back?",
+        "deleteConfirmDescription": "The employee's details go back to the state immediately before this event. The event stays in Employment History, marked as reversed, so the record remains auditable.",
+        "deleteConfirmPayroll": "A processed payroll run already covered this period. The rollback will NOT reprocess any payslip — reprocess it separately if that is what you need. The event stays in Employment History, marked as reversed.",
+        "correctionReasonLabel": "Reason for the correction (optional)",
+        "payrollLocked": "Locked by a closed payroll run"
       },
       "salaryCurrency": "Currency"
     },
@@ -2469,6 +2484,7 @@
       "proratedDays": "prorated · {worked}/{total} days",
       "noPayslips": "No payslips in this batch.",
       "totalHrdf": "HRD Corp levy",
+      "totalHrdfNotRegistered": "Not registered",
       "componentImport": {
         "title": "Import pay components (CSV)",
         "description": "Bulk-add one-off allowances, deductions, OT or bonuses to this draft batch. Columns: employee (email), component (code), amount, notes.",
@@ -3131,7 +3147,8 @@
           "empty": "No processed payroll results match the selected filters.",
           "showBreakdown": "Show breakdown",
           "hideBreakdown": "Hide breakdown",
-          "totalEmployerContributions": "Total employer contributions"
+          "totalEmployerContributions": "Total employer contributions",
+          "hrdfNotRegistered": "Not registered"
         },
         "exportCsv": "Export CSV"
       }
@@ -3524,6 +3541,8 @@
       "hrdfNotRegistered": "No Contribution",
       "hrdfMandatory": "1.0% Contribution",
       "hrdfOptional": "0.5% Contribution",
+      "statutoryMissingTitle": "Missing statutory registration",
+      "statutoryMissingHint": "These companies have no Malaysia statutory record. Payroll treats them as having no HRDF Contribution Rate, so no HRD Corp levy is charged. Open the company and complete its Statutory tab.",
       "businessUnitsCount": "Business units ({count})",
       "fieldBusinessUnit": "Business unit",
       "businessUnitNone": "— None —",
@@ -4171,9 +4190,7 @@
         "help": "Choose which entitlement and balance figures employees see for this leave type in My Profile → Leave, and explain each one in the same place: tick an item and its Description and Formula fields appear beside it — employees see that text when they hover the item's info icon. Unticked items are hidden in self-service only; HR always sees everything. Explanations change wording only, never any leave figure.",
         "available": "Available",
         "taken": "Taken",
-        "entitlementToDate": "Entitlement to Date",
         "broughtForward": "Brought Forward",
-        "expiredBroughtForward": "Expired Brought Forward",
         "unplanned": "Unplanned",
         "adjustment": "Adjustment",
         "overutilized": "Overutilized",
@@ -4182,7 +4199,6 @@
         "carryForwardExpiry": "Brought Forward Expiry Date",
         "forfeited": "Forfeited Balance",
         "groupOther": "Other",
-        "transactionHistory": "Transaction History",
         "entitlementCalcBreakdown": "Entitlement Calculation Breakdown"
       },
       "dayTypeInclusion": {
@@ -4298,13 +4314,11 @@
       "gradeDragAria": "Drag {name} into a grade group",
       "serviceCompanyLabel": "Company",
       "serviceSelectCompanyPlaceholder": "Select a company…",
-      "serviceSelectCompanyEmpty": "Select a company to load its grades and set service-based entitlements.",
-      "serviceNoGrades": "No active grades to show. Add grades under Settings → System Labels → Organisation Labels.",
-      "serviceNonConformingNote": "Custom service bands — edit under Company entitlements to keep them.",
-      "serviceTableNote": "Days pre-fill from what each grade resolves to today. Editing a grade recalculates its employees; grades you don't touch are unchanged.",
-      "serviceUnder2Aria": "Days under 2 years for {grade}",
-      "serviceMidAria": "Days 2 to 5 years for {grade}",
-      "serviceOverAria": "Days over 5 years for {grade}",
+      "serviceSelectCompanyEmpty": "Select a company to load its benefit schemes and set service-based entitlements.",
+      "serviceNoSchemes": "No active benefit schemes for this company. Create one under Benefit Schemes.",
+      "serviceSchemeUnconfigured": "Not configured for this leave type yet — enter days to add it.",
+      "serviceGradeDisagreement": "Grade-level entitlement for these grades currently gives {days}. The scheme figures shown here are what employees receive.",
+      "serviceTableNote": "These are the same figures as the scheme's Leave Entitlements — saving here updates both. Employees whose grade is in no scheme keep using the company entitlements below.",
       "schemeEntitlementsTitle": "Benefit scheme entitlements"
     },
     "holidays": {
@@ -6309,11 +6323,14 @@
     "leaveTypesMore": "{n, plural, one {+# more} other {+# more}}",
     "companyDefaultsTitle": "Company defaults and escalation",
     "companyDefaultsHint": "Open a company to edit its base approval chain, its multi-step approval switch and its escalation settings.",
-    "selectGrades": "Grades",
+    "selectBenefitSchemes": "Benefit schemes",
+    "noBenefitSchemes": "No active benefit schemes for the chosen companies.",
+    "schemeNoGradeGroup": "Give this scheme a grade group before assigning an approval template to it.",
+    "legacyGradeScope": "Assigned by grade — re-assign by benefit scheme",
+    "schemeScopeUnknown": "Scope matches no benefit scheme",
     "selectAll": "Select all",
     "deselectAll": "Deselect all",
     "panelNoneMeansAll": "None selected = applies to all",
-    "noGrades": "No job grades configured yet.",
     "panelPickAtLeastOne": "Pick at least one"
   },
   "feedback": {
@@ -7331,6 +7348,23 @@
       "guides": "Add the help guides",
       "admin": "Create the administrator login",
       "invitation": "Issue the activation link"
+    },
+    "explorer": {
+      "title": "Record relationships",
+      "description": "Pick a record type to see what points at it, what it points at, and which module owns it. Read from the live database every time, so it is never out of date.",
+      "recordType": "Record type",
+      "choose": "Choose a record type…",
+      "show": "Show",
+      "formNote": "{count} record types in this installation. Related types are links — follow one to move across the map.",
+      "unknownTable": "There is no record type called “{table}” in this installation.",
+      "sharedSpine": "Shared spine (no single module)",
+      "primaryKey": "Primary key",
+      "none": "None",
+      "references": "Points at",
+      "noReferences": "This record type does not point at anything.",
+      "referencedBy": "Pointed at by",
+      "noReferencedBy": "Nothing points at this record type.",
+      "onDelete": "On delete"
     }
   },
   "currencySelect": {
@@ -7338,5 +7372,16 @@
     "searchPlaceholder": "Search currency…",
     "noResults": "No currency found",
     "legacySuffix": "(existing value)"
+  },
+  "pagination": {
+    "rowsPerPage": "Rows",
+    "all": "All",
+    "range": "{from}–{to} of {total, number}",
+    "rangeEmpty": "0 of {total, number}",
+    "previous": "← Previous",
+    "next": "Next →",
+    "truncated": "Showing the first {shown, number} of {total, number} rows.",
+    "truncatedHint": "Use Reports → Export for the complete set.",
+    "truncatedExport": "Export the complete set"
   }
 }

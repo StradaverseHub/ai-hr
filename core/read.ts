@@ -61,6 +61,7 @@ import {
   reportingLineScope,
   toilAccrual,
 } from '../db/schema';
+import { ALL_ROW_CEILING } from '../lib/pagination';
 import { daysInMonth } from './payroll';
 import { filterDelegationOrgScopeTx } from './approvals';
 import { payslipReleaseAt } from './payroll-policy-config';
@@ -3236,10 +3237,39 @@ export type AuditFilters = {
   offset?: number;
 };
 
+/** The audit filter predicate, shared by the row page and its COUNT so the two can never disagree
+ *  about what "matching" means (fc776376 — the pager's "26–50 of 312" needs a real total). */
+function auditWhere(f: AuditFilters) {
+  return and(
+    f.aggregateType ? eq(domainEvent.aggregateType, f.aggregateType) : undefined,
+    f.aggregateTypes && f.aggregateTypes.length
+      ? inArray(domainEvent.aggregateType, f.aggregateTypes)
+      : undefined,
+    f.aggregateId ? eq(domainEvent.aggregateId, f.aggregateId) : undefined,
+    f.actorId ? eq(domainEvent.actorId, f.actorId) : undefined,
+    // 4ec5a940 — action = the event's last dot-segment. Parameterised (never interpolated), so the
+    // caller's allowlist + this bound param double-guard against injection.
+    f.action ? sql`${domainEvent.eventType} ilike ${'%.' + f.action}` : undefined,
+    // 4ec5a940 — company scope drawn from the payload (events that record `companyId`).
+    f.companyId ? sql`${domainEvent.payload}->>'companyId' = ${f.companyId}` : undefined,
+    // 4ec5a940 — the leave-type aggregate row itself, or any event scoped to it via payload.
+    f.leaveTypeId
+      ? sql`((${domainEvent.aggregateType} = 'leave-type' and ${domainEvent.aggregateId}::text = ${f.leaveTypeId}) or ${domainEvent.payload}->>'leaveTypeId' = ${f.leaveTypeId})`
+      : undefined,
+    f.from ? gte(domainEvent.occurredAt, new Date(`${f.from}T00:00:00Z`)) : undefined,
+    f.to ? lte(domainEvent.occurredAt, new Date(`${f.to}T23:59:59.999Z`)) : undefined,
+    f.eventQuery
+      ? sql`(${domainEvent.eventType} ilike ${'%' + f.eventQuery + '%'} or ${domainEvent.aggregateType} ilike ${'%' + f.eventQuery + '%'})`
+      : undefined,
+  );
+}
+
 /** The full append-only event ledger, filterable. RLS scopes to the tenant; the actor name is
  *  resolved from app_user → person (null for SYSTEM/AGENT/EXTERNAL or unlinked principals). */
 export function auditEvents(ctx: SessionContext, f: AuditFilters = {}): Promise<AuditRow[]> {
-  const limit = Math.min(f.limit ?? 100, 500);
+  // The upper bound is the shared "All" ceiling (fc776376): a reader who asks for everything gets
+  // everything up to the ceiling, and the pager says on screen when that truncates.
+  const limit = Math.min(f.limit ?? 100, ALL_ROW_CEILING);
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -3256,34 +3286,22 @@ export function auditEvents(ctx: SessionContext, f: AuditFilters = {}): Promise<
       .from(domainEvent)
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
       .leftJoin(person, eq(person.id, appUser.personId))
-      .where(
-        and(
-          f.aggregateType ? eq(domainEvent.aggregateType, f.aggregateType) : undefined,
-          f.aggregateTypes && f.aggregateTypes.length
-            ? inArray(domainEvent.aggregateType, f.aggregateTypes)
-            : undefined,
-          f.aggregateId ? eq(domainEvent.aggregateId, f.aggregateId) : undefined,
-          f.actorId ? eq(domainEvent.actorId, f.actorId) : undefined,
-          // 4ec5a940 — action = the event's last dot-segment. Parameterised (never interpolated), so the
-          // caller's allowlist + this bound param double-guard against injection.
-          f.action ? sql`${domainEvent.eventType} ilike ${'%.' + f.action}` : undefined,
-          // 4ec5a940 — company scope drawn from the payload (events that record `companyId`).
-          f.companyId ? sql`${domainEvent.payload}->>'companyId' = ${f.companyId}` : undefined,
-          // 4ec5a940 — the leave-type aggregate row itself, or any event scoped to it via payload.
-          f.leaveTypeId
-            ? sql`((${domainEvent.aggregateType} = 'leave-type' and ${domainEvent.aggregateId}::text = ${f.leaveTypeId}) or ${domainEvent.payload}->>'leaveTypeId' = ${f.leaveTypeId})`
-            : undefined,
-          f.from ? gte(domainEvent.occurredAt, new Date(`${f.from}T00:00:00Z`)) : undefined,
-          f.to ? lte(domainEvent.occurredAt, new Date(`${f.to}T23:59:59.999Z`)) : undefined,
-          f.eventQuery
-            ? sql`(${domainEvent.eventType} ilike ${'%' + f.eventQuery + '%'} or ${domainEvent.aggregateType} ilike ${'%' + f.eventQuery + '%'})`
-            : undefined,
-        ),
-      )
+      .where(auditWhere(f))
       .orderBy(desc(domainEvent.occurredAt), desc(domainEvent.sequence))
       .limit(limit)
       .offset(f.offset ?? 0),
   ) as Promise<AuditRow[]>;
+}
+
+/** How many ledger rows match `f`, ignoring limit/offset — the pager's total. */
+export function auditEventsCount(ctx: SessionContext, f: AuditFilters = {}): Promise<number> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(domainEvent)
+      .where(auditWhere(f));
+    return row?.n ?? 0;
+  });
 }
 
 /** The distinct aggregate types present in the tenant's log — drives the filter dropdown. */
@@ -3371,7 +3389,9 @@ export function listApprovalHistory(
 ): Promise<ApprovalHistoryRow[]> {
   const typesCsv = f.module ? aggregateTypesOfModule[f.module].join(',') : null;
   const action = f.action && isApprovalHistoryAction(f.action) ? f.action : null;
-  const limit = Math.min(Math.max(f.limit ?? 50, 1), 500);
+  // The upper bound moved out of the SQL function into here (migration 0320) so the count variant can
+  // ask it for everything. This is the shared "All" ceiling — the pager says on screen when it truncates.
+  const limit = Math.min(Math.max(f.limit ?? 50, 1), ALL_ROW_CEILING);
   const offset = Math.max(f.offset ?? 0, 0);
   return withTenant(ctx, async (tx) => {
     const res = await tx.execute(sql`
@@ -3412,6 +3432,26 @@ export function listApprovalHistory(
       onBehalfOfName: r.on_behalf_of_name,
       payload: r.payload,
     }));
+  });
+}
+
+/** How many history rows this viewer can reach under `f`, ignoring limit/offset — the pager's total.
+ *  Runs the SAME definer function as the row query (migration 0320), so the counter can never promise
+ *  rows the visibility walk would withhold. */
+export function approvalHistoryCount(ctx: SessionContext, f: ApprovalHistoryFilters = {}): Promise<number> {
+  const typesCsv = f.module ? aggregateTypesOfModule[f.module].join(',') : null;
+  const action = f.action && isApprovalHistoryAction(f.action) ? f.action : null;
+  return withTenant(ctx, async (tx) => {
+    const res = await tx.execute(sql`
+      SELECT app.approval_history_count(
+        ${f.from ?? null}::timestamptz,
+        ${f.to ?? null}::timestamptz,
+        string_to_array(${typesCsv}::text, ','),
+        ${action}::text,
+        ${f.deciderEmploymentId ?? null}::uuid
+      ) AS n`);
+    const rows = res as unknown as { n: number | string | null }[];
+    return Number(rows[0]?.n ?? 0);
   });
 }
 

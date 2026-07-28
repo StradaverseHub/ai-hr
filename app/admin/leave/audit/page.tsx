@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { auditActors, auditEvents, listCompanies, listLeaveTypes } from '@/core/read';
+import { auditActors, auditEvents, auditEventsCount, listCompanies, listLeaveTypes } from '@/core/read';
 import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { AuditTable } from '@/components/audit-table';
 import { aggregateLabel } from '@/lib/audit-format';
-
-const PAGE = 100;
+import { Pager } from '@/components/pager';
+import { pageState, parsePageQuery } from '@/lib/pagination';
 
 /**
  * Leave Settings — Audit tab (0d147b78 — Leave Settings Reorganization; enhanced 4ec5a940).
@@ -50,6 +50,7 @@ export default async function LeaveAuditPage({
     from?: string;
     to?: string;
     page?: string;
+    size?: string;
     action?: string;
     user?: string;
     company?: string;
@@ -60,7 +61,7 @@ export default async function LeaveAuditPage({
   const t = await getTranslations('admin.leave');
   const ta = await getTranslations('admin.audit');
   const sp = await searchParams;
-  const page = Math.max(0, Number(sp.page) || 0);
+  const pq = parsePageQuery(sp);
   // The record-type dropdown offers only the leave aggregates; an out-of-set ?type is ignored so the
   // Audit tab can never show non-leave events. Absent ⇒ the full leave set.
   const chosenType = (LEAVE_AGGREGATES as readonly string[]).includes(sp.type ?? '') ? sp.type : undefined;
@@ -87,12 +88,13 @@ export default async function LeaveAuditPage({
     leaveTypeId: chosenLeaveType,
     from: /^\d{4}-\d{2}-\d{2}$/.test(sp.from ?? '') ? sp.from : undefined,
     to: /^\d{4}-\d{2}-\d{2}$/.test(sp.to ?? '') ? sp.to : undefined,
-    limit: PAGE + 1, // fetch one extra to know if there's a next page
-    offset: page * PAGE,
   };
-  const rowsPlusOne = await auditEvents(s, filters);
-  const hasNext = rowsPlusOne.length > PAGE;
-  const rows = rowsPlusOne.slice(0, PAGE);
+  // fc776376 — one filter object, one page of rows, one COUNT for the position counter.
+  const [rows, total] = await Promise.all([
+    auditEvents(s, { ...filters, limit: pq.limit, offset: pq.offset }),
+    auditEventsCount(s, filters),
+  ]);
+  const pgState = pageState(pq, total, rows.length);
   const nowMs = Date.now();
 
   // Timeline grouping — bucket the (already occurredAt-desc) rows by KL calendar day, preserving order.
@@ -129,12 +131,6 @@ export default async function LeaveAuditPage({
     leaveType: chosenLeaveType,
     from: filters.from,
     to: filters.to,
-  };
-  const qs = (over: Record<string, string | number | undefined>) => {
-    const merged = { ...activeParams, page: sp.page, ...over };
-    const p = new URLSearchParams();
-    for (const [k, v] of Object.entries(merged)) if (v) p.set(k, String(v));
-    return `/admin/leave/audit?${p.toString()}`;
   };
   const exportHref = (format: string) => {
     const p = new URLSearchParams();
@@ -249,25 +245,12 @@ export default async function LeaveAuditPage({
             </div>
           ))
         )}
-        {(page > 0 || hasNext) && (
-          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
-            {page > 0 ? (
-              <Link href={qs({ page: page - 1 || undefined })} className="text-primary hover:underline">
-                ← {ta('newer')}
-              </Link>
-            ) : (
-              <span />
-            )}
-            <span className="text-xs text-muted-foreground">{ta('pageIndicator', { page: page + 1 })}</span>
-            {hasNext ? (
-              <Link href={qs({ page: page + 1 })} className="text-primary hover:underline">
-                {ta('older')} →
-              </Link>
-            ) : (
-              <span />
-            )}
-          </div>
-        )}
+        <Pager
+          basePath="/admin/leave/audit"
+          params={activeParams}
+          state={pgState}
+          exportHref={exportHref('csv')}
+        />
       </Card>
     </div>
   );

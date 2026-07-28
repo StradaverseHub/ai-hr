@@ -128,11 +128,11 @@ describe('7b945408 · Benefit Schemes sub-step — the scoped scheme area', () =
   });
 });
 
-describe('Service Based Entitlements — the company-driven grade table + the Preview Scenario checker', () => {
-  // Restructure Service-Based Leave Entitlements by Company and Grade: the service sub-step is now the
-  // company-driven ServiceEntitlementTable (company-only picker → auto-populated grade rows). The old
-  // per-type benefit-scheme table (LeaveTypeEntitlementTable) relocated to the Benefit Schemes sub-step,
-  // where naming schemes is correct.
+describe('Service Based Entitlements — the company-driven scheme table + the Preview Scenario checker', () => {
+  // Restructure Service-Based Leave Entitlements by Company and Grade: the service sub-step is the
+  // company-driven ServiceEntitlementTable. 9816a5ad changed WHAT its rows are — the company's benefit
+  // schemes rather than job grades — and with it the writer: rows post the scheme entitlement upsert, so
+  // this sub-step maintains the figures leave calculation actually reads instead of a second set.
   it('the service sub-step renders ServiceEntitlementTable, then the policy timeline, then the preview', () => {
     const seg = entitlementSegment();
     const service = subStepSlice(seg, 'service');
@@ -144,13 +144,17 @@ describe('Service Based Entitlements — the company-driven grade table + the Pr
     const preview = service.indexOf('{previewScenarioSection}');
     expect(timeline).toBeGreaterThan(table);
     expect(preview).toBeGreaterThan(timeline);
-    // The company-driven table is fed the leave type identity, companies, active grades and this type's
-    // policies, and saves through the dedicated first-save-safe action.
+    // The company-driven table is fed the leave type identity, companies, the tenant's benefit schemes and
+    // their grade groups, and saves through the SAME scheme upsert the Benefit Schemes surface posts — the
+    // single-source-of-truth requirement of 9816a5ad. A second writer here would be the duplicate
+    // maintenance the item exists to remove.
     expect(service).toContain('leaveTypeId={id}');
     expect(service).toContain('companies={companies}');
-    expect(service).toContain('grades={grades}');
-    expect(service).toContain('saveAction={saveServiceEntitlementAction}');
-    // The benefit-scheme picker (scheme names) must NOT appear in the relocated service picker.
+    expect(service).toContain('schemes={benefitSchemes}');
+    expect(service).toContain('gradeGroups={gradeGroups}');
+    expect(service).toContain('upsertEntitlement={upsertSchemeEntitlementAction}');
+    expect(service.includes('saveServiceEntitlementAction')).toBe(false);
+    // The scheme-days table of the Benefit Schemes sub-step is not re-mounted here — one mount each.
     expect(service.includes('<LeaveTypeEntitlementTable')).toBe(false);
     expect(panelSrc).toContain('previewScenarioSection?: ReactNode');
   });

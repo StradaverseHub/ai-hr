@@ -223,7 +223,8 @@ describe('123c1e76 · per-type Entitlement card reuses the benefit-scheme table 
     // TYPE and stops at the banner opening the sibling company × grade table.
     const body = schemeSrc.slice(
       start,
-      schemeSrc.indexOf('// ─────────────────── Service-Based Entitlements (company × grade) ───────────────────', start),
+      // 9816a5ad renamed the sibling section: its middle column is the BENEFIT SCHEME now, not the grade.
+      schemeSrc.indexOf('// ─────────────────── Service-Based Entitlements (company × benefit scheme) ───────────────────', start),
     );
     // Reuse, not re-implementation: the SAME edit dialog still opens from here for the band shapes the grid
     // cannot lay out.

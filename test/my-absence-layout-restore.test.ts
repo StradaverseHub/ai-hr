@@ -158,7 +158,11 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     expect(adminPart).toContain('data-tour="leave-requests"');
     expect(adminPart).toContain("sortableTh('name'");
     expect(adminPart).toContain('<AdminCancelLeaveDialog');
-    expect(adminPart).toContain("t('filters.rangeOf'"); // pager untouched
+    // fc776376 replaced this table's hand-rolled pager with the ONE shared <Pager>: it still shows a
+    // position counter, and now also a rows-per-page control that rides in the address. The requirement
+    // is that the admin table is still PAGINATED, not that it keeps its own copy of the chrome.
+    expect(adminPart).toContain('<Pager');
+    expect(adminPart).toContain('pageState(pq, total, history.length)');
     expect(adminPart).toContain('colSpan={7}');
   });
 

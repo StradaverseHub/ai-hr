@@ -29,7 +29,11 @@ export type LeavePreview = {
 export type LeaveApplySummary = {
   pending: number | null;
   taken: number | null;
+  /** Ledger balance, GROSS of pending — the figure Available is derived from, shown so the subtraction is
+   *  checkable (feedback 082fa566). */
   balance: number | null;
+  /** balance − pending: what the employee can still apply for, and the figure the submit-time guard uses. */
+  available: number | null;
 };
 
 /** The four duration types. full_day is always available; the other three are per-type opt-in. */
@@ -97,7 +101,7 @@ export function LeaveDurationFields({
     endDate: string;
     durationType: Duration;
   }) => Promise<LeavePreview | null>;
-  /** Employee apply-popup enhancement: read-only Pending / Taken / Balance for the selected leave type,
+  /** Employee apply-popup enhancement: read-only Taken / Pending / Balance / Available for the selected leave type,
    *  refreshed whenever the type (or the on-behalf employee) changes. REQUIRED — request-leave-dialog.tsx is
    *  the only consumer, so there is no "future caller" to keep optional. Best-effort: a null result renders
    *  nothing and never blocks the form. */
@@ -195,7 +199,7 @@ export function LeaveDurationFields({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewAction, employeeOptions, employmentId, typeId, effectiveDuration, start, end]);
 
-  // Employee apply-popup enhancement: the Pending / Taken / Balance summary for the selected leave type.
+  // Employee apply-popup enhancement: the Taken / Pending / Balance / Available summary for the selected leave type.
   // Keyed on (employmentId, typeId) ONLY — it is date-independent, so changing the dates must not re-fetch it.
   // Reuses the same employmentReady guard as the preview so the admin on-behalf path never renders the
   // admin's own figures under someone else's name while the selector is still empty.
@@ -405,10 +409,17 @@ export function LeaveDurationFields({
         </p>
       )}
 
-      {/* Employee apply-popup enhancement: compact Pending / Taken / Balance for the selected leave type,
-          refreshed on every type change. Suppressed for EMERGENCY — EL keeps no ledger of its own (it is
-          drawn from annual/sick/unpaid at approval), so it would render 0.0 / 0.0 / 0.0 directly above a real
-          day count. `Balance` is the SAME figure the preview line below shows as "balance before". */}
+      {/* Employee apply-popup enhancement: compact Taken / Pending / Balance / Available for the selected
+          leave type, refreshed on every type change. Suppressed for EMERGENCY — EL keeps no ledger of its own
+          (it is drawn from annual/sick/unpaid at approval), so it would render a row of zeroes directly above
+          a real day count.
+
+          Column ORDER is the subtraction (feedback 082fa566): the reporter read 13.5 under Available where
+          their Leave Summary said 8.5 and had no way to see where the difference went. Balance sits beside
+          Pending approval so the last column is visibly what is left after both — Balance − Pending approval
+          = Available — rather than a bare figure to be taken on trust. Taken leads because it is the one
+          column that is history rather than part of the running total. Every figure is PICKED from the same
+          server action; nothing is recomputed here, so the four cells cannot disagree. */}
       {!isEmergency && (summary || isSummarizing) && (
         <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs sm:col-span-2">
           {summary ? (
@@ -416,27 +427,28 @@ export function LeaveDurationFields({
               <thead>
                 <tr className="text-muted-foreground">
                   <th scope="col" className="pb-0.5 text-right font-medium">
-                    {t('breakdown.field.pendingApproval')}
-                  </th>
-                  <th scope="col" className="pb-0.5 text-right font-medium">
                     {t('breakdown.field.taken')}
                   </th>
                   <th scope="col" className="pb-0.5 text-right font-medium">
-                    {/* "Available", not "Balance" (feedback 082fa566) — the same figure is called Available
-                        on the leave type's own summary, and two names for one number reads as two numbers.
-                        A NEW key rather than an edit to breakdown.field.balance, so anything that genuinely
-                        means a balance keeps its word. The VALUE is unchanged: summary.balance already
-                        comes from the same server action the summary card reads, so this is a label fix
-                        and not a recalculation. */}
+                    {t('breakdown.field.pendingApproval')}
+                  </th>
+                  <th scope="col" className="pb-0.5 text-right font-medium">
+                    {t('breakdown.field.balance')}
+                  </th>
+                  <th scope="col" className="pb-0.5 text-right font-medium">
+                    {/* "Available" is the leave type's own Leave Summary figure — balance minus the days this
+                        employee has already applied for. r74 put the word here over the GROSS balance, which
+                        is what the reporter saw as 13.5 vs 8.5. */}
                     {t('breakdown.field.available')}
                   </th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="font-medium tabular-nums text-foreground">
-                  <td className="text-right">{daysValue(summary.pending)}</td>
                   <td className="text-right">{daysValue(summary.taken)}</td>
+                  <td className="text-right">{daysValue(summary.pending)}</td>
                   <td className="text-right">{daysValue(summary.balance)}</td>
+                  <td className="text-right">{daysValue(summary.available)}</td>
                 </tr>
               </tbody>
             </table>

@@ -188,12 +188,18 @@ export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
       // 37a1141e closed the last inconsistency: this row was still LABELLED "Carried forward" while the
       // reconciliation row below labelled the identical figure "Brought forward". Both now read brought
       // forward. Keys are untouched — only the English label moved.
-      { key: 'carriedForward', labelKey: 'carriedForward', select: (d) => d.breakdown.broughtForward },
+      // 1f6fd6d8: this row, the expiry date and the forfeit below now carry the ess-view keys that NAME them.
+      // All three keys existed and gated nothing — `broughtForward`, `carryForwardExpiry` and `forfeited` were
+      // left over from the balance-table columns 776cd1b5 dropped and the §2 section e503f284 removed, so HR
+      // could tick "Brought Forward" and watch the row stay put. Wiring them here is the same fix from the
+      // other side: three rows that only a whole-section toggle could hide now hide individually, which is
+      // what the configuration screen has claimed all along.
+      { key: 'carriedForward', labelKey: 'carriedForward', essKey: 'broughtForward', select: (d) => d.breakdown.broughtForward },
       { key: 'carryForwardRemaining', labelKey: 'carryForwardRemaining', select: (d) => d.breakdown.carryForwardRemaining },
-      { key: 'carryForwardExpiry', labelKey: 'carryForwardExpiry', format: 'date', select: (d) => d.breakdown.carryForwardExpiryDate },
+      { key: 'carryForwardExpiry', labelKey: 'carryForwardExpiry', essKey: 'carryForwardExpiry', format: 'date', select: (d) => d.breakdown.carryForwardExpiryDate },
       // 0315dac7: sourced from the ACTUAL forfeit ledger rows (all three reasons) rather than the derived
       // cap-excess, which double-subtracted whenever a cap or maxBalanceDays clamp fired.
-      { key: 'forfeited', labelKey: 'forfeited', select: (d) => d.breakdown.forfeitedThisCycle },
+      { key: 'forfeited', labelKey: 'forfeited', essKey: 'forfeited', select: (d) => d.breakdown.forfeitedThisCycle },
       { key: 'totalAvailable', labelKey: 'totalAvailable', select: (d) => d.breakdown.totalAvailable },
     ],
   },
@@ -266,8 +272,12 @@ export function reconciledBalance(b: EntitlementBreakdownData): number {
 
 /** One group of the admin ESS-view checklist: a panel section (heading = the section's own title) + the
  *  ess-view keys it gates. `labelKey` is the section's i18n key under `leave.breakdown`; null ⇒ the trailing
- *  "Other" group (admin-side heading `admin.leave.essView.groupOther`) collecting keys no section references
- *  (legacy toggles that gate other surfaces, e.g. the balance-table columns) so nothing is orphaned. */
+ *  "Other" group (admin-side heading `admin.leave.essView.groupOther`) collecting keys no section references.
+ *
+ *  Since 1f6fd6d8 that group is EMPTY and the filter below drops it: every remaining key gates a row in a
+ *  section, so the checklist is now the panel's own list in the panel's own order — the reporter's ask that
+ *  "the configuration order matches the display order". The Other bucket is deliberately kept rather than
+ *  deleted: it is the mechanism that makes a future orphaned key VISIBLE instead of silently unreachable. */
 export type EssViewChecklistGroup = {
   key: string;
   labelKey: string | null;

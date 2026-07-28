@@ -1402,6 +1402,9 @@ function tenureColumnLabel(c: TenureColumn, t: ReturnType<typeof useTranslations
 /** Grid shared by the matrix header and every row: company · grade group · the tenure cells · action. The
  *  tenure cells live in ONE flex track so the column COUNT can vary per tenant without a dynamic class. */
 const matrixGridCls = 'grid grid-cols-[minmax(6rem,0.8fr)_minmax(9rem,1.4fr)_auto_auto] items-start gap-2';
+/** 9816a5ad — the same grid without the company track. Service Based Entitlements picks ONE company in a
+ *  dropdown before any row exists, so a merged company cell there would only ever be an empty column. */
+const matrixCompactGridCls = 'grid grid-cols-[minmax(9rem,1.4fr)_auto_auto] items-start gap-2';
 
 /**
  * One matrix row = one scheme's entitlement for this leave type.
@@ -1418,6 +1421,8 @@ function SchemeEntitlementMatrixRow({
   companyLabel,
   gradeGroupLabel,
   action,
+  compact = false,
+  note = null,
   t,
 }: {
   ent: LeaveTypeSchemeEntitlement;
@@ -1429,16 +1434,23 @@ function SchemeEntitlementMatrixRow({
   companyLabel: string | null;
   gradeGroupLabel: string;
   action: (fd: FormData) => void | Promise<void>;
+  /** 9816a5ad — drop the company track entirely (the Service Based Entitlements table picks one company). */
+  compact?: boolean;
+  /** 9816a5ad — a per-row footnote under the scheme name: "not configured for this type yet", or the
+   *  grade-level figure this scheme disagrees with. Nothing is written on the strength of it — it exists so
+   *  a disagreement is TOLD to the admin instead of one figure quietly winning. */
+  note?: React.ReactNode;
   t: ReturnType<typeof useTranslations>;
 }) {
   const stored = ent.serviceBands;
   const [days, setDays] = useState<string[]>(() => stored.map((b) => String(b.days ?? '')));
   const dirty = days.some((v, i) => Number(v || 0) !== Number(stored[i]?.days ?? 0));
   const bands = matrixBandsWithDays(stored, days);
+  const gridCls = compact ? matrixCompactGridCls : matrixGridCls;
 
   const identity = (
     <>
-      <span className="text-sm font-medium">{companyLabel ?? ''}</span>
+      {!compact && <span className="text-sm font-medium">{companyLabel ?? ''}</span>}
       <span className="flex flex-col">
         <span className="text-sm font-medium">{gradeGroupLabel}</span>
         <span className="text-xs font-normal text-muted-foreground">{ent.schemeName}</span>
@@ -1447,13 +1459,14 @@ function SchemeEntitlementMatrixRow({
             {t('perTypeSharedPool', { name: ent.poolName, days: ent.poolTotalLimitDays })}
           </span>
         )}
+        {note}
       </span>
     </>
   );
 
   if (!editableInline) {
     return (
-      <div className={`${matrixGridCls} border-b border-border px-3 py-2 last:border-0`}>
+      <div className={`${gridCls} border-b border-border px-3 py-2 last:border-0`}>
         {identity}
         <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
           {stored.map((b, i) => (
@@ -1471,7 +1484,7 @@ function SchemeEntitlementMatrixRow({
   }
 
   return (
-    <form action={action} className={`${matrixGridCls} border-b border-border px-3 py-2 last:border-0`}>
+    <form action={action} className={`${gridCls} border-b border-border px-3 py-2 last:border-0`}>
       <input type="hidden" name="benefitSchemeId" value={ent.benefitSchemeId} />
       <input type="hidden" name="leaveTypeId" value={ent.leaveTypeId} />
       <input type="hidden" name="serviceBands" value={JSON.stringify(bands)} />
@@ -1569,16 +1582,25 @@ export function LeaveTypeEntitlementTable({
   );
 }
 
-// ─────────────────── Service-Based Entitlements (company × grade) ───────────────────
-// Restructure Service-Based Leave Entitlements by Company and Grade — the company-driven table that IS the
-// Service Based Entitlements sub-step. Pick a company (the picker lists COMPANY names only — no benefit
-// scheme names), and the table auto-populates one row per active grade (org-wide, so every company shows
-// the same grade list) with the days for the three service bands pre-filled from what CURRENTLY RESOLVES
-// for that company+grade. It is backed by the same leave_policy store (via saveServiceEntitlementAction),
-// so existing data + the resolver are preserved and benefit-scheme figures still take priority where set.
+// ─────────────────── Service-Based Entitlements (company × benefit scheme) ───────────────────
+// 9816a5ad — Move Benefit Scheme Entitlement Maintenance into Service Based Entitlements.
+//
+// The middle column used to be the JOB GRADE, and the days typed there were written into the grade-scoped
+// leave_policy store. Leave eligibility and entitlement are driven by BENEFIT SCHEME now, so the same
+// figures were being maintained twice — once per grade here, once per scheme under Benefit Schemes — with
+// nothing keeping them in step. The middle column is the scheme, and a row writes
+// scheme_leave_entitlement.serviceBands through the SAME upsert action the Benefit Schemes surface posts:
+// one store, one writer, two entry points (the a03eff24 discipline, and the reason the two cannot drift).
+//
+// The grade-level leave_policy rows are deliberately NOT migrated or deleted. They still resolve for anyone
+// no scheme covers (a grade in no grade group matches no scheme — resolveEffectiveSchemeId is an exact
+// (company, employment type, grade group) match), and they stay editable on the per-company entitlement
+// timeline directly below this table. Where the two disagree for a scheme's own grades the row SAYS so
+// rather than letting one figure quietly win: an entitlement figure decides how much leave someone gets,
+// so a silent last-writer-wins here is the one outcome worth avoiding.
 
-/** The minimal active/inactive policy shape the table samples for pre-fill (mapped from the panel's
- *  per-type EntitlementPolicy list — validTo null = active). */
+/** The minimal active/inactive policy shape the table samples (mapped from the panel's per-type
+ *  EntitlementPolicy list — validTo null = active). Read-only here: it feeds the disagreement note only. */
 export type ServicePolicyRow = {
   gradeId: string | null;
   companyId: string | null;
@@ -1587,161 +1609,111 @@ export type ServicePolicyRow = {
   validTo: string | null;
 };
 
-/** A conforming shape is one the fixed three-column quick edit can round-trip without flattening: FLAT
- *  (no bands) or exactly the 0–2 / 2–5 / 5+ three-band shape. An arbitrary N-band or a non-0/2/5 boundary
- *  policy is NON-conforming — the row is shown read-only so its bands are never silently flattened. */
-function isConformingServiceShape(bands: ServiceBand[] | null): boolean {
-  if (bands == null || bands.length === 0) return true;
-  return (
-    bands.length === 3 &&
-    bands[0].fromYears === 0 &&
-    bands[0].toYears === 2 &&
-    bands[1].fromYears === 2 &&
-    bands[1].toYears === 5 &&
-    bands[2].fromYears === 5 &&
-    bands[2].toYears == null
-  );
-}
-
-/** Mirror resolveGradePolicy's scope + grade tiering, but return the winning ROW — so the table can read
- *  its band SHAPE (to decide quick-edit vs read-only). "Most generous" is compared on flat annualDays. */
-function pickResolvingServiceRow(
-  rows: ServicePolicyRow[],
-  gradeId: string,
-  companyId: string,
-): ServicePolicyRow | null {
-  const pickMax = (subset: ServicePolicyRow[]): ServicePolicyRow | null => {
-    let best: ServicePolicyRow | null = null;
-    for (const r of subset) if (!best || r.annualDays > best.annualDays) best = r;
-    return best;
-  };
-  const within = (scope: ServicePolicyRow[]): ServicePolicyRow | null =>
-    pickMax(scope.filter((r) => r.gradeId === gradeId)) ?? pickMax(scope.filter((r) => r.gradeId == null));
-  const companyScope = rows.filter((r) => r.companyId === companyId);
-  if (companyScope.length > 0) return within(companyScope);
-  return within(rows.filter((r) => r.companyId == null));
-}
-
-type ServicePrefill = {
-  gradeId: string;
-  gradeName: string;
-  under2: number;
-  mid: number;
-  over: number;
-  /** false when the resolving policy has a non-conforming band shape — row is read-only to avoid flatten. */
-  editable: boolean;
+/** One benefit scheme as the Service Based Entitlements picker lists it. */
+export type ServiceSchemeRow = {
+  id: string;
+  companyId: string;
+  name: string;
+  gradeGroupId: string | null;
+  gradeGroupName: string | null;
+  employmentType: string;
+  status: string;
 };
 
-/** One editable grade row. Self-contained state so an UNTOUCHED row is never written (Save disabled until a
- *  value changes) — no spurious reprojection. Remounted (via key) when the company changes so its inputs
- *  re-seed from the new pre-fill. */
-function ServiceGradeRow({
-  leaveTypeId,
-  leaveTypeName,
-  companyId,
-  prefill,
-  saveAction,
-  gridCls,
-  t,
-}: {
-  leaveTypeId: string;
-  leaveTypeName: string;
-  companyId: string;
-  prefill: ServicePrefill;
-  saveAction: (fd: FormData) => void | Promise<void>;
-  gridCls: string;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  const [u, setU] = useState(String(prefill.under2));
-  const [m, setM] = useState(String(prefill.mid));
-  const [o, setO] = useState(String(prefill.over));
-  const dirty = Number(u) !== prefill.under2 || Number(m) !== prefill.mid || Number(o) !== prefill.over;
-  if (!prefill.editable) {
-    return (
-      <div className={`${gridCls} items-center border-b border-border px-3 py-2 text-sm last:border-0`}>
-        <span className="text-muted-foreground">{leaveTypeName}</span>
-        <span className="font-medium">{prefill.gradeName}</span>
-        <span className="tabular-nums">{prefill.under2}</span>
-        <span className="tabular-nums">{prefill.mid}</span>
-        <span className="tabular-nums">{prefill.over}</span>
-        <span className="text-[11px] text-muted-foreground">{t('serviceNonConformingNote')}</span>
-      </div>
+/** The service length to sample a tenure column at: the middle of a closed bracket, a year past the start
+ *  of the open-ended one. Any point inside the bracket resolves to the same band, so the choice only has to
+ *  be INSIDE it — 0–2 samples at 1, 2–5 at 3.5, 5+ at 6. */
+export function sampleYearsForColumn(c: TenureColumn): number {
+  return c.toYears == null ? c.fromYears + 1 : c.fromYears + (c.toYears - c.fromYears) / 2;
+}
+
+/** 9816a5ad — what the GRADE-level policies currently give the grades of one benefit scheme, one figure per
+ *  tenure column, de-duplicated (a group whose grades all resolve alike yields a single tuple). Empty when
+ *  the scheme covers no grades. Pure: this is the reconciliation the plan promises, and it only ever
+ *  DISPLAYS — nothing here writes, so a disagreement is reported, never resolved by guesswork. */
+export function gradeLevelServiceDays(
+  rows: GradePolicyRow[],
+  gradeIds: string[],
+  companyId: string,
+  columns: TenureColumn[],
+): number[][] {
+  const seen = new Set<string>();
+  const out: number[][] = [];
+  for (const gradeId of gradeIds) {
+    const tuple = columns.map(
+      (c) => resolveGradePolicy(rows, gradeId, companyId, sampleYearsForColumn(c))?.days ?? 0,
     );
+    const key = tuple.join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tuple);
   }
-  return (
-    <form
-      action={saveAction}
-      className={`${gridCls} items-center border-b border-border px-3 py-2 text-sm last:border-0`}
-    >
-      <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
-      <input type="hidden" name="companyId" value={companyId} />
-      <input type="hidden" name="gradeId" value={prefill.gradeId} />
-      <span className="text-muted-foreground">{leaveTypeName}</span>
-      <span className="font-medium">{prefill.gradeName}</span>
-      <input
-        name="under2"
-        type="number"
-        min="0"
-        step="0.5"
-        required
-        value={u}
-        onChange={(e) => setU(e.target.value)}
-        aria-label={t('serviceUnder2Aria', { grade: prefill.gradeName })}
-        className={`${inputCls} w-16`}
-      />
-      <input
-        name="mid"
-        type="number"
-        min="0"
-        step="0.5"
-        required
-        value={m}
-        onChange={(e) => setM(e.target.value)}
-        aria-label={t('serviceMidAria', { grade: prefill.gradeName })}
-        className={`${inputCls} w-16`}
-      />
-      <input
-        name="over"
-        type="number"
-        min="0"
-        step="0.5"
-        required
-        value={o}
-        onChange={(e) => setO(e.target.value)}
-        aria-label={t('serviceOverAria', { grade: prefill.gradeName })}
-        className={`${inputCls} w-16`}
-      />
-      <Button type="submit" size="sm" disabled={!dirty}>
-        {t('save')}
-      </Button>
-    </form>
-  );
+  return out;
+}
+
+/** The stored bands a scheme with NO entitlement row for this leave type starts from: the table's own
+ *  columns at zero days. Nothing is written until a figure is typed (Save stays disabled while the row is
+ *  untouched), so listing an unconfigured scheme never grants days by itself — which is what keeps ADR-0066
+ *  festive / ad-hoc types out of the accrual engines exactly as before. */
+export function blankBandsForColumns(columns: TenureColumn[]): ServiceBand[] {
+  return columns.map((c) => ({ fromYears: c.fromYears, toYears: c.toYears, days: 0 }));
 }
 
 export function ServiceEntitlementTable({
   leaveTypeId,
   leaveTypeName,
   companies,
-  grades,
+  schemes,
+  gradeGroups,
+  entitlements,
   policies,
-  saveAction,
+  upsertEntitlement,
 }: {
   leaveTypeId: string;
   leaveTypeName: string;
   companies: { id: string; name: string }[];
-  /** Active tenant grades, already ordered by seniority (job_grade.rank then name) on the server. */
-  grades: { id: string; name: string }[];
+  /** Every benefit scheme in the tenant; the picked company narrows them. */
+  schemes: ServiceSchemeRow[];
+  /** Grade-group membership — only used to work out which grades a scheme covers for the disagreement note. */
+  gradeGroups: { id: string; gradeIds: string[] }[];
+  /** THIS leave type's scheme entitlement rows (the same rows the Benefit Schemes matrix renders). */
+  entitlements: LeaveTypeSchemeEntitlement[];
   policies: ServicePolicyRow[];
-  saveAction: (fd: FormData) => void | Promise<void>;
+  upsertEntitlement: (fd: FormData) => void | Promise<void>;
 }) {
   const t = useTranslations('admin.leave');
   const tb = useTranslations('admin.benefitScheme');
   const [companyId, setCompanyId] = useState('');
+  const empTypeLabel = (v: string) => tb(`empType_${v}` as `empType_${(typeof EMPLOYMENT_TYPES)[number]}`);
 
-  // GradePolicyRow[] for resolveGradePolicy — active rows only, sampled for the pre-fill. Reading via
-  // resolveGradePolicy inherently reads flat annualDays, 3-band, arbitrary N-band and null-default rows
-  // correctly (nothing renders blank when live entitlement exists).
-  const activeRows: GradePolicyRow[] = useMemo(
+  // Only ACTIVE schemes are offered: resolveEffectiveSchemeId matches active schemes only, so an inactive
+  // one grants nobody anything and editing its days here would look like a change that does nothing.
+  const companySchemes = useMemo(
+    () =>
+      schemes
+        .filter((s) => s.companyId === companyId && s.status === 'active')
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [schemes, companyId],
+  );
+  const entBySchemeId = useMemo(
+    () => new Map(entitlements.map((e) => [e.benefitSchemeId, e])),
+    [entitlements],
+  );
+  // Columns are DERIVED from the brackets this company's schemes actually store (a03eff24) — never the
+  // hardcoded 0/2/5, which would mislabel a tenant on 3/7 and then rewrite their figures on save.
+  const { columns, shapeKey } = useMemo(
+    () =>
+      deriveTenureColumns(
+        companySchemes.flatMap((s) => {
+          const e = entBySchemeId.get(s.id);
+          return e ? [e] : [];
+        }),
+      ),
+    [companySchemes, entBySchemeId],
+  );
+
+  // The active grade-level policies, in the shape resolveGradePolicy reads — the disagreement note's input.
+  const activeGradeRows: GradePolicyRow[] = useMemo(
     () =>
       policies
         .filter((p) => p.validTo == null)
@@ -1752,28 +1724,44 @@ export function ServiceEntitlementTable({
         })),
     [policies],
   );
-  const activePolicyRows = useMemo(() => policies.filter((p) => p.validTo == null), [policies]);
+  const gradeIdsByGroup = useMemo(
+    () => new Map(gradeGroups.map((g) => [g.id, g.gradeIds])),
+    [gradeGroups],
+  );
 
-  const prefills: ServicePrefill[] = useMemo(() => {
-    if (!companyId) return [];
-    // Sample at representative service lengths (~1 / 3 / 6 years) so each column reflects the real resolved
-    // days for that band, whatever the underlying shape.
-    return grades.map((g) => {
-      const sample = (years: number) => resolveGradePolicy(activeRows, g.id, companyId, years)?.days ?? 0;
-      const winner = pickResolvingServiceRow(activePolicyRows, g.id, companyId);
-      return {
-        gradeId: g.id,
-        gradeName: g.name,
-        under2: sample(1),
-        mid: sample(3),
-        over: sample(6),
-        editable: isConformingServiceShape(winner?.serviceBands ?? null),
-      };
-    });
-  }, [companyId, grades, activeRows, activePolicyRows]);
-
-  const gridCls =
-    'grid grid-cols-[minmax(5rem,1fr)_minmax(5rem,1fr)_4.5rem_4.5rem_4.5rem_auto] gap-2';
+  const rows = useMemo(
+    () =>
+      companySchemes.map((scheme) => {
+        const stored = entBySchemeId.get(scheme.id) ?? null;
+        const ent: LeaveTypeSchemeEntitlement = stored ?? {
+          // A scheme with no row for this leave type is still listed — that is the whole point of "the list
+          // of Benefit Schemes for the company", and the upsert creates the row on first save.
+          id: `unconfigured:${scheme.id}`,
+          benefitSchemeId: scheme.id,
+          leaveTypeId,
+          leaveTypeName,
+          serviceBands: blankBandsForColumns(columns),
+          schemeName: scheme.name,
+          companyName: null,
+          gradeGroupName: scheme.gradeGroupName,
+          employmentType: scheme.employmentType,
+          poolName: null,
+          poolTotalLimitDays: null,
+        };
+        const conforming = ent.serviceBands.length > 0 && bandShapeKey(ent.serviceBands) === shapeKey;
+        // Only compare like with like: a scheme on its own brackets is edited through the dialog, and
+        // sampling it against these columns would report a disagreement that is really a shape difference.
+        const schemeDays = ent.serviceBands.map((b) => Number(b.days ?? 0)).join('|');
+        const gradeIds = scheme.gradeGroupId ? (gradeIdsByGroup.get(scheme.gradeGroupId) ?? []) : [];
+        const disagreements = conforming
+          ? gradeLevelServiceDays(activeGradeRows, gradeIds, companyId, columns).filter(
+              (tuple) => tuple.join('|') !== schemeDays,
+            )
+          : [];
+        return { scheme, stored, ent, conforming, disagreements };
+      }),
+    [companySchemes, entBySchemeId, columns, shapeKey, leaveTypeId, leaveTypeName, gradeIdsByGroup, activeGradeRows, companyId],
+  );
 
   return (
     <div className="space-y-2">
@@ -1798,31 +1786,54 @@ export function ServiceEntitlementTable({
         <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
           {t('serviceSelectCompanyEmpty')}
         </p>
-      ) : grades.length === 0 ? (
+      ) : companySchemes.length === 0 ? (
         <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
-          {t('serviceNoGrades')}
+          {t('serviceNoSchemes')}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
           <div className="min-w-[36rem]">
-            <div className={`${gridCls} border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground`}>
-              <span>{tb('colLeaveType')}</span>
-              <span>{t('gradeLabel')}</span>
-              <span>{tb('tierUnderFixed')}</span>
-              <span>{tb('tierMidFixed')}</span>
-              <span>{tb('tierOverFixed')}</span>
+            <div
+              className={`${matrixCompactGridCls} border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground`}
+            >
+              <span>{tb('perTypeColScheme')}</span>
+              <span className="flex gap-2">
+                {columns.map((c, i) => (
+                  <span key={i} className="w-16 text-[11px] leading-tight">
+                    {tenureColumnLabel(c, tb)}
+                  </span>
+                ))}
+              </span>
               <span />
             </div>
-            {prefills.map((pf) => (
-              <ServiceGradeRow
-                key={`${companyId}:${pf.gradeId}`}
-                leaveTypeId={leaveTypeId}
-                leaveTypeName={leaveTypeName}
-                companyId={companyId}
-                prefill={pf}
-                saveAction={saveAction}
-                gridCls={gridCls}
-                t={t}
+            {rows.map(({ scheme, stored, ent, conforming, disagreements }) => (
+              <SchemeEntitlementMatrixRow
+                // The stored days are part of the key (the a03eff24 remount precedent): when the server
+                // sends a different figure — after this admin's save or someone else's — the row remounts
+                // and re-seeds from the truth instead of showing a stale draft.
+                key={`${scheme.id}:${ent.serviceBands.map((b) => b.days).join(',')}`}
+                ent={ent}
+                columns={columns}
+                editableInline={conforming}
+                companyLabel={null}
+                compact
+                gradeGroupLabel={`${scheme.gradeGroupName ?? tb('perTypeAllGrades')} (${empTypeLabel(scheme.employmentType)})`}
+                note={
+                  <>
+                    {stored == null && (
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {t('serviceSchemeUnconfigured')}
+                      </span>
+                    )}
+                    {disagreements.map((tuple, i) => (
+                      <span key={i} className="text-xs font-normal text-amber-700 dark:text-amber-400">
+                        {t('serviceGradeDisagreement', { days: tuple.join(' / ') })}
+                      </span>
+                    ))}
+                  </>
+                }
+                action={upsertEntitlement}
+                t={tb}
               />
             ))}
           </div>

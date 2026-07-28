@@ -10,9 +10,11 @@ import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdmin
 import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
 import {
   createMovementEvent,
+  editMovementEvent,
   isComparisonKind,
   MOVEMENT_FLAT_FIELDS,
   MOVEMENT_KINDS,
+  reverseMovementEvent,
   type MovementKind,
 } from '@/core/movement';
 import { reprojectEntitlementForEmployment } from '@/core/leave';
@@ -358,59 +360,109 @@ export async function terminateAction(formData: FormData) {
  * alone), blank = HR cleared it. `orNull` collapses both to null, which would read as "clear the Work
  * Location" on an event type that never showed it — hence `optional` below.
  */
-export async function createMovementEventAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
+function parseMovementForm(formData: FormData) {
   const kindRaw = String(formData.get('kind') ?? '').trim();
+  if (!(MOVEMENT_KINDS as readonly string[]).includes(kindRaw)) throw new Error('Select an event type.');
   /** absent → undefined (untouched); present-but-blank → null (explicit clear). */
   const optional = (name: string): string | null | undefined => {
     const v = formData.get(name);
     if (v == null) return undefined;
     return String(v).trim() || null;
   };
+  const rawSalary = String(formData.get('basicSalary') ?? '').trim();
+  const rawTermType = String(formData.get('terminationType') ?? '').trim();
+  const terminationType = (
+    ['voluntary', 'involuntary', 'retired', 'contract_end', 'death', 'other'] as const
+  ).includes(rawTermType as never)
+    ? (rawTermType as 'voluntary' | 'involuntary' | 'retired' | 'contract_end' | 'death' | 'other')
+    : undefined;
+  const rawEmpType = String(formData.get('employmentType') ?? '').trim();
+  const employmentType = EMPLOYMENT_TYPES.includes(rawEmpType as EmploymentTypeValue)
+    ? (rawEmpType as EmploymentTypeValue)
+    : undefined;
+  return {
+    kind: kindRaw as MovementKind,
+    effectiveDate: String(formData.get('effectiveDate') ?? '').trim(),
+    endDate: orNull(formData.get('endDate')),
+    remarks: orNull(formData.get('remarks')),
+    departmentId: optional('departmentId'),
+    positionId: optional('positionId'),
+    businessUnitId: optional('businessUnitId'),
+    locationId: optional('locationId'),
+    // gradeId: absent field = grade side untouched; present-but-blank = clear.
+    gradeId: optional('gradeId'),
+    employmentType,
+    managerEmploymentId: optional('managerEmploymentId'),
+    basicSalary: rawSalary === '' ? undefined : Number(rawSalary),
+    currency: optional('currency') ?? undefined,
+    payMode: optional('payMode') ?? undefined,
+    paymentTerm: optional('paymentTerm') ?? undefined,
+    // The flat, non-dated org columns the comparison screen now carries (Division … Category).
+    ...Object.fromEntries(MOVEMENT_FLAT_FIELDS.map((f) => [f, optional(f)])),
+    terminationType,
+    blacklisted: String(formData.get('blacklisted') ?? 'true') !== 'false',
+  };
+}
+
+export async function createMovementEventAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
   try {
-    if (!(MOVEMENT_KINDS as readonly string[]).includes(kindRaw)) throw new Error('Select an event type.');
-    const kind = kindRaw as MovementKind;
-    const rawSalary = String(formData.get('basicSalary') ?? '').trim();
-    const rawTermType = String(formData.get('terminationType') ?? '').trim();
-    const terminationType = (
-      ['voluntary', 'involuntary', 'retired', 'contract_end', 'death', 'other'] as const
-    ).includes(rawTermType as never)
-      ? (rawTermType as 'voluntary' | 'involuntary' | 'retired' | 'contract_end' | 'death' | 'other')
-      : undefined;
-    const rawEmpType = String(formData.get('employmentType') ?? '').trim();
-    const employmentType = EMPLOYMENT_TYPES.includes(rawEmpType as EmploymentTypeValue)
-      ? (rawEmpType as EmploymentTypeValue)
-      : undefined;
-    await createMovementEvent(s, {
-      employmentId,
-      kind,
-      effectiveDate: String(formData.get('effectiveDate') ?? '').trim(),
-      endDate: orNull(formData.get('endDate')),
-      remarks: orNull(formData.get('remarks')),
-      departmentId: optional('departmentId'),
-      positionId: optional('positionId'),
-      businessUnitId: optional('businessUnitId'),
-      locationId: optional('locationId'),
-      // gradeId: absent field = grade side untouched; present-but-blank = clear.
-      gradeId: optional('gradeId'),
-      employmentType,
-      managerEmploymentId: optional('managerEmploymentId'),
-      basicSalary: rawSalary === '' ? undefined : Number(rawSalary),
-      currency: optional('currency') ?? undefined,
-      payMode: optional('payMode') ?? undefined,
-      paymentTerm: optional('paymentTerm') ?? undefined,
-      // The flat, non-dated org columns the comparison screen now carries (Division … Category).
-      ...Object.fromEntries(MOVEMENT_FLAT_FIELDS.map((f) => [f, optional(f)])),
-      terminationType,
-      blacklisted: String(formData.get('blacklisted') ?? 'true') !== 'false',
-    });
+    const p = parseMovementForm(formData);
+    await createMovementEvent(s, { employmentId, ...p });
     // Grade, employment type and the org placement all feed benefit-scheme / grade-scoped entitlement
     // resolution, and any comparison-kind movement can now move them in one submit — so recompute for the
     // whole comparison set rather than the three kinds that used to own those fields.
-    if (isComparisonKind(kind) || kind === 'confirmation' || kind === 'probationExtension') {
+    if (isComparisonKind(p.kind) || p.kind === 'confirmation' || p.kind === 'probationExtension') {
       await recomputeEntitlement(s, employmentId, 'movement_recorded');
     }
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * 66a63bd6 — the Employment History Edit save. Same form, same parse; the service rolls the movement back
+ * and replays it through the same writers, so the corrected event inherits every guard the New Event path
+ * has. The entitlement recompute mirrors the create action: a correction can move grade, employment type
+ * or the org placement just as the original did.
+ */
+export async function editMovementEventAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    const p = parseMovementForm(formData);
+    await editMovementEvent(s, {
+      employmentId,
+      movementId: String(formData.get('movementId') ?? '').trim(),
+      reason: orNull(formData.get('reason')),
+      ...p,
+    });
+    if (isComparisonKind(p.kind)) await recomputeEntitlement(s, employmentId, 'movement_recorded');
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * 66a63bd6 — the Employment History Delete (Rollback). The event is NOT removed from the ledger: the
+ * movement stops applying, the employee's record goes back to the previous valid state, and the row stays
+ * on the history marked reversed (the approved shape for decision item 9064cffb).
+ */
+export async function reverseMovementEventAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await reverseMovementEvent(s, {
+      employmentId,
+      movementId: String(formData.get('movementId') ?? '').trim(),
+      reason: orNull(formData.get('reason')),
+    });
+    await recomputeEntitlement(s, employmentId, 'movement_recorded');
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }

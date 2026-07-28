@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { getLocale } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { listLeaveTypes, myEmployment } from '@/core/read';
 import {
@@ -52,13 +52,16 @@ export async function previewLeaveDeductionAction(p: {
   }
 }
 
-/** Employee apply-popup entitlement summary (Pending / Taken / Balance) for the currently-selected leave
- *  type. Read-only and best-effort — a failure renders nothing, never blocking the form.
+/** Employee apply-popup entitlement summary (Taken / Pending / Balance / Available) for the currently-selected
+ *  leave type. Read-only and best-effort — a failure renders nothing, never blocking the form.
  *
- *  ESS gating is decided HERE, not in core, because the two existing consumers answer it differently:
- *   - Pending is gated on the resolved `pendingApproval` key, Taken on `taken`;
- *   - Balance is NEVER gated (ENTITLEMENT_PANEL_SECTIONS documents "Balance has no essKey"), and it is the
- *     same figure the deduction line right below already shows;
+ *  ESS gating is decided HERE, not in core, because the consumers answer it differently:
+ *   - Pending is gated on the resolved `pendingApproval` key, Taken on `taken`, Available on `available` —
+ *     each on the key that names it, exactly as §1 of ENTITLEMENT_PANEL_SECTIONS gates the same four rows;
+ *   - Balance is gated on Available AND Taken being visible. It carries no ess-view key of its own (§1
+ *     documents "Balance has no essKey"), but feedback 082fa566 made it the row Available is visibly derived
+ *     FROM, so leaving it ungated would hand back the gross figure HR had just hidden — the same leak
+ *     deriveBalanceRow closes on the balance table with the same two-key test;
  *   - and gating is skipped ENTIRELY when the resolved employment is not the caller's own — the admin/HR
  *     on-behalf read, which core/read.ts already documents as never gated (EntitlementBreakdown's
  *     applyEssConfig=false convention).
@@ -72,13 +75,14 @@ export async function leaveApplySummaryAction(p: { employmentId: string; leaveTy
     if (!employmentId) return null;
     const s = await leaveTypeApplySummary(session, { employmentId, leaveTypeId: p.leaveTypeId });
     if (!me || employmentId !== me.employmentId) {
-      return { pending: s.pending, taken: s.taken, balance: s.balance };
+      return { pending: s.pending, taken: s.taken, balance: s.balance, available: s.available };
     }
     const view = resolveEssView(s.essViewConfig);
     return {
       pending: view.pendingApproval ? s.pending : null,
       taken: view.taken ? s.taken : null,
-      balance: s.balance,
+      balance: view.available && view.taken ? s.balance : null,
+      available: view.available ? s.available : null,
     };
   } catch {
     return null;
@@ -188,13 +192,22 @@ export async function requestLeaveAction(formData: FormData) {
     redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e, selected?.name))}`);
   }
   revalidatePath('/leave');
-  // Success marker (feedback 45c781e2) — until now a successful submission was SILENT: the dialog closed
-  // and the page refreshed, which is indistinguishable from having dismissed it. The marker rides the
+  // Success confirmation (feedback 45c781e2) — until now a successful submission was SILENT: the dialog
+  // closed and the page refreshed, which is indistinguishable from having dismissed it. It rides the
   // redirect rather than being raised in the client, so it fires only on CONFIRMED success — this line is
   // reached only after the service call returned without throwing, and the failure path above redirects to
   // ?error= instead. Appended rather than assigned, because the holiday-warning query may already be set
   // and a submission can legitimately produce both.
-  redirect(`/leave${warnQuery}${warnQuery ? '&' : '?'}toast=leaveSubmitted`);
+  //
+  // Duplicate success notification (feedback 29710798): this used to redirect with the OPAQUE MARKER
+  // `?toast=leaveSubmitted`, which two separate listeners answered — the globally-mounted ToastFromQuery
+  // (app/layout.tsx) fired the raw marker text, and a second /leave-only client component fired the
+  // translated sentence. Two toasts, one submission. The marker is gone: this now carries the already-
+  // LOCALISED message, the house convention every other redirect here follows (ToastFromQuery renders the
+  // raw query string, so never pass an i18n key), leaving exactly one emitter and the right words in it.
+  const tToast = await getTranslations('leave');
+  const done = encodeURIComponent(tToast('submittedToast'));
+  redirect(`/leave${warnQuery}${warnQuery ? '&' : '?'}toast=${done}`);
 }
 
 // Partial Leave Cancellation (ADR-0065): an employee gives back a SUBSET of an approved leave's dates. The

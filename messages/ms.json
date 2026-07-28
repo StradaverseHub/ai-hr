@@ -448,6 +448,7 @@
       "subjectToHrdf": "Tertakluk kepada HRDF",
       "subjectToHrdfHint": "Apabila ditanda, pendapatan layak pekerja ini dimasukkan dalam pengiraan levi HRD Corp (HRDF) semasa penggajian; jika tidak ditanda, pekerja dikecualikan sepenuhnya.",
       "subjectToHrdfFollowingDefault": "Mengikut tetapan lalai pendaftaran HRDF syarikat. Simpan untuk menetapkan pilihan khusus bagi pekerja ini.",
+      "subjectToHrdfCompanyNotRegistered": "Ditetapkan kepada Ya, tetapi syarikat pekerja ini tiada Kadar Caruman HRDF (Organisasi ▸ Berkanun), jadi penggajian tidak mengenakan sebarang levi untuknya. Pilihan ini disimpan dan berkuat kuasa sebaik sahaja syarikat didaftarkan.",
       "othersStatutorySave": "Simpan statutori lain",
       "assignmentHistory": "Sejarah penugasan",
       "periodValidTime": "Tempoh (masa sah)",
@@ -1133,8 +1134,22 @@
           "currentInformation": "Maklumat Semasa",
           "afterInformation": "Selepas (Maklumat Baharu)",
           "comparisonHint": "Hanya medan yang anda ubah akan direkodkan. Nilai yang dibiarkan kekal tidak berubah dan tidak mencipta entri sejarah.",
-          "companyReadOnly": "Diubah pada tab Pekerjaan"
-        }
+          "companyReadOnly": "Diubah pada tab Pekerjaan",
+          "editHint": "Menyimpan pembetulan akan membatalkan peristiwa ini dan merekodkan versi yang dibetulkan. Rekod asal kekal dalam Sejarah Pekerjaan, ditanda sebagai dibetulkan — ia tidak dibuang.",
+          "payrollWarning": "Larian gaji yang telah diproses sudah merangkumi tempoh ini. Slip gaji tidak diproses semula secara automatik.",
+          "correctionReason": "Sebab pembetulan (pilihan)",
+          "saveCorrection": "Simpan Pembetulan"
+        },
+        "edit": "Sunting",
+        "delete": "Padam",
+        "editTitle": "Sunting Peristiwa Pergerakan",
+        "reversedBadge": "Dibatalkan",
+        "correctedBadge": "Dibetulkan",
+        "deleteConfirmTitle": "Batalkan peristiwa pergerakan ini?",
+        "deleteConfirmDescription": "Maklumat pekerja akan kembali kepada keadaan sebelum peristiwa ini. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan, supaya rekod kekal boleh diaudit.",
+        "deleteConfirmPayroll": "Larian gaji yang telah diproses sudah merangkumi tempoh ini. Pembatalan ini TIDAK akan memproses semula sebarang slip gaji — proses semula secara berasingan jika perlu. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan.",
+        "correctionReasonLabel": "Sebab pembetulan (pilihan)",
+        "payrollLocked": "Dikunci oleh larian gaji yang telah ditutup"
       },
       "salaryCurrency": "Mata wang"
     },
@@ -2704,6 +2719,7 @@
       "proratedDays": "diprorata · {worked}/{total} hari",
       "noPayslips": "Tiada slip gaji dalam kelompok ini.",
       "totalHrdf": "Levi HRD Corp",
+      "totalHrdfNotRegistered": "Tidak berdaftar",
       "componentImport": {
         "title": "Import komponen gaji (CSV)",
         "description": "Tambah elaun, potongan, OT atau bonus sekali-gus ke kelompok draf ini. Lajur: employee (e-mel), component (kod), amount, notes.",
@@ -3131,7 +3147,8 @@
           "empty": "Tiada keputusan gaji diproses yang sepadan dengan penapis dipilih.",
           "showBreakdown": "Tunjuk pecahan",
           "hideBreakdown": "Sembunyikan pecahan",
-          "totalEmployerContributions": "Jumlah caruman majikan"
+          "totalEmployerContributions": "Jumlah caruman majikan",
+          "hrdfNotRegistered": "Tidak berdaftar"
         },
         "exportCsv": "Eksport CSV"
       }
@@ -3524,6 +3541,8 @@
       "hrdfNotRegistered": "Tiada Caruman",
       "hrdfMandatory": "Caruman 1.0%",
       "hrdfOptional": "Caruman 0.5%",
+      "statutoryMissingTitle": "Pendaftaran berkanun tiada",
+      "statutoryMissingHint": "Syarikat ini tiada rekod berkanun Malaysia. Penggajian menganggapnya tiada Kadar Caruman HRDF, jadi tiada levi HRD Corp dikenakan. Buka syarikat dan lengkapkan tab Berkanun.",
       "businessUnitsCount": "Unit perniagaan ({count})",
       "fieldBusinessUnit": "Unit perniagaan",
       "businessUnitNone": "— Tiada —",
@@ -4134,9 +4153,7 @@
         "help": "Pilih angka kelayakan dan baki yang dilihat pekerja untuk jenis cuti ini di Profil Saya → Cuti, dan terangkan setiap satu di tempat yang sama: tanda satu item dan medan Penerangan serta Formula akan muncul di sebelahnya — pekerja melihat teks itu apabila menuding ikon maklumat item tersebut. Item yang tidak ditanda disembunyikan dalam layan diri sahaja; HR sentiasa melihat semuanya. Penerangan hanya mengubah teks, bukan sebarang angka cuti.",
         "available": "Tersedia",
         "taken": "Diambil",
-        "entitlementToDate": "Kelayakan Hingga Kini",
         "broughtForward": "Dibawa Ke Hadapan",
-        "expiredBroughtForward": "Bawa Ke Hadapan Luput",
         "unplanned": "Tidak Dirancang",
         "adjustment": "Pelarasan",
         "overutilized": "Terlebih Guna",
@@ -4145,7 +4162,6 @@
         "carryForwardExpiry": "Tarikh Luput Bawa Ke Hadapan",
         "forfeited": "Baki Dilucuthak",
         "groupOther": "Lain-lain",
-        "transactionHistory": "Sejarah Transaksi",
         "entitlementCalcBreakdown": "Pecahan Pengiraan Kelayakan"
       },
       "dayTypeInclusion": {
@@ -4298,13 +4314,11 @@
       "gradeDragAria": "Seret {name} ke dalam kumpulan gred",
       "serviceCompanyLabel": "Syarikat",
       "serviceSelectCompanyPlaceholder": "Pilih syarikat…",
-      "serviceSelectCompanyEmpty": "Pilih syarikat untuk memuatkan gred dan menetapkan kelayakan mengikut tempoh perkhidmatan.",
-      "serviceNoGrades": "Tiada gred aktif untuk dipaparkan. Tambah gred di Tetapan → Label Sistem → Label Organisasi.",
-      "serviceNonConformingNote": "Jalur perkhidmatan tersuai — sunting di Kelayakan syarikat untuk mengekalkannya.",
-      "serviceTableNote": "Hari diisi awal daripada kelayakan semasa setiap gred. Menyunting gred mengira semula pekerjanya; gred yang tidak disentuh kekal tidak berubah.",
-      "serviceUnder2Aria": "Hari bawah 2 tahun untuk {grade}",
-      "serviceMidAria": "Hari 2 hingga 5 tahun untuk {grade}",
-      "serviceOverAria": "Hari melebihi 5 tahun untuk {grade}",
+      "serviceSelectCompanyEmpty": "Pilih syarikat untuk memuatkan skim faedahnya dan menetapkan kelayakan mengikut tempoh perkhidmatan.",
+      "serviceNoSchemes": "Tiada skim faedah aktif untuk syarikat ini. Cipta satu di Skim Faedah.",
+      "serviceSchemeUnconfigured": "Belum ditetapkan untuk jenis cuti ini — masukkan hari untuk menambahnya.",
+      "serviceGradeDisagreement": "Kelayakan peringkat gred bagi gred ini kini memberi {days}. Angka skim yang dipaparkan di sini ialah apa yang diterima pekerja.",
+      "serviceTableNote": "Ini angka yang sama seperti Kelayakan Cuti skim — menyimpan di sini mengemas kini kedua-duanya. Pekerja yang grednya tiada dalam mana-mana skim terus menggunakan kelayakan syarikat di bawah.",
       "schemeEntitlementsTitle": "Kelayakan skim faedah"
     },
     "holidays": {
@@ -6309,11 +6323,14 @@
     "leaveTypesMore": "{n, plural, other {+# lagi}}",
     "companyDefaultsTitle": "Lalai syarikat dan eskalasi",
     "companyDefaultsHint": "Buka sesebuah syarikat untuk mengedit rantaian kelulusan asasnya, suis kelulusan berbilang langkah dan tetapan eskalasinya.",
-    "selectGrades": "Gred",
+    "selectBenefitSchemes": "Skim faedah",
+    "noBenefitSchemes": "Tiada skim faedah aktif bagi syarikat yang dipilih.",
+    "schemeNoGradeGroup": "Berikan kumpulan gred kepada skim ini sebelum menetapkan templat kelulusan kepadanya.",
+    "legacyGradeScope": "Ditetapkan mengikut gred — tetapkan semula mengikut skim faedah",
+    "schemeScopeUnknown": "Skop tidak sepadan dengan mana-mana skim faedah",
     "selectAll": "Pilih semua",
     "deselectAll": "Nyahpilih semua",
     "panelNoneMeansAll": "Tiada dipilih = terpakai kepada semua",
-    "noGrades": "Belum ada gred pekerjaan dikonfigurasi.",
     "panelPickAtLeastOne": "Pilih sekurang-kurangnya satu"
   },
   "feedback": {
@@ -7331,6 +7348,23 @@
       "guides": "Tambah panduan bantuan",
       "admin": "Cipta log masuk pentadbir",
       "invitation": "Keluarkan pautan pengaktifan"
+    },
+    "explorer": {
+      "title": "Hubungan rekod",
+      "description": "Pilih satu jenis rekod untuk melihat apa yang merujuknya, apa yang dirujuknya, dan modul mana yang memilikinya. Dibaca terus daripada pangkalan data setiap kali, jadi ia tidak pernah lapuk.",
+      "recordType": "Jenis rekod",
+      "choose": "Pilih jenis rekod…",
+      "show": "Papar",
+      "formNote": "{count} jenis rekod dalam pemasangan ini. Jenis berkaitan ialah pautan — ikut satu untuk bergerak merentasi peta.",
+      "unknownTable": "Tiada jenis rekod bernama “{table}” dalam pemasangan ini.",
+      "sharedSpine": "Tulang belakang dikongsi (tiada modul tunggal)",
+      "primaryKey": "Kunci utama",
+      "none": "Tiada",
+      "references": "Merujuk kepada",
+      "noReferences": "Jenis rekod ini tidak merujuk apa-apa.",
+      "referencedBy": "Dirujuk oleh",
+      "noReferencedBy": "Tiada apa-apa merujuk jenis rekod ini.",
+      "onDelete": "Semasa dipadam"
     }
   },
   "currencySelect": {
@@ -7338,5 +7372,16 @@
     "searchPlaceholder": "Cari mata wang…",
     "noResults": "Tiada mata wang ditemui",
     "legacySuffix": "(nilai sedia ada)"
+  },
+  "pagination": {
+    "rowsPerPage": "Baris",
+    "all": "Semua",
+    "range": "{from}–{to} daripada {total, number}",
+    "rangeEmpty": "0 daripada {total, number}",
+    "previous": "← Sebelumnya",
+    "next": "Seterusnya →",
+    "truncated": "Memaparkan {shown, number} baris pertama daripada {total, number} baris.",
+    "truncatedHint": "Guna Laporan → Eksport untuk set lengkap.",
+    "truncatedExport": "Eksport set lengkap"
   }
 }

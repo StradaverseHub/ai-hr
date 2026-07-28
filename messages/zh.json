@@ -448,6 +448,7 @@
       "subjectToHrdf": "须缴纳 HRDF",
       "subjectToHrdfHint": "勾选后，该员工的合格收入将在薪资处理时计入 HRD Corp（HRDF）征费计算；未勾选则完全排除该员工。",
       "subjectToHrdfFollowingDefault": "目前跟随公司 HRDF 注册默认设置。保存后将为该员工设定明确的选择。",
+      "subjectToHrdfCompanyNotRegistered": "已设为“是”，但该员工所属公司未设置 HRDF 缴纳率（组织 ▸ 法定），因此薪资不会为其征收该征费。此设置已保存，公司完成注册后即生效。",
       "othersStatutorySave": "保存其他法定项目",
       "assignmentHistory": "任职历史",
       "periodValidTime": "期间（有效时间）",
@@ -1133,8 +1134,22 @@
           "currentInformation": "当前信息",
           "afterInformation": "变更后（新信息）",
           "comparisonHint": "仅记录你实际修改的字段。保持原值的字段不会被改动，也不会产生历史记录。",
-          "companyReadOnly": "在“雇佣”标签页中变更"
-        }
+          "companyReadOnly": "在“雇佣”标签页中变更",
+          "editHint": "保存更正会撤销此事件并记录更正后的版本。原记录仍保留在任职历史中并标记为已更正——绝不会被删除。",
+          "payrollWarning": "已处理的薪资批次已覆盖此期间。工资单不会自动重新处理。",
+          "correctionReason": "更正原因（选填）",
+          "saveCorrection": "保存更正"
+        },
+        "edit": "编辑",
+        "delete": "删除",
+        "editTitle": "编辑异动事件",
+        "reversedBadge": "已撤销",
+        "correctedBadge": "已更正",
+        "deleteConfirmTitle": "撤销此异动事件？",
+        "deleteConfirmDescription": "员工资料将恢复到此事件发生前的状态。该事件仍保留在任职历史中并标记为已撤销，记录依然可供审计。",
+        "deleteConfirmPayroll": "已处理的薪资批次已覆盖此期间。撤销不会重新处理任何工资单——如有需要请另行重新处理。该事件仍保留在任职历史中并标记为已撤销。",
+        "correctionReasonLabel": "更正原因（选填）",
+        "payrollLocked": "已被关账的薪资批次锁定"
       },
       "salaryCurrency": "货币"
     },
@@ -2704,6 +2719,7 @@
       "proratedDays": "按比例 · {worked}/{total} 天",
       "noPayslips": "此批次中无工资单。",
       "totalHrdf": "HRD Corp 征费",
+      "totalHrdfNotRegistered": "未注册",
       "componentImport": {
         "title": "导入薪资项目（CSV）",
         "description": "批量为此草稿批次添加一次性津贴、扣除、加班或花红。列：employee（邮箱）、component（代码）、amount、notes。",
@@ -3131,7 +3147,8 @@
           "empty": "没有符合所选筛选条件的已处理薪资结果。",
           "showBreakdown": "显示明细",
           "hideBreakdown": "隐藏明细",
-          "totalEmployerContributions": "雇主缴纳总额"
+          "totalEmployerContributions": "雇主缴纳总额",
+          "hrdfNotRegistered": "未注册"
         },
         "exportCsv": "导出 CSV"
       }
@@ -3524,6 +3541,8 @@
       "hrdfNotRegistered": "不缴纳",
       "hrdfMandatory": "缴纳 1.0%",
       "hrdfOptional": "缴纳 0.5%",
+      "statutoryMissingTitle": "缺少法定登记",
+      "statutoryMissingHint": "这些公司没有马来西亚法定记录。薪资将其视为未设置 HRDF 缴纳率，因此不征收 HRD Corp 征费。请打开公司并填写其“法定”标签页。",
       "businessUnitsCount": "业务单位（{count}）",
       "fieldBusinessUnit": "业务单位",
       "businessUnitNone": "— 无 —",
@@ -4134,9 +4153,7 @@
         "help": "选择员工在“我的资料 → 休假”中可见的此休假类型的应享和余额数字，并在同一处为每项填写说明：勾选某项后，其说明和公式栏会显示在旁边——员工将鼠标悬停在该项的信息图标上即可看到这些文字。未勾选的项目仅在自助服务中隐藏；HR 始终可见全部。说明仅更改文字，不会改变任何休假数字。",
         "available": "可用",
         "taken": "已使用",
-        "entitlementToDate": "截至目前应享",
         "broughtForward": "结转",
-        "expiredBroughtForward": "已过期结转",
         "unplanned": "未计划",
         "adjustment": "调整",
         "overutilized": "超额使用",
@@ -4145,7 +4162,6 @@
         "carryForwardExpiry": "结转到期日",
         "forfeited": "已作废余额",
         "groupOther": "其他",
-        "transactionHistory": "交易历史",
         "entitlementCalcBreakdown": "应享额计算明细"
       },
       "dayTypeInclusion": {
@@ -4298,13 +4314,11 @@
       "gradeDragAria": "将 {name} 拖入职级组",
       "serviceCompanyLabel": "公司",
       "serviceSelectCompanyPlaceholder": "选择公司…",
-      "serviceSelectCompanyEmpty": "选择公司以载入其职级并设定按服务年资的假期额度。",
-      "serviceNoGrades": "没有可显示的有效职级。请在 设置 → 系统标签 → 组织标签 中新增职级。",
-      "serviceNonConformingNote": "自定义服务年资区间 — 请在公司额度中编辑以保留。",
-      "serviceTableNote": "天数会依各职级目前的额度预先填入。编辑某职级会重新计算其员工；未改动的职级保持不变。",
-      "serviceUnder2Aria": "{grade} 不足 2 年的天数",
-      "serviceMidAria": "{grade} 2 至 5 年的天数",
-      "serviceOverAria": "{grade} 超过 5 年的天数",
+      "serviceSelectCompanyEmpty": "选择公司以载入其福利方案并设定按服务年资的假期额度。",
+      "serviceNoSchemes": "此公司没有启用中的福利方案。请先在“福利方案”中新增。",
+      "serviceSchemeUnconfigured": "尚未为此假期类型设定 — 输入天数即可新增。",
+      "serviceGradeDisagreement": "这些职级目前的职级额度为 {days}。此处显示的方案数字才是员工实际获得的。",
+      "serviceTableNote": "这些与方案的假期额度是同一组数字，在此保存会同时更新两处。职级不属于任何方案的员工，仍使用下方的公司额度。",
       "schemeEntitlementsTitle": "福利计划额度"
     },
     "holidays": {
@@ -6309,11 +6323,14 @@
     "leaveTypesMore": "{n, plural, other {+# 项}}",
     "companyDefaultsTitle": "公司默认设置与升级",
     "companyDefaultsHint": "展开某家公司即可编辑其基础审批链、多级审批开关与升级设置。",
-    "selectGrades": "职级",
+    "selectBenefitSchemes": "福利方案",
+    "noBenefitSchemes": "所选公司没有启用中的福利方案。",
+    "schemeNoGradeGroup": "请先为此方案设定职级组，才能为它指派审批模板。",
+    "legacyGradeScope": "按职级指派 — 请改以福利方案重新指派",
+    "schemeScopeUnknown": "此范围不对应任何福利方案",
     "selectAll": "全选",
     "deselectAll": "取消全选",
     "panelNoneMeansAll": "未选择 = 适用于全部",
-    "noGrades": "尚未配置职级。",
     "panelPickAtLeastOne": "至少选择一项"
   },
   "feedback": {
@@ -7331,6 +7348,23 @@
       "guides": "添加帮助指南",
       "admin": "创建管理员登录",
       "invitation": "签发激活链接"
+    },
+    "explorer": {
+      "title": "记录关系",
+      "description": "选择一种记录类型，查看什么指向它、它指向什么，以及哪个模块拥有它。每次都从实时数据库读取，因此永远不会过时。",
+      "recordType": "记录类型",
+      "choose": "选择记录类型…",
+      "show": "显示",
+      "formNote": "本安装共有 {count} 种记录类型。相关类型是链接——点击即可在关系图中跳转。",
+      "unknownTable": "本安装中没有名为“{table}”的记录类型。",
+      "sharedSpine": "共享主干（不属于单一模块）",
+      "primaryKey": "主键",
+      "none": "无",
+      "references": "指向",
+      "noReferences": "此记录类型不指向任何内容。",
+      "referencedBy": "被指向",
+      "noReferencedBy": "没有内容指向此记录类型。",
+      "onDelete": "删除时"
     }
   },
   "currencySelect": {
@@ -7338,5 +7372,16 @@
     "searchPlaceholder": "搜索货币…",
     "noResults": "未找到货币",
     "legacySuffix": "（现有值）"
+  },
+  "pagination": {
+    "rowsPerPage": "每页",
+    "all": "全部",
+    "range": "第 {from}–{to} 条，共 {total, number} 条",
+    "rangeEmpty": "0 条，共 {total, number} 条",
+    "previous": "← 上一页",
+    "next": "下一页 →",
+    "truncated": "仅显示前 {shown, number} 条，共 {total, number} 条。",
+    "truncatedHint": "请使用「报表 → 导出」获取完整数据。",
+    "truncatedExport": "导出完整数据"
   }
 }

@@ -5,6 +5,8 @@ import { getEmployeeClaimTypes, listClaimsForEmployment } from '@/core/claims';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ClaimForm, type ClaimFormType } from '@/components/claim-form';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { Pager } from '@/components/pager';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { cancelClaimAction, submitClaimAction } from './actions';
 
 const STATUS_STYLE: Record<string, string> = {
@@ -16,10 +18,19 @@ const STATUS_STYLE: Record<string, string> = {
 };
 const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
 
-export default async function ClaimsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function ClaimsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    error?: string;
+    page?: string;
+    size?: string;
+  }>;
+}) {
   const s = await getSession();
   const t = await getTranslations('claims');
-  const { error } = await searchParams;
+  const sp = await searchParams;
+  const { error } = sp;
   const me = await myEmployment(s);
 
   if (!me) {
@@ -35,6 +46,8 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
     getEmployeeClaimTypes(s, me.employmentId),
     listClaimsForEmployment(s, me.employmentId),
   ]);
+  // fc776376 — the claim history is a genuine list that grows with time, so it pages like every other.
+  const { rows: claimPage, state: pgState } = paginateRows(claims, parsePageQuery(sp));
   const today = new Date().toISOString().slice(0, 10);
   const dayMs = 86400000;
   const formTypes: ClaimFormType[] = types.map((ct) => ({
@@ -88,7 +101,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
               </tr>
             </thead>
             <tbody>
-              {claims.map((c) => (
+              {claimPage.map((c) => (
                 <tr key={c.id} className="border-t border-border align-top">
                   <td className="px-4 py-2.5">
                     <div className="font-medium">{c.typeName}</div>
@@ -130,6 +143,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
             </tbody>
           </table>
         )}
+        <Pager basePath="/claims" state={pgState} />
       </Card>
     </div>
   );

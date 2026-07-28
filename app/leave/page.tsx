@@ -39,7 +39,6 @@ import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-di
 import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
 import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
-import { LeaveSubmitToast } from '@/components/leave/submit-toast';
 import { LeaveBalanceTable } from '@/components/leave/leave-balance-table';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 // My Absence merge (a7cbd895): the /me Leave tab's primary summary cards + per-request extras now live here.
@@ -51,6 +50,8 @@ import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/le
 import { CollapsibleCardSection } from '@/components/collapsible-card-section';
 import { SecondaryLeaveGroups } from '@/components/leave/secondary-leave-groups';
 import { PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup } from '@/lib/leave-groups';
+import { Pager, type PagerHrefOver } from '@/components/pager';
+import { pageState, parsePageQuery } from '@/lib/pagination';
 // deriveBalanceRow lives in a SERVER-SAFE module (no 'use client'), so this RSC can call it at render
 // time — importing it from the client table would trip the RSC boundary guard (b7d84266). R37 e5a158d3.
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
@@ -74,8 +75,6 @@ const REQ_STATUS: Record<string, string> = {
   partial: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
 };
 
-// Admin search/filter/sort page size — mirrors /personnel (feedback 0773bda9).
-const PAGE = 25;
 // Employee Details listing page size — the reporter asked for exactly ten employees per page (650b6eb8).
 const EMPLOYEE_PAGE = 10;
 const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
@@ -116,6 +115,7 @@ export default async function LeavePage({
     // holiday warning, so the org filters below use distinct keys. type/status repeat for multi-select.
     q?: string;
     page?: string;
+    size?: string;
     // Filter on every column (feedback 8ec63139): the org narrowings are multi-select now, so each of
     // these repeats in the query string exactly as type/status already did.
     company?: string | string[];
@@ -178,7 +178,8 @@ export default async function LeavePage({
   // ── Advanced Search & Filter params (admin only; feedback 0773bda9) ──────────────────────────────────
   const arr = (v?: string | string[]): string[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
   const q = sp.q?.trim() || undefined;
-  const page = Math.max(0, Number(sp.page) || 0);
+  const pq = parsePageQuery(sp);
+  const page = pq.page;
   const companyIdsFilter = arr(sp.company);
   const buIds = arr(sp.bu);
   const deptIds = arr(sp.dept);
@@ -379,8 +380,8 @@ export default async function LeavePage({
             pendingWith,
             sort,
             dir,
-            limit: PAGE,
-            offset: page * PAGE,
+            limit: pq.limit,
+            offset: pq.offset,
           }),
           listCompanies(session),
           listBusinessUnits(session, { companyIds: scopeIds }),
@@ -582,24 +583,27 @@ export default async function LeavePage({
     return p;
   };
   // Sort links reset to the first page (drop `page`); toggle asc/desc when re-clicking the active column.
+  // The chosen rows-per-page survives, like every other narrowing on this screen (fc776376).
   const sortHref = (key: string) => {
     const p = withEmployeeParams(filterParams());
+    p.set('size', String(pq.size));
     p.set('sort', key);
     p.set('dir', sort === key && dir === 'asc' ? 'desc' : 'asc');
     return `/leave?${p.toString()}`;
   };
-  const pageHref = (n: number) => {
+  // fc776376 — the shared pager builds its own links through this, because /leave's address carries
+  // REPEATED params (the multi-select filters) that a flat key/value builder would flatten.
+  const pagerHref = ({ page: n, size }: PagerHrefOver) => {
     const p = withEmployeeParams(withSort(filterParams()));
     if (n > 0) p.set('page', String(n));
-    const s = p.toString();
-    return s ? `/leave?${s}` : '/leave';
+    p.set('size', String(size ?? pq.size));
+    return `/leave?${p.toString()}`;
   };
   const exportHref = (format: 'csv' | 'xlsx') => {
     const p = withSort(filterParams());
     p.set('format', format);
     return `/leave/export?${p.toString()}`;
   };
-  const hasNext = admin && (page + 1) * PAGE < total;
 
   // ── Employee Details listing (feedback 650b6eb8) ─────────────────────────────────────────────────────
   // The tab an HR admin lands on: who am I looking up. Picking a row hands the employment id to Employee
@@ -610,6 +614,7 @@ export default async function LeavePage({
   const edPageHref = (n: number) => {
     const p = withEmployeeParams(withSort(filterParams()), { keepPage: false });
     if (page > 0) p.set('page', String(page));
+    p.set('size', String(pq.size));
     if (n > 0) p.set('edPage', String(n));
     const s = p.toString();
     return s ? `/leave?${s}` : '/leave';
@@ -892,9 +897,10 @@ export default async function LeavePage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      {/* Raises the success toast for feedback 45c781e2 when requestLeaveAction redirects with its
-          confirmed-success marker, then strips the param so a refresh cannot re-fire it. Renders nothing. */}
-      <LeaveSubmitToast />
+      {/* The submission success toast (45c781e2) is NOT raised here any more — feedback 29710798. This page
+          mounted its own listener for `?toast=leaveSubmitted` while the globally-mounted ToastFromQuery
+          (app/layout.tsx) answered the same param, so one submission produced two pop-ups. requestLeaveAction
+          now redirects with the already-localised sentence, which the global listener alone renders. */}
       <div data-tour="leave-intro">
         <PageHeader
           // a7cbd895: the page is the "My Absence" first-level destination now — title follows the nav rename.
@@ -1488,30 +1494,8 @@ export default async function LeavePage({
             </tbody>
           </table>
         </div>
-        {admin && (page > 0 || hasNext) && (
-          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
-            {page > 0 ? (
-              <Link href={pageHref(page - 1)} className="text-primary hover:underline">
-                {t('filters.newer')}
-              </Link>
-            ) : (
-              <span />
-            )}
-            <span className="text-xs text-muted-foreground">
-              {t('filters.rangeOf', {
-                from: total === 0 ? 0 : page * PAGE + 1,
-                to: Math.min((page + 1) * PAGE, total),
-                total,
-              })}
-            </span>
-            {hasNext ? (
-              <Link href={pageHref(page + 1)} className="text-primary hover:underline">
-                {t('filters.older')}
-              </Link>
-            ) : (
-              <span />
-            )}
-          </div>
+        {admin && (
+          <Pager hrefFor={pagerHref} state={pageState(pq, total, history.length)} exportHref={exportHref('csv')} />
         )}
       </Card>
         </div>

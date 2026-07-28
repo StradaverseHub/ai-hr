@@ -58,7 +58,10 @@ const CUSTOM_3_7: ServiceBand[] = [
 /** The per-type matrix section ONLY: its row type, the derivation helpers, the row and the table — stopping
  *  at the banner that starts the sibling company × grade table, so nothing here can pass (or fail) on that
  *  table's code by accident. */
-const SIBLING_BANNER = '// ─────────────────── Service-Based Entitlements (company × grade) ───────────────────';
+const SIBLING_BANNER =
+  // 9816a5ad turned the sibling table's middle column from job grade into benefit scheme; the banner (and
+  // so this delimiter) moved with it. The matrix section it fences off is unchanged.
+  '// ─────────────────── Service-Based Entitlements (company × benefit scheme) ───────────────────';
 function matrixSection(): string {
   const start = schemeSrc.indexOf('export type LeaveTypeSchemeEntitlement');
   expect(start, 'LeaveTypeSchemeEntitlement must exist').toBeGreaterThan(-1);
@@ -239,11 +242,13 @@ describe('a03eff24 · same store, same writer — no parallel entitlement source
     expect(pageSrc.match(/listBenefitSchemes\(s\)/g)?.length, 'schemes still loaded exactly once').toBe(1);
   });
 
-  it('no leave_policy write path was touched — the company × grade table keeps its own writer', () => {
+  it('no leave_policy write path was touched — the matrix never grew a second writer', () => {
     // ADR-0066 / r71: the accrual engines and the "did an administrator configure days for this type"
-    // discriminator are untouched by a presentation restructure. The sibling table still owns
-    // saveServiceEntitlement; the matrix must not have grown a second call into it.
+    // discriminator are untouched by a presentation restructure. 9816a5ad went further and pointed the
+    // sibling Service Based Entitlements table at the SAME scheme upsert, so no surface in this file calls
+    // the leave_policy writer any more — a stronger form of the original claim, not a weaker one.
     expect(matrixSection()).not.toContain('saveServiceEntitlement');
+    expect(schemeSrc).not.toContain('saveServiceEntitlement');
     expect(schemeSrc).toContain('export function ServiceEntitlementTable');
   });
 });

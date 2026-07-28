@@ -4,6 +4,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import {
+  approvalHistoryCount,
   delegationsScoped,
   employmentPickerList,
   listApprovalHistory,
@@ -17,8 +18,8 @@ import {
   shapeApprovalHistoryItems,
 } from '@/lib/approval-history';
 import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-
-const PAGE = 50;
+import { Pager } from '@/components/pager';
+import { pageState, parsePageQuery } from '@/lib/pagination';
 const MYT = 'Asia/Kuala_Lumpur';
 
 /** Today's date in the tenant-local (MYT) calendar, yyyy-mm-dd. */
@@ -51,6 +52,7 @@ export default async function ApprovalHistoryPage({
     action?: string;
     decider?: string;
     page?: string;
+    size?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedSession();
@@ -60,7 +62,7 @@ export default async function ApprovalHistoryPage({
   const sp = await searchParams;
   const t = await getTranslations('approvalHistory');
   const locale = await getLocale();
-  const page = Math.max(0, Number(sp.page) || 0);
+  const pq = parsePageQuery(sp);
 
   // The viewer's own hand-over periods (viewer = DELEGATOR). app.self_delegations self-scopes and
   // resolves both names under the definer boundary; history:true keeps past windows selectable.
@@ -78,37 +80,23 @@ export default async function ApprovalHistoryPage({
   const moduleKey = sp.module && isApprovalHistoryModule(sp.module) ? sp.module : undefined;
   const action = sp.action && isApprovalHistoryAction(sp.action) ? sp.action : undefined;
 
-  const [rowsPlusOne, people] = await Promise.all([
-    listApprovalHistory(s, {
-      from: fromDate ? mytStartIso(fromDate) : undefined,
-      to: toDate ? mytStartIso(nextDay(toDate)) : undefined,
-      module: moduleKey,
-      action,
-      deciderEmploymentId: decider,
-      limit: PAGE + 1, // one extra to know whether a next page exists
-      offset: page * PAGE,
-    }),
+  // fc776376 — the same filters drive the page and its COUNT (app.approval_history_count, migration
+  // 0320), replacing the fetch-one-extra trick with a real position: "26-50 of 312".
+  const historyFilters = {
+    from: fromDate ? mytStartIso(fromDate) : undefined,
+    to: toDate ? mytStartIso(nextDay(toDate)) : undefined,
+    module: moduleKey,
+    action,
+    deciderEmploymentId: decider,
+  };
+  const [rows, total, people] = await Promise.all([
+    listApprovalHistory(s, { ...historyFilters, limit: pq.limit, offset: pq.offset }),
+    approvalHistoryCount(s, historyFilters),
     employmentPickerList(s, scopeIds),
   ]);
-  const hasNext = rowsPlusOne.length > PAGE;
-  const items = shapeApprovalHistoryItems(rowsPlusOne.slice(0, PAGE));
+  const items = shapeApprovalHistoryItems(rows);
+  const pgState = pageState(pq, total, items.length);
   const fmt = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: MYT });
-
-  const qs = (over: Record<string, string | number | undefined>) => {
-    const merged = {
-      period: sp.period,
-      from: sp.from,
-      to: sp.to,
-      module: sp.module,
-      action: sp.action,
-      decider: sp.decider,
-      page: sp.page,
-      ...over,
-    };
-    const p = new URLSearchParams();
-    for (const [k, v] of Object.entries(merged)) if (v) p.set(k, String(v));
-    return `/approvals/history?${p.toString()}`;
-  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -222,25 +210,18 @@ export default async function ApprovalHistoryPage({
             </tbody>
           </table>
         )}
-        {(page > 0 || hasNext) && (
-          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
-            {page > 0 ? (
-              <Link href={qs({ page: page - 1 || undefined })} className="text-primary hover:underline">
-                ← {t('newer')}
-              </Link>
-            ) : (
-              <span />
-            )}
-            <span className="text-xs text-muted-foreground">{t('pageIndicator', { page: page + 1 })}</span>
-            {hasNext ? (
-              <Link href={qs({ page: page + 1 })} className="text-primary hover:underline">
-                {t('older')} →
-              </Link>
-            ) : (
-              <span />
-            )}
-          </div>
-        )}
+        <Pager
+          basePath="/approvals/history"
+          params={{
+            period: sp.period,
+            from: sp.from,
+            to: sp.to,
+            module: sp.module,
+            action: sp.action,
+            decider: sp.decider,
+          }}
+          state={pgState}
+        />
       </Card>
     </div>
   );

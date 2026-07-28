@@ -46,10 +46,12 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     expect(TABS.includes("'careerMovement'")).toBe(true);
   });
 
-  it('renders detail + new-event + Employment History inside the careerMovement panel', () => {
+  it('renders detail + new-event + edit + Employment History inside the careerMovement panel', () => {
     const cm = panelBody('careerMovement');
     expect(cm.includes('{movementDetailCard}')).toBe(true);
     expect(cm.includes('{newEventCard}')).toBe(true);
+    // 66a63bd6 — Edit reuses the same comparison form, rendered above the timeline like the other two.
+    expect(cm.includes('{editEventCard}')).toBe(true);
     expect(cm.includes('{employmentHistoryCard}')).toBe(true);
   });
 
@@ -132,6 +134,52 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
         expect(typeof mv.field?.[f], `messages/${loc}.json missing movement.field.${f}`).toBe('string');
       }
       for (const k of ['currentInformation', 'afterInformation', 'comparisonHint', 'companyReadOnly']) {
+        expect(typeof mv.form?.[k], `messages/${loc}.json missing movement.form.${k}`).toBe('string');
+      }
+    }
+  });
+
+  // 66a63bd6 — Edit + Delete (Rollback) on each Employment History row.
+  it('offers View / Edit / Delete on the Action column, gated by the service flags', () => {
+    expect(PAGE.includes("t('movement.edit')")).toBe(true);
+    expect(PAGE.includes("t('movement.delete')")).toBe(true);
+    // The affordance reads the SAME flags the service refuses on — no second copy of the rule here.
+    expect(PAGE.includes('m.canEdit')).toBe(true);
+    expect(PAGE.includes('m.canReverse')).toBe(true);
+    expect(PAGE.includes('m.payrollLocked')).toBe(true);
+    // Delete is confirmed, and collects the optional "reason for the change" the audit trail asks for.
+    expect(PAGE.includes("t('movement.deleteConfirmTitle')")).toBe(true);
+    expect(PAGE.includes("reasonField={{ name: 'reason'")).toBe(true);
+    expect(PAGE.includes('reverseMovementEventAction')).toBe(true);
+  });
+
+  it('shows a rolled-back movement as reversed rather than removing the row', () => {
+    expect(PAGE.includes("t('movement.reversedBadge')")).toBe(true);
+    expect(PAGE.includes("t('movement.correctedBadge')")).toBe(true);
+    // The row is still rendered — nothing filters `movements` by the reversal.
+    expect(PAGE.includes('movements.filter(')).toBe(false);
+  });
+
+  it('the Edit form is the same island, posting to the correction action', () => {
+    expect(NEW_EVENT.includes('editMovementEventAction')).toBe(true);
+    expect(NEW_EVENT.includes("t('form.editHint')")).toBe(true);
+    expect(NEW_EVENT.includes("t('form.saveCorrection')")).toBe(true);
+    expect(NEW_EVENT.includes("t('form.correctionReason')")).toBe(true);
+    // The processed-payroll notice must reach the user BEFORE they save, never after.
+    expect(NEW_EVENT.includes("t('form.payrollWarning')")).toBe(true);
+  });
+
+  it('has the correction labels in all six locales (no raw key at runtime)', () => {
+    for (const loc of LOCALES) {
+      const msg = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));
+      const mv = msg?.people?.detail?.movement ?? {};
+      for (const k of [
+        'edit', 'delete', 'editTitle', 'reversedBadge', 'correctedBadge', 'deleteConfirmTitle',
+        'deleteConfirmDescription', 'deleteConfirmPayroll', 'correctionReasonLabel', 'payrollLocked',
+      ]) {
+        expect(typeof mv[k], `messages/${loc}.json missing movement.${k}`).toBe('string');
+      }
+      for (const k of ['editHint', 'payrollWarning', 'correctionReason', 'saveCorrection']) {
         expect(typeof mv.form?.[k], `messages/${loc}.json missing movement.form.${k}`).toBe('string');
       }
     }

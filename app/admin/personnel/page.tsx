@@ -16,6 +16,8 @@ import { listProfileChangeRequests } from '@/core/profile';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { Avatar, Button, Card, EmployeeCode, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
+import { Pager } from '@/components/pager';
+import { pageState, parsePageQuery } from '@/lib/pagination';
 import {
   HireFormProvider,
   HireFormButton,
@@ -46,8 +48,6 @@ function describeProposed(
   return parts.length ? parts.join(' · ') : t('noChanges');
 }
 
-const PAGE = 25;
-
 export default async function PeoplePage({
   searchParams,
 }: {
@@ -55,6 +55,7 @@ export default async function PeoplePage({
     error?: string;
     q?: string;
     page?: string;
+    size?: string;
     company?: string;
     dept?: string;
     status?: string;
@@ -70,8 +71,9 @@ export default async function PeoplePage({
   const { s: session, scopeIds } = await scopedSession();
   const today = new Date().toISOString().slice(0, 10);
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
-  const { error, q, page: pageParam, company, dept, status, type } = await searchParams;
-  const page = Math.max(0, Number(pageParam) || 0);
+  const sp = await searchParams;
+  const { error, q, company, dept, status, type } = sp;
+  const pq = parsePageQuery(sp);
   const statusFilter = status === 'active' || status === 'terminated' ? status : undefined;
   const hasFilters = !!(q || company || dept || status || type);
   const [
@@ -92,8 +94,8 @@ export default async function PeoplePage({
       departmentId: dept || undefined,
       status: statusFilter,
       employmentType: type || undefined,
-      limit: PAGE,
-      offset: page * PAGE,
+      limit: pq.limit,
+      offset: pq.offset,
     }),
     listCompanies(session),
     listDepartments(session),
@@ -171,14 +173,7 @@ export default async function PeoplePage({
   const posCsvs = positions.map((pos) => posCompaniesCsv.get(pos.id) ?? pos.companyId);
   const ccCsvs = costCenters.map((cc) => ccCompaniesCsv.get(cc.id) ?? cc.companyId);
   const hireInitiallyEmpty = (csvs: string[]) => csvs.every((csv) => hireInitiallyHidden(csv));
-  const hasNext = (page + 1) * PAGE < total;
-  const qs = (over: Record<string, string | number | undefined>) => {
-    const merged: Record<string, string | number | undefined> = { q, company, dept, status, type, page: pageParam, ...over };
-    const sp = new URLSearchParams();
-    for (const [k, v] of Object.entries(merged)) if (v) sp.set(k, String(v));
-    const s = sp.toString();
-    return s ? `/admin/personnel?${s}` : '/admin/personnel';
-  };
+  const pgState = pageState(pq, total, employees.length);
   const EMPLOYMENT_TYPES = [
     { value: 'full_time', labelKey: 'employmentFullTime' },
     { value: 'part_time', labelKey: 'employmentPartTime' },
@@ -637,31 +632,7 @@ export default async function PeoplePage({
             )}
           </tbody>
         </table>
-        {(page > 0 || hasNext) && (
-          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
-            {page > 0 ? (
-              <Link href={qs({ page: page - 1 || undefined })} className="text-primary hover:underline">
-                {t('newer')}
-              </Link>
-            ) : (
-              <span />
-            )}
-            <span className="text-xs text-muted-foreground">
-              {t('rangeOf', {
-                from: page * PAGE + 1,
-                to: Math.min((page + 1) * PAGE, total),
-                total,
-              })}
-            </span>
-            {hasNext ? (
-              <Link href={qs({ page: page + 1 })} className="text-primary hover:underline">
-                {t('older')}
-              </Link>
-            ) : (
-              <span />
-            )}
-          </div>
-        )}
+        <Pager basePath="/admin/personnel" params={{ q, company, dept, status, type }} state={pgState} />
       </Card>
 
     </div>

@@ -5,6 +5,8 @@ import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag 
 import { listCompanies, listDepartments } from '@/core/read';
 import { Avatar, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
+import { Pager } from '@/components/pager';
+import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { checkInAction, checkOutAction } from '../actions';
 
 const fmtMin = (m: number | null | undefined) =>
@@ -25,7 +27,14 @@ const fmtHours2 = (m: number) => (m / 60).toFixed(2);
 export default async function DailyAttendancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; date?: string; company?: string; dept?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    date?: string;
+    company?: string;
+    dept?: string;
+    page?: string;
+    size?: string;
+  }>;
 }) {
   const t = await getTranslations('attendance');
   const { s, scopeIds } = await scopedSession();
@@ -59,6 +68,8 @@ export default async function DailyAttendancePage({
   const deptFilter = sp.dept && departments.some((d) => d.id === sp.dept) ? sp.dept : undefined;
   const effectiveScope = companyFilter ? [companyFilter] : scopeIds;
   const rows = await attendanceForDate(s, date, effectiveScope, { departmentId: deptFilter });
+  // fc776376 — one row per employee for the chosen day: a genuine list that grows with headcount.
+  const { rows: dayPage, state: pgState } = paginateRows(rows, parsePageQuery(sp));
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -124,7 +135,7 @@ export default async function DailyAttendancePage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {rows.map((r) => {
+              {dayPage.map((r) => {
                 const ot = otByRate(r);
                 const status = statusOf(r);
                 const flag = flagOf(r);
@@ -188,7 +199,7 @@ export default async function DailyAttendancePage({
                   </tr>
                 );
               })}
-              {rows.length === 0 && (
+              {dayPage.length === 0 && (
                 <tr>
                   <td colSpan={14} className="px-4 py-8 text-center text-muted-foreground">
                     {t('noEmployees')}
@@ -198,6 +209,11 @@ export default async function DailyAttendancePage({
             </tbody>
           </table>
         </div>
+        <Pager
+          basePath="/attendance/daily"
+          params={{ date: sp.date, company: sp.company, dept: sp.dept }}
+          state={pgState}
+        />
       </Card>
     </div>
   );

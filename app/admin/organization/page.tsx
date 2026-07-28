@@ -11,7 +11,7 @@ import { listAllCompanyStatutoryAuthorities, listSignatoryCandidates } from '@/c
 // picker lists the standard catalog names, and each company's General tab pre-selects its saved default from
 // that company's ACTIVE cycles.
 import { DEFAULT_PAYROLL_CYCLES, listPayrollCycles } from '@/core/payroll-cycle';
-import { Card, ErrorBanner, PageHeader } from '@/components/ui';
+import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import {
   CompanyPanel,
   type PanelBankProfile,
@@ -135,6 +135,14 @@ export default async function OrganizationPage({
     list.push({ personId: sg.personId, name: sg.name });
     signatoryBy.set(sg.companyId, list);
   }
+  // Feedback efece4ce — the active Malaysian companies with NO statutory record at all. Payroll resolves a
+  // missing row to hrdf_status = 'not_registered' and charges nothing, so a company can sit for months
+  // producing zero HRDF with nothing anywhere saying it was never registered. Finding them previously meant
+  // opening every company panel one at a time. Archived companies run no payroll; non-MY companies have no
+  // MY statutory row by design — neither is a gap. Derived from the two lists already fetched, no new query.
+  const missingStatutory = companies.filter(
+    (c) => !c.archivedAt && c.country === 'MY' && !statBy.has(c.id),
+  );
   const parentBy = new Map(tree.map((n) => [n.id, n.parentId]));
   // Organization Module (361e3b15): each company's ACTIVE payroll cycle names, so its General-tab picker lists
   // that company's own cycles with the saved default pre-selected (and can flag a saved default that is no
@@ -196,6 +204,28 @@ export default async function OrganizationPage({
           </div>
         </details>
       </Card>
+
+      {/* Feedback efece4ce — statutory-registration gaps, listed BEFORE the company grid so they are read
+          rather than scrolled past. Read-only: which rate each company should carry is the operator's call,
+          not something to guess on their behalf, so this names the companies and links nowhere else. */}
+      {missingStatutory.length > 0 && (
+        <Card>
+          <SectionHeader title={t('statutoryMissingTitle')} count={missingStatutory.length} />
+          <div className="px-4 py-3">
+            <p className="text-xs text-muted-foreground">{t('statutoryMissingHint')}</p>
+            <ul className="mt-2 space-y-1">
+              {missingStatutory.map((c) => (
+                <li key={c.id} className="text-sm text-foreground">
+                  {c.name}
+                  {c.registrationNo ? (
+                    <span className="ml-2 text-xs text-muted-foreground">{c.registrationNo}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      )}
 
       <Card data-tour="people-org-companies">
         <CompaniesCardHeader

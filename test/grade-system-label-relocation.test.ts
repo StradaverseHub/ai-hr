@@ -109,10 +109,31 @@ describe('b1b81a08 · the destination — a fifth rail entry with its own body',
       'ScopePopover',
       'copyToCompanies',
       'setCompanyShared',
-      "t('col.scope')",
     ]) {
       expect(gradeGridSrc.includes(forbidden), `${forbidden} absent from the grade body`).toBe(false);
     }
+  });
+
+  // e3c733df round 2 — the Criteria HEADER is back (the reporter asked for it beside Rank, "exactly like
+  // other category"), but only as a fixed read-only label. On the company-scoped kinds Criteria is the
+  // sharing-scope cell; for a tenant-global catalog its one possible value is Global. The assertion above
+  // still forbids every piece of the scope WIRING, so this cannot drift into an editable scope by accident.
+  it('the grade body renders Criteria between Rank and Status as a fixed, non-editable Global label', () => {
+    const at = (needle: string) => {
+      const i = gradeGridSrc.indexOf(needle);
+      return i < 0 ? Number.POSITIVE_INFINITY : i;
+    };
+    expect(gradeGridSrc).toContain("t('col.scope')");
+    expect(gradeGridSrc).toContain("t('scopeGlobal')");
+    // Column order: … Rank → Criteria → Status → Actions. `col.rank` first appears in its header cell.
+    expect(at("t('col.rank')")).toBeLessThan(at("t('col.scope')"));
+    expect(at("t('col.scope')")).toBeLessThan(at("t('col.status')"));
+    expect(at("t('col.status')")).toBeLessThan(at("t('col.actions')"));
+    // Rank keeps its numeric sort and its own header — restoring Criteria must not displace it.
+    expect(gradeGridSrc).toContain("if (sortField === 'rank')");
+    // Criteria is not sortable and not a form control: no toggleSort on it, and no scope field on RowState.
+    expect(gradeGridSrc.includes("toggleSort('scope')")).toBe(false);
+    expect(gradeGridSrc.includes("data-cell={`scope:")).toBe(false);
   });
 
   it('the grade body sorts Rank NUMERICALLY (2 before 10), not by localeCompare', () => {
@@ -361,5 +382,24 @@ describe('b1b81a08 · i18n — the five new keys resolve in all six locales', ()
     expect(en.admin.systemLabels.category.grade).toBe('Job Grade');
     expect(en.admin.systemLabels.col.rank).toBe('Rank');
     expect(en.admin.systemLabels.col.name).toBe('Grade Name');
+  });
+
+  // e3c733df round 2 — the restored Criteria column reuses the company-scoped grid's existing strings
+  // rather than minting a grade-specific set, so the two tables read identically word for word.
+  it('the Criteria column reuses col.scope / scopeGlobal / assignmentAll, present in all six locales', () => {
+    for (const loc of LOCALES) {
+      const sl = JSON.parse(read(`../messages/${loc}.json`))?.admin?.systemLabels ?? {};
+      for (const [label, v] of [
+        ['col.scope', sl.col?.scope],
+        ['scopeGlobal', sl.scopeGlobal],
+        ['assignmentAll', sl.assignmentAll],
+      ] as const) {
+        expect(typeof v, `${loc}.admin.systemLabels.${label}`).toBe('string');
+        expect((v as string).length, `${loc}.admin.systemLabels.${label} non-empty`).toBeGreaterThan(0);
+      }
+    }
+    const en = JSON.parse(read('../messages/en.json'));
+    expect(en.admin.systemLabels.col.scope).toBe('Criteria');
+    expect(en.admin.systemLabels.scopeGlobal).toBe('Global');
   });
 });

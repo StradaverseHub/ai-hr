@@ -38,7 +38,7 @@ export function RequestLeaveDialog({
   employeeOptions?: { id: string; name: string }[];
   submitAction: Action;
   previewAction: PreviewAction;
-  /** Employee apply-popup enhancement: Pending / Taken / Balance for the selected type. Required — this is
+  /** Employee apply-popup enhancement: Taken / Pending / Balance / Available for the selected type. Required — this is
    *  the only consumer of LeaveDurationFields' summary block. */
   summaryAction: SummaryAction;
 }) {

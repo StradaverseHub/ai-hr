@@ -58,8 +58,9 @@ function perTypeTableBody(): string {
   const start = schemeSrc.indexOf('export type LeaveTypeSchemeEntitlement');
   expect(start, 'LeaveTypeSchemeEntitlement must exist').toBeGreaterThan(-1);
   expect(schemeSrc.indexOf('export function LeaveTypeEntitlementTable', start), 'the table must still be exported').toBeGreaterThan(start);
-  const end = schemeSrc.indexOf('// ─────────────────── Service-Based Entitlements (company × grade) ───────────────────', start);
-  expect(end, 'per-type section must be delimited by the company × grade banner').toBeGreaterThan(start);
+  // 9816a5ad renamed the sibling section — its middle column is the benefit scheme now, not the grade.
+  const end = schemeSrc.indexOf('// ─────────────────── Service-Based Entitlements (company × benefit scheme) ───────────────────', start);
+  expect(end, 'per-type section must be delimited by the sibling table’s banner').toBeGreaterThan(start);
   return schemeSrc.slice(start, end);
 }
 
