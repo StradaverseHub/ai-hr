@@ -8,7 +8,7 @@ import {
   type DashboardCardRow,
   type DashboardCardType,
 } from '@/core/dashboard-card-config';
-import { MAX_FIRST_ROW, isFixedRowKey } from '@/lib/dashboard-layout';
+import { MAX_FIRST_ROW, MAX_SHORTCUTS, isFixedRowKey } from '@/lib/dashboard-layout';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -75,7 +75,13 @@ export default async function DashboardCardConfigPage({
     .filter((c) => c.status === 'active' && c.defaultDisplay && c.audience.includes('employee'))
     .sort((a, b) => a.displayOrder - b.displayOrder);
   const previewRow2 = activeDefault.filter(isPinned);
-  const previewRow1All = activeDefault.filter((c) => !isPinned(c));
+  // Shortcut-typed cards form their own row on the employee dashboard (3d2bc793) — same derived-membership
+  // rule as the pin — so they must come OUT of the top-row projection or this preview would lie about
+  // where an HR admin's default-display shortcut card lands.
+  const previewShortcuts = activeDefault
+    .filter((c) => !isPinned(c) && c.cardType === 'shortcut')
+    .slice(0, MAX_SHORTCUTS);
+  const previewRow1All = activeDefault.filter((c) => !isPinned(c) && c.cardType !== 'shortcut');
   const previewRow1 = previewRow1All.slice(0, MAX_FIRST_ROW);
   const previewOverflowCount = previewRow1All.length - previewRow1.length;
 
@@ -436,6 +442,18 @@ export default async function DashboardCardConfigPage({
                   {previewRow1.length > 0 && (
                     <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                       {previewRow1.map((c) => previewTile(c, false))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-border p-4">
+                  <h3 className="text-sm font-semibold">{tm('templateShortcuts', { max: MAX_SHORTCUTS })}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {tm('templateShortcutsDesc', { max: MAX_SHORTCUTS })}
+                  </p>
+                  {previewShortcuts.length > 0 && (
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {previewShortcuts.map((c) => previewTile(c, false))}
                     </div>
                   )}
                 </div>

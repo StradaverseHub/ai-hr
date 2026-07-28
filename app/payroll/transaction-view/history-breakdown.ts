@@ -22,6 +22,8 @@ export type BreakdownStat = {
   eisEmployer?: number;
   pcb?: number;
   cp38?: number;
+  /** HRD Corp levy, employer-only. Persisted on every payslip as `statutory.hrdf` (efece4ce). */
+  hrdf?: number;
   zakat?: number;
   recordLines?: RecordLine[];
   otConvert?: { code: string; name: string; amount: number };
@@ -38,8 +40,10 @@ export type HistoryBreakdown = {
   gross: number;
   totalDeductions: number;
   net: number;
-  /** Employer statutory contributions — the three components plus their sum (display total). */
-  employerContributions: { epf: number; socso: number; eis: number; total: number };
+  /** Employer statutory contributions plus their sum (display total). HRDF joins the set in feedback
+   *  efece4ce — it was computed and STORED on every payslip (`statutory.hrdf`) but shown nowhere, so an
+   *  HR administrator had no way to verify the levy or reconcile the employer cost. */
+  employerContributions: { epf: number; socso: number; eis: number; hrdf: number; total: number };
   recordLines: RecordLine[];
 };
 
@@ -51,6 +55,10 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
   const epf = num(st.epfEmployer);
   const socso = num(st.socsoEmployer);
   const eis = num(st.eisEmployer);
+  // `hrdf` — the HRD Corp levy, employer-only. Zero for a company whose HRDF Contribution Rate is unset
+  // (the engine resolves an absent company statutory row to 'not_registered'), which is why it reads 0
+  // on most payslips today rather than being absent.
+  const hrdf = num(st.hrdf);
   return {
     st,
     basic: num(row.basic),
@@ -61,7 +69,9 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     gross: num(row.gross),
     totalDeductions: num(row.totalDeductions),
     net: num(row.net),
-    employerContributions: { epf, socso, eis, total: epf + socso + eis },
+    // HRDF is added to the TOTAL as well as shown as its own line. Adding the row without the total
+    // would leave the section's own arithmetic wrong — the failure this kind of change invites.
+    employerContributions: { epf, socso, eis, hrdf, total: epf + socso + eis + hrdf },
     recordLines: st.recordLines ?? [],
   };
 }

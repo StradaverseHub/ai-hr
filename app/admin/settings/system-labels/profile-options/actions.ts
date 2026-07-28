@@ -16,6 +16,10 @@ import {
 // consolidation, not a data merge); only the redirect BASE moves onto the System Labels path so a
 // create/edit/activate/delete/seed keeps the admin on the Profile Options tab.
 const BASE = '/admin/settings/system-labels/profile-options';
+// c9986927: the eight organisation categories are now edited from the Organisation Labels tab, which reads
+// the SAME catalog through the SAME two grid actions below — so a save there must revalidate that page too,
+// or the rail counts and rows would keep serving the pre-edit render.
+const ORG_LABELS = '/admin/settings/system-labels';
 const fail = (e: unknown) => redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
 const numOrNull = (v: FormDataEntryValue | null): number | null => {
   const s = String(v ?? '').trim();
@@ -149,6 +153,7 @@ export async function saveProfileOptionsAction(payload: {
     return { ok: false, rowErrors, message: undefined };
   }
   revalidatePath(BASE);
+  revalidatePath(ORG_LABELS);
   return { ok: true, created, updated, createdIds };
 }
 
@@ -161,5 +166,6 @@ export async function removeProfileOptionAction(id: string): Promise<{ ok: true 
     return { ok: false, message: (e as Error).message };
   }
   revalidatePath(BASE);
+  revalidatePath(ORG_LABELS);
   return { ok: true };
 }

@@ -469,6 +469,11 @@ export function listLeaveTypes(
         // Configurable Negative Leave Balance Validation (0ef0defd): feeds the admin panel's "Allow Negative
         // Balance" Yes/No radio (MUST be projected or the radio renders at its default on every reload).
         allowNegativeBalance: leaveType.allowNegativeBalance,
+        // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): feed the admin panel's two new
+        // Leave Application Rules cards (MUST be projected or both render at their defaults on every reload —
+        // the "my setting didn't save" report this list has already had twice).
+        balanceSourceTypeId: leaveType.balanceSourceTypeId,
+        allowUnpaidLeave: leaveType.allowUnpaidLeave,
         // Custom validation messages (custom-messages migration): feeds the admin panel's "Custom system
         // message" textarea (MUST be projected or the textarea renders empty on every reload).
         customMessages: leaveType.customMessages,
@@ -1823,6 +1828,126 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
     const hiddenTypeIds = new Set(types.filter((t) => t.visibleToEmployee === false).map((t) => t.id));
     const visible = hiddenTypeIds.size === 0 ? out : out.filter((r) => !hiddenTypeIds.has(r.leaveTypeId));
     return visible.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
+  });
+}
+
+// ── Manager Leave Summary (item 726ac8c2) ─────────────────────────────────────────────────────────
+/** One leave type on the read-only Leave Summary section of a subordinate's Personnel profile. */
+export type SubordinateLeaveSummaryRow = {
+  leaveTypeId: string;
+  leaveType: string;
+  /** Ledger balance — the SAME figure `leaveBalances` shows the employee on their own Leave page. */
+  balance: number;
+  /** Requests awaiting a decision: a COUNT OF REQUESTS, not the sum of days `leaveBalances.pending` holds. */
+  pendingCount: number;
+  /** Next approved leave that has not finished yet (inclusive span), or null. */
+  upcomingFrom: string | null;
+  upcomingTo: string | null;
+};
+
+/**
+ * Manager Leave Summary (item 726ac8c2) — the read behind the Leave Summary section on a subordinate's
+ * Personnel profile.
+ *
+ * The reporting-hierarchy restriction is enforced HERE, on the data, and not by hiding the section:
+ * a UI-only check would let a manager read another manager's reports' balances by editing the
+ * employment id in the URL. The gate is the manager branch of `app.can_see_employment` (migration 0109)
+ * verbatim — the same recursive `app.is_admin_report_of` predicate, resolved over EVERY employment the
+ * caller holds — so the section's reach can never drift from the RLS reach it sits inside. `null` ⇒ the
+ * caller does not manage this employment and the page renders nothing.
+ *
+ * The gate is deliberately NARROWER than RLS: self and plain HR-admin viewers get `null` too, because
+ * this is a manager affordance. An employee already has their own Leave page and an admin already has
+ * the full balance card on /admin/personnel; neither needs a second, thinner copy here.
+ *
+ * Balances come from `leaveBalances` — the resolver the employee's own Leave page uses — so a manager
+ * and an employee can never read different numbers for the same leave type.
+ */
+export async function subordinateLeaveSummary(
+  ctx: SessionContext,
+  employmentId: string,
+  todayIso: string,
+  locale?: string,
+): Promise<SubordinateLeaveSummaryRow[] | null> {
+  const managed = await withTenant(ctx, async (tx) => {
+    const res = await tx.execute(sql`
+      select exists (
+        select 1 from employment me
+          join app_user u on u.person_id = me.person_id
+        where u.id = app.current_user_id()
+          and me.tenant_id = app.current_tenant_id()
+          and me.terminated_on is null
+          and app.is_admin_report_of(${employmentId}::uuid, me.id)
+      ) as ok
+    `);
+    return (res as unknown as { ok: boolean }[])[0]?.ok === true;
+  });
+  if (!managed) return null;
+
+  const balances = await leaveBalances(ctx, employmentId, locale);
+  if (balances.length === 0) return [];
+
+  return withTenant(ctx, async (tx) => {
+    const [pending, dated, spans] = await Promise.all([
+      tx
+        .select({ leaveTypeId: leaveRequest.leaveTypeId, n: sql<string>`count(*)` })
+        .from(leaveRequest)
+        .where(and(eq(leaveRequest.employmentId, employmentId), eq(leaveRequest.status, 'pending')))
+        .groupBy(leaveRequest.leaveTypeId),
+      // Per-date-approval requests (ADR-0068): only the dates that were actually APPROVED count as
+      // upcoming, so a partially-rejected span never advertises days the employee is not taking.
+      tx
+        .select({
+          leaveTypeId: leaveRequest.leaveTypeId,
+          requestId: leaveRequest.id,
+          from: sql<string>`min(${leaveRequestDate.leaveDate})`,
+          to: sql<string>`max(${leaveRequestDate.leaveDate})`,
+        })
+        .from(leaveRequestDate)
+        .innerJoin(leaveRequest, eq(leaveRequest.id, leaveRequestDate.leaveRequestId))
+        .where(
+          and(
+            eq(leaveRequest.employmentId, employmentId),
+            eq(leaveRequestDate.status, 'approved'),
+            gte(leaveRequestDate.leaveDate, todayIso),
+          ),
+        )
+        .groupBy(leaveRequest.leaveTypeId, leaveRequest.id),
+      // Whole-span requests (no per-date rows) — the (a)/(b) split approvedLeaveDates uses. Unlike that
+      // helper this does NOT filter to full_day: a manager planning cover wants to see an upcoming
+      // half-day or hourly absence too; "is this person out all day" is a different question.
+      tx
+        .select({
+          leaveTypeId: leaveRequest.leaveTypeId,
+          from: leaveRequest.startDate,
+          to: leaveRequest.endDate,
+        })
+        .from(leaveRequest)
+        .where(
+          and(
+            eq(leaveRequest.employmentId, employmentId),
+            eq(leaveRequest.status, 'approved'),
+            gte(leaveRequest.endDate, todayIso),
+            sql`NOT EXISTS (SELECT 1 FROM leave_request_date x WHERE x.leave_request_id = ${leaveRequest.id})`,
+          ),
+        ),
+    ]);
+    const pendingBy = new Map(pending.map((p) => [p.leaveTypeId, Number(p.n)]));
+    // Earliest-starting upcoming span per type. Both sources feed the same reduction, so a type that has
+    // one of each keeps whichever starts first.
+    const upcomingBy = new Map<string, { from: string; to: string }>();
+    for (const r of [...dated, ...spans]) {
+      const prev = upcomingBy.get(r.leaveTypeId);
+      if (!prev || r.from < prev.from) upcomingBy.set(r.leaveTypeId, { from: r.from, to: r.to });
+    }
+    return balances.map((b) => ({
+      leaveTypeId: b.leaveTypeId,
+      leaveType: b.leaveType,
+      balance: b.balance,
+      pendingCount: pendingBy.get(b.leaveTypeId) ?? 0,
+      upcomingFrom: upcomingBy.get(b.leaveTypeId)?.from ?? null,
+      upcomingTo: upcomingBy.get(b.leaveTypeId)?.to ?? null,
+    }));
   });
 }
 

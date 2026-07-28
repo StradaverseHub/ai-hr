@@ -85,6 +85,28 @@ describe('deriveHistoryBreakdown', () => {
     expect(b.recordLines).toEqual(lines);
   });
 
+  it('includes the HRDF levy in the employer total, not just as a line (efece4ce)', () => {
+    // The row and the TOTAL are one change, deliberately: showing HRDF as a line while leaving it out of
+    // the sum would make the section disagree with its own arithmetic — an HR administrator adding the
+    // figures by hand would get a different answer from the bold number underneath them.
+    const b = deriveHistoryBreakdown(
+      row({ statutory: { epfEmployer: 390, socsoEmployer: 65.25, eisEmployer: 7.9, hrdf: 30 } }),
+    );
+    expect(b.employerContributions.hrdf).toBe(30);
+    expect(b.employerContributions.total).toBeCloseTo(493.15, 2); // 463.15 + 30
+  });
+
+  it('reports a zero HRDF levy for a company that does not pay it, without dropping the key', () => {
+    // A company with no HRDF Contribution Rate resolves to 'not_registered', so the engine stores 0
+    // rather than omitting the key. The breakdown must carry that 0 through — the TABLE decides not to
+    // draw a row for it, which is a presentation choice; the derivation stays honest.
+    const b = deriveHistoryBreakdown(
+      row({ statutory: { epfEmployer: 390, socsoEmployer: 65.25, eisEmployer: 7.9, hrdf: 0 } }),
+    );
+    expect(b.employerContributions.hrdf).toBe(0);
+    expect(b.employerContributions.total).toBeCloseTo(463.15, 2); // unchanged from before HRDF existed
+  });
+
   it('degrades an absent statutory blob to zeros (no NaN)', () => {
     const b = deriveHistoryBreakdown(row({ statutory: null }));
     expect(b.employerContributions.total).toBe(0);

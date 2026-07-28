@@ -1,9 +1,10 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, CheckCircle2, ChevronDown, Clock, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CALENDAR_FOCUS_MS } from '@/lib/calendar-focus';
 import { styleFor } from '@/components/planned-absences';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { EmployeeName } from '@/components/ui';
@@ -93,6 +94,8 @@ export function PlannedAbsencesGrid({
   selfCancelPillLabel,
   // 8cb7b089: aria-label for the per-pill "go to approval" deep-link arrow.
   approvalPillLabel,
+  // item 726ac8c2: the person id the Leave Summary's "View Calendar" action asked us to highlight.
+  focusPersonId,
 }: {
   rows: GridRow[];
   dayArr: GridDay[];
@@ -109,8 +112,29 @@ export function PlannedAbsencesGrid({
   selfCancelAction?: (fd: FormData) => void | Promise<void>;
   selfCancelPillLabel?: string;
   approvalPillLabel?: string;
+  focusPersonId?: string | null;
 }) {
-  const [showAll, setShowAll] = useState(false);
+  // item 726ac8c2 — arrival highlight. Driven by React state rather than the approvals arrival island's
+  // DOM stamping, because the target row may not be in the DOM at all: the roster collapses to
+  // COLLAPSED_ROWS and a deep-linked employee further down would otherwise be a silent miss. Knowing the
+  // index lets us open the roster first and highlight second.
+  const focusIdx = focusPersonId ? rows.findIndex((r) => r.id === focusPersonId) : -1;
+  const [showAll, setShowAll] = useState(focusIdx >= COLLAPSED_ROWS);
+  // Held for the requested 3s and then dropped, so the highlight reads as an arrival cue rather than a
+  // permanent selection. A focus id that matches no row (wrong team, or a person with no calendar row)
+  // starts inactive — arrival degrades to a plain calendar, never an error.
+  const [focusActive, setFocusActive] = useState(focusIdx >= 0);
+  const focusRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusActive) return;
+    // The card itself is reached by the href's #planned-absences anchor; this brings the ROW into view
+    // inside the roster. Honoured explicitly for reduced motion — the global CSS reset cannot suppress
+    // a JS smooth-scroll option (same reasoning as app/approvals/attention-on-arrival.tsx).
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    focusRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'nearest' });
+    const timer = window.setTimeout(() => setFocusActive(false), CALENDAR_FOCUS_MS);
+    return () => window.clearTimeout(timer);
+  }, [focusActive]);
   const lastIdx = days - 1;
   const todayIdx = dayIndex(todayIso, fromMs);
   const canExpand = rows.length > COLLAPSED_ROWS;
@@ -152,7 +176,14 @@ export function PlannedAbsencesGrid({
           {visibleRows.map((emp, r) => (
             <Fragment key={emp.id}>
               <div
-                className="sticky left-0 z-20 flex min-w-0 items-center gap-2.5 bg-card pr-2"
+                // item 726ac8c2: the deep-linked employee. The ref is bound by IDENTITY (so the scroll
+                // still lands after the 3s highlight has expired); the class is bound by `focusActive`,
+                // the window that actually paints it.
+                ref={emp.id === focusPersonId ? focusRef : undefined}
+                className={cn(
+                  'sticky left-0 z-20 flex min-w-0 items-center gap-2.5 bg-card pr-2',
+                  focusActive && emp.id === focusPersonId && 'calendar-focus-attention',
+                )}
                 style={{ gridColumn: 1, gridRow: r + 2 }}
               >
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
@@ -176,6 +207,10 @@ export function PlannedAbsencesGrid({
                       'min-h-[2.75rem] rounded-lg text-border',
                       d.isWeekend ? 'bg-muted/50' : 'bg-muted/25',
                       isToday && 'bg-primary/[0.06] text-primary/20',
+                      // item 726ac8c2: a STATIC ring carries the highlight across the focused row's day
+                      // tiles. Deliberately not animated — shaking the whole row would jitter the pills
+                      // out of alignment with the day columns they sit under.
+                      focusActive && emp.id === focusPersonId && 'ring-1 ring-inset ring-ring/50',
                     )}
                   />
                 );

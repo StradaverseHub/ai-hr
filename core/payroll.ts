@@ -482,10 +482,20 @@ async function unpaidDaysByEmployment(
       where lrd.leave_request_id = ${leaveRequest.id} and lrd.status = 'approved'),
     ${leaveRequest.days}
   )`;
+  // Allow Unpaid Leave (feedback a7fab30b): a request can now be PARTLY unpaid — a paid leave type where the
+  // balance covered only some of the days. Such a request must contribute its unpaid_days and nothing more,
+  // whereas a wholly-unpaid request still contributes its whole (per-date-adjusted) span. Expressed as one
+  // CASE so a request is counted exactly once whichever branch admitted it: a wholly-unpaid type never has
+  // unpaid_days set, and a part-unpaid request is of a PAID type, so the two are disjoint by construction.
+  // unpaid_days is NULL on every row that predates this column ⇒ the figure is unchanged for existing data.
+  const unpaidDaysExpr = sql<string>`case
+    when ${leaveType.paid} = false or ${leaveRequest.allowanceEligible} = false then ${perDateDays}
+    else coalesce(${leaveRequest.unpaidDays}, 0)
+  end`;
   const rows = await tx
     .select({
       employmentId: leaveRequest.employmentId,
-      days: sql<string>`coalesce(sum(${perDateDays}), 0)`,
+      days: sql<string>`coalesce(sum(${unpaidDaysExpr}), 0)`,
     })
     .from(leaveRequest)
     .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
@@ -495,10 +505,13 @@ async function unpaidDaysByEmployment(
         // Unpaid days are: (a) any request of an unpaid leave type, OR (b) Phase-B #13 (ADR-0062) — a
         // MATERNITY request whose s.37 paid ALLOWANCE was withheld (allowance_eligible=false), which keeps
         // the paid MATERNITY leave-type but is unpaid for the period. The per-request override wins over the
-        // type default; allowance_eligible TRUE/NULL on a paid type stays paid.
+        // type default; allowance_eligible TRUE/NULL on a paid type stays paid. Plus (c) a7fab30b — the
+        // uncovered portion of a request on a type that allows unpaid leave, which is what this route was
+        // always for: the deduction is then worked out exactly as it is for any other unpaid day.
         or(
           eq(leaveType.paid, false),
           eq(leaveRequest.allowanceEligible, false),
+          sql`${leaveRequest.unpaidDays} > 0`,
         ),
         gte(leaveRequest.startDate, periodStart),
         lte(leaveRequest.startDate, periodEnd),

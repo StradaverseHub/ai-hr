@@ -22,9 +22,15 @@ export type AssignmentRow = {
   templateId: string;
   companyId: string;
   leaveTypeId: string | null;
+  /** bb3938b9 — the two criteria the Assign Template panels now carry (null = applies to all). */
+  gradeId: string | null;
+  minDays: number | null;
+  maxDays: number | null;
 };
 
 export type TemplateManagerLabels = {
+  /** "Require multi-step approval" (d4735493) — the explicit single-vs-chain choice. */
+  requireMultiStep: string;
   templatesTitle: string;
   templatesHint: string;
   addTemplate: string;
@@ -50,6 +56,22 @@ export type TemplateManagerLabels = {
   selectTemplate: string;
   selectCompanies: string;
   selectLeaveTypes: string;
+  // bb3938b9 — the two criteria panels added to the Assign Template row, plus their shared panel controls.
+  selectGrades: string;
+  selectAll: string;
+  deselectAll: string;
+  panelNoneMeansAll: string;
+  panelPickAtLeastOne: string;
+  noGrades: string;
+  conditions: string;
+  addCondition: string;
+  conditionOperator: string;
+  conditionValue: string;
+  opGreaterThan: string;
+  opLessThan: string;
+  opBetween: string;
+  leaveDuration: string;
+  valueDays: string;
   templateCol: string;
   leaveTypeCol: string;
   companyCol: string;
@@ -265,6 +287,7 @@ export function ApprovalAssignmentManager({
   assignments,
   companies,
   leaveTypes,
+  grades,
   companyMultiApproval,
   actions,
   labels,
@@ -273,6 +296,8 @@ export function ApprovalAssignmentManager({
   assignments: AssignmentRow[];
   companies: Option[];
   leaveTypes: Option[];
+  /** bb3938b9 — job grades, the third criteria panel of the Assign Template row. */
+  grades: Option[];
   companyMultiApproval: Record<string, boolean>;
   actions: AssignmentActions;
   labels: TemplateManagerLabels;
@@ -281,6 +306,15 @@ export function ApprovalAssignmentManager({
   const [assigning, setAssigning] = useState(false);
   const templateName = (id: string) => templates.find((x) => x.id === id)?.name ?? id;
   const groups = groupTemplateAssignments(assignments);
+
+  // bb3938b9 — an assignment scoped by grade or duration must SAY so; a bare leave-type badge would read as
+  // "covers everyone", which is exactly the silent-scope-change risk this item had to avoid.
+  const conditionText = (a: AssignmentRow): string | null => {
+    if (a.minDays == null && a.maxDays == null) return null;
+    if (a.minDays != null && a.maxDays != null) return `${labels.leaveDuration} ${a.minDays}–${a.maxDays}`;
+    if (a.minDays != null) return `${labels.leaveDuration} > ${a.minDays}`;
+    return `${labels.leaveDuration} < ${a.maxDays}`;
+  };
 
   return (
     <div className="rounded-2xl border border-border bg-card">
@@ -330,6 +364,8 @@ export function ApprovalAssignmentManager({
                           {g.rows.map((a) => (
                             <li key={a.ruleId} className="flex flex-wrap items-center gap-2">
                               <Badge variant="accent">{nameOf(leaveTypes, a.leaveTypeId)}</Badge>
+                              {a.gradeId && <Badge variant="default">{nameOf(grades, a.gradeId)}</Badge>}
+                              {conditionText(a) && <Badge variant="default">{conditionText(a)}</Badge>}
                               <form action={actions.unassign}>
                                 <input type="hidden" name="ruleId" value={a.ruleId} />
                                 <input type="hidden" name="companyId" value={a.companyId} />
@@ -360,6 +396,7 @@ export function ApprovalAssignmentManager({
             templates={templates.filter((x) => x.active)}
             companies={companies}
             leaveTypes={leaveTypes}
+            grades={grades}
             companyMultiApproval={companyMultiApproval}
             assignAction={actions.assign}
             multiApprovalAction={actions.setMultiApproval}
@@ -386,6 +423,33 @@ function TemplateForm({
   onCancel: () => void;
 }) {
   const [levels, setLevels] = useState<string[]>(template?.levels ?? ['direct_manager', 'hr_admin']);
+  /**
+   * "Require multi-step approval" (feedback d4735493).
+   *
+   * The engine has always supported an ordered chain — `ApprovalTemplate.levels` is a list and
+   * resolveApprovalChain consumes it in order — and this form has always let you add and remove steps.
+   * What was missing is the DECISION being explicit. The editor simply opened on a two-step default, so
+   * an administrator who wanted one approver had to notice a second row and delete it, and one who
+   * wanted several had no signal that was expected rather than accidental.
+   *
+   * DERIVED from the template being edited rather than defaulted to a constant, so opening an existing
+   * single-step template does not silently present it as multi-step (and vice versa). A new template
+   * opens multi-step, preserving today's two-step default exactly — this adds a control, it does not
+   * change what a new template starts as.
+   */
+  const [multiStep, setMultiStep] = useState<boolean>((template?.levels?.length ?? 2) > 1);
+
+  /** Collapse to the first step, or restore a second, WITHOUT discarding what was already chosen. */
+  function toggleMultiStep(next: boolean) {
+    setMultiStep(next);
+    setLevels((prev) => {
+      if (next) return prev.length > 1 ? prev : [...prev, 'hr_admin'];
+      // Keep the FIRST step rather than resetting to a default: unticking the box means "one approver",
+      // not "start again", and silently replacing a chosen first approver would be a data change the
+      // administrator did not ask for.
+      return prev.slice(0, 1);
+    });
+  }
 
   return (
     <form
@@ -407,10 +471,22 @@ function TemplateForm({
         <input name="description" defaultValue={template?.description ?? ''} className={inputCls} />
       </label>
 
-      <StepListEditor levels={levels} setLevels={setLevels} labels={stepLabels} />
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={multiStep}
+          onChange={(e) => toggleMultiStep(e.target.checked)}
+          className="size-4 rounded border-border"
+        />
+        <span>{labels.requireMultiStep}</span>
+      </label>
+
+      {/* Single-step still renders the SAME editor, capped at one row, rather than a separate control:
+          two ways to pick an approver would be two places for the value to diverge. */}
+      <StepListEditor levels={levels} setLevels={setLevels} labels={stepLabels} maxSteps={multiStep ? undefined : 1} />
 
       <div className="flex items-center gap-2">
-        <Button type="submit" size="sm" disabled={levels.length === 0}>
+        <Button type="submit" size="sm" disabled={levels.length === 0 || (multiStep && levels.length < 2)}>
           {labels.save}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
@@ -421,10 +497,83 @@ function TemplateForm({
   );
 }
 
+/**
+ * bb3938b9 — ONE criteria panel of the Assign Template row. Every panel is the same object: a legend with
+ * Select all / Deselect all, a fixed-height scrolling checkbox list, and the "none = applies to all" note —
+ * so the four sit in the row at identical width and height however many options each holds. The checkboxes
+ * post their own `name`, so the enclosing form submits them with no extra wiring.
+ */
+function CriteriaPanel({
+  name,
+  legend,
+  options,
+  selected,
+  setSelected,
+  labels,
+  hint,
+  emptyText,
+  renderExtra,
+}: {
+  name: string;
+  legend: string;
+  options: Option[];
+  selected: string[];
+  setSelected: (next: string[]) => void;
+  labels: TemplateManagerLabels;
+  /** Every panel carries a footnote, so the four end at the same height — and because "none" does NOT mean
+   *  the same thing everywhere: companies and leave types are required, grade and condition are not. */
+  hint: string;
+  emptyText?: string;
+  /** Companies append their multi-approval-off marker; the other panels pass nothing. */
+  renderExtra?: (o: Option) => React.ReactNode;
+}) {
+  const allSelected = options.length > 0 && selected.length === options.length;
+  return (
+    <fieldset className="flex min-w-0 flex-col space-y-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <legend className="text-xs font-medium text-muted-foreground">{legend}</legend>
+        {options.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setSelected(allSelected ? [] : options.map((o) => o.id))}
+            className="text-[11px] font-medium text-primary underline-offset-2 hover:underline"
+          >
+            {allSelected ? labels.deselectAll : labels.selectAll}
+          </button>
+        )}
+      </div>
+      <div className="h-48 space-y-1 overflow-y-auto rounded-lg border border-border bg-background p-2">
+        {options.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{emptyText}</p>
+        ) : (
+          options.map((o) => (
+            <label key={o.id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                name={name}
+                value={o.id}
+                checked={selected.includes(o.id)}
+                onChange={() =>
+                  setSelected(selected.includes(o.id) ? selected.filter((x) => x !== o.id) : [...selected, o.id])
+                }
+                className="h-4 w-4 shrink-0 rounded border-border"
+              />
+              <span className="min-w-0 truncate">{o.label}</span>
+              {renderExtra?.(o)}
+            </label>
+          ))
+        )}
+      </div>
+      <p className="text-[11px] text-muted-foreground">{hint}</p>
+    </fieldset>
+  );
+}
+
 function AssignForm({
   templates,
   companies,
   leaveTypes,
+  grades,
   companyMultiApproval,
   assignAction,
   multiApprovalAction,
@@ -434,6 +583,7 @@ function AssignForm({
   templates: TemplateRow[];
   companies: Option[];
   leaveTypes: Option[];
+  grades: Option[];
   companyMultiApproval: Record<string, boolean>;
   assignAction: (fd: FormData) => void | Promise<void>;
   multiApprovalAction: (fd: FormData) => void | Promise<void>;
@@ -441,8 +591,17 @@ function AssignForm({
   onCancel: () => void;
 }) {
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
-  const toggle = (id: string) =>
-    setSelectedCompanies((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  const [selectedLeaveTypes, setSelectedLeaveTypes] = useState<string[]>([]);
+  const [selectedGrades, setSelectedGrades] = useState<string[]>([]);
+
+  // Conditions panel — the leave-duration range the rule matrix already scopes on (min/max days). Off by
+  // default, which posts empty strings and so keeps the assignment unbounded exactly as before.
+  const [condOn, setCondOn] = useState(false);
+  const [operator, setOperator] = useState<'gte' | 'lte' | 'between'>('gte');
+  const [v1, setV1] = useState('');
+  const [v2, setV2] = useState('');
+  const minDays = !condOn ? '' : operator === 'lte' ? '' : v1;
+  const maxDays = !condOn ? '' : operator === 'gte' ? '' : operator === 'lte' ? v1 : v2;
 
   // Companies chosen for assignment that don't yet have multi-step approval on — the assignment would never
   // fire for them until it's enabled (core/leave.ts gates on company.leaveMultiApproval).
@@ -467,39 +626,110 @@ function AssignForm({
           </select>
         </label>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <fieldset className="space-y-1.5">
-            <legend className="text-xs font-medium text-muted-foreground">{labels.selectCompanies}</legend>
-            <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border bg-background p-2">
-              {companies.map((c) => (
-                <label key={c.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    name="companyIds"
-                    value={c.id}
-                    checked={selectedCompanies.includes(c.id)}
-                    onChange={() => toggle(c.id)}
-                    className="h-4 w-4 rounded border-border"
-                  />
-                  <span>{c.label}</span>
-                  {!companyMultiApproval[c.id] && <Badge variant="default">{labels.multiApprovalOff}</Badge>}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+        {/* bb3938b9 — all four assignment criteria in ONE row of equally sized panels. Four abreast needs
+            roughly 1280px to stay readable, so the row folds to 2×2 on a tablet and stacks on a phone
+            rather than squeezing four scroll lists into an unusable strip. */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <CriteriaPanel
+            name="companyIds"
+            legend={labels.selectCompanies}
+            options={companies}
+            selected={selectedCompanies}
+            setSelected={setSelectedCompanies}
+            labels={labels}
+            hint={labels.panelPickAtLeastOne}
+            renderExtra={(c) =>
+              !companyMultiApproval[c.id] ? <Badge variant="default">{labels.multiApprovalOff}</Badge> : null
+            }
+          />
 
-          <fieldset className="space-y-1.5">
-            <legend className="text-xs font-medium text-muted-foreground">{labels.selectLeaveTypes}</legend>
-            <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border bg-background p-2">
-              {leaveTypes.map((lt) => (
-                <label key={lt.id} className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" name="leaveTypeIds" value={lt.id} className="h-4 w-4 rounded border-border" />
-                  <span>{lt.label}</span>
-                </label>
-              ))}
+          <CriteriaPanel
+            name="leaveTypeIds"
+            legend={labels.selectLeaveTypes}
+            options={leaveTypes}
+            selected={selectedLeaveTypes}
+            setSelected={setSelectedLeaveTypes}
+            labels={labels}
+            hint={labels.panelPickAtLeastOne}
+          />
+
+          <CriteriaPanel
+            name="gradeIds"
+            legend={labels.selectGrades}
+            options={grades}
+            selected={selectedGrades}
+            setSelected={setSelectedGrades}
+            labels={labels}
+            hint={labels.panelNoneMeansAll}
+            emptyText={labels.noGrades}
+          />
+
+          {/* Conditions is the one criterion that is not a list: the rule matrix scopes duration as a
+              range, so the panel offers the same operator + value the workflow popup does. Same frame and
+              height as its three neighbours so the row still reads as one set of panels. */}
+          <fieldset className="flex min-w-0 flex-col space-y-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <legend className="text-xs font-medium text-muted-foreground">{labels.conditions}</legend>
             </div>
+            <div className="h-48 space-y-2 overflow-y-auto rounded-lg border border-border bg-background p-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={condOn}
+                  onChange={(e) => setCondOn(e.target.checked)}
+                  className="h-4 w-4 shrink-0 rounded border-border"
+                />
+                <span className="min-w-0 truncate">{labels.addCondition}</span>
+              </label>
+              {condOn && (
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground">{labels.leaveDuration}</div>
+                  <select
+                    value={operator}
+                    onChange={(e) => setOperator(e.target.value as typeof operator)}
+                    className={inputCls}
+                    aria-label={labels.conditionOperator}
+                  >
+                    <option value="gte">{labels.opGreaterThan}</option>
+                    <option value="lte">{labels.opLessThan}</option>
+                    <option value="between">{labels.opBetween}</option>
+                  </select>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={v1}
+                      onChange={(e) => setV1(e.target.value)}
+                      className={inputCls}
+                      aria-label={labels.conditionValue}
+                    />
+                    {operator === 'between' && (
+                      <>
+                        <span className="text-xs text-muted-foreground">–</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={v2}
+                          onChange={(e) => setV2(e.target.value)}
+                          className={inputCls}
+                          aria-label={labels.conditionValue}
+                        />
+                      </>
+                    )}
+                    <span className="text-xs text-muted-foreground">{labels.valueDays}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">{labels.panelNoneMeansAll}</p>
           </fieldset>
         </div>
+
+        {/* Derived from the operator/value pair above, exactly as the workflow popup does it. */}
+        <input type="hidden" name="minDays" value={minDays} />
+        <input type="hidden" name="maxDays" value={maxDays} />
 
         <div className="flex items-center gap-2">
           <Button type="submit" size="sm">

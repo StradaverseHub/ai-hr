@@ -81,6 +81,13 @@ export type DashboardCardChoice = {
   defaultDisplay: boolean;
   mandatory: boolean;
   displayOrder: number;
+  /**
+   * OPTIONAL so every existing caller keeps compiling; supplied in practice by both real sources (the
+   * tenant's dashboard_card_config rows and BUILTIN_ROLE_DASHBOARD_CARDS). The normaliser needs it only to
+   * enforce the MAX_SHORTCUTS cap (feedback 3d2bc793) — with it absent no card counts as a shortcut and
+   * the cap is inert, which is the correct behaviour for a caller that does not model card types.
+   */
+  cardType?: 'information' | 'action' | 'shortcut';
 };
 
 /** The persisted per-user layout: which cards are shown, and the full ordering of available cards. */
@@ -119,26 +126,51 @@ export function isFixedRowKey(key: string): boolean {
   return FIXED_ROW.has(key);
 }
 
-/** A layout split into the draggable first row, the fixed (pinned) second row, and the third area below. */
-export type DashboardRows = { row1: string[]; row2: string[]; row3: string[] };
+// ───────────────────────── The Shortcuts section (feedback 3d2bc793) ─────────────────────────
+//
+// Shortcut cards were ordinary cards: adding one dropped it wherever the flat order happened to put it —
+// usually alone below the Leave Calendar — and there was no cap and no section to speak of. They now
+// gather into their OWN row of mini cards between the top row and the pinned calendar, holding up to
+// MAX_SHORTCUTS of them in an order the employee sets.
+//
+// Same rule as the pinned row: membership is DERIVED (from the card's HR-configured `cardType`), never
+// persisted. The stored shape is still `{ selected, order }`, so a layout saved before this change loads
+// unchanged and every non-shortcut card keeps exactly the position it had — only cards HR typed as
+// 'shortcut' move, which is the point. 'action' cards (Pending Tasks) are deliberately NOT shortcuts:
+// they render a bespoke server node in the top row and must stay there.
+
+/** Maximum shortcut mini cards an employee may show in the Shortcuts section. */
+export const MAX_SHORTCUTS = 4;
+
+/** A layout split into the top row, the Shortcuts row, the fixed (pinned) row, and the third area below. */
+export type DashboardRows = { row1: string[]; shortcuts: string[]; row2: string[]; row3: string[] };
 
 /**
- * Split a normalised layout's SELECTED cards three ways, preserving the layout's order: `row1` = the
- * first MAX_FIRST_ROW non-pinned selected cards, `row2` = the pinned cards (`pinned` names them — the
- * Leave Calendar per FIXED_ROW_KEYS), `row3` = every remaining non-pinned selected card, rendered below
- * the calendar. Pure / framework-free so both the server page and the client customize island can call it.
+ * Split a normalised layout's SELECTED cards, preserving the layout's order: `row2` = the pinned cards
+ * (`pinned` names them — the Leave Calendar per FIXED_ROW_KEYS), `shortcuts` = the cards `shortcuts` names
+ * (the tenant's 'shortcut'-typed cards), `row1` = the first MAX_FIRST_ROW remaining cards, `row3` = every
+ * remaining card, rendered below the calendar. Pure / framework-free so both the server page and the
+ * client customize island can call it. `shortcuts` defaults to empty, which reproduces the pre-3d2bc793
+ * three-way split exactly.
  */
-export function partitionDashboardRows(layout: DashboardLayout, pinned: Iterable<string>): DashboardRows {
+export function partitionDashboardRows(
+  layout: DashboardLayout,
+  pinned: Iterable<string>,
+  shortcuts: Iterable<string> = [],
+): DashboardRows {
   const pinnedSet = new Set(pinned);
+  const shortcutSet = new Set(shortcuts);
   const row1: string[] = [];
   const row2: string[] = [];
   const row3: string[] = [];
+  const shortcutRow: string[] = [];
   for (const key of layout.selected) {
     if (pinnedSet.has(key)) row2.push(key);
+    else if (shortcutSet.has(key)) shortcutRow.push(key);
     else if (row1.length < MAX_FIRST_ROW) row1.push(key);
     else row3.push(key);
   }
-  return { row1, row2, row3 };
+  return { row1, shortcuts: shortcutRow, row2, row3 };
 }
 
 /**
@@ -284,7 +316,22 @@ export function normalizeDashboardLayout(raw: unknown, cards: readonly Dashboard
     }
   }
 
-  const selected = order.filter((k) => selectedSet.has(k));
+  // MAX_SHORTCUTS cap (feedback 3d2bc793): enforced HERE rather than in the UI alone, because this runs on
+  // both read and write — so a hand-crafted save can't exceed it, and a layout that already holds more
+  // shortcuts than the cap sheds the surplus from the END, keeping the first four the employee arranged.
+  // A MANDATORY shortcut is exempt: "mandatory cards can never be removed" is the older invariant and wins.
+  const shortcutKeys = new Set(available.filter((c) => c.cardType === 'shortcut').map((c) => c.cardKey));
+  const mandatorySet = new Set(mandatoryKeys);
+  let shortcutsShown = 0;
+  const selected: string[] = [];
+  for (const k of order) {
+    if (!selectedSet.has(k)) continue;
+    if (shortcutKeys.has(k)) {
+      if (shortcutsShown >= MAX_SHORTCUTS && !mandatorySet.has(k)) continue;
+      shortcutsShown++;
+    }
+    selected.push(k);
+  }
   return { selected, order };
 }
 

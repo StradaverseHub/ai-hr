@@ -238,14 +238,19 @@ export async function setTenantDefaultTemplateAction(formData: FormData) {
   redirect(`${PAGE}?toast=${encodeURIComponent(templateId ? 'Default flow set' : 'Default flow cleared')}`);
 }
 
-/** Bulk-assign a template to many companies × many leave types in one action (multi-select). */
+/** Bulk-assign a template to many companies × many leave types × many grades in one action (multi-select).
+ *  bb3938b9 — grades and the leave-duration condition are optional: posting none of them keeps the
+ *  pre-existing "applies to every grade, any duration" assignment shape. */
 export async function assignApprovalTemplateAction(formData: FormData) {
   const s = await getSession();
   const templateId = String(formData.get('templateId') ?? '');
   const companyIds = formData.getAll('companyIds').map(String).filter(Boolean);
   const leaveTypeIds = formData.getAll('leaveTypeIds').map(String).filter(Boolean);
+  const gradeIds = formData.getAll('gradeIds').map(String).filter(Boolean);
+  const minDays = numOrNull(formData.get('minDays'));
+  const maxDays = numOrNull(formData.get('maxDays'));
   try {
-    await assignApprovalTemplate(s, { templateId, companyIds, leaveTypeIds });
+    await assignApprovalTemplate(s, { templateId, companyIds, leaveTypeIds, gradeIds, minDays, maxDays });
   } catch (e) {
     redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }

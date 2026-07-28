@@ -57,11 +57,18 @@ function cleanTemplate(p: ApprovalTemplateInput) {
   return { name, description, levels };
 }
 
-/** SQL predicate isolating a template ASSIGNMENT row: the fully-wildcard bucket for one leave type (all
- *  scoping dims null EXCEPT leave_type_id). At most one such row per (company, leave-type) exists (the
- *  leave_approval_policy_wildcard_uq index), so it is safe to upsert. */
-function assignmentBucketFilter() {
-  return sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null and employment_type is null and min_days is null and max_days is null`;
+/** SQL predicate isolating a template ASSIGNMENT row: the org-chart dims stay wildcard, while the three
+ *  dims the Assignment Template screen now exposes — leave type, grade and the leave-duration condition —
+ *  are matched EXACTLY (`is not distinct from`, so null matches null). With all three left unset this is
+ *  byte-for-byte the old fully-wildcard bucket, which is why pre-existing assignments still upsert onto
+ *  their own row instead of forking a duplicate (leave_approval_policy_wildcard_uq guarantees at most one
+ *  such row per company × leave type). A grade- or condition-scoped assignment gets its own row and is
+ *  resolved by the normal ADR-0071 specificity ladder — no resolution change. */
+function assignmentBucketFilter(gradeId: string | null, minDays: number | null, maxDays: number | null) {
+  return sql`business_unit_id is null and department_id is null and position_id is null and employment_type is null
+    and grade_id is not distinct from ${gradeId}::uuid
+    and min_days is not distinct from ${minDays}::int
+    and max_days is not distinct from ${maxDays}::int`;
 }
 
 /** List the tenant's templates (active first, then by name), each with its live assignment count. */
@@ -94,12 +101,17 @@ export async function listApprovalTemplates(ctx: SessionContext): Promise<Approv
   });
 }
 
-/** One assignment row for the assignments screen: which template covers which (company, leave-type). */
+/** One assignment row for the assignments screen: which template covers which (company, leave-type).
+ *  bb3938b9 adds the two criteria the Assignment Template panels now carry — grade and the leave-duration
+ *  condition — so the list can show what an assignment is actually scoped to instead of implying "all". */
 export type TemplateAssignment = {
   ruleId: string;
   templateId: string;
   companyId: string;
   leaveTypeId: string | null;
+  gradeId: string | null;
+  minDays: number | null;
+  maxDays: number | null;
 };
 
 /** List every active template-driven assignment row (across the tenant), for the assignments table. */
@@ -111,6 +123,9 @@ export async function listTemplateAssignments(ctx: SessionContext): Promise<Temp
         templateId: leaveApprovalPolicy.templateId,
         companyId: leaveApprovalPolicy.companyId,
         leaveTypeId: leaveApprovalPolicy.leaveTypeId,
+        gradeId: leaveApprovalPolicy.gradeId,
+        minDays: leaveApprovalPolicy.minDays,
+        maxDays: leaveApprovalPolicy.maxDays,
       })
       .from(leaveApprovalPolicy)
       .where(and(eq(leaveApprovalPolicy.active, true), sql`${leaveApprovalPolicy.templateId} is not null`));
@@ -119,6 +134,9 @@ export async function listTemplateAssignments(ctx: SessionContext): Promise<Temp
       templateId: r.templateId as string,
       companyId: r.companyId,
       leaveTypeId: r.leaveTypeId,
+      gradeId: r.gradeId,
+      minDays: r.minDays,
+      maxDays: r.maxDays,
     }));
   });
 }
@@ -310,19 +328,39 @@ export async function setTenantDefaultTemplate(ctx: SessionContext, id: string |
   });
 }
 
-/** Bulk-assign a template to every (company × leave-type) pair. For each pair, upserts the fully-wildcard
- *  bucket row (leave-type-scoped) to point at the template and clears its own levels to []. Admin-only; the
+/** Bulk-assign a template to every (company × leave-type × grade) combination. For each one, upserts the
+ *  matching assignment row to point at the template and clears its own levels to []. Admin-only; the
  *  leave_approval_policy RLS WITH CHECK (is_admin_for(company_id)) rejects any company outside the caller's
- *  scope. */
+ *  scope.
+ *
+ *  bb3938b9 — `gradeIds` and the leave-duration condition (`minDays`/`maxDays`) are OPTIONAL criteria the
+ *  Assignment Template screen now offers alongside companies and leave types. Selecting none of a criterion
+ *  means "applies to all", which writes null on that dimension — i.e. exactly the row this function has
+ *  always written, so existing assignments keep resolving to the same employees. */
 export async function assignApprovalTemplate(
   ctx: SessionContext,
-  p: { templateId: string; companyIds: string[]; leaveTypeIds: string[] },
+  p: {
+    templateId: string;
+    companyIds: string[];
+    leaveTypeIds: string[];
+    gradeIds?: string[];
+    minDays?: number | null;
+    maxDays?: number | null;
+  },
 ) {
   const companyIds = [...new Set(p.companyIds.filter(Boolean))];
   const leaveTypeIds = [...new Set(p.leaveTypeIds.filter(Boolean))];
+  // Empty grade selection ⇒ the single wildcard grade (null), the pre-bb3938b9 shape.
+  const gradeIds: (string | null)[] = [...new Set((p.gradeIds ?? []).filter(Boolean))];
+  if (gradeIds.length === 0) gradeIds.push(null);
+  const minDays = p.minDays ?? null;
+  const maxDays = p.maxDays ?? null;
   if (!p.templateId) throw new Error('Choose a template to assign');
   if (companyIds.length === 0) throw new Error('Choose at least one company');
   if (leaveTypeIds.length === 0) throw new Error('Choose at least one leave type');
+  if (minDays !== null && (!Number.isInteger(minDays) || minDays < 0)) throw new Error('Condition days must be a whole number of 0 or more');
+  if (maxDays !== null && (!Number.isInteger(maxDays) || maxDays < 0)) throw new Error('Condition days must be a whole number of 0 or more');
+  if (minDays !== null && maxDays !== null && minDays > maxDays) throw new Error('The condition range starts after it ends');
   return withTenant(ctx, async (tx) => {
     const [tpl] = await tx
       .select({ id: leaveApprovalTemplate.id, active: leaveApprovalTemplate.active })
@@ -335,56 +373,64 @@ export async function assignApprovalTemplate(
     const ruleIds: string[] = [];
     for (const companyId of companyIds) {
       for (const leaveTypeId of leaveTypeIds) {
-        const [existing] = await tx
-          .select({ id: leaveApprovalPolicy.id, templateId: leaveApprovalPolicy.templateId })
-          .from(leaveApprovalPolicy)
-          .where(
-            and(
-              eq(leaveApprovalPolicy.companyId, companyId),
-              eq(leaveApprovalPolicy.leaveTypeId, leaveTypeId),
-              assignmentBucketFilter(),
-            ),
-          )
-          .limit(1);
-        let ruleId: string;
-        let created: boolean;
-        if (existing) {
-          await tx
-            .update(leaveApprovalPolicy)
-            .set({ templateId: p.templateId, levels: [], active: true, updatedAt: sql`now()` })
-            .where(eq(leaveApprovalPolicy.id, existing.id));
-          ruleId = existing.id;
-          created = false;
-        } else {
-          const [ins] = await tx
-            .insert(leaveApprovalPolicy)
-            .values({
-              tenantId: ctx.tenantId,
+        for (const gradeId of gradeIds) {
+          const [existing] = await tx
+            .select({ id: leaveApprovalPolicy.id, templateId: leaveApprovalPolicy.templateId })
+            .from(leaveApprovalPolicy)
+            .where(
+              and(
+                eq(leaveApprovalPolicy.companyId, companyId),
+                eq(leaveApprovalPolicy.leaveTypeId, leaveTypeId),
+                assignmentBucketFilter(gradeId, minDays, maxDays),
+              ),
+            )
+            .limit(1);
+          let ruleId: string;
+          let created: boolean;
+          if (existing) {
+            await tx
+              .update(leaveApprovalPolicy)
+              .set({ templateId: p.templateId, levels: [], active: true, updatedAt: sql`now()` })
+              .where(eq(leaveApprovalPolicy.id, existing.id));
+            ruleId = existing.id;
+            created = false;
+          } else {
+            const [ins] = await tx
+              .insert(leaveApprovalPolicy)
+              .values({
+                tenantId: ctx.tenantId,
+                companyId,
+                leaveTypeId,
+                gradeId,
+                minDays,
+                maxDays,
+                templateId: p.templateId,
+                levels: [],
+                active: true,
+              })
+              .returning({ id: leaveApprovalPolicy.id });
+            ruleId = ins.id;
+            created = true;
+          }
+          ruleIds.push(ruleId);
+          // Per-row substrate event on the policy aggregate (reuse the rule events with before/after).
+          await appendEvent(tx, {
+            tenantId: ctx.tenantId,
+            aggregateType: 'leave-approval-policy',
+            aggregateId: ruleId,
+            eventType: created ? 'leave-approval-rule.created' : 'leave-approval-rule.updated',
+            actor: actorOf(ctx),
+            payload: {
               companyId,
               leaveTypeId,
-              templateId: p.templateId,
-              levels: [],
-              active: true,
-            })
-            .returning({ id: leaveApprovalPolicy.id });
-          ruleId = ins.id;
-          created = true;
+              gradeId,
+              minDays,
+              maxDays,
+              before: existing ? { templateId: existing.templateId } : null,
+              after: { templateId: p.templateId },
+            },
+          });
         }
-        ruleIds.push(ruleId);
-        // Per-row substrate event on the policy aggregate (reuse the rule events with before/after).
-        await appendEvent(tx, {
-          tenantId: ctx.tenantId,
-          aggregateType: 'leave-approval-policy',
-          aggregateId: ruleId,
-          eventType: created ? 'leave-approval-rule.created' : 'leave-approval-rule.updated',
-          actor: actorOf(ctx),
-          payload: {
-            companyId,
-            leaveTypeId,
-            before: existing ? { templateId: existing.templateId } : null,
-            after: { templateId: p.templateId },
-          },
-        });
       }
     }
     // Command-level event on the template aggregate.
@@ -394,7 +440,7 @@ export async function assignApprovalTemplate(
       aggregateId: p.templateId,
       eventType: 'leave-approval-template.assigned',
       actor: actorOf(ctx),
-      payload: { templateId: p.templateId, companyIds, leaveTypeIds, ruleIds },
+      payload: { templateId: p.templateId, companyIds, leaveTypeIds, gradeIds, minDays, maxDays, ruleIds },
     });
     return { ruleIds };
   });
