@@ -17,7 +17,7 @@ import type { CustomReportSpec } from '../db/schema';
 import type { ReportData } from '../lib/report-export';
 import { masterDataExport, leaveBalancesSummary, type ReportFilter } from './analytics';
 import { overtimeReport, attendanceDailyReport, performanceGoalReport, performanceReviewReport } from './reporting';
-import { listProcessedPayslipsAcross } from './payroll-view';
+import { listProcessedPayslipsAcross, listPayrollRegisterAcross } from './payroll-view';
 import { listClaimTypes } from './claims';
 
 /** Alignment/type of a field. Drives the AI designer's default alignment + numeric summary eligibility. */
@@ -215,6 +215,126 @@ const LEAVE_BALANCES: ReportDataset = {
 };
 
 // ─────────────────────────────── Payroll ───────────────────────────────
+/**
+ * Payroll Register (feedback 622e12eb) — the reporter's register template as a custom-report dataset: the
+ * six field groups they listed (Employee & Organisation Info / Earnings / Total Earnings / Deductions /
+ * Total Deductions & Nett Wage / Employer Contributions), one row per processed payslip.
+ *
+ * Listed AFTER payroll_history, deliberately. The Reports page's "New report" button links `datasets[0]`,
+ * so registration order silently decides what the builder opens pre-seeded with. 622e12eb asked for a
+ * register to EXIST, not for that button to start doing something else — anyone who clicks it out of habit
+ * would land on a different data source than yesterday. The register is one pick away in the builder's
+ * data-source list. Move this entry above payroll_history only if the reporter asks for the default itself
+ * to change.
+ */
+const PAYROLL_REGISTER: ReportDataset = {
+  id: 'payroll_register',
+  category: 'payroll',
+  label: 'Payroll register',
+  fields: [
+    { id: 'employeeCode', label: 'Employee ID', type: 'text', group: 'Employee & Organisation Info' },
+    { id: 'employeeName', label: 'Employee Name', type: 'text', group: 'Employee & Organisation Info' },
+    { id: 'company', label: 'Company', type: 'text', group: 'Employee & Organisation Info' },
+    { id: 'department', label: 'Department', type: 'text', group: 'Employee & Organisation Info' },
+    { id: 'position', label: 'Position', type: 'text', group: 'Employee & Organisation Info' },
+    { id: 'jobGrade', label: 'Job Grade', type: 'text', group: 'Employee & Organisation Info' },
+    { id: 'employmentStatus', label: 'Employment Status', type: 'status', group: 'Employee & Organisation Info' },
+    { id: 'employmentType', label: 'Employment Type', type: 'text', group: 'Employee & Organisation Info' },
+    { id: 'payPeriod', label: 'Payroll Period', type: 'text', group: 'Employee & Organisation Info' },
+    { id: 'payrollCycle', label: 'Payroll Cycle', type: 'text', group: 'Employee & Organisation Info' },
+    { id: 'runSeq', label: 'Run No.', type: 'number', group: 'Employee & Organisation Info' },
+    { id: 'daysWorked', label: 'Days Worked', type: 'number', group: 'Employee & Organisation Info' },
+
+    { id: 'basic', label: 'Basic Salary', type: 'currency', group: 'Earnings' },
+    { id: 'allowance', label: 'Allowances', type: 'currency', group: 'Earnings' },
+    { id: 'overtime', label: 'Overtime', type: 'currency', group: 'Earnings' },
+    { id: 'bonus', label: 'Bonus', type: 'currency', group: 'Earnings' },
+
+    { id: 'gross', label: 'Total Earnings (Gross)', type: 'currency', group: 'Total Earnings' },
+
+    { id: 'epfEmployee', label: 'EPF (Employee)', type: 'currency', group: 'Deductions' },
+    { id: 'socsoEmployee', label: 'SOCSO (Employee)', type: 'currency', group: 'Deductions' },
+    // SKBBK is the employee's share of the PERKESO housing/foreign-worker scheme — an employee deduction,
+    // reported separately from the ordinary SOCSO share because PERKESO remits it as its own line.
+    { id: 'socsoSkbbk', label: 'SOCSO SKBBK (Employee)', type: 'currency', group: 'Deductions' },
+    { id: 'eisEmployee', label: 'EIS (Employee)', type: 'currency', group: 'Deductions' },
+    { id: 'pcb', label: 'PCB (Tax)', type: 'currency', group: 'Deductions' },
+    { id: 'cp38', label: 'CP38', type: 'currency', group: 'Deductions' },
+    { id: 'zakat', label: 'Zakat', type: 'currency', group: 'Deductions' },
+    { id: 'otherDeductions', label: 'Other Deductions', type: 'currency', group: 'Deductions' },
+
+    { id: 'totalDeductions', label: 'Total Deductions', type: 'currency', group: 'Total Deductions & Nett Wage' },
+    { id: 'net', label: 'Nett Wage', type: 'currency', group: 'Total Deductions & Nett Wage' },
+
+    { id: 'epfEmployer', label: 'EPF (Employer)', type: 'currency', group: 'Employer Contributions' },
+    { id: 'socsoEmployer', label: 'SOCSO (Employer)', type: 'currency', group: 'Employer Contributions' },
+    { id: 'eisEmployer', label: 'EIS (Employer)', type: 'currency', group: 'Employer Contributions' },
+    { id: 'hrdf', label: 'HRD Corp Levy', type: 'currency', group: 'Employer Contributions' },
+    { id: 'employerCost', label: 'Total Employer Cost', type: 'currency', group: 'Employer Contributions' },
+  ],
+  filters: [
+    { id: 'payPeriod', label: 'Payroll Period', kind: 'month' },
+    { id: 'payrollCycle', label: 'Payroll Cycle contains', kind: 'text' },
+    { id: 'company', label: 'Company contains', kind: 'text' },
+    { id: 'department', label: 'Department contains', kind: 'text' },
+    { id: 'employmentStatus', label: 'Employment Status contains', kind: 'text' },
+    { id: 'jobGrade', label: 'Job Grade contains', kind: 'text' },
+    { id: 'employeeName', label: 'Employee Name contains', kind: 'text' },
+  ],
+  defaultColumns: [
+    'employeeCode', 'employeeName', 'department', 'payPeriod',
+    'basic', 'allowance', 'overtime', 'gross',
+    'epfEmployee', 'socsoEmployee', 'eisEmployee', 'pcb', 'totalDeductions', 'net',
+    'epfEmployer', 'socsoEmployer', 'eisEmployer',
+  ],
+  run: async (ctx, scopeIds, params) => {
+    // 'YYYY-MM' from the month filter narrows the read at the DB; anything malformed falls through to
+    // "every period" rather than throwing — the same posture cleanRunType takes on the cycle.
+    const period = str(params.payPeriod);
+    const m = period && /^\d{4}-\d{2}$/.test(period) ? period : null;
+    const rows = await listPayrollRegisterAcross(ctx, {
+      companyIds: scopeIds,
+      year: m ? Number(m.slice(0, 4)) : undefined,
+      month: m ? Number(m.slice(5, 7)) : undefined,
+      cycle: str(params.payrollCycle) ?? undefined,
+    });
+    return rows.map((r) => ({
+      employeeCode: r.employeeCode,
+      employeeName: r.employeeName,
+      company: r.company,
+      department: r.department,
+      position: r.position,
+      jobGrade: r.jobGrade,
+      employmentStatus: r.employmentStatus,
+      employmentType: r.employmentType,
+      payPeriod: r.payPeriod,
+      payrollCycle: r.payrollCycle,
+      runSeq: r.runSeq,
+      daysWorked: numStr(r.daysWorked),
+      basic: numStr(r.basic),
+      allowance: numStr(r.allowance),
+      overtime: numStr(r.overtime),
+      bonus: numStr(r.bonus),
+      gross: numStr(r.gross),
+      epfEmployee: r.epfEmployee,
+      socsoEmployee: r.socsoEmployee,
+      socsoSkbbk: r.socsoSkbbk,
+      eisEmployee: r.eisEmployee,
+      pcb: r.pcb,
+      cp38: r.cp38,
+      zakat: r.zakat,
+      otherDeductions: numStr(r.otherDeductions),
+      totalDeductions: numStr(r.totalDeductions),
+      net: numStr(r.net),
+      epfEmployer: r.epfEmployer,
+      socsoEmployer: r.socsoEmployer,
+      eisEmployer: r.eisEmployer,
+      hrdf: r.hrdf,
+      employerCost: numStr(r.employerCost),
+    }));
+  },
+};
+
 const PAYROLL_HISTORY: ReportDataset = {
   id: 'payroll_history',
   category: 'payroll',
@@ -360,6 +480,7 @@ export const REPORT_DATASETS: Record<string, ReportDataset> = {
   [ATTENDANCE_DAILY.id]: ATTENDANCE_DAILY,
   [LEAVE_BALANCES.id]: LEAVE_BALANCES,
   [PAYROLL_HISTORY.id]: PAYROLL_HISTORY,
+  [PAYROLL_REGISTER.id]: PAYROLL_REGISTER,
   [CLAIM_TYPES.id]: CLAIM_TYPES,
   [PERFORMANCE_REVIEWS.id]: PERFORMANCE_REVIEWS,
   [PERFORMANCE_GOALS.id]: PERFORMANCE_GOALS,

@@ -5,8 +5,12 @@
  * no dual write, pre-launch events visible on day one. This suite proves the projection's classification
  * rules (Hired-first ordering, initial-salary suppression, voluntary-termination → Resignation, review
  * decisions, fallback labels) and the New Event dispatcher's delegation to the existing writers
- * (Transfer via transferEmployee so location/cost-centre carry; Promotion atomic across assignment +
- * grade with ONE primary row; record-only Secondment; friendly no-change error).
+ * (Promotion atomic across assignment + grade with ONE primary row; record-only Secondment; friendly
+ * no-change error).
+ *
+ * 08913328 added the Current / After comparison screen, so the dispatcher's DELTA rule is proven here
+ * too: resubmitting the current values writes nothing, and one submit spanning org + grade + a flat
+ * column + pay commits atomically as ONE history row.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -22,11 +26,11 @@ import {
   seedBase,
   type Base,
 } from './harness';
-import { hireEmployee, transferEmployee } from '../core/org';
+import { hireEmployee, setEmploymentAssignment, transferEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { createPosition, createJobGrade } from '../core/admin';
+import { createBusinessUnit, createPosition, createJobGrade } from '../core/admin';
 import { createLocation } from '../core/location';
-import { createMovementEvent, movementDetail, movementHistory } from '../core/movement';
+import { createMovementEvent, movementCurrentState, movementDetail, movementHistory } from '../core/movement';
 import * as schema from '../db/schema';
 import { expectNoLeakedValue } from './helpers/leaf-values';
 
@@ -162,11 +166,26 @@ describe('movementHistory — projection over the domain_event ledger', () => {
 });
 
 describe('createMovementEvent — the New Event dispatcher', () => {
-  it('Transfer routes through transferEmployee: department moves, location + cost centre carry', async () => {
+  // 08913328 — Transfer no longer routes through transferEmployee. That writer predates business_unit_id
+  // and drops it on the version it inserts, which would silently wipe the BU of every employee moved from
+  // a comparison form that shows it. setEmploymentAssignment carries every dimension and now owns Work
+  // Location too, so ONE writer covers the whole assignment leg. The substantive guarantees are unchanged
+  // (department moves; location, cost centre and BU carry) and BU carry is newly asserted.
+  it('Transfer moves the department while location, cost centre and business unit all carry', async () => {
     const hire = await hireOne();
     const loc = await createLocation(adminCtx(b), { companyId: b.companyId, code: `L${randomUUID().slice(0, 4)}`, name: 'HQ Tower' });
-    // Give the employee a location first (the capability setEmploymentAssignment would have dropped).
+    // Give the employee a location + business unit first, so the carry-forward is actually tested.
     await transferEmployee(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-02-01', locationId: loc.id });
+    const bu = await createBusinessUnit(adminCtx(b), {
+      companyId: b.companyId,
+      code: `BU${randomUUID().slice(0, 6).toUpperCase()}`,
+      name: `Unit ${randomUUID().slice(0, 5)}`,
+    });
+    await setEmploymentAssignment(adminCtx(b), {
+      employmentId: hire.employmentId,
+      effectiveDate: '2026-02-01',
+      businessUnitId: bu.id,
+    });
 
     await createMovementEvent(adminCtx(b), {
       employmentId: hire.employmentId,
@@ -180,6 +199,7 @@ describe('createMovementEvent — the New Event dispatcher', () => {
     expect(open.departmentId).toBe(b.deptB);
     expect(open.locationId).toBe(loc.id); // carried, not wiped
     expect(open.costCenterId).toBe(b.costCenterId); // carried, not wiped
+    expect(open.businessUnitId).toBe(bu.id); // transferEmployee used to drop this
 
     const rows = await movementHistory(adminCtx(b), hire.employmentId);
     const transfers = rows.filter((r) => r.kind === 'transfer');
@@ -308,6 +328,115 @@ describe('createMovementEvent — the New Event dispatcher', () => {
     const rows = await movementHistory(adminCtx(b), hire.employmentId);
     const sec = rows.find((r) => r.kind === 'secondment');
     expect(sec).toMatchObject({ effectiveDate: '2026-05-01', endDate: '2026-08-31', remarks: 'Group project' });
+  });
+
+  // ── 08913328: the Current / After comparison form ────────────────────────────────────────────────
+  // The screen submits the WHOLE right column, so these prove the dispatcher writes DELTAS only.
+
+  it('resubmitting every current value unchanged writes nothing at all', async () => {
+    const hire = await hireOne();
+    await setCompensation(adminCtx(b), { employmentId: hire.employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
+    const cur = await movementCurrentState(adminCtx(b), hire.employmentId);
+    const before = await eventTypesFor(b.tenantId, hire.employmentId);
+
+    await expect(
+      createMovementEvent(adminCtx(b), {
+        employmentId: hire.employmentId,
+        kind: 'promotion',
+        effectiveDate: '2026-06-01',
+        // Exactly what the form would post for an untouched screen.
+        departmentId: cur.departmentId,
+        positionId: cur.positionId,
+        businessUnitId: cur.businessUnitId,
+        locationId: cur.locationId,
+        gradeId: cur.gradeId,
+        employmentType: cur.employmentType as 'full_time',
+        managerEmploymentId: cur.managerEmploymentId,
+        basicSalary: Number(cur.basicSalary),
+        currency: cur.currency ?? undefined,
+        payMode: cur.payMode ?? undefined,
+        paymentTerm: cur.paymentTerm ?? undefined,
+        orgDivision: cur.orgDivision,
+        employmentCategory: cur.employmentCategory,
+        remarks: 'nothing moved',
+      }),
+    ).rejects.toThrow(/no changes to record/i);
+
+    // No assignment version, no compensation revision, no new events.
+    const asg = await owner.db
+      .select({ id: schema.assignment.id })
+      .from(schema.assignment)
+      .where(eq(schema.assignment.employmentId, hire.employmentId));
+    expect(asg).toHaveLength(1);
+    const comps = await owner.db
+      .select({ id: schema.compensation.id })
+      .from(schema.compensation)
+      .where(eq(schema.compensation.employmentId, hire.employmentId));
+    expect(comps).toHaveLength(1);
+    expect(await eventTypesFor(b.tenantId, hire.employmentId)).toEqual(before);
+  });
+
+  it('one submit moves org, grade, a flat column and pay atomically, and renders ONE history row', async () => {
+    const hire = await hireOne();
+    await setCompensation(adminCtx(b), { employmentId: hire.employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
+    const gradeName = `Grade ${randomUUID().slice(0, 5)}`;
+    const grade = await createJobGrade(adminCtx(b), { code: `G${randomUUID().slice(0, 8).toUpperCase()}`, name: gradeName, rank: 4 });
+
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'promotion',
+      effectiveDate: '2026-06-01',
+      departmentId: b.deptB,
+      gradeId: grade.id,
+      orgDivision: 'Retail',
+      basicSalary: 5200,
+      remarks: 'Annual cycle',
+    });
+
+    const open = await openAssignment(hire.employmentId);
+    expect(open.departmentId).toBe(b.deptB);
+    const [emp] = await owner.db
+      .select({ gradeId: schema.employment.gradeId, orgDivision: schema.employment.orgDivision })
+      .from(schema.employment)
+      .where(eq(schema.employment.id, hire.employmentId))
+      .limit(1);
+    expect(emp.gradeId).toBe(grade.id);
+    expect(emp.orgDivision).toBe('Retail');
+
+    // Four legs, ONE row: the companions are tagged secondary and share the primary's groupId.
+    const rows = await movementHistory(adminCtx(b), hire.employmentId);
+    expect(rows.filter((r) => r.kind === 'promotion')).toHaveLength(1);
+    expect(rows.filter((r) => r.kind === 'salaryAdjustment' || r.kind === 'gradeChange')).toHaveLength(0);
+
+    // The detail spans the WHOLE group: grade came from a leg with a higher sequence than the primary.
+    const primary = rows.find((r) => r.kind === 'promotion')!;
+    const detail = await movementDetail(adminCtx(b), hire.employmentId, primary.id);
+    expect(detail?.after.department).toBe('Operations');
+    expect(detail?.after.grade).toBe(gradeName);
+    expect(detail?.after.salary).toBe('MYR 5200.00');
+    // The flat column is not effective-dated, so its before/after comes from the movement's own event.
+    expect(detail?.flatChanges).toEqual([{ field: 'orgDivision', before: null, after: 'Retail' }]);
+  });
+
+  it('a future-dated pay change leaves an earlier period on the old rate (payroll is unaffected)', async () => {
+    const hire = await hireOne();
+    await setCompensation(adminCtx(b), { employmentId: hire.employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'increment',
+      effectiveDate: '2026-09-01',
+      basicSalary: 4800,
+    });
+    const comps = await owner.db
+      .select()
+      .from(schema.compensation)
+      .where(eq(schema.compensation.employmentId, hire.employmentId))
+      .orderBy(schema.compensation.validFrom);
+    expect(comps).toHaveLength(2);
+    // The window a June payroll run resolves is still the OLD record — the new one starts in September.
+    const june = comps.filter((c) => c.validFrom <= '2026-06-01' && (c.validTo == null || c.validTo > '2026-06-01'));
+    expect(june).toHaveLength(1);
+    expect(june[0].basicSalary).toBe('4000.00');
   });
 
   it('rejects a non-admin caller (defence-in-depth over the writers)', async () => {

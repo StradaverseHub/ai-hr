@@ -18,6 +18,9 @@ function statusTone(status: string): string {
     case 'approved':
     case 'building':
       return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400';
+    // Matches app/feedback/page.tsx — amber, the "needs you" colour, not a shade of in-progress.
+    case 'blocked':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300';
     case 'done':
     case 'deployed':
       return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400';

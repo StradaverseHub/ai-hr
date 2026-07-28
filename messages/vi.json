@@ -1066,7 +1066,20 @@
           "grade": "Cấp bậc",
           "employmentType": "Loại hình lao động",
           "manager": "Quản lý trực tiếp",
-          "salary": "Lương"
+          "salary": "Lương",
+          "orgDivision": "Khối",
+          "employmentCategory": "Nhóm nhân sự",
+          "orgRegion": "Khu vực",
+          "orgBranch": "Chi nhánh",
+          "orgTeam": "Nhóm",
+          "orgSection": "Bộ phận",
+          "orgLine": "Tuyến",
+          "orgBase": "Cơ sở",
+          "directSuperior": "Cấp trên trực tiếp",
+          "basicSalary": "Lương cơ bản",
+          "currency": "Loại tiền",
+          "payMode": "Hình thức trả lương",
+          "paymentTerm": "Kỳ trả lương"
         },
         "eventType": {
           "hired": "Tuyển dụng",
@@ -1105,12 +1118,15 @@
           "blacklistStatus": "Trạng thái danh sách đen",
           "blacklistSet": "Đưa nhân viên này vào danh sách đen",
           "blacklistClear": "Xóa khỏi danh sách đen",
-          "keepCurrent": "Giữ nguyên hiện tại",
           "none": "Không",
           "save": "Lưu sự kiện",
           "cancel": "Hủy",
           "terminateConfirmTitle": "Chấm dứt hợp đồng lao động?",
-          "terminateConfirmDescription": "Thao tác này chấm dứt hợp đồng vào ngày hiệu lực và đóng phân công hiện tại. Thao tác được ghi vào nhật ký kiểm toán."
+          "terminateConfirmDescription": "Thao tác này chấm dứt hợp đồng vào ngày hiệu lực và đóng phân công hiện tại. Thao tác được ghi vào nhật ký kiểm toán.",
+          "currentInformation": "Thông tin hiện tại",
+          "afterInformation": "Sau thay đổi (Thông tin mới)",
+          "comparisonHint": "Chỉ những trường bạn thay đổi mới được ghi nhận. Giá trị giữ nguyên sẽ không bị chỉnh sửa và không tạo mục lịch sử.",
+          "companyReadOnly": "Thay đổi ở tab Việc làm"
         }
       },
       "salaryCurrency": "Tiền tệ"
@@ -6297,6 +6313,9 @@
     "status_planned": "Kế hoạch sẵn sàng",
     "status_approved": "Đã duyệt",
     "status_contested": "Lập lại kế hoạch",
+    "status_blocked": "Đang chờ câu trả lời",
+    "blocked_banner": "Đã duyệt nhưng chưa bắt đầu — mục này đang chờ câu trả lời.",
+    "blocked_waiting_on": "Đang chờ: {title}",
     "status_building": "Đang xây dựng",
     "status_done": "Hoàn tất",
     "status_rejected": "Bị từ chối",

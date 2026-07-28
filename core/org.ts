@@ -403,8 +403,14 @@ export async function transferEmployee(
      *  payload.movement (see db/events.ts). Existing callers pass nothing — payload unchanged. */
     movement?: MovementTag;
   },
+  /** 08913328 — optional caller transaction (the run(outerTx) pattern setEmploymentAssignment /
+   *  setEmploymentGrade / setEmploymentInfo already use). The redesigned Movement comparison form can
+   *  move department, grade, flat org columns and pay in ONE submit, and those legs must commit or roll
+   *  back together — a half-saved movement would leave the dated assignment and the flat columns
+   *  describing two different placements. */
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const [cur] = await tx
       .select()
       .from(assignment)
@@ -480,6 +486,12 @@ export async function transferEmployee(
         departmentId: p.departmentId ?? cur.departmentId,
         positionId: p.positionId ?? cur.positionId,
         costCenterId: p.costCenterId ?? cur.costCenterId,
+        // Carried, not settable. This line was MISSING, so every CLOSE+INSERT through this path wrote a
+        // new assignment version with a NULL business unit — silently wiping it. Both live callers hit
+        // it: "Set location" names only a location, "Transfer" only a department, and neither has any
+        // reason to expect an unrelated field to be cleared. There is no `p.businessUnitId` because no
+        // caller moves a business unit here; the bug was purely the omission of the carry-forward.
+        businessUnitId: cur.businessUnitId,
         locationId: nextLocationId,
         employmentType: cur.employmentType,
         status: cur.status,
@@ -505,7 +517,8 @@ export async function transferEmployee(
       },
     });
     return { assignmentId: next.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 export type TerminationType =
@@ -935,9 +948,16 @@ export async function setReportingLine(
     scopes?: { module: string; taskType: string | null }[];
     // R51 (baf56348): org coverage — `delegate` lines only. Absent/all-null = unrestricted.
     orgScope?: DelegationOrgScope | null;
+    /** 08913328 — movement classification tag. `payload: { ...p }` below already carries it into the
+     *  reporting-line.set event, so the Movement projection can tell a Direct Superior change made as
+     *  part of a Promotion from a standalone reporting-line edit. */
+    movement?: MovementTag;
   },
+  /** 08913328 — optional caller transaction, so a Direct Superior change submitted as one leg of a
+   *  movement commits atomically with the assignment / grade / pay legs. */
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
     // Window guard (ADR-0052 Step 4 rule #3): valid_to may not precede valid_from. Applies to every
     // line type but is the load-bearing guard for a delegation window.
@@ -1011,7 +1031,8 @@ export async function setReportingLine(
       payload: { ...p },
     });
     return { reportingLineId: row.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 /** Reconstruct the assignment in force for an employment as of `asOf` (ADR-0001). */
@@ -1507,6 +1528,11 @@ export async function setEmploymentAssignment(
     // Added so the company-change writer can re-home the cost centre onto the destination company through this
     // same guarded delegate; existing callers omit it, so carry-forward keeps them byte-identical.
     costCenterId?: string | null;
+    // 08913328 — Work Location, added for the same reason costCenterId was (9464bd56): a new caller — the
+    // Movement comparison form — must move it through this guarded delegate rather than a second writer.
+    // undefined = carry forward; null = clear; a value must belong to THIS employee's company (the same
+    // cross-company coherence transferEmployee enforces; RLS checks assignment and location independently).
+    locationId?: string | null;
     employmentType?: EmploymentTypeValue;
     status?: AssignmentStatusValue;
     /** 78853b97 — optional movement classification tag merged into the event payload (see db/events.ts). */
@@ -1540,6 +1566,7 @@ export async function setEmploymentAssignment(
       p.businessUnitId === undefined ? cur.businessUnitId : p.businessUnitId || null;
     const nextCostCenterId =
       p.costCenterId === undefined ? cur.costCenterId : p.costCenterId || null;
+    const nextLocationId = p.locationId === undefined ? cur.locationId : p.locationId || null;
     const nextEmploymentType = p.employmentType ?? cur.employmentType;
     const nextStatus = p.status ?? cur.status;
 
@@ -1553,7 +1580,10 @@ export async function setEmploymentAssignment(
     const deptChanged = nextDepartmentId && nextDepartmentId !== cur.departmentId;
     const posChanged = nextPositionId && nextPositionId !== cur.positionId;
     const ccChanged = nextCostCenterId && nextCostCenterId !== cur.costCenterId;
-    if (buChanged || deptChanged || posChanged || ccChanged) {
+    // 08913328 — Location is NOT a shared System Label (it is company-owned master data), so it gets
+    // transferEmployee's own same-company check rather than labelUsableByCompany.
+    const locChanged = nextLocationId && nextLocationId !== cur.locationId;
+    if (buChanged || deptChanged || posChanged || ccChanged || locChanged) {
       const [emp] = await tx
         .select({ companyId: employment.companyId })
         .from(employment)
@@ -1619,6 +1649,14 @@ export async function setEmploymentAssignment(
           throw new Error('Selected Cost Centre is not a valid option for this employee.');
         }
       }
+      if (locChanged) {
+        const [loc] = await tx
+          .select({ companyId: location.companyId })
+          .from(location)
+          .where(eq(location.id, nextLocationId))
+          .limit(1);
+        if (!loc || !emp || loc.companyId !== emp.companyId) throw new CrossCompanyError('location');
+      }
     }
 
     const unchanged =
@@ -1626,6 +1664,7 @@ export async function setEmploymentAssignment(
       nextPositionId === cur.positionId &&
       nextBusinessUnitId === cur.businessUnitId &&
       nextCostCenterId === cur.costCenterId &&
+      nextLocationId === cur.locationId &&
       nextEmploymentType === cur.employmentType &&
       nextStatus === cur.status;
     if (unchanged) return { assignmentId: cur.id, changed: false as const };
@@ -1641,7 +1680,7 @@ export async function setEmploymentAssignment(
         positionId: nextPositionId,
         businessUnitId: nextBusinessUnitId,
         costCenterId: nextCostCenterId,
-        locationId: cur.locationId,
+        locationId: nextLocationId,
         employmentType: nextEmploymentType,
         status: nextStatus,
         validFrom: p.effectiveDate,
@@ -1664,6 +1703,7 @@ export async function setEmploymentAssignment(
           positionId: cur.positionId,
           businessUnitId: cur.businessUnitId,
           costCenterId: cur.costCenterId,
+          locationId: cur.locationId,
           employmentType: cur.employmentType,
           status: cur.status,
         },
@@ -1672,6 +1712,7 @@ export async function setEmploymentAssignment(
           positionId: nextPositionId,
           businessUnitId: nextBusinessUnitId,
           costCenterId: nextCostCenterId,
+          locationId: nextLocationId,
           employmentType: nextEmploymentType,
           status: nextStatus,
         },

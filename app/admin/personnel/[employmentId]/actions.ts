@@ -8,7 +8,13 @@ import { requireAdmin } from '@/lib/authz';
 import { withTenant } from '@/db/client';
 import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentBlacklist, setEmploymentGrade, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
-import { createMovementEvent, MOVEMENT_KINDS, type MovementKind } from '@/core/movement';
+import {
+  createMovementEvent,
+  isComparisonKind,
+  MOVEMENT_FLAT_FIELDS,
+  MOVEMENT_KINDS,
+  type MovementKind,
+} from '@/core/movement';
 import { reprojectEntitlementForEmployment } from '@/core/leave';
 import { assignEmployeeShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/packs/attendance/service';
@@ -346,11 +352,22 @@ export async function terminateAction(formData: FormData) {
  * existing audited writers (so DomainEvents, RLS and downstream payroll/leave sync are all inherited).
  * The leave-entitlement recompute mirrors what the existing per-card actions already do after a grade /
  * employment-type / confirmation change (R45 7527ea5f parity — best-effort, never fails the save).
+ *
+ * 08913328 — the Current/After comparison screen submits the WHOLE right column, so ABSENT and BLANK must
+ * stay distinguishable all the way to the dispatcher: absent = the form does not offer the field (leave it
+ * alone), blank = HR cleared it. `orNull` collapses both to null, which would read as "clear the Work
+ * Location" on an event type that never showed it — hence `optional` below.
  */
 export async function createMovementEventAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   const kindRaw = String(formData.get('kind') ?? '').trim();
+  /** absent → undefined (untouched); present-but-blank → null (explicit clear). */
+  const optional = (name: string): string | null | undefined => {
+    const v = formData.get(name);
+    if (v == null) return undefined;
+    return String(v).trim() || null;
+  };
   try {
     if (!(MOVEMENT_KINDS as readonly string[]).includes(kindRaw)) throw new Error('Select an event type.');
     const kind = kindRaw as MovementKind;
@@ -371,19 +388,27 @@ export async function createMovementEventAction(formData: FormData) {
       effectiveDate: String(formData.get('effectiveDate') ?? '').trim(),
       endDate: orNull(formData.get('endDate')),
       remarks: orNull(formData.get('remarks')),
-      departmentId: orNull(formData.get('departmentId')),
-      positionId: orNull(formData.get('positionId')),
-      businessUnitId: orNull(formData.get('businessUnitId')),
-      locationId: orNull(formData.get('locationId')),
+      departmentId: optional('departmentId'),
+      positionId: optional('positionId'),
+      businessUnitId: optional('businessUnitId'),
+      locationId: optional('locationId'),
       // gradeId: absent field = grade side untouched; present-but-blank = clear.
-      gradeId: formData.get('gradeId') == null ? undefined : String(formData.get('gradeId')),
+      gradeId: optional('gradeId'),
       employmentType,
-      managerEmploymentId: orNull(formData.get('managerEmploymentId')),
+      managerEmploymentId: optional('managerEmploymentId'),
       basicSalary: rawSalary === '' ? undefined : Number(rawSalary),
+      currency: optional('currency') ?? undefined,
+      payMode: optional('payMode') ?? undefined,
+      paymentTerm: optional('paymentTerm') ?? undefined,
+      // The flat, non-dated org columns the comparison screen now carries (Division … Category).
+      ...Object.fromEntries(MOVEMENT_FLAT_FIELDS.map((f) => [f, optional(f)])),
       terminationType,
       blacklisted: String(formData.get('blacklisted') ?? 'true') !== 'false',
     });
-    if (['promotion', 'demotion', 'employmentTypeChange', 'confirmation', 'probationExtension'].includes(kind)) {
+    // Grade, employment type and the org placement all feed benefit-scheme / grade-scoped entitlement
+    // resolution, and any comparison-kind movement can now move them in one submit — so recompute for the
+    // whole comparison set rather than the three kinds that used to own those fields.
+    if (isComparisonKind(kind) || kind === 'confirmation' || kind === 'probationExtension') {
       await recomputeEntitlement(s, employmentId, 'movement_recorded');
     }
   } catch (e) {

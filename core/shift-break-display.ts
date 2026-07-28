@@ -4,10 +4,10 @@
  * table cell and its unit test import it without dragging in the DB client.
  *
  * DISPLAY-HONESTY (not a calculation change): core/roster.ts lets breakPeriods and breakMinutes be set
- * independently (breakMinutes is the canonical scalar the OT / hours engine actually uses; breakPeriods is a
- * storage-only display blob — see core/roster.ts normalizeShiftInput). When both are present we show the
- * period windows but flag when their summed duration disagrees with breakMinutes, since breakMinutes is what
- * the hours math consumes. We never silently present the period span as authoritative.
+ * independently. breakMinutes is the canonical scalar — it defines the shift's scheduled/normal hours, and
+ * b7b886e2 also made it the CAP on the per-window deduction the day derivation now applies. So when the two
+ * disagree the scalar still bounds what comes off, which is why we show the period windows but flag the
+ * mismatch rather than silently presenting the period span as authoritative.
  */
 import type { BreakPeriod } from '../db/schema';
 

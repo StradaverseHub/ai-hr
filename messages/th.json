@@ -1066,7 +1066,20 @@
           "grade": "ระดับงาน",
           "employmentType": "ประเภทการจ้างงาน",
           "manager": "ผู้จัดการสายบังคับบัญชา",
-          "salary": "เงินเดือน"
+          "salary": "เงินเดือน",
+          "orgDivision": "ฝ่าย",
+          "employmentCategory": "ประเภทพนักงาน",
+          "orgRegion": "ภูมิภาค",
+          "orgBranch": "สาขา",
+          "orgTeam": "ทีม",
+          "orgSection": "ส่วนงาน",
+          "orgLine": "สายงาน",
+          "orgBase": "ฐานปฏิบัติงาน",
+          "directSuperior": "ผู้บังคับบัญชาโดยตรง",
+          "basicSalary": "เงินเดือนพื้นฐาน",
+          "currency": "สกุลเงิน",
+          "payMode": "รูปแบบการจ่าย",
+          "paymentTerm": "เงื่อนไขการจ่าย"
         },
         "eventType": {
           "hired": "เข้าทำงาน",
@@ -1105,12 +1118,15 @@
           "blacklistStatus": "สถานะบัญชีดำ",
           "blacklistSet": "ขึ้นบัญชีดำพนักงานคนนี้",
           "blacklistClear": "ถอนออกจากบัญชีดำ",
-          "keepCurrent": "คงค่าปัจจุบัน",
           "none": "ไม่มี",
           "save": "บันทึกเหตุการณ์",
           "cancel": "ยกเลิก",
           "terminateConfirmTitle": "เลิกจ้างพนักงาน?",
-          "terminateConfirmDescription": "การดำเนินการนี้จะสิ้นสุดการจ้างงานในวันที่มีผลและปิดการมอบหมายปัจจุบัน การดำเนินการจะถูกบันทึกในประวัติการตรวจสอบ"
+          "terminateConfirmDescription": "การดำเนินการนี้จะสิ้นสุดการจ้างงานในวันที่มีผลและปิดการมอบหมายปัจจุบัน การดำเนินการจะถูกบันทึกในประวัติการตรวจสอบ",
+          "currentInformation": "ข้อมูลปัจจุบัน",
+          "afterInformation": "หลังเปลี่ยน (ข้อมูลใหม่)",
+          "comparisonHint": "ระบบบันทึกเฉพาะช่องที่คุณเปลี่ยนเท่านั้น ค่าที่ปล่อยไว้เหมือนเดิมจะไม่ถูกแก้ไขและไม่สร้างรายการประวัติ",
+          "companyReadOnly": "เปลี่ยนได้ที่แท็บการจ้างงาน"
         }
       },
       "salaryCurrency": "สกุลเงิน"
@@ -6297,6 +6313,9 @@
     "status_planned": "แผนพร้อม",
     "status_approved": "อนุมัติแล้ว",
     "status_contested": "วางแผนใหม่",
+    "status_blocked": "รอคำตอบ",
+    "blocked_banner": "อนุมัติแล้ว แต่ยังไม่เริ่ม — กำลังรอคำตอบ",
+    "blocked_waiting_on": "รออยู่: {title}",
     "status_building": "กำลังสร้าง",
     "status_done": "เสร็จสิ้น",
     "status_rejected": "ปฏิเสธ",

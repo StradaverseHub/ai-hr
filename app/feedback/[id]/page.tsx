@@ -120,6 +120,22 @@ export default async function FeedbackDetailPage({
           </div>
         )}
 
+        {fb.status === 'blocked' && (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+            <div className="text-xs font-medium uppercase tracking-wide text-amber-800 dark:text-amber-400">
+              {t('status_blocked')}
+            </div>
+            <div className="mt-0.5">{t('blocked_banner')}</div>
+            {fb.blockedReason && <div className="mt-1">{fb.blockedReason}</div>}
+            {/* Link, not an id: the reporter has to be able to reach the question to answer it. */}
+            {fb.blockedBy && (
+              <a href={`/feedback/${fb.blockedBy.id}`} className="mt-1.5 inline-block text-xs font-medium text-primary hover:underline">
+                {t('blocked_waiting_on', { title: fb.blockedBy.title })} ↗
+              </a>
+            )}
+          </div>
+        )}
+
         {(fb.status === 'approved' || fb.status === 'building' || fb.status === 'done' || fb.status === 'deployed') && (
           <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
             {fb.status === 'approved' && t('approvedNote')}

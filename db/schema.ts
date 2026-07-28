@@ -2930,8 +2930,9 @@ export type ShiftDifferential = { kind: 'percent' | 'flat_hourly' | 'flat_per_sh
 export type ShiftOtRule = { eligible: boolean; minMinutes?: number; dailyCapMinutes?: number };
 
 // R7 Multi-Shift Phase 1: one break window inside a shift. 'HH:MM:SS', start < end (lexicographic order is
-// chronological), so a single break can never cross midnight — Phase 1 excludes overnight breaks. STORAGE-
-// ONLY this phase: the engine keeps reading the canonical break_minutes scalar (= Σ durations).
+// chronological), so a single break can never cross midnight — Phase 1 excludes overnight breaks. b7b886e2:
+// the day derivation now deducts the overlap between the clocking and these windows (capped at the
+// break_minutes scalar, which stays canonical for scheduled/normal hours).
 //
 // f3321963 — Shift Settings Enhancement: two OPTIONAL per-break flags (JSONB, no DDL — additive, absent ⇒
 // today's behaviour). `flexible` = the break window is a target, not a fixed clock. `clockingRequired` =
@@ -2993,8 +2994,10 @@ export const shift = pgTable(
     startTime: time('start_time').notNull(),
     endTime: time('end_time').notNull(),
     breakMinutes: integer('break_minutes').notNull().default(0),
-    // R7 Multi-Shift Phase 1: multiple break windows. STORAGE-ONLY this phase — the engine / punch import /
-    // hourly clamp keep reading the canonical breakMinutes scalar (= Σ durations, persisted by the service).
+    // R7 Multi-Shift Phase 1: multiple break windows. b7b886e2 ended the storage-only phase for the DAY
+    // derivation — core/attendance.ts now deducts the break minutes a clocking actually SPANNED (capped at
+    // the breakMinutes scalar below). The scalar stays canonical everywhere else (scheduled/normal hours,
+    // punch import, hourly clamp) and is still Σ durations, persisted by the service.
     breakPeriods: jsonb('break_periods').$type<BreakPeriod[] | null>(),
     // R7 Multi-Shift Phase 1: manual normal-working-minutes figure; when set it is what workday OT is
     // measured against (core/attendance.ts deriveAttendance). NULL ⇒ auto (span − break).
@@ -5110,6 +5113,11 @@ export const feedbackStatusEnum = pgEnum('feedback_status', [
   'planned', // the agent wrote a plan; awaiting the reporter's review
   'approved', // reporter approved the plan; awaiting build
   'contested', // reporter pushed back; the agent will re-plan
+  // APPROVED but not buildable — something outside the item has to be settled first, normally a
+  // DECISION NEEDED item named by blocked_by_id. Distinct from `contested` (the plan is wrong) and from
+  // `open` (nobody has planned it). Without this, a blocked item sat in `approved` looking exactly like
+  // work that was merely waiting its turn, and each build round re-derived the difference from memory.
+  'blocked',
   'building', // a build agent is implementing it (out-of-app)
   'done', // built (build_ref points at the PR), awaiting release
   'deployed', // built AND released to the server (the improvement loop closes the item here)
@@ -5146,6 +5154,10 @@ export const feedbackRequest = pgTable(
     // Snapshot of `status` at the moment cancelFeedback ran, so restoreFeedback can put the item back
     // exactly where it was (rather than guessing/always resetting to `open`). Null except while cancelled.
     statusBeforeCancel: feedbackStatusEnum('status_before_cancel'),
+    /** What this item is waiting on while `blocked` — normally a DECISION NEEDED item. See 0317. */
+    blockedById: uuid('blocked_by_id'),
+    /** Why it is parked, for the cases blockedById cannot express. Cleared on unblock. */
+    blockedReason: text('blocked_reason'),
     buildRef: text('build_ref'), // PR / branch link once a build agent runs (F4)
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),

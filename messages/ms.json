@@ -1066,7 +1066,20 @@
           "grade": "Gred Jawatan",
           "employmentType": "Jenis Pekerjaan",
           "manager": "Pengurus Laporan",
-          "salary": "Gaji"
+          "salary": "Gaji",
+          "orgDivision": "Bahagian",
+          "employmentCategory": "Kategori",
+          "orgRegion": "Wilayah",
+          "orgBranch": "Cawangan",
+          "orgTeam": "Pasukan",
+          "orgSection": "Seksyen",
+          "orgLine": "Barisan",
+          "orgBase": "Pangkalan",
+          "directSuperior": "Ketua Langsung",
+          "basicSalary": "Gaji Pokok",
+          "currency": "Mata Wang",
+          "payMode": "Mod Bayaran",
+          "paymentTerm": "Terma Pembayaran"
         },
         "eventType": {
           "hired": "Diambil Bekerja",
@@ -1105,12 +1118,15 @@
           "blacklistStatus": "Status Senarai Hitam",
           "blacklistSet": "Senarai hitamkan pekerja ini",
           "blacklistClear": "Batalkan senarai hitam",
-          "keepCurrent": "Kekalkan semasa",
           "none": "Tiada",
           "save": "Simpan Acara",
           "cancel": "Batal",
           "terminateConfirmTitle": "Tamatkan pekerjaan?",
-          "terminateConfirmDescription": "Ini menamatkan pekerjaan pada tarikh berkuat kuasa dan menutup penempatan semasa. Tindakan ini direkodkan dalam jejak audit."
+          "terminateConfirmDescription": "Ini menamatkan pekerjaan pada tarikh berkuat kuasa dan menutup penempatan semasa. Tindakan ini direkodkan dalam jejak audit.",
+          "currentInformation": "Maklumat Semasa",
+          "afterInformation": "Selepas (Maklumat Baharu)",
+          "comparisonHint": "Hanya medan yang anda ubah akan direkodkan. Nilai yang dibiarkan kekal tidak berubah dan tidak mencipta entri sejarah.",
+          "companyReadOnly": "Diubah pada tab Pekerjaan"
         }
       },
       "salaryCurrency": "Mata wang"
@@ -6297,6 +6313,9 @@
     "status_planned": "Pelan sedia",
     "status_approved": "Diluluskan",
     "status_contested": "Merangka semula",
+    "status_blocked": "Menunggu jawapan",
+    "blocked_banner": "Diluluskan, tetapi belum bermula — ini menunggu jawapan.",
+    "blocked_waiting_on": "Menunggu: {title}",
     "status_building": "Sedang dibina",
     "status_done": "Selesai",
     "status_rejected": "Ditolak",
