@@ -1,4 +1,5 @@
 import { getLocale, getTranslations } from 'next-intl/server';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { isOperator } from '@/lib/authz';
@@ -63,7 +64,18 @@ export default async function OperatorPage() {
       {/* Mounted only while something is actually in flight — a settled console polls nothing. */}
       {inFlight && <AutoRefresh />}
 
-      <PageHeader title={t('title')} description={t('description')} />
+      {/* The only way in to the explorer (deec1691). It has no nav entry for the same reason this page
+          has none — the operator plane is not in anyone's sidebar — so without this link the route
+          would exist and be undiscoverable. */}
+      <PageHeader
+        title={t('title')}
+        description={t('description')}
+        actions={
+          <Link href="/operator/schema" className={btnGhost}>
+            {t('explorer.title')}
+          </Link>
+        }
+      />
 
       <Card className="p-4">
         <SectionHeader title={t('newCustomer')} />

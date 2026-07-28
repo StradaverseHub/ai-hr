@@ -7331,6 +7331,23 @@
       "guides": "Thêm hướng dẫn trợ giúp",
       "admin": "Tạo tài khoản quản trị viên",
       "invitation": "Cấp liên kết kích hoạt"
+    },
+    "explorer": {
+      "title": "Quan hệ bản ghi",
+      "description": "Chọn một loại bản ghi để xem cái gì trỏ tới nó, nó trỏ tới cái gì và phân hệ nào sở hữu nó. Được đọc trực tiếp từ cơ sở dữ liệu mỗi lần, nên không bao giờ lỗi thời.",
+      "recordType": "Loại bản ghi",
+      "choose": "Chọn một loại bản ghi…",
+      "show": "Hiển thị",
+      "formNote": "Có {count} loại bản ghi trong bản cài đặt này. Các loại liên quan là liên kết — bấm vào để đi tiếp trong sơ đồ.",
+      "unknownTable": "Không có loại bản ghi nào tên “{table}” trong bản cài đặt này.",
+      "sharedSpine": "Trục dùng chung (không thuộc phân hệ nào)",
+      "primaryKey": "Khóa chính",
+      "none": "Không có",
+      "references": "Trỏ tới",
+      "noReferences": "Loại bản ghi này không trỏ tới cái gì.",
+      "referencedBy": "Được trỏ tới bởi",
+      "noReferencedBy": "Không có gì trỏ tới loại bản ghi này.",
+      "onDelete": "Khi xóa"
     }
   },
   "currencySelect": {

@@ -7331,6 +7331,23 @@
       "guides": "添加帮助指南",
       "admin": "创建管理员登录",
       "invitation": "签发激活链接"
+    },
+    "explorer": {
+      "title": "记录关系",
+      "description": "选择一种记录类型，查看什么指向它、它指向什么，以及哪个模块拥有它。每次都从实时数据库读取，因此永远不会过时。",
+      "recordType": "记录类型",
+      "choose": "选择记录类型…",
+      "show": "显示",
+      "formNote": "本安装共有 {count} 种记录类型。相关类型是链接——点击即可在关系图中跳转。",
+      "unknownTable": "本安装中没有名为“{table}”的记录类型。",
+      "sharedSpine": "共享主干（不属于单一模块）",
+      "primaryKey": "主键",
+      "none": "无",
+      "references": "指向",
+      "noReferences": "此记录类型不指向任何内容。",
+      "referencedBy": "被指向",
+      "noReferencedBy": "没有内容指向此记录类型。",
+      "onDelete": "删除时"
     }
   },
   "currencySelect": {
