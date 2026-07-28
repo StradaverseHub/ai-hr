@@ -7,6 +7,135 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## Plan history — 2026-07-28 — the request→plan→push-back→re-plan trail is kept (0318)
+
+**Shipped:** `main@e3ef2bf`. Migration `0318`, new table `feedback_plan_revision`, backfill wired into
+`deploy.sh` permanently.
+**Gate:** `tsc` clean · **453 files / 5008 tests** · `next build` clean · **upgrade rehearsal PASS**.
+Verified live: `GET /` 401, **478 plan versions recorded**, 40 reported unrecoverable.
+
+Not a feedback item — asked for directly. The board could show the CURRENT plan and nothing else.
+
+### Decisions
+
+**1. The history was being destroyed as it happened, not merely unshown.** `feedback_request` holds ONE
+`plan` and ONE `contest_reason`; every re-plan overwrote the plan and cleared the push-back that caused
+it, and the events carried `{revision, model}` / `{revision, decidedBy}` — never the text. Measured before
+building: 29 items had gone more than one round, **~40 plan versions already gone**, one item six rounds
+deep. Those are NOT reconstructed. The page compares history rows against `plan_revision` and states how
+many are missing; a placeholder row would turn a known unknown into a plausible lie.
+
+**2. SELECT-only was incoherent, and the correction is the real design.** The first cut granted the app
+read-only "because the services write as owner" — they do not: in-app approve/contest run as `ai_hr_app`
+through `withTenant`, so a read-only grant would have recorded nothing the reporter did. The guarantee is
+**append-and-close-once**: INSERT a live revision, UPDATE it once to close it, never DELETE. `USING
+(outcome IS NULL)` makes closure one-way — a recorded objection matches no UPDATE policy again — and a
+BEFORE UPDATE trigger freezes the plan text, because RLS is row-level and cannot stop a rewrite riding
+along with the close. Caught by a test, not by review.
+
+**3. Approval is a STAMP, not an ending.** Closing the revision on approval left a shipped-then-refuted
+plan with nowhere to record the refutation — the version was already spent, so the reporter's post-deploy
+words vanished. That is the exact class of loss this table exists to prevent, reintroduced one layer down.
+`approved_at` and `outcome` are now separate facts on one row: they approved it, we shipped it, they sent
+it back.
+
+**4. "0 refute reasons recovered" was checked, not accepted.** The deploy printed 0 where 27 was expected.
+26 genuinely cannot be recovered — a refute triggers a re-plan that increments `plan_revision`, so the
+version each refute answered no longer exists as a row (confirmed against the event payloads: every refute
+revision sits below its item's current one). The 27th WAS recoverable and had been mislabelled
+`contested`, because `refuteDeployment` parks its text in `contest_reason`. Keeping "you built the wrong
+thing" apart from "you shipped it and it missed" is why the table has separate outcomes, so the backfill
+now relabels it. Production reads `refuted|1`.
+
+**5. The first upgrade rehearsal FAIL was real and nearly dismissed.** Every data check printed `ok`, so it
+read as noise — but step 4 (apply the new migrations) had failed on a missing `drizzle-kit` in the fresh
+worktree, meaning those checks validated the BASELINE alone and `0318` had never been rehearsed. Deps
+installed; the re-run is a genuine PASS over populated data. A rehearsal whose failure mode looks like
+success is worth remembering.
+
+**Also corrected mid-build:** two tamper assertions had been loosened to `/append-only|Failed query/` to
+reach green — which would pass on any query failure at all, i.e. a permissions test that does not test
+permissions. Replaced with a helper that walks Drizzle's `.cause` chain for the real Postgres error.
+
+---
+
+## r73 — 2026-07-28 — 3 approved items + the `blocked` status + a silent data-loss fix
+
+**Shipped:** `main@d13b226` (branch `build/r73`). Migration `0317`.
+**Gate:** `tsc` clean · **452 files / 4995 tests** · `next build` clean · **upgrade rehearsal PASS**.
+Verified live: `GET /` 401, `feedback_status` carries `blocked`, both columns present on production.
+
+**Shipped:** 622e12eb (Payroll Register report) · b7b886e2 (attendance derived against the shift's
+time-in/out window) · 08913328 (Movement Current/After comparison, delta-only writes).
+**Closed without code, per approved decisions:** 4c6f69bd · 7a348d34 · 3282eccc · d7455ed2.
+
+### Decisions
+
+**1. `blocked` exists because the board could not tell parked work from queued work.** `approved` means
+"the reporter agreed to the plan", which the loop reads as "ready to build" — but an item is sometimes
+approved and then found to depend on a question only the reporter can settle. Five sat in `approved`
+looking identical to work merely waiting its turn, and each round re-derived the difference from memory.
+The guard is `startFeedbackBuild`, which accepts only `approved`: parking an item removes it from every
+build round, so a block cannot be worked around by an agent that never saw the question. Labelled
+**"Waiting on an answer"**, not "Blocked" — the consultant is not an engineer, and naming the question
+tells them there is something to do.
+
+**2. All three DECISION items came back approved, and two of them closed items rather than building
+anything.** `3282eccc` → keep first-year leave granted up front; 4c6f69bd closed, Mei Ling's 19.73 is the
+agreed model. `d7455ed2` → SKBBK does follow the employee profile; 7a348d34 closed, only the stale May run
+carries the old figure. `895c80f9` → build the two-node nav rule. Each closure carries a plain-English ref
+saying no code changed and why, so "Deployed" does not send the reporter hunting for a fix that was never
+needed.
+
+**3. `transferEmployee` silently wiped every employee's Business Unit — pre-existing, still live.** The
+CLOSE+INSERT carried department, position, cost centre, location, employment type and status forward but
+not `business_unit_id`, so each new assignment version was written NULL. No error, no event, no changed
+label. The writer predates the column (migration `0219`). Both live callers are on the Employment tab and
+neither has any business touching a business unit: `setLocationAction` names only a location,
+`transferAction` only a department — so an admin changing where someone sits silently unassigned them from
+their business unit. This is why 08913328 moved Movement off the writer, but the writer stayed live on the
+location flow, which is the part that kept costing data. The build agent filed it rather than fixing it;
+overruled, because the loss is silent and the screen is in daily use. Proven red before green.
+
+**4. A build agent's side effect was reverted.** The register build registered its dataset first, silently
+changing which dataset the Payroll "New report" button seeds. The item asked for a register to EXIST, not
+for an existing button to start doing something else.
+
+**5. Held back for the reporter to decide, not guessed:** Edit/Delete of Employment History events (it is a
+projection over the append-only event ledger — "delete" means a compensating event or tampering with the
+audit trail); a "Pay Group" field that exists nowhere in the schema (nearest neighbour is Payroll Policy,
+and mapping one onto the other would quietly redefine an admin's mental model); and Hire as a creatable
+Movement type (it would create a second way to originate an employment).
+
+---
+
+## r72 — 2026-07-28 — 13 approved items (leave config, approvals, org labels, HRDF)
+
+**Shipped:** `main@d345d68` (branch `build/r72`). 61 files, +4401/−1094, migration `0316`.
+**Gate:** `tsc` clean · **448 files / 4961 tests** · `next build` clean · **upgrade rehearsal PASS**.
+
+**Shipped:** cdf9ca48 + a7fab30b (Balance Deduction Source + Allow Unpaid Leave) · bc9be1e8 + 0d9cf710
+(retire the Company Entitlements tab) · c9986927 (organisation lists → Organization Labels) · 1e4eb8af
+(Leave Year Configuration into Leave Type > Custom Settings) · 726ac8c2 (Manager Leave Summary) ·
+165baee5 + f6d3be0b (Condition · Criteria editable in place) · bb3938b9 (Assign Template criteria panels) ·
+3d2bc793 (shortcuts row) · d4735493 (single-vs-multi-step an explicit choice) · efece4ce (HRDF levy in
+Transaction View History).
+
+### Decisions
+
+**1. Parallel agents produced three collisions none of them could see.** Every agent's own tests passed;
+the combined tree failed. (a) `cdf9ca48` changed the apply-popup to resolve the SOURCE balance type while
+two tests pinned the old argument list — the INVARIANT (popup Pending == submit-guard reserve) was verified
+to still hold before rewriting them against shared helpers, rather than editing them until they passed.
+(b) `165baee5`/`f6d3be0b` changed the rule-card idiom while `cdf9ca48`/`a7fab30b` added cards using the old
+one; only the two new cards moved. The lesson carried into r73: group agents by file overlap, and treat any
+cross-cutting item as solo work.
+
+**2. The HRDF fault did not reproduce as reported.** It is computed and stored correctly; it reads 0.00
+because only one company has a rate configured. Surfacing it in Transaction View History is what shipped.
+
+---
+
 ## r71 — 2026-07-28 — 12 approved items (leave entitlements, counts, labels)
 
 **Shipped:** `main@5c1d6bf` (branch `build/r71-clean@fe2bb0c`). 28 files, +565 lines, migration `0315`.
