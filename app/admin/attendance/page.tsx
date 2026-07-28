@@ -1,8 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
-import { getScopeIds } from '@/lib/scope';
-import { listCompanies } from '@/core/read';
 import { listShiftsForTenant } from '@/core/roster';
 import { listAttendanceRules } from '@/core/attendance-rule';
 import { formatBreakDisplay } from '@/core/shift-break-display';
@@ -43,11 +41,10 @@ export default async function ShiftSettingsPage({
   const shifts = await listShiftsForTenant(s);
   const editing = editShift ? shifts.find((sh) => sh.id === editShift) : undefined;
 
-  // 88e94371 — the attendance-rule dropdown options for the shift form. Rules are company-scoped; show every
-  // rule in the admin's scope. Inactive rules are hidden unless the edited shift already points at one.
-  const companies = await listCompanies(s);
-  const scopeIds = await getScopeIds(companies.map((c) => c.id));
-  const allRules = await listAttendanceRules(s, scopeIds);
+  // 88e94371 — the attendance-rule dropdown options for the shift form. 6da67ab7: rules are tenant-wide, so
+  // every shift offers the whole library regardless of which company its employees sit in. Inactive rules are
+  // hidden unless the edited shift already points at one.
+  const allRules = await listAttendanceRules(s);
   const ruleOptions = allRules.filter((r) => r.status === 'active' || r.id === editing?.ruleId);
 
   return (
@@ -252,7 +249,7 @@ export default async function ShiftSettingsPage({
             </Field>
             {/* 88e94371 — the shift's attendance-calculation rule ("Lateness, Early Out & Overtime Settings").
                 Replaces the old per-shift OT-Rules field: OT shaping + lateness/early-out grace now live in the
-                reusable rule library. Blank ⇒ the company Standard rule is applied automatically. */}
+                reusable rule library. Blank ⇒ the tenant's Standard rule is applied automatically. */}
             <Field label={t('ruleFieldLabel')}>
               <select
                 name="attendanceRuleId"

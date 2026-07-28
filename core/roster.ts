@@ -101,7 +101,8 @@ export type ShiftInput = {
    *  editing a shift no longer wipes a pre-existing per-shift OT-shape override). */
   otRule?: ShiftOtRule | null;
   /** 88e94371 — the chosen attendance-calculation rule ("Lateness, Early Out & Overtime Settings"). Null ⇒
-   *  fall back to the employee's-company Standard rule at resolve time. UNDEFINED ⇒ leave unchanged. */
+   *  fall back to the tenant's Standard rule at resolve time (6da67ab7 — the library is no longer scoped by
+   *  the employee's company). UNDEFINED ⇒ leave unchanged. */
   ruleId?: string | null;
   differential?: ShiftDifferential | null;
 };

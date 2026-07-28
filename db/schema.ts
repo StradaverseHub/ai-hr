@@ -2759,11 +2759,14 @@ export const attendancePolicy = pgTable(
 );
 
 // ── 88e94371 · "Lateness, Early Out & Overtime Settings" — named-rule library ─────────────────────────
-// A reusable, per-company library of attendance CALCULATION rules (renamed/expanded from the single
+// A reusable, TENANT-WIDE library of attendance CALCULATION rules (renamed/expanded from the single
 // Attendance Policy). Each rule bundles a Lateness section, an Early Out section, and an Overtime table
 // (attendance_rule_ot_row). A shift picks ONE rule (shift.rule_id); a shift with no rule falls back to the
-// company's `is_default` "Standard" rule (seeded per company by migration 0203 from the existing
-// attendance_policy so today's grace behaviour carries over unchanged). The Standard rule is un-deletable.
+// tenant's `is_default` "Standard" rule (seeded by migration 0203 from the existing attendance_policy so
+// today's grace behaviour carries over unchanged). The Standard rule is un-deletable.
+//
+// 6da67ab7 (migration 0319) removed the company axis — see the company_id note below. The rule is chosen by
+// the SHIFT, and shifts are tenant-wide, so a per-company library was a filter with nothing behind it.
 //
 // SCOPE (88e94371): the grace-period fields ARE wired into the time engine (core/attendance.ts scheduleFor
 // — as a fallback under any explicit per-shift grace) and the OT rows drive OT-minute ROUNDING + early-OT
@@ -2776,13 +2779,15 @@ export const attendanceRule = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    companyId: uuid('company_id')
-      .notNull()
-      .references(() => company.id),
+    // 6da67ab7 (migration 0319) — the library is TENANT-WIDE, mirroring the shared shift library (0197): a
+    // shift is tenant-wide and binds its rule through shift.rule_id, so a per-company library could only ever
+    // offer one company's rules to a shift every company's employees are rostered onto. The column is kept
+    // NULLABLE only so the FK/history survives; every row is NULL and nothing reads it.
+    companyId: uuid('company_id').references(() => company.id),
     name: text('name').notNull(),
     description: text('description'),
-    // The company's un-deletable "Standard" rule. Exactly one per company (partial unique index). A shift
-    // with no rule_id resolves to this rule.
+    // The tenant's un-deletable "Standard" rule. Exactly one per TENANT (partial unique index). A shift with
+    // no rule_id — and a day with no shift at all — resolves to this rule.
     isDefault: boolean('is_default').notNull().default(false),
     // 'active' | 'inactive' — a CHECK lives in migration 0203. Inactive rules stay assigned but are hidden
     // from the new-shift picker (surfaced with a badge in the list).
@@ -2809,11 +2814,10 @@ export const attendanceRule = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
-    // Exactly one default ("Standard") rule per company.
-    uniqueIndex('attendance_rule_default_uq').on(t.companyId).where(sql`is_default`),
-    // Case-insensitive unique rule name within a company.
-    uniqueIndex('attendance_rule_company_name_uq').on(t.companyId, sql`lower(${t.name})`),
-    index('attendance_rule_company_idx').on(t.companyId),
+    // 6da67ab7 (0319) — exactly one default ("Standard") rule per TENANT, and case-insensitive unique rule
+    // names tenant-wide (both replaced the per-company indexes from 0204).
+    uniqueIndex('attendance_rule_tenant_default_uq').on(t.tenantId).where(sql`is_default`),
+    uniqueIndex('attendance_rule_tenant_name_uq').on(t.tenantId, sql`lower(${t.name})`),
   ],
 );
 

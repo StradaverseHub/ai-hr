@@ -43,13 +43,15 @@ export default async function AttendancePolicyPage({
   const policies = await listAttendancePolicies(s, visible.map((c) => c.id));
   const byCompany = new Map(policies.map((p) => [p.companyId, p]));
 
-  // 88e94371 — the attendance-rule library. Ensure every visible company has its un-deletable Standard rule
-  // (idempotent), then list all rules for the rule table. This is the runtime complement of migration 0203.
+  // 88e94371 — the attendance-rule library. Ensure the tenant's un-deletable Standard rule exists
+  // (idempotent), then list every rule. This is the runtime complement of migration 0203.
+  // 6da67ab7: the library is tenant-wide — no company column, no company filter. A rule reaches an employee
+  // through the SHIFT they are assigned to, and shifts are tenant-wide too.
   const tr = await getTranslations('admin.attendanceRule');
   const multiCompany = visible.length > 1;
   const companyName = new Map(visible.map((c) => [c.id, c.name]));
-  await Promise.all(visible.map((c) => ensureStandardRule(s, c.id)));
-  const rules = await listAttendanceRules(s, visible.map((c) => c.id));
+  await ensureStandardRule(s);
+  const rules = await listAttendanceRules(s);
 
   // Feedback 5249d43f — every active registered clocking device in scope, with per-row revoke (the admin
   // control balancing self-service registration). Lives here because the enforcement switch does too.
@@ -115,7 +117,6 @@ export default async function AttendancePolicyPage({
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
                 <th className="px-4 py-2 font-medium">{tr('colName')}</th>
                 <th className="px-4 py-2 font-medium">{tr('colDescription')}</th>
-                {multiCompany && <th className="px-4 py-2 font-medium">{tr('colCompany')}</th>}
                 <th className="px-4 py-2 font-medium">{tr('colDefault')}</th>
                 <th className="px-4 py-2 font-medium">{tr('colStatus')}</th>
                 <th className="px-4 py-2 text-right font-medium">{tr('colAction')}</th>
@@ -126,7 +127,6 @@ export default async function AttendancePolicyPage({
                 <tr key={r.id} className="border-b border-border/60">
                   <td className="px-4 py-2 font-medium text-foreground">{r.name}</td>
                   <td className="px-4 py-2 text-muted-foreground">{r.description ?? '—'}</td>
-                  {multiCompany && <td className="px-4 py-2 text-muted-foreground">{companyName.get(r.companyId) ?? '—'}</td>}
                   <td className="px-4 py-2">{r.isDefault ? <Badge>{tr('defaultBadge')}</Badge> : <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-4 py-2">
                     <span className={r.status === 'active' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>
@@ -153,8 +153,9 @@ export default async function AttendancePolicyPage({
         </div>
       </Card>
 
-      {/* ── Company work schedule & statutory overtime rates. RETAINED (reporter-approved: convert, not
-          remove): these drive the fallback schedule + statutory OT compliance and are NOT rule config. ──── */}
+      {/* ── Company work schedule & statutory overtime rates. RETAINED through 6da67ab7 for one reason: this
+          is the schedule for a day with NO shift assigned, and a shift cannot supply hours for a day it was
+          never assigned to. The calculation rules above are the part that moved onto the shift. ─────────── */}
       <div className="border-t border-border pt-2">
         <h2 className="text-sm font-semibold text-foreground">{tr('scheduleSectionTitle')}</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">{tr('scheduleSectionIntro')}</p>
