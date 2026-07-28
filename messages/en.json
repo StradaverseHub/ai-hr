@@ -1133,8 +1133,22 @@
           "currentInformation": "Current Information",
           "afterInformation": "After (New Information)",
           "comparisonHint": "Only the fields you change are recorded. A value left as it is stays untouched and creates no history entry.",
-          "companyReadOnly": "Changed on the Employment tab"
-        }
+          "companyReadOnly": "Changed on the Employment tab",
+          "editHint": "Saving a correction rolls this event back and records the corrected version. The original stays in Employment History, marked as corrected — it is never removed.",
+          "payrollWarning": "A processed payroll run already covered this period. Payslips are not reprocessed automatically.",
+          "correctionReason": "Reason for the correction (optional)",
+          "saveCorrection": "Save Correction"
+        },
+        "edit": "Edit",
+        "delete": "Delete",
+        "editTitle": "Edit Movement Event",
+        "reversedBadge": "Reversed",
+        "correctedBadge": "Corrected",
+        "deleteConfirmTitle": "Roll this movement event back?",
+        "deleteConfirmDescription": "The employee's details go back to the state immediately before this event. The event stays in Employment History, marked as reversed, so the record remains auditable.",
+        "deleteConfirmPayroll": "A processed payroll run already covered this period. The rollback will NOT reprocess any payslip — reprocess it separately if that is what you need. The event stays in Employment History, marked as reversed.",
+        "correctionReasonLabel": "Reason for the correction (optional)",
+        "payrollLocked": "Locked by a closed payroll run"
       },
       "salaryCurrency": "Currency"
     },

@@ -16,7 +16,7 @@
  * untagged / historical events keep plain, factual fallback labels.
  */
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, type MovementTag } from '../db/events';
 import {
@@ -43,7 +43,13 @@ import {
   type EmploymentTypeValue,
   type TerminationType,
 } from './org';
-import { setCompensation } from './comp';
+import {
+  closedPeriodsTx,
+  overlapsClosedPeriod,
+  processedPeriodsTx,
+  setCompensation,
+  supersedeCompensation,
+} from './comp';
 
 /** The movement kinds HR can CREATE from the New Event form (this round's scoped event set). Rehire and
  *  Custom Event are deliberately excluded (future enhancements per the approved plan). */
@@ -77,6 +83,26 @@ export type MovementHistoryRow = {
   effectiveDate: string;
   endDate: string | null;
   remarks: string | null;
+  /** 66a63bd6 — non-null once the movement has been rolled back. The row STAYS: a history that can be
+   *  silently emptied stops being evidence, and payroll + statutory reporting both lean on it. */
+  reversed: MovementReversal | null;
+  /** Corrections are only offered where this module can actually replay the underlying writes; the UI
+   *  reads these flags so the affordance and the service rule cannot drift apart. */
+  canEdit: boolean;
+  canReverse: boolean;
+  /** A CLOSED payroll run relied on this movement's window — corrections are refused until it is reopened. */
+  payrollLocked: boolean;
+  /** A PROCESSED (not yet closed) run covered it. Correcting is allowed; payslips are never reprocessed
+   *  automatically, so the UI must say so before HR commits. */
+  payrollWarning: boolean;
+};
+
+/** 66a63bd6 — the visible trace a correction leaves on the movement it undid. */
+export type MovementReversal = {
+  at: Date;
+  reason: string | null;
+  /** true when the rollback was the first half of an EDIT (reverse + re-apply), false for a plain Delete. */
+  corrected: boolean;
 };
 
 /** Before/After comparison snapshot — ids resolved to labels at read time (stays correct after renames). */
@@ -110,8 +136,14 @@ export type MovementFlatField = (typeof MOVEMENT_FLAT_FIELDS)[number];
 
 export type MovementFlatChange = { field: MovementFlatField; before: string | null; after: string | null };
 
+/** The identity half of a history row (no correction affordances — the detail view never offers them). */
+export type MovementRowSummary = Pick<
+  MovementHistoryRow,
+  'id' | 'kind' | 'effectiveDate' | 'endDate' | 'remarks' | 'reversed'
+>;
+
 export type MovementDetail = {
-  row: MovementHistoryRow;
+  row: MovementRowSummary;
   /** Full name of the user who recorded the change; null for SYSTEM/import writes and the synthesized row. */
   actorName: string | null;
   /** When the change was recorded; null for the synthesized Hired row. */
@@ -127,8 +159,8 @@ export type MovementDetail = {
 
 /** Thrown when a New Event would change nothing — surfaced verbatim so remarks are never silently lost. */
 export class MovementNoChangeError extends Error {
-  constructor() {
-    super('This event would not change anything — there are no changes to record.');
+  constructor(message = 'This event would not change anything — there are no changes to record.') {
+    super(message);
     this.name = 'MovementNoChangeError';
   }
 }
@@ -149,6 +181,8 @@ const MOVEMENT_EVENT_TYPES = [
   'employment.blacklist.cleared',
   'reporting-line.set',
   'employment.movement.recorded',
+  // 66a63bd6 — marks an EXISTING row as rolled back; it never projects a row of its own.
+  'employment.movement.reversed',
 ];
 
 const EXTENDED_PROBATION_FIELDS = ['extendedProbationValue', 'extendedProbationUnit', 'extendedConfirmationDate'];
@@ -164,11 +198,12 @@ type RawEvent = {
   actorId: string | null;
 };
 
-type ProjectedRow = MovementHistoryRow & {
+type ProjectedRow = Pick<MovementHistoryRow, 'id' | 'kind' | 'effectiveDate' | 'endDate' | 'remarks'> & {
   sequence: number;
   occurredAt: Date | null;
   /** MovementTag.groupId of the event this row projects — correlates the other legs of the same movement. */
   groupId: string | null;
+  reversed: MovementReversal | null;
 };
 
 /** A movement kind the tag may legitimately name (guards a tampered/unknown tag from becoming a label). */
@@ -266,6 +301,9 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string) {
 
   let sawHiredEvent = false;
   const rows: ProjectedRow[] = [];
+  /** 66a63bd6 — movement id → the rollback that undid it. Applied after the loop: the reversal event is
+   *  always later in the ledger than the movement it refers to. */
+  const reversals = new Map<string, MovementReversal>();
   for (const e of events) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const p = (e.payload ?? {}) as Record<string, any>;
@@ -276,7 +314,13 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string) {
     // the grade half of a Promotion was the only companion before 08913328, now any leg can be one.
     if (mv?.secondary) continue;
     const occDate = dateOf(e.occurredAt);
-    const base = { id: e.id, sequence: e.sequence, occurredAt: e.occurredAt, groupId: mv?.groupId ?? null };
+    const base = {
+      id: e.id,
+      sequence: e.sequence,
+      occurredAt: e.occurredAt,
+      groupId: mv?.groupId ?? null,
+      reversed: null as MovementReversal | null,
+    };
     switch (e.eventType) {
       case 'employment.hired':
         sawHiredEvent = true;
@@ -410,6 +454,15 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string) {
           remarks: p.remarks ?? null,
         });
         break;
+      case 'employment.movement.reversed':
+        // 66a63bd6 — marks the referenced row as rolled back. Deliberately projects NO row of its own:
+        // one movement, one line in the history, with its correction shown on it.
+        reversals.set(String(p.movementId), {
+          at: e.occurredAt,
+          reason: (p.reason as string | null) ?? null,
+          corrected: p.corrected === true,
+        });
+        break;
     }
   }
 
@@ -425,8 +478,11 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string) {
       sequence: -1,
       occurredAt: null,
       groupId: null,
+      reversed: null,
     });
   }
+
+  for (const r of rows) r.reversed = reversals.get(r.id) ?? null;
 
   rows.sort((a, b) => {
     if (a.effectiveDate !== b.effectiveDate) return a.effectiveDate < b.effectiveDate ? -1 : 1;
@@ -442,11 +498,99 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string) {
   return { emp, events, rows };
 }
 
+/** The ledger events one movement is made of: every leg of a comparison-form submit (they share a
+ *  groupId), or the single event a legacy / one-leg movement projects. Empty for the synthesized Hired row. */
+const groupEventsOf = (events: RawEvent[], row: ProjectedRow): RawEvent[] =>
+  row.groupId ? events.filter((e) => tagOf(e)?.groupId === row.groupId) : events.filter((e) => e.id === row.id);
+
+/**
+ * 66a63bd6 — the ledger events a correction knows how to undo. Everything else that can appear on the
+ * history (the hire itself, a termination, a blacklist, an approved probation review) has its own
+ * lifecycle flow with its own gates and downstream effects; rolling those back from here would be a
+ * second, weaker copy of them.
+ */
+const REVERSIBLE_EVENT_TYPES = new Set([
+  'assignment.transferred',
+  'employment.assignment.changed',
+  'employment.grade.changed',
+  'compensation.set',
+  'employment.info.updated',
+  'reporting-line.set',
+  'employment.movement.recorded',
+]);
+
+/** Legs that changed employment/pay STATE — as opposed to the record-only Secondment / Acting Position,
+ *  which touch nothing and therefore need neither the payroll guard nor the in-place-edit rule. */
+const STATE_CHANGING_EVENT_TYPES = new Set([...REVERSIBLE_EVENT_TYPES].filter((t) => t !== 'employment.movement.recorded'));
+
+/** A flat-column leg is undone field by field. A leg that also moved a LIFECYCLE date (confirmation,
+ *  resignation, probation) is out of scope: those derive from one another (finalConfirmationDate) and are
+ *  maintained on their own screens. */
+function infoLegIsFlatOnly(e: RawEvent): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fields: string[] = Array.isArray((e.payload as any)?.fields) ? (e.payload as any).fields : [];
+  return fields.every((f) => (MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f));
+}
+
+type Correctability = { canReverse: boolean; canEdit: boolean; stateChanging: boolean };
+
+/** Whether this movement can be rolled back, and whether it can be corrected in place. `isLatest` is the
+ *  in-place rule: an edit replays through the SAME writers, and those act on the OPEN dated row, so a
+ *  state-changing movement can only be corrected while it is still the most recent one. */
+function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolean): Correctability {
+  const stateChanging = group.some((e) => STATE_CHANGING_EVENT_TYPES.has(e.eventType));
+  if (!group.length) return { canReverse: false, canEdit: false, stateChanging };
+  const supported = group.every(
+    (e) =>
+      REVERSIBLE_EVENT_TYPES.has(e.eventType) &&
+      (e.eventType !== 'employment.info.updated' || infoLegIsFlatOnly(e)),
+  );
+  const canReverse = supported && !row.reversed;
+  const canEdit = canReverse && (!stateChanging || (isComparisonKind(row.kind) && isLatest));
+  return { canReverse, canEdit, stateChanging };
+}
+
+/** The end of the sequence span of the LAST non-reversed, state-changing movement — the only one an edit
+ *  may replay in place. -1 when there is none. */
+function latestStateChangingSpanEnd(events: RawEvent[], rows: ProjectedRow[]): number {
+  let end = -1;
+  for (const r of rows) {
+    const g = groupEventsOf(events, r);
+    if (r.reversed || !g.some((e) => STATE_CHANGING_EVENT_TYPES.has(e.eventType))) continue;
+    end = Math.max(end, ...g.map((e) => e.sequence));
+  }
+  return end;
+}
+
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
 export function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
   return withTenant(ctx, async (tx) => {
-    const { rows } = await projectRows(tx, ctx.tenantId, employmentId);
-    return rows.map(({ id, kind, effectiveDate, endDate, remarks }) => ({ id, kind, effectiveDate, endDate, remarks }));
+    const { events, rows } = await projectRows(tx, ctx.tenantId, employmentId);
+    // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
+    // SAME rule the service refuses on (the Basic Salary card's precedent).
+    const closed = await closedPeriodsTx(tx, employmentId);
+    const processed = await processedPeriodsTx(tx, employmentId);
+    const latest = latestStateChangingSpanEnd(events, rows);
+    return rows.map((r) => {
+      const g = groupEventsOf(events, r);
+      const spanEnd = g.length ? Math.max(...g.map((e) => e.sequence)) : -1;
+      const c = correctabilityOf(r, g, spanEnd === latest);
+      // The window a correction disturbs runs from the effective date forward: undoing a raise changes
+      // every period after it, not just the one it started in.
+      const locked = c.stateChanging && overlapsClosedPeriod(closed, r.effectiveDate, null);
+      return {
+        id: r.id,
+        kind: r.kind,
+        effectiveDate: r.effectiveDate,
+        endDate: r.endDate,
+        remarks: r.remarks,
+        reversed: r.reversed,
+        canEdit: c.canEdit && !locked,
+        canReverse: c.canReverse && !locked,
+        payrollLocked: locked,
+        payrollWarning: c.stateChanging && !locked && overlapsClosedPeriod(processed, r.effectiveDate, null),
+      };
+    });
   });
 }
 
@@ -608,7 +752,14 @@ export function movementDetail(
         : await snapshotAt(tx, emp, dayBefore(row.effectiveDate), gradeEvents, beforeBound, false);
 
     return {
-      row: { id: row.id, kind: row.kind, effectiveDate: row.effectiveDate, endDate: row.endDate, remarks: row.remarks },
+      row: {
+        id: row.id,
+        kind: row.kind,
+        effectiveDate: row.effectiveDate,
+        endDate: row.endDate,
+        remarks: row.remarks,
+        reversed: row.reversed,
+      },
       actorName,
       occurredAt: row.occurredAt,
       before,
@@ -795,12 +946,17 @@ export const isComparisonKind = (k: string): k is ComparisonKind =>
  * primary movement tag and owns the history row; the rest are tagged `secondary` and share its `groupId`,
  * which is how the detail view finds the flat-column before/after and the full sequence span.
  */
-async function applyComparisonMovement(ctx: SessionContext, p: CreateMovementInput, kind: ComparisonKind) {
+async function applyComparisonMovementTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: CreateMovementInput,
+  kind: ComparisonKind,
+) {
   const remarks = p.remarks?.trim() || null;
   const endDate = p.endDate?.trim() || null;
   const groupId = randomUUID();
 
-  return withTenant(ctx, async (tx) => {
+  {
     const cur = await currentStateTx(tx, p.employmentId);
     // undefined = the form did not carry the field (untouched); otherwise '' means an explicit clear.
     // A value equal to the current one collapses back to undefined — that IS the no-op rule.
@@ -941,8 +1097,11 @@ async function applyComparisonMovement(ctx: SessionContext, p: CreateMovementInp
     }
 
     return { employmentId: p.employmentId };
-  });
+  }
 }
+
+const applyComparisonMovement = (ctx: SessionContext, p: CreateMovementInput, kind: ComparisonKind) =>
+  withTenant(ctx, (tx) => applyComparisonMovementTx(tx, ctx, p, kind));
 
 /**
  * The single New Event entry point. Delegates every kind to the existing audited writer, so effective-
@@ -1043,4 +1202,367 @@ export async function createMovementEvent(ctx: SessionContext, p: CreateMovement
         return { employmentId: p.employmentId };
       });
   }
+}
+
+// ───────────── Corrections: Edit + Delete (Rollback) — 66a63bd6 ─────────────
+//
+// The reporter's answer to decision item 9064cffb picked option (a): a correction is recorded as a VISIBLE
+// REVERSAL, never a hard delete. Employment History is a projection over the append-only domain_event ledger
+// (ADR-0006 / ADR-0015), so there is nothing here to DELETE — a rollback is a COMPENSATING write, and the
+// corrected movement keeps its line in the history, marked reversed.
+//
+// Undo rules, one per substrate:
+//   • the dated tables (assignment, compensation, reporting_line) — supersede the version the movement
+//     inserted and extend its predecessor back over the vacated window, so the timeline stays contiguous
+//     even when the corrected movement sits in the middle of the chain;
+//   • the flat `employment` columns (job grade, Division … Category) — last-write-wins, so they are restored
+//     ONLY while the current value is still the one this movement wrote. If a later movement has since moved
+//     them, removing this one changes nothing: that IS the replay result, and it is what stops an earlier
+//     correction from clobbering a later movement.
+//
+// Every compensating write is tagged `secondary` — the same mechanism the comparison form already uses to
+// keep companion legs off the history — so a rollback never grows a second, contradictory row, while the
+// grade / flat-column replays the detail view depends on stay complete in the ledger.
+
+/** Thrown when a correction is asked of a movement this module cannot replay (see REVERSIBLE_EVENT_TYPES). */
+export class MovementNotCorrectableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MovementNotCorrectableError';
+  }
+}
+
+function assertMovementAdmin(ctx: SessionContext, what: string): void {
+  const roles = ctx.roles ?? [];
+  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
+    throw new Error(`Only an admin can ${what}.`);
+  }
+}
+
+/** Undo ONE leg of a movement. `tag` marks every compensating write as a companion of the rollback, so the
+ *  projection keeps rendering exactly one row per movement. */
+async function reverseLegTx(
+  tx: Tx,
+  ctx: SessionContext,
+  employmentId: string,
+  e: RawEvent,
+  tag: MovementTag,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const p = (e.payload ?? {}) as Record<string, any>;
+  switch (e.eventType) {
+    case 'assignment.transferred':
+    case 'employment.assignment.changed': {
+      const [row] = await tx
+        .select()
+        .from(assignment)
+        .where(and(eq(assignment.id, e.aggregateId), eq(assignment.employmentId, employmentId)))
+        .limit(1);
+      if (!row || row.supersededAt) return;
+      const [prev] = await tx
+        .select({ id: assignment.id })
+        .from(assignment)
+        .where(
+          and(
+            eq(assignment.employmentId, employmentId),
+            isNull(assignment.supersededAt),
+            eq(assignment.validTo, row.validFrom),
+          ),
+        )
+        // A movement dated on the day the previous version started leaves a zero-length row, so two
+        // versions can share this validTo. The LATEST one is the immediate predecessor.
+        .orderBy(desc(assignment.validFrom))
+        .limit(1);
+      // Without a predecessor the employee would be left with no assignment covering the window — refuse
+      // rather than roll back into a state the rest of the system cannot represent.
+      if (!prev) {
+        throw new MovementNotCorrectableError('There is no earlier organisation assignment to roll back to.');
+      }
+      await tx.update(assignment).set({ supersededAt: new Date() }).where(eq(assignment.id, row.id));
+      await tx.update(assignment).set({ validTo: row.validTo }).where(eq(assignment.id, prev.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'assignment',
+        aggregateId: row.id,
+        eventType: 'employment.assignment.superseded',
+        actor: actorOf(ctx),
+        subjectEmploymentId: employmentId,
+        payload: { employmentId, restoredAssignmentId: prev.id, effectiveDate: row.validFrom, reversalOf: e.id },
+      });
+      return;
+    }
+
+    case 'employment.grade.changed': {
+      const [emp] = await tx
+        .select({ gradeId: employment.gradeId })
+        .from(employment)
+        .where(eq(employment.id, employmentId))
+        .limit(1);
+      if (!emp || (emp.gradeId ?? null) !== ((p.after as string | null) ?? null)) return;
+      await setEmploymentGrade(ctx, { employmentId, gradeId: (p.before as string | null) ?? null, movement: tag }, tx);
+      return;
+    }
+
+    case 'compensation.set': {
+      const [row] = await tx
+        .select({ id: compensation.id, supersededAt: compensation.supersededAt })
+        .from(compensation)
+        .where(and(eq(compensation.id, e.aggregateId), eq(compensation.employmentId, employmentId)))
+        .limit(1);
+      if (!row || row.supersededAt) return;
+      // The Basic Salary card's own writer: it reopens the previous salary window and re-runs the
+      // closed-payroll refusal as a backstop under the guard this module already applied.
+      await supersedeCompensation(ctx, { compensationId: row.id, employmentId }, tx);
+      return;
+    }
+
+    case 'employment.info.updated': {
+      const fields: string[] = Array.isArray(p.fields) ? p.fields : [];
+      const before = (p.before ?? {}) as Record<string, string | null>;
+      const after = (p.after ?? {}) as Record<string, string | null>;
+      const [cur] = await tx
+        .select({
+          orgDivision: employment.orgDivision,
+          employmentCategory: employment.employmentCategory,
+          orgRegion: employment.orgRegion,
+          orgBranch: employment.orgBranch,
+          orgTeam: employment.orgTeam,
+          orgSection: employment.orgSection,
+          orgLine: employment.orgLine,
+          orgBase: employment.orgBase,
+        })
+        .from(employment)
+        .where(eq(employment.id, employmentId))
+        .limit(1);
+      if (!cur) return;
+      const restore: Partial<Record<MovementFlatField, string | null>> = {};
+      for (const f of MOVEMENT_FLAT_FIELDS) {
+        if (!fields.includes(f)) continue;
+        if ((cur[f] ?? null) !== (after[f] ?? null)) continue; // a later movement owns this column now
+        restore[f] = before[f] ?? null;
+      }
+      if (Object.keys(restore).length) {
+        await setEmploymentInfo(ctx, { employmentId, ...restore, movement: tag }, tx);
+      }
+      return;
+    }
+
+    case 'reporting-line.set': {
+      const [row] = await tx
+        .select()
+        .from(reportingLine)
+        .where(and(eq(reportingLine.id, e.aggregateId), eq(reportingLine.subordinateEmploymentId, employmentId)))
+        .limit(1);
+      if (!row || row.supersededAt) return;
+      await tx.update(reportingLine).set({ supersededAt: new Date() }).where(eq(reportingLine.id, row.id));
+      const [prev] = await tx
+        .select({ id: reportingLine.id })
+        .from(reportingLine)
+        .where(
+          and(
+            eq(reportingLine.subordinateEmploymentId, employmentId),
+            eq(reportingLine.lineType, row.lineType),
+            isNull(reportingLine.supersededAt),
+            eq(reportingLine.validTo, row.validFrom),
+          ),
+        )
+        .orderBy(desc(reportingLine.validFrom))
+        .limit(1);
+      if (prev) await tx.update(reportingLine).set({ validTo: row.validTo }).where(eq(reportingLine.id, prev.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'reporting-line',
+        aggregateId: row.id,
+        eventType: 'reporting-line.reverted',
+        actor: actorOf(ctx),
+        subjectEmploymentId: employmentId,
+        payload: {
+          subordinateEmploymentId: employmentId,
+          restoredReportingLineId: prev?.id ?? null,
+          reversalOf: e.id,
+        },
+      });
+      return;
+    }
+
+    case 'employment.movement.recorded':
+      // Record-only (Secondment / Acting Position): it changed no state, so the reversal event alone is
+      // the whole rollback.
+      return;
+  }
+}
+
+/** The shared rollback body. `corrected` distinguishes the first half of an Edit from a plain Delete — both
+ *  leave the same visible trace, and the history says which one happened. */
+async function reverseMovementTx(
+  tx: Tx,
+  ctx: SessionContext,
+  employmentId: string,
+  movementId: string,
+  reason: string | null,
+  corrected: boolean,
+): Promise<void> {
+  const { events, rows } = await projectRows(tx, ctx.tenantId, employmentId);
+  const row = rows.find((r) => r.id === movementId);
+  if (!row) throw new Error('Movement event not found.');
+  if (row.reversed) throw new Error('This movement event has already been rolled back.');
+  const group = groupEventsOf(events, row);
+  const c = correctabilityOf(row, group, false);
+  if (!c.canReverse) {
+    throw new MovementNotCorrectableError(
+      'This event type cannot be rolled back from Employment History — use the screen that records it.',
+    );
+  }
+  if (c.stateChanging) {
+    const closed = await closedPeriodsTx(tx, employmentId);
+    if (overlapsClosedPeriod(closed, row.effectiveDate, null)) {
+      throw new Error('A closed payroll run relied on this movement. Reopen that payroll before correcting the event.');
+    }
+  }
+  // Undo the newest leg first: within one movement a later leg can sit on top of an earlier one.
+  const tag: MovementTag = { type: row.kind, groupId: randomUUID(), secondary: true };
+  for (const e of [...group].sort((a, b) => b.sequence - a.sequence)) {
+    await reverseLegTx(tx, ctx, employmentId, e, tag);
+  }
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'employment',
+    aggregateId: employmentId,
+    eventType: 'employment.movement.reversed',
+    actor: actorOf(ctx),
+    subjectEmploymentId: employmentId,
+    payload: { movementId, kind: row.kind, effectiveDate: row.effectiveDate, reason, corrected },
+  });
+}
+
+/**
+ * Delete (Rollback). The movement stops applying and everything it changed goes back to what it was
+ * immediately before — but the row STAYS in Employment History, marked reversed, with who did it, when and
+ * why. That is the approved shape (9064cffb option a): an employment history that can be silently emptied
+ * is no longer evidence, and payroll and statutory reporting both lean on it.
+ */
+export async function reverseMovementEvent(
+  ctx: SessionContext,
+  p: { employmentId: string; movementId: string; reason?: string | null },
+) {
+  assertMovementAdmin(ctx, 'roll back a movement');
+  return withTenant(ctx, async (tx) => {
+    await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, p.reason?.trim() || null, false);
+    return { employmentId: p.employmentId };
+  });
+}
+
+export type EditMovementInput = CreateMovementInput & {
+  movementId: string;
+  /** Free-text "reason for the change" (audit-trail requirement 4 — optional but recommended). */
+  reason?: string | null;
+};
+
+/**
+ * Edit. A correction is a REPLAY, not an in-place patch of the ledger: the movement is rolled back exactly
+ * as Delete does it, then re-applied through the SAME writer the New Event comparison form uses — so the
+ * corrected movement inherits every guard (label/company coherence, business-unit carry-forward, pay-mode
+ * period boundary) instead of a second writer growing its own copy of those bugs.
+ *
+ * Two rules the shape forces:
+ *  • Replaying an UNCHANGED movement is a no-op — nothing is written, not the rollback and not the
+ *    re-apply, when the submitted values, dates and remarks all match what is already recorded.
+ *  • Only the most recent state-changing movement can be corrected in place, because the re-apply runs
+ *    through writers that act on the OPEN dated row. Correcting an older one means rolling back the later
+ *    movements first; the message says so rather than silently appending the replay at the end of the chain.
+ */
+export async function editMovementEvent(ctx: SessionContext, p: EditMovementInput) {
+  assertMovementAdmin(ctx, 'correct a movement');
+  if (!(MOVEMENT_KINDS as readonly string[]).includes(p.kind)) {
+    throw new Error('Unknown movement event type.');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
+    throw new Error('A valid effective date (YYYY-MM-DD) is required.');
+  }
+  const reason = p.reason?.trim() || null;
+  const remarks = p.remarks?.trim() || null;
+  const endDate = p.endDate?.trim() || null;
+
+  return withTenant(ctx, async (tx) => {
+    const { events, rows } = await projectRows(tx, ctx.tenantId, p.employmentId);
+    const row = rows.find((r) => r.id === p.movementId);
+    if (!row) throw new Error('Movement event not found.');
+    if (row.reversed) throw new Error('This movement event has already been rolled back.');
+    const group = groupEventsOf(events, row);
+    const spanEnd = group.length ? Math.max(...group.map((e) => e.sequence)) : -1;
+    const isLatest = spanEnd === latestStateChangingSpanEnd(events, rows);
+    const c = correctabilityOf(row, group, isLatest);
+    if (!c.canEdit) {
+      throw new MovementNotCorrectableError(
+        c.canReverse && c.stateChanging && !isLatest
+          ? 'Only the most recent movement can be edited. Roll back the later movements first, then correct this one.'
+          : 'This event type cannot be edited from Employment History — use the screen that records it.',
+      );
+    }
+
+    // The unchanged-replay no-op, checked BEFORE anything is written — against the same date/remark fields
+    // the history shows and the same current values the comparison form pre-filled from.
+    const datesUnchanged =
+      p.kind === row.kind &&
+      p.effectiveDate === row.effectiveDate &&
+      endDate === row.endDate &&
+      remarks === row.remarks;
+
+    if (!c.stateChanging) {
+      // Record-only movement: the rollback has nothing to undo, so the correction is the reversal plus a
+      // fresh record carrying the fixed dates / remarks.
+      if (datesUnchanged) throw new MovementNoChangeError();
+      await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'employment',
+        aggregateId: p.employmentId,
+        eventType: 'employment.movement.recorded',
+        actor: actorOf(ctx),
+        subjectEmploymentId: p.employmentId,
+        payload: { type: p.kind, effectiveDate: p.effectiveDate, endDate, remarks, correctionOf: p.movementId },
+      });
+      return { employmentId: p.employmentId };
+    }
+
+    if (!isComparisonKind(p.kind)) {
+      throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
+    }
+    if (p.kind === 'employmentTypeChange' && !p.employmentType) {
+      throw new Error('Select the new employment type.');
+    }
+    const cur = await currentStateTx(tx, p.employmentId);
+    // Same `undefined = untouched, '' = explicit clear` reading as the dispatcher's delta rule, so the
+    // no-op test and the write agree on what "unchanged" means.
+    const same = (v: string | null | undefined, curVal: string | null) =>
+      v === undefined || (v === null ? null : v.trim() || null) === curVal;
+    const valuesUnchanged =
+      same(p.departmentId, cur.departmentId) &&
+      same(p.positionId, cur.positionId) &&
+      same(p.businessUnitId, cur.businessUnitId) &&
+      same(p.locationId, cur.locationId) &&
+      same(p.gradeId, cur.gradeId) &&
+      same(p.managerEmploymentId, cur.managerEmploymentId) &&
+      same(p.currency, cur.currency) &&
+      same(p.payMode, cur.payMode) &&
+      same(p.paymentTerm, cur.paymentTerm) &&
+      (!p.employmentType || p.employmentType === cur.employmentType) &&
+      (p.basicSalary === undefined || Number(p.basicSalary) === Number(cur.basicSalary ?? NaN)) &&
+      MOVEMENT_FLAT_FIELDS.every((f) => same(p[f], cur[f]));
+    if (datesUnchanged && valuesUnchanged) throw new MovementNoChangeError();
+
+    await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+    try {
+      return await applyComparisonMovementTx(tx, ctx, { ...p, remarks, endDate }, p.kind);
+    } catch (e) {
+      // The corrected movement would now change nothing at all — that is a Delete, not an Edit, and the
+      // half-applied rollback must not commit behind a message about "no changes to record".
+      if (e instanceof MovementNoChangeError) {
+        throw new MovementNoChangeError(
+          'The corrected event would leave nothing changed — use Delete to roll the movement back instead.',
+        );
+      }
+      throw e;
+    }
+  });
 }

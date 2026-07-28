@@ -19,7 +19,7 @@ import { useTranslations } from 'next-intl';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { CurrencySelect } from '@/components/currency-select';
 import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structure-fields';
-import { createMovementEventAction } from './actions';
+import { createMovementEventAction, editMovementEventAction } from './actions';
 
 export type MovementOption = { id: string; name: string };
 
@@ -86,6 +86,19 @@ const COMPARISON_KINDS: readonly string[] = [
   'reportingLineChange',
 ];
 
+/** 66a63bd6 — the movement being corrected. Absent = the New Event form, unchanged. */
+export type MovementEditTarget = {
+  movementId: string;
+  kind: string;
+  effectiveDate: string;
+  endDate: string | null;
+  remarks: string | null;
+  /** Event types this correction may switch to — the same family as the movement it replays. */
+  allowedKinds: string[];
+  /** A processed (not yet closed) payroll run covered this period; payslips are never reprocessed. */
+  payrollWarning: boolean;
+};
+
 export function MovementNewEvent({
   employmentId,
   today,
@@ -100,6 +113,7 @@ export function MovementNewEvent({
   employmentTypes,
   terminationTypes,
   cancelHref,
+  edit,
 }: {
   employmentId: string;
   today: string;
@@ -115,10 +129,11 @@ export function MovementNewEvent({
   employmentTypes: { value: string; label: string }[];
   terminationTypes: { value: string; label: string }[];
   cancelHref: string;
+  edit?: MovementEditTarget;
 }) {
   const t = useTranslations('people.detail.movement');
   const tPay = useTranslations('people.detail');
-  const [kind, setKind] = useState<string>('transfer');
+  const [kind, setKind] = useState<string>(edit?.kind ?? 'transfer');
 
   // Static-key label map with a humanized fallback for future kinds — no dynamic t() keys, so a raw
   // key can never render in any locale.
@@ -261,15 +276,30 @@ export function MovementNewEvent({
       </select>),
   ];
 
+  const kindOptions: readonly string[] = edit ? edit.allowedKinds : KINDS;
+
   return (
-    <form action={createMovementEventAction}>
+    <form action={edit ? editMovementEventAction : createMovementEventAction}>
       <input type="hidden" name="employmentId" value={employmentId} />
+      {edit && <input type="hidden" name="movementId" value={edit.movementId} />}
+
+      {edit && (
+        // The one thing HR must understand before saving: this does not quietly rewrite the old entry.
+        <p className="border-b border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
+          {t('form.editHint')}
+        </p>
+      )}
+      {edit?.payrollWarning && (
+        <p className="border-b border-border bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+          {t('form.payrollWarning')}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           {t('form.eventType')}
           <select name="kind" value={kind} onChange={(e) => setKind(e.target.value)} className={inputCls}>
-            {KINDS.map((k) => (
+            {kindOptions.map((k) => (
               <option key={k} value={k}>
                 {kindLabel(k)}
               </option>
@@ -280,14 +310,26 @@ export function MovementNewEvent({
         {showEffectiveDate && (
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {t('form.effectiveDate')}
-            <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
+            <input
+              name="effectiveDate"
+              type="date"
+              required
+              defaultValue={edit?.effectiveDate ?? today}
+              className={inputCls}
+            />
           </label>
         )}
 
         {showEndDate && (
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {t('form.endDate')}
-            <input name="endDate" type="date" required={kind === 'probationExtension'} className={inputCls} />
+            <input
+              name="endDate"
+              type="date"
+              required={kind === 'probationExtension'}
+              defaultValue={edit?.endDate ?? ''}
+              className={inputCls}
+            />
           </label>
         )}
 
@@ -317,8 +359,17 @@ export function MovementNewEvent({
 
         <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
           {t('form.remarks')}
-          <input name="remarks" maxLength={200} className={inputCls} />
+          <input name="remarks" maxLength={200} defaultValue={edit?.remarks ?? ''} className={inputCls} />
         </label>
+
+        {edit && (
+          // Audit-trail requirement 4: WHY the record was corrected, alongside the who/what/when the
+          // ledger already captures. Optional — a blank reason must never block a correction.
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
+            {t('form.correctionReason')}
+            <input name="reason" maxLength={200} className={inputCls} />
+          </label>
+        )}
       </div>
 
       {isComparison && (
@@ -337,7 +388,7 @@ export function MovementNewEvent({
         <a href={cancelHref} className={btnGhost}>
           {t('form.cancel')}
         </a>
-        {kind === 'termination' ? (
+        {kind === 'termination' && !edit ? (
           <ConfirmSubmit
             title={t('form.terminateConfirmTitle')}
             description={t('form.terminateConfirmDescription')}
@@ -347,7 +398,7 @@ export function MovementNewEvent({
             {t('form.save')}
           </ConfirmSubmit>
         ) : (
-          <button className={btnPrimary}>{t('form.save')}</button>
+          <button className={btnPrimary}>{edit ? t('form.saveCorrection') : t('form.save')}</button>
         )}
       </div>
     </form>
