@@ -118,7 +118,7 @@ const DOC_MIME_OPTIONS = [
  *  1 General Setting, 2 Condition, 3 Entitlement, 4 Custom Settings. The Eligibility step was removed:
  *  it had held no eligibility rules since 08bc6841 relocated those to Condition · Criteria, and its
  *  remaining content (the per-company entitlement policies timeline) moved to the Entitlement step's
- *  Company Entitlements sub-step. The keys are the SAME storage keys the pre-step accordion used ('ess' is
+ *  Service Based Entitlements sub-step. The keys are the SAME storage keys the pre-step accordion used ('ess' is
  *  Condition's historical key — kept deliberately so persisted state survives, see the leaveTypeCards
  *  migration in LeaveTypePanel).
  *
@@ -128,7 +128,7 @@ const DOC_MIME_OPTIONS = [
 const STEP_KEYS = ['general', 'ess', 'entitlement', 'custom'] as const;
 type StepKey = (typeof STEP_KEYS)[number];
 /** The storage key of the step b8fcae73 retired. Kept ONLY so a persisted leaveTypeCards:<id> payload that
- *  still points at it can be remapped to where its content went (Entitlement · Company Entitlements)
+ *  still points at it can be remapped to where its content went (Entitlement · Service Based Entitlements)
  *  instead of silently snapping back to step 1. It is never a StepKey and never renders. */
 const RETIRED_ELIGIBILITY_STEP = 'eligibility';
 /** Step → its admin.leave title key (the same category* keys the accordion cards used, all 6 locales). */
@@ -187,27 +187,27 @@ const ESS_SUB_STEP_TITLE_KEY: Record<EssSubStepKey, string> = {
   expiry: 'conditionStep.expiry',
 };
 
-/** Entitlement step sub-flow (7b945408, extended by b8fcae73): the four sub-steps of step 3, in walk
- *  order — 1 Benefit Schemes
+/** Entitlement step sub-flow (7b945408, extended by b8fcae73, shortened again by bc9be1e8 + 0d9cf710):
+ *  the THREE sub-steps of step 3, in walk order — 1 Benefit Schemes
  *  (who receives which scheme: the Grades catalogue relocated from the page bottom + the type-scoped scheme
  *  management, so the grade → grade-group → scheme relationship reads in one place), 2 Service Based
- *  Entitlements (how entitlement is calculated: the per-type entitlement table + the Preview Scenario
- *  checker), 3 Company Entitlements (b8fcae73: the per-company entitlement policies timeline relocated
- *  from the retired Eligibility step — days per company/grade, carry-forward, accrual method, effective
- *  dates; it reuses the EXISTING companyEntitlements string as its label, so no new locale key), 4
- *  Adjustments (what manual adjustments apply: the One-Off/Festive grant tool + the Run Accrual
- *  action relocated from the page header — it processes earned entitlement, so it belongs with entitlement
- *  adjustments). Keys are storage keys (persisted as `entitlementSubStep` in the leaveTypeCards:<id>
- *  localStorage shape, next to activeStep / generalSubStep / essSubStep — the e1a51aea shape extended
- *  backward-compatibly). Rendered by the SAME reusable SubStepBar the General flow introduced
- *  (components/leave-sub-step-bar.tsx — the reuse contract). */
-const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'policies', 'adjustments'] as const;
+ *  Entitlements (how entitlement is calculated: the company-driven grade table, the per-company entitlement
+ *  policies timeline and the Preview Scenario checker), 3 Adjustments (what manual adjustments apply: the
+ *  One-Off/Festive grant tool + the Run Accrual action relocated from the page header — it processes earned
+ *  entitlement, so it belongs with entitlement adjustments). Keys are storage keys (persisted as
+ *  `entitlementSubStep` in the leaveTypeCards:<id> localStorage shape, next to activeStep / generalSubStep /
+ *  essSubStep — the e1a51aea shape extended backward-compatibly). Rendered by the SAME reusable SubStepBar
+ *  the General flow introduced (components/leave-sub-step-bar.tsx — the reuse contract). */
+const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'adjustments'] as const;
 type EntitlementSubStepKey = (typeof ENTITLEMENT_SUB_STEP_KEYS)[number];
+/** The storage key of the sub-step bc9be1e8 retired (Company Entitlements). Kept ONLY so a persisted
+ *  leaveTypeCards:<id> payload that still points at it lands where its content went — Service Based
+ *  Entitlements — instead of silently snapping back to sub-step 1. Never an EntitlementSubStepKey. */
+const RETIRED_COMPANY_ENTITLEMENTS_SUB_STEP = 'policies';
 /** Sub-step → its admin.leave title key (all 6 locales). */
 const ENTITLEMENT_SUB_STEP_TITLE_KEY: Record<EntitlementSubStepKey, string> = {
   schemes: 'entitlementStep.schemes',
   service: 'entitlementStep.service',
-  policies: 'companyEntitlements',
   adjustments: 'entitlementStep.adjustments',
 };
 
@@ -584,17 +584,10 @@ function PolicyFrontDoor({
   t,
   policies,
   renderForm,
-  alwaysShowScope,
 }: {
   t: ReturnType<typeof useTranslations>;
   policies: EntitlementPolicy[];
   renderForm: (p: EntitlementPolicy) => ReactNode;
-  // Restructure Service-Based Entitlements (2bba9e35): on the Service screen a single active policy must
-  // STILL show the scope picker. Without it PolicyFrontDoor defaults polId to active[0] and hides the
-  // picker when active.length === 1, so a method change could silently rewrite a DIFFERENT company's row —
-  // and updateLeavePolicy treats a method change as entitlementChanged, reprojecting that cohort's ledger.
-  // The General mounts keep the old behaviour (picker only when there is a genuine choice).
-  alwaysShowScope?: boolean;
 }) {
   const active = activePoliciesOf(policies);
   const [polId, setPolId] = useState<string>(active[0]?.id ?? '');
@@ -604,7 +597,7 @@ function PolicyFrontDoor({
   }
   return (
     <div className="space-y-2">
-      {(alwaysShowScope || active.length > 1) && (
+      {active.length > 1 && (
         <Field label={t('subStep.frontDoorScopeLabel')}>
           <select
             value={selected.id}
@@ -1223,7 +1216,8 @@ export function LeaveTypePanel({
       const parsed = JSON.parse(raw) as Record<string, unknown> | null;
       // b8fcae73: the Eligibility step is gone, so a payload still pointing at it (either shape) no longer
       // matches STEP_KEYS and would silently fall back to step 1. Remap it to the content's new home —
-      // Entitlement · Company Entitlements — and let that remap WIN over any stored entitlementSubStep.
+      // Entitlement · Service Based Entitlements (bc9be1e8 retired the Company Entitlements sub-step that
+      // hosted it in between) — and let that remap WIN over any stored entitlementSubStep.
       const wantedEligibility =
         !!parsed &&
         typeof parsed === 'object' &&
@@ -1233,7 +1227,7 @@ export function LeaveTypePanel({
             parsed[RETIRED_ELIGIBILITY_STEP] === true));
       if (wantedEligibility) {
         setActiveStep('entitlement');
-        setEntitlementSubStep('policies');
+        setEntitlementSubStep('service');
       } else if (parsed && typeof parsed.activeStep === 'string' && (STEP_KEYS as readonly string[]).includes(parsed.activeStep)) {
         setActiveStep(parsed.activeStep as StepKey);
       } else if (parsed && typeof parsed === 'object') {
@@ -1262,6 +1256,14 @@ export function LeaveTypePanel({
         (ENTITLEMENT_SUB_STEP_KEYS as readonly string[]).includes(parsed.entitlementSubStep)
       ) {
         setEntitlementSubStep(parsed.entitlementSubStep as EntitlementSubStepKey);
+      } else if (
+        !wantedEligibility &&
+        parsed &&
+        parsed.entitlementSubStep === RETIRED_COMPANY_ENTITLEMENTS_SUB_STEP
+      ) {
+        // bc9be1e8: a browser left on the removed Company Entitlements tab lands on Service Based
+        // Entitlements, where that content now lives — not back on sub-step 1 with no explanation.
+        setEntitlementSubStep('service');
       }
     } catch {
       /* storage unavailable / malformed ⇒ default step 1 */
@@ -1726,12 +1728,12 @@ export function LeaveTypePanel({
               <CardTitle>{t('categoryEntitlement')}</CardTitle>
             </CardHeader>
             <CardContent id={`cat-entitlement-${id}`} className="space-y-3">
-          {/* Entitlement sub-flow (7b945408, extended by b8fcae73): the SAME reusable SubStepBar the General
-              flow introduced (components/leave-sub-step-bar.tsx — the reuse contract) walks the four
-              sub-steps 1 Benefit Schemes · 2 Service Based Entitlements · 3 Company Entitlements ·
-              4 Adjustments. One sub-step visible at a time; the choice persists per type alongside
+          {/* Entitlement sub-flow (7b945408, extended by b8fcae73, shortened by bc9be1e8 + 0d9cf710): the
+              SAME reusable SubStepBar the General flow introduced (components/leave-sub-step-bar.tsx — the
+              reuse contract) walks the three sub-steps 1 Benefit Schemes · 2 Service Based Entitlements ·
+              3 Adjustments. One sub-step visible at a time; the choice persists per type alongside
               activeStep/generalSubStep/essSubStep (leaveTypeCards:<id>). The entitlement journey reads: who
-              receives which scheme → how entitlement is calculated → how many days each company or grade
+              receives which scheme → how entitlement is calculated and how many days each company or grade
               gets → what manual adjustments apply. */}
           <SubStepBar
             steps={ENTITLEMENT_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(ENTITLEMENT_SUB_STEP_TITLE_KEY[k]) }))}
@@ -1760,10 +1762,11 @@ export function LeaveTypePanel({
           </>
           )}
           {/* Sub-step 2 — Service Based Entitlements: the company-driven, by-grade entitlement table
-              (Restructure Service-Based Leave Entitlements). The picker lists COMPANY names only; choosing a
-              company auto-populates one row per active grade with the three service bands pre-filled from
-              what currently resolves. Benefit-scheme figures still take priority where set — this table sets
-              the fallback everyone else resolves to. */}
+              (Restructure Service-Based Leave Entitlements), then the per-company policy timeline, then the
+              Preview Scenario checker. The picker lists COMPANY names only; choosing a company
+              auto-populates one row per active grade with the three service bands pre-filled from what
+              currently resolves. Benefit-scheme figures still take priority where set — this table sets the
+              fallback everyone else resolves to. */}
           {entitlementSubStep === 'service' && (
           <>
           <ServiceEntitlementTable
@@ -1782,43 +1785,19 @@ export function LeaveTypePanel({
             )}
             saveAction={saveServiceEntitlementAction}
           />
-          {/* Restructure Service-Based Entitlements (2bba9e35): the earning-method front door joins this
-              sub-step so how days are earned through the year is set HERE too, over the SAME active policy
-              row the General → Earning Method sub-step edits (one setting, one place stored — it posts the
-              SAME updatePolicyAction). Mirrors the generalSubStep === 'earning' mount above; a span (NOT a
-              CardTitle — the Entitlement card keeps exactly one title) labels it, and alwaysShowScope keeps
-              the scope picker visible even with a single active policy so the admin always sees, and can
-              always aim, which company · grade · from-date the change targets. */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('subStep.earning')}</span>
-            <PolicyFrontDoor
-              t={t}
-              policies={policies}
-              alwaysShowScope
-              renderForm={(p) => (
-                <EarningMethodForm t={t} p={p} isAnnual={isAnnual} action={updatePolicyAction} leaveTypeId={id} />
-              )}
-            />
-            <p className="text-xs text-muted-foreground">{t('subStep.earningHelp')}</p>
-          </div>
-          </>
-          )}
-          {/* Sub-step 3 — Company Entitlements (b8fcae73): the per-company entitlement policies
-              timeline relocated VERBATIM from the retired Eligibility step, which had held no
-              eligibility rules since 08bc6841 moved those to Condition · Criteria. Days per company or
-              grade, carry-forward, accrual method and effective dates — same state, same create/update/
-              delete actions. It gets its OWN sub-step rather than joining Service Based Entitlements so
-              the two similar "days per X" editors can't be confused. */}
-          {/* Restructure Service-Based Entitlements (2bba9e35): this is the SHARED policy block. The gate
-              names BOTH 'policies' and 'service', so the identical timeline · inline edit · delete · add
-              form renders on the Service Based Entitlements sub-step AND the Company Entitlements sub-step —
-              ONE JSX block, ONE React state, ONE set of create/update/delete actions. There is nothing to
-              keep in sync because there is only one of it (the reporter's "one set of records, not a copy"
-              guarantee). Do NOT lift this into its own component or hoist it above the return — that would
-              move companyEntitlements / addEntitlement / isEarned(p.method) OUT of the Entitlement card
-              slice and vacuously pass the eee43966 regression guards. */}
-          {(entitlementSubStep === 'policies' || entitlementSubStep === 'service') && (
-          <>
+          {/* 0d9cf710: the earning-method front door 2bba9e35 mounted here is GONE. Earning Method,
+              Rounding Method and the Earn Upon Resignation note are configured in General → Earning Method
+              (the generalSubStep === 'earning' mount above) — the same component over the same policy row,
+              so this was a second rendering of one setting, not a second setting. Removing the copy leaves
+              both controls fully configurable, which item 4c6f69bd's rounding depends on. */}
+          {/* bc9be1e8: the per-company entitlement policies timeline — days per company or grade,
+              carry-forward, accrual method, effective dates, add / edit / remove. It used to also render
+              behind its own Company Entitlements sub-step (b8fcae73), which 2bba9e35 merged into a shared
+              gate; that tab is now removed, so this block is Service Based Entitlements' own content and
+              the ONLY place a policy can be added or deleted. Do NOT lift it into its own component or
+              hoist it above the return — that would move companyEntitlements / addEntitlement /
+              isEarned(p.method) OUT of the Entitlement card slice and vacuously pass the eee43966
+              regression guards. */}
           {/* 08bc6841: the eligibility rules block (gender / marital / min service / probation) moved
               to the Condition step's Criteria sub-step — this step now focuses purely on entitlement
               policies (who gets how many days). */}
@@ -2293,12 +2272,11 @@ export function LeaveTypePanel({
           )}
           {/* 08bc6841: the Leave Type Expiry configuration (fec49317) moved to the Condition step's
               Expiry sub-step — same form, same expiry=1 tri-state marker, same non-Annual gate. */}
+          {/* The Preview Scenario checker stays LAST in the sub-step, after the policy block — the
+              pre-existing rule that the preview tool follows the service content it checks. */}
+          {previewScenarioSection}
           </>
           )}
-          {/* Restructure Service-Based Entitlements (2bba9e35): the Preview Scenario checker is a service-only
-              trailer AFTER the shared policy block, preserving the pre-existing rule that the preview tool
-              follows the service content. On the Company Entitlements sub-step it does not render. */}
-          {entitlementSubStep === 'service' && previewScenarioSection}
           {/* Sub-step 4 — Adjustments (7b945408): what manual adjustments apply. */}
           {entitlementSubStep === 'adjustments' && (
           <>
