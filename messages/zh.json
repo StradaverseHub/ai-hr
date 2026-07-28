@@ -1134,8 +1134,22 @@
           "currentInformation": "当前信息",
           "afterInformation": "变更后（新信息）",
           "comparisonHint": "仅记录你实际修改的字段。保持原值的字段不会被改动，也不会产生历史记录。",
-          "companyReadOnly": "在“雇佣”标签页中变更"
-        }
+          "companyReadOnly": "在“雇佣”标签页中变更",
+          "editHint": "保存更正会撤销此事件并记录更正后的版本。原记录仍保留在任职历史中并标记为已更正——绝不会被删除。",
+          "payrollWarning": "已处理的薪资批次已覆盖此期间。工资单不会自动重新处理。",
+          "correctionReason": "更正原因（选填）",
+          "saveCorrection": "保存更正"
+        },
+        "edit": "编辑",
+        "delete": "删除",
+        "editTitle": "编辑异动事件",
+        "reversedBadge": "已撤销",
+        "correctedBadge": "已更正",
+        "deleteConfirmTitle": "撤销此异动事件？",
+        "deleteConfirmDescription": "员工资料将恢复到此事件发生前的状态。该事件仍保留在任职历史中并标记为已撤销，记录依然可供审计。",
+        "deleteConfirmPayroll": "已处理的薪资批次已覆盖此期间。撤销不会重新处理任何工资单——如有需要请另行重新处理。该事件仍保留在任职历史中并标记为已撤销。",
+        "correctionReasonLabel": "更正原因（选填）",
+        "payrollLocked": "已被关账的薪资批次锁定"
       },
       "salaryCurrency": "货币"
     },

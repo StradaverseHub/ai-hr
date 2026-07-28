@@ -80,8 +80,10 @@ export function overlapsClosedPeriod(closedPeriods: string[], from: string, to: 
   return closedPeriods.some((p) => `${p}-01` < (to ?? '9999-12-31') && from < nextMonthStart(p));
 }
 
-/** 'YYYY-MM' periods of CLOSED payroll batches that produced a payslip for this employment (tx-level). */
-async function closedPeriodsTx(tx: Tx, employmentId: string): Promise<string[]> {
+/** 'YYYY-MM' periods of CLOSED payroll batches that produced a payslip for this employment (tx-level).
+ *  Exported for 66a63bd6: a Movement correction must refuse on exactly the periods the Basic Salary card
+ *  already protects, so there is ONE definition of "payroll evidence" rather than two that can drift. */
+export async function closedPeriodsTx(tx: Tx, employmentId: string): Promise<string[]> {
   const rows = await tx
     .selectDistinct({ period: payrollBatch.payPeriod })
     .from(payslip)
@@ -93,7 +95,7 @@ async function closedPeriodsTx(tx: Tx, employmentId: string): Promise<string[]> 
 /** 'YYYY-MM' periods of PROCESSED-or-CLOSED batches that paid this employment (ADR-0078 D4): an in-place
  *  pay-mode edit on a row whose window such a run already relied on would retroactively change how that
  *  period was computed on any reprocess (mode from record A, money from record B). */
-async function processedPeriodsTx(tx: Tx, employmentId: string): Promise<string[]> {
+export async function processedPeriodsTx(tx: Tx, employmentId: string): Promise<string[]> {
   const rows = await tx
     .selectDistinct({ period: payrollBatch.payPeriod })
     .from(payslip)
@@ -449,8 +451,11 @@ export async function updateCompensation(
 export async function supersedeCompensation(
   ctx: SessionContext,
   p: { compensationId: string; employmentId: string },
+  /** 66a63bd6 — optional caller transaction (the run(outerTx) pattern setCompensation already uses), so a
+   *  Movement rollback removes the pay leg atomically with the assignment / grade / reporting-line legs. */
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const [row] = await tx
       .select()
       .from(compensation)
@@ -496,7 +501,8 @@ export async function supersedeCompensation(
       payload: { employmentId: p.employmentId, effectiveFrom: row.validFrom, fieldsChanged: ['supersededAt'] },
     });
     return { compensationId: row.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 export function currentCompensation(ctx: SessionContext, employmentId: string) {

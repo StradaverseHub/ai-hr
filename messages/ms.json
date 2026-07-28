@@ -1134,8 +1134,22 @@
           "currentInformation": "Maklumat Semasa",
           "afterInformation": "Selepas (Maklumat Baharu)",
           "comparisonHint": "Hanya medan yang anda ubah akan direkodkan. Nilai yang dibiarkan kekal tidak berubah dan tidak mencipta entri sejarah.",
-          "companyReadOnly": "Diubah pada tab Pekerjaan"
-        }
+          "companyReadOnly": "Diubah pada tab Pekerjaan",
+          "editHint": "Menyimpan pembetulan akan membatalkan peristiwa ini dan merekodkan versi yang dibetulkan. Rekod asal kekal dalam Sejarah Pekerjaan, ditanda sebagai dibetulkan — ia tidak dibuang.",
+          "payrollWarning": "Larian gaji yang telah diproses sudah merangkumi tempoh ini. Slip gaji tidak diproses semula secara automatik.",
+          "correctionReason": "Sebab pembetulan (pilihan)",
+          "saveCorrection": "Simpan Pembetulan"
+        },
+        "edit": "Sunting",
+        "delete": "Padam",
+        "editTitle": "Sunting Peristiwa Pergerakan",
+        "reversedBadge": "Dibatalkan",
+        "correctedBadge": "Dibetulkan",
+        "deleteConfirmTitle": "Batalkan peristiwa pergerakan ini?",
+        "deleteConfirmDescription": "Maklumat pekerja akan kembali kepada keadaan sebelum peristiwa ini. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan, supaya rekod kekal boleh diaudit.",
+        "deleteConfirmPayroll": "Larian gaji yang telah diproses sudah merangkumi tempoh ini. Pembatalan ini TIDAK akan memproses semula sebarang slip gaji — proses semula secara berasingan jika perlu. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan.",
+        "correctionReasonLabel": "Sebab pembetulan (pilihan)",
+        "payrollLocked": "Dikunci oleh larian gaji yang telah ditutup"
       },
       "salaryCurrency": "Mata wang"
     },
