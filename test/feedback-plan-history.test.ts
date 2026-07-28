@@ -303,6 +303,28 @@ describe('feedback plan history (0318)', () => {
       expect(r.unrecoverable).toBeGreaterThanOrEqual(5);
     });
 
+    it('labels a refuted item’s live push-back `refuted`, not `contested`', async () => {
+      // refuteDeployment parks the refute text in contest_reason and moves the item to `contested`, so a
+      // naive backfill recovers the right WORDS under the wrong label. The distinction is the reason this
+      // table separates the two outcomes at all, so the backfill must not blur it on historical rows.
+      const { id, rctx } = await reporterOn();
+      await setFeedbackPlan(adminCtx(base), { feedbackId: id, plan: 'shipped plan' });
+      await approveFeedbackPlan(rctx, { feedbackId: id });
+      await startFeedbackBuild(adminCtx(base), { feedbackId: id, buildRef: 'build/rX' });
+      await completeFeedbackBuild(adminCtx(base), { feedbackId: id, buildRef: 'build/rX' });
+      await markFeedbackDeployed(adminCtx(base), { feedbackId: id, buildRef: 'main@abc' });
+      await refuteDeployment(rctx, { feedbackId: id, reason: 'shipped but still wrong' });
+
+      // Rewind to the pre-0318 world: the words survive only on feedback_request, exactly as they do
+      // for the real historical items.
+      await owner.db.execute(sql`DELETE FROM feedback_plan_revision WHERE feedback_request_id = ${id}::uuid`);
+
+      await backfillPlanHistory(owner.db);
+      const [row] = await revisions(id);
+      expect(row.outcomeReason).toBe('shipped but still wrong');
+      expect(row.outcome).toBe('refuted');
+    });
+
     it('is idempotent — a second run changes nothing', async () => {
       const { id } = await reporterOn();
       await setFeedbackPlan(adminCtx(base), { feedbackId: id, plan: 'once' });
