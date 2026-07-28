@@ -14,6 +14,8 @@
  * product would look uninstalled. Fail-open degrades to exactly the pre-slice-4 rail instead.
  */
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import { MODULE_CODES_WITH_NAV, visibleModuleCodes } from '../lib/nav-entitlements';
 import { CORE_MODULE_CODES, MODULE_CATALOG } from '../packs/catalog';
 import { assertModuleEnabled, ModuleNotEnabledError } from '../core/entitlements';
@@ -103,5 +105,33 @@ describe('slice 4 — which modules the rail may advertise', () => {
     // And the converse: an enabled module does not throw, so the guard is discriminating rather than
     // simply always throwing.
     expect(() => assertModuleEnabled(ctx as never, 'claims')).not.toThrow();
+  });
+});
+
+describe('slice 4 — the page-entry courtesy redirect', () => {
+  const ROOTS: Record<string, string> = {
+    attendance: 'app/attendance/page.tsx',
+    claims: 'app/claims/page.tsx',
+    payroll: 'app/payroll/page.tsx',
+    performance: 'app/performance/page.tsx',
+  };
+
+  it('every SELLABLE module with nav guards its entry page', () => {
+    // Derived from the same list the rail gates, so adding a sellable module to MODULE_CODES_WITH_NAV
+    // without guarding its page fails here rather than shipping a module you can walk into.
+    const sellable = MODULE_CODES_WITH_NAV.filter((c) => !CORE_MODULE_CODES.includes(c as never));
+    for (const code of sellable) {
+      const file = ROOTS[code];
+      expect(file, `${code} has a known entry page — add it to ROOTS`).toBeDefined();
+      const src = fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');
+      expect(src, `${file} calls requireModule('${code}')`).toContain(`requireModule('${code}')`);
+    }
+  });
+
+  it('does NOT guard core module pages — they cannot be unbought', () => {
+    // /leave is core. A requireModule there would be dead code at best and, if the catalog ever changed
+    // shape, a redirect away from a module every tenant has.
+    const leave = fs.readFileSync(path.resolve(__dirname, '../app/leave/page.tsx'), 'utf8');
+    expect(leave).not.toContain("requireModule('leave')");
   });
 });

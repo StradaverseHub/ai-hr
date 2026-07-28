@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
+import { requireModule } from '@/lib/authz';
 import { listBatches } from '@/core/payroll';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -22,6 +23,11 @@ export default async function PayrollPage({
 }: {
   searchParams: Promise<{ error?: string; period?: string; page?: string; size?: string }>;
 }) {
+  // ADR-0077 slice 4 — a courtesy redirect when the tenant has not bought this module, so they get
+  // an explanation instead of the service error. NOT the control: the reads below refuse on their
+  // own (D3), and this guard fails open on an unresolved snapshot. Applied at the module ENTRY
+  // point; a deep link skips it and meets the service refusal, which is the correct outcome.
+  await requireModule('payroll');
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.list');
   // Payroll Reset (a03b2d9b) shares the batch-detail namespace so the confirm copy is written once.

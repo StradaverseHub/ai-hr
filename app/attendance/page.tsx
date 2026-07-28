@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
+import { requireModule } from '@/lib/authz';
 import { attendanceMonthSummary, listAttendanceCorrections, resolveApprovedOt } from '@/core/attendance';
 import { Avatar, Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { OtReportExport } from '@/components/ot-report-export';
@@ -52,6 +53,11 @@ export default async function AttendancePage({
   }>;
 }) {
   const t = await getTranslations('attendance');
+  // ADR-0077 slice 4 — a courtesy redirect when the tenant has not bought this module, so they get
+  // an explanation instead of the service error. NOT the control: the reads below refuse on their
+  // own (D3), and this guard fails open on an unresolved snapshot. Applied at the module ENTRY
+  // point; a deep link skips it and meets the service refusal, which is the correct outcome.
+  await requireModule('attendance');
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
   const todayIso = new Date().toISOString().slice(0, 10);
