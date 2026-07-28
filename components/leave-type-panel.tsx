@@ -780,6 +780,76 @@ function ServiceBandEditor({ t, initial }: { t: ReturnType<typeof useTranslation
  * sub-form save never resets the two columns. Both init from the stored values. Purely cosmetic — the picked
  * icon + colour only change how the type LOOKS on the employee Leave tab.
  */
+/**
+ * Balance Deduction Source (feedback cdf9ca48) — one card of the Condition step's Leave Application Rules
+ * grid. A two-option mode select ("Own Leave Balance" / "Deduct from Another Leave Type") plus, only when the
+ * second is chosen, the source picker. Its own state exists purely so the picker appears and disappears with
+ * the mode; the SAVED value is the source id, and the action derives it from the pair (mode 'own', or 'other'
+ * with nothing picked, both clear the column) — so the panel can never persist a mode with no source.
+ */
+function BalanceSourceForm({
+  t,
+  id,
+  name,
+  balanceSourceTypeId,
+  options,
+  action,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  id: string;
+  name: string;
+  balanceSourceTypeId: string | null;
+  options: { id: string; name: string }[];
+  action: Action;
+}) {
+  const [mode, setMode] = useState<'own' | 'other'>(balanceSourceTypeId ? 'other' : 'own');
+  return (
+    <div className="space-y-1.5 rounded-lg border border-border p-3">
+      <span className="text-xs font-medium text-muted-foreground">{t('balanceSourceSectionTitle')}</span>
+      <form action={action} className="space-y-2 rounded-lg bg-background p-3">
+        <input type="hidden" name="id" value={id} />
+        {/* preserve the name — this form does not edit it */}
+        <input type="hidden" name="name" value={name} />
+        {/* marker: tells the action to touch the balance_source_type_id column (tri-state guard) */}
+        <input type="hidden" name="balanceSource" value="1" />
+        <Field label={t('balanceSourceLabel')}>
+          <select
+            name="balanceSourceMode"
+            value={mode}
+            onChange={(e) => setMode(e.target.value === 'other' ? 'other' : 'own')}
+            className={`${inputCls} w-full`}
+          >
+            <option value="own">{t('balanceSourceOwn')}</option>
+            <option value="other">{t('balanceSourceOther')}</option>
+          </select>
+        </Field>
+        {mode === 'other' && (
+          <Field label={t('balanceSourceMapLabel')}>
+            <select
+              name="balanceSourceTypeId"
+              defaultValue={balanceSourceTypeId ?? ''}
+              className={`${inputCls} w-full`}
+            >
+              {/* Blank first: an administrator who switches to "another leave type" has not yet chosen one,
+                  and pre-selecting whichever type happens to sort first would save a source nobody picked. */}
+              <option value="">{t('balanceSourceMapPlaceholder')}</option>
+              {options.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <Button type="submit" size="sm">
+          {t('save')}
+        </Button>
+      </form>
+      <p className="text-xs text-muted-foreground">{t('balanceSourceHelp')}</p>
+    </div>
+  );
+}
+
 function LeaveVisualForm({
   t,
   id,
@@ -946,6 +1016,9 @@ export function LeaveTypePanel({
   perDateApproval,
   duplicateApplicationPolicy,
   allowNegativeBalance,
+  balanceSourceTypeId,
+  allowUnpaidLeave,
+  balanceSourceOptions,
   policies,
   grades,
   companies,
@@ -1062,6 +1135,18 @@ export function LeaveTypePanel({
    *  application of this type that exceeds their available balance. false ⇒ block over-application (the
    *  default). Threaded so the Yes/No sub-form round-trips its saved value; persisted via touchNegativeBalance. */
   allowNegativeBalance: boolean;
+  /** Balance Deduction Source (cdf9ca48): the leave type this one's applications are checked against and
+   *  debited from. null ⇒ its own balance (the default). Threaded so the mode radio + source select
+   *  round-trip; persisted via touchBalanceSource. */
+  balanceSourceTypeId: string | null;
+  /** Allow Unpaid Leave (a7fab30b): whether an application of this type may exceed the available balance,
+   *  with the excess treated as unpaid leave. false ⇒ today's behaviour. Threaded so the Yes/No sub-form
+   *  round-trips; persisted via touchAllowUpl. */
+  allowUnpaidLeave: boolean;
+  /** Balance Deduction Source (cdf9ca48): the types this one may point at — the tenant's ACTIVE types minus
+   *  this one, minus any that already borrow from somewhere (the service refuses chains, so offering them
+   *  would only produce a rejected save). Prepared once at page level, not per panel. */
+  balanceSourceOptions: { id: string; name: string }[];
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
@@ -2689,6 +2774,53 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('negativeBalanceHelp')}</p>
+          </div>
+          {/* Balance Deduction Source (feedback cdf9ca48). Its own self-contained <form> + `balanceSource=1`
+              tri-state marker, mirroring the negative-balance card above. Two choices: keep this type's own
+              balance (the default — clears the column), or deduct from another leave type, in which case the
+              select beside it names the source. The two controls live in ONE form so the mode and the choice
+              save atomically — a mode without a choice would otherwise persist as a half-configured "deduct
+              from another type, but which?". The service refuses self-reference and chains at save. */}
+          <BalanceSourceForm
+            t={t}
+            id={id}
+            name={name}
+            balanceSourceTypeId={balanceSourceTypeId}
+            options={balanceSourceOptions}
+            action={updateTypeAction}
+          />
+          {/* Allow Unpaid Leave (UPL) (feedback a7fab30b). Its own self-contained <form> + `allowUpl=1`
+              tri-state marker. 'No' (default) keeps today's behaviour — the negative-balance rule above
+              decides. 'Yes' lets the application through and treats only the days the balance could not
+              cover as unpaid; the employee is shown that split on the application form before submitting. */}
+          <div className="space-y-1.5 rounded-lg border border-border p-3">
+            <span className="text-xs font-medium text-muted-foreground">{t('allowUplSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the allow_unpaid_leave column (tri-state guard) */}
+              <input type="hidden" name="allowUpl" value="1" />
+              <span className="text-xs font-medium text-foreground">{t('allowUplLabel')}</span>
+              <div className="space-y-1.5">
+                {(['no', 'yes'] as const).map((opt) => (
+                  <label key={opt} className="flex items-start gap-2 text-xs text-foreground">
+                    <input
+                      type="radio"
+                      name="allowUnpaidLeaveValue"
+                      value={opt}
+                      defaultChecked={opt === (allowUnpaidLeave ? 'yes' : 'no')}
+                      className="mt-0.5 size-3.5 border-border"
+                    />
+                    <span>{opt === 'yes' ? t('allowUplYes') : t('allowUplNo')}</span>
+                  </label>
+                ))}
+              </div>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('allowUplHelp')}</p>
           </div>
           {/* Configurable backdated-leave restriction (0133). Its own sub-form (own tri-state) posts
               `backdating=1`. Hidden for Emergency Leave — EL is inherently retroactive and is never guarded,

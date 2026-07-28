@@ -3338,6 +3338,17 @@ export async function updateLeaveType(
     // application at submission (the approved default); true = permit going negative. Enforced at
     // requestLeave/editLeaveRequest.
     allowNegativeBalance?: boolean;
+    // Balance Deduction Source (feedback cdf9ca48): the leave type whose balance an application of THIS type
+    // is checked against and debited from. OWN tri-state (undefined = balance_source_type_id untouched) —
+    // its own "Balance Deduction Source" sub-form posts `balanceSource=1`. null ⇒ own balance (the default
+    // and the way to clear it). Validated INSIDE the transaction (it needs other rows): self-reference and
+    // chains in either direction are refused there.
+    balanceSourceTypeId?: string | null;
+    // Allow Unpaid Leave (feedback a7fab30b): whether an application of this type may exceed the available
+    // balance with the excess treated as unpaid leave. OWN tri-state (undefined = allow_unpaid_leave
+    // untouched), mirroring allowNegativeBalance — its own sub-form posts `allowUpl=1`. false = today's
+    // behaviour. Enforced at requestLeave/editLeaveRequest, settled at approval + payroll.
+    allowUnpaidLeave?: boolean;
     /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
     reason?: string | null;
   },
@@ -3409,6 +3420,12 @@ export async function updateLeaveType(
   // always forwards a concrete boolean when its marker is present.
   const touchNegativeBalance = p.allowNegativeBalance !== undefined;
   const negativeBalanceSet = touchNegativeBalance ? { allowNegativeBalance: p.allowNegativeBalance } : {};
+  // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): two OWN tri-states, mirroring
+  // touchNegativeBalance. Each has its own sub-form + marker so an unrelated save never resets either. The
+  // source's cross-row validation lives in the transaction below (it has to read the candidate source).
+  const touchBalanceSource = p.balanceSourceTypeId !== undefined;
+  const touchAllowUpl = p.allowUnpaidLeave !== undefined;
+  const allowUplSet = touchAllowUpl ? { allowUnpaidLeave: p.allowUnpaidLeave } : {};
   // Custom validation messages (custom-messages migration): OWN tri-state, mirroring touchBackdating. The
   // fixed allow-list of rule keys — currently only the one rule that exists (backdating). A future rule
   // adds its config-field name here and to the LeaveType schema comment.
@@ -3676,10 +3693,52 @@ export async function updateLeaveType(
         duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
         // Configurable Negative Leave Balance Validation (0ef0defd): selected for the before/after audit diff.
         allowNegativeBalance: leaveType.allowNegativeBalance,
+        // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): selected for the audit diff.
+        balanceSourceTypeId: leaveType.balanceSourceTypeId,
+        allowUnpaidLeave: leaveType.allowUnpaidLeave,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
       .limit(1);
+    // Balance Deduction Source (cdf9ca48) — refuse a configuration that has no well-defined answer, AT SAVE,
+    // rather than letting it fail (or quietly mis-deduct) the first time somebody applies for leave.
+    //
+    // ONE HOP, ENFORCED FROM BOTH ENDS. Chains are refused, not just cycles: "A deducts from B, B deducts from
+    // C" reads as though A spends C, but nothing in the request path walks the chain — and a walk would have
+    // to answer what happens when the chain loops. Refusing depth > 1 removes the question entirely, and makes
+    // cycles structurally impossible rather than merely detected. Both directions are checked because a chain
+    // can be created from either end: by pointing at a type that already has a source, or by giving a source
+    // to a type that something else already points at.
+    if (touchBalanceSource && p.balanceSourceTypeId != null) {
+      if (p.balanceSourceTypeId === p.id) {
+        throw new Error('A leave type cannot deduct from itself. Choose a different leave type.');
+      }
+      const [src] = await tx
+        .select({ name: leaveType.name, source: leaveType.balanceSourceTypeId, archivedAt: leaveType.archivedAt })
+        .from(leaveType)
+        .where(eq(leaveType.id, p.balanceSourceTypeId))
+        .limit(1);
+      // RLS scopes this read to the tenant, so a "not found" here also covers a cross-tenant id.
+      if (!src) throw new Error('The selected balance deduction source is not a leave type of this tenant.');
+      if (src.archivedAt) {
+        throw new Error(`${src.name} is archived and cannot be used as a balance deduction source.`);
+      }
+      if (src.source != null) {
+        throw new Error(
+          `${src.name} already deducts from another leave type. Pick a leave type that keeps its own balance.`,
+        );
+      }
+      const [borrower] = await tx
+        .select({ name: leaveType.name })
+        .from(leaveType)
+        .where(eq(leaveType.balanceSourceTypeId, p.id))
+        .limit(1);
+      if (borrower) {
+        throw new Error(
+          `${borrower.name} already deducts from this leave type, so this one must keep its own balance.`,
+        );
+      }
+    }
     // Name uniqueness on rename (feedback 097de541): only when the name actually changes (case-insensitive),
     // so an unrelated sub-form save that re-posts the current name — and any legacy duplicate that predates
     // this rule — never trips the guard. Excludes self and archived types (mirrors createLeaveType + the
@@ -3786,6 +3845,8 @@ export async function updateLeaveType(
         ...paidSet,
         ...duplicatePolicySet,
         ...negativeBalanceSet,
+        ...(touchBalanceSource ? { balanceSourceTypeId: p.balanceSourceTypeId ?? null } : {}),
+        ...allowUplSet,
         ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
         ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
         ...(touchFormulaExplanations ? { formulaExplanations: nextFormulaExplanations } : {}),
@@ -3856,6 +3917,8 @@ export async function updateLeaveType(
           ...(touchPaid ? { paid: before?.paid ?? null } : {}),
           ...(touchDuplicatePolicy ? { duplicateApplicationPolicy: before?.duplicateApplicationPolicy ?? null } : {}),
           ...(touchNegativeBalance ? { allowNegativeBalance: before?.allowNegativeBalance ?? null } : {}),
+          ...(touchBalanceSource ? { balanceSourceTypeId: before?.balanceSourceTypeId ?? null } : {}),
+          ...(touchAllowUpl ? { allowUnpaidLeave: before?.allowUnpaidLeave ?? null } : {}),
           ...(touchBackdating ? { backdatingLimitDays: before?.backdatingLimitDays ?? null } : {}),
           ...(touchMinAdvance ? { minAdvanceDays: before?.minAdvanceDays ?? null } : {}),
           ...(touchExpiry ? { expiryValue: before?.expiryValue ?? null, expiryUnit: before?.expiryUnit ?? null } : {}),
@@ -3898,6 +3961,8 @@ export async function updateLeaveType(
           ...(touchNegativeBalance
             ? { allowNegativeBalance: p.allowNegativeBalance ?? before?.allowNegativeBalance ?? null }
             : {}),
+          ...(touchBalanceSource ? { balanceSourceTypeId: p.balanceSourceTypeId ?? null } : {}),
+          ...(touchAllowUpl ? { allowUnpaidLeave: p.allowUnpaidLeave ?? before?.allowUnpaidLeave ?? null } : {}),
           ...(touchBackdating
             ? { backdatingLimitDays: p.backdatingLimitDays !== undefined ? p.backdatingLimitDays : (before?.backdatingLimitDays ?? null) }
             : {}),

@@ -1370,6 +1370,9 @@
       "no": "Không",
       "total": "Tổng: {days} ngày"
     },
+    "unpaidSplit": {
+      "notice": "Số dư của bạn chi trả được {paid} ngày. {unpaid} ngày còn lại sẽ được tính là nghỉ không lương."
+    },
     "applyDayStatus": {
       "working_day": "Ngày làm việc",
       "half_working_day": "Ngày làm việc nửa ngày",
@@ -4187,6 +4190,18 @@
       "negativeBalanceYes": "Có — nhân viên có thể nộp đơn ngay cả khi số dư âm",
       "negativeBalanceNo": "Không — chặn đơn vượt quá số dư khả dụng",
       "negativeBalanceHelp": "Kiểm soát việc nhân viên có thể nộp hoặc chỉnh sửa đơn xin nghỉ phép loại này vượt quá số dư khả dụng hay không. 'Không' chặn việc xin vượt mức khi nộp và chỉnh sửa (tính cả phép đang chờ duyệt); 'Có' cho phép số dư xuống âm.",
+      "balanceSourceSectionTitle": "Nguồn khấu trừ số dư",
+      "balanceSourceLabel": "Nguồn Khấu Trừ Số Dư",
+      "balanceSourceOwn": "Số dư phép của chính loại này",
+      "balanceSourceOther": "Khấu trừ từ loại phép khác",
+      "balanceSourceMapLabel": "Chọn nguồn khấu trừ",
+      "balanceSourceMapPlaceholder": "Chọn một loại phép…",
+      "balanceSourceHelp": "Chọn số dư nào sẽ được kiểm tra và khấu trừ khi nhân viên nộp đơn xin loại phép này. Mặc định là số dư của chính loại này. Nếu chọn một loại phép khác, loại này sẽ không giữ số dư riêng: đơn được kiểm tra theo số dư của loại đó và làm giảm số dư đó, trong khi lịch sử nghỉ phép vẫn hiển thị loại phép này. Một loại phép không thể trỏ tới chính nó, tới loại đã khấu trừ từ loại khác, hoặc tới loại đã khấu trừ từ chính nó.",
+      "allowUplSectionTitle": "Nghỉ không lương (UPL)",
+      "allowUplLabel": "Cho phép Nghỉ Không Lương (UPL)",
+      "allowUplYes": "Có — cho phép nộp đơn và tính những ngày vượt số dư là nghỉ không lương",
+      "allowUplNo": "Không — kiểm tra số dư khả dụng như hiện nay",
+      "allowUplHelp": "Kiểm soát việc nhân viên có thể xin nghỉ nhiều ngày hơn số dư khả dụng hay không. \"Không\" giữ nguyên hành vi hiện tại. \"Có\" cho phép đơn đi tiếp dưới dạng một đơn duy nhất: số ngày mà số dư chi trả được sẽ trừ vào loại phép này (hoặc vào nguồn khấu trừ của nó), và chỉ phần vượt mới được tính là nghỉ không lương và chuyển sang bảng lương.",
       "eligibilityChipAddPlaceholder": "Thêm…",
       "categoryGeneral": "Chung",
       "categoryEntitlement": "Định mức",

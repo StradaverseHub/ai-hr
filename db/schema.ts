@@ -1206,6 +1206,27 @@ export const leaveType = pgTable('leave_type', {
   // row gains the block immediately (no backfill needed). Enforced only at requestLeave/editLeaveRequest —
   // never read for entitlement / accrual / eligibility / payroll.
   allowNegativeBalance: boolean('allow_negative_balance').notNull().default(false),
+  // Balance Deduction Source (feedback cdf9ca48, migration 0316): the leave type whose BALANCE an application
+  // of THIS type is checked against and debited from. NULL (every existing row) = its own balance — today's
+  // exact behaviour, no backfill. Set it and the type keeps no balance of its own: the reporter's Emergency
+  // Leave checks and reduces ANNUAL, while the leave_request row (and therefore the employee's leave history)
+  // still says Emergency Leave. Resolved once per application and used for BOTH the submit-time guard and the
+  // approval-time ledger debit — those must never read different ledgers or an application could pass at
+  // submission and then fail, or worse, debit a balance nobody checked.
+  // SINGLE HOP, NOT A CHAIN: updateLeaveType refuses a source that itself has a source, and refuses giving a
+  // source to a type that is already somebody else's source. That makes cycles structurally impossible (a
+  // graph of depth 1 has none) without a recursive walk at every application, and it means the resolved
+  // source is always one read. The self-reference case is additionally refused by a DB CHECK.
+  balanceSourceTypeId: uuid('balance_source_type_id').references((): AnyPgColumn => leaveType.id),
+  // Allow Unpaid Leave (feedback a7fab30b, migration 0316): whether an application of this type may exceed
+  // the available balance, with the uncovered part becoming unpaid leave instead of being refused. NOT NULL
+  // DEFAULT false ⇒ every existing type keeps the allow_negative_balance gate exactly as it is today.
+  // When true it OVERRIDES that gate at submission (the whole point is that the application goes through),
+  // and the excess is recorded on leave_request.unpaid_days — a PART-covered request splits (2 of 5 days
+  // paid, 3 unpaid), it is never all-or-nothing. The balance it is measured against is the one
+  // balanceSourceTypeId resolves to, so a type that both borrows and allows unpaid leave overflows the
+  // BORROWED balance.
+  allowUnpaidLeave: boolean('allow_unpaid_leave').notNull().default(false),
   // Leave Entitlement Formula Management (feedback 79011509, migration 0241): HR-owned, per-leave-type
   // plain-language EXPLANATIONS for each leave-view component — keyed by the widened explanation key set
   // (core/leave-formula.ts LEAVE_EXPLANATION_KEYS: the seven legacy §7 "Entitlement Calculation Breakdown"
@@ -1496,6 +1517,17 @@ export const leaveRequest = pgTable(
     survivingChildren: integer('surviving_children'),
     confinementDate: date('confinement_date'),
     allowanceEligible: boolean('allowance_eligible'),
+    // Allow Unpaid Leave (feedback a7fab30b, migration 0316): how much of `days` the balance could not cover.
+    // NULL (every existing row, and every request of a type with allow_unpaid_leave=false) ⇒ fully paid.
+    // The request deliberately stays ONE row of the type the employee applied for — the reporter asks for a
+    // single application, and the leave history must keep reading as that type — so the paid/unpaid boundary
+    // lives here rather than in a second request row (the Emergency-Leave decomposition's approach, which
+    // splits the history and is exactly what this item does not want).
+    // Two consumers, and they must agree: finalizeLeaveApproval debits only (days - unpaid_days) to the
+    // balance, and unpaidDaysByEmployment (core/payroll.ts) deducts unpaid_days through the SAME unpaid route
+    // it already uses for whole unpaid-type requests. Anything that reads `days` as "days deducted from the
+    // balance" must subtract this.
+    unpaidDays: numeric('unpaid_days', { precision: 6, scale: 2 }),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),

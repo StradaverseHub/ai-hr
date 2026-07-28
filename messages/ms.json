@@ -1370,6 +1370,9 @@
       "no": "Tidak",
       "total": "Jumlah: {days} hari"
     },
+    "unpaidSplit": {
+      "notice": "Baki anda menampung {paid} hari. Baki {unpaid} hari lagi akan diambil sebagai cuti tanpa gaji."
+    },
     "applyDayStatus": {
       "working_day": "Hari bekerja",
       "half_working_day": "Hari bekerja separuh",
@@ -4187,6 +4190,18 @@
       "negativeBalanceYes": "Ya — pekerja boleh memohon walaupun baki menjadi negatif",
       "negativeBalanceNo": "Tidak — halang permohonan yang melebihi baki tersedia",
       "negativeBalanceHelp": "Mengawal sama ada pekerja boleh menghantar atau menyunting permohonan cuti jenis ini yang melebihi baki cuti tersedia. 'Tidak' menghalang permohonan melebihi had semasa penghantaran dan suntingan (mengira cuti yang masih menunggu kelulusan); 'Ya' membenarkan baki menjadi negatif.",
+      "balanceSourceSectionTitle": "Sumber potongan baki",
+      "balanceSourceLabel": "Sumber Potongan Baki",
+      "balanceSourceOwn": "Baki Cuti Sendiri",
+      "balanceSourceOther": "Potong daripada Jenis Cuti Lain",
+      "balanceSourceMapLabel": "Petakan sumber potongan",
+      "balanceSourceMapPlaceholder": "Pilih jenis cuti…",
+      "balanceSourceHelp": "Pilih baki mana yang disemak dan dipotong apabila pekerja memohon jenis cuti ini. 'Baki Cuti Sendiri' ialah tetapan lalai. Jika anda memilih jenis cuti lain, jenis ini tidak menyimpan baki sendiri: permohonan disahkan terhadap baki jenis cuti tersebut dan menguranginya, manakala sejarah cuti masih menunjukkan jenis cuti ini. Satu jenis cuti tidak boleh menunjuk kepada dirinya sendiri, kepada jenis yang sudah memotong daripada jenis lain, atau kepada jenis yang sudah memotong daripada jenis ini.",
+      "allowUplSectionTitle": "Cuti tanpa gaji (UPL)",
+      "allowUplLabel": "Benarkan Cuti Tanpa Gaji (UPL)",
+      "allowUplYes": "Ya — benarkan permohonan dan anggap hari yang tidak dilindungi sebagai cuti tanpa gaji",
+      "allowUplNo": "Tidak — sahkan baki tersedia seperti biasa",
+      "allowUplHelp": "Mengawal sama ada pekerja boleh memohon lebih banyak hari daripada baki tersedia mereka. 'Tidak' mengekalkan kelakuan semasa. 'Ya' membenarkan permohonan diteruskan sebagai satu permohonan tunggal: hari yang dilindungi baki dipotong daripada jenis cuti ini (atau daripada sumber potongannya), dan hanya lebihan dianggap cuti tanpa gaji serta dihantar ke penggajian.",
       "eligibilityChipAddPlaceholder": "Tambah…",
       "categoryGeneral": "Umum",
       "categoryEntitlement": "Hak Cuti",
