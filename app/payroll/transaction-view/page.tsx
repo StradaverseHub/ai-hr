@@ -12,7 +12,6 @@ import {
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
 import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { employeeLabel } from '@/lib/employee-code';
-import { PayrollTabs } from '@/components/payroll-tabs';
 import { IndividualTxnTable } from './individual-table';
 import { HistoryTable } from './history-table';
 
@@ -195,7 +194,6 @@ export default async function TransactionViewPage({
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader title={t('view.title')} description={t('view.subtitle')} />
-      <PayrollTabs active="view" />
 
       {/* Sub-tab strip (Fixed | Individual | History). Switching tabs resets the filters on purpose —
           each view has its own filter set. */}

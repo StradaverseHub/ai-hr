@@ -7,7 +7,6 @@ import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin'
 import { listCompanies, listDepartments, listJobGrades } from '@/core/read';
 import { listPayrollConfigs } from '@/core/payroll-config';
 import { listPayrollCycles } from '@/core/payroll-cycle';
-import { PayrollTabs } from '@/components/payroll-tabs';
 import { Wizard, type ResumeBatch } from './wizard';
 import type { CycleOption } from './steps/step-period';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -99,7 +98,6 @@ export default async function PayrollProcessPage({ searchParams }: { searchParam
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
-      <PayrollTabs active="batches" />
       <ErrorBanner message={error} />
       {resumeError ? (
         <ErrorBanner message={resumeError} />

@@ -4,7 +4,6 @@ import { listEmployees } from '@/core/read';
 import { listEmploymentPayComponents, listPayComponents, FIXED_TRANSACTION_CYCLES } from '@/core/pay-components';
 import { Badge, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { PayrollTabs } from '@/components/payroll-tabs';
 import { EmployeePicker, type PickerEmployee } from './employee-picker';
 import { FixedToolbar } from './add-fixed-dialog';
 import {
@@ -74,7 +73,6 @@ export default async function FixedTransactionPage({
         title={t('fixed.title')}
         description={t('fixed.subtitle')}
       />
-      <PayrollTabs active="transactions" />
 
       {!typedComponentsOn && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">

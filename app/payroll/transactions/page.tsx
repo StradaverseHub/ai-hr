@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { Card, PageHeader } from '@/components/ui';
-import { PayrollTabs } from '@/components/payroll-tabs';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
 /**
@@ -24,7 +23,6 @@ export default async function PayrollTransactionsPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
-      <PayrollTabs active="transactions" />
 
       {!typedComponentsOn && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">

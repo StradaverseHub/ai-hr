@@ -16,7 +16,7 @@ import { ConfirmSubmit } from './ui/confirm-submit';
 // not a statutory one). Pure UI/relocation — the underlying statutory + bank-profile data/logic is unchanged.
 type TabKey = 'general' | 'bankAccount' | 'statutory';
 
-/** One tab trigger — mirrors the payroll-tabs styling (border-b, active = border-primary text-primary). */
+/** One tab trigger — mirrors the leave-tabs styling (border-b, active = border-primary text-primary). */
 function TabButton({
   active,
   onClick,

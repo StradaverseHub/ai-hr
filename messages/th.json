@@ -102,6 +102,12 @@
     "leaveConfig": "ตั้งค่าการลา",
     "holidays": "วันหยุด",
     "payroll": "เงินเดือน",
+    "payrollGuide": "คู่มือเวิร์กโฟลว์",
+    "payrollProcess": "กระบวนการจ่ายเงินเดือน",
+    "payrollTransactions": "ธุรกรรม",
+    "payrollTransactionView": "มุมมองธุรกรรม",
+    "payrollReports": "รายงาน",
+    "payrollSettings": "การตั้งค่า",
     "auditTrail": "บันทึกการตรวจสอบ",
     "usersRoles": "ผู้ใช้และบทบาท",
     "collapse": "ย่อ",
@@ -5122,15 +5128,6 @@
       "action_other": "เหตุการณ์",
       "highImpact": "ผลกระทบสูง",
       "at": "เมื่อ"
-    },
-    "payrollTabs": {
-      "batches": "กระบวนการจ่ายเงินเดือน",
-      "guide": "คู่มือเวิร์กโฟลว์",
-      "reports": "รายงาน",
-      "transactions": "ธุรกรรม",
-      "view": "มุมมองธุรกรรม",
-      "setup": "การตั้งค่า",
-      "configuration": "การตั้งค่า"
     },
     "printButton": {
       "print": "พิมพ์ / บันทึก PDF"

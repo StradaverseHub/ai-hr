@@ -3,7 +3,6 @@ import { requireAdmin } from '@/lib/authz';
 import { requireConfigSection } from '../guard';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
-import { PayrollTabs } from '@/components/payroll-tabs';
 import { StatutoryTabs } from '@/components/statutory-tabs';
 import { StatutoryComponentForm } from '@/components/statutory-component-form';
 import { MY_HRDF } from '@/localization/my/statutory-tables';
@@ -45,7 +44,6 @@ export default async function HrdfConfigPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('body_hrdf')} description={t('subtitle')} back={back} />
-      <PayrollTabs active="setup" />
       <StatutoryTabs active="hrdf" />
       <ErrorBanner message={error} />
 

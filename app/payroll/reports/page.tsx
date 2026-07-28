@@ -4,7 +4,6 @@ import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { complianceWorklist, listReports, recentReports, reportPreview } from '@/core/reporting';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { PayrollTabs } from '@/components/payroll-tabs';
 import { DownloadCsv } from '@/components/download-csv';
 import { recordReportAction } from './actions';
 
@@ -42,7 +41,6 @@ export default async function ReportsPage({
       <div data-tour="payroll-reports">
         <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       </div>
-      <PayrollTabs active="reports" />
       <ErrorBanner message={sp.error} />
 
       <Card className="overflow-hidden" data-tour="payroll-worklist">
