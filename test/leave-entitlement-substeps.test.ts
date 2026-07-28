@@ -4,7 +4,7 @@
  * The Entitlement step (step 3 of the c979aa8b workspace flow — still step 3 after b8fcae73 shortened and
  * reordered the walk) becomes a guided SUB-STEP walk: originally three (1 Benefit Schemes · 2 Service Based
  * Entitlements · 3 Adjustments), four since b8fcae73 inserted Company Entitlements at position 3 and pushed
- * Adjustments to 4 — switched by the SAME reusable
+ * Adjustments to 4, and three again since bc9be1e8 + 0d9cf710 removed that tab — switched by the SAME reusable
  * SubStepBar the General restructure introduced (components/leave-sub-step-bar.tsx, the e1a51aea reuse
  * contract: secondary flows must REUSE it, never reinvent a nested bar). The active sub-step persists per
  * type alongside activeStep/generalSubStep/essSubStep in the leaveTypeCards:<id> localStorage shape
@@ -16,13 +16,13 @@
  *    three-panel workbench, 387792a4); b1b81a08 moved grade MASTER data out of Leave Config to Settings →
  *    System Labels → Organisation Labels, so the workbench is two panels and this page composes no grade
  *    editor at all. The grade LIST is still loaded here for the policy scope dropdown and the groups.
- *  - Service Based Entitlements: the per-type entitlement table (123c1e76, same rows + upsert action) plus
- *    the Preview Scenario checker (d778d2d3's LeaveRulePreviewDialog) as its checking tool.
- *  - Company Entitlements (b8fcae73): the per-company entitlement-policies timeline relocated verbatim from
- *    the retired Eligibility step — days per company/grade, carry-forward, accrual method, effective dates,
- *    add/edit/remove. Same state, same create/update/delete actions; its tab label reuses the EXISTING
- *    companyEntitlements string, so no new locale key. It gets its OWN sub-step rather than joining Service
- *    Based Entitlements so the two similar "days per X" editors cannot be confused.
+ *  - Service Based Entitlements: the per-type entitlement table (123c1e76, same rows + upsert action), the
+ *    per-company entitlement-policies timeline, and the Preview Scenario checker (d778d2d3's
+ *    LeaveRulePreviewDialog) as its checking tool.
+ *  - Company Entitlements (b8fcae73) hosted that timeline behind its own tab; 2bba9e35 merged it into a gate
+ *    shared with Service, and bc9be1e8 + 0d9cf710 then REMOVED the tab. The timeline — days per
+ *    company/grade, carry-forward, accrual method, effective dates, add/edit/remove — is Service Based
+ *    Entitlements' own content now, and the only place a policy can be added or deleted.
  *  - Adjustments: the One-Off/Festive grant tool (fd7c8e20, still preset to the hosting type) plus the Run
  *    Accrual action (d778d2d3's EarnedAccrualDialog) relocated from the page header — it processes earned
  *    entitlement, so it belongs with entitlement adjustments. Both dialogs are self-contained (form-free —
@@ -47,7 +47,7 @@ const pageSrc = readFileSync(resolve(here, '../app/admin/leave/entitlements/page
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'policies', 'adjustments'] as const;
+const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'adjustments'] as const;
 
 /** Slice the Entitlement card's segment (its CardTitle to the Condition card's CardTitle). */
 function entitlementSegment(): string {
@@ -58,19 +58,10 @@ function entitlementSegment(): string {
   return panelSrc.slice(start, end);
 }
 
-/** The combined gate the Restructure Service-Based Entitlements item (2bba9e35) introduced: the ONE shared
- *  policy block renders on BOTH the Company Entitlements ('policies') and the Service ('service') sub-steps.
- *  Because it is a single JSX block driven by one React state and one set of actions, the two sub-steps
- *  cannot drift — there is nothing to keep in sync because there is only one of it. */
-const SHARED_POLICY_GATE = "{(entitlementSubStep === 'policies' || entitlementSubStep === 'service') && (";
-
-/** The source index of a sub-step's gated block, accepting either the exclusive gate
- *  `{entitlementSubStep === '<key>' && (` or — for the merged Company Entitlements block, which no longer
- *  has an exclusive gate of its own — the shared gate above. */
+/** The source index of a sub-step's gated block. bc9be1e8 removed the Company Entitlements sub-step, so
+ *  every remaining sub-step has its own exclusive gate again — there is no shared gate any more. */
 function gateIndex(seg: string, key: (typeof ENTITLEMENT_SUB_STEP_KEYS)[number]): number {
-  const exclusive = seg.indexOf(`{entitlementSubStep === '${key}' && (`);
-  if (exclusive > -1) return exclusive;
-  return seg.indexOf(SHARED_POLICY_GATE);
+  return seg.indexOf(`{entitlementSubStep === '${key}' && (`);
 }
 
 /** Slice one sub-step's gated block out of the Entitlement segment. */
@@ -84,17 +75,16 @@ function subStepSlice(seg: string, key: (typeof ENTITLEMENT_SUB_STEP_KEYS)[numbe
   return seg.slice(start, next);
 }
 
-describe('7b945408 · the Entitlement step REUSES the SubStepBar (four sub-steps in walk order)', () => {
+describe('7b945408 · the Entitlement step REUSES the SubStepBar (three sub-steps in walk order)', () => {
   it('renders the shared SubStepBar inside the Entitlement card — no reinvented nested bar', () => {
-    // b8fcae73 inserted 'policies' between service and adjustments (the relocated Company Entitlements).
+    // bc9be1e8 removed 'policies' again: 1 Benefit Schemes · 2 Service Based Entitlements · 3 Adjustments.
     expect(panelSrc).toContain(
-      "const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'policies', 'adjustments'] as const",
+      "const ENTITLEMENT_SUB_STEP_KEYS = ['schemes', 'service', 'adjustments'] as const",
     );
     const seg = entitlementSegment();
     expect(seg).toContain('<SubStepBar');
     expect(seg).toContain('ENTITLEMENT_SUB_STEP_KEYS.map((k) => ({ key: k, label: t(ENTITLEMENT_SUB_STEP_TITLE_KEY[k]) }))');
-    // Exactly one sub-step's content renders at a time — each gates its own block (2bba9e35: the merged
-    // Company Entitlements block shares the Service block's combined gate, so accept either gate form).
+    // Exactly one sub-step's content renders at a time — each gates its own block.
     for (const key of ENTITLEMENT_SUB_STEP_KEYS) {
       expect(gateIndex(seg, key) > -1, `sub-step '${key}' gated`).toBe(true);
     }
@@ -143,18 +133,17 @@ describe('Service Based Entitlements — the company-driven grade table + the Pr
   // company-driven ServiceEntitlementTable (company-only picker → auto-populated grade rows). The old
   // per-type benefit-scheme table (LeaveTypeEntitlementTable) relocated to the Benefit Schemes sub-step,
   // where naming schemes is correct.
-  it('the service sub-step renders ServiceEntitlementTable, with the preview in a service-only trailer after the shared block', () => {
+  it('the service sub-step renders ServiceEntitlementTable, then the policy timeline, then the preview', () => {
     const seg = entitlementSegment();
     const service = subStepSlice(seg, 'service');
-    expect(service.indexOf('<ServiceEntitlementTable')).toBeGreaterThan(-1);
-    // 2bba9e35: the preview slot moved OUT of the service block into a service-only trailer that renders
-    // AFTER the shared policy block (preserving the rule that the preview follows the service content), so
-    // it is no longer inside the service slice itself.
-    expect(service.includes('{previewScenarioSection}')).toBe(false);
-    const sharedGate = seg.indexOf(SHARED_POLICY_GATE);
-    const trailer = seg.indexOf("{entitlementSubStep === 'service' && previewScenarioSection}");
-    expect(sharedGate).toBeGreaterThan(-1);
-    expect(trailer).toBeGreaterThan(sharedGate);
+    const table = service.indexOf('<ServiceEntitlementTable');
+    expect(table).toBeGreaterThan(-1);
+    // bc9be1e8 folded the former shared policy block into this one gate, so the timeline is part of the
+    // service slice. The preview checker stays LAST — it follows the service content it checks.
+    const timeline = service.indexOf("t('companyEntitlements')");
+    const preview = service.indexOf('{previewScenarioSection}');
+    expect(timeline).toBeGreaterThan(table);
+    expect(preview).toBeGreaterThan(timeline);
     // The company-driven table is fed the leave type identity, companies, active grades and this type's
     // policies, and saves through the dedicated first-save-safe action.
     expect(service).toContain('leaveTypeId={id}');
@@ -186,44 +175,51 @@ describe('Service Based Entitlements — the company-driven grade table + the Pr
   });
 });
 
-describe('b8fcae73 · Company Entitlements — the per-company policy timeline relocated from Eligibility', () => {
-  it('the policies sub-step hosts the timeline + add form the retired Eligibility step used to own', () => {
-    const policies = subStepSlice(entitlementSegment(), 'policies');
-    // The timeline heading and the add-entitlement affordance came across verbatim.
-    expect(policies).toContain("t('companyEntitlements')");
-    expect(policies).toContain("t('addEntitlement')");
-    // Same CRUD wiring — create/update/delete reused, not forked.
-    for (const action of ['action={createPolicyAction}', 'action={updatePolicyAction}', 'action={deletePolicyAction}']) {
-      expect(policies.includes(action), `${action} still wired`).toBe(true);
-    }
-    // The tab label REUSES the existing companyEntitlements string — no new locale key.
-    expect(panelSrc).toContain("policies: 'companyEntitlements'");
-  });
-
-  it('2bba9e35 · the same policy block renders on BOTH sub-steps behind one combined gate (anti-drift)', () => {
-    // Restructure Service-Based Entitlements makes Service the single place to manage company entitlement
-    // policies. The reporter's "one set of records, not a copy" guarantee is enforced physically: there is
-    // ONE policy JSX block, gated for BOTH 'policies' and 'service'. A single block cannot be handed
-    // different props at two sites, so nothing can diverge while the old tab still exists.
+describe('bc9be1e8 + 0d9cf710 · Company Entitlements is gone; its timeline lives in Service Based Entitlements', () => {
+  it('the sub-step, its tab label and its gate are all removed', () => {
     const seg = entitlementSegment();
-    expect(seg).toContain(SHARED_POLICY_GATE);
-    // …and there is no longer a second, exclusive 'policies' gate that a future edit could fork.
+    // No fourth tab: neither the key nor the label mapping that named it survives.
+    expect(panelSrc.includes("'schemes', 'service', 'policies', 'adjustments'")).toBe(false);
+    expect(panelSrc.includes("policies: 'companyEntitlements'")).toBe(false);
+    // No gate can route to it — neither the exclusive one b8fcae73 shipped nor 2bba9e35's shared one.
     expect(seg.includes("{entitlementSubStep === 'policies' && (")).toBe(false);
-    // The merged block is one block: one create/update/delete wiring shared across both sub-steps.
-    const shared = subStepSlice(seg, 'policies');
+    expect(seg.includes("entitlementSubStep === 'policies' ||")).toBe(false);
+  });
+
+  it('the timeline + add form + the full CRUD wiring stay reachable, inside the service sub-step', () => {
+    // The removal must not take the ONLY place a policy can be added or deleted with it.
+    const service = subStepSlice(entitlementSegment(), 'service');
+    expect(service).toContain("t('companyEntitlements')");
+    expect(service).toContain("t('addEntitlement')");
     for (const action of ['action={createPolicyAction}', 'action={updatePolicyAction}', 'action={deletePolicyAction}']) {
-      expect(shared.includes(action), `${action} in the shared block`).toBe(true);
+      expect(service.includes(action), `${action} still wired`).toBe(true);
     }
   });
 
-  it('a persisted activeStep pointing at the retired Eligibility step lands on this sub-step', () => {
-    // Without a remap the stored value no longer matches STEP_KEYS and would snap back to step 1.
+  it('0d9cf710 · the duplicated Earning / Rounding front door is gone from the service sub-step', () => {
+    // It rendered the SAME EarningMethodForm over the SAME policy row as General → Earning Method, so it was
+    // one setting shown twice. The General mount is the survivor — both controls stay configurable there.
+    const service = subStepSlice(entitlementSegment(), 'service');
+    expect(service.includes('<PolicyFrontDoor')).toBe(false);
+    expect(service.includes('<EarningMethodForm')).toBe(false);
+    const general = panelSrc.slice(panelSrc.indexOf("{generalSubStep === 'earning' && ("));
+    expect(general.indexOf('<EarningMethodForm')).toBeGreaterThan(-1);
+    // …and with the only alwaysShowScope caller gone, the prop went with it (no dead capability).
+    expect(panelSrc.includes('alwaysShowScope')).toBe(false);
+  });
+
+  it('a persisted pointer at the retired Eligibility step or Company Entitlements tab lands on Service', () => {
+    // Without a remap the stored value no longer matches STEP_KEYS / the sub-step keys and would snap back
+    // to step 1 (or sub-step 1) with no explanation.
     expect(panelSrc).toContain("const RETIRED_ELIGIBILITY_STEP = 'eligibility'");
     expect(panelSrc).toContain('parsed.activeStep === RETIRED_ELIGIBILITY_STEP');
     // …and the legacy accordion shape ({ eligibility: true }) gets the same treatment.
     expect(panelSrc).toContain('parsed[RETIRED_ELIGIBILITY_STEP] === true');
     // The remap WINS over any stored entitlementSubStep, otherwise the user would not see the content.
     expect(panelSrc).toContain('!wantedEligibility');
+    // bc9be1e8's own remap: the retired sub-step key resolves to where its content went.
+    expect(panelSrc).toContain("const RETIRED_COMPANY_ENTITLEMENTS_SUB_STEP = 'policies'");
+    expect(panelSrc).toContain('parsed.entitlementSubStep === RETIRED_COMPANY_ENTITLEMENTS_SUB_STEP');
   });
 });
 

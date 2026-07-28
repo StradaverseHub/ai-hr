@@ -118,46 +118,42 @@ describe('2bba9e35 · Service Based Entitlements is the single place to manage c
     expect(end).toBeGreaterThan(start);
     return panelSrc.slice(start, end);
   };
-  const SHARED_POLICY_GATE = "{(entitlementSubStep === 'policies' || entitlementSubStep === 'service') && (";
-
-  it('the service sub-step reaches the SAME create/update/delete policy wiring via one shared block', () => {
+  it('the service sub-step reaches the SAME create/update/delete policy wiring, in its own block', () => {
     const seg = entitlementSegment();
-    // One shared JSX block, gated for BOTH sub-steps — add / edit / delete a policy from Service reaches the
-    // identical actions the Company Entitlements tab uses, over one set of records (not a copy).
-    expect(seg).toContain(SHARED_POLICY_GATE);
-    const gate = seg.indexOf(SHARED_POLICY_GATE);
+    // 2bba9e35 gave the policy block a gate shared with the Company Entitlements tab; bc9be1e8 removed that
+    // tab, so the block is simply the service sub-step's own content — one set of records, one set of
+    // actions, and still the only place a policy can be added or deleted.
+    const gate = seg.indexOf("{entitlementSubStep === 'service' && (");
     const adjustments = seg.indexOf("{entitlementSubStep === 'adjustments' && (");
+    expect(gate).toBeGreaterThan(-1);
     expect(adjustments).toBeGreaterThan(gate);
-    const shared = seg.slice(gate, adjustments);
+    const service = seg.slice(gate, adjustments);
     for (const action of ['action={createPolicyAction}', 'action={updatePolicyAction}', 'action={deletePolicyAction}']) {
-      expect(shared.includes(action), `${action} reachable from the service sub-step`).toBe(true);
+      expect(service.includes(action), `${action} reachable from the service sub-step`).toBe(true);
     }
-    // …and the timeline heading + Add affordance the tab offers are in the same shared block.
-    expect(shared).toContain("t('companyEntitlements')");
-    expect(shared).toContain("t('addEntitlement')");
+    // …and the timeline heading + Add affordance the retired tab offered are in that same block.
+    expect(service).toContain("t('companyEntitlements')");
+    expect(service).toContain("t('addEntitlement')");
   });
 
-  it('the service block mounts the earning-method front door with alwaysShowScope', () => {
+  it('0d9cf710 · the earning-method front door 2bba9e35 mounted here is gone (it duplicated General)', () => {
+    // It rendered the SAME EarningMethodForm over the SAME policy row as General → Earning Method: one
+    // setting shown on two screens, which is what the reporter asked to remove. The General mount survives,
+    // so Earning Method and Rounding Method both stay configurable.
     const seg = entitlementSegment();
-    // The service-only block (its exclusive gate up to the shared gate) hosts the earning-method front door,
-    // so how days are earned through the year is set here too — over the SAME policy row (posts the SAME
-    // updatePolicyAction), one setting stored in one place.
-    const serviceGate = seg.indexOf("{entitlementSubStep === 'service' && (");
-    const sharedGate = seg.indexOf(SHARED_POLICY_GATE);
-    expect(serviceGate).toBeGreaterThan(-1);
-    expect(sharedGate).toBeGreaterThan(serviceGate);
-    const serviceBlock = seg.slice(serviceGate, sharedGate);
-    expect(serviceBlock).toContain('<PolicyFrontDoor');
-    expect(serviceBlock).toContain('alwaysShowScope');
-    expect(serviceBlock).toContain('<EarningMethodForm');
-    expect(serviceBlock).toContain('action={updatePolicyAction}');
+    const gate = seg.indexOf("{entitlementSubStep === 'service' && (");
+    const adjustments = seg.indexOf("{entitlementSubStep === 'adjustments' && (");
+    const service = seg.slice(gate, adjustments);
+    expect(service.includes('<PolicyFrontDoor')).toBe(false);
+    expect(service.includes('<EarningMethodForm')).toBe(false);
+    expect(panelSrc.slice(panelSrc.indexOf("{generalSubStep === 'earning' && ("))).toContain('<EarningMethodForm');
   });
 
-  it('PolicyFrontDoor honours alwaysShowScope so a single active policy still shows the scope picker', () => {
-    // Without it the front door defaults to active[0] and hides the picker at length 1 — a method change
-    // could then silently rewrite a different company·grade row and reproject its ledger.
-    expect(panelSrc).toContain('alwaysShowScope?: boolean');
-    expect(panelSrc).toContain('{(alwaysShowScope || active.length > 1) && (');
+  it('PolicyFrontDoor shows the scope picker exactly when there is a genuine choice', () => {
+    // With the always-on service mount gone, the alwaysShowScope escape hatch has no caller and was removed
+    // rather than left as a dead capability. The remaining General mounts default to the single active row.
+    expect(panelSrc.includes('alwaysShowScope')).toBe(false);
+    expect(panelSrc).toContain('{active.length > 1 && (');
   });
 
   it('the inline edit form shows the live covered-employee count (the "before you save it" number)', () => {
