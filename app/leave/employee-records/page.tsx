@@ -178,7 +178,8 @@ export default async function EmployeeLeaveRecordPage({
       <div className="flex flex-col gap-6 sm:flex-row">
         <LeaveInquiryNav active="records" employmentId={selected?.employmentId} />
         <div className="min-w-0 flex-1 space-y-4">
-          <form method="get" action="/leave/employee-records" className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <form method="get" action="/leave/employee-records" className="flex flex-wrap items-end gap-2">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               {tInq('employee')}
               <select name="emp" defaultValue={selected?.employmentId ?? ''} className={`${inputCls} w-72`}>
@@ -211,6 +212,14 @@ export default async function EmployeeLeaveRecordPage({
             <Button type="submit" size="sm" variant="secondary">
               {t('filters.search')}
             </Button>
+            </form>
+
+            {/* FilterPanel renders its OWN GET form, so it is a SIBLING of the search form, never a
+                child. Nested forms are invalid HTML: the parser silently discards the inner tags, the
+                panel's fields get absorbed into the outer form, and its Apply button submits the outer
+                one. It happened to behave here because both target the same action — but that is
+                coincidence, not design, and the optional `hidden` prop added for the two-listing page
+                would have made the two forms disagree. Wrapped in a flex row so the layout is unchanged. */}
             <FilterPanel
               action="/leave/employee-records"
               fields={filterFields}
@@ -227,7 +236,7 @@ export default async function EmployeeLeaveRecordPage({
                 {t('filters.exportExcel')}
               </Link>
             </div>
-          </form>
+          </div>
 
           <FilterChips action={chipAction} fields={filterFields} values={filterValues} labels={filterLabels} />
 
