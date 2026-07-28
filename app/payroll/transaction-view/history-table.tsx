@@ -166,6 +166,14 @@ export function HistoryTable({ rows }: { rows: ProcessedPayslipViewRow[] }) {
                           <Row label={tSlip('epf')} value={rm(b.employerContributions.epf)} muted />
                           <Row label={tSlip('socso')} value={rm(b.employerContributions.socso)} muted />
                           <Row label={tSlip('eis')} value={rm(b.employerContributions.eis)} muted />
+                          {/* HRDF (feedback efece4ce). Shown ONLY when the company actually levies it —
+                              an unregistered company resolves to 0, and a permanent "HRDF 0.00" row on
+                              every payslip of every company that does not pay it is noise that makes the
+                              figure easier to miss where it does apply. Same conditional idiom the SKBBK
+                              and CP38 rows above already use. */}
+                          {Number(b.employerContributions.hrdf) > 0 && (
+                            <Row label={tSlip('hrdf')} value={rm(b.employerContributions.hrdf)} muted />
+                          )}
                           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
                             <span>{t('view.history.totalEmployerContributions')}</span>
                             <span className="tabular-nums">{rm(b.employerContributions.total)}</span>
