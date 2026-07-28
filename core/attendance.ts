@@ -32,6 +32,7 @@ import {
   person,
   rosterAssignment,
   shift,
+  type BreakPeriod,
   type ShiftOtRule,
 } from '../db/schema';
 import { parseAttendanceCsv } from '../lib/attendance-csv';
@@ -293,6 +294,33 @@ export const shiftSpan = (start: string, end: string, crosses: boolean): number 
 export const netScheduledMinutes = (start: string, end: string, crosses: boolean, breakMinutes: number): number =>
   Math.max(0, shiftSpan(start, end, crosses) - breakMinutes);
 
+// b7b886e2 — the punch placed on the SHIFT's own timeline, in minutes from midnight of the attendance date,
+// so a cross-midnight shift's end (and its after-midnight breaks) sit past 1440 and can be compared with
+// plain arithmetic. This is what lets the engine ask WHERE a minute fell — before the shift, inside it, or
+// past its end — instead of only how many minutes there were in total.
+type PunchWindow = { inAbs: number; outAbs: number; startAbs: number; endAbs: number };
+
+/** Place a time-of-day on the shift's timeline. A punch more than 12h BEFORE the shift start belongs to the
+ *  next calendar day: on a 22:00→06:00 shift a 00:30 arrival is 2.5h LATE, not 21.5h early. Anything inside
+ *  12h is read as an early arrival, which keeps a 21:30 punch on that same shift a 30-minute early start. */
+const anchorToShift = (minutes: number, shiftStartAbs: number): number =>
+  minutes < shiftStartAbs - MINS_PER_DAY / 2 ? minutes + MINS_PER_DAY : minutes;
+
+/** Minutes of the punch that fell inside the shift's declared break WINDOWS. Null when the shift carries no
+ *  windows — a break scalar alone gives nothing to test the clocking against, so those shifts keep
+ *  workedFromSpan's 6h cliff (byte-identical). Capped at the canonical breakMinutes so a drifted row
+ *  (Σ windows ≠ break_minutes — see core/shift-break-display.ts) can never deduct more than the figure the
+ *  rest of the system reports as the shift's break. */
+const spannedBreakMinutes = (periods: BreakPeriod[] | null, breakMinutes: number, w: PunchWindow): number | null => {
+  if (!periods || periods.length === 0) return null;
+  const overlap = periods.reduce((acc, bp) => {
+    const bs = anchorToShift(toMinutes(bp.start), w.startAbs);
+    const be = anchorToShift(toMinutes(bp.end), w.startAbs);
+    return acc + Math.max(0, Math.min(w.outAbs, be) - Math.max(w.inAbs, bs));
+  }, 0);
+  return Math.min(overlap, breakMinutes);
+};
+
 // ADR-0032 Phase C: the schedule the engine derives against for one (employee, date) — resolved from the
 // employee's roster when present, else the company policy (today's behaviour, byte-identical).
 type ResolvedSchedule = {
@@ -301,6 +329,13 @@ type ResolvedSchedule = {
   halfDayBefore: string; // checkout before this on a workday ⇒ half-day (policy / shift midpoint)
   scheduledMinutes: number; // net scheduled work minutes (workday OT = worked − this, unless overridden)
   breakMinutes: number;
+  // b7b886e2 — the resolved SHIFT's own time-in / time-out and break windows. Set only on the shift
+  // branches; NULL on the company-policy branch, which has no assigned shift and therefore keeps the legacy
+  // duration-based OT + 6h-cliff break exactly as before. When present, deriveAttendance measures workday OT
+  // against shiftEnd and deducts only the break minutes the clocking actually spanned.
+  shiftStart: string | null;
+  shiftEnd: string | null;
+  breakPeriods: BreakPeriod[] | null;
   // R7 Multi-Shift Phase 1: the shift's manual normal-hours override. When set it is the shift's normal
   // working minutes — the workday OT threshold in deriveAttendance — instead of scheduledMinutes. Only a
   // rostered shift can carry one; the policy branch is always null (byte-identical legacy behaviour).
@@ -349,6 +384,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       brk: shift.breakMinutes,
       crosses: shift.crossesMidnight,
       override: shift.normalMinutesOverride,
+      periods: shift.breakPeriods,
       lateGrace: shift.lateGraceMinutes,
       earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
       otRule: shift.otRule,
@@ -365,6 +401,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     halfDayBefore: pol.halfDayBefore,
     scheduledMinutes: scheduledMinutes(pol),
     breakMinutes: pol.breakMinutes,
+    shiftStart: null,
+    shiftEnd: null,
+    breakPeriods: null,
     normalMinutesOverride: null,
     otRule: null,
     rule: companyRule,
@@ -393,6 +432,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
           : fmtTime((toMinutes(ra.start) + Math.floor(shiftSpan(ra.start, ra.end, ra.crosses!) / 2)) % MINS_PER_DAY),
       scheduledMinutes: sched,
       breakMinutes: ra.brk!,
+      shiftStart: ra.start,
+      shiftEnd: ra.end,
+      breakPeriods: ra.periods ?? null,
       normalMinutesOverride: ra.override ?? null,
       otRule: ra.otRule ?? null,
       rule,
@@ -419,6 +461,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       brk: shift.breakMinutes,
       crosses: shift.crossesMidnight,
       override: shift.normalMinutesOverride,
+      periods: shift.breakPeriods,
       pattern: shift.weeklyPattern,
       lateGrace: shift.lateGraceMinutes,
       earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
@@ -447,6 +490,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
             : fmtTime((toMinutes(ds.start) + Math.floor(shiftSpan(ds.start, ds.end, ds.crosses) / 2)) % MINS_PER_DAY),
         scheduledMinutes: sched,
         breakMinutes: ds.brk,
+        shiftStart: ds.start,
+        shiftEnd: ds.end,
+        breakPeriods: ds.periods ?? null,
         normalMinutesOverride: ds.override ?? null,
         otRule: ds.otRule ?? null,
         rule,
@@ -487,14 +533,48 @@ function deriveAttendance(
   ) {
     status = 'half_day';
   }
-  const workedMinutes = workedFromSpan(spanMinutes(checkInAt, checkOutAt), s.breakMinutes);
-  // R7 Multi-Shift Phase 1 — the ONE deliberate OT-derivation change: when the rostered shift carries a
-  // manual normal-hours override, workday OT is measured against IT (the override is the shift's normal
-  // working minutes everywhere, not a display figure). Null ⇒ span − break, byte-identical to before.
-  let otMinutes =
-    s.dayType === 'workday'
-      ? Math.max(0, workedMinutes - (s.normalMinutesOverride ?? s.scheduledMinutes))
-      : workedMinutes;
+  const span = spanMinutes(checkInAt, checkOutAt);
+  // b7b886e2 — with a resolved SHIFT we know where each minute fell, not just how many there were.
+  const w: PunchWindow | null =
+    s.shiftStart && s.shiftEnd
+      ? (() => {
+          const startAbs = toMinutes(s.shiftStart);
+          const inAbs = anchorToShift(toMinutes(checkInAt), startAbs);
+          // The punch LENGTH stays spanMinutes (the established, tested contract); only its placement is new.
+          return {
+            inAbs,
+            outAbs: inAbs + span,
+            startAbs,
+            endAbs: s.crossesMidnight ? toMinutes(s.shiftEnd) + MINS_PER_DAY : toMinutes(s.shiftEnd),
+          };
+        })()
+      : null;
+  // b7b886e2 — the break comes out only when the clocking actually SPANNED a declared break window, as the
+  // reporter specified. Without windows there is nothing to test against, so the legacy 6h cliff stands.
+  const spannedBreak = w ? spannedBreakMinutes(s.breakPeriods, s.breakMinutes, w) : null;
+  const workedMinutes = spannedBreak != null ? Math.max(0, span - spannedBreak) : workedFromSpan(span, s.breakMinutes);
+  // b7b886e2 — workday OT is the time worked BEYOND the shift's time-out, not the amount by which the day's
+  // TOTAL overshot the scheduled duration. The old duration comparison ignored where the minutes fell, so a
+  // late arrival who stayed an hour past the shift end accrued nothing, while an early arrival who left dead
+  // on time accrued an hour of overtime pay they never worked late. max(inAbs, endAbs) keeps a punch that
+  // began after the shift ended from claiming minutes before it clocked in.
+  //
+  // R7 Multi-Shift Phase 1 is preserved: a manual normal-hours override is an explicit operator statement
+  // that normal hours are N minutes regardless of the clock, so it keeps the duration comparison.
+  let earlyOtMinutes = 0;
+  let otMinutes: number;
+  if (s.dayType !== 'workday') {
+    otMinutes = workedMinutes;
+  } else if (w && s.normalMinutesOverride == null) {
+    otMinutes = Math.max(0, w.outAbs - Math.max(w.inAbs, w.endAbs));
+    earlyOtMinutes = Math.max(0, Math.min(w.outAbs, w.startAbs) - w.inAbs);
+  } else {
+    otMinutes = Math.max(0, workedMinutes - (s.normalMinutesOverride ?? s.scheduledMinutes));
+  }
+  // 88e94371's documented GAP — "the engine does not yet attribute pre-shift punch minutes" — is what the
+  // window above now supplies. The rule's opt-in folds them in HERE, before the per-shift OT shape below, so
+  // an ineligible or capped shift can never let early minutes leak past its own limits.
+  if (s.dayType === 'workday' && s.rule?.applyToEarlyOt) otMinutes += earlyOtMinutes;
   // R17 3e8350db — per-shift "OT Rules" shape WORKDAY OT accrual only (rest/holiday premium is statutory and
   // untouched): eligible=false zeroes workday OT; a minimum block drops OT below the threshold to zero; a
   // daily cap clamps it. Null rule ⇒ byte-identical to before.
@@ -507,9 +587,9 @@ function deriveAttendance(
     }
   }
   // 88e94371 — apply the resolved rule's Overtime table: round the workday OT minutes to the matching band's
-  // Round-To value and fold in pre-shift ("early") OT when the rule opts in. The engine does not yet attribute
-  // pre-shift punch minutes as a separate figure, so earlyOtMinutes is 0 here (documented GAP); a rule with no
-  // OT rows / rounding leaves otMinutes unchanged (byte-identical). Statutory 1.5×/2×/3× multipliers stay the
+  // Round-To value. Early OT was already folded in above (b7b886e2), so 0 is passed here deliberately — the
+  // fold has to happen before the per-shift cap, and this call is only the rounding step. A rule with no OT
+  // rows / rounding leaves otMinutes unchanged (byte-identical). Statutory 1.5×/2×/3× multipliers stay the
   // pay-side compliance cap and are untouched. Only workday OT is shaped (rest/holiday premium is statutory).
   if (s.dayType === 'workday' && otMinutes != null && s.rule) {
     otMinutes = applyOtRuleRows(otMinutes, 0, s.rule);
