@@ -220,9 +220,12 @@ const LEAVE_BALANCES: ReportDataset = {
  * six field groups they listed (Employee & Organisation Info / Earnings / Total Earnings / Deductions /
  * Total Deductions & Nett Wage / Employer Contributions), one row per processed payslip.
  *
- * Listed BEFORE payroll_history so the "New report" button on Reports → Payroll seeds the builder with the
- * register catalogue (the page links `datasets[0]`); payroll_history stays selectable from the builder's
- * data-source picker, unchanged.
+ * Listed AFTER payroll_history, deliberately. The Reports page's "New report" button links `datasets[0]`,
+ * so registration order silently decides what the builder opens pre-seeded with. 622e12eb asked for a
+ * register to EXIST, not for that button to start doing something else — anyone who clicks it out of habit
+ * would land on a different data source than yesterday. The register is one pick away in the builder's
+ * data-source list. Move this entry above payroll_history only if the reporter asks for the default itself
+ * to change.
  */
 const PAYROLL_REGISTER: ReportDataset = {
   id: 'payroll_register',
@@ -476,8 +479,8 @@ export const REPORT_DATASETS: Record<string, ReportDataset> = {
   [ATTENDANCE_OT.id]: ATTENDANCE_OT,
   [ATTENDANCE_DAILY.id]: ATTENDANCE_DAILY,
   [LEAVE_BALANCES.id]: LEAVE_BALANCES,
-  [PAYROLL_REGISTER.id]: PAYROLL_REGISTER,
   [PAYROLL_HISTORY.id]: PAYROLL_HISTORY,
+  [PAYROLL_REGISTER.id]: PAYROLL_REGISTER,
   [CLAIM_TYPES.id]: CLAIM_TYPES,
   [PERFORMANCE_REVIEWS.id]: PERFORMANCE_REVIEWS,
   [PERFORMANCE_GOALS.id]: PERFORMANCE_GOALS,

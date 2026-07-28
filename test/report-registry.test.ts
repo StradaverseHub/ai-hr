@@ -133,7 +133,9 @@ describe('validateReportSpec', () => {
 
   it('Payroll offers the register FIRST so "New report" seeds it, with history still selectable', () => {
     const list = datasetsForCategory('payroll');
-    expect(list.map((d) => d.id)).toEqual(['payroll_register', 'payroll_history']);
+    // Order is the assertion, not incidental: datasetsForCategory()[0] is what the Reports page's
+    // "New report" button seeds, so adding the register must NOT displace what that button already did.
+    expect(list.map((d) => d.id)).toEqual(['payroll_history', 'payroll_register']);
   });
 
   it('default alignment follows the reporter rule (names left, dates/status center, numbers/currency right)', async () => {
