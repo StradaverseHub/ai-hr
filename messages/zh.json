@@ -91,6 +91,7 @@
     "orgChart": "组织架构图",
     "myAbsence": "我的休假",
     "attendance": "考勤",
+    "myAttendance": "我的考勤",
     "manage": "管理",
     "approvals": "审批事项",
     "approvalsCount": "{count, plural, one {# 项待您处理} other {# 项待您处理}}",

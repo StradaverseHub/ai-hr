@@ -75,12 +75,17 @@ type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; item
 // registered by the static side-effect import above, so the non-null assertions cannot fire.
 // NavChildDescriptor mirrors ChildItem by construction (packs/registry.ts), so the spread
 // type-checks against the sidebar's own Row machinery unchanged.
-const ATTENDANCE_NODE: CollapsibleGroupItem = {
+// 0bb0e303 split the one Attendance node into three, by audience. Since 895c80f9 a pack contributes an
+// ARRAY of group-tagged nodes, so each resolves by its group — the same idiom the flat-row packs use
+// below. The rows, hrefs, icons and gates are the pack's verbatim; only which node they hang under moved.
+const ATTENDANCE_NODES = modulePackById('attendance')!.navNodes!;
+const node = (group: string): CollapsibleGroupItem => ({
   collapsible: true,
-  // Since 895c80f9 a pack contributes an ARRAY of group-tagged nodes, so this resolves by group
-  // rather than taking the one-and-only node. Same idiom the flat-row packs already use below.
-  ...modulePackById('attendance')!.navNodes!.find((n) => n.group === 'main')!,
-};
+  ...ATTENDANCE_NODES.find((n) => n.group === group)!,
+});
+const MY_ATTENDANCE_NODE = node('main');
+const ATTENDANCE_MANAGE_NODE = node('manage');
+const ATTENDANCE_ADMIN_NODE = node('admin');
 
 // Claims nav rows (ADR-0080 rung 3): two flat rows the claims pack contributes
 // (packs/claims/index.ts, CLAIMS_NAV_LINKS — provenance comments moved with them), placed at
@@ -165,7 +170,7 @@ const GROUPS: Group[] = [
       // tab merged into /leave. Since ADR-0080 rung 6 the row lives on the leave pack and mounts here
       // by const reference (LEAVE_ABSENCE_ROW).
       LEAVE_ABSENCE_ROW,
-      ATTENDANCE_NODE,
+      MY_ATTENDANCE_NODE,
       CLAIMS_ROW,
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
@@ -183,6 +188,9 @@ const GROUPS: Group[] = [
       { href: '/personnel', labelKey: 'people', icon: Users },
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
       PERFORMANCE_ROW,
+      // Roster + Import (0bb0e303). Here rather than under the Admin node because both are managerUp and
+      // the Admin group is gated adminOnly as a whole — placing them there would hide them from managers.
+      ATTENDANCE_MANAGE_NODE,
     ],
   },
   {
@@ -198,7 +206,10 @@ const GROUPS: Group[] = [
       // into its Approval Workflow tab). Since ADR-0080 rung 6 the row lives on the leave pack and
       // mounts here by const reference (LEAVE_CONFIG_ROW).
       LEAVE_CONFIG_ROW,
-      // Holidays lives under the Attendance node above (5cb199b3), not in the flat admin list.
+      // 0bb0e303: the attendance settings (Holidays, Shift settings, Policy, Allowance, Clocking
+      // location, TOIL) moved here from the day-to-day group. Holidays still lives inside this node
+      // rather than the flat admin list (5cb199b3).
+      ATTENDANCE_ADMIN_NODE,
       CLAIMS_CONFIG_ROW,
       // Since ADR-0080 rung 7 the payroll row lives on the payroll pack and mounts here by const
       // reference (PAYROLL_ROW).

@@ -91,6 +91,7 @@
     "orgChart": "Carta organisasi",
     "myAbsence": "Cuti Saya",
     "attendance": "Kehadiran",
+    "myAttendance": "Kehadiran Saya",
     "manage": "Urus",
     "approvals": "Item Kelulusan",
     "approvalsCount": "{count, plural, one {# item menunggu keputusan anda} other {# item menunggu keputusan anda}}",

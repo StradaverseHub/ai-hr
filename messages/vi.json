@@ -91,6 +91,7 @@
     "orgChart": "Sơ đồ tổ chức",
     "myAbsence": "Nghỉ phép của tôi",
     "attendance": "Chấm công",
+    "myAttendance": "Chấm công của tôi",
     "manage": "Quản lý",
     "approvals": "Mục phê duyệt",
     "approvalsCount": "{count, plural, one {# mục đang chờ bạn quyết định} other {# mục đang chờ bạn quyết định}}",

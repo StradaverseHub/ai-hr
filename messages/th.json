@@ -91,6 +91,7 @@
     "orgChart": "ผังองค์กร",
     "myAbsence": "การลาของฉัน",
     "attendance": "การเข้างาน",
+    "myAttendance": "การลงเวลาของฉัน",
     "manage": "จัดการ",
     "approvals": "รายการอนุมัติ",
     "approvalsCount": "{count, plural, one {# รายการรอการตัดสินใจของคุณ} other {# รายการรอการตัดสินใจของคุณ}}",

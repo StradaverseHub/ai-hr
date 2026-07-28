@@ -91,6 +91,7 @@
     "orgChart": "Org chart",
     "myAbsence": "My Leave",
     "attendance": "Attendance",
+    "myAttendance": "My Attendance",
     "manage": "Manage",
     "approvals": "Approval Items",
     "approvalsCount": "{count, plural, one {# item awaiting your decision} other {# items awaiting your decision}}",
