@@ -90,6 +90,14 @@ export type FilterPanelProps = {
    *  string[] (repeated GET params); every other field a single string. */
   values: Record<string, string | string[] | undefined>;
   labels: FilterPanelLabels;
+  /**
+   * Query params this panel does not own but must not destroy (feedback 650b6eb8). The admin /leave page
+   * now carries TWO independently filtered listings, and a GET form posts only its own fields — without
+   * this, filtering the employee list would silently clear the leave-request filters below it. Optional,
+   * so every existing single-listing page is unaffected. Rendered as hidden inputs in the form and
+   * appended to the chips' remove/clear links.
+   */
+  hidden?: readonly (readonly [string, string])[];
   /** Optional onboarding-tour anchor placed on the trigger button. */
   dataTour?: string;
 };
@@ -98,7 +106,15 @@ export type FilterPanelProps = {
 const countActive = (fields: FilterField[], values: FilterPanelProps['values']) =>
   fields.filter((f) => asArray(values[f.name]).length > 0).length;
 
-export function FilterPanel({ action, fields, values, labels, dataTour }: FilterPanelProps) {
+/** `action` plus the foreign params this panel must preserve — the base for its clear-all link. */
+const baseHref = (action: string, hidden: FilterPanelProps['hidden']) => {
+  const sp = new URLSearchParams();
+  for (const [k, v] of hidden ?? []) sp.append(k, v);
+  const s = sp.toString();
+  return s ? `${action}?${s}` : action;
+};
+
+export function FilterPanel({ action, fields, values, labels, hidden, dataTour }: FilterPanelProps) {
   const [open, setOpen] = useState(false);
   const active = countActive(fields, values);
   const bulk = labels.selectAll && labels.deselectAll;
@@ -152,6 +168,9 @@ export function FilterPanel({ action, fields, values, labels, dataTour }: Filter
             className="absolute right-0 z-50 mt-1 w-[min(22rem,90vw)] origin-top-right scale-100 rounded-lg border border-border bg-popover p-4 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
           >
             <form method="get" action={action} className="max-h-[60vh] space-y-3 overflow-y-auto">
+              {(hidden ?? []).map(([k, v], i) => (
+                <input key={`${k}-${i}`} type="hidden" name={k} value={v} />
+              ))}
               {fields.map((f) =>
                 f.kind === 'multi' ? (
                   // Checkbox group: one repeated GET param per checked value (no-JS friendly).
@@ -237,7 +256,7 @@ export function FilterPanel({ action, fields, values, labels, dataTour }: Filter
                   {labels.apply}
                 </Button>
                 {active > 0 && (
-                  <Link href={action} className="text-sm text-muted-foreground hover:text-foreground">
+                  <Link href={baseHref(action, hidden)} className="text-sm text-muted-foreground hover:text-foreground">
                     {labels.clearAll}
                   </Link>
                 )}
@@ -260,15 +279,18 @@ export function FilterChips({
   fields,
   values,
   labels,
+  hidden,
 }: Omit<FilterPanelProps, 'dataTour'>) {
   const active = fields.filter((f) => asArray(values[f.name]).length > 0);
   if (active.length === 0) return null;
 
   // Rebuild the query string minus ONE param — or, for a multi field, minus a single value of it (the
   // other selected values survive via URLSearchParams.append). `page` is intentionally never carried, so
-  // removing a filter returns to the first page.
+  // removing a filter returns to the first page. Foreign params (650b6eb8) ride along untouched: removing
+  // one listing's chip must not clear the other listing on the same page.
   const hrefWithout = (name: string, value?: string) => {
     const sp = new URLSearchParams();
+    for (const [k, v] of hidden ?? []) sp.append(k, v);
     for (const f of fields) {
       const vals = asArray(values[f.name]);
       for (const v of vals) {
@@ -314,7 +336,7 @@ export function FilterChips({
         </span>
       ))}
       {chips.length > 1 && (
-        <Link href={action} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+        <Link href={baseHref(action, hidden)} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
           {labels.clearAll}
         </Link>
       )}

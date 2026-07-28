@@ -1507,7 +1507,15 @@
       "attachmentYes": "Ya",
       "noRows": "Tiada jenis cuti untuk dipaparkan bagi pekerja ini.",
       "noRecords": "Tiada rekod cuti untuk dipaparkan.",
-      "noEmployees": "Tiada pekerja dalam skop syarikat semasa."
+      "noEmployees": "Tiada pekerja dalam skop syarikat semasa.",
+      "detailsSearchPlaceholder": "Cari ID atau nama pekerja",
+      "colEmployeeName": "Nama Pekerja",
+      "colPosition": "Jawatan",
+      "openBalances": "Buka baki cuti untuk {name}",
+      "pagePrev": "Sebelumnya",
+      "pageNext": "Seterusnya",
+      "pageAria": "Halaman {page}",
+      "noEmployeesFiltered": "Tiada pekerja sepadan dengan penapis."
     }
   },
   "attendance": {

@@ -83,7 +83,11 @@ describe('leave filter panel: component supports multi-select additively', () =>
     expect(src.includes('type="checkbox"')).toBe(true);
     expect(src.includes('method="get"')).toBe(true);
     expect(src).toMatch(/action=\{action\}/);
-    expect(src).toMatch(/href=\{action\}/);
+    // Clear-all links back to the page's own base path. Feedback 650b6eb8 made that base carry the FOREIGN
+    // params of a second listing on the same page (`hidden`), so the assertion follows the helper rather
+    // than the bare `action` it used to be — clearing one listing must not clear the other.
+    expect(src).toMatch(/href=\{baseHref\(action, hidden\)\}/);
+    expect(src).toContain('const baseHref = (action: string, hidden: FilterPanelProps[\'hidden\']) => {');
     expect(src.includes('hrefWithout')).toBe(true);
     expect(src.includes('removeAriaLabel')).toBe(true);
     // hrefWithout can drop a single value of a multi field (per-value chip removal).

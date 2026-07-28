@@ -12,17 +12,27 @@ import {
   listCompanies,
   listDepartments,
   listEmployees,
+  listEmployeesPage,
   listLeaveTypes,
   listLeaveRequests,
   listLeaveRequestsPage,
   listLeaveApprovers,
   reportingLinesFor,
 } from '@/core/read';
+import {
+  deriveEmploymentStatus,
+  EMPLOYMENT_STATUSES,
+  type EmploymentStatus,
+} from '@/core/employment-status';
 import { listBusinessUnits } from '@/core/admin';
 import { listLocations } from '@/core/location';
 import { todayInKualaLumpur } from '@/core/leave';
-import { Avatar, Button, Card, PageHeader, inputCls } from '@/components/ui';
+import { Avatar, Button, Card, EmployeeCode, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
+// Employee Details (feedback 650b6eb8): the left-side inquiry nav wave 1 built for the two screens this
+// listing feeds, plus the numbered-pager window helper that lives beside the other inquiry selection rules.
+import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
+import { inquiryPageWindow } from '@/lib/leave-inquiry';
 import { styleFor } from '@/components/planned-absences';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
@@ -66,6 +76,8 @@ const REQ_STATUS: Record<string, string> = {
 
 // Admin search/filter/sort page size — mirrors /personnel (feedback 0773bda9).
 const PAGE = 25;
+// Employee Details listing page size — the reporter asked for exactly ten employees per page (650b6eb8).
+const EMPLOYEE_PAGE = 10;
 const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
 // Days-column filter (feedback 8ec63139) — the ADR-0048 duration vocabulary, whitelisted here and again in
 // listLeaveRequestsPage so an unknown value narrows to nothing rather than reaching SQL.
@@ -126,12 +138,26 @@ export default async function LeavePage({
     dir?: string;
     // R37 e5a158d3: as-at date for the (relocated) detailed leave-balance table's entitlement breakdown.
     asOf?: string;
+    // Employee Details listing (feedback 650b6eb8). Its own search / page / narrowings, prefixed `ed`:
+    // this page carries TWO independently filtered listings and the unprefixed q/page/company/dept/status
+    // already belong to the leave-request table below. Renaming those instead would break every saved
+    // admin link and every export URL already in circulation.
+    edQ?: string;
+    edPage?: string;
+    edCompany?: string | string[];
+    edDept?: string | string[];
+    edStatus?: string | string[];
   }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
   const t = await getTranslations('leave');
   // R37 e5a158d3: the relocated detailed balance table reuses the `me` namespace's as-at-form + table labels.
   const tMe = await getTranslations('me');
+  // Employee Details (650b6eb8) reuses the People vocabulary rather than minting a second one: the same
+  // column heading and, for the badge, the ONE shared Employee Status vocabulary 9cbf5e0d consolidated on.
+  const tPeople = await getTranslations('people.list');
+  const tStatus = await getTranslations('people.employeeStatus');
+  const tInq = await getTranslations('leave.inquiry');
   const admin = isAdmin(session);
   // R5 Build #2 (Fix B): MYT "today" so the "hasn't started yet" cut-off matches the service (Malaysia time),
   // not a UTC clock that would allow/block a day near KL midnight. The default-date on the apply form uses it too.
@@ -170,6 +196,21 @@ export default async function LeavePage({
     sp.pendingWith && (PENDING_STAGES as readonly string[]).includes(sp.pendingWith) ? sp.pendingWith : undefined;
   const sort = sp.sort || undefined;
   const dir: 'asc' | 'desc' = sp.dir === 'asc' ? 'asc' : 'desc';
+  // ── Employee Details params (admin only; feedback 650b6eb8) ─────────────────────────────────────────
+  const edQ = sp.edQ?.trim() || undefined;
+  const edPage = Math.max(0, Number(sp.edPage) || 0);
+  const edCompany = arr(sp.edCompany);
+  const edDept = arr(sp.edDept);
+  // Whitelisted against the derived buckets, so an unknown value narrows to nothing rather than reaching SQL.
+  const edStatus = arr(sp.edStatus).filter((s): s is EmploymentStatus =>
+    (EMPLOYMENT_STATUSES as readonly string[]).includes(s),
+  );
+  const hasEmployeeChips = edCompany.length + edDept.length + edStatus.length > 0;
+  const hasEmployeeFilters = admin && (!!edQ || hasEmployeeChips);
+  // The employee currently under inquiry, threaded through the left nav so switching tab keeps them. One
+  // value only: `emp` doubles as the request table's multi-select employee filter, and "which employee am
+  // I looking at" is only meaningful when exactly one is named.
+  const inquiryEmploymentId = empIds.length === 1 ? empIds[0] : undefined;
   const hasFilters =
     admin &&
     !!(
@@ -315,9 +356,10 @@ export default async function LeavePage({
     departments,
     locations,
     approvers,
+    employeeList,
   } = admin
     ? await (async () => {
-        const [pageData, companies, businessUnits, departments, locations, approvers] = await Promise.all([
+        const [pageData, companies, businessUnits, departments, locations, approvers, employeeList] = await Promise.all([
           listLeaveRequestsPage(session, {
             companyIds: scopeIds,
             q,
@@ -345,13 +387,35 @@ export default async function LeavePage({
           listDepartments(session, { companyIds: scopeIds }),
           listLocations(session, scopeIds),
           listLeaveApprovers(session, scopeIds),
+          // Employee Details (650b6eb8): the same access-scoped People read /personnel uses, ordered
+          // company A→Z then name A→Z and paged ten at a time. Terminated staff are NOT excluded — their
+          // leave position is exactly what HR looks up after someone leaves (20c699f8 made the same call).
+          listEmployeesPage(session, {
+            companyIds: scopeIds,
+            q: edQ,
+            filterCompanyIds: edCompany,
+            departmentIds: edDept,
+            employmentStatuses: edStatus,
+            sort: 'company',
+            limit: EMPLOYEE_PAGE,
+            offset: edPage * EMPLOYEE_PAGE,
+          }),
         ]);
-        return { rows: pageData.rows, total: pageData.total, companies, businessUnits, departments, locations, approvers };
+        return { rows: pageData.rows, total: pageData.total, companies, businessUnits, departments, locations, approvers, employeeList };
       })()
     : await (async () => {
         const requests = await listLeaveRequests(session, scopeIds);
         const mine = requests.filter((r) => session.personId != null && r.personId === session.personId);
-        return { rows: mine, total: mine.length, companies: [], businessUnits: [], departments: [], locations: [], approvers: [] };
+        return {
+          rows: mine,
+          total: mine.length,
+          companies: [],
+          businessUnits: [],
+          departments: [],
+          locations: [],
+          approvers: [],
+          employeeList: { rows: [], total: 0 },
+        };
       })();
 
   // Self-service history ordering (feedback 657962ec): cards render newest first BY LEAVE START DATE —
@@ -505,15 +569,27 @@ export default async function LeavePage({
     if (sp.dir) p.set('dir', dir);
     return p;
   };
+  // The Employee Details listing's own state (feedback 650b6eb8), carried by every link the REQUEST table
+  // generates so searching, paging or re-sorting the requests below never disturbs the employee list above
+  // it. `keepPage: false` is for the employee listing's OWN controls: changing an employee filter is the one
+  // thing that should send that listing back to page one, exactly as the request table treats `page`.
+  const withEmployeeParams = (p: URLSearchParams, opts: { keepPage?: boolean } = {}) => {
+    if (edQ) p.set('edQ', edQ);
+    for (const id of edCompany) p.append('edCompany', id);
+    for (const id of edDept) p.append('edDept', id);
+    for (const st of edStatus) p.append('edStatus', st);
+    if (opts.keepPage !== false && edPage > 0) p.set('edPage', String(edPage));
+    return p;
+  };
   // Sort links reset to the first page (drop `page`); toggle asc/desc when re-clicking the active column.
   const sortHref = (key: string) => {
-    const p = filterParams();
+    const p = withEmployeeParams(filterParams());
     p.set('sort', key);
     p.set('dir', sort === key && dir === 'asc' ? 'desc' : 'asc');
     return `/leave?${p.toString()}`;
   };
   const pageHref = (n: number) => {
-    const p = withSort(filterParams());
+    const p = withEmployeeParams(withSort(filterParams()));
     if (n > 0) p.set('page', String(n));
     const s = p.toString();
     return s ? `/leave?${s}` : '/leave';
@@ -524,6 +600,71 @@ export default async function LeavePage({
     return `/leave/export?${p.toString()}`;
   };
   const hasNext = admin && (page + 1) * PAGE < total;
+
+  // ── Employee Details listing (feedback 650b6eb8) ─────────────────────────────────────────────────────
+  // The tab an HR admin lands on: who am I looking up. Picking a row hands the employment id to Employee
+  // Balances, which is the screen that actually answers the leave question — this listing does no leave
+  // reads of its own. Its links carry the request table's state for the same reason that table's carry
+  // this one's: one page, two listings, neither may silently reset the other.
+  const employeePageCount = Math.ceil(employeeList.total / EMPLOYEE_PAGE);
+  const edPageHref = (n: number) => {
+    const p = withEmployeeParams(withSort(filterParams()), { keepPage: false });
+    if (page > 0) p.set('page', String(page));
+    if (n > 0) p.set('edPage', String(n));
+    const s = p.toString();
+    return s ? `/leave?${s}` : '/leave';
+  };
+  // Opening an employee goes straight to Employee Balances (650b6eb8 §v) — the listing is a picker, not a
+  // destination, so there is no per-employee page here to land on first.
+  const employeeHref = (employmentId: string) => `/leave/employee-balances?emp=${employmentId}`;
+  const employeeFilterFields: FilterField[] = [
+    {
+      kind: 'multi',
+      name: 'edCompany',
+      label: t('filters.company'),
+      ariaLabel: t('filters.company'),
+      options: companies.map((c) => ({ value: c.id, label: c.name })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.company') }),
+    },
+    {
+      kind: 'multi',
+      name: 'edDept',
+      label: t('filters.department'),
+      ariaLabel: t('filters.department'),
+      options: departments.map((d) => ({ value: d.id, label: d.name })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.department') }),
+    },
+    {
+      // The DERIVED Employee Status buckets and the shared people.employeeStatus vocabulary (9cbf5e0d) —
+      // never the legacy stored assignment.status, whose retired values must not reappear on a new screen.
+      kind: 'multi',
+      name: 'edStatus',
+      label: tPeople('colStatus'),
+      ariaLabel: tPeople('colStatus'),
+      options: EMPLOYMENT_STATUSES.map((s) => ({ value: s, label: tStatus(s) })),
+      removeAriaLabel: t('filters.removeFilter', { label: tPeople('colStatus') }),
+    },
+  ];
+  const employeeFilterValues = { edCompany, edDept, edStatus };
+  const employeeFilterLabels = {
+    filter: t('filters.filter'),
+    apply: t('filters.apply'),
+    clearAll: t('filters.clearAll'),
+    activeCount: t('filters.activeCount', {
+      count: [edCompany, edDept, edStatus].filter((v) => v.length > 0).length,
+    }),
+    selectAll: t('filters.selectAll'),
+    deselectAll: t('filters.deselectAll'),
+  };
+  // Each listing's controls carry the OTHER listing's params as hidden inputs / link params.
+  const employeeHiddenParams: [string, string][] = [
+    ...([...withSort(filterParams())] as [string, string][]),
+    ...(edQ ? ([['edQ', edQ]] as [string, string][]) : []),
+  ];
+  const requestHiddenParams: [string, string][] = [...withEmployeeParams(new URLSearchParams())] as [
+    string,
+    string,
+  ][];
 
   const filterFields: FilterField[] = [
     {
@@ -681,8 +822,9 @@ export default async function LeavePage({
     selectAll: t('filters.selectAll'),
     deselectAll: t('filters.deselectAll'),
   };
-  // Hidden inputs so the top search box preserves every other active filter + sort when submitted.
-  const searchHiddenParams = [...withSort(filterParams())].filter(([k]) => k !== 'q');
+  // Hidden inputs so the top search box preserves every other active filter + sort when submitted — the
+  // Employee Details state included (650b6eb8), or searching leave requests would blank the list above.
+  const searchHiddenParams = [...withEmployeeParams(withSort(filterParams()))].filter(([k]) => k !== 'q');
 
   // Sortable column header (admin): a Link that toggles ?sort=&dir= with an aria-sort hint on the <th>.
   const sortableTh = (key: string, label: string, extra = '') => {
@@ -779,15 +921,15 @@ export default async function LeavePage({
                     {t('filters.search')}
                   </Button>
                 </form>
-                <FilterPanel action="/leave" fields={filterFields} values={filterValues} labels={filterLabels} />
-                {/* Employee inquiry (feedback 20c699f8): the way from this page into one employee's leave
-                    position. The Employee Details listing it opens FROM is item 650b6eb8's. */}
-                <Link
-                  href="/leave/employee-balances"
-                  className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
-                >
-                  {t('inquiry.employeeBalances')}
-                </Link>
+                <FilterPanel
+                  action="/leave"
+                  fields={filterFields}
+                  values={filterValues}
+                  labels={filterLabels}
+                  hidden={requestHiddenParams}
+                />
+                {/* 20c699f8's stand-in link into Employee Balances is gone: the left-side inquiry nav below
+                    is the way there now, and it carries the employee you have selected. */}
                 {/* Export the filtered set (reporter: Excel + CSV). Plain links → admin-gated route. */}
                 <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs">
                   <span className="text-muted-foreground">{t('filters.export')}:</span>
@@ -821,8 +963,6 @@ export default async function LeavePage({
           }
         />
       </div>
-
-      {admin && <FilterChips action="/leave" fields={filterFields} values={filterValues} labels={filterLabels} />}
 
       {sp.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
@@ -958,8 +1098,185 @@ export default async function LeavePage({
       {/* Feedback 8ec63139: the HR admin's own full-width "Other leave" breakdown card (56a0deb9) is gone —
           it was the third face of My Balances on a page that is now about employees, not the viewer. The
           self-service pairing above is untouched. */}
-      {/* Admin request history — the full-width sortable/paginated table (feedback 0773bda9), unchanged. */}
+      {/* ── HR-admin leave inquiry (feedback 650b6eb8) ────────────────────────────────────────────────
+          The landing tab: an employee listing you search, narrow and page through, whose rows open the
+          Employee Balances screen. The left-side nav is wave 1's (20c699f8 / 953be4b0) — this is the
+          "details" destination it was already pointing at.
+
+          The org-wide leave-request table below is deliberately KEPT. The reporter asked in the same round
+          (8ec63139) for a filter on every one of its columns, so it is a surface they use; the redesign
+          changes what an admin lands ON, not what they can still reach further down the page. */}
       {admin && (
+      <div className="flex flex-col gap-6 sm:flex-row">
+        <LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />
+        <div className="min-w-0 flex-1 space-y-6">
+          <Card className="overflow-hidden">
+            <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border px-4 py-3">
+              <div className="text-sm font-medium">
+                {tInq('employeeDetails')}
+                <span className="ml-2 font-normal text-muted-foreground">
+                  {t('filters.showingOf', { shown: employeeList.rows.length, total: employeeList.total })}
+                </span>
+              </div>
+              {/* Search + Filter for THIS listing. The hidden inputs carry the leave-request table's own
+                  state so narrowing employees never blanks the table below (and vice versa). The panel is a
+                  SIBLING of the search form, not a child: it renders its own <form>, and nesting one inside
+                  another is invalid HTML the parser silently unpicks. */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <form method="get" action="/leave" className="flex flex-wrap items-center gap-1.5">
+                  {employeeHiddenParams
+                    .filter(([k]) => k !== 'edQ')
+                    .map(([k, v], i) => (
+                      <input key={`${k}-${i}`} type="hidden" name={k} value={v} />
+                    ))}
+                  <input
+                    name="edQ"
+                    defaultValue={edQ ?? ''}
+                    placeholder={tInq('detailsSearchPlaceholder')}
+                    aria-label={tInq('detailsSearchPlaceholder')}
+                    className={`${inputCls} w-56`}
+                  />
+                  <Button type="submit" size="sm" variant="secondary">
+                    {t('filters.search')}
+                  </Button>
+                </form>
+                <FilterPanel
+                  action="/leave"
+                  fields={employeeFilterFields}
+                  values={employeeFilterValues}
+                  labels={employeeFilterLabels}
+                  hidden={employeeHiddenParams}
+                />
+              </div>
+            </div>
+            {hasEmployeeChips && (
+              <div className="border-b border-border px-4 py-2">
+                <FilterChips
+                  action="/leave"
+                  fields={employeeFilterFields}
+                  values={employeeFilterValues}
+                  labels={employeeFilterLabels}
+                  hidden={employeeHiddenParams}
+                />
+              </div>
+            )}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">{t('filters.employeeId')}</th>
+                    <th className="px-4 py-2 font-medium">{tInq('colEmployeeName')}</th>
+                    <th className="px-4 py-2 font-medium">{t('filters.company')}</th>
+                    <th className="px-4 py-2 font-medium">{t('filters.department')}</th>
+                    <th className="px-4 py-2 font-medium">{tInq('colPosition')}</th>
+                    <th className="px-4 py-2 font-medium">{tPeople('colStatus')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {employeeList.rows.map((e) => (
+                    <tr
+                      key={e.employmentId}
+                      // The employee the other two tabs are showing, when you have arrived back here from one.
+                      aria-current={e.employmentId === inquiryEmploymentId ? 'true' : undefined}
+                      className={e.employmentId === inquiryEmploymentId ? 'bg-muted/60' : 'hover:bg-muted/40'}
+                    >
+                      <td className="px-4 py-2.5">
+                        <EmployeeCode code={e.employeeCode} />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={e.name} className="size-7 text-[10px]" />
+                          <Link
+                            href={employeeHref(e.employmentId)}
+                            aria-label={tInq('openBalances', { name: e.name })}
+                            className="font-medium text-foreground hover:text-primary"
+                          >
+                            {e.name}
+                          </Link>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{e.company}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{e.department ?? '—'}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{e.position ?? '—'}</td>
+                      <td className="px-4 py-2.5">
+                        {(() => {
+                          // The DERIVED status (9cbf5e0d), as of the page's MYT today — same badge and same
+                          // vocabulary as Personnel, so the two screens cannot tell different stories.
+                          const st = deriveEmploymentStatus(e, today);
+                          return <StatusBadge status={st} label={tStatus(st)} />;
+                        })()}
+                      </td>
+                    </tr>
+                  ))}
+                  {employeeList.rows.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                        {hasEmployeeFilters ? tInq('noEmployeesFiltered') : tInq('noEmployees')}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {/* Numbered page navigation — "1 2 3 Next >" (650b6eb8 §ii). Ellipses stand in for the pages a
+                long list would otherwise print in full; the window helper is unit-tested. */}
+            {employeePageCount > 1 && (
+              <nav
+                aria-label={tInq('employeeDetails')}
+                className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-sm"
+              >
+                {edPage > 0 ? (
+                  <Link href={edPageHref(edPage - 1)} className="text-primary hover:underline">
+                    {tInq('pagePrev')}
+                  </Link>
+                ) : (
+                  <span />
+                )}
+                <span className="flex flex-wrap items-center gap-1">
+                  {inquiryPageWindow(edPage, employeePageCount).map((n, i) =>
+                    n == null ? (
+                      <span key={`gap-${i}`} aria-hidden className="px-1 text-muted-foreground">
+                        …
+                      </span>
+                    ) : (
+                      <Link
+                        key={n}
+                        href={edPageHref(n)}
+                        aria-label={tInq('pageAria', { page: n + 1 })}
+                        aria-current={n === edPage ? 'page' : undefined}
+                        className={`rounded-md px-2 py-1 text-xs tabular-nums ${
+                          n === edPage
+                            ? 'bg-primary font-semibold text-primary-foreground'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        }`}
+                      >
+                        {n + 1}
+                      </Link>
+                    ),
+                  )}
+                </span>
+                {edPage + 1 < employeePageCount ? (
+                  <Link href={edPageHref(edPage + 1)} className="text-primary hover:underline">
+                    {tInq('pageNext')}
+                  </Link>
+                ) : (
+                  <span />
+                )}
+              </nav>
+            )}
+          </Card>
+
+          {/* The leave-request table's own active-filter chips — moved down beside the table they narrow,
+              so they can no longer be read as belonging to the employee listing above. */}
+          <FilterChips
+            action="/leave"
+            fields={filterFields}
+            values={filterValues}
+            labels={filterLabels}
+            hidden={requestHiddenParams}
+          />
+
+      {/* Admin request history — the full-width sortable/paginated table (feedback 0773bda9), unchanged. */}
       <Card className="overflow-hidden" data-tour="leave-requests">
         <div className="border-b border-border px-4 py-3 text-sm font-medium">
           {t('requestsTitle')}
@@ -1197,6 +1514,8 @@ export default async function LeavePage({
           </div>
         )}
       </Card>
+        </div>
+      </div>
       )}
     </div>
   );

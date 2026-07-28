@@ -10,7 +10,12 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { pickInquiryEmployee, sortInquiryEmployees, type InquiryEmployee } from '../lib/leave-inquiry';
+import {
+  inquiryPageWindow,
+  pickInquiryEmployee,
+  sortInquiryEmployees,
+  type InquiryEmployee,
+} from '../lib/leave-inquiry';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -216,6 +221,114 @@ describe('953be4b0: Employee Leave Record', () => {
       'recordsSearchPlaceholder', 'colLeaveCode', 'colEntitlementYear', 'colBroughtForward',
       'colPendingApproval', 'colForfeitedBf', 'colDate', 'colReason', 'colAttachment',
       'colFinalApproval', 'viewAttachment', 'attachmentYes', 'noRows', 'noRecords', 'noEmployees',
+    ];
+    for (const loc of LOCALES) {
+      const inquiry = (msgs(loc) as unknown as { leave: { inquiry: Record<string, string> } }).leave.inquiry;
+      for (const k of keys) expect(inquiry?.[k], `${loc} leave.inquiry.${k}`).toBeTruthy();
+    }
+  });
+});
+
+describe('650b6eb8: Employee Details — the tab an HR admin lands on', () => {
+  const nav = read('components/leave/leave-inquiry-nav.tsx');
+
+  it('mounts the left-side nav on the admin landing page, opening on Employee Details', () => {
+    expect(leavePage).toContain("import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav'");
+    expect(leavePage).toContain('<LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />');
+    // Three destinations, and the details one is this page — so "My Leave" IS the Employee Details tab.
+    expect(nav).toContain("{ key: 'details', href: withEmp('/leave')");
+    expect(nav).toContain("{ key: 'balances', href: withEmp('/leave/employee-balances')");
+    expect(nav).toContain("{ key: 'records', href: withEmp('/leave/employee-records')");
+  });
+
+  it('renders the six requested columns', () => {
+    for (const col of [
+      "t('filters.employeeId')",
+      "tInq('colEmployeeName')",
+      "t('filters.company')",
+      "t('filters.department')",
+      "tInq('colPosition')",
+      "tPeople('colStatus')",
+    ]) {
+      expect(leavePage.includes(col), col).toBe(true);
+    }
+    expect(leavePage).toContain('colSpan={6}');
+  });
+
+  it('reads the access-scoped People page, ten at a time, company A→Z then name A→Z', () => {
+    expect(leavePage).toContain('listEmployeesPage(session, {');
+    expect(leavePage).toContain('const EMPLOYEE_PAGE = 10;');
+    expect(leavePage).toContain("sort: 'company',");
+    expect(leavePage).toContain('limit: EMPLOYEE_PAGE,');
+    expect(leavePage).toContain('offset: edPage * EMPLOYEE_PAGE,');
+    // Scope fence first: the listing shows only the companies this session may see.
+    expect(leavePage).toContain('companyIds: scopeIds,');
+  });
+
+  it('shows the DERIVED Employee Status, in the shared vocabulary — never the legacy stored enum', () => {
+    expect(leavePage).toContain('deriveEmploymentStatus(e, today)');
+    expect(leavePage).toContain("const tStatus = await getTranslations('people.employeeStatus');");
+    expect(leavePage).toContain('options: EMPLOYMENT_STATUSES.map((s) => ({ value: s, label: tStatus(s) }))');
+    // `status` on the row IS the legacy stored enum (EmployeeListRow keeps it for other callers) — this
+    // screen must never read it, or the retired On Leave / Offboarding values come back on a new surface.
+    expect(/\be\.status\b/.test(leavePage), 'legacy row.status is read').toBe(false);
+  });
+
+  it('search + a multi-select Company / Department / Status filter with bulk controls', () => {
+    expect(leavePage).toContain("tInq('detailsSearchPlaceholder')");
+    for (const name of ["name: 'edCompany'", "name: 'edDept'", "name: 'edStatus'"]) {
+      expect(leavePage.includes(name), name).toBe(true);
+    }
+    expect(leavePage).toContain("selectAll: t('filters.selectAll')");
+    expect(leavePage).toContain("deselectAll: t('filters.deselectAll')");
+  });
+
+  it('clicking an employee opens Employee Balances for that employee', () => {
+    expect(leavePage).toContain('const employeeHref = (employmentId: string) => `/leave/employee-balances?emp=${employmentId}`;');
+  });
+
+  it('the two listings on the page cannot clear each other', () => {
+    // Every control of one listing carries the other's params — hidden inputs in the forms, `hidden` on
+    // the panel + chips. Without this, filtering employees would silently blank the leave-request table.
+    expect(leavePage).toContain('hidden={employeeHiddenParams}');
+    expect(leavePage).toContain('hidden={requestHiddenParams}');
+    expect(panel).toContain('hidden?: readonly (readonly [string, string])[];');
+    // The employee listing's params are prefixed because q/page/company/dept/status are already spoken for.
+    for (const param of ['edQ?: string', 'edPage?: string', 'edCompany?: string | string[]']) {
+      expect(leavePage.includes(param), param).toBe(true);
+    }
+  });
+
+  it('the org-wide leave-request table 8ec63139 filtered is still on the page', () => {
+    // The redesign changes what an admin lands on, not what they can reach: dropping this table would
+    // undo the every-column filter the same reporter asked for in the same round.
+    expect(leavePage).toContain('listLeaveRequestsPage(session, {');
+    expect(leavePage).toContain("t('requestsTitle')");
+    expect(leavePage).toContain('/leave/export?');
+  });
+
+  it('numbers the pages — 1 2 3 Next >, with the far ends always one click away', () => {
+    expect(leavePage).toContain('inquiryPageWindow(edPage, employeePageCount)');
+    expect(leavePage).toContain("tInq('pageNext')");
+    // Short list: every page, no gaps.
+    expect(inquiryPageWindow(0, 3)).toEqual([0, 1, 2]);
+    expect(inquiryPageWindow(0, 1)).toEqual([0]);
+    expect(inquiryPageWindow(0, 0)).toEqual([]);
+    // Long list: first, a window around the current page, last — gaps marked by null.
+    expect(inquiryPageWindow(0, 20)).toEqual([0, 1, 2, null, 19]);
+    expect(inquiryPageWindow(10, 20)).toEqual([0, null, 8, 9, 10, 11, 12, null, 19]);
+    expect(inquiryPageWindow(19, 20)).toEqual([0, null, 17, 18, 19]);
+    // The current page is always offered, and never twice.
+    for (const p of [0, 3, 7, 19]) {
+      const w = inquiryPageWindow(p, 20);
+      expect(w.filter((n) => n === p).length, `page ${p}`).toBe(1);
+    }
+  });
+
+  it('ships the Employee Details strings in every locale', () => {
+    const keys = [
+      'detailsSearchPlaceholder', 'colEmployeeName', 'colPosition', 'openBalances',
+      'pagePrev', 'pageNext', 'pageAria', 'noEmployeesFiltered',
     ];
     for (const loc of LOCALES) {
       const inquiry = (msgs(loc) as unknown as { leave: { inquiry: Record<string, string> } }).leave.inquiry;
