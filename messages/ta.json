@@ -3895,7 +3895,6 @@
       "eligibilityMinServiceSuffix": "மாதங்கள்",
       "eligibilitySummaryOnly": "{who} மட்டும்",
       "eligibilitySummaryService": "≥ {n} {unit} சேவை",
-      "eligibilitySummaryOr": "அல்லது",
       "eligibilityMultiHint": "ஒன்று அல்லது அதற்கு மேற்பட்டவற்றைத் தேர்ந்தெடுக்கவும்; அனைவருக்கும் அனுமதிக்க காலியாக விடவும்.",
       "eligibilityProbationLabel": "சோதனைக் கால நிலை",
       "eligibilityProbationNone": "கட்டுப்பாடு இல்லை",

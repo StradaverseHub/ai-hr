@@ -3895,7 +3895,6 @@
       "eligibilityMinServiceSuffix": "bulan",
       "eligibilitySummaryOnly": "{who} sahaja",
       "eligibilitySummaryService": "≥ {n} {unit} perkhidmatan",
-      "eligibilitySummaryOr": "atau",
       "eligibilityMultiHint": "Pilih satu atau lebih; biarkan kosong untuk membenarkan semua orang.",
       "eligibilityProbationLabel": "Status percubaan",
       "eligibilityProbationNone": "Tiada sekatan",

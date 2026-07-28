@@ -3932,7 +3932,6 @@
       "eligibilityMinServiceSuffix": "months",
       "eligibilitySummaryOnly": "{who} only",
       "eligibilitySummaryService": "≥ {n} {unit} service",
-      "eligibilitySummaryOr": "or",
       "eligibilityMultiHint": "Select one or more; leave empty to allow everyone.",
       "eligibilityProbationLabel": "Probation status",
       "eligibilityProbationNone": "No restriction",

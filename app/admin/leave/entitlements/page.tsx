@@ -405,7 +405,9 @@ export default async function LeaveEntitlementsPage({
   // only the rendering (and the action's redirect target) moved. The applies-company-wide badge flags
   // that saving here affects every leave type and every application, not just the hosting type.
   const halfDaySection = (
-    <div className="space-y-1.5 rounded-lg border border-border p-3">
+    // #f6d3be0b: matches the chrome the Condition · Leave Application Rules cards now use — one surface
+    // (border + fill + padding), so the relocated card does not read as a different kind of thing beside them.
+    <div className="space-y-2 rounded-lg border border-border bg-background p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium text-muted-foreground">{t('halfDayDeductionTitle')}</span>
         <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
