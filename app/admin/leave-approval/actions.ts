@@ -246,11 +246,13 @@ export async function assignApprovalTemplateAction(formData: FormData) {
   const templateId = String(formData.get('templateId') ?? '');
   const companyIds = formData.getAll('companyIds').map(String).filter(Boolean);
   const leaveTypeIds = formData.getAll('leaveTypeIds').map(String).filter(Boolean);
-  const gradeIds = formData.getAll('gradeIds').map(String).filter(Boolean);
+  // 22de47c4 — the employee scope is chosen as BENEFIT SCHEMES now, not job grades (the service maps each
+  // to the grade group + employment type it stands for).
+  const benefitSchemeIds = formData.getAll('benefitSchemeIds').map(String).filter(Boolean);
   const minDays = numOrNull(formData.get('minDays'));
   const maxDays = numOrNull(formData.get('maxDays'));
   try {
-    await assignApprovalTemplate(s, { templateId, companyIds, leaveTypeIds, gradeIds, minDays, maxDays });
+    await assignApprovalTemplate(s, { templateId, companyIds, leaveTypeIds, benefitSchemeIds, minDays, maxDays });
   } catch (e) {
     redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }

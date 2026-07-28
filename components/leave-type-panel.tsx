@@ -26,6 +26,7 @@ import {
   ServiceEntitlementTable,
   type LeaveTypeSchemeEntitlement,
   type ServicePolicyRow,
+  type ServiceSchemeRow,
 } from './benefit-scheme-config';
 import { SubStepBar } from './leave-sub-step-bar';
 
@@ -1040,7 +1041,8 @@ export function LeaveTypePanel({
   deletePolicyAction,
   countInScopeAction,
   upsertSchemeEntitlementAction,
-  saveServiceEntitlementAction,
+  benefitSchemes,
+  gradeGroups,
 }: {
   id: string;
   name: string;
@@ -1208,11 +1210,11 @@ export function LeaveTypePanel({
   /** Restructure (123c1e76): the SAME upsertSchemeEntitlement action the Benefit Schemes table posts —
    *  the per-type Entitlement card's Edit dialog writes through it, so nothing forks. */
   upsertSchemeEntitlementAction: Action;
-  /** Restructure Service-Based Leave Entitlements — the company-driven Service Based Entitlements table posts
-   *  ONE grade's three service-band figures for a company through this action. The first save for a company
-   *  materialises the whole company scope so untouched grades never drop to zero; the edited grade is
-   *  recalculated in place (see saveServiceEntitlement in core/admin). */
-  saveServiceEntitlementAction: Action;
+  /** 9816a5ad — the benefit schemes the Service Based Entitlements table lists once a company is picked, and
+   *  the grade-group membership it needs to tell the admin where the old grade-level figures disagree.
+   *  Prepared ONCE at page level from rows the page already loads (the benefitSchemeSection precedent). */
+  benefitSchemes: ServiceSchemeRow[];
+  gradeGroups: { id: string; gradeIds: string[] }[];
 }) {
   const t = useTranslations('admin.leave');
   // Organisation Assignment criteria (Enhance Leave Criteria Configuration): the eight criterion labels REUSE
@@ -1846,19 +1848,23 @@ export function LeaveTypePanel({
           </div>
           </>
           )}
-          {/* Sub-step 2 — Service Based Entitlements: the company-driven, by-grade entitlement table
-              (Restructure Service-Based Leave Entitlements), then the per-company policy timeline, then the
-              Preview Scenario checker. The picker lists COMPANY names only; choosing a company
-              auto-populates one row per active grade with the three service bands pre-filled from what
-              currently resolves. Benefit-scheme figures still take priority where set — this table sets the
-              fallback everyone else resolves to. */}
+          {/* Sub-step 2 — Service Based Entitlements: the company-driven entitlement table, then the
+              per-company policy timeline, then the Preview Scenario checker. 9816a5ad turned the middle
+              column from JOB GRADE into BENEFIT SCHEME: picking a company lists that company's schemes with
+              their service-tenure days, and a row writes the scheme's own entitlement through the same
+              upsert action the Benefit Schemes surface posts. That removes the duplicate maintenance — the
+              figures typed here ARE the ones leave calculation reads, not a second set feeding it.
+              Grade-level policies are untouched and stay editable on the timeline below, which is what
+              anyone no scheme covers still resolves through. */}
           {entitlementSubStep === 'service' && (
           <>
           <ServiceEntitlementTable
             leaveTypeId={id}
             leaveTypeName={name}
             companies={companies}
-            grades={grades}
+            schemes={benefitSchemes}
+            gradeGroups={gradeGroups}
+            entitlements={schemeEntitlements}
             policies={policies.map(
               (p): ServicePolicyRow => ({
                 gradeId: p.gradeId ?? null,
@@ -1868,7 +1874,7 @@ export function LeaveTypePanel({
                 validTo: p.validTo,
               }),
             )}
-            saveAction={saveServiceEntitlementAction}
+            upsertEntitlement={upsertSchemeEntitlementAction}
           />
           {/* 0d9cf710: the earning-method front door 2bba9e35 mounted here is GONE. Earning Method,
               Rounding Method and the Earn Upon Resignation note are configured in General → Earning Method

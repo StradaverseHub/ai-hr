@@ -14,11 +14,13 @@
  * Substrate discipline: every write appends a DomainEvent (aggregate 'leave-approval-template' for template
  * mutations; 'leave-approval-policy' for the per-assignment rows, reusing the rule events).
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { leaveApprovalPolicy, leaveApprovalTemplate } from '../db/schema';
+import { benefitScheme, employmentTypeEnum, leaveApprovalPolicy, leaveApprovalTemplate } from '../db/schema';
 import { sanitizeLevels, type LeaveLevelKind } from './leave-approval-policy';
+
+type EmploymentType = (typeof employmentTypeEnum.enumValues)[number];
 
 export type ApprovalTemplate = {
   id: string;
@@ -57,16 +59,27 @@ function cleanTemplate(p: ApprovalTemplateInput) {
   return { name, description, levels };
 }
 
-/** SQL predicate isolating a template ASSIGNMENT row: the org-chart dims stay wildcard, while the three
- *  dims the Assignment Template screen now exposes — leave type, grade and the leave-duration condition —
- *  are matched EXACTLY (`is not distinct from`, so null matches null). With all three left unset this is
- *  byte-for-byte the old fully-wildcard bucket, which is why pre-existing assignments still upsert onto
- *  their own row instead of forking a duplicate (leave_approval_policy_wildcard_uq guarantees at most one
- *  such row per company × leave type). A grade- or condition-scoped assignment gets its own row and is
- *  resolved by the normal ADR-0071 specificity ladder — no resolution change. */
-function assignmentBucketFilter(gradeId: string | null, minDays: number | null, maxDays: number | null) {
-  return sql`business_unit_id is null and department_id is null and position_id is null and employment_type is null
-    and grade_id is not distinct from ${gradeId}::uuid
+/** SQL predicate isolating a template ASSIGNMENT row: the org-chart dims stay wildcard, while the dims the
+ *  Assignment Template screen exposes — leave type, the benefit-scheme scope and the leave-duration
+ *  condition — are matched EXACTLY (`is not distinct from`, so null matches null). With all of them left
+ *  unset this is byte-for-byte the old fully-wildcard bucket, which is why pre-existing assignments still
+ *  upsert onto their own row instead of forking a duplicate (leave_approval_policy_wildcard_uq guarantees
+ *  at most one such row per company × leave type). A scheme- or condition-scoped assignment gets its own
+ *  row and is resolved by the normal ADR-0071 specificity ladder — no resolution change.
+ *
+ *  22de47c4 — a benefit scheme IS (company, employment type, grade group), so assigning to a scheme writes
+ *  those two dims and the bucket has to key on them. `grade_id is null` keeps LEGACY grade-scoped
+ *  assignments (written before this item) out of every bucket: they are never silently upserted onto, so
+ *  they stay visible in the assignments list until an administrator re-assigns them deliberately. */
+function assignmentBucketFilter(
+  gradeGroupId: string | null,
+  employmentType: EmploymentType | null,
+  minDays: number | null,
+  maxDays: number | null,
+) {
+  return sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null
+    and grade_group_id is not distinct from ${gradeGroupId}::uuid
+    and employment_type is not distinct from ${employmentType}::employment_type
     and min_days is not distinct from ${minDays}::int
     and max_days is not distinct from ${maxDays}::int`;
 }
@@ -102,14 +115,19 @@ export async function listApprovalTemplates(ctx: SessionContext): Promise<Approv
 }
 
 /** One assignment row for the assignments screen: which template covers which (company, leave-type).
- *  bb3938b9 adds the two criteria the Assignment Template panels now carry — grade and the leave-duration
- *  condition — so the list can show what an assignment is actually scoped to instead of implying "all". */
+ *  bb3938b9 adds the criteria the Assignment Template panels carry — the employee scope and the
+ *  leave-duration condition — so the list can show what an assignment is actually scoped to instead of
+ *  implying "all". 22de47c4 made that employee scope the BENEFIT SCHEME, which on the rule is its grade
+ *  group + employment type; `gradeId` stays on the type so a legacy grade-scoped assignment can still be
+ *  listed (and re-assigned) rather than becoming invisible config that keeps routing. */
 export type TemplateAssignment = {
   ruleId: string;
   templateId: string;
   companyId: string;
   leaveTypeId: string | null;
   gradeId: string | null;
+  gradeGroupId: string | null;
+  employmentType: EmploymentType | null;
   minDays: number | null;
   maxDays: number | null;
 };
@@ -124,6 +142,8 @@ export async function listTemplateAssignments(ctx: SessionContext): Promise<Temp
         companyId: leaveApprovalPolicy.companyId,
         leaveTypeId: leaveApprovalPolicy.leaveTypeId,
         gradeId: leaveApprovalPolicy.gradeId,
+        gradeGroupId: leaveApprovalPolicy.gradeGroupId,
+        employmentType: leaveApprovalPolicy.employmentType,
         minDays: leaveApprovalPolicy.minDays,
         maxDays: leaveApprovalPolicy.maxDays,
       })
@@ -135,6 +155,8 @@ export async function listTemplateAssignments(ctx: SessionContext): Promise<Temp
       companyId: r.companyId,
       leaveTypeId: r.leaveTypeId,
       gradeId: r.gradeId,
+      gradeGroupId: r.gradeGroupId,
+      employmentType: r.employmentType,
       minDays: r.minDays,
       maxDays: r.maxDays,
     }));
@@ -328,31 +350,41 @@ export async function setTenantDefaultTemplate(ctx: SessionContext, id: string |
   });
 }
 
-/** Bulk-assign a template to every (company × leave-type × grade) combination. For each one, upserts the
- *  matching assignment row to point at the template and clears its own levels to []. Admin-only; the
- *  leave_approval_policy RLS WITH CHECK (is_admin_for(company_id)) rejects any company outside the caller's
- *  scope.
+/** Bulk-assign a template to every (company × leave-type × benefit-scheme) combination. For each one,
+ *  upserts the matching assignment row to point at the template and clears its own levels to []. Admin-only;
+ *  the leave_approval_policy RLS WITH CHECK (is_admin_for(company_id)) rejects any company outside the
+ *  caller's scope.
  *
- *  bb3938b9 — `gradeIds` and the leave-duration condition (`minDays`/`maxDays`) are OPTIONAL criteria the
- *  Assignment Template screen now offers alongside companies and leave types. Selecting none of a criterion
- *  means "applies to all", which writes null on that dimension — i.e. exactly the row this function has
- *  always written, so existing assignments keep resolving to the same employees. */
+ *  bb3938b9 — the employee scope and the leave-duration condition (`minDays`/`maxDays`) are OPTIONAL
+ *  criteria alongside companies and leave types. Selecting none of a criterion means "applies to all",
+ *  which writes null on that dimension — i.e. exactly the row this function has always written, so existing
+ *  assignments keep resolving to the same employees.
+ *
+ *  22de47c4 — that scope is now the BENEFIT SCHEME rather than the individual job grade. No new dimension
+ *  and no resolver change was needed: a benefit_scheme IS (company, employment_type, grade_group), and the
+ *  rule matrix already scopes on grade group (R41 72800eda) and employment type, both resolved at submit
+ *  time from the requester's own assignment — the SAME two axes resolveEffectiveSchemeId matches a scheme
+ *  on. So "assign to this scheme" translates exactly into "grade_group_id + employment_type of that
+ *  scheme", and an employee inherits the template of the scheme they are in, by construction.
+ *
+ *  A scheme with NO grade group is refused rather than widened: on the rule a null grade group is a
+ *  WILDCARD ("any grade group"), while on a scheme it means "the ungrouped population" — assigning one
+ *  would quietly hand the template to everybody in the company on that employment type. Expressing
+ *  "ungrouped only" needs a resolver change, so it is reported instead of guessed at. */
 export async function assignApprovalTemplate(
   ctx: SessionContext,
   p: {
     templateId: string;
     companyIds: string[];
     leaveTypeIds: string[];
-    gradeIds?: string[];
+    benefitSchemeIds?: string[];
     minDays?: number | null;
     maxDays?: number | null;
   },
 ) {
   const companyIds = [...new Set(p.companyIds.filter(Boolean))];
   const leaveTypeIds = [...new Set(p.leaveTypeIds.filter(Boolean))];
-  // Empty grade selection ⇒ the single wildcard grade (null), the pre-bb3938b9 shape.
-  const gradeIds: (string | null)[] = [...new Set((p.gradeIds ?? []).filter(Boolean))];
-  if (gradeIds.length === 0) gradeIds.push(null);
+  const benefitSchemeIds = [...new Set((p.benefitSchemeIds ?? []).filter(Boolean))];
   const minDays = p.minDays ?? null;
   const maxDays = p.maxDays ?? null;
   if (!p.templateId) throw new Error('Choose a template to assign');
@@ -370,10 +402,46 @@ export async function assignApprovalTemplate(
     if (!tpl) throw new Error('Template not found');
     if (!tpl.active) throw new Error('Activate the template before assigning it');
 
+    // The chosen schemes, resolved to the two rule dimensions they stand for. Read once, before any write.
+    const schemes = benefitSchemeIds.length
+      ? await tx
+          .select({
+            id: benefitScheme.id,
+            name: benefitScheme.name,
+            companyId: benefitScheme.companyId,
+            gradeGroupId: benefitScheme.gradeGroupId,
+            employmentType: benefitScheme.employmentType,
+          })
+          .from(benefitScheme)
+          .where(inArray(benefitScheme.id, benefitSchemeIds))
+      : [];
+    if (schemes.length !== benefitSchemeIds.length) throw new Error('Benefit scheme not found');
+    const ungrouped = schemes.filter((s) => s.gradeGroupId == null);
+    if (ungrouped.length) {
+      throw new Error(
+        `Give ${ungrouped.map((s) => `“${s.name}”`).join(', ')} a grade group before assigning an approval template to it`,
+      );
+    }
+    // Empty scheme selection ⇒ the single wildcard scope (null, null), the pre-22de47c4 shape.
+    type Scope = { schemeId: string | null; gradeGroupId: string | null; employmentType: EmploymentType | null };
+    const scopesFor = (companyId: string): Scope[] => {
+      if (schemes.length === 0) return [{ schemeId: null, gradeGroupId: null, employmentType: null }];
+      // A scheme belongs to ONE company; pairing it with another company's rows would write a scope that
+      // company has no employees in. Silently skipping is right here — the form offers the schemes of the
+      // chosen companies, so a mismatch only happens on a stale submit.
+      return schemes
+        .filter((s) => s.companyId === companyId)
+        .map((s) => ({
+          schemeId: s.id,
+          gradeGroupId: s.gradeGroupId,
+          employmentType: s.employmentType as EmploymentType,
+        }));
+    };
+
     const ruleIds: string[] = [];
     for (const companyId of companyIds) {
       for (const leaveTypeId of leaveTypeIds) {
-        for (const gradeId of gradeIds) {
+        for (const scope of scopesFor(companyId)) {
           const [existing] = await tx
             .select({ id: leaveApprovalPolicy.id, templateId: leaveApprovalPolicy.templateId })
             .from(leaveApprovalPolicy)
@@ -381,7 +449,7 @@ export async function assignApprovalTemplate(
               and(
                 eq(leaveApprovalPolicy.companyId, companyId),
                 eq(leaveApprovalPolicy.leaveTypeId, leaveTypeId),
-                assignmentBucketFilter(gradeId, minDays, maxDays),
+                assignmentBucketFilter(scope.gradeGroupId, scope.employmentType, minDays, maxDays),
               ),
             )
             .limit(1);
@@ -401,7 +469,8 @@ export async function assignApprovalTemplate(
                 tenantId: ctx.tenantId,
                 companyId,
                 leaveTypeId,
-                gradeId,
+                gradeGroupId: scope.gradeGroupId,
+                employmentType: scope.employmentType,
                 minDays,
                 maxDays,
                 templateId: p.templateId,
@@ -413,7 +482,9 @@ export async function assignApprovalTemplate(
             created = true;
           }
           ruleIds.push(ruleId);
-          // Per-row substrate event on the policy aggregate (reuse the rule events with before/after).
+          // Per-row substrate event on the policy aggregate (reuse the rule events with before/after). The
+          // scheme id rides along so the audit trail says WHICH scheme was assigned, not just the two
+          // dimensions it resolved to.
           await appendEvent(tx, {
             tenantId: ctx.tenantId,
             aggregateType: 'leave-approval-policy',
@@ -423,7 +494,9 @@ export async function assignApprovalTemplate(
             payload: {
               companyId,
               leaveTypeId,
-              gradeId,
+              benefitSchemeId: scope.schemeId,
+              gradeGroupId: scope.gradeGroupId,
+              employmentType: scope.employmentType,
               minDays,
               maxDays,
               before: existing ? { templateId: existing.templateId } : null,
@@ -440,7 +513,7 @@ export async function assignApprovalTemplate(
       aggregateId: p.templateId,
       eventType: 'leave-approval-template.assigned',
       actor: actorOf(ctx),
-      payload: { templateId: p.templateId, companyIds, leaveTypeIds, gradeIds, minDays, maxDays, ruleIds },
+      payload: { templateId: p.templateId, companyIds, leaveTypeIds, benefitSchemeIds, minDays, maxDays, ruleIds },
     });
     return { ruleIds };
   });

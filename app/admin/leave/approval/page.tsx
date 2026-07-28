@@ -4,7 +4,7 @@ import { listCompanies, listDepartments, listJobGrades, listLeaveTypes } from '@
 import { listBusinessUnits, listPositions } from '@/core/admin';
 import { getLeaveApprovalPolicy, getLeaveEscalationPolicy, isCompanyDefaultApprovalRule, listLeaveApprovalRules } from '@/core/leave-approval-policy';
 import { listApprovalTemplates, listTemplateAssignments } from '@/core/leave-approval-template';
-import { listGradeGroups } from '@/core/benefit-scheme';
+import { listBenefitSchemes, listGradeGroups } from '@/core/benefit-scheme';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveApprovalEditor } from '../../leave-approval/editor';
@@ -61,14 +61,17 @@ export default async function LeaveApprovalTabPage({
   const companies = all.filter((c) => scopeIds.includes(c.id));
   const companyIds = companies.map((c) => c.id);
 
-  const [leaveTypesAll, departmentsAll, positionsAll, businessUnitsAll, gradesAll, gradeGroupsAll] = await Promise.all([
-    listLeaveTypes(s),
-    companyIds.length ? listDepartments(s, { companyIds }) : Promise.resolve([]),
-    companyIds.length ? listPositions(s, { companyIds }) : Promise.resolve([]),
-    companyIds.length ? listBusinessUnits(s, { companyIds }) : Promise.resolve([]),
-    listJobGrades(s),
-    listGradeGroups(s),
-  ]);
+  const [leaveTypesAll, departmentsAll, positionsAll, businessUnitsAll, gradesAll, gradeGroupsAll, schemesAll] =
+    await Promise.all([
+      listLeaveTypes(s),
+      companyIds.length ? listDepartments(s, { companyIds }) : Promise.resolve([]),
+      companyIds.length ? listPositions(s, { companyIds }) : Promise.resolve([]),
+      companyIds.length ? listBusinessUnits(s, { companyIds }) : Promise.resolve([]),
+      listJobGrades(s),
+      listGradeGroups(s),
+      // 22de47c4 — the Assign Template employee scope is the benefit scheme, so the schemes come along.
+      listBenefitSchemes(s),
+    ]);
 
   const rows = await Promise.all(
     companies.map(async (c) => ({
@@ -163,13 +166,18 @@ export default async function LeaveApprovalTabPage({
     selectTemplate: t('selectTemplate'),
     selectCompanies: t('selectCompanies'),
     selectLeaveTypes: t('selectLeaveTypes'),
-    // bb3938b9 — Grade + Conditions criteria panels and their shared panel controls.
-    selectGrades: t('selectGrades'),
+    // bb3938b9 — the criteria panels and their shared panel controls; 22de47c4 made the employee-scope
+    // panel Benefit Schemes (and added the two badges that keep a pre-existing grade-scoped assignment,
+    // or an assignment whose scope names no scheme, visible instead of silently mislabelled).
+    selectBenefitSchemes: t('selectBenefitSchemes'),
     selectAll: t('selectAll'),
     deselectAll: t('deselectAll'),
     panelNoneMeansAll: t('panelNoneMeansAll'),
     panelPickAtLeastOne: t('panelPickAtLeastOne'),
-    noGrades: t('noGrades'),
+    noBenefitSchemes: t('noBenefitSchemes'),
+    schemeNoGradeGroup: t('schemeNoGradeGroup'),
+    legacyGradeScope: t('legacyGradeScope'),
+    schemeScopeUnknown: t('schemeScopeUnknown'),
     conditions: t('conditions'),
     addCondition: t('addCondition'),
     conditionOperator: t('conditionOperator'),
@@ -260,12 +268,27 @@ export default async function LeaveApprovalTabPage({
                 companyId: a.companyId,
                 leaveTypeId: a.leaveTypeId,
                 gradeId: a.gradeId,
+                gradeGroupId: a.gradeGroupId,
+                employmentType: a.employmentType,
                 minDays: a.minDays,
                 maxDays: a.maxDays,
               }))}
               companies={companies.map((c) => ({ id: c.id, label: c.name }))}
               leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
               grades={gradesAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` }))}
+              /* 22de47c4 — ACTIVE schemes of the companies in view: an archived scheme matches nobody
+                 (resolveEffectiveSchemeId ignores it), so assigning a template to one would look like a
+                 routing change that never fires. The label carries the grade group + employment type the
+                 assignment actually writes, beside the scheme's own name. */
+              schemes={schemesAll
+                .filter((sc) => sc.status === 'active' && companyIds.includes(sc.companyId))
+                .map((sc) => ({
+                  id: sc.id,
+                  companyId: sc.companyId,
+                  gradeGroupId: sc.gradeGroupId,
+                  employmentType: sc.employmentType,
+                  label: `${sc.name} — ${sc.gradeGroupName ?? t('anyScope')} · ${t(`employmentType_${sc.employmentType}` as 'employmentType_full_time')}`,
+                }))}
               companyMultiApproval={companyMultiApproval}
               actions={{
                 assign: assignApprovalTemplateAction,

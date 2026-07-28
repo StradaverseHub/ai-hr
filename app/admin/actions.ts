@@ -648,6 +648,12 @@ export async function updateLeavePolicyAction(formData: FormData) {
  * whole company scope so the untouched grades never silently drop to zero (ADR-0066 short-circuit); the
  * edited grade is recalculated in place. Everything is orchestrated over the existing createLeavePolicy /
  * updateLeavePolicy writers in core (no new writer primitive) — see saveServiceEntitlement.
+ *
+ * 9816a5ad UNMOUNTED it: Service Based Entitlements maintains BENEFIT SCHEMES now, so no screen posts here.
+ * Kept rather than deleted because it is the only writer that materialises a company's whole grade scope on
+ * first save — the ADR-0066 short-circuit guard test/service-based-entitlement.test.ts pins — and grade-level
+ * policies still resolve for anyone no scheme covers. Delete it together with core/saveServiceEntitlement if
+ * a later round retires grade-level entitlement outright.
  */
 export async function saveServiceEntitlementAction(formData: FormData) {
   const s = await getSession();
