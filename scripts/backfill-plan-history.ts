@@ -61,7 +61,31 @@ export async function backfillPlanHistory(db: Executor): Promise<{ planted: numb
     ON CONFLICT (feedback_request_id, revision) DO NOTHING
   `);
 
-  // 2. Post-deploy refutes. The reason IS in the event payload, so these words are genuinely recoverable.
+  // 2. Relabel a live push-back that was actually a post-deploy refute.
+  //
+  //    refuteDeployment moves the item to `contested` and writes the refute text into contest_reason, so
+  //    step 1 above faithfully recovers the WORDS but calls them 'contested'. That is the wrong label:
+  //    "you built the wrong thing" and "you shipped it and it missed" are different complaints, and this
+  //    table exists to keep the difference. Matched on the item's own reopened_count (>0 means it has
+  //    been through a deploy-and-return cycle) plus a refute event carrying that exact reason.
+  await db.execute(sql`
+    UPDATE feedback_plan_revision r
+       SET outcome = 'refuted'
+      FROM feedback_request fr
+     WHERE fr.id = r.feedback_request_id
+       AND r.outcome = 'contested'
+       AND fr.reopened_count > 0
+       AND EXISTS (
+         SELECT 1 FROM domain_event e
+          WHERE e.aggregate_type = 'feedback'
+            AND e.event_type = 'feedback.deployment.refuted'
+            AND e.aggregate_id = r.feedback_request_id
+            AND e.payload->>'reason' = r.outcome_reason
+       )
+  `);
+
+  // 3. Post-deploy refutes on versions that ARE still present. The reason IS in the event payload, so
+  //    these words are genuinely recoverable.
   //    They are attached to the revision named in the payload — which may not exist as a row, in which
   //    case the UPDATE simply matches nothing. That is correct: we know what was said but not what it
   //    answered, and guessing an attachment point would misattribute the complaint to the wrong plan.
@@ -79,7 +103,7 @@ export async function backfillPlanHistory(db: Executor): Promise<{ planted: numb
        AND e.payload->>'reason' IS NOT NULL
   `);
 
-  // 3. Report the gap out loud. A backfill that only prints its successes lets a partial history pass
+  // 4. Report the gap out loud. A backfill that only prints its successes lets a partial history pass
   //    for a complete one — the exact failure this table exists to prevent.
   const [gap] = (await db.execute(sql`
     SELECT
