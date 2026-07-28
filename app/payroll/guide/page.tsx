@@ -5,7 +5,6 @@ import { listCompanies } from '@/core/read';
 import { payrollReadiness, type PayrollReadiness, type ReadinessCheck } from '@/core/payroll-readiness';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
 import { Card, PageHeader } from '@/components/ui';
-import { PayrollTabs } from '@/components/payroll-tabs';
 
 /**
  * Payroll Workflow Guide (feedback 5db3ae48) — a GUIDED, clearly-sequenced end-to-end view over the
@@ -74,7 +73,6 @@ export default async function PayrollGuidePage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
-      <PayrollTabs active="guide" />
 
       <ol className="space-y-3">
         {phases.map((phase) => (

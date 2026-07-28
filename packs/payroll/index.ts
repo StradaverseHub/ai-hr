@@ -151,26 +151,56 @@
  * via `modulePackById('payroll')` and fails closed (D3) — and the country calculators already fail
  * closed on an unresolvable pack (D3, `countryPackInactive`). No entitlement machinery is built here.
  */
-import { Wallet } from 'lucide-react';
-import { registerPack, type ModulePack, type NavLinkDescriptor } from '../registry';
+import { ArrowLeftRight, Banknote, FileText, Settings2, Table2, Wallet, Workflow } from 'lucide-react';
+import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
 
-// The payroll sidebar presence, moved VERBATIM from components/sidebar.tsx at rung 7 — like claims'
-// config row this is a SINGLE flat row in the Administration group (not a collapsible node), so the
-// pack contributes `navLinks` (one group-tagged standalone row):
-//   - "/payroll" sat in the Administration group between Claims config and Analytics — the payroll
-//     workbench landing. The group is gated adminOnly wholesale, so the row carries no per-row flag
-//     (unchanged by the move). All payroll SUB-screens (config, transactions, reports, …) are reached
-//     from within /payroll, not the sidebar, so there is exactly one nav row.
-// href, labelKey and the Wallet icon ref are the sidebar's verbatim; only the mounting moved (the
-// sidebar places the row via the registry).
-const PAYROLL_NAV_LINKS: NavLinkDescriptor[] = [
-  { group: 'admin', href: '/payroll', labelKey: 'payroll', icon: Wallet },
-];
+/**
+ * The payroll sidebar presence. At rung 7 this was a SINGLE flat row (`navLinks`) pointing at the
+ * workbench landing, because every payroll sub-screen was reached from the module's own horizontal
+ * tab strip (components/payroll-tabs.tsx) instead of the sidebar.
+ *
+ * 1459e116 retires that tab strip: the reporter's complaint is that the strip crowds as payroll
+ * grows and eats screen space, and the fix is to put payroll on the fly-out every other multi-screen
+ * module already uses. So the pack now contributes a NODE in the same Administration group — the row
+ * is unchanged in placement (still between Claims config and Analytics, still relying on the group's
+ * wholesale adminOnly gate), it just opens a panel instead of navigating.
+ *
+ * The children are the retired tab strip's six destinations, hrefs VERBATIM so existing bookmarks
+ * keep working, reordered to the reporter's requested sequence (Workflow Guide before Payroll
+ * Process — read the guide, then run the payroll).
+ *
+ * WHY NO SECOND LEVEL. The reporter's tree nests Fixed/Individual under Transactions and the five
+ * config screens under Settings. The sidebar fly-out is deliberately ONE level deep
+ * (components/nav-flyout.tsx; NavChildDescriptor has no `children`), and deepening a nav contract
+ * shared by six modules is not this item's to make. The second tier is not lost — it already lives
+ * on the hub pages these rows lead to (/payroll/transactions renders the Fixed/Individual/TP1/zakat
+ * cards, /payroll/setup the config cards, /payroll/transaction-view its own sub-tabs), which is also
+ * where future payroll functions slot in without touching the sidebar at all.
+ *
+ * DELIBERATELY ABSENT: a Payroll Dashboard, Transaction Templates and Year-to-Date row. Those
+ * screens do not exist; the approved plan promises no menu entries that lead nowhere.
+ */
+const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
+  labelKey: 'payroll',
+  icon: Wallet,
+  group: 'admin',
+  children: [
+    // Guided end-to-end payroll workflow view (feedback 5db3ae48): signposts Phase 1→6 and surfaces
+    // config-level readiness; links OUT to the screens below rather than duplicating them.
+    { href: '/payroll/guide', labelKey: 'payrollGuide', icon: Workflow },
+    // The batch workbench — the pack's landing route, and what "/payroll" meant as a flat row.
+    { href: '/payroll', labelKey: 'payrollProcess', icon: Banknote },
+    { href: '/payroll/transactions', labelKey: 'payrollTransactions', icon: ArrowLeftRight },
+    { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView', icon: Table2 },
+    { href: '/payroll/reports', labelKey: 'payrollReports', icon: FileText },
+    { href: '/payroll/setup', labelKey: 'payrollSettings', icon: Settings2 },
+  ],
+};
 
 export const payrollPack: ModulePack = {
   id: 'payroll',
   kind: 'module',
-  navLinks: PAYROLL_NAV_LINKS,
+  navNodes: [PAYROLL_ADMIN_NAV],
   // Pack-owned satellite tables (D5/D11 criterion 2 — documentation, not DDL). Audited from
   // db/schema.ts 2026-07-24. The jurisdiction-neutral payroll PROCESSING tables + the generic
   // statutory-registration/report-run tables this pack's boundary files own. NOT here (see the

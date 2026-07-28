@@ -102,6 +102,12 @@
     "leaveConfig": "Konfigurasi cuti",
     "holidays": "Cuti umum",
     "payroll": "Gaji",
+    "payrollGuide": "Panduan Aliran Kerja",
+    "payrollProcess": "Proses Gaji",
+    "payrollTransactions": "Transaksi",
+    "payrollTransactionView": "Paparan Transaksi",
+    "payrollReports": "Laporan",
+    "payrollSettings": "Tetapan",
     "auditTrail": "Jejak audit",
     "usersRoles": "Pengguna & peranan",
     "collapse": "Kuncupkan",
@@ -5122,15 +5128,6 @@
       "action_other": "Peristiwa",
       "highImpact": "Impak tinggi",
       "at": "Pada"
-    },
-    "payrollTabs": {
-      "batches": "Proses Gaji",
-      "guide": "Panduan Aliran Kerja",
-      "reports": "Laporan",
-      "transactions": "Transaksi",
-      "view": "Paparan Transaksi",
-      "setup": "Tetapan",
-      "configuration": "Konfigurasi"
     },
     "printButton": {
       "print": "Cetak / Simpan PDF"

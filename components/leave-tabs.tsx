@@ -3,9 +3,10 @@ import Link from 'next/link';
 
 /**
  * Sub-navigation within the Leave Settings module (0d147b78 — Leave Settings Reorganization).
- * Mirrors `components/payroll-tabs.tsx` exactly (same markup + active-tab styling) so the leave
- * admin surface reads consistently with Payroll: a row of tabs across the top instead of one long
- * scroll. Each tab is a real sub-route (server component) that loads only its own data.
+ * The house tab-strip idiom (same markup + active-tab styling): a row of tabs across the top instead
+ * of one long scroll, each a real sub-route (server component) that loads only its own data. It was
+ * modelled on the Payroll strip, which 1459e116 retired in favour of the sidebar flyout — this file is
+ * now the reference copy the statutory / system-labels strips point at.
  *
  * 1e4eb8af — the Application Rules tab is GONE. Its two cards had no home of their own left: Leave Year
  * Configuration moved into each leave type's Custom Settings step (beside that type's Leave Year Type

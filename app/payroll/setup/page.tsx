@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { Card, PageHeader } from '@/components/ui';
-import { PayrollTabs } from '@/components/payroll-tabs';
 
 /**
  * Feature 2.0 — Payroll Configuration landing (information architecture over existing config surfaces).
@@ -40,7 +39,6 @@ export default async function PayrollSetupPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
-      <PayrollTabs active="setup" />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((c) => (

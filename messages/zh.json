@@ -102,6 +102,12 @@
     "leaveConfig": "休假配置",
     "holidays": "公共假期",
     "payroll": "薪资",
+    "payrollGuide": "工作流程指南",
+    "payrollProcess": "薪资流程",
+    "payrollTransactions": "交易",
+    "payrollTransactionView": "交易查询",
+    "payrollReports": "报表",
+    "payrollSettings": "设置",
     "auditTrail": "审计日志",
     "usersRoles": "用户与角色",
     "collapse": "收起",
@@ -5122,15 +5128,6 @@
       "action_other": "事件",
       "highImpact": "高影响",
       "at": "时间"
-    },
-    "payrollTabs": {
-      "batches": "薪资流程",
-      "guide": "工作流程指南",
-      "reports": "报表",
-      "transactions": "交易",
-      "view": "交易查询",
-      "setup": "设置",
-      "configuration": "配置"
     },
     "printButton": {
       "print": "打印 / 保存 PDF"

@@ -102,6 +102,12 @@
     "leaveConfig": "Leave config",
     "holidays": "Holidays",
     "payroll": "Payroll",
+    "payrollGuide": "Workflow Guide",
+    "payrollProcess": "Payroll Process",
+    "payrollTransactions": "Transactions",
+    "payrollTransactionView": "Transaction View",
+    "payrollReports": "Reports",
+    "payrollSettings": "Settings",
     "auditTrail": "Audit trail",
     "usersRoles": "Users & roles",
     "collapse": "Collapse",
@@ -5122,15 +5128,6 @@
       "action_other": "Event",
       "highImpact": "High impact",
       "at": "At"
-    },
-    "payrollTabs": {
-      "batches": "Payroll Process",
-      "guide": "Workflow Guide",
-      "reports": "Reports",
-      "transactions": "Transactions",
-      "view": "Transaction View",
-      "setup": "Settings",
-      "configuration": "Configuration"
     },
     "printButton": {
       "print": "Print / Save PDF"

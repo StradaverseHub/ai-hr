@@ -7,7 +7,6 @@ import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { employeeLabel } from '@/lib/employee-code';
-import { PayrollTabs } from '@/components/payroll-tabs';
 import { saveZakatElectionAction } from './election-actions';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
@@ -131,7 +130,6 @@ export default async function ZakatTransactionPage({
         title={t('zakat.title')}
         description={t('zakat.subtitle')}
       />
-      <PayrollTabs active="transactions" />
 
       {!typedComponentsOn && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">

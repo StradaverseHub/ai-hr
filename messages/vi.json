@@ -102,6 +102,12 @@
     "leaveConfig": "Cấu hình nghỉ phép",
     "holidays": "Ngày lễ",
     "payroll": "Bảng lương",
+    "payrollGuide": "Hướng dẫn quy trình",
+    "payrollProcess": "Quy trình tính lương",
+    "payrollTransactions": "Giao dịch",
+    "payrollTransactionView": "Xem giao dịch",
+    "payrollReports": "Báo cáo",
+    "payrollSettings": "Cài đặt",
     "auditTrail": "Nhật ký kiểm toán",
     "usersRoles": "Người dùng & vai trò",
     "collapse": "Thu gọn",
@@ -5122,15 +5128,6 @@
       "action_other": "Sự kiện",
       "highImpact": "Tác động cao",
       "at": "Lúc"
-    },
-    "payrollTabs": {
-      "batches": "Quy trình tính lương",
-      "guide": "Hướng dẫn quy trình",
-      "reports": "Báo cáo",
-      "transactions": "Giao dịch",
-      "view": "Xem giao dịch",
-      "setup": "Cài đặt",
-      "configuration": "Cấu hình"
     },
     "printButton": {
       "print": "In / Lưu PDF"

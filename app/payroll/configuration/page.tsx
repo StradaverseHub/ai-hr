@@ -2,7 +2,6 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { Button, Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
-import { PayrollTabs } from '@/components/payroll-tabs';
 import { StatutoryTabs } from '@/components/statutory-tabs';
 import { StatutoryConfigForm } from '@/components/statutory-config-form';
 import { STATUTORY_BODIES, type StatutoryBody } from '@/localization/my/statutory-tables';
@@ -65,7 +64,6 @@ export default async function StatutoryConfigPage({
         {/* Config page lives under the Settings tab (arrived via Settings -> Statutory Configuration);
             URL intentionally stays /payroll/configuration so existing bookmarks/actions BASE keep working
             — do not repoint to /payroll/setup. */}
-        <PayrollTabs active="setup" />
         <StatutoryTabs active="overview" />
         <ErrorBanner message={error} />
         <Card className="border-amber-300/60 bg-amber-50/50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
@@ -93,7 +91,6 @@ export default async function StatutoryConfigPage({
       {/* Config page lives under the Settings tab (arrived via Settings -> Statutory Configuration);
           URL intentionally stays /payroll/configuration so existing bookmarks/actions BASE keep working
           — do not repoint to /payroll/setup. */}
-      <PayrollTabs active="setup" />
       <StatutoryTabs active="overview" />
       <ErrorBanner message={error} />
 
