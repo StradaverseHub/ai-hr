@@ -364,6 +364,15 @@
       "used": "{taken} digunakan",
       "usedWithPending": "{taken} digunakan · {pending} tertangguh",
       "noLeaveRecords": "Tiada rekod cuti.",
+      "leaveSummary": {
+        "title": "Ringkasan Cuti",
+        "viewCalendar": "Lihat Kalendar",
+        "colType": "Jenis Cuti",
+        "colBalance": "Baki",
+        "colPending": "Menunggu",
+        "colUpcoming": "Akan Datang",
+        "days": "{days} Hari"
+      },
       "compensation": "Gaji Asas",
       "compMeta": "asas / bln · sejak {validFrom}",
       "noCompensation": "Tiada pampasan ditetapkan.",

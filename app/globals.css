@@ -215,6 +215,22 @@ body {
   }
 }
 
+/* Leave Summary → Leave Calendar arrival highlight (item 726ac8c2): the "View Calendar" action on a
+   subordinate's Personnel profile lands on the dashboard calendar with that employee's name cell
+   wearing this class for 3s. Same reduce-motion convention as .approvals-attention above: the BASE
+   signal is a STATIC tint + outline that survives the global reduce-motion reset for the full window,
+   and the shake is layered sugar the reset collapses — which is exactly the "still highlight instead
+   of a shake" the plan promised anyone who has reduced motion turned on. The reporter asked for a 3s
+   shake, so the shared 0.5s `shake` keyframes run 6 times. Do NOT add rules for this inside either
+   reduce-motion block. */
+.calendar-focus-attention {
+  background-color: color-mix(in srgb, var(--ring) 14%, transparent);
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+  animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) 6;
+}
+
 /* Clean print output for statutory documents (EA statement, etc.) — hide app
    chrome and flatten the floating shell so the full document prints. */
 @media print {

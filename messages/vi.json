@@ -364,6 +364,15 @@
       "used": "đã dùng {taken}",
       "usedWithPending": "đã dùng {taken} · {pending} chờ duyệt",
       "noLeaveRecords": "Không có bản ghi nghỉ phép.",
+      "leaveSummary": {
+        "title": "Tóm tắt nghỉ phép",
+        "viewCalendar": "Xem lịch",
+        "colType": "Loại nghỉ phép",
+        "colBalance": "Số dư",
+        "colPending": "Chờ duyệt",
+        "colUpcoming": "Sắp tới",
+        "days": "{days} ngày"
+      },
       "compensation": "Lương cơ bản",
       "compMeta": "cơ bản / tháng · từ {validFrom}",
       "noCompensation": "Chưa thiết lập lương thưởng.",

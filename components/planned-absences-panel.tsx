@@ -57,6 +57,9 @@ export function PlannedAbsencesPanel({
   selfCancelAction,
   selfCancelPillLabel,
   approvalPillLabel,
+  // item 726ac8c2: the person the Leave Summary's "View Calendar" action deep-linked to. Passed straight
+  // through to the grid, which owns the highlight (it alone knows whether the row is in the collapsed set).
+  focusPersonId,
 }: {
   title: string;
   legend: ReactNode;
@@ -79,6 +82,7 @@ export function PlannedAbsencesPanel({
   selfCancelAction?: (fd: FormData) => void | Promise<void>;
   selfCancelPillLabel?: string;
   approvalPillLabel?: string;
+  focusPersonId?: string | null;
 }) {
   const [view, setView] = useState<'my' | 'team'>(initialView);
   const [calView, setCalView] = useState<CalendarView>(initialCalView);
@@ -227,6 +231,9 @@ export function PlannedAbsencesPanel({
               selfCancelAction={selfCancelAction}
               selfCancelPillLabel={selfCancelPillLabel}
               approvalPillLabel={approvalPillLabel}
+              // item 726ac8c2: only the TEAM view can hold someone else's row, so a stale ?focus= never
+              // paints anything while the viewer is looking at their own leave.
+              focusPersonId={effectiveView === 'team' ? focusPersonId : null}
             />
           </div>
           {legend}

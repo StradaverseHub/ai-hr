@@ -27,6 +27,7 @@ import { PlannedAbsences } from '@/components/planned-absences';
 import { LeaveBalanceCard } from '@/components/leave-balance-card';
 import { requestLeaveCancellationAction, adminCancelLeaveAction, cancelOwnLeaveAction } from '@/app/leave/actions';
 import { resolveCalendarFetchWindow, resolveViewPreference } from '@/lib/leave-calendar-range';
+import { CALENDAR_FOCUS_PARAM, parseCalendarFocus } from '@/lib/calendar-focus';
 import {
   type DashboardCardId,
   pendingTasksCount,
@@ -120,7 +121,7 @@ function orderTree(rows: BreakdownRow[]) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ abs?: string; view?: string; cal?: string }>;
+  searchParams: Promise<{ abs?: string; view?: string; cal?: string; focus?: string }>;
 }) {
   const t = await getTranslations('dashboard');
   // Employee Status sync (5afcda91): the Onboarding card badge shows the system-derived Employee Status
@@ -153,6 +154,10 @@ export default async function DashboardPage({
   // reporting team. The switch only renders when the viewer actually has direct reports (resolved below).
   // eae550e9 step 3: this only SEEDS the client-side toggle — switching does zero network now.
   const absView = sp.view === 'team' ? 'team' : 'my';
+  // item 726ac8c2: ?focus=<personId> — the employee a manager deep-linked to from the Leave Summary on
+  // their Personnel profile. Validated (uuid shape) before it reaches the client; the calendar highlights
+  // the matching row for 3s and silently ignores an id it has no row for.
+  const absFocusPersonId = parseCalendarFocus(sp[CALENDAR_FOCUS_PARAM]);
   const since60 = new Date(todayMs - 60 * 86_400_000).toISOString().slice(0, 10);
 
   // R17 e6f0384c — role-based summary cards. Resolve the viewer's dashboard role FIRST (cheap: own
@@ -355,6 +360,7 @@ export default async function DashboardPage({
         // above) while /approvals scopes by the viewer's decision reach — for a manager these line up
         // (their reports' requests), and an admin sees everything on both sides.
         viewerCanApprove={admin || managerRole}
+        focusPersonId={absFocusPersonId}
       />
     </div>
   );

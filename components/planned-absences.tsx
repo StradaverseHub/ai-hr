@@ -98,6 +98,9 @@ export async function PlannedAbsences({
   // deep-link arrow to the matching /approvals section. Own rows are excluded (the Approvals page filters
   // the viewer's own cancellations out entirely, so linking there would be a dead end).
   viewerCanApprove = false,
+  // item 726ac8c2: the person id the Leave Summary's "View Calendar" action deep-linked to (?focus=),
+  // already validated by parseCalendarFocus. null ⇒ nothing to highlight.
+  focusPersonId = null,
 }: {
   rows: Row[];
   todayIso: string;
@@ -111,6 +114,7 @@ export async function PlannedAbsences({
   adminCancelAction?: (fd: FormData) => void | Promise<void>;
   selfCancelAction?: (fd: FormData) => void | Promise<void>;
   viewerCanApprove?: boolean;
+  focusPersonId?: string | null;
 }) {
   const t = await getTranslations('components.plannedAbsences');
   const tLeave = await getTranslations('leave');
@@ -285,6 +289,7 @@ export async function PlannedAbsences({
         selfCancelAction={selfCancelAction}
         selfCancelPillLabel={tLeave('selfCancelPillAffordanceLabel')}
         approvalPillLabel={tLeave('approvalPillAffordanceLabel')}
+        focusPersonId={focusPersonId}
       />
     </Card>
   );
