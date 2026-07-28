@@ -20,7 +20,16 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { updateLeaveType } from '../core/admin';
 import { listLeaveTypes, leaveBalances, leaveEntitlementBreakdown } from '../core/read';
-import { resolveEssView, ESS_VIEW_COMPONENT_KEYS } from '../core/ess-view';
+import {
+  resolveEssView,
+  isEssViewComponentKey,
+  ESS_VIEW_COMPONENT_KEYS,
+  type EssViewComponentKey,
+} from '../core/ess-view';
+import {
+  ENTITLEMENT_PANEL_SECTIONS,
+  ESS_VIEW_CHECKLIST_GROUPS,
+} from '../components/leave/entitlement-panel-config';
 import type { SessionContext } from '../db/client';
 import {
   adminCtx,
@@ -113,6 +122,67 @@ describe('resolveEssView — default & partial semantics', () => {
     const v = resolveEssView({ upcomingApprovedLeave: false } as Record<string, boolean>);
     expect(Object.keys(v).sort()).toEqual([...ESS_VIEW_COMPONENT_KEYS].sort());
     for (const k of ESS_VIEW_COMPONENT_KEYS) expect(v[k]).toBe(true);
+  });
+});
+
+/**
+ * Feedback 1f6fd6d8 — the configuration screen and the employee panel must be ONE list.
+ *
+ * The reporter's complaint was that the Employee Leave View Configuration still offered field names the
+ * redesigned Leave Balance Summary no longer shows. The defect underneath is a two-way drift, and both
+ * directions are equally broken: a key with no row is a switch that does nothing, and a gated row with no key
+ * is a row nobody can reach. Neither shows up in any behavioural test, because a dead switch behaves exactly
+ * like a live one that happens to be on. So the property is asserted directly against the descriptor.
+ */
+describe('1f6fd6d8 — every switch gates a row, every gated row has a switch', () => {
+  const sectionKeys = new Set(
+    ENTITLEMENT_PANEL_SECTIONS.flatMap((s) => [
+      s.essKey,
+      s.itemsEssKey,
+      ...(s.fields ?? []).map((f) => f.essKey),
+    ]).filter((k): k is EssViewComponentKey => k != null),
+  );
+
+  it('no component key is orphaned — each one gates a section, a field or an itemised block', () => {
+    const orphans = ESS_VIEW_COMPONENT_KEYS.filter((k) => !sectionKeys.has(k));
+    expect(orphans).toEqual([]);
+  });
+
+  it('the three obsolete keys are gone, and nothing else was dropped with them', () => {
+    for (const dead of ['entitlementToDate', 'expiredBroughtForward', 'transactionHistory']) {
+      expect(ESS_VIEW_COMPONENT_KEYS as readonly string[]).not.toContain(dead);
+    }
+    // The keys the reporter's revised summary names must all still be configurable.
+    for (const live of ['ytdEntitled', 'broughtForward', 'adjustment', 'taken', 'pendingApproval', 'forfeited', 'carryForwardExpiry', 'available']) {
+      expect(ESS_VIEW_COMPONENT_KEYS as readonly string[]).toContain(live);
+    }
+  });
+
+  it('every ess-gated key the panel references is a REAL component key (no typo gates nothing)', () => {
+    for (const k of sectionKeys) expect(isEssViewComponentKey(k)).toBe(true);
+  });
+
+  it('the admin checklist is the panel\'s own list, in the panel\'s own order, with no leftover group', () => {
+    // Groups follow ascending section order …
+    const order = ENTITLEMENT_PANEL_SECTIONS.slice().sort((a, c) => a.order - c.order).map((s) => s.key);
+    const groupKeys = ESS_VIEW_CHECKLIST_GROUPS.map((g) => g.key);
+    expect(groupKeys).toEqual(order.filter((k) => groupKeys.includes(k)));
+    // … and the trailing "Other" bucket is empty now that no key is orphaned.
+    expect(groupKeys).not.toContain('other');
+    // Together the groups cover every key exactly once.
+    const flat = ESS_VIEW_CHECKLIST_GROUPS.flatMap((g) => g.keys);
+    expect(flat.slice().sort()).toEqual([...ESS_VIEW_COMPONENT_KEYS].sort());
+  });
+
+  it('every ungated rendered row is ungated ON PURPOSE (the documented two)', () => {
+    // Section §8 reconciliation is never gated — a sum an HR toggle could half-hide would not add up — and
+    // §1's Balance is the headline reconciled figure. Any OTHER field without an essKey must sit inside a
+    // section that carries one, or it is a row no configuration can reach.
+    const unreachable = ENTITLEMENT_PANEL_SECTIONS.filter((s) => s.key !== 'reconciliation')
+      .flatMap((s) => (s.fields ?? []).map((f) => ({ section: s, field: f })))
+      .filter(({ section, field }) => field.essKey == null && section.essKey == null)
+      .map(({ section, field }) => `${section.key}.${field.key}`);
+    expect(unreachable).toEqual(['summary.balance']);
   });
 });
 
@@ -228,20 +298,34 @@ describe('read layer — resolved essView threaded onto balances & breakdown', (
 
   it('leaveEntitlementBreakdown carries the resolved essView (missing ⇒ visible, false honoured)', async () => {
     const { ctx, employmentId } = await hireEmployeeCtx();
-    const ltId = await leaveType(uniqCode(), { transactionHistory: false });
+    // 1f6fd6d8 re-pointed this from `transactionHistory`, which is no longer a component key (its §6 section
+    // was removed universally by 1dd4d827, so the switch gated nothing). `forfeited` is the equivalent case
+    // under the new list: a real §7 row with its own toggle.
+    const ltId = await leaveType(uniqCode(), { forfeited: false });
     const bd = await leaveEntitlementBreakdown(ctx, employmentId, ltId, '2026-06-15');
     expect(bd).not.toBeNull();
-    expect(bd!.essView.transactionHistory).toBe(false);
+    expect(bd!.essView.forfeited).toBe(false);
     expect(bd!.essView.available).toBe(true);
+  });
+
+  it('a legacy stored toggle for a REMOVED key is ignored, and the tenant\'s other choices survive', async () => {
+    // The migration story for 1f6fd6d8: a tenant who had ticked things before the three dead keys went away
+    // must not lose the rest of their configuration, and the dead key must not reappear as a resolved field.
+    const { ctx, employmentId } = await hireEmployeeCtx();
+    const ltId = await leaveType(uniqCode(), { transactionHistory: false, entitlementToDate: false, taken: false });
+    const bd = await leaveEntitlementBreakdown(ctx, employmentId, ltId, '2026-06-15');
+    expect(bd!.essView.taken).toBe(false); // the surviving choice is honoured
+    expect('transactionHistory' in bd!.essView).toBe(false);
+    expect('entitlementToDate' in bd!.essView).toBe(false);
   });
 });
 
 describe('gating contract — /me gates, admin/HR does not', () => {
   it('applyEssConfig=false ⇒ every component shows even when the config hides it (admin/HR view)', () => {
-    const essView = resolveEssView({ available: false, transactionHistory: false });
+    const essView = resolveEssView({ available: false, forfeited: false });
     // Admin passes applyEssConfig=false — nothing is ever hidden.
     expect(show(false, essView, 'available')).toBe(true);
-    expect(show(false, essView, 'transactionHistory')).toBe(true);
+    expect(show(false, essView, 'forfeited')).toBe(true);
   });
 
   it('applyEssConfig=true ⇒ a hidden component is gated out, a visible one stays (the /me view)', () => {

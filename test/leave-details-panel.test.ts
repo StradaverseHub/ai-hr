@@ -436,7 +436,11 @@ describe('Admin ESS-view checklist mirrors the employee panel sections (feedback
       .filter((s) => s.essKey != null || (s.fields ?? []).some((f) => f.essKey != null))
       .map((s) => s.key);
     const groupKeys = ESS_VIEW_CHECKLIST_GROUPS.map((g) => g.key);
-    expect(groupKeys).toEqual([...sectionKeys, 'other']);
+    // No trailing 'other' since feedback 1f6fd6d8: the keys that used to land there either gated nothing at
+    // all (removed from the allow-list) or now carry the §7 field they name. The bucket itself stays in the
+    // builder — it is what would make a FUTURE orphan visible instead of unreachable — but it is empty, and
+    // the builder drops empty groups.
+    expect(groupKeys).toEqual(sectionKeys);
     // Section groups reuse the panel's OWN heading key; only the orphan group has none (admin-side label).
     for (const g of ESS_VIEW_CHECKLIST_GROUPS) {
       if (g.key === 'other') expect(g.labelKey).toBeNull();
@@ -444,18 +448,20 @@ describe('Admin ESS-view checklist mirrors the employee panel sections (feedback
     }
   });
 
-  it('current grouping reads exactly like the panel: summary → calcBreakdown → utilization → adjustments → other', () => {
+  it('current grouping reads exactly like the panel: summary → calcBreakdown → utilization → adjustments', () => {
+    // Feedback 1f6fd6d8. The six keys that used to sit in a trailing "Other" bucket were the reporter's
+    // complaint made concrete: a configuration list that no longer described the summary. Three of them
+    // (entitlementToDate, expiredBroughtForward, transactionHistory) gated rows that had already been removed
+    // from the product and left the allow-list; the other three now hang off the §7 rows they name, so the
+    // checklist is the panel's list in the panel's order, with nothing left over.
     expect(ESS_VIEW_CHECKLIST_GROUPS.map((g) => ({ key: g.key, keys: g.keys }))).toEqual([
       { key: 'summary', keys: ['ytdEntitled', 'taken', 'pendingApproval', 'available'] },
-      { key: 'calcBreakdown', keys: ['entitlementCalcBreakdown'] },
+      {
+        key: 'calcBreakdown',
+        keys: ['entitlementCalcBreakdown', 'broughtForward', 'carryForwardExpiry', 'forfeited'],
+      },
       { key: 'utilization', keys: ['unplanned', 'overutilized'] },
       { key: 'adjustments', keys: ['adjustment'] },
-      // Keys no panel section references (they gate other surfaces, e.g. the balance-table columns) are kept
-      // configurable under "Other" so nothing is orphaned by the regrouping.
-      {
-        key: 'other',
-        keys: ['entitlementToDate', 'broughtForward', 'expiredBroughtForward', 'carryForwardExpiry', 'forfeited', 'transactionHistory'],
-      },
     ]);
   });
 

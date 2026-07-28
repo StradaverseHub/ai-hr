@@ -359,8 +359,13 @@ describe('37a1141e: Carried Forward → Brought Forward (English labels only)', 
   it('the panel no longer shows one figure under two names on the same screen', () => {
     // The breakdown row and the reconciliation row both select breakdown.broughtForward; before this item
     // one was labelled "Carried forward" and the other "Brought forward".
+    // Asserted as three separate properties of the row rather than one literal line: 1f6fd6d8 added an
+    // essKey to it (the toggle that names Brought Forward gated nothing before), and what this item pinned is
+    // the label/source pairing, not the exact character sequence.
     const cfg = read('components/leave/entitlement-panel-config.ts');
-    expect(cfg).toContain("{ key: 'carriedForward', labelKey: 'carriedForward', select: (d) => d.breakdown.broughtForward }");
+    const row = cfg.split('\n').find((l) => l.includes("key: 'carriedForward'"))!;
+    expect(row).toContain("labelKey: 'carriedForward'");
+    expect(row).toContain('select: (d) => d.breakdown.broughtForward');
     expect(at('leave.breakdown.carriedForward')).toBe(at('leave.breakdown.reconcile.broughtForward'));
   });
 

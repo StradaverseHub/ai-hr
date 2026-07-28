@@ -4171,9 +4171,7 @@
         "help": "Choose which entitlement and balance figures employees see for this leave type in My Profile → Leave, and explain each one in the same place: tick an item and its Description and Formula fields appear beside it — employees see that text when they hover the item's info icon. Unticked items are hidden in self-service only; HR always sees everything. Explanations change wording only, never any leave figure.",
         "available": "Available",
         "taken": "Taken",
-        "entitlementToDate": "Entitlement to Date",
         "broughtForward": "Brought Forward",
-        "expiredBroughtForward": "Expired Brought Forward",
         "unplanned": "Unplanned",
         "adjustment": "Adjustment",
         "overutilized": "Overutilized",
@@ -4182,7 +4180,6 @@
         "carryForwardExpiry": "Brought Forward Expiry Date",
         "forfeited": "Forfeited Balance",
         "groupOther": "Other",
-        "transactionHistory": "Transaction History",
         "entitlementCalcBreakdown": "Entitlement Calculation Breakdown"
       },
       "dayTypeInclusion": {

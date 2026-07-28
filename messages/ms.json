@@ -4134,9 +4134,7 @@
         "help": "Pilih angka kelayakan dan baki yang dilihat pekerja untuk jenis cuti ini di Profil Saya → Cuti, dan terangkan setiap satu di tempat yang sama: tanda satu item dan medan Penerangan serta Formula akan muncul di sebelahnya — pekerja melihat teks itu apabila menuding ikon maklumat item tersebut. Item yang tidak ditanda disembunyikan dalam layan diri sahaja; HR sentiasa melihat semuanya. Penerangan hanya mengubah teks, bukan sebarang angka cuti.",
         "available": "Tersedia",
         "taken": "Diambil",
-        "entitlementToDate": "Kelayakan Hingga Kini",
         "broughtForward": "Dibawa Ke Hadapan",
-        "expiredBroughtForward": "Bawa Ke Hadapan Luput",
         "unplanned": "Tidak Dirancang",
         "adjustment": "Pelarasan",
         "overutilized": "Terlebih Guna",
@@ -4145,7 +4143,6 @@
         "carryForwardExpiry": "Tarikh Luput Bawa Ke Hadapan",
         "forfeited": "Baki Dilucuthak",
         "groupOther": "Lain-lain",
-        "transactionHistory": "Sejarah Transaksi",
         "entitlementCalcBreakdown": "Pecahan Pengiraan Kelayakan"
       },
       "dayTypeInclusion": {
