@@ -3902,7 +3902,6 @@
       "eligibilityMinServiceSuffix": "tháng",
       "eligibilitySummaryOnly": "Chỉ {who}",
       "eligibilitySummaryService": "≥ {n} {unit} thâm niên",
-      "eligibilitySummaryOr": "hoặc",
       "eligibilityMultiHint": "Chọn một hoặc nhiều; để trống để cho phép tất cả mọi người.",
       "eligibilityProbationLabel": "Trạng thái thử việc",
       "eligibilityProbationNone": "Không giới hạn",

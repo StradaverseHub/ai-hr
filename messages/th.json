@@ -3902,7 +3902,6 @@
       "eligibilityMinServiceSuffix": "เดือน",
       "eligibilitySummaryOnly": "{who} เท่านั้น",
       "eligibilitySummaryService": "อายุงาน ≥ {n} {unit}",
-      "eligibilitySummaryOr": "หรือ",
       "eligibilityMultiHint": "เลือกอย่างน้อยหนึ่งรายการ เว้นว่างไว้เพื่ออนุญาตทุกคน",
       "eligibilityProbationLabel": "สถานะทดลองงาน",
       "eligibilityProbationNone": "ไม่มีข้อจำกัด",

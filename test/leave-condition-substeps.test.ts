@@ -1,5 +1,8 @@
 /**
- * Restructure Leave Condition Secondary Workflow (feedback 08bc6841).
+ * Restructure Leave Condition Secondary Workflow (feedback 08bc6841), plus the two layout follow-ups the
+ * reporter filed against the result: 165baee5 (Criteria configurable in place, no "Edit rules" hop) and
+ * f6d3be0b (Leave Application Rules fills the panel instead of stranding whitespace). Both are arrangement
+ * only — every form below keeps its fields, tri-state marker, validation and save behaviour.
  *
  * The Condition step (storage key 'ess'; step 4 of the c979aa8b workspace flow, step 2 since b8fcae73
  * dropped Eligibility and reordered the walk) becomes a guided
@@ -13,11 +16,12 @@
  * save behaviour):
  *  - Criteria: the eligibility rules moved here from the main Eligibility step — gender / marital
  *    ChipMultiSelects, min-service (value + unit), probation — same eligibility=1 marker, same
- *    updateTypeAction, values untouched. That left the Eligibility step holding only entitlement policies,
+ *    updateTypeAction, values untouched; 165baee5 later made them render live instead of behind an
+ *    "Edit rules" toggle. That left the Eligibility step holding only entitlement policies,
  *    which is why b8fcae73 later removed the step outright and moved the policies timeline into the
  *    Entitlement step's Company Entitlements sub-step (see leave-entitlement-substeps.test.ts).
- *  - Leave Application Rules: the SEVEN existing rule groups re-laid as a responsive card grid
- *    (grid-cols-1 md:grid-cols-2 xl:grid-cols-3) in the existing source order — durations, document,
+ *  - Leave Application Rules: the SEVEN existing rule groups re-laid as a responsive card flow
+ *    (f6d3be0b: balanced columns-1 md:columns-2 xl:columns-3) in the existing source order — durations, document,
  *    negativeBalance, backdating (EMERGENCY-hidden), minAdvance (EMERGENCY-hidden), duplicatePolicy,
  *    dayTypeInclusion — each group one card with its own edit marker so saves stay per-group. PLUS the
  *    company-wide Half-Day Deduction card relocated from the Application Rules tab (single home now):
@@ -114,8 +118,8 @@ describe('08bc6841 · Criteria — the eligibility rules moved from the Eligibil
       'name="minServiceMonths"',
       'name="minServiceUnit"',
       'name="probation"',
-      // 0c15db78: the non-edit view is now the criteria table, not the one-line eligibilitySummary().
-      'criteriaRows()',
+      // 165baee5: every control renders unconditionally — there is no non-edit view left to fall back to.
+      'grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3',
     ]) {
       expect(criteria.includes(needle), `${needle} inside criteria`).toBe(true);
     }
@@ -137,32 +141,56 @@ describe('08bc6841 · Criteria — the eligibility rules moved from the Eligibil
 });
 
 /**
- * 0c15db78 · Display Secondary Step 1 Criteria Directly — the four eligibility rules render as a labelled
- * two-column table the moment the Criteria sub-step opens, instead of a condensed one-line summary that
- * pushed the reader into "Edit rules" to see each rule. Presentation only: no schema, no service, no new
- * translation keys (every label and value reuses a key the edit form already ships in all 6 locales).
+ * 165baee5 · Enhance Leave Condition Configuration Display Layout — supersedes 0c15db78.
+ *
+ * 0c15db78 made the criteria READABLE without a click by rendering a read-only two-column table over a
+ * criteriaRows() helper, with "Edit rules" still swapping in the form to CHANGE anything. 165baee5 removes
+ * that last hop: the configurable controls themselves render the moment the Criteria sub-step opens, laid
+ * out as one labelled control per criterion on a responsive grid (marital status, gender, minimum service,
+ * probation, then the eight Organisation Assignment fields). The read-only table and its helper are gone —
+ * they described exactly the values the live controls now show.
+ *
+ * Presentation only: same single <form>, same eligibility=1 tri-state marker, same updateTypeAction, no
+ * schema and no change to how eligibility is evaluated. Saving stays an EXPLICIT Save — auto-saving each
+ * dropdown would let a mis-click silently change who may take leave. No new translation keys.
  */
-describe('0c15db78 · Criteria — the four rules shown directly, no "Edit rules" click', () => {
-  const criteriaRowsBody = () => {
-    const start = panelSrc.indexOf('const criteriaRows =');
-    expect(start, 'criteriaRows() helper exists').toBeGreaterThan(-1);
-    return panelSrc.slice(start, panelSrc.indexOf('\n  };', start));
-  };
-
-  it('renders the non-edit view as a headerless two-column table over criteriaRows()', () => {
+describe('165baee5 · Criteria — the configurable fields shown directly, no "Edit rules" hop', () => {
+  it('renders ONE always-live form: no edit-mode toggle, no read-only summary to fall back to', () => {
     const criteria = subStepSlice(essSegment(), 'criteria');
-    // The always-on table replaced the summary div; the branch is still gated on editingEligibility so
-    // "Edit rules" keeps swapping in the untouched form.
-    expect(criteria).toContain('{criteriaRows().map((row) => (');
-    expect(criteria).toContain('{row.label}');
-    expect(criteria).toContain('{row.value}');
-    expect(criteria).toContain('editingEligibility ? (');
-    // Headerless by construction — a Criterion/Value header row is the only thing that would need new keys.
-    expect(criteria.includes('<thead')).toBe(false);
+    // The toggle, its button and the branch it drove are gone from the whole panel…
+    for (const dead of [
+      'editingEligibility',
+      'setEditingEligibility',
+      'const criteriaRows =',
+      'criteriaRows()',
+    ]) {
+      expect(panelSrc.includes(dead), `${dead} removed`).toBe(false);
+    }
+    // …and the Criteria sub-step no longer offers "Edit rules" (the key survives — the Day Type
+    // Inclusion card still uses it — but not inside this sub-step).
+    expect(criteria.includes("t('eligibilityEdit')")).toBe(false);
+    expect(panelSrc).toContain("t('eligibilityEdit')");
+    // One form, unconditional, on the unchanged save path with the unchanged tri-state marker.
+    expect(criteria).toContain('<form action={updateTypeAction}');
+    expect(criteria).toContain('<input type="hidden" name="eligibility" value="1" />');
+    // Explicit save retained; the Cancel that only existed to leave edit mode is gone.
+    expect(criteria).toContain('<Button type="submit" size="sm">');
+    expect(criteria.includes("t('cancel')")).toBe(false);
   });
 
-  it('derives one row per criterion in order, each from an existing translation key', () => {
-    const body = criteriaRowsBody();
+  it('lays every criterion out as a labelled control on a grid that collapses to one column on a phone', () => {
+    const criteria = subStepSlice(essSegment(), 'criteria');
+    // grid-cols-1 is the phone promise; the wider breakpoints are what stops the controls stranding the
+    // panel's width (the flex-wrap row they replaced wrapped raggedly instead).
+    expect(criteria).toContain('grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3');
+    expect(criteria.includes('flex flex-wrap items-end gap-2')).toBe(false);
+    // No fixed-width control left to strand space inside its cell.
+    expect(criteria.includes('${inputCls} w-20')).toBe(false);
+    expect(criteria.includes('${inputCls} w-56')).toBe(false);
+  });
+
+  it('orders the criteria as the reporter tabulated them, each labelled by an existing key', () => {
+    const criteria = subStepSlice(essSegment(), 'criteria');
     const order = [
       'eligibilityMaritalLabel',
       'eligibilityGenderLabel',
@@ -171,42 +199,38 @@ describe('0c15db78 · Criteria — the four rules shown directly, no "Edit rules
     ];
     let cursor = -1;
     for (const key of order) {
-      const at = body.indexOf(`t('${key}')`);
-      expect(at, `${key} labels a row`).toBeGreaterThan(cursor);
+      const at = criteria.indexOf(`t('${key}')`);
+      expect(at, `${key} labels a criterion, in order`).toBeGreaterThan(cursor);
       cursor = at;
     }
-    // Values reuse the edit form's own label helpers and the min-service unit keys.
-    expect(body).toContain('joinOr(asEligList(eligibility?.maritalStatus), maritalLabel)');
-    expect(body).toContain('joinOr(asEligList(eligibility?.gender), genderLabel)');
-    expect(body).toContain("eligibility.minServiceUnit === 'days' ? t('expiryUnitDays') : t('expiryUnitMonths')");
-    expect(body).toContain("t('eligibilityProbationConfirmedOnly')");
-    expect(body).toContain("t('eligibilityProbationProbationOnly')");
+    // The eight Organisation Assignment pickers come last, from the single descriptor.
+    expect(criteria.indexOf('ORG_ASSIGNMENT_CRITERIA.map((c) => (')).toBeGreaterThan(cursor);
   });
 
-  it('uses ONE shared empty marker for every unset rule, guards a stored 0, and never swallows unknown values', () => {
-    const body = criteriaRowsBody();
-    // ONE existing key ("No restriction") for all four empty cells — not a mix of Any / N/A, and not a
-    // newly invented key.
-    expect(body).toContain("const noRestriction = t('eligibilityProbationNone');");
-    expect(body.includes("t('eligibilityGenderAny')")).toBe(false);
-    expect(body.includes("t('eligibilityMaritalAny')")).toBe(false);
-    expect(body.includes("t('criteriaNa')")).toBe(false);
-    // Same falsy guard as the old summary — a stored 0 reads "No restriction", never "0 Months".
-    expect(body).toContain('eligibility?.minServiceMonths\n      ?');
-    // Unmappable-value guard: fall back to the raw stored value, show the marker only on an empty list.
-    expect(body).toContain('values.length === 0 ? noRestriction');
-    expect(body).toContain('label(v) ?? v');
+  it('keeps "No restriction" a spelled-out state on the two fields that can hold only one value', () => {
+    const criteria = subStepSlice(essSegment(), 'criteria');
+    // Probation offers it as a real option; an empty minimum service says it rather than reading blank.
+    expect(criteria).toContain('<option value="">{t(\'eligibilityProbationNone\')}</option>');
+    expect(criteria).toContain("placeholder={t('eligibilityProbationNone')}");
+    // The multi-value pickers keep saying so in the hint that sits under them (leave empty ⇒ everyone).
+    expect(criteria).toContain("t('eligibilityMultiHint')");
   });
 
-  it('drops the dead one-line summary helpers it replaced', () => {
-    for (const dead of ['const eligibilitySummary =', 'eligibilitySummary()', 'const orJoin =']) {
-      expect(panelSrc.includes(dead), `${dead} removed`).toBe(false);
-    }
-    // …while the still-used join key stays.
-    expect(panelSrc).toContain("t('eligibilitySummaryOr')");
+  it('never drops a stored value from a live picker — an always-on form must not erase a rule on Save', () => {
+    // ChipMultiSelect discards any defaultSelected absent from its options. With the form always live, a
+    // plain Save would then silently clear a rule whose stored value is no longer offered, so every picker
+    // unions the stored values onto its option list (the guard org fields already had, now shared).
+    expect(panelSrc).toContain('const withStored = (options: { value: string; label: string }[], stored: string[]) => [');
+    expect(panelSrc).toContain('...stored.filter((v) => !options.some((o) => o.value === v)).map((v) => ({ value: v, label: v })),');
+    const criteria = subStepSlice(essSegment(), 'criteria');
+    expect(criteria).toContain('options={withStored(');
+    expect(criteria).toContain('ELIGIBILITY_MARITAL_OPTIONS.map((m) => ({ value: m, label: maritalLabel(m) ?? m })),');
+    expect(criteria).toContain('ELIGIBILITY_GENDER_OPTIONS.map((g) => ({ value: g, label: genderLabel(g) ?? g })),');
+    // The org fields keep their catalogue-backed variant, expressed through the same helper.
+    expect(panelSrc).toContain('withStored(orgAssignmentOptions[category] ?? [], asEligList(eligibility?.[key]))');
   });
 
-  it('adds no new translation keys — every key the table uses already ships in all 6 locales', () => {
+  it('adds no new translation keys, and retires the one the deleted summary was the sole consumer of', () => {
     const used = [
       'eligibilityMaritalLabel',
       'eligibilityGenderLabel',
@@ -215,16 +239,19 @@ describe('0c15db78 · Criteria — the four rules shown directly, no "Edit rules
       'eligibilityProbationNone',
       'eligibilityProbationConfirmedOnly',
       'eligibilityProbationProbationOnly',
-      'eligibilitySummaryOr',
+      'eligibilityMultiHint',
       'expiryUnitMonths',
       'expiryUnitDays',
     ];
     for (const locale of LOCALES) {
-      const msgs = readFileSync(resolve(here, `../messages/${locale}.json`), 'utf8');
+      const leave = JSON.parse(readFileSync(resolve(here, `../messages/${locale}.json`), 'utf8')).admin.leave;
       for (const key of used) {
-        expect(msgs.includes(`"${key}"`), `${key} in ${locale}`).toBe(true);
+        expect(typeof leave[key], `${key} in ${locale}`).toBe('string');
       }
+      // criteriaRows()'s "or" joiner had no other caller — it goes with it rather than lingering as an orphan.
+      expect(leave.eligibilitySummaryOr, `${locale}.admin.leave.eligibilitySummaryOr retired`).toBeUndefined();
     }
+    expect(panelSrc.includes("t('eligibilitySummaryOr')")).toBe(false);
   });
 });
 
@@ -267,14 +294,13 @@ describe('org-criteria · the eight Organisation Assignment fields join the Crit
     expect(panelSrc).toContain("import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/leave-org-criteria'");
   });
 
-  it('adds one criteriaRows() summary row per org field from the same descriptor (eight rows)', () => {
-    const start = panelSrc.indexOf('const criteriaRows =');
-    expect(start).toBeGreaterThan(-1);
-    const body = panelSrc.slice(start, panelSrc.indexOf('\n  };', start));
-    // The four existing rows stay, then the org rows come from the descriptor map with the reused label.
-    expect(body).toContain('...ORG_ASSIGNMENT_CRITERIA.map((c) => {');
-    expect(body).toContain('tOrg(c.labelKey)');
-    expect(body).toContain('joinOr(asEligList(eligibility?.[c.key]), orgLabel)');
+  it('renders each org criterion EXACTLY once, labelled from the same descriptor (165baee5)', () => {
+    // Before 165baee5 each org field appeared twice — once as a picker, once as a read-only summary row
+    // built by criteriaRows(). Now the live picker IS the display, so a second rendering would be a
+    // duplicated (and immediately stale) copy of the same rule.
+    const criteria = subStepSlice(essSegment(), 'criteria');
+    expect(criteria.split('ORG_ASSIGNMENT_CRITERIA.map(').length - 1).toBe(1);
+    expect(criteria).toContain('label={tOrg(c.labelKey)}');
   });
 
   it('reuses the existing profile-option category labels — every label key resolves in all six locales', () => {
@@ -313,9 +339,33 @@ describe('08bc6841 · Leave Application Rules — the seven rule groups as a car
     'name="dayTypeInclusion"',
   ] as const;
 
-  it('the grid renders inside the rules sub-step with the responsive column classes', () => {
+  /**
+   * f6d3be0b · the card layout fills the panel instead of stranding whitespace. A CSS grid row is as tall
+   * as its tallest card, so a short card beside a tall one left a block of dead space underneath it. The
+   * flow is now multi-column: cards pack and the columns balance, while STILL collapsing 3 → 2 → 1 by
+   * breakpoint — a fix that only widened the layout would move the same gap onto a narrower screen. Each
+   * card is also ONE surface now (border + fill + padding) rather than a padded box inside a padded box.
+   * Arrangement only: every rule group, marker, gate and action below is unchanged.
+   */
+  it('the rules sub-step flows the cards in balanced columns that collapse to one on a phone', () => {
     const rules = subStepSlice(essSegment(), 'rules');
-    expect(rules).toContain('grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3');
+    expect(rules).toContain('columns-1 gap-3 md:columns-2 xl:columns-3');
+    // The height-locked grid it replaced must not come back.
+    expect(rules.includes('grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3')).toBe(false);
+    // Every card opts out of being split across a column boundary — one card, one column.
+    const cards = rules.split('break-inside-avoid').length - 1;
+    expect(cards, 'every rule card (plus the half-day slot wrapper) carries break-inside-avoid').toBe(8);
+  });
+
+  it('each rule card is a single surface — no padded box nested inside a padded box', () => {
+    const rules = subStepSlice(essSegment(), 'rules');
+    // The card carries the border + fill + padding…
+    expect(rules).toContain('rounded-lg border border-border bg-background p-3');
+    // …and the form inside it carries only spacing, so the fields keep the card's full width.
+    expect(rules).toContain('<form action={updateTypeAction} className="space-y-2">');
+    expect(rules.includes('className="space-y-2 rounded-lg bg-background p-3"')).toBe(false);
+    // No fixed-width number box stranding the rest of its row.
+    expect(rules.includes('${inputCls} w-24')).toBe(false);
   });
 
   it('all seven rule groups sit inside the grid, in the existing source order, markers intact', () => {
