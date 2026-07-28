@@ -806,9 +806,9 @@ function BalanceSourceForm({
 }) {
   const [mode, setMode] = useState<'own' | 'other'>(balanceSourceTypeId ? 'other' : 'own');
   return (
-    <div className="space-y-1.5 rounded-lg border border-border p-3">
+    <div className="space-y-1.5 rounded-lg border border-border bg-background p-3">
       <span className="text-xs font-medium text-muted-foreground">{t('balanceSourceSectionTitle')}</span>
-      <form action={action} className="space-y-2 rounded-lg bg-background p-3">
+      <form action={action} className="space-y-2">
         <input type="hidden" name="id" value={id} />
         {/* preserve the name — this form does not edit it */}
         <input type="hidden" name="name" value={name} />
@@ -2705,9 +2705,9 @@ export function LeaveTypePanel({
               tri-state marker. 'No' (default) keeps today's behaviour — the negative-balance rule above
               decides. 'Yes' lets the application through and treats only the days the balance could not
               cover as unpaid; the employee is shown that split on the application form before submitting. */}
-          <div className="space-y-1.5 rounded-lg border border-border p-3">
+          <div className="space-y-1.5 rounded-lg border border-border bg-background p-3">
             <span className="text-xs font-medium text-muted-foreground">{t('allowUplSectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+            <form action={updateTypeAction} className="space-y-2">
               <input type="hidden" name="id" value={id} />
               {/* preserve the name — this form does not edit it */}
               <input type="hidden" name="name" value={name} />

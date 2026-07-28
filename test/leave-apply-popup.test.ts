@@ -98,18 +98,35 @@ describe('core/leave.ts: the new read-only exports', () => {
   });
 
   it('reuses leaveBalance for Balance — no third balance formula', () => {
+    // UPDATED for cdf9ca48 (Balance Deduction Source). The call now passes the SOURCE type rather than
+    // the applied type, because a leave type may borrow another type's balance — that is the item. The
+    // property this test exists to protect is unchanged and still asserted: the summary reads the ONE
+    // shared balance function, and invents no second way of computing a balance.
     const fn = core.slice(core.indexOf('export async function leaveTypeApplySummary'));
     const body = fn.slice(0, fn.indexOf('\n}\n'));
-    expect(body.includes('leaveBalance(tx, p.employmentId, p.leaveTypeId)')).toBe(true);
+    expect(body.includes('leaveBalance(tx, p.employmentId, sourceTypeId)')).toBe(true);
     expect(body.includes('leaveEntitlementBreakdown')).toBe(false);
     expect(body.includes('deriveSummaryBalance')).toBe(false);
   });
 
   it('Pending is the SAME aggregate the submit-time guard reserves', () => {
-    // availableLeaveBalance now delegates to the extracted helper the summary also calls.
+    // The invariant, restated rather than re-pinned: the popup's Pending figure and the submit-time
+    // guard must count the same days, or an employee is shown a number that does not match what blocks
+    // them. Both now resolve the source type and aggregate pending across every type that SPENDS that
+    // balance (the borrowers), so an Emergency Leave request in flight reduces the Annual figure the
+    // popup shows. Asserting the shared helpers rather than one literal argument list, so the next
+    // legitimate signature change does not fail a test whose subject is agreement, not spelling.
     expect(core.includes('async function pendingLeaveDays(')).toBe(true);
+    expect(core.includes('async function balanceSpenderTypeIds(')).toBe(true);
     const avail = core.slice(core.indexOf('export async function availableLeaveBalance'));
-    expect(avail.slice(0, avail.indexOf('\n}\n')).includes('pendingLeaveDays(tx, employmentId, leaveTypeId, excludeRequestId)')).toBe(true);
+    const availBody = avail.slice(0, avail.indexOf('\n}\n'));
+    const summary = core.slice(core.indexOf('export async function leaveTypeApplySummary'));
+    const summaryBody = summary.slice(0, summary.indexOf('\n}\n'));
+    for (const body of [availBody, summaryBody]) {
+      expect(body.includes('resolveBalanceSourceTypeId')).toBe(true);
+      expect(body.includes('balanceSpenderTypeIds')).toBe(true);
+      expect(body.includes('pendingLeaveDays(')).toBe(true);
+    }
   });
 
   it('rest and off day stay ONE bucket — no roster_assignment dependency creeps in', () => {
