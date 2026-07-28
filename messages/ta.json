@@ -4418,7 +4418,9 @@
         "payrollConfig": "ஊதிய அமைப்பு",
         "payrollPolicy": "ஊதியக் கொள்கை",
         "payComponents": "ஊதிய உருப்படிகள்",
-        "payrollPermissions": "ஊதிய அனுமதிகள்"
+        "payrollPermissions": "ஊதிய அனுமதிகள்",
+        "leaveEmployeeBalances": "ஊழியர் இருப்பு",
+        "leaveEmployeeRecords": "ஊழியர் விடுப்புப் பதிவு"
       },
       "scope": {
         "people": "அனைவரும் இதைத் திறக்கலாம்; பட்டியல் நீங்கள் பார்க்க அனுமதிக்கப்பட்டவர்களுக்கு மட்டுமே.",

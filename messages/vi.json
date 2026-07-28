@@ -4418,7 +4418,9 @@
         "payrollConfig": "Cấu hình bảng lương",
         "payrollPolicy": "Chính sách bảng lương",
         "payComponents": "Khoản mục lương",
-        "payrollPermissions": "Quyền tính lương"
+        "payrollPermissions": "Quyền tính lương",
+        "leaveEmployeeBalances": "Số dư của nhân viên",
+        "leaveEmployeeRecords": "Hồ sơ nghỉ phép của nhân viên"
       },
       "scope": {
         "people": "Mọi người đều có thể mở; danh sách chỉ giới hạn ở những người bạn được phép xem.",

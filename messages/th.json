@@ -4418,7 +4418,9 @@
         "payrollConfig": "การตั้งค่าเงินเดือน",
         "payrollPolicy": "นโยบายเงินเดือน",
         "payComponents": "รายการเงินเดือน",
-        "payrollPermissions": "สิทธิ์เงินเดือน"
+        "payrollPermissions": "สิทธิ์เงินเดือน",
+        "leaveEmployeeBalances": "ยอดคงเหลือของพนักงาน",
+        "leaveEmployeeRecords": "บันทึกการลาของพนักงาน"
       },
       "scope": {
         "people": "ทุกคนเปิดได้ รายการจำกัดเฉพาะบุคคลที่คุณได้รับอนุญาตให้เห็น",

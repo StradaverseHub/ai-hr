@@ -4418,7 +4418,9 @@
         "payrollConfig": "薪资配置",
         "payrollPolicy": "薪资政策",
         "payComponents": "薪资项目",
-        "payrollPermissions": "薪资权限"
+        "payrollPermissions": "薪资权限",
+        "leaveEmployeeBalances": "員工結餘",
+        "leaveEmployeeRecords": "員工休假記錄"
       },
       "scope": {
         "people": "所有人都可打开；列表仅限于你有权查看的人员。",

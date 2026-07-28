@@ -4418,7 +4418,9 @@
         "payrollConfig": "Payroll configuration",
         "payrollPolicy": "Payroll policy",
         "payComponents": "Pay Items",
-        "payrollPermissions": "Payroll permissions"
+        "payrollPermissions": "Payroll permissions",
+        "leaveEmployeeBalances": "Employee Balances",
+        "leaveEmployeeRecords": "Employee Leave Record"
       },
       "scope": {
         "people": "Everyone can open this; the list is limited to the people you are allowed to see.",

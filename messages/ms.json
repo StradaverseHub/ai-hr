@@ -4418,7 +4418,9 @@
         "payrollConfig": "Konfigurasi gaji",
         "payrollPolicy": "Dasar gaji",
         "payComponents": "Item Gaji",
-        "payrollPermissions": "Kebenaran gaji"
+        "payrollPermissions": "Kebenaran gaji",
+        "leaveEmployeeBalances": "Baki Pekerja",
+        "leaveEmployeeRecords": "Rekod Cuti Pekerja"
       },
       "scope": {
         "people": "Semua orang boleh membukanya; senarai dihadkan kepada orang yang anda dibenarkan lihat.",
