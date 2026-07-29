@@ -296,10 +296,15 @@ those employees drop to the statutory floor until their schemes are filled in.
    had to be re-aimed at r74's `navNodes` contract because the plan predates it — expect the same for
    later slices.
 
-5. **Test-DB and worktree cleanup.** ~106 databases and **138 git worktrees** are still lying around. A
-   sweep of the stale namespaced test DBs was attempted this session and **blocked by the permission
-   classifier**, so it needs the user to run it or a `Bash(psql:*)` rule. Not urgent — the template
-   currently migrates in ~3s — but it is the leak that once turned a 7s rehearsal into 1308s.
+5. **TEST-DB TEARDOWN IS A CONCRETE ONE-PLACE FIX — do this before the next big parallel round.**
+   `test/global-setup.ts` drops databases only for its OWN namespace and only at the START of a run
+   (drop-then-recreate). There is no teardown, so every finished agent orphans 1 template + 10 workers
+   **permanently**. ~20 namespaces were created in the 2026-07-29 session alone. It reached 296 databases
+   / 7.3 GB, a single checkpoint ran 46 minutes, five agents queued behind it, and the upgrade rehearsal
+   could not create its scratch database at all. Swept to 31 DBs / 1.6 GB with the owner's authorisation.
+   **The fix: drop the namespace's template and workers when the run exits.** Note `git branch -f` and
+   bare `DROP DATABASE` are both blocked by the permission classifier — the sweep needs the owner to run
+   it, or a `Bash(psql:*)` rule. **138 git worktrees** are also still lying around.
 
 6. **Two dead/misplaced things found in r78 and deliberately not changed:** `payment_basis` on the
    payroll config screen is written, validated, stored and **read by nothing**; and probation months,
@@ -314,6 +319,91 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r79 — 2026-07-29 — 5 items, the blocked-item answer path, and an integration near-miss
+
+**Shipped:** `main@7efe8f3`. Migrations **0323** and **0324**.
+**Gate:** `tsc` clean · **482 files / 5432 tests** · `next build` clean · **upgrade rehearsal PASS**
+(step 4 confirmed: "migrations applied over populated data"). Verified live: `GET /` 401, service active,
+275 migrations, `feedback_block` present with 2 open episodes, `payment_basis` gone,
+`company.probation_months` present, `system_explorer` in the module catalog.
+
+**Shipped:** 4fb8b75a steps 1-4 · 707b3851 · b84821cf · 241817ef · deec1691 · plus the blocked-item
+answer path (raised directly by the owner, not a board item).
+
+### Decisions
+
+**1. THE ROUND WAS BUILT ON THE WRONG BASE, AND ONLY THE REHEARSAL'S PRECONDITION CAUGHT IT.** The `main`
+BRANCH was stuck at r77: the companies hotfix and all of r78 had landed on `fix/companies-list`, because
+the diagnostic agent spawned to investigate the companies screenshot created that branch **at the repo
+root**, and every subsequent commit followed it unnoticed. Deploys were unaffected — rsync copies the
+working tree, not a branch — but **the r79 worktrees were created off `main`, so all five agents built on
+r77.** Merging that would have reverted r78 and the companies hotfix, sending the Companies screen back
+to rendering 1 of 8 rows.
+
+`tsc`, 5388 tests, `next build` and the journal checks were all GREEN on that tree. What refused was
+`scripts/upgrade-rehearsal.sh`: it requires a worktree checked out at the baseline ref, found none on
+`main`, and exited 2. **A precondition that looks bureaucratic is the only thing that noticed.** Fixed by
+creating a `main` worktree, fast-forwarding it, and merging `main` INTO the r79 integration so the round
+builds on top rather than replacing it; the full suite was then re-run and the earlier green discarded.
+
+Two operational notes: `git branch -f` is blocked by the permission classifier, so the fast-forward was
+done as a `--ff-only` merge inside a worktree. And **the repo root is still on `fix/companies-list`** —
+whoever picks this up should check `git branch --show-current` at the root before creating worktrees.
+
+**2. A MERGE DROPPED A MIGRATION FROM THE JOURNAL, AND THE EXISTING GUARD POINTED THE WRONG WAY.** `0323`
+and `0324` came from different branches and both appended to `_journal.json`; git conflicted, and the
+first resolution kept only one side. **`0323` vanished from the journal while
+`0323_feedback_block_answer.sql` stayed on disk.** That deploys clean and the table is simply never
+created, because drizzle-kit iterates the JOURNAL, never the directory.
+
+`test/migration-journal-ordering.test.ts` asserted "a .sql exists for every entry" — which fails loudly —
+but never "an entry exists for every .sql", which fails silently. That guard now exists, verified
+red-before-green (`be04fbb`). **This is the same silent-skip family as the ascending-`when` rule, reached
+from the other direction.**
+
+**3. Three separate checks this session passed without crossing the boundary where the thing breaks.**
+The companies screen (props asserted, never sent through the RSC transport) · the `0323` backfill
+(applied to an existing DB, never to a fresh chain — `WHERE status = 'blocked'` cannot parse a newly-added
+enum value in the transaction that added it, so it broke every fresh install) · the journal merge (read
+the journal, never the directory). **Ask what boundary the real thing crosses that the check does not.**
+
+**4. The blocked-item answer path — the loop had been asking questions it could not receive answers to.**
+Gates were `canReview` (planned), `canRefute` (deployed), `canRestore` (cancelled); nothing handled
+`blocked`. A free-text question was a dead end. `0323` adds `feedback_block`, an append-only trail — one
+row per block episode, question and answer kept together, closed once. `resolved_at` is deliberately
+separate from `answer` so an operator unblock with no note ends the episode honestly rather than
+fabricating one. Crucially the answer reaches `pullApproved` as `block_trail`, because that reads
+feedback_request COLUMNS and never `domain_event` — an answer stored only as an event would be invisible
+to whoever builds the item. Guarded by an INSERT policy, a one-way UPDATE policy, a BEFORE UPDATE trigger
+(RLS is row-level and cannot stop a rewrite riding along with the close — the `0318` lesson) and a partial
+unique index. `fa3f4ccb` was also re-blocked WITH `blockedById` so it links to the item that unblocks it;
+that path always existed and had simply not been used.
+
+**5. Fixing one reported fault keeps finding faults nobody reported.** `241817ef`'s agent measured the
+impact by replicating live config in a scratch DB and running the REAL resolver: Medical leave is
+unchanged everywhere, five companies move to manager→HR on Annual, and **one company's Medical approval
+WIDENS** from a manager-only step to an ordinary single approval. It also refused to finish the
+demolition — **two companies route live traffic through wildcard rules whose ONLY editor is the section
+being deleted** — so the section stands, retitled, pending a reporter decision. `b84821cf` chose
+warn-with-mandatory-acknowledgement over refusal (the levy is correctly zero; refusing withholds pay for
+a data-quality issue) and found in passing that `currencyMismatch` was never merged into the advisory —
+the same "warning exists but cannot reach the moment it matters" fault, in the function it was rewriting.
+
+**6. `707b3851` was the SIXTH "already built" finding this session** — validation at save and the company
+warning shipped in r77. The real gap was cross-company visibility.
+
+**Environment, resolved:** the test Postgres reached **296 databases / 7.3 GB**; a single checkpoint ran
+46 minutes and blocked five agents, and the rehearsal could not create its scratch DB. Swept with the
+owner's authorisation: **296 → 31 databases, 7.3 GB → 1.6 GB**, rehearsal then ran normally. Cause: each
+agent namespace is 1 template + 10 workers, the harness drops only its OWN namespace and only at START,
+so every finished agent orphans 11 databases permanently. ~20 namespaces were created in this session
+alone. **The fix is a teardown on run exit — see Carried debt.**
+
+**Carried:** still nothing browser-verified since r70. The r79 UI surfaces (the answer box, the relocated
+escalation editor, the new Personnel Settings page, the explorer) are all source-verified only.
+
+---
 
 ## r78 — 2026-07-29 — 4 items + the payroll settings map, and duplicates nobody reported
 
