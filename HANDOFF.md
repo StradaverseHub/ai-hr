@@ -5,7 +5,156 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
+## CURRENT STATE — read this first (2026-07-29)
+
+Written 2026-07-29 at the end of a long session, for whoever picks this up next. Everything below the
+`---` after this section is the per-round history; this part is the standing contract and the live
+state. Update it when the state changes, not just when a round ships.
+
+## How this project is actually run
+
+**Deploy is automatic after a green gate.** The repo documents a human release gate (ADR-0045); the
+owner has overridden it. Once tsc + the full suite + next build + the upgrade rehearsal are green, merge
+to main, rsync, run deploy.sh, verify, mark the items deployed. Do not stop to ask.
+
+**A round is not finished until HANDOFF.md records it.** Standing instruction from the owner.
+
+**The gate, in full.** `pnpm exec tsc --noEmit` · `pnpm vitest run` (the WHOLE suite, not a subset) ·
+`pnpm exec next build` · `./scripts/upgrade-rehearsal.sh main <scratch-db>` whenever a migration is
+involved. The rehearsal is the one that catches "this applies to an empty database but not a populated
+one".
+
+**Deploy mechanics.** SSH is on **port 8288**, not 22 — `IMPROVE_SSH_HOST=203.142.6.241`, user `ubuntu`,
+app at `/opt/ai-hr`. Deploy is rsync (excluding node_modules/.next/.git/.env*/.turbo/coverage/.claude)
+then `./deploy/deploy.sh` on the box, which migrates, seeds catalogs, runs backfills and restarts. The
+server has NO git checkout — rsync only, so `git log` there tells you nothing.
+
+**Health check.** `GET /` returning **401** is CORRECT — it is the password gate, not a failure. Check
+`systemctl is-active aihr` and curl `http://127.0.0.1:3000/` from the box.
+
+## The feedback board — how the loop works
+
+**Commands** (all from the repo root, `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:<cmd>`):
+`pull` (open + contested) · `pull-approved` · `pull-blocked` · `push-plan` · `block` / `unblock` ·
+`build-start` / `build-complete` · `release` · `mark-deployed` · `raise`.
+
+Parsing tip: `pnpm` prints a banner before the JSON. Split on the first `\n[\n`, not the first `[`.
+
+**Plans are PLAIN TEXT.** The board renders them RAW — no Markdown. Asterisks, hashes, backticks and
+pipe tables all show as literal clutter to a non-technical reader. There is a skill for this:
+`.claude/skills/feedback-plan`. Read it before writing any plan. Business language above the dashed
+line, all technical detail in the BUILD NOTES trailer below it.
+
+**Approve carries NO payload.** `approveFeedbackPlan` sends only the item id, so a plan that asks the
+reporter to choose between options can never be answered — one item sat unbuilt three rounds that way.
+State ONE course of action, recommend it, and tell them to reject with a reason if they want otherwise.
+
+**Statuses:** open → planned → approved → building → done → deployed. Plus `contested` (reporter pushed
+back, will be re-planned) and `blocked` (approved but waiting on an answer — added this session, 0317).
+`startFeedbackBuild` accepts ONLY `approved`, which is what makes `blocked` a real guard.
+
+**Plan history exists now (0318).** Every plan version and every push-back is kept in
+`feedback_plan_revision`, append-and-close-once. Do not try to "tidy" it; a closed revision is immutable
+by policy and by trigger.
+
+## Running builds with subagents
+
+Established pattern, used for r73/r74/r75. It works, with rules learned the hard way:
+
+- **Group by FILE OVERLAP, never by theme.** r74 lost a round because a four-part delivery
+  (650b6eb8 + its three siblings) was split across two agents; the agent correctly refused to build a
+  navigation whose other tabs would 404. If two items touch the same screen, they go to one agent.
+- **Anything cross-cutting runs SOLO and LAST**, against the settled tree. Pagination touched ~30 list
+  pages; run alone it produced no collisions.
+- **Every agent needs its own `TEST_DB_NAMESPACE`.** Without it they drop each other's template
+  mid-run and both sets of results become noise that looks like real failures.
+- **Tell each agent the traps its items will hit** — the guards it must not weaken, the writers that
+  recently broke, the contracts it may not change. The best results this session came from briefs that
+  named the specific hazard.
+- **Agents must REPRODUCE before fixing.** Four reported faults this session did not reproduce; the
+  code was correct and the real cause was adjacent. A held-back item with findings is a good result.
+- **The integration gate catches what no agent can see.** Every agent's own tests passed in r74 and
+  r75; the full suite still found a permission-matrix omission and a nested-form bug. Per-agent runs
+  are necessary and never sufficient.
+
+## Traps that cost real time this session
+
+**TEST DATABASES LEAK.** `TEST_DB_NAMESPACE` has no teardown — each parallel round permanently adds a
+template plus ten workers. It reached **366 test databases**, at which point DROP/CREATE DATABASE hangs
+and a normally 1-7s template build took **1308s**. It looked exactly like a catastrophically slow
+migration and nearly got reported as a 22-minute production deploy window. It is not: production has a
+handful of databases. Cleanup restored a 7-second rehearsal. **106 databases and 138 git worktrees are
+still lying around — both want a sweep.** The harness should drop a namespace's databases when its run
+ends.
+
+**Local Postgres after a reboot.** Data dir `/opt/homebrew/var/aihr-pg14`, but its config defaults to
+port **5432** while the project uses **5433** — it must be started with `-o "-p 5433"`. After an unclean
+stop it needs several minutes of crash recovery (397s this time). A launchd unit would end this.
+
+**tsc CANNOT see a missing translation key.** `t('historyRevision')` type-checks and fails at runtime.
+Six locales, no guard for it. A source-static test comparing `t('…')` calls against `messages/en.json`
+would be cheap and is not written yet.
+
+**`rejects.toThrow()` passes on the WRONG throw.** Two tests this session passed for the wrong reason —
+one because a fixture used a non-existent field so the insert failed on NOT NULL before ever reaching
+the constraint under test. Assert the constraint NAME or match the real Postgres error via the `.cause`
+chain; Drizzle wraps errors as "Failed query: …".
+
+**Fetching page HTML to check the UI gives false positives.** Next.js embeds the whole i18n catalog in
+the payload, so grepping rendered HTML for a label finds it whether or not the component rendered.
+Check the component source.
+
+## Live state
+
+**Deployed:** `main@3a69899`, service active, migrations through **0321**.
+
+Shipped this session and live: r73 (3 items + `blocked` status + a silent data-loss fix), plan history
+(0318), r74 (10 items), r75 (10 items), slice 4 (nav + page gating), feedback attachments on push-back
+(0321). **33+ feedback items closed, 5 migrations.**
+
+**Board right now: 12 planned (awaiting the reporter), 2 approved and ready to build.**
+
+APPROVED, buildable immediately:
+- `082fa566` — remove Taken and Balance from the leave request popup, leave Pending approval and
+  Available. Display-only; do NOT touch availableLeaveBalance or the submit-time reserve.
+- `9816a5ad` — an INVESTIGATION, not a build: trace which of two entitlement configurations drives the
+  employee leave balance, say what the other does, and which is safe to remove. Report to the board;
+  delete nothing in this item. Several other planned items depend on its answer.
+
+PLANNED, awaiting approval — the notable ones:
+- `fc776376` pagination, revision 2. **The reporter is right that it is not there.** The feedback board
+  (517 rows, their largest list) was deliberately excluded because it sorts in the browser, and
+  everywhere else `showPager()` hides the controls below 25 rows while their lists hold 23-47. The
+  re-plan builds a client-side pager and makes the size control always visible.
+- `9cbf5e0d` — now a LARGE item: the reporter supplied the full Employee Status state machine, six
+  statuses, three retired, no manual editing. Supersedes what r75 shipped.
+- `241817ef` — the third attempt at removing the Approval Workflow subsections. Two settings live ONLY
+  there (the multi-step OFF switch, the escalation config). This revision RECOMMENDS putting both on
+  the Assignment Template, so approving it now carries a real instruction.
+- `deec1691` — reporter overruled the operator-only placement; explorer moves under Admin as a sellable
+  module defaulting OFF, using the slice-4 gating shipped this session.
+- `89ea527b`, `1ef1cf95`, `8ebabbf2`, `fa3f4ccb`, `48224d12`, `22de47c4`, `23ad620e`, `1f6fd6d8`.
+
+## Carried debt — none of it blocking, all of it real
+
+1. **NOTHING HAS BEEN BROWSER-VERIFIED since r70.** r71 through r75 plus slice 4 moved Payroll's whole
+   navigation to a fly-out, split Attendance three ways, renamed leave labels across screens, added
+   four inquiry surfaces, added pagination to ~17 screens and now hide menu rows by entitlement. All of
+   it verified by tests and `next build` only, which prove wiring and not layout. This is the single
+   largest gap and it is why the pagination refute was a surprise rather than something we caught.
+2. **Pagination pages in memory on ten tables** — `paginateRows()` fetches everything then slices. The
+   reader-visible contract holds, but the plan promised faster loads and for those ten that is not yet
+   true. Pushing limit/offset into ~10 read functions is the follow-up.
+3. **ADR-0077 slices 5-10 are unbuilt.** Slice 4 shipped this session. The plan lives at
+   `~/.claude/plans/resilient-greeting-ripple.md`. Note slice 4 had to be re-aimed at r74's `navNodes`
+   contract because the plan predates it — expect the same for later slices.
+4. **Test-DB and worktree cleanup**, per the traps above.
+5. **No i18n key guard**, per the traps above.
+
+
 ---
+
+# Round history
 
 ## Feedback attachments on push-back — 2026-07-29 — a screenshot when asking for changes (0321)
 
