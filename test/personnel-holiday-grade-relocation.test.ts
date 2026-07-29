@@ -11,8 +11,12 @@
  *      nulled) and fires the EXISTING employment.holiday-calendar.changed event — no new event type.
  *  (2) setEmploymentHolidayCalendarAction persists a GROUP selection (holiday_group_id set, work_state
  *      nulled) — the XOR the service enforces.
- *  (3) setEmploymentGradeAction persists the grade (employment.grade_id) and fires
- *      employment.grade.changed.
+ *  (3) r78c REPLACED the original guard here. It pinned setEmploymentGradeAction — the Leave tab's direct
+ *      Job Grade save — persisting the grade and firing employment.grade.changed. That action is DELETED:
+ *      it wrote a MOVEMENT_EVENT_TYPE with no movement tag, so a grade edit opened its own "Grade Change"
+ *      row on the Employment History beside the movement that had already recorded it. The guard now pins
+ *      the replacement: the grade moves through Movement, the event carries a movement tag, and the change
+ *      projects ONE history row. The Leave tab shows the grade read-only.
  *  (4) REGRESSION — the wipe this relocation had to avoid: a Personal Details save (setPersonAction) with
  *      NO holidayCalendar / gradeId fields (the selects are gone from that form) PRESERVES both an existing
  *      holiday calendar and an existing grade. Before the split, setPersonAction unconditionally re-wrote
@@ -23,6 +27,7 @@ import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import * as schema from '../db/schema';
 import { hireEmployee, setEmploymentHolidayCalendar, setEmploymentGrade } from '../core/org';
+import { createMovementEvent, movementHistory } from '../core/movement';
 import { createJobGrade, createHolidayGroup } from '../core/admin';
 import {
   adminCtx,
@@ -52,9 +57,9 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 
 import {
   setEmploymentHolidayCalendarAction,
-  setEmploymentGradeAction,
   setPersonAction,
 } from '../app/admin/personnel/[employmentId]/actions';
+import * as personnelActions from '../app/admin/personnel/[employmentId]/actions';
 
 let base: Base;
 
@@ -128,22 +133,39 @@ describe('Item 52a30630 — Holiday Calendar → Attendance, Grade → Leave', (
     expect(row.workState).toBeNull();
   });
 
-  it('(3) setEmploymentGradeAction saves the grade + fires employment.grade.changed', async () => {
+  it('(3) r78c — the Leave tab has NO grade writer left; the grade moves through Movement, tagged', async () => {
+    // The endpoint itself must be gone, not merely unwired: every exported `use server` function is a live
+    // RPC endpoint, so an unreferenced one is still a working untagged writer for anything holding its id.
+    expect(Object.keys(personnelActions)).not.toContain('setEmploymentGradeAction');
+
     const hire = await hireOne('Grade Save');
     const grade = await createJobGrade(adminCtx(base), {
       code: `G${randomUUID().slice(0, 8).toUpperCase()}`,
       name: `Grade ${randomUUID().slice(0, 5)}`,
       rank: 1,
     });
-    const fd = new FormData();
-    fd.set('employmentId', hire.employmentId);
-    fd.set('gradeId', grade.id);
-    await expect(setEmploymentGradeAction(fd)).rejects.toThrow('NEXT_REDIRECT');
-    expect(LAST_REDIRECT).toContain('toast=Saved');
+    await createMovementEvent(adminCtx(base), {
+      employmentId: hire.employmentId,
+      kind: 'promotion',
+      effectiveDate: '2026-03-01',
+      gradeId: grade.id,
+    });
 
     const row = await empRow(hire.employmentId);
-    expect(row.gradeId).toBe(grade.id);
-    expect(await eventTypesFor(base.tenantId, hire.employmentId)).toContain('employment.grade.changed');
+    expect(row.gradeId, 'the grade still changes — only the screen that changes it moved').toBe(grade.id);
+
+    // The event is still emitted (the audit trail is unchanged) but now carries the movement tag, so the
+    // projection labels it Promotion instead of opening a loose Grade Change row.
+    const [ev] = await owner.db
+      .select({ payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(eq(schema.domainEvent.eventType, 'employment.grade.changed'));
+    expect((ev.payload as { movement?: { type?: string; groupId?: string } }).movement?.type).toBe('promotion');
+    expect((ev.payload as { movement?: { groupId?: string } }).movement?.groupId).toBeTruthy();
+
+    const rows = await movementHistory(adminCtx(base), hire.employmentId);
+    expect(rows.filter((r) => r.kind !== 'hired').map((r) => r.kind)).toEqual(['promotion']);
+    expect(rows.map((r) => r.kind), 'no stray Grade Change row').not.toContain('gradeChange');
   });
 
   it('(4) REGRESSION: a Personal Details save (no holidayCalendar/gradeId fields) preserves holiday + grade', async () => {

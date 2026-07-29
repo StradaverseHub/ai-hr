@@ -542,6 +542,7 @@
       "workState": "工作州属",
       "grade": "职级",
       "gradeNone": "无职级",
+      "gradeMovementOnlyNote": "职级无法在此更改。请以异动方式记录，使其具有生效日期与操作人，并在任职历史中只显示一行：",
       "workStateDefault": "公司默认",
       "holidayCalendar": "假期日历",
       "holidayCalendarDefault": "公司默认",
@@ -1044,6 +1045,11 @@
         "columns": {
           "eventType": "事件类型",
           "effectiveDate": "生效日期",
+          "company": "公司",
+          "division": "事业部",
+          "department": "部门",
+          "jobTitle": "职位",
+          "basic": "基本薪资",
           "endDate": "结束日期",
           "remarks": "备注",
           "action": "操作"

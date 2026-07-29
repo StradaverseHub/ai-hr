@@ -107,15 +107,21 @@ describe('movementHistory — projection over the domain_event ledger', () => {
     expect(rows[0]).toMatchObject({ id: 'hired', kind: 'hired', effectiveDate: '2024-05-15' });
   });
 
-  it('orders same-day rows Hired-first (hire + its own reporting-line.set share the hire date)', async () => {
+  it('a hire with a manager projects ONE row — its own reporting line is part of the hire, not a movement', async () => {
     const mgr = await hireOne();
     const hire = await hireOne({ managerEmploymentId: mgr.employmentId });
     const rows = await movementHistory(adminCtx(b), hire.employmentId);
-    // The hire-time reporting-line.set carries a LOWER event sequence than employment.hired — the
-    // kind priority (not raw sequence) must put Hired first.
+    // r78c — this assertion INVERTED. It used to pin rows[1].kind === 'reportingLineChange': the hire-time
+    // reporting-line.set went out untagged, and reporting-line.set is a MOVEMENT_EVENT_TYPE, so every
+    // employee hired with a manager opened their history with TWO rows dated the same day for ONE action —
+    // the same one-event-two-rows fault the reporter raised about Promotion. hireEmployee now tags that leg
+    // `secondary`, so the projection skips it and the hire reads as one event.
     expect(rows[0].kind).toBe('hired');
-    expect(rows[1].kind).toBe('reportingLineChange');
-    expect(rows[1].effectiveDate).toBe('2026-01-01');
+    expect(rows[0].effectiveDate).toBe('2026-01-01');
+    expect(rows).toHaveLength(1);
+    // The EVENT itself is untouched — only its payload gained the tag; that the audit trail did not shrink
+    // is asserted in test/employment-history-untagged-writers.test.ts (2), which reads it by SUBJECT
+    // employment (a reporting-line event's aggregate is the LINE, not the employment).
   });
 
   it('classifies a voluntary termination as Resignation (never a generic Termination)', async () => {

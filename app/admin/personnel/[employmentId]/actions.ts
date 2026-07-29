@@ -1,10 +1,11 @@
 'use server';
 
+import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentGrade, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
+import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
 import {
   createMovementEvent,
@@ -12,6 +13,7 @@ import {
   isComparisonKind,
   MOVEMENT_FLAT_FIELDS,
   MOVEMENT_KINDS,
+  MovementNoChangeError,
   reverseMovementEvent,
   type MovementKind,
 } from '@/core/movement';
@@ -267,36 +269,56 @@ export async function setEmploymentComponentAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
-export async function transferAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  try {
-    await transferEmployee(s, {
-      employmentId,
-      effectiveDate: String(formData.get('effectiveDate')),
-      departmentId: String(formData.get('departmentId')),
-    });
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
-}
+/* r78c — transferAction (the department-only transfer) was DELETED here.
+ *
+ * It was an UNREFERENCED `use server` export: the Movement tab redesign (78853b97) folded the Transfer
+ * card into New Event, and nothing on any page has posted to this action since. But every exported
+ * `use server` function is a live RPC endpoint, and this one called transferEmployee UNTAGGED — writing
+ * an `assignment.transferred` event, a MOVEMENT_EVENT_TYPE, with no movement tag, which the Employment
+ * History projects as its own "Transfer" row with no movement behind it. That is the same
+ * untagged-writer class as the reported Grade Change row, kept alive by an endpoint with no UI.
+ *
+ * Removed rather than left unreferenced, on the precedent 8ebabbf2 set when it deleted
+ * setOrganisationAssignmentAction for exactly this reason. Transfer is recorded through
+ * Movement → New Event → Transfer, which drives setEmploymentAssignment (carrying business unit, cost
+ * centre and location) with a tagged, grouped write. */
 
-/** ADR-0054: set (or clear) an employee's location, effective-dated through the existing transfer path
- *  (CLOSE+INSERT on assignment). An empty locationId clears it. Cross-company coherence is enforced in
- *  the service. */
+/**
+ * ADR-0054: set (or clear) an employee's Work Location, effective-dated (CLOSE+INSERT on assignment).
+ *
+ * r78c — routed through the MOVEMENT RECORDER. This action used to call transferEmployee directly,
+ * emitting an untagged `assignment.transferred`; a Work Location change on the Attendance tab therefore
+ * opened its own "Transfer" row on the Employment History with no movement behind it, and — if HR also
+ * recorded a real movement that day — a second row beside it. createMovementEvent runs the same audited
+ * writer inside the comparison-form dispatcher, so the leg now carries a movement tag and a groupId and
+ * projects exactly ONE row.
+ *
+ * Three consequences of the reroute, all deliberate:
+ *  · the write goes through setEmploymentAssignment, not transferEmployee — so it carries the business
+ *    unit, cost centre and employment type forward (transferEmployee only ever carried a subset);
+ *  · re-saving the SAME location is now a no-op instead of a fresh assignment version + event.
+ *    MovementNoChangeError is swallowed to keep the save idempotent rather than surfacing an error the
+ *    admin cannot act on;
+ *  · an effective date BEFORE the current assignment version's valid-from is rejected by the writer
+ *    (it always was on the Movement path; this screen previously bypassed that guard and inverted the
+ *    dated range).
+ */
 export async function setLocationAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
-    await transferEmployee(s, {
+    await createMovementEvent(s, {
       employmentId,
+      kind: 'transfer',
       effectiveDate: String(formData.get('effectiveDate')),
+      // Present-but-blank clears the location; the field is always rendered by the card.
       locationId: (formData.get('locationId') as string) || null,
     });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    // Choosing the location the employee already has is not an error — nothing to record, nothing to say.
+    if (!(e instanceof MovementNoChangeError)) {
+      redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    }
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -562,6 +584,13 @@ async function payModeErrorMessage(e: unknown): Promise<string> {
   return (e as Error).message;
 }
 
+/* r78c — why the Basic Salary screen is NOT routed through the movement recorder, unlike Work Location.
+ * It is the only writer of a FIRST salary record, and the only one that can move pay MODE, payment term
+ * and rate_amount (a daily/hourly re-rating). applyComparisonMovementTx deliberately refuses a
+ * structure-only change without an existing record and carries no rate_amount at all, so routing this
+ * screen through it would remove both capabilities to fix a row that was never duplicated: an untagged
+ * `compensation.set` projects ONE truthful "Salary Adjustment" row, not a second row beside a movement.
+ * It is tagged below instead, which changes no label and no row count. */
 export async function setCompensationAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
@@ -588,6 +617,11 @@ export async function setCompensationAction(formData: FormData) {
       // admin cleared it, so pass null and let the service validate the mode/rate pair.
       rateAmount: payModeRaw ? (rateRaw !== '' ? Number(rateRaw) : null) : undefined,
       effectiveFrom: String(formData.get('effectiveFrom')),
+      // r78c — the Basic Salary screen KEEPS its own writer (see the note above the action) but no longer
+      // writes an untagged `compensation.set`. The tag names the same kind the projection already fell
+      // back to, so the row's label is unchanged; what it adds is a groupId, so the leg is correlated
+      // rather than loose, and every projected event this screen emits is accounted for.
+      movement: { type: 'salaryAdjustment', groupId: randomUUID() },
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await payModeErrorMessage(e))}`));
@@ -734,25 +768,28 @@ export async function setEmploymentHolidayCalendarAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
-/**
- * Item 52a30630 — save ONLY the seniority Grade for an employment (ADR-0041; drives grade-scoped leave
- * entitlements). The Grade selector was RELOCATED off the Profile > Personal Details form onto the Leave tab,
- * so it needs its own thin partial-save action wrapping the audited service (setEmploymentGrade owns
- * employment.gradeId and no-ops when unchanged). requireAdmin gates it like the profile actions.
- */
-export async function setEmploymentGradeAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  try {
-    await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null });
-    // R45 7527ea5f — a grade change can move the resolved (grade-scoped) leave entitlement; recompute.
-    await recomputeEntitlement(s, employmentId, 'grade_changed');
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
-}
+/* r78c — setEmploymentGradeAction (item 52a30630) was DELETED here. This is the writer the reporter's
+ * duplicate row came from.
+ *
+ * It was the Leave tab's one-field Job Grade save, calling setEmploymentGrade directly. That service
+ * emits `employment.grade.changed`, a MOVEMENT_EVENT_TYPE, and this caller emitted it with NO movement
+ * tag — so core/movement.ts fell back to `kind: 'gradeChange'` and projected a SECOND Employment History
+ * row, "Grade Change", beside the Promotion that carried the same grade change as a tagged leg. One
+ * movement, two rows. 8ebabbf2 recorded the caveat in-code when it made the Employment tab view-only;
+ * this item closes it.
+ *
+ * Job Grade now changes ONLY through Movement → New Event (Promotion / Demotion / Organisation
+ * Assignment Change), whose comparison writer tags the grade leg with the movement's groupId. The Leave
+ * tab still SHOWS the grade — it drives grade-scoped leave entitlement, so the number belongs on that
+ * screen — but read-only, with a link to Movement.
+ *
+ * The action is deleted rather than left unreferenced for the reason 8ebabbf2 gave: every exported
+ * `use server` function is a live RPC endpoint, so an unreferenced one is still a fully working untagged
+ * writer callable by anything that knows its id.
+ *
+ * R45 7527ea5f parity is preserved: this action's grade-change entitlement recompute is already covered
+ * on the Movement path — createMovementEventAction recomputes for every comparison kind, which is every
+ * kind that can move a grade. */
 
 /**
  * b4682879 Contact & Address — instant-write of the structured home address + personal email + phone via

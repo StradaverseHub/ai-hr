@@ -542,6 +542,7 @@
       "workState": "Work state",
       "grade": "Grade",
       "gradeNone": "No grade",
+      "gradeMovementOnlyNote": "The Grade can’t be changed here. Record it as a movement so it is dated, attributable and shown once on the Employment History:",
       "workStateDefault": "Company default",
       "holidayCalendar": "Holiday calendar",
       "holidayCalendarDefault": "Company default",
@@ -1044,6 +1045,11 @@
         "columns": {
           "eventType": "Event Type",
           "effectiveDate": "Effective Date",
+          "company": "Company",
+          "division": "Division",
+          "department": "Department",
+          "jobTitle": "Job Title",
+          "basic": "Basic",
           "endDate": "End Date",
           "remarks": "Remarks",
           "action": "Action"
