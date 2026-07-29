@@ -119,7 +119,25 @@ Shipped this session and live: r73 (3 items + `blocked` status + a silent data-l
 (0318), r74 (10 items), r75 (10 items), slice 4 (nav + page gating), feedback attachments on push-back
 (0321), r76 (4 items + the 9816a5ad investigation, 0322). **37+ feedback items closed, 6 migrations.**
 
-**Board right now: 0 approved. 13 open or contested awaiting plans, plus the planned queue.**
+**Board right now: 0 approved, 0 open, 0 contested — everything is `planned`, awaiting the reporter.**
+16 plans were pushed after r76 deployed. Nothing is buildable until the reporter approves.
+
+**Four of those plans carry a finding that changes the request, and each is evidence-backed:**
+- `4d391ab7` (duplicate history rows) — **REPRODUCED, and the reporter's diagnosis is wrong.** The
+  Promotion already writes ONE row correctly (group `e3f4996e`: assignment primary, salary and grade
+  tagged `secondary`). The second row is a separate UNTAGGED `employment.grade.changed` written outside
+  the Movement form. Root cause is writers outside the comparison form emitting untagged
+  history-visible events — the same class as r73 Decision 3.
+- `a324a4b3` (attendance menu) — nothing is missing. r74 already grouped it. `/admin/attendance` IS the
+  shift library but is labelled `attendancePolicy`, while `/admin/attendance-policy` is labelled
+  `attendancePolicyConfig`. Two near-identical names, neither matching its screen. Relabel, do not
+  restructure — and do NOT move roster/import into the adminOnly group (r74 Decision 1).
+- `63393e52` (no CSV upload) — validate and commit already exist; `employee-import.tsx:94` is a
+  **textarea**, so you paste file contents rather than choosing a file. Real gap, smaller fix than asked.
+- `ae3bd088` (companies missing) — **real bug, and NOT permissions.** 8 companies exist, none archived,
+  and every one of the 5 role grants is group-wide. The comment at `app/admin/organization/page.tsx:156`
+  claims the card ignores the switcher and shows every company; the reporter's evidence contradicts it.
+  Verify that claim rather than trusting it.
 
 **THE ANSWER TO 9816a5ad IS LOAD-BEARING FOR SEVERAL QUEUED ITEMS — read r76 Decision 2 before touching
 entitlements.** Short form: both entitlement configurations are live (Annual Leave 6 employees on Benefit
