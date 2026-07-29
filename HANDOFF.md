@@ -320,6 +320,62 @@ those employees drop to the statutory floor until their schemes are filled in.
 
 # Round history
 
+## r80 — 2026-07-29 — 2 items shipped, 1 held, and a second caller-less live endpoint
+
+**Shipped:** `main@a76ec71`. **No migration.**
+**Gate:** `tsc` clean · **483 files / 5457 tests** · `next build` clean · rehearsal not required (no
+migration; stated rather than skipped). Verified live: `GET /` 401, `decideLeaveAction` gone from the
+deployed tree, `applicantBalance` no longer referenced on the approvals page, the button reads "Submit".
+
+**Shipped:** 33bf1a2d · d6429eb4. **Held and re-planned:** 031fa21b.
+
+### Decisions
+
+**1. `031fa21b` ASKED US TO DELETE THE ONLY HOME OF THREE CAPABILITIES — and the reporter's instinct was
+still right, just aimed one screen over.** They asked to remove the Requests subsection from Employee
+Details because "approvals are already handled under Approval Items". Enumerated before deleting:
+- **It cannot approve anything.** Inline approve/reject was removed from that page by earlier consultant
+  feedback. There are no decide controls in its markup at all.
+- What it IS: the org-wide register over all four statuses (`listLeaveRequestsPage`), the 15-column
+  filter set from `0773bda9` + `8ec63139`, a filtered export, and `AdminCancelLeaveDialog`.
+- `/approvals` loads **pending only, 200-row cap, no filters, no export**. `/leave/employee-records`
+  is single-employee with 4 of the 15 filters. **`app/leave/page.tsx` is the ONLY file in the repo that
+  links `/leave/export`** — deleting the section orphans the route, which is exactly what r74 Decision 5
+  predicted and it is still true.
+
+**But the duplicate was real, one layer down.** `decideLeaveAction` in `app/leave/actions.ts` — a vestige
+of the removed inline buttons, **no caller anywhere in the repo**, yet still a live callable endpoint
+because every export of a `'use server'` module gets an action id. That WAS a second way to decide a leave
+request, and it is now gone; leave is decided only through `app/approvals/actions.ts`.
+
+**This is the SECOND caller-less-but-live server action found this way** (r78 removed `transferAction`).
+Treat "no UI calls it" as insufficient — an exported server action is reachable regardless.
+
+**2. The balance line was never in the shared cell, which changed the whole shape of the fix.** It was
+passed as `children` from `app/approvals/page.tsx` alone, so "remove it from approvals" and "remove it
+everywhere" were the same edit — no prop, no fork. The agent then **deleted `children` from
+`LeaveDaysCell`'s signature**, so `tsc` rather than a reviewer is what prevents a second divergence in
+that column. A type signature is a stronger guard than a test here.
+
+It also removed the orphaned `approvals.applicantBalance` from **all six** catalogs: i18n check A walks
+en → other locales only, so five stragglers would never have been flagged. The balance itself stays in
+the shared projection (`core/read.ts:786`) — dropping a field from a SHARED selection changes what both
+the flat and paginated leave reads return, and the approver still reaches it in one click.
+
+**3. Process failure of my own: I invited a pattern-match deletion on a shared server.** My brief told
+the agent to drop `ai_hr_test_tpl_r80a` and `ai_hr_test_w_r80a*`. It resolved that wildcard by querying
+`LIKE '%r80a%'` and dropping whatever came back — flagged by tooling as discovery-by-pattern rather than
+by tracked name. Outcome verified harmless (`ai_hr_dev` 262 migrations intact, base template 143 tables,
+`ai_hr_test`, workers 1-10 and `ahr_build_golden` all present; 30 databases remain). **Give exact names
+or let the harness do it — never a wildcard against a shared instance.** The proper fix remains the
+teardown-on-exit task in Carried debt.
+
+**Carried:** still nothing browser-verified since r70. Specifically unseen here: the cancellation Type
+column now renders as a colour chip with a trailing " Leave" trimmed — the intended standardisation, but
+the first time that table has looked that way.
+
+---
+
 ## r79 — 2026-07-29 — 5 items, the blocked-item answer path, and an integration near-miss
 
 **Shipped:** `main@7efe8f3`. Migrations **0323** and **0324**.
