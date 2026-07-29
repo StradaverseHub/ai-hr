@@ -148,7 +148,8 @@
     "delegations": "委托",
     "dashboardCardConfig": "仪表板卡片",
     "scheduledActions": "计划任务",
-    "systemSettings": "系统设置"
+    "systemSettings": "系统设置",
+    "systemExplorer": "依赖关系浏览器"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -5163,6 +5164,25 @@
       "createGroupConfirm": "创建分组",
       "dropGradeHint": "从职级主档中将职级拖放到某个组即可添加——也可以在组内勾选它的复选框后保存。",
       "gradeAlreadyInGroup": "{name} 已在该组中。"
+    },
+    "systemExplorer": {
+      "title": "系统分析与依赖关系浏览器",
+      "description": "本产品是如何构建的：选择一种记录类型，查看什么指向它、它指向什么，以及哪个模块拥有它。每次都从实时数据库读取，因此永远不会过时。仅显示结构——不显示任何记录数据。",
+      "recordType": "记录类型",
+      "choose": "选择记录类型…",
+      "show": "显示",
+      "formNote": "本安装共有 {count} 种记录类型。相关类型是链接——点击即可在关系图中跳转。",
+      "unknownTable": "本安装中没有名为“{table}”的记录类型。",
+      "sharedSpine": "共享主干（不属于单一模块）",
+      "primaryKey": "主键",
+      "none": "无",
+      "references": "指向",
+      "noReferences": "此记录类型不指向任何内容。",
+      "referencedBy": "被指向",
+      "noReferencedBy": "没有内容指向此记录类型。",
+      "onDelete": "删除时",
+      "withheldNote": "有 {count} 种记录类型未列出。它们保存加密密钥、签名密钥、供应商凭据或登录令牌，因此其结构被刻意隐去。",
+      "withheldEdges": "与被隐去记录类型之间的 {count} 条关系未在此显示。"
     }
   },
   "topbar": {
@@ -7389,23 +7409,6 @@
       "guides": "添加帮助指南",
       "admin": "创建管理员登录",
       "invitation": "签发激活链接"
-    },
-    "explorer": {
-      "title": "记录关系",
-      "description": "选择一种记录类型，查看什么指向它、它指向什么，以及哪个模块拥有它。每次都从实时数据库读取，因此永远不会过时。",
-      "recordType": "记录类型",
-      "choose": "选择记录类型…",
-      "show": "显示",
-      "formNote": "本安装共有 {count} 种记录类型。相关类型是链接——点击即可在关系图中跳转。",
-      "unknownTable": "本安装中没有名为“{table}”的记录类型。",
-      "sharedSpine": "共享主干（不属于单一模块）",
-      "primaryKey": "主键",
-      "none": "无",
-      "references": "指向",
-      "noReferences": "此记录类型不指向任何内容。",
-      "referencedBy": "被指向",
-      "noReferencedBy": "没有内容指向此记录类型。",
-      "onDelete": "删除时"
     }
   },
   "currencySelect": {

@@ -56,7 +56,9 @@ describe('slice 4 — which modules the rail may advertise', () => {
     }
     // leave is core and appears in the list because it CONTRIBUTES nav; it must never be hidden.
     const sellable = MODULE_CODES_WITH_NAV.filter((c) => !CORE_MODULE_CODES.includes(c as never));
-    expect(sellable.sort()).toEqual(['attendance', 'claims', 'payroll', 'performance']);
+    // `system_explorer` joined at r79 (deec1691) — the first gated nav row that is NOT pack-backed.
+    // Spelled out rather than derived so adding a module to the rail stays a deliberate edit here.
+    expect(sellable.sort()).toEqual(['attendance', 'claims', 'payroll', 'performance', 'system_explorer']);
   });
 
   it('hides a module the tenant does not have', () => {
@@ -114,6 +116,8 @@ describe('slice 4 — the page-entry courtesy redirect', () => {
     claims: 'app/claims/page.tsx',
     payroll: 'app/payroll/page.tsx',
     performance: 'app/performance/page.tsx',
+    // deec1691 — moved here from the operator plane at r79 and sold as a module (default OFF).
+    system_explorer: 'app/admin/system-explorer/page.tsx',
   };
 
   it('every SELLABLE module with nav guards its entry page', () => {

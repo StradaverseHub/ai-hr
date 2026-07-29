@@ -399,6 +399,18 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'dataPrivacy', href: '/admin/privacy', labelKey: 'nav.dataPrivacy', guard: 'requireAdmin', routes: ['/admin/privacy'] },
   { screenKey: 'aiConfig', href: '/admin/ai', labelKey: 'nav.aiConfig', guard: 'requireAdmin', routes: ['/admin/ai'] },
   { screenKey: 'usersRoles', href: '/admin/users', labelKey: 'nav.usersRoles', guard: 'requireAdmin', routes: ['/admin/users'] },
+  {
+    // System Analysis & Dependency Explorer (deec1691) — the record-relationship reference, moved from
+    // the operator plane to Admin at the reporter's instruction and sold as the `system_explorer`
+    // module (default OFF). The ENTITLEMENT is a second, orthogonal axis this grid does not model: a
+    // column says which ROLES can reach a screen, and a tenant without the module has no such screen
+    // for any role. requireAdmin is still the right and honest answer for the tenants that do have it.
+    screenKey: 'systemExplorer',
+    href: '/admin/system-explorer',
+    labelKey: 'nav.systemExplorer',
+    guard: 'requireAdmin',
+    routes: ['/admin/system-explorer'],
+  },
   // Reports hub + custom report builder (c440b365). scopedAdmin — every report surface is admin-gated.
   { screenKey: 'reports', href: '/reports', labelKey: 'nav.reports', guard: 'scopedAdmin', routes: ['/reports', '/reports/builder/[id]'] },
 ] as const;

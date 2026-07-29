@@ -100,6 +100,21 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   { code: 'multi_cycle_payroll', name: 'Multi-Cycle Payroll', category: 'payroll', description: 'More than one payroll cycle per company.', dependsOn: ['payroll'], billable: true, isCore: false, parentModule: 'payroll', packBacked: false, sortOrder: 210 },
   { code: 'typed_pay_components', name: 'Typed Pay Components', category: 'payroll', description: 'Structured, per-type pay components on the payslip.', dependsOn: ['payroll'], billable: true, isCore: false, parentModule: 'payroll', packBacked: false, sortOrder: 220 },
   { code: 'notifications', name: 'Notifications', category: 'platform', description: 'In-app notification centre and task alerts.', dependsOn: [], billable: true, isCore: false, parentModule: null, packBacked: false, sortOrder: 230 },
+  /**
+   * System Analysis & Dependency Explorer (deec1691) — the admin-facing record-relationship reference.
+   *
+   * `packBacked: false` because it is not a pack: it owns no tables, contributes no satellites and has
+   * no service of its own beyond `core/schema-explorer.ts`, which READS the schema rather than adding
+   * to it. It is a commercial identity only — precisely the case this catalog exists to express.
+   *
+   * WHY IT IS SELLABLE RATHER THAN CORE, which is the whole point of the entry. The screen describes
+   * how the PRODUCT is built (which record type points at which, which module owns each), not what a
+   * customer's data says. Today the only tenant is Stradaverse's own, so having it under Admin during
+   * setup costs nothing. The moment a second customer exists, that same screen would show them the
+   * internal structure of the product they are renting. Making it a module with no entitlement row by
+   * default means that decision is a switch at provisioning time, not a code change under pressure.
+   */
+  { code: 'system_explorer', name: 'System Analysis & Dependency Explorer', category: 'platform', description: 'Admin reference for how the product is built — which record types point at which, and which module owns each.', dependsOn: [], billable: true, isCore: false, parentModule: null, packBacked: false, sortOrder: 240 },
 ];
 
 /**
@@ -213,6 +228,25 @@ export const LEGACY_MODULE_ENV_GATES: Readonly<Record<string, string | null>> = 
   // TOIL_ENABLED is set in NO tracked env file, so `toil` stays out of the parity set. A missing row
   // is disabled (C7), which is exactly today's behaviour for it.
   toil: 'TOIL_ENABLED',
+  /**
+   * `system_explorer` is NEW (deec1691), so unlike every other row here it never HAD a legacy gate —
+   * and the name below is deliberately one that no tracked env file sets and no application code
+   * reads. That is not a fiction to satisfy the coverage assertion; it is the only spelling of "OFF
+   * for everyone" this map can express, and it has to be spelled out somewhere or the module drops
+   * out of the parity ratchet entirely.
+   *
+   * `null` WOULD BE WRONG AND IS THE TRAP HERE. `null` means "no whole-module gate anywhere — the
+   * module is on for everyone", which forces the code into LEGACY_ENABLED_MODULE_CODES, which the
+   * drift test pins against the literal list inside `db/migrations/0313_module_entitlements.sql`.
+   * Getting there would need a new migration to widen the backfill AND would grant the module to
+   * every existing tenant — the exact opposite of "default OFF". Naming an unset variable keeps it
+   * out of the parity set, out of DEFAULT_PROVISION_MODULE_CODES (so the provisioning form does not
+   * pre-tick it), and therefore rowless — and a missing `tenant_module` row is disabled (C7).
+   *
+   * The reintroduction guard in test/module-catalog-drift.test.ts asserts nothing reads this name, so
+   * it cannot later become a real deployment flag that outranks what a customer bought.
+   */
+  system_explorer: 'SYSTEM_EXPLORER_ENABLED',
 };
 
 /** The env var that gates each catalogued SETTING today. Same coverage rule, same drift assertion. */

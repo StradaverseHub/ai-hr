@@ -148,7 +148,8 @@
     "delegations": "Ủy quyền",
     "dashboardCardConfig": "Thẻ bảng điều khiển",
     "scheduledActions": "Tác vụ theo lịch",
-    "systemSettings": "Cài đặt hệ thống"
+    "systemSettings": "Cài đặt hệ thống",
+    "systemExplorer": "Trình khám phá phụ thuộc"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -5163,6 +5164,25 @@
       "createGroupConfirm": "Tạo nhóm",
       "dropGradeHint": "Kéo một bậc từ Danh mục bậc thả vào một nhóm để thêm — hoặc đánh dấu ô chọn của bậc đó trong nhóm rồi lưu.",
       "gradeAlreadyInGroup": "{name} đã có trong nhóm này."
+    },
+    "systemExplorer": {
+      "title": "Phân tích hệ thống & trình khám phá phụ thuộc",
+      "description": "Sản phẩm này được xây dựng như thế nào: chọn một loại bản ghi để xem cái gì trỏ tới nó, nó trỏ tới cái gì và phân hệ nào sở hữu nó. Được đọc trực tiếp từ cơ sở dữ liệu mỗi lần, nên không bao giờ lỗi thời. Chỉ hiển thị cấu trúc — không hiển thị dữ liệu bản ghi.",
+      "recordType": "Loại bản ghi",
+      "choose": "Chọn một loại bản ghi…",
+      "show": "Hiển thị",
+      "formNote": "Có {count} loại bản ghi trong bản cài đặt này. Các loại liên quan là liên kết — bấm vào để đi tiếp trong sơ đồ.",
+      "unknownTable": "Không có loại bản ghi nào tên “{table}” trong bản cài đặt này.",
+      "sharedSpine": "Trục dùng chung (không thuộc phân hệ nào)",
+      "primaryKey": "Khóa chính",
+      "none": "Không có",
+      "references": "Trỏ tới",
+      "noReferences": "Loại bản ghi này không trỏ tới cái gì.",
+      "referencedBy": "Được trỏ tới bởi",
+      "noReferencedBy": "Không có gì trỏ tới loại bản ghi này.",
+      "onDelete": "Khi xóa",
+      "withheldNote": "{count} loại bản ghi không được liệt kê. Chúng lưu khóa mã hóa, khóa ký, thông tin xác thực nhà cung cấp hoặc mã đăng nhập, nên cấu trúc của chúng được che giấu có chủ đích.",
+      "withheldEdges": "{count} quan hệ tới các loại bản ghi bị che giấu không được hiển thị ở đây."
     }
   },
   "topbar": {
@@ -7389,23 +7409,6 @@
       "guides": "Thêm hướng dẫn trợ giúp",
       "admin": "Tạo tài khoản quản trị viên",
       "invitation": "Cấp liên kết kích hoạt"
-    },
-    "explorer": {
-      "title": "Quan hệ bản ghi",
-      "description": "Chọn một loại bản ghi để xem cái gì trỏ tới nó, nó trỏ tới cái gì và phân hệ nào sở hữu nó. Được đọc trực tiếp từ cơ sở dữ liệu mỗi lần, nên không bao giờ lỗi thời.",
-      "recordType": "Loại bản ghi",
-      "choose": "Chọn một loại bản ghi…",
-      "show": "Hiển thị",
-      "formNote": "Có {count} loại bản ghi trong bản cài đặt này. Các loại liên quan là liên kết — bấm vào để đi tiếp trong sơ đồ.",
-      "unknownTable": "Không có loại bản ghi nào tên “{table}” trong bản cài đặt này.",
-      "sharedSpine": "Trục dùng chung (không thuộc phân hệ nào)",
-      "primaryKey": "Khóa chính",
-      "none": "Không có",
-      "references": "Trỏ tới",
-      "noReferences": "Loại bản ghi này không trỏ tới cái gì.",
-      "referencedBy": "Được trỏ tới bởi",
-      "noReferencedBy": "Không có gì trỏ tới loại bản ghi này.",
-      "onDelete": "Khi xóa"
     }
   },
   "currencySelect": {
