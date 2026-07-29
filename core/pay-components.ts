@@ -544,10 +544,18 @@ export function listPayRulePreviewCandidates(ctx: SessionContext, limit = 50) {
  * the admin sees the rejection at the same moment either way.
  *
  * `days` is the period's calendar day count and `hours` the employee's actual attendance total for the
- * period (the same aggregate over attendance.worked_minutes the kernel takes). The preview deliberately
- * does NOT apply the EA-1955 mid-period tenure factor or the component's rounding: those are run-time
- * scaling the kernel applies to the resolved figure, and the point here is to show what the RULE produces.
- * The returned `scope` makes every input visible so the number is checkable rather than magic.
+ * period (the same aggregate over attendance.worked_minutes the kernel takes).
+ *
+ * KNOWN, DELIBERATE DIVERGENCE — read before trusting this for a mid-period joiner. The kernel's scope uses
+ * `daysWorked = prorationFactor × daysInMonth`, i.e. the EA-1955 tenure factor is baked into the day count;
+ * this preview uses the FULL period (factor 1), and it does not apply the component's rounding either. For a
+ * full-tenure employee — the ordinary case — preview and run therefore agree exactly. For a joiner/leaver
+ * whose rule reads `days`, the preview is the full-period figure and the run will be the prorated one.
+ * That is why the returned `scope` reports the day count it used and the panel is labelled "for a FULL
+ * period, before proration and rounding": the difference is stated on screen rather than hidden. Replicating
+ * prorationFactor here would mean re-resolving the employee's payroll policy, which is the parallel
+ * implementation this design is trying to avoid — the ARITHMETIC is shared, and the period scaling is
+ * declared. The returned `scope` makes every input visible so the number is checkable rather than magic.
  */
 export function previewPayRule(
   ctx: SessionContext,

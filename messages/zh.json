@@ -6635,7 +6635,7 @@
     "previewHours": "工作小时数",
     "previewInputs": "使用的薪资项目",
     "previewNone": "没有可供核对的员工。",
-    "previewNote": "此为按比例分摊和舍入之前的数值——薪资运行时才会应用这些处理。",
+    "previewNote": "按完整周期显示，此为按比例分摊和舍入之前的数值——薪资运行时才会应用这些处理。",
     "previewFailed": "无法为该员工计算结果。"
   },
   "review": {

@@ -6635,7 +6635,7 @@
     "previewHours": "Hours worked",
     "previewInputs": "Pay items used",
     "previewNone": "No employees available to check against.",
-    "previewNote": "Before proration and rounding — payroll applies those when the run happens.",
+    "previewNote": "Shown for a FULL period, before proration and rounding — payroll applies those when the run happens.",
     "previewFailed": "Could not work out a result for that employee."
   },
   "review": {

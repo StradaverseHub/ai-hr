@@ -6635,7 +6635,7 @@
     "previewHours": "Số giờ làm việc",
     "previewInputs": "Các mục lương đã dùng",
     "previewNone": "Không có nhân viên nào để kiểm tra.",
-    "previewNote": "Trước khi chia theo tỷ lệ và làm tròn — bảng lương áp dụng những bước đó khi chạy.",
+    "previewNote": "Hiển thị cho một kỳ ĐẦY ĐỦ, trước khi chia theo tỷ lệ và làm tròn — bảng lương áp dụng những bước đó khi chạy.",
     "previewFailed": "Không thể tính kết quả cho nhân viên đó."
   },
   "review": {
