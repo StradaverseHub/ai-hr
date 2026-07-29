@@ -101,6 +101,25 @@ export type MovementHistoryRow = {
   /** A PROCESSED (not yet closed) run covered it. Correcting is allowed; payslips are never reprocessed
    *  automatically, so the UI must say so before HR commits. */
   payrollWarning: boolean;
+  /**
+   * r78c — the placement columns the reporter asked the history to show (Company, Division, Department,
+   * Job Title, Basic), reconstructed AS OF this row's effective date, not read live. A row for a movement
+   * recorded years ago must show what the employee's placement WAS then; reading today's columns would
+   * make every row in the table identical and the history a lie.
+   *
+   * Reconstruction matches the detail view's After column exactly: the dated tables (assignment,
+   * compensation) are resolved by effective date, and `division` — a flat, non-dated `employment` column —
+   * is replayed from the ledger the same way the detail view replays job grade.
+   *
+   * `basic` puts a pay figure on the LIST for the first time. That is not a widening: movementHistory has
+   * exactly one caller, the Personnel detail page, which is requireAdmin-gated and already renders the same
+   * figure on the row's detail view (movementDetail.after.salary) and on the Basic Salary card.
+   */
+  company: string | null;
+  division: string | null;
+  department: string | null;
+  jobTitle: string | null;
+  basic: string | null;
 };
 
 /** 66a63bd6 — the visible trace a correction leaves on the movement it undid. */
@@ -575,15 +594,106 @@ function latestStateChangingSpanEnd(events: RawEvent[], rows: ProjectedRow[]): n
   return end;
 }
 
+/**
+ * r78c — the value of a flat (non-effective-dated) `employment` column as of an event, replayed from the
+ * `employment.info.updated` before/after diffs. Same shape and same reasoning as gradeIdAtSequence: the
+ * column itself holds only TODAY's value, so an as-of read has to come from the ledger. Events that did
+ * not write this field are skipped, so an unrelated Employment Dates save never disturbs the replay.
+ * Falls back to the earliest recorded `before`, then to the current column (an employment whose division
+ * was never edited has held the same value throughout).
+ */
+function flatValueAtSequence(
+  infoEvents: RawEvent[],
+  field: MovementFlatField,
+  bound: number,
+  currentValue: string | null,
+): string | null {
+  let v: string | null | undefined;
+  let firstBefore: string | null | undefined;
+  for (const e of infoEvents) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const p = (e.payload ?? {}) as Record<string, any>;
+    const fields: string[] = Array.isArray(p.fields) ? p.fields : [];
+    if (!fields.includes(field)) continue;
+    if (firstBefore === undefined) firstBefore = ((p.before ?? {})[field] as string | null) ?? null;
+    if (e.sequence <= bound) v = ((p.after ?? {})[field] as string | null) ?? null;
+  }
+  if (v !== undefined) return v;
+  if (firstBefore !== undefined) return firstBefore;
+  return currentValue;
+}
+
+/**
+ * r78c — the placement columns every history row shows (Company, Division, Department, Job Title, Basic),
+ * loaded ONCE for the whole employment and resolved per row in memory. Deliberately not per-row queries:
+ * the history is rendered whole, and one round trip per row per column is how a timeline screen becomes a
+ * slow one.
+ *
+ * Company has no dated history (an employment holds one company_id; changeEmploymentCompany flips it),
+ * so every row shows the current legal name — the same value the detail view's comparison grid shows.
+ */
+async function placementColumnsTx(tx: Tx, employmentId: string, companyId: string, events: RawEvent[]) {
+  const [co] = await tx
+    .select({ name: company.legalName })
+    .from(company)
+    .where(eq(company.id, companyId))
+    .limit(1);
+
+  const asgRows = await tx
+    .select({
+      validFrom: assignment.validFrom,
+      validTo: assignment.validTo,
+      department: department.name,
+      position: position.title,
+    })
+    .from(assignment)
+    .leftJoin(department, eq(department.id, assignment.departmentId))
+    .leftJoin(position, eq(position.id, assignment.positionId))
+    .where(and(eq(assignment.employmentId, employmentId), isNull(assignment.supersededAt)))
+    .orderBy(asc(assignment.validFrom));
+
+  const compRows = await tx
+    .select({
+      validFrom: compensation.validFrom,
+      validTo: compensation.validTo,
+      basicSalary: compensation.basicSalary,
+      currency: compensation.currency,
+    })
+    .from(compensation)
+    .where(and(eq(compensation.employmentId, employmentId), isNull(compensation.supersededAt)))
+    .orderBy(asc(compensation.validFrom));
+
+  const [empRow] = await tx
+    .select({ orgDivision: employment.orgDivision })
+    .from(employment)
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+
+  const infoEvents = events.filter((e) => e.eventType === 'employment.info.updated');
+
+  return (asOf: string, seqBound: number) => {
+    const asg = asgRows.filter((a) => a.validFrom <= asOf && (a.validTo == null || a.validTo > asOf)).pop() ?? null;
+    const comp = compRows.filter((c) => c.validFrom <= asOf && (c.validTo == null || c.validTo > asOf)).pop() ?? null;
+    return {
+      company: co?.name ?? null,
+      division: flatValueAtSequence(infoEvents, 'orgDivision', seqBound, empRow?.orgDivision ?? null),
+      department: asg?.department ?? null,
+      jobTitle: asg?.position ?? null,
+      basic: comp ? `${comp.currency} ${comp.basicSalary}` : null,
+    };
+  };
+}
+
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
 export function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
   return withTenant(ctx, async (tx) => {
-    const { events, rows } = await projectRows(tx, ctx.tenantId, employmentId);
+    const { emp, events, rows } = await projectRows(tx, ctx.tenantId, employmentId);
     // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
     // SAME rule the service refuses on (the Basic Salary card's precedent).
     const closed = await closedPeriodsTx(tx, employmentId);
     const processed = await processedPeriodsTx(tx, employmentId);
     const latest = latestStateChangingSpanEnd(events, rows);
+    const placementAt = await placementColumnsTx(tx, employmentId, emp.companyId, events);
     return rows.map((r) => {
       const g = groupEventsOf(events, r);
       const spanEnd = g.length ? Math.max(...g.map((e) => e.sequence)) : -1;
@@ -602,6 +712,10 @@ export function movementHistory(ctx: SessionContext, employmentId: string): Prom
         canReverse: c.canReverse && !locked,
         payrollLocked: locked,
         payrollWarning: c.stateChanging && !locked && overlapsClosedPeriod(processed, r.effectiveDate, null),
+        // The flat-column replay bounds on the WHOLE group's last sequence, exactly as the detail view's
+        // After column does — the leg that wrote Division can carry a higher sequence than the leg that
+        // owns the row, and bounding on the row's own event alone would show the pre-movement value.
+        ...placementAt(r.effectiveDate, spanEnd === -1 ? r.sequence : spanEnd),
       };
     });
   });
@@ -1160,7 +1274,7 @@ export async function createMovementEvent(ctx: SessionContext, p: CreateMovement
       return setEmploymentInfo(ctx, {
         employmentId: p.employmentId,
         confirmationDate: p.effectiveDate,
-        movement: { type: 'confirmation', remarks },
+        movement: { type: 'confirmation', remarks, groupId: randomUUID() },
       });
 
     // 89ea527b — Join Date Change: the employee's commencement date with the CURRENT employing company moves
@@ -1171,7 +1285,7 @@ export async function createMovementEvent(ctx: SessionContext, p: CreateMovement
       return setEmploymentInfo(ctx, {
         employmentId: p.employmentId,
         joinDate: p.effectiveDate,
-        movement: { type: 'joinDateChange', remarks },
+        movement: { type: 'joinDateChange', remarks, groupId: randomUUID() },
       });
 
     // 89ea527b — Group Join Date Correction: the authorized historical-data correction of the master service
@@ -1182,7 +1296,7 @@ export async function createMovementEvent(ctx: SessionContext, p: CreateMovement
       return setEmploymentInfo(ctx, {
         employmentId: p.employmentId,
         hiredOn: p.effectiveDate,
-        movement: { type: 'groupJoinDateCorrection', remarks },
+        movement: { type: 'groupJoinDateCorrection', remarks, groupId: randomUUID() },
       });
 
     case 'probationExtension':
@@ -1190,7 +1304,7 @@ export async function createMovementEvent(ctx: SessionContext, p: CreateMovement
       return setEmploymentInfo(ctx, {
         employmentId: p.employmentId,
         extendedConfirmationDate: endDate,
-        movement: { type: 'probationExtension', remarks, endDate },
+        movement: { type: 'probationExtension', remarks, endDate, groupId: randomUUID() },
       });
 
     case 'resignation':
@@ -1198,7 +1312,7 @@ export async function createMovementEvent(ctx: SessionContext, p: CreateMovement
         employmentId: p.employmentId,
         tenderResignationDate: p.effectiveDate,
         ...(endDate ? { lastWorkingDate: endDate } : {}),
-        movement: { type: 'resignation', remarks, endDate },
+        movement: { type: 'resignation', remarks, endDate, groupId: randomUUID() },
       });
 
     case 'termination':

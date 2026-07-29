@@ -542,6 +542,7 @@
       "workState": "Negeri bekerja",
       "grade": "Gred",
       "gradeNone": "Tiada gred",
+      "gradeMovementOnlyNote": "Gred tidak boleh diubah di sini. Rekodkannya sebagai pergerakan supaya ia bertarikh, boleh dikesan dan dipaparkan sekali sahaja dalam Sejarah Pekerjaan:",
       "workStateDefault": "Lalai syarikat",
       "holidayCalendar": "Kalendar cuti",
       "holidayCalendarDefault": "Lalai syarikat",
@@ -1044,6 +1045,11 @@
         "columns": {
           "eventType": "Jenis Acara",
           "effectiveDate": "Tarikh Berkuat Kuasa",
+          "company": "Syarikat",
+          "division": "Bahagian",
+          "department": "Jabatan",
+          "jobTitle": "Jawatan",
+          "basic": "Gaji Pokok",
           "endDate": "Tarikh Tamat",
           "remarks": "Catatan",
           "action": "Tindakan"

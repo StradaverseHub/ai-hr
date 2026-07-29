@@ -542,6 +542,7 @@
       "workState": "பணி மாநிலம்",
       "grade": "தரம்",
       "gradeNone": "தரம் இல்லை",
+      "gradeMovementOnlyNote": "தரத்தை இங்கே மாற்ற முடியாது. அதைப் பணிவரலாற்றில் ஒரே ஒரு பதிவாகத் தேதியுடனும் பொறுப்புடனும் காட்ட, ஒரு இயக்கமாகப் பதிவு செய்யவும்:",
       "workStateDefault": "நிறுவன இயல்புநிலை",
       "holidayCalendar": "விடுமுறை நாட்காட்டி",
       "holidayCalendarDefault": "நிறுவன இயல்புநிலை",
@@ -1044,6 +1045,11 @@
         "columns": {
           "eventType": "நிகழ்வு வகை",
           "effectiveDate": "அமலாகும் தேதி",
+          "company": "நிறுவனம்",
+          "division": "பிரிவு",
+          "department": "துறை",
+          "jobTitle": "பதவி",
+          "basic": "அடிப்படை",
           "endDate": "முடிவு தேதி",
           "remarks": "குறிப்புகள்",
           "action": "செயல்"

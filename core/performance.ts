@@ -14,6 +14,7 @@
  * event log, setCompensation (effective-dated merit) and setPayrollInput (bonus as additional-
  * remuneration MTD).
  */
+import { randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -1111,9 +1112,19 @@ export async function enactCompAction(
       // rateAmount are deliberately omitted: setCompensation CARRIES them FORWARD unchanged, so a merit
       // enact never silently scales a daily/hourly employee's rate_amount (re-rating is an explicit admin
       // action on the Basic Salary screen, not a side effect of a percentage raise).
+      // r78c — the raise now carries a movement tag. It emitted `compensation.set` UNTAGGED, which the
+      // Employment History projected as a generic "Salary Adjustment" with no movement behind it; an
+      // enacted merit increase IS an Increment, and the tag both names it correctly and gives the leg a
+      // groupId, so a future companion leg (a grade bump enacted with the raise) collapses into the same
+      // row instead of opening a second one.
       const res = await setCompensation(
         ctx,
-        { employmentId: review.employmentId, basicSalary: newBasic, effectiveFrom: p.meritEffectiveFrom },
+        {
+          employmentId: review.employmentId,
+          basicSalary: newBasic,
+          effectiveFrom: p.meritEffectiveFrom,
+          movement: { type: 'increment', groupId: randomUUID() },
+        },
         tx,
       );
       enactedCompensationId = res.compensationId;

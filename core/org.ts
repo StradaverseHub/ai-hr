@@ -3,6 +3,7 @@
  * (one transaction, RLS scoped to the session) and appends a domain event before returning.
  * Effective-dated changes CLOSE + INSERT; we never overwrite history.
  */
+import { randomUUID } from 'node:crypto';
 import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } from '../db/events';
@@ -245,6 +246,26 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       validTo: null,
     });
 
+    /**
+     * r78c — the hire and its own reporting line are ONE event, so they share ONE movement group.
+     * `reporting-line.set` is a MOVEMENT_EVENT_TYPE: emitted untagged (as it was) the hire-time line
+     * projected a SECOND Employment History row, "Reporting Line Change", dated the same day as Hired.
+     * Every employee hired with a manager therefore opened their history with two rows for one action —
+     * the same one-event-two-rows fault the reporter raised about Promotion.
+     *
+     * Tagging the line `secondary` makes the projection skip it (core/movement.ts:315). The events
+     * themselves are unchanged in number, type and subject — only the payload gains the classification
+     * tag, so audit readers see no loss, and the Hired row's detail view still resolves the manager (it
+     * reads the reporting_line table as-of, not the ledger).
+     *
+     * `employment.hired` is deliberately left UNTAGGED. Giving it the same groupId would pull the
+     * reporting-line leg into the Hired row's correctability group, and that group is what decides
+     * `stateChanging` — a hire dated inside a CLOSED payroll period would then start rendering a
+     * "payroll locked" note on its Hired row. The tag would have bought nothing: the projection
+     * hard-codes the Hired row's label, and it is not correctable either way.
+     */
+    const hireGroupId = randomUUID();
+
     // Reporting line on hire (inline insert — no supersede / cycle guard needed: a brand-new
     // employment has no prior line and cannot form a cycle). Cross-company managers are allowed by design.
     if (p.reportingManagerEmploymentId) {
@@ -271,6 +292,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           managerEmploymentId: p.reportingManagerEmploymentId,
           lineType: 'administrative',
           validFrom: p.hiredOn,
+          movement: { type: 'hired', groupId: hireGroupId, secondary: true } satisfies MovementTag,
         },
       });
     }
@@ -388,7 +410,6 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
         assignmentStatus,
         provisionalEndOn,
         // Additive only (feedback 38668d9b) — original keys above are preserved for CP22/audit readers.
-        employeeCode,
       },
     });
 
@@ -396,6 +417,20 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
   });
 }
 
+/**
+ * r78c — this service now has NO production caller. Its two callers were transferAction (deleted: an
+ * unreferenced `use server` endpoint) and setLocationAction (rerouted through the movement recorder, which
+ * uses setEmploymentAssignment instead — that writer carries every assignment dimension forward, where this
+ * one only ever carried a subset; r73's business-unit loss came from exactly that gap).
+ *
+ * It is kept, not deleted, because it is the ONLY writer of the `assignment.transferred` event type that
+ * years of production history already contains, and core/movement.ts still projects and REVERSES that type
+ * (reverseLegTx). Deleting the writer would leave the projection reading an event nothing can produce,
+ * which is how a replay path silently rots. Its own regression suite
+ * (test/transfer-preserves-business-unit.test.ts) stays green against it.
+ *
+ * Do not wire a new caller to it: a new transfer belongs on the movement recorder, tagged and grouped.
+ */
 export async function transferEmployee(
   ctx: SessionContext,
   p: {
@@ -1868,6 +1903,13 @@ export async function changeEmploymentCompany(
         positionId: p.positionId ?? null,
         businessUnitId: p.businessUnitId ?? null,
         costCenterId: p.costCenterId ?? null,
+        // r78c — this leg used to go out UNTAGGED, so its `employment.assignment.changed` projected an
+        // Employment History row with no movement behind it. The label is unchanged (an untagged
+        // assignment event already fell back to `orgAssignmentChange`), but the row now carries a
+        // groupId, so any future leg added to this transaction collapses into it instead of opening a
+        // second row. Company corrections are gated to employments with no transactions yet, so this is
+        // the one screen that re-homes an assignment outside Movement, and it stays that way.
+        movement: { type: 'orgAssignmentChange', groupId: randomUUID() },
       },
       tx,
     );
