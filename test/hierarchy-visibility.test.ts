@@ -236,7 +236,7 @@ describe('ADR-0052 — delegation (approver-routing only)', () => {
     // Multi-step chain (direct_manager → hr_admin) so the delegate clears the direct_manager step and the
     // request ADVANCES (no finalize / ledger debit) — this isolates "delegate can clear a direct_manager
     // step" per the plan, independent of the subject's leave balance.
-    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
+    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
     const { leaveRequestId } = await requestLeave(A(b), {
       employmentId: sub.employmentId,
       leaveTypeId: b.annualLeaveTypeId,

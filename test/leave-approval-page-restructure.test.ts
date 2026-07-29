@@ -109,14 +109,29 @@ describe('assignment list rendering (template-manager)', () => {
     expect(assignSection).toContain('name="ruleId" value={a.ruleId}');
   });
 
-  it('keeps the bulk AssignForm and its explicit multi-step-off warning untouched', () => {
+  it('keeps the bulk AssignForm', () => {
     expect(manager).toContain('<AssignForm');
     expect(manager).toContain('assignAction={actions.assign}');
-    expect(manager).toContain('multiApprovalAction={actions.setMultiApproval}');
-    expect(manager).toContain('const offCompanies = selectedCompanies.filter((id) => !companyMultiApproval[id]);');
-    expect(manager).toContain('{labels.enableMultiApproval}');
-    // No auto-enable: the switch is only ever flipped by that explicit button's form.
-    expect(manager).not.toMatch(/setMultiApproval\([^)]*\)\s*;/);
+  });
+
+  /**
+   * r79 0322 — the multi-step-off warning and its "Enable multi-step approval" button are GONE. They
+   * existed because an assignment did nothing until company.leave_multi_approval was on; the assigned
+   * template now decides on its own, so the warning would be false and the button would flip a flag
+   * nothing reads. Asserted as ABSENCE because a leftover here is a control that lies.
+   */
+  it('no longer carries the per-company multi-step switch, its warning or its button', () => {
+    expect(manager).not.toContain('companyMultiApproval');
+    expect(manager).not.toContain('setMultiApproval');
+    expect(manager).not.toContain('enableMultiApproval');
+    expect(manager).not.toContain('multiApprovalOff');
+    expect(manager).not.toContain('offCompanies');
+  });
+
+  it('slots the relocated escalation editor into the assignment card', () => {
+    const assignSection = manager.slice(manager.indexOf('export function ApprovalAssignmentManager'));
+    expect(assignSection).toContain('escalation?: React.ReactNode');
+    expect(assignSection).toContain('{escalation}');
   });
 });
 
@@ -153,7 +168,7 @@ describe('Approval Workflow page — two headed sections', () => {
     expect(page).toContain("<SectionHeader title={t('companyDefaultsTitle')} count={rows.length} />");
     expect(page).toContain("t('companyDefaultsHint')");
     const list = page.slice(page.indexOf("t('companyDefaultsTitle')"));
-    expect(list).toMatch(/rows\.map\(\(\{ company, pol, esc \}\) => \(/);
+    expect(list).toMatch(/rows\.map\(\(\{ company, pol \}\) => \(/);
     expect(list).toContain('<li key={company.id}>');
     expect(list).toMatch(/<details className="group">/);
     expect(list).toContain('[&::-webkit-details-marker]:hidden');
@@ -161,15 +176,37 @@ describe('Approval Workflow page — two headed sections', () => {
     expect(page).not.toContain('<Card key={company.id}>');
   });
 
-  it('keeps the base chain, the explicit multi-step switch and the escalation gate exactly as before', () => {
+  /**
+   * r79 0322 — what is LEFT in the company section is the any-type base chain and nothing else. The
+   * multi-step switch is gone (the chain's own length says it), and escalation has moved up into the
+   * Assignment Template card. The base chain stays because this is still its only editor: the workflow
+   * matrix deliberately hides fully-wildcard rules, so deleting this card would leave a live routing
+   * rule with no way to see or change it.
+   */
+  it('leaves the company section holding the base chain alone — no switch, no escalation', () => {
     const list = page.slice(page.indexOf("t('companyDefaultsTitle')"));
     expect(list).toContain('<LeaveApprovalEditor');
     expect(list).toContain('action={saveLeaveApprovalPolicyAction}');
-    expect(list).toContain('initialEnabled={pol.enabled}');
-    expect(list).toContain('action={saveLeaveEscalationPolicyAction}');
-    // Escalation stays gated on pol.enabled, with the single-approver placeholder otherwise.
-    expect(list).toMatch(/\{pol\.enabled \? \(/);
-    expect(list).toContain("t('escalationUnavailableSingleApprover')");
+    expect(list).toContain('initialLevels={pol.levels}');
+    expect(list).not.toContain('initialEnabled');
+    expect(list).not.toContain('<LeaveEscalationEditor');
+    expect(page).not.toContain('pol.enabled');
+    expect(page).not.toContain('setLeaveMultiApprovalAction');
+  });
+
+  it('relocates the escalation editor into the Assignment Template card, action and all', () => {
+    const s2 = page.indexOf("t('assignmentTemplateTitle')");
+    const companySection = page.indexOf("t('companyDefaultsTitle')");
+    const escalationAt = page.indexOf('<LeaveEscalationEditor');
+    // Inside section 2, and ABOVE the company section — i.e. it moved, it was not duplicated.
+    expect(escalationAt).toBeGreaterThan(s2);
+    expect(escalationAt).toBeLessThan(companySection);
+    expect(page).toContain('action={saveLeaveEscalationPolicyAction}');
+    // Same editor, same action, same company columns: nothing was dropped and recreated.
+    expect(page).toContain('escalateAfterDays: esc.escalateAfterDays');
+    expect(page).toContain('targetRole: esc.targetRole');
+    // Every company gets one now — the old "multi-step only" condition went with the switch.
+    expect(page).not.toContain("t('escalationUnavailableSingleApprover')");
   });
 });
 
@@ -202,7 +239,7 @@ describe('i18n — new labels ship in all 6 locales', () => {
 
   it('reuses the existing escalation / scope / condition vocabulary rather than duplicating it', () => {
     const ns = dict('en').leaveApproval;
-    for (const k of ['escalationTitle', 'escalationUnavailableSingleApprover', 'gradeGroup', 'advancedScope', 'conditions']) {
+    for (const k of ['escalationTitle', 'escalationSectionHint', 'gradeGroup', 'advancedScope', 'conditions']) {
       expect(typeof ns[k], `en.${k}`).toBe('string');
     }
   });

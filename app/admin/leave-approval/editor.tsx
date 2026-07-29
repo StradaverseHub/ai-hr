@@ -5,8 +5,6 @@ import { Button } from '@/components/ui';
 import { StepListEditor } from './step-list-editor';
 
 type Labels = {
-  enable: string;
-  enableHint: string;
   chain: string;
   empty: string;
   manager: string;
@@ -29,43 +27,30 @@ type Labels = {
 
 /** ADR-0039 2B-2 — the per-company approval chain editor. Levels are an ordered list the admin builds;
  *  the order IS the approval sequence. Submitted as a CSV in a hidden field (parsed server-side). The
- *  ordered-step UI (with 6fadb036 drag-and-drop) lives in the shared StepListEditor. */
+ *  ordered-step UI (with 6fadb036 drag-and-drop) lives in the shared StepListEditor.
+ *
+ *  r79 0322 — the "Require multi-step approval" checkbox is GONE. The chain's own LENGTH is the answer:
+ *  one level is single-approver, two or more is a chain (core/leave.ts isMultiStepChain). A checkbox that
+ *  could disagree with the chain beside it was the whole defect. */
 export function LeaveApprovalEditor({
   companyId,
   action,
-  initialEnabled,
   initialLevels,
   labels,
 }: {
   companyId: string;
   action: (fd: FormData) => void | Promise<void>;
-  initialEnabled: boolean;
   initialLevels: string[];
   labels: Labels;
 }) {
-  const [enabled, setEnabled] = useState(initialEnabled);
   const [levels, setLevels] = useState<string[]>(initialLevels);
 
   return (
     <form action={action} className="space-y-4 p-4">
       <input type="hidden" name="companyId" value={companyId} />
-      <input type="hidden" name="enabled" value={enabled ? '1' : '0'} />
       <input type="hidden" name="levels" value={levels.join(',')} />
 
-      <label className="flex items-start gap-2.5 text-sm">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-          className="mt-0.5 h-4 w-4 rounded border-border"
-        />
-        <span>
-          <span className="font-medium">{labels.enable}</span>
-          <span className="block text-xs text-muted-foreground">{labels.enableHint}</span>
-        </span>
-      </label>
-
-      <StepListEditor levels={levels} setLevels={setLevels} labels={labels} disabled={!enabled} />
+      <StepListEditor levels={levels} setLevels={setLevels} labels={labels} />
 
       {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
       <label className="block text-xs">

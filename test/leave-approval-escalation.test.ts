@@ -100,7 +100,6 @@ beforeEach(async () => {
   // Multi-step chain: direct manager (step 0) then HR (step 1).
   await setLeaveApprovalPolicy(adminCtx(b), {
     companyId: b.companyId,
-    enabled: true,
     levels: ['direct_manager', 'hr_admin'],
   });
 });
@@ -334,7 +333,10 @@ describe('escalation sweep (71b9143a — via the nightly review-sweep)', () => {
         .insert(schema.department)
         .values({ tenantId: b.tenantId, companyId: co.id, name: 'Ops' })
         .returning({ id: schema.department.id });
-      await setLeaveApprovalPolicy(adminCtx(b), { companyId: co.id, enabled: true, levels: ['hr_admin'] });
+      // r79 0322 — TWO levels, so these companies genuinely produce approval steps. A one-level chain is
+      // the single-approver path and generates none, which would make this test pass for the wrong reason:
+      // "no candidates" instead of "escalation is off here".
+      await setLeaveApprovalPolicy(adminCtx(b), { companyId: co.id, levels: ['hr_admin', 'payroll'] });
       const emp = await hire(`Emp ${name}`, co.id, dept.id);
       const { leaveRequestId } = await requestLeave(adminCtx(b), {
         employmentId: emp.employmentId,

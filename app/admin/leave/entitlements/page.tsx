@@ -886,10 +886,12 @@ export default async function LeaveEntitlementsPage({
                         className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background px-3 py-2 text-xs"
                       >
                         <span className="font-medium text-foreground">{company.name}</span>
+                        {/* r79 0322 — always the chain now. This used to print "Single approver
+                            (multi-step approval off)" whenever company.leave_multi_approval was off,
+                            which was the whole defect: the chain shown here was NOT what ran. A
+                            one-level chain IS single approver, so the chain says it by itself. */}
                         <span className="text-muted-foreground">
-                          {pol.enabled
-                            ? pol.levels.map((lv) => approvalRoleLabel[lv] ?? lv).join(' → ')
-                            : t('approvalStep.defaultChainOff')}
+                          {pol.levels.map((lv) => approvalRoleLabel[lv] ?? lv).join(' → ')}
                         </span>
                       </div>
                     ))}

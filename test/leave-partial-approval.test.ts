@@ -21,7 +21,11 @@
  *  9. RLS: a non-manager cannot read the breakdown or decide another's date; a manager who sees the parent
  *     sees its date rows (RLS parity).
  * 11. REPLACEMENT guard: per_date_approval on a REPLACEMENT type creates NO date rows, uses decideLeave.
- * 12. Multi-step company guard: per_date_approval in a leaveMultiApproval company creates NO date rows.
+ * 12. Multi-step guard: per_date_approval on a two-or-more-step resolved chain creates NO date rows.
+ *
+ * r79 0322 — the single-vs-multi answer is no longer company.leave_multi_approval; it is the resolved
+ * chain's own length. This file's company is put on an explicit ONE-step chain in beforeEach, which is the
+ * same shape the old opted-out default produced.
  */
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -37,6 +41,7 @@ import {
   InsufficientLeaveBalanceError,
   MissingRejectReasonError,
 } from '../core/leave';
+import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { leaveRequestDateBreakdown, plannedAbsences } from '../core/read';
 import { attendanceForDate, attendanceMonthSummary } from '../core/attendance';
 import { rosterVariance, createShift, assignShift } from '../core/roster';
@@ -145,6 +150,11 @@ beforeEach(async () => {
   });
   mgrCtx = { tenantId: b.tenantId, userId: uM, personId: manager.personId, roles: ['manager'] };
   await enablePerDate(b.annualLeaveTypeId);
+  // r79 0322 — per-date approval is offered to SINGLE-APPROVER requests. That used to be the seeded
+  // default of company.leave_multi_approval=false; it is now a resolved chain of ONE level, so the company
+  // says so explicitly. Without this the built-in direct_manager → hr_admin fallback resolves, the request
+  // is multi-step, and (correctly) no date rows are produced — see case 12 below, which asserts exactly that.
+  await setLeaveApprovalPolicy(adminCtx(b), { companyId: b.companyId, levels: ['direct_manager'] });
 });
 afterAll(async () => {
   await closeAll();
@@ -558,8 +568,9 @@ describe('Partial Leave Approval — REPLACEMENT + multi-step guards', () => {
     expect(ok.status).toBe('approved');
   });
 
-  it('12: a per_date_approval type in a leaveMultiApproval company creates NO date rows (falls back to the chain)', async () => {
-    await owner.db.update(schema.company).set({ leaveMultiApproval: true }).where(eq(schema.company.id, b.companyId));
+  it('12: a per_date_approval type on a MULTI-step chain creates NO date rows (falls back to the chain)', async () => {
+    // r79 0322 — "multi-step" is the resolved chain having two or more levels, not a company flag.
+    await setLeaveApprovalPolicy(adminCtx(b), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
     const res = await requestSpan(D10, D12);
     expect(await dateRows(res.leaveRequestId)).toHaveLength(0);
     // A multi-step chain was generated instead (the whole-request path is intact).
@@ -570,16 +581,16 @@ describe('Partial Leave Approval — REPLACEMENT + multi-step guards', () => {
     expect(steps.length).toBeGreaterThan(0);
   });
 
-  it('in-flight: a company flipping to multi-step mid-request does NOT strand already-created per-date rows', async () => {
-    // The gate is read ONCE at requestLeave time; decideLeaveDate never re-checks the company flag. So a
+  it('in-flight: a company moving to a multi-step chain mid-request does NOT strand already-created per-date rows', async () => {
+    // The gate is read ONCE at requestLeave time; decideLeaveDate never re-resolves the chain. So a
     // per-date request that already has its date rows continues to resolve via decideLeaveDate regardless of a
-    // later company-level flip — confirming, not assuming, the documented in-flight behaviour.
+    // later configuration change — confirming, not assuming, the documented in-flight behaviour.
     await grant(b.annualLeaveTypeId, '20.00');
     const res = await requestSpan(D10, D12);
     expect(await dateRows(res.leaveRequestId)).toHaveLength(3);
-    // Decide one date, THEN flip the company to multi-step.
+    // Decide one date, THEN lengthen the company's chain to two steps.
     await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: D10, decision: 'approved' });
-    await owner.db.update(schema.company).set({ leaveMultiApproval: true }).where(eq(schema.company.id, b.companyId));
+    await setLeaveApprovalPolicy(adminCtx(b), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
     // The remaining dates still resolve through the per-date path and finalize correctly.
     await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: D11, decision: 'approved' });
     const last = await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: D12, decision: 'rejected', rejectReason: 'no' });

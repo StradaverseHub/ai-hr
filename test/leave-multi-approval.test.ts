@@ -1,9 +1,12 @@
 /**
- * ADR-0038 2B-1 (#18) — multi-level leave approval. When a company opts in (company.leave_multi_approval),
- * a leave request generates an ordered chain of approval steps (direct manager → HR). decideLeave advances
- * the current step; the request is only approved (and the ledger debited) when the final step clears, and a
- * rejection at any step is terminal. A non-HR approver cannot clear the HR step. Companies that don't opt in
- * keep single-step approval.
+ * ADR-0038 2B-1 (#18) — multi-level leave approval. A leave request whose resolved chain has two or more
+ * levels generates an ordered chain of approval steps (direct manager → HR). decideLeave advances the
+ * current step; the request is only approved (and the ledger debited) when the final step clears, and a
+ * rejection at any step is terminal. A non-HR approver cannot clear the HR step.
+ *
+ * r79 0322 — the opt-in is no longer company.leave_multi_approval; it is the resolved chain's own length.
+ * These cases run on the built-in direct_manager → hr_admin fallback (no rule configured), which is what
+ * the seeded company resolves to.
  */
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -12,6 +15,7 @@ import * as schema from '../db/schema';
 import { type SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { decideLeave, requestLeave } from '../core/leave';
+import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -48,7 +52,6 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  await owner.db.update(schema.company).set({ leaveMultiApproval: true }).where(eq(schema.company.id, b.companyId));
   subject = await hire('Subject');
   const manager = await hire('Manager');
   const uM = await createAppUser(b.tenantId, manager.personId, 'manager');
@@ -117,8 +120,15 @@ describe('ADR-0038 2B-1 — multi-level leave approval', () => {
     expect(debit).toHaveLength(0);
   });
 
-  it('a company that has not opted in keeps single-step approval', async () => {
-    await owner.db.update(schema.company).set({ leaveMultiApproval: false }).where(eq(schema.company.id, b.companyId));
+  /**
+   * r79 0322 — this used to be "a company that has not opted in", flipping
+   * company.leave_multi_approval to false. That switch is gone; a company says "one approver" by being
+   * assigned a ONE-STEP chain, and it must land on the same shape the opt-out landed on: no step rows,
+   * one whole-request decision. Flipping the old column here would now be a no-op that quietly proves
+   * nothing, which is why the test writes a real one-step policy instead.
+   */
+  it('a company on a ONE-step chain keeps single-step approval', async () => {
+    await setLeaveApprovalPolicy(adminCtx(b), { companyId: b.companyId, levels: ['hr_admin'] });
     const { leaveRequestId } = await request('2026-07-06');
     expect(await stepsFor(leaveRequestId)).toHaveLength(0);
     const decided = await decideLeave(adminCtx(b), { leaveRequestId, decision: 'approved' });
