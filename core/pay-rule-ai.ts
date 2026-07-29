@@ -2,9 +2,16 @@
  * AI-assisted pay-rule drafting (Payroll Setup — configurable pay-rule engine). DRAFT-ONLY, one-shot.
  *
  * Because the rule is a CLOSED enum of discriminated kinds (not a free-text formula), the model's job
- * collapses from "generate a fragile expression string" to "classify a sentence into one of ~5 kinds +
+ * collapses from "generate a fragile expression string" to "classify a sentence into one of ~6 kinds +
  * extract a number". It emits ONE JSON object matching the PayRule union plus a one-line plain-English
  * explanation; we parse it and run the SAME pure validatePayRule the UI and the kernel use.
+ *
+ * 61bf109d — the assist covers the SINGLE-VALUE kinds only, `qty_rate` included. It deliberately does NOT
+ * draft the `formula` kind or a `percent_of base:'component'` rule: both create a dependency between pay
+ * items, and a model inventing an edge in the catalog's dependency graph is a class of mistake the admin
+ * cannot see in a one-line explanation. Those two are built by hand in the structured editor, where the
+ * referenced pay item is picked from a list rather than guessed. validatePayRule is still the backstop —
+ * a model that emitted one anyway would be structurally valid but is simply never asked for.
  *
  * Mirrors generateFeedbackPlan / draftManagerReview exactly:
  *   - short read-tx to resolveActiveAiConfig (null ⇒ feature OFF when unconfigured → typed error);
@@ -38,6 +45,7 @@ const SYSTEM = [
   '  - {"kind":"per_day","rate":N} — N ringgit per day worked.',
   '  - {"kind":"per_hour","rate":N} — N ringgit per hour worked (from attendance).',
   '  - {"kind":"flat_capped","value":N,"cap":M} — pay N but never more than the cap M.',
+  '  - {"kind":"qty_rate","qty":N,"rate":M} — a quantity N multiplied by a rate M.',
   'There is NO "percent of gross", NO subtraction, NO division, and NO other kind — if the request does not',
   'fit one of the above, choose the closest fit. All numbers are non-negative.',
   'Respond with ONLY a single minified JSON object and nothing else, on one line, of the shape:',
