@@ -103,10 +103,16 @@ stop it needs several minutes of crash recovery (397s this time). A launchd unit
 has three checks: (A) every `en.json` key present and non-blank in all six locales, (B) every namespace
 resolves, (C) every static `t('…')` key resolves in `en.json`.
 
-The hole is narrow and specific: **check C skips any file that uses more than one namespace**
-(`i18n-coverage.test.ts:84`, "can't attribute keys statically"). That is exactly how r76's
-`t('historyRevision')` reached runtime. So the rule is: a missing key in a SINGLE-namespace file is
-caught; in a MULTI-namespace file it is not. Check those by hand, and prefer one namespace per file.
+There are TWO holes in check C, both narrow and both real:
+1. **It skips any file using more than one namespace** (`i18n-coverage.test.ts:84`, "can't attribute keys
+   statically"). Exactly how r76's `t('historyRevision')` reached runtime.
+2. **It only matches LITERAL keys** — the regex reads `t('some.key')`. A computed key such as
+   `t(importFileMessageKey(err))` is invisible to it (found in r78). Any indirection through a helper
+   that returns a key name is unguarded.
+
+So: a missing literal key in a single-namespace file is caught; everything else is not. Check those by
+hand across all six locales, prefer one namespace per file, and when a key is computed, add a test that
+asserts every value the helper can return resolves.
 
 **`rejects.toThrow()` passes on the WRONG throw.** Two tests this session passed for the wrong reason —
 one because a fixture used a non-existent field so the insert failed on NOT NULL before ever reaching
