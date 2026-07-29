@@ -157,7 +157,7 @@ describe('approval templates — tenant default + precedence + guards', () => {
   it('company default rule wins over the tenant default template', async () => {
     const def = await createApprovalTemplate(ctx(), { name: 'Default', levels: ['hr_admin'] });
     await setTenantDefaultTemplate(ctx(), def.id);
-    await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, enabled: true, levels: ['direct_manager'] });
+    await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['direct_manager'] });
     expect(await resolve(sickLeaveTypeId)).toEqual(['direct_manager']);
   });
 

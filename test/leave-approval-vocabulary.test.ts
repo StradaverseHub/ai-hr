@@ -57,7 +57,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  await owner.db.update(schema.company).set({ leaveMultiApproval: true }).where(eq(schema.company.id, b.companyId));
+  // r79 0322 — no per-company multi-step flag any more; each case below calls setChain() with the chain
+  // it needs, and the chain's own length is what makes the request multi-step.
   subject = await hire('Subject');
   manager = await hire('Manager');
   await createAppUser(b.tenantId, manager.personId, 'manager');
@@ -125,11 +126,17 @@ describe('6fadb036 — full approver vocabulary', () => {
   });
 
   it('routes an HR Manager step to HR authority (manager rejected, HR clears → approved)', async () => {
-    await setChain(['hr_manager']);
+    // r79 0322 — two levels, not one: a ONE-level chain no longer produces step rows at all (it is the
+    // single-approver path), so an hr_manager STEP has to be part of a real chain to exist.
+    await setChain(['hr_manager', 'hr_admin']);
     const { leaveRequestId } = await request('2026-07-04');
-    expect(await stepsFor(leaveRequestId)).toEqual([{ kind: 'hr_manager', status: 'pending' }]);
+    expect(await stepsFor(leaveRequestId)).toEqual([
+      { kind: 'hr_manager', status: 'pending' },
+      { kind: 'hr_admin', status: 'pending' },
+    ]);
 
     await expect(decideLeave(mgrCtx, { leaveRequestId, decision: 'approved' })).rejects.toThrow(/HR/);
+    await decideLeave(adminCtx(b), { leaveRequestId, decision: 'approved' });
     const decided = await decideLeave(adminCtx(b), { leaveRequestId, decision: 'approved' });
     expect(decided).toMatchObject({ status: 'approved' });
   });

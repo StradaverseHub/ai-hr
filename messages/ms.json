@@ -148,7 +148,8 @@
     "delegations": "Perwakilan",
     "dashboardCardConfig": "Kad papan pemuka",
     "scheduledActions": "Tugas Berjadual",
-    "systemSettings": "Tetapan Sistem"
+    "systemSettings": "Tetapan Sistem",
+    "systemExplorer": "Peneroka kebergantungan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -339,7 +340,8 @@
       "salaryRemarksPlaceholder": "cth. kenaikan tahunan",
       "employeeIdLabel": "ID Pekerja",
       "employeeIdPlaceholder": "cth. EMP-0001",
-      "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 30 aksara."
+      "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 30 aksara.",
+      "hiringDefaults": "Tetapan lalai pengambilan"
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -449,6 +451,7 @@
       "subjectToHrdfHint": "Apabila ditanda, pendapatan layak pekerja ini dimasukkan dalam pengiraan levi HRD Corp (HRDF) semasa penggajian; jika tidak ditanda, pekerja dikecualikan sepenuhnya.",
       "subjectToHrdfFollowingDefault": "Mengikut tetapan lalai pendaftaran HRDF syarikat. Simpan untuk menetapkan pilihan khusus bagi pekerja ini.",
       "subjectToHrdfCompanyNotRegistered": "Ditetapkan kepada Ya, tetapi syarikat pekerja ini tiada Kadar Caruman HRDF (Organisasi ▸ Berkanun), jadi penggajian tidak mengenakan sebarang levi untuknya. Pilihan ini disimpan dan berkuat kuasa sebaik sahaja syarikat didaftarkan.",
+      "subjectToHrdfCompanyUnregisteredNote": "Syarikat ini tiada Kadar Caruman HRDF (Organisasi ▸ Berkanun), jadi memilih Ya di sini akan disimpan tetapi tiada levi dikenakan sehingga syarikat didaftarkan.",
       "othersStatutorySave": "Simpan statutori lain",
       "assignmentHistory": "Sejarah penugasan",
       "periodValidTime": "Tempoh (masa sah)",
@@ -1229,6 +1232,17 @@
       "colEmail": "E-mel",
       "colResult": "Keputusan",
       "ready": "Sedia"
+    },
+    "hiringDefaults": {
+      "title": "Tetapan Lalai Pengambilan",
+      "description": "Tetapan lalai setiap syarikat untuk pengambilan baharu dan penilaian pekerjaan. Dahulu ia berada pada skrin jadual gaji, di mana tiada apa-apa berkaitan gaji membacanya.",
+      "back": "Kakitangan",
+      "emptyScope": "Tiada syarikat dalam skop semasa.",
+      "save": "Simpan",
+      "probationMonths": "Tempoh percubaan lalai (bulan)",
+      "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
+      "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
+      "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
     }
   },
   "leave": {
@@ -2855,7 +2869,8 @@
         "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil statutori (KWSP/PERKESO/PCB)",
         "missingBank": "Butiran bank tidak lengkap",
-        "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan"
+        "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan",
+        "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan"
       },
       "preChecksOpenProfile": "Buka profil",
       "preChecksBlockedError": "Payroll tidak boleh diproses: {n} pekerja tiada rekod gaji semasa. Selesaikan semakan pra-pemprosesan dahulu.",
@@ -3195,11 +3210,6 @@
     "setup": {
       "title": "Tetapan Gaji",
       "subtitle": "Tempat utama untuk mengurus tetapan gaji. Buka sub-modul untuk mengkonfigurasinya; hanya modul yang anda boleh akses ditunjukkan.",
-      "policies": {
-        "title": "Jadual Gaji",
-        "desc": "Jadual gaji setiap syarikat — hari potongan, hari bayaran, asas bayaran, mod HRDF dan EPF.",
-        "cta": "Buka jadual gaji"
-      },
       "items": {
         "title": "Item Gaji",
         "desc": "Tentukan item gaji dan layanan berkanunnya (EPF / SOCSO / PCB / HRDF).",
@@ -3220,16 +3230,6 @@
         "desc": "Tentukan dan selenggara nama kitaran yang ditawarkan oleh menu Proses Gaji.",
         "cta": "Buka kitaran gaji"
       },
-      "period": {
-        "title": "Templat Tempoh Gaji",
-        "desc": "Lensa penjadualan konfigurasi syarikat — masa hari potongan dan hari bayaran bagi setiap tempoh.",
-        "cta": "Buka persediaan tempoh"
-      },
-      "submission": {
-        "title": "Kawalan Penyerahan Bayaran",
-        "desc": "Lensa kawalan penyerahan konfigurasi syarikat — hari potongan mengikut tujuan untuk bayaran berkanun.",
-        "cta": "Buka kawalan penyerahan"
-      },
       "ea": {
         "title": "Pengurusan Borang EA",
         "desc": "Petakan item gaji ke baris borang EA. Skrin pemetaan berkanun khusus akan datang; pemetaan sedia ada dikekalkan.",
@@ -3239,7 +3239,22 @@
         "title": "Konfigurasi Berkanun",
         "desc": "Angka berkanun Malaysia tepat yang digunakan oleh enjin gaji — EPF, SOCSO, EIS, PCB dan kerja lebih masa.",
         "cta": "Buka konfigurasi berkanun"
-      }
+      },
+      "schedule": {
+        "title": "Jadual Gaji",
+        "desc": "Pemasaan gaji setiap syarikat — hari potongan, hari bayaran, potongan serahan mengikut tujuan, polisi gaji lalai dan pelepasan slip gaji.",
+        "cta": "Buka jadual gaji"
+      },
+      "readinessTitle": "Belum semua syarikat boleh memproses gaji",
+      "readinessSubtitle": "Larian gaji ditolak bagi syarikat tanpa kitaran aktif yang sepadan. Syarikat berikut dalam skop anda kekurangan sesuatu.",
+      "readinessCannotRun": "Tidak boleh memproses gaji",
+      "readinessFix": "Sediakan",
+      "readinessNoCycles": "Tiada kitaran gaji ditakrifkan untuk syarikat ini, jadi gaji tidak boleh diproses.",
+      "readinessNoRegularCycle": "Kitaran wujud, tetapi tiada yang dipetakan kepada larian biasa, jadi gaji bulanan biasa tidak boleh diproses.",
+      "readinessStaleDefault": "Kitaran gaji lalai menamakan “{name}”, yang bukan kitaran aktif bagi syarikat ini.",
+      "readinessNoDefault": "Tiada kitaran gaji lalai dipilih untuk syarikat ini.",
+      "readinessNoAutoCreate": "Kitaran tidak dicipta secara automatik — kitaran yang sepatutnya dimiliki syarikat ialah keputusan anda.",
+      "readinessFullReport": "Lihat laporan kesediaan penuh"
     },
     "historyImport": {
       "title": "Import sejarah gaji",
@@ -3399,7 +3414,8 @@
         "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil berkanun (EPF/SOCSO/PCB)",
         "missingBank": "Butiran bank tidak lengkap",
-        "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan"
+        "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan",
+        "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan"
       }
     },
     "guide": {
@@ -3465,7 +3481,10 @@
       "checkPayModesBlocker": "{unpayable, plural, other {# pekerja}} menggunakan Mod Bayaran Tempoh Tersuai yang belum ada pengiraan: {names}. Tukar mod bayaran mereka sebelum memproses.",
       "checkTransactionsTitle": "Transaksi gaji",
       "checkTransactionsOk": "{entered, plural, =0 {Tiada transaksi dimasukkan untuk bulan ini lagi} one {# transaksi dimasukkan} other {# transaksi dimasukkan}}.",
-      "empty": "Tiada syarikat dalam skop semasa anda."
+      "empty": "Tiada syarikat dalam skop semasa anda.",
+      "checkDefaultCycleTitle": "Kitaran gaji lalai",
+      "checkDefaultCycleOk": "Lalai yang disimpan menunjuk kepada kitaran aktif.",
+      "checkDefaultCycleWarning": "{named, plural, =0 {Tiada kitaran gaji lalai dipilih untuk syarikat ini.} other {Lalai yang disimpan “{names}” bukan kitaran aktif bagi syarikat ini.}}"
     }
   },
   "admin": {
@@ -3824,7 +3843,6 @@
         "wildcardBadge": "Terpakai untuk semua jenis",
         "wildcardNone": "Tiada peraturan semua-jenis dikonfigurasi.",
         "defaultChainTitle": "Rantaian kelulusan lalai syarikat",
-        "defaultChainOff": "Pelulus tunggal (kelulusan berbilang langkah dimatikan)",
         "openApprovalTab": "Buka tab Kelulusan →"
       },
       "noLeaveTypes": "Tiada jenis cuti.",
@@ -5162,6 +5180,25 @@
       "createGroupConfirm": "Cipta kumpulan",
       "dropGradeHint": "Seret gred daripada Induk Gred ke atas kumpulan untuk menambahnya — atau tandakan kotak semaknya di dalam kumpulan dan simpan.",
       "gradeAlreadyInGroup": "{name} sudah berada dalam kumpulan ini."
+    },
+    "systemExplorer": {
+      "title": "Analisis sistem & peneroka kebergantungan",
+      "description": "Bagaimana produk ini dibina: pilih satu jenis rekod untuk melihat apa yang merujuknya, apa yang dirujuknya, dan modul mana yang memilikinya. Dibaca terus daripada pangkalan data setiap kali, jadi ia tidak pernah lapuk. Struktur sahaja — tiada data rekod dipaparkan.",
+      "recordType": "Jenis rekod",
+      "choose": "Pilih jenis rekod…",
+      "show": "Papar",
+      "formNote": "{count} jenis rekod dalam pemasangan ini. Jenis berkaitan ialah pautan — ikut satu untuk bergerak merentasi peta.",
+      "unknownTable": "Tiada jenis rekod bernama “{table}” dalam pemasangan ini.",
+      "sharedSpine": "Tulang belakang dikongsi (tiada modul tunggal)",
+      "primaryKey": "Kunci utama",
+      "none": "Tiada",
+      "references": "Merujuk kepada",
+      "noReferences": "Jenis rekod ini tidak merujuk apa-apa.",
+      "referencedBy": "Dirujuk oleh",
+      "noReferencedBy": "Tiada apa-apa merujuk jenis rekod ini.",
+      "onDelete": "Semasa dipadam",
+      "withheldNote": "{count} jenis rekod tidak disenaraikan. Ia menyimpan kunci penyulitan, kunci tandatangan, kelayakan pembekal atau token log masuk, jadi strukturnya sengaja dirahsiakan.",
+      "withheldEdges": "{count} hubungan dengan jenis rekod yang dirahsiakan tidak dipaparkan di sini."
     }
   },
   "topbar": {
@@ -5892,11 +5929,6 @@
     "scheduleTitle": "Jadual gaji",
     "cutOffDay": "Hari potongan",
     "payDay": "Hari bayaran",
-    "paymentBasis": "Asas bayaran",
-    "basis_monthly": "Bulanan",
-    "basis_daily": "Harian",
-    "basis_hourly": "Sejam",
-    "basis_other": "Lain-lain",
     "monthEnd": "Akhir bulan",
     "dayHint": "Hari dalam bulan (1–31). Biar kosong untuk akhir bulan. Rujukan penjadualan sahaja — ia tidak mengubah cara tempoh gaji dikira.",
     "statutoryTitle": "Identiti majikan berkanun",
@@ -5917,11 +5949,6 @@
     "attendanceCutOff": "Tarikh tutup kehadiran",
     "cutOffsHint": "Hari dalam bulan (1–31). Kosong = hujung bulan. Potongan gaji/input ditetapkan di atas sebagai Hari potongan. Ini ialah tetingkap potongan LALAI SYARIKAT: gaji mengambil setiap jenis transaksi (kerja lebih masa, tuntutan, cuti tanpa gaji, kehadiran) daripada tetingkap yang dikonfigurasi apabila dasar gaji pekerja tidak menetapkan sendiri. Caruman berkanun tetap diagregat mengikut bulan kalendar.",
     "save": "Simpan",
-    "hiringTitle": "Tetapan lalai pengambilan",
-    "probationMonths": "Tempoh percubaan lalai (bulan)",
-    "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
-    "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
-    "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong).",
     "policyReleaseTitle": "Dasar lalai & pelepasan slip gaji",
     "defaultPolicy": "Dasar gaji lalai",
     "defaultPolicyNone": "Tiada (lalai bulanan)",
@@ -5933,8 +5960,12 @@
     "releaseValue": "Hari / ofset",
     "releaseValuePlaceholder": "cth. 5 atau -2",
     "releaseHint": "Mengawal bila pekerja boleh melihat slip gaji dalam layan diri. Hari tetap = hari dalam bulan selepas tempoh gaji; relatif = hari sebelum(-)/selepas(+) hari gaji. Tidak sekali-kali sebelum gaji ditutup.",
-    "defaultCurrency": "Mata wang gaji lalai",
-    "defaultCurrencyHint": "Rekod Gaji Pokok baharu akan prapilih mata wang ini; HR boleh menukarnya bagi setiap rekod."
+    "statutoryEditInOrganization": "Sunting dalam Organisasi",
+    "statutoryNotSet": "Tidak ditetapkan",
+    "statutoryReadOnlyHint": "Dipaparkan untuk rujukan sahaja. Butiran pendaftaran majikan ini ialah satu rekod dengan satu pemilik — Organisasi → Berkanun. Dahulu ia boleh disunting di sini juga, jadi skrin yang menyimpan terakhir menang secara senyap.",
+    "movedSettingsHint": "Tempoh percubaan, peringatan penilaian dan mata wang gaji lalai bukan tetapan gaji dan telah berpindah:",
+    "movedHiringLink": "Tetapan lalai pengambilan",
+    "movedCurrencyLink": "Mata wang syarikat"
   },
   "employeeIdConfig": {
     "title": "Persediaan Nombor Berjalan Automatik ID Pekerja",
@@ -6229,8 +6260,6 @@
     "title": "Rantaian Kelulusan Cuti",
     "description": "Pilih siapa yang meluluskan cuti, dan dalam susunan apa, bagi setiap syarikat.",
     "emptyScope": "Tiada syarikat dalam skop anda.",
-    "enable": "Perlukan kelulusan berbilang langkah",
-    "enableHint": "Apabila dimatikan, seorang pelulus memutuskan setiap permohonan.",
     "chain": "Susunan kelulusan",
     "empty": "Tiada langkah lagi — tambah sekurang-kurangnya satu.",
     "manager": "Pengurus langsung",
@@ -6301,8 +6330,6 @@
     "noAssignments": "Belum ada penetapan templat.",
     "unassign": "Buang",
     "unassignConfirm": "Buang penetapan ini? Jenis cuti akan kembali kepada rantaian lalai.",
-    "multiApprovalOff": "Kelulusan berbilang langkah dimatikan",
-    "enableMultiApproval": "Aktifkan kelulusan berbilang langkah",
     "rolesGatedNote": "Langkah diarahkan seperti berikut: Ketua Jabatan / Ketua Unit Perniagaan pergi kepada ketua yang ditetapkan untuk unit itu di bawah Tetapan → Label Sistem (langkah ketua dilangkau apabila tiada ketua ditetapkan); HR dan Pengurus HR pergi kepada pentadbir HR; Payroll pergi kepada rakan payroll; Peranan Tersuai pergi kepada pentadbir HR. Pentadbir HR juga boleh meluluskan mana-mana langkah supaya rantaian sentiasa selesai.",
     "reason": "Sebab perubahan (pilihan)",
     "reasonPlaceholder": "Mengapa ini diubah?",
@@ -6352,15 +6379,14 @@
     "escalationSpecificRole": "Peranan kelulusan tertentu",
     "escalationRole": "Peranan kelulusan",
     "escalationNotifyNote": "Makluman eskalasi dihantar ke loceng pemberitahuan.",
-    "escalationUnavailableSingleApprover": "Eskalasi kelulusan hanya tersedia untuk syarikat yang menggunakan rantaian kelulusan berbilang peringkat.",
     "templateCreationTitle": "Penciptaan Templat Kelulusan",
     "templateCreationHint": "Bina aliran kelulusan yang boleh diguna semula dan langkah-langkahnya di sini.",
-    "multiStepNote": "Templat dengan dua langkah atau lebih ialah kelulusan berbilang langkah. Mewajibkan kelulusan berbilang langkah kekal sebagai suis bagi setiap syarikat yang anda hidupkan di bawah Templat Penetapan.",
+    "multiStepNote": "Templat dengan dua langkah atau lebih ialah kelulusan berbilang langkah; templat satu langkah bermakna seorang pelulus sahaja. Templat yang anda tetapkan yang menentukannya — tiada suis syarikat yang berasingan.",
     "assignmentTemplateTitle": "Templat Penetapan",
     "assignmentTemplateHint": "Tentukan syarikat, jenis cuti dan pekerja yang terpakai bagi setiap aliran kelulusan.",
     "leaveTypesMore": "{n, plural, other {+# lagi}}",
-    "companyDefaultsTitle": "Lalai syarikat dan eskalasi",
-    "companyDefaultsHint": "Buka sesebuah syarikat untuk mengedit rantaian kelulusan asasnya, suis kelulusan berbilang langkah dan tetapan eskalasinya.",
+    "companyDefaultsTitle": "Rantaian kelulusan asas syarikat",
+    "companyDefaultsHint": "Buka sesebuah syarikat untuk mengedit rantaian yang diikuti sesuatu permohonan apabila tiada templat yang ditetapkan sepadan dengannya. Satu langkah bermakna seorang pelulus.",
     "selectBenefitSchemes": "Skim faedah",
     "noBenefitSchemes": "Tiada skim faedah aktif bagi syarikat yang dipilih.",
     "schemeNoGradeGroup": "Berikan kumpulan gred kepada skim ini sebelum menetapkan templat kelulusan kepadanya.",
@@ -6369,7 +6395,8 @@
     "selectAll": "Pilih semua",
     "deselectAll": "Nyahpilih semua",
     "panelNoneMeansAll": "Tiada dipilih = terpakai kepada semua",
-    "panelPickAtLeastOne": "Pilih sekurang-kurangnya satu"
+    "panelPickAtLeastOne": "Pilih sekurang-kurangnya satu",
+    "escalationSectionHint": "Susuli kelulusan yang tersekat. Ditetapkan bagi setiap syarikat — buka syarikat yang anda perlukan."
   },
   "feedback": {
     "title": "Maklum Balas",
@@ -6408,6 +6435,14 @@
     "status_blocked": "Menunggu jawapan",
     "blocked_banner": "Diluluskan, tetapi belum bermula — ini menunggu jawapan.",
     "blocked_waiting_on": "Menunggu: {title}",
+    "answerPrompt": "Hanya anda boleh menjawab soalan ini. Balas dan kerja akan diteruskan.",
+    "answerLabel": "Jawapan anda",
+    "answerPlaceholder": "Jawab soalan di atas",
+    "answerSubmit": "Hantar jawapan",
+    "historyQuestion": "Kami bertanya kepada anda",
+    "historyAnswer": "Anda menjawab",
+    "historyQuestionOpen": "Menunggu jawapan anda",
+    "historyQuestionUnanswered": "Diteruskan tanpa jawapan direkodkan",
     "status_building": "Sedang dibina",
     "status_done": "Selesai",
     "status_rejected": "Ditolak",
@@ -7390,23 +7425,6 @@
       "guides": "Tambah panduan bantuan",
       "admin": "Cipta log masuk pentadbir",
       "invitation": "Keluarkan pautan pengaktifan"
-    },
-    "explorer": {
-      "title": "Hubungan rekod",
-      "description": "Pilih satu jenis rekod untuk melihat apa yang merujuknya, apa yang dirujuknya, dan modul mana yang memilikinya. Dibaca terus daripada pangkalan data setiap kali, jadi ia tidak pernah lapuk.",
-      "recordType": "Jenis rekod",
-      "choose": "Pilih jenis rekod…",
-      "show": "Papar",
-      "formNote": "{count} jenis rekod dalam pemasangan ini. Jenis berkaitan ialah pautan — ikut satu untuk bergerak merentasi peta.",
-      "unknownTable": "Tiada jenis rekod bernama “{table}” dalam pemasangan ini.",
-      "sharedSpine": "Tulang belakang dikongsi (tiada modul tunggal)",
-      "primaryKey": "Kunci utama",
-      "none": "Tiada",
-      "references": "Merujuk kepada",
-      "noReferences": "Jenis rekod ini tidak merujuk apa-apa.",
-      "referencedBy": "Dirujuk oleh",
-      "noReferencedBy": "Tiada apa-apa merujuk jenis rekod ini.",
-      "onDelete": "Semasa dipadam"
     }
   },
   "currencySelect": {

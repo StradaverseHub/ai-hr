@@ -148,7 +148,8 @@
     "delegations": "Delegations",
     "dashboardCardConfig": "Dashboard cards",
     "scheduledActions": "Scheduled actions",
-    "systemSettings": "System Settings"
+    "systemSettings": "System Settings",
+    "systemExplorer": "Dependency explorer"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -339,7 +340,8 @@
       "salaryRemarksPlaceholder": "e.g. annual increment",
       "employeeIdLabel": "Employee ID",
       "employeeIdPlaceholder": "e.g. EMP-0001",
-      "employeeIdHint": "Letters, numbers and dashes; up to 30 characters."
+      "employeeIdHint": "Letters, numbers and dashes; up to 30 characters.",
+      "hiringDefaults": "Hiring defaults"
     },
     "detail": {
       "backToPeople": "People",
@@ -449,6 +451,7 @@
       "subjectToHrdfHint": "When checked, this employee's qualifying earnings are included in the HRD Corp (HRDF) levy calculation during payroll; when unchecked, the employee is excluded entirely.",
       "subjectToHrdfFollowingDefault": "Following the company's HRDF registration default. Save to set an explicit choice for this employee.",
       "subjectToHrdfCompanyNotRegistered": "Set to Yes, but this employee’s company has no HRDF Contribution Rate (Organization ▸ Statutory), so payroll charges no levy for them. The choice is saved and takes effect once the company is registered.",
+      "subjectToHrdfCompanyUnregisteredNote": "This company has no HRDF Contribution Rate (Organization ▸ Statutory), so choosing Yes here is saved but charges no levy until the company is registered.",
       "othersStatutorySave": "Save others statutory",
       "assignmentHistory": "Assignment history",
       "periodValidTime": "Period (valid time)",
@@ -1229,6 +1232,17 @@
       "colEmail": "Email",
       "colResult": "Result",
       "ready": "Ready"
+    },
+    "hiringDefaults": {
+      "title": "Hiring Defaults",
+      "description": "Per-company defaults for new hires and employment reviews. They used to sit on the payroll schedule screen, where nothing about payroll read them.",
+      "back": "Personnel",
+      "emptyScope": "No companies in the current scope.",
+      "save": "Save",
+      "probationMonths": "Default probation period (months)",
+      "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
+      "reviewReminderDays": "Review reminders (days before end date)",
+      "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
     }
   },
   "leave": {
@@ -2617,7 +2631,8 @@
         "staleBasicComponent": "Outdated BASIC pay item — the Personnel salary record is used",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete",
-        "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered"
+        "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
+        "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged"
       },
       "preChecksOpenProfile": "Open profile",
       "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
@@ -3195,11 +3210,6 @@
     "setup": {
       "title": "Payroll Settings",
       "subtitle": "The central place to manage payroll settings. Open a sub-module to configure it; only the modules you can access are shown.",
-      "policies": {
-        "title": "Payroll Schedule",
-        "desc": "Per-company payroll schedule — cut-off day, pay day, payment basis, HRDF and EPF modes.",
-        "cta": "Open payroll schedule"
-      },
       "items": {
         "title": "Payroll Items",
         "desc": "Define pay items and their statutory treatment (EPF / SOCSO / PCB / HRDF).",
@@ -3220,16 +3230,6 @@
         "desc": "Define and maintain the cycle names the Payroll Process dropdown offers.",
         "cta": "Open payroll cycles"
       },
-      "period": {
-        "title": "Payroll Period Template",
-        "desc": "The scheduling lens of the company config — cut-off and pay-day timing for each period.",
-        "cta": "Open period setup"
-      },
-      "submission": {
-        "title": "Payment Submission Control",
-        "desc": "The submission-control lens of the company config — per-purpose cut-offs for statutory payments.",
-        "cta": "Open submission control"
-      },
       "ea": {
         "title": "EA Form Management",
         "desc": "Map pay items to their EA form lines. A dedicated statutory mapping screen is coming; existing mappings are preserved.",
@@ -3239,7 +3239,22 @@
         "title": "Statutory Configuration",
         "desc": "The exact Malaysian statutory figures the payroll engine applies — EPF, SOCSO, EIS, PCB and overtime.",
         "cta": "Open statutory config"
-      }
+      },
+      "schedule": {
+        "title": "Payroll Schedule",
+        "desc": "Per-company payroll timing — cut-off day, pay day, per-purpose submission cut-offs, the default payroll policy and payslip release.",
+        "cta": "Open payroll schedule"
+      },
+      "readinessTitle": "Not every company can run payroll yet",
+      "readinessSubtitle": "A payroll run is refused for a company with no matching active cycle. These companies in your scope are missing something.",
+      "readinessCannotRun": "Cannot run payroll",
+      "readinessFix": "Set up",
+      "readinessNoCycles": "No payroll cycle is defined for this company at all, so payroll cannot run.",
+      "readinessNoRegularCycle": "Cycles exist, but none is mapped to a regular run, so an ordinary monthly payroll cannot run.",
+      "readinessStaleDefault": "The default payroll cycle names “{name}”, which is not an active cycle for this company.",
+      "readinessNoDefault": "No default payroll cycle is chosen for this company.",
+      "readinessNoAutoCreate": "Cycles are not created for you — which cycles a company should have is your decision.",
+      "readinessFullReport": "See the full readiness report"
     },
     "historyImport": {
       "title": "Import payroll history",
@@ -3399,7 +3414,8 @@
         "staleBasicComponent": "Outdated BASIC pay item — the Personnel salary record is used",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete",
-        "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered"
+        "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
+        "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged"
       }
     },
     "guide": {
@@ -3465,7 +3481,10 @@
       "checkPayModesBlocker": "{unpayable, plural, one {# employee is} other {# employees are}} on the Custom Period pay mode, which has no calculation yet: {names}. Change their pay mode before processing.",
       "checkTransactionsTitle": "Payroll transactions",
       "checkTransactionsOk": "{entered, plural, =0 {No transactions entered for this month yet} one {# transaction entered} other {# transactions entered}}.",
-      "empty": "No companies in your current scope."
+      "empty": "No companies in your current scope.",
+      "checkDefaultCycleTitle": "Default payroll cycle",
+      "checkDefaultCycleOk": "The saved default points at an active cycle.",
+      "checkDefaultCycleWarning": "{named, plural, =0 {No default payroll cycle is chosen for this company.} other {The saved default “{names}” is not an active cycle for this company.}}"
     }
   },
   "admin": {
@@ -3824,7 +3843,6 @@
         "wildcardBadge": "Applies to all types",
         "wildcardNone": "No all-types rules configured.",
         "defaultChainTitle": "Company default approval chain",
-        "defaultChainOff": "Single approver (multi-step approval off)",
         "openApprovalTab": "Open the Approval tab →"
       },
       "noLeaveTypes": "No leave types.",
@@ -5162,6 +5180,25 @@
       "createGroupConfirm": "Create group",
       "dropGradeHint": "Drag a grade from the Grade Master onto a group to add it — or tick its checkbox inside the group and save.",
       "gradeAlreadyInGroup": "{name} is already in this group."
+    },
+    "systemExplorer": {
+      "title": "System analysis & dependency explorer",
+      "description": "How this product is put together: pick a record type to see what points at it, what it points at, and which module owns it. Read from the live database every time, so it is never out of date. Structure only — no record data is shown.",
+      "recordType": "Record type",
+      "choose": "Choose a record type…",
+      "show": "Show",
+      "formNote": "{count} record types in this installation. Related types are links — follow one to move across the map.",
+      "unknownTable": "There is no record type called “{table}” in this installation.",
+      "sharedSpine": "Shared spine (no single module)",
+      "primaryKey": "Primary key",
+      "none": "None",
+      "references": "Points at",
+      "noReferences": "This record type does not point at anything.",
+      "referencedBy": "Pointed at by",
+      "noReferencedBy": "Nothing points at this record type.",
+      "onDelete": "On delete",
+      "withheldNote": "{count} record types are not listed. They hold encryption keys, signing keys, provider credentials or sign-in tokens, so their structure is deliberately withheld.",
+      "withheldEdges": "{count} relationships to withheld record types are not shown here."
     }
   },
   "topbar": {
@@ -5892,11 +5929,6 @@
     "scheduleTitle": "Payroll schedule",
     "cutOffDay": "Cut-off day",
     "payDay": "Pay day",
-    "paymentBasis": "Payment basis",
-    "basis_monthly": "Monthly",
-    "basis_daily": "Daily",
-    "basis_hourly": "Hourly",
-    "basis_other": "Other",
     "monthEnd": "Month-end",
     "dayHint": "Day of month (1–31). Leave blank for month-end. Scheduling reference only — it does not change how the pay period is calculated.",
     "statutoryTitle": "Statutory employer identity",
@@ -5917,11 +5949,6 @@
     "attendanceCutOff": "Attendance cut-off day",
     "cutOffsHint": "Day of month (1–31). Blank = month-end. The salary/inputs cut-off is set above as Cut-off day. These are the COMPANY DEFAULT cut-off windows: payroll pulls each transaction type (overtime, claims, unpaid leave, attendance) from its configured window when an employee's payroll policy doesn't set its own. Statutory contributions still aggregate per calendar month.",
     "save": "Save",
-    "hiringTitle": "Hiring defaults",
-    "probationMonths": "Default probation period (months)",
-    "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
-    "reviewReminderDays": "Review reminders (days before end date)",
-    "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank).",
     "policyReleaseTitle": "Default policy & payslip release",
     "defaultPolicy": "Default payroll policy",
     "defaultPolicyNone": "None (monthly default)",
@@ -5933,8 +5960,12 @@
     "releaseValue": "Day / offset",
     "releaseValuePlaceholder": "e.g. 5 or -2",
     "releaseHint": "Controls when employees can see their payslip in self-service. Fixed day = a day of the month after the pay period; relative = days before(-)/after(+) pay day. Never before payroll closes.",
-    "defaultCurrency": "Default salary currency",
-    "defaultCurrencyHint": "New Basic Salary records preselect this currency; HR can change it per record."
+    "statutoryEditInOrganization": "Edit in Organization",
+    "statutoryNotSet": "Not set",
+    "statutoryReadOnlyHint": "Shown for reference only. These employer registration details are one record with one owner — Organization → Statutory. They used to be editable here as well, so whichever screen saved last silently won.",
+    "movedSettingsHint": "Probation length, review reminders and the default salary currency are not payroll settings and have moved:",
+    "movedHiringLink": "Hiring defaults",
+    "movedCurrencyLink": "Company currency"
   },
   "employeeIdConfig": {
     "title": "Employee ID Auto Running Number Setup",
@@ -6229,8 +6260,6 @@
     "title": "Leave Approval Chain",
     "description": "Choose who signs off on leave, and in what order, for each company.",
     "emptyScope": "No companies in your scope.",
-    "enable": "Require multi-step approval",
-    "enableHint": "When off, a single approver decides each request.",
     "chain": "Approval order",
     "empty": "No steps yet — add at least one.",
     "manager": "Direct manager",
@@ -6301,8 +6330,6 @@
     "noAssignments": "No template assignments yet.",
     "unassign": "Remove",
     "unassignConfirm": "Remove this assignment? The leave type falls back to the default chain.",
-    "multiApprovalOff": "Multi-step approval is off",
-    "enableMultiApproval": "Enable multi-step approval",
     "rolesGatedNote": "Steps route as follows: Department Head / Business Unit Head go to the head set for that unit under Settings → System Labels (a head step is skipped when no head is set); HR and HR Manager go to HR admins; Payroll goes to payroll partners; Custom Role goes to an HR admin. An HR admin can also clear any step, so a chain always completes.",
     "reason": "Reason for change (optional)",
     "reasonPlaceholder": "Why is this being changed?",
@@ -6352,15 +6379,14 @@
     "escalationSpecificRole": "A specific approval role",
     "escalationRole": "Approval role",
     "escalationNotifyNote": "Escalation alerts are delivered to the notification bell.",
-    "escalationUnavailableSingleApprover": "Approval escalation is available only for companies using a multi-step approval chain.",
     "templateCreationTitle": "Approval Template Creation",
     "templateCreationHint": "Build a reusable approval flow and its steps here.",
-    "multiStepNote": "A template with two or more steps is a multi-step approval. Requiring multi-step approval stays a per-company switch you turn on under Assignment Template.",
+    "multiStepNote": "A template with two or more steps is a multi-step approval; a one-step template is a single approver. The template you assign decides — there is no separate company switch.",
     "assignmentTemplateTitle": "Assignment Template",
     "assignmentTemplateHint": "Decide which companies, leave types and employees each approval flow applies to.",
     "leaveTypesMore": "{n, plural, one {+# more} other {+# more}}",
-    "companyDefaultsTitle": "Company defaults and escalation",
-    "companyDefaultsHint": "Open a company to edit its base approval chain, its multi-step approval switch and its escalation settings.",
+    "companyDefaultsTitle": "Company base approval chain",
+    "companyDefaultsHint": "Open a company to edit the chain a request follows when no assigned template matches it. One step means a single approver.",
     "selectBenefitSchemes": "Benefit schemes",
     "noBenefitSchemes": "No active benefit schemes for the chosen companies.",
     "schemeNoGradeGroup": "Give this scheme a grade group before assigning an approval template to it.",
@@ -6369,7 +6395,8 @@
     "selectAll": "Select all",
     "deselectAll": "Deselect all",
     "panelNoneMeansAll": "None selected = applies to all",
-    "panelPickAtLeastOne": "Pick at least one"
+    "panelPickAtLeastOne": "Pick at least one",
+    "escalationSectionHint": "Chase an approval that has stalled. Set per company — open the one you need."
   },
   "feedback": {
     "title": "Feedback",
@@ -6408,6 +6435,14 @@
     "status_blocked": "Waiting on an answer",
     "blocked_banner": "Approved, but not started — this is waiting on an answer.",
     "blocked_waiting_on": "Waiting on: {title}",
+    "answerPrompt": "Only you can answer this. Reply and the work starts again.",
+    "answerLabel": "Your answer",
+    "answerPlaceholder": "Answer the question above",
+    "answerSubmit": "Send answer",
+    "historyQuestion": "We asked you",
+    "historyAnswer": "You answered",
+    "historyQuestionOpen": "Awaiting your answer",
+    "historyQuestionUnanswered": "Released without a recorded answer",
     "status_building": "Building",
     "status_done": "Done",
     "status_rejected": "Rejected",
@@ -7390,23 +7425,6 @@
       "guides": "Add the help guides",
       "admin": "Create the administrator login",
       "invitation": "Issue the activation link"
-    },
-    "explorer": {
-      "title": "Record relationships",
-      "description": "Pick a record type to see what points at it, what it points at, and which module owns it. Read from the live database every time, so it is never out of date.",
-      "recordType": "Record type",
-      "choose": "Choose a record type…",
-      "show": "Show",
-      "formNote": "{count} record types in this installation. Related types are links — follow one to move across the map.",
-      "unknownTable": "There is no record type called “{table}” in this installation.",
-      "sharedSpine": "Shared spine (no single module)",
-      "primaryKey": "Primary key",
-      "none": "None",
-      "references": "Points at",
-      "noReferences": "This record type does not point at anything.",
-      "referencedBy": "Pointed at by",
-      "noReferencedBy": "Nothing points at this record type.",
-      "onDelete": "On delete"
     }
   },
   "currencySelect": {

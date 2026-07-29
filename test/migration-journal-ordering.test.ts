@@ -30,7 +30,7 @@
  * or invert once merged. Re-check the ordering at integration time, before deploying.
  */
 import { readFileSync } from 'node:fs';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -93,5 +93,31 @@ describe('db/migrations/meta/_journal.json ordering', () => {
         `journal references ${e.tag} but db/migrations/${e.tag}.sql does not exist`,
       ).toBe(true);
     }
+  });
+
+  /**
+   * THE OTHER DIRECTION, and it is the one that bites silently. The check above catches a journal entry
+   * whose file is missing — which fails loudly the moment drizzle-kit tries to read it. This one catches a
+   * .sql file that NO entry references: drizzle-kit iterates the JOURNAL, never the directory, so an
+   * unreferenced migration is not "applied late", it is never applied at all. The file sits in the repo
+   * looking shipped, every other test passes, and the table simply does not exist in production.
+   *
+   * Found in r79 when two branches both appended to _journal.json and the conflict resolution kept only
+   * one side — 0323 vanished while 0323_feedback_block_answer.sql remained on disk. Nothing in the suite
+   * noticed. This is the same silent-skip family as the ascending-`when` guard above, reached by a
+   * different route: that one is a bad ordering, this one is a missing row.
+   */
+  it('has a journal entry for every .sql file on disk (guards a merge that drops an entry)', () => {
+    const onDisk = readdirSync(`${root}db/migrations`)
+      .filter((f) => f.endsWith('.sql'))
+      .map((f) => f.slice(0, -4))
+      .sort();
+    const inJournal = new Set(journal.entries.map((e) => e.tag));
+    const orphans = onDisk.filter((tag) => !inJournal.has(tag));
+    expect(
+      orphans,
+      `db/migrations/*.sql with no journal entry — drizzle-kit reads the journal, not the directory, so ` +
+        `these would NEVER be applied: ${orphans.join(', ')}`,
+    ).toEqual([]);
   });
 });

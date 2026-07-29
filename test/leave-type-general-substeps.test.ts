@@ -322,7 +322,9 @@ describe('e1a51aea · i18n — all six locales', () => {
         'wildcardBadge',
         'wildcardNone',
         'defaultChainTitle',
-        'defaultChainOff',
+        // r79 0322 — 'defaultChainOff' is GONE with company.leave_multi_approval. It printed "Single
+        // approver (multi-step approval off)" INSTEAD of the chain, i.e. the summary hid the very rule
+        // that was about to run. A one-level chain now renders as itself and says the same thing truthfully.
         'openApprovalTab',
       ]) {
         expect(typeof ap[key], `${loc}.admin.leave.approvalStep.${key}`).toBe('string');

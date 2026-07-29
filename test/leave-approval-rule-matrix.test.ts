@@ -85,7 +85,7 @@ beforeEach(async () => {
     validFrom: '2024-01-01',
   });
   // Turn the company multi-approval gate on (rules only apply to opted-in companies).
-  await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
+  await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
 });
 afterAll(async () => {
   await closeAll();
@@ -176,10 +176,10 @@ describe('ADR-0071 specificity resolution', () => {
       companyId: b.companyId,
       departmentId: b.deptA,
       gradeId: gradeExec,
-      levels: ['hr_admin'],
+      levels: ['hr_admin', 'payroll'],
     });
     const r1 = await request();
-    expect(await kindsFor(r1.leaveRequestId)).toEqual(['hr_admin']);
+    expect(await kindsFor(r1.leaveRequestId)).toEqual(['hr_admin', 'payroll']);
   });
 
   it('a rule that does not match is ignored (department mismatch)', async () => {
@@ -219,14 +219,14 @@ describe('ADR-0071 day-range matching', () => {
       companyId: b.companyId,
       minDays: 3,
       maxDays: 5,
-      levels: ['hr_admin'],
+      levels: ['hr_admin', 'payroll'],
     });
     // 1-day request → outside range → default.
     const short = await request(subject.employmentId, { startDate: '2026-07-01', endDate: '2026-07-01' });
     expect(await kindsFor(short.leaveRequestId)).toEqual(['direct_manager', 'hr_admin']);
     // 3-day request (Jul 1–3, inclusive lower boundary) → in range → HR-only.
     const inRange = await request(subject.employmentId, { startDate: '2026-07-01', endDate: '2026-07-03' });
-    expect(await kindsFor(inRange.leaveRequestId)).toEqual(['hr_admin']);
+    expect(await kindsFor(inRange.leaveRequestId)).toEqual(['hr_admin', 'payroll']);
   });
 
   it('deterministic tie-break: narrower day-range wins on equal specificity', async () => {
@@ -241,10 +241,10 @@ describe('ADR-0071 day-range matching', () => {
       companyId: b.companyId,
       minDays: 1,
       maxDays: 3,
-      levels: ['hr_admin'], // narrower → should win for a 1-day request
+      levels: ['hr_admin', 'payroll'], // narrower → should win for a 1-day request
     });
     const r = await request();
-    expect(await kindsFor(r.leaveRequestId)).toEqual(['hr_admin']);
+    expect(await kindsFor(r.leaveRequestId)).toEqual(['hr_admin', 'payroll']);
   });
 });
 
@@ -254,10 +254,10 @@ describe('ADR-0071 snapshot immutability + coexistence', () => {
       companyId: b.companyId,
       departmentId: b.deptA,
       gradeId: gradeExec,
-      levels: ['hr_admin'],
+      levels: ['hr_admin', 'payroll'],
     });
     const r = await request();
-    expect(await kindsFor(r.leaveRequestId)).toEqual(['hr_admin']);
+    expect(await kindsFor(r.leaveRequestId)).toEqual(['hr_admin', 'payroll']);
 
     // Change the rule's chain, then archive it entirely — the already-generated steps must be untouched.
     await updateLeaveApprovalRule(ctx(), id, {
@@ -267,7 +267,7 @@ describe('ADR-0071 snapshot immutability + coexistence', () => {
       levels: ['direct_manager', 'hr_admin'],
     });
     await archiveLeaveApprovalRule(ctx(), id, b.companyId);
-    expect(await kindsFor(r.leaveRequestId)).toEqual(['hr_admin']); // unchanged
+    expect(await kindsFor(r.leaveRequestId)).toEqual(['hr_admin', 'payroll']); // unchanged
   });
 
   it('multiple active rules coexist per company', async () => {

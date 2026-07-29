@@ -106,8 +106,6 @@ export type TemplateManagerLabels = {
   noAssignments: string;
   unassign: string;
   unassignConfirm: string;
-  multiApprovalOff: string;
-  enableMultiApproval: string;
   rolesGatedNote: string;
   save: string;
   cancel: string;
@@ -137,11 +135,11 @@ export type TemplateActions = {
   setDefault: (fd: FormData) => void | Promise<void>;
 };
 
-/** Assignment Template actions (9b0d99f3 — section 2 of the Approval Workflow tab). */
+/** Assignment Template actions (9b0d99f3 — section 2 of the Approval Workflow tab).
+ *  r79 0322 — the action that flipped the per-company Multi-Step Approval switch is gone with the switch. */
 export type AssignmentActions = {
   assign: (fd: FormData) => void | Promise<void>;
   unassign: (fd: FormData) => void | Promise<void>;
-  setMultiApproval: (fd: FormData) => void | Promise<void>;
 };
 
 const stepLabelBag = (labels: TemplateManagerLabels) => ({
@@ -306,8 +304,13 @@ export function ApprovalTemplateManager({
  * The table is COLLAPSED to one line per (company × template): first leave type + a "+N more"
  * disclosure, so a company with many leave types no longer prints a screenful of rows. Expanding a
  * line lists EVERY row of the group by ruleId, each keeping its own unassign — nothing hidden,
- * nothing deduped. Assignment itself (AssignForm, its multi-step-off warning and the explicit
- * enable-multi-approval button) is unchanged.
+ * nothing deduped.
+ *
+ * r79 0322 — the AssignForm's multi-step-off warning and its enable-multi-approval button are GONE with
+ * the per-company switch: an assignment now fires on its own, so there is no "this will not take effect"
+ * state left to warn about. `escalation` is the slot the Approval Escalation Settings moved INTO — the
+ * settings are per-company but they describe what happens to an assigned chain that stalls, so they now
+ * sit beside the assignment criteria rather than in a company section of their own.
  */
 export function ApprovalAssignmentManager({
   templates,
@@ -316,7 +319,7 @@ export function ApprovalAssignmentManager({
   leaveTypes,
   grades,
   schemes,
-  companyMultiApproval,
+  escalation,
   actions,
   labels,
 }: {
@@ -328,7 +331,10 @@ export function ApprovalAssignmentManager({
   grades: Option[];
   /** 22de47c4 — benefit schemes, the employee-scope criteria panel of the Assign Template row. */
   schemes: SchemeOption[];
-  companyMultiApproval: Record<string, boolean>;
+  /** r79 0322 — the relocated Approval Escalation Settings, rendered by the page (server) and slotted in
+   *  here. A slot, not a re-implementation: the editor component and its server action are untouched, so
+   *  the settings the nightly sweep reads stay readable through the move. */
+  escalation?: React.ReactNode;
   actions: AssignmentActions;
   labels: TemplateManagerLabels;
 }) {
@@ -456,14 +462,15 @@ export function ApprovalAssignmentManager({
             companies={companies}
             leaveTypes={leaveTypes}
             schemes={schemes}
-            companyMultiApproval={companyMultiApproval}
             assignAction={actions.assign}
-            multiApprovalAction={actions.setMultiApproval}
             labels={labels}
             onCancel={() => setAssigning(false)}
           />
         )}
       </div>
+
+      {/* r79 0322 — Approval Escalation Settings, relocated here from the per-company section. */}
+      {escalation}
     </div>
   );
 }
@@ -633,9 +640,7 @@ function AssignForm({
   companies,
   leaveTypes,
   schemes,
-  companyMultiApproval,
   assignAction,
-  multiApprovalAction,
   labels,
   onCancel,
 }: {
@@ -643,9 +648,7 @@ function AssignForm({
   companies: Option[];
   leaveTypes: Option[];
   schemes: SchemeOption[];
-  companyMultiApproval: Record<string, boolean>;
   assignAction: (fd: FormData) => void | Promise<void>;
-  multiApprovalAction: (fd: FormData) => void | Promise<void>;
   labels: TemplateManagerLabels;
   onCancel: () => void;
 }) {
@@ -678,10 +681,6 @@ function AssignForm({
   const minDays = !condOn ? '' : operator === 'lte' ? '' : v1;
   const maxDays = !condOn ? '' : operator === 'gte' ? '' : operator === 'lte' ? v1 : v2;
 
-  // Companies chosen for assignment that don't yet have multi-step approval on — the assignment would never
-  // fire for them until it's enabled (core/leave.ts gates on company.leaveMultiApproval).
-  const offCompanies = selectedCompanies.filter((id) => !companyMultiApproval[id]);
-
   return (
     <div className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 dark:border-indigo-900 dark:bg-indigo-950/20">
       <div className="text-sm font-semibold">{labels.assignTemplate}</div>
@@ -713,9 +712,6 @@ function AssignForm({
             setSelected={setSelectedCompanies}
             labels={labels}
             hint={labels.panelPickAtLeastOne}
-            renderExtra={(c) =>
-              !companyMultiApproval[c.id] ? <Badge variant="default">{labels.multiApprovalOff}</Badge> : null
-            }
           />
 
           <CriteriaPanel
@@ -830,23 +826,6 @@ function AssignForm({
           </Button>
         </div>
       </form>
-
-      {offCompanies.length > 0 && (
-        <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50/60 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/20">
-          <p className="text-xs text-amber-800 dark:text-amber-300">{labels.multiApprovalOff}</p>
-          <div className="flex flex-wrap gap-2">
-            {offCompanies.map((id) => (
-              <form key={id} action={multiApprovalAction}>
-                <input type="hidden" name="companyId" value={id} />
-                <input type="hidden" name="enabled" value="1" />
-                <Button type="submit" variant="outline" size="sm">
-                  {labels.enableMultiApproval}: {companies.find((c) => c.id === id)?.label ?? id}
-                </Button>
-              </form>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

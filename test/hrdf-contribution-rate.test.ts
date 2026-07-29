@@ -16,8 +16,10 @@
  *       lib/audit-format renders as an accented "old → new" line), and stays MINIMAL when the rate
  *       did not change — both forms post hrdfStatus on every save, so a "provided" gate would spam
  *       the trail with before == after noise on every EPF/SOCSO-only edit;
- *   (b) BOTH writer paths (Organization ▸ Statutory and Admin ▸ Payroll config) audit it, since both
- *       route through the one shared setCompanyStatutoryMY;
+ *   (b) the ONE writer path (Organization ▸ Statutory) persists and audits it. r79a (feedback 4fb8b75a
+ *       step 4): Admin ▸ Payroll config used to be a SECOND writer of this same record, with no
+ *       coordination between the two screens — whichever saved last silently won. It is now a read-only
+ *       view with a link, and this file pins that its action no longer changes the record at all;
  *   (c) the Organization form no longer renders the headcount hint, and keeps its stored option values;
  *   (d) i18n: the new wording in all 6 locales, no headcount text left anywhere in either namespace,
  *       and the org-level hrdfHint key removed from every locale (not just en — the coverage test only
@@ -160,7 +162,7 @@ describe('HRDF Contribution Rate — audit trail on the shared writer', () => {
   });
 });
 
-describe('HRDF Contribution Rate — both editable surfaces audit the change', () => {
+describe('HRDF Contribution Rate — the single editable surface audits the change', () => {
   it('Organization ▸ Statutory (setCompanyStatutoryAction) persists the rate and audits old → new', async () => {
     const a = adminCtx(base);
     await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'not_registered' });
@@ -178,22 +180,26 @@ describe('HRDF Contribution Rate — both editable surfaces audit the change', (
     });
   });
 
-  it('Admin ▸ Payroll config (savePayrollConfigAction) persists the rate and audits old → new', async () => {
+  // r79a step 4 — the second writer is closed at the ACTION, not merely hidden from the form. A POST
+  // carrying hrdfStatus (hand-crafted, or a stale cached page) must change nothing: leaving the field out
+  // of the JSX while the action still read it would have left the last-save-wins race exactly as it was.
+  it('Admin ▸ Payroll config (savePayrollConfigAction) NO LONGER writes the statutory record', async () => {
     const a = adminCtx(base);
-    await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'optional' });
+    const { id } = await setCompanyStatutoryMY(a, { companyId: base.companyId, hrdfStatus: 'optional' });
+    const before = await latestEventPayload(base.tenantId, id, 'company.statutory.my.updated');
 
     const to = await captureRedirect(() =>
-      savePayrollConfigAction(fd({ companyId: base.companyId, hrdfStatus: 'mandatory' })),
+      savePayrollConfigAction(
+        fd({ companyId: base.companyId, hrdfStatus: 'mandatory', epfEmployerNo: 'HIJACK-1' }),
+      ),
     );
     expect(to).toContain('/admin/payroll-config');
 
+    // The rate Organization set stands, and no statutory event was appended by the payroll save.
     const row = await getCompanyStatutoryMY(a, base.companyId);
-    expect(row?.hrdfStatus).toBe('mandatory');
-    const payload = await latestEventPayload(base.tenantId, row!.id, 'company.statutory.my.updated');
-    expect(payload).toMatchObject({
-      before: { hrdfStatus: 'optional' },
-      after: { hrdfStatus: 'mandatory' },
-    });
+    expect(row?.hrdfStatus).toBe('optional');
+    expect(row?.epfEmployerNo ?? null).not.toBe('HIJACK-1');
+    expect(await latestEventPayload(base.tenantId, id, 'company.statutory.my.updated')).toEqual(before);
   });
 });
 

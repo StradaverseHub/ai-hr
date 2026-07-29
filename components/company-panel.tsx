@@ -9,6 +9,8 @@ import { DISBURSEMENT_CAPABLE_BANKS, DISBURSEMENT_UNSUPPORTED_BANKS, MY_BANKS, m
 import { STATUTORY_AUTHORITIES } from '@/lib/statutory-authorities';
 import { Avatar, Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
+// r79a — company.currency is now the salary-form default currency, so it uses the same ISO 4217 picker.
+import { CurrencySelect } from './currency-select';
 
 // 94ae7e1f — the company config panel is reorganised into three tabs: General / Bank Account / Statutory.
 // The old "Payroll" tab is renamed Statutory (it only ever held statutory identity), and the Bank
@@ -633,8 +635,13 @@ export function CompanyPanel({
                     ))}
                   </select>
                 </Field>
+                {/* r79a (4fb8b75a step 3) — this field is now the company's ONE currency: it absorbed
+                    company_payroll_config.default_currency, so the Basic Salary form preselects it for a
+                    brand-new salary record. A free-text 3-letter box would have let 'ZZZ' onto a salary
+                    form, so it becomes the same searchable ISO 4217 picker the salary form itself uses
+                    (core/admin.ts validates the posted code against the same master). */}
                 <Field label={t('currency')}>
-                  <input name="currency" defaultValue={c.currency} pattern="[A-Za-z]{3}" maxLength={3} title={t('currencyHint')} className={`${inputCls} uppercase`} />
+                  <CurrencySelect name="currency" value={c.currency} />
                 </Field>
               </div>
             </div>

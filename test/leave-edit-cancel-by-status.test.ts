@@ -15,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
+import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import {
   cancelOwnLeave,
   decideLeave,
@@ -93,6 +94,11 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
+  // r79 0322 — single- vs multi-step approval is now decided by the company's resolved chain, not by
+  // company.leave_multi_approval (which is gone). These cases are whole-request single-approver flows —
+  // the shape the old opted-out default produced — so the company is put on an explicit ONE-step chain.
+  // Without it the built-in direct_manager → hr_admin fallback applies and an approval stops at step 1.
+  await setLeaveApprovalPolicy(adminCtx(b), { companyId: b.companyId, levels: ['direct_manager'] });
   subject = await hire('Subject');
   const u = await createAppUser(b.tenantId, subject.personId, 'employee');
   subjectCtx = { tenantId: b.tenantId, userId: u, personId: subject.personId, roles: ['employee'] };

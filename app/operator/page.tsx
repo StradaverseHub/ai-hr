@@ -1,5 +1,4 @@
 import { getLocale, getTranslations } from 'next-intl/server';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { isOperator } from '@/lib/authz';
@@ -64,18 +63,12 @@ export default async function OperatorPage() {
       {/* Mounted only while something is actually in flight — a settled console polls nothing. */}
       {inFlight && <AutoRefresh />}
 
-      {/* The only way in to the explorer (deec1691). It has no nav entry for the same reason this page
-          has none — the operator plane is not in anyone's sidebar — so without this link the route
-          would exist and be undiscoverable. */}
-      <PageHeader
-        title={t('title')}
-        description={t('description')}
-        actions={
-          <Link href="/operator/schema" className={btnGhost}>
-            {t('explorer.title')}
-          </Link>
-        }
-      />
+      {/* deec1691 (r79): the record-relationship explorer moved OFF this console to
+          /admin/system-explorer, behind the `system_explorer` entitlement, at the reporter's
+          instruction — it is wanted during setup, which happens under Admin. The link is gone rather
+          than pointing at the new route: an operator is not a tenant admin, so following it would only
+          bounce them. */}
+      <PageHeader title={t('title')} description={t('description')} />
 
       <Card className="p-4">
         <SectionHeader title={t('newCustomer')} />

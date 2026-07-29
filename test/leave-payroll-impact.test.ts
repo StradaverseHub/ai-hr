@@ -186,7 +186,8 @@ describe('Unpaid Leave Payroll Impact — on-approval signal', () => {
   });
 
   it('emits payrollImpact exactly once at terminal approval in a multi-step chain (not at step.approved)', async () => {
-    await owner.db.update(schema.company).set({ leaveMultiApproval: true }).where(eq(schema.company.id, b.companyId));
+    // r79 0322 — the chain, not a company flag, decides. No rule is configured for this company, so the
+    // built-in direct_manager → hr_admin fallback resolves: two levels ⇒ a real multi-step chain.
     const ltId = await leaveType('UNPAID', { paid: false, sendToPayroll: true });
     const subject = await hire('Chain Subject');
     const manager = await hire('Chain Manager');

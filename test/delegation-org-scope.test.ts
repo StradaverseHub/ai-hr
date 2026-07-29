@@ -267,7 +267,7 @@ describe('org-scope enforcement', () => {
     const { mgr, subA, subB, stand } = await scopedWorld();
     // Multi-step chain: the delegate clears the direct_manager step (advances, no ledger read/debit — a
     // delegate deliberately cannot read the subject's ledger, 0109), same shape as the Phase-1/2 suites.
-    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
+    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
     await setReportingLine(A(b), {
       subordinateEmploymentId: mgr.employmentId,
       managerEmploymentId: stand.employmentId,
@@ -428,7 +428,7 @@ describe('head-step handover', () => {
     const sub = await hire('HSub', deptH);
     await adminLine(sub.employmentId, h1.employmentId); // the head is also the admin manager (visibility route)
 
-    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, enabled: true, levels: ['department_head', 'hr_admin'] });
+    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, levels: ['department_head', 'hr_admin'] });
 
     // OUT-of-scope first: the delegation covers dept B, the subject sits in dept H → refused.
     const { reportingLineId: outScoped } = await setReportingLine(A(b), {

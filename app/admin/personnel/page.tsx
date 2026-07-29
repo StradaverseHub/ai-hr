@@ -11,7 +11,7 @@ import {
 } from '@/core/read';
 import { listPositions, listCostCenters, listBusinessUnits } from '@/core/admin';
 import { computeProvisionalEndOn, resolveProbationMonths } from '@/core/org';
-import { getPayrollConfig } from '@/core/payroll-config';
+import { getHiringDefaults } from '@/core/hiring-defaults';
 import { listProfileChangeRequests } from '@/core/profile';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { Avatar, Button, Card, EmployeeCode, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
@@ -115,7 +115,7 @@ export default async function PeoplePage({
   const defaultCompanyId = companies[0]?.id;
   const defaultProbationMonths =
     isAdmin && defaultCompanyId
-      ? resolveProbationMonths((await getPayrollConfig(session, defaultCompanyId))?.probationMonths)
+      ? resolveProbationMonths((await getHiringDefaults(session, defaultCompanyId))?.probationMonths)
       : 3;
   const fullTimeProvisionalDefault =
     computeProvisionalEndOn(today, 'full_time', defaultProbationMonths) ?? today;
@@ -260,6 +260,16 @@ export default async function PeoplePage({
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
               >
                 {t('importCsv')}
+              </Link>
+            )}
+            {/* r79a (4fb8b75a step 3) — Hiring Defaults: probation months + review reminder cadence, moved
+                here from the Payroll Schedule screen, where neither had a payroll reader. */}
+            {isAdmin && (
+              <Link
+                href="/admin/personnel/settings"
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                {t('hiringDefaults')}
               </Link>
             )}
             <FilterPanel

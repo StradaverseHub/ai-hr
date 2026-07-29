@@ -11,7 +11,6 @@ import {
   createLeaveApprovalRule,
   setLeaveApprovalPolicy,
   setLeaveEscalationPolicy,
-  setLeaveMultiApproval,
   updateLeaveApprovalRule,
   type LeaveApprovalRuleInput,
 } from '@/core/leave-approval-policy';
@@ -32,16 +31,16 @@ const PAGE = '/admin/leave/approval';
 
 type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
 
-/** Save a company's DEFAULT approval chain + on/off toggle (ADR-0039 2B-2). The company default is the
- *  fully-wildcard rule under ADR-0071's matrix. */
+/** Save a company's DEFAULT approval chain (ADR-0039 2B-2). The company default is the fully-wildcard rule
+ *  under ADR-0071's matrix. r79 0322 — the on/off toggle is gone; the chain's own length decides whether a
+ *  request is single- or multi-step. */
 export async function saveLeaveApprovalPolicyAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
-  const enabled = String(formData.get('enabled') ?? '0') === '1';
   const levels = parseLevels(formData);
   const reason = str(formData.get('reason')); // 4ec5a940 — optional "why" for the audit trail
   try {
-    await setLeaveApprovalPolicy(s, { companyId, enabled, levels, reason });
+    await setLeaveApprovalPolicy(s, { companyId, levels, reason });
   } catch (e) {
     redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
@@ -272,18 +271,8 @@ export async function unassignApprovalTemplateAction(formData: FormData) {
   redirect(`${PAGE}?toast=${encodeURIComponent('Assignment removed')}`);
 }
 
-/** Flip a company's multi-step-approval opt-in (so a template assignment can actually fire). */
-export async function setLeaveMultiApprovalAction(formData: FormData) {
-  const s = await getSession();
-  const companyId = String(formData.get('companyId') ?? '');
-  const enabled = String(formData.get('enabled') ?? '0') === '1';
-  try {
-    await setLeaveMultiApproval(s, companyId, enabled);
-  } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
-  }
-  redirect(`${PAGE}?toast=${encodeURIComponent(enabled ? 'Multi-step approval enabled' : 'Multi-step approval disabled')}`);
-}
+// r79 0322 — setLeaveMultiApprovalAction is GONE. It posted a hard-coded value="1" from the Assign Template
+// screen, so it could only ever turn the flag ON; the flag itself no longer gates anything.
 
 function parseLevels(formData: FormData): string[] {
   return String(formData.get('levels') ?? '')

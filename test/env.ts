@@ -61,3 +61,10 @@ delete process.env.TOIL_ENABLED; // ADR-0033
 delete process.env.PAYROLL_UNLOCK_ENABLED; // 9bc442bc — .env.example ships this one uncommented
 delete process.env.INDIVIDUAL_TXN_PAY_ENABLED; // f1564110 Phase 3
 delete process.env.FEEDBACK_AI_PLANNING_ENABLED; // ADR-0043 FB-3 operator tooling
+// deec1691 — the System Analysis & Dependency Explorer's gate. It is a RESERVED name (see
+// LEGACY_MODULE_ENV_GATES): no tracked env file sets it and no application code reads it, so this
+// delete is defensive rather than corrective. It is here because the alternative is a gate whose
+// absence from the baseline depends on nobody ever exporting it — and the drift test's final
+// assertion, which names every tracked gate individually, would then fail on one developer's machine
+// with a message pointing at this file.
+delete process.env.SYSTEM_EXPLORER_ENABLED;

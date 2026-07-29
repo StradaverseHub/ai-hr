@@ -6,8 +6,10 @@
  *   3. MYR-only regression + carry-forward: an omitted currency keeps the prior record's currency (MYR
  *      for a brand-new first record) — zero behavior change for existing data and pre-currency callers,
  *      and a basic-only revision never resets an SGD salary to MYR.
- *   4. Company default: company_payroll_config.default_currency round-trips through setPayrollConfig
- *      (clamp-not-throw: invalid/absent ⇒ 'MYR') — the value the Basic Salary form preselects.
+ *   4. Company default: r79a (4fb8b75a step 3) collapsed the duplicate pair of company-level currency
+ *      fields into `company.currency`, owned by Organization → General. It round-trips through
+ *      updateCompany (throw-not-clamp: a non-ISO code is REJECTED, matching the rest of core/admin.ts)
+ *      and getCompanyCurrency is what the Basic Salary form preselects.
  *   5. Display: the movement snapshot's salary string carries the record's currency.
  *   6. Payroll pre-check: a non-MYR salary under the MY pack surfaces as the NON-BLOCKING
  *      currencyMismatch warning (mixed batch names exactly the non-MYR employees); generation still
@@ -20,7 +22,8 @@ import {
   setCompensation,
   updateCompensation,
 } from '../core/comp';
-import { getPayrollConfig, setPayrollConfig } from '../core/payroll-config';
+import { getCompanyCurrency } from '../core/read';
+import { updateCompany } from '../core/admin';
 import { movementDetail, movementHistory } from '../core/movement';
 import { createBatch, generatePayslips, preProcessAdvisory } from '../core/payroll';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -125,22 +128,26 @@ describe('297ae65a — salary currency round-trip + validation', () => {
     expect((await currentCompensation(a, employmentId))?.currency).toBe('SGD');
   });
 
-  it('company default currency: round-trips via payroll config, invalid/absent clamps to MYR', async () => {
+  it('company default currency: lives on company.currency, round-trips via Organization, rejects non-ISO', async () => {
     const a = adminCtx(b);
-    // Unset config ⇒ no row; the form-level fallback is MYR.
-    expect(await getPayrollConfig(a, b.companyId)).toBeNull();
+    // The seeded company sits on the column default — what the salary form preselects today.
+    expect(await getCompanyCurrency(a, b.companyId)).toBe('MYR');
 
     // Lowercase in, ISO uppercase out.
-    await setPayrollConfig(a, { companyId: b.companyId, defaultCurrency: 'sgd' });
-    expect((await getPayrollConfig(a, b.companyId))?.defaultCurrency).toBe('SGD');
+    await updateCompany(a, { id: b.companyId, legalName: 'Acme Sdn Bhd', currency: 'sgd' });
+    expect(await getCompanyCurrency(a, b.companyId)).toBe('SGD');
 
-    // Clamp-not-throw: junk falls back to MYR rather than corrupting the row.
-    await setPayrollConfig(a, { companyId: b.companyId, defaultCurrency: 'NOPE' });
-    expect((await getPayrollConfig(a, b.companyId))?.defaultCurrency).toBe('MYR');
+    // Throw-not-clamp: a shape-valid but non-ISO code is REJECTED rather than silently becoming MYR. The
+    // old payroll-config field clamped; company.currency now feeds a salary form, so it must not accept
+    // 'ZZZ' at all. The stored value is untouched by the failed save.
+    await expect(
+      updateCompany(a, { id: b.companyId, legalName: 'Acme Sdn Bhd', currency: 'ZZZ' }),
+    ).rejects.toThrow(/ISO 4217/);
+    expect(await getCompanyCurrency(a, b.companyId)).toBe('SGD');
 
-    // Absent field ⇒ MYR (the module's full-overwrite semantics, same as every sibling field).
-    await setPayrollConfig(a, { companyId: b.companyId, cutOffDay: 25 });
-    expect((await getPayrollConfig(a, b.companyId))?.defaultCurrency).toBe('MYR');
+    // Absent field ⇒ the 'MYR' default (core/admin.ts isoCode/currencyCode fallback semantics).
+    await updateCompany(a, { id: b.companyId, legalName: 'Acme Sdn Bhd' });
+    expect(await getCompanyCurrency(a, b.companyId)).toBe('MYR');
   });
 
   it('movement snapshot shows the salary with its currency', async () => {

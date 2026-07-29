@@ -148,7 +148,8 @@
     "delegations": "Ủy quyền",
     "dashboardCardConfig": "Thẻ bảng điều khiển",
     "scheduledActions": "Tác vụ theo lịch",
-    "systemSettings": "Cài đặt hệ thống"
+    "systemSettings": "Cài đặt hệ thống",
+    "systemExplorer": "Trình khám phá phụ thuộc"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -339,7 +340,8 @@
       "salaryRemarksPlaceholder": "vd. tăng lương hàng năm",
       "employeeIdLabel": "Mã nhân viên",
       "employeeIdPlaceholder": "vd. EMP-0001",
-      "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 30 ký tự."
+      "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 30 ký tự.",
+      "hiringDefaults": "Mặc định tuyển dụng"
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -449,6 +451,7 @@
       "subjectToHrdfHint": "Khi được chọn, thu nhập đủ điều kiện của nhân viên này sẽ được đưa vào tính phí HRD Corp (HRDF) khi xử lý lương; khi bỏ chọn, nhân viên được loại trừ hoàn toàn.",
       "subjectToHrdfFollowingDefault": "Đang theo mặc định đăng ký HRDF của công ty. Lưu để đặt lựa chọn rõ ràng cho nhân viên này.",
       "subjectToHrdfCompanyNotRegistered": "Đã đặt là Có, nhưng công ty của nhân viên này chưa có Tỷ lệ đóng góp HRDF (Tổ chức ▸ Theo luật định), nên bảng lương không thu khoản này cho họ. Lựa chọn đã được lưu và sẽ có hiệu lực khi công ty đăng ký.",
+      "subjectToHrdfCompanyUnregisteredNote": "Công ty này chưa có Tỷ lệ đóng góp HRDF (Tổ chức ▸ Pháp định), nên chọn “Có” ở đây sẽ được lưu nhưng không thu khoản nào cho đến khi công ty đăng ký.",
       "othersStatutorySave": "Lưu quy định khác",
       "assignmentHistory": "Lịch sử phân công",
       "periodValidTime": "Kỳ (thời gian hiệu lực)",
@@ -1229,6 +1232,17 @@
       "colEmail": "Email",
       "colResult": "Kết quả",
       "ready": "Sẵn sàng"
+    },
+    "hiringDefaults": {
+      "title": "Mặc định tuyển dụng",
+      "description": "Giá trị mặc định theo từng công ty cho nhân viên mới và các kỳ đánh giá. Trước đây chúng nằm trên màn hình lịch trả lương, nơi không có phần nào của bảng lương đọc tới.",
+      "back": "Nhân sự",
+      "emptyScope": "Không có công ty nào trong phạm vi hiện tại.",
+      "save": "Lưu",
+      "probationMonths": "Thời gian thử việc mặc định (tháng)",
+      "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
+      "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
+      "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
     }
   },
   "leave": {
@@ -2855,7 +2869,8 @@
         "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ pháp định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
-        "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập"
+        "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
+        "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào"
       },
       "preChecksOpenProfile": "Mở hồ sơ",
       "preChecksBlockedError": "Không thể xử lý lương: {n} nhân viên không có hồ sơ lương hiện tại. Vui lòng khắc phục các mục kiểm tra trước khi xử lý.",
@@ -3195,11 +3210,6 @@
     "setup": {
       "title": "Cài đặt lương",
       "subtitle": "Nơi trung tâm để quản lý cài đặt lương. Mở một mô-đun con để cấu hình; chỉ hiển thị các mô-đun bạn có quyền truy cập.",
-      "policies": {
-        "title": "Lịch trả lương",
-        "desc": "Lịch trả lương theo từng công ty — ngày chốt, ngày trả, cơ sở thanh toán, chế độ HRDF và EPF.",
-        "cta": "Mở lịch trả lương"
-      },
       "items": {
         "title": "Khoản mục lương",
         "desc": "Xác định các khoản mục lương và cách xử lý pháp định của chúng (EPF / SOCSO / PCB / HRDF).",
@@ -3220,16 +3230,6 @@
         "desc": "Xác định và duy trì tên chu kỳ hiển thị trong menu Quy trình trả lương.",
         "cta": "Mở chu kỳ trả lương"
       },
-      "period": {
-        "title": "Mẫu kỳ lương",
-        "desc": "Góc nhìn lập lịch của cấu hình công ty — thời điểm ngày chốt và ngày trả cho từng kỳ.",
-        "cta": "Mở thiết lập kỳ"
-      },
-      "submission": {
-        "title": "Kiểm soát nộp thanh toán",
-        "desc": "Góc nhìn kiểm soát nộp của cấu hình công ty — ngày chốt theo mục đích cho các khoản nộp pháp định.",
-        "cta": "Mở kiểm soát nộp"
-      },
       "ea": {
         "title": "Quản lý biểu mẫu EA",
         "desc": "Ánh xạ các khoản mục lương tới dòng biểu mẫu EA. Màn hình ánh xạ pháp định chuyên dụng sẽ ra mắt; các ánh xạ hiện có được giữ nguyên.",
@@ -3239,7 +3239,22 @@
         "title": "Cấu hình pháp định",
         "desc": "Các con số pháp định Malaysia chính xác mà bộ máy tính lương áp dụng — EPF, SOCSO, EIS, PCB và làm thêm giờ.",
         "cta": "Mở cấu hình pháp định"
-      }
+      },
+      "schedule": {
+        "title": "Lịch trả lương",
+        "desc": "Thời điểm tính lương theo từng công ty — ngày chốt, ngày trả, ngày chốt nộp theo từng mục đích, chính sách lương mặc định và việc phát hành phiếu lương.",
+        "cta": "Mở lịch trả lương"
+      },
+      "readinessTitle": "Chưa phải công ty nào cũng chạy được bảng lương",
+      "readinessSubtitle": "Lần chạy bảng lương bị từ chối với công ty không có chu kỳ đang hoạt động phù hợp. Các công ty sau trong phạm vi của bạn còn thiếu thứ gì đó.",
+      "readinessCannotRun": "Không chạy được bảng lương",
+      "readinessFix": "Thiết lập",
+      "readinessNoCycles": "Công ty này chưa có chu kỳ trả lương nào được định nghĩa, nên không thể chạy bảng lương.",
+      "readinessNoRegularCycle": "Có chu kỳ, nhưng không chu kỳ nào được gán cho lần chạy thông thường, nên không thể chạy bảng lương hằng tháng.",
+      "readinessStaleDefault": "Chu kỳ trả lương mặc định ghi “{name}”, không phải một chu kỳ đang hoạt động của công ty này.",
+      "readinessNoDefault": "Chưa chọn chu kỳ trả lương mặc định cho công ty này.",
+      "readinessNoAutoCreate": "Hệ thống không tự tạo chu kỳ — công ty nên có những chu kỳ nào là quyết định của bạn.",
+      "readinessFullReport": "Xem báo cáo mức độ sẵn sàng đầy đủ"
     },
     "historyImport": {
       "title": "Nhập lịch sử bảng lương",
@@ -3399,7 +3414,8 @@
         "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ theo luật định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
-        "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập"
+        "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
+        "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào"
       }
     },
     "guide": {
@@ -3465,7 +3481,10 @@
       "checkPayModesBlocker": "{unpayable, plural, other {# nhân viên}} đang dùng hình thức tính lương Kỳ tùy chỉnh chưa có công thức tính: {names}. Hãy đổi hình thức tính lương trước khi xử lý.",
       "checkTransactionsTitle": "Giao dịch lương",
       "checkTransactionsOk": "{entered, plural, =0 {Chưa nhập giao dịch nào cho tháng này} other {Đã nhập # giao dịch}}.",
-      "empty": "Không có công ty nào trong phạm vi hiện tại của bạn."
+      "empty": "Không có công ty nào trong phạm vi hiện tại của bạn.",
+      "checkDefaultCycleTitle": "Chu kỳ trả lương mặc định",
+      "checkDefaultCycleOk": "Giá trị mặc định đã lưu trỏ tới một chu kỳ đang hoạt động.",
+      "checkDefaultCycleWarning": "{named, plural, =0 {Chưa chọn chu kỳ trả lương mặc định cho công ty này.} other {Giá trị mặc định đã lưu “{names}” không phải chu kỳ đang hoạt động của công ty này.}}"
     }
   },
   "admin": {
@@ -3824,7 +3843,6 @@
         "wildcardBadge": "Áp dụng cho mọi loại",
         "wildcardNone": "Chưa cấu hình quy tắc áp dụng cho mọi loại.",
         "defaultChainTitle": "Chuỗi phê duyệt mặc định của công ty",
-        "defaultChainOff": "Một người phê duyệt (phê duyệt nhiều bước đang tắt)",
         "openApprovalTab": "Mở thẻ Phê duyệt →"
       },
       "noLeaveTypes": "Không có loại nghỉ phép.",
@@ -5162,6 +5180,25 @@
       "createGroupConfirm": "Tạo nhóm",
       "dropGradeHint": "Kéo một bậc từ Danh mục bậc thả vào một nhóm để thêm — hoặc đánh dấu ô chọn của bậc đó trong nhóm rồi lưu.",
       "gradeAlreadyInGroup": "{name} đã có trong nhóm này."
+    },
+    "systemExplorer": {
+      "title": "Phân tích hệ thống & trình khám phá phụ thuộc",
+      "description": "Sản phẩm này được xây dựng như thế nào: chọn một loại bản ghi để xem cái gì trỏ tới nó, nó trỏ tới cái gì và phân hệ nào sở hữu nó. Được đọc trực tiếp từ cơ sở dữ liệu mỗi lần, nên không bao giờ lỗi thời. Chỉ hiển thị cấu trúc — không hiển thị dữ liệu bản ghi.",
+      "recordType": "Loại bản ghi",
+      "choose": "Chọn một loại bản ghi…",
+      "show": "Hiển thị",
+      "formNote": "Có {count} loại bản ghi trong bản cài đặt này. Các loại liên quan là liên kết — bấm vào để đi tiếp trong sơ đồ.",
+      "unknownTable": "Không có loại bản ghi nào tên “{table}” trong bản cài đặt này.",
+      "sharedSpine": "Trục dùng chung (không thuộc phân hệ nào)",
+      "primaryKey": "Khóa chính",
+      "none": "Không có",
+      "references": "Trỏ tới",
+      "noReferences": "Loại bản ghi này không trỏ tới cái gì.",
+      "referencedBy": "Được trỏ tới bởi",
+      "noReferencedBy": "Không có gì trỏ tới loại bản ghi này.",
+      "onDelete": "Khi xóa",
+      "withheldNote": "{count} loại bản ghi không được liệt kê. Chúng lưu khóa mã hóa, khóa ký, thông tin xác thực nhà cung cấp hoặc mã đăng nhập, nên cấu trúc của chúng được che giấu có chủ đích.",
+      "withheldEdges": "{count} quan hệ tới các loại bản ghi bị che giấu không được hiển thị ở đây."
     }
   },
   "topbar": {
@@ -5892,11 +5929,6 @@
     "scheduleTitle": "Lịch trả lương",
     "cutOffDay": "Ngày chốt",
     "payDay": "Ngày trả",
-    "paymentBasis": "Cơ sở trả",
-    "basis_monthly": "Hàng tháng",
-    "basis_daily": "Hàng ngày",
-    "basis_hourly": "Theo giờ",
-    "basis_other": "Khác",
     "monthEnd": "Cuối tháng",
     "dayHint": "Ngày trong tháng (1–31). Để trống cho cuối tháng. Chỉ là tham chiếu lịch trình — không thay đổi cách tính kỳ lương.",
     "statutoryTitle": "Danh tính người sử dụng lao động theo luật",
@@ -5917,11 +5949,6 @@
     "attendanceCutOff": "Ngày chốt chấm công",
     "cutOffsHint": "Ngày trong tháng (1–31). Để trống = cuối tháng. Ngày chốt lương/dữ liệu được đặt ở trên là Ngày chốt. Đây là các cửa sổ chốt MẶC ĐỊNH CỦA CÔNG TY: bảng lương lấy từng loại giao dịch (làm thêm giờ, yêu cầu hoàn, nghỉ không lương, chấm công) từ cửa sổ được cấu hình khi chính sách lương của nhân viên không tự đặt riêng. Các khoản đóng góp theo luật vẫn được tổng hợp theo tháng dương lịch.",
     "save": "Lưu",
-    "hiringTitle": "Mặc định tuyển dụng",
-    "probationMonths": "Thời gian thử việc mặc định (tháng)",
-    "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
-    "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
-    "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống).",
     "policyReleaseTitle": "Chính sách mặc định & phát hành phiếu lương",
     "defaultPolicy": "Chính sách lương mặc định",
     "defaultPolicyNone": "Không (mặc định hàng tháng)",
@@ -5933,8 +5960,12 @@
     "releaseValue": "Ngày / độ lệch",
     "releaseValuePlaceholder": "vd. 5 hoặc -2",
     "releaseHint": "Kiểm soát khi nào nhân viên thấy phiếu lương trong tự phục vụ. Ngày cố định = một ngày của tháng sau kỳ lương; tương đối = số ngày trước(-)/sau(+) ngày trả lương. Không bao giờ trước khi chốt lương.",
-    "defaultCurrency": "Tiền tệ lương mặc định",
-    "defaultCurrencyHint": "Bản ghi Lương cơ bản mới sẽ chọn sẵn tiền tệ này; HR có thể thay đổi cho từng bản ghi."
+    "statutoryEditInOrganization": "Chỉnh sửa trong Tổ chức",
+    "statutoryNotSet": "Chưa đặt",
+    "statutoryReadOnlyHint": "Chỉ hiển thị để tham khảo. Các thông tin đăng ký người sử dụng lao động này là một bản ghi với một chủ sở hữu — Tổ chức → Theo luật. Trước đây cũng sửa được ở đây, nên màn hình lưu sau sẽ âm thầm ghi đè.",
+    "movedSettingsHint": "Thời gian thử việc, nhắc nhở đánh giá và loại tiền lương mặc định không phải là thiết lập bảng lương và đã được chuyển đi:",
+    "movedHiringLink": "Mặc định tuyển dụng",
+    "movedCurrencyLink": "Loại tiền của công ty"
   },
   "employeeIdConfig": {
     "title": "Thiết lập số chạy tự động cho Mã nhân viên",
@@ -6229,8 +6260,6 @@
     "title": "Chuỗi phê duyệt nghỉ phép",
     "description": "Chọn ai phê duyệt nghỉ phép và theo thứ tự nào cho mỗi công ty.",
     "emptyScope": "Không có công ty nào trong phạm vi của bạn.",
-    "enable": "Yêu cầu phê duyệt nhiều bước",
-    "enableHint": "Khi tắt, một người phê duyệt quyết định mỗi yêu cầu.",
     "chain": "Thứ tự phê duyệt",
     "empty": "Chưa có bước nào — thêm ít nhất một.",
     "manager": "Quản lý trực tiếp",
@@ -6301,8 +6330,6 @@
     "noAssignments": "Chưa có phân công mẫu nào.",
     "unassign": "Gỡ",
     "unassignConfirm": "Gỡ phân công này? Loại nghỉ phép sẽ quay lại chuỗi mặc định.",
-    "multiApprovalOff": "Phê duyệt nhiều bước đang tắt",
-    "enableMultiApproval": "Bật phê duyệt nhiều bước",
     "rolesGatedNote": "Các bước được chuyển như sau: Trưởng phòng / Trưởng đơn vị kinh doanh chuyển đến người đứng đầu được đặt cho đơn vị đó trong Cài đặt → Nhãn hệ thống (bỏ qua bước người đứng đầu khi chưa đặt); HR và Quản lý HR chuyển đến quản trị viên HR; Payroll chuyển đến đối tác payroll; Vai trò tùy chỉnh chuyển đến quản trị viên HR. Quản trị viên HR cũng có thể duyệt bất kỳ bước nào, vì vậy chuỗi luôn hoàn tất.",
     "reason": "Lý do thay đổi (tùy chọn)",
     "reasonPlaceholder": "Vì sao thực hiện thay đổi này?",
@@ -6352,15 +6379,14 @@
     "escalationSpecificRole": "Một vai trò phê duyệt cụ thể",
     "escalationRole": "Vai trò phê duyệt",
     "escalationNotifyNote": "Cảnh báo leo thang được gửi tới chuông thông báo.",
-    "escalationUnavailableSingleApprover": "Leo thang phê duyệt chỉ khả dụng cho các công ty dùng chuỗi phê duyệt nhiều bước.",
     "templateCreationTitle": "Tạo mẫu phê duyệt",
     "templateCreationHint": "Xây dựng luồng phê duyệt dùng lại được cùng các bước của nó tại đây.",
-    "multiStepNote": "Mẫu có từ hai bước trở lên chính là phê duyệt nhiều bước. Việc bắt buộc phê duyệt nhiều bước vẫn là công tắc theo từng công ty mà bạn bật trong Mẫu gán.",
+    "multiStepNote": "Mẫu có từ hai bước trở lên là phê duyệt nhiều bước; mẫu một bước là một người phê duyệt. Mẫu bạn gán sẽ quyết định — không có công tắc riêng theo công ty.",
     "assignmentTemplateTitle": "Mẫu gán",
     "assignmentTemplateHint": "Quyết định mỗi luồng phê duyệt áp dụng cho công ty, loại nghỉ phép và nhân viên nào.",
     "leaveTypesMore": "{n, plural, other {+# nữa}}",
-    "companyDefaultsTitle": "Mặc định công ty và leo thang",
-    "companyDefaultsHint": "Mở một công ty để sửa chuỗi phê duyệt cơ bản, công tắc phê duyệt nhiều bước và cài đặt leo thang của công ty đó.",
+    "companyDefaultsTitle": "Chuỗi phê duyệt cơ bản của công ty",
+    "companyDefaultsHint": "Mở một công ty để sửa chuỗi mà yêu cầu sẽ đi theo khi không có mẫu được gán nào khớp. Một bước nghĩa là một người phê duyệt.",
     "selectBenefitSchemes": "Chương trình phúc lợi",
     "noBenefitSchemes": "Các công ty đã chọn chưa có chương trình phúc lợi đang hoạt động.",
     "schemeNoGradeGroup": "Hãy gán nhóm bậc cho chương trình này trước khi gán mẫu phê duyệt cho nó.",
@@ -6369,7 +6395,8 @@
     "selectAll": "Chọn tất cả",
     "deselectAll": "Bỏ chọn tất cả",
     "panelNoneMeansAll": "Không chọn = áp dụng cho tất cả",
-    "panelPickAtLeastOne": "Chọn ít nhất một mục"
+    "panelPickAtLeastOne": "Chọn ít nhất một mục",
+    "escalationSectionHint": "Nhắc lại phê duyệt đang bị đình trệ. Thiết lập theo từng công ty — mở công ty bạn cần."
   },
   "feedback": {
     "title": "Phản hồi",
@@ -6408,6 +6435,14 @@
     "status_blocked": "Đang chờ câu trả lời",
     "blocked_banner": "Đã duyệt nhưng chưa bắt đầu — mục này đang chờ câu trả lời.",
     "blocked_waiting_on": "Đang chờ: {title}",
+    "answerPrompt": "Chỉ bạn mới trả lời được câu hỏi này. Trả lời để công việc tiếp tục.",
+    "answerLabel": "Câu trả lời của bạn",
+    "answerPlaceholder": "Trả lời câu hỏi ở trên",
+    "answerSubmit": "Gửi câu trả lời",
+    "historyQuestion": "Chúng tôi đã hỏi bạn",
+    "historyAnswer": "Bạn đã trả lời",
+    "historyQuestionOpen": "Đang chờ câu trả lời của bạn",
+    "historyQuestionUnanswered": "Được tiếp tục mà không ghi nhận câu trả lời",
     "status_building": "Đang xây dựng",
     "status_done": "Hoàn tất",
     "status_rejected": "Bị từ chối",
@@ -7390,23 +7425,6 @@
       "guides": "Thêm hướng dẫn trợ giúp",
       "admin": "Tạo tài khoản quản trị viên",
       "invitation": "Cấp liên kết kích hoạt"
-    },
-    "explorer": {
-      "title": "Quan hệ bản ghi",
-      "description": "Chọn một loại bản ghi để xem cái gì trỏ tới nó, nó trỏ tới cái gì và phân hệ nào sở hữu nó. Được đọc trực tiếp từ cơ sở dữ liệu mỗi lần, nên không bao giờ lỗi thời.",
-      "recordType": "Loại bản ghi",
-      "choose": "Chọn một loại bản ghi…",
-      "show": "Hiển thị",
-      "formNote": "Có {count} loại bản ghi trong bản cài đặt này. Các loại liên quan là liên kết — bấm vào để đi tiếp trong sơ đồ.",
-      "unknownTable": "Không có loại bản ghi nào tên “{table}” trong bản cài đặt này.",
-      "sharedSpine": "Trục dùng chung (không thuộc phân hệ nào)",
-      "primaryKey": "Khóa chính",
-      "none": "Không có",
-      "references": "Trỏ tới",
-      "noReferences": "Loại bản ghi này không trỏ tới cái gì.",
-      "referencedBy": "Được trỏ tới bởi",
-      "noReferencedBy": "Không có gì trỏ tới loại bản ghi này.",
-      "onDelete": "Khi xóa"
     }
   },
   "currencySelect": {

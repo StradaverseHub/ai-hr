@@ -17,23 +17,72 @@
  * silent-incompleteness failure the whole item exists to avoid: the map would look finished and be
  * missing the spine. pg_catalog is readable by every role and describes the schema as it really is.
  *
- * OPERATOR PLANE ONLY. This describes how the PRODUCT is built, not what a customer's data says, so
- * it belongs to the people who build it. Putting it on a tenant's System Settings screen — where the
- * request placed it — would hand every customer administrator the full schema topology of a
- * multi-tenant system, which is an information-disclosure decision rather than a UI one. Gated the
- * same three ways as core/operator.ts, and for the same reasons.
+ * ── PLACEMENT: ADMIN, BEHIND AN ENTITLEMENT (r79, deec1691 revision) ────────────────────────────
+ *
+ * This file used to refuse anyone but an operator, on the argument that schema topology in a
+ * multi-tenant product is information disclosure and belongs to whoever builds the product. The
+ * reporter overruled that, for a real reason: during setup there is exactly one tenant — theirs — and
+ * the reference is wanted under Admin where setup happens. The refusal is not abandoned, it is
+ * RELOCATED: the screen is now a sellable module (`system_explorer`, ADR-0077) that DEFAULTS OFF, so
+ * a customer onboarded tomorrow simply is not sold it. No code change, no scramble.
+ *
+ * `assertModuleEnabled` here is the control, not the nav row and not the page's redirect. A hidden
+ * menu entry is a courtesy; this throw is what makes typing the address useless.
+ *
+ * ── WHAT IT CAN AND CANNOT REVEAL ──────────────────────────────────────────────────────────────
+ *
+ * CANNOT: any tenant's data, its own included. Every statement below reads pg_catalog — relation
+ * names, primary-key column names, foreign-key column names and referential actions. Not one of them
+ * touches a business table, counts a row, or takes a tenant predicate, so there is nothing for a
+ * cross-tenant leak to ride on. No SECURITY DEFINER helper and no owner-role connection is used;
+ * `withTenant` keeps the statements on the ordinary `ai_hr_app` role under RLS, and pg_catalog is
+ * readable by every role anyway — the transaction is here for connection handling, not privilege.
+ *
+ * CAN: the shape of the product. Which record types exist, which point at which, what happens to the
+ * children on delete, and which module owns each. That IS commercially sensitive (it is the product's
+ * design), which is exactly why it is entitlement-gated rather than free.
+ *
+ * WITHHELD ON PURPOSE: `SECRET_TABLES`. Table names are structure, not data — but a list that names
+ * `pii_key` and `statutory_signing_key` beside everything else is, in effect, a map of where the keys
+ * are kept, and that is worth nothing to an administrator setting the product up. They are removed
+ * from the listing AND from both sides of every edge, and the counts are reported so the map says it
+ * is incomplete rather than pretending to be whole — silent incompleteness being the failure this
+ * feature exists to avoid.
  */
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { isOperator } from '../lib/authz';
-import { isDemoDeployment } from '../lib/demo-mode';
-import { NotOperatorError } from './operator';
+import { isAdmin } from '../lib/authz';
+import { assertModuleEnabled } from './entitlements';
 import { MODULE_CATALOG } from '../packs/catalog';
 import { listPacks, type ModulePack } from '../packs/registry';
 // Side-effect import: registering the module packs IS the import (packs/register-all.ts). Without it
 // listPacks('module') returns an empty array — silently, not as an error — and every table would read
 // as unowned.
 import '../packs/register-all';
+
+/** The catalog code this screen is sold as (ADR-0077). Default OFF: a tenant with no row cannot use it. */
+export const SYSTEM_EXPLORER_MODULE = 'system_explorer';
+
+/**
+ * Tables the explorer never names, because naming them is a key inventory rather than a data model.
+ *
+ * The test suite pins that every entry is a REAL table in the current schema. That matters more than
+ * it looks: a renamed or dropped table would otherwise leave a dead string here, the withheld count
+ * would over-report, and the actual successor table would appear in the picker with nothing flagging
+ * it. A stale deny-list that still reads plausibly is the worst outcome available.
+ *
+ * Deliberately NOT here: `app_user`, `role_assignment`, `person`. They hold identity, not secrets
+ * (authentication itself lives with WorkOS), and they are load-bearing in the relationship map an
+ * administrator actually came for — a map with the user spine cut out of it would mislead.
+ */
+export const SECRET_TABLES: ReadonlySet<string> = new Set([
+  'pii_key', // per-tenant PII encryption keys (ADR-0030)
+  'statutory_signing_key', // vendor statutory-pack signing keys
+  'ai_provider_config', // model provider credentials
+  'app_invitation', // single-use activation tokens
+  'payroll_step_up_challenge', // step-up authentication challenges
+  'platform_user', // Stradaverse's own operator identities, not the tenant's
+]);
 
 /** Postgres `pg_constraint.confdeltype` → the referential action, spelled out. */
 const ON_DELETE: Record<string, string> = {
@@ -74,15 +123,36 @@ export type TableRelationships = TableSummary & {
   references: ForeignKeyEdge[];
   /** Tables that point AT this one — its children. */
   referencedBy: ForeignKeyEdge[];
+  /**
+   * Edges dropped because the OTHER end is a withheld table. Surfaced rather than swallowed: "this
+   * record type has 4 parents" and "this record type has 4 parents that I am willing to name" are
+   * different statements, and a reader deciding whether a change is safe needs the second one labelled.
+   */
+  withheldEdges: number;
 };
 
-function assertOperator(ctx: SessionContext): void {
-  if (isDemoDeployment()) {
-    throw new NotOperatorError('The dependency explorer is not available on the demo deployment.');
+/** Refused when the caller is authenticated but not an administrator of this tenant. */
+export class NotAdminError extends Error {
+  constructor(message = 'Only an administrator can open the system explorer.') {
+    super(message);
+    this.name = 'NotAdminError';
   }
-  if (!isOperator(ctx)) {
-    throw new NotOperatorError('Only an operator can open the dependency explorer.');
-  }
+}
+
+/**
+ * The two gates, in this order and for this reason.
+ *
+ * MODULE FIRST. A tenant that was never sold the explorer has no such feature at all, so
+ * `ModuleNotEnabledError` is the true answer for everyone in that tenant — an employee poking at the
+ * URL learns exactly what an admin would, which is nothing about who is privileged here. Checking the
+ * role first would answer "you are not an admin" and thereby confirm the feature exists.
+ *
+ * ROLE SECOND, in the SERVICE and not only in the page. `requireAdmin` in the route protects the
+ * route; this protects the function, which is the boundary D3 puts enforcement at.
+ */
+function assertExplorerAccess(ctx: SessionContext): void {
+  assertModuleEnabled(ctx, SYSTEM_EXPLORER_MODULE);
+  if (!isAdmin(ctx)) throw new NotAdminError();
 }
 
 /**
@@ -110,15 +180,29 @@ function ownershipIndex(): Map<string, TableOwner> {
 const UNOWNED: TableOwner = { moduleCode: null, moduleName: null, note: null };
 
 /**
- * Every base table in the `public` schema, with its owning module.
+ * What the picker is built from: the tables the explorer will name, and how many it would not.
+ *
+ * The count travels WITH the list rather than in a second call, because the two are answers about the
+ * same query and a screen that could render one without the other is a screen that can claim to be
+ * complete while it is not. It is counted against the live schema, not printed as `SECRET_TABLES.size`,
+ * so a deployment whose migrations have not all landed reports what is really being held back.
+ */
+export type SchemaOverview = {
+  tables: TableSummary[];
+  /** Withheld tables that genuinely exist here — see SECRET_TABLES for what and why. */
+  withheldTables: number;
+};
+
+/**
+ * Every base table in the `public` schema the explorer is willing to name, with its owning module.
  *
  * Tables no pack claims come back with a null moduleCode. That is not a gap to be filled in later —
  * it is the shared spine (person, employment, company, the domain-event log), which by ADR-0080 D5
  * belongs to no pack. The UI names it rather than leaving the cell blank, because a blank reads as
  * "we did not look".
  */
-export async function listSchemaTables(ctx: SessionContext): Promise<TableSummary[]> {
-  assertOperator(ctx);
+export async function listSchemaTables(ctx: SessionContext): Promise<SchemaOverview> {
+  assertExplorerAccess(ctx);
   const owners = ownershipIndex();
   return withTenant(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
@@ -128,7 +212,11 @@ export async function listSchemaTables(ctx: SessionContext): Promise<TableSummar
        where n.nspname = 'public' and rel.relkind = 'r'
        order by rel.relname
     `)) as unknown as { table_name: string }[];
-    return rows.map((r) => ({ table: r.table_name, ...(owners.get(r.table_name) ?? UNOWNED) }));
+    const visible = rows.filter((r) => !SECRET_TABLES.has(r.table_name));
+    return {
+      tables: visible.map((r) => ({ table: r.table_name, ...(owners.get(r.table_name) ?? UNOWNED) })),
+      withheldTables: rows.length - visible.length,
+    };
   });
 }
 
@@ -136,14 +224,18 @@ export async function listSchemaTables(ctx: SessionContext): Promise<TableSummar
  * The relationship view of ONE table: its primary key, what it points at, and what points at it.
  *
  * Returns null for a name that is not a base table in `public` — including one that does not exist at
- * all. The name arrives from a query string, so it is passed as a BOUND PARAMETER and never
- * interpolated; nothing here builds SQL from it.
+ * all, AND including a withheld one, so the screen cannot be used to confirm that `pii_key` is there.
+ * The name arrives from a query string, so it is passed as a BOUND PARAMETER and never interpolated;
+ * nothing here builds SQL from it.
  */
 export async function describeTableRelationships(
   ctx: SessionContext,
   table: string,
 ): Promise<TableRelationships | null> {
-  assertOperator(ctx);
+  assertExplorerAccess(ctx);
+  // Before the query, not after: a withheld name must be indistinguishable from a nonexistent one,
+  // and the cheapest way to guarantee that is never to ask the database about it.
+  if (SECRET_TABLES.has(table)) return null;
   const owners = ownershipIndex();
   return withTenant(ctx, async (tx) => {
     const exists = (await tx.execute(sql`
@@ -195,7 +287,12 @@ export async function describeTableRelationships(
       to_columns: string[];
     }[];
 
-    const shaped: ForeignKeyEdge[] = edges.map((e) => ({
+    // An edge is withheld when its OTHER end is a secret table. Filtered in TypeScript rather than in
+    // the SQL predicate so the count below is the number actually dropped, not a difference between
+    // two queries that could silently agree while both being wrong.
+    const visible = edges.filter((e) => !SECRET_TABLES.has(e.from_table) && !SECRET_TABLES.has(e.to_table));
+
+    const shaped: ForeignKeyEdge[] = visible.map((e) => ({
       constraint: e.constraint_name,
       fromTable: e.from_table,
       fromColumns: e.from_columns,
@@ -213,6 +310,7 @@ export async function describeTableRelationships(
       // cycle invisible in the one place a reader is looking for it.
       references: shaped.filter((e) => e.fromTable === table),
       referencedBy: shaped.filter((e) => e.toTable === table),
+      withheldEdges: edges.length - visible.length,
     };
   });
 }

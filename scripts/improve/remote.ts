@@ -28,6 +28,24 @@ const dq = (s: string): string => {
   return `$${tag}$${s}$${tag}$`;
 };
 
+/**
+ * Wrap SQL that touches a table which may not exist on the server yet.
+ *
+ * The improvement loop runs the repo's CURRENT code against the DEPLOYED database, so any statement
+ * naming a table introduced by an undeployed migration fails at PARSE time and aborts the whole
+ * transaction — taking the block/unblock it was riding along with it. EXECUTE defers parsing to run time,
+ * and to_regclass takes the table name as text, so neither is parsed until the guard has already said the
+ * table is there. `body` must therefore be a single-quoted SQL string plus its USING arguments.
+ *
+ * The dollar-quote tag is chosen the same way dq() chooses its own — a payload containing the tag would
+ * otherwise end the block early.
+ */
+const guardedOn = (table: string, body: string): string => {
+  let tag = 'blk';
+  while (body.includes(`$${tag}$`)) tag += 'x';
+  return `DO $${tag}$ BEGIN IF to_regclass('public.${table}') IS NOT NULL THEN EXECUTE ${body}; END IF; END $${tag}$;`;
+};
+
 /** Run a remote shell command (psql sources the server's own .env.production). `stdin` feeds `psql -f -`. */
 function remote(cmd: string, stdin?: string): string {
   const full = `cd ${DIR} && set -a; . ./.env.production; set +a; ${cmd}`;
@@ -37,6 +55,14 @@ function remote(cmd: string, stdin?: string): string {
     maxBuffer: 32 * 1024 * 1024,
   });
 }
+
+/** One time this item was parked on a question, and what was said back (migration 0323). */
+export type RemoteBlockEpisode = {
+  question: string;
+  asked_at: string;
+  answer: string | null;
+  resolved_at: string | null;
+};
 
 export type RemoteFeedback = {
   id: string;
@@ -52,15 +78,92 @@ export type RemoteFeedback = {
   plan_revision: number;
   contest_reason: string | null;
   build_ref: string | null;
+  /**
+   * THE ANSWER, where a build agent will actually see it (0323).
+   *
+   * `blocked_reason` is CLEARED when an item is unblocked, so by the time an answered item reaches
+   * pull-approved the question that shaped it is gone from feedback_request entirely — and the answer,
+   * had it been kept only in the `feedback.unblocked` domain_event, would never be selected here at all.
+   * Every column in this type comes from feedback_request; nothing in the loop reads the event stream.
+   * So an item that says "build this, and by the way the reporter told us they file EPF via i-Akaun with
+   * a fixed-width text file" only says it if the answer travels on the row. This is that.
+   *
+   * Empty on a server that predates the feedback_block table — see blockTrails().
+   */
+  block_trail: RemoteBlockEpisode[];
 };
 
 const SELECT_COLS =
   'id, tenant_id, reporter_employment_id, category, title, description, expected_behavior, expected_function, status, plan, plan_revision, contest_reason, build_ref';
 
+/**
+ * The two queries a pull actually issues, as text.
+ *
+ * EXPORTED SO A TEST CAN RUN THE REAL THING. "The answer reaches the build agent" is a claim about SQL
+ * that only ever executes against production over SSH; a test that retypes an equivalent query proves
+ * only that the test author can write SQL. These are the exact strings sent.
+ */
+export const feedbackSelectSql = (whereStatus: string): string =>
+  `select coalesce(json_agg(row_to_json(t)), '[]') from (select ${SELECT_COLS} from feedback_request where status in (${whereStatus}) order by created_at) t`;
+
+export function blockTrailSql(ids: string[]): string {
+  ids.forEach((id) => assertUuid(id, 'feedback id'));
+  const list = ids.map((id) => `'${id}'`).join(',');
+  return (
+    `select coalesce(json_agg(row_to_json(t)), '[]') from (` +
+    `select feedback_request_id, question, asked_at, answer, resolved_at from feedback_block ` +
+    `where feedback_request_id in (${list}) order by asked_at) t`
+  );
+}
+
+/**
+ * Fetch the block Q&A for the given items, keyed by feedback id.
+ *
+ * A SEPARATE statement rather than a subquery in SELECT_COLS, and that is load-bearing: this runs against
+ * the DEPLOYED database, which does not have feedback_block until the migration introducing it has been
+ * released. Postgres parses a statement whole, so a `to_regclass(...) IS NOT NULL` guard inside the same
+ * query would still fail at parse time and take the entire pull down with it. Merging this change would
+ * otherwise break `improve:pull` against production in the window before its own migration ships.
+ *
+ * The degradation is announced on stderr, never silent: an empty trail because the table is missing and
+ * an empty trail because the item was never blocked must not look the same to whoever is reading.
+ */
+function blockTrails(ids: string[]): Map<string, RemoteBlockEpisode[]> {
+  const byItem = new Map<string, RemoteBlockEpisode[]>();
+  if (ids.length === 0) return byItem;
+  const sql = blockTrailSql(ids);
+  let out: string;
+  try {
+    out = remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -tAc ${shellQuote(sql)}`).trim();
+  } catch (e) {
+    const stderr = String((e as { stderr?: Buffer | string }).stderr ?? '');
+    if (/relation "feedback_block" does not exist/i.test(stderr)) {
+      process.stderr.write(
+        'warning: the server has no feedback_block table yet (migration 0323 is not deployed) — ' +
+          'block questions and answers are NOT included in this pull.\n',
+      );
+      return byItem;
+    }
+    throw e;
+  }
+  const rows = JSON.parse(out || '[]') as (RemoteBlockEpisode & { feedback_request_id: string })[];
+  for (const { feedback_request_id, ...ep } of rows) {
+    const list = byItem.get(feedback_request_id) ?? [];
+    list.push(ep);
+    byItem.set(feedback_request_id, list);
+  }
+  return byItem;
+}
+
 function selectFeedback(whereStatus: string): RemoteFeedback[] {
-  const sql = `select coalesce(json_agg(row_to_json(t)), '[]') from (select ${SELECT_COLS} from feedback_request where status in (${whereStatus}) order by created_at) t`;
-  const out = remote(`psql "$MIGRATION_DATABASE_URL" -tAc ${shellQuote(sql)}`).trim();
-  return JSON.parse(out || '[]') as RemoteFeedback[];
+  const out = remote(`psql "$MIGRATION_DATABASE_URL" -tAc ${shellQuote(feedbackSelectSql(whereStatus))}`).trim();
+  const rows = JSON.parse(out || '[]') as RemoteFeedback[];
+  const trails = blockTrails(rows.map((r) => r.id));
+  // Always present, even as []. An absent key would make "never blocked" indistinguishable from "this
+  // pull predates block trails" at the point of use, and a build agent skimming the JSON would read the
+  // absence as "no question was asked" rather than "look again".
+  for (const r of rows) r.block_trail = trails.get(r.id) ?? [];
+  return rows;
 }
 
 /** Items awaiting a (re)plan. */
@@ -165,6 +268,24 @@ export function markBlocked(p: {
   reason: string;
   blockedById?: string | null;
 }): void {
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, markBlockedSql(p));
+}
+
+/**
+ * The SQL markBlocked sends, as a string.
+ *
+ * SEPARATED FROM THE SSH CALL SO IT CAN BE EXECUTED IN A TEST. Everything else in this file is only ever
+ * exercised against production, which is a poor place to discover that a dollar-quoted DO block does not
+ * parse — and the block-episode insert below is exactly the kind of nested quoting that reads fine and
+ * does not run. The test runs this text against a real database.
+ */
+export function markBlockedSql(p: {
+  id: string;
+  tenantId: string;
+  reporterEmploymentId: string;
+  reason: string;
+  blockedById?: string | null;
+}): string {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
   assertUuid(p.reporterEmploymentId, 'reporter employment id');
@@ -174,24 +295,53 @@ export function markBlocked(p: {
   const sql = [
     'BEGIN;',
     `UPDATE feedback_request SET status = 'blocked', blocked_reason = ${dq(p.reason)}, blocked_by_id = ${blocker}, updated_at = now() WHERE id = '${p.id}' AND status = 'approved';`,
+    // Open the block episode (0323) in the same transaction, so the QUESTION survives the unblock that
+    // will later clear blocked_reason — and so the reporter's in-app answer has a row to close. The
+    // EXISTS re-checks the guard above: if the item was not `approved` nothing was parked, and an episode
+    // for a park that did not happen would be a fabricated question.
+    guardedOn(
+      'feedback_block',
+      `'INSERT INTO feedback_block (tenant_id, feedback_request_id, question, blocked_by_id) ` +
+        `SELECT $1, $2, $3, $4 WHERE EXISTS (SELECT 1 FROM feedback_request WHERE id = $2 AND status = ''blocked'') ` +
+        `ON CONFLICT DO NOTHING' USING '${p.tenantId}'::uuid, '${p.id}'::uuid, ${dq(p.reason.trim())}::text, ${blocker}::uuid`,
+    ),
     `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.blocked', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ reason: p.reason, blockedById: p.blockedById ?? null, via: 'improvement-loop' }))}::jsonb);`,
     'COMMIT;',
   ].join('\n');
-  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
+  return sql;
 }
 
 /** The question was answered — return the item to the build queue (status → approved). */
 export function markUnblocked(p: { id: string; tenantId: string; reporterEmploymentId: string; note?: string | null }): void {
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, markUnblockedSql(p));
+}
+
+/** The SQL markUnblocked sends — separated for the same reason as markBlockedSql. */
+export function markUnblockedSql(p: {
+  id: string;
+  tenantId: string;
+  reporterEmploymentId: string;
+  note?: string | null;
+}): string {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
   assertUuid(p.reporterEmploymentId, 'reporter employment id');
   const sql = [
     'BEGIN;',
     `UPDATE feedback_request SET status = 'approved', blocked_reason = NULL, blocked_by_id = NULL, updated_at = now() WHERE id = '${p.id}' AND status = 'blocked';`,
+    // End the episode (0323). The note, where there is one, IS the answer — this is the operator-side twin
+    // of the reporter answering in the app. nullif(btrim(...)) keeps a whitespace-only note out: an
+    // episode released with nothing said must record NULL, not a blank pretending to be an answer.
+    guardedOn(
+      'feedback_block',
+      `'UPDATE feedback_block SET answer = nullif(btrim($1), ''''), resolved_at = now() ` +
+        `WHERE feedback_request_id = $2 AND resolved_at IS NULL' ` +
+        `USING ${p.note ? dq(p.note) : 'NULL'}::text, '${p.id}'::uuid`,
+    ),
     `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.unblocked', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ note: p.note ?? null, via: 'improvement-loop' }))}::jsonb);`,
     'COMMIT;',
   ].join('\n');
-  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
+  return sql;
 }
 
 /** Move an approved item into the build (status → building + a feedback.build.started event). */

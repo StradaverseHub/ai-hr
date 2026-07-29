@@ -84,7 +84,7 @@ import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-hist
 import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
 // 297ae65a — searchable ISO 4217 Currency select for the Basic Salary form + the company default it preselects.
 import { CurrencySelect } from '@/components/currency-select';
-import { getPayrollConfig } from '@/core/payroll-config';
+import { getCompanyCurrency } from '@/core/read';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
 import { listDependents, eligibleChildReliefCount, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
@@ -316,11 +316,10 @@ export default async function EmployeePage({
   const emergencyContacts = admin ? await listEmergencyContacts(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
-  // 297ae65a — the company's configured default salary currency (company_payroll_config.default_currency,
-  // 'MYR' when unset): the Basic Salary form preselects it for a brand-new first record.
-  const defaultSalaryCurrency = admin
-    ? ((await getPayrollConfig(s, emp.companyId))?.defaultCurrency ?? 'MYR')
-    : 'MYR';
+  // 297ae65a — the company's currency: the Basic Salary form preselects it for a brand-new first record.
+  // r79a (4fb8b75a step 3): read from `company.currency` (owned by Organization → General) instead of the
+  // duplicate company_payroll_config.default_currency the pair collapsed into it (migration 0324).
+  const defaultSalaryCurrency = admin ? await getCompanyCurrency(s, emp.companyId) : 'MYR';
   // R46 79eb7151 — resolve the policy the payroll kernel will ACTUALLY use for this employee (direct
   // assignment → company default → null ⇒ monthly default), so the Salary section can surface its Pay Mode
   // and Payment Term read-only. Resolving rather than reading emp.payrollPolicyId matters: an employee with
@@ -2467,6 +2466,14 @@ export default async function EmployeePage({
           <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
             {t('subjectToHrdfCompanyNotRegistered')}
           </p>
+        )}
+        {/* r79 — the amber warning above only fires on the STORED Yes, i.e. after the operator has already
+            chosen it. Where the company is unregistered, say so BEFORE the choice is made too, so picking
+            Yes is an informed decision rather than one corrected afterwards. Deliberately muted, not amber:
+            nothing is wrong yet, and six of eight live companies are unregistered — an alarm on every one of
+            their employees would train the operator to ignore the amber one that does mean something. */}
+        {statutory?.subjectToHrdf !== true && companyHrdfUnregistered && (
+          <p className="text-xs text-muted-foreground">{t('subjectToHrdfCompanyUnregisteredNote')}</p>
         )}
         <div className="flex items-end justify-end">
           <button className={btnPrimary}>{t('othersStatutorySave')}</button>

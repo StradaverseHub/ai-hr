@@ -148,7 +148,8 @@
     "delegations": "委托",
     "dashboardCardConfig": "仪表板卡片",
     "scheduledActions": "计划任务",
-    "systemSettings": "系统设置"
+    "systemSettings": "系统设置",
+    "systemExplorer": "依赖关系浏览器"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -339,7 +340,8 @@
       "salaryRemarksPlaceholder": "例如：年度加薪",
       "employeeIdLabel": "员工编号",
       "employeeIdPlaceholder": "例如 EMP-0001",
-      "employeeIdHint": "字母、数字和连字符；最多 30 个字符。"
+      "employeeIdHint": "字母、数字和连字符；最多 30 个字符。",
+      "hiringDefaults": "入职默认设置"
     },
     "detail": {
       "backToPeople": "员工",
@@ -449,6 +451,7 @@
       "subjectToHrdfHint": "勾选后，该员工的合格收入将在薪资处理时计入 HRD Corp（HRDF）征费计算；未勾选则完全排除该员工。",
       "subjectToHrdfFollowingDefault": "目前跟随公司 HRDF 注册默认设置。保存后将为该员工设定明确的选择。",
       "subjectToHrdfCompanyNotRegistered": "已设为“是”，但该员工所属公司未设置 HRDF 缴纳率（组织 ▸ 法定），因此薪资不会为其征收该征费。此设置已保存，公司完成注册后即生效。",
+      "subjectToHrdfCompanyUnregisteredNote": "本公司未设定 HRDF 缴纳率（组织 ▸ 法定），因此在此选择「是」会被保存，但在公司注册前不会征收任何征费。",
       "othersStatutorySave": "保存其他法定项目",
       "assignmentHistory": "任职历史",
       "periodValidTime": "期间（有效时间）",
@@ -1229,6 +1232,17 @@
       "colEmail": "邮箱",
       "colResult": "结果",
       "ready": "就绪"
+    },
+    "hiringDefaults": {
+      "title": "入职默认设置",
+      "description": "按公司设置的新员工与雇佣评估默认值。它们原本位于薪资计划界面，但薪资相关逻辑从不读取它们。",
+      "back": "员工",
+      "emptyScope": "当前范围内没有公司。",
+      "save": "保存",
+      "probationMonths": "默认试用期（月）",
+      "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。",
+      "reviewReminderDays": "评估提醒（结束日期前天数）",
+      "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
     }
   },
   "leave": {
@@ -2855,7 +2869,8 @@
         "staleBasicComponent": "BASIC 薪资项目已过时——以人事薪资记录为准",
         "missingStatutory": "无法定资料（EPF/SOCSO/PCB）",
         "missingBank": "银行资料不完整",
-        "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理"
+        "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理",
+        "hrdfSubjectUnregistered": "已设为需缴 HRDF，但公司未注册——不会征收任何征费"
       },
       "preChecksOpenProfile": "打开档案",
       "preChecksBlockedError": "无法处理薪资：{n} 名员工没有当前薪资记录。请先解决处理前检查问题。",
@@ -3195,11 +3210,6 @@
     "setup": {
       "title": "薪资设置",
       "subtitle": "管理薪资设置的中心。打开子模块进行配置；仅显示您有权访问的模块。",
-      "policies": {
-        "title": "薪资计划",
-        "desc": "各公司的薪资计划——截止日、发薪日、计薪基准、HRDF 和 EPF 模式。",
-        "cta": "打开薪资计划"
-      },
       "items": {
         "title": "薪资项目",
         "desc": "定义薪资项目及其法定处理方式（EPF / SOCSO / PCB / HRDF）。",
@@ -3220,16 +3230,6 @@
         "desc": "定义并维护薪资处理下拉菜单中显示的周期名称。",
         "cta": "打开薪资周期"
       },
-      "period": {
-        "title": "薪资周期模板",
-        "desc": "公司配置的排程视角——每个周期的截止日和发薪日时间。",
-        "cta": "打开周期设置"
-      },
-      "submission": {
-        "title": "付款提交控制",
-        "desc": "公司配置的提交控制视角——法定付款按用途的截止日。",
-        "cta": "打开提交控制"
-      },
       "ea": {
         "title": "EA 表单管理",
         "desc": "将薪资项目映射到 EA 表单行。专用法定映射屏幕即将推出；现有映射将被保留。",
@@ -3239,7 +3239,22 @@
         "title": "法定配置",
         "desc": "薪资引擎应用的准确马来西亚法定数字——EPF、SOCSO、EIS、PCB 和加班。",
         "cta": "打开法定配置"
-      }
+      },
+      "schedule": {
+        "title": "薪资计划",
+        "desc": "各公司的薪资时间安排——截止日、发薪日、各用途的提交截止日、默认薪资政策与工资单发放。",
+        "cta": "打开薪资计划"
+      },
+      "readinessTitle": "并非所有公司都已能运行薪资",
+      "readinessSubtitle": "没有匹配的有效周期时，公司的薪资运行会被拒绝。以下属于你范围内的公司还缺少配置。",
+      "readinessCannotRun": "无法运行薪资",
+      "readinessFix": "去设置",
+      "readinessNoCycles": "该公司尚未定义任何薪资周期，因此无法运行薪资。",
+      "readinessNoRegularCycle": "已有周期，但没有任何一个映射到常规运行，因此无法运行普通月度薪资。",
+      "readinessStaleDefault": "默认薪资周期指向“{name}”，它不是该公司的有效周期。",
+      "readinessNoDefault": "该公司尚未选择默认薪资周期。",
+      "readinessNoAutoCreate": "系统不会替你创建周期——公司应该有哪些周期由你决定。",
+      "readinessFullReport": "查看完整的就绪报告"
     },
     "historyImport": {
       "title": "导入薪资历史",
@@ -3399,7 +3414,8 @@
         "staleBasicComponent": "BASIC 薪资项目已过时——以人事薪资记录为准",
         "missingStatutory": "无法定档案（EPF/SOCSO/PCB）",
         "missingBank": "银行资料不完整",
-        "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理"
+        "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理",
+        "hrdfSubjectUnregistered": "已设为需缴 HRDF，但公司未注册——不会征收任何征费"
       }
     },
     "guide": {
@@ -3465,7 +3481,10 @@
       "checkPayModesBlocker": "{unpayable, plural, other {# 名员工}}使用尚无计算方法的自定义周期计薪方式：{names}。请在处理前更改其计薪方式。",
       "checkTransactionsTitle": "薪资交易",
       "checkTransactionsOk": "{entered, plural, =0 {本月尚未录入交易} other {已录入 # 笔交易}}。",
-      "empty": "您当前范围内没有公司。"
+      "empty": "您当前范围内没有公司。",
+      "checkDefaultCycleTitle": "默认薪资周期",
+      "checkDefaultCycleOk": "已保存的默认值指向一个有效周期。",
+      "checkDefaultCycleWarning": "{named, plural, =0 {该公司尚未选择默认薪资周期。} other {已保存的默认值“{names}”不是该公司的有效周期。}}"
     }
   },
   "admin": {
@@ -3824,7 +3843,6 @@
         "wildcardBadge": "适用于所有类型",
         "wildcardNone": "未配置适用于所有类型的规则。",
         "defaultChainTitle": "公司默认审批链",
-        "defaultChainOff": "单一审批人（多级审批已关闭）",
         "openApprovalTab": "打开“审批”标签页 →"
       },
       "noLeaveTypes": "无休假类型。",
@@ -5162,6 +5180,25 @@
       "createGroupConfirm": "创建分组",
       "dropGradeHint": "从职级主档中将职级拖放到某个组即可添加——也可以在组内勾选它的复选框后保存。",
       "gradeAlreadyInGroup": "{name} 已在该组中。"
+    },
+    "systemExplorer": {
+      "title": "系统分析与依赖关系浏览器",
+      "description": "本产品是如何构建的：选择一种记录类型，查看什么指向它、它指向什么，以及哪个模块拥有它。每次都从实时数据库读取，因此永远不会过时。仅显示结构——不显示任何记录数据。",
+      "recordType": "记录类型",
+      "choose": "选择记录类型…",
+      "show": "显示",
+      "formNote": "本安装共有 {count} 种记录类型。相关类型是链接——点击即可在关系图中跳转。",
+      "unknownTable": "本安装中没有名为“{table}”的记录类型。",
+      "sharedSpine": "共享主干（不属于单一模块）",
+      "primaryKey": "主键",
+      "none": "无",
+      "references": "指向",
+      "noReferences": "此记录类型不指向任何内容。",
+      "referencedBy": "被指向",
+      "noReferencedBy": "没有内容指向此记录类型。",
+      "onDelete": "删除时",
+      "withheldNote": "有 {count} 种记录类型未列出。它们保存加密密钥、签名密钥、供应商凭据或登录令牌，因此其结构被刻意隐去。",
+      "withheldEdges": "与被隐去记录类型之间的 {count} 条关系未在此显示。"
     }
   },
   "topbar": {
@@ -5892,11 +5929,6 @@
     "scheduleTitle": "薪资周期",
     "cutOffDay": "截止日",
     "payDay": "发薪日",
-    "paymentBasis": "支付基准",
-    "basis_monthly": "每月",
-    "basis_daily": "每日",
-    "basis_hourly": "每小时",
-    "basis_other": "其他",
     "monthEnd": "月末",
     "dayHint": "每月第几天（1–31）。留空表示月末。仅作排期参考——不会改变薪资期的计算方式。",
     "statutoryTitle": "法定雇主身份",
@@ -5917,11 +5949,6 @@
     "attendanceCutOff": "考勤截止日",
     "cutOffsHint": "每月的日期（1–31）。留空 = 月末。薪资/输入截止日在上方设为“截止日”。这些是公司默认的截止窗口：当员工的薪资政策未自行设置时，薪资按各交易类型（加班、报销、无薪假、考勤）的配置窗口提取。法定缴款仍按日历月汇总。",
     "save": "保存",
-    "hiringTitle": "入职默认设置",
-    "probationMonths": "默认试用期（月）",
-    "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。",
-    "reviewReminderDays": "评估提醒（结束日期前天数）",
-    "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。",
     "policyReleaseTitle": "默认政策与工资单发放",
     "defaultPolicy": "默认薪资政策",
     "defaultPolicyNone": "无（按月默认）",
@@ -5933,8 +5960,12 @@
     "releaseValue": "日期/偏移",
     "releaseValuePlaceholder": "例如 5 或 -2",
     "releaseHint": "控制员工何时能在自助服务中查看工资单。固定日期＝薪资周期之后月份的某一天；相对＝发薪日之前(-)/之后(+)的天数。绝不会早于薪资关账。",
-    "defaultCurrency": "默认薪资货币",
-    "defaultCurrencyHint": "新的基本工资记录将预选此货币；HR 可按记录更改。"
+    "statutoryEditInOrganization": "在组织中编辑",
+    "statutoryNotSet": "未设置",
+    "statutoryReadOnlyHint": "仅供参考。这些雇主登记信息是同一条记录，只有一个归属——组织 → 法定。此前在这里也可编辑，因此后保存的界面会静默覆盖先保存的。",
+    "movedSettingsHint": "试用期、评估提醒和默认薪资币种不属于薪资设置，已经迁移：",
+    "movedHiringLink": "入职默认设置",
+    "movedCurrencyLink": "公司币种"
   },
   "employeeIdConfig": {
     "title": "员工编号自动流水号设置",
@@ -6229,8 +6260,6 @@
     "title": "请假审批链",
     "description": "为每家公司选择由谁审批请假以及审批顺序。",
     "emptyScope": "您的范围内没有公司。",
-    "enable": "需要多级审批",
-    "enableHint": "关闭时，由单个审批人决定每个申请。",
     "chain": "审批顺序",
     "empty": "暂无步骤 — 请至少添加一个。",
     "manager": "直属经理",
@@ -6301,8 +6330,6 @@
     "noAssignments": "尚无模板分配。",
     "unassign": "移除",
     "unassignConfirm": "移除此分配？该假期类型将回退到默认审批链。",
-    "multiApprovalOff": "多级审批已关闭",
-    "enableMultiApproval": "启用多级审批",
     "rolesGatedNote": "步骤的审批人如下：部门主管／业务单元主管由该单元在 设置 → 系统标签 中设置的负责人审批（未设置负责人时跳过该步骤）；HR 和人力资源经理由 HR 管理员审批；薪资由薪资合作方审批；自定义角色由 HR 管理员审批。HR 管理员也可审批任何步骤，因此审批链始终能完成。",
     "reason": "变更原因（可选）",
     "reasonPlaceholder": "为何要进行此变更？",
@@ -6352,15 +6379,14 @@
     "escalationSpecificRole": "指定审批角色",
     "escalationRole": "审批角色",
     "escalationNotifyNote": "升级提醒将发送到通知铃铛。",
-    "escalationUnavailableSingleApprover": "审批升级仅适用于使用多级审批链的公司。",
     "templateCreationTitle": "审批模板创建",
     "templateCreationHint": "在此创建可重复使用的审批流程及其步骤。",
-    "multiStepNote": "包含两个或以上步骤的模板即为多级审批。是否要求多级审批仍是您在分配模板中按公司开启的开关。",
+    "multiStepNote": "包含两个或以上步骤的模板即为多级审批；只有一个步骤的模板即为单人审批。由您分配的模板决定，没有单独的公司开关。",
     "assignmentTemplateTitle": "分配模板",
     "assignmentTemplateHint": "决定每条审批流程适用于哪些公司、假期类型与员工。",
     "leaveTypesMore": "{n, plural, other {+# 项}}",
-    "companyDefaultsTitle": "公司默认设置与升级",
-    "companyDefaultsHint": "展开某家公司即可编辑其基础审批链、多级审批开关与升级设置。",
+    "companyDefaultsTitle": "公司基础审批链",
+    "companyDefaultsHint": "展开某家公司即可编辑在没有匹配的已分配模板时申请所走的审批链。只有一个步骤即为单人审批。",
     "selectBenefitSchemes": "福利方案",
     "noBenefitSchemes": "所选公司没有启用中的福利方案。",
     "schemeNoGradeGroup": "请先为此方案设定职级组，才能为它指派审批模板。",
@@ -6369,7 +6395,8 @@
     "selectAll": "全选",
     "deselectAll": "取消全选",
     "panelNoneMeansAll": "未选择 = 适用于全部",
-    "panelPickAtLeastOne": "至少选择一项"
+    "panelPickAtLeastOne": "至少选择一项",
+    "escalationSectionHint": "跟进停滞的审批。按公司分别设置，展开所需的公司即可。"
   },
   "feedback": {
     "title": "反馈",
@@ -6408,6 +6435,14 @@
     "status_blocked": "等待回覆",
     "blocked_banner": "已批准，但尚未開始 — 正在等待回覆。",
     "blocked_waiting_on": "等待：{title}",
+    "answerPrompt": "只有您能回答這個問題。回覆後工作即可繼續。",
+    "answerLabel": "您的回覆",
+    "answerPlaceholder": "請回答上面的問題",
+    "answerSubmit": "送出回覆",
+    "historyQuestion": "我們詢問您",
+    "historyAnswer": "您的回覆",
+    "historyQuestionOpen": "等待您的回覆",
+    "historyQuestionUnanswered": "未記錄回覆即繼續",
     "status_building": "构建中",
     "status_done": "已完成",
     "status_rejected": "已拒绝",
@@ -7390,23 +7425,6 @@
       "guides": "添加帮助指南",
       "admin": "创建管理员登录",
       "invitation": "签发激活链接"
-    },
-    "explorer": {
-      "title": "记录关系",
-      "description": "选择一种记录类型，查看什么指向它、它指向什么，以及哪个模块拥有它。每次都从实时数据库读取，因此永远不会过时。",
-      "recordType": "记录类型",
-      "choose": "选择记录类型…",
-      "show": "显示",
-      "formNote": "本安装共有 {count} 种记录类型。相关类型是链接——点击即可在关系图中跳转。",
-      "unknownTable": "本安装中没有名为“{table}”的记录类型。",
-      "sharedSpine": "共享主干（不属于单一模块）",
-      "primaryKey": "主键",
-      "none": "无",
-      "references": "指向",
-      "noReferences": "此记录类型不指向任何内容。",
-      "referencedBy": "被指向",
-      "noReferencedBy": "没有内容指向此记录类型。",
-      "onDelete": "删除时"
     }
   },
   "currencySelect": {

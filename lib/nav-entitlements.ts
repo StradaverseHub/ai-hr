@@ -31,7 +31,18 @@ import { isModuleEnabled, type EntitledContext } from '@/core/entitlements';
  * (app/layout.tsx) and the registry's side-effect import pulls the client wiring in with it — the same
  * trap ADR-0080 rung 2 records against listPacks.
  */
-export const MODULE_CODES_WITH_NAV = ['attendance', 'claims', 'leave', 'payroll', 'performance'] as const;
+export const MODULE_CODES_WITH_NAV = [
+  'attendance',
+  'claims',
+  'leave',
+  'payroll',
+  'performance',
+  // deec1691 — the System Analysis & Dependency Explorer under Admin. The first entry here that is
+  // NOT pack-backed: it owns no tables and contributes no pack, so its single nav row is a literal in
+  // components/sidebar.tsx and its MODULE_OF_HREF entry is written by hand there. Listed here for the
+  // same reason as the rest — without it the rail would advertise a module the tenant has not bought.
+  'system_explorer',
+] as const;
 
 /** Module codes whose nav rows are always shown, whatever the snapshot says. */
 const CORE = new Set<string>(CORE_MODULE_CODES);

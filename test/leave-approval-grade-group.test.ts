@@ -93,7 +93,7 @@ beforeEach(async () => {
     lineType: 'administrative',
     validFrom: '2024-01-01',
   });
-  await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
+  await setLeaveApprovalPolicy(ctx(), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
 });
 afterAll(async () => {
   await closeAll();
@@ -104,18 +104,18 @@ describe('grade-group scoping', () => {
     await createLeaveApprovalRule(ctx(), {
       companyId: b.companyId,
       gradeGroupId: bandExecId,
-      levels: ['payroll'],
+      levels: ['payroll', 'hr_admin'],
     });
     // subject's grade (Executive) belongs to Band Exec → the group rule wins over the company default.
     const r = await request();
-    expect(await kindsFor(r.leaveRequestId)).toEqual(['payroll']);
+    expect(await kindsFor(r.leaveRequestId)).toEqual(['payroll', 'hr_admin']);
   });
 
   it('a requester whose grade is NOT in the group falls back to the company default', async () => {
     await createLeaveApprovalRule(ctx(), {
       companyId: b.companyId,
       gradeGroupId: bandExecId,
-      levels: ['payroll'],
+      levels: ['payroll', 'hr_admin'],
     });
     const other = await hire('OtherGrade', { gradeId: gradeMgr }); // gradeMgr is not a member of Band Exec
     await setReportingLine(ctx(), {
@@ -136,10 +136,10 @@ describe('grade-group scoping', () => {
       companyId: b.companyId,
       gradeId: gradeExec,
       gradeGroupId: bandExecId,
-      levels: ['hr_admin'],
+      levels: ['hr_admin', 'payroll'],
     });
     const r = await request();
-    expect(await kindsFor(r.leaveRequestId)).toEqual(['hr_admin']);
+    expect(await kindsFor(r.leaveRequestId)).toEqual(['hr_admin', 'payroll']);
   });
 
   it('round-trips gradeGroupId through create + list + update', async () => {
@@ -195,7 +195,7 @@ describe('leave-duration condition (min/max) still resolves', () => {
       companyId: b.companyId,
       gradeGroupId: bandExecId,
       minDays: 3,
-      levels: ['payroll'],
+      levels: ['payroll', 'hr_admin'],
     });
     // A 1-day request does not clear the 3-day floor → company default.
     const short = await request(subject.employmentId, { startDate: '2026-07-01', endDate: '2026-07-01' });
@@ -203,6 +203,6 @@ describe('leave-duration condition (min/max) still resolves', () => {
 
     // A 3-day request (Jul 1–3, inclusive) clears the floor → the condition rule wins.
     const long = await request(subject.employmentId, { startDate: '2026-07-01', endDate: '2026-07-03' });
-    expect(await kindsFor(long.leaveRequestId)).toEqual(['payroll']);
+    expect(await kindsFor(long.leaveRequestId)).toEqual(['payroll', 'hr_admin']);
   });
 });
