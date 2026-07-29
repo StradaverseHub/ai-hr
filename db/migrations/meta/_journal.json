@@ -1940,6 +1940,13 @@
       "when": 1781862427000,
       "tag": "0327_shared_leave_group_max_days_per_application",
       "breakpoints": true
+    },
+    {
+      "idx": 328,
+      "version": "7",
+      "when": 1781862428000,
+      "tag": "0328_leave_type_rules_repoint_guard",
+      "breakpoints": true
     }
   ]
 }

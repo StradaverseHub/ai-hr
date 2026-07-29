@@ -24,6 +24,7 @@ import { isoWeekday } from './attendance';
 import { packFor } from '../localization/registry';
 import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
 import {
+  applyLeaveTypeRules,
   applyMaxBalance,
   applyRounding,
   bandDaysFor,
@@ -34,6 +35,7 @@ import {
   carryEnabled,
   entitledDays,
   hasAnyCarryExpiry,
+  hasAnyLeaveTypeRule,
   isValidMonthDay,
   isWellFormedBands,
   lastRealDayOfMonth,
@@ -47,6 +49,7 @@ import {
   type CarryExpiry,
   type GradePolicyRow,
   type LeaveRoundingMethod,
+  type LeaveTypeRules,
   type PreviewResult,
   type ResolvedPolicy,
   type SchemeMatchSubject,
@@ -54,6 +57,7 @@ import {
 } from './leave-compute';
 // Re-export the pure module's surface so every existing caller/test keeps importing these from '@/core/leave'.
 export {
+  applyLeaveTypeRules,
   applyMaxBalance,
   applyRounding,
   bandDaysFor,
@@ -64,6 +68,7 @@ export {
   carryEnabled,
   entitledDays,
   hasAnyCarryExpiry,
+  hasAnyLeaveTypeRule,
   isValidMonthDay,
   isWellFormedBands,
   lastRealDayOfMonth,
@@ -77,6 +82,7 @@ export {
   type CarryExpiry,
   type GradePolicyRow,
   type LeaveRoundingMethod,
+  type LeaveTypeRules,
   type PreviewResult,
   type ResolvedPolicy,
   type SchemeMatchSubject,
@@ -5296,6 +5302,30 @@ export async function buildSchemeEntitlementResolver(
   };
 }
 
+/**
+ * Feedback 9816a5ad step 2 — the ten type-level rule columns as a drizzle select shape.
+ *
+ * ONE definition, spread into every repointed `select({...})`, so no call site can read a different
+ * subset of the rules than another. That matters more than it looks: the granting engines (the hire
+ * grant, openLeaveYear, accrueEarnedLeave) and the projection kernel (projectExpectedEntitlement, via
+ * the three reproject entry points) must agree to the DAY, or a reproject compares its own projection
+ * against a ledger the grant engine wrote under a different rule and posts a permanent oscillating
+ * delta. That failure mode is already documented inline at the rounding call sites; a hand-copied
+ * column list at eight sites is exactly how it would come back.
+ */
+export const leaveTypeRuleColumns = {
+  accrualMethod: leaveType.accrualMethod,
+  carryForwardMax: leaveType.carryForwardMax,
+  carryForwardEnabled: leaveType.carryForwardEnabled,
+  carryForwardExpiryMode: leaveType.carryForwardExpiryMode,
+  carryForwardExpiryMonths: leaveType.carryForwardExpiryMonths,
+  carryForwardExpiryMonth: leaveType.carryForwardExpiryMonth,
+  carryForwardExpiryDay: leaveType.carryForwardExpiryDay,
+  carryForwardIncludeEarned: leaveType.carryForwardIncludeEarned,
+  roundingMethod: leaveType.roundingMethod,
+  maxBalanceDays: leaveType.maxBalanceDays,
+} as const;
+
 export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
   return withTenant(ctx, async (tx) => {
     const yearStart = `${p.year}-01-01`;
@@ -5328,7 +5358,9 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
     // skipped by the existing `days <= 0` guard, so this widens what CAN be granted without granting
     // anything that was not configured.
     const allTypes = await tx
-      .select({ id: leaveType.id, code: leaveType.code })
+      // 9816a5ad step 2: the type's own rules ride along with the type row that is already being read —
+      // no extra round-trip, and the rules are in scope wherever `t` is.
+      .select({ id: leaveType.id, code: leaveType.code, ...leaveTypeRuleColumns })
       .from(leaveType)
       .where(isNull(leaveType.archivedAt));
     const policyConfigured = await tx
@@ -5450,7 +5482,14 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         }
         // Leave Entitlement Rules Engine: `years` (service at year-open) drives custom band upgrades here,
         // same as the statutory floor's own 2y/5y band upgrades.
-        const pol = resolveGradePolicy(policyByType.get(t.id) ?? [], e.gradeId, e.companyId, years);
+        // 9816a5ad step 2: the winning policy row still decides the DAYS; the LEAVE TYPE decides every
+        // rule (earning method / carry forward / rounding / maximum balance). A type step 1 never
+        // backfilled carries no rules and falls straight through to the policy's own — see
+        // `hasAnyLeaveTypeRule`.
+        const pol = applyLeaveTypeRules(
+          resolveGradePolicy(policyByType.get(t.id) ?? [], e.gradeId, e.companyId, years),
+          t,
+        );
         // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
         if (isEarnedMethod(pol?.method)) continue;
         // Benefit Scheme (b83c6a3b): a resolved scheme entitlement SUPERSEDES the grade policy days for this
@@ -5746,7 +5785,8 @@ export async function accrueEarnedLeave(
     const types = await tx
       // Leave Year Type override (e1a51aea): yearCycleOverride is selected so the per-type effective cycle
       // can be resolved below (resolveLeaveYearCycle) — null on every pre-existing row ⇒ company cycle.
-      .select({ id: leaveType.id, code: leaveType.code, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride })
+      // 9816a5ad step 2: the type's own rules ride along (see leaveTypeRuleColumns).
+      .select({ id: leaveType.id, code: leaveType.code, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
       .from(leaveType)
       .where(
         and(
@@ -5778,8 +5818,17 @@ export async function accrueEarnedLeave(
       if (arr) arr.push(pol);
       else policyByType.set(pol.leaveTypeId, [pol]);
     }
+    // 9816a5ad step 2: once a type carries its own rules, ITS earning method is the answer for every policy
+    // under it — the "any active policy is earned" scan below only still governs a type step 1 never
+    // reached (see hasAnyLeaveTypeRule). The `policyByType` membership test is deliberately KEPT on both
+    // branches: a type with no active policy row has no days to accrue and was never swept here.
+    const typeById = new Map(types.map((t) => [t.id, t]));
     const earnedTypeIds = [...policyByType.entries()]
-      .filter(([, rows]) => rows.some((r) => isEarnedMethod((r.accrual as { method?: string } | null)?.method)))
+      .filter(([id, rows]) => {
+        const t = typeById.get(id);
+        if (hasAnyLeaveTypeRule(t)) return isEarnedMethod(t?.accrualMethod);
+        return rows.some((r) => isEarnedMethod((r.accrual as { method?: string } | null)?.method));
+      })
       .map(([id]) => id);
     if (earnedTypeIds.length === 0) return { granted: 0, forfeits: 0, breakdown: [] };
 
@@ -5963,7 +6012,11 @@ export async function accrueEarnedLeave(
         // another grade — accrue only when THEIR resolved policy is earned. ADR-0066: scoped to the
         // employee's company so a company override drives their accrued amount.
         // Leave Entitlement Rules Engine: service measured at cycleStart (same as the 2D-2 comment above).
-        const pol = resolveGradePolicy(policyByType.get(typeId) ?? [], e.gradeId, e.companyId, years);
+        // 9816a5ad step 2: policy row decides the DAYS, the leave type decides every RULE.
+        const pol = applyLeaveTypeRules(
+          resolveGradePolicy(policyByType.get(typeId) ?? [], e.gradeId, e.companyId, years),
+          type,
+        );
         if (!isEarnedMethod(pol?.method)) continue;
         if (frozenSet.has(`${e.employmentId}|${typeId}`)) continue; // ADR-0069: balance frozen for encashment
         // Grouped preview accumulator (feedback 2c7c6385): this (employee, type) resolves an earned policy,
@@ -6153,18 +6206,28 @@ export function projectExpectedEntitlement(
    *  is load-bearing here, and only for ANNUAL in the employee's hire year. Absent ⇒ byte-identical
    *  pre-existing behaviour for every other caller. */
   yearCycleOverride?: string | null,
+  /** Feedback 9816a5ad step 2 — the leave TYPE's own rule columns. The winning `policyRows` entry still
+   *  supplies the DAYS; every rule (earning method / carry forward / rounding / maximum balance) comes
+   *  from here instead of from that row's `accrual` JSONB. Absent (undefined) or a type step 1 never
+   *  backfilled ⇒ byte-identical pre-consolidation behaviour (see `applyLeaveTypeRules`).
+   *
+   *  This kernel is the reason the parameter exists rather than the callers overlaying afterwards: it
+   *  re-resolves the policy internally (the anniversary/upfront branch below), so an overlay applied by
+   *  the caller could only ever cover the FIRST resolution and the second would silently revert to the
+   *  policy's rules. */
+  typeRules?: LeaveTypeRules | null,
 ): { expected: number; windowStart: string } | null {
   const yearStart = `${asOf.slice(0, 4)}-01-01`;
   const cycleStartEarned = earnedCycleStart(emp.hiredOn, asOf, emp.leaveCycle);
   let years = serviceYearsAt(emp.hiredOn, cycleStartEarned);
-  let pol = resolveGradePolicy(policyRows, emp.gradeId, emp.companyId, years);
+  let pol = applyLeaveTypeRules(resolveGradePolicy(policyRows, emp.gradeId, emp.companyId, years), typeRules);
   const earnedMethod = isEarnedMethod(pol?.method);
   if (!earnedMethod && cycleStartEarned !== yearStart) {
     // Anniversary company whose winner is upfront: re-resolve with service measured at the calendar
     // year-open (openLeaveYear's own band anchor). If a banded config flips the winner to an earned
     // method under these years, skip defensively rather than mix windows.
     years = serviceYearsAt(emp.hiredOn, yearStart);
-    pol = resolveGradePolicy(policyRows, emp.gradeId, emp.companyId, years);
+    pol = applyLeaveTypeRules(resolveGradePolicy(policyRows, emp.gradeId, emp.companyId, years), typeRules);
     if (isEarnedMethod(pol?.method)) return null;
   }
   // Anniversary to Calendar (f3a64d90): the first-year window is the CALENDAR year, whatever the resolved
@@ -6290,7 +6353,8 @@ export async function reprojectA2cEntitlement(
   const none = { affected: 0, totalDelta: 0 };
 
   const [type] = await tx
-    .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride })
+    // 9816a5ad step 2: the type's own rules ride along and are handed to the projection kernel below.
+    .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
     .from(leaveType)
     .where(and(eq(leaveType.id, p.leaveTypeId), isNull(leaveType.archivedAt)))
     .limit(1);
@@ -6404,6 +6468,9 @@ export async function reprojectA2cEntitlement(
       p.asOf,
       (years) => schemeDaysFor(e.employmentId, p.leaveTypeId, years),
       type.yearCycleOverride,
+      // 9816a5ad step 2: every RULE now comes from the leave TYPE; the winning policy row still
+      // supplies the DAYS. A type step 1 never backfilled falls through unchanged.
+      type,
     );
     if (!projected) continue;
     const { expected } = projected;
@@ -6580,7 +6647,8 @@ export async function reprojectEntitlementForPolicy(
 
   const [type] = await tx
     // Leave Year Type override (e1a51aea): yearCycleOverride resolves the per-type effective cycle below.
-    .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride })
+    // 9816a5ad step 2: the type's own rules ride along and are handed to the projection kernel below.
+    .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
     .from(leaveType)
     .where(and(eq(leaveType.id, p.leaveTypeId), isNull(leaveType.archivedAt)))
     .limit(1);
@@ -6721,6 +6789,9 @@ export async function reprojectEntitlementForPolicy(
       (years) => schemeDaysFor(e.employmentId, p.leaveTypeId, years),
       // f3a64d90: the RAW override — 'a2c' day-slices the hire-year ANNUAL projection.
       type.yearCycleOverride,
+      // 9816a5ad step 2: every RULE now comes from the leave TYPE; the winning policy row still
+      // supplies the DAYS. A type step 1 never backfilled falls through unchanged.
+      type,
     );
     if (!projected) continue;
     const { expected, windowStart } = projected;
@@ -6855,7 +6926,8 @@ export async function reprojectEntitlementForEmployment(
     // 2. Active leave types (a type with no accrual row this cycle is skipped by the materialized guard).
     // Leave Year Type override (e1a51aea): yearCycleOverride resolves each type's effective cycle below.
     const types = await tx
-      .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride })
+      // 9816a5ad step 2: the type's own rules ride along and are handed to the projection kernel below.
+      .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
       .from(leaveType)
       .where(and(eq(leaveType.tenantId, ctx.tenantId), isNull(leaveType.archivedAt)));
     if (types.length === 0) return none;
@@ -6956,6 +7028,9 @@ export async function reprojectEntitlementForEmployment(
         (years) => schemeDaysFor(emp.employmentId, type.id, years),
         // f3a64d90: the RAW override — 'a2c' day-slices the hire-year ANNUAL projection.
         type.yearCycleOverride,
+        // 9816a5ad step 2: every RULE now comes from the leave TYPE; the winning policy row still
+        // supplies the DAYS. A type step 1 never backfilled falls through unchanged.
+        type,
       );
       if (!projected) continue;
       const { expected, windowStart } = projected;
@@ -7283,7 +7358,9 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
   return withTenant(ctx, async (tx) => {
     const todayYear = Number(p.today.slice(0, 4));
     const annualTypes = await tx
-      .select({ id: leaveType.id, code: leaveType.code })
+      // 9816a5ad step 2: the type's own carry-forward rules drive both the sweepable-year boundary and the
+      // per-year expiry decision below.
+      .select({ id: leaveType.id, code: leaveType.code, ...leaveTypeRuleColumns })
       .from(leaveType)
       .where(and(eq(leaveType.code, 'ANNUAL'), isNull(leaveType.archivedAt)));
     if (annualTypes.length === 0) return { swept: 0, forfeited: 0 };
@@ -7316,8 +7393,22 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
     // earliest validFrom among policies that carry an expiry offset. Never sweep before it.
     // Feedback 9d8cf621: a policy counts if it carries ANY carry-expiry — policy-level OR per service band
     // (hasAnyCarryExpiry) — so a purely per-range expiry still sets the sweepable-year floor.
+    // 9816a5ad step 2: for a CONSOLIDATED type the carry expiry lives on the type, so every one of its
+    // policy VERSIONS is a boundary candidate iff the type itself carries an expiry. The per-policy scan
+    // (including hasAnyCarryExpiry's per-BAND arm) still governs a type step 1 never reached — and only
+    // that type, because a consolidated type deliberately stops reading per-band carry expiry entirely
+    // (see applyLeaveTypeRules). Widening the sweep window for an expiry the sweep would then never apply
+    // is the bug this branch exists to avoid.
+    const annualTypeById = new Map(annualTypes.map((t) => [t.id, t]));
+    const typeCarriesExpiry = (typeId: string): boolean | null => {
+      const t = annualTypeById.get(typeId);
+      if (!hasAnyLeaveTypeRule(t)) return null; // not consolidated ⇒ defer to the policy scan
+      // Routed through the same overlay the sweep itself uses, so the boundary and the per-year decision
+      // can never disagree about whether an expiry exists.
+      return applyLeaveTypeRules({ days: 0, carryMax: 0 }, t)?.carryExpiry != null;
+    };
     const expiryPolicyYears = policies
-      .filter((pol) => hasAnyCarryExpiry(pol.accrual as AccrualConfig | null))
+      .filter((pol) => typeCarriesExpiry(pol.leaveTypeId) ?? hasAnyCarryExpiry(pol.accrual as AccrualConfig | null))
       .map((pol) => Number(pol.validFrom.slice(0, 4)));
     if (expiryPolicyYears.length === 0) return { swept: 0, forfeited: 0 };
     const earliestYear = Math.min(...expiryPolicyYears);
@@ -7344,7 +7435,11 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
           // Leave Entitlement Rules Engine: service length AS OF THIS SWEPT YEAR's open (not today) — a
           // band-vs-flat winner flip is only reachable when the employee's service band differed at that
           // year's open, so this must be computed per-y inside the loop, not hoisted.
-          const pol = resolveGradePolicy(activeAt(yearStart), e.gradeId, e.companyId, serviceYearsAt(e.hiredOn, yearStart));
+          // 9816a5ad step 2: carry cap, enable flag and expiry all come from the leave TYPE now.
+          const pol = applyLeaveTypeRules(
+            resolveGradePolicy(activeAt(yearStart), e.gradeId, e.companyId, serviceYearsAt(e.hiredOn, yearStart)),
+            t,
+          );
           // Carry-forward enhancement: a policy whose carry rule is explicitly disabled never carries
           // anything (openLeaveYear forfeits the whole prior balance at open), so there is nothing for
           // the later expiry sweep to forfeit — skip even if a stale expiry offset is still populated.
