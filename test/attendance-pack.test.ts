@@ -71,11 +71,15 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     { href: '/attendance/clock', labelKey: 'attendanceClock', icon: Clock },
     { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
     { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
-    { href: '/admin/attendance', labelKey: 'attendancePolicy', icon: CalendarClock, adminOnly: true },
-    { href: '/admin/attendance-policy', labelKey: 'attendancePolicyConfig', icon: SlidersHorizontal, adminOnly: true },
+    // a324a4b3 renamed three labelKeys so each names the screen it opens. The rendered STRINGS are
+    // unchanged (they were already right — R17 c9f7211), so this stays a parity oracle: only the key
+    // spelling moved. attendancePolicy → shiftSettings, attendancePolicyConfig → attendancePolicy,
+    // toilPolicy → timeOffInLieu. The strings themselves are pinned in the describe block below.
+    { href: '/admin/attendance', labelKey: 'shiftSettings', icon: CalendarClock, adminOnly: true },
+    { href: '/admin/attendance-policy', labelKey: 'attendancePolicy', icon: SlidersHorizontal, adminOnly: true },
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
-    { href: '/admin/toil', labelKey: 'toilPolicy', icon: Hourglass, adminOnly: true },
+    { href: '/admin/toil', labelKey: 'timeOffInLieu', icon: Hourglass, adminOnly: true },
     { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
     { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
   ] as const;
@@ -148,6 +152,94 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     expect(sidebar, 'resolves the node through the registry').toContain(`modulePackById('attendance')`);
     for (const { href } of EXPECTED) {
       expect(sidebar.includes(`'${href}'`), `${href} no longer hardcoded in sidebar.tsx`).toBe(false);
+    }
+  });
+});
+
+/**
+ * a324a4b3 — each Attendance row is labelled after the screen it opens, and the KEY says so too.
+ *
+ * WHY THIS FILE AND NOT test/i18n-coverage.test.ts. That guard's check C attributes static t() keys to a
+ * namespace, and it only walks `app/` and `components/` — nav rows live in `packs/`, are resolved through
+ * a `labelKey` variable rather than a literal t('…'), and the sidebar is a multi-namespace file anyway
+ * (check C skips those outright, `test/i18n-coverage.test.ts:84`). So NOTHING in the suite could see a nav
+ * row pointing at a key that does not exist, or at one whose string names a different screen. This does.
+ *
+ * WHAT WENT WRONG, and what these assertions would have caught. R33 (f21d6eee) moved the screens and R17
+ * (c9f7211) moved the STRINGS with them, but left the keys: `attendancePolicy` resolved to "Shift
+ * settings", `attendancePolicyConfig` to "Attendance policy". Every row rendered correctly and had for
+ * three weeks — but the item was raised, planned and sized off a reading of the two key names, and the
+ * next reader would either repeat that or "correct" the catalog values to match the keys and break six
+ * locales for real. The third test below is the one that pins it: key ≡ its own English label.
+ *
+ * KNOWN RESIDUAL, deliberately NOT asserted here: /admin/attendance-policy's own PageHeader reads
+ * `admin.attendanceRule.moduleTitle` = "Lateness, Early Out & Overtime Settings" (88e94371 landed the rule
+ * library on the route R33 had created for the attendance policy), while its nav row reads "Attendance
+ * policy" — the name the approved plan pins. Nav row and page header therefore still differ for that one
+ * screen. Asserting the pair equal would fail; asserting them unequal would bless it. It is reported
+ * instead, because choosing which of the two names wins is a decision for the reporter, not for a rename.
+ */
+describe('a324a4b3: Attendance nav labels name their screens, in all six locales', () => {
+  const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
+  const catalog = (loc: string) =>
+    JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8')) as {
+      nav: Record<string, string | undefined>;
+    };
+  const en = catalog('en');
+  const adminRows = attendancePack.navNodes!.find((n) => n.group === 'admin')!.children;
+  const allRows = attendancePack.navNodes!.flatMap((n) => n.children);
+
+  it('every Attendance row labelKey resolves to a non-empty nav string in every locale', () => {
+    for (const loc of LOCALES) {
+      const nav = catalog(loc).nav;
+      for (const row of allRows) {
+        expect(typeof nav[row.labelKey], `${loc}: nav.${row.labelKey} (${row.href})`).toBe('string');
+        expect(nav[row.labelKey], `${loc}: nav.${row.labelKey} is blank`).not.toBe('');
+      }
+    }
+  });
+
+  it('the Administration rows read as the screens they open', () => {
+    const labels = Object.fromEntries(adminRows.map((r) => [r.href, en.nav[r.labelKey]]));
+    expect(labels).toEqual({
+      '/admin/holidays': 'Holidays',
+      // The shared shift library (R33). This row is the reporter's "Shift Setting" — it exists, and it
+      // has said so since R17; only its key still said "attendancePolicy".
+      '/admin/attendance': 'Shift settings',
+      '/admin/attendance-policy': 'Attendance policy',
+      '/admin/attendance-allowance': 'Attendance allowance',
+      '/admin/locations': 'Clocking location',
+      // Plain words, not the TOIL abbreviation — and the same words the screen's own title uses.
+      '/admin/toil': 'Time off in lieu',
+    });
+    // …and no two rows share a name, which is the other half of what made the menu unreadable.
+    expect(new Set(Object.values(labels)).size).toBe(adminRows.length);
+  });
+
+  it('THE GUARD: each Administration labelKey is the camelCase of its own English label', () => {
+    // A key that drifts from its string is not cosmetic — it is what this item was misdiagnosed from.
+    const camel = (s: string) =>
+      s
+        .split(/[^a-zA-Z0-9]+/)
+        .filter(Boolean)
+        .map((w, i) => (i === 0 ? w.toLowerCase() : w[0].toUpperCase() + w.slice(1).toLowerCase()))
+        .join('');
+    for (const row of adminRows) {
+      expect(row.labelKey, `${row.href}: key must name its own label`).toBe(camel(en.nav[row.labelKey]!));
+    }
+  });
+
+  it('leaves no orphaned nav keys behind, and does not touch the same-named admin namespaces', () => {
+    for (const loc of LOCALES) {
+      const cat = JSON.parse(
+        fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'),
+      ) as { nav: Record<string, unknown>; admin: Record<string, unknown> };
+      expect(cat.nav.attendancePolicyConfig, `${loc}: dead nav.attendancePolicyConfig`).toBeUndefined();
+      expect(cat.nav.toilPolicy, `${loc}: dead nav.toilPolicy`).toBeUndefined();
+      // admin.attendancePolicy / admin.toilPolicy are the SCREENS' own namespaces and share the old
+      // names by coincidence. Renaming them would blank two pages; this proves they were left alone.
+      expect(typeof cat.admin.attendancePolicy, `${loc}: admin.attendancePolicy`).toBe('object');
+      expect(typeof cat.admin.toilPolicy, `${loc}: admin.toilPolicy`).toBe('object');
     }
   });
 });
