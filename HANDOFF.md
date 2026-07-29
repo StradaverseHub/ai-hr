@@ -119,7 +119,13 @@ Check the component source.
 
 ## Live state
 
-**Deployed:** `main@35cde09`, service active, migrations through **0322**.
+**Deployed:** `main@aba3064`, service active, migrations through **0322** (r77 added none).
+
+**Board after r77:** 5 items deployed this round, 1 held. **2 BLOCKED** — `fa3f4ccb` (needs `9816a5ad`
+approved first; alone it stops accrual for all 22 employees) and `956cec85` (needs the statutory
+submission formats named). **7 DEFERRED to r78, six of them Large:** `9cbf5e0d`, `1f6fd6d8`, `61bf109d`,
+`6d671f44`, `d8471481`, `deec1691`, `241817ef`. `fc776376` (pagination) is approved and must run **SOLO
+AND LAST** — it touched ~30 list pages last time.
 
 Shipped this session and live: r73 (3 items + `blocked` status + a silent data-loss fix), plan history
 (0318), r74 (10 items), r75 (10 items), slice 4 (nav + page gating), feedback attachments on push-back
@@ -206,6 +212,93 @@ input types + formula setting) · `956cec85` (Malaysia statutory forms submenu) 
 ---
 
 # Round history
+
+## r77 — 2026-07-29 — 5 approved items shipped, 1 held, and three reports that were not the bug
+
+**Shipped:** `main@aba3064` (branch `build/r77`). **No migration.**
+**Gate:** `tsc` clean · **475 files / 5315 tests** · `next build` clean · rehearsal NOT run and not
+required (no migration; stated rather than skipped silently). Verified live: `GET /` 401, service active,
+migration count still 273, "Review dates" present in the deployed catalog.
+
+**Shipped:** 33bf1a2d + d6429eb4 (approvals leave table on shared cells; "Decide each date" → "Review
+dates") · 8ebabbf2 (Employment tab view-only for org assignment) · 89ea527b (Group Join Date vs Join
+Date) · ae3bd088 (companies list and count restricted to what the admin can reach).
+**Held:** 1ef1cf95 — already built; re-planned as revision 2.
+
+### Decisions
+
+**1. THREE OF SIX ITEMS WERE NOT THE BUG THE REPORT DESCRIBED. That is now the round's dominant
+pattern, not an anecdote.**
+- `ae3bd088` ("only one company shows") — **does not reproduce.** Production: all 8 companies in one
+  tenant, 0 archived, the only `hr_admin` grant is group-wide, so the read returns all 8. The fix the
+  reporter called insufficient (`c328f06`) shipped **2026-07-10 in r29** and is an ancestor of the
+  deployed head. The defect that DOES reproduce is the inverse: a *company-scoped* admin was shown every
+  company with editable archive/delete/re-parent controls the database then refuses — disclosure plus
+  dead affordances. Fixed via a new `adminOnly` predicate on `listCompanies` (`app.is_admin_for`, a
+  predicate ADDED not removed), with the count derived from the same resolved list so the two cannot
+  drift, and subsidiaries re-rooted when a parent falls out of reach. **Latent for this tenant** — no
+  company-scoped admin exists today.
+- `1ef1cf95` (shared leave groups) — already shipped in migration `0220`, already inside the per-leave-
+  type Entitlement step, enforced at submit AND approval. Only the *affordance* is missing: you create a
+  group by DRAGGING one row onto another, so nothing on screen reveals the feature.
+- `48224d12` in r76 — the picker it named is on a different sub-step.
+
+**The lesson is now specific enough to act on: when a report says a thing is missing, check whether it
+is mislabelled, undiscoverable, or on the adjacent screen BEFORE checking whether it is absent.** Three
+of these would have shipped a wrong change if built to the ticket.
+
+**2. The most likely cause of `ae3bd088` is a screen nobody had looked at.** `dashboardStats`
+(`core/read.ts:3115`) computes `companiesCount = scopeIds ? scopeIds.length : count(*)`, and the home
+dashboard's Companies tile links straight to `/admin/organization`. With one company ticked in the
+switcher the tile reads **1** — the reported symptom exactly. The `count(*)` fallback is the worse half:
+it is reached only when `scopeIds` is EMPTY, so a user who can reach no company is told the whole
+tenant's total — the same disclosure `ab77dc1f` closed on the page header. Left unchanged deliberately
+(the dashboard is intentionally switcher-scoped, and changing it is a wider blast radius than this item)
+and **raised as `11355c08`** asking the reporter which of the two the tile should mean.
+
+**3. `89ea527b` could have moved everyone's leave entitlement, and the proof that it did not is the
+deliverable.** `employment.hired_on` is the Group Join Date and the **only** date entitlement reads —
+`serviceYearsAt` → `resolveGradePolicy` service bands, `servedFor` minimum-service eligibility,
+maternity eligibility, first-year proration, `core/performance.ts` service months. `join_date` has
+**zero** entitlement consumers. So defining the relationship changed no calculation, and seeding
+`join_date = hired_on` at hire touches a column nothing prices leave from. Existing NULLs left alone —
+`joinDate ?? hiredOn` displays identically, so **no backfill was written**. Pinned by a test proving a
+Join Date Change leaves an employee in the 18-day band (the wrong mapping drops them to 14 on an
+internal transfer) while a Group Join Date Correction *does* move it, plus a drift guard that
+`core/leave.ts` never references `joinDate`.
+
+**4. Making the Employment tab view-only found the source of an OPEN bug report.** `8ebabbf2` retired
+`setOrganisationAssignmentAction`, whose three services now run only through `applyComparisonMovementTx`
+— same guards, same transaction, plus one `groupId` with first-leg-primary. But the agent then found
+that **Job Grade is still directly editable from the Personnel LEAVE tab** (`gradeCard` →
+`setEmploymentGradeAction`), emitting `employment.grade.changed` — a projected movement event — **with no
+tag**. `core/movement.ts:353` falls back to `kind: mv?.type ?? 'gradeChange'`, so it renders its own row.
+**That is the duplicate Employment History row `4d391ab7` reports.** `4d391ab7` was re-planned to
+revision 2 naming the screen, replacing a plan that had to ask the reporter which screen they used.
+
+**5. A refusal that prevented trading one bug for a worse one.** Direct Superior was deliberately NOT
+routed through Movement: `core/movement.ts:1002` refuses a null manager (`dManager != null`), and the
+clear path `endReportingLine` emits `reporting-line.ended`, which is not a movement event type and would
+leave no history row. Routing it without solving the clear path removes **the only way to clear a
+superior**. Reporting lines also feed approvals. Held and recorded rather than half-shipped.
+
+**6. THIS DOCUMENT WAS WRONG ABOUT THE i18n GUARD, and every agent brief this session repeated it.**
+The trap entry said a source-static `t('…')` check "is not written yet". It exists —
+`test/i18n-coverage.test.ts` check C. The real hole is narrow: **check C skips any file using more than
+one namespace** (`:84`, "can't attribute keys statically"), which is exactly how r76 shipped
+`t('historyRevision')`. Corrected in the Traps section. Second documentation defect found in two rounds,
+after r76 found the r74 shipped-list error — both cost real work.
+
+**Carried:** still nothing browser-verified since r70. This round restyled the approvals table, made the
+Employment tab read-only and changed the Organization list. **New and sharpest:** `r77a` introduced a
+client island (`app/approvals/leave-decide-controls.tsx`) where the reject-reason box is revealed by
+state, and **this repo has no DOM or interaction tests at all** — "click Reject → box appears → submit"
+is reasoned from source, never observed. The reject form is conditionally MOUNTED rather than
+CSS-hidden, because a `display:none` `required` field makes the browser silently refuse to submit; that
+is the sharp edge, and it is the first place to look if `/approvals` misbehaves. Five non-English strings
+in this round are agent translations, not native-speaker.
+
+---
 
 ## r76 — 2026-07-29 — 4 approved items, and an investigation that stopped a deletion
 
