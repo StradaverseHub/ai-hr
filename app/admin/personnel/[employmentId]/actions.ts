@@ -4,9 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-// c5ac75fa — the consolidated Organisation Assignment save composes three core writers in ONE transaction.
-import { withTenant } from '@/db/client';
-import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentBlacklist, setEmploymentGrade, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
+import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentGrade, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
 import {
   createMovementEvent,
@@ -413,7 +411,19 @@ export async function createMovementEventAction(formData: FormData) {
     // Grade, employment type and the org placement all feed benefit-scheme / grade-scoped entitlement
     // resolution, and any comparison-kind movement can now move them in one submit — so recompute for the
     // whole comparison set rather than the three kinds that used to own those fields.
-    if (isComparisonKind(p.kind) || p.kind === 'confirmation' || p.kind === 'probationExtension') {
+    // 89ea527b — groupJoinDateCorrection MUST be in this set. The Group Join Date is employment.hired_on,
+    // which is what core/leave.ts's service bands and minimum-service gates read, so moving it moves leave
+    // entitlement. Before this item that recompute happened because the date was edited through
+    // setEmploymentInfoAction (which always recomputes); now the movement is the only writer, and omitting
+    // it here would leave the employee on a stale band with no visible symptom. joinDateChange is NOT in
+    // the set: join_date feeds no entitlement path (verified — its only consumers are the employeeDetail
+    // projection and the Employment tab's current-company service label).
+    if (
+      isComparisonKind(p.kind) ||
+      p.kind === 'confirmation' ||
+      p.kind === 'probationExtension' ||
+      p.kind === 'groupJoinDateCorrection'
+    ) {
       await recomputeEntitlement(s, employmentId, 'movement_recorded');
     }
   } catch (e) {
@@ -845,8 +855,11 @@ export async function setEmploymentInfoAction(formData: FormData) {
   try {
     await setEmploymentInfo(s, {
       employmentId,
-      hiredOn: str('hiredOn') ?? undefined, // hiredOn is NOT NULL — a blank submit must not clear it.
-      joinDate: str('joinDate'), // nullable current-company Join Date; blank clears it.
+      // 89ea527b — hiredOn (Group Join Date) and joinDate are deliberately NOT read from this form. Both
+      // left the Employment Dates card and are now movement-only: Group Join Date Correction writes
+      // hiredOn, Join Date Change writes joinDate, and setEmploymentInfo ignores either field unless the
+      // call carries the matching movement tag. Not reading them here means a forged field by that name
+      // is dropped twice over — the Employment tab has no path to the two service dates at all.
       probationMonths: str('probationMonths'),
       probationDays: str('probationDays'),
       confirmationDate: str('confirmationDate'),
@@ -871,13 +884,15 @@ export async function setEmploymentInfoAction(formData: FormData) {
       noticeAfterConfirmationUnit: str('noticeAfterConfirmationUnit'),
       tenderResignationDate: str('tenderResignationDate'),
       lastWorkingDate: str('lastWorkingDate'),
-      // c5ac75fa — the eight flat org columns (orgDivision/orgBranch/orgRegion/orgLine/orgSection/orgTeam/
-      // orgBase/employmentCategory) are NO LONGER written here. They moved onto the consolidated Organisation
-      // Assignment form and are owned by setOrganisationAssignmentAction below, so there is exactly one writer
-      // for them. This action now covers the Employment Dates group only.
+      // c5ac75fa / 8ebabbf2 — the eight flat org columns (orgDivision/orgBranch/orgRegion/orgLine/orgSection/
+      // orgTeam/orgBase/employmentCategory) are NOT written here. They were owned by
+      // setOrganisationAssignmentAction, which 8ebabbf2 deleted along with the editable Organisation
+      // Assignment form; their sole writer is now core/movement.ts's comparison-form leg. This action covers
+      // the Employment Dates group only — and, since 89ea527b, not its two join dates either.
     });
-    // R45 7527ea5f — hire date + confirmation date drive service-band + probation-eligibility entitlement;
-    // recompute the current cycle when they change.
+    // R45 7527ea5f — confirmation date drives probation-eligibility entitlement; recompute the current cycle
+    // when it changes. (The hire date drives service bands but no longer reaches this action — a Group Join
+    // Date Correction goes through createMovementEvent → setEmploymentInfo instead.)
     await recomputeEntitlement(s, employmentId, 'employment_info_changed');
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
@@ -886,104 +901,24 @@ export async function setEmploymentInfoAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
+/* 8ebabbf2 — setOrganisationAssignmentAction (c5ac75fa) was DELETED here. It was the single Save behind the editable Organisation Assignment section on the Employment
+ * tab, fanning out to setEmploymentAssignment (Business Unit / Department / Position / Employment Type,
+ * effective-dated) + setEmploymentGrade (Job Grade) + setEmploymentInfo (the eight flat org columns) in one
+ * transaction. That section is now VIEW-ONLY: every one of those fields changes through Movement -> New Event,
+ * whose comparison-form writer (core/movement.ts applyComparisonMovementTx) drives the SAME three services,
+ * with the same guards, in the same one transaction, and additionally tags the legs with one groupId so the
+ * change projects exactly one Employment History row.
+ *
+ * The action is removed rather than merely unreferenced, for the reason c5ac75fa itself gave when it deleted
+ * setEmploymentAssignmentAction: every exported `use server` function is a live RPC endpoint. Leaving this one
+ * exported would keep a fully working, untagged, effective-dated assignment writer callable by anything that
+ * knows its id -- writing history-visible events with no movement tag, which is precisely the duplicate
+ * Employment History row r76 reported. Nothing else referenced it: the only call site was the form on
+ * app/admin/personnel/[employmentId]/page.tsx, which this item replaced with read-only fields.
+ *
+ * EMPLOYMENT_TYPES stays: parseMovementForm (the Movement New Event / Edit parser) uses it to reject a
+ * tampered employment-type value, which is now the only remaining submitter of that field. */
 const EMPLOYMENT_TYPES: readonly EmploymentTypeValue[] = ['full_time', 'part_time', 'contract', 'intern'];
-
-/* c5ac75fa — setEmploymentAssignmentAction (feedback 594323a6) was REPLACED by
- * setOrganisationAssignmentAction below. The Organisation card was merged into the Organisation Assignment
- * section, so the section's single Save must now carry the eight flat org columns too. Rather than leave the
- * superseded action exported — every exported `use server` function is a live RPC endpoint, and a dead one
- * that writes assignments without the org fields is a trap for the next caller — its logic was folded into
- * the consolidated action, which additionally runs its writers in one transaction. */
-
-/**
- * c5ac75fa — the ONE Save behind the consolidated "Organisation Assignment" section on the Personnel (Admin)
- * Employment tab. The former standalone "Organisation" card was merged into that section, so a single submit
- * now carries three different kinds of field:
- *
- *   • effective-dated  — Business Unit / Department / Position / Employment Type → setEmploymentAssignment
- *                        (CLOSE + INSERT on `assignment`, history preserved, `employment.assignment.changed`)
- *   • flat, audited    — Job Grade → setEmploymentGrade (owns employment.gradeId, `employment.grade.changed`)
- *   • flat, audited    — Division / Branch / Region / Line / Section / Team / Base / Category
- *                        → setEmploymentInfo (flat columns on `employment`, `employment.info.updated`)
- *
- * STORAGE IS UNCHANGED by the merge: every field still lands in exactly the column it did before, with the
- * same history semantics. Only the form that submits them was consolidated. The eight flat fields did NOT
- * become effective-dated (that was Option C and is explicitly out of scope) — which is why the UI carries
- * helper text under the date spelling out which fields it actually governs.
- *
- * All three writers run inside ONE withTenant transaction via their `outerTx` parameter, so a validation
- * failure in any leg (e.g. an off-catalog Division, an effective date before the current assignment start)
- * rolls the whole save back. Without that, a partial commit could leave the dated assignment row and the flat
- * columns describing two different org placements. Each writer appends its OWN DomainEvent — this action adds
- * none of its own, so the audit trail is exactly what it was before the merge (no duplicated events).
- */
-export async function setOrganisationAssignmentAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  const t = await getTranslations('people.detail');
-  const rawType = String(formData.get('employmentType') ?? '').trim();
-  const employmentType = EMPLOYMENT_TYPES.includes(rawType as EmploymentTypeValue)
-    ? (rawType as EmploymentTypeValue)
-    : undefined;
-  // A present-but-unrecognised enum value is a tampered/stale submit — reject rather than silently ignore.
-  if (rawType && !employmentType) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(t('employmentInfo.invalidValue'))}`));
-  }
-  const effectiveDate = String(formData.get('effectiveDate') ?? '').trim();
-  // Absent → undefined (untouched); present-but-blank → null (explicit clear). Same contract as
-  // setEmploymentInfoAction's helper; all eight are always rendered on this form, so blank means clear.
-  const str = (name: string): string | null | undefined => {
-    const v = formData.get(name);
-    if (v == null) return undefined;
-    const trimmed = String(v).trim();
-    return trimmed === '' ? null : trimmed;
-  };
-  try {
-    await withTenant(s, async (tx) => {
-      // Job Grade lives on `employment` — its own audited writer (no-ops when unchanged).
-      await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null }, tx);
-      // Department / Position / Business Unit / Employment Type — effective-dated assignment change.
-      // Employee Status is NOT written here (R43 c26c3ce5): it is system-derived from the lifecycle dates,
-      // so `status` is left undefined and setEmploymentAssignment carries the stored value forward.
-      await setEmploymentAssignment(
-        s,
-        {
-          employmentId,
-          effectiveDate,
-          departmentId: (formData.get('departmentId') as string) || undefined,
-          positionId: (formData.get('positionId') as string) || null,
-          businessUnitId: (formData.get('businessUnitId') as string) || null,
-          employmentType,
-        },
-        tx,
-      );
-      // The eight relocated flat columns. ONLY these are passed — every date/period key stays `undefined`
-      // so this save can never disturb the Employment Dates group, which keeps its own separate form.
-      await setEmploymentInfo(
-        s,
-        {
-          employmentId,
-          orgDivision: str('orgDivision'),
-          orgBranch: str('orgBranch'),
-          orgRegion: str('orgRegion'),
-          orgLine: str('orgLine'),
-          orgSection: str('orgSection'),
-          orgTeam: str('orgTeam'),
-          orgBase: str('orgBase'),
-          employmentCategory: str('employmentCategory'),
-        },
-        tx,
-      );
-    });
-    // R45 7527ea5f — grade + employment type feed benefit-scheme / grade-scoped entitlement resolution.
-    // Runs AFTER the transaction commits (it opens its own) and is best-effort by design.
-    await recomputeEntitlement(s, employmentId, 'employment_changed');
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
-}
 
 /**
  * Personnel — Company change before any transaction (feedback 9464bd56). Commits phase 2 of the inline

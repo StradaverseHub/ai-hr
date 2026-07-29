@@ -69,6 +69,12 @@ export const MOVEMENT_KINDS = [
   'orgAssignmentChange',
   'reportingLineChange',
   'employmentTypeChange',
+  // 89ea527b — the two employment-date movements. Both follow the `confirmation` precedent: the movement's
+  // EFFECTIVE DATE *is* the new value of the date it sets, so the history row's Effective Date column and the
+  // stored column can never disagree. They are the ONLY writers of employment.hired_on / employment.join_date
+  // after creation (setEmploymentInfo ignores both fields without the matching tag).
+  'joinDateChange',
+  'groupJoinDateCorrection',
 ] as const;
 export type MovementKind = (typeof MOVEMENT_KINDS)[number];
 
@@ -386,12 +392,19 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string) {
                 : null;
         if (!kind) break;
         const after = (p.after ?? {}) as Record<string, unknown>;
+        // 89ea527b — for the two date movements the row's Effective Date is the date the movement SET, read
+        // back off the event's own after-diff (not the column), so a later correction cannot rewrite the
+        // history of the earlier one. Falls back to the occurrence date if the diff is missing.
         const effectiveDate =
           kind === 'confirmation'
             ? ((after.confirmationDate as string | null) ?? occDate)
             : kind === 'resignation'
               ? ((after.tenderResignationDate as string | null) ?? occDate)
-              : occDate;
+              : kind === 'joinDateChange'
+                ? ((after.joinDate as string | null) ?? occDate)
+                : kind === 'groupJoinDateCorrection'
+                  ? ((after.hiredOn as string | null) ?? occDate)
+                  : occDate;
         const endDate =
           kind === 'probationExtension'
             ? ((after.extendedConfirmationDate as string | null) ?? mv?.endDate ?? null)
@@ -1148,6 +1161,28 @@ export async function createMovementEvent(ctx: SessionContext, p: CreateMovement
         employmentId: p.employmentId,
         confirmationDate: p.effectiveDate,
         movement: { type: 'confirmation', remarks },
+      });
+
+    // 89ea527b — Join Date Change: the employee's commencement date with the CURRENT employing company moves
+    // (internal company transfer, rehire into another group company, restructure). The effective date IS the
+    // new Join Date. The Group Join Date is deliberately untouched — group service continues across the move,
+    // which is the whole point of keeping the two dates apart.
+    case 'joinDateChange':
+      return setEmploymentInfo(ctx, {
+        employmentId: p.employmentId,
+        joinDate: p.effectiveDate,
+        movement: { type: 'joinDateChange', remarks },
+      });
+
+    // 89ea527b — Group Join Date Correction: the authorized historical-data correction of the master service
+    // date. This is the ONLY route to hired_on after creation, and it MOVES LEAVE ENTITLEMENT (service bands
+    // read hired_on), so it is deliberately its own event type rather than a field on another movement — an
+    // entitlement change should never be a side effect of a transfer someone recorded for another reason.
+    case 'groupJoinDateCorrection':
+      return setEmploymentInfo(ctx, {
+        employmentId: p.employmentId,
+        hiredOn: p.effectiveDate,
+        movement: { type: 'groupJoinDateCorrection', remarks },
       });
 
     case 'probationExtension':

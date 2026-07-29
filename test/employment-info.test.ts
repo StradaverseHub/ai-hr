@@ -94,11 +94,28 @@ describe('setEmploymentInfo', () => {
     expect((payload!.after as Record<string, unknown>).employmentCategory).toBe('Management');
   });
 
-  it('can make the hire date editable', async () => {
+  // 89ea527b — the hire date (Group Join Date) USED to be freely editable here. It is now movement-only:
+  // this writer honours it solely under the `groupJoinDateCorrection` tag. That gate exists because
+  // employment.hired_on is what core/leave.ts reads for service bands and minimum-service eligibility, so a
+  // free edit silently re-priced somebody's leave entitlement.
+  it('applies the hire date ONLY under the groupJoinDateCorrection movement tag', async () => {
     const e = await hire('Hire Edit', '2026-01-01');
-    await setEmploymentInfo(adminCtx(b), { employmentId: e.id, hiredOn: '2026-02-01' });
+    await setEmploymentInfo(adminCtx(b), {
+      employmentId: e.id,
+      hiredOn: '2026-02-01',
+      movement: { type: 'groupJoinDateCorrection' },
+    });
     const d = await employeeDetail(adminCtx(b), e.id);
     expect(d!.hiredOn).toBe('2026-02-01');
+  });
+
+  it('silently ignores an untagged hire date rather than applying it', async () => {
+    const e = await hire('Hire Forge', '2026-01-01');
+    await expect(
+      setEmploymentInfo(adminCtx(b), { employmentId: e.id, hiredOn: '2026-02-01' }),
+    ).rejects.toThrow(/nothing to change/i);
+    const d = await employeeDetail(adminCtx(b), e.id);
+    expect(d!.hiredOn).toBe('2026-01-01');
   });
 
   it('rejects a confirmation date earlier than the hire date', async () => {
@@ -118,10 +135,31 @@ describe('setEmploymentInfo', () => {
   it('validates the confirmation date against a NEW hire date supplied in the same save', async () => {
     const e = await hire('Combo', '2026-01-01');
     // Moving the hire date forward past the incoming confirmation date must fail even though the STORED
-    // hire date would have passed — validation resolves against resulting values.
+    // hire date would have passed — validation resolves against resulting values. 89ea527b: the hire date
+    // now needs its movement tag to be part of the write set at all, so the tag is what makes this a
+    // "same save" case; the resolution rule itself is unchanged.
     await expect(
-      setEmploymentInfo(adminCtx(b), { employmentId: e.id, hiredOn: '2026-06-01', confirmationDate: '2026-03-01' }),
+      setEmploymentInfo(adminCtx(b), {
+        employmentId: e.id,
+        hiredOn: '2026-06-01',
+        confirmationDate: '2026-03-01',
+        movement: { type: 'groupJoinDateCorrection' },
+      }),
     ).rejects.toThrow(/Confirmation date/i);
+  });
+
+  it('an UNTAGGED hire date drops out of that validation instead of driving it', async () => {
+    // The converse of the case above, and the reason the gate is "ignore" rather than "reject": a forged
+    // hiredOn must not be able to make an otherwise-valid confirmation date fail, either.
+    const e = await hire('Combo Forge', '2026-01-01');
+    await setEmploymentInfo(adminCtx(b), {
+      employmentId: e.id,
+      hiredOn: '2026-06-01',
+      confirmationDate: '2026-03-01',
+    });
+    const d = await employeeDetail(adminCtx(b), e.id);
+    expect(d!.hiredOn).toBe('2026-01-01');
+    expect(d!.confirmationDate).toBe('2026-03-01');
   });
 
   it('rejects negative period components', async () => {

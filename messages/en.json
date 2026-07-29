@@ -783,10 +783,6 @@
         "superiorNote": "Set the Direct Superior on the card below.",
         "save": "Save employment information",
         "assignmentGroup": "Organisation Assignment",
-        "assignmentEffectiveDate": "Assignment effective date",
-        "assignmentEffectiveDateHelp": "The effective date applies to Business Unit, Department, Position and Employment Type, which keep a dated history. Job Grade, Division, Branch, Region, Line, Section, Team, Base and Category are saved as current values only.",
-        "saveAssignment": "Save organisation assignment",
-        "assignmentNote": "Changes to Department, Position and Employment Type are recorded with an effective date and kept in the assignment history, so past records stay accurate. Job Grade is saved to the employee record.",
         "employeeStatusDerivedNote": "Employee Status is worked out automatically from the employment dates and shown as a read-only badge — no manual step.",
         "blacklistTitle": "Blacklist",
         "blacklistReasonLabel": "Reason (optional)",
@@ -820,7 +816,10 @@
         "tenderResignationDate": "Tender Resignation Date",
         "lastWorkingDate": "Last Working Date",
         "lifecycleDeferredNote": "Resignation and last working dates are captured here for records. Wiring them into payroll final pay and attendance cut-off is planned as a follow-up.",
-        "businessUnit": "Business Unit"
+        "businessUnit": "Business Unit",
+        "assignmentViewOnlyNote": "This information is view-only. Organisation assignment changes are recorded as movement events, so each one keeps its effective date, its reason and its place in the employment history.",
+        "assignmentViewOnlyLink": "Record a movement event",
+        "joinDatesViewOnlyNote": "Both join dates are view-only. They are set together when the employee is created; afterwards a Join Date Change records a move to another company in the group, and a Group Join Date Correction records an authorised fix to the master service date."
       },
       "documents": {
         "title": "Documents",
@@ -1101,7 +1100,9 @@
           "orgAssignmentChange": "Organisation Assignment Change",
           "reportingLineChange": "Reporting Line Change",
           "employmentTypeChange": "Employment Type Change",
-          "gradeChange": "Grade Change"
+          "gradeChange": "Grade Change",
+          "joinDateChange": "Join Date Change",
+          "groupJoinDateCorrection": "Group Join Date Correction"
         },
         "form": {
           "eventType": "Event Type",
@@ -1132,7 +1133,9 @@
           "editHint": "Saving a correction rolls this event back and records the corrected version. The original stays in Employment History, marked as corrected — it is never removed.",
           "payrollWarning": "A processed payroll run already covered this period. Payslips are not reprocessed automatically.",
           "correctionReason": "Reason for the correction (optional)",
-          "saveCorrection": "Save Correction"
+          "saveCorrection": "Save Correction",
+          "joinDateChangeHint": "The date you enter becomes the employee’s new Join Date with their current company. Their Group Join Date does not change.",
+          "groupJoinDateCorrectionHint": "The date you enter becomes the employee’s corrected Group Join Date. This is the date years of service is calculated from, so it can change their leave entitlement."
         },
         "edit": "Edit",
         "delete": "Delete",

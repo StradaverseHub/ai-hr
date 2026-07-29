@@ -40,7 +40,6 @@ import {
   setComplianceFieldsAction,
   setContactAddressAction,
   changeEmploymentCompanyAction,
-  setOrganisationAssignmentAction,
   setPaymentMethodAction,
   setEmploymentComponentAction,
   setEmploymentInfoAction,
@@ -1883,8 +1882,16 @@ export default async function EmployeePage({
   // Item 52a30630 — Grade RELOCATED here from Profile > Personal Details onto the Leave tab (grade drives
   // grade-scoped leave entitlement). Its own dedicated form + thin server action (setEmploymentGradeAction)
   // so a Personal Details save can no longer wipe the seniority grade. Same select/options (grades) and
-  // default (emp.gradeId) as before — pure relocation. Grade also stays editable on the Employment Info card
-  // (the consolidated setOrganisationAssignmentAction), unchanged.
+  // default (emp.gradeId) as before — pure relocation.
+  //
+  // 8ebabbf2 CAVEAT (reported, deliberately NOT changed here): Grade is no longer editable on the Employment
+  // tab — that whole section went view-only this round. THIS card is the last remaining direct writer of
+  // employment.grade_id outside Movement, and it sits on the LEAVE tab, not the Employment tab, so it is
+  // outside this item's scope. It matters because setEmploymentGradeAction emits `employment.grade.changed`,
+  // which IS a MOVEMENT_EVENT_TYPE, and it emits it UNTAGGED — so a grade edit made here projects its own
+  // "Grade Change" row on the Employment History, exactly the untagged-writer class of problem r76 reported.
+  // Routing it through Movement is a separate decision (grade drives grade-scoped leave entitlement, and the
+  // leave screens are owned elsewhere this round).
   const gradeCard = admin ? (
     <Card id="section-grade">
       <SectionHeader title={t('gradeCardTitle')} />
@@ -2580,6 +2587,9 @@ export default async function EmployeePage({
       case 'reportingLineChange': return t('movement.eventType.reportingLineChange');
       case 'employmentTypeChange': return t('movement.eventType.employmentTypeChange');
       case 'gradeChange': return t('movement.eventType.gradeChange');
+      // 89ea527b — the two employment-date movements.
+      case 'joinDateChange': return t('movement.eventType.joinDateChange');
+      case 'groupJoinDateCorrection': return t('movement.eventType.groupJoinDateCorrection');
       default: return kind.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
     }
   };
@@ -2874,20 +2884,21 @@ export default async function EmployeePage({
   // NEW fields (probation/notice periods, confirmation & resignation dates, org dimensions, category, +
   // editable Hire Date) are captured here.
   //
-  // 594323a6 — the organisation fields are EDITABLE from this tab. Department/Position/Business Unit/
-  // Employment Type are effective-dated (CLOSE+INSERT on `assignment`, preserving history + an audited event);
-  // Job Grade routes to setEmploymentGrade (owns employment.gradeId). Company stays read-only (moving
-  // companies is a distinct lifecycle event, not an inline edit).
+  // 594323a6 made the organisation fields editable from this tab, and c5ac75fa consolidated them into ONE
+  // form with ONE Save (fanning out to setEmploymentAssignment + setEmploymentGrade + setEmploymentInfo in
+  // one transaction).
   //
-  // c5ac75fa — the former standalone "Organisation" fieldset (Division / Branch / Region / Line / Section /
-  // Team / Base / Category) was MERGED into the Organisation Assignment section: one heading, one grid, ONE
-  // Save. The previous round grouped the two blocks visually but left two Saves, because those eight are flat
-  // non-dated columns on `employment` while the block above is effective-dated on `assignment`, and HTML forms
-  // cannot nest. That is resolved by consolidating at the ACTION layer instead of the markup layer — the eight
-  // inputs now live in this form and setOrganisationAssignmentAction fans them back out to the same three core
-  // writers, in one transaction. Storage is unchanged: nothing became effective-dated, nothing moved column.
-  // Because the single Save puts the effective date beside fields it does not govern, helper text under the
-  // date states exactly which fields it applies to (the mitigation this consolidation was approved with).
+  // 8ebabbf2 REVERSES that direction: the Organisation Assignment section is now VIEW-ONLY and its Save is
+  // gone. The reason is not that the consolidated form was wrong, but that it was a SECOND writer — the
+  // Movement module records the same facts as dated events, and two writers for one truth is how a record and
+  // its own history come to disagree. The consolidation's own mitigation shows the strain: the Save had to
+  // carry helper text explaining that its effective date governed only four of the fields beside it. On a
+  // movement event there is one effective date and it governs the whole event.
+  //
+  // 89ea527b removes the last two writers of the service dates from the card below it: Group Join Date and
+  // Join Date are view-only too. What REMAINS editable on this tab is the rest of the Employment Dates group
+  // — probation, notice and resignation periods/dates — which are lifecycle facts about this employment, not
+  // organisation assignment, and have no movement kind that owns them.
   //
   // Employment Dates keeps its OWN sibling <form> (it shared the old organisation form). It is a separate
   // concern with a separate Save, and its action no longer touches the eight org columns.
@@ -2924,6 +2935,33 @@ export default async function EmployeePage({
   const yearOfServiceTooltip = emp.hiredOn
     ? t('employmentInfo.yearOfServiceTooltip', { groupJoinDate: emp.hiredOn, asOf: today })
     : null;
+  // 8ebabbf2 / 89ea527b — the view-only renderer for every field that left the Employment tab's forms. A
+  // DISABLED <input> rather than plain text on purpose: it keeps the card's existing look and the field's
+  // shape (an empty value still reads as a field, not as missing markup), and it carries no `name`, so the
+  // value is never submitted by any sibling form. Matches the Company field, which has been read-only here
+  // since 9464bd56. aria-readonly (not just `disabled`) keeps it announced to screen readers.
+  // A lowercase helper, not a component: defining a component inside render creates a new component type on
+  // every render (react-hooks/static-components), and this needs the request-scoped `t` anyway. Same shape as
+  // the `row` helper in movement-new-event.tsx.
+  const readOnlyValue = (value: string | null | undefined, title?: string) => (
+    <input
+      value={value ?? t('optionNotSet')}
+      disabled
+      readOnly
+      aria-readonly="true"
+      title={title}
+      className={inputCls}
+    />
+  );
+  // Movement → New Event, pre-opened. Every "change this through Movement" pointer on the tab links here so
+  // the administrator lands on the form that actually performs the change rather than on a tab they must
+  // then navigate. Tab-qualified so the panel is already selected.
+  const newMovementHref = `/admin/personnel/${emp.employmentId}?tab=careerMovement&newEvent=1`;
+  const gradeName = emp.gradeId ? (grades.find((g) => g.id === emp.gradeId)?.name ?? null) : null;
+  const employmentTypeLabel =
+    current?.employmentType && EMPLOYMENT_TYPE_OPTIONS.includes(current.employmentType)
+      ? t(`employmentInfo.employmentType_${current.employmentType}` as 'employmentInfo.employmentType_full_time')
+      : (current?.employmentType ?? null);
   const employmentInfoCard = admin ? (
     <Card id="section-employment-info">
       <SectionHeader title={t('employmentInfo.title')} />
@@ -3010,10 +3048,23 @@ export default async function EmployeePage({
           <p className="text-xs text-muted-foreground">{t('employmentInfo.companyChangeableHint')}</p>
         </form>
       ) : null}
-      {/* c5ac75fa — the consolidated Organisation Assignment section: every organisation dimension in one
-          grid under one heading, saved by one button. */}
-      <form action={setOrganisationAssignmentAction} className="space-y-3 border-b border-border p-4">
-        <input type="hidden" name="employmentId" value={emp.employmentId} />
+      {/* 8ebabbf2 — the Organisation Assignment section is VIEW-ONLY. It was a full editing form (its server
+          action is deleted; see the note in actions.ts where it stood) that wrote the same facts the Movement
+          module records as dated events: two writers for one truth, so the employment history and the employee
+          record could disagree and neither said which was right. Every dimension below now changes ONLY through
+          Movement → New Event, which attaches an effective date, a reason and a history row to the change.
+
+          The Assignment Effective Date input is GONE with the form: the effective date now exists once, on
+          the movement event, instead of on a screen that could date a change nobody recorded.
+
+          What Movement covers, so nothing below lost its writer: Business Unit / Department / Position /
+          Work Location / Employment Type (setEmploymentAssignment), Job Grade (setEmploymentGrade), and
+          Division / Branch / Region / Line / Section / Team / Base / Category (setEmploymentInfo's flat
+          columns) — all reachable from the Transfer / Promotion / Demotion / Organisation Assignment Change /
+          Employment Type Change kinds, which submit them as ONE grouped movement (one history row).
+          Company is the one exception and keeps its own pre-transaction correction block ABOVE — see the
+          note there. */}
+      <div className="space-y-3 border-b border-border p-4">
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('employmentInfo.assignmentGroup')}</div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label={t('employmentInfo.company')}>
@@ -3030,181 +3081,75 @@ export default async function EmployeePage({
               <p className="text-xs text-muted-foreground">{t('employmentInfo.companyLockedNote')}</p>
             )}
           </Field>
-          {/* 1001ff61 — Business Unit, positioned immediately after Company per the requested Organisation
-              hierarchy (Company → Business Unit → Division → Department → …). Company-scoped options.
-
-              570e3311 — pinned-current options: when the stored BU / Department / Position is no longer in
-              its company-scoped option list (legacy imported data, or sharing that was later switched off),
-              render ONE extra option for it, selected, labelled from assignmentHistory. Without the pin the
-              select silently falls to its first option AND — because setOrganisationAssignmentAction maps a
-              blank position/BU to an explicit clear — the next unrelated Save would silently drop the held
-              value. The changed-only server guard accepts re-supplying the current value. */}
+          {/* 8ebabbf2 — Business Unit / Department / Position / Job Grade / Employment Type are shown as
+              STORED, resolved through the same `current` assignment projection the editable selects used, so
+              a value that is no longer in its company-scoped option list still displays (the 570e3311
+              pinned-current problem disappears entirely once nothing is a <select>). */}
           <Field label={t('employmentInfo.businessUnit')}>
-            <select name="businessUnitId" defaultValue={current?.businessUnitId ?? ''} className={inputCls}>
-              <option value="">{t('employmentInfo.positionNone')}</option>
-              {current?.businessUnitId && !businessUnits.some((bu) => bu.id === current.businessUnitId) && (
-                <option value={current.businessUnitId}>{current.businessUnit ?? current.businessUnitId}</option>
-              )}
-              {businessUnits.map((bu) => (
-                <option key={bu.id} value={bu.id}>
-                  {bu.name}
-                </option>
-              ))}
-            </select>
+            {readOnlyValue(current?.businessUnit)}
           </Field>
           <Field label={t('employmentInfo.department')}>
-            <select name="departmentId" defaultValue={current?.departmentId ?? ''} className={inputCls}>
-              <option value="">{t('employmentInfo.positionNone')}</option>
-              {current?.departmentId && !departments.some((d) => d.id === current.departmentId) && (
-                <option value={current.departmentId}>{current.department ?? current.departmentId}</option>
-              )}
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+            {readOnlyValue(current?.department)}
           </Field>
           <Field label={t('employmentInfo.position')}>
-            <select name="positionId" defaultValue={current?.positionId ?? ''} className={inputCls}>
-              <option value="">{t('employmentInfo.positionNone')}</option>
-              {current?.positionId && !positions.some((pos) => pos.id === current.positionId) && (
-                <option value={current.positionId}>{current.position ?? current.positionId}</option>
-              )}
-              {positions.map((pos) => (
-                <option key={pos.id} value={pos.id}>
-                  {pos.title}
-                </option>
-              ))}
-            </select>
+            {readOnlyValue(current?.position)}
           </Field>
           <Field label={t('employmentInfo.jobGrade')}>
-            <select name="gradeId" defaultValue={emp.gradeId ?? ''} className={inputCls}>
-              <option value="">{t('employmentInfo.positionNone')}</option>
-              {grades.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
+            {readOnlyValue(gradeName)}
           </Field>
           <Field label={t('employmentInfo.employmentType')}>
-            <select name="employmentType" defaultValue={current?.employmentType ?? ''} className={inputCls}>
-              {EMPLOYMENT_TYPE_OPTIONS.map((v) => (
-                <option key={v} value={v}>
-                  {t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time')}
-                </option>
-              ))}
-            </select>
+            {readOnlyValue(employmentTypeLabel)}
           </Field>
           {/* R46 b272ab6b — the duplicate read-only Employee Status badge that used to sit here was removed.
               The same derived value already renders TWICE above the fold: on the PageHeader actions slot and
               on the employee summary Card. A third copy inside the form added noise without adding
               information. Blacklisting (the one manual override) now has its own Card on the Movement tab. */}
-          {/* R46 b272ab6b / c5ac75fa — the Effective Date is scoped to the effective-dated Business Unit /
-              Department / Position / Employment Type change only. Now that the flat organisation fields share
-              this one form and one Save, that scoping can no longer be inferred from the layout, so it is
-              stated explicitly underneath: without it a user could reasonably assume dating a Division change
-              behaves like dating a Department change, and it does not. */}
-          <Field label={t('employmentInfo.assignmentEffectiveDate')}>
-            <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
-            <p className="text-xs text-muted-foreground">{t('employmentInfo.assignmentEffectiveDateHelp')}</p>
-          </Field>
+          {/* 8ebabbf2 — the Assignment Effective Date field was REMOVED here (expected behaviour #1). It only
+              ever governed the four effective-dated fields above and had to explain that in helper text; the
+              effective date now lives once, on the movement event that makes the change. */}
         </div>
 
-        {/* c5ac75fa — the eight formerly-separate Organisation fields, relocated INTO this form so the
-            section has a single Save. They remain flat, non-dated columns on `employment` (written by
-            setEmploymentInfo inside the consolidated action's transaction) — the move changed which form
-            submits them, not how or where they are stored. No sub-heading: one section, one grid.
-
-            1001ff61 — these are System-Labels dropdowns (profile_option categories) rather than free text,
-            preventing duplicate/misspelled values. Division is rendered FIRST per the requested Organisation
-            hierarchy. Legacy free-text values stay valid (ProfileOptionSelect renders any off-catalog stored
-            value pre-selected). An empty catalog imposes no constraint yet. */}
+        {/* 8ebabbf2 — the eight flat organisation columns, likewise view-only. They were catalog-backed
+            ProfileOptionSelect dropdowns (1001ff61); the stored value is now displayed directly, which is
+            what those dropdowns rendered anyway for both catalog and legacy free-text values. Movement's
+            comparison form owns them now (core/movement.ts MOVEMENT_FLAT_FIELDS) and keeps the same
+            catalog validation, because it writes through the same setEmploymentInfo. */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <Field label={t('employmentInfo.division')}>
-            <ProfileOptionSelect
-              name="orgDivision"
-              value={emp.orgDivision}
-              options={profileOptions.division}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
+            {readOnlyValue(emp.orgDivision)}
           </Field>
           <Field label={t('employmentInfo.branch')}>
-            <ProfileOptionSelect
-              name="orgBranch"
-              value={emp.orgBranch}
-              options={profileOptions.branch}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
+            {readOnlyValue(emp.orgBranch)}
           </Field>
           <Field label={t('employmentInfo.region')}>
-            <ProfileOptionSelect
-              name="orgRegion"
-              value={emp.orgRegion}
-              options={profileOptions.region}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
+            {readOnlyValue(emp.orgRegion)}
           </Field>
           <Field label={t('employmentInfo.line')}>
-            <ProfileOptionSelect
-              name="orgLine"
-              value={emp.orgLine}
-              options={profileOptions.line}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
+            {readOnlyValue(emp.orgLine)}
           </Field>
           <Field label={t('employmentInfo.section')}>
-            <ProfileOptionSelect
-              name="orgSection"
-              value={emp.orgSection}
-              options={profileOptions.section}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
+            {readOnlyValue(emp.orgSection)}
           </Field>
           <Field label={t('employmentInfo.team')}>
-            <ProfileOptionSelect
-              name="orgTeam"
-              value={emp.orgTeam}
-              options={profileOptions.team}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
+            {readOnlyValue(emp.orgTeam)}
           </Field>
           <Field label={t('employmentInfo.base')}>
-            <ProfileOptionSelect
-              name="orgBase"
-              value={emp.orgBase}
-              options={profileOptions.base}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
+            {readOnlyValue(emp.orgBase)}
           </Field>
-          {/* R46 b272ab6b — Category folded in from the former standalone "Job" fieldset, whose only field it
-              was. It is the same flat catalog-backed column; only its visual home moved, so the one-field
-              group no longer fragments the organisation block. */}
           <Field label={t('employmentInfo.category')}>
-            {/* 1001ff61 — Category is now a System-Labels dropdown (profile_option category `category`). */}
-            <ProfileOptionSelect
-              name="employmentCategory"
-              value={emp.employmentCategory}
-              options={profileOptions.category}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
+            {readOnlyValue(emp.employmentCategory)}
           </Field>
         </div>
 
-        <p className="text-xs text-muted-foreground">{t('employmentInfo.assignmentNote')}</p>
-        <div className="flex justify-end">
-          <button className={btnPrimary}>{t('employmentInfo.saveAssignment')}</button>
-        </div>
-      </form>
+        {/* The pointer that replaces the Save button: where a field used to be editable, the tab says which
+            screen changes it now. Without this the section reads as broken rather than as deliberate. */}
+        <p className="text-xs text-muted-foreground">
+          {t('employmentInfo.assignmentViewOnlyNote')}{' '}
+          <Link href={newMovementHref} className="text-primary underline">
+            {t('employmentInfo.assignmentViewOnlyLink')}
+          </Link>
+        </p>
+      </div>
 
       {/* c5ac75fa — Employment Dates is now its own sibling form. It previously shared a form with the
           Organisation fieldset above; that fieldset moved into the assignment form, leaving the dates as the
@@ -3223,22 +3168,38 @@ export default async function EmployeePage({
             {t('employmentInfo.datesGroup')}
           </legend>
 
-          {/* Joining (preserved from 24c4d02e): Group Join Date (hiredOn, relabelled) + current-company Join
-              Date, each with a read-only Length of Service figure. */}
+          {/* Joining (24c4d02e): Group Join Date (hiredOn, relabelled) + current-company Join Date, each with
+              a read-only Length of Service figure.
+
+              89ea527b — BOTH are now VIEW-ONLY. They are set together at hire (hireEmployee seeds
+              joinDate = hiredOn, the one-time synchronisation) and afterwards move only through a movement
+              event: Join Date Change for a transfer/rehire/restructure, Group Join Date Correction for an
+              authorized historical-data fix. The Group Join Date is the one that matters most: it is the
+              master service date every leave service band, minimum-service gate and years-of-service figure
+              reads (core/leave.ts serviceYearsAt / servedFor), so a free edit here silently re-priced
+              somebody's leave entitlement with nothing in the record to say it had happened. Neither input
+              carries a `name` any more, and setEmploymentInfo ignores both fields without the matching
+              movement tag, so a forged submit cannot set them either. */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={t('employmentInfo.groupJoinDate')}>
-              <input name="hiredOn" type="date" defaultValue={emp.hiredOn ?? ''} className={inputCls} />
+              {readOnlyValue(emp.hiredOn)}
               <p className="text-xs text-muted-foreground">
                 {t('employmentInfo.groupService')}: {groupServiceLabel ?? '—'}
               </p>
             </Field>
             <Field label={t('employmentInfo.joinDate')}>
-              <input name="joinDate" type="date" defaultValue={emp.joinDate ?? ''} className={inputCls} />
+              {readOnlyValue(emp.joinDate)}
               <p className="text-xs text-muted-foreground">
                 {t('employmentInfo.currentCompanyService')}: {currentServiceLabel ?? '—'}
               </p>
             </Field>
           </div>
+          <p className="text-xs text-muted-foreground">
+            {t('employmentInfo.joinDatesViewOnlyNote')}{' '}
+            <Link href={newMovementHref} className="text-primary underline">
+              {t('employmentInfo.assignmentViewOnlyLink')}
+            </Link>
+          </p>
 
           {/* b75b2a23 — the cc681bd5 Year of Service row moved from here onto the top summary card so the
               figure is visible the moment a profile opens and lives in exactly one place. The label +
