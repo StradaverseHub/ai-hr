@@ -320,6 +320,50 @@ those employees drop to the statutory floor until their schemes are filled in.
 
 # Round history
 
+## r82 — 2026-07-30 — the shared leave group gets a door, and a cap that never existed
+
+**Shipped:** `main@c8bb831`. Migration **0327**.
+**Gate:** `tsc` clean · **485 files / 5504 tests** · `next build` clean · **upgrade rehearsal PASS**
+(leave balances unchanged at 488.00). Verified live: `GET /` 401, 277 migrations, the cap column present,
+and the one existing group carrying **no** cap — nullable behaving as designed.
+
+**Shipped:** `1ef1cf95`.
+
+### Decisions
+
+**1. THE FEATURE WAS NOT UNDISCOVERABLE — IT WAS UNREACHABLE, and that distinction was the whole item.**
+r78 investigated this and concluded the shared pool already existed (migration `0220`, enforced at submit
+`core/leave.ts:1919` and approval `:2996`) and only the creation *affordance* was missing, because groups
+are made by DRAGGING one row onto another. The build found the sharper truth: **inside a leave type's
+Entitlement step the table renders exactly ONE row**, so drag-to-group cannot be performed there at all —
+you cannot drag a row onto itself. The reporter was not failing to find a button; there was no possible
+gesture. Hence a `pick` mode with a member checklist sourced scheme-wide (`allEnts`) rather than from the
+scoped view, opening the SAME `CreateGroupDialog` and posting the SAME `groupSchemeLeaveTypes` action.
+
+**2. The per-application cap is NULLABLE with no default, deliberately.** Every existing group in every
+database means "no cap"; a defaulted value would start refusing real applications on deploy day.
+Production confirms: 1 group, 0 with a cap set. `CombinedLeaveApplicationTooLongError` is a **separate**
+error from `CombinedLeaveLimitExceededError` and is checked FIRST, because "this application is too long"
+is a property of the application alone and holds even with the whole pool untouched. Refusal only — never
+truncation. Both asserted by class AND payload, and each asserted `not.toBeInstanceOf` the other; a bare
+`rejects.toThrow()` would have passed on either.
+
+**3. The units are pinned by a test, not by a comment.** "3 consecutive days" was read as CALENDAR days,
+and a Friday→Monday span (4 calendar, 2 working) is asserted to be refused by a cap of 3. If the reporter
+meant working days that test fails loudly rather than drifting. The whole of the change lives in
+`applicationSpanDays(startDate, endDate)`; the stored column has no unit baked in, so switching needs no
+migration. The reporter has been told, in the `build_ref`, which reading shipped.
+
+**4. A trap left for the next editor, disclosed rather than hidden.** `updateSchemeCombinedLimit` is an
+**absolute set, not a patch**. A future form posting that action without the cap field will silently clear
+the cap. Mitigated with a hidden input on the total-limit form, a visible one on the rename form, doc
+comments at both call sites, and a CRUD test asserting the clearing behaviour — but the shape remains.
+
+**Not done:** the reporter's Special Leave Group is not pre-created as data. That is tenant configuration,
+not code.
+
+---
+
 ## r81 — 2026-07-29/30 — the entitlement keystone begins, and payroll has never paid anyone
 
 **Shipped:** `main@6b225b5`. Migration **0325**.
