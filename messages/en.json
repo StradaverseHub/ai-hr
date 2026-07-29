@@ -148,7 +148,8 @@
     "delegations": "Delegations",
     "dashboardCardConfig": "Dashboard cards",
     "scheduledActions": "Scheduled actions",
-    "systemSettings": "System Settings"
+    "systemSettings": "System Settings",
+    "systemExplorer": "Dependency explorer"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -5146,6 +5147,25 @@
       "createGroupConfirm": "Create group",
       "dropGradeHint": "Drag a grade from the Grade Master onto a group to add it — or tick its checkbox inside the group and save.",
       "gradeAlreadyInGroup": "{name} is already in this group."
+    },
+    "systemExplorer": {
+      "title": "System analysis & dependency explorer",
+      "description": "How this product is put together: pick a record type to see what points at it, what it points at, and which module owns it. Read from the live database every time, so it is never out of date. Structure only — no record data is shown.",
+      "recordType": "Record type",
+      "choose": "Choose a record type…",
+      "show": "Show",
+      "formNote": "{count} record types in this installation. Related types are links — follow one to move across the map.",
+      "unknownTable": "There is no record type called “{table}” in this installation.",
+      "sharedSpine": "Shared spine (no single module)",
+      "primaryKey": "Primary key",
+      "none": "None",
+      "references": "Points at",
+      "noReferences": "This record type does not point at anything.",
+      "referencedBy": "Pointed at by",
+      "noReferencedBy": "Nothing points at this record type.",
+      "onDelete": "On delete",
+      "withheldNote": "{count} record types are not listed. They hold encryption keys, signing keys, provider credentials or sign-in tokens, so their structure is deliberately withheld.",
+      "withheldEdges": "{count} relationships to withheld record types are not shown here."
     }
   },
   "topbar": {
@@ -7374,23 +7394,6 @@
       "guides": "Add the help guides",
       "admin": "Create the administrator login",
       "invitation": "Issue the activation link"
-    },
-    "explorer": {
-      "title": "Record relationships",
-      "description": "Pick a record type to see what points at it, what it points at, and which module owns it. Read from the live database every time, so it is never out of date.",
-      "recordType": "Record type",
-      "choose": "Choose a record type…",
-      "show": "Show",
-      "formNote": "{count} record types in this installation. Related types are links — follow one to move across the map.",
-      "unknownTable": "There is no record type called “{table}” in this installation.",
-      "sharedSpine": "Shared spine (no single module)",
-      "primaryKey": "Primary key",
-      "none": "None",
-      "references": "Points at",
-      "noReferences": "This record type does not point at anything.",
-      "referencedBy": "Pointed at by",
-      "noReferencedBy": "Nothing points at this record type.",
-      "onDelete": "On delete"
     }
   },
   "currencySelect": {

@@ -23,6 +23,7 @@ import {
   Lock,
   ScrollText,
   Settings2,
+  Share2,
   Timer,
   ShieldCheck,
   Smartphone,
@@ -136,6 +137,12 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   ...(modulePackById('payroll')!.navNodes ?? []).flatMap((n) => n.children.map((c) => [c.href, 'payroll'] as const)),
   ...(modulePackById('payroll')!.navLinks ?? []).map((l) => [l.href, 'payroll'] as const),
   ...(modulePackById('performance')!.navLinks ?? []).map((l) => [l.href, 'performance'] as const),
+  // deec1691 — the ONE hand-written entry, and it has to be: `system_explorer` is a catalog module
+  // with no pack (it owns no tables and contributes no service of its own), so there is no descriptor
+  // to derive it from. The drift risk the comment above warns about is closed a different way here —
+  // test/system-explorer.test.ts pins this href against the row in SYSTEM_SETTINGS_NODE and against
+  // the route that exists on disk, so the three cannot part company silently.
+  ['/admin/system-explorer', 'system_explorer'] as const,
 ]);
 
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
@@ -176,6 +183,12 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // admin entries collapse into this single "System Labels" entry (profile options now live at
     // /admin/settings/system-labels/profile-options).
     { href: '/admin/settings/system-labels', labelKey: 'systemLabels', icon: Tags, adminOnly: true },
+    // deec1691: System Analysis & Dependency Explorer. Unlike its three siblings this row is ALSO
+    // entitlement-gated (MODULE_OF_HREF above): it is a sellable module that defaults OFF, so a tenant
+    // that was not sold it never sees the row — and, unlike the role flags here, that hiding is backed
+    // by a service that refuses (core/schema-explorer.ts). Last in the node because it is a reference
+    // screen, not a setup step; the three configuration screens keep their ticket order above.
+    { href: '/admin/system-explorer', labelKey: 'systemExplorer', icon: Share2, adminOnly: true },
   ],
 };
 

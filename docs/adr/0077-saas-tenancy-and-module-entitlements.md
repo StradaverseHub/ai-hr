@@ -173,7 +173,14 @@ their own modules and usage) and writable **only** by `ai_hr_platform`. `platfor
 Core (always on, not billable): Employees, Org, Leave, ESS, Approvals, Knowledge Base.
 
 Billable: Payroll (+ MY statutory), Attendance, Claims, Performance, Analytics, Recruitment (future),
-Documents, TOIL, Multi-cycle payroll, Typed pay components.
+Documents, TOIL, Multi-cycle payroll, Typed pay components, System Analysis & Dependency Explorer.
+
+The last one is the first entry added for a reason other than "a customer wants to buy it" (r79,
+deec1691). It is an Admin reference screen describing how the PRODUCT is built — record types and the
+relationships between them — which is Stradaverse's intellectual property rather than any customer's
+data. During single-tenant setup it is wanted under Admin; once a second customer exists it should not
+be. Modelling it as a module that defaults OFF is what makes that a provisioning choice instead of a
+code change under pressure, and it is the pattern to reuse for any future internals-facing surface.
 
 `depends_on` matters: TOIL requires Attendance and Leave; Multi-cycle requires Payroll. Activation must
 refuse an entitlement whose dependency is not active, or the customer buys something that cannot function.
