@@ -3101,7 +3101,10 @@ export function orgChartData(ctx: SessionContext, companyIds?: string[]) {
 }
 
 /** Aggregate counts + latest attendance/payroll snapshot for the dashboard. When `companyId` is
- *  given, every figure is scoped to that company's subtree (consolidation); else the whole tenant. */
+ *  given, every figure is scoped to that company's subtree (consolidation); else the whole tenant.
+ *
+ *  ONE FIGURE IS DELIBERATELY NOT SWITCHER-SCOPED: `companies`. See its comment below — the rest of
+ *  the dashboard is switcher-scoped ON PURPOSE and stays that way. */
 export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, async (tx) => {
     const one = sql<number>`count(*)::int`;
@@ -3112,9 +3115,42 @@ export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
       .select({ n: one })
       .from(employment)
       .where(and(isNull(employment.terminatedOn), scope(employment.companyId)));
-    const companiesCount = scopeIds
-      ? scopeIds.length
-      : ((await tx.select({ n: one }).from(company))[0]?.n ?? 0);
+    // Companies (11355c08) — the number of companies THIS PERSON CAN ADMINISTER. Not the switcher
+    // selection, and with no count(*) anywhere: the old expression was
+    //     scopeIds ? scopeIds.length : count(*) from company
+    // which is two faults sharing one line.
+    //
+    //   1. With a selection, `scopeIds.length` is how many companies are TICKED IN THE SWITCHER — a
+    //      filter size, not a company count. app/page.tsx points this tile at /admin/organization,
+    //      which lists every company the viewer can administer and ignores the switcher outright
+    //      (0f1802bf). One company ticked out of eight rendered "1" on a tile whose own destination
+    //      then showed eight, which is what sent an entire round chasing the wrong screen.
+    //   2. The count(*) branch was reached precisely when the selection was EMPTY — so the person who
+    //      could reach NOTHING was the one shown the tenant-wide total. That is the disclosure
+    //      feedback ab77dc1f closed on the page header, still open here.
+    //
+    // The predicate is the database's own app.is_admin_for (migration 0016) — the same one
+    // listCompanies({ adminOnly }) applies for the Organization card (r77 913202b), and the same one
+    // the company table's WITH CHECK uses. A GROUP-WIDE grant satisfies it for every company, so the
+    // ordinary group admin's figure is unchanged and correct; a company-scoped admin gets their
+    // company and its subtree; a manager or employee, who administers nothing, gets 0 — and 0 is the
+    // honest answer, so there is deliberately NO fallback for the empty case.
+    //
+    // Archived companies are counted, because the Organization card lists them too (it reads
+    // includeArchived: true — un-archiving is one of its panel actions). Counting them keeps the tile
+    // equal to the length of the list it links to, which is the whole point of the change.
+    //
+    // Written as a COUNT against the same predicate rather than `listCompanies(ctx, …).length` on
+    // purpose: listCompanies opens its own withTenant, and calling it here would nest a second
+    // transaction inside this one. test/dashboard-companies-tile.test.ts asserts the two agree, so the
+    // duplication cannot drift silently.
+    const [companies] = await tx
+      .select({ n: one })
+      .from(company)
+      // `company.id` unqualified: that is the table's alias in this FROM, the same call shape
+      // listCompanies/adminCompanies use.
+      .where(sql`app.is_admin_for(company.id)`);
+    const companiesCount = companies?.n ?? 0;
     const [departments] = await tx
       .select({ n: one })
       .from(department)

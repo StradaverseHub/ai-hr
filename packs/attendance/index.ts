@@ -124,12 +124,23 @@ const ATTENDANCE_ADMIN_NAV: NavNodeGroupDescriptor = {
     { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
     // R33 f21d6eee: "Shift settings" (/admin/attendance) is now the shared shift library; the per-company
     // working-hours + overtime-rates config moved to its own "Attendance policy" screen.
-    { href: '/admin/attendance', labelKey: 'attendancePolicy', icon: CalendarClock, adminOnly: true },
-    { href: '/admin/attendance-policy', labelKey: 'attendancePolicyConfig', icon: SlidersHorizontal, adminOnly: true },
+    //
+    // a324a4b3 — THE LABEL KEYS NAME THEIR SCREENS AGAIN. R33 moved the screens and R17 (c9f7211) moved
+    // the STRINGS with them, but the KEYS were left behind: `attendancePolicy` resolved to "Shift
+    // settings" and `attendancePolicyConfig` to "Attendance policy". Every rendered row was correct and
+    // had been for three weeks; only the keys lied. That is not cosmetic — the item was raised, planned
+    // and sized off a reading of these two key names ("the shift library reads Attendance Policy"), and
+    // the next reader would have repeated it, or worse, "corrected" the catalog VALUES to match the keys
+    // and broken six locales for real. Keys now equal the strings they resolve to.
+    //
+    // lib/permissions.ts follows the labels (its `labelKey: 'nav.…'` entries) but KEEPS its screenKeys —
+    // those may key stored role configs, the same split test/my-absence-nav.test.ts pinned for /leave.
+    { href: '/admin/attendance', labelKey: 'shiftSettings', icon: CalendarClock, adminOnly: true },
+    { href: '/admin/attendance-policy', labelKey: 'attendancePolicy', icon: SlidersHorizontal, adminOnly: true },
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
     // e776d17d reserves the "Overtime Configuration" child slot here (after Clocking Location, before Import).
-    { href: '/admin/toil', labelKey: 'toilPolicy', icon: Hourglass, adminOnly: true },
+    { href: '/admin/toil', labelKey: 'timeOffInLieu', icon: Hourglass, adminOnly: true },
   ],
 };
 

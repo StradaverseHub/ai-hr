@@ -773,15 +773,24 @@ describe('Slice C — consolidation (group vs per-company)', () => {
       hiredOn: '2026-01-01',
     });
 
+    // 11355c08 — `companies` is NO LONGER switcher-scoped, and these two assertions used to say it was.
+    // They read `.companies` as 2 then 1, which is `scopeIds.length`: the number of companies TICKED IN
+    // THE SWITCHER, not a count of companies. The tile links to /admin/organization, which ignores the
+    // switcher, so the two disagreed. It is now the number this admin can administer — `a` is a
+    // group-wide hr_admin, so that is every company the fixture has: Acme (seedBase) + Parent + Child.
+    // Every OTHER figure here stays switcher-scoped, which is what the headcount lines still pin.
+    const RESOLVED = 3;
+
     // Company context = both companies (multi-select).
     const groupStats = await dashboardStats(a, [parent, child]);
     expect(groupStats.headcount).toBe(2);
-    expect(groupStats.companies).toBe(2);
+    expect(groupStats.companies).toBe(RESOLVED);
 
-    // Company context = the child alone.
+    // Company context = the child alone. Headcount narrows; the company count does not follow the
+    // switcher (test/dashboard-companies-tile.test.ts is where that contract is stated in full).
     const childStats = await dashboardStats(a, [child]);
     expect(childStats.headcount).toBe(1);
-    expect(childStats.companies).toBe(1);
+    expect(childStats.companies).toBe(RESOLVED);
 
     // Per-company breakdown.
     const bd = await groupBreakdown(a);
