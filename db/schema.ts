@@ -1260,6 +1260,56 @@ export const leaveType = pgTable('leave_type', {
   formulaExplanations: jsonb('formula_explanations').$type<
     Record<string, { description?: string; formula?: string; result?: string }>
   >(),
+  // ── Type-level leave RULES (feedback 9816a5ad step 1 of 3, migration 0325) ────────────────────────
+  // The consolidation gives each thing one home: the LEAVE TYPE owns the RULES (how days are earned,
+  // carried, rounded and capped) and the BENEFIT SCHEME owns the DAYS. Today every one of these rules is
+  // copied into `leave_policy.accrual` once per (company, grade) — ANNUAL alone has 57 identical copies —
+  // which is why components/leave-type-panel.tsx already RENDERS them as though they were type-level.
+  //
+  // STEP 1 IS STORAGE ONLY. These ten columns are backfilled from the single distinct value each type
+  // carries across all of its leave_policy rows (migration 0325 ASSERTS that distinctness and refuses to
+  // run if a type ever disagrees with itself), and NOTHING READS THEM YET. The four consumers in
+  // core/leave.ts — openLeaveYear, accrueEarnedLeave, projectExpectedEntitlement and the a2c correction —
+  // still resolve every one of these through resolveGradePolicy over `leave_policy`, so the system behaves
+  // byte-identically. Step 2 repoints those call sites; step 3 zeroes and disconnects leave_policy.
+  //
+  // NULL means "not configured" for all ten, which is how the engine already reads an absent JSONB key.
+  // Step 2 must preserve each field's documented back-compat default (core/leave-compute.ts): an absent
+  // carryForwardMax resolves to 0; an absent carryForwardEnabled falls back to `carryForwardMax > 0`
+  // (carryEnabled); an absent expiry mode means 'date', i.e. read the month/day pair; an absent
+  // roundingMethod means no rounding; an absent maxBalanceDays means no cap.
+  //
+  //   accrualMethod — `accrual.method`. Open value set BY CONTRACT (no DB CHECK): isEarnedMethod()
+  //     recognises 'earned_monthly' / 'earned_quarterly' and reads everything else, absent included, as the
+  //     lump-sum 'grant_on_hire_prorated' path.
+  accrualMethod: text('accrual_method'),
+  //   carryForwardMax — `accrual.carryForwardMax`, the cap on days carried into the next leave year.
+  carryForwardMax: numeric('carry_forward_max', { precision: 6, scale: 2 }),
+  //   carryForwardEnabled — `accrual.carryForwardEnabled`, the explicit on/off switch.
+  carryForwardEnabled: boolean('carry_forward_enabled'),
+  //   carryForwardExpiryMode — 'date' (read month+day) | 'months' (read months). BOTH modes are live, so
+  //     both of their operands are stored below; 'date' is the back-compat mode every pre-R4 policy uses.
+  carryForwardExpiryMode: text('carry_forward_expiry_mode'),
+  //   carryForwardExpiryMonths — 'months' mode: the carried portion expires X months after year-end (1..12).
+  carryForwardExpiryMonths: integer('carry_forward_expiry_months'),
+  //   carryForwardExpiryMonth / Day — 'date' mode: the expiry OFFSET into the following leave year, stored
+  //     as a pair (both set or both null, enforced by a DB CHECK). Sanitised on backfill through the same
+  //     isValidMonthDay rule parseCarryExpiry applies, so a legacy 31-Feb lands as NULL (never expires) —
+  //     which is exactly what the engine already does with it.
+  carryForwardExpiryMonth: integer('carry_forward_expiry_month'),
+  carryForwardExpiryDay: integer('carry_forward_expiry_day'),
+  //   carryForwardIncludeEarned — `accrual.carryForwardIncludeEarned`. Config-only in the engine too (the
+  //     include-monthly-earned-balance behaviour is still deferred); it round-trips so HR can set it.
+  carryForwardIncludeEarned: boolean('carry_forward_include_earned'),
+  //   roundingMethod — 'none' | 'up' | 'down' (b81d3c52). NULL ⇒ none. Only 'up'/'down' are ever written by
+  //     the backfill, mirroring resolveGradePolicy, which honours nothing else.
+  roundingMethod: text('rounding_method').$type<'none' | 'up' | 'down'>(),
+  //   maxBalanceDays — the Maximum Balance clamp (9d8cf621). NOTE its source: this exists TODAY only as a
+  //     PER-SERVICE-BAND value inside `accrual.serviceBands[].maxBalanceDays`, never at policy level. The
+  //     bands are the DAYS half of the split and move to scheme_leave_entitlement.service_bands, so the cap
+  //     has no home there and becomes type-level here — collapsed across every band of every policy under
+  //     the same one-distinct-value assertion.
+  maxBalanceDays: numeric('max_balance_days', { precision: 6, scale: 2 }),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

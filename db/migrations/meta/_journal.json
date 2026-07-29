@@ -1926,6 +1926,13 @@
       "when": 1781862424000,
       "tag": "0324_payroll_settings_relocation",
       "breakpoints": true
+    },
+    {
+      "idx": 325,
+      "version": "7",
+      "when": 1781862425000,
+      "tag": "0325_leave_type_rule_columns",
+      "breakpoints": true
     }
   ]
 }
