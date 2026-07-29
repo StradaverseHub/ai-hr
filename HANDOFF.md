@@ -79,6 +79,16 @@ Established pattern, used for r73/r74/r75. It works, with rules learned the hard
 
 ## Traps that cost real time this session
 
+**A `labelKey` IS NOT THE LABEL — and a plan written off key names will be wrong.** r78's `a324a4b3`
+plan asserted that the shift-library nav row "reads Attendance Policy", because its descriptor says
+`labelKey: 'attendancePolicy'`. It does not: `nav.attendancePolicy` has resolved to **"Shift settings"**
+in all six catalogs since R17 (`c9f7211`, 8 Jul). All three renames that plan proposed were already
+live. The lesson is the same one this file gives agents and it was broken while WRITING the plan:
+**resolve the key against `messages/en.json` before describing what a screen says.** (The round still
+had value — the keys were renamed so key ≡ its own string, closing a real landmine, and a test now pins
+key ≡ camelCase(English label). No i18n guard could see this: check C walks only `app/` + `components/`,
+so a nav key naming the wrong screen inside `packs/` was invisible.)
+
 **THIS DOCUMENT'S SHIPPED LISTS ARE NOT EVIDENCE.** r76 found an item recorded here as shipped in r74
 that had never merged — and the same file listed it as still planned twenty lines earlier. The reporter
 was shown, and refuted, a feature that did not exist. Before trusting any "shipped" claim, run
