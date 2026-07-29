@@ -202,7 +202,11 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/personnel',
     labelKey: 'nav.personnelAdmin',
     guard: 'requireAdmin',
-    routes: ['/admin/personnel', '/admin/personnel/[employmentId]', '/admin/personnel/import'],
+    // r79a (4fb8b75a step 3): /admin/personnel/settings is the Hiring Defaults screen — probation months
+    // and review-reminder cadence, relocated off the Payroll Schedule screen. Registered as a ROUTE of the
+    // existing personnel-admin screen rather than a new screenKey: it is the same admin surface behind the
+    // same requireAdmin guard, so it inherits the function-access column instead of minting one.
+    routes: ['/admin/personnel', '/admin/personnel/[employmentId]', '/admin/personnel/import', '/admin/personnel/settings'],
   },
   {
     screenKey: 'systemLabels',

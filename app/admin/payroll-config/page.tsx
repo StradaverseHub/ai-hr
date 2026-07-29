@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
@@ -6,12 +7,24 @@ import { listAssignablePolicies } from '@/core/payroll-policy';
 import { packFor } from '@/localization/registry';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
-// 297ae65a — searchable ISO 4217 picker for the company default salary currency.
-import { CurrencySelect } from '@/components/currency-select';
 import { savePayrollConfigAction } from './actions';
 
+/**
+ * Payroll Schedule — the per-company payroll timing screen.
+ *
+ * r79a (4fb8b75a) reduced this screen to ONE job:
+ *  • step 1 — it is reached by ONE card on Payroll Settings, not three. It was never three screens; the
+ *    "Payroll Period Template" and "Payment Submission Control" cards opened this same form, each named
+ *    after one of its sections.
+ *  • step 2 — the Payment Basis field is gone. Nothing read it (migration 0324).
+ *  • step 3 — probation months, review reminder days and default salary currency have left. They were
+ *    never payroll settings; they now live with hiring (/admin/personnel/settings) and with the company
+ *    (Organization → General) respectively.
+ *  • step 4 — the company statutory block is READ-ONLY here. Organization owns it. It was editable from
+ *    both screens against the same record with no coordination, so the later save silently won.
+ */
+
 const HRDF = ['not_registered', 'mandatory', 'optional'] as const;
-const BASES = ['monthly', 'daily', 'hourly', 'other'] as const;
 const RELEASE_MODES = ['immediate', 'fixed_day', 'relative'] as const;
 
 export default async function PayrollConfigPage({
@@ -63,21 +76,8 @@ export default async function PayrollConfigPage({
                   <Field label={t('payDay')}>
                     <input type="number" name="payDay" min={1} max={31} defaultValue={cfg?.payDay ?? ''} placeholder={t('monthEnd')} className={inputCls} />
                   </Field>
-                  <Field label={t('paymentBasis')}>
-                    <select name="paymentBasis" defaultValue={cfg?.paymentBasis ?? 'monthly'} className={inputCls}>
-                      {BASES.map((bs) => (
-                        <option key={bs} value={bs}>{t(`basis_${bs}`)}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  {/* 297ae65a — the company default salary currency: new Basic Salary records preselect
-                      it (per-record currency stays editable on the employee's salary form). */}
-                  <Field label={t('defaultCurrency')}>
-                    <CurrencySelect name="defaultCurrency" value={cfg?.defaultCurrency ?? 'MYR'} />
-                  </Field>
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">{t('dayHint')}</p>
-                <p className="mt-1.5 text-xs text-muted-foreground">{t('defaultCurrencyHint')}</p>
               </div>
 
               {/* Step 1 (f3148da1) — company-default payroll policy + Step 6 payslip release */}
@@ -113,32 +113,34 @@ export default async function PayrollConfigPage({
                 <p className="mt-1.5 text-xs text-muted-foreground">{t('releaseHint')}</p>
               </div>
 
+              {/* Step 4 (4fb8b75a) — READ-ONLY. The company statutory block is ONE record that was editable
+                  from here AND from Organization → Statutory, with no coordination between them: whoever
+                  saved last won, silently. Organization owns it now (see the page docblock), so this is a
+                  view with a link. No input names are rendered, so the action cannot receive statutory
+                  fields even from a hand-crafted POST. */}
               <div>
-                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('statutoryTitle')}</h4>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label={t('hrdfStatus')}>
-                    <select name="hrdfStatus" defaultValue={stat?.hrdfStatus ?? 'not_registered'} className={inputCls}>
-                      {HRDF.map((h) => (
-                        <option key={h} value={h}>{t(`hrdf_${h}`)}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label={t('epfEmployerNo')}>
-                    <input name="epfEmployerNo" defaultValue={stat?.epfEmployerNo ?? ''} className={inputCls} />
-                  </Field>
-                  <Field label={t('socsoEmployerCode')}>
-                    <input name="socsoEmployerCode" defaultValue={stat?.socsoEmployerCode ?? ''} className={inputCls} />
-                  </Field>
-                  <Field label={t('lhdnEmployerNo')}>
-                    <input name="lhdnEmployerNo" defaultValue={stat?.lhdnEmployerNo ?? ''} className={inputCls} />
-                  </Field>
-                  <Field label={t('myinvoisTin')}>
-                    <input name="myinvoisTin" defaultValue={stat?.myinvoisTin ?? ''} className={inputCls} />
-                  </Field>
-                  <Field label={t('ssmRegistrationNo')}>
-                    <input name="ssmRegistrationNo" defaultValue={stat?.ssmRegistrationNo ?? ''} className={inputCls} />
-                  </Field>
+                <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('statutoryTitle')}</h4>
+                  <Link href="/admin/organization" className="text-xs font-medium text-primary hover:underline">
+                    {t('statutoryEditInOrganization')} →
+                  </Link>
                 </div>
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {[
+                    { label: t('hrdfStatus'), value: t(`hrdf_${HRDF.includes(stat?.hrdfStatus as never) ? (stat?.hrdfStatus as string) : 'not_registered'}`) },
+                    { label: t('epfEmployerNo'), value: stat?.epfEmployerNo },
+                    { label: t('socsoEmployerCode'), value: stat?.socsoEmployerCode },
+                    { label: t('lhdnEmployerNo'), value: stat?.lhdnEmployerNo },
+                    { label: t('myinvoisTin'), value: stat?.myinvoisTin },
+                    { label: t('ssmRegistrationNo'), value: stat?.ssmRegistrationNo },
+                  ].map((row) => (
+                    <div key={row.label}>
+                      <dt className="text-xs font-medium text-muted-foreground">{row.label}</dt>
+                      <dd className="mt-0.5 text-sm text-foreground">{row.value || t('statutoryNotSet')}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="mt-1.5 text-xs text-muted-foreground">{t('statutoryReadOnlyHint')}</p>
                 <p className="mt-1.5 text-xs text-muted-foreground">{t('hrdfHint')}</p>
               </div>
 
@@ -161,19 +163,18 @@ export default async function PayrollConfigPage({
                 <p className="mt-1.5 text-xs text-muted-foreground">{t('cutOffsHint')}</p>
               </div>
 
-              <div>
-                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('hiringTitle')}</h4>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label={t('probationMonths')}>
-                    <input type="number" name="probationMonths" min={1} defaultValue={cfg?.probationMonths ?? ''} placeholder="3" className={inputCls} />
-                  </Field>
-                  <Field label={t('reviewReminderDays')}>
-                    <input name="reviewReminderDays" defaultValue={cfg?.reviewReminderDays?.join(', ') ?? ''} placeholder="30, 14, 7" className={inputCls} />
-                  </Field>
-                </div>
-                <p className="mt-1.5 text-xs text-muted-foreground">{t('probationMonthsHint')}</p>
-                <p className="mt-1.5 text-xs text-muted-foreground">{t('reviewReminderDaysHint')}</p>
-              </div>
+              {/* Step 3 (4fb8b75a) — signposts for the three settings that LEFT this screen, so an admin
+                  who came here looking for them is told where they went rather than finding a gap. */}
+              <p className="text-xs text-muted-foreground">
+                {t('movedSettingsHint')}{' '}
+                <Link href="/admin/personnel/settings" className="font-medium text-primary hover:underline">
+                  {t('movedHiringLink')}
+                </Link>
+                {' · '}
+                <Link href="/admin/organization" className="font-medium text-primary hover:underline">
+                  {t('movedCurrencyLink')}
+                </Link>
+              </p>
 
               <button className={btnPrimary}>{t('save')}</button>
             </form>

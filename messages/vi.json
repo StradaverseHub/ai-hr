@@ -339,7 +339,8 @@
       "salaryRemarksPlaceholder": "vd. tăng lương hàng năm",
       "employeeIdLabel": "Mã nhân viên",
       "employeeIdPlaceholder": "vd. EMP-0001",
-      "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 30 ký tự."
+      "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 30 ký tự.",
+      "hiringDefaults": "Mặc định tuyển dụng"
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -1213,6 +1214,17 @@
       "colEmail": "Email",
       "colResult": "Kết quả",
       "ready": "Sẵn sàng"
+    },
+    "hiringDefaults": {
+      "title": "Mặc định tuyển dụng",
+      "description": "Giá trị mặc định theo từng công ty cho nhân viên mới và các kỳ đánh giá. Trước đây chúng nằm trên màn hình lịch trả lương, nơi không có phần nào của bảng lương đọc tới.",
+      "back": "Nhân sự",
+      "emptyScope": "Không có công ty nào trong phạm vi hiện tại.",
+      "save": "Lưu",
+      "probationMonths": "Thời gian thử việc mặc định (tháng)",
+      "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
+      "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
+      "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
     }
   },
   "leave": {
@@ -3179,11 +3191,6 @@
     "setup": {
       "title": "Cài đặt lương",
       "subtitle": "Nơi trung tâm để quản lý cài đặt lương. Mở một mô-đun con để cấu hình; chỉ hiển thị các mô-đun bạn có quyền truy cập.",
-      "policies": {
-        "title": "Lịch trả lương",
-        "desc": "Lịch trả lương theo từng công ty — ngày chốt, ngày trả, cơ sở thanh toán, chế độ HRDF và EPF.",
-        "cta": "Mở lịch trả lương"
-      },
       "items": {
         "title": "Khoản mục lương",
         "desc": "Xác định các khoản mục lương và cách xử lý pháp định của chúng (EPF / SOCSO / PCB / HRDF).",
@@ -3204,16 +3211,6 @@
         "desc": "Xác định và duy trì tên chu kỳ hiển thị trong menu Quy trình trả lương.",
         "cta": "Mở chu kỳ trả lương"
       },
-      "period": {
-        "title": "Mẫu kỳ lương",
-        "desc": "Góc nhìn lập lịch của cấu hình công ty — thời điểm ngày chốt và ngày trả cho từng kỳ.",
-        "cta": "Mở thiết lập kỳ"
-      },
-      "submission": {
-        "title": "Kiểm soát nộp thanh toán",
-        "desc": "Góc nhìn kiểm soát nộp của cấu hình công ty — ngày chốt theo mục đích cho các khoản nộp pháp định.",
-        "cta": "Mở kiểm soát nộp"
-      },
       "ea": {
         "title": "Quản lý biểu mẫu EA",
         "desc": "Ánh xạ các khoản mục lương tới dòng biểu mẫu EA. Màn hình ánh xạ pháp định chuyên dụng sẽ ra mắt; các ánh xạ hiện có được giữ nguyên.",
@@ -3223,7 +3220,22 @@
         "title": "Cấu hình pháp định",
         "desc": "Các con số pháp định Malaysia chính xác mà bộ máy tính lương áp dụng — EPF, SOCSO, EIS, PCB và làm thêm giờ.",
         "cta": "Mở cấu hình pháp định"
-      }
+      },
+      "schedule": {
+        "title": "Lịch trả lương",
+        "desc": "Thời điểm tính lương theo từng công ty — ngày chốt, ngày trả, ngày chốt nộp theo từng mục đích, chính sách lương mặc định và việc phát hành phiếu lương.",
+        "cta": "Mở lịch trả lương"
+      },
+      "readinessTitle": "Chưa phải công ty nào cũng chạy được bảng lương",
+      "readinessSubtitle": "Lần chạy bảng lương bị từ chối với công ty không có chu kỳ đang hoạt động phù hợp. Các công ty sau trong phạm vi của bạn còn thiếu thứ gì đó.",
+      "readinessCannotRun": "Không chạy được bảng lương",
+      "readinessFix": "Thiết lập",
+      "readinessNoCycles": "Công ty này chưa có chu kỳ trả lương nào được định nghĩa, nên không thể chạy bảng lương.",
+      "readinessNoRegularCycle": "Có chu kỳ, nhưng không chu kỳ nào được gán cho lần chạy thông thường, nên không thể chạy bảng lương hằng tháng.",
+      "readinessStaleDefault": "Chu kỳ trả lương mặc định ghi “{name}”, không phải một chu kỳ đang hoạt động của công ty này.",
+      "readinessNoDefault": "Chưa chọn chu kỳ trả lương mặc định cho công ty này.",
+      "readinessNoAutoCreate": "Hệ thống không tự tạo chu kỳ — công ty nên có những chu kỳ nào là quyết định của bạn.",
+      "readinessFullReport": "Xem báo cáo mức độ sẵn sàng đầy đủ"
     },
     "historyImport": {
       "title": "Nhập lịch sử bảng lương",
@@ -3449,7 +3461,10 @@
       "checkPayModesBlocker": "{unpayable, plural, other {# nhân viên}} đang dùng hình thức tính lương Kỳ tùy chỉnh chưa có công thức tính: {names}. Hãy đổi hình thức tính lương trước khi xử lý.",
       "checkTransactionsTitle": "Giao dịch lương",
       "checkTransactionsOk": "{entered, plural, =0 {Chưa nhập giao dịch nào cho tháng này} other {Đã nhập # giao dịch}}.",
-      "empty": "Không có công ty nào trong phạm vi hiện tại của bạn."
+      "empty": "Không có công ty nào trong phạm vi hiện tại của bạn.",
+      "checkDefaultCycleTitle": "Chu kỳ trả lương mặc định",
+      "checkDefaultCycleOk": "Giá trị mặc định đã lưu trỏ tới một chu kỳ đang hoạt động.",
+      "checkDefaultCycleWarning": "{named, plural, =0 {Chưa chọn chu kỳ trả lương mặc định cho công ty này.} other {Giá trị mặc định đã lưu “{names}” không phải chu kỳ đang hoạt động của công ty này.}}"
     }
   },
   "admin": {
@@ -5876,11 +5891,6 @@
     "scheduleTitle": "Lịch trả lương",
     "cutOffDay": "Ngày chốt",
     "payDay": "Ngày trả",
-    "paymentBasis": "Cơ sở trả",
-    "basis_monthly": "Hàng tháng",
-    "basis_daily": "Hàng ngày",
-    "basis_hourly": "Theo giờ",
-    "basis_other": "Khác",
     "monthEnd": "Cuối tháng",
     "dayHint": "Ngày trong tháng (1–31). Để trống cho cuối tháng. Chỉ là tham chiếu lịch trình — không thay đổi cách tính kỳ lương.",
     "statutoryTitle": "Danh tính người sử dụng lao động theo luật",
@@ -5901,11 +5911,6 @@
     "attendanceCutOff": "Ngày chốt chấm công",
     "cutOffsHint": "Ngày trong tháng (1–31). Để trống = cuối tháng. Ngày chốt lương/dữ liệu được đặt ở trên là Ngày chốt. Đây là các cửa sổ chốt MẶC ĐỊNH CỦA CÔNG TY: bảng lương lấy từng loại giao dịch (làm thêm giờ, yêu cầu hoàn, nghỉ không lương, chấm công) từ cửa sổ được cấu hình khi chính sách lương của nhân viên không tự đặt riêng. Các khoản đóng góp theo luật vẫn được tổng hợp theo tháng dương lịch.",
     "save": "Lưu",
-    "hiringTitle": "Mặc định tuyển dụng",
-    "probationMonths": "Thời gian thử việc mặc định (tháng)",
-    "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
-    "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
-    "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống).",
     "policyReleaseTitle": "Chính sách mặc định & phát hành phiếu lương",
     "defaultPolicy": "Chính sách lương mặc định",
     "defaultPolicyNone": "Không (mặc định hàng tháng)",
@@ -5917,8 +5922,12 @@
     "releaseValue": "Ngày / độ lệch",
     "releaseValuePlaceholder": "vd. 5 hoặc -2",
     "releaseHint": "Kiểm soát khi nào nhân viên thấy phiếu lương trong tự phục vụ. Ngày cố định = một ngày của tháng sau kỳ lương; tương đối = số ngày trước(-)/sau(+) ngày trả lương. Không bao giờ trước khi chốt lương.",
-    "defaultCurrency": "Tiền tệ lương mặc định",
-    "defaultCurrencyHint": "Bản ghi Lương cơ bản mới sẽ chọn sẵn tiền tệ này; HR có thể thay đổi cho từng bản ghi."
+    "statutoryEditInOrganization": "Chỉnh sửa trong Tổ chức",
+    "statutoryNotSet": "Chưa đặt",
+    "statutoryReadOnlyHint": "Chỉ hiển thị để tham khảo. Các thông tin đăng ký người sử dụng lao động này là một bản ghi với một chủ sở hữu — Tổ chức → Theo luật. Trước đây cũng sửa được ở đây, nên màn hình lưu sau sẽ âm thầm ghi đè.",
+    "movedSettingsHint": "Thời gian thử việc, nhắc nhở đánh giá và loại tiền lương mặc định không phải là thiết lập bảng lương và đã được chuyển đi:",
+    "movedHiringLink": "Mặc định tuyển dụng",
+    "movedCurrencyLink": "Loại tiền của công ty"
   },
   "employeeIdConfig": {
     "title": "Thiết lập số chạy tự động cho Mã nhân viên",

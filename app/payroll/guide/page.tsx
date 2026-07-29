@@ -26,6 +26,9 @@ const CHECK_CAP: Record<ReadinessCheck['key'], string> = {
   payrollItems: 'PayrollItems',
   statutoryConfig: 'StatutoryConfig',
   payrollCycle: 'PayrollCycle',
+  // 707b3851 — the company's stored default cycle name actually resolving to an active cycle. Distinct
+  // from payrollCycle above (which asks whether the catalog has anything in it at all).
+  defaultCycle: 'DefaultCycle',
   payrollSchedule: 'PayrollSchedule',
   payrollPolicy: 'PayrollPolicy',
   payModes: 'PayModes', // ADR-0078 — custom_period pay-mode blocker (names the affected employees)

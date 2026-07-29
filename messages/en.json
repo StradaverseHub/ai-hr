@@ -339,7 +339,8 @@
       "salaryRemarksPlaceholder": "e.g. annual increment",
       "employeeIdLabel": "Employee ID",
       "employeeIdPlaceholder": "e.g. EMP-0001",
-      "employeeIdHint": "Letters, numbers and dashes; up to 30 characters."
+      "employeeIdHint": "Letters, numbers and dashes; up to 30 characters.",
+      "hiringDefaults": "Hiring defaults"
     },
     "detail": {
       "backToPeople": "People",
@@ -1213,6 +1214,17 @@
       "colEmail": "Email",
       "colResult": "Result",
       "ready": "Ready"
+    },
+    "hiringDefaults": {
+      "title": "Hiring Defaults",
+      "description": "Per-company defaults for new hires and employment reviews. They used to sit on the payroll schedule screen, where nothing about payroll read them.",
+      "back": "Personnel",
+      "emptyScope": "No companies in the current scope.",
+      "save": "Save",
+      "probationMonths": "Default probation period (months)",
+      "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
+      "reviewReminderDays": "Review reminders (days before end date)",
+      "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
     }
   },
   "leave": {
@@ -3179,11 +3191,6 @@
     "setup": {
       "title": "Payroll Settings",
       "subtitle": "The central place to manage payroll settings. Open a sub-module to configure it; only the modules you can access are shown.",
-      "policies": {
-        "title": "Payroll Schedule",
-        "desc": "Per-company payroll schedule — cut-off day, pay day, payment basis, HRDF and EPF modes.",
-        "cta": "Open payroll schedule"
-      },
       "items": {
         "title": "Payroll Items",
         "desc": "Define pay items and their statutory treatment (EPF / SOCSO / PCB / HRDF).",
@@ -3204,16 +3211,6 @@
         "desc": "Define and maintain the cycle names the Payroll Process dropdown offers.",
         "cta": "Open payroll cycles"
       },
-      "period": {
-        "title": "Payroll Period Template",
-        "desc": "The scheduling lens of the company config — cut-off and pay-day timing for each period.",
-        "cta": "Open period setup"
-      },
-      "submission": {
-        "title": "Payment Submission Control",
-        "desc": "The submission-control lens of the company config — per-purpose cut-offs for statutory payments.",
-        "cta": "Open submission control"
-      },
       "ea": {
         "title": "EA Form Management",
         "desc": "Map pay items to their EA form lines. A dedicated statutory mapping screen is coming; existing mappings are preserved.",
@@ -3223,7 +3220,22 @@
         "title": "Statutory Configuration",
         "desc": "The exact Malaysian statutory figures the payroll engine applies — EPF, SOCSO, EIS, PCB and overtime.",
         "cta": "Open statutory config"
-      }
+      },
+      "schedule": {
+        "title": "Payroll Schedule",
+        "desc": "Per-company payroll timing — cut-off day, pay day, per-purpose submission cut-offs, the default payroll policy and payslip release.",
+        "cta": "Open payroll schedule"
+      },
+      "readinessTitle": "Not every company can run payroll yet",
+      "readinessSubtitle": "A payroll run is refused for a company with no matching active cycle. These companies in your scope are missing something.",
+      "readinessCannotRun": "Cannot run payroll",
+      "readinessFix": "Set up",
+      "readinessNoCycles": "No payroll cycle is defined for this company at all, so payroll cannot run.",
+      "readinessNoRegularCycle": "Cycles exist, but none is mapped to a regular run, so an ordinary monthly payroll cannot run.",
+      "readinessStaleDefault": "The default payroll cycle names “{name}”, which is not an active cycle for this company.",
+      "readinessNoDefault": "No default payroll cycle is chosen for this company.",
+      "readinessNoAutoCreate": "Cycles are not created for you — which cycles a company should have is your decision.",
+      "readinessFullReport": "See the full readiness report"
     },
     "historyImport": {
       "title": "Import payroll history",
@@ -3449,7 +3461,10 @@
       "checkPayModesBlocker": "{unpayable, plural, one {# employee is} other {# employees are}} on the Custom Period pay mode, which has no calculation yet: {names}. Change their pay mode before processing.",
       "checkTransactionsTitle": "Payroll transactions",
       "checkTransactionsOk": "{entered, plural, =0 {No transactions entered for this month yet} one {# transaction entered} other {# transactions entered}}.",
-      "empty": "No companies in your current scope."
+      "empty": "No companies in your current scope.",
+      "checkDefaultCycleTitle": "Default payroll cycle",
+      "checkDefaultCycleOk": "The saved default points at an active cycle.",
+      "checkDefaultCycleWarning": "{named, plural, =0 {No default payroll cycle is chosen for this company.} other {The saved default “{names}” is not an active cycle for this company.}}"
     }
   },
   "admin": {
@@ -5876,11 +5891,6 @@
     "scheduleTitle": "Payroll schedule",
     "cutOffDay": "Cut-off day",
     "payDay": "Pay day",
-    "paymentBasis": "Payment basis",
-    "basis_monthly": "Monthly",
-    "basis_daily": "Daily",
-    "basis_hourly": "Hourly",
-    "basis_other": "Other",
     "monthEnd": "Month-end",
     "dayHint": "Day of month (1–31). Leave blank for month-end. Scheduling reference only — it does not change how the pay period is calculated.",
     "statutoryTitle": "Statutory employer identity",
@@ -5901,11 +5911,6 @@
     "attendanceCutOff": "Attendance cut-off day",
     "cutOffsHint": "Day of month (1–31). Blank = month-end. The salary/inputs cut-off is set above as Cut-off day. These are the COMPANY DEFAULT cut-off windows: payroll pulls each transaction type (overtime, claims, unpaid leave, attendance) from its configured window when an employee's payroll policy doesn't set its own. Statutory contributions still aggregate per calendar month.",
     "save": "Save",
-    "hiringTitle": "Hiring defaults",
-    "probationMonths": "Default probation period (months)",
-    "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
-    "reviewReminderDays": "Review reminders (days before end date)",
-    "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank).",
     "policyReleaseTitle": "Default policy & payslip release",
     "defaultPolicy": "Default payroll policy",
     "defaultPolicyNone": "None (monthly default)",
@@ -5917,8 +5922,12 @@
     "releaseValue": "Day / offset",
     "releaseValuePlaceholder": "e.g. 5 or -2",
     "releaseHint": "Controls when employees can see their payslip in self-service. Fixed day = a day of the month after the pay period; relative = days before(-)/after(+) pay day. Never before payroll closes.",
-    "defaultCurrency": "Default salary currency",
-    "defaultCurrencyHint": "New Basic Salary records preselect this currency; HR can change it per record."
+    "statutoryEditInOrganization": "Edit in Organization",
+    "statutoryNotSet": "Not set",
+    "statutoryReadOnlyHint": "Shown for reference only. These employer registration details are one record with one owner — Organization → Statutory. They used to be editable here as well, so whichever screen saved last silently won.",
+    "movedSettingsHint": "Probation length, review reminders and the default salary currency are not payroll settings and have moved:",
+    "movedHiringLink": "Hiring defaults",
+    "movedCurrencyLink": "Company currency"
   },
   "employeeIdConfig": {
     "title": "Employee ID Auto Running Number Setup",

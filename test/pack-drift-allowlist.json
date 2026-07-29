@@ -8,8 +8,6 @@
     "app/admin/personnel/[employmentId]/actions.ts",
     "app/admin/personnel/[employmentId]/cp38-actions.ts",
     "app/admin/personnel/[employmentId]/page.tsx",
-    "app/admin/personnel/actions.ts",
-    "app/admin/personnel/page.tsx",
     "app/me/actions.ts",
     "app/me/page.tsx",
     "app/performance/[cycleId]/page.tsx",

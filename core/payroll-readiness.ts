@@ -17,9 +17,10 @@
  * The aggregate `blockers`/`warnings` counts and `ready` (blockers === 0) drive the guided Process view and
  * can gate the Generate action exactly as the per-batch blockers do today.
  */
-import { and, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import {
+  company,
   companyPayrollConfig,
   compensation,
   employeeStatutoryMy,
@@ -40,6 +41,7 @@ export type ReadinessCheckKey =
   | 'payrollItems' // Mandatory Payroll Data Available (pay-item master)
   | 'statutoryConfig' // Statutory Configuration Valid
   | 'payrollCycle' // Payroll Cycle Available
+  | 'defaultCycle' // 707b3851 — the company's named default cycle actually exists and is active
   | 'payrollSchedule' // Payroll Schedule Available (pay-day)
   | 'payrollPolicy' // Payroll Policy Assigned
   | 'payModes' // ADR-0078 — no employee on a pay mode with no calculation (custom_period)
@@ -159,6 +161,43 @@ export function payrollReadiness(
       href: '/admin/payroll-cycle',
     };
 
+    // ── defaultCycle ── feedback 707b3851. company.default_payroll_cycle stores a cycle NAME, and the
+    // Payroll Process wizard preselects it. Two production companies name "Monthly" while holding ZERO
+    // cycles: the field READS as configured and nothing says otherwise until a run is refused. This is a
+    // distinct fact from payrollCycle above (which asks "are there any cycles?") — a company can have a
+    // full catalog and still point its default at a cycle that was archived or renamed. Not a blocker in
+    // its own right: the wizard falls back to letting the operator pick, so a stale default is a WARNING;
+    // the hard stop is the cycle catalog being empty, which payrollCycle already raises. Name-matched
+    // case-insensitively, exactly as setCompanyDefaultPayrollCycle validates on save.
+    const [co] = await tx
+      .select({ defaultCycle: company.defaultPayrollCycle })
+      .from(company)
+      .where(eq(company.id, p.companyId))
+      .limit(1);
+    const defaultCycleName = (co?.defaultCycle ?? '').trim();
+    const [defMatch] = defaultCycleName
+      ? await tx
+          .select({ id: payrollCycle.id })
+          .from(payrollCycle)
+          .where(
+            and(
+              eq(payrollCycle.companyId, p.companyId),
+              isNull(payrollCycle.archivedAt),
+              sql`lower(${payrollCycle.name}) = lower(${defaultCycleName})`,
+            ),
+          )
+          .limit(1)
+      : [];
+    const defaultCycleCheck: ReadinessCheck = {
+      key: 'defaultCycle',
+      status: !defaultCycleName ? 'warning' : defMatch ? 'ok' : 'warning',
+      detail: { named: defaultCycleName ? 1 : 0, resolves: defMatch ? 1 : 0 },
+      // The name itself is data, not a translatable string — carried through `names` so the UI can quote
+      // the missing cycle without the core building an English sentence.
+      ...(defaultCycleName && !defMatch ? { names: [defaultCycleName] } : {}),
+      href: '/admin/payroll-cycle',
+    };
+
     // ── payrollSchedule ── the company payroll-config pay-day is scheduling metadata; absent ⇒ warning
     // (decision 4: no schedule/pay-day = warning). The run still computes; the payment date defaults to
     // month-end. `hasConfig` distinguishes "no config row at all" from "row present, pay-day blank".
@@ -246,6 +285,7 @@ export function payrollReadiness(
       payrollItems,
       statutoryConfig,
       payrollCycleCheck,
+      defaultCycleCheck,
       payrollSchedule,
       payrollPolicyCheck,
       payModes,
@@ -254,5 +294,87 @@ export function payrollReadiness(
     const blockers = checks.filter((c) => c.status === 'blocker').length;
     const warnings = checks.filter((c) => c.status === 'warning').length;
     return { companyId: p.companyId, payPeriod, checks, blockers, warnings, ready: blockers === 0 };
+  });
+}
+
+// ─── Cross-company cycle readiness (feedback 707b3851) ────────────────────────────────────────────────
+
+/**
+ * What one company is missing before a payroll run can START, expressed against the ONE gate that
+ * actually refuses: core/payroll-run-group.ts resolves the company's own active cycle of the intended run
+ * type and fails that company with `INVALID_CYCLE` when there is none. Everything else in
+ * payrollReadiness is advice; this is the wall.
+ */
+export type CompanyCycleReadiness = {
+  companyId: string;
+  companyName: string;
+  /** Active (non-archived) cycles in this company's catalog. */
+  activeCycles: number;
+  /** Of those, the ones mapped to the 'regular' run type — what an ordinary monthly run needs. */
+  activeRegularCycles: number;
+  /** The name stored on company.default_payroll_cycle. May name a cycle that does not exist. */
+  defaultCycleName: string;
+  /** True when that name matches an active cycle of this company (case-insensitive). */
+  defaultCycleResolves: boolean;
+  /** False ⇒ a regular payroll run would be refused today with INVALID_CYCLE. */
+  canRunRegularPayroll: boolean;
+};
+
+/**
+ * The readiness list ACROSS companies the reporter asked for: "list, in one place, every company not yet
+ * able to run payroll and what each is missing."
+ *
+ * Deliberately cheap — two grouped queries for the whole set, not the eight-check payrollReadiness per
+ * company — because it renders on the Payroll Settings landing page, which must stay fast. It answers only
+ * the blocking question (can this company open a run at all?) plus the stale-default fact that made the
+ * problem invisible; the full per-company report stays on /payroll/guide.
+ *
+ * It does NOT create cycles. Which cycles a company should have is a business decision, and inventing them
+ * would make a company that has never run payroll silently start being able to.
+ */
+export function payrollCycleReadiness(
+  ctx: SessionContext,
+  companyIds: string[],
+): Promise<CompanyCycleReadiness[]> {
+  return withTenant(ctx, async (tx) => {
+    if (companyIds.length === 0) return [];
+    const companies = await tx
+      .select({ id: company.id, name: company.legalName, defaultCycle: company.defaultPayrollCycle })
+      .from(company)
+      .where(inArray(company.id, companyIds))
+      .orderBy(company.legalName);
+    if (companies.length === 0) return [];
+
+    // One pass over the catalog: per company, how many active cycles, how many active REGULAR cycles, and
+    // whether any active cycle carries the company's stored default name. The name comparison happens in
+    // SQL against company.default_payroll_cycle so it uses the same case-insensitive rule as the save-time
+    // validation in setCompanyDefaultPayrollCycle.
+    const rows = await tx
+      .select({
+        companyId: payrollCycle.companyId,
+        active: sql<number>`count(*) filter (where ${payrollCycle.archivedAt} is null)::int`,
+        activeRegular: sql<number>`count(*) filter (where ${payrollCycle.archivedAt} is null and ${payrollCycle.runType} = 'regular')::int`,
+        defaultMatches: sql<number>`count(*) filter (where ${payrollCycle.archivedAt} is null and lower(${payrollCycle.name}) = lower(${company.defaultPayrollCycle}))::int`,
+      })
+      .from(payrollCycle)
+      .innerJoin(company, eq(company.id, payrollCycle.companyId))
+      .where(inArray(payrollCycle.companyId, companyIds))
+      .groupBy(payrollCycle.companyId);
+    const byCompany = new Map(rows.map((r) => [r.companyId, r]));
+
+    return companies.map((c) => {
+      const r = byCompany.get(c.id);
+      const activeRegularCycles = r?.activeRegular ?? 0;
+      const defaultCycleName = (c.defaultCycle ?? '').trim();
+      return {
+        companyId: c.id,
+        companyName: c.name,
+        activeCycles: r?.active ?? 0,
+        activeRegularCycles,
+        defaultCycleName,
+        defaultCycleResolves: defaultCycleName !== '' && (r?.defaultMatches ?? 0) > 0,
+        canRunRegularPayroll: activeRegularCycles > 0,
+      };
+    });
   });
 }

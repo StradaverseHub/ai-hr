@@ -11,6 +11,7 @@ import { CrossCompanyError } from './org';
 import { isEssViewComponentKey, type EssViewConfig } from './ess-view';
 import { normalizeLeaveFormulaConfig, type LeaveFormulaConfig } from './leave-formula';
 import { isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual';
+import { isCurrencyCode } from '../lib/currencies';
 import { visibleLabelIdsCondition } from './system-labels';
 import { isLoginBlocked } from './employment-status';
 import {
@@ -243,6 +244,20 @@ function isoCode(v: string | undefined, fallback: string, label: string): string
   return s;
 }
 
+/**
+ * The company's ISO-4217 currency. r79a (4fb8b75a step 3): `company.currency` absorbed
+ * company_payroll_config.default_currency, so this field went from inert master data to the value the
+ * Basic Salary form preselects. It therefore has to be validated as strictly as the field it replaced —
+ * against the real lib/currencies.ts master, not merely "three letters", which would have let 'ZZZ'
+ * through onto a salary form. Blank ⇒ 'MYR' (the column default); a non-ISO code is REJECTED rather than
+ * clamped, matching the rest of core/admin.ts (throw-not-clamp) and surfacing as a form error.
+ */
+function currencyCode(v: string | undefined): string {
+  const s = (v || 'MYR').trim().toUpperCase();
+  if (!isCurrencyCode(s)) throw new Error(`Currency must be a valid ISO 4217 code (e.g. MYR), not “${s}”`);
+  return s;
+}
+
 type Role =
   | 'employee'
   | 'manager'
@@ -278,7 +293,7 @@ export async function createCompany(
   // with the two-tier model (D-14), where a non-statutory company is a deliberate, declared choice
   // rather than an accident. isoCode is shared with `currency`, so the check lives here, not in it.
   requirePackFor(country);
-  const currency = isoCode(p.currency, 'MYR', 'Currency');
+  const currency = currencyCode(p.currency);
   // Organization Module (361e3b15): the chosen default, resolved against the standard catalog we are about to
   // seed. Defaults to 'Monthly' (the column default) so the common case is a single accept-and-move-on step.
   const defaultPayrollCycle = resolveDefaultCycleName(p.defaultPayrollCycle);
@@ -4060,7 +4075,7 @@ export async function updateCompany(
 ) {
   const legalName = cleanName(p.legalName, 'Legal name');
   const country = isoCode(p.country, 'MY', 'Country');
-  const currency = isoCode(p.currency, 'MYR', 'Currency');
+  const currency = currencyCode(p.currency);
   const website = normalizeWebsite(p.website);
   // Tri-state set: only include a General-tab profile field when the caller actually provided it, so an
   // omitted field is never nulled out. The action always sends the full form, so empty -> null persists.

@@ -8,7 +8,8 @@
  *
  * Names are English-only and DELIBERATELY not translated across the six UI locales (same confirmed
  * direction as the country master): ISO English currency names are the unambiguous standard for a master
- * list, and the CODE is what is stored (compensation.currency / company_payroll_config.default_currency).
+ * list, and the CODE is what is stored (compensation.currency / company.currency — the latter absorbed
+ * company_payroll_config.default_currency in r79a, migration 0324).
  *
  * DB-free on purpose so both client components (the searchable select) and server code (the ISO
  * validation in core/comp.ts + core/payroll-config.ts) import the same single source of truth.
