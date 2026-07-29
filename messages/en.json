@@ -4317,7 +4317,6 @@
       "serviceSelectCompanyEmpty": "Select a company to load its benefit schemes and set service-based entitlements.",
       "serviceNoSchemes": "No active benefit schemes for this company. Create one under Benefit Schemes.",
       "serviceSchemeUnconfigured": "Not configured for this leave type yet — enter days to add it.",
-      "serviceGradeDisagreement": "Grade-level entitlement for these grades currently gives {days}. The scheme figures shown here are what employees receive.",
       "serviceTableNote": "These are the same figures as the scheme's Leave Entitlements — saving here updates both. Employees whose grade is in no scheme keep using the company entitlements below.",
       "schemeEntitlementsTitle": "Benefit scheme entitlements"
     },

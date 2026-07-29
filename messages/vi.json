@@ -4317,7 +4317,6 @@
       "serviceSelectCompanyEmpty": "Chọn công ty để tải các chương trình phúc lợi và thiết lập quyền lợi theo thâm niên.",
       "serviceNoSchemes": "Công ty này chưa có chương trình phúc lợi đang hoạt động. Hãy tạo một chương trình ở mục Chương trình phúc lợi.",
       "serviceSchemeUnconfigured": "Chưa thiết lập cho loại nghỉ phép này — nhập số ngày để thêm.",
-      "serviceGradeDisagreement": "Quyền lợi theo bậc của các bậc này hiện cho {days}. Số liệu của chương trình hiển thị ở đây mới là những gì nhân viên nhận được.",
       "serviceTableNote": "Đây là cùng những số liệu với Quyền lợi nghỉ phép của chương trình — lưu ở đây sẽ cập nhật cả hai. Nhân viên có bậc không thuộc chương trình nào vẫn dùng quyền lợi công ty bên dưới.",
       "schemeEntitlementsTitle": "Quyền lợi theo chương trình phúc lợi"
     },

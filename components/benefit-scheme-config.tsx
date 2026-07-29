@@ -17,6 +17,11 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { GripVertical } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { resolveGradePolicy, type GradePolicyRow, type ServiceBand } from '@/core/leave-compute';
+import {
+  benefitSchemeDisplayName,
+  bySchemeDisplayOrder,
+  schemeNameIsRedundant,
+} from '@/lib/benefit-scheme-label';
 import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
 import { Combobox } from '@/components/ui/combobox';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -1448,12 +1453,28 @@ function SchemeEntitlementMatrixRow({
   const bands = matrixBandsWithDays(stored, days);
   const gridCls = compact ? matrixCompactGridCls : matrixGridCls;
 
+  // r76 48224d12 — one scheme, said once. `gradeGroupLabel` is built by the shared naming rule
+  // (lib/benefit-scheme-label), and the stored scheme name is printed beneath it ONLY when it adds
+  // something: "Leadership" + "Leadership scheme" is the same words twice, "Leadership" + "Executive
+  // package" is not, and dropping the second there would lose the tenant's own name. Both entitlement
+  // matrices share this row, so BOTH read the same way — the two surfaces naming a scheme identically is a
+  // pre-existing invariant of this file, and splitting them here would be the drift it was written to stop.
+  const schemeNameLine = schemeNameIsRedundant(
+    ent.schemeName,
+    gradeGroupLabel,
+    t(`empType_${ent.employmentType}` as `empType_${(typeof EMPLOYMENT_TYPES)[number]}`),
+  )
+    ? null
+    : ent.schemeName;
+
   const identity = (
     <>
       {!compact && <span className="text-sm font-medium">{companyLabel ?? ''}</span>}
       <span className="flex flex-col">
         <span className="text-sm font-medium">{gradeGroupLabel}</span>
-        <span className="text-xs font-normal text-muted-foreground">{ent.schemeName}</span>
+        {schemeNameLine != null && (
+          <span className="text-xs font-normal text-muted-foreground">{schemeNameLine}</span>
+        )}
         {ent.poolName != null && ent.poolTotalLimitDays != null && (
           <span className="text-xs font-normal text-muted-foreground">
             {t('perTypeSharedPool', { name: ent.poolName, days: ent.poolTotalLimitDays })}
@@ -1569,7 +1590,13 @@ export function LeaveTypeEntitlementTable({
                   Array.isArray(e.serviceBands) && e.serviceBands.length > 0 && bandShapeKey(e.serviceBands) === shapeKey
                 }
                 companyLabel={i === 0 ? block.companyName : null}
-                gradeGroupLabel={`${e.gradeGroupName ?? t('perTypeAllGrades')} (${empTypeLabel(e.employmentType)})`}
+                /* r76 48224d12 — the shared naming rule, the same call the Service Based Entitlements table
+                   makes. It replaces an inline template that appended the employment type unconditionally,
+                   so a grade group already named "GRADE 12-15 (PERMANENT)" read "… (Permanent)" twice. */
+                gradeGroupLabel={benefitSchemeDisplayName(
+                  { name: e.schemeName, gradeGroupName: e.gradeGroupName },
+                  { employmentTypeLabel: empTypeLabel(e.employmentType), allGradesLabel: t('perTypeAllGrades') },
+                )}
                 action={upsertEntitlement}
                 t={t}
               />
@@ -1664,9 +1691,7 @@ export function ServiceEntitlementTable({
   leaveTypeName,
   companies,
   schemes,
-  gradeGroups,
   entitlements,
-  policies,
   upsertEntitlement,
 }: {
   leaveTypeId: string;
@@ -1674,10 +1699,15 @@ export function ServiceEntitlementTable({
   companies: { id: string; name: string }[];
   /** Every benefit scheme in the tenant; the picked company narrows them. */
   schemes: ServiceSchemeRow[];
-  /** Grade-group membership — only used to work out which grades a scheme covers for the disagreement note. */
+  /** Grade-group membership. RETAINED and deliberately not read: it was the input to the grade-level
+   *  disagreement note that r76 48224d12 removed (see the note above the rows). The wiring, the props and
+   *  the pure reconciliation helpers are all left standing so putting the note back is an edit to THIS
+   *  component alone — investigation 9816a5ad is asking which of the two configurations actually drives a
+   *  balance, and if the answer is "the admin must be told when they disagree", nothing has to be rebuilt. */
   gradeGroups: { id: string; gradeIds: string[] }[];
   /** THIS leave type's scheme entitlement rows (the same rows the Benefit Schemes matrix renders). */
   entitlements: LeaveTypeSchemeEntitlement[];
+  /** RETAINED and deliberately not read — see `gradeGroups`. */
   policies: ServicePolicyRow[];
   upsertEntitlement: (fd: FormData) => void | Promise<void>;
 }) {
@@ -1688,11 +1718,18 @@ export function ServiceEntitlementTable({
 
   // Only ACTIVE schemes are offered: resolveEffectiveSchemeId matches active schemes only, so an inactive
   // one grants nobody anything and editing its days here would look like a change that does nothing.
+  //
+  // r76 48224d12 — picking the company is the ONLY selection: every active scheme of that company is listed
+  // straight away (it already was; nothing was added here). The order is the shared display order
+  // (lib/benefit-scheme-label): employment type first — Permanent, Contract, Part-time, Intern — then the
+  // grade wording the row shows, numerically collated so "Grade 2" precedes "Grade 12", then the scheme id.
+  // Total and stable, so one company lists its schemes the same way every time; it replaces a plain
+  // name.localeCompare that put every employment type in one alphabetical run.
   const companySchemes = useMemo(
     () =>
       schemes
         .filter((s) => s.companyId === companyId && s.status === 'active')
-        .sort((a, b) => a.name.localeCompare(b.name)),
+        .sort(bySchemeDisplayOrder((s) => s.gradeGroupName ?? s.name)),
     [schemes, companyId],
   );
   const entBySchemeId = useMemo(
@@ -1712,23 +1749,17 @@ export function ServiceEntitlementTable({
     [companySchemes, entBySchemeId],
   );
 
-  // The active grade-level policies, in the shape resolveGradePolicy reads — the disagreement note's input.
-  const activeGradeRows: GradePolicyRow[] = useMemo(
-    () =>
-      policies
-        .filter((p) => p.validTo == null)
-        .map((p) => ({
-          gradeId: p.gradeId,
-          companyId: p.companyId,
-          accrual: { annualDays: p.annualDays, serviceBands: p.serviceBands ?? undefined },
-        })),
-    [policies],
-  );
-  const gradeIdsByGroup = useMemo(
-    () => new Map(gradeGroups.map((g) => [g.id, g.gradeIds])),
-    [gradeGroups],
-  );
-
+  // r76 48224d12 — the grade-level DISAGREEMENT NOTE is gone from this table, as the item asked: the
+  // reporter reads this screen as the scheme figures, and the amber line about the grade-level policies was
+  // not what they came for. The two memos that fed it (the active grade policies in resolveGradePolicy's
+  // shape, and grade ids by group) are removed with it; `gradeLevelServiceDays` / `sampleYearsForColumn`
+  // above are KEPT — they are pure, unit-tested, and they are the restoration path.
+  //
+  // ⚠ This was the ONLY place in the product that told an administrator the two entitlement configurations
+  // disagree. Nothing about that disagreement changed — the grade-level rows still exist, still resolve for
+  // anyone no scheme covers, and are still editable on the timeline below; it is only no longer ANNOUNCED
+  // here. Investigation 9816a5ad is asking which configuration actually drives a balance; if its answer
+  // needs the warning back, everything it needs is still in this file.
   const rows = useMemo(
     () =>
       companySchemes.map((scheme) => {
@@ -1748,19 +1779,12 @@ export function ServiceEntitlementTable({
           poolName: null,
           poolTotalLimitDays: null,
         };
+        // A scheme on its own brackets is edited through the dialog rather than flattened into these
+        // columns — unchanged.
         const conforming = ent.serviceBands.length > 0 && bandShapeKey(ent.serviceBands) === shapeKey;
-        // Only compare like with like: a scheme on its own brackets is edited through the dialog, and
-        // sampling it against these columns would report a disagreement that is really a shape difference.
-        const schemeDays = ent.serviceBands.map((b) => Number(b.days ?? 0)).join('|');
-        const gradeIds = scheme.gradeGroupId ? (gradeIdsByGroup.get(scheme.gradeGroupId) ?? []) : [];
-        const disagreements = conforming
-          ? gradeLevelServiceDays(activeGradeRows, gradeIds, companyId, columns).filter(
-              (tuple) => tuple.join('|') !== schemeDays,
-            )
-          : [];
-        return { scheme, stored, ent, conforming, disagreements };
+        return { scheme, stored, ent, conforming };
       }),
-    [companySchemes, entBySchemeId, columns, shapeKey, leaveTypeId, leaveTypeName, gradeIdsByGroup, activeGradeRows, companyId],
+    [companySchemes, entBySchemeId, columns, shapeKey, leaveTypeId, leaveTypeName],
   );
 
   return (
@@ -1806,7 +1830,7 @@ export function ServiceEntitlementTable({
               </span>
               <span />
             </div>
-            {rows.map(({ scheme, stored, ent, conforming, disagreements }) => (
+            {rows.map(({ scheme, stored, ent, conforming }) => (
               <SchemeEntitlementMatrixRow
                 // The stored days are part of the key (the a03eff24 remount precedent): when the server
                 // sends a different figure — after this admin's save or someone else's — the row remounts
@@ -1817,20 +1841,20 @@ export function ServiceEntitlementTable({
                 editableInline={conforming}
                 companyLabel={null}
                 compact
-                gradeGroupLabel={`${scheme.gradeGroupName ?? tb('perTypeAllGrades')} (${empTypeLabel(scheme.employmentType)})`}
+                /* r76 48224d12 — the shared naming rule: ONE line, the employment type said once. It
+                   replaces an inline template that always appended "(Permanent)", which read
+                   "GRADE 12-15 (PERMANENT) (Permanent)" for a tenant who had put the type in their own
+                   grade-group name. Stored names are untouched — this is the render layer only. */
+                gradeGroupLabel={benefitSchemeDisplayName(scheme, {
+                  employmentTypeLabel: empTypeLabel(scheme.employmentType),
+                  allGradesLabel: tb('perTypeAllGrades'),
+                })}
                 note={
-                  <>
-                    {stored == null && (
-                      <span className="text-xs font-normal text-muted-foreground">
-                        {t('serviceSchemeUnconfigured')}
-                      </span>
-                    )}
-                    {disagreements.map((tuple, i) => (
-                      <span key={i} className="text-xs font-normal text-amber-700 dark:text-amber-400">
-                        {t('serviceGradeDisagreement', { days: tuple.join(' / ') })}
-                      </span>
-                    ))}
-                  </>
+                  stored == null ? (
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {t('serviceSchemeUnconfigured')}
+                    </span>
+                  ) : null
                 }
                 action={upsertEntitlement}
                 t={tb}
