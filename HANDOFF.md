@@ -5,21 +5,47 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-07-29, end of session)
+## CURRENT STATE — read this first (updated 2026-07-30, end of a seven-round session)
 
-**If you read nothing else, read these five lines.**
-1. Deployed head is `main@e82c519`, migrations through `0322`; **next free migration number is `0323`**.
-2. The board has **11 approved, 4 contested, 6 open, 2 blocked**. The four contested items are small,
-   actionable, and three are post-deploy push-backs on work that shipped today — do them first.
-3. **`9816a5ad` is the keystone.** Its latest push-back is an AGREEMENT confirming the entitlement
-   structure; approving it unblocks `fa3f4ccb` and unsticks the whole leave-config queue.
-4. **Nothing has been browser-verified since r70**, and on 2026-07-29 that produced a false "fixed" — a
-   screen served 1 of 8 rows for 24 days behind a green suite. A browser pass over r71–r78 is the
-   highest-value first move available.
-5. **Five separate reports this session were not the bug they described** — mislabelled, undiscoverable,
-   already built, or on the adjacent screen. One of those wrong diagnoses was in a plan *I* wrote.
-   Reproduce before building; a held-back item with findings is a good result.
+**If you read nothing else, read these seven lines.**
+1. Deployed head is `main@c8bb831`, migrations through `0327`. **Next free number is `0328`** — but
+   `9cbf5e0d` on branch `build/r81b` already claims **0326** and is HELD, not merged. Do not reuse it.
+2. **CHECK `git branch --show-current` AT THE REPO ROOT BEFORE CREATING ANY WORKTREE.** The root is on
+   `fix/companies-list`, not `main`. A subagent branched there and every later commit followed it; r79
+   was then built off a stale `main` and would have reverted r78 had the rehearsal not refused to run.
+3. **The board is clear of open and contested items.** ~9 approved remain, mostly Large. The next piece
+   of work is **`9816a5ad` STEP 2** — see below; step 1 shipped in r81 and is inert.
+4. **Three live payroll faults are raised and unanswered, and one is severe:** `ef31d251` — **no employee
+   has ever seen a payslip**, because no run has ever been closed (47 payslips, 18 runs, all invisible).
+   Also `d0d2c9d1` (RM23,150 entered and never paid) and `97a9b0ab` (same gross, two different tax
+   figures). These outrank every feature on the board.
+5. **`9cbf5e0d` is built and HELD** on `build/r81b`, waiting on `00659c34`: fixing probation (which never
+   worked — everyone displayed Active from day one) drops 12 of 22 employees out of the 2026 Annual
+   review, because that cycle names four old statuses and cannot name one that never existed.
+6. **Nothing has been browser-verified since r70**, and it has now produced a false "fixed" once: a screen
+   served 1 of 8 rows for 24 days behind a fully green suite.
+7. **EIGHT reports this session were not the bug they described** and **FOUR checks passed without
+   crossing the boundary where the thing breaks.** Both patterns are written up in Traps. One wrong
+   diagnosis was in a plan written by the operator, and one bad check was the operator's own merge.
 
+### `9816a5ad` — where the keystone stands, and what step 2 must decide
+
+Step 1 shipped (r81, migration `0325`): ten rule columns on `leave_type`, backfilled from
+`leave_policy.accrual`, **read by nothing**. Verified on production before deploy: **zero conflicts across
+all ten rule keys** (so the migration's distinctness assertion will not fire) and **zero policies use
+per-band `carryForwardDays`**.
+
+**Step 2 repoints the four call sites** in `core/leave.ts` (`openLeaveYear`, `accrueEarnedLeave`,
+`projectExpectedEntitlement`, the a2c correction) to read rules from the type. **This is where balances
+move — the upgrade rehearsal is mandatory.** Step 2 must also decide explicitly what happens to per-band
+`carryForwardDays` and per-band carry expiry (`9d8cf621`): they lose their home when bands become
+days-only, they are not among the approved five, and collapsing them into the type-level cap is a product
+decision. Nobody uses them today, so the decision is cheap now and expensive later.
+
+**Step 3 is `fa3f4ccb`**, currently blocked with `blockedById` pointing at `9816a5ad`. It removes the
+Company Entitlements band surface and zeroes `leave_policy`. Shipping it before step 2 **stops accrual for
+all 22 employees**, because `leave_policy` is still the only home for earning method, carry-forward,
+rounding and `maxBalanceDays` — 57 of 67 policy rows are `earned_monthly`.
 
 Written 2026-07-29 at the end of a long session, for whoever picks this up next. Everything below the
 `---` after this section is the per-round history; this part is the standing contract and the live
