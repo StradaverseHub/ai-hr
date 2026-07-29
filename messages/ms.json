@@ -4336,7 +4336,6 @@
       "serviceSelectCompanyEmpty": "Pilih syarikat untuk memuatkan skim faedahnya dan menetapkan kelayakan mengikut tempoh perkhidmatan.",
       "serviceNoSchemes": "Tiada skim faedah aktif untuk syarikat ini. Cipta satu di Skim Faedah.",
       "serviceSchemeUnconfigured": "Belum ditetapkan untuk jenis cuti ini — masukkan hari untuk menambahnya.",
-      "serviceGradeDisagreement": "Kelayakan peringkat gred bagi gred ini kini memberi {days}. Angka skim yang dipaparkan di sini ialah apa yang diterima pekerja.",
       "serviceTableNote": "Ini angka yang sama seperti Kelayakan Cuti skim — menyimpan di sini mengemas kini kedua-duanya. Pekerja yang grednya tiada dalam mana-mana skim terus menggunakan kelayakan syarikat di bawah.",
       "schemeEntitlementsTitle": "Kelayakan skim faedah"
     },

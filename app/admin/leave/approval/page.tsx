@@ -5,6 +5,7 @@ import { listBusinessUnits, listPositions } from '@/core/admin';
 import { getLeaveApprovalPolicy, getLeaveEscalationPolicy, isCompanyDefaultApprovalRule, listLeaveApprovalRules } from '@/core/leave-approval-policy';
 import { listApprovalTemplates, listTemplateAssignments } from '@/core/leave-approval-template';
 import { listBenefitSchemes, listGradeGroups } from '@/core/benefit-scheme';
+import { bySchemeDisplayOrder, normalizeSchemeText } from '@/lib/benefit-scheme-label';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveApprovalEditor } from '../../leave-approval/editor';
@@ -278,8 +279,14 @@ export default async function LeaveApprovalTabPage({
               grades={gradesAll.map((x) => ({ id: x.id, label: `${x.code} — ${x.name}` }))}
               /* 22de47c4 — ACTIVE schemes of the companies in view: an archived scheme matches nobody
                  (resolveEffectiveSchemeId ignores it), so assigning a template to one would look like a
-                 routing change that never fires. The label carries the grade group + employment type the
-                 assignment actually writes, beside the scheme's own name. */
+                 routing change that never fires.
+                 r76 22de47c4 — the picker now shows `name` ONLY: one line per scheme, the tenant's own
+                 words (lib/benefit-scheme-label — whitespace tidied, never re-cased, never rewritten in
+                 the database). `label`, which also states the grade group + employment type an assignment
+                 writes, is UNCHANGED — it is what the saved-assignments table below names a scheme with,
+                 and that surface was not in the item. Ordered by the shared display order so a list of
+                 bare names stays scannable: removing the supporting text is what makes a stable order
+                 necessary. */
               schemes={schemesAll
                 .filter((sc) => sc.status === 'active' && companyIds.includes(sc.companyId))
                 .map((sc) => ({
@@ -287,8 +294,10 @@ export default async function LeaveApprovalTabPage({
                   companyId: sc.companyId,
                   gradeGroupId: sc.gradeGroupId,
                   employmentType: sc.employmentType,
+                  name: normalizeSchemeText(sc.name),
                   label: `${sc.name} — ${sc.gradeGroupName ?? t('anyScope')} · ${t(`employmentType_${sc.employmentType}` as 'employmentType_full_time')}`,
-                }))}
+                }))
+                .sort(bySchemeDisplayOrder((sc) => sc.name))}
               companyMultiApproval={companyMultiApproval}
               actions={{
                 assign: assignApprovalTemplateAction,
