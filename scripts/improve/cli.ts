@@ -5,6 +5,11 @@
  *   pnpm improve:pull              → JSON array of feedback awaiting a plan (open/contested)
  *   pnpm improve:pull-approved     → JSON array of approved feedback (ready to build + release)
  *   pnpm improve:pull-blocked      → JSON array of approved-but-parked feedback (waiting on an answer)
+ *
+ * Every pulled item carries `block_trail` (0323): each time it was parked on a question, and what the
+ * reporter answered. READ IT BEFORE BUILDING — an item that was blocked and released carries its answer
+ * ONLY there. `blocked_reason` is cleared on unblock, so by the time the item reaches pull-approved the
+ * question and its answer have left feedback_request entirely.
  *   echo '{"id","tenantId","reporterEmploymentId","plan","model"}' | pnpm improve:push-plan
  *   echo '{"id","tenantId","reporterEmploymentId","buildRef"}'     | pnpm improve:mark-deployed
  *

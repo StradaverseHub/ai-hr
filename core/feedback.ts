@@ -13,6 +13,7 @@ import { resolveActiveAiConfig } from './ai-config';
 import {
   employment,
   feedbackAttachment,
+  feedbackBlock,
   feedbackPlanRevision,
   feedbackRequest,
   person,
@@ -446,6 +447,18 @@ export async function blockFeedback(
       .update(feedbackRequest)
       .set({ status: 'blocked', blockedById: p.blockedById ?? null, blockedReason: reason, updatedAt: sql`now()` })
       .where(eq(feedbackRequest.id, fb.id));
+    // Open the episode in the SAME transaction as the park (0323). The question has to be copied here
+    // because `blocked_reason` is cleared on the way out — an answer recorded later would otherwise have
+    // nothing to attach to. onConflictDoNothing covers the partial unique index: one open episode per item.
+    await tx
+      .insert(feedbackBlock)
+      .values({
+        tenantId: ctx.tenantId,
+        feedbackRequestId: fb.id,
+        question: reason,
+        blockedById: p.blockedById ?? null,
+      })
+      .onConflictDoNothing();
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'feedback',
@@ -458,6 +471,33 @@ export async function blockFeedback(
   });
 }
 
+/**
+ * End the open block episode (0323). Returns the ids resolved — EMPTY means there was nothing open to
+ * close, which is a real state (an item parked before this table existed, or by hand-written SQL) and the
+ * callers each decide what it means for them.
+ *
+ * Guarded on `resolved_at IS NULL`, so replaying a resolve cannot overwrite an answer already recorded.
+ * That guard is belt-and-braces over the UPDATE policy and the trigger, which enforce the same thing at
+ * the database; it is repeated here so the intent is legible where the write is.
+ */
+async function resolveBlockEpisode(
+  tx: Tx,
+  feedbackId: string,
+  p: { answer?: string | null; answeredByUserId?: string | null } = {},
+): Promise<{ id: string }[]> {
+  const answer = p.answer?.trim() || null;
+  return tx
+    .update(feedbackBlock)
+    .set({
+      answer,
+      // Never attribute an answer that was not given: the CHECK refuses a user id without one anyway.
+      answeredByUserId: answer ? (p.answeredByUserId ?? null) : null,
+      resolvedAt: sql`now()`,
+    })
+    .where(and(eq(feedbackBlock.feedbackRequestId, feedbackId), isNull(feedbackBlock.resolvedAt)))
+    .returning({ id: feedbackBlock.id });
+}
+
 /** The blocker was settled — return the item to the build queue (blocked → approved). */
 export async function unblockFeedback(ctx: SessionContext, p: { feedbackId: string; note?: string | null }): Promise<void> {
   await withTenant(ctx, async (tx) => {
@@ -466,9 +506,14 @@ export async function unblockFeedback(ctx: SessionContext, p: { feedbackId: stri
     await tx
       .update(feedbackRequest)
       // blockedReason/blockedById are cleared: they describe a CURRENT wait, and a stale one would keep
-      // rendering "waiting on …" on an item that is queued. The history stays in the event stream.
+      // rendering "waiting on …" on an item that is queued. The question and any answer survive on the
+      // block episode (0323); the transition itself stays in the event stream.
       .set({ status: 'approved', blockedById: null, blockedReason: null, updatedAt: sql`now()` })
       .where(eq(feedbackRequest.id, fb.id));
+    // An operator unblock may carry no note at all — the question stopped mattering, or was settled out of
+    // band. The episode still ENDS (it is no longer a live wait); its answer simply stays NULL rather than
+    // being filled with a placeholder nobody actually said.
+    await resolveBlockEpisode(tx, fb.id, { answer: p.note, answeredByUserId: ctx.userId ?? null });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'feedback',
@@ -477,6 +522,86 @@ export async function unblockFeedback(ctx: SessionContext, p: { feedbackId: stri
       actor: actorOf(ctx),
       subjectEmploymentId: fb.reporterEmploymentId,
       payload: { note: p.note?.trim() || null, wasBlockedBy: fb.blockedById ?? null },
+    });
+  });
+}
+
+/**
+ * THE REPORTER ANSWERS THE QUESTION (blocked → approved, with their words kept).
+ *
+ * The gap this closes: `blocked` means "waiting on an answer only the reporter can give", and until now
+ * the product had nowhere for them to give it. The detail page offered review controls on `planned`, a
+ * refute box on `deployed` and a restore button on `cancelled` — and, on `blocked`, the question and no
+ * reply box. Item 956cec85 sat asking which statutory submission channels and file formats were in use,
+ * with no way for the person who knows to say.
+ *
+ * Same authority as reviewing a plan (reporter OR admin on their behalf): answering is a review act on
+ * work the reporter owns, and HR triage already speaks for them on approve/contest/refute.
+ *
+ * The answer is written to the block episode, NOT to feedback_request: unblocking clears blocked_reason,
+ * so anything kept there would outlive its own question. See db/migrations/0323.
+ */
+export async function answerBlockingQuestion(
+  ctx: SessionContext,
+  p: { feedbackId: string; answer: string },
+): Promise<void> {
+  const answer = p.answer?.trim();
+  if (!answer) throw new FeedbackError('Please write your answer to the question before sending it.');
+  await withTenant(ctx, async (tx) => {
+    const fb = await loadDecidable(tx, p.feedbackId);
+    const { onBehalf } = assertCanReview(ctx, fb);
+    if (fb.status !== 'blocked') {
+      throw new FeedbackError(`Only an item waiting on an answer can be answered (it is ${fb.status}).`);
+    }
+    // An episode is normally already open — blockFeedback and the operator's `improve block` both open one.
+    // This covers the items parked BEFORE 0323 by a path that did not (hand-written SQL), where the only
+    // surviving copy of the question is blocked_reason. It recreates the episode from that, rather than
+    // dropping the answer or inventing a question: if there is nothing to recreate it from, the answer
+    // would be a reply to nothing, and refusing is the honest outcome.
+    if (!fb.blockedReason?.trim()) {
+      const [open] = await tx
+        .select({ id: feedbackBlock.id })
+        .from(feedbackBlock)
+        .where(and(eq(feedbackBlock.feedbackRequestId, fb.id), isNull(feedbackBlock.resolvedAt)))
+        .limit(1);
+      if (!open) throw new FeedbackError('This item records no question to answer — ask an admin to unblock it.');
+    } else {
+      await tx
+        .insert(feedbackBlock)
+        .values({
+          tenantId: ctx.tenantId,
+          feedbackRequestId: fb.id,
+          question: fb.blockedReason.trim(),
+          blockedById: fb.blockedById,
+        })
+        .onConflictDoNothing(); // an episode is already open — that one is the question being answered
+    }
+    const resolved = await resolveBlockEpisode(tx, fb.id, { answer, answeredByUserId: ctx.userId ?? null });
+    // Nothing to close means the answer went nowhere. Failing loudly beats returning the item to the build
+    // queue with the reporter believing they had replied — a silent no-op here is the exact defect class
+    // this service exists to fix.
+    if (resolved.length === 0) throw new FeedbackError('Your answer could not be recorded — nothing was changed.');
+    await tx
+      .update(feedbackRequest)
+      .set({ status: 'approved', blockedById: null, blockedReason: null, updatedAt: sql`now()` })
+      .where(eq(feedbackRequest.id, fb.id));
+    // Deliberately the SAME event type as an operator unblock rather than a new one. The transition is
+    // identical (blocked → approved) and everything that already watches for `feedback.unblocked` keeps
+    // working; the payload is what says a human answered, and carries their words so the audit stream
+    // holds them too — the row is where readers get them, the event is the record that it happened.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'feedback',
+      aggregateId: fb.id,
+      eventType: 'feedback.unblocked',
+      actor: actorOf(ctx),
+      subjectEmploymentId: fb.reporterEmploymentId,
+      payload: {
+        note: answer,
+        answeredBy: onBehalf ? 'admin' : 'reporter',
+        wasBlockedBy: fb.blockedById ?? null,
+        via: 'in-app',
+      },
     });
   });
 }
@@ -676,6 +801,9 @@ export function listFeedback(
 /** One entry in the negotiation: a plan version and how the reporter answered it (0318). */
 export type FeedbackPlanRevisionRow = typeof feedbackPlanRevision.$inferSelect;
 
+/** One block episode: a question that parked the item, and the reporter's answer to it (0323). */
+export type FeedbackBlockRow = typeof feedbackBlock.$inferSelect;
+
 export type FeedbackDetail = typeof feedbackRequest.$inferSelect & {
   /** 0321 — stage/planRevision say WHICH round each image belongs to, so the page can group them. */
   attachments: { id: string; fileName: string; sizeBytes: number; stage: string; planRevision: number | null }[];
@@ -689,6 +817,14 @@ export type FeedbackDetail = typeof feedbackRequest.$inferSelect & {
    * against `planRevision` and says so, rather than presenting a partial history as a complete one.
    */
   planHistory: FeedbackPlanRevisionRow[];
+  /**
+   * Every time this item was parked on a question, oldest first, with the answer that released it (0323).
+   *
+   * This is the ONLY place the pair survives once the item is unblocked: `blockedReason` and `blockedById`
+   * are cleared on the way back to the queue. An episode with a NULL `resolvedAt` is the live wait — the
+   * question the reporter is being asked right now.
+   */
+  blockHistory: FeedbackBlockRow[];
 };
 
 export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDetail | null> {
@@ -710,6 +846,11 @@ export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDe
       .from(feedbackPlanRevision)
       .where(eq(feedbackPlanRevision.feedbackRequestId, id))
       .orderBy(asc(feedbackPlanRevision.revision));
+    const blockHistory = await tx
+      .select()
+      .from(feedbackBlock)
+      .where(eq(feedbackBlock.feedbackRequestId, id))
+      .orderBy(asc(feedbackBlock.askedAt));
     let blockedBy: FeedbackDetail['blockedBy'] = null;
     if (row.blockedById) {
       const [b] = await tx
@@ -719,7 +860,7 @@ export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDe
         .limit(1);
       blockedBy = b ?? null; // tenant-scoped by RLS; a cross-tenant id simply resolves to nothing
     }
-    return { ...row, attachments: atts, blockedBy, planHistory };
+    return { ...row, attachments: atts, blockedBy, planHistory, blockHistory };
   });
 }
 
@@ -733,6 +874,8 @@ type DecidableFeedback = {
   planRevision: number;
   statusBeforeCancel: FeedbackStatus | null;
   blockedById: string | null;
+  /** The open question while `blocked` — needed to recreate an episode for an item parked before 0323. */
+  blockedReason: string | null;
 };
 
 async function loadDecidable(tx: Tx, feedbackId: string): Promise<DecidableFeedback> {
@@ -745,6 +888,7 @@ async function loadDecidable(tx: Tx, feedbackId: string): Promise<DecidableFeedb
       planRevision: feedbackRequest.planRevision,
       statusBeforeCancel: feedbackRequest.statusBeforeCancel,
       blockedById: feedbackRequest.blockedById,
+      blockedReason: feedbackRequest.blockedReason,
     })
     .from(feedbackRequest)
     .where(eq(feedbackRequest.id, feedbackId))
