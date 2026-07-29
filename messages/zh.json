@@ -449,6 +449,7 @@
       "subjectToHrdfHint": "勾选后，该员工的合格收入将在薪资处理时计入 HRD Corp（HRDF）征费计算；未勾选则完全排除该员工。",
       "subjectToHrdfFollowingDefault": "目前跟随公司 HRDF 注册默认设置。保存后将为该员工设定明确的选择。",
       "subjectToHrdfCompanyNotRegistered": "已设为“是”，但该员工所属公司未设置 HRDF 缴纳率（组织 ▸ 法定），因此薪资不会为其征收该征费。此设置已保存，公司完成注册后即生效。",
+      "subjectToHrdfCompanyUnregisteredNote": "本公司未设定 HRDF 缴纳率（组织 ▸ 法定），因此在此选择「是」会被保存，但在公司注册前不会征收任何征费。",
       "othersStatutorySave": "保存其他法定项目",
       "assignmentHistory": "任职历史",
       "periodValidTime": "期间（有效时间）",
@@ -2839,7 +2840,8 @@
         "staleBasicComponent": "BASIC 薪资项目已过时——以人事薪资记录为准",
         "missingStatutory": "无法定资料（EPF/SOCSO/PCB）",
         "missingBank": "银行资料不完整",
-        "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理"
+        "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理",
+        "hrdfSubjectUnregistered": "已设为需缴 HRDF，但公司未注册——不会征收任何征费"
       },
       "preChecksOpenProfile": "打开档案",
       "preChecksBlockedError": "无法处理薪资：{n} 名员工没有当前薪资记录。请先解决处理前检查问题。",
@@ -3383,7 +3385,8 @@
         "staleBasicComponent": "BASIC 薪资项目已过时——以人事薪资记录为准",
         "missingStatutory": "无法定档案（EPF/SOCSO/PCB）",
         "missingBank": "银行资料不完整",
-        "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理"
+        "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理",
+        "hrdfSubjectUnregistered": "已设为需缴 HRDF，但公司未注册——不会征收任何征费"
       }
     },
     "guide": {

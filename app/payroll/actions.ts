@@ -62,11 +62,16 @@ export async function generateAction(formData: FormData) {
     // A stale BASIC pay item (amount differing from Personnel) joins the confirm-to-proceed warnings.
     const blockers = checks.missingCompensation.length + (checks.zeroBasic?.length ?? 0);
     // 297ae65a — a non-MYR/mixed-currency salary joins the confirm-to-proceed warnings (never blocks).
+    // r79 — so does an explicit "Subject to HRDF = Yes" at a company with no HRD Corp registration band.
+    // WARN, not REFUSE: the flag is legitimate forward setup, the levy is correctly zero either way, and
+    // people still need paying — but generation now requires the operator's explicit acknowledgement,
+    // so the contradiction can no longer ride through eight runs unseen.
     const warnings =
       checks.missingStatutory.length +
       checks.missingBank.length +
       (checks.staleBasicComponent?.length ?? 0) +
-      (checks.currencyMismatch?.length ?? 0);
+      (checks.currencyMismatch?.length ?? 0) +
+      (checks.hrdfSubjectUnregistered?.length ?? 0);
     if (blockers > 0) {
       errMsg = t('preChecksBlockedError', { n: blockers });
     } else if (warnings > 0 && !acknowledged) {

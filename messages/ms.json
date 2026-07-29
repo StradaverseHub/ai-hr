@@ -449,6 +449,7 @@
       "subjectToHrdfHint": "Apabila ditanda, pendapatan layak pekerja ini dimasukkan dalam pengiraan levi HRD Corp (HRDF) semasa penggajian; jika tidak ditanda, pekerja dikecualikan sepenuhnya.",
       "subjectToHrdfFollowingDefault": "Mengikut tetapan lalai pendaftaran HRDF syarikat. Simpan untuk menetapkan pilihan khusus bagi pekerja ini.",
       "subjectToHrdfCompanyNotRegistered": "Ditetapkan kepada Ya, tetapi syarikat pekerja ini tiada Kadar Caruman HRDF (Organisasi ▸ Berkanun), jadi penggajian tidak mengenakan sebarang levi untuknya. Pilihan ini disimpan dan berkuat kuasa sebaik sahaja syarikat didaftarkan.",
+      "subjectToHrdfCompanyUnregisteredNote": "Syarikat ini tiada Kadar Caruman HRDF (Organisasi ▸ Berkanun), jadi memilih Ya di sini akan disimpan tetapi tiada levi dikenakan sehingga syarikat didaftarkan.",
       "othersStatutorySave": "Simpan statutori lain",
       "assignmentHistory": "Sejarah penugasan",
       "periodValidTime": "Tempoh (masa sah)",
@@ -2839,7 +2840,8 @@
         "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil statutori (KWSP/PERKESO/PCB)",
         "missingBank": "Butiran bank tidak lengkap",
-        "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan"
+        "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan",
+        "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan"
       },
       "preChecksOpenProfile": "Buka profil",
       "preChecksBlockedError": "Payroll tidak boleh diproses: {n} pekerja tiada rekod gaji semasa. Selesaikan semakan pra-pemprosesan dahulu.",
@@ -3383,7 +3385,8 @@
         "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil berkanun (EPF/SOCSO/PCB)",
         "missingBank": "Butiran bank tidak lengkap",
-        "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan"
+        "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan",
+        "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan"
       }
     },
     "guide": {

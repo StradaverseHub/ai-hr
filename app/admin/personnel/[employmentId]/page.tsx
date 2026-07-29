@@ -2462,6 +2462,14 @@ export default async function EmployeePage({
             {t('subjectToHrdfCompanyNotRegistered')}
           </p>
         )}
+        {/* r79 — the amber warning above only fires on the STORED Yes, i.e. after the operator has already
+            chosen it. Where the company is unregistered, say so BEFORE the choice is made too, so picking
+            Yes is an informed decision rather than one corrected afterwards. Deliberately muted, not amber:
+            nothing is wrong yet, and six of eight live companies are unregistered — an alarm on every one of
+            their employees would train the operator to ignore the amber one that does mean something. */}
+        {statutory?.subjectToHrdf !== true && companyHrdfUnregistered && (
+          <p className="text-xs text-muted-foreground">{t('subjectToHrdfCompanyUnregisteredNote')}</p>
+        )}
         <div className="flex items-end justify-end">
           <button className={btnPrimary}>{t('othersStatutorySave')}</button>
         </div>

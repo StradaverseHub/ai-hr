@@ -3136,6 +3136,13 @@ export async function generatePayslips(
       const hrdfSubject = pack.payroll.hrdfSubject(e.subjectToHrdf ?? null, hrdfStatus);
       // #6: HRDF rates come from the resolved ruleset (rules.hrdf) when overridden, else the built-in MY_HRDF.
       const hrdf = hrdfSubject ? pack.payroll.hrdfLevy(hrdfBase, hrdfStatus, rules.hrdf) : 0;
+      // r79 — the levy above is UNCHANGED (an unregistered employer owes nothing; r75 settled that). What
+      // changes is what the SLIP claims: stamping `hrdfSubject: true` next to a levy that can never be
+      // anything but zero makes the payslip contradict itself. Suppression is keyed on the REGISTRATION
+      // band, not on the computed amount — a subject employee whose base happened to be zero (a fully
+      // unpaid month) is genuinely subject and still stamps true.
+      const hrdfChargeable = hrdfStatus !== 'not_registered';
+      const suppressHrdfSubject = hrdfSubject && !hrdfChargeable;
       // 1.2.3 CP38 — the month's LHDN instalment. Charged on the REGULAR run only: like basic/OT/unpaid/hrdf,
       // an additional (off-cycle/bonus/adjustment) run carries cp38 = 0 (a re-issue re-runs the regular batch,
       // not an adjustment run). So a regular + bonus run in one month charges exactly one instalment.
@@ -3452,7 +3459,16 @@ export async function generatePayslips(
           // Feedback 0df0c635 — snapshot the EFFECTIVE per-employee HRDF subjectivity, ONLY when HR set an
           // explicit override (a null/untouched row stays absent ⇒ byte-identical to pre-flag slips). The
           // audited-inputs convention: a closed payslip records the setting as it was when it was computed.
-          ...(e.subjectToHrdf != null ? { hrdfSubject } : {}),
+          // r79 — "effective" now means effective, not merely stored: when the employer is not registered no
+          // levy can be charged, so the slip records hrdfSubject: false. HR's intent is NOT lost —
+          // hrdfSubjectSet carries what was ticked and hrdfSubjectSuppressed carries why it could not take
+          // effect, so the audit trail is richer than before while the slip no longer says "subject" beside
+          // a structural zero. Registered companies (and every explicit No) are byte-identical to today.
+          ...(e.subjectToHrdf != null
+            ? suppressHrdfSubject
+              ? { hrdfSubject: false, hrdfSubjectSet: true, hrdfSubjectSuppressed: 'company_not_registered' }
+              : { hrdfSubject }
+            : {}),
           // Item 5a461b99 — snapshot the "Employer bears" decision + the amounts the employer absorbed for
           // provenance, ONLY when at least one flag is set (absent ⇒ byte-identical to today). The reported
           // socso/eis/skbbk figures above are unchanged; this records that their EMPLOYEE share was not deducted.
@@ -4449,6 +4465,14 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
 //     than MYR while this run computes under the MY pack (Malaysian statutory maths, MYR figures) —
 //     a mixed-currency batch or a wholly non-MYR one. Currency CONVERSION is explicitly a future
 //     enhancement, so the run warns instead of calculating something misleading; no math change.
+//   • hrdfSubjectUnregistered — WARNING (r79). The employee carries an EXPLICIT "Subject to HRDF = Yes"
+//     while their company has no HRD Corp registration band, so hrdfLevy rates them to 0 (correctly —
+//     an unregistered employer owes nothing). Before this check the contradiction was visible only on
+//     the employee's own Bank & Statutory screen: the run itself said nothing, and one company processed
+//     eight payrolls in that state. WARNS rather than blocks — the stored flag is legitimate forward
+//     setup (see 57840a6e/efece4ce), the employees still need paying, and the operator often cannot
+//     complete the company's HRD Corp registration in the moment. It joins the confirm-to-proceed
+//     warnings, so generation requires an explicit acknowledgement rather than passing silently.
 
 export type PreProcessCheckRow = { employmentId: string; name: string; employeeCode: string | null };
 
@@ -4480,6 +4504,12 @@ export type PreProcessAdvisory = {
   // confirm a mixed-currency / non-MYR run instead of it calculating something misleading silently.
   // OPTIONAL so pre-existing advisory literals stay valid; absent ⇒ no such employees.
   currencyMismatch?: PreProcessCheckRow[];
+  // WARNING (r79). An explicit per-employee "Subject to HRDF = Yes" at a company with no HRD Corp
+  // registration band: the tick is honoured by hrdfSubject() but hrdfLevy() rates `not_registered` to 0,
+  // so the run records the employee as subject and charges nothing. Never blocks (see the class notes
+  // above) — it is a confirm-to-proceed warning so the contradiction is stated at the moment it has an
+  // effect. OPTIONAL so pre-existing advisory literals stay valid; absent ⇒ no such employees.
+  hrdfSubjectUnregistered?: PreProcessCheckRow[];
 };
 
 /** Shared tx-level core: the same scoped, period-active population as generatePayslips' employee
@@ -4519,6 +4549,9 @@ async function preProcessChecksTx(
       statPersonId: employeeStatutoryMy.personId,
       bankName: employeeStatutoryMy.bankName,
       bankAccountNo: employeeStatutoryMy.bankAccountNo,
+      // r79 — the tri-state per-employee HRDF flag. Only an EXPLICIT true can contradict an unregistered
+      // employer; null (follow the company default) resolves to "not subject" and is no contradiction at all.
+      subjectToHrdf: employeeStatutoryMy.subjectToHrdf,
     })
     .from(employment)
     .innerJoin(person, eq(person.id, employment.personId))
@@ -4586,7 +4619,22 @@ async function preProcessChecksTx(
       basicAmountsByEmp.set(bRow.employmentId, list);
     }
   }
-  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [] };
+  // r79 — the employer's HRD Corp registration band, read ONLY when at least one in-scope employee carries
+  // an explicit "Subject to HRDF = Yes" (so the overwhelmingly common case issues no extra query, and a
+  // company that has genuinely registered simply produces no rows below). Mirrors generatePayslips' own
+  // default exactly (`companyStatutoryMy` absent ⇒ not_registered), so what this check reports is what the
+  // run will actually do — six of eight live companies have no row at all.
+  const anyExplicitHrdfYes = rows.some((r) => r.subjectToHrdf === true);
+  let hrdfUnregistered = false;
+  if (anyExplicitHrdfYes) {
+    const [coStat] = await tx
+      .select({ hrdfStatus: companyStatutoryMy.hrdfStatus })
+      .from(companyStatutoryMy)
+      .where(eq(companyStatutoryMy.companyId, batch.companyId))
+      .limit(1);
+    hrdfUnregistered = (coStat?.hrdfStatus ?? 'not_registered') === 'not_registered';
+  }
+  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [], hrdfSubjectUnregistered: [] };
   for (const r of rows) {
     const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
     // Feedback 64fb5e48 — the OPEN row must exist (the generation employee query inner-joins it, so a
@@ -4618,6 +4666,10 @@ async function preProcessChecksTx(
     // conversion is an explicit future enhancement — so the operator confirms rather than the engine
     // silently computing Malaysian statutory maths over a foreign-currency figure.
     if (r.compId && (r.compCurrency ?? 'MYR') !== 'MYR') out.currencyMismatch!.push(row);
+    // r79 — WARNING (never blocks): an explicit "Subject to HRDF = Yes" that the employer's registration
+    // makes structurally uncollectable. Independent of every check above (a row can carry both) and NOT
+    // gated on a compensation row: the contradiction is in the statutory setup, not in the salary record.
+    if (hrdfUnregistered && r.subjectToHrdf === true) out.hrdfSubjectUnregistered!.push(row);
     if (!r.statPersonId) out.missingStatutory.push(row);
     // Bank readiness is only meaningful once a statutory profile exists (a missing profile already
     // covers the row above — listing it twice would be noise, not signal).
@@ -4662,6 +4714,12 @@ export function preProcessAdvisoryForSelection(
       staleBasicComponent: [],
       missingStatutory: [],
       missingBank: [],
+      // r79 — the wizard renders exactly the same groups as the batch card, so every optional list the
+      // per-company core produces must be initialised AND merged here. `currencyMismatch` was declared on
+      // the type and rendered by the wizard but never merged, so the non-MYR warning could not reach the
+      // Validation step at all; merging it restores the parity this function's contract claims.
+      currencyMismatch: [],
+      hrdfSubjectUnregistered: [],
     };
     for (const companyId of input.companyIds) {
       const a = await preProcessChecksTx(tx, { companyId, payPeriod: input.payPeriod, scope }, isModuleEnabled(ctx, 'typed_pay_components'));
@@ -4671,6 +4729,8 @@ export function preProcessAdvisoryForSelection(
       merged.staleBasicComponent!.push(...(a.staleBasicComponent ?? []));
       merged.missingStatutory.push(...a.missingStatutory);
       merged.missingBank.push(...a.missingBank);
+      merged.currencyMismatch!.push(...(a.currencyMismatch ?? []));
+      merged.hrdfSubjectUnregistered!.push(...(a.hrdfSubjectUnregistered ?? []));
     }
     return merged;
   });
