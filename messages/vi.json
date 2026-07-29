@@ -2087,6 +2087,7 @@
     "employee": "Nhân viên",
     "type": "Loại",
     "dates": "Ngày",
+    "attachment": "Tệp đính kèm",
     "days": "Số ngày",
     "action": "Hành động",
     "date": "Ngày",
@@ -2114,7 +2115,7 @@
     "noManagerReviews": "Không có đánh giá nào chờ bạn đánh giá.",
     "noHrReviews": "Không có đánh giá nào chờ quyết định.",
     "rejectReasonPlaceholder": "Lý do từ chối (bắt buộc)",
-    "viewDateBreakdown": "Quyết định từng ngày",
+    "viewDateBreakdown": "Xem lại ngày",
     "dateBreakdown": "Các ngày đã yêu cầu",
     "dateStatus": {
       "pending": "Đang chờ",

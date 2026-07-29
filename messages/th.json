@@ -2087,6 +2087,7 @@
     "employee": "พนักงาน",
     "type": "ประเภท",
     "dates": "วันที่",
+    "attachment": "เอกสารแนบ",
     "days": "วัน",
     "action": "การดำเนินการ",
     "date": "วันที่",
@@ -2114,7 +2115,7 @@
     "noManagerReviews": "ไม่มีการประเมินที่รอการประเมินของคุณ",
     "noHrReviews": "ไม่มีการประเมินที่รอการตัดสินใจ",
     "rejectReasonPlaceholder": "เหตุผลในการปฏิเสธ (จำเป็น)",
-    "viewDateBreakdown": "ตัดสินแต่ละวันที่",
+    "viewDateBreakdown": "ตรวจสอบวันที่",
     "dateBreakdown": "วันที่ที่ขอ",
     "dateStatus": {
       "pending": "รอดำเนินการ",

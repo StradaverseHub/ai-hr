@@ -2087,6 +2087,7 @@
     "employee": "员工",
     "type": "类型",
     "dates": "日期",
+    "attachment": "附件",
     "days": "天数",
     "action": "操作",
     "date": "日期",
@@ -2114,7 +2115,7 @@
     "noManagerReviews": "没有等待您评估的项目。",
     "noHrReviews": "没有等待决定的评估。",
     "rejectReasonPlaceholder": "拒绝原因（必填）",
-    "viewDateBreakdown": "逐日审批",
+    "viewDateBreakdown": "查看日期",
     "dateBreakdown": "申请的日期",
     "dateStatus": {
       "pending": "待处理",

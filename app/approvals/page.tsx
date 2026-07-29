@@ -16,7 +16,6 @@ import {
   approveClaimAction,
   approveCorrectionAction,
   approveTravelAction,
-  approveLeaveAction,
   approveProfileChangeAction,
   decideLeaveCancellationAction,
   decideResignationAction,
@@ -24,6 +23,16 @@ import {
 } from './actions';
 import { ReviewDecideForm } from './review-decide-form';
 import { LeaveDateBreakdown } from './leave-date-breakdown';
+import { LeaveDecideControls } from './leave-decide-controls';
+// 33bf1a2d: the leave-request table cells shared with My Leave → Requests (app/leave/page.tsx), so the two
+// tables can no longer drift apart the way they had before this round.
+import {
+  LeaveAttachmentCell,
+  LeaveDaysCell,
+  LeaveEmployeeCell,
+  LeaveTypeCell,
+} from '@/components/leave/leave-request-cells';
+import { durationLabel } from '@/lib/leave-duration';
 import { ApprovalsSortControl } from './sort-control';
 import { AttentionOnArrival } from './attention-on-arrival';
 import { CategoryPanel } from './category-panel';
@@ -87,50 +96,6 @@ function DecideButtons({
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="decision" value="rejected" />
         <NavFields nav={nav} />
-        <Button type="submit" size="sm" variant="outline">
-          {labels.reject}
-        </Button>
-      </form>
-    </div>
-  );
-}
-
-/** Leave-specific whole-request decide controls. Reject requires a reason — the reject form carries a
- *  `required` textarea (client-side guard), and decideLeave enforces MissingRejectReasonError server-side.
- *  Approve is unchanged. Used for ORDINARY leave rows (no per-date breakdown); per-date-approval requests use
- *  LeaveDateBreakdown instead (ADR-0068 / R18 7e532d23 — one inbox row, per-date decisions in a modal). */
-function LeaveDecideButtons({
-  action,
-  id,
-  labels,
-  nav,
-}: {
-  action: (fd: FormData) => void | Promise<void>;
-  id: string;
-  labels: { approve: string; reject: string; rejectReason: string };
-  nav: NavParams;
-}) {
-  return (
-    <div className="flex flex-col items-end gap-2">
-      <form action={action}>
-        <input type="hidden" name="id" value={id} />
-        <input type="hidden" name="decision" value="approved" />
-        <NavFields nav={nav} />
-        <Button type="submit" size="sm">
-          {labels.approve}
-        </Button>
-      </form>
-      <form action={action} className="flex flex-col items-end gap-1">
-        <input type="hidden" name="id" value={id} />
-        <input type="hidden" name="decision" value="rejected" />
-        <NavFields nav={nav} />
-        <textarea
-          name="rejectReason"
-          required
-          rows={2}
-          placeholder={labels.rejectReason}
-          className={`${inputCls} w-48 resize-none text-xs`}
-        />
         <Button type="submit" size="sm" variant="outline">
           {labels.reject}
         </Button>
@@ -425,6 +390,9 @@ export default async function ApprovalsPage({
                 <th className="px-4 py-2 font-medium">{t('type')}</th>
                 <th className="px-4 py-2 font-medium">{t('dates')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('days')}</th>
+                {/* 33bf1a2d: Attachment — whether the employee filed a supporting document, so the approver
+                    can open it without first drilling into the request. */}
+                <th className="px-4 py-2 font-medium">{t('attachment')}</th>
                 <th className="px-4 py-2 text-right font-medium" data-tour="approvals-decide">
                   {t('action')}
                 </th>
@@ -439,58 +407,50 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={r.employeeCode} />
                   </td>
-                  <td className="px-4 py-2.5 font-medium">
-                    <Link
+                  {/* 33bf1a2d: the SHARED employee cell (avatar + name), same as My Leave → Requests. The
+                      /personnel link is Approval Items' own — an approver checking history — and stays. */}
+                  <td className="px-4 py-2.5">
+                    <LeaveEmployeeCell
+                      name={r.employee}
                       href={`/personnel/${r.employmentId}`}
-                      className="underline-offset-2 hover:text-primary hover:underline"
-                      title={t('viewHistory')}
-                    >
-                      {r.employee}
-                    </Link>
+                      linkTitle={t('viewHistory')}
+                    />
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">
-                    {r.leaveType}
-                    {/* Emergency Leave (0106): EL children are ordinary ANNUAL/UNPAID requests sharing a
-                        parent_group_id — tag both so the approver sees they are halves of one EL. */}
-                    {r.parentGroupId && (
-                      <span className="ml-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        {tLeave('emergency.groupLabel')}
-                      </span>
-                    )}
-                    {/* Phase-B #13 (ADR-0062): the EA s.37 paid-allowance decision for a maternity request.
-                        FALSE ⇒ the allowance was withheld → the 98-day leave is granted UNPAID (with a reason);
-                        TRUE ⇒ paid; NULL on a maternity row ⇒ inputs unconfirmed → defaulted to paid. */}
-                    {r.typeCode === 'MATERNITY' && (
-                      <div className="mt-0.5 text-xs">
-                        {r.allowanceEligible === false ? (
-                          <span className="text-amber-700 dark:text-amber-400">
-                            {tLeave('maternity.allowanceWithheld', {
-                              reason: tLeave(`maternity.reason.${r.maternityReason ?? 'qualifying_service'}`),
-                            })}
-                          </span>
-                        ) : r.allowanceEligible === true ? (
-                          <span className="text-muted-foreground">{tLeave('maternity.allowancePaid')}</span>
-                        ) : (
-                          <span className="text-muted-foreground">{tLeave('maternity.allowanceUnconfirmed')}</span>
-                        )}
-                      </div>
-                    )}
-                    {r.hasDocument && (
-                      <a
-                        href={`/me/leave/attachment/${r.id}?inline=1`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="ml-2 text-xs text-primary underline-offset-2 hover:underline"
-                      >
-                        {t('viewDocument')}
-                      </a>
-                    )}
-                    {r.stepCount > 0 && (
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        {stageLabel(r.currentStepKind)} ·{' '}
-                        {t('stepOfN', { n: (r.currentStepIndex ?? 0) + 1, total: r.stepCount })}
-                      </div>
-                    )}
+                    {/* 33bf1a2d: the SHARED leave-type chip. Emergency Leave (0106) — EL children are
+                        ordinary ANNUAL/UNPAID requests sharing a parent_group_id; the tag rides on the
+                        shared cell so both surfaces show the two halves as one EL. */}
+                    <LeaveTypeCell
+                      typeCode={r.typeCode}
+                      typeName={r.leaveType}
+                      groupLabel={r.parentGroupId ? tLeave('emergency.groupLabel') : null}
+                    >
+                      {/* Phase-B #13 (ADR-0062): the EA s.37 paid-allowance decision for a maternity request.
+                          FALSE ⇒ the allowance was withheld → the 98-day leave is granted UNPAID (with a reason);
+                          TRUE ⇒ paid; NULL on a maternity row ⇒ inputs unconfirmed → defaulted to paid.
+                          Approver-only context, so it rides as a child rather than forking the shared cell. */}
+                      {r.typeCode === 'MATERNITY' && (
+                        <div className="mt-0.5 text-xs">
+                          {r.allowanceEligible === false ? (
+                            <span className="text-amber-700 dark:text-amber-400">
+                              {tLeave('maternity.allowanceWithheld', {
+                                reason: tLeave(`maternity.reason.${r.maternityReason ?? 'qualifying_service'}`),
+                              })}
+                            </span>
+                          ) : r.allowanceEligible === true ? (
+                            <span className="text-muted-foreground">{tLeave('maternity.allowancePaid')}</span>
+                          ) : (
+                            <span className="text-muted-foreground">{tLeave('maternity.allowanceUnconfirmed')}</span>
+                          )}
+                        </div>
+                      )}
+                      {r.stepCount > 0 && (
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          {stageLabel(r.currentStepKind)} ·{' '}
+                          {t('stepOfN', { n: (r.currentStepIndex ?? 0) + 1, total: r.stepCount })}
+                        </div>
+                      )}
+                    </LeaveTypeCell>
                   </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {r.startDate} → {r.endDate}
@@ -503,20 +463,30 @@ export default async function ApprovalsPage({
                       </div>
                     )}
                   </td>
+                  {/* 33bf1a2d: the SHARED days cell — day count + the ADR-0048 duration label (which the
+                      approver did NOT get before: a half-day request read as a bare "0.5") + the 0129
+                      hourly window. The applicant's remaining balance (R23 2F-3) is approver-only context,
+                      so it rides as a child. */}
                   <td className="px-4 py-2.5 text-right tabular-nums">
-                    {Number(r.days)}
-                    {/* Hourly-leave time window (0129): show the actual window (09:00–11:00) on hourly rows so
-                        the approver sees WHICH hours, not just a bare days figure. .slice(0, 5) drops the
-                        Postgres ':00' seconds. Gated on durationType==='hourly' && both times so a stray time
-                        on a non-hourly row never renders. */}
-                    {r.durationType === 'hourly' && r.fromTime && r.toTime && (
+                    <LeaveDaysCell
+                      days={r.days}
+                      durationSuffix={durationLabel(tLeave, r.durationType, r.hours)}
+                      durationType={r.durationType}
+                      fromTime={r.fromTime}
+                      toTime={r.toTime}
+                    >
                       <div className="text-xs font-normal text-muted-foreground">
-                        {r.fromTime.slice(0, 5)}–{r.toTime.slice(0, 5)}
+                        {t('applicantBalance', { n: Number(r.applicantBalance) })}
                       </div>
-                    )}
-                    <div className="text-xs font-normal text-muted-foreground">
-                      {t('applicantBalance', { n: Number(r.applicantBalance) })}
-                    </div>
+                    </LeaveDaysCell>
+                  </td>
+                  {/* 33bf1a2d: Attachment. `hasDocument` is already part of the shared leave-request
+                      projection in core/read.ts, so this column adds NO query and no per-row fetch. */}
+                  <td className="px-4 py-2.5">
+                    <LeaveAttachmentCell
+                      href={r.hasDocument ? `/me/leave/attachment/${r.id}?inline=1` : null}
+                      label={t('viewDocument')}
+                    />
                   </td>
                   <td className="px-4 py-2.5">
                     {mine(r.personId) ? (
@@ -527,8 +497,9 @@ export default async function ApprovalsPage({
                       <span className="flex justify-end text-xs text-muted-foreground">{stageLabel(r.currentStepKind)}</span>
                     ) : (breakdowns.get(r.id)?.length ?? 0) > 0 ? (
                       // Partial Leave Approval — single-request model (ADR-0068): this request has per-date
-                      // sub-rows → an explicit "Decide each date" action opens the per-date decision MODAL
-                      // (R18 7e532d23 — reporter's expected UX; one inbox row, one batch submit).
+                      // sub-rows → an explicit "Review dates" action (d6429eb4 renamed the LABEL only; the
+                      // key `viewDateBreakdown` and the flow are untouched) opens the per-date decision
+                      // MODAL (R18 7e532d23 — reporter's expected UX; one inbox row, one batch submit).
                       <div className="flex justify-end">
                         <LeaveDateBreakdown
                           requestId={r.id}
@@ -541,7 +512,7 @@ export default async function ApprovalsPage({
                       </div>
                     ) : (
                       // Ordinary request (no per-date rows): one approve/reject control (reject requires a reason).
-                      <LeaveDecideButtons action={approveLeaveAction} id={r.id} labels={leaveDecideLabels} nav={nav} />
+                      <LeaveDecideControls id={r.id} labels={leaveDecideLabels} nav={nav} />
                     )}
                   </td>
                 </tr>
