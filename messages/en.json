@@ -823,7 +823,10 @@
         "businessUnit": "Business Unit",
         "assignmentViewOnlyNote": "This information is view-only. Organisation assignment changes are recorded as movement events, so each one keeps its effective date, its reason and its place in the employment history.",
         "assignmentViewOnlyLink": "Record a movement event",
-        "joinDatesViewOnlyNote": "Both join dates are view-only. They are set together when the employee is created; afterwards a Join Date Change records a move to another company in the group, and a Group Join Date Correction records an authorised fix to the master service date."
+        "joinDatesViewOnlyNote": "Both join dates are view-only. They are set together when the employee is created; afterwards a Join Date Change records a move to another company in the group, and a Group Join Date Correction records an authorised fix to the master service date.",
+        "pendingMovementTitle": "Scheduled changes not yet in effect",
+        "pendingMovementItem": "{kind} — takes effect {date}",
+        "pendingMovementNote": "The values below are today's. They will not change until each date arrives."
       },
       "documents": {
         "title": "Documents",
@@ -1155,7 +1158,13 @@
         "deleteConfirmDescription": "The employee's details go back to the state immediately before this event. The event stays in Employment History, marked as reversed, so the record remains auditable.",
         "deleteConfirmPayroll": "A processed payroll run already covered this period. The rollback will NOT reprocess any payslip — reprocess it separately if that is what you need. The event stays in Employment History, marked as reversed.",
         "correctionReasonLabel": "Reason for the correction (optional)",
-        "payrollLocked": "Locked by a closed payroll run"
+        "payrollLocked": "Locked by a closed payroll run",
+        "status": {
+          "pending": "Pending",
+          "applied": "Applied",
+          "superseded": "Superseded",
+          "reversed": "Reversed"
+        }
       },
       "salaryCurrency": "Currency",
       "emergency": {
