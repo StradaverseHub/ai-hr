@@ -45,7 +45,6 @@ import {
   setEmploymentInfoAction,
   setLocationAction,
   setEmploymentHolidayCalendarAction,
-  setEmploymentGradeAction,
   setPersonAction,
   setPersonPhotoAction,
   removePersonPhotoAction,
@@ -1880,37 +1879,44 @@ export default async function EmployeePage({
   ) : null;
 
   // Item 52a30630 — Grade RELOCATED here from Profile > Personal Details onto the Leave tab (grade drives
-  // grade-scoped leave entitlement). Its own dedicated form + thin server action (setEmploymentGradeAction)
-  // so a Personal Details save can no longer wipe the seniority grade. Same select/options (grades) and
-  // default (emp.gradeId) as before — pure relocation.
+  // grade-scoped leave entitlement), so the number reads next to the entitlement it decides.
   //
-  // 8ebabbf2 CAVEAT (reported, deliberately NOT changed here): Grade is no longer editable on the Employment
-  // tab — that whole section went view-only this round. THIS card is the last remaining direct writer of
-  // employment.grade_id outside Movement, and it sits on the LEAVE tab, not the Employment tab, so it is
-  // outside this item's scope. It matters because setEmploymentGradeAction emits `employment.grade.changed`,
-  // which IS a MOVEMENT_EVENT_TYPE, and it emits it UNTAGGED — so a grade edit made here projects its own
-  // "Grade Change" row on the Employment History, exactly the untagged-writer class of problem r76 reported.
-  // Routing it through Movement is a separate decision (grade drives grade-scoped leave entitlement, and the
-  // leave screens are owned elsewhere this round).
+  // r78c — the card is now VIEW-ONLY and its server action (setEmploymentGradeAction) is deleted. It was the
+  // last direct writer of employment.grade_id outside Movement, and it wrote `employment.grade.changed` — a
+  // MOVEMENT_EVENT_TYPE — with no movement tag, so a grade edit made here opened its OWN "Grade Change" row
+  // on the Employment History beside the Promotion that had already recorded the same change as a tagged
+  // leg. That is the duplicate row the reporter raised. 8ebabbf2 made the Employment tab view-only for the
+  // same reason and left this card noted as out of scope; this closes it.
+  //
+  // The grade still SHOWS here — it is the input to grade-scoped leave entitlement and hiding it would make
+  // an unexplained entitlement — with a pointer to the screen that changes it. Movement's Promotion /
+  // Demotion / Organisation Assignment Change kinds all carry Job Grade, and createMovementEventAction
+  // recomputes entitlement afterwards exactly as this action did (R45 7527ea5f parity).
   const gradeCard = admin ? (
     <Card id="section-grade">
       <SectionHeader title={t('gradeCardTitle')} />
-      <form action={setEmploymentGradeAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
-        <input type="hidden" name="employmentId" value={emp.employmentId} />
+      <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
         <Field label={t('grade')}>
-          <select name="gradeId" defaultValue={emp.gradeId ?? ''} className={inputCls}>
-            <option value="">{t('gradeNone')}</option>
-            {grades.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
+          <input
+            value={(emp.gradeId ? (grades.find((g) => g.id === emp.gradeId)?.name ?? null) : null) ?? t('gradeNone')}
+            disabled
+            readOnly
+            aria-readonly="true"
+            className={inputCls}
+          />
         </Field>
-        <div className="sm:col-span-3 flex justify-end">
-          <button className={btnPrimary}>{t('saveDetails')}</button>
+        <div className="sm:col-span-3">
+          <p className="text-xs text-muted-foreground">
+            {t('gradeMovementOnlyNote')}{' '}
+            <Link
+              href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&newEvent=1`}
+              className="text-primary hover:underline"
+            >
+              {t('movement.newEvent')}
+            </Link>
+          </p>
         </div>
-      </form>
+      </div>
     </Card>
   ) : null;
 
@@ -2613,13 +2619,25 @@ export default async function EmployeePage({
           </Link>
         </div>
       )}
-      <table className="w-full text-sm">
+      {/* r78c — eight columns no longer fit a narrow viewport, so the table scrolls inside its own
+          container rather than squeezing every cell (the Card is overflow-hidden). Same pattern as the
+          recalculation-history table above. */}
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-[860px] text-sm">
         <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+          {/* r78c — the reporter's requested column set: Event Type, Effective Date, Company, Division,
+              Department, Job Title, Basic. End Date and Remarks moved OFF the list (they are not in the
+              requested set and seven data columns is already the width of the panel); both still render on
+              the row's detail view, one click away via Action, so nothing became unreachable. Action stays:
+              it is the affordance, not data, and View / Edit / Delete hang off it. */}
           <tr>
             <th className="px-4 py-2 font-medium">{t('movement.columns.eventType')}</th>
             <th className="px-4 py-2 font-medium">{t('movement.columns.effectiveDate')}</th>
-            <th className="px-4 py-2 font-medium">{t('movement.columns.endDate')}</th>
-            <th className="px-4 py-2 font-medium">{t('movement.columns.remarks')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.company')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.division')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.department')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.jobTitle')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.basic')}</th>
             <th className="px-4 py-2 font-medium">{t('movement.columns.action')}</th>
           </tr>
         </thead>
@@ -2637,8 +2655,13 @@ export default async function EmployeePage({
                 )}
               </td>
               <td className="px-4 py-2.5 font-mono text-xs">{m.effectiveDate}</td>
-              <td className="px-4 py-2.5 font-mono text-xs">{m.endDate ?? '—'}</td>
-              <td className="px-4 py-2.5 text-muted-foreground">{m.remarks ?? '—'}</td>
+              {/* Reconstructed AS OF the row's effective date in core/movement.ts — never a live read of the
+                  employee's current placement, which would print today's values on a row from years ago. */}
+              <td className="px-4 py-2.5 text-muted-foreground">{m.company ?? '—'}</td>
+              <td className="px-4 py-2.5 text-muted-foreground">{m.division ?? '—'}</td>
+              <td className="px-4 py-2.5 text-muted-foreground">{m.department ?? '—'}</td>
+              <td className="px-4 py-2.5 text-muted-foreground">{m.jobTitle ?? '—'}</td>
+              <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{m.basic ?? '—'}</td>
               <td className="px-4 py-2.5">
                 <div className="flex flex-wrap items-center gap-3">
                   <Link
@@ -2686,6 +2709,7 @@ export default async function EmployeePage({
           ))}
         </tbody>
       </table>
+      </div>
     </Card>
   );
 
