@@ -783,10 +783,6 @@
         "superiorNote": "Đặt Cấp trên trực tiếp tại thẻ bên dưới.",
         "save": "Lưu thông tin việc làm",
         "assignmentGroup": "Phân công tổ chức",
-        "assignmentEffectiveDate": "Ngày hiệu lực phân công",
-        "assignmentEffectiveDateHelp": "Ngày hiệu lực chỉ áp dụng cho Đơn vị kinh doanh, Phòng ban, Chức vụ và Loại hình lao động — những trường có lưu lịch sử theo ngày. Bậc lương, Bộ phận, Chi nhánh, Khu vực, Tuyến, Phân khu, Nhóm, Cơ sở và Danh mục chỉ được lưu dưới dạng giá trị hiện tại.",
-        "saveAssignment": "Lưu phân công tổ chức",
-        "assignmentNote": "Các thay đổi về Phòng ban, Chức vụ và Loại hình việc làm được ghi nhận kèm ngày hiệu lực và lưu trong lịch sử phân công, để hồ sơ quá khứ luôn chính xác. Bậc công việc được lưu vào hồ sơ nhân viên.",
         "positionNone": "Không có",
         "invalidValue": "Giá trị đã chọn không hợp lệ.",
         "employmentType_full_time": "Toàn thời gian",
@@ -820,7 +816,10 @@
         "blacklistAction": "Đưa nhân viên vào danh sách đen",
         "blacklistClearAction": "Xóa khỏi danh sách đen",
         "blacklistNote": "Đưa vào danh sách đen là hành động HR có chủ đích và sẽ ghi đè Trạng thái nhân viên tự động.",
-        "blacklistActiveNote": "Nhân viên này hiện đang trong danh sách đen."
+        "blacklistActiveNote": "Nhân viên này hiện đang trong danh sách đen.",
+        "assignmentViewOnlyNote": "Thông tin này chỉ để xem. Các thay đổi về phân bổ tổ chức được ghi nhận dưới dạng sự kiện điều động, nhờ đó mỗi thay đổi đều giữ được ngày hiệu lực, lý do và vị trí của nó trong lịch sử công tác.",
+        "assignmentViewOnlyLink": "Ghi nhận sự kiện điều động",
+        "joinDatesViewOnlyNote": "Cả hai ngày gia nhập đều chỉ để xem. Chúng được đặt cùng nhau khi tạo nhân viên; sau đó, Thay đổi Ngày gia nhập ghi nhận việc chuyển sang công ty khác trong tập đoàn, còn Điều chỉnh Ngày gia nhập tập đoàn ghi nhận việc sửa có thẩm quyền đối với ngày thâm niên gốc."
       },
       "documents": {
         "title": "Tài liệu",
@@ -1101,7 +1100,9 @@
           "orgAssignmentChange": "Thay đổi phân công tổ chức",
           "reportingLineChange": "Thay đổi tuyến báo cáo",
           "employmentTypeChange": "Thay đổi loại hình lao động",
-          "gradeChange": "Thay đổi cấp bậc"
+          "gradeChange": "Thay đổi cấp bậc",
+          "joinDateChange": "Thay đổi Ngày gia nhập",
+          "groupJoinDateCorrection": "Điều chỉnh Ngày gia nhập tập đoàn"
         },
         "form": {
           "eventType": "Loại sự kiện",
@@ -1132,7 +1133,9 @@
           "editHint": "Lưu bản chỉnh sửa sẽ hoàn tác sự kiện này và ghi nhận phiên bản đã sửa. Bản gốc vẫn nằm trong Lịch sử công tác, được đánh dấu là đã chỉnh sửa — nó không bao giờ bị xóa.",
           "payrollWarning": "Một kỳ lương đã xử lý bao trùm giai đoạn này. Phiếu lương không được xử lý lại tự động.",
           "correctionReason": "Lý do chỉnh sửa (không bắt buộc)",
-          "saveCorrection": "Lưu bản chỉnh sửa"
+          "saveCorrection": "Lưu bản chỉnh sửa",
+          "joinDateChangeHint": "Ngày bạn nhập sẽ trở thành Ngày gia nhập mới của nhân viên với công ty hiện tại. Ngày gia nhập tập đoàn của họ không thay đổi.",
+          "groupJoinDateCorrectionHint": "Ngày bạn nhập sẽ trở thành Ngày gia nhập tập đoàn đã điều chỉnh. Thâm niên được tính từ ngày này, nên việc này có thể thay đổi số ngày phép của họ."
         },
         "edit": "Sửa",
         "delete": "Xóa",
@@ -2087,6 +2090,7 @@
     "employee": "Nhân viên",
     "type": "Loại",
     "dates": "Ngày",
+    "attachment": "Tệp đính kèm",
     "days": "Số ngày",
     "action": "Hành động",
     "date": "Ngày",
@@ -2114,7 +2118,7 @@
     "noManagerReviews": "Không có đánh giá nào chờ bạn đánh giá.",
     "noHrReviews": "Không có đánh giá nào chờ quyết định.",
     "rejectReasonPlaceholder": "Lý do từ chối (bắt buộc)",
-    "viewDateBreakdown": "Quyết định từng ngày",
+    "viewDateBreakdown": "Xem lại ngày",
     "dateBreakdown": "Các ngày đã yêu cầu",
     "dateStatus": {
       "pending": "Đang chờ",

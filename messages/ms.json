@@ -783,10 +783,6 @@
         "superiorNote": "Tetapkan Ketua Langsung pada kad di bawah.",
         "save": "Simpan maklumat pekerjaan",
         "assignmentGroup": "Penetapan Organisasi",
-        "assignmentEffectiveDate": "Tarikh berkuat kuasa penetapan",
-        "assignmentEffectiveDateHelp": "Tarikh berkuat kuasa hanya terpakai pada Unit Perniagaan, Jabatan, Jawatan dan Jenis Pekerjaan, yang menyimpan sejarah bertarikh. Gred Jawatan, Bahagian, Cawangan, Wilayah, Barisan, Seksyen, Pasukan, Pangkalan dan Kategori disimpan sebagai nilai semasa sahaja.",
-        "saveAssignment": "Simpan penetapan organisasi",
-        "assignmentNote": "Perubahan pada Jabatan, Jawatan dan Jenis Pekerjaan direkodkan dengan tarikh berkuat kuasa dan disimpan dalam sejarah tugasan, supaya rekod lampau kekal tepat. Gred Kerja disimpan pada rekod pekerja.",
         "positionNone": "Tiada",
         "invalidValue": "Nilai yang dipilih tidak sah.",
         "employmentType_full_time": "Sepenuh masa",
@@ -820,7 +816,10 @@
         "blacklistAction": "Senaraihitamkan pekerja",
         "blacklistClearAction": "Keluarkan daripada senarai hitam",
         "blacklistNote": "Menyenaraihitamkan ialah tindakan HR yang disengajakan dan mengatasi Status Pekerja automatik.",
-        "blacklistActiveNote": "Pekerja ini sedang disenaraihitamkan."
+        "blacklistActiveNote": "Pekerja ini sedang disenaraihitamkan.",
+        "assignmentViewOnlyNote": "Maklumat ini untuk paparan sahaja. Perubahan tugasan organisasi direkodkan sebagai peristiwa pergerakan, supaya setiap satu mengekalkan tarikh berkuat kuasa, sebabnya dan tempatnya dalam sejarah pekerjaan.",
+        "assignmentViewOnlyLink": "Rekod peristiwa pergerakan",
+        "joinDatesViewOnlyNote": "Kedua-dua tarikh menyertai adalah untuk paparan sahaja. Ia ditetapkan bersama semasa pekerja dicipta; selepas itu Perubahan Tarikh Menyertai merekodkan perpindahan ke syarikat lain dalam kumpulan, dan Pembetulan Tarikh Menyertai Kumpulan merekodkan pembetulan yang dibenarkan pada tarikh perkhidmatan induk."
       },
       "documents": {
         "title": "Dokumen",
@@ -1101,7 +1100,9 @@
           "orgAssignmentChange": "Perubahan Penempatan Organisasi",
           "reportingLineChange": "Perubahan Barisan Laporan",
           "employmentTypeChange": "Perubahan Jenis Pekerjaan",
-          "gradeChange": "Perubahan Gred"
+          "gradeChange": "Perubahan Gred",
+          "joinDateChange": "Perubahan Tarikh Menyertai",
+          "groupJoinDateCorrection": "Pembetulan Tarikh Menyertai Kumpulan"
         },
         "form": {
           "eventType": "Jenis Acara",
@@ -1132,7 +1133,9 @@
           "editHint": "Menyimpan pembetulan akan membatalkan peristiwa ini dan merekodkan versi yang dibetulkan. Rekod asal kekal dalam Sejarah Pekerjaan, ditanda sebagai dibetulkan — ia tidak dibuang.",
           "payrollWarning": "Larian gaji yang telah diproses sudah merangkumi tempoh ini. Slip gaji tidak diproses semula secara automatik.",
           "correctionReason": "Sebab pembetulan (pilihan)",
-          "saveCorrection": "Simpan Pembetulan"
+          "saveCorrection": "Simpan Pembetulan",
+          "joinDateChangeHint": "Tarikh yang anda masukkan menjadi Tarikh Menyertai baharu pekerja dengan syarikat semasa mereka. Tarikh Menyertai Kumpulan mereka tidak berubah.",
+          "groupJoinDateCorrectionHint": "Tarikh yang anda masukkan menjadi Tarikh Menyertai Kumpulan yang dibetulkan. Ini ialah tarikh pengiraan tahun perkhidmatan, jadi ia boleh mengubah kelayakan cuti mereka."
         },
         "edit": "Sunting",
         "delete": "Padam",
@@ -2087,6 +2090,7 @@
     "employee": "Pekerja",
     "type": "Jenis",
     "dates": "Tarikh",
+    "attachment": "Lampiran",
     "days": "Hari",
     "action": "Tindakan",
     "date": "Tarikh",
@@ -2114,7 +2118,7 @@
     "noManagerReviews": "Tiada penilaian menunggu penilaian anda.",
     "noHrReviews": "Tiada penilaian menunggu keputusan.",
     "rejectReasonPlaceholder": "Sebab penolakan (wajib)",
-    "viewDateBreakdown": "Putuskan setiap tarikh",
+    "viewDateBreakdown": "Semak tarikh",
     "dateBreakdown": "Tarikh dipohon",
     "dateStatus": {
       "pending": "Menunggu",

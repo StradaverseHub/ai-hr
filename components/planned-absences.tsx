@@ -38,10 +38,12 @@ type Leave = {
 type Row = { id: string; name: string; employeeCode?: string | null; role: string | null; leaves: Leave[] };
 
 // Solid, semantic chips (no glass), one per leave type, each with an icon.
-// Exported so the Leave page's requests table speaks the same color language.
+// Exported so every leave-request table speaks the same color language.
 // Leave Calendar Blocked View (c238010b): `bg` / `text` are the split halves so the calendar's partial-day
 // pills (left/right 50% fill, hourly outline) can reuse the same tokens; `chip` stays the combined string so
-// `styleFor(...).chip` keeps working unchanged for the /leave requests-table chips.
+// `styleFor(...).chip` keeps working unchanged for the request-table chips. Since 33bf1a2d those chips are
+// rendered by ONE shared cell (components/leave/leave-request-cells.tsx → LeaveTypeCell), consumed by both
+// My Leave → Requests and the Approval Items leave table — this is its only remaining table consumer.
 const mk = (bg: string, text: string, Icon: LucideIcon) => ({ bg, text, chip: `${bg} ${text}`, Icon });
 export const LEAVE: Record<string, { chip: string; bg: string; text: string; Icon: LucideIcon }> = {
   ANNUAL: mk('bg-violet-100 dark:bg-violet-500/30', 'text-violet-800 dark:text-violet-50', Palmtree),

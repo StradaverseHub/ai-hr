@@ -233,10 +233,26 @@ describe('570e3311 — employee detail page wiring pins', () => {
     expect(PAGE).toMatch(/listDepartments\(s,\s*\{\s*companyIds:\s*\[emp\.companyId\]\s*\}\)/);
   });
 
-  it('renders a pinned-current option when the stored BU / Department / Position left the scoped list', () => {
-    expect(PAGE).toContain('!businessUnits.some((bu) => bu.id === current.businessUnitId)');
-    expect(PAGE).toContain('!departments.some((d) => d.id === current.departmentId)');
-    expect(PAGE).toContain('!positions.some((pos) => pos.id === current.positionId)');
+  // 8ebabbf2 SUPERSEDES the pinned-current-option guard that stood here. 570e3311's problem was specific to
+  // <select>: when the stored BU / Department / Position was no longer in its company-scoped option list, the
+  // select silently fell to its first option, and the next Save committed that wrong value. The fix was to
+  // render one extra pinned option for the stored value.
+  //
+  // The Employment tab's Organisation Assignment section is now VIEW-ONLY — there are no selects and no Save,
+  // so the failure mode is gone at the root rather than patched. What must hold instead is that the read-only
+  // display still SHOWS an off-list stored value, which it does by reading the label off the `current`
+  // assignment projection rather than by looking it up in a scoped option list.
+  it('displays the stored BU / Department / Position from the assignment projection, not a scoped list', () => {
+    for (const expr of [
+      '{readOnlyValue(current?.businessUnit)}',
+      '{readOnlyValue(current?.department)}',
+      '{readOnlyValue(current?.position)}',
+    ]) {
+      expect(PAGE, `${expr} must render the stored label directly`).toContain(expr);
+    }
+    // And the selects that needed pinning are really gone.
+    expect(PAGE).not.toContain('name="businessUnitId"\n');
+    expect(PAGE).not.toContain('!businessUnits.some((bu) => bu.id === current.businessUnitId)');
   });
 });
 

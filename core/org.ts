@@ -209,9 +209,17 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       const generated = await generateEmployeeCode(tx, ctx.tenantId, p.companyId);
       employeeCode = generated ?? (await nextEmployeeCode(tx, ctx.tenantId));
     }
+    // 89ea527b — the ONE-TIME Group Join Date → Join Date synchronisation. At creation the two dates are by
+    // definition the same day: hiredOn is the employee's first day anywhere in the GROUP, joinDate their first
+    // day with the CURRENT company, and a brand-new employment has only ever had one company. Seeding it here
+    // (rather than leaving join_date NULL and relying on the `joinDate ?? hiredOn` read fallback) is what makes
+    // the pair explicit, so a later internal transfer moves joinDate away from a real stored value instead of
+    // materialising one. It happens ONLY here — after creation both dates are movement-only (setEmploymentInfo
+    // gates them). NOTE: this is display/records-only. NOTHING reads join_date for entitlement; every service
+    // band, minService gate and years-of-service figure reads hiredOn (see setEmploymentInfo's gate comment).
     const [emp] = await tx
       .insert(employment)
-      .values({ tenantId: ctx.tenantId, personId, companyId: p.companyId, hiredOn: p.hiredOn, employeeCode, gradeId: p.gradeId ?? null, provisionalEndOn })
+      .values({ tenantId: ctx.tenantId, personId, companyId: p.companyId, hiredOn: p.hiredOn, joinDate: p.hiredOn, employeeCode, gradeId: p.gradeId ?? null, provisionalEndOn })
       .returning({ id: employment.id });
 
     // A new hire serving a provisional period is on 'probation', not 'active': interns/contractors
@@ -1928,8 +1936,15 @@ export async function changeEmploymentCompany(
  */
 export type EmploymentInfoInput = {
   employmentId: string;
+  /** 89ea527b — MOVEMENT-ONLY. The GROUP Join Date: the employee's first day anywhere in the corporate group,
+   *  and the master reference every service-length figure reads (see the gate below for the full consumer
+   *  list). Honoured solely under the `groupJoinDateCorrection` movement tag; a plain save that posts it is
+   *  IGNORED, exactly like extendedConfirmationDate. Set once at hire by hireEmployee, never by this writer
+   *  without a movement. */
   hiredOn?: string;
-  // "Join Date" (feedback 24c4d02e) — the current-company effective join date. Nullable; '' / null clears it.
+  /** "Join Date" (feedback 24c4d02e) — the current-company effective join date. Nullable; '' / null clears it.
+   *  89ea527b — MOVEMENT-ONLY: honoured solely under the `joinDateChange` movement tag (an internal company
+   *  transfer, a rehire into another group company, a restructure). Seeded = hiredOn at creation. */
   joinDate?: string | null;
   // Period components accept strings (raw HTML number-input values) or numbers; parsed + validated below.
   probationMonths?: number | string | null;
@@ -2020,7 +2035,9 @@ const EMPLOYMENT_INFO_UNIT_FIELDS = [
 export const EMPLOYMENT_PERIOD_UNITS = ['month', 'week', 'day'] as const;
 
 const EMPLOYMENT_INFO_DATE_FIELDS = [
-  'joinDate',
+  // 89ea527b — joinDate is NOT in this list any more: it is movement-only (accepted above solely under the
+  // `joinDateChange` movement tag), so the Employment Dates form can no longer set it. hiredOn was never in
+  // this list (it is NOT NULL and has its own block, likewise now movement-gated).
   'confirmationDate',
   'resignationDate',
   // 955c7de4 — new lifecycle dates. finalConfirmationDate is DERIVED (not in this list; computed on save).
@@ -2049,10 +2066,26 @@ export async function setEmploymentInfo(
   // field passed as '' or null clears to NULL. Validate + normalise as we go.
   const set: Record<string, string | number | null> = {};
 
-  if (p.hiredOn !== undefined) {
+  // 89ea527b — the GROUP Join Date (hiredOn) is MOVEMENT-ONLY. It is the single date every service-length
+  // consumer reads — core/leave.ts serviceYearsAt (leave service bands via resolveGradePolicy), servedFor
+  // (minimum-service eligibility), maternityAllowanceEligibility, earnedCycleStart / first-year proration,
+  // core/read.ts + core/analytics.ts band resolution, core/performance.ts serviceMonths — so a free edit on a
+  // screen silently re-prices an employee's leave entitlement with no dated record of why. Accepting it only
+  // under the `groupJoinDateCorrection` movement tag means every move of that date carries an effective date,
+  // a reason and a history row. An untagged save posting it is silently IGNORED (forge-proof, as with
+  // extendedConfirmationDate) rather than rejected, so a stale/tampered form cannot mutate it either.
+  if (p.hiredOn !== undefined && p.movement?.type === 'groupJoinDateCorrection') {
     const v = String(p.hiredOn).trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Hire date is required and must be a valid date.');
     set.hiredOn = v;
+  }
+  // 89ea527b — the current-company Join Date is MOVEMENT-ONLY too (`joinDateChange`): it is what changes when
+  // an employee moves between companies inside the group, and that is a movement, not an edit. Unlike hiredOn
+  // it drives NO entitlement — only the Employment tab's current-company length-of-service figure.
+  if (p.joinDate !== undefined && p.movement?.type === 'joinDateChange') {
+    const v = p.joinDate == null ? null : String(p.joinDate).trim();
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
+    set.joinDate = v || null;
   }
   for (const f of EMPLOYMENT_INFO_DATE_FIELDS) {
     const raw = p[f];
@@ -2155,6 +2188,22 @@ export async function setEmploymentInfo(
         set[f] as string | null,
         (before as Record<string, string | null>)[f],
       );
+    }
+
+    // 89ea527b — a Group Join Date Correction on an employment whose two dates are still SYNCHRONISED carries
+    // the Join Date with it. The dates start identical (hireEmployee seeds joinDate = hiredOn) and only
+    // diverge when a joinDateChange movement records a move to another group company. So join_date === the
+    // OLD hired_on means "this employee has never transferred", and correcting their group join date without
+    // moving their company join date would invent a divergence that never happened.
+    //
+    // It is also what keeps the correction usable at all. The invariant below (join ≥ hire) is real, but for a
+    // never-transferred employee join EQUALS hire, so ANY forward correction would trip it and there would be
+    // no way to fix a group join date that was keyed a day late — the caller cannot pre-move the join date
+    // either, because that needs the other tag. Carrying it resolves the correction in one movement.
+    // A DIVERGED employment is deliberately left alone: there the two dates mean different things, and the
+    // guard rejecting a correction that would post-date the real company join date is the correct answer.
+    if (set.hiredOn !== undefined && !('joinDate' in set) && before.joinDate === before.hiredOn) {
+      set.joinDate = set.hiredOn;
     }
 
     // Date-relationship checks resolve against the RESULTING values (incoming override → existing), so a save

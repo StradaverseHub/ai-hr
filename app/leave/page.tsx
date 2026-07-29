@@ -33,7 +33,9 @@ import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-
 // listing feeds, plus the numbered-pager window helper that lives beside the other inquiry selection rules.
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
 import { inquiryPageWindow } from '@/lib/leave-inquiry';
-import { styleFor } from '@/components/planned-absences';
+// 33bf1a2d: the leave-request table cells this table used to spell out inline, now SHARED with the
+// Approval Items leave table (app/approvals/page.tsx) so the two can no longer drift apart.
+import { LeaveDaysCell, LeaveEmployeeCell, LeaveTypeCell } from '@/components/leave/leave-request-cells';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
 import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
@@ -1318,14 +1320,12 @@ export default async function LeavePage({
             </thead>
             <tbody className="divide-y divide-border">
               {history.map((r) => {
-                const { chip, Icon } = styleFor(r.typeCode);
                 return (
                   <tr key={r.id}>
+                    {/* 33bf1a2d: the SHARED employee cell, now also rendered by the Approval Items leave
+                        table (app/approvals/page.tsx) — one definition, so the two can no longer drift. */}
                     <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar name={r.employee} className="size-7 text-[10px]" />
-                        <span className="font-medium">{r.employee}</span>
-                      </div>
+                      <LeaveEmployeeCell name={r.employee} />
                     </td>
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                       {r.appliedOn ? new Date(r.appliedOn).toISOString().slice(0, 10) : '—'}
@@ -1335,36 +1335,30 @@ export default async function LeavePage({
                         #{r.id.slice(0, 8)}
                       </span>
                     </td>
+                    {/* 33bf1a2d: the SHARED leave-type chip. Emergency Leave (0106) — an EL submission is
+                        decomposed into ANNUAL + UNPAID child rows sharing a parent_group_id; the tag rides
+                        on the shared cell so each child reads as one half of one EL on BOTH surfaces. */}
                     <td className="px-4 py-2.5">
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${chip}`}>
-                        <Icon className="size-3" />
-                        {r.leaveType.replace(/\s*leave$/i, '')}
-                      </span>
-                      {/* Emergency Leave (0106): an EL submission is decomposed into ANNUAL + UNPAID child
-                          rows sharing a parent_group_id; tag each child so the two halves read as one EL. */}
-                      {r.parentGroupId && (
-                        <span className="ml-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          {t('emergency.groupLabel')}
-                        </span>
-                      )}
+                      <LeaveTypeCell
+                        typeCode={r.typeCode}
+                        typeName={r.leaveType}
+                        groupLabel={r.parentGroupId ? t('emergency.groupLabel') : null}
+                      />
                     </td>
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                       {r.startDate} → {r.endDate}
                     </td>
+                    {/* 33bf1a2d: the SHARED days cell — day count + the ADR-0048 duration label + the 0129
+                        hourly window (slice-guarded for the Postgres seconds, gated so a non-hourly row
+                        never renders a stray time). */}
                     <td className="px-4 py-2.5 text-right tabular-nums">
-                      {Number(r.days)}
-                      {durationLabel(t, r.durationType, r.hours) && (
-                        <span className="ml-1 text-[10px] font-medium uppercase text-muted-foreground">
-                          {durationLabel(t, r.durationType, r.hours)}
-                        </span>
-                      )}
-                      {/* Hourly-leave time window (0129): the actual window on hourly rows, slice-guarded for
-                          the Postgres seconds, gated so non-hourly rows never render a stray time. */}
-                      {r.durationType === 'hourly' && r.fromTime && r.toTime && (
-                        <span className="ml-1 text-[10px] font-medium text-muted-foreground">
-                          {r.fromTime.slice(0, 5)}–{r.toTime.slice(0, 5)}
-                        </span>
-                      )}
+                      <LeaveDaysCell
+                        days={r.days}
+                        durationSuffix={durationLabel(t, r.durationType, r.hours)}
+                        durationType={r.durationType}
+                        fromTime={r.fromTime}
+                        toTime={r.toTime}
+                      />
                     </td>
                     <td className="px-4 py-2.5">
                       {/* Admin history keeps its plain status pill (the amber "Partially approved" display

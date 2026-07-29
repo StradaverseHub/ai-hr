@@ -783,10 +783,6 @@
         "superiorNote": "请在下方卡片中设置直属上级。",
         "save": "保存雇佣信息",
         "assignmentGroup": "组织分配",
-        "assignmentEffectiveDate": "分配生效日期",
-        "assignmentEffectiveDateHelp": "生效日期仅适用于业务单位、部门、职位和雇佣类型，这些字段会保留带日期的历史记录。职级、事业部、分公司、区域、线别、科别、团队、基地和类别仅保存为当前值，不保留历史。",
-        "saveAssignment": "保存组织分配",
-        "assignmentNote": "对部门、职位和雇佣类型的更改会记录生效日期并保存在任职历史中，以保持过往记录的准确性。职级会保存到员工档案。",
         "positionNone": "无",
         "invalidValue": "所选的值无效。",
         "employmentType_full_time": "全职",
@@ -820,7 +816,10 @@
         "blacklistAction": "将员工列入黑名单",
         "blacklistClearAction": "从黑名单移除",
         "blacklistNote": "列入黑名单是刻意的人力资源操作，会覆盖自动的员工状态。",
-        "blacklistActiveNote": "该员工目前已列入黑名单。"
+        "blacklistActiveNote": "该员工目前已列入黑名单。",
+        "assignmentViewOnlyNote": "此信息仅供查看。组织归属的变更以异动事件方式记录，因此每项变更都保留其生效日期、原因及在雇佣历史中的位置。",
+        "assignmentViewOnlyLink": "记录异动事件",
+        "joinDatesViewOnlyNote": "两个入职日期均仅供查看。它们在创建员工时一并设定；之后由「入职日期变更」记录调往集团内其他公司，由「集团入职日期更正」记录对主服务日期的授权更正。"
       },
       "documents": {
         "title": "文档",
@@ -1101,7 +1100,9 @@
           "orgAssignmentChange": "组织安排变更",
           "reportingLineChange": "汇报线变更",
           "employmentTypeChange": "雇佣类型变更",
-          "gradeChange": "职级变更"
+          "gradeChange": "职级变更",
+          "joinDateChange": "入职日期变更",
+          "groupJoinDateCorrection": "集团入职日期更正"
         },
         "form": {
           "eventType": "事件类型",
@@ -1132,7 +1133,9 @@
           "editHint": "保存更正会撤销此事件并记录更正后的版本。原记录仍保留在任职历史中并标记为已更正——绝不会被删除。",
           "payrollWarning": "已处理的薪资批次已覆盖此期间。工资单不会自动重新处理。",
           "correctionReason": "更正原因（选填）",
-          "saveCorrection": "保存更正"
+          "saveCorrection": "保存更正",
+          "joinDateChangeHint": "您输入的日期将成为该员工在当前公司的新入职日期。其集团入职日期不会改变。",
+          "groupJoinDateCorrectionHint": "您输入的日期将成为更正后的集团入职日期。年资由此日期计算，因此可能改变其休假额度。"
         },
         "edit": "编辑",
         "delete": "删除",
@@ -2087,6 +2090,7 @@
     "employee": "员工",
     "type": "类型",
     "dates": "日期",
+    "attachment": "附件",
     "days": "天数",
     "action": "操作",
     "date": "日期",
@@ -2114,7 +2118,7 @@
     "noManagerReviews": "没有等待您评估的项目。",
     "noHrReviews": "没有等待决定的评估。",
     "rejectReasonPlaceholder": "拒绝原因（必填）",
-    "viewDateBreakdown": "逐日审批",
+    "viewDateBreakdown": "查看日期",
     "dateBreakdown": "申请的日期",
     "dateStatus": {
       "pending": "待处理",

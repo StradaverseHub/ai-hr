@@ -168,11 +168,21 @@ describe('drift guard — slimmed Employment Dates card (d27961e3)', () => {
     expect(pageSrc).not.toContain("t('employmentInfo.finalConfirmationNote')");
   });
 
+  // 89ea527b — hiredOn (Group Join Date) and joinDate LEFT this list: both are movement-only now, rendered
+  // read-only on the card and not submitted by it. The guard below pins that they are gone; the rest of the
+  // Employment Dates group (probation / notice / resignation) stays editable here as before.
+  it('no longer submits either join date', () => {
+    const block = datesFormBlock();
+    expect(block).not.toContain('name="hiredOn"');
+    expect(block).not.toContain('name="joinDate"');
+    // The labels stay — the fields are still displayed, just not editable.
+    expect(block).toContain("t('employmentInfo.groupJoinDate')");
+    expect(block).toContain("t('employmentInfo.joinDate')");
+  });
+
   it('keeps the standard Employment Dates fields', () => {
     const block = datesFormBlock();
     for (const name of [
-      'hiredOn', // Group Join Date
-      'joinDate',
       'confirmationDate',
       'probationValue',
       'noticeBeforeConfirmationValue',
