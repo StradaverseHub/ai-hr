@@ -99,20 +99,37 @@ export default async function FeedbackDetailPage({
         {fb.attachments.length > 0 && (
           <div className="mt-3 border-t border-border pt-3">
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('attachments')}</div>
-            <ul className="mt-1.5 flex flex-wrap gap-2">
-              {fb.attachments.map((a) => (
-                <li key={a.id}>
-                  <a
-                    href={`/feedback/attachment/${a.id}?inline=1`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-primary hover:bg-muted"
-                  >
-                    ↗ {a.fileName}
-                  </a>
-                </li>
-              ))}
-            </ul>
+            {/* 0321 — grouped by the round each image arrived in. Ungrouped, a screenshot showing "still
+                wrong after you shipped it" sits beside the original bug screenshot with nothing to tell
+                them apart, which on a three-round item is a pile of pictures and no story. */}
+            {(['submitted', 'contested', 'refuted'] as const).map((stage) => {
+              const forStage = fb.attachments.filter((a) => (a.stage ?? 'submitted') === stage);
+              if (forStage.length === 0) return null;
+              return (
+                <div key={stage} className="mt-2">
+                  <div className="text-[11px] text-muted-foreground">
+                    {t(`attachStage_${stage}`)}
+                    {stage !== 'submitted' && forStage[0].planRevision != null
+                      ? ` · ${t('historyPlanV', { n: forStage[0].planRevision })}`
+                      : ''}
+                  </div>
+                  <ul className="mt-1 flex flex-wrap gap-2">
+                    {forStage.map((a) => (
+                      <li key={a.id}>
+                        <a
+                          href={`/feedback/attachment/${a.id}?inline=1`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-primary hover:bg-muted"
+                        >
+                          ↗ {a.fileName}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>
@@ -252,11 +269,27 @@ export default async function FeedbackDetailPage({
 
         {/* Close the loop: refute a deployed result that still needs changes (reporter or admin). */}
         {canRefute && (
-          <form action={refuteDeploymentAction} className="mt-4 space-y-2 border-t border-border pt-4">
+          <form
+            action={refuteDeploymentAction}
+            encType="multipart/form-data"
+            className="mt-4 space-y-2 border-t border-border pt-4"
+          >
             <input type="hidden" name="id" value={fb.id} />
             <p className="text-sm font-medium">{t('refutePrompt')}</p>
             <Field label={t('refuteLabel')}>
               <textarea name="reason" rows={2} required className={inputCls} placeholder={t('refutePlaceholder')} />
+            </Field>
+            {/* 0321 — a push-back is exactly the message a screenshot carries best ("here is what is
+                still wrong"), and until now it was the one moment the reporter could not provide one.
+                The form needs multipart encoding for the file to survive the submit. */}
+            <Field label={t('attachLabel')}>
+              <input
+                type="file"
+                name="attachments"
+                multiple
+                className={inputCls}
+                accept="image/*,.pdf,.doc,.docx,.txt"
+              />
             </Field>
             <Button type="submit" size="sm" variant="outline">
               {t('refute')}
@@ -275,10 +308,19 @@ export default async function FeedbackDetailPage({
                   {t('approve')}
                 </Button>
               </form>
-              <form action={contestFeedbackPlanAction} className="flex-1 space-y-2">
+              <form action={contestFeedbackPlanAction} encType="multipart/form-data" className="flex-1 space-y-2">
                 <input type="hidden" name="id" value={fb.id} />
                 <Field label={t('contestLabel')}>
                   <textarea name="reason" rows={2} required className={inputCls} placeholder={t('contestPlaceholder')} />
+                </Field>
+                <Field label={t('attachLabel')}>
+                  <input
+                    type="file"
+                    name="attachments"
+                    multiple
+                    className={inputCls}
+                    accept="image/*,.pdf,.doc,.docx,.txt"
+                  />
                 </Field>
                 <Button type="submit" size="sm" variant="outline">
                   {t('contest')}

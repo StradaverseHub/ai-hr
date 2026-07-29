@@ -5224,9 +5224,16 @@ export const feedbackAttachment = pgTable(
     mimeType: text('mime_type').notNull(),
     sizeBytes: integer('size_bytes').notNull(),
     uploadedByUserId: uuid('uploaded_by_user_id').references(() => appUser.id),
+    /** The plan revision this image accompanies (0321). NULL only when stage='submitted'. */
+    planRevision: integer('plan_revision'),
+    /** 'submitted' | 'contested' | 'refuted' — what the reporter was doing when they attached it. */
+    stage: text('stage').notNull().default('submitted'),
     createdAt: createdAt(),
   },
-  (t) => [index('feedback_attachment_feedback_idx').on(t.feedbackRequestId)],
+  (t) => [
+    index('feedback_attachment_feedback_idx').on(t.feedbackRequestId),
+    index('feedback_attachment_stage_idx').on(t.feedbackRequestId, t.planRevision),
+  ],
 );
 
 // ── ADR-0069: Leave Encashment (leave-side only). Freeze + calculate + expose to payroll; NO salary math,
