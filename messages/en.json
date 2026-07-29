@@ -2087,6 +2087,7 @@
     "employee": "Employee",
     "type": "Type",
     "dates": "Dates",
+    "attachment": "Attachment",
     "days": "Days",
     "action": "Action",
     "date": "Date",
@@ -2114,7 +2115,7 @@
     "noManagerReviews": "No reviews awaiting your evaluation.",
     "noHrReviews": "No reviews awaiting a decision.",
     "rejectReasonPlaceholder": "Reason for rejecting (required)",
-    "viewDateBreakdown": "Decide each date",
+    "viewDateBreakdown": "Review dates",
     "dateBreakdown": "Requested dates",
     "dateStatus": {
       "pending": "Pending",

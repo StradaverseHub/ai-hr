@@ -2087,6 +2087,7 @@
     "employee": "Pekerja",
     "type": "Jenis",
     "dates": "Tarikh",
+    "attachment": "Lampiran",
     "days": "Hari",
     "action": "Tindakan",
     "date": "Tarikh",
@@ -2114,7 +2115,7 @@
     "noManagerReviews": "Tiada penilaian menunggu penilaian anda.",
     "noHrReviews": "Tiada penilaian menunggu keputusan.",
     "rejectReasonPlaceholder": "Sebab penolakan (wajib)",
-    "viewDateBreakdown": "Putuskan setiap tarikh",
+    "viewDateBreakdown": "Semak tarikh",
     "dateBreakdown": "Tarikh dipohon",
     "dateStatus": {
       "pending": "Menunggu",
