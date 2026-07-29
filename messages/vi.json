@@ -450,6 +450,7 @@
       "subjectToHrdfHint": "Khi được chọn, thu nhập đủ điều kiện của nhân viên này sẽ được đưa vào tính phí HRD Corp (HRDF) khi xử lý lương; khi bỏ chọn, nhân viên được loại trừ hoàn toàn.",
       "subjectToHrdfFollowingDefault": "Đang theo mặc định đăng ký HRDF của công ty. Lưu để đặt lựa chọn rõ ràng cho nhân viên này.",
       "subjectToHrdfCompanyNotRegistered": "Đã đặt là Có, nhưng công ty của nhân viên này chưa có Tỷ lệ đóng góp HRDF (Tổ chức ▸ Theo luật định), nên bảng lương không thu khoản này cho họ. Lựa chọn đã được lưu và sẽ có hiệu lực khi công ty đăng ký.",
+      "subjectToHrdfCompanyUnregisteredNote": "Công ty này chưa có Tỷ lệ đóng góp HRDF (Tổ chức ▸ Pháp định), nên chọn “Có” ở đây sẽ được lưu nhưng không thu khoản nào cho đến khi công ty đăng ký.",
       "othersStatutorySave": "Lưu quy định khác",
       "assignmentHistory": "Lịch sử phân công",
       "periodValidTime": "Kỳ (thời gian hiệu lực)",
@@ -2851,7 +2852,8 @@
         "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ pháp định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
-        "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập"
+        "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
+        "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào"
       },
       "preChecksOpenProfile": "Mở hồ sơ",
       "preChecksBlockedError": "Không thể xử lý lương: {n} nhân viên không có hồ sơ lương hiện tại. Vui lòng khắc phục các mục kiểm tra trước khi xử lý.",
@@ -3395,7 +3397,8 @@
         "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ theo luật định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
-        "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập"
+        "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
+        "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào"
       }
     },
     "guide": {

@@ -103,11 +103,14 @@ export function StepValidation({
 
   const blockers = advisory.missingCompensation.length + (advisory.zeroBasic?.length ?? 0);
   // 297ae65a — a non-MYR/mixed-currency salary is an AMBER warning (Process stays allowed).
+  // r79 — an explicit "Subject to HRDF = Yes" at an unregistered company is AMBER for the same reason:
+  // the run is honest work that must not be blocked, but the contradiction has to be seen before Process.
   const warnings =
     advisory.missingStatutory.length +
     advisory.missingBank.length +
     (advisory.staleBasicComponent?.length ?? 0) +
-    (advisory.currencyMismatch?.length ?? 0);
+    (advisory.currencyMismatch?.length ?? 0) +
+    (advisory.hrdfSubjectUnregistered?.length ?? 0);
 
   // Organization Module (361e3b15) — a per-company AMBER note naming any selected company with no active cycle
   // of the intended run type. Rendered above the salary/statutory advisory so a payroll-ready company that is
@@ -145,6 +148,7 @@ export function StepValidation({
     ['missingBank', advisory.missingBank, false],
     ['staleBasicComponent', advisory.staleBasicComponent ?? [], false],
     ['currencyMismatch', advisory.currencyMismatch ?? [], false],
+    ['hrdfSubjectUnregistered', advisory.hrdfSubjectUnregistered ?? [], false],
   ];
 
   return (

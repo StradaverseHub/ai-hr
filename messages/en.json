@@ -450,6 +450,7 @@
       "subjectToHrdfHint": "When checked, this employee's qualifying earnings are included in the HRD Corp (HRDF) levy calculation during payroll; when unchecked, the employee is excluded entirely.",
       "subjectToHrdfFollowingDefault": "Following the company's HRDF registration default. Save to set an explicit choice for this employee.",
       "subjectToHrdfCompanyNotRegistered": "Set to Yes, but this employee’s company has no HRDF Contribution Rate (Organization ▸ Statutory), so payroll charges no levy for them. The choice is saved and takes effect once the company is registered.",
+      "subjectToHrdfCompanyUnregisteredNote": "This company has no HRDF Contribution Rate (Organization ▸ Statutory), so choosing Yes here is saved but charges no levy until the company is registered.",
       "othersStatutorySave": "Save others statutory",
       "assignmentHistory": "Assignment history",
       "periodValidTime": "Period (valid time)",
@@ -2613,7 +2614,8 @@
         "staleBasicComponent": "Outdated BASIC pay item — the Personnel salary record is used",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete",
-        "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered"
+        "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
+        "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged"
       },
       "preChecksOpenProfile": "Open profile",
       "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
@@ -3395,7 +3397,8 @@
         "staleBasicComponent": "Outdated BASIC pay item — the Personnel salary record is used",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete",
-        "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered"
+        "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
+        "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged"
       }
     },
     "guide": {
