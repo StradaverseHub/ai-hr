@@ -175,7 +175,10 @@ export const company = pgTable(
     tenantId: tenantId(),
     legalName: text('legal_name').notNull(),
     country: text('country').notNull().default('MY'), // ISO-3166 alpha-2
-    currency: text('currency').notNull().default('MYR'), // ISO-4217
+    // ISO-4217. r79a (4fb8b75a step 3): this is now the company's ONE currency — Organization → General
+    // owns it, and the Basic Salary form preselects it for a brand-new salary record (the job that
+    // company_payroll_config.default_currency used to do before migration 0324 collapsed the pair).
+    currency: text('currency').notNull().default('MYR'),
     registrationNo: text('registration_no'),
     // Enhance Company General Tab (bc5d4891) — Company Information + Contact Information master data.
     // All nullable, additive, no backfill. `addressCountry` is display/correspondence only and must NOT be
@@ -229,6 +232,18 @@ export const company = pgTable(
     escalationTarget: text('escalation_target').notNull().default('next_level'),
     escalationTargetRole: text('escalation_target_role'),
     escalationUpdatedAt: timestamp('escalation_updated_at', { withTimezone: true }),
+    // r79a (4fb8b75a step 3) — two per-company HR defaults RELOCATED off company_payroll_config (migration
+    // 0324), where they had nothing to do with payroll. Columns on `company` rather than a new table: the
+    // 0287 escalation precedent and the leave_* siblings above (RLS + grant already in place).
+    //   probationMonths     — default probation length for a FULL-TIME hire's provisional end date. NULL =
+    //                         the code default of 3 (core/org.ts resolveProbationMonths). Read by the hire
+    //                         path (app/admin/personnel/actions.ts), never by payroll. CHECK: NULL or > 0.
+    //   reviewReminderDays  — days BEFORE an employment review's end date at which the nightly sweep nudges
+    //                         manager + HR. NULL/empty = the code default [30,14,7]
+    //                         (core/employment-review.ts resolveReminderDays). Stored sorted-desc, deduped.
+    //                         CHECK: NULL or 1..10 offsets, each 1..365.
+    probationMonths: integer('probation_months'),
+    reviewReminderDays: integer('review_reminder_days').array(),
     // Shared System Labels (ADR-0073, feedback d356dec8): OFF-by-default flag gating the multi-company
     // system-labels resolver. With it false, labelsForCompany() returns ORIGIN-only rows — byte-identical
     // to today. Only when an admin flips it on does a label shared into this company (via the junction or
@@ -243,6 +258,12 @@ export const company = pgTable(
     index('company_tenant_idx').on(t.tenantId),
     index('company_parent_idx').on(t.parentCompanyId),
     check('company_escalation_target_check', sql`${t.escalationTarget} IN ('next_level', 'specific_role')`),
+    // r79a (migration 0324) — the DB mirror of core/hiring-defaults.ts's cleaners.
+    check('company_probation_months_check', sql`${t.probationMonths} IS NULL OR ${t.probationMonths} > 0`),
+    check(
+      'company_review_reminder_days_check',
+      sql`${t.reviewReminderDays} IS NULL OR (array_length(${t.reviewReminderDays}, 1) BETWEEN 1 AND 10 AND 1 <= ALL (${t.reviewReminderDays}) AND 365 >= ALL (${t.reviewReminderDays}))`,
+    ),
   ],
 );
 
@@ -2295,7 +2316,10 @@ export const companyPayrollConfig = pgTable(
       .references(() => company.id),
     cutOffDay: integer('cut_off_day'), // day of month payroll inputs close (1–31); null = month-end. The salary/inputs cut-off.
     payDay: integer('pay_day'), // day of month salary is paid (1–31); null = month-end
-    paymentBasis: text('payment_basis').notNull().default('monthly'),
+    // r79a (4fb8b75a step 2): `payment_basis` is GONE (migration 0324). It was written by the config form
+    // and read by nothing but the <select> that wrote it — the vestigial ADR-0035 ancestor of
+    // compensation.pay_mode / payment_term / rate_amount (ADR-0078), which carry the real, per-employee,
+    // effective-dated concept.
     // Per-purpose cut-off days. c7fdfcf6 (Payroll Schedule) promoted these from pure metadata into the
     // COMPANY-LEVEL fallback of the cut-off resolution chain (policy perType → policy anchorDay → THESE columns
     // → calendar month): when an employment's payroll policy sets no custom cut-off, the payroll run pulls each
@@ -2305,23 +2329,16 @@ export const companyPayrollConfig = pgTable(
     claimCutOffDay: integer('claim_cut_off_day'), // day of month claim inputs close (1–31); null = month-end
     unpaidLeaveCutOffDay: integer('unpaid_leave_cut_off_day'), // day of month unpaid-leave inputs close (1–31); null = month-end
     attendanceCutOffDay: integer('attendance_cut_off_day'), // day of month attendance inputs close (1–31); null = month-end
-    // Configurable default probation length in months (migration 0136). Null = legacy/default 3. Applied to
-    // a full_time hire's default probation end date; still editable per hire. Any positive integer.
-    probationMonths: integer('probation_months'),
-    // 6522d26a — configurable review-reminder cadence (days BEFORE the review end date at which the
-    // reminder sweep nudges the manager + HR). Null/empty ⇒ default [30, 14, 7], resolved at sweep time
-    // (core/employment-review.ts resolveReminderDays). Stored sorted-desc, deduped, each 1–365.
-    reviewReminderDays: integer('review_reminder_days').array(),
+    // r79a (4fb8b75a step 3): `probation_months` and `review_reminder_days` MOVED to `company` (migration
+    // 0324) — hiring and employment-review settings that never had a payroll reader. `default_currency`
+    // MOVED to the pre-existing `company.currency`, collapsing the two company-level currency fields into
+    // one. See the `company` table for all three.
     // Step 1 (f3148da1) — the COMPANY-DEFAULT payroll policy applied to any employee with no policy assigned
     // on their employment. NULL = today's behaviour (unassigned ⇒ hardcoded monthly). Same-company, active
     // policy enforced service-side; the kernel falls back to it in resolveAssignedPolicy.
     defaultPayrollPolicyId: uuid('default_payroll_policy_id').references((): AnyPgColumn => payrollPolicy.id),
     // Step 6 (f3148da1) — payslip release config (see PayslipRelease). NULL = immediate (today's behaviour).
     payslipRelease: jsonb('payslip_release').$type<PayslipRelease | null>(),
-    // 297ae65a — the company's DEFAULT salary currency (ISO 4217 code, validated against lib/currencies.ts
-    // in core/payroll-config.ts). New Basic Salary records preselect it; compensation.currency stays the
-    // per-record store. Default 'MYR' = today's behaviour (migration 0306, additive).
-    defaultCurrency: text('default_currency').notNull().default('MYR'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

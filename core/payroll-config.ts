@@ -1,14 +1,23 @@
 /**
- * Per-company payroll scheduling config (ADR-0035 1B, #17). Cut-off day / pay day / payment basis are
- * scheduling METADATA (display + future automation), NOT inputs to the period computation. Upsert keyed
- * by company; RLS confines reads/writes to company-scoped admins. Every write appends a DomainEvent.
+ * Per-company payroll scheduling config (ADR-0035 1B, #17). Cut-off day / pay day are the company-level
+ * fallback of the cut-off resolution chain. Upsert keyed by company; RLS confines reads/writes to
+ * company-scoped admins. Every write appends a DomainEvent.
+ *
+ * r79a (4fb8b75a steps 2–3) — this module is now payroll-ONLY. Four fields left it in migration 0324:
+ *   • paymentBasis      DELETED. Nothing read it (see the migration header for the search that proved it).
+ *   • probationMonths   MOVED to core/hiring-defaults.ts (company.probation_months) — a hiring setting.
+ *   • reviewReminderDays MOVED to core/hiring-defaults.ts (company.review_reminder_days) — an
+ *                        employment-review setting read only by the nightly reminder sweep.
+ *   • defaultCurrency   MOVED to company.currency (core/admin.ts), which already existed and is owned by
+ *                        Organization → General.
+ * setPayrollConfig is a full-overwrite upsert, so removing a field from the input type is enough — no
+ * caller can still write the dropped columns.
  */
 import { eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { companyPayrollConfig, payrollPolicy, type PayslipRelease } from '../db/schema';
 import { cleanPayslipRelease } from './payroll-policy-config';
-import { isCurrencyCode } from '../lib/currencies';
 
 /** Thrown when the chosen company-default payroll policy is not a valid (same-company, active) policy. */
 export class InvalidDefaultPolicyError extends Error {
@@ -18,68 +27,26 @@ export class InvalidDefaultPolicyError extends Error {
   }
 }
 
-export const PAYMENT_BASES = ['monthly', 'daily', 'hourly', 'other'] as const;
-export type PaymentBasis = (typeof PAYMENT_BASES)[number];
-
 // Day-of-month 1–31, or null = month-end. Out-of-range/blank ⇒ null so a bad value never silently sticks.
 const cleanDay = (v: unknown): number | null => {
   if (v === null || v === undefined || v === '') return null;
   const n = Math.trunc(Number(v));
   return Number.isFinite(n) && n >= 1 && n <= 31 ? n : null;
 };
-const cleanBasis = (v: unknown): PaymentBasis => (PAYMENT_BASES.includes(v as PaymentBasis) ? (v as PaymentBasis) : 'monthly');
-
-// 297ae65a — company default salary currency. Clamp-not-throw (module pattern): anything that is not a
-// real ISO 4217 code (lib/currencies.ts master) falls back to 'MYR', so a malformed input can never
-// corrupt the config row.
-const cleanCurrency = (v: unknown): string => {
-  const c = typeof v === 'string' ? v.trim().toUpperCase() : '';
-  return isCurrencyCode(c) ? c : 'MYR';
-};
-
-// Default probation length in months. Blank/invalid → null (= default 3, resolved at compute time). Reject
-// <= 0 by falling back to null; NO arbitrary upper clamp (any positive integer is allowed per the plan).
-const cleanProbation = (v: unknown): number | null => {
-  if (v === null || v === undefined || v === '') return null;
-  const n = Math.trunc(Number(v));
-  return Number.isFinite(n) && n > 0 ? n : null;
-};
-
-// 6522d26a — review reminder cadence: comma-separated days (or an array) → trunc, keep 1–365, dedupe,
-// sort DESC. Blank / nothing valid → null (= default [30,14,7], resolved at sweep time). Capped at 10
-// offsets so a typo can't schedule a reminder storm.
-const cleanReminderDays = (v: unknown): number[] | null => {
-  if (v === null || v === undefined || v === '') return null;
-  const parts = Array.isArray(v) ? v : String(v).split(/[,\s]+/);
-  const clean = [
-    ...new Set(parts.map((d) => Math.trunc(Number(d))).filter((d) => Number.isFinite(d) && d >= 1 && d <= 365)),
-  ]
-    .sort((a, b) => b - a)
-    .slice(0, 10);
-  return clean.length ? clean : null;
-};
 
 export type PayrollConfigInput = {
   companyId: string;
   cutOffDay?: number | string | null;
   payDay?: number | string | null;
-  paymentBasis?: string;
   // Per-purpose cut-off scheduling metadata (1–31, null = month-end / inherit). Not inputs to period computation.
   overtimeCutOffDay?: number | string | null;
   claimCutOffDay?: number | string | null;
   unpaidLeaveCutOffDay?: number | string | null;
   attendanceCutOffDay?: number | string | null;
-  // Configurable default probation length (months). Null = default 3.
-  probationMonths?: number | string | null;
-  // 6522d26a — review reminder cadence (days before the review end date). Null = default [30,14,7].
-  reviewReminderDays?: number[] | string | null;
   // Step 1 (f3148da1) — the company-default payroll policy id, or null to clear. '' / undefined ⇒ clear.
   defaultPayrollPolicyId?: string | null;
   // Step 6 (f3148da1) — payslip release config (or null = immediate). Cleaned via cleanPayslipRelease.
   payslipRelease?: PayslipRelease | null;
-  // 297ae65a — company default salary currency (ISO 4217; invalid/absent ⇒ 'MYR'). The Basic Salary form
-  // preselects it on new records.
-  defaultCurrency?: string | null;
 };
 
 export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInput) {
@@ -88,16 +55,12 @@ export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInpu
   const values = {
     cutOffDay: cleanDay(p.cutOffDay),
     payDay: cleanDay(p.payDay),
-    paymentBasis: cleanBasis(p.paymentBasis),
     overtimeCutOffDay: cleanDay(p.overtimeCutOffDay),
     claimCutOffDay: cleanDay(p.claimCutOffDay),
     unpaidLeaveCutOffDay: cleanDay(p.unpaidLeaveCutOffDay),
     attendanceCutOffDay: cleanDay(p.attendanceCutOffDay),
-    probationMonths: cleanProbation(p.probationMonths),
-    reviewReminderDays: cleanReminderDays(p.reviewReminderDays),
     defaultPayrollPolicyId: rawDefaultPolicy,
     payslipRelease,
-    defaultCurrency: cleanCurrency(p.defaultCurrency),
   };
   return withTenant(ctx, async (tx) => {
     // Step 1 — the chosen default policy MUST be an active policy in THIS company (RLS is tenant-wide, so a

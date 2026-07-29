@@ -1912,6 +1912,13 @@
       "when": 1781862422000,
       "tag": "0322_person_emergency_contact_register",
       "breakpoints": true
+    },
+    {
+      "idx": 324,
+      "version": "7",
+      "when": 1781862424000,
+      "tag": "0324_payroll_settings_relocation",
+      "breakpoints": true
     }
   ]
 }

@@ -17,7 +17,6 @@ import { actorOf, appendEvent } from '../db/events';
 import {
   assignment,
   company,
-  companyPayrollConfig,
   employment,
   employmentReview,
   employmentReviewReminder,
@@ -714,11 +713,13 @@ export async function sweepReviewReminders(
         reviewType: employmentReview.reviewType,
         endDate: employmentReview.endDate,
         terminatedOn: employment.terminatedOn,
-        reminderDays: companyPayrollConfig.reviewReminderDays,
+        // r79a (4fb8b75a step 3) — the cadence moved off company_payroll_config (a payroll table it never
+        // belonged to) onto `company` in migration 0324. Same value, same resolveReminderDays fallback.
+        reminderDays: company.reviewReminderDays,
       })
       .from(employmentReview)
       .innerJoin(employment, eq(employment.id, employmentReview.employmentId))
-      .leftJoin(companyPayrollConfig, eq(companyPayrollConfig.companyId, employment.companyId))
+      .leftJoin(company, eq(company.id, employment.companyId))
       .where(or(eq(employmentReview.status, 'pending_manager'), eq(employmentReview.status, 'pending_hr')));
 
     let reminders = 0;

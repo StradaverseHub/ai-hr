@@ -312,6 +312,26 @@ export function listManagerCandidates(
  * database will refuse, and discloses the group's size to someone whose access does not otherwise
  * reveal it (the same objection feedback ab77dc1f raised against the dashboard's "N of M").
  */
+/**
+ * One company's ISO-4217 currency, or 'MYR' when the company is out of scope / absent.
+ *
+ * r79a (4fb8b75a step 3): `company.currency` is now the company's ONE currency field. It absorbed
+ * company_payroll_config.default_currency (migration 0324) — the two were a genuine duplicate, with the
+ * Organization one editable-but-inert and the payroll one doing the real work. Owner: Organization →
+ * General. Reader: the Basic Salary form's currency preselect for a brand-new salary record. This is a
+ * single-column read so a form does not have to pull the whole listCompanies projection for it.
+ */
+export function getCompanyCurrency(ctx: SessionContext, companyId: string): Promise<string> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ currency: company.currency })
+      .from(company)
+      .where(eq(company.id, companyId))
+      .limit(1);
+    return row?.currency ?? 'MYR';
+  });
+}
+
 export function listCompanies(
   ctx: SessionContext,
   opts: { includeArchived?: boolean; adminOnly?: boolean } = {},

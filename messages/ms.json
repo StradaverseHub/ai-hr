@@ -339,7 +339,8 @@
       "salaryRemarksPlaceholder": "cth. kenaikan tahunan",
       "employeeIdLabel": "ID Pekerja",
       "employeeIdPlaceholder": "cth. EMP-0001",
-      "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 30 aksara."
+      "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 30 aksara.",
+      "hiringDefaults": "Tetapan lalai pengambilan"
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -1213,6 +1214,17 @@
       "colEmail": "E-mel",
       "colResult": "Keputusan",
       "ready": "Sedia"
+    },
+    "hiringDefaults": {
+      "title": "Tetapan Lalai Pengambilan",
+      "description": "Tetapan lalai setiap syarikat untuk pengambilan baharu dan penilaian pekerjaan. Dahulu ia berada pada skrin jadual gaji, di mana tiada apa-apa berkaitan gaji membacanya.",
+      "back": "Kakitangan",
+      "emptyScope": "Tiada syarikat dalam skop semasa.",
+      "save": "Simpan",
+      "probationMonths": "Tempoh percubaan lalai (bulan)",
+      "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
+      "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
+      "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
     }
   },
   "leave": {
@@ -3179,11 +3191,6 @@
     "setup": {
       "title": "Tetapan Gaji",
       "subtitle": "Tempat utama untuk mengurus tetapan gaji. Buka sub-modul untuk mengkonfigurasinya; hanya modul yang anda boleh akses ditunjukkan.",
-      "policies": {
-        "title": "Jadual Gaji",
-        "desc": "Jadual gaji setiap syarikat — hari potongan, hari bayaran, asas bayaran, mod HRDF dan EPF.",
-        "cta": "Buka jadual gaji"
-      },
       "items": {
         "title": "Item Gaji",
         "desc": "Tentukan item gaji dan layanan berkanunnya (EPF / SOCSO / PCB / HRDF).",
@@ -3204,16 +3211,6 @@
         "desc": "Tentukan dan selenggara nama kitaran yang ditawarkan oleh menu Proses Gaji.",
         "cta": "Buka kitaran gaji"
       },
-      "period": {
-        "title": "Templat Tempoh Gaji",
-        "desc": "Lensa penjadualan konfigurasi syarikat — masa hari potongan dan hari bayaran bagi setiap tempoh.",
-        "cta": "Buka persediaan tempoh"
-      },
-      "submission": {
-        "title": "Kawalan Penyerahan Bayaran",
-        "desc": "Lensa kawalan penyerahan konfigurasi syarikat — hari potongan mengikut tujuan untuk bayaran berkanun.",
-        "cta": "Buka kawalan penyerahan"
-      },
       "ea": {
         "title": "Pengurusan Borang EA",
         "desc": "Petakan item gaji ke baris borang EA. Skrin pemetaan berkanun khusus akan datang; pemetaan sedia ada dikekalkan.",
@@ -3223,7 +3220,22 @@
         "title": "Konfigurasi Berkanun",
         "desc": "Angka berkanun Malaysia tepat yang digunakan oleh enjin gaji — EPF, SOCSO, EIS, PCB dan kerja lebih masa.",
         "cta": "Buka konfigurasi berkanun"
-      }
+      },
+      "schedule": {
+        "title": "Jadual Gaji",
+        "desc": "Pemasaan gaji setiap syarikat — hari potongan, hari bayaran, potongan serahan mengikut tujuan, polisi gaji lalai dan pelepasan slip gaji.",
+        "cta": "Buka jadual gaji"
+      },
+      "readinessTitle": "Belum semua syarikat boleh memproses gaji",
+      "readinessSubtitle": "Larian gaji ditolak bagi syarikat tanpa kitaran aktif yang sepadan. Syarikat berikut dalam skop anda kekurangan sesuatu.",
+      "readinessCannotRun": "Tidak boleh memproses gaji",
+      "readinessFix": "Sediakan",
+      "readinessNoCycles": "Tiada kitaran gaji ditakrifkan untuk syarikat ini, jadi gaji tidak boleh diproses.",
+      "readinessNoRegularCycle": "Kitaran wujud, tetapi tiada yang dipetakan kepada larian biasa, jadi gaji bulanan biasa tidak boleh diproses.",
+      "readinessStaleDefault": "Kitaran gaji lalai menamakan “{name}”, yang bukan kitaran aktif bagi syarikat ini.",
+      "readinessNoDefault": "Tiada kitaran gaji lalai dipilih untuk syarikat ini.",
+      "readinessNoAutoCreate": "Kitaran tidak dicipta secara automatik — kitaran yang sepatutnya dimiliki syarikat ialah keputusan anda.",
+      "readinessFullReport": "Lihat laporan kesediaan penuh"
     },
     "historyImport": {
       "title": "Import sejarah gaji",
@@ -3449,7 +3461,10 @@
       "checkPayModesBlocker": "{unpayable, plural, other {# pekerja}} menggunakan Mod Bayaran Tempoh Tersuai yang belum ada pengiraan: {names}. Tukar mod bayaran mereka sebelum memproses.",
       "checkTransactionsTitle": "Transaksi gaji",
       "checkTransactionsOk": "{entered, plural, =0 {Tiada transaksi dimasukkan untuk bulan ini lagi} one {# transaksi dimasukkan} other {# transaksi dimasukkan}}.",
-      "empty": "Tiada syarikat dalam skop semasa anda."
+      "empty": "Tiada syarikat dalam skop semasa anda.",
+      "checkDefaultCycleTitle": "Kitaran gaji lalai",
+      "checkDefaultCycleOk": "Lalai yang disimpan menunjuk kepada kitaran aktif.",
+      "checkDefaultCycleWarning": "{named, plural, =0 {Tiada kitaran gaji lalai dipilih untuk syarikat ini.} other {Lalai yang disimpan “{names}” bukan kitaran aktif bagi syarikat ini.}}"
     }
   },
   "admin": {
@@ -5876,11 +5891,6 @@
     "scheduleTitle": "Jadual gaji",
     "cutOffDay": "Hari potongan",
     "payDay": "Hari bayaran",
-    "paymentBasis": "Asas bayaran",
-    "basis_monthly": "Bulanan",
-    "basis_daily": "Harian",
-    "basis_hourly": "Sejam",
-    "basis_other": "Lain-lain",
     "monthEnd": "Akhir bulan",
     "dayHint": "Hari dalam bulan (1–31). Biar kosong untuk akhir bulan. Rujukan penjadualan sahaja — ia tidak mengubah cara tempoh gaji dikira.",
     "statutoryTitle": "Identiti majikan berkanun",
@@ -5901,11 +5911,6 @@
     "attendanceCutOff": "Tarikh tutup kehadiran",
     "cutOffsHint": "Hari dalam bulan (1–31). Kosong = hujung bulan. Potongan gaji/input ditetapkan di atas sebagai Hari potongan. Ini ialah tetingkap potongan LALAI SYARIKAT: gaji mengambil setiap jenis transaksi (kerja lebih masa, tuntutan, cuti tanpa gaji, kehadiran) daripada tetingkap yang dikonfigurasi apabila dasar gaji pekerja tidak menetapkan sendiri. Caruman berkanun tetap diagregat mengikut bulan kalendar.",
     "save": "Simpan",
-    "hiringTitle": "Tetapan lalai pengambilan",
-    "probationMonths": "Tempoh percubaan lalai (bulan)",
-    "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
-    "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
-    "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong).",
     "policyReleaseTitle": "Dasar lalai & pelepasan slip gaji",
     "defaultPolicy": "Dasar gaji lalai",
     "defaultPolicyNone": "Tiada (lalai bulanan)",
@@ -5917,8 +5922,12 @@
     "releaseValue": "Hari / ofset",
     "releaseValuePlaceholder": "cth. 5 atau -2",
     "releaseHint": "Mengawal bila pekerja boleh melihat slip gaji dalam layan diri. Hari tetap = hari dalam bulan selepas tempoh gaji; relatif = hari sebelum(-)/selepas(+) hari gaji. Tidak sekali-kali sebelum gaji ditutup.",
-    "defaultCurrency": "Mata wang gaji lalai",
-    "defaultCurrencyHint": "Rekod Gaji Pokok baharu akan prapilih mata wang ini; HR boleh menukarnya bagi setiap rekod."
+    "statutoryEditInOrganization": "Sunting dalam Organisasi",
+    "statutoryNotSet": "Tidak ditetapkan",
+    "statutoryReadOnlyHint": "Dipaparkan untuk rujukan sahaja. Butiran pendaftaran majikan ini ialah satu rekod dengan satu pemilik — Organisasi → Berkanun. Dahulu ia boleh disunting di sini juga, jadi skrin yang menyimpan terakhir menang secara senyap.",
+    "movedSettingsHint": "Tempoh percubaan, peringatan penilaian dan mata wang gaji lalai bukan tetapan gaji dan telah berpindah:",
+    "movedHiringLink": "Tetapan lalai pengambilan",
+    "movedCurrencyLink": "Mata wang syarikat"
   },
   "employeeIdConfig": {
     "title": "Persediaan Nombor Berjalan Automatik ID Pekerja",

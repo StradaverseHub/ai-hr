@@ -6,7 +6,7 @@ import { requireAdmin } from '@/lib/authz';
 import { computeProvisionalEndOn, hireEmployee, resolveProbationMonths } from '@/core/org';
 import { setCompensation } from '@/core/comp';
 import { listLeaveTypes } from '@/core/read';
-import { getPayrollConfig } from '@/core/payroll-config';
+import { getHiringDefaults } from '@/core/hiring-defaults';
 import { decideProfileChange } from '@/core/profile';
 
 type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
@@ -37,12 +37,14 @@ export async function hireAction(formData: FormData) {
     // Server is the source of truth for the provisional end date (never trust the client to have
     // hidden/derived the right field): part_time → null; full_time → user date or the computed default
     // (company-configured probation months) when blank; contract / intern → the user-entered fixed-term
-    // date (or null). getPayrollConfig runs in this admin-gated hire path so RLS reads it fine.
+    // date (or null). r79a (4fb8b75a step 3): the configured probation length now comes from the company's
+    // HIRING defaults (core/hiring-defaults.ts, company.probation_months) instead of the payroll config
+    // table it used to sit in — same value, same resolveProbationMonths default of 3.
     let provisionalEndOn: string | null;
     if (employmentType === 'part_time') {
       provisionalEndOn = null;
     } else if (employmentType === 'full_time') {
-      const cfg = await getPayrollConfig(session, companyId);
+      const cfg = await getHiringDefaults(session, companyId);
       const probationMonths = resolveProbationMonths(cfg?.probationMonths);
       provisionalEndOn = rawEnd ?? computeProvisionalEndOn(hiredOn, 'full_time', probationMonths);
     } else {

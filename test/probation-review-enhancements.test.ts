@@ -1,7 +1,7 @@
 /**
  * 6522d26a — Probation Management enhancements.
  *
- * Phase 1 (Fn 2): configurable reminder cadence — resolveReminderDays; setPayrollConfig round-trip
+ * Phase 1 (Fn 2): configurable reminder cadence — resolveReminderDays; setHiringDefaults round-trip
  * (validate/sort/dedupe); sweepReviewReminders fires once per (review, offset), is idempotent across
  * re-runs, coalesces catch-up offsets to ONE nudge, respects a custom cadence, skips completed reviews
  * and leavers; SYSTEM actor + summary event; notification fan-out to manager + HR.
@@ -28,7 +28,7 @@ import {
   uploadReviewDocument,
   ReviewError,
 } from '../core/employment-review';
-import { setPayrollConfig } from '../core/payroll-config';
+import { setHiringDefaults } from '../core/hiring-defaults';
 import { dispatchNotifications } from '../core/notifications';
 import {
   adminCtx,
@@ -105,22 +105,18 @@ describe('resolveReminderDays + subtractDays (pure)', () => {
   });
 });
 
-describe('reminder cadence config (company_payroll_config.review_reminder_days)', () => {
+// r79a (4fb8b75a step 3): the cadence lives on `company`, not company_payroll_config — it is an
+// employment-review setting and never had a payroll reader.
+describe('reminder cadence config (company.review_reminder_days)', () => {
   it('round-trips comma-separated input: validates, dedupes, sorts desc; blank → null', async () => {
     const a = adminCtx(b);
-    await setPayrollConfig(a, { companyId: b.companyId, reviewReminderDays: '7, 30,14, 14, 400, -3' });
-    const [cfg] = await owner.db
-      .select()
-      .from(schema.companyPayrollConfig)
-      .where(eq(schema.companyPayrollConfig.companyId, b.companyId));
-    expect(cfg.reviewReminderDays).toEqual([30, 14, 7]);
+    await setHiringDefaults(a, { companyId: b.companyId, reviewReminderDays: '7, 30,14, 14, 400, -3' });
+    const [co] = await owner.db.select().from(schema.company).where(eq(schema.company.id, b.companyId));
+    expect(co.reviewReminderDays).toEqual([30, 14, 7]);
 
-    await setPayrollConfig(a, { companyId: b.companyId, reviewReminderDays: '' });
-    const [cfg2] = await owner.db
-      .select()
-      .from(schema.companyPayrollConfig)
-      .where(eq(schema.companyPayrollConfig.companyId, b.companyId));
-    expect(cfg2.reviewReminderDays).toBeNull();
+    await setHiringDefaults(a, { companyId: b.companyId, reviewReminderDays: '' });
+    const [co2] = await owner.db.select().from(schema.company).where(eq(schema.company.id, b.companyId));
+    expect(co2.reviewReminderDays).toBeNull();
   });
 });
 
@@ -164,7 +160,7 @@ describe('sweepReviewReminders', () => {
   });
 
   it('respects a custom per-company cadence ([14] only)', async () => {
-    await setPayrollConfig(adminCtx(b), { companyId: b.companyId, reviewReminderDays: '14' });
+    await setHiringDefaults(adminCtx(b), { companyId: b.companyId, reviewReminderDays: '14' });
     const E = await hire('Custom');
     const reviewId = await openReview(E.employmentId, '2026-04-30');
 

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { btnPrimary, btnGhost, inputCls } from './ui';
+import { CurrencySelect } from './currency-select';
 
 type Action = (fd: FormData) => void | Promise<void>;
 
@@ -69,15 +70,13 @@ export function CompaniesCardHeader({
             title={t('countryHint')}
             className={`${inputCls} uppercase`}
           />
-          <input
-            name="currency"
-            defaultValue="MYR"
-            placeholder={t('currency')}
-            pattern="[A-Za-z]{3}"
-            maxLength={3}
-            title={t('currencyHint')}
-            className={`${inputCls} uppercase`}
-          />
+          {/* r79a (4fb8b75a step 3) — company.currency became the Basic Salary form's default currency, and
+              createCompany now rejects anything outside the ISO 4217 master. The picker replaces the
+              free-text box so the form cannot post a code the service will refuse. */}
+          <label className="flex flex-col gap-1" title={t('currencyHint')}>
+            <span className="text-xs font-medium text-muted-foreground">{t('currency')}</span>
+            <CurrencySelect name="currency" value="MYR" />
+          </label>
           {/* Organization Module (361e3b15): Default Payroll Cycle, pre-set to Monthly so most admins just
               accept it. The company comes payroll-ready with the standard cycles seeded on create. */}
           <label className="flex flex-col gap-1 sm:col-span-2">

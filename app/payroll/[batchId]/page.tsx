@@ -88,6 +88,9 @@ export default async function BatchPage({
     payrollItems: 'PayrollItems',
     statutoryConfig: 'StatutoryConfig',
     payrollCycle: 'PayrollCycle',
+    // 707b3851 — the company's stored default cycle name resolving to an active cycle. Loosely typed
+    // Record here (unlike the guide page), so a missing entry would silently render `checkundefined…`.
+    defaultCycle: 'DefaultCycle',
     payrollSchedule: 'PayrollSchedule',
     payrollPolicy: 'PayrollPolicy',
     payModes: 'PayModes', // ADR-0078 — custom_period pay-mode blocker (names the affected employees)
