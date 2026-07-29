@@ -70,11 +70,20 @@ export default async function OrganizationPage({
   const { s } = await scopedAdmin();
   const { error } = await searchParams;
   const t = await getTranslations('admin.organization');
-  // The tree stays unscoped (it needs every node to draw the group); the company panels follow
-  // the active company context. Org catalogs (departments/positions/cost-centers/business-units) moved to
-  // Settings → System Labels, so this page no longer fetches them.
+  // THE ONE RESOLVED COMPANY LIST THIS SCREEN RENDERS (feedback ae3bd088). `adminOnly` applies the
+  // database's own app.is_admin_for — for a GROUP-WIDE hr_admin that is every company in the tenant
+  // (the reporter's case: all 8, unchanged), for a company-scoped admin it is their company and its
+  // subtree. Everything the screen shows — the card, both bracketed totals, the Group Structure tree,
+  // the parent picker — is derived from THIS array below, never from a second read; two reads is how a
+  // total and a list drift apart. The company switcher is still deliberately ignored here (0f1802bf):
+  // this is a master-data screen, not an operational one, and `scopeIds` is not consulted.
+  //
+  // `companyTree` stays a separate read because it carries parentCompanyId, which listCompanies does
+  // not select; it is intersected with the resolved list immediately below rather than rendered raw.
+  // Org catalogs (departments/positions/cost-centers/business-units) moved to Settings → System
+  // Labels, so this page no longer fetches them.
   const [companies, tree, statutory, bankProfiles, authorities, signatories, stateOpts] = await Promise.all([
-    listCompanies(s, { includeArchived: true }),
+    listCompanies(s, { includeArchived: true, adminOnly: true }),
     companyTree(s),
     // Rung 5c — company statutory rows come through the pack registry (ADR-0080 D1), not a direct import.
     packFor('MY')?.companyStatutory.list(s) ?? [],
@@ -143,7 +152,19 @@ export default async function OrganizationPage({
   const missingStatutory = companies.filter(
     (c) => !c.archivedAt && c.country === 'MY' && !statBy.has(c.id),
   );
-  const parentBy = new Map(tree.map((n) => [n.id, n.parentId]));
+  // The Group Structure tree, drawn from the SAME resolved set as the card so the two bracketed counts
+  // cannot disagree. Two things are deliberate here:
+  //   • the filter, so a company-scoped admin is not shown a group they cannot administer; and
+  //   • the RE-ROOTING, which is the part that would otherwise be a silent hole. CompanyTree descends
+  //     from `parentId === null` only, so a subsidiary whose parent is out of reach would keep a
+  //     parent id that is not in `nodes`, match no branch, and render NOWHERE — while still being
+  //     counted. Nulling the dangling link makes it a root of the visible group instead.
+  // For a group-wide admin visibleIds holds every company, so both steps are identities.
+  const visibleIds = new Set(companies.map((c) => c.id));
+  const visibleTree = tree
+    .filter((n) => visibleIds.has(n.id))
+    .map((n) => ({ ...n, parentId: n.parentId && visibleIds.has(n.parentId) ? n.parentId : null }));
+  const parentBy = new Map(visibleTree.map((n) => [n.id, n.parentId]));
   // Organization Module (361e3b15): each company's ACTIVE payroll cycle names, so its General-tab picker lists
   // that company's own cycles with the saved default pre-selected (and can flag a saved default that is no
   // longer active). Read per company (tenant-scoped by RLS); the org admin's company list is small.
@@ -152,9 +173,16 @@ export default async function OrganizationPage({
   );
   const activeCycleNamesBy = new Map<string, string[]>();
   companies.forEach((c, i) => activeCycleNamesBy.set(c.id, cycleNameLists[i].map((r) => r.name)));
-  // substrate: read-only, no event. The Companies management card is a tenant-wide master:
-  // it renders every company regardless of the company-switcher scope (getScopeIds), unlike
-  // operational screens which stay scoped. The switcher is intentionally ignored on this screen.
+  // substrate: read-only, no event.
+  //
+  // THIS COMMENT USED TO SAY "tenant-wide master … renders every company", and half of it was wrong in
+  // a way that hid a real hole for two rounds. The half that was TRUE, and still is: the company
+  // switcher (getScopeIds) is intentionally ignored here, unlike operational screens. The half that
+  // was NOT: "every company" meant every company in the TENANT, so a company-scoped hr_admin was
+  // listed — and offered archive/delete/re-parent controls for — companies the database would refuse
+  // to let them write. The card now renders every company the signed-in person can ADMINISTER
+  // (listCompanies adminOnly → app.is_admin_for), which for a group-wide grant is still every one of
+  // them. Do not restate this as "tenant-wide": the two coincide only for the group admin.
 
   const actions = {
     updateCompany: updateCompanyAction,
@@ -196,8 +224,8 @@ export default async function OrganizationPage({
             </span>
           </summary>
           <div className="px-4 py-3">
-            {tree.length > 0 ? (
-              <CompanyTree nodes={tree} />
+            {visibleTree.length > 0 ? (
+              <CompanyTree nodes={visibleTree} />
             ) : (
               <p className="text-sm text-muted-foreground">{t('noCompaniesYet')}</p>
             )}
