@@ -98,9 +98,15 @@ ends.
 port **5432** while the project uses **5433** — it must be started with `-o "-p 5433"`. After an unclean
 stop it needs several minutes of crash recovery (397s this time). A launchd unit would end this.
 
-**tsc CANNOT see a missing translation key.** `t('historyRevision')` type-checks and fails at runtime.
-Six locales, no guard for it. A source-static test comparing `t('…')` calls against `messages/en.json`
-would be cheap and is not written yet.
+**tsc CANNOT see a missing translation key** — `t('historyRevision')` type-checks and fails at runtime.
+**CORRECTED r77: a guard DOES exist and this file previously said it did not.** `test/i18n-coverage.test.ts`
+has three checks: (A) every `en.json` key present and non-blank in all six locales, (B) every namespace
+resolves, (C) every static `t('…')` key resolves in `en.json`.
+
+The hole is narrow and specific: **check C skips any file that uses more than one namespace**
+(`i18n-coverage.test.ts:84`, "can't attribute keys statically"). That is exactly how r76's
+`t('historyRevision')` reached runtime. So the rule is: a missing key in a SINGLE-namespace file is
+caught; in a MULTI-namespace file it is not. Check those by hand, and prefer one namespace per file.
 
 **`rejects.toThrow()` passes on the WRONG throw.** Two tests this session passed for the wrong reason —
 one because a fixture used a non-existent field so the insert failed on NOT NULL before ever reaching
