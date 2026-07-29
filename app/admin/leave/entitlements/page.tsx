@@ -333,6 +333,8 @@ export default async function LeaveEntitlementsPage({
       benefitSchemeId: cl.benefitSchemeId,
       name: cl.name,
       totalLimitDays: cl.totalLimitDays,
+      // r82a 1ef1cf95 (0327): the group's per-application cap; null = uncapped.
+      maxDaysPerApplication: cl.maxDaysPerApplication,
       leaveTypeIds: cl.leaveTypeIds,
     })),
     actions: {

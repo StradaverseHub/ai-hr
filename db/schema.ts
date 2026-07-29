@@ -1480,6 +1480,12 @@ export const schemeLeaveCombinedLimit = pgTable(
       .references(() => benefitScheme.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     totalLimitDays: numeric('total_limit_days', { precision: 6, scale: 2 }).notNull(),
+    // r82a 1ef1cf95 (migration 0327): the group's PER-APPLICATION day cap — "no single application may
+    // exceed N days, whichever member type is chosen". A SECOND, independent rule beside the shared total:
+    // the total caps the year, this caps one application. NULL = no cap, which is what every group meant
+    // before 0327, so existing groups are unaffected until an admin sets a value. Measured in CALENDAR days
+    // spanned by the application; the units live in applicationSpanDays() (core/leave.ts), not here.
+    maxDaysPerApplication: numeric('max_days_per_application', { precision: 6, scale: 2 }),
     createdAt: createdAt(),
   },
   (t) => [index('scheme_leave_combined_limit_scheme_idx').on(t.benefitSchemeId)],
