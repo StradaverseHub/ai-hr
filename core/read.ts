@@ -291,7 +291,31 @@ export function listManagerCandidates(
   );
 }
 
-export function listCompanies(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
+/**
+ * Companies, with the full master row every company screen reads.
+ *
+ * SCOPE, AND WHY THERE ARE NOW TWO OF THEM (feedback ae3bd088). By default this is scoped to the
+ * TENANT and to nothing else — RLS's `tenant_id = app.current_tenant_id()` and no further predicate —
+ * which is right for the ~15 pickers and filters that call it: they hand the chosen company to a
+ * service call that does its own authorisation, and narrowing the picker would only hide options that
+ * are legitimately selectable.
+ *
+ * `adminOnly` adds `app.is_admin_for(company.id)` — the SAME function the company table's own WITH
+ * CHECK clause uses (migration 0016), so a screen that lists a company with this option can always
+ * also write to it. A GROUP-WIDE grant (`company_id` null on the role_assignment) satisfies it for
+ * every company, so this is not a narrowing for the ordinary group admin: it is all of them, exactly
+ * as before. It narrows only a company-scoped admin, to their company and its subtree.
+ *
+ * It exists because "tenant-wide" was the wrong contract for the Organization → Companies MANAGEMENT
+ * card. That card renders an editable panel per row — archive, delete, re-parent, bank profile,
+ * statutory identifiers — so listing a company a person cannot administer offers them controls the
+ * database will refuse, and discloses the group's size to someone whose access does not otherwise
+ * reveal it (the same objection feedback ab77dc1f raised against the dashboard's "N of M").
+ */
+export function listCompanies(
+  ctx: SessionContext,
+  opts: { includeArchived?: boolean; adminOnly?: boolean } = {},
+) {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -328,7 +352,14 @@ export function listCompanies(ctx: SessionContext, opts: { includeArchived?: boo
         hasLogo: sql<boolean>`exists (select 1 from company_logo cl where cl.company_id = company.id)`,
       })
       .from(company)
-      .where(opts.includeArchived ? undefined : isNull(company.archivedAt))
+      .where(
+        and(
+          opts.includeArchived ? undefined : isNull(company.archivedAt),
+          // Raw SQL, and `company.id` unqualified, because that is the table's alias in this FROM —
+          // the same call shape adminCompanies() already uses.
+          opts.adminOnly ? sql`app.is_admin_for(company.id)` : undefined,
+        ),
+      )
       .orderBy(company.legalName),
   );
 }

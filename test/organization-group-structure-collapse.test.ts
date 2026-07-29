@@ -38,7 +38,12 @@ describe('organization group-structure collapse', () => {
 
   it('keeps CompanyTree rendering unchanged inside the collapsible body', () => {
     const detailsBody = src.slice(src.indexOf('<details'), src.indexOf('</details>'));
-    expect(detailsBody).toContain('<CompanyTree nodes={tree} />');
+    // `visibleTree`, not the raw `tree`, since feedback ae3bd088: the tree is drawn from the SAME
+    // resolved company list the Companies card renders, so the bracketed count on this summary cannot
+    // disagree with the card's. For a group-wide admin the two arrays are identical, which is why this
+    // remains a presentation-only assertion. The behavioural pin lives in
+    // test/organization-companies-reachable.test.ts.
+    expect(detailsBody).toContain('<CompanyTree nodes={visibleTree} />');
     expect(detailsBody).toContain("t('noCompaniesYet')");
   });
 
