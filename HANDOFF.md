@@ -135,7 +135,7 @@ Check the component source.
 
 ## Live state
 
-**Deployed:** `main@54d25b5`, service active, migrations through **0322** (r77 and the hotfix added none).
+**Deployed:** `main@e82c519`, service active, migrations through **0322** (r77, the hotfix and r78 added none).
 
 **READ THE COMPANIES-LIST HOTFIX ENTRY FIRST if you are about to trust a test on any list screen.**
 A production screen dropped 7 of 8 rows for 24 days while every test passed, because rows are lost in the
@@ -233,6 +233,96 @@ input types + formula setting) · `956cec85` (Malaysia statutory forms submenu) 
 ---
 
 # Round history
+
+## r78 — 2026-07-29 — 4 items + the payroll settings map, and duplicates nobody reported
+
+**Shipped:** `main@e82c519`. No migration.
+**Gate:** `tsc` clean · **478 files / 5355 tests** · `next build` clean · rehearsal not required (no
+migration). Verified live: `GET /` 401, service active, `lib/import-file.ts` present, `transferAction`
+gone from the deployed tree.
+
+**Shipped:** a324a4b3 (attendance nav keys) · 11355c08 (dashboard Companies tile) · 63393e52 (import
+file picker) · 4d391ab7 (untagged movement writers).
+**Investigated:** 4fb8b75a — the payroll settings map, pushed to the board as revision 2.
+
+### Decisions
+
+**1. FIXING ONE REPORTED DUPLICATE FOUND TWO NOBODY HAD REPORTED.** `4d391ab7` complained that one
+Promotion produced two Employment History rows. The brief required enumerating EVERY writer emitting a
+projected event type before changing any — and that enumeration is the round's most valuable output:
+- **Every hire with a manager projected TWO rows** — "Hired" plus "Reporting Line Change" — because
+  `hireEmployee` writes its `reporting-line.set` inline and untagged. That is the reported bug's exact
+  class, on every employee ever hired, and nobody had raised it.
+- **Performance merit increases were labelled "Salary Adjustment"** because `enactCompAction` →
+  `setCompensation` was untagged. Now tagged `increment` and correctly labelled.
+- **`transferAction` was an unreferenced but LIVE RPC endpoint.** No UI called it, but an exported
+  `use server` function is callable regardless. Deleted.
+- Also rerouted: `setLocationAction` (Work Location) — with a test pinning r73 Decision 3's case, that
+  the business unit survives.
+
+**Two reroutes were REFUSED with reasons.** The Basic Salary card is the only writer that can create a
+first salary record or change pay mode / payment term / `rate_amount`, and the comparison writer carries
+none of those — rerouting would have deleted two capabilities to fix a row that was never duplicated.
+Direct Superior stays out per r77 (`endReportingLine` emits a non-movement event; routing it would remove
+the only way to CLEAR a superior).
+
+**2. MY OWN PLAN'S PREMISE WAS FALSE, and the mistake is one this file warns agents about.** The
+`a324a4b3` plan asserted the shift-library row "reads Attendance Policy" because its descriptor says
+`labelKey: 'attendancePolicy'`. The catalog has resolved that key to **"Shift settings"** in all six
+locales since R17 (`c9f7211`, 8 Jul). All three proposed renames were already live. **A labelKey is not
+the label — resolve it against `messages/en.json` before describing what a screen says.** The round
+still gained: the keys were renamed so key ≡ its own string (a real landmine for the next editor), with
+a test pinning key ≡ camelCase(English label). No guard could have caught this — i18n check C walks only
+`app/` and `components/`, never `packs/`.
+
+**STILL OPEN and returned to the reporter:** `/admin/attendance-policy`'s own header reads "Lateness,
+Early Out & Overtime Settings" while its nav row reads "Attendance policy" — the name their approved
+plan pinned. Their original complaint (that setting is not findable) therefore still stands. Not guessed
+at; the `build_ref` asks which of the two should change.
+
+**3. THE PAYROLL MAP: seven pages are FIVE screens, and the master is empty.** `4fb8b75a` asked to
+consolidate seven overlapping Payroll Settings pages. Traced from a payroll RUN backwards:
+- **Payroll Schedule, Payroll Period Template and Payment Submission Control are three menu cards
+  pointing at the SAME URL** (`/admin/payroll-config`), each named after a different section of one
+  form. `lib/permissions.ts:335-382` registers five payroll screens, not seven. Not duplication — one
+  room, three doors.
+- **`company_payroll_config` has ZERO rows for all 8 companies**, while 18 payrolls have run and 47
+  payslips issued. Everything falls back to the calendar month, which is the documented default — so
+  nothing is wrong, but **nobody has ever exercised that screen**, and any consolidation assuming people
+  rely on it would be assuming wrongly.
+- **The cut-off master is Payroll Policies**, not any of the three pages the reporter named
+  (`core/payroll.ts:237-271`, `core/payroll-policy.ts:475-528`). Only 2 of 23 employments have one.
+- **One genuine two-writer duplicate:** the company statutory block is editable from Organization AND
+  from the middle of the payroll screen. Same record, no coordination, last save wins.
+- **`payment_basis` is dead configuration** — written, validated, stored, read by nothing.
+- Three settings on the payroll screen are live but belong elsewhere: probation months (hiring), review
+  reminder days (appraisals), default currency (compensation).
+
+**Raised as their own items rather than folded into a redesign:** `b84821cf` — two employees flagged
+subject to HRDF at unregistered companies; the payslip stamps `hrdfSubject: true` then computes zero, and
+**ISEDECOR BINA has run eight payrolls in that state** with no run-level check. `707b3851` — Chin Hin
+Property Group and SpaceX both name "Monthly" as their default cycle while having NO cycle defined, so
+both are silently blocked from payroll and never have run one.
+
+**Told the reporter two things they did not ask to hear:** their proposed "Payment Settings" page cannot
+be a rename, because Payment Submission Control holds no payment content at all (bank formats live in
+Organization); and statutory rates must NOT be folded into tenant-editable settings — they are
+legislated, shipped as signed national data, and making them look like preferences would be a regression.
+
+**4. The i18n guard has a SECOND hole, found while building.** Check C matches LITERAL `t('key')` only,
+so a key routed through a helper — `t(importFileMessageKey(err))` — is invisible to it. Recorded in
+Traps alongside the multi-namespace hole. That trap entry has now been corrected twice in two rounds.
+
+**5. Excel's UTF-8 BOM would have broken the import on the most common file anyone would upload.**
+`63393e52` added a file picker; `Blob.text()` UTF-8-decodes and drops the BOM, but the agent verified
+that in Node rather than assuming, and pinned it — without the strip, `full_name` reads as a missing
+required column on any CSV saved from Excel. The READ step lives in `lib/import-file.ts`, deliberately
+separate from PARSE, so `d8471481` can swap in a workbook decoder without touching the write path.
+
+**Carried:** still nothing browser-verified since r70. `63393e52`'s file-pick event wiring and r77's
+approvals client island are both source-reasoned only — this repo has no DOM or interaction runner.
+
+---
 
 ## Companies list hotfix — 2026-07-29 — the row was lost in TRANSPORT, not in the query (`main@54d25b5`)
 
