@@ -26,6 +26,8 @@ import {
   type GradePolicyRow,
   type LeaveEligibility,
 } from './leave';
+// 23ad620e — "the" emergency contact is now the highest-priority row of the per-person register.
+import { primaryEmergencyContactSql } from './emergency-contacts';
 import {
   appUser,
   assignment,
@@ -1560,11 +1562,15 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         homePhone: person.homePhone,
         correspondenceMobilePhone: person.correspondenceMobilePhone,
         correspondenceHomePhone: person.correspondenceHomePhone,
-        emergencyContactName: person.emergencyContactName,
-        emergencyContactRelationship: person.emergencyContactRelationship,
-        emergencyContactPhone: person.emergencyContactPhone,
-        emergencyContactPhone2: person.emergencyContactPhone2,
-        emergencyContactAddress: person.emergencyContactAddress,
+        // 23ad620e — an employee may now hold SEVERAL emergency contacts (person_emergency_contact). These
+        // five names are kept exactly as they were so every consumer of employeeDetail is untouched; they
+        // now resolve to the HIGHEST-PRIORITY live record (Primary → Secondary → Other) instead of the
+        // retired person.emergency_contact_* columns. The full list is read with listEmergencyContacts.
+        emergencyContactName: primaryEmergencyContactSql('full_name'),
+        emergencyContactRelationship: primaryEmergencyContactSql('relationship'),
+        emergencyContactPhone: primaryEmergencyContactSql('mobile_phone'),
+        emergencyContactPhone2: primaryEmergencyContactSql('home_phone'),
+        emergencyContactAddress: primaryEmergencyContactSql('address'),
         // 2.1 Payroll Policy: the assigned named pay-processing template (null = monthly default).
         payrollPolicyId: employment.payrollPolicyId,
         payrollPolicyName: payrollPolicy.name,

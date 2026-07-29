@@ -20,7 +20,7 @@
 import { and, asc, eq, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { employeeDependent, employeeQualification, employment, person, profileOption } from '../db/schema';
+import { employeeDependent, employeeQualification, employment, person, personEmergencyContact, profileOption } from '../db/schema';
 import { countryPacks } from '../localization/registry';
 import { DEPENDENT_RELATIONSHIP_CATEGORY, DEPENDENT_RELATIONSHIPS } from './dependents';
 import { QUALIFICATION_LEVEL_CATEGORY, QUALIFICATION_LEVEL_DEFAULTS } from './qualifications';
@@ -107,7 +107,9 @@ export const CATEGORY_PERSON_COLUMN: Partial<Record<ProfileOptionCategory, (keyo
   nationality: ['nationality'],
   state: ['state', 'permanentState', 'correspondenceState'],
   country: ['country', 'permanentCountry', 'correspondenceCountry'],
-  relationship: ['emergencyContactRelationship'],
+  // 23ad620e — the emergency-contact relationship moved off `person` into person_emergency_contact, so the
+  // `relationship` category governs no person column any more; its in-use guard leg is the register below.
+
   // 8c284478 — Salutation on the Personal Details card (person.salutation, migration 0300).
   salutation: ['salutation'],
 };
@@ -483,6 +485,16 @@ export async function deleteProfileOption(ctx: SessionContext, id: string): Prom
         .select({ n: sql<number>`count(*)::int` })
         .from(employeeQualification)
         .where(eq(employeeQualification.qualification, opt.value));
+      usedCount += Number(u?.n ?? 0);
+    }
+    // Feedback 23ad620e — the `relationship` category governs person_emergency_contact.relationship (it used
+    // to govern person.emergency_contact_relationship, a person column). Archived rows still store the value,
+    // so they count too — deletion must never orphan a stored relationship from its catalog entry.
+    if (opt.category === 'relationship') {
+      const [u] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(personEmergencyContact)
+        .where(eq(personEmergencyContact.relationship, opt.value));
       usedCount += Number(u?.n ?? 0);
     }
     if (usedCount > 0) {

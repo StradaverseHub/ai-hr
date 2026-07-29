@@ -41,6 +41,14 @@ async function personRow(personId: string) {
   const [p] = await owner.db.select().from(schema.person).where(eq(schema.person.id, personId));
   return p;
 }
+// 23ad620e — the emergency contact moved off `person` into its own per-person register.
+async function primaryContact(personId: string) {
+  const [c] = await owner.db
+    .select()
+    .from(schema.personEmergencyContact)
+    .where(eq(schema.personEmergencyContact.personId, personId));
+  return c;
+}
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -95,9 +103,15 @@ describe('b4682879 — person profile fields', () => {
     expect(p.city).toBe('Kuala Lumpur');
     expect(p.state).toBe('WP Kuala Lumpur');
     expect(p.country).toBe('Malaysia');
-    expect(p.emergencyContactRelationship).toBe('Spouse');
-    expect(p.emergencyContactPhone2).toBe('0133333333');
-    expect(p.emergencyContactAddress).toBe('2 Jalan Dua');
+    // 23ad620e — the five emergency fields are still ACCEPTED by updatePerson but no longer live on
+    // `person`: they route into the per-person register's highest-priority record.
+    const ec = await primaryContact(E.personId);
+    expect(ec.fullName).toBe('Kin');
+    expect(ec.relationship).toBe('Spouse');
+    expect(ec.mobilePhone).toBe('0122222222');
+    expect(ec.homePhone).toBe('0133333333');
+    expect(ec.address).toBe('2 Jalan Dua');
+    expect(ec.priority).toBe('primary');
   });
 
   it('the person.updated event lists the profile fields by NAME and never leaks the religion/race VALUE', async () => {
@@ -158,8 +172,11 @@ describe('b4682879 — person profile fields', () => {
     expect(p.city).toBe('Kajang');
     expect(p.state).toBe('Selangor');
     expect(p.personalEmail).toBe('self@home.test');
-    expect(p.emergencyContactRelationship).toBe('Parent');
-    expect(p.emergencyContactPhone2).toBe('0188888888');
+    // 23ad620e — the self path writes the emergency block into the register, not onto `person`.
+    const ec = await primaryContact(E.personId);
+    expect(ec.fullName).toBe('My Kin');
+    expect(ec.relationship).toBe('Parent');
+    expect(ec.homePhone).toBe('0188888888');
     // Legacy single-line `address` is no longer written by the self path.
     expect(p.address).toBeNull();
   });

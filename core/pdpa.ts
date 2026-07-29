@@ -12,7 +12,7 @@
 import { eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { employeeDependent, employeeStatutoryMy, employment, person, personPhoto, profileChangeRequest } from '../db/schema';
+import { employeeDependent, employeeStatutoryMy, employment, person, personEmergencyContact, personPhoto, profileChangeRequest } from '../db/schema';
 import { shredSubjectInTx } from './pii-vault';
 
 /** LHDN income-tax / EPF / SOCSO records must be kept ~7 years; statutory PII stays locked until then. */
@@ -27,8 +27,10 @@ type PiiField = { key: string; table: 'person' | 'statutory'; statutoryLocked: b
 const PII_FIELDS: PiiField[] = [
   { key: 'phone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
   { key: 'address', table: 'person', statutoryLocked: false, scopes: ['contact'] }, // legacy single-line
-  { key: 'emergencyContactName', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'emergencyContactPhone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  // 23ad620e — emergencyContactName / Phone / Relationship / Phone2 / Address were listed here while they
+  // were person COLUMNS. Migration 0322 dropped them; the emergency contact is now a row in
+  // person_emergency_contact and is erased WHOLESALE further down (`emergencyContacts`) rather than NULLed
+  // field by field. Listing a dropped column here would build an UPDATE against a column that is gone.
   // b4682879 — new contact & structured-address fields (all erasable immediately; not statutory-locked).
   { key: 'personalEmail', table: 'person', statutoryLocked: false, scopes: ['contact'] },
   { key: 'addressLine1', table: 'person', statutoryLocked: false, scopes: ['contact'] },
@@ -59,9 +61,6 @@ const PII_FIELDS: PiiField[] = [
   { key: 'homePhone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
   { key: 'correspondenceMobilePhone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
   { key: 'correspondenceHomePhone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'emergencyContactRelationship', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'emergencyContactPhone2', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'emergencyContactAddress', table: 'person', statutoryLocked: false, scopes: ['contact'] },
   // b4682879 — name parts + PDPA s.40 sensitive demographics (identity scope; erasable immediately).
   { key: 'firstName', table: 'person', statutoryLocked: false, scopes: ['identity'] },
   { key: 'lastName', table: 'person', statutoryLocked: false, scopes: ['identity'] },
@@ -176,6 +175,21 @@ export async function erasePersonPii(
         .where(eq(employeeDependent.personId, emp.personId))
         .returning({ id: employeeDependent.id });
       if (cleared.length > 0) for (const k of Object.keys(depSet)) erased.push(`dependent.${k}`);
+    }
+
+    // 23ad620e — the emergency-contact register (person_emergency_contact), which REPLACED the five
+    // person.emergency_contact_* columns dropped by migration 0322. This is the only place an emergency
+    // contact lives, so erasing it here is the whole obligation, not a supplement to a column NULL.
+    // Contact PII about a THIRD party (next of kin) — never under the LHDN/EPF/SOCSO hold, so erasable
+    // immediately when the contact scope is in play. The rows are DELETED, not blanked: unlike a dependent
+    // (whose name/relationship we retain as a minimal benefits identifier) an emergency contact has no
+    // residual purpose once the contact details are gone. Reported only when something was actually removed.
+    if (p.scope === 'contact' || p.scope === 'all') {
+      const removed = await tx
+        .delete(personEmergencyContact)
+        .where(eq(personEmergencyContact.personId, emp.personId))
+        .returning({ id: personEmergencyContact.id });
+      if (removed.length > 0) erased.push('emergencyContacts');
     }
 
     // (5) audit record — no PII payload

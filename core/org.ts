@@ -17,6 +17,8 @@ import { labelUsableByCompany } from './system-labels';
 // inside the same transaction. read.ts does not import org.ts, so this adds no import cycle.
 import { employmentCompanyBlockedTx } from './read';
 import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile-options';
+// 23ad620e — the emergency contact is a per-person register now, not five person columns.
+import { writeSingleEmergencyContactInTx } from './emergency-contacts';
 import {
   person,
   employment,
@@ -1189,9 +1191,18 @@ const PROFILE_FIELD_KEYS: (keyof PersonProfileFields)[] = [
   'correspondencePostcode', 'correspondenceCity', 'correspondenceState', 'correspondenceCountry',
   // bf953339 — Home + Correspondence phone pair (audited by NAME only, PDPA — values never logged).
   'homePhone', 'correspondenceMobilePhone', 'correspondenceHomePhone',
+];
+
+/**
+ * 23ad620e — the five emergency-contact field names are STILL accepted by updatePerson (callers, forms and
+ * tests speak them), but they are no longer person COLUMNS: they route into the highest-priority row of
+ * person_emergency_contact. Kept out of PROFILE_FIELD_KEYS so the person UPDATE never touches the retired
+ * columns, and listed here so the event payload still records which of them a save carried.
+ */
+const EMERGENCY_CONTACT_FIELD_KEYS = [
   'emergencyContactName', 'emergencyContactRelationship', 'emergencyContactPhone',
   'emergencyContactPhone2', 'emergencyContactAddress',
-];
+] as const;
 const trimOrNull = (v: string | null | undefined): string | null => {
   const s = String(v ?? '').trim();
   return s === '' ? null : s;
@@ -1212,7 +1223,8 @@ const CATALOG_BACKED_COLUMNS: Partial<Record<keyof PersonProfileFields, ProfileO
   permanentCountry: 'country',
   correspondenceState: 'state',
   correspondenceCountry: 'country',
-  emergencyContactRelationship: 'relationship',
+  // 23ad620e — emergencyContactRelationship is no longer a person column; the same 'relationship' catalog
+  // rule now runs inside core/emergency-contacts.ts against the register row.
 };
 
 /**
@@ -1246,7 +1258,6 @@ export async function updatePerson(
         permanentCountry: person.permanentCountry,
         correspondenceState: person.correspondenceState,
         correspondenceCountry: person.correspondenceCountry,
-        emergencyContactRelationship: person.emergencyContactRelationship,
       })
       .from(person)
       .where(eq(person.id, p.personId))
@@ -1280,6 +1291,19 @@ export async function updatePerson(
       }
     }
     await tx.update(person).set({ ...after, ...profileSet }).where(eq(person.id, p.personId));
+    // 23ad620e — the emergency block routes into the per-person register (highest-priority row), in this
+    // same transaction so the profile save and the contact can never half-apply. Presence semantics are
+    // unchanged: a form that omits the block passes nothing and the contact is left alone.
+    const emergencyPatch: Record<string, string | null> = {};
+    for (const k of EMERGENCY_CONTACT_FIELD_KEYS) {
+      if (p[k] !== undefined) {
+        emergencyPatch[k] = trimOrNull(p[k]);
+        profileFields.push(k);
+      }
+    }
+    if (Object.keys(emergencyPatch).length > 0) {
+      await writeSingleEmergencyContactInTx(tx, ctx, p.personId, emergencyPatch);
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'person',
