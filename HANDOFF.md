@@ -320,6 +320,92 @@ those employees drop to the statutory floor until their schemes are filled in.
 
 # Round history
 
+## r81 — 2026-07-29/30 — the entitlement keystone begins, and payroll has never paid anyone
+
+**Shipped:** `main@6b225b5`. Migration **0325**.
+**Gate:** `tsc` clean · **484 files / 5487 tests** · `next build` clean · **upgrade rehearsal PASS**
+(step 4 confirmed, leave balances unchanged at 488.00). Verified live: `GET /` 401, 276 migrations, all
+ten new `leave_type` columns present, 10 types backfilled, ANNUAL reading
+`earned_monthly / 10.00 / up`.
+
+**Shipped:** `9816a5ad` **STEP 1 OF 3 ONLY** — additive and inert.
+**Investigated:** `a1d82340` — the payroll process map, pushed to the board.
+**HELD pending a reporter answer:** `9cbf5e0d` — see Decision 3.
+**`9816a5ad` remains `building`, deliberately.** Step 1 changes nothing a user can see; marking it
+deployed would tell the reporter their consolidation had shipped while the calculation still reads
+`leave_policy` entirely.
+
+### Decisions
+
+**1. THE PAYROLL MODULE HAS NEVER DELIVERED A PAYSLIP TO ANYBODY.** The `a1d82340` map traced from 18
+executed runs backwards and found three live faults, raised as separate items rather than folded into a
+redesign:
+- **`ef31d251` — zero runs have ever been closed.** A payslip becomes visible to an employee only when
+  its run is closed (`closeBatch`, `core/payroll.ts:3673-3700`, sole writer of `closed_at`/`released_at`;
+  ESS gate at `core/read.ts:3818`). All 47 payslips exist, calculate correctly, and are invisible to
+  every employee. The "payslip ready" notification fires on close, so it has never fired. **A step
+  skipped 100% of the time is a design problem, not a training gap** — it is one unconfirmed button with
+  nothing indicating pay stays hidden until pressed.
+- **`d0d2c9d1` — RM23,150 of pay entered and never paid.** Attach-on-generate is guarded
+  `if (!subset && runType === 'regular')` (`:1974-2007`) and `createBatch:591-596` then refuses a second
+  batch for the period — so **a run narrowed to some employees permanently strands the rest and locks the
+  month.** Anything keyed after processing is never collected. 14 of 18 runs paid fewer people than the
+  company employs. `payroll_individual_txn` holds RM22,500 of BONUS rows that reach no payslip.
+- **`97a9b0ab` — same employee, same month, same gross, two different tax figures.** PCB 1779.35→889.67
+  and 112.30→374.20 across re-runs with gross unchanged. 15 of 47 payslips revised, 4 of them three
+  times. `pay_period.statutory_version` is NULL on all 18 rows, so **which tax rules produced a past
+  payslip cannot currently be proven.**
+
+**The engine itself is sound** — 47 payslips, 18 runs, no duplicates, headcount matching payslip count
+every time. What is over-complicated is everything around it: **eight** ways to add money to a payslip,
+**three** contradictory definitions of the step order, and a five-stage lifecycle whose last two stages
+have never been used.
+
+**2. STEP 1 OF THE ENTITLEMENT MOVE, AND HOW "NOTHING READS IT" WAS PROVEN.** Agreement proves nothing —
+a correct backfill agrees with the policy by construction. So the proof filled the new columns with
+**contradicting** values (lump instead of earned, round DOWN, carry cap 0, max balance 1 day) and showed
+the figures do not move. If any engine had started reading the type, entry types, day counts and balance
+would all have diverged at once. Figures are pinned absolutely, not merely self-consistent.
+
+The backfill **asserts** that each leave type has at most one distinct value per rule and RAISES
+otherwise — never `LIMIT 1`, which would pick an arbitrary winner and silently change someone's leave.
+Values are sanitised **the way the engine reads them** (`jsonb_typeof` gates every cast, leap-correct
+month/day validation), because the value carried must be the one the engine acts on, and a type whose
+rows differ only in an invalid date does not actually disagree about behaviour.
+
+**Verified against production before deploy, closing both flags the agent could not reach:** zero
+conflicts across all ten rule keys (the assertion will not fire), and **zero policies use per-band
+`carryForwardDays`**, so the silent-fallback risk it flagged does not apply to this tenant. **Step 2 must
+still decide explicitly what happens to per-band carry overrides** — they lose their home when bands
+become days-only.
+
+**3. A CROSS-ITEM INTERACTION NO GATE COULD SEE — and the reason `9cbf5e0d` is held.** `9cbf5e0d` fixes a
+real fault: **probation never worked.** The deriver read only `finalConfirmationDate ?? confirmationDate`
+and **nothing writes either at hire**, so every employee serving probation has displayed **Active from
+day one** while the stored column said `probation`. That mismatch IS the reporter's complaint.
+
+But fixing it collides with the same round's status retirement. Production `review_cycle "2026 Annual"`
+has `eligibility_rules = {"statuses":["active","on_leave","offboarding","terminated"]}` — all four old
+values, i.e. everybody. The remap yields `["active","active_serving_notice","resigned"]`, and
+**`probation` is absent because it never used to appear.** 12 of 22 active employments have a probation
+end date in the future, so up to twelve people would silently drop out of the annual review.
+
+Both changes are individually correct; the collision only exists in the customer's configuration.
+**Raised as `00659c34` and planned with one recommended course** (add `probation` to that cycle), because
+it decides who gets a performance review. Held rather than guessed.
+
+**4. A THIRD caller-less-but-live writer.** `setEmploymentAssignment` took an exported `status?`
+parameter with no UI caller — same class as `transferAction` (r78) and `decideLeaveAction` (r80).
+Deleted, with a test proving supplying one is a no-op. **Three in three rounds: an exported `'use server'`
+function is reachable whether or not any UI references it.** `9cbf5e0d` also dropped the status column
+and enum outright rather than narrowing them — with manual editing gone the column would be written once
+at hire, never correctable, and wrong the moment anyone passed probation: the same drift under a shorter
+enum.
+
+**Carried:** still nothing browser-verified since r70.
+
+---
+
 ## r80 — 2026-07-29 — 2 items shipped, 1 held, and a second caller-less live endpoint
 
 **Shipped:** `main@a76ec71`. **No migration.**
