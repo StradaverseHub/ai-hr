@@ -298,76 +298,61 @@ const ORG_FIELDS = [
   'employmentCategory',
 ] as const;
 
-/** The consolidated <form action={setOrganisationAssignmentAction}> … </form> block, by brace depth. */
-function consolidatedFormBlock(): string {
-  const start = pageSrc.indexOf('<form action={setOrganisationAssignmentAction}');
-  expect(start).toBeGreaterThan(-1);
-  const end = pageSrc.indexOf('</form>', start);
-  expect(end).toBeGreaterThan(start);
-  return pageSrc.slice(start, end);
-}
+/* 8ebabbf2 — the "page + action wiring" block that used to live here pinned the CONSOLIDATED EDITING FORM:
+ * one <form action={setOrganisationAssignmentAction}>, one Save, one shared tx, the effective-date helper
+ * text. That form no longer exists — the Organisation Assignment section is view-only and every field it
+ * carried is now changed through Movement. The guards below replace it, asserting the same wiring question
+ * from the other side: that the editing path is really gone and nothing kept a back door to it.
+ *
+ * The SERVICE-level suites above are untouched and still load-bearing: setEmploymentInfo's `outerTx` leg is
+ * what lets Movement's comparison writer commit the assignment, grade and flat-column legs atomically, which
+ * is exactly the atomicity those tests pin. */
+describe('8ebabbf2 — the Employment tab has no organisation-assignment writer left', () => {
+  it('deletes setOrganisationAssignmentAction rather than leaving it exported', () => {
+    // Every exported `use server` function is a live RPC endpoint. An orphaned one that still writes
+    // effective-dated assignments — with no movement tag — is callable by anything that knows its id, and
+    // would emit history-visible events that project their own untagged Employment History row.
+    expect(actionsSrc).not.toContain('export async function setOrganisationAssignmentAction');
+    expect(pageSrc).not.toContain('setOrganisationAssignmentAction');
+  });
 
-describe('page + action wiring', () => {
-  it('renders the eight relocated org fields INSIDE the consolidated assignment form', () => {
-    const block = consolidatedFormBlock();
+  it('renders no editable control for any organisation-assignment field', () => {
+    // The eight flat columns, the four effective-dated fields and the grade: none may be submitted from
+    // this page any more. Checked by input NAME, because a `name` is exactly what makes a control a writer.
     for (const f of ORG_FIELDS) {
-      expect(block, `${f} must be submitted by the consolidated form`).toContain(`name="${f}"`);
+      expect(pageSrc, `${f} must not be submittable from the Employment tab`).not.toContain(`name="${f}"`);
     }
-    // …and the effective-dated fields are in that same form, i.e. it really is one section.
-    expect(block).toContain('name="departmentId"');
-    expect(block).toContain('name="effectiveDate"');
-    expect(block).toContain('name="gradeId"');
-  });
-
-  it('gives that section exactly ONE Save button', () => {
-    const block = consolidatedFormBlock();
-    expect(block.match(/<button/g) ?? []).toHaveLength(1);
-    expect(block).toContain("t('employmentInfo.saveAssignment')");
-  });
-
-  it('no longer renders a second Organisation heading or a superseded assignment action', () => {
-    // The old fieldset legend is gone — one heading, not two.
-    expect(pageSrc).not.toContain("t('employmentInfo.orgGroup')");
-    expect(pageSrc).not.toContain('setEmploymentAssignmentAction');
-    expect(actionsSrc).not.toContain('export async function setEmploymentAssignmentAction');
-  });
-
-  it('shows the effective-date helper text that scopes the date to the fields it governs', () => {
-    expect(consolidatedFormBlock()).toContain("t('employmentInfo.assignmentEffectiveDateHelp')");
-  });
-
-  it('drives all three writers from ONE transaction in the action', () => {
-    const start = actionsSrc.indexOf('export async function setOrganisationAssignmentAction');
-    expect(start).toBeGreaterThan(-1);
-    const body = actionsSrc.slice(start, actionsSrc.indexOf('\n}\n', start));
-    expect(body).toContain('await withTenant(s, async (tx) => {');
-
-    // Each writer's own argument list must end with that shared tx — otherwise it opens its own
-    // transaction and a failure downstream can no longer roll it back. Paren-matched rather than
-    // regex-matched so the assertion does not trip over `(tx)` in the withTenant callback signature.
-    const argsOf = (fn: string): string => {
-      const open = body.indexOf(`${fn}(`);
-      expect(open, `${fn} must be called in the consolidated action`).toBeGreaterThan(-1);
-      let depth = 0;
-      for (let i = open + fn.length; i < body.length; i++) {
-        if (body[i] === '(') depth++;
-        else if (body[i] === ')' && --depth === 0) return body.slice(open + fn.length + 1, i);
-      }
-      throw new Error(`unbalanced parens in ${fn} call`);
-    };
-    for (const fn of ['setEmploymentGrade', 'setEmploymentAssignment', 'setEmploymentInfo']) {
-      expect(argsOf(fn).trimEnd().replace(/,$/, '').trimEnd(), `${fn} must receive the shared tx`).toMatch(
-        /\btx$/,
+    for (const f of ['departmentId', 'positionId', 'gradeId', 'employmentType']) {
+      // The pre-transaction Company correction block (9464bd56) keeps its own department/position/BU
+      // pickers, so these names may still appear — but never inside a setEmploymentInfoAction form.
+      const infoForm = pageSrc.slice(
+        pageSrc.indexOf('<form action={setEmploymentInfoAction}'),
+        pageSrc.indexOf('</form>', pageSrc.indexOf('<form action={setEmploymentInfoAction}')),
       );
+      expect(infoForm, `${f} must not ride along on the Employment Dates save`).not.toContain(`name="${f}"`);
     }
-    for (const f of ORG_FIELDS) expect(body).toContain(`${f}:`);
   });
 
-  it('does not add a migration — Option B changes presentation and submission only', () => {
+  it('removes the Assignment Effective Date field and its helper text (expected behaviour #1)', () => {
+    expect(pageSrc).not.toContain("t('employmentInfo.assignmentEffectiveDate')");
+    expect(pageSrc).not.toContain("t('employmentInfo.assignmentEffectiveDateHelp')");
+    expect(pageSrc).not.toContain("t('employmentInfo.saveAssignment')");
+    // The section heading stays — it is still a section, just a read-only one.
+    expect(pageSrc).toContain("t('employmentInfo.assignmentGroup')");
+  });
+
+  it('points the administrator at Movement where the editing used to be', () => {
+    expect(pageSrc).toContain("t('employmentInfo.assignmentViewOnlyNote')");
+    expect(pageSrc).toContain("t('employmentInfo.assignmentViewOnlyLink')");
+    // The link must open the New Event form itself, not merely the Movement tab.
+    expect(pageSrc).toContain('?tab=careerMovement&newEvent=1');
+  });
+
+  it('still adds no migration — this item changes presentation and permissions only', () => {
     const journal = JSON.parse(
       fs.readFileSync(path.join(REPO, 'db/migrations/meta/_journal.json'), 'utf8'),
     ) as { entries: { tag: string }[] };
-    expect(journal.entries.some((e) => /c5ac75fa|organisation.assignment.consolidat/i.test(e.tag))).toBe(false);
+    expect(journal.entries.some((e) => /c5ac75fa|8ebabbf2|organisation.assignment/i.test(e.tag))).toBe(false);
   });
 });
 
@@ -376,11 +361,37 @@ describe('i18n', () => {
   const load = (loc: string) =>
     JSON.parse(fs.readFileSync(path.join(REPO, 'messages', `${loc}.json`), 'utf8'));
 
-  it('carries the effective-date helper text in all six locales', () => {
+  // 8ebabbf2 — the effective-date helper text was the mitigation for a Save that dated only some of the
+  // fields beside it. With no Save and no date field, the text is orphaned: it must be GONE from every
+  // locale (an unused key is the thing that later gets rendered by mistake), and the view-only pointer that
+  // replaced it must be present in every locale. `tsc` cannot see either problem — t('nope') type-checks.
+  it('drops the orphaned assignment-form keys from all six locales', () => {
     for (const loc of LOCALES) {
-      const v = load(loc).people.detail.employmentInfo.assignmentEffectiveDateHelp;
-      expect(typeof v, `${loc} must define assignmentEffectiveDateHelp`).toBe('string');
-      expect(v.trim().length, `${loc} helper text must not be blank`).toBeGreaterThan(0);
+      const ei = load(loc).people.detail.employmentInfo;
+      for (const k of [
+        'assignmentEffectiveDate',
+        'assignmentEffectiveDateHelp',
+        'assignmentNote',
+        'saveAssignment',
+      ]) {
+        expect(ei[k], `${loc}: ${k} must be gone with the editing form`).toBeUndefined();
+      }
+    }
+  });
+
+  it('carries the view-only pointer text in all six locales', () => {
+    for (const loc of LOCALES) {
+      const ei = load(loc).people.detail.employmentInfo;
+      for (const k of ['assignmentViewOnlyNote', 'assignmentViewOnlyLink', 'joinDatesViewOnlyNote']) {
+        expect(typeof ei[k], `${loc} must define ${k}`).toBe('string');
+        expect(ei[k].trim().length, `${loc}: ${k} must not be blank`).toBeGreaterThan(0);
+      }
+      // Each locale must be a real translation, not the English string copied through.
+      if (loc !== 'en') {
+        expect(ei.assignmentViewOnlyNote, `${loc} must not fall back to English`).not.toBe(
+          load('en').people.detail.employmentInfo.assignmentViewOnlyNote,
+        );
+      }
     }
   });
 

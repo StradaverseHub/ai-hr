@@ -72,7 +72,17 @@ const KINDS = [
   'orgAssignmentChange',
   'reportingLineChange',
   'employmentTypeChange',
+  // 89ea527b — the two employment-date movements. Neither is a comparison kind: each moves exactly one date,
+  // and that date IS the effective date (the `confirmation` pattern), so a Current/After grid would just
+  // restate the field above it.
+  'joinDateChange',
+  'groupJoinDateCorrection',
 ] as const;
+
+/** 89ea527b — kinds whose Effective Date is the VALUE being set, not the day a separate change takes effect.
+ *  They get an explicit hint, because "Effective Date" alone reads as "when does this apply" and here the
+ *  answer is "this IS the new date". */
+const DATE_VALUE_KINDS: readonly string[] = ['joinDateChange', 'groupJoinDateCorrection'];
 
 // Mirrors core/movement.ts COMPARISON_KINDS — the kinds that render the Current / After grid.
 const COMPARISON_KINDS: readonly string[] = [
@@ -154,6 +164,8 @@ export function MovementNewEvent({
       case 'orgAssignmentChange': return t('eventType.orgAssignmentChange');
       case 'reportingLineChange': return t('eventType.reportingLineChange');
       case 'employmentTypeChange': return t('eventType.employmentTypeChange');
+      case 'joinDateChange': return t('eventType.joinDateChange');
+      case 'groupJoinDateCorrection': return t('eventType.groupJoinDateCorrection');
       default: return k.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
     }
   };
@@ -317,6 +329,11 @@ export function MovementNewEvent({
               defaultValue={edit?.effectiveDate ?? today}
               className={inputCls}
             />
+            {DATE_VALUE_KINDS.includes(kind) && (
+              <span className="text-xs text-muted-foreground">
+                {kind === 'joinDateChange' ? t('form.joinDateChangeHint') : t('form.groupJoinDateCorrectionHint')}
+              </span>
+            )}
           </label>
         )}
 
