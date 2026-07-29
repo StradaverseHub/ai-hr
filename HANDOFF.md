@@ -79,6 +79,13 @@ Established pattern, used for r73/r74/r75. It works, with rules learned the hard
 
 ## Traps that cost real time this session
 
+**THIS DOCUMENT'S SHIPPED LISTS ARE NOT EVIDENCE.** r76 found an item recorded here as shipped in r74
+that had never merged — and the same file listed it as still planned twenty lines earlier. The reporter
+was shown, and refuted, a feature that did not exist. Before trusting any "shipped" claim, run
+`git log -S <a symbol the work introduced> main`. An empty result means it never landed, whatever this
+file says. The abandoned branch also carried a migration number `main` had already used, which merges as
+a **silent skip**, not a conflict.
+
 **TEST DATABASES LEAK.** `TEST_DB_NAMESPACE` has no teardown — each parallel round permanently adds a
 template plus ten workers. It reached **366 test databases**, at which point DROP/CREATE DATABASE hangs
 and a normally 1-7s template build took **1308s**. It looked exactly like a catastrophically slow
@@ -106,20 +113,26 @@ Check the component source.
 
 ## Live state
 
-**Deployed:** `main@3a69899`, service active, migrations through **0321**.
+**Deployed:** `main@35cde09`, service active, migrations through **0322**.
 
 Shipped this session and live: r73 (3 items + `blocked` status + a silent data-loss fix), plan history
 (0318), r74 (10 items), r75 (10 items), slice 4 (nav + page gating), feedback attachments on push-back
-(0321). **33+ feedback items closed, 5 migrations.**
+(0321), r76 (4 items + the 9816a5ad investigation, 0322). **37+ feedback items closed, 6 migrations.**
 
-**Board right now: 12 planned (awaiting the reporter), 2 approved and ready to build.**
+**Board right now: 0 approved. 13 open or contested awaiting plans, plus the planned queue.**
 
-APPROVED, buildable immediately:
-- `082fa566` — remove Taken and Balance from the leave request popup, leave Pending approval and
-  Available. Display-only; do NOT touch availableLeaveBalance or the submit-time reserve.
-- `9816a5ad` — an INVESTIGATION, not a build: trace which of two entitlement configurations drives the
-  employee leave balance, say what the other does, and which is safe to remove. Report to the board;
-  delete nothing in this item. Several other planned items depend on its answer.
+**THE ANSWER TO 9816a5ad IS LOAD-BEARING FOR SEVERAL QUEUED ITEMS — read r76 Decision 2 before touching
+entitlements.** Short form: both entitlement configurations are live (Annual Leave 6 employees on Benefit
+Scheme, 16 on `leave_policy`), and `leave_policy` is the ONLY home for earning method, carry-forward and
+expiry, rounding, and `maxBalanceDays` — for scheme-driven employees too. Deleting it zeroes 16
+employees' leave and stops accrual for all 22.
+
+**The reporter has since contested that plan and asked for a RESET instead** — delete the existing
+entitlement values outright and reconfigure from scratch on Benefit Schemes, explicitly declining the
+migration path. That is a knowing acceptance of the disruption, and it interacts with `fa3f4ccb`
+(same reporter, "remove the entire section and delete any entitlement logic, data, dependencies or
+calculations", no backward compatibility) — the two want the same demolition and should be planned
+together, not separately.
 
 PLANNED, awaiting approval — the notable ones:
 - `fc776376` pagination, revision 2. **The reporter is right that it is not there.** The feedback board
@@ -133,7 +146,21 @@ PLANNED, awaiting approval — the notable ones:
   the Assignment Template, so approving it now carries a real instruction.
 - `deec1691` — reporter overruled the operator-only placement; explorer moves under Admin as a sellable
   module defaulting OFF, using the slice-4 gating shipped this session.
-- `89ea527b`, `1ef1cf95`, `8ebabbf2`, `fa3f4ccb`, `48224d12`, `22de47c4`, `23ad620e`, `1f6fd6d8`.
+- `89ea527b`, `1ef1cf95`, `8ebabbf2`. (`48224d12`, `22de47c4` and `23ad620e` shipped in r76;
+  `fa3f4ccb`, `1f6fd6d8`, `241817ef` and `9816a5ad` are now **contested** and need re-plans.)
+
+**CONTESTED, needing re-plans (as of r76):** `9816a5ad` (reset instead of migrate — see Live state above) ·
+`fa3f4ccb` (delete the Company Entitlements service-length bands outright, no backward compatibility) ·
+`1f6fd6d8` (reporter supplied the exact Leave Balance Summary field list and formula) · `241817ef` (third
+attempt; reporter argues the company multi-step toggle is redundant because the template decides it).
+
+**OPEN, unplanned (9):** `63393e52` + `d8471481` (both employee import — CSV upload vs an .xlsx redesign;
+**plan them together or they will contradict each other**) · `a324a4b3` (Admin > Attendance expandable
+menu — overlaps what r74 already split three ways, check before planning) · `941c9dac` (movement
+effective date vs entry date) · `4d391ab7` (one movement event writes TWO employment history rows) ·
+`ae9350f2` (Termination movement type — interacts with `4d391ab7`, same writer) · `61bf109d` (pay item
+input types + formula setting) · `956cec85` (Malaysia statutory forms submenu) · `d6429eb4` (wording only:
+"Decide Each Date").
 
 ## Carried debt — none of it blocking, all of it real
 
@@ -155,6 +182,102 @@ PLANNED, awaiting approval — the notable ones:
 ---
 
 # Round history
+
+## r76 — 2026-07-29 — 4 approved items, and an investigation that stopped a deletion
+
+**Shipped:** `main@35cde09` (branch `build/r76`). Migration `0322`.
+**Gate:** `tsc` clean · **470 files / 5258 tests** · `next build` clean · **upgrade rehearsal PASS**.
+Verified live: `GET /` 401, service active, 273 migrations applied, `person_emergency_contact` present
+with both carried-over rows, and all five retired `person.emergency_contact_*` columns gone.
+
+**Shipped:** 082fa566 (leave apply popup shows Pending approval + Available only) · 23ad620e (emergency
+contact becomes a register; `0322` retires the single field) · 22de47c4 (Assign Template picker shows the
+scheme name only) · 48224d12 (scheme names read once, deterministic order — **one bullet deliberately not
+built**).
+**Investigated, not built:** 9816a5ad — the answer went to the board as plan revision 3.
+
+**Zero integration defects.** Three branches merged with no textual conflict AND no semantic one — the
+first round since r69 where that held. Contrast r74 and r75, which each shipped a defect that only the
+full suite caught. Not a new rule: it is a property of this item mix (one popup, one profile tab, two
+config screens), and r68's counter-example still stands.
+
+### Decisions
+
+**1. AN ITEM CAME BACK REFUTED FOR BEING "BUILT IN THE WRONG PLACE" WHEN IT HAD NEVER BEEN BUILT AT ALL —
+and this document is what said otherwise.** Line 335 of this file records `23ad620e (multiple emergency
+contacts)` among r74's shipped items. It was not shipped. `git log -S person_emergency_contact main`
+returns nothing; the work sat on an abandoned branch (`b1a4951`, worktree `wf_4aeeefdd-b40-4`) that never
+merged. Line 136 of this same file simultaneously listed the item as still *planned* — the document
+contradicted itself and nobody read both lines together. So the reporter was shown, and refuted, a
+feature that did not exist. **A shipped-record that is never checked against the tree is worse than no
+record**, because it is trusted. The correction is applied at line 335; the general fix is that a round's
+shipped list should be generated from the merge, not typed.
+
+The stranded branch also carried `db/migrations/0319_person_emergency_contact.sql` — and `main` had
+already shipped `0319_attendance_rule_tenant_wide.sql`. Two different migrations, one number. Merged
+naively that is not a conflict but a **silent skip**: drizzle-kit reads the last applied `when` once and
+ignores anything below the watermark, so the table would simply never have been created in production and
+the failure would have surfaced later as a missing relation. Renumbered to `0322` / `when
+1781862422000`, and journal ordering was re-checked at integration (one pre-existing violation at idx
+230→240, unchanged).
+
+**2. THE INVESTIGATION'S ANSWER WAS "REMOVE NEITHER", AND IT PREVENTED ZEROING 16 EMPLOYEES' LEAVE.**
+9816a5ad asked which of two entitlement configurations drives the balance an employee sees, and which is
+safe to delete. Traced through code and then checked against production: **both are live.** For Annual
+Leave, 6 of 22 active employees take their days from a Benefit Scheme and **16 fall through to the older
+`leave_policy` timeline** (Medical: 5 / 17). Precedence is one shared composition,
+`entitledDays = max(floorDays, schemeDays ?? policyDays)` (`core/leave-compute.ts:502`), with
+`schemeBandDays` returning `null` — not zero — as the fallback trigger.
+
+The sharper finding is the one the reporter could not have seen: **`scheme_leave_entitlement` stores days
+and nothing else.** Earning method, carry-forward and its expiry, rounding, and `maxBalanceDays` live
+ONLY on `leave_policy`, and are read for every employee including scheme-driven ones —
+`accrueEarnedLeave` even asserts `pol!.days` non-null, so an earned-method type cannot accrue at all
+without a policy row. Deleting the "redundant" configuration would not have tidied anything; it would
+have zeroed 16 employees' Annual Leave and switched off monthly earning and carry-forward for all 22.
+Confirmed against two real ledger entries where the two configurations disagree and the winner is
+therefore provable (2.79 days = scheme's 12 prorated; 0.05 = policy's 10 prorated where the scheme had no
+row). Also cleared up the premise: the two tables the reporter was comparing are **the same records
+rendered twice**, not two configurations.
+
+**3. THE FIFTH NON-REPRODUCING REPORT IN TWO SESSIONS.** 48224d12 asked to remove a second scheme picker
+from Service Based Entitlements. That screen has exactly one `<select>` — Company — and picking a company
+already lists every scheme. The picker described is on the adjacent *Benefit Schemes* sub-step. The agent
+built nothing for that bullet and said so, which is the correct outcome; the item shipped its other three
+bullets and the `build_ref` carries a plain-English note telling the reporter exactly which control we
+did not touch and why. The recurring shape is now unmistakable: **a report names a screen, and the fault
+is on the one beside it.**
+
+**4. A DISPLAY STRING HAD A SECOND CONSUMER, AND CHANGING IT IN PLACE WOULD HAVE ALTERED A SURFACE THE
+PLAN PROMISED WAS UNTOUCHED.** The composed scheme label at `app/admin/leave/approval/page.tsx:290` also
+feeds `schemeText()`, the badge on the *saved assignments* table. The build added `name` alongside
+`label` rather than editing `label`, so "only the picker changes" is literally true. Neither the file-map
+scout nor I caught this; the build agent did, by reading every consumer before editing. The naming rule
+itself now lives in `lib/benefit-scheme-label.ts`, deliberately **import-free** so it can never become an
+ADR-0080 drift entry.
+
+**5. THE REMOVED WARNING WAS THE ONLY PLACE THE PRODUCT ADMITTED THE TWO CONFIGURATIONS DISAGREE.**
+48224d12 asked to delete the amber `serviceGradeDisagreement` note; 9816a5ad, running the same round,
+proved the disagreement it reports is real and affects most of the workforce. Built as approved — the
+reporter asked plainly and it is display-only and reversible — but **partially on purpose**: the surface
+is withdrawn while `gradeLevelServiceDays` / `sampleYearsForColumn` and their prop wiring are kept and
+still unit-tested, so restoring the note is a ten-line edit rather than an archaeology exercise. A test
+pins the shape of that compromise so neither half drifts. The reporter was told plainly, in the plan
+pushed to the board, that the note is gone and can be put back on request.
+
+**6. Two judgment calls recorded because both went against the obvious reading.** The warning badge on the
+Assign Template picker was KEPT despite "remove the supporting detail lines" — it is the stated cause of
+the Assign button's `disabled` state, so removing it yields a dead button with no explanation. And the
+shared `SchemeEntitlementMatrixRow` was changed for BOTH surfaces though only one was reported, because
+that file already carries an explicit invariant that the two surfaces must name a scheme identically;
+fixing one would have created exactly the drift the invariant exists to prevent.
+
+**Carried:** every UI change in r71–r76 plus slice 4 remains **browser-unverified**. This round moved a
+leave popup, rebuilt the personnel Profile tab's emergency-contact section, and changed two config
+screens. The 082fa566 build also notes its two surviving columns are `text-right` in a `w-full` table and
+will now spread across the dialog rather than sitting compactly — plausible, unseen.
+
+---
 
 ## Feedback attachments on push-back — 2026-07-29 — a screenshot when asking for changes (0321)
 
@@ -332,7 +455,8 @@ Verified live: `GET /` 401, all 9 attendance rules converted tenant-wide on prod
 
 **Shipped:** 1459e116 (Payroll tabs → sidebar fly-out) · 6da67ab7 (attendance rules tenant-wide) ·
 8ec63139 · 20c699f8 · 953be4b0 · 650b6eb8 (the four-part HR-admin leave inquiry surface) · 37a1141e
-(Carried Forward → Brought Forward) · 23ad620e (multiple emergency contacts) · 9cbf5e0d (employee
+(Carried Forward → Brought Forward) · ~~23ad620e (multiple emergency contacts)~~ **— WRONG, see r76
+Decision 1: this never merged and was built for real in r76** · 9cbf5e0d (employee
 status follows the derived default) · a03eff24 (entitlement setup as a grade-group matrix). Plus
 0bb0e303 and the 895c80f9 nav contract, built ahead of the round.
 
