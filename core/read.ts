@@ -783,6 +783,11 @@ const leaveRequestSelection = {
   stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
   // R23 (2F-3): the applicant's current balance for THIS leave type — the key context an approver
   // needs ("do they have the days?"). Ledger sum (accrual + − debit −).
+  // r80: no table RENDERS this any more — the reporter asked for the "13.5d left" sub-line under the
+  // Approval Items Days column to go (33bf1a2d follow-up), so the value is computed but not shown there.
+  // It stays in the shared projection deliberately: it is a plain correlated subquery on a row the page
+  // already loads (no extra round trip), it is asserted by test/approver-context.test.ts, and dropping a
+  // field from the SHARED selection would change what the flat and paginated leave reads return.
   applicantBalance: sql<string>`coalesce((select sum(ll.days) from leave_ledger ll where ll.employment_id = leave_request.employment_id and ll.leave_type_id = leave_request.leave_type_id), 0)`,
   // Partial Leave Cancellation (ADR-0065): the pending cancellation request (if any) on this row, so the
   // UI can show a "cancellation pending" pill and suppress a second cancel affordance. NULL when none.

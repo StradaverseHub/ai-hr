@@ -1113,7 +1113,16 @@ export default async function LeavePage({
 
           The org-wide leave-request table below is deliberately KEPT. The reporter asked in the same round
           (8ec63139) for a filter on every one of its columns, so it is a surface they use; the redesign
-          changes what an admin lands ON, not what they can still reach further down the page. */}
+          changes what an admin lands ON, not what they can still reach further down the page.
+
+          KEPT AGAIN in r80, when it was reported as a duplicate of Approval Items. It is not: this table
+          holds no approve or reject control (consultant feedback #8/#10 took those off the page long ago —
+          see the header comment above), and four of its capabilities exist NOWHERE else for an HR admin —
+          the org-wide request register over every status, the every-column filter set (0773bda9 +
+          8ec63139), the filtered CSV/Excel export (/leave/export, whose only links are on this page), and
+          AdminCancelLeaveDialog (22e68ff0) over a request the dashboard calendar's week/month window does
+          not reach. /approvals loads PENDING leave only, capped at 200 rows, with no filters, no export and
+          no cancel. The full enumeration is pinned in test/leave-requests-not-approvals.test.ts. */}
       {admin && (
       <div className="flex flex-col gap-6 sm:flex-row">
         <LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />

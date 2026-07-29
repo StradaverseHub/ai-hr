@@ -9,7 +9,6 @@ import {
   addLeaveAttachment,
   adminCancelLeave,
   cancelOwnLeave,
-  decideLeave,
   editLeaveRequest,
   requestLeave,
   requestLeaveCancellation,
@@ -301,20 +300,12 @@ export async function cancelOwnLeaveAction(formData: FormData) {
   redirect('/leave?toast=leaveCancelled');
 }
 
-export async function decideLeaveAction(formData: FormData) {
-  const session = await getSession();
-  // Partial Leave Approval (0131): thread the reject-reason (required on rejection) through the Leave-tab
-  // decide path too, so decideLeave enforces it uniformly and stamps it onto the rejected event.
-  const rejectReason = String(formData.get('rejectReason') || '') || undefined;
-  try {
-    await decideLeave(session, {
-      leaveRequestId: String(formData.get('leaveRequestId')),
-      decision: String(formData.get('decision')) as 'approved' | 'rejected',
-      rejectReason,
-    });
-  } catch (e) {
-    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e))}`);
-  }
-  revalidatePath('/leave');
-  redirect('/leave');
-}
+// Item r80 (Request subsection on Employee Details): `decideLeaveAction` used to live here — the Leave
+// page's OWN approve/reject path, from the era when /leave rendered inline decide buttons. Consultant
+// feedback #8/#10 removed those buttons (see the header comment on app/leave/page.tsx: "approvals live in
+// the Approvals inbox"), but left this exported server action behind with no caller anywhere in the repo.
+// Because every export of a 'use server' module is a callable endpoint, that vestige was still a second
+// way IN to the leave decision — exactly the duplication the reporter asked to end. It is gone; leave is
+// approved and rejected ONLY through Approval Items (app/approvals/actions.ts → core/leave decideLeave,
+// single and bulk). Nothing else moved: the Requests table this page still carries has never held an
+// approve or reject control — see the enumeration recorded in test/leave-requests-not-approvals.test.ts.

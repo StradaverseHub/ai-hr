@@ -9,6 +9,11 @@
  * NOT to copy the newer markup across (that guarantees a third divergence) but to extract the cells into
  * components/leave/leave-request-cells.tsx and have both tables consume them.
  *
+ * r80 (the reporter's follow-up on both items): the Days column shows JUST the days — the "13.5d left"
+ * balance sub-line is gone from every surface — and the leave-CANCELLATION queue, which r77 left one card
+ * below on the old bare-text look, now renders the same shared cells. Plus the confirm button inside the
+ * Review dates pop-out, held back by r77 as outside the approved plan, now reads "Submit".
+ *
  * These are STATIC SOURCE guards: DB-free, deterministic, and — crucially — they read the component source
  * rather than rendered HTML. Next embeds the whole i18n catalog in the page payload, so grepping a rendered
  * page for a column heading finds it whether or not the column rendered.
@@ -54,6 +59,17 @@ function approvalsLeaveSection(): string {
   const to = approvals.indexOf('APPROVAL_SECTION_ID.leaveCancellation');
   expect(from, 'approvals leave section start marker').toBeGreaterThan(-1);
   expect(to, 'approvals leave-cancellation section marker').toBeGreaterThan(from);
+  return approvals.slice(from, to);
+}
+
+/** The Approval Items leave-CANCELLATION section only — from its Card marker to the claims section that
+ *  follows it. r80 brought this queue onto the same shared cells; before that it was still rendering the
+ *  pre-r77 bare name + plain type text directly beneath the restyled request table. */
+function approvalsCancellationSection(): string {
+  const from = approvals.indexOf('APPROVAL_SECTION_ID.leaveCancellation');
+  const to = approvals.indexOf("t('claims')");
+  expect(from, 'approvals leave-cancellation section start marker').toBeGreaterThan(-1);
+  expect(to, 'approvals claims section marker (cancellation section end)').toBeGreaterThan(from);
   return approvals.slice(from, to);
 }
 
@@ -180,6 +196,111 @@ describe('33bf1a2d — the Attachment column costs no extra query', () => {
   });
 });
 
+describe('33bf1a2d r80 — the Days column shows JUST the days', () => {
+  // The reporter's words: "remove the 13.5d left under days column". That sub-line existed on Approval
+  // Items only — My Leave never rendered it — so the balance line now shows on NO surface, and the shared
+  // cell needed no prop and no fork. If a future round wants it back on one surface only, it must arrive
+  // as a prop on this cell; re-inlining a second Days markup is what these guards exist to stop.
+  it('the approvals Days cell renders the shared cell with nothing inside it', () => {
+    const section = approvalsLeaveSection();
+    expect(section, 'the Days cell must be self-closing — no child riding under the day count').toMatch(
+      /<LeaveDaysCell\b[^>]*\/>/,
+    );
+    expect(section, 'no <LeaveDaysCell> … </LeaveDaysCell> wrapper may return').not.toContain(
+      '</LeaveDaysCell>',
+    );
+  });
+
+  it('NOTHING in app/ or components/ renders the applicant balance any more', () => {
+    // A source sweep, not a rendered-HTML grep: Next embeds the whole i18n catalog in the page payload,
+    // so the old string could be found in the HTML of a page that never printed it.
+    expect(sourceFiles().filter((f) => read(f).includes('applicantBalance'))).toEqual([]);
+  });
+
+  it('the shared cell cannot take a Days-column child at all', () => {
+    // Stronger than "the approvals page passes none": with no `children` in the signature, tsc rejects a
+    // second thing in that column on EVERY surface, so the line cannot creep back onto one table only.
+    const sig = cells.slice(cells.indexOf('export function LeaveDaysCell('), cells.indexOf('return (', cells.indexOf('export function LeaveDaysCell(')));
+    expect(sig, 'LeaveDaysCell must not accept children').not.toContain('children');
+  });
+
+  it('the orphaned label is gone from all six catalogs, not just English', () => {
+    // Deleting it from en.json alone would leave five locales carrying a string nothing can render —
+    // i18n check A only walks en → locale, so it would never notice.
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const cat = JSON.parse(read(`messages/${loc}.json`)) as { approvals: Record<string, string> };
+      expect(cat.approvals.applicantBalance, `${loc}: approvals.applicantBalance must be gone`).toBeUndefined();
+    }
+  });
+
+  it('the balance itself is untouched — computed as before, and still one click away', () => {
+    // Presentation only. The value stays in the SHARED leave-request projection (dropping it would change
+    // what the flat and paginated reads return), and the approver reaches it from the same row: the
+    // employee name links to the personnel record, whose leave summary carries the balance.
+    expect(read('core/read.ts')).toContain('applicantBalance: sql<string>');
+    expect(approvalsLeaveSection()).toContain('href={`/personnel/${r.employmentId}`}');
+    expect(read('app/personnel/[employmentId]/page.tsx')).toContain('leaveSummary.days');
+  });
+});
+
+describe('33bf1a2d r80 — the leave CANCELLATION queue uses the SAME cells', () => {
+  // r77 restyled the leave-request table and left the cancellation table directly beneath it on the old
+  // bare-text look — the drift the shared cells exist to prevent, reappearing one card lower.
+  const section = approvalsCancellationSection();
+
+  it('renders the shared employee, type and days cells', () => {
+    for (const name of ['LeaveEmployeeCell', 'LeaveTypeCell', 'LeaveDaysCell']) {
+      expect(section, `the cancellation table must render <${name}>`).toContain(`<${name}`);
+    }
+  });
+
+  it('no longer hand-writes the bare name / plain type / raw day count', () => {
+    expect(section, 'bare bold employee name — use <LeaveEmployeeCell>').not.toMatch(
+      /<td\b[^>]*>\{c\.employee\}<\/td>/,
+    );
+    expect(section, 'plain leave-type text — use <LeaveTypeCell>').not.toMatch(
+      /<td\b[^>]*>\{c\.leaveType\}<\/td>/,
+    );
+    expect(section, 'raw day count — use <LeaveDaysCell>').not.toMatch(
+      /<td\b[^>]*>\{Number\(c\.requestedDays\)\}<\/td>/,
+    );
+    expect(section, 'the shared employee cell owns the avatar').not.toContain('<Avatar');
+  });
+
+  it('the shared cells get the data this row actually carries', () => {
+    // typeCode drives the colour palette (styleFor); passing the NAME would silently fall back to the
+    // default chip for every row. employmentId is what /personnel is keyed by — personId would 404.
+    expect(section).toContain('typeCode={c.typeCode}');
+    expect(section).toContain('href={`/personnel/${c.employmentId}`}');
+    expect(section).toContain('days={c.requestedDays}');
+  });
+
+  it('the columns are unchanged and every body row still has one <td> per <th>', () => {
+    // The restyle moved markup INSIDE existing cells. A dropped or added <td> would silently shift every
+    // column right of it — the Days figure would land under Remaining dates.
+    expect(headings(section)).toEqual([
+      "t('code')",
+      "t('employee')",
+      "t('type')",
+      "t('originalDates')",
+      "t('datesToCancel')",
+      "t('remainingDates')",
+      "t('days')",
+      "t('action')",
+    ]);
+    const body = section.slice(section.indexOf('<tbody'), section.indexOf('</tbody>'));
+    // +1 for the bulk-selection checkbox column, whose <th> holds a component, not a {t(...)}.
+    expect((body.match(/<td\b/g) ?? []).length).toBe(9);
+  });
+
+  it('the cancellation decide path is byte-identical (presentation only)', () => {
+    expect(section).toContain('action={decideLeaveCancellationAction}');
+    expect(section).toContain('<BulkRowCheckbox id={c.id} type="leaveCancellation" />');
+    // The self-approval ban is upstream of the table and stays there.
+    expect(approvals).toContain('const pendingCancellations = leaveCancellations.filter((c) => !mine(c.personId))');
+  });
+});
+
 describe('33bf1a2d — approval behaviour is unchanged (presentation only)', () => {
   const controls = read('app/approvals/leave-decide-controls.tsx');
 
@@ -275,5 +396,56 @@ describe('d6429eb4 — the multi-day action reads "Review dates"', () => {
     // The only place the key is resolved from the catalog is the approvals page's label set.
     const resolvers = sourceFiles().filter((f) => read(f).includes("t('viewDateBreakdown')"));
     expect(resolvers).toEqual([APPROVALS]);
+  });
+});
+
+describe('d6429eb4 r80 — the confirm button inside the Review dates pop-out reads "Submit"', () => {
+  // r77 renamed the ACTION ("Decide each date" → "Review dates") and deliberately held the button back as
+  // outside the approved plan. The reporter then asked for it directly, so r80 shortens the button too.
+  const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
+  const catalog = (loc: string) => JSON.parse(read(`messages/${loc}.json`)) as { approvals: Record<string, string> };
+
+  it('the English string is the new wording', () => {
+    expect(catalog('en').approvals.submitDecisions).toBe('Submit');
+  });
+
+  it('the KEY is unchanged — only the string moved', () => {
+    // Renaming submitDecisions → submit would blank the button at runtime; tsc cannot see a missing
+    // translation key, and a blank <Button> still submits, so the modal would look broken but work.
+    expect(read('app/approvals/leave-date-breakdown.tsx')).toContain('labels.submitDecisions');
+    expect(approvals).toContain("submitDecisions: t('submitDecisions')");
+  });
+
+  it('every locale is shortened too, with no trace of the old wording', () => {
+    // The point of the change is a SHORT button. A locale left on "Hantar keputusan" would keep the long
+    // button for that language — the exact half-migration this file exists to catch.
+    const shortened: Record<(typeof LOCALES)[number], string> = {
+      en: 'Submit',
+      ms: 'Hantar',
+      ta: 'சமர்ப்பி',
+      th: 'ส่ง',
+      vi: 'Gửi',
+      zh: '提交',
+    };
+    for (const loc of LOCALES) {
+      expect(catalog(loc).approvals.submitDecisions, `${loc}: approvals.submitDecisions`).toBe(shortened[loc]);
+    }
+    // The retired long forms, explicitly.
+    expect(catalog('en').approvals.submitDecisions).not.toMatch(/decisions/i);
+    expect(catalog('ms').approvals.submitDecisions).not.toBe('Hantar keputusan');
+    expect(catalog('zh').approvals.submitDecisions).not.toBe('提交决定');
+  });
+
+  it('the button is the ONLY renderer, and it still posts the same batch action', () => {
+    // Same sweep r77 ran for viewDateBreakdown: a second surface reading this key would have been
+    // silently reworded too.
+    expect(sourceFiles().filter((f) => read(f).includes('labels.submitDecisions'))).toEqual([
+      'app/approvals/leave-date-breakdown.tsx',
+    ]);
+    expect(sourceFiles().filter((f) => read(f).includes("t('submitDecisions')"))).toEqual([APPROVALS]);
+    // Wording only: the one batch submit, the same action, the same missing-reason guard.
+    const modal = read('app/approvals/leave-date-breakdown.tsx');
+    expect(modal).toContain('<form action={decideLeaveDatesAction}');
+    expect(modal).toContain('disabled={missingReason}');
   });
 });
