@@ -52,6 +52,43 @@ export async function submitFeedbackAction(formData: FormData) {
   redirect(`${BASE}?toast=${encodeURIComponent('Feedback logged')}`);
 }
 
+/**
+ * Store any images the reporter attached alongside a push-back (0321).
+ *
+ * Runs AFTER the status change, deliberately: the attachment records the revision it answers, and
+ * contestFeedbackPlan / refuteDeployment do not bump plan_revision — only a re-plan does — so the value
+ * read here is still the revision the reporter was looking at. Doing it before would work today and
+ * break silently the day either service starts bumping.
+ *
+ * A failed upload must NOT undo an accepted push-back: the words are the thing that matters, and losing
+ * a recorded objection because a file was too large would be a worse outcome than a missing screenshot.
+ * Failures are surfaced on the toast instead.
+ */
+async function attachTo(
+  s: Awaited<ReturnType<typeof getSession>>,
+  feedbackId: string,
+  formData: FormData,
+  stage: 'contested' | 'refuted',
+): Promise<string | null> {
+  const files = formData.getAll('attachments').filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return null;
+  const failed: string[] = [];
+  for (const file of files) {
+    try {
+      await addFeedbackAttachment(s, {
+        feedbackId,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        content: Buffer.from(await file.arrayBuffer()),
+        stage,
+      });
+    } catch {
+      failed.push(file.name);
+    }
+  }
+  return failed.length ? `${failed.length} file(s) could not be attached: ${failed.join(', ')}` : null;
+}
+
 export async function approveFeedbackPlanAction(formData: FormData) {
   const s = await getSession();
   const id = String(formData.get('id'));
@@ -67,13 +104,17 @@ export async function approveFeedbackPlanAction(formData: FormData) {
 export async function contestFeedbackPlanAction(formData: FormData) {
   const s = await getSession();
   const id = String(formData.get('id'));
+  let attachNote: string | null = null;
   try {
     await contestFeedbackPlan(s, { feedbackId: id, reason: String(formData.get('reason') ?? '') });
+    attachNote = await attachTo(s, id, formData, 'contested');
   } catch (e) {
     fail(e, `${BASE}/${id}`);
   }
   revalidatePath(`${BASE}/${id}`);
-  redirect(`${BASE}/${id}?toast=${encodeURIComponent('Sent back for re-planning')}`);
+  redirect(
+    `${BASE}/${id}?toast=${encodeURIComponent(attachNote ?? 'Sent back for re-planning')}`,
+  );
 }
 
 /** Admin "Generate plan now" — runs the planning agent immediately instead of waiting for the cron. */
@@ -118,13 +159,15 @@ export async function restoreFeedbackAction(formData: FormData) {
 export async function refuteDeploymentAction(formData: FormData) {
   const s = await getSession();
   const id = String(formData.get('id'));
+  let attachNote: string | null = null;
   try {
     await refuteDeployment(s, { feedbackId: id, reason: String(formData.get('reason') ?? '') });
+    attachNote = await attachTo(s, id, formData, 'refuted');
   } catch (e) {
     fail(e, `${BASE}/${id}`);
   }
   revalidatePath(`${BASE}/${id}`);
-  redirect(`${BASE}/${id}?toast=${encodeURIComponent('Sent back for changes')}`);
+  redirect(`${BASE}/${id}?toast=${encodeURIComponent(attachNote ?? 'Sent back for changes')}`);
 }
 
 /** List-view bulk bar: apply one review action to the selected items at once. */

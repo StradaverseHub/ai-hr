@@ -79,17 +79,37 @@ export async function submitFeedback(
 
 export async function addFeedbackAttachment(
   ctx: SessionContext,
-  p: { feedbackId: string; fileName: string; mimeType: string; content: Buffer },
+  p: {
+    feedbackId: string;
+    fileName: string;
+    mimeType: string;
+    content: Buffer;
+    /**
+     * What the reporter was doing when they attached it (0321). Omitted ⇒ 'submitted', which keeps every
+     * existing caller byte-identical. A contest or refute attachment records the revision it ANSWERS —
+     * read here rather than passed in, so the caller cannot mislabel which round an image belongs to.
+     */
+    stage?: 'submitted' | 'contested' | 'refuted';
+  },
 ): Promise<{ id: string }> {
   if (p.content.byteLength === 0) throw new FeedbackError('Empty file');
   if (p.content.byteLength > 10 * 1024 * 1024) throw new FeedbackError('File exceeds 10 MB');
   return withTenant(ctx, async (tx) => {
     const [fb] = await tx
-      .select({ id: feedbackRequest.id, employmentId: feedbackRequest.reporterEmploymentId })
+      .select({
+        id: feedbackRequest.id,
+        employmentId: feedbackRequest.reporterEmploymentId,
+        planRevision: feedbackRequest.planRevision,
+      })
       .from(feedbackRequest)
       .where(eq(feedbackRequest.id, p.feedbackId))
       .limit(1);
     if (!fb) throw new FeedbackError('Feedback not found (or not visible).');
+    const stage = p.stage ?? 'submitted';
+    // The 0321 CHECK pairs these two: submitted has no revision, contested/refuted must name one. Derived
+    // from the item's CURRENT revision rather than trusted from the caller — a push-back always answers
+    // the plan on screen, and letting a form field decide would let a stale page file an image against
+    // the wrong round.
     const [row] = await tx
       .insert(feedbackAttachment)
       .values({
@@ -101,6 +121,8 @@ export async function addFeedbackAttachment(
         mimeType: p.mimeType,
         sizeBytes: p.content.byteLength,
         uploadedByUserId: ctx.userId ?? null,
+        stage,
+        planRevision: stage === 'submitted' ? null : fb.planRevision,
       })
       .returning({ id: feedbackAttachment.id });
     return { id: row.id };
@@ -655,7 +677,8 @@ export function listFeedback(
 export type FeedbackPlanRevisionRow = typeof feedbackPlanRevision.$inferSelect;
 
 export type FeedbackDetail = typeof feedbackRequest.$inferSelect & {
-  attachments: { id: string; fileName: string; sizeBytes: number }[];
+  /** 0321 — stage/planRevision say WHICH round each image belongs to, so the page can group them. */
+  attachments: { id: string; fileName: string; sizeBytes: number; stage: string; planRevision: number | null }[];
   /** Resolved from blockedById so the board can name what it is waiting on rather than show a bare id. */
   blockedBy: { id: string; title: string; status: FeedbackStatus } | null;
   /**
@@ -673,7 +696,13 @@ export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDe
     const [row] = await tx.select().from(feedbackRequest).where(eq(feedbackRequest.id, id)).limit(1);
     if (!row) return null;
     const atts = await tx
-      .select({ id: feedbackAttachment.id, fileName: feedbackAttachment.fileName, sizeBytes: feedbackAttachment.sizeBytes })
+      .select({
+        id: feedbackAttachment.id,
+        fileName: feedbackAttachment.fileName,
+        sizeBytes: feedbackAttachment.sizeBytes,
+        stage: feedbackAttachment.stage,
+        planRevision: feedbackAttachment.planRevision,
+      })
       .from(feedbackAttachment)
       .where(eq(feedbackAttachment.feedbackRequestId, id));
     const planHistory = await tx
