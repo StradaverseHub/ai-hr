@@ -5,18 +5,23 @@ import { Avatar } from '@/components/ui';
 import { styleFor } from '@/components/planned-absences';
 
 /**
- * The leave-request table cells, extracted so the TWO surfaces that list leave requests render the SAME
+ * The leave-request table cells, extracted so every surface that lists leave requests renders the SAME
  * thing (feedback 33bf1a2d).
+ *
+ * THREE tables consume them now: My Leave → Requests (app/leave/page.tsx) and, on Approval Items
+ * (app/approvals/page.tsx), BOTH the leave-request queue and the leave-CANCELLATION queue — the r80
+ * follow-up, which found the cancellation table still on the pre-r77 bare-text look while the request
+ * table beside it had been restyled.
  *
  * Before this module there were two hand-written copies: the My Leave → Requests table
  * (app/leave/page.tsx) had grown avatars, colour-coded type chips and the ADR-0048 duration label, while
  * the Approval Items leave table (app/approvals/page.tsx) still rendered a bare name link and plain type
  * text. Same information, two looks — the reporter asked for the (cleaner) My Leave style on both.
  *
- * Copying the markup across would have guaranteed a THIRD divergence the next time either table changed,
- * so the cells live here and both tables consume them. Anything surface-specific (the approver's stage
- * line, the maternity allowance note, the applicant's balance) rides in as `children` under the shared
- * presentation rather than forking it.
+ * Copying the markup across would have guaranteed another divergence the next time any one table changed,
+ * so the cells live here and every table consumes them. Anything surface-specific (the approver's stage
+ * line, the maternity allowance note) rides in as `children` under the shared presentation rather than
+ * forking it.
  *
  * These are plain server components: no state, no 'use client'. They take already-translated strings —
  * translation stays with the page that owns the namespace, so neither surface's i18n leaks in here.
@@ -82,22 +87,25 @@ export function LeaveTypeCell({
 /** Day count + the ADR-0048 duration label ("Half day (AM)" / "2h" — resolved by the caller via
  *  `durationLabel`, which needs the caller's `leave` translator) + the 0129 hourly window. The window is
  *  gated on durationType==='hourly' AND both times so a stray time never renders on a full/half-day row;
- *  `.slice(0, 5)` drops the Postgres ':00' seconds. `children` is the surface-specific extra (Approval
- *  Items shows the applicant's remaining balance underneath). */
+ *  `.slice(0, 5)` drops the Postgres ':00' seconds.
+ *
+ *  The cell shows the DAYS and nothing else. Approval Items used to append the applicant's remaining
+ *  balance ("13.5d left") underneath; the reporter asked for it gone (33bf1a2d follow-up), so it is gone on
+ *  every surface and this cell takes no `children` — there is no second thing to put in the Days column.
+ *  The balance is still one click away for an approver: the employee name in the row beside it links to
+ *  /personnel/<employmentId>, whose leave summary carries it. */
 export function LeaveDaysCell({
   days,
   durationSuffix,
   durationType,
   fromTime,
   toTime,
-  children,
 }: {
   days: string | number;
   durationSuffix?: string | null;
   durationType?: string | null;
   fromTime?: string | null;
   toTime?: string | null;
-  children?: ReactNode;
 }) {
   return (
     <>
@@ -110,7 +118,6 @@ export function LeaveDaysCell({
           {fromTime.slice(0, 5)}–{toTime.slice(0, 5)}
         </span>
       )}
-      {children}
     </>
   );
 }

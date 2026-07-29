@@ -465,8 +465,11 @@ export default async function ApprovalsPage({
                   </td>
                   {/* 33bf1a2d: the SHARED days cell — day count + the ADR-0048 duration label (which the
                       approver did NOT get before: a half-day request read as a bare "0.5") + the 0129
-                      hourly window. The applicant's remaining balance (R23 2F-3) is approver-only context,
-                      so it rides as a child. */}
+                      hourly window.
+                      r80 follow-up: the applicant's remaining-balance sub-line (R23 2F-3, "13.5d left")
+                      is GONE at the reporter's request — the Days column shows just the days. The balance
+                      itself is untouched: it is still on the row's projection, still on the employee's
+                      /personnel record one click away via the name link, and no calculation moved. */}
                   <td className="px-4 py-2.5 text-right tabular-nums">
                     <LeaveDaysCell
                       days={r.days}
@@ -474,11 +477,7 @@ export default async function ApprovalsPage({
                       durationType={r.durationType}
                       fromTime={r.fromTime}
                       toTime={r.toTime}
-                    >
-                      <div className="text-xs font-normal text-muted-foreground">
-                        {t('applicantBalance', { n: Number(r.applicantBalance) })}
-                      </div>
-                    </LeaveDaysCell>
+                    />
                   </td>
                   {/* 33bf1a2d: Attachment. `hasDocument` is already part of the shared leave-request
                       projection in core/read.ts, so this column adds NO query and no per-row fetch. */}
@@ -559,8 +558,22 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={c.employeeCode} />
                   </td>
-                  <td className="px-4 py-2.5 font-medium">{c.employee}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{c.leaveType}</td>
+                  {/* 33bf1a2d (r80 follow-up): the leave-CANCELLATION queue was left on the pre-r77 look —
+                      a bare bold name and plain type text — while the leave-request table directly above it
+                      had been restyled. Both queues now render the SAME shared cells, so the two tables on
+                      this one screen match and can no longer drift apart. */}
+                  <td className="px-4 py-2.5">
+                    <LeaveEmployeeCell
+                      name={c.employee}
+                      href={`/personnel/${c.employmentId}`}
+                      linkTitle={t('viewHistory')}
+                    />
+                  </td>
+                  <td className="px-4 py-2.5 text-muted-foreground">
+                    {/* A cancellation row carries no parent_group_id, so no Emergency Leave (0106) tag —
+                        the chip + icon are the same palette (styleFor) as every other leave surface. */}
+                    <LeaveTypeCell typeCode={c.typeCode} typeName={c.leaveType} />
+                  </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {c.originalStart} → {c.originalEnd}
                   </td>
@@ -580,7 +593,12 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5 text-xs tabular-nums text-muted-foreground">
                     {c.remainingDates.length > 0 ? c.remainingDates.join(', ') : '—'}
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{Number(c.requestedDays)}</td>
+                  {/* The SHARED days cell. A cancellation has no duration type / hourly window of its own
+                      (it gives back whole dates off an approved request), so it renders the day count and
+                      nothing else — the same as every other Days column on this screen. */}
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    <LeaveDaysCell days={c.requestedDays} />
+                  </td>
                   <td className="px-4 py-2.5">
                     <DecideButtons action={decideLeaveCancellationAction} id={c.id} labels={decideLabels} nav={nav} />
                   </td>
