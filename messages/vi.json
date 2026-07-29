@@ -1373,7 +1373,8 @@
       "applyNotAllowed": "Nhân viên không thể đăng ký {typeName}. Vui lòng liên hệ bộ phận Nhân sự.",
       "duplicateApplication": "Đã tồn tại một đơn xin nghỉ phép cho ngày đã chọn. Không được phép nộp nhiều đơn xin nghỉ phép trong cùng một ngày.",
       "insufficientBalance": "Số dư phép không đủ. Số dư phép khả dụng của bạn thấp hơn thời lượng nghỉ phép được yêu cầu.",
-      "combinedLimitExceeded": "Giới hạn nghỉ gộp \"{poolName}\" ({days} ngày mỗi năm) sẽ bị vượt qua trên các loại nghỉ dùng chung."
+      "combinedLimitExceeded": "Giới hạn nghỉ gộp \"{poolName}\" ({days} ngày mỗi năm) sẽ bị vượt qua trên các loại nghỉ dùng chung.",
+      "combinedApplicationTooLong": "Nhóm nghỉ dùng chung \"{poolName}\" cho phép tối đa {maxDays} ngày mỗi đơn; đơn này là {days} ngày. Vui lòng rút ngắn hoặc nộp thành nhiều đơn riêng."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -5178,7 +5179,14 @@
       "totalLimitPerYear": "Giới hạn tổng (ngày / năm)",
       "createGroupConfirm": "Tạo nhóm",
       "dropGradeHint": "Kéo một bậc từ Danh mục bậc thả vào một nhóm để thêm — hoặc đánh dấu ô chọn của bậc đó trong nhóm rồi lưu.",
-      "gradeAlreadyInGroup": "{name} đã có trong nhóm này."
+      "gradeAlreadyInGroup": "{name} đã có trong nhóm này.",
+      "createGroupButton": "Tạo nhóm nghỉ dùng chung",
+      "createGroupNeedsTwoTypes": "Chọn ít nhất hai loại nghỉ — một nhóm dùng chung cần hai loại.",
+      "createGroupPickMembers": "Các loại nghỉ trong nhóm này",
+      "maxDaysPerApplication": "Số ngày tối đa mỗi đơn",
+      "maxDaysPerApplicationShort": "Tối đa / đơn",
+      "maxDaysPerApplicationNone": "Không giới hạn",
+      "maxDaysPerApplicationHelp": "Tùy chọn. Để trống nếu không giới hạn. Đặt là 3 thì không đơn nào của bất kỳ loại nghỉ nào trong nhóm được vượt quá 3 ngày theo lịch — tách biệt với giới hạn tổng mỗi năm dùng chung."
     },
     "systemExplorer": {
       "title": "Phân tích hệ thống & trình khám phá phụ thuộc",

@@ -89,6 +89,8 @@ type CombinedLimit = {
   benefitSchemeId: string;
   name: string;
   totalLimitDays: number;
+  /** r82a 1ef1cf95 (0327): the group's per-application day cap. null = uncapped. */
+  maxDaysPerApplication: number | null;
   leaveTypeIds: string[];
 };
 
@@ -465,6 +467,10 @@ export function BenefitSchemeConfig({
             <EntitlementDndTable
               schemeId={selectedSchemeId}
               ents={sortedEnts}
+              // r82a 1ef1cf95: scheme-wide, NOT display-scoped. The Create-group dialog has to offer every
+              // leave type configured in the scheme — inside a leave type's Entitlement step `sortedEnts`
+              // holds that ONE type's row, which is precisely why grouping by drag was undiscoverable there.
+              allEnts={selectedSchemeEnts}
               sortDir={entSort}
               onToggleSort={() => setEntSort((d) => (d === 'asc' ? 'desc' : 'asc'))}
               pools={combinedLimits.filter((cl) => cl.benefitSchemeId === selectedSchemeId)}
@@ -516,6 +522,7 @@ export function BenefitSchemeConfig({
 function EntitlementDndTable({
   schemeId,
   ents,
+  allEnts,
   sortDir,
   onToggleSort,
   pools,
@@ -528,6 +535,10 @@ function EntitlementDndTable({
   schemeId: string;
   /** The selected scheme's entitlements, ALREADY sorted by the Leave Type column-header toggle. */
   ents: Entitlement[];
+  /** r82a 1ef1cf95: EVERY entitlement row of the selected scheme, unscoped — the member candidates the
+   *  Create-group dialog picks from. `ents` is display-scoped and cannot serve: in a leave type's
+   *  Entitlement step it holds a single row, so a picker built from it could never reach two members. */
+  allEnts: Entitlement[];
   /** Current sort direction of `ents` — drives the header caret + aria-sort. */
   sortDir: 'asc' | 'desc';
   /** Flips the parent-owned sort direction (asc ↔ desc). */
@@ -588,7 +599,10 @@ function EntitlementDndTable({
   }, [ents, poolByTypeId, pools, scopeLeaveTypeId]);
 
   const [active, setActive] = useState<Entitlement | null>(null);
-  const [pendingGroup, setPendingGroup] = useState<[Entitlement, Entitlement] | null>(null);
+  // r82a 1ef1cf95 — ONE dialog, reached two ways. `pick: false` is the drag proposal (members fixed: the two
+  // dragged rows). `pick: true` is the labelled Create-group button, where the admin chooses the members
+  // from the scheme's leave types. Same component, same server action; nothing forks below this state.
+  const [pendingGroup, setPendingGroup] = useState<{ members: Entitlement[]; pick: boolean } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const activePoolId = active ? (poolByTypeId.get(active.leaveTypeId)?.id ?? null) : null;
 
@@ -628,12 +642,29 @@ function EntitlementDndTable({
     }
     // Dropping onto an ungrouped row proposes a NEW group — confirmed in a dialog because the shared
     // total limit needs a value (no safe default) and the auto-name should be reviewable.
-    if (targetEnt) setPendingGroup([src, targetEnt]);
+    if (targetEnt) setPendingGroup({ members: [src, targetEnt], pick: false });
   };
 
   return (
     <>
-      <p className="text-xs text-muted-foreground">{t('dragHint')}</p>
+      {/* r82a 1ef1cf95 — THE MISSING AFFORDANCE. Until now the ONLY way to create a shared leave group was
+          to drag one row onto another, with nothing on screen saying so; the reporter concluded the whole
+          feature was absent. This button is a labelled entry point to the SAME CreateGroupDialog and the
+          SAME groupSchemeLeaveTypes action the drag posts — not a second creation path. Disabled (with the
+          reason shown) when the scheme has fewer than two leave types to group, since a group needs two. */}
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="text-xs text-muted-foreground">{t('dragHint')}</p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={allEnts.length < 2}
+          title={allEnts.length < 2 ? t('createGroupNeedsTwoTypes') : undefined}
+          onClick={() => setPendingGroup({ members: [], pick: true })}
+        >
+          {t('createGroupButton')}
+        </Button>
+      </div>
       {notice && <p className="text-xs text-destructive">{notice}</p>}
       <DndContext
         sensors={sensors}
@@ -712,7 +743,9 @@ function EntitlementDndTable({
       {pendingGroup && (
         <CreateGroupDialog
           schemeId={schemeId}
-          members={pendingGroup}
+          members={pendingGroup.members}
+          pick={pendingGroup.pick}
+          candidates={allEnts}
           action={actions.groupLeaveTypes}
           onClose={() => setPendingGroup(null)}
           t={t}
@@ -768,7 +801,11 @@ function GroupBlock({
         <td colSpan={colCount} className="px-3 py-1.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              <form action={actions.updateCombinedLimit} className="flex items-center gap-1.5">
+              {/* updateCombinedLimit is an ABSOLUTE set, not a patch — every field it touches must be on
+                  every form that posts it, or saving one silently clears another. This form owns the name
+                  and (r82a 1ef1cf95) the per-application cap; the total stays hidden here and visible in
+                  its own column cell, which carries the cap hidden in return. */}
+              <form action={actions.updateCombinedLimit} className="flex flex-wrap items-center gap-1.5">
                 <input type="hidden" name="id" value={pool.id} />
                 <input type="hidden" name="totalLimitDays" value={String(pool.totalLimitDays)} />
                 {pool.leaveTypeIds.map((id) => (
@@ -781,6 +818,19 @@ function GroupBlock({
                   aria-label={t('renameGroup')}
                   className={`${inputCls} h-7 w-56 text-xs font-medium`}
                 />
+                <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                  {t('maxDaysPerApplicationShort')}
+                  <input
+                    name="maxDaysPerApplication"
+                    type="number"
+                    min={0.5}
+                    step="0.5"
+                    placeholder={t('maxDaysPerApplicationNone')}
+                    defaultValue={pool.maxDaysPerApplication == null ? '' : String(pool.maxDaysPerApplication)}
+                    aria-label={t('maxDaysPerApplication')}
+                    className={`${inputCls} h-7 w-20 text-xs`}
+                  />
+                </label>
                 <Button type="submit" variant="ghost" size="sm">{t('save')}</Button>
               </form>
               {sharedNames.length > 0 && (
@@ -893,6 +943,13 @@ function EntitlementRow({
               <form action={actions.updateCombinedLimit} className="flex flex-col items-start gap-1.5">
                 <input type="hidden" name="id" value={pool.id} />
                 <input type="hidden" name="name" value={pool.name} />
+                {/* r82a 1ef1cf95 — carried hidden so saving the yearly total does not clear the group's
+                    per-application cap (the action sets every field it receives). */}
+                <input
+                  type="hidden"
+                  name="maxDaysPerApplication"
+                  value={pool.maxDaysPerApplication == null ? '' : String(pool.maxDaysPerApplication)}
+                />
                 {pool.leaveTypeIds.map((id) => (
                   <input key={id} type="hidden" name="leaveTypeIds" value={id} />
                 ))}
@@ -945,27 +1002,49 @@ function EntitlementRow({
   );
 }
 
-/** Confirm dialog for a drag-created group: members fixed (the two dragged rows), name auto-generated
- *  from the member leave-type names (approved decision — editable before save), total limit REQUIRED
- *  (a silent default would cap real leave). Posts groupSchemeLeaveTypesAction, which detaches the
- *  members from any previous pool server-side. */
+/** The ONE create-a-group dialog, reached from the drag AND from the labelled Create-group button (r82a
+ *  1ef1cf95). Name auto-generated from the member leave-type names (approved decision — editable before
+ *  save), total limit REQUIRED (a silent default would cap real leave), and — new in 0327 — an OPTIONAL
+ *  maximum days per application, blank meaning no cap, which is what every group meant before 0327. Posts
+ *  groupSchemeLeaveTypesAction, which detaches the members from any previous pool server-side.
+ *
+ *  `pick` is the only difference between the two entry points: the drag arrives with its two members
+ *  already decided and shows them as fixed badges; the button arrives with none and shows a checklist of
+ *  the scheme's leave types. Everything after the member set — the name, both limits, the action — is one
+ *  code path, so the two entry points cannot drift apart. */
 function CreateGroupDialog({
   schemeId,
   members,
+  pick,
+  candidates,
   action,
   onClose,
   t,
 }: {
   schemeId: string;
-  members: [Entitlement, Entitlement];
+  /** Fixed members (drag path). Empty when `pick` is true. */
+  members: Entitlement[];
+  /** true ⇒ the admin picks members here (button path); false ⇒ `members` is final (drag path). */
+  pick: boolean;
+  /** Every entitlement row of the scheme — the checklist's options. Ignored when `pick` is false. */
+  candidates: Entitlement[];
   action: (fd: FormData) => void | Promise<void>;
   onClose: () => void;
   t: ReturnType<typeof useTranslations>;
 }) {
-  const autoName = members
+  // Picked member ids (button path). Seeded from `members` so the drag path's set is the same value —
+  // one source of truth for what gets posted, whichever way the dialog was opened.
+  const [picked, setPicked] = useState<string[]>(members.map((m) => m.leaveTypeId));
+  const chosen = pick ? candidates.filter((c) => picked.includes(c.leaveTypeId)) : members;
+  const autoName = chosen
     .map((m) => m.leaveTypeName ?? '—')
     .join(' + ')
     .slice(0, 120);
+  // The name follows the selection until the admin edits it, then stops — otherwise ticking one more type
+  // would silently discard a name they had already typed.
+  const [name, setName] = useState(autoName);
+  const [nameEdited, setNameEdited] = useState(false);
+  const effectiveName = nameEdited ? name : autoName;
   return (
     <Dialog.Root
       open
@@ -986,26 +1065,77 @@ function CreateGroupDialog({
             className="mt-4 space-y-3"
           >
             <input type="hidden" name="benefitSchemeId" value={schemeId} />
-            {members.map((m) => (
+            {chosen.map((m) => (
               <input key={m.id} type="hidden" name="leaveTypeIds" value={m.leaveTypeId} />
             ))}
-            <div className="flex flex-wrap gap-2">
-              {members.map((m) => (
-                <Badge key={m.id}>{m.leaveTypeName ?? '—'}</Badge>
-              ))}
-            </div>
+            {pick ? (
+              <fieldset className="space-y-1">
+                <legend className="text-xs font-medium text-muted-foreground">{t('createGroupPickMembers')}</legend>
+                <div className="max-h-48 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+                  {candidates.map((c) => (
+                    <label key={c.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={picked.includes(c.leaveTypeId)}
+                        onChange={(e) =>
+                          setPicked((prev) =>
+                            e.target.checked
+                              ? [...prev, c.leaveTypeId]
+                              : prev.filter((id) => id !== c.leaveTypeId),
+                          )
+                        }
+                      />
+                      <span>{c.leaveTypeName ?? '—'}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {chosen.map((m) => (
+                  <Badge key={m.id}>{m.leaveTypeName ?? '—'}</Badge>
+                ))}
+              </div>
+            )}
             <Field label={t('groupNameLabel')}>
-              <input name="name" required defaultValue={autoName} className={inputCls} />
+              <input
+                name="name"
+                required
+                value={effectiveName}
+                onChange={(e) => {
+                  setNameEdited(true);
+                  setName(e.target.value);
+                }}
+                className={inputCls}
+              />
             </Field>
             <Field label={t('totalLimitPerYear')}>
               <input name="totalLimitDays" type="number" min={0.5} step="0.5" required className={`${inputCls} w-28`} />
             </Field>
+            {/* r82a 1ef1cf95 (0327) — the per-application cap. OPTIONAL, unlike the total: blank means no
+                cap, which is exactly what every group created before 0327 means, so leaving it alone
+                reproduces today's behaviour. The help text says so rather than relying on the empty box. */}
+            <div className="space-y-1">
+              <Field label={t('maxDaysPerApplication')}>
+                <input
+                  name="maxDaysPerApplication"
+                  type="number"
+                  min={0.5}
+                  step="0.5"
+                  className={`${inputCls} w-28`}
+                />
+              </Field>
+              <p className="text-xs text-muted-foreground">{t('maxDaysPerApplicationHelp')}</p>
+            </div>
             <div className="flex justify-end gap-2 pt-1">
               <Dialog.Close asChild>
                 <Button type="button" size="sm" variant="outline">{t('cancel')}</Button>
               </Dialog.Close>
-              <Button type="submit" size="sm">{t('createGroupConfirm')}</Button>
+              <Button type="submit" size="sm" disabled={chosen.length < 2}>{t('createGroupConfirm')}</Button>
             </div>
+            {chosen.length < 2 && (
+              <p className="text-xs text-muted-foreground">{t('createGroupNeedsTwoTypes')}</p>
+            )}
           </form>
         </Dialog.Content>
       </Dialog.Portal>

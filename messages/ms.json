@@ -1373,7 +1373,8 @@
       "applyNotAllowed": "Pekerja tidak boleh memohon {typeName}. Sila hubungi HR.",
       "duplicateApplication": "Permohonan cuti telah wujud untuk tarikh yang dipilih. Berbilang permohonan cuti pada tarikh yang sama tidak dibenarkan.",
       "insufficientBalance": "Baki cuti tidak mencukupi. Baki cuti anda yang tersedia adalah lebih rendah daripada tempoh cuti yang dipohon.",
-      "combinedLimitExceeded": "Had cuti gabungan \"{poolName}\" ({days} hari setahun) akan melebihi merentasi jenis cuti kongsinya."
+      "combinedLimitExceeded": "Had cuti gabungan \"{poolName}\" ({days} hari setahun) akan melebihi merentasi jenis cuti kongsinya.",
+      "combinedApplicationTooLong": "Kumpulan cuti kongsi \"{poolName}\" membenarkan paling banyak {maxDays} hari bagi setiap permohonan; permohonan ini meliputi {days}. Sila pendekkannya atau mohon dalam permohonan berasingan."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -5178,7 +5179,14 @@
       "totalLimitPerYear": "Had jumlah (hari / tahun)",
       "createGroupConfirm": "Cipta kumpulan",
       "dropGradeHint": "Seret gred daripada Induk Gred ke atas kumpulan untuk menambahnya — atau tandakan kotak semaknya di dalam kumpulan dan simpan.",
-      "gradeAlreadyInGroup": "{name} sudah berada dalam kumpulan ini."
+      "gradeAlreadyInGroup": "{name} sudah berada dalam kumpulan ini.",
+      "createGroupButton": "Cipta kumpulan cuti kongsi",
+      "createGroupNeedsTwoTypes": "Pilih sekurang-kurangnya dua jenis cuti — kumpulan kongsi memerlukan dua.",
+      "createGroupPickMembers": "Jenis cuti dalam kumpulan ini",
+      "maxDaysPerApplication": "Hari maksimum bagi setiap permohonan",
+      "maxDaysPerApplicationShort": "Maks / permohonan",
+      "maxDaysPerApplicationNone": "Tiada had",
+      "maxDaysPerApplicationHelp": "Pilihan. Biarkan kosong jika tiada had. Tetapkan 3 dan tiada satu permohonan bagi mana-mana jenis cuti dalam kumpulan ini boleh melebihi 3 hari kalendar — berasingan daripada jumlah tahunan kongsi."
     },
     "systemExplorer": {
       "title": "Analisis sistem & peneroka kebergantungan",

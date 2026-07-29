@@ -169,6 +169,34 @@ export class CombinedLeaveLimitExceededError extends Error {
   }
 }
 
+// Shared Leave Group per-application cap (r82a 1ef1cf95, migration 0327): the requested leave type belongs
+// to a group that sets max_days_per_application, and THIS ONE APPLICATION spans more days than the group
+// allows — "no single application may exceed 3 days, whichever of the seven types is chosen".
+//
+// A DIFFERENT REFUSAL FROM CombinedLeaveLimitExceededError, deliberately so. That one means "the year's
+// shared pool is spent"; this one means "this application is too long", and it fires even with the whole
+// pool untouched. An employee told the wrong one would change the wrong thing about their application — so
+// the two carry their own names, their own payloads and their own localized messages, and the group cap is
+// checked FIRST (it is a property of the application alone, independent of any history).
+//
+// The request is REFUSED, never silently shortened: truncating somebody's leave to fit a cap would approve
+// dates they did not ask for and leave the rest unrequested.
+export class CombinedLeaveApplicationTooLongError extends Error {
+  readonly poolName: string;
+  readonly maxDaysPerApplication: number;
+  /** The span the refused application actually covered, in the units applicationSpanDays() measures. */
+  readonly requestedSpanDays: number;
+  constructor(poolName: string, maxDaysPerApplication: number, requestedSpanDays: number) {
+    super(
+      `Shared leave group "${poolName}" allows at most ${maxDaysPerApplication} days per application; this one covers ${requestedSpanDays}`,
+    );
+    this.name = 'CombinedLeaveApplicationTooLongError';
+    this.poolName = poolName;
+    this.maxDaysPerApplication = maxDaysPerApplication;
+    this.requestedSpanDays = requestedSpanDays;
+  }
+}
+
 // Leave Year Configuration (9aa894a4): a non-HR employee tried to apply for a FUTURE leave year that has not
 // yet been opened for applications — either there is no managed leave_year_config row for that year, its
 // status is not 'open', or today is before its employeeApplicationStartDate. Carries `year` so the action
@@ -1097,14 +1125,51 @@ async function resolveSchemeIdForEmployment(tx: Tx, employmentId: string): Promi
   );
 }
 
+/** THE SINGLE PLACE "consecutive days" is given units (r82a 1ef1cf95).
+ *
+ *  The reporter's rule is "each application is capped at 3 consecutive days". The approved plan states that
+ *  we read that as CALENDAR days spanned by the application — start..end inclusive, weekends and public
+ *  holidays counted — and explicitly invited a rejection if working days were meant. A Friday–Monday
+ *  application therefore spans 4 and is refused by a cap of 3, even though it costs 2 working days.
+ *
+ *  If the reporter comes back and says working days, THIS FUNCTION is the whole change: return the count of
+ *  days the leave type actually charges for instead of the span (the caller would then pass `days`, which
+ *  requestLeave has already computed with the type's counting mode and duration). Nothing else moves — the
+ *  stored column is a plain day figure with no unit baked in, and the error carries whatever this returns.
+ *
+ *  Both dates are ISO yyyy-mm-dd and are read as UTC midnights, so no timezone can shift the span. */
+function applicationSpanDays(startDate: string, endDate: string): number {
+  const start = Date.parse(`${startDate}T00:00:00Z`);
+  const end = Date.parse(`${endDate}T00:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
+  return Math.round((end - start) / 86_400_000) + 1;
+}
+
 /** Combined-limit guard: if the requested leave type belongs to a pool in the employee's effective scheme,
- *  sum the employee's per-cycle usage ACROSS ALL pooled types (pending + approved, minus the request being
- *  re-evaluated) and reject when adding `requestedDays` would breach the pool's shared total. The cycle is
- *  the calendar leave year of `startDate` (mirrors the tenant's calendar-year leave_year_config keying). A
- *  no-op when the employee has no scheme, or the type is in no pool — so tenants without pools are unchanged. */
+ *  enforce the pool's TWO independent rules.
+ *
+ *  1. PER-APPLICATION CAP (r82a 1ef1cf95, 0327 — nullable, so a pool without one behaves exactly as before):
+ *     this one application may not span more than `max_days_per_application`. Checked FIRST because it is a
+ *     property of the application alone — an employee with the whole year's pool untouched is still refused
+ *     a too-long application, and telling them "the pool is exhausted" would be a lie.
+ *  2. SHARED ANNUAL TOTAL (R44 4c48fd1f): sum the employee's per-cycle usage ACROSS ALL pooled types
+ *     (pending + approved, minus the request being re-evaluated) and reject when adding `requestedDays`
+ *     would breach the pool's shared total. The cycle is the calendar leave year of `startDate` (mirrors
+ *     the tenant's calendar-year leave_year_config keying).
+ *
+ *  The two refuse with DIFFERENT named errors. A no-op when the employee has no scheme, or the type is in
+ *  no pool — so tenants without pools are unchanged. */
 async function enforceCombinedLeaveLimit(
   tx: Tx,
-  p: { employmentId: string; leaveTypeId: string; startDate: string; requestedDays: number; excludeRequestId?: string },
+  p: {
+    employmentId: string;
+    leaveTypeId: string;
+    startDate: string;
+    /** The application's last date — the per-application cap measures the span, not the charged days. */
+    endDate: string;
+    requestedDays: number;
+    excludeRequestId?: string;
+  },
 ): Promise<void> {
   if (p.requestedDays <= 0) return;
   const schemeId = await resolveSchemeIdForEmployment(tx, p.employmentId);
@@ -1115,6 +1180,7 @@ async function enforceCombinedLeaveLimit(
       id: schemeLeaveCombinedLimit.id,
       name: schemeLeaveCombinedLimit.name,
       totalLimitDays: schemeLeaveCombinedLimit.totalLimitDays,
+      maxDaysPerApplication: schemeLeaveCombinedLimit.maxDaysPerApplication,
     })
     .from(schemeLeaveCombinedLimitMember)
     .innerJoin(schemeLeaveCombinedLimit, eq(schemeLeaveCombinedLimit.id, schemeLeaveCombinedLimitMember.combinedLimitId))
@@ -1126,6 +1192,17 @@ async function enforceCombinedLeaveLimit(
     )
     .limit(1);
   if (!pool) return;
+  // RULE 1 — the per-application cap. NULL ⇒ this pool sets none (every pool predating 0327), so the check
+  // is skipped entirely and the pool behaves byte-identically to before. Measured by applicationSpanDays,
+  // the one place the calendar-vs-working-days reading lives.
+  if (pool.maxDaysPerApplication != null) {
+    const cap = Number(pool.maxDaysPerApplication);
+    const span = applicationSpanDays(p.startDate, p.endDate);
+    if (cap > 0 && span > cap) {
+      throw new CombinedLeaveApplicationTooLongError(pool.name, cap, span);
+    }
+  }
+  // RULE 2 — the shared annual total.
   const total = Number(pool.totalLimitDays);
   // All member leave types of the pool.
   const members = await tx
@@ -1874,10 +1951,15 @@ export async function requestLeave(
     // Combined Leave Type Limit (R44 4c48fd1f, Stage 2): reject when this application would push the
     // employee's per-cycle usage across a shared pool (scheme combined-limit) over its total. No-op when the
     // employee has no effective scheme or the type is in no pool, so tenants without pools are unaffected.
+    //
+    // r82a 1ef1cf95: the same guard also enforces the group's PER-APPLICATION cap, which is why endDate is
+    // passed — the cap measures the application's span, not the days it charges. Two rules, two named
+    // refusals (CombinedLeaveApplicationTooLongError / CombinedLeaveLimitExceededError); see the guard.
     await enforceCombinedLeaveLimit(tx, {
       employmentId: p.employmentId,
       leaveTypeId: p.leaveTypeId,
       startDate: p.startDate,
+      endDate: p.endDate,
       requestedDays: days,
     });
 
@@ -2945,10 +3027,16 @@ async function finalizeLeaveApproval(
   // approver / stale pending set could otherwise breach it). Exclude THIS request from the usage sum and add
   // its days back, so the pending row it represents is counted exactly once. Counts the days TAKEN
   // (approvedDays), unpaid ones included — a combined-limit pool caps absence, not balance spend.
+  //
+  // r82a 1ef1cf95: the group's PER-APPLICATION cap is re-checked here too, from the request's own span
+  // (startDate..endDate) — a cap tightened, or a group created, between submission and approval must not be
+  // approvable through. The span is the APPLICATION's, not the per-date subset's: partial approval narrows
+  // which dates are granted, it does not turn a 5-day application into a 3-day one.
   await enforceCombinedLeaveLimit(tx, {
     employmentId: req.employmentId,
     leaveTypeId: req.leaveTypeId,
     startDate: req.startDate,
+    endDate: req.endDate,
     requestedDays: approvedDays,
     excludeRequestId: req.id,
   });

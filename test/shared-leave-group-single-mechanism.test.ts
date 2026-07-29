@@ -83,15 +83,36 @@ describe('1ef1cf95 · sharing caps what is TAKEN, never what is GRANTED', () => 
     );
   });
 
-  it('the group carries a usage total and no entitlement bands', () => {
-    // scheme_leave_combined_limit holds name + total_limit_days only. Service bands (the day figures) live
-    // on scheme_leave_entitlement / leave_policy, per leave type — the group never restates them.
+  it('the group carries usage caps and no entitlement bands', () => {
+    // scheme_leave_combined_limit holds name + total_limit_days + (r82a, migration 0327) the
+    // per-application cap max_days_per_application. Both are limits on what may be TAKEN. Service bands
+    // (the day figures) live on scheme_leave_entitlement / leave_policy, per leave type — the group never
+    // restates them.
     const block = schemaSrc.slice(
       schemaSrc.indexOf("export const schemeLeaveCombinedLimit = pgTable"),
       schemaSrc.indexOf("export const schemeLeaveCombinedLimitMember = pgTable"),
     );
     expect(block).toContain("numeric('total_limit_days'");
     expect(block).not.toMatch(/service_bands|annual_days|accrual|carry_forward/);
+  });
+
+  it('the per-application cap lives on THAT group, not on a mechanism of its own (r82a 1ef1cf95)', () => {
+    // 1ef1cf95's second rule — "each application is capped at N consecutive days regardless of which type
+    // is chosen" — is a statement about the SAME set of leave types the shared pool already names. Putting
+    // it anywhere else (a new table, a per-leave-type column, a tenant-wide setting) recreates exactly the
+    // disagreement this file exists to prevent: two places that both decide how much leave one application
+    // may take. The table-name assertion above already forbids a second table; this pins the column to the
+    // group and forbids a rival per-type column on leave_type.
+    const block = schemaSrc.slice(
+      schemaSrc.indexOf("export const schemeLeaveCombinedLimit = pgTable"),
+      schemaSrc.indexOf("export const schemeLeaveCombinedLimitMember = pgTable"),
+    );
+    expect(block).toContain("numeric('max_days_per_application'");
+    const leaveTypeBlock = schemaSrc.slice(
+      schemaSrc.indexOf("export const leaveType = pgTable"),
+      schemaSrc.indexOf("export const leavePolicy = pgTable"),
+    );
+    expect(leaveTypeBlock).not.toMatch(/max_days_per_application|max_consecutive|per_request_limit/);
   });
 });
 
@@ -102,6 +123,17 @@ describe('1ef1cf95 · group membership is already visible on the Leave Type scre
     expect(schemeConfigSrc).toContain("t('perTypeSharedPool'");
   });
 
+  it('a group can be created from a LABELLED control, not only by discovering the drag (r82a 1ef1cf95)', () => {
+    // The reporter reported this feature as missing because the only way to reach it was to drag one row
+    // onto another, with nothing on screen saying so. The button is the fix — and it must open the SAME
+    // dialog and post the SAME action as the drag, so exactly one CreateGroupDialog may be declared and
+    // exactly one component may post groupLeaveTypes. A second creation path is a second mechanism.
+    expect(schemeConfigSrc).toContain("t('createGroupButton')");
+    expect(schemeConfigSrc.match(/function CreateGroupDialog\(/g) ?? []).toHaveLength(1);
+    expect(schemeConfigSrc.match(/<CreateGroupDialog\b/g) ?? []).toHaveLength(1);
+    expect(schemeConfigSrc.match(/action=\{actions\.groupLeaveTypes\}/g) ?? []).toHaveLength(1);
+  });
+
   it('every locale carries the three shared-group strings', () => {
     // tsc cannot see a missing translation key; six locales, no guard.
     for (const loc of LOCALES) {
@@ -109,6 +141,11 @@ describe('1ef1cf95 · group membership is already visible on the Leave Type scre
       expect(m.admin.benefitScheme.sharedWithTypes, `${loc} sharedWithTypes`).toBeTruthy();
       expect(m.admin.benefitScheme.perTypeSharedPool, `${loc} perTypeSharedPool`).toBeTruthy();
       expect(m.leave.errors.combinedLimitExceeded, `${loc} combinedLimitExceeded`).toBeTruthy();
+      // r82a 1ef1cf95 — the affordance + the per-application cap. The i18n guard skips multi-namespace
+      // files and only matches literal t('key'), so these six locales are not covered anywhere else.
+      expect(m.admin.benefitScheme.createGroupButton, `${loc} createGroupButton`).toBeTruthy();
+      expect(m.admin.benefitScheme.maxDaysPerApplication, `${loc} maxDaysPerApplication`).toBeTruthy();
+      expect(m.leave.errors.combinedApplicationTooLong, `${loc} combinedApplicationTooLong`).toBeTruthy();
     }
   });
 });

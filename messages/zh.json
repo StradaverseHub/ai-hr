@@ -1373,7 +1373,8 @@
       "applyNotAllowed": "员工无法申请 {typeName}。请联系人力资源部。",
       "duplicateApplication": "所选日期已存在一份请假申请。不允许在同一日期提交多份请假申请。",
       "insufficientBalance": "假期余额不足。您的可用假期余额低于所申请的假期时长。",
-      "combinedLimitExceeded": "合并假期上限「{poolName}」（每年{days}天）将在其共享假期类型中被超出。"
+      "combinedLimitExceeded": "合并假期上限「{poolName}」（每年{days}天）将在其共享假期类型中被超出。",
+      "combinedApplicationTooLong": "共享假期组「{poolName}」每次申请最多 {maxDays} 天，本次申请为 {days} 天。请缩短申请天数，或分成多次申请。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -5178,7 +5179,14 @@
       "totalLimitPerYear": "总上限（天 / 年）",
       "createGroupConfirm": "创建分组",
       "dropGradeHint": "从职级主档中将职级拖放到某个组即可添加——也可以在组内勾选它的复选框后保存。",
-      "gradeAlreadyInGroup": "{name} 已在该组中。"
+      "gradeAlreadyInGroup": "{name} 已在该组中。",
+      "createGroupButton": "创建共享假期组",
+      "createGroupNeedsTwoTypes": "请至少选择两种假期类型——共享组需要两种。",
+      "createGroupPickMembers": "本组包含的假期类型",
+      "maxDaysPerApplication": "每次申请最多天数",
+      "maxDaysPerApplicationShort": "每次上限",
+      "maxDaysPerApplicationNone": "不限",
+      "maxDaysPerApplicationHelp": "可选。留空表示不限。设为 3 后，本组任一假期类型的单次申请都不得超过 3 个日历日——这与共享年度总额是两条独立规则。"
     },
     "systemExplorer": {
       "title": "系统分析与依赖关系浏览器",

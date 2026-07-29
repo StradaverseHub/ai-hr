@@ -2066,6 +2066,16 @@ export async function copySchemeEntitlementsAction(fd: FormData) {
 }
 
 // Combined Leave Type Limit (R44 4c48fd1f) — CRUD for the shared per-cycle caps pooling several leave types.
+
+/** r82a 1ef1cf95 — read the OPTIONAL per-application cap out of a form. An empty box means "no cap", which
+ *  is a real answer here and must arrive as null: `Number('')` is 0, so the usual Number(fd.get(...)) shape
+ *  would turn "left blank" into a zero-day cap that refuses every application. Trim first so whitespace
+ *  reads as blank too. A non-blank, non-numeric value stays NaN and the core validator rejects it loudly. */
+function maxDaysPerApplicationFrom(fd: FormData): number | null {
+  const raw = String(fd.get('maxDaysPerApplication') ?? '').trim();
+  return raw === '' ? null : Number(raw);
+}
+
 export async function createSchemeCombinedLimitAction(fd: FormData) {
   const s = await requireAdmin();
   try {
@@ -2073,6 +2083,7 @@ export async function createSchemeCombinedLimitAction(fd: FormData) {
       benefitSchemeId: String(fd.get('benefitSchemeId') ?? ''),
       name: String(fd.get('name') ?? ''),
       totalLimitDays: Number(fd.get('totalLimitDays') ?? ''),
+      maxDaysPerApplication: maxDaysPerApplicationFrom(fd),
       leaveTypeIds: fd.getAll('leaveTypeIds').map((v) => String(v)).filter(Boolean),
     });
   } catch (e) {
@@ -2088,6 +2099,7 @@ export async function updateSchemeCombinedLimitAction(fd: FormData) {
       id: String(fd.get('id') ?? ''),
       name: String(fd.get('name') ?? ''),
       totalLimitDays: Number(fd.get('totalLimitDays') ?? ''),
+      maxDaysPerApplication: maxDaysPerApplicationFrom(fd),
       leaveTypeIds: fd.getAll('leaveTypeIds').map((v) => String(v)).filter(Boolean),
     });
   } catch (e) {
@@ -2130,6 +2142,7 @@ export async function groupSchemeLeaveTypesAction(fd: FormData) {
       benefitSchemeId: String(fd.get('benefitSchemeId') ?? ''),
       name: String(fd.get('name') ?? ''),
       totalLimitDays: Number(fd.get('totalLimitDays') ?? ''),
+      maxDaysPerApplication: maxDaysPerApplicationFrom(fd),
       leaveTypeIds: fd.getAll('leaveTypeIds').map((v) => String(v)).filter(Boolean),
     });
   } catch (e) {
