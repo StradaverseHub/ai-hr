@@ -518,6 +518,8 @@ export type SchemeCombinedLimitRow = {
   benefitSchemeId: string;
   name: string;
   totalLimitDays: number;
+  /** r82a 1ef1cf95 (0327): per-application day cap, null = uncapped (every pool predating 0327). */
+  maxDaysPerApplication: number | null;
   leaveTypeIds: string[];
 };
 
@@ -533,6 +535,7 @@ export async function listSchemeCombinedLimits(
         benefitSchemeId: schemeLeaveCombinedLimit.benefitSchemeId,
         name: schemeLeaveCombinedLimit.name,
         totalLimitDays: schemeLeaveCombinedLimit.totalLimitDays,
+        maxDaysPerApplication: schemeLeaveCombinedLimit.maxDaysPerApplication,
       })
       .from(schemeLeaveCombinedLimit)
       .where(p?.benefitSchemeId ? eq(schemeLeaveCombinedLimit.benefitSchemeId, p.benefitSchemeId) : undefined)
@@ -561,6 +564,7 @@ export async function listSchemeCombinedLimits(
       benefitSchemeId: x.benefitSchemeId,
       name: x.name,
       totalLimitDays: Number(x.totalLimitDays),
+      maxDaysPerApplication: x.maxDaysPerApplication == null ? null : Number(x.maxDaysPerApplication),
       leaveTypeIds: byPool.get(x.id) ?? [],
     }));
   });
@@ -571,6 +575,20 @@ function cleanLimitDays(v: number | undefined): string {
     throw new Error('Combined limit: total days must be greater than zero.');
   }
   if (v > 999) throw new Error('Combined limit: total days is too large.');
+  return v.toFixed(2);
+}
+
+/** r82a 1ef1cf95 — the PER-APPLICATION cap (0327). Distinct from cleanLimitDays because "unset" is a
+ *  legitimate, and indeed the default, answer here: null/undefined ⇒ null ⇒ no cap, so a caller that never
+ *  heard of this field leaves the group exactly as it was. A supplied value must be a real positive figure
+ *  — 0 or a negative would refuse every application of every member type, which is a mistake and not a
+ *  policy, so it is rejected loudly rather than stored. Bounds mirror the DB CHECK in migration 0327. */
+function cleanMaxDaysPerApplication(v: number | null | undefined): string | null {
+  if (v == null) return null;
+  if (!Number.isFinite(v) || v <= 0) {
+    throw new Error('Combined limit: maximum days per application must be greater than zero (leave it blank for no cap).');
+  }
+  if (v > 999) throw new Error('Combined limit: maximum days per application is too large.');
   return v.toFixed(2);
 }
 
@@ -612,16 +630,24 @@ async function replaceCombinedLimitMembers(
 
 export async function createSchemeCombinedLimit(
   ctx: SessionContext,
-  p: { benefitSchemeId: string; name: string; totalLimitDays: number; leaveTypeIds: string[] },
+  p: {
+    benefitSchemeId: string;
+    name: string;
+    totalLimitDays: number;
+    /** 0327: omit (or null) for an uncapped group — the pre-0327 behaviour of every existing pool. */
+    maxDaysPerApplication?: number | null;
+    leaveTypeIds: string[];
+  },
 ) {
   if (!p.benefitSchemeId) throw new Error('Benefit scheme is required.');
   const name = cleanName(p.name, 'Combined limit name');
   const totalLimitDays = cleanLimitDays(p.totalLimitDays);
+  const maxDaysPerApplication = cleanMaxDaysPerApplication(p.maxDaysPerApplication);
   const leaveTypeIds = cleanMemberTypeIds(p.leaveTypeIds);
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(schemeLeaveCombinedLimit)
-      .values({ tenantId: ctx.tenantId, benefitSchemeId: p.benefitSchemeId, name, totalLimitDays })
+      .values({ tenantId: ctx.tenantId, benefitSchemeId: p.benefitSchemeId, name, totalLimitDays, maxDaysPerApplication })
       .returning({ id: schemeLeaveCombinedLimit.id });
     await replaceCombinedLimitMembers(tx, ctx.tenantId, row.id, p.benefitSchemeId, leaveTypeIds);
     await appendEvent(tx, {
@@ -630,7 +656,7 @@ export async function createSchemeCombinedLimit(
       aggregateId: row.id,
       eventType: 'scheme-leave-combined-limit.created',
       actor: actorOf(ctx),
-      payload: { benefitSchemeId: p.benefitSchemeId, name, totalLimitDays, leaveTypeIds },
+      payload: { benefitSchemeId: p.benefitSchemeId, name, totalLimitDays, maxDaysPerApplication, leaveTypeIds },
     });
     return row;
   });
@@ -638,11 +664,21 @@ export async function createSchemeCombinedLimit(
 
 export async function updateSchemeCombinedLimit(
   ctx: SessionContext,
-  p: { id: string; name: string; totalLimitDays: number; leaveTypeIds: string[] },
+  p: {
+    id: string;
+    name: string;
+    totalLimitDays: number;
+    /** 0327: this is an ABSOLUTE set, not a patch — null clears the cap. Every UI form that posts this
+     *  action must therefore carry the field (as a visible input or a hidden one), or saving the name
+     *  would silently drop the cap. */
+    maxDaysPerApplication?: number | null;
+    leaveTypeIds: string[];
+  },
 ) {
   if (!p.id) throw new Error('Combined limit id is required.');
   const name = cleanName(p.name, 'Combined limit name');
   const totalLimitDays = cleanLimitDays(p.totalLimitDays);
+  const maxDaysPerApplication = cleanMaxDaysPerApplication(p.maxDaysPerApplication);
   const leaveTypeIds = cleanMemberTypeIds(p.leaveTypeIds);
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
@@ -653,7 +689,7 @@ export async function updateSchemeCombinedLimit(
     if (!existing) throw new Error('Combined limit not found.');
     await tx
       .update(schemeLeaveCombinedLimit)
-      .set({ name, totalLimitDays })
+      .set({ name, totalLimitDays, maxDaysPerApplication })
       .where(eq(schemeLeaveCombinedLimit.id, p.id));
     await replaceCombinedLimitMembers(tx, ctx.tenantId, p.id, existing.benefitSchemeId, leaveTypeIds);
     await appendEvent(tx, {
@@ -662,7 +698,7 @@ export async function updateSchemeCombinedLimit(
       aggregateId: p.id,
       eventType: 'scheme-leave-combined-limit.updated',
       actor: actorOf(ctx),
-      payload: { name, totalLimitDays, leaveTypeIds },
+      payload: { name, totalLimitDays, maxDaysPerApplication, leaveTypeIds },
     });
   });
 }
@@ -796,11 +832,19 @@ export async function moveCombinedLimitMember(
  *  supplied by the caller (the UI auto-names from the member leave-type names, editable before save). */
 export async function groupSchemeLeaveTypes(
   ctx: SessionContext,
-  p: { benefitSchemeId: string; name: string; totalLimitDays: number; leaveTypeIds: string[] },
+  p: {
+    benefitSchemeId: string;
+    name: string;
+    totalLimitDays: number;
+    /** 0327: optional per-application cap, set from the same create dialog. Blank ⇒ uncapped. */
+    maxDaysPerApplication?: number | null;
+    leaveTypeIds: string[];
+  },
 ) {
   if (!p.benefitSchemeId) throw new Error('Benefit scheme is required.');
   const name = cleanName(p.name, 'Combined limit name');
   const totalLimitDays = cleanLimitDays(p.totalLimitDays);
+  const maxDaysPerApplication = cleanMaxDaysPerApplication(p.maxDaysPerApplication);
   const leaveTypeIds = cleanMemberTypeIds(p.leaveTypeIds);
   return withTenant(ctx, async (tx) => {
     const dissolved: string[] = [];
@@ -810,7 +854,7 @@ export async function groupSchemeLeaveTypes(
     }
     const [row] = await tx
       .insert(schemeLeaveCombinedLimit)
-      .values({ tenantId: ctx.tenantId, benefitSchemeId: p.benefitSchemeId, name, totalLimitDays })
+      .values({ tenantId: ctx.tenantId, benefitSchemeId: p.benefitSchemeId, name, totalLimitDays, maxDaysPerApplication })
       .returning({ id: schemeLeaveCombinedLimit.id });
     await replaceCombinedLimitMembers(tx, ctx.tenantId, row.id, p.benefitSchemeId, leaveTypeIds);
     await appendEvent(tx, {
@@ -823,6 +867,7 @@ export async function groupSchemeLeaveTypes(
         benefitSchemeId: p.benefitSchemeId,
         name,
         totalLimitDays,
+        maxDaysPerApplication,
         leaveTypeIds,
         ...(dissolved.length ? { dissolvedCombinedLimitIds: dissolved } : {}),
       },

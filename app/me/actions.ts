@@ -29,6 +29,7 @@ import {
   DuplicateLeaveApplicationError,
   InsufficientLeaveBalanceOnSubmitError,
   CombinedLeaveLimitExceededError,
+  CombinedLeaveApplicationTooLongError,
   LeaveApplyNotAllowedError,
   MissingRejectReasonError,
   LeaveCancellationNotAllowedError,
@@ -297,6 +298,15 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   // its member leave types. Localized so all 6 locales show which pool + total was exceeded.
   if (e instanceof CombinedLeaveLimitExceededError)
     return t('combinedLimitExceeded', { poolName: e.poolName, days: e.totalLimitDays });
+  // Shared Leave Group per-application cap (r82a 1ef1cf95): a DIFFERENT refusal from the one above — the
+  // year's shared pool may be untouched; this single application is simply longer than the group allows.
+  // Localized separately so the employee is told to shorten the application, not that their days are spent.
+  if (e instanceof CombinedLeaveApplicationTooLongError)
+    return t('combinedApplicationTooLong', {
+      poolName: e.poolName,
+      maxDays: e.maxDaysPerApplication,
+      days: e.requestedSpanDays,
+    });
   // Leave Type Employee Visibility (7b11f1c1): HR has closed this leave type to employee applications
   // (employee_can_apply=false). Localized so the /me apply form shows a clear "contact HR" message.
   if (e instanceof LeaveApplyNotAllowedError) return t('applyNotAllowed', { typeName: name });

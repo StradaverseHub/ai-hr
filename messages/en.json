@@ -1373,7 +1373,8 @@
       "applyNotAllowed": "Employees cannot apply for {typeName}. Please contact HR.",
       "duplicateApplication": "A leave application already exists for the selected date. Multiple leave applications on the same date are not allowed.",
       "insufficientBalance": "Insufficient leave balance. Your available leave balance is lower than the requested leave duration.",
-      "combinedLimitExceeded": "Combined leave limit \"{poolName}\" ({days} days a year) would be exceeded across its shared leave types."
+      "combinedLimitExceeded": "Combined leave limit \"{poolName}\" ({days} days a year) would be exceeded across its shared leave types.",
+      "combinedApplicationTooLong": "Shared leave group \"{poolName}\" allows at most {maxDays} days per application; this one covers {days}. Please shorten it or apply in separate applications."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
@@ -5178,7 +5179,14 @@
       "totalLimitPerYear": "Total limit (days / year)",
       "createGroupConfirm": "Create group",
       "dropGradeHint": "Drag a grade from the Grade Master onto a group to add it — or tick its checkbox inside the group and save.",
-      "gradeAlreadyInGroup": "{name} is already in this group."
+      "gradeAlreadyInGroup": "{name} is already in this group.",
+      "createGroupButton": "Create shared leave group",
+      "createGroupNeedsTwoTypes": "Pick at least two leave types — a shared group needs two.",
+      "createGroupPickMembers": "Leave types in this group",
+      "maxDaysPerApplication": "Maximum days per application",
+      "maxDaysPerApplicationShort": "Max / application",
+      "maxDaysPerApplicationNone": "No cap",
+      "maxDaysPerApplicationHelp": "Optional. Leave blank for no limit. Set it to 3 and no single application for any leave type in this group may cover more than 3 calendar days — separately from the shared yearly total."
     },
     "systemExplorer": {
       "title": "System analysis & dependency explorer",
