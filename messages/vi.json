@@ -250,7 +250,8 @@
       "active": "Đang làm việc",
       "active_serving_notice": "Đang làm việc — Trong thời gian báo trước",
       "resigned": "Đã nghỉ việc",
-      "blacklisted": "Trong danh sách đen"
+      "blacklisted": "Trong danh sách đen",
+      "withhold": "Tạm giữ"
     },
     "list": {
       "title": "Nhân sự",
@@ -2255,10 +2256,7 @@
       "previewButtonLabel": "Xem trước nhân viên đủ điều kiện",
       "eligibleCountLabel": "{count, plural, one {# nhân viên hiện đủ điều kiện (tính đến bây giờ)} other {# nhân viên hiện đủ điều kiện (tính đến bây giờ)}}",
       "status_active": "Đang làm việc",
-      "status_on_leave": "Đang nghỉ phép",
       "status_probation": "Thử việc",
-      "status_offboarding": "Đang nghỉ việc",
-      "status_terminated": "Đã chấm dứt",
       "employmentType_full_time": "Toàn thời gian",
       "employmentType_part_time": "Bán thời gian",
       "employmentType_contract": "Hợp đồng",
@@ -2268,7 +2266,11 @@
       "chipSelectAll": "Chọn tất cả",
       "chipClearAll": "Xóa tất cả",
       "chipAllSelected": "Đã chọn tất cả",
-      "chipNSelected": "Đã chọn {count}"
+      "chipNSelected": "Đã chọn {count}",
+      "status_active_serving_notice": "Đang làm việc — Trong thời gian báo trước",
+      "status_resigned": "Đã nghỉ việc",
+      "status_blacklisted": "Trong danh sách đen",
+      "status_withhold": "Tạm giữ"
     },
     "cycle": {
       "back": "Đánh giá hiệu suất",

@@ -15,9 +15,13 @@ import { useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Field, inputCls } from '@/components/ui';
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
+import { EMPLOYMENT_STATUSES } from '@/core/employment-status';
 import { createCycleAction, previewEligibilityAction } from './actions';
 
-const STATUS_OPTS = ['active', 'on_leave', 'probation', 'offboarding', 'terminated'] as const;
+// R81 (9cbf5e0d): the six derived Employee Status buckets, straight from the resolver — never a second
+// hand-maintained list. The three retired values (On Leave / Offboarding / Terminated) disappear from this
+// picker for the same reason they disappeared from Personnel: they are no longer statuses.
+const STATUS_OPTS = EMPLOYMENT_STATUSES;
 const EMP_TYPE_OPTS = ['full_time', 'part_time', 'contract', 'intern'] as const;
 
 export function NewCycleForm({

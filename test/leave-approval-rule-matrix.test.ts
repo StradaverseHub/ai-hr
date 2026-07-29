@@ -301,7 +301,6 @@ describe('ADR-0071 multi-employment isolation', () => {
       employmentId: emp2.id,
       departmentId: d2.id,
       employmentType: 'full_time',
-      status: 'active',
       validFrom: '2024-01-01',
     });
     // A rule at company 1 scoped to the OTHER company's department must never match employment 1.

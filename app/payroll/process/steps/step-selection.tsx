@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { EmployeeCode, Field, inputCls } from '@/components/ui';
 import { materializeToggle } from '../selection-logic';
+import { EMPLOYMENT_STATUSES } from '@/core/employment-status';
 
 export type Master = { id: string; name: string; companyId: string };
 
@@ -21,6 +22,7 @@ export type PayrollRunEmployeeRow = {
   gradeId: string | null;
   costCenterId: string | null;
   employmentType: string | null;
+  /** R81: a derived Employee Status bucket (EmploymentStatus), never a stored column value. */
   status: string | null;
   hiredOn: string;
   terminatedOn: string | null;
@@ -60,6 +62,13 @@ export function StepSelection({
   onFiltersTouchedChange: (v: boolean) => void;
 }) {
   const t = useTranslations('payroll.process');
+  // A SECOND namespace in this file (R81). The shared Employee Status labels live under
+  // `people.employeeStatus` and are reused verbatim by Personnel, the dashboard, leave and analytics —
+  // duplicating six strings into `payroll.process` would be the drift this item exists to remove. NOTE:
+  // scripts/i18n-check.mjs check C skips any file using more than one namespace, so the six keys × six
+  // locales behind tStatus are verified by hand and by test/employment-status-state-machine.test.ts,
+  // which asserts every locale carries every bucket.
+  const tStatus = useTranslations('people.employeeStatus');
   const [businessUnitId, setBusinessUnitId] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [positionId, setPositionId] = useState('');
@@ -128,7 +137,12 @@ export function StepSelection({
   };
 
   const employmentTypes = [...new Set(employees.map((e) => e.employmentType).filter((v): v is string => !!v))];
-  const statuses = [...new Set(employees.map((e) => e.status).filter((v): v is string => !!v))];
+  // R81 (9cbf5e0d): the Status filter's options are the DERIVED Employee Status buckets present in this
+  // run's population, listed in the resolver's canonical order rather than in row order — so the dropdown
+  // reads the same, in the same sequence, as the Personnel filter. Intersecting with EMPLOYMENT_STATUSES
+  // also means a value the deriver cannot produce can never appear here.
+  const present = new Set(employees.map((e) => e.status).filter((v): v is string => !!v));
+  const statuses = EMPLOYMENT_STATUSES.filter((v) => present.has(v));
 
   const headcount = anyFilterActive || filtersTouched ? filtered.filter((e) => selected.has(e.employmentId)).length : employees.length;
 
@@ -187,7 +201,7 @@ export function StepSelection({
           <select value={status} onChange={(e) => { setStatus(e.target.value); markFilterTouch(); }} className={inputCls}>
             <option value="">{t('filterAll')}</option>
             {statuses.map((v) => (
-              <option key={v} value={v}>{v}</option>
+              <option key={v} value={v}>{tStatus(v)}</option>
             ))}
           </select>
         </Field>

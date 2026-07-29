@@ -24,6 +24,7 @@ import {
   CrossCompanyError,
   hireEmployee,
 } from '../core/org';
+import { deriveEmploymentStatus } from '../core/employment-status';
 import {
   createBusinessUnit,
   createCompany,
@@ -135,11 +136,15 @@ describe('hireEmployee — organization + employment info', () => {
     const asg = await openAssignment(hire.employmentId);
     expect(asg.positionId).toBe(b.positionId);
     expect(asg.costCenterId).toBe(b.costCenterId);
-    expect(asg.status).toBe('probation');
 
     // employment carries the provisional end date
     const emp = await employmentRow(hire.employmentId);
     expect(emp.provisionalEndOn).toBe('2026-06-01');
+    // R81 — the hire is on PROBATION, and that is now read from the date above rather than from a stored
+    // status column (dropped in 0326). Before R81 the deriver read only the confirmation dates, which a
+    // hire never writes, so this employee displayed "Active" throughout their probation.
+    expect(deriveEmploymentStatus(emp, '2026-05-02')).toBe('probation');
+    expect(deriveEmploymentStatus(emp, '2026-06-01')).toBe('active');
 
     // an OPEN administrative reporting line to the manager exists
     const [rl] = await owner.db
@@ -192,7 +197,18 @@ describe('hireEmployee — organization + employment info', () => {
     });
   });
 
-  it('intern/contract hires are probation even without a provisional date; full_time without one stays active', async () => {
+  // R81 (9cbf5e0d) — DELIBERATE NARROWING, RECORDED HERE. This case used to assert that an intern or
+  // contract hire was 'probation' even with NO provisional date, because hireEmployee applied a TYPE-based
+  // rule when it wrote the stored column: interns and contractors were probation by virtue of their type.
+  // The reporter's rule set has no such rule — the six statuses are driven by dates and events, and there
+  // is no "Intern" or "Contract" status. An employee with no probation end date and no confirmation date
+  // has nothing recorded that probation could end on, so they are Active.
+  //
+  // This moves NOBODY: the stored column stopped being displayed at R43, so such an intern has been reading
+  // "Active" on every screen since then regardless of what the column said. Give an intern a provisional end
+  // date — which the hire form does by default for anyone with a probation period — and they read Probation,
+  // as the case below the next one shows.
+  it('an intern hire with NO provisional date is Active; a type alone no longer implies probation', async () => {
     const intern = await hireEmployee(adminCtx(b), {
       person: { fullName: 'Intern Hire', primaryEmail: email() },
       companyId: b.companyId,
@@ -200,7 +216,19 @@ describe('hireEmployee — organization + employment info', () => {
       employmentType: 'intern',
       hiredOn: '2026-05-01',
     });
-    expect((await openAssignment(intern.employmentId)).status).toBe('probation');
+    expect(deriveEmploymentStatus(await employmentRow(intern.employmentId), '2026-05-02')).toBe('active');
+
+    // ...but WITH one, the same intern is on probation until it passes.
+    const dated = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'Intern Dated', primaryEmail: email() },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'intern',
+      hiredOn: '2026-05-01',
+      provisionalEndOn: '2026-08-01',
+    });
+    expect(deriveEmploymentStatus(await employmentRow(dated.employmentId), '2026-05-02')).toBe('probation');
+    expect(deriveEmploymentStatus(await employmentRow(dated.employmentId), '2026-08-01')).toBe('active');
 
     const ft = await hireEmployee(adminCtx(b), {
       person: { fullName: 'NoProbation Hire', primaryEmail: email() },
@@ -210,7 +238,8 @@ describe('hireEmployee — organization + employment info', () => {
       hiredOn: '2026-05-01',
       provisionalEndOn: null,
     });
-    expect((await openAssignment(ft.employmentId)).status).toBe('active');
+    // No provisional period at all ⇒ nothing to serve ⇒ Active from day one.
+    expect(deriveEmploymentStatus(await employmentRow(ft.employmentId), '2026-05-02')).toBe('active');
   });
 
   it('rejects a position / cost-center / department that belongs to another company', async () => {

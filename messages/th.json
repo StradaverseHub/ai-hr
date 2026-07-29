@@ -250,7 +250,8 @@
       "active": "ทำงานอยู่",
       "active_serving_notice": "ทำงานอยู่ — ระหว่างแจ้งลาออก",
       "resigned": "ลาออกแล้ว",
-      "blacklisted": "อยู่ในบัญชีดำ"
+      "blacklisted": "อยู่ในบัญชีดำ",
+      "withhold": "ระงับการจ่าย"
     },
     "list": {
       "title": "พนักงาน",
@@ -305,7 +306,7 @@
       "allStatuses": "ทุกสถานะ",
       "allTypes": "ทุกประเภท",
       "statusActive": "ทำงานอยู่",
-      "statusTerminated": "สิ้นสุดการจ้าง",
+      "statusTerminated": "ลาออกแล้ว",
       "emptyFiltered": "ไม่มีพนักงานที่ตรงกับตัวกรอง",
       "orgInfoHeading": "ข้อมูลองค์กร",
       "employmentInfoHeading": "ข้อมูลการจ้างงาน",
@@ -2255,10 +2256,7 @@
       "previewButtonLabel": "แสดงตัวอย่างพนักงานที่มีสิทธิ์",
       "eligibleCountLabel": "{count, plural, one {พนักงาน # คนมีสิทธิ์ในขณะนี้ (ณ ตอนนี้)} other {พนักงาน # คนมีสิทธิ์ในขณะนี้ (ณ ตอนนี้)}}",
       "status_active": "ทำงานอยู่",
-      "status_on_leave": "ลางาน",
       "status_probation": "ทดลองงาน",
-      "status_offboarding": "กำลังออกจากงาน",
-      "status_terminated": "สิ้นสุดการจ้าง",
       "employmentType_full_time": "เต็มเวลา",
       "employmentType_part_time": "พาร์ทไทม์",
       "employmentType_contract": "สัญญาจ้าง",
@@ -2268,7 +2266,11 @@
       "chipSelectAll": "เลือกทั้งหมด",
       "chipClearAll": "ล้างทั้งหมด",
       "chipAllSelected": "เลือกทั้งหมดแล้ว",
-      "chipNSelected": "เลือกแล้ว {count} รายการ"
+      "chipNSelected": "เลือกแล้ว {count} รายการ",
+      "status_active_serving_notice": "ทำงานอยู่ — ระหว่างแจ้งลาออก",
+      "status_resigned": "ลาออกแล้ว",
+      "status_blacklisted": "อยู่ในบัญชีดำ",
+      "status_withhold": "ระงับการจ่าย"
     },
     "cycle": {
       "back": "ผลงาน",

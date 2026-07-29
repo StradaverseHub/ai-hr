@@ -250,7 +250,8 @@
       "active": "Active",
       "active_serving_notice": "Active — Serving Notice",
       "resigned": "Resigned",
-      "blacklisted": "Blacklisted"
+      "blacklisted": "Blacklisted",
+      "withhold": "Withhold"
     },
     "list": {
       "title": "Personnel",
@@ -305,7 +306,7 @@
       "allStatuses": "All statuses",
       "allTypes": "All types",
       "statusActive": "Active",
-      "statusTerminated": "Terminated",
+      "statusTerminated": "Resigned",
       "emptyFiltered": "No employees match the filters.",
       "orgInfoHeading": "Organization info",
       "employmentInfoHeading": "Employment info",
@@ -2255,10 +2256,7 @@
       "previewButtonLabel": "Preview eligible employees",
       "eligibleCountLabel": "{count, plural, one {# employee currently eligible (as of now)} other {# employees currently eligible (as of now)}}",
       "status_active": "Active",
-      "status_on_leave": "On leave",
       "status_probation": "Probation",
-      "status_offboarding": "Offboarding",
-      "status_terminated": "Terminated",
       "employmentType_full_time": "Full-time",
       "employmentType_part_time": "Part-time",
       "employmentType_contract": "Contract",
@@ -2268,7 +2266,11 @@
       "chipSelectAll": "Select all",
       "chipClearAll": "Clear all",
       "chipAllSelected": "All selected",
-      "chipNSelected": "{count} selected"
+      "chipNSelected": "{count} selected",
+      "status_active_serving_notice": "Active — Serving Notice",
+      "status_resigned": "Resigned",
+      "status_blacklisted": "Blacklisted",
+      "status_withhold": "Withhold"
     },
     "cycle": {
       "back": "Performance",

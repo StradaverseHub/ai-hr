@@ -219,6 +219,11 @@ export default async function PeoplePage({
       ariaLabel: t('filterStatus'),
       allLabel: t('allStatuses'),
       options: [
+        // R81 (9cbf5e0d): the VALUES are the lifecycle query params this filter has always used
+        // (employment.terminated_on set or not) and are unchanged — this narrows the list, it does not
+        // display a status. Only the LABELS moved onto the reporter's vocabulary, so the filter and the
+        // Status badge in the same table stop using two different words ("Terminated" / "Resigned") for
+        // one state. Retiring Terminated as a word means retiring it here too.
         { value: 'active', label: t('statusActive') },
         { value: 'terminated', label: t('statusTerminated') },
       ],

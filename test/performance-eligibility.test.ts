@@ -26,6 +26,7 @@ import {
   type EligibilityRules,
 } from '../core/performance';
 import { hireEmployee } from '../core/org';
+import { deriveEmploymentStatus } from '../core/employment-status';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const AS_OF = '2026-07-01';
@@ -46,8 +47,10 @@ describe('evaluateEligibility (pure)', () => {
   });
 
   it('status predicate: in-set passes, out-of-set fails with reason', () => {
-    const rules: EligibilityRules = { statuses: ['active', 'on_leave'] };
+    // R81: the vocabulary is the six derived buckets; 'on_leave' is retired and no longer type-checks.
+    const rules: EligibilityRules = { statuses: ['active', 'active_serving_notice'] };
     expect(evaluateEligibility(cand({ status: 'active' }), rules, AS_OF).eligible).toBe(true);
+    expect(evaluateEligibility(cand({ status: 'active_serving_notice' }), rules, AS_OF).eligible).toBe(true);
     const bad = evaluateEligibility(cand({ status: 'probation' }), rules, AS_OF);
     expect(bad.eligible).toBe(false);
     expect(bad.reasons).toContain('status');
@@ -132,13 +135,19 @@ describe('eligibility engine — integration (createCycle / openCycle)', () => {
     await closeAll();
   });
 
-  /** Seed a person + employment + a single current assignment with a chosen status/type. Owner-role
-   *  (bypasses RLS, like the harness). Returns the employmentId. */
+  /** Seed a person + employment + a single current assignment. Owner-role (bypasses RLS, like the
+   *  harness). Returns the employmentId.
+   *
+   *  R81 (9cbf5e0d): `status` is no longer a column to set — it is DERIVED. The parameter therefore takes
+   *  a target BUCKET and seeds the lifecycle date that produces it, which is the only way a fixture can
+   *  produce a status at all now. That is a strictly better fixture: it can no longer construct a row whose
+   *  status disagrees with its own dates, because such a row cannot exist. */
   async function seedEmp(opts: {
     name: string;
     companyId?: string;
     hiredOn?: string;
-    status?: 'active' | 'on_leave' | 'probation' | 'offboarding' | 'terminated';
+    /** The DERIVED bucket to seed. 'probation' sets a future confirmation date; 'active' sets none. */
+    status?: 'active' | 'probation';
     employmentType?: 'full_time' | 'part_time' | 'contract' | 'intern';
     terminatedOn?: string | null;
     withAssignment?: boolean;
@@ -157,6 +166,8 @@ describe('eligibility engine — integration (createCycle / openCycle)', () => {
         hiredOn: opts.hiredOn ?? '2026-01-01',
         employeeCode: `E-${randomUUID().slice(0, 8)}`,
         terminatedOn: opts.terminatedOn ?? null,
+        // The one input that produces 'probation': a confirmation date still ahead of AS_OF.
+        confirmationDate: opts.status === 'probation' ? '2026-12-01' : null,
       })
       .returning({ id: schema.employment.id });
     if (opts.withAssignment !== false) {
@@ -165,7 +176,6 @@ describe('eligibility engine — integration (createCycle / openCycle)', () => {
         employmentId: emp.id,
         departmentId: base.deptA,
         employmentType: opts.employmentType ?? 'full_time',
-        status: opts.status ?? 'active',
         validFrom: opts.hiredOn ?? '2026-01-01',
         validTo: null,
       });
@@ -196,20 +206,42 @@ describe('eligibility engine — integration (createCycle / openCycle)', () => {
     expect(ids).not.toContain(intern);
   });
 
-  it('null-assignment employee is EXCLUDED under a status rule (explicit default 2a)', async () => {
+  // R81 (9cbf5e0d) — THE null-handling decision (2a) CHANGES HERE, deliberately, and this is the case that
+  // records it. It used to read "null-assignment employee is EXCLUDED under a status rule": status came
+  // from the assignment row, so an employee without one had status = null and any status rule dropped them.
+  // Status is now derived from `employment`, which every employee has, so it is never null — an employee
+  // with no org assignment has a real, correct Employee Status and is judged on it like anybody else.
+  //
+  // The "excluded by default" principle is NOT abandoned; it still applies wherever the data genuinely is
+  // missing. employmentType still comes from the assignment row, so an employmentTypes rule still excludes
+  // a null-assignment employee — asserted below so the two halves cannot drift apart.
+  it('null-assignment employee is judged on their derived status, but still excluded by a type rule', async () => {
     const a = adminCtx(base);
     const withAsg = await seedEmp({ name: 'Has Asg', status: 'active' });
     const noAsg = await seedEmp({ name: 'No Asg', withAssignment: false });
+
     const { cycleId } = await createCycle(a, {
-      name: 'FY26',
+      name: 'FY26 status',
       periodStart: '2026-01-01',
       periodEnd: '2026-12-31',
       eligibilityRules: { statuses: ['active'] },
     });
     await openCycle(a, { cycleId });
-    const ids = await reviewsFor(cycleId);
-    expect(ids).toContain(withAsg);
-    expect(ids).not.toContain(noAsg);
+    const byStatus = await reviewsFor(cycleId);
+    expect(byStatus).toContain(withAsg);
+    expect(byStatus).toContain(noAsg); // was: not.toContain — status is no longer null
+
+    // A rule on a field that IS still assignment-sourced keeps the old exclusion.
+    const { cycleId: typeCycle } = await createCycle(a, {
+      name: 'FY26 type',
+      periodStart: '2026-01-01',
+      periodEnd: '2026-12-31',
+      eligibilityRules: { employmentTypes: ['full_time'] },
+    });
+    await openCycle(a, { cycleId: typeCycle });
+    const byType = await reviewsFor(typeCycle);
+    expect(byType).toContain(withAsg);
+    expect(byType).not.toContain(noAsg);
   });
 
   it('duplicate current-assignment rows ⇒ exactly ONE review (DISTINCT ON guard)', async () => {
@@ -227,7 +259,6 @@ describe('eligibility engine — integration (createCycle / openCycle)', () => {
         employmentId: emp,
         departmentId: base.deptB,
         employmentType: 'full_time',
-        status: 'active',
         validFrom: '2026-03-01',
         validTo: null,
       });
@@ -246,18 +277,22 @@ describe('eligibility engine — integration (createCycle / openCycle)', () => {
     }
   });
 
-  it('terminatedOn is authoritative over a stale assignment.status (2b), both directions', async () => {
+  // R81 (9cbf5e0d) — this case USED to seed the exact contradiction the request is about: an employee with
+  // terminatedOn null but a stored status hand-set to 'terminated', and vice versa. Neither fixture can be
+  // built any more, because the status is computed from terminatedOn rather than typed beside it. What
+  // survives — and is what the case was really protecting — is that terminatedOn drives the WHERE clause,
+  // so a terminated employee is excluded even with no status rule in play.
+  it('terminatedOn is authoritative for inclusion, and the derived status agrees with it', async () => {
     const a = adminCtx(base);
-    // (i) terminatedOn set but assignment.status stale as 'active' ⇒ excluded (WHERE isNull(terminatedOn)).
-    const terminatedButActive = await seedEmp({ name: 'Term Active', status: 'active', terminatedOn: '2026-05-01' });
-    // (ii) terminatedOn null but assignment.status stale as 'terminated' ⇒ INCLUDED when no status rule
-    //      constrains it (employment.terminatedOn — not assignment.status — decides termination).
-    const activeButTermStatus = await seedEmp({ name: 'Active TermStatus', status: 'terminated', terminatedOn: null });
+    const terminated = await seedEmp({ name: 'Term One', terminatedOn: '2026-05-01' });
+    const stillHere = await seedEmp({ name: 'Active One', terminatedOn: null });
     const { cycleId } = await createCycle(a, { name: 'FY26', periodStart: '2026-01-01', periodEnd: '2026-12-31' });
     await openCycle(a, { cycleId });
     const ids = await reviewsFor(cycleId);
-    expect(ids).not.toContain(terminatedButActive);
-    expect(ids).toContain(activeButTermStatus);
+    expect(ids).not.toContain(terminated);
+    expect(ids).toContain(stillHere);
+    // The status the screens show for the excluded employee is 'resigned' — the two cannot disagree.
+    expect(deriveEmploymentStatus({ terminatedOn: '2026-05-01' }, AS_OF)).toBe('resigned');
   });
 
   it('concurrent employment: one person, two eligible employments ⇒ two independent reviews (documented decision)', async () => {
@@ -278,7 +313,6 @@ describe('eligibility engine — integration (createCycle / openCycle)', () => {
         employmentId: emp.id,
         departmentId: base.deptA,
         employmentType: 'full_time',
-        status: 'active',
         validFrom: '2026-01-01',
         validTo: null,
       });

@@ -1926,6 +1926,13 @@
       "when": 1781862424000,
       "tag": "0324_payroll_settings_relocation",
       "breakpoints": true
+    },
+    {
+      "idx": 326,
+      "version": "7",
+      "when": 1781862426000,
+      "tag": "0326_employee_status_state_machine",
+      "breakpoints": true
     }
   ]
 }

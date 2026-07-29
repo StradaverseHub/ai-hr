@@ -250,7 +250,8 @@
       "active": "செயலில்",
       "active_serving_notice": "செயலில் — அறிவிப்பு காலம்",
       "resigned": "விலகியவர்",
-      "blacklisted": "கருப்புப்பட்டியலில்"
+      "blacklisted": "கருப்புப்பட்டியலில்",
+      "withhold": "நிறுத்தி வைப்பு"
     },
     "list": {
       "title": "பணியாளர்கள்",
@@ -305,7 +306,7 @@
       "allStatuses": "அனைத்து நிலைகள்",
       "allTypes": "அனைத்து வகைகள்",
       "statusActive": "செயலில்",
-      "statusTerminated": "நிறுத்தப்பட்டது",
+      "statusTerminated": "விலகியவர்",
       "emptyFiltered": "வடிகட்டிகளுக்கு பொருந்தும் பணியாளர்கள் இல்லை.",
       "orgInfoHeading": "நிறுவன தகவல்",
       "employmentInfoHeading": "வேலைவாய்ப்பு தகவல்",
@@ -2255,10 +2256,7 @@
       "previewButtonLabel": "தகுதியான பணியாளர்களை முன்னோட்டமிடு",
       "eligibleCountLabel": "{count, plural, one {தற்போது # பணியாளர் தகுதியானவர் (இப்போதைக்கு)} other {தற்போது # பணியாளர்கள் தகுதியானவர்கள் (இப்போதைக்கு)}}",
       "status_active": "செயலில்",
-      "status_on_leave": "விடுப்பில்",
-      "status_probation": "தகுதிக் காலம்",
-      "status_offboarding": "வெளியேற்றம்",
-      "status_terminated": "நிறுத்தப்பட்டது",
+      "status_probation": "பரிசோதனைக் காலம்",
       "employmentType_full_time": "முழுநேரம்",
       "employmentType_part_time": "பகுதிநேரம்",
       "employmentType_contract": "ஒப்பந்தம்",
@@ -2268,7 +2266,11 @@
       "chipSelectAll": "அனைத்தையும் தேர்வுசெய்",
       "chipClearAll": "அனைத்தையும் அழி",
       "chipAllSelected": "அனைத்தும் தேர்ந்தெடுக்கப்பட்டது",
-      "chipNSelected": "{count} தேர்ந்தெடுக்கப்பட்டது"
+      "chipNSelected": "{count} தேர்ந்தெடுக்கப்பட்டது",
+      "status_active_serving_notice": "செயலில் — அறிவிப்பு காலம்",
+      "status_resigned": "விலகியவர்",
+      "status_blacklisted": "கருப்புப்பட்டியலில்",
+      "status_withhold": "நிறுத்தி வைப்பு"
     },
     "cycle": {
       "back": "செயல்திறன்",

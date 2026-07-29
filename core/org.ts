@@ -13,6 +13,7 @@ import { requireEmployeeCode } from '../lib/employee-code';
 import { a2cFirstYearEntitledToDate, applyMaxBalance, applyRounding, buildSchemeEntitlementResolver, entitledDays, isA2cFirstYear, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
 import { labelUsableByCompany } from './system-labels';
+import { deriveEmploymentStatus } from './employment-status';
 // Company-change gate (9464bd56): the pre-transaction check lives in core/read.ts (ONE greppable set of
 // module heads). Imported here so the company-change writer re-runs it as its server-side source of truth
 // inside the same transaction. read.ts does not import org.ts, so this adds no import cycle.
@@ -36,14 +37,15 @@ import {
   reportingLineScope,
   leaveLedger,
   employmentTypeEnum,
-  assignmentStatusEnum,
   // R46 79eb7151 — read-only here, to validate the bank-transfer payment method against the person's
   // salary-payment destination. This module never WRITES the statutory row.
   employeeStatutoryMy,
 } from '../db/schema';
 
 export type EmploymentTypeValue = (typeof employmentTypeEnum.enumValues)[number];
-export type AssignmentStatusValue = (typeof assignmentStatusEnum.enumValues)[number];
+// R81 (9cbf5e0d): `AssignmentStatusValue` is GONE with the `assignment_status` enum it aliased (migration
+// 0326). Employee Status is derived — the only status vocabulary left is EmploymentStatus in
+// core/employment-status.ts, and it has no stored counterpart to alias.
 
 /** Hiring enhancement: a position / cost-center / department chosen for a hire must belong to the
  *  company the employment is created under. Client filtering is not a source of truth — this is the
@@ -223,17 +225,12 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       .values({ tenantId: ctx.tenantId, personId, companyId: p.companyId, hiredOn: p.hiredOn, joinDate: p.hiredOn, employeeCode, gradeId: p.gradeId ?? null, provisionalEndOn })
       .returning({ id: employment.id });
 
-    // A new hire serving a provisional period is on 'probation', not 'active': interns/contractors
-    // always, and a full_time hire only when a probation end date applies. Storing a provisional end
-    // date while claiming 'active' would contradict every downstream reader of assignment.status. The
-    // probation→active completion workflow is out of scope for this slice (a follow-up).
-    const assignmentStatus =
-      (p.employmentType === 'full_time' && provisionalEndOn) ||
-      p.employmentType === 'contract' ||
-      p.employmentType === 'intern'
-        ? ('probation' as const)
-        : ('active' as const);
-
+    // R81 (9cbf5e0d): the `status` column is GONE from `assignment` (migration 0326). A hire used to write
+    // 'probation' or 'active' here from the employment type + provisional end date; Employee Status is now
+    // DERIVED for every employee from the lifecycle dates (core/employment-status.ts), and `provisionalEndOn`
+    // — which this block already computed — is exactly what the deriver reads to return 'probation'. So the
+    // hire keeps setting the FACT (the provisional end date, written on `employment` above) and stops
+    // duplicating the CONCLUSION. The two can no longer disagree because there is only one of them left.
     await tx.insert(assignment).values({
       tenantId: ctx.tenantId,
       employmentId: emp.id,
@@ -241,7 +238,6 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       positionId: p.positionId ?? null,
       costCenterId: p.costCenterId ?? null,
       employmentType: p.employmentType,
-      status: assignmentStatus,
       validFrom: p.hiredOn,
       validTo: null,
     });
@@ -407,7 +403,12 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
         costCenterId: p.costCenterId ?? null,
         gradeId: p.gradeId ?? null,
         employmentType: p.employmentType,
-        assignmentStatus,
+        // R81 (9cbf5e0d): this key used to carry the stored `assignment.status` written on the line above.
+        // With the column dropped there is no stored status to record, so the event carries the DERIVED
+        // status the new hire actually starts on — computed from the very dates this event already reports,
+        // so the audit trail keeps a status without anything having to store one. Historical hire events
+        // keep whatever value they were written with; this is not a rewrite of the past.
+        assignmentStatus: deriveEmploymentStatus({ provisionalEndOn }, p.hiredOn),
         provisionalEndOn,
         // Additive only (feedback 38668d9b) — original keys above are preserved for CP22/audit readers.
       },
@@ -539,7 +540,6 @@ export async function transferEmployee(
         businessUnitId: cur.businessUnitId,
         locationId: nextLocationId,
         employmentType: cur.employmentType,
-        status: cur.status,
         validFrom: p.effectiveDate,
         validTo: null,
       })
@@ -1601,7 +1601,14 @@ export async function setEmploymentAssignment(
     // cross-company coherence transferEmployee enforces; RLS checks assignment and location independently).
     locationId?: string | null;
     employmentType?: EmploymentTypeValue;
-    status?: AssignmentStatusValue;
+    /**
+     * R81 (9cbf5e0d) — the `status?: AssignmentStatusValue` (a now-deleted alias) parameter that used to sit here is REMOVED, and
+     * with it the last way anything in this system could set an Employee Status by hand. It was the live
+     * end of the manual path: the Personnel form behind it was already deleted (8ebabbf2) and no caller
+     * passed it, but an exported service parameter is callable whether or not any UI references it, so
+     * leaving it would have kept "no manual editing" a convention rather than a guarantee. The column it
+     * wrote is gone too (migration 0326) — the parameter could not be re-added without re-adding the schema.
+     */
     /** 78853b97 — optional movement classification tag merged into the event payload (see db/events.ts). */
     movement?: MovementTag;
   },
@@ -1635,7 +1642,6 @@ export async function setEmploymentAssignment(
       p.costCenterId === undefined ? cur.costCenterId : p.costCenterId || null;
     const nextLocationId = p.locationId === undefined ? cur.locationId : p.locationId || null;
     const nextEmploymentType = p.employmentType ?? cur.employmentType;
-    const nextStatus = p.status ?? cur.status;
 
     // 1001ff61 / 570e3311 — referential integrity + company scope for a newly-selected BU / Department /
     // Position: it must exist, be un-archived, and be a label this employment's company MAY use under the
@@ -1732,8 +1738,7 @@ export async function setEmploymentAssignment(
       nextBusinessUnitId === cur.businessUnitId &&
       nextCostCenterId === cur.costCenterId &&
       nextLocationId === cur.locationId &&
-      nextEmploymentType === cur.employmentType &&
-      nextStatus === cur.status;
+      nextEmploymentType === cur.employmentType;
     if (unchanged) return { assignmentId: cur.id, changed: false as const };
 
     // CLOSE current (set valid_to), then INSERT the new version — ranges don't overlap.
@@ -1749,7 +1754,6 @@ export async function setEmploymentAssignment(
         costCenterId: nextCostCenterId,
         locationId: nextLocationId,
         employmentType: nextEmploymentType,
-        status: nextStatus,
         validFrom: p.effectiveDate,
         validTo: null,
       })
@@ -1772,7 +1776,6 @@ export async function setEmploymentAssignment(
           costCenterId: cur.costCenterId,
           locationId: cur.locationId,
           employmentType: cur.employmentType,
-          status: cur.status,
         },
         after: {
           departmentId: nextDepartmentId,
@@ -1781,7 +1784,6 @@ export async function setEmploymentAssignment(
           costCenterId: nextCostCenterId,
           locationId: nextLocationId,
           employmentType: nextEmploymentType,
-          status: nextStatus,
         },
         // 78853b97 — movement classification tag (additive; absent for legacy callers).
         ...(p.movement ? { movement: p.movement } : {}),

@@ -225,8 +225,8 @@ export function analyticsWhere(
       filters.costCenterId ? eq(assignment.costCenterId, filters.costCenterId) : undefined,
     );
   }
-  // 9cbf5e0d — the Employee Status filter narrows on the DERIVED status (employmentStatusSql), not the
-  // legacy stored assignment.status: the dashboard must offer the same five buckets every other screen
+  // 9cbf5e0d — the Employee Status filter narrows on the DERIVED status (employmentStatusSql), the only
+  // status there is since R81 dropped the stored column: the dashboard offers the same six buckets every screen
   // shows, and must not offer the retired On Leave / Offboarding / Terminated values. It reads `employment`
   // columns only, so unlike the department/cost-centre filters it does NOT need the assignment join.
   if (filters.assignmentStatus) {
@@ -311,7 +311,10 @@ export function masterDataExport(
         company: company.legalName,
         department: department.name,
         position: position.title,
-        status: assignment.status,
+        // R81 (9cbf5e0d): the DERIVED Employee Status, not the dropped stored column — so the Master Data
+        // export's Status column reads identically to every Personnel screen instead of carrying retired
+        // On Leave / Offboarding / Terminated values out of the system in a spreadsheet.
+        status: employmentStatusSql(),
         employmentType: assignment.employmentType,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,

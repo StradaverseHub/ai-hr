@@ -99,6 +99,7 @@ export default async function PersonnelPage({
       allLabel: t('allStatuses'),
       options: [
         { value: 'active', label: t('statusActive') },
+        // R81 — same as /admin/personnel: lifecycle VALUES unchanged, label speaks the new vocabulary.
         { value: 'terminated', label: t('statusTerminated') },
       ],
       removeAriaLabel: t('removeFilter', { label: t('colStatus') }),

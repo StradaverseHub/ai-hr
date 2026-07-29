@@ -5,7 +5,7 @@
  *  - demographicsByNationality counts DISTINCT person (concurrent-employment counted once), maps a
  *    no-statutory-row person to Unknown (not dropped, not defaulted to citizen), and is admin-gated;
  *  - byEmploymentStatus returns the DERIVED Employee Status (9cbf5e0d) — the same five buckets Personnel
- *    shows — and NEVER the retired stored assignment.status values (on_leave / offboarding / terminated);
+ *    shows — and NEVER the retired values (on_leave / offboarding / terminated), which R81 deleted;
  *  - the manager filter uses the open-line predicate (a superseded reporting line is NOT matched);
  *  - leaveUtilisation separates granted vs taken; leaveBalancesSummary equals core/leave.ts#leaveBalance;
  *    sickLeaveTrend returns "not configured" when no sick-coded type exists;
@@ -65,9 +65,6 @@ describe('Reporting & Analytics — dashboards aggregation', () => {
   const setStatutory = (personId: string, citizenship: 'citizen' | 'pr' | 'non_citizen', ic: string) =>
     owner.db.insert(employeeStatutoryMy).values({ tenantId: base.tenantId, personId, icNumber: ic, epfCitizenship: citizenship });
 
-  const setStatus = (employmentId: string, status: 'on_leave' | 'probation' | 'offboarding') =>
-    owner.db.update(assignment).set({ status }).where(eq(assignment.employmentId, employmentId));
-
   it('person-level dimensions sum to total headcount, including Unknown and Unassigned buckets', async () => {
     const ann = await hire('Ann'); // full data
     await setPerson(ann.personId, { gender: 'female', maritalStatus: 'married', dateOfBirth: '1990-05-01' });
@@ -96,28 +93,30 @@ describe('Reporting & Analytics — dashboards aggregation', () => {
     expect(sumCounts(d.byEmploymentStatus)).toBe(4);
   });
 
-  // 9cbf5e0d — this used to assert the stored 5-way assignment.status (on_leave / probation). The dashboard
-  // now shows the ONE derived Employee Status, so the vectors are driven by the employment LIFECYCLE and the
-  // retired stored values must not survive into the tally even when a legacy row still carries them.
-  it('byEmploymentStatus returns the derived Employee Status, never the retired stored values', async () => {
+  // 9cbf5e0d — this used to assert the stored 5-way assignment.status (on_leave / probation), then (r75) that
+  // a legacy row carrying a retired value still DERIVED to 'active'. R81 removes the column outright, so that
+  // fixture can no longer be written at all: the guarantee is now structural rather than behavioural. What is
+  // still worth pinning — and is pinned here — is that the tally is driven by the employment LIFECYCLE.
+  it('byEmploymentStatus returns the derived Employee Status, driven by the lifecycle dates', async () => {
     const active = await hire('Active One');
-    const stale = await hire('Leave Two');
+    const alsoActive = await hire('Leave Two');
     const prob = await hire('Prob Three');
-    // A legacy row still carrying the retired stored status — it must derive to 'active', not 'on_leave'.
-    await setStatus(stale.employmentId, 'on_leave');
-    await setStatus(prob.employmentId, 'probation');
-    // Probation is a LIFECYCLE fact now: a confirmation date still ahead of asOf.
+    // Probation is a LIFECYCLE fact: a confirmation date still ahead of asOf.
     await setEmploymentInfo(a, { employmentId: prob.employmentId, confirmationDate: '2026-12-01' });
     void active;
+    void alsoActive;
 
     const d = await workforceDemographics(a, undefined, { asOf: ASOF });
     expect(countFor(d.byEmploymentStatus, 'active')).toBe(2);
     expect(countFor(d.byEmploymentStatus, 'probation')).toBe(1);
-    expect(countFor(d.byEmploymentStatus, 'on_leave')).toBe(0);
+    // The three retired values cannot appear, because nothing can hold them any more.
+    for (const retired of ['on_leave', 'offboarding', 'terminated']) {
+      expect(countFor(d.byEmploymentStatus, retired)).toBe(0);
+    }
     expect(d.byEmploymentStatus.map((r) => r.name).sort()).toEqual(['active', 'probation']);
   });
 
-  it('the Employee Status filter narrows on the derived bucket, not the stored enum', async () => {
+  it('the Employee Status filter narrows on the derived bucket, and a retired value selects nobody', async () => {
     await hire('Filter Active');
     const prob = await hire('Filter Probation');
     await setEmploymentInfo(a, { employmentId: prob.employmentId, confirmationDate: '2026-12-01' });
