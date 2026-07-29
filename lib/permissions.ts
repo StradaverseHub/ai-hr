@@ -265,18 +265,23 @@ export const SCREENS: readonly ScreenEntry[] = [
   },
   {
     // R33 f21d6eee: /admin/attendance is now the shared shift library ("Shift settings").
+    // a324a4b3 renamed the nav KEY to match the string it already resolved to (nav.attendancePolicy →
+    // nav.shiftSettings). screenKey stays 'attendancePolicy' — it may key stored role configs, the same
+    // label-only split test/my-absence-nav.test.ts pins for the /leave column.
     screenKey: 'attendancePolicy',
     href: '/admin/attendance',
-    labelKey: 'nav.attendancePolicy',
+    labelKey: 'nav.shiftSettings',
     guard: 'requireAdmin',
     routes: ['/admin/attendance', '/attendance/import'],
   },
   {
     // R33 f21d6eee: the per-company working-hours + overtime-rates config relocated off the shift library
     // to its own screen. requireAdmin (same guard the settings had when they lived on /admin/attendance).
+    // a324a4b3: nav.attendancePolicyConfig → nav.attendancePolicy, the string it already resolved to.
+    // screenKey stays 'attendancePolicyConfig' (label-only, as above).
     screenKey: 'attendancePolicyConfig',
     href: '/admin/attendance-policy',
-    labelKey: 'nav.attendancePolicyConfig',
+    labelKey: 'nav.attendancePolicy',
     guard: 'requireAdmin',
     routes: ['/admin/attendance-policy', '/admin/attendance-policy/rules/new', '/admin/attendance-policy/rules/[ruleId]'],
   },
@@ -288,7 +293,8 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/admin/attendance-allowance'],
   },
   { screenKey: 'locations', href: '/admin/locations', labelKey: 'nav.locations', guard: 'requireAdmin', routes: ['/admin/locations'] },
-  { screenKey: 'toilPolicy', href: '/admin/toil', labelKey: 'nav.toilPolicy', guard: 'requireAdmin', routes: ['/admin/toil'] },
+  // a324a4b3: nav.toilPolicy → nav.timeOffInLieu ("Time off in lieu", the page's own title). screenKey unchanged.
+  { screenKey: 'toilPolicy', href: '/admin/toil', labelKey: 'nav.timeOffInLieu', guard: 'requireAdmin', routes: ['/admin/toil'] },
   {
     screenKey: 'claimsConfig',
     href: '/admin/claims',

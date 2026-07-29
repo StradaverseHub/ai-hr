@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { DownloadTemplate } from '@/components/download-template';
 import { employeeTemplate } from '@/lib/import-template';
 import { IMPORT_COLUMNS, type ImportPreview, type ImportResult } from '@/lib/import-schema';
+import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import { validateImportAction, commitImportAction } from './actions';
 
 const SAMPLE = `full_name,email,department,position,hired_on,employment_type,ic_number,basic_salary,monthly_allowance,bank_name,bank_account_no,tax_category,num_children
@@ -33,6 +35,12 @@ export function EmployeeImport({
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [pending, startTransition] = useTransition();
+  // Upload state. `fileName` is only a confirmation label — the imported data is always `csv`,
+  // whether it arrived by file or by paste, so there is exactly one path into validate/commit.
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [reading, setReading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Any edit invalidates a stale preview/result — force a fresh validate before importing.
   const reset = () => {
@@ -42,11 +50,13 @@ export function EmployeeImport({
     setError(null);
   };
 
-  const validate = () =>
+  // Validate an explicit string rather than the `csv` state: after a file read the state update
+  // has not flushed yet, so passing the text through avoids validating the previous contents.
+  const runValidate = (text: string) =>
     startTransition(async () => {
       setError(null);
       try {
-        const p = await validateImportAction(csv, companyId);
+        const p = await validateImportAction(text, companyId);
         setPreview(p);
         setResult(null);
         setPhase('previewed');
@@ -54,6 +64,34 @@ export function EmployeeImport({
         setError((e as Error).message);
       }
     });
+
+  const validate = () => runValidate(csv);
+
+  // Step 1 of the import (see lib/import-file): turn the chosen file into CSV text, then hand that
+  // text to the SAME validate step the paste box uses. Nothing about parsing, validation or the
+  // write path changes — this only replaces "open the file and copy its contents" for the user.
+  const loadFile = async (file: File) => {
+    setError(null);
+    setReading(true);
+    try {
+      const { name, text } = await readImportFile(file);
+      setCsv(text);
+      setFileName(name);
+      setResult(null);
+      runValidate(text);
+    } catch (e) {
+      // Drop the file label and any earlier preview so a rejected pick can never leave a stale
+      // "ready to import" preview on screen next to an error. Whatever is in the paste box is left
+      // alone — the user must press Validate again to get a preview back.
+      setFileName(null);
+      reset();
+      setError(t(importFileMessageKey(e)));
+    } finally {
+      setReading(false);
+      // Allow re-picking the same file after fixing it — the change event won't fire otherwise.
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const commit = () =>
     startTransition(async () => {
@@ -73,7 +111,7 @@ export function EmployeeImport({
   return (
     <div className="space-y-6">
       <Card className="p-5">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[260px_1fr]">
+        <div className="sm:max-w-[260px]">
           <Field label={t('targetCompany')}>
             <select
               className={inputCls}
@@ -90,28 +128,93 @@ export function EmployeeImport({
               ))}
             </select>
           </Field>
-          <Field label={t('csvData')}>
-            <textarea
-              className={`${inputCls} h-44 resize-y font-mono text-xs leading-relaxed`}
-              placeholder={t('csvPlaceholder')}
-              value={csv}
-              onChange={(e) => {
-                setCsv(e.target.value);
-                reset();
+        </div>
+
+        {/* Choose (or drop) the completed template. Reading it auto-runs the same validate step the
+            paste box uses, so the file flows straight into the check-before-create preview below. */}
+        <div className="mt-4">
+          <Field label={t('uploadFile')}>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
               }}
-              spellCheck={false}
-            />
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                const f = e.dataTransfer.files?.[0];
+                if (f) void loadFile(f);
+              }}
+              className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
+                dragging
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:border-primary/50 hover:bg-muted/40'
+              }`}
+            >
+              <UploadCloud className="h-6 w-6 text-muted-foreground" aria-hidden />
+              <div className="text-sm font-medium">{reading ? t('reading') : t('dropHere')}</div>
+              <p className="text-xs text-muted-foreground">{t('uploadHint')}</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={IMPORT_FILE_ACCEPT}
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void loadFile(f);
+                }}
+              />
+            </div>
+            {fileName && (
+              <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                {t('fileLoaded', { name: fileName })}
+              </p>
+            )}
           </Field>
         </div>
 
+        {/* Secondary path, kept for the people who already use it — and the way to inspect or fix an
+            uploaded file's contents without leaving the screen. */}
+        <details className="mt-4 border-t border-border pt-3" open={!fileName}>
+          <summary className="cursor-pointer select-none text-sm font-medium text-muted-foreground">
+            {t('pasteToggle')}
+          </summary>
+          <div className="mt-3">
+            <Field label={t('csvData')}>
+              <textarea
+                className={`${inputCls} h-44 resize-y font-mono text-xs leading-relaxed`}
+                placeholder={t('csvPlaceholder')}
+                value={csv}
+                onChange={(e) => {
+                  setCsv(e.target.value);
+                  setFileName(null);
+                  reset();
+                }}
+                spellCheck={false}
+              />
+            </Field>
+          </div>
+        </details>
+
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button onClick={validate} disabled={pending || !csv.trim()}>
+          <Button onClick={validate} disabled={pending || reading || !csv.trim()}>
             {pending && phase !== 'done' ? t('validating') : t('validate')}
           </Button>
           <Button
             variant="outline"
             onClick={() => {
               setCsv(SAMPLE);
+              setFileName(null);
               reset();
             }}
             disabled={pending}
@@ -192,6 +295,7 @@ export function EmployeeImport({
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
                 setCsv('');
+                setFileName(null);
                 reset();
               }}
             >

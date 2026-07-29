@@ -489,7 +489,6 @@ export function CompanyPanel({
   stateOptions = [],
   activeCycleNames = [],
   actions,
-  className,
 }: {
   company: PanelCompany;
   companies: { id: string; name: string }[];
@@ -519,8 +518,6 @@ export function CompanyPanel({
     removeCompanyLogo: Action;
     updateCompanyDefaultCycle: Action;
   };
-  // Applied by OrganizationList to CSS-hide non-matching rows during search (keeps the panel mounted).
-  className?: string;
 }) {
   const t = useTranslations('admin.organization');
   const [expanded, setExpanded] = useState(false);
@@ -532,8 +529,11 @@ export function CompanyPanel({
     ? [statutory?.epfEmployerNo, statutory?.socsoEmployerCode, statutory?.lhdnEmployerNo].filter((v) => !v).length
     : 0;
 
+  // NOT the <li>: OrganizationList owns the row element, because it is the only side of the RSC boundary
+  // that can still address this row. Everything below arrives on the client as an opaque node — possibly a
+  // deferred Flight lazy — so search-hiding is applied to the wrapping <li> there, never to this element.
   return (
-    <li className={cn(c.archivedAt ? 'opacity-60' : '', className)}>
+    <div className={c.archivedAt ? 'opacity-60' : undefined}>
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <button
           type="button"
@@ -978,6 +978,6 @@ export function CompanyPanel({
           {/* end Statutory tab */}
         </div>
       )}
-    </li>
+    </div>
   );
 }

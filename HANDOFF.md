@@ -5,7 +5,21 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (2026-07-29)
+## CURRENT STATE — read this first (updated 2026-07-29, end of session)
+
+**If you read nothing else, read these five lines.**
+1. Deployed head is `main@e82c519`, migrations through `0322`; **next free migration number is `0323`**.
+2. The board has **11 approved, 4 contested, 6 open, 2 blocked**. The four contested items are small,
+   actionable, and three are post-deploy push-backs on work that shipped today — do them first.
+3. **`9816a5ad` is the keystone.** Its latest push-back is an AGREEMENT confirming the entitlement
+   structure; approving it unblocks `fa3f4ccb` and unsticks the whole leave-config queue.
+4. **Nothing has been browser-verified since r70**, and on 2026-07-29 that produced a false "fixed" — a
+   screen served 1 of 8 rows for 24 days behind a green suite. A browser pass over r71–r78 is the
+   highest-value first move available.
+5. **Five separate reports this session were not the bug they described** — mislabelled, undiscoverable,
+   already built, or on the adjacent screen. One of those wrong diagnoses was in a plan *I* wrote.
+   Reproduce before building; a held-back item with findings is a good result.
+
 
 Written 2026-07-29 at the end of a long session, for whoever picks this up next. Everything below the
 `---` after this section is the per-round history; this part is the standing contract and the live
@@ -71,13 +85,35 @@ Established pattern, used for r73/r74/r75. It works, with rules learned the hard
 - **Tell each agent the traps its items will hit** — the guards it must not weaken, the writers that
   recently broke, the contracts it may not change. The best results this session came from briefs that
   named the specific hazard.
-- **Agents must REPRODUCE before fixing.** Four reported faults this session did not reproduce; the
-  code was correct and the real cause was adjacent. A held-back item with findings is a good result.
+- **Agents must REPRODUCE before fixing. This is now the single highest-yield rule in this file.**
+  **FIVE** reported faults this session were not the bug described. The failure modes, in the order you
+  should check them: **already built** (`1ef1cf95` — shared leave groups shipped in migration 0220, only
+  the creation button was missing) · **mislabelled** (`a324a4b3` — the row was renamed 3 weeks earlier;
+  the plan was written off key names) · **on the adjacent screen** (`48224d12`, and the second picker was
+  on a different sub-step) · **the reporter's diagnosis inverted** (`ae3bd088` — the screen was losing
+  rows in transport, not filtering them) · **wider than reported** (`4d391ab7` — every hire with a
+  manager was also duplicating, which nobody had raised).
+  So: check *already built → mislabelled → adjacent screen* BEFORE checking *absent*. A held-back item
+  with findings is a good result, and three of these would have shipped a wrong change if built to the
+  ticket.
+- **Enumerate every caller before changing any of them.** r78 was asked to fix one duplicate history
+  row and found three more writers plus a live-but-unreferenced RPC endpoint. The enumeration was worth
+  more than the fix.
 - **The integration gate catches what no agent can see.** Every agent's own tests passed in r74 and
   r75; the full suite still found a permission-matrix omission and a nested-form bug. Per-agent runs
   are necessary and never sufficient.
 
 ## Traps that cost real time this session
+
+**A `labelKey` IS NOT THE LABEL — and a plan written off key names will be wrong.** r78's `a324a4b3`
+plan asserted that the shift-library nav row "reads Attendance Policy", because its descriptor says
+`labelKey: 'attendancePolicy'`. It does not: `nav.attendancePolicy` has resolved to **"Shift settings"**
+in all six catalogs since R17 (`c9f7211`, 8 Jul). All three renames that plan proposed were already
+live. The lesson is the same one this file gives agents and it was broken while WRITING the plan:
+**resolve the key against `messages/en.json` before describing what a screen says.** (The round still
+had value — the keys were renamed so key ≡ its own string, closing a real landmine, and a test now pins
+key ≡ camelCase(English label). No i18n guard could see this: check C walks only `app/` + `components/`,
+so a nav key naming the wrong screen inside `packs/` was invisible.)
 
 **THIS DOCUMENT'S SHIPPED LISTS ARE NOT EVIDENCE.** r76 found an item recorded here as shipped in r74
 that had never merged — and the same file listed it as still planned twenty lines earlier. The reporter
@@ -103,10 +139,16 @@ stop it needs several minutes of crash recovery (397s this time). A launchd unit
 has three checks: (A) every `en.json` key present and non-blank in all six locales, (B) every namespace
 resolves, (C) every static `t('…')` key resolves in `en.json`.
 
-The hole is narrow and specific: **check C skips any file that uses more than one namespace**
-(`i18n-coverage.test.ts:84`, "can't attribute keys statically"). That is exactly how r76's
-`t('historyRevision')` reached runtime. So the rule is: a missing key in a SINGLE-namespace file is
-caught; in a MULTI-namespace file it is not. Check those by hand, and prefer one namespace per file.
+There are TWO holes in check C, both narrow and both real:
+1. **It skips any file using more than one namespace** (`i18n-coverage.test.ts:84`, "can't attribute keys
+   statically"). Exactly how r76's `t('historyRevision')` reached runtime.
+2. **It only matches LITERAL keys** — the regex reads `t('some.key')`. A computed key such as
+   `t(importFileMessageKey(err))` is invisible to it (found in r78). Any indirection through a helper
+   that returns a key name is unguarded.
+
+So: a missing literal key in a single-namespace file is caught; everything else is not. Check those by
+hand across all six locales, prefer one namespace per file, and when a key is computed, add a test that
+asserts every value the helper can return resolves.
 
 **`rejects.toThrow()` passes on the WRONG throw.** Two tests this session passed for the wrong reason —
 one because a fixture used a non-existent field so the insert failed on NOT NULL before ever reaching
@@ -117,103 +159,313 @@ chain; Drizzle wraps errors as "Failed query: …".
 the payload, so grepping rendered HTML for a label finds it whether or not the component rendered.
 Check the component source.
 
-## Live state
+## Live state — accurate as of the end of the 2026-07-29 session
 
-**Deployed:** `main@aba3064`, service active, migrations through **0322** (r77 added none).
+**Deployed:** `main@e82c519`, service active, migrations through **0322**. r77, the companies hotfix and
+r78 added no migration, so **the next free number is `0323`** — allocate it centrally, never let an agent
+pick one (r76 found an abandoned branch reusing a shipped number, which merges as a SILENT SKIP).
 
-**Board after r77:** 5 items deployed this round, 1 held. **2 BLOCKED** — `fa3f4ccb` (needs `9816a5ad`
-approved first; alone it stops accrual for all 22 employees) and `956cec85` (needs the statutory
-submission formats named). **7 DEFERRED to r78, six of them Large:** `9cbf5e0d`, `1f6fd6d8`, `61bf109d`,
-`6d671f44`, `d8471481`, `deec1691`, `241817ef`. `fc776376` (pagination) is approved and must run **SOLO
-AND LAST** — it touched ~30 list pages last time.
+**Board, counted on production at handover:** `approved = 11` · `contested = 4` · `open = 6` ·
+`blocked = 2` · `deployed = 506` · `cancelled = 9`.
 
-Shipped this session and live: r73 (3 items + `blocked` status + a silent data-loss fix), plan history
-(0318), r74 (10 items), r75 (10 items), slice 4 (nav + page gating), feedback attachments on push-back
-(0321), r76 (4 items + the 9816a5ad investigation, 0322). **37+ feedback items closed, 6 migrations.**
+### START HERE — the four contested items are all small and all actionable
 
-**Board right now: 0 approved, 0 open, 0 contested — everything is `planned`, awaiting the reporter.**
-16 plans were pushed after r76 deployed. Nothing is buildable until the reporter approves.
+Three of these are post-deploy push-backs on work that shipped THIS session. None disputes the build;
+each asks for a little more. Re-plan and build them first — they are the cheapest value on the board.
 
-**Four of those plans carry a finding that changes the request, and each is evidence-backed:**
-- `4d391ab7` (duplicate history rows) — **REPRODUCED, and the reporter's diagnosis is wrong.** The
-  Promotion already writes ONE row correctly (group `e3f4996e`: assignment primary, salary and grade
-  tagged `secondary`). The second row is a separate UNTAGGED `employment.grade.changed` written outside
-  the Movement form. Root cause is writers outside the comparison form emitting untagged
-  history-visible events — the same class as r73 Decision 3.
-- `a324a4b3` (attendance menu) — nothing is missing. r74 already grouped it. `/admin/attendance` IS the
-  shift library but is labelled `attendancePolicy`, while `/admin/attendance-policy` is labelled
-  `attendancePolicyConfig`. Two near-identical names, neither matching its screen. Relabel, do not
-  restructure — and do NOT move roster/import into the adminOnly group (r74 Decision 1).
-- `63393e52` (no CSV upload) — validate and commit already exist; `employee-import.tsx:94` is a
-  **textarea**, so you paste file contents rather than choosing a file. Real gap, smaller fix than asked.
-- `ae3bd088` (companies missing) — **real bug, and NOT permissions.** 8 companies exist, none archived,
-  and every one of the 5 role grants is group-wide. The comment at `app/admin/organization/page.tsx:156`
-  claims the card ignores the switcher and shows every company; the reporter's evidence contradicts it.
-  Verify that claim rather than trusting it.
+- **`9816a5ad` rev 5 — this is an AGREEMENT, not an objection.** The reporter writes "we can proceed
+  with consolidating these settings" and confirms the split: **Leave Year Type, Earning Method, Carry
+  Forward Policy, Rounding and Maximum Balance stay at LEAVE TYPE level and stop being duplicated per
+  company+grade; Benefit Scheme → Service Based Entitlements controls DAYS only.** Their stated business
+  rule: "Annual Leave rules are the same for everyone and only the entitlement days differ by grade."
+  That matches what the data already shows (see below). **This is the keystone item — `fa3f4ccb` is
+  blocked solely on it.** Re-plan as rev 6 restating the agreed structure and get it approved.
+- **`33bf1a2d`** — remove the "13.5d left" sub-line under the Days column, and apply the same layout to
+  the **leave cancellation** category as well. (r77 restyled only the leave-request table.)
+- **`d6429eb4`** — "Submit Decision" → "Submit", **including inside the pop-out after Review dates**.
+  Note r77 deliberately held `submitDecisions` back as outside the approved plan; the reporter has now
+  asked for it explicitly, so it is in scope.
+- **`1ef1cf95`** — the reporter finally states the real rule, and it is more than r78 investigated:
+  seven leave types (CGL, CPL, NDL, EXM, GD, MRL, STD) share **one combined 10-day annual entitlement**,
+  AND **each application is capped at 3 consecutive days regardless of type**. The combined pool already
+  exists (`scheme_leave_combined_limit`, migration 0220). **The per-application 3-day cap is the part to
+  verify — it may not exist at all.** Check before planning.
 
-**THE ANSWER TO 9816a5ad IS LOAD-BEARING FOR SEVERAL QUEUED ITEMS — read r76 Decision 2 before touching
-entitlements.** Short form: both entitlement configurations are live (Annual Leave 6 employees on Benefit
-Scheme, 16 on `leave_policy`), and `leave_policy` is the ONLY home for earning method, carry-forward and
-expiry, rounding, and `maxBalanceDays` — for scheme-driven employees too. Deleting it zeroes 16
-employees' leave and stops accrual for all 22.
+### The 11 approved items — nothing is blocked, but read the sequencing
 
-**The reporter has since contested that plan and asked for a RESET instead** — delete the existing
-entitlement values outright and reconfigure from scratch on Benefit Schemes, explicitly declining the
-migration path. That is a knowing acceptance of the disruption, and it interacts with `fa3f4ccb`
-(same reporter, "remove the entire section and delete any entitlement logic, data, dependencies or
-calculations", no backward compatibility) — the two want the same demolition and should be planned
-together, not separately.
+**Ready to build now, no dependencies:** `fc776376` (pagination — **SOLO AND LAST**, cross-cutting, ~30
+list pages) · `deec1691` (dependency explorer) · `9cbf5e0d` (Employee Status state machine, LARGE —
+supersedes what r75 shipped) · `241817ef` (approval workflow — **the plan requires repointing the gate
+BEFORE removing the company toggle**; 6 of 8 companies currently have multi-step OFF and would start
+running their assigned template).
 
-PLANNED, awaiting approval — the notable ones:
-- `fc776376` pagination, revision 2. **The reporter is right that it is not there.** The feedback board
-  (517 rows, their largest list) was deliberately excluded because it sorts in the browser, and
-  everywhere else `showPager()` hides the controls below 25 rows while their lists hold 23-47. The
-  re-plan builds a client-side pager and makes the size control always visible.
-- `9cbf5e0d` — now a LARGE item: the reporter supplied the full Employee Status state machine, six
-  statuses, three retired, no manual editing. Supersedes what r75 shipped.
-- `241817ef` — the third attempt at removing the Approval Workflow subsections. Two settings live ONLY
-  there (the multi-step OFF switch, the escalation config). This revision RECOMMENDS putting both on
-  the Assignment Template, so approving it now carries a real instruction.
-- `deec1691` — reporter overruled the operator-only placement; explorer moves under Admin as a sellable
-  module defaulting OFF, using the slice-4 gating shipped this session.
-- `89ea527b`, `1ef1cf95`, `8ebabbf2`. (`48224d12`, `22de47c4` and `23ad620e` shipped in r76;
-  `fa3f4ccb`, `1f6fd6d8`, `241817ef` and `9816a5ad` are now **contested** and need re-plans.)
+**The movement cluster — one body of work, in this order:** `941c9dac` (effective date vs entry date)
+→ `ae9350f2` (Termination movement type). Both land on `core/movement.ts` and its projection, which r78
+has just reworked. `4d391ab7` shipped in r78 and is the enabler; do not undo its tagging.
 
-**CONTESTED, needing re-plans (as of r76):** `9816a5ad` (reset instead of migrate — see Live state above) ·
-`fa3f4ccb` (delete the Company Entitlements service-length bands outright, no backward compatibility) ·
-`1f6fd6d8` (reporter supplied the exact Leave Balance Summary field list and formula) · `241817ef` (third
-attempt; reporter argues the company multi-step toggle is redundant because the template decides it).
+**The import pair:** `d8471481` (.xlsx redesign) supersedes the file picker r78 shipped. `lib/import-file.ts`
+was deliberately built so the READ step swaps for a workbook decoder without touching PARSE or the write
+path — `lib/spreadsheet.ts` `workbookToCsvText` already does this for the leave importer.
 
-**OPEN, unplanned (9):** `63393e52` + `d8471481` (both employee import — CSV upload vs an .xlsx redesign;
-**plan them together or they will contradict each other**) · `a324a4b3` (Admin > Attendance expandable
-menu — overlaps what r74 already split three ways, check before planning) · `941c9dac` (movement
-effective date vs entry date) · `4d391ab7` (one movement event writes TWO employment history rows) ·
-`ae9350f2` (Termination movement type — interacts with `4d391ab7`, same writer) · `61bf109d` (pay item
-input types + formula setting) · `956cec85` (Malaysia statutory forms submenu) · `d6429eb4` (wording only:
-"Decide Each Date").
+**The payroll cluster:** `4fb8b75a` rev 2 is the approved MAP with a six-step order (see r78 Decision 3).
+Steps 1–4 do not touch Payroll Items, so `61bf109d` (pay item input types + formula) can run in parallel
+— but any later step reorganising Payroll Items must follow it.
+
+**`1f6fd6d8`** (Leave Balance Summary rebuild, LARGE) — the reporter supplied an exact layout and
+formula. Its plan flags one deviation to keep: YTD Entitled must render the granted-to-date ledger figure,
+not a prorated projection, or the column stops adding up to Available Balance for the 10 up-front-granted
+policies. **Sequence AFTER `9816a5ad`**, because it reads carry-forward expiry from settings that item
+relocates.
+
+### The 2 blocked items — each needs one answer, then unblock
+
+- **`fa3f4ccb`** — blocked on `9816a5ad` being approved. It is step 3 of that same job. Alone it removes
+  the only home for earning method and carry-forward and **stops accrual for all 22 employees**.
+- **`956cec85`** (statutory forms) — blocked on the reporter naming which submission channels and file
+  formats they actually use. A statutory form with an invented layout is worse than no form.
+
+### The 6 open items — 4 are new and unplanned, 2 were raised by us
+
+New from the reporter, never planned: `4d6eae7b` (Leave Year Type step in General workflow) ·
+`9f5164d8` (entitlement rounding with custom decimals) · `a1d82340` (redesign the overall payroll process
+flow) · `031fa21b` (remove a duplicate Request subsection from Employee Details).
+
+Raised by us from the r78 payroll map, both with live evidence and both correctness issues:
+- **`b84821cf`** — two employees flagged subject to HRDF at companies that are not registered. The
+  payslip stamps `hrdfSubject: true` then computes zero. **ISEDECOR BINA has run eight payrolls in this
+  state.** UI-only warning exists at `app/admin/personnel/[employmentId]/page.tsx:2460-2464`; there is NO
+  run-level check.
+- **`707b3851`** — Chin Hin Property Group and SpaceX both name "Monthly" as their default payroll cycle
+  while having **no cycle defined at all**, so both are silently blocked from running payroll and never
+  have. `core/payroll-run-group.ts:224-238` refuses with `INVALID_CYCLE`.
+
+### Entitlement facts you will need before touching leave (verified on production)
+
+Both configurations are live: for Annual Leave **6 of 22 employees take days from a Benefit Scheme and
+16 fall through to `leave_policy`** (Medical 5 / 17). Precedence is one composition,
+`entitledDays = max(floorDays, schemeDays ?? policyDays)` (`core/leave-compute.ts:502`), four call sites
+in `core/leave.ts`. `schemeBandDays` returning **null — not zero** — is the fallback trigger.
+
+`leave_policy.accrual` exclusively owns earning method, carry-forward + expiry, rounding and
+`maxBalanceDays`, read for **every** employee including scheme-driven ones; `accrueEarnedLeave` asserts
+`pol!` non-null, so an earned-method type cannot accrue without a policy row. **57 of 67 policy rows are
+`earned_monthly`.**
+
+**What makes the reporter's consolidation safe:** grouping `leave_policy` by leave type, EVERY type has
+exactly ONE distinct method, ONE carryForwardMax and ONE roundingMethod across all its rows — ANNUAL has
+57 rows and 1 of each. The collapse to type level is therefore lossless against current data. The
+capability lost is per-company rule variation, which is real but unexercised; the reporter has been told
+and has accepted.
+
+**Coverage gap that bites at reset time:** 12 of 41 benefit schemes have zero entitlement rows, and
+ISEDECOR BINA + Demo Group Holdings have no schemes at all between their 8 employments. After the reset
+those employees drop to the statutory floor until their schemes are filled in.
 
 ## Carried debt — none of it blocking, all of it real
 
-1. **NOTHING HAS BEEN BROWSER-VERIFIED since r70.** r71 through r75 plus slice 4 moved Payroll's whole
-   navigation to a fly-out, split Attendance three ways, renamed leave labels across screens, added
-   four inquiry surfaces, added pagination to ~17 screens and now hide menu rows by entitlement. All of
-   it verified by tests and `next build` only, which prove wiring and not layout. This is the single
-   largest gap and it is why the pagination refute was a surprise rather than something we caught.
-2. **Pagination pages in memory on ten tables** — `paginateRows()` fetches everything then slices. The
-   reader-visible contract holds, but the plan promised faster loads and for those ten that is not yet
-   true. Pushing limit/offset into ~10 read functions is the follow-up.
-3. **ADR-0077 slices 5-10 are unbuilt.** Slice 4 shipped this session. The plan lives at
-   `~/.claude/plans/resilient-greeting-ripple.md`. Note slice 4 had to be re-aimed at r74's `navNodes`
-   contract because the plan predates it — expect the same for later slices.
-4. **Test-DB and worktree cleanup**, per the traps above.
-5. **No i18n key guard**, per the traps above.
+1. **BROWSER VERIFICATION IS NOW THE TOP RECOMMENDATION, not just debt.** Nothing has been
+   browser-verified since **r70**. r71–r78 plus slice 4 moved Payroll's navigation to a fly-out, split
+   Attendance three ways, renamed leave labels, added four inquiry surfaces, added pagination to ~17
+   screens, gated menu rows by entitlement, restyled the approvals table, made the Employment tab
+   read-only and rebuilt the emergency-contact section.
+
+   **This stopped being theoretical on 2026-07-29.** The Organization Companies screen rendered 1 of 8
+   companies for 24 days behind a fully green suite, an item was closed telling the reporter the screen
+   was correct, and only a user's screenshot overturned it. See the hotfix entry. **Two specific
+   unexercised surfaces to look at first:** r77's approvals client island
+   (`app/approvals/leave-decide-controls.tsx` — reject-reason box revealed by state) and r78's
+   employee-import file picker. This repo has **no DOM or interaction test runner at all**, so neither
+   can be covered by a test today.
+
+   Recommended first move for a new session: a browser pass over r71–r78 before building anything new.
+
+2. **A rendered-markup test can still be blind.** The companies bug survived a test upgraded from
+   "checks props" to "asserts rendered markup", because the markup came from props that had never
+   crossed the RSC transport. When a client component receives server-passed nodes, the fixture must be
+   the **post-transport** shape. `test/organization-list-rsc-lazy.test.ts` is the worked example.
+   Grepping `cloneElement|isValidElement|Children.` across `app/ components/ lib/` finds no other site
+   today — but the cliff is data-dependent (more rows, fuller fields), so it fails silently and only
+   past a size threshold.
+
+3. **Pagination pages in memory on ten tables** — `paginateRows()` fetches everything then slices. The
+   reader-visible contract holds and the 2,000-row ceiling still protects the browser, but the plan
+   promised faster loads and for those ten that is not yet true. Pushing limit/offset into ~10 read
+   functions is the follow-up. Relevant now: `fc776376` is approved and cross-cutting.
+
+4. **ADR-0077 slices 5-10 are unbuilt.** Plan at `~/.claude/plans/resilient-greeting-ripple.md`. Slice 4
+   had to be re-aimed at r74's `navNodes` contract because the plan predates it — expect the same for
+   later slices.
+
+5. **Test-DB and worktree cleanup.** ~106 databases and **138 git worktrees** are still lying around. A
+   sweep of the stale namespaced test DBs was attempted this session and **blocked by the permission
+   classifier**, so it needs the user to run it or a `Bash(psql:*)` rule. Not urgent — the template
+   currently migrates in ~3s — but it is the leak that once turned a 7s rehearsal into 1308s.
+
+6. **Two dead/misplaced things found in r78 and deliberately not changed:** `payment_basis` on the
+   payroll config screen is written, validated, stored and **read by nothing**; and probation months,
+   review reminder days and default currency live on the payroll screen while belonging to hiring,
+   appraisals and compensation. Both are steps 2 and 3 of the approved `4fb8b75a` order.
+
+7. **`transferEmployee` now has zero production callers** but was kept deliberately (r78) — it is the
+   only writer of `assignment.transferred`, a type years of production history contains and which
+   `reverseLegTx` still replays. Do not delete it as dead code.
 
 
 ---
 
 # Round history
 
+## r78 — 2026-07-29 — 4 items + the payroll settings map, and duplicates nobody reported
+
+**Shipped:** `main@e82c519`. No migration.
+**Gate:** `tsc` clean · **478 files / 5355 tests** · `next build` clean · rehearsal not required (no
+migration). Verified live: `GET /` 401, service active, `lib/import-file.ts` present, `transferAction`
+gone from the deployed tree.
+
+**Shipped:** a324a4b3 (attendance nav keys) · 11355c08 (dashboard Companies tile) · 63393e52 (import
+file picker) · 4d391ab7 (untagged movement writers).
+**Investigated:** 4fb8b75a — the payroll settings map, pushed to the board as revision 2.
+
+### Decisions
+
+**1. FIXING ONE REPORTED DUPLICATE FOUND TWO NOBODY HAD REPORTED.** `4d391ab7` complained that one
+Promotion produced two Employment History rows. The brief required enumerating EVERY writer emitting a
+projected event type before changing any — and that enumeration is the round's most valuable output:
+- **Every hire with a manager projected TWO rows** — "Hired" plus "Reporting Line Change" — because
+  `hireEmployee` writes its `reporting-line.set` inline and untagged. That is the reported bug's exact
+  class, on every employee ever hired, and nobody had raised it.
+- **Performance merit increases were labelled "Salary Adjustment"** because `enactCompAction` →
+  `setCompensation` was untagged. Now tagged `increment` and correctly labelled.
+- **`transferAction` was an unreferenced but LIVE RPC endpoint.** No UI called it, but an exported
+  `use server` function is callable regardless. Deleted.
+- Also rerouted: `setLocationAction` (Work Location) — with a test pinning r73 Decision 3's case, that
+  the business unit survives.
+
+**Two reroutes were REFUSED with reasons.** The Basic Salary card is the only writer that can create a
+first salary record or change pay mode / payment term / `rate_amount`, and the comparison writer carries
+none of those — rerouting would have deleted two capabilities to fix a row that was never duplicated.
+Direct Superior stays out per r77 (`endReportingLine` emits a non-movement event; routing it would remove
+the only way to CLEAR a superior).
+
+**2. MY OWN PLAN'S PREMISE WAS FALSE, and the mistake is one this file warns agents about.** The
+`a324a4b3` plan asserted the shift-library row "reads Attendance Policy" because its descriptor says
+`labelKey: 'attendancePolicy'`. The catalog has resolved that key to **"Shift settings"** in all six
+locales since R17 (`c9f7211`, 8 Jul). All three proposed renames were already live. **A labelKey is not
+the label — resolve it against `messages/en.json` before describing what a screen says.** The round
+still gained: the keys were renamed so key ≡ its own string (a real landmine for the next editor), with
+a test pinning key ≡ camelCase(English label). No guard could have caught this — i18n check C walks only
+`app/` and `components/`, never `packs/`.
+
+**STILL OPEN and returned to the reporter:** `/admin/attendance-policy`'s own header reads "Lateness,
+Early Out & Overtime Settings" while its nav row reads "Attendance policy" — the name their approved
+plan pinned. Their original complaint (that setting is not findable) therefore still stands. Not guessed
+at; the `build_ref` asks which of the two should change.
+
+**3. THE PAYROLL MAP: seven pages are FIVE screens, and the master is empty.** `4fb8b75a` asked to
+consolidate seven overlapping Payroll Settings pages. Traced from a payroll RUN backwards:
+- **Payroll Schedule, Payroll Period Template and Payment Submission Control are three menu cards
+  pointing at the SAME URL** (`/admin/payroll-config`), each named after a different section of one
+  form. `lib/permissions.ts:335-382` registers five payroll screens, not seven. Not duplication — one
+  room, three doors.
+- **`company_payroll_config` has ZERO rows for all 8 companies**, while 18 payrolls have run and 47
+  payslips issued. Everything falls back to the calendar month, which is the documented default — so
+  nothing is wrong, but **nobody has ever exercised that screen**, and any consolidation assuming people
+  rely on it would be assuming wrongly.
+- **The cut-off master is Payroll Policies**, not any of the three pages the reporter named
+  (`core/payroll.ts:237-271`, `core/payroll-policy.ts:475-528`). Only 2 of 23 employments have one.
+- **One genuine two-writer duplicate:** the company statutory block is editable from Organization AND
+  from the middle of the payroll screen. Same record, no coordination, last save wins.
+- **`payment_basis` is dead configuration** — written, validated, stored, read by nothing.
+- Three settings on the payroll screen are live but belong elsewhere: probation months (hiring), review
+  reminder days (appraisals), default currency (compensation).
+
+**Raised as their own items rather than folded into a redesign:** `b84821cf` — two employees flagged
+subject to HRDF at unregistered companies; the payslip stamps `hrdfSubject: true` then computes zero, and
+**ISEDECOR BINA has run eight payrolls in that state** with no run-level check. `707b3851` — Chin Hin
+Property Group and SpaceX both name "Monthly" as their default cycle while having NO cycle defined, so
+both are silently blocked from payroll and never have run one.
+
+**Told the reporter two things they did not ask to hear:** their proposed "Payment Settings" page cannot
+be a rename, because Payment Submission Control holds no payment content at all (bank formats live in
+Organization); and statutory rates must NOT be folded into tenant-editable settings — they are
+legislated, shipped as signed national data, and making them look like preferences would be a regression.
+
+**4. The i18n guard has a SECOND hole, found while building.** Check C matches LITERAL `t('key')` only,
+so a key routed through a helper — `t(importFileMessageKey(err))` — is invisible to it. Recorded in
+Traps alongside the multi-namespace hole. That trap entry has now been corrected twice in two rounds.
+
+**5. Excel's UTF-8 BOM would have broken the import on the most common file anyone would upload.**
+`63393e52` added a file picker; `Blob.text()` UTF-8-decodes and drops the BOM, but the agent verified
+that in Node rather than assuming, and pinned it — without the strip, `full_name` reads as a missing
+required column on any CSV saved from Excel. The READ step lives in `lib/import-file.ts`, deliberately
+separate from PARSE, so `d8471481` can swap in a workbook decoder without touching the write path.
+
+**Carried:** still nothing browser-verified since r70. `63393e52`'s file-pick event wiring and r77's
+approvals client island are both source-reasoned only — this repo has no DOM or interaction runner.
+
+---
+
+## Companies list hotfix — 2026-07-29 — the row was lost in TRANSPORT, not in the query (`main@54d25b5`)
+
+**Shipped:** `main@54d25b5`. No migration.
+**Gate:** `tsc` clean · **476 files / 5319 tests** · `next build` clean. Verified live: `GET /` 401, service
+active, and both changed files md5-identical on the box.
+
+**This entry exists because r77 got `ae3bd088` WRONG and told the reporter their screen was fine.**
+It was not. A screenshot settled it: the card header read **"Companies (8)" — correct** — while exactly
+ONE row rendered. Both r77's conclusion ("does not reproduce") and its follow-up theory (the dashboard
+tile) were wrong.
+
+**The mechanism, and it is a Next-version behaviour worth knowing.** React Flight serialises the RSC
+payload row by row, tracking bytes written; past `MAX_ROW_SIZE = 3200` it calls `deferTask`, emits
+`"$L<id>"` in place, and the CLIENT rehydrates that as `createLazyChunkWrapper` — a
+`Symbol.for('react.lazy')` object. React renders lazies transparently, **but `isValidElement()` returns
+FALSE for one.** `components/organization-list.tsx` inspected every row with
+`isValidElement(it.node) ? cloneElement(...) : null`, so every deferred row became `null`. One
+`CompanyPanel` carries the company array, the state catalog and twelve `$F` action refs — enough to blow
+3200 bytes on the FIRST row, dropping all seven remaining companies.
+
+**Why the count stayed right, which is what made it so misleading:** only ELEMENTS are deferred.
+`companies.length`, the tree counts and the statutory-gap names are numbers and strings and serialise
+intact. The array was never wrong. Every layer people inspected — the query, RLS, the scope helper, the
+props — was innocent, because the loss happened after all of them.
+
+**Not a regression.** The guard dates to `f69119c`, 2026-07-05 — 24 days before r77. r77's `adminOnly`
+predicate and `visibleTree` are both identities for a group-wide admin, so rolling r77 back would not
+have fixed this and WOULD have un-fixed the company-scoped disclosure it closed.
+
+**Fix:** `OrganizationList` owns the `<li>` and renders `it.node` without inspecting it; `CompanyPanel`
+returns a `<div>`; `OrgListItem.node` widened to `ReactNode` (the `ReactElement` type was the type-level
+form of the same wrong assumption). No query, RLS or scope change.
+
+### The lesson, which is about testing, not about React
+
+**Every test on this screen was structurally incapable of seeing it.** `organization-companies-reachable`
+and `organization-companies-unscoped` call `OrganizationList` directly, so `node` is always a plain
+element — it never goes through the transport that breaks it. r77 explicitly upgraded its test from
+"checks props" to "asserts rendered markup" and **that was still not enough**, because the markup was
+rendered from props that had never crossed the RSC boundary. `test/organization-list-rsc-lazy.test.ts`
+now feeds the actual post-transport lazy shape; all four assertions were verified RED against the old
+component (company 2 of 8 absent from the HTML — the screenshot) and green after.
+
+**And the process failure: an item was marked deployed with a confident close-out saying the screen was
+correct.** The reporter had to send a screenshot to overturn it. `ae3bd088`'s `build_ref` now carries a
+plain-English correction and an apology. `11355c08` (raised on the mistaken dashboard-tile theory) was
+re-planned to say so — its `count(*)`-when-empty disclosure is still a real fault and worth fixing on its
+own merits, but it is NOT this bug.
+
+**Anything that introspects a server-passed element is suspect.** Grepping
+`cloneElement|isValidElement|Children.` across `app/ components/ lib/` finds this file and nothing else
+today. The cliff is data-dependent — more companies, or fuller address fields, defer more rows — so this
+class fails silently and only past a size threshold.
+
+---
+
 ## r77 — 2026-07-29 — 5 approved items shipped, 1 held, and three reports that were not the bug
+
+> **CORRECTION (same day):** Decision 1's claim that `ae3bd088` "does not reproduce" is WRONG, and
+> Decision 2's dashboard-tile theory is wrong. See the hotfix entry above. The `ae3bd088` work described
+> below — the company-scoped reachability fix — is real and stands; it simply was not the reported bug.
 
 **Shipped:** `main@aba3064` (branch `build/r77`). **No migration.**
 **Gate:** `tsc` clean · **475 files / 5315 tests** · `next build` clean · rehearsal NOT run and not
