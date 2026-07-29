@@ -7,6 +7,48 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ---
 
+## Feedback attachments on push-back — 2026-07-29 — a screenshot when asking for changes (0321)
+
+**Shipped:** `main@1fce3cf`. Migration `0321`.
+**Gate:** `tsc` clean · **468 files / 5215 tests** · `next build` clean · **upgrade rehearsal PASS**.
+Verified live: `GET /` 401, both columns present, 105 existing attachments defaulted to `submitted`.
+
+Reported directly, not via the board: the feedback form lets you attach an image when you first raise an
+item, but there is no attachment option when you ask for changes. Confirmed — the raise form carried a
+file input, the contest and refute forms only a textarea.
+
+### Decisions
+
+**1. The stage column is why this was not a one-line fix.** feedback_attachment had no notion of WHEN an
+image arrived, so an untagged upload on a contest would sit indistinguishably beside the original bug
+screenshot. On an item that has been round three times that is a pile of pictures with no story — the
+exact failure 0318 fixed for the plan TEXT, about to be reintroduced for the images. So an attachment now
+records the plan revision it answers plus what the reporter was doing (submitted / contested / refuted),
+with a CHECK pairing them: a contested row cannot exist without naming a revision and silently fall out
+of the timeline. `stage` is deliberately NOT derivable from the revision — a contest and a post-deploy
+refute can both answer revision 2 and are different complaints.
+
+**2. The revision is read at attach time, never taken from the form.** A stale page would otherwise file
+an image against the wrong round. Pinned by a test that re-plans afterwards and asserts the earlier image
+still answers v1.
+
+**3. A failed upload does not roll back the push-back.** Losing a recorded objection because a file was
+too large is the worse outcome, so failures surface on the toast and the words survive.
+
+**Two of my own mistakes, recorded because both are recurring shapes:**
+- The constraint test PASSED FOR THE WRONG REASON — it used a Base field that does not exist, so
+  employment_id was null and both inserts failed on NOT NULL; the CHECK under test was never reached. It
+  now asserts the constraint BY NAME. A test that only checks "it threw" passes on the wrong throw.
+- tsc CANNOT SEE A MISSING TRANSLATION KEY. t('historyRevision') does not exist; the real key is
+  historyPlanV. Found by checking every key in the file against messages/en.json. With six locales and no
+  guard for this, it will happen again.
+
+**Environment note.** The Mac rebooted at 08:16 and the local Postgres did not come back — its data dir
+defaults to port 5432 while the project uses 5433, so it needs `-o "-p 5433"` at start, and it took 397s
+of crash recovery after the unclean stop. Worth a launchd unit rather than a manual start.
+
+---
+
 ## Slice 4 — 2026-07-29 — nav + page gating from entitlements (ADR-0077)
 
 **Shipped:** `main@14cbdcf`. No migration.
