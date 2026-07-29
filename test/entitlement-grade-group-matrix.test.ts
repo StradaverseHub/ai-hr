@@ -188,8 +188,15 @@ describe('a03eff24 · the matrix renders company once, grade group per row', () 
 
   it('the row identity is the scheme’s grade group + employment type, with the scheme name kept beneath', () => {
     const body = matrixSection();
-    expect(body).toMatch(/gradeGroupLabel=\{`\$\{e\.gradeGroupName \?\? t\('perTypeAllGrades'\)\} \(\$\{empTypeLabel\(e\.employmentType\)\}\)`\}/);
-    expect(body).toContain('{ent.schemeName}');
+    // r76 48224d12 — the inline template is replaced by the SHARED naming rule (lib/benefit-scheme-label),
+    // the identical call the Service Based Entitlements table makes. Same two facts, said once: the old
+    // template appended the employment type unconditionally, so a grade group already named
+    // "GRADE 12-15 (PERMANENT)" rendered "… (Permanent)" on the end of it.
+    expect(body).toMatch(
+      /gradeGroupLabel=\{benefitSchemeDisplayName\(\s*\{ name: e\.schemeName, gradeGroupName: e\.gradeGroupName \},\s*\{ employmentTypeLabel: empTypeLabel\(e\.employmentType\), allGradesLabel: t\('perTypeAllGrades'\) \},\s*\)\}/,
+    );
+    // The scheme name is still beneath it — suppressed only when it would repeat the head line.
+    expect(body).toContain('{schemeNameLine}');
     // The combined-limit note the flat table carried is not lost in the restructure.
     expect(body).toContain("t('perTypeSharedPool'");
   });

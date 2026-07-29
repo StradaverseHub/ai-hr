@@ -34,10 +34,16 @@ export type AssignmentRow = {
 
 /** 22de47c4 — one benefit scheme as the Assign Template picker offers it. `gradeGroupId` + `employmentType`
  *  are what an assignment to this scheme actually writes, and so also how a saved assignment is matched back
- *  to the scheme it names. */
+ *  to the scheme it names.
+ *
+ *  r76 22de47c4 — TWO strings, on purpose. `name` is the scheme's own name and nothing else: it is all the
+ *  PICKER shows, one line per scheme. `label` still spells out the grade group + employment type as well,
+ *  because the saved-assignments table names an assignment's target with it and needs to say which scope
+ *  was written. The item asked for the picker; keeping them apart is what stops it changing anything else. */
 export type SchemeOption = {
   id: string;
   companyId: string;
+  name: string;
   label: string;
   gradeGroupId: string | null;
   employmentType: string;
@@ -649,9 +655,14 @@ function AssignForm({
 
   // 22de47c4 — a scheme belongs to ONE company, so the panel narrows to the companies actually chosen.
   // Offering every scheme would invite picking one the assignment then quietly drops.
+  //
+  // r76 22de47c4 — each option is the scheme's NAME, nothing beneath it: one line per scheme. The grade
+  // group and employment type used to be appended here, which restated what the tenant had already typed
+  // into the name. The order is the shared display order (lib/benefit-scheme-label), already applied by the
+  // page — the list arrives sorted, so the panel does not re-sort it.
   const schemeOptions: Option[] = (
     selectedCompanies.length === 0 ? schemes : schemes.filter((s) => selectedCompanies.includes(s.companyId))
-  ).map((s) => ({ id: s.id, label: s.label }));
+  ).map((s) => ({ id: s.id, label: s.name }));
   // A scheme with no grade group covers the UNGROUPED population, which the rule matrix cannot express (a
   // null grade group there is a wildcard). The service refuses it; saying so on the tick rather than after
   // a failed save is the difference between a rule and a puzzle.
@@ -729,6 +740,11 @@ function AssignForm({
             labels={labels}
             hint={labels.panelNoneMeansAll}
             emptyText={labels.noBenefitSchemes}
+            /* r76 22de47c4 — the descriptive text is gone from the option; this badge is KEPT. It is not a
+               description of the scheme, it is the reason Assign is disabled two elements below
+               (`disabled={pickedUngrouped.length > 0}`): a scheme with no grade group matches nobody, and
+               the service refuses it. Removing it would leave a dead button with no stated cause. Same
+               reasoning as the Companies panel's multi-approval-off marker. */
             renderExtra={(o) =>
               ungroupedScheme(o.id) ? <Badge variant="warning">{labels.schemeNoGradeGroup}</Badge> : null
             }

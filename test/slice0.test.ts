@@ -1509,7 +1509,15 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     const [p] = await owner.db.select().from(schema.person).where(eq(schema.person.id, E.personId));
     expect(p.phone).toBe('0123456789');
     expect(p.addressLine1).toBe('12 Jalan Test');
-    expect(p.emergencyContactName).toBe('Next of Kin');
+    // 23ad620e — the emergency contact left `person` for its own register. The self-write must still
+    // land: person_emergency_contact's WITH CHECK is (is_admin OR is_self_person), the same rule
+    // person_rls applies, so an employee editing their own contact is exactly as privileged as before.
+    const [ec] = await owner.db
+      .select()
+      .from(schema.personEmergencyContact)
+      .where(eq(schema.personEmergencyContact.personId, E.personId));
+    expect(ec.fullName).toBe('Next of Kin');
+    expect(ec.priority).toBe('primary');
   });
 
   it('#24: a date-of-birth / marital-status change applies to the person only after approval', async () => {

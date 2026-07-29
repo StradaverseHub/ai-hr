@@ -68,7 +68,11 @@ describe('Service Based Entitlements — company picker, benefit-scheme rows', (
     expect(body).toMatch(/schemes\s*\n?\s*\.filter\(\(s\) => s\.companyId === companyId && s\.status === 'active'\)/);
     // The row identity is the scheme's grade group × employment type, the scheme name beneath it — the same
     // vocabulary the Benefit Schemes matrix uses, so the two surfaces name a scheme identically.
-    expect(body).toContain("gradeGroupLabel={`${scheme.gradeGroupName ?? tb('perTypeAllGrades')} (${empTypeLabel(scheme.employmentType)})`}");
+    // r76 48224d12 — that vocabulary is now ONE shared rule (lib/benefit-scheme-label) rather than an
+    // inline template repeated per call site, which is what let the employment type be stated twice.
+    expect(body).toMatch(
+      /gradeGroupLabel=\{benefitSchemeDisplayName\(scheme, \{\s*employmentTypeLabel: empTypeLabel\(scheme\.employmentType\),\s*allGradesLabel: tb\('perTypeAllGrades'\),\s*\}\)\}/,
+    );
     // No grade rows, and no grade-scoped write, survive anywhere in this file.
     expect(body.includes('grades.map((g) =>')).toBe(false);
     expect(schemeSrc.includes('saveServiceEntitlement')).toBe(false);
@@ -110,13 +114,40 @@ describe('Service Based Entitlements — company picker, benefit-scheme rows', (
   });
 });
 
-describe('9816a5ad — the grade-level figures are reconciled by REPORTING, never by overwriting', () => {
-  it('the row shows every grade-level figure that disagrees with the scheme', () => {
+describe('9816a5ad → r76 48224d12 — the disagreement note is WITHDRAWN, the reconciliation is not', () => {
+  /**
+   * ⚠ Read this before restoring or re-deleting anything here.
+   *
+   * 48224d12's reporter asked for the amber grade-level line to go, and it is gone. This was the ONLY
+   * place in the product that told an administrator that the grade-level entitlement and the scheme
+   * entitlement give different numbers — and investigation 9816a5ad is separately asking which of those
+   * two actually drives an employee's balance. So the removal is deliberately partial: the SURFACE is
+   * withdrawn, the RECONCILIATION is kept whole.
+   *
+   * What this test now pins is the shape of that compromise, so neither half drifts:
+   *   - no screen renders the note, and the string is retired from every locale (the i18n block below);
+   *   - the pure helpers that computed it still exist and still behave (the unit tests underneath);
+   *   - the table still receives the inputs they need, so putting the note back is an edit to ONE
+   *     component, not a re-wiring.
+   */
+  it('no screen renders the grade-level disagreement any more', () => {
+    expect(schemeSrc.includes('serviceGradeDisagreement')).toBe(false);
+    // …and it did not simply move: the TABLE no longer calls the sampler (its definition, above the table,
+    // is deliberately kept — see the next test).
+    const table = schemeSrc.slice(schemeSrc.indexOf('export function ServiceEntitlementTable'));
+    expect(table.slice(0, table.indexOf('function EntitlementForm')).includes('gradeLevelServiceDays(')).toBe(false);
+  });
+
+  it('the reconciliation survives intact — helpers exported, inputs still delivered', () => {
     const body = tableBody();
-    expect(body).toContain('gradeLevelServiceDays(activeGradeRows, gradeIds, companyId, columns)');
-    expect(body).toContain("t('serviceGradeDisagreement', { days: tuple.join(' / ') })");
-    // Reporting only: the disagreement never feeds a write. The row's submitted bands come from what is
-    // stored plus what was typed (matrixBandsWithDays), never from the grade-level sample.
+    // The pure helpers are the restoration path; deleting them makes the note expensive to reinstate.
+    expect(schemeSrc).toContain('export function gradeLevelServiceDays(');
+    expect(schemeSrc).toContain('export function sampleYearsForColumn(');
+    // The table still takes the two props the note consumed, so restoring it touches one file.
+    expect(body).toMatch(/gradeGroups: \{ id: string; gradeIds: string\[\] \}\[\];/);
+    expect(body).toMatch(/policies: ServicePolicyRow\[\];/);
+    expect(panelSrc).toContain('gradeGroups={gradeGroups}');
+    // Reporting only, and still never a write: no path from the grade-level sample into the row's bands.
     const rowStart = schemeSrc.indexOf('function SchemeEntitlementMatrixRow');
     const rowEnd = schemeSrc.indexOf('export function LeaveTypeEntitlementTable');
     expect(schemeSrc.slice(rowStart, rowEnd).includes('gradeLevelServiceDays')).toBe(false);
@@ -205,12 +236,19 @@ describe('Service Based Entitlements — i18n in all six locales', () => {
       'serviceSelectCompanyEmpty',
       'serviceNoSchemes',
       'serviceSchemeUnconfigured',
-      'serviceGradeDisagreement',
       'serviceTableNote',
       'schemeEntitlementsTitle',
     ];
     // The by-grade strings are retired with the by-grade rows — a leftover would be a promise no screen keeps.
-    const retired = ['serviceNoGrades', 'serviceNonConformingNote', 'serviceUnder2Aria', 'serviceMidAria', 'serviceOverAria'];
+    // r76 48224d12 retires `serviceGradeDisagreement` with the note itself, in all six locales.
+    const retired = [
+      'serviceNoGrades',
+      'serviceNonConformingNote',
+      'serviceUnder2Aria',
+      'serviceMidAria',
+      'serviceOverAria',
+      'serviceGradeDisagreement',
+    ];
     for (const loc of LOCALES) {
       const leave = JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'))?.admin?.leave ?? {};
       for (const key of keys) {
@@ -220,7 +258,6 @@ describe('Service Based Entitlements — i18n in all six locales', () => {
       for (const key of retired) {
         expect(leave[key], `${loc}.admin.leave.${key} retired`).toBeUndefined();
       }
-      expect(leave.serviceGradeDisagreement as string, `${loc} keeps the {days} placeholder`).toContain('{days}');
     }
   });
 });

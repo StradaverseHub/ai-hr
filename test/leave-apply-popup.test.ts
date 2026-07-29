@@ -157,31 +157,79 @@ describe('LeaveDurationFields: summary + day-by-day disclosure', () => {
     expect(fields.includes('summaryAction?:')).toBe(false);
   });
 
-  it('renders the four summary figures from the reused breakdown keys', () => {
-    // Feedback 082fa566's re-fix: Balance is BACK — not as a rename of Available, but beside it. r74 put the
-    // word Available over the gross ledger figure and the reporter read 13.5 where their Leave Summary said
-    // 8.5. Available now carries the net figure and Balance the gross one it is derived from, so the popup
-    // shows the subtraction (Balance − Pending approval = Available) instead of a result to be taken on
-    // trust. All four labels are pinned: dropping Balance again would hide the derivation, and pointing
-    // Available back at the gross figure would re-open the reported inconsistency.
-    for (const k of [
-      'breakdown.field.taken',
-      'breakdown.field.pendingApproval',
-      'breakdown.field.balance',
-      'breakdown.field.available',
-    ]) {
+  it('renders exactly TWO summary figures — Pending approval then Available (082fa566, r76)', () => {
+    // History of this table, because the column set has moved twice and the reasons must not be lost:
+    //   r74 renamed the third column Balance → Available WITHOUT changing the value, so the word Available
+    //        sat over the GROSS ledger figure and the reporter read 13.5 where their Leave Summary said 8.5;
+    //   r75 pointed Available at the net figure and put Balance back BESIDE it, so the popup showed the whole
+    //        subtraction (Taken / Pending approval / Balance / Available) and the number was checkable;
+    //   r76 (this) takes the derivation back off the apply form. With Available finally correct, the reporter
+    //        asked for only the two decisions-relevant figures while applying: what is already spoken for
+    //        (Pending approval) and what can still be applied for (Available). Taken is history, Balance an
+    //        intermediate — both stay in full on the balance screens.
+    for (const k of ['breakdown.field.pendingApproval', 'breakdown.field.available']) {
       expect(fields.includes(`t('${k}')`), k).toBe(true);
     }
-    // Reading order IS the arithmetic — the header cells must appear in that order.
-    const order = ['taken', 'pendingApproval', 'balance', 'available'].map((k) =>
-      fields.indexOf(`t('breakdown.field.${k}')`),
+    // Taken and Balance are no longer RENDERED here. Regression this catches: someone re-adding a column to
+    // the apply popup (or reverting to the r75 four-column table).
+    for (const k of ['breakdown.field.taken', 'breakdown.field.balance']) {
+      expect(fields.includes(`t('${k}')`), `${k} must not be rendered on the apply popup`).toBe(false);
+    }
+    // Order: Pending approval first, Available last.
+    expect(fields.indexOf("t('breakdown.field.pendingApproval')")).toBeLessThan(
+      fields.indexOf("t('breakdown.field.available')"),
     );
-    expect(order).toEqual([...order].sort((a, b) => a - b));
-    // Available is the LAST cell in the body row, and it reads summary.available (not summary.balance).
+    // The body row is the same two figures, PICKED from the server action — Available reads summary.available
+    // (never summary.balance, the r74 defect), and no taken/balance cell survives.
+    expect(fields.includes('{daysValue(summary.pending)}')).toBe(true);
     expect(fields.includes('{daysValue(summary.available)}')).toBe(true);
+    expect(fields.includes('{daysValue(summary.taken)}')).toBe(false);
+    expect(fields.includes('{daysValue(summary.balance)}')).toBe(false);
     // The "{value} Days" format the mock-up asks for — reused, not re-invented.
     expect(fields.includes("tMe('leaveBalanceTable.daysValue'")).toBe(true);
     expect(fields.includes('tabular-nums')).toBe(true);
+  });
+
+  it('is DISPLAY-only: the action and the summary type still carry taken and balance', () => {
+    // The contract for 082fa566/r76 is explicit that nothing is recalculated — two lines are simply no longer
+    // displayed. This catches the tempting follow-up "cleanup" that prunes the now-unread fields out of the
+    // server action or the type: that would change what leaveApplySummaryAction computes, and the ESS-gating
+    // assertions above (view.taken, balance: s.balance) plus the balance screens depend on it.
+    expect(fields.includes('taken: number | null;')).toBe(true);
+    expect(fields.includes('balance: number | null;')).toBe(true);
+    const fn = actions.slice(actions.indexOf('export async function leaveApplySummaryAction'));
+    const body = fn.slice(0, fn.indexOf('\n}\n'));
+    expect(body.includes('view.taken ? s.taken : null')).toBe(true);
+    expect(body.includes('balance: s.balance')).toBe(true);
+    // The r72 (cdf9ca48) invariant: Available on the popup is derived exactly as availableLeaveBalance
+    // derives the submit-time guard's figure — same pendingLeaveDays over the same balanceSpenderTypeIds,
+    // same unclamped subtraction. (The end-to-end equality is asserted against a real DB in
+    // test/r75-leave-apply-available.test.ts: popup.available === availableLeaveBalance. Removing two
+    // columns must not have gone near either.)
+    const core = read('core/leave.ts');
+    const summaryFn = core.slice(core.indexOf('export async function leaveTypeApplySummary'));
+    const summaryBody = summaryFn.slice(0, summaryFn.indexOf('\n}\n'));
+    expect(summaryBody.includes('pendingLeaveDays(')).toBe(true);
+    expect(summaryBody.includes('balanceSpenderTypeIds(')).toBe(true);
+    expect(summaryBody.includes('available: round2(balance - pending),')).toBe(true);
+  });
+
+  it('keeps the Taken/Balance label keys — the entitlement side panel still renders them', () => {
+    // The likeliest way to break this build: deleting leave.breakdown.field.taken / .balance as "orphans"
+    // because the popup stopped using them. components/leave/entitlement-panel-config.ts still points the
+    // summary section's rows at them, and there is no static guard that would catch the missing key — a
+    // deleted key type-checks and fails at runtime, in all six locales.
+    const panelConfig = read('components/leave/entitlement-panel-config.ts');
+    expect(panelConfig.includes("labelKey: 'field.taken'")).toBe(true);
+    expect(panelConfig.includes("labelKey: 'field.balance'")).toBe(true);
+    for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
+      const m = JSON.parse(read(`messages/${loc}.json`)) as {
+        leave: { breakdown: { field: Record<string, string> } };
+      };
+      for (const k of ['taken', 'balance', 'pendingApproval', 'available']) {
+        expect(m.leave.breakdown.field[k], `${loc}.leave.breakdown.field.${k}`).toBeTruthy();
+      }
+    }
   });
 
   it('suppresses the summary for EMERGENCY (EL keeps no ledger of its own)', () => {

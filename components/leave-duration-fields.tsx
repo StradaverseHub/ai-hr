@@ -25,12 +25,18 @@ export type LeavePreview = {
 };
 
 /** Employee apply-popup entitlement summary. A null figure means HR gated that component out of the employee
- *  self-service view (leave_type.ess_view_config) and it renders as a dash. */
+ *  self-service view (leave_type.ess_view_config) and it renders as a dash.
+ *
+ *  Only `pending` and `available` are RENDERED by the popup as of r76 (feedback 082fa566): while applying,
+ *  the employee needs what is already spoken for and what is left, not the history or the intermediate.
+ *  `taken` and `balance` are still computed and carried unchanged — the shape is deliberately NOT pruned, so
+ *  the server action's arithmetic stays byte-identical and the balance screens keep their source of truth. */
 export type LeaveApplySummary = {
   pending: number | null;
+  /** Computed as before; no longer rendered on the apply popup (it still leads the balance screens). */
   taken: number | null;
-  /** Ledger balance, GROSS of pending — the figure Available is derived from, shown so the subtraction is
-   *  checkable (feedback 082fa566). */
+  /** Ledger balance, GROSS of pending — the figure Available is derived from. Computed as before; no longer
+   *  rendered on the apply popup (feedback 082fa566, r76), still shown on the balance screens. */
   balance: number | null;
   /** balance − pending: what the employee can still apply for, and the figure the submit-time guard uses. */
   available: number | null;
@@ -101,8 +107,9 @@ export function LeaveDurationFields({
     endDate: string;
     durationType: Duration;
   }) => Promise<LeavePreview | null>;
-  /** Employee apply-popup enhancement: read-only Taken / Pending / Balance / Available for the selected leave type,
-   *  refreshed whenever the type (or the on-behalf employee) changes. REQUIRED — request-leave-dialog.tsx is
+  /** Employee apply-popup enhancement: the read-only entitlement summary for the selected leave type (of
+   *  which the popup renders Pending approval / Available — see LeaveApplySummary), refreshed whenever the
+   *  type (or the on-behalf employee) changes. REQUIRED — request-leave-dialog.tsx is
    *  the only consumer, so there is no "future caller" to keep optional. Best-effort: a null result renders
    *  nothing and never blocks the form. */
   summaryAction: (p: { employmentId: string; leaveTypeId: string }) => Promise<LeaveApplySummary | null>;
@@ -199,7 +206,8 @@ export function LeaveDurationFields({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewAction, employeeOptions, employmentId, typeId, effectiveDuration, start, end]);
 
-  // Employee apply-popup enhancement: the Taken / Pending / Balance / Available summary for the selected leave type.
+  // Employee apply-popup enhancement: the entitlement summary for the selected leave type (rendered as
+  // Pending approval / Available since r76; the action's payload is unchanged).
   // Keyed on (employmentId, typeId) ONLY — it is date-independent, so changing the dates must not re-fetch it.
   // Reuses the same employmentReady guard as the preview so the admin on-behalf path never renders the
   // admin's own figures under someone else's name while the selector is still empty.
@@ -345,7 +353,7 @@ export function LeaveDurationFields({
 
       {/* Compact leave summary (Request-Leave popup redesign): the deductible-day Total sits BESIDE the
           Start/End date fields, replacing the old wordy "This will deduct X / Balance A → B" box (the balance
-          figures stay in the Pending/Taken/Balance table above, so nothing is lost).
+          figure stays in the Pending approval / Available table below, so nothing is lost).
           Layout: the date grid is grid-cols-2 with NO sm prefix (two-up even on a phone) while the dialog form
           is grid-cols-1 sm:grid-cols-2, so this wrapper stacks the badge UNDER the dates on mobile and places
           it to their right from sm up — a plain flex at all breakpoints would squeeze the 2-col date row on a
@@ -409,17 +417,26 @@ export function LeaveDurationFields({
         </p>
       )}
 
-      {/* Employee apply-popup enhancement: compact Taken / Pending / Balance / Available for the selected
-          leave type, refreshed on every type change. Suppressed for EMERGENCY — EL keeps no ledger of its own
-          (it is drawn from annual/sick/unpaid at approval), so it would render a row of zeroes directly above
-          a real day count.
+      {/* Employee apply-popup enhancement: compact Pending approval / Available for the selected leave type,
+          refreshed on every type change. Suppressed for EMERGENCY — EL keeps no ledger of its own (it is
+          drawn from annual/sick/unpaid at approval), so it would render a row of zeroes directly above a real
+          day count.
 
-          Column ORDER is the subtraction (feedback 082fa566): the reporter read 13.5 under Available where
-          their Leave Summary said 8.5 and had no way to see where the difference went. Balance sits beside
-          Pending approval so the last column is visibly what is left after both — Balance − Pending approval
-          = Available — rather than a bare figure to be taken on trust. Taken leads because it is the one
-          column that is history rather than part of the running total. Every figure is PICKED from the same
-          server action; nothing is recomputed here, so the four cells cannot disagree. */}
+          r76 (feedback 082fa566, same reporter, follow-up): this table used to carry four columns — Taken /
+          Pending approval / Balance / Available — because r74 had put the word Available over the GROSS
+          ledger figure (the reporter read 13.5 where their Leave Summary said 8.5), and r75 answered by
+          showing the whole subtraction, Balance − Pending approval = Available, so the number was checkable
+          rather than taken on trust. With Available now correct, the reporter asked for the derivation to
+          come back OFF the apply form: while applying, only what is already spoken for (Pending approval) and
+          what can still be applied for (Available) are decisions-relevant; Taken is history and Balance is an
+          intermediate. Both remain in full on the leave balance screens (the entitlement side panel still
+          renders leave.breakdown.field.taken / .balance — those keys are NOT orphans).
+
+          This is DISPLAY-ONLY. leaveApplySummaryAction and LeaveApplySummary still compute and carry taken
+          and balance exactly as before; two cells simply stopped being rendered. In particular `pending` and
+          `available` are still PICKED verbatim from the same server action — `available` is
+          availableLeaveBalance, the figure the submit-time guard measures against (the r72 cdf9ca48
+          invariant), so the popup and the guard still cannot diverge. Nothing is recomputed here. */}
       {!isEmergency && (summary || isSummarizing) && (
         <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs sm:col-span-2">
           {summary ? (
@@ -427,27 +444,20 @@ export function LeaveDurationFields({
               <thead>
                 <tr className="text-muted-foreground">
                   <th scope="col" className="pb-0.5 text-right font-medium">
-                    {t('breakdown.field.taken')}
-                  </th>
-                  <th scope="col" className="pb-0.5 text-right font-medium">
                     {t('breakdown.field.pendingApproval')}
-                  </th>
-                  <th scope="col" className="pb-0.5 text-right font-medium">
-                    {t('breakdown.field.balance')}
                   </th>
                   <th scope="col" className="pb-0.5 text-right font-medium">
                     {/* "Available" is the leave type's own Leave Summary figure — balance minus the days this
                         employee has already applied for. r74 put the word here over the GROSS balance, which
-                        is what the reporter saw as 13.5 vs 8.5. */}
+                        is what the reporter saw as 13.5 vs 8.5; it reads summary.available, never
+                        summary.balance. */}
                     {t('breakdown.field.available')}
                   </th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="font-medium tabular-nums text-foreground">
-                  <td className="text-right">{daysValue(summary.taken)}</td>
                   <td className="text-right">{daysValue(summary.pending)}</td>
-                  <td className="text-right">{daysValue(summary.balance)}</td>
                   <td className="text-right">{daysValue(summary.available)}</td>
                 </tr>
               </tbody>
@@ -509,8 +519,8 @@ export function LeaveDurationFields({
       )}
 
       {/* The old "This will deduct X day(s) / Balance A → B" preview box lived here. It is replaced by the
-          compact Total badge beside the dates above: the balance figures are already in the Pending/Taken/
-          Balance table, and the two contextual notes it carried are deliberately not re-hosted — the
+          compact Total badge beside the dates above: the balance figure is already in the Pending approval /
+          Available table, and the two contextual notes it carried are deliberately not re-hosted — the
           half-day-schedule detail stays visible inside the day-by-day panel (half rows read 0.5) and the
           emergency split reminder is already rendered in full by the isEmergency block below. */}
 

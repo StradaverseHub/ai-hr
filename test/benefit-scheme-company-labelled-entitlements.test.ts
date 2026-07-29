@@ -132,7 +132,13 @@ describe('0d1a0cfc · the Service Based Entitlements table names the company bes
     expect(body).toContain('companyLabel={i === 0 ? block.companyName : null}');
     expect(body).toContain("{companyLabel ?? ''}");
     // The scheme is still named on its own row, and the shared-pool note survived the restructure.
-    expect(body).toContain('{ent.schemeName}');
+    // r76 48224d12 re-points this the same way a03eff24 re-pointed the company suffix: the requirement is
+    // "the row identifies the scheme", not "the row prints ent.schemeName unconditionally". It is now
+    // printed through `schemeNameLine`, which suppresses it only when it repeats the head line word for
+    // word — so the assertion still fails if the scheme stops being identifiable, and it now also fails if
+    // the repetition the reporter complained about comes back.
+    expect(body).toContain('{schemeNameLine}');
+    expect(body).toMatch(/const schemeNameLine = schemeNameIsRedundant\(\s*ent\.schemeName,/);
     expect(body).toContain("t('perTypeSharedPool'");
     // The pre-a03eff24 per-row company suffix must not come back.
     expect(body).not.toMatch(/e\.companyName != null &&/);

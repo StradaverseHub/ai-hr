@@ -22,11 +22,18 @@ async function makeSubject(opts: { terminatedOn?: string | null } = {}) {
       primaryEmail: `s_${randomUUID()}@t.local`,
       phone: '+60123456789',
       address: '12 Jalan Test',
-      emergencyContactName: 'Next Of Kin',
-      emergencyContactPhone: '+60198887777',
       dateOfBirth: '1990-05-05',
     })
     .returning({ id: schema.person.id });
+  // 23ad620e — the emergency contact is no longer two columns on `person` (migration 0322 dropped them);
+  // it is a row in the register, and erasure must reach it there.
+  await owner.db.insert(schema.personEmergencyContact).values({
+    tenantId: b.tenantId,
+    personId: p.id,
+    fullName: 'Next Of Kin',
+    mobilePhone: '+60198887777',
+    priority: 'primary',
+  });
   const [e] = await owner.db
     .insert(schema.employment)
     .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2015-01-01', terminatedOn: opts.terminatedOn ?? null })
@@ -81,11 +88,9 @@ describe('erasePersonPii — PDPA retention guard (ADR-0030, #159)', () => {
       'correspondencePostcode',
       'correspondenceState',
       'country',
-      'emergencyContactAddress',
-      'emergencyContactName',
-      'emergencyContactPhone',
-      'emergencyContactPhone2',
-      'emergencyContactRelationship',
+      // 23ad620e — the five emergencyContact* person columns are gone (migration 0322). The register they
+      // became is erased WHOLESALE and reported once, under this one name.
+      'emergencyContacts',
       'firstName',
       'homePhone',
       'lastName',
@@ -113,6 +118,14 @@ describe('erasePersonPii — PDPA retention guard (ADR-0030, #159)', () => {
     expect(pp.phone).toBeNull();
     expect(pp.address).toBeNull();
     expect(pp.dateOfBirth).not.toBeNull(); // statutory-locked → withheld
+    // The register is the ONLY home for the emergency contact now, so if erasure misses it the next-of-kin's
+    // name and phone survive the erasure entirely — this assertion is what would notice.
+    expect(
+      await owner.db
+        .select()
+        .from(schema.personEmergencyContact)
+        .where(eq(schema.personEmergencyContact.personId, personId)),
+    ).toEqual([]);
     const [st] = await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId, personId));
     expect(st.bankAccountNo).toBe('514122334455'); // retained under hold
     expect(await eventTypesFor(b.tenantId, personId)).toContain('pii.erased');
