@@ -210,24 +210,23 @@ export async function resolveApprovalChain(
   return FALLBACK_CHAIN;
 }
 
-/** The company-default chain + on/off state, for the admin editor. */
+/** The company-default chain, for the admin editor.
+ *
+ *  r79 0322 — no longer reports an on/off state. `company.leave_multi_approval` used to gate whether ANY
+ *  chain ran; core/leave.ts now branches on the RESOLVED chain's own step count, so there is nothing left
+ *  for a per-company switch to say. The column survives unread (no migration). */
 export async function getLeaveApprovalPolicy(
   ctx: SessionContext,
   companyId: string,
-): Promise<{ enabled: boolean; levels: LeaveLevelKind[] }> {
+): Promise<{ levels: LeaveLevelKind[] }> {
   return withTenant(ctx, async (tx) => {
-    const [co] = await tx
-      .select({ enabled: company.leaveMultiApproval })
-      .from(company)
-      .where(eq(company.id, companyId))
-      .limit(1);
     const [pol] = await tx
       .select({ levels: leaveApprovalPolicy.levels })
       .from(leaveApprovalPolicy)
       .where(and(eq(leaveApprovalPolicy.companyId, companyId), isNull(leaveApprovalPolicy.leaveTypeId), defaultRuleFilter()))
       .limit(1);
     const levels = sanitizeLevels(pol?.levels);
-    return { enabled: co?.enabled ?? false, levels: levels.length ? levels : FALLBACK_CHAIN };
+    return { levels: levels.length ? levels : FALLBACK_CHAIN };
   });
 }
 
@@ -247,26 +246,24 @@ function normalizeReason(v: string | null | undefined): string | undefined {
   return s.length > REASON_MAX_LEN ? s.slice(0, REASON_MAX_LEN) : s;
 }
 
-/** Set a company's default chain + on/off toggle. Admin-only (enforced by the policy + company RLS).
+/** Set a company's default chain. Admin-only (enforced by the policy + company RLS).
  *  Under ADR-0071 the "company default" is the fully-wildcard rule; this upserts that row and leaves any
- *  scoped rules untouched. */
+ *  scoped rules untouched.
+ *
+ *  r79 0322 — the `enabled` toggle is gone with `company.leave_multi_approval`. A chain of ONE level is
+ *  now how a company says "single approver", so the chain may never be empty: an empty default would
+ *  silently hand the company back to the built-in direct_manager → hr_admin fallback, which is precisely
+ *  the kind of quiet re-route this change exists to remove. */
 export async function setLeaveApprovalPolicy(
   ctx: SessionContext,
-  p: { companyId: string; enabled: boolean; levels: string[]; reason?: string | null },
+  p: { companyId: string; levels: string[]; reason?: string | null },
 ) {
   const levels = sanitizeLevels(p.levels);
   const reason = normalizeReason(p.reason);
-  if (p.enabled && levels.length === 0) throw new Error('An enabled approval chain needs at least one level');
+  if (levels.length === 0) throw new Error('An approval chain needs at least one level');
   return withTenant(ctx, async (tx) => {
-    // 4ec5a940 — capture the prior enabled flag + chain BEFORE the writes, so the audit event carries a
-    // real before→after comparison (forward-only). The company row holds the toggle; the default rule row
-    // holds the chain.
-    const [priorCompany] = await tx
-      .select({ enabled: company.leaveMultiApproval })
-      .from(company)
-      .where(eq(company.id, p.companyId))
-      .limit(1);
-    await tx.update(company).set({ leaveMultiApproval: p.enabled }).where(eq(company.id, p.companyId));
+    // 4ec5a940 — capture the prior chain BEFORE the write, so the audit event carries a real before→after
+    // comparison (forward-only). The default rule row holds the chain.
     const [existing] = await tx
       .select({ id: leaveApprovalPolicy.id, levels: leaveApprovalPolicy.levels })
       .from(leaveApprovalPolicy)
@@ -294,10 +291,8 @@ export async function setLeaveApprovalPolicy(
       actor: actorOf(ctx),
       payload: {
         companyId: p.companyId,
-        before: existing
-          ? { enabled: priorCompany?.enabled ?? false, levels: sanitizeLevels(existing.levels) }
-          : null,
-        after: { enabled: p.enabled, levels },
+        before: existing ? { levels: sanitizeLevels(existing.levels) } : null,
+        after: { levels },
         ...(reason ? { reason } : {}),
       },
     });
@@ -686,8 +681,9 @@ export async function getLeaveEscalationPolicy(
   });
 }
 
-/** Save a company's approval-escalation settings (modelled on setLeaveMultiApproval, not the rule matrix —
- *  escalation is one number + one target per company, ADR-0071's matrix is deliberately NOT its home).
+/** Save a company's approval-escalation settings. NOT part of the rule matrix — escalation is one number
+ *  + one target per company, and ADR-0071's matrix is deliberately not its home. r79 0322 relocated the
+ *  FORM into the Assign Template card; this function, its columns and the nightly sweep are unchanged.
  *  Sets escalation_updated_at = now() on EVERY save: the sweep grandfathers any request whose waiting clock
  *  started before that stamp, so turning escalation on (or shortening the days) never fires a day-one burst
  *  for requests that were already old. Admin-only (company RLS). */
@@ -762,25 +758,8 @@ export async function setLeaveEscalationPolicy(
   });
 }
 
-/** 6fadb036 — flip a company's multi-step-approval opt-in WITHOUT touching its default chain. The
- *  assignment screen surfaces this: a template assignment only fires when the company has multi-step
- *  approval on (core/leave.ts), so HR must be able to enable it inline. Admin-only (company RLS). */
-export async function setLeaveMultiApproval(ctx: SessionContext, companyId: string, enabled: boolean) {
-  return withTenant(ctx, async (tx) => {
-    const [before] = await tx
-      .select({ enabled: company.leaveMultiApproval })
-      .from(company)
-      .where(eq(company.id, companyId))
-      .limit(1);
-    await tx.update(company).set({ leaveMultiApproval: enabled }).where(eq(company.id, companyId));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'company',
-      aggregateId: companyId,
-      eventType: 'company.leave-multi-approval.changed',
-      actor: actorOf(ctx),
-      payload: { companyId, enabled, before: before?.enabled ?? null },
-    });
-    return { id: companyId };
-  });
-}
+// r79 0322 — setLeaveMultiApproval (6fadb036) is GONE, with the per-company Multi-Step Approval switch it
+// flipped. A template assignment no longer needs a company opt-in to fire: core/leave.ts branches on the
+// resolved chain's own step count, so the switch had nothing left to say and could only disagree with the
+// template. `company.leave_multi_approval` remains in the schema, unread — removing a column would be a
+// migration, and an unread column changes nothing.

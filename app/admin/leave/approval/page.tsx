@@ -27,7 +27,6 @@ import {
   saveLeaveApprovalRuleAction,
   saveLeaveEscalationPolicyAction,
   setApprovalTemplateActiveAction,
-  setLeaveMultiApprovalAction,
   setTenantDefaultTemplateAction,
   unassignApprovalTemplateAction,
 } from '../../leave-approval/actions';
@@ -79,7 +78,8 @@ export default async function LeaveApprovalTabPage({
       company: c,
       pol: await getLeaveApprovalPolicy(s, c.id),
       rules: await listLeaveApprovalRules(s, c.id),
-      // R51 722904dc — per-company Approval Escalation Settings (shown only when multi-step approval is on).
+      // R51 722904dc — per-company Approval Escalation Settings. r79 0322 — read for EVERY company now:
+      // they are no longer hidden behind a per-company multi-step switch, because there is no such switch.
       esc: await getLeaveEscalationPolicy(s, c.id),
     })),
   );
@@ -90,13 +90,8 @@ export default async function LeaveApprovalTabPage({
     listTemplateAssignments(s),
   ]);
   const assignments = allAssignments.filter((a) => companyIds.includes(a.companyId));
-  const companyMultiApproval: Record<string, boolean> = Object.fromEntries(
-    rows.map(({ company, pol }) => [company.id, pol.enabled]),
-  );
 
   const labels = {
-    enable: t('enable'),
-    enableHint: t('enableHint'),
     chain: t('chain'),
     empty: t('empty'),
     manager: t('manager'),
@@ -195,8 +190,6 @@ export default async function LeaveApprovalTabPage({
     noAssignments: t('noAssignments'),
     unassign: t('unassign'),
     unassignConfirm: t('unassignConfirm'),
-    multiApprovalOff: t('multiApprovalOff'),
-    enableMultiApproval: t('enableMultiApproval'),
     rolesGatedNote: t('rolesGatedNote'),
     save: t('save'),
     cancel: t('cancel'),
@@ -298,13 +291,50 @@ export default async function LeaveApprovalTabPage({
                   label: `${sc.name} — ${sc.gradeGroupName ?? t('anyScope')} · ${t(`employmentType_${sc.employmentType}` as 'employmentType_full_time')}`,
                 }))
                 .sort(bySchemeDisplayOrder((sc) => sc.name))}
-              companyMultiApproval={companyMultiApproval}
               actions={{
                 assign: assignApprovalTemplateAction,
                 unassign: unassignApprovalTemplateAction,
-                setMultiApproval: setLeaveMultiApprovalAction,
               }}
               labels={templateLabels}
+              /* r79 0322 (2.iii, relocated) — Approval Escalation Settings now live INSIDE the Assignment
+                 Template card, beside the assignment criteria, instead of in a per-company section of
+                 their own. Same editor component, same server action, same company columns: the nightly
+                 sweep (core/leave-escalation.ts) reads what it always read, uninterrupted — this moved
+                 where the form renders, not what it writes. Every company gets one now; the old
+                 "multi-step only" condition went with the switch it depended on. */
+              escalation={
+                <div className="border-t border-border">
+                  <div className="px-4 pb-1 pt-3">
+                    <h3 className="text-sm font-semibold">{t('escalationTitle')}</h3>
+                    <p className="text-xs text-muted-foreground">{t('escalationSectionHint')}</p>
+                  </div>
+                  <ul className="divide-y divide-border">
+                    {rows.map(({ company, esc }) => (
+                      <li key={company.id}>
+                        <details className="group">
+                          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                            <span>{company.name}</span>
+                            <span aria-hidden className="text-xs text-muted-foreground group-open:rotate-180">
+                              ▾
+                            </span>
+                          </summary>
+                          <LeaveEscalationEditor
+                            companyId={company.id}
+                            action={saveLeaveEscalationPolicyAction}
+                            initial={{
+                              enabled: esc.enabled,
+                              escalateAfterDays: esc.escalateAfterDays,
+                              target: esc.target,
+                              targetRole: esc.targetRole,
+                            }}
+                            labels={escalationLabels}
+                          />
+                        </details>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              }
             />
 
             {/* R41 72800eda — the configured workflows summary table + View/Edit popup (across all companies).
@@ -343,24 +373,22 @@ export default async function LeaveApprovalTabPage({
               labels={workflowLabels}
             />
 
-            {/* Company defaults: the base chain + multi-step-approval on/off gate for each company, plus
-                (2.iii) the Approval Escalation Settings — both are inherently per-company (each company
-                escalates to a different person), so 9b0d99f3 folds them into ONE compact line per company
-                you expand only when you need it, instead of a full-height Card each. */}
+            {/* Company base chain — the fully-wildcard "applies to every leave type, every employee" rule.
+                r79 0322: the multi-step on/off gate and the escalation settings have BOTH left this card
+                (the gate no longer exists; escalation moved up into the Assignment Template card). What
+                remains is the any-type default chain itself, which is genuinely load-bearing — it is what
+                a request routes through when no scoped assignment matches, and this is its ONLY editor
+                (the workflow matrix above deliberately hides wildcard rules to avoid double-editing). It
+                stays until that rule has somewhere else to live. */}
             <Card>
               <SectionHeader title={t('companyDefaultsTitle')} count={rows.length} />
               <p className="px-4 pt-3 text-xs text-muted-foreground">{t('companyDefaultsHint')}</p>
               <ul className="divide-y divide-border">
-                {rows.map(({ company, pol, esc }) => (
+                {rows.map(({ company, pol }) => (
                   <li key={company.id}>
                     <details className="group">
                       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
-                        <span className="flex flex-wrap items-center gap-2">
-                          <span>{company.name}</span>
-                          {!pol.enabled && (
-                            <span className="text-xs font-normal text-muted-foreground">{t('multiApprovalOff')}</span>
-                          )}
-                        </span>
+                        <span>{company.name}</span>
                         <span aria-hidden className="text-xs text-muted-foreground group-open:rotate-180">
                           ▾
                         </span>
@@ -369,30 +397,9 @@ export default async function LeaveApprovalTabPage({
                         <LeaveApprovalEditor
                           companyId={company.id}
                           action={saveLeaveApprovalPolicyAction}
-                          initialEnabled={pol.enabled}
                           initialLevels={pol.levels}
                           labels={labels}
                         />
-                        {/* R51 722904dc — Approval Escalation Settings, below the chain. Hidden for single-approver
-                            companies (no multi-step chain ⇒ no next level to escalate to; the sole approver is very
-                            often the HR admin the escalation would notify). */}
-                        {pol.enabled ? (
-                          <LeaveEscalationEditor
-                            companyId={company.id}
-                            action={saveLeaveEscalationPolicyAction}
-                            initial={{
-                              enabled: esc.enabled,
-                              escalateAfterDays: esc.escalateAfterDays,
-                              target: esc.target,
-                              targetRole: esc.targetRole,
-                            }}
-                            labels={escalationLabels}
-                          />
-                        ) : (
-                          <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
-                            {t('escalationUnavailableSingleApprover')}
-                          </p>
-                        )}
                       </div>
                     </details>
                   </li>

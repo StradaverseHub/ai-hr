@@ -124,7 +124,7 @@ describe('Global Delegation (Phase 1)', () => {
     const standSub = await hire('StandSub');
     await adminLine(standSub.employmentId, stand.employmentId);
     // Multi-step chain so the stand-in clears the direct_manager step (advances, no ledger debit).
-    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
+    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
     const { leaveRequestId } = await requestLeave(A(b), {
       employmentId: sub.employmentId,
       leaveTypeId: b.annualLeaveTypeId,
@@ -329,7 +329,7 @@ describe('Global Delegation (Phase 2 — module/task scope)', () => {
     // R51 same-level rule: match the delegator's manager level.
     const E2EStandSub = await hire('E2EStandSub');
     await adminLine(E2EStandSub.employmentId, stand.employmentId);
-    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
+    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
     const { leaveRequestId } = await requestLeave(A(b), {
       employmentId: sub.employmentId,
       leaveTypeId: b.annualLeaveTypeId,

@@ -247,7 +247,7 @@ describe('leave-request.escalation-due (R51)', () => {
       lineType: 'administrative',
       validFrom: '2024-01-01',
     });
-    await setLeaveApprovalPolicy(adminCtx(b), { companyId: b.companyId, enabled: true, levels });
+    await setLeaveApprovalPolicy(adminCtx(b), { companyId: b.companyId, levels });
     const { leaveRequestId } = await requestLeave(adminCtx(b), {
       employmentId: subject.employmentId,
       leaveTypeId: b.annualLeaveTypeId,

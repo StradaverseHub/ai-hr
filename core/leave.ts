@@ -1962,28 +1962,29 @@ export async function requestLeave(
     }
 
     // Partial Leave Approval — single-request model (ADR-0068, supersedes 0131's child-row split). When the
-    // type opts into per-date approval AND the company is single-step, a multi-day FULL-DAY WORKING-DAYS
+    // type opts into per-date approval AND the request is single-approver, a multi-day FULL-DAY WORKING-DAYS
     // request stays ONE leave_request row and gets one leave_request_date sub-row per working date (below,
     // after the single insert). The approver then decides each date via decideLeaveDate in the request detail
     // view — one inbox row, not one-per-day. The gate (§4C) excludes: calendar-counted types (kept as a whole
     // span), half/hourly (single-day, forced start===end above), REPLACEMENT (TOIL consume-on-approve
-    // interaction), and — critically — MULTI-STEP companies (per-date × the manager→HR chain is deferred;
+    // interaction), and — critically — MULTI-STEP requests (per-date × the manager→HR chain is deferred;
     // such a request falls through to today's whole-request decideLeave chain with NO per-date rows, so
     // deployed multi-step data is never stranded). "route by whether leave_request_date rows exist" is safe
-    // precisely because rows are only ever created for single-step companies. EL was already routed above.
-    const [coCfg] = await tx
-      .select({ multi: company.leaveMultiApproval })
-      .from(employment)
-      .innerJoin(company, eq(company.id, employment.companyId))
-      .where(eq(employment.id, p.employmentId))
-      .limit(1);
+    // precisely because rows are only ever created for single-approver requests. EL was already routed above.
+    //
+    // r79 0322 — "single-step" is no longer a COMPANY flag, it is this request's RESOLVED CHAIN having at
+    // most one level: the same gate generateApprovalSteps uses (isMultiStepChain), resolved from the same
+    // helper with the same day count, so the per-date rows and the step rows can never disagree about the
+    // request's shape. An unresolvable employment stays ineligible, exactly as `multi === false` did.
+    const resolvedChain = await resolveRequestApprovalChain(tx, p.employmentId, p.leaveTypeId, days);
     const perDateEligible =
       durationType === 'full_day' &&
       lt?.counting === 'working_days' &&
       !!lt?.perDateApproval &&
       lt?.code !== 'REPLACEMENT' &&
       p.startDate !== p.endDate &&
-      coCfg?.multi === false &&
+      resolvedChain !== null &&
+      !isMultiStepChain(resolvedChain.chain) &&
       // Allow Unpaid Leave (a7fab30b): a part-unpaid request is excluded, for the same reason REPLACEMENT is —
       // the two features have no agreed answer between them. The paid/unpaid boundary is a QUANTITY of days,
       // not an attribution to particular dates, so "approve Tuesday, reject Wednesday" cannot say which of the
@@ -2499,44 +2500,28 @@ async function requestEmergencyLeave(
   };
 }
 
-/** Generate the approval chain for a new request when its company opts into multi-step approval.
- *  2B-1 chain is fixed: direct manager (when one exists) then HR. 2B-2 made it configurable per
- *  company/leave-type; ADR-0071 makes it a SCOPED RULE MATRIX resolved against the requester's CURRENT
- *  assignment attributes + day count. `days` is the request's leave-day count — the fractional
- *  day-equivalent for hourly/partial requests (ADR-0071 1(h)), so an hourly request still participates in
- *  day-range matching. The generated steps are snapshotted here at submission time and NEVER re-resolved
- *  (ADR-0071 1(g)) — editing/archiving a rule later cannot change a pending request's routing. */
-async function generateApprovalSteps(
-  tx: Tx,
-  tenantId: string,
-  leaveRequestId: string,
-  employmentId: string,
-  leaveTypeId: string,
-  days: number,
-) {
+/**
+ * r79 0322 — resolve the approval chain a request WOULD run, from the assignment/template matrix ALONE.
+ *
+ * This is the single place that answers "is this request multi-step?". Until r79 that answer came from
+ * `company.leave_multi_approval`: a template assignment only fired when the company flag was on, so the
+ * flag and the assigned template could disagree and the flag always won. The flag is gone (the column
+ * survives, unread — no migration); the resolved chain decides, exactly as the assignment screen implies.
+ *
+ * Returns the chain as resolved (`resolveApprovalChain` — most-specific matching active rule, else the
+ * tenant-default template, else the built-in direct_manager → hr_admin fallback) TOGETHER with the
+ * requester's scoping attributes, so the one resolution serves both callers (the per-date-approval gate in
+ * requestLeave and generateApprovalSteps below) and the two can never disagree about a request's shape.
+ * Null only when the employment row is not visible.
+ */
+async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTypeId: string, days: number) {
   const [co] = await tx
-    .select({ multi: company.leaveMultiApproval, companyId: company.id })
+    .select({ companyId: company.id })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))
     .where(eq(employment.id, employmentId))
     .limit(1);
-  if (!co?.multi) return; // single-step company — no chain
-
-  // Include a manager step only when the employee has a current administrative reporting line;
-  // otherwise direct_manager levels are dropped (no dead step that nobody can clear).
-  const [mgr] = await tx
-    .select({ id: reportingLine.id })
-    .from(reportingLine)
-    .where(
-      and(
-        eq(reportingLine.subordinateEmploymentId, employmentId),
-        eq(reportingLine.lineType, 'administrative'),
-        lte(reportingLine.validFrom, sql`current_date`),
-        or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
-      ),
-    )
-    .limit(1);
-  const hasManager = !!mgr;
+  if (!co) return null;
 
   // ADR-0071: gather the requester's OWN current-assignment attributes (validTo/supersededAt null — the
   // same currentAssignment predicate used across the read layer) plus grade (on the employment row) and
@@ -2587,6 +2572,57 @@ async function generateApprovalSteps(
     businessUnitId: attr?.businessUnitId ?? null,
     days,
   });
+  return { companyId: co.companyId, chain, attr: attr ?? null };
+}
+
+/** r79 0322 — a request is MULTI-STEP when its resolved chain has two or more levels. One level is a
+ *  single-approver request: it produces NO leave_approval_step rows, i.e. the existing whole-request
+ *  decideLeave path (`/approvals` and the decide path route on `steps.length > 0`), NOT a one-element
+ *  chain. Assigning a one-step template is therefore how a company keeps plain single-step approval. */
+export function isMultiStepChain(chain: readonly string[]): boolean {
+  return chain.length > 1;
+}
+
+/** Generate the approval chain for a new request whose resolved chain is multi-step (r79 0322 — the
+ *  resolved chain's own step count is the gate; `company.leave_multi_approval` no longer takes part).
+ *  2B-1 chain is fixed: direct manager (when one exists) then HR. 2B-2 made it configurable per
+ *  company/leave-type; ADR-0071 makes it a SCOPED RULE MATRIX resolved against the requester's CURRENT
+ *  assignment attributes + day count. `days` is the request's leave-day count — the fractional
+ *  day-equivalent for hourly/partial requests (ADR-0071 1(h)), so an hourly request still participates in
+ *  day-range matching. The generated steps are snapshotted here at submission time and NEVER re-resolved
+ *  (ADR-0071 1(g)) — editing/archiving a rule later cannot change a pending request's routing. */
+async function generateApprovalSteps(
+  tx: Tx,
+  tenantId: string,
+  leaveRequestId: string,
+  employmentId: string,
+  leaveTypeId: string,
+  days: number,
+) {
+  const resolved = await resolveRequestApprovalChain(tx, employmentId, leaveTypeId, days);
+  if (!resolved) return;
+  const { chain, attr } = resolved;
+  // The gate. Branching on the chain BEFORE the drop rules below is deliberate: a two-step template whose
+  // manager step is dropped (no reporting line) has always produced ONE step row, and still does. Only a
+  // chain that is one level BY CONFIGURATION collapses to the single-approver path.
+  if (!isMultiStepChain(chain)) return;
+
+  // Include a manager step only when the employee has a current administrative reporting line;
+  // otherwise direct_manager levels are dropped (no dead step that nobody can clear).
+  const [mgr] = await tx
+    .select({ id: reportingLine.id })
+    .from(reportingLine)
+    .where(
+      and(
+        eq(reportingLine.subordinateEmploymentId, employmentId),
+        eq(reportingLine.lineType, 'administrative'),
+        lte(reportingLine.validFrom, sql`current_date`),
+        or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+      ),
+    )
+    .limit(1);
+  const hasManager = !!mgr;
+
   // 6fadb036 (gap-close): head-kind steps route to an org-chart head. Resolve the subject's department and
   // business-unit heads once; a head step is DROPPED when its head is unset, mirroring the direct_manager
   // drop (no dead step nobody can clear). HR / HR Manager / Payroll / Custom Role steps are role-based and

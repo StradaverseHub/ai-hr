@@ -56,17 +56,29 @@ async function main() {
       country: 'MY',
       currency: 'MYR',
       parentCompanyId: holding.id,
-      leaveMultiApproval: true, // 2B-1: demo the manager → HR chain
       defaultWorkState: 'Selangor', // 2C: HQ default; employees without an explicit work_state inherit it
     })
     .returning({ id: schema.company.id });
   // 2B-2 (ADR-0039): an explicit approval chain for the demo company (direct manager → HR), so the
-  // editor shows a configured policy. company.leaveMultiApproval is already true (set above).
+  // editor shows a configured policy.
+  //
+  // r79 0322 — this TWO-level chain is now the whole reason the company runs multi-step approval; the
+  // `leaveMultiApproval: true` that used to sit on the company row above is gone with the switch itself.
   await owner.db.insert(schema.leaveApprovalPolicy).values({
     tenantId: DEV_TENANT_ID,
     companyId: company.id,
     leaveTypeId: null,
     levels: ['direct_manager', 'hr_admin'],
+  });
+  // r79 0322 — and the HOLDING company gets an explicit ONE-level chain, which is how a company says
+  // "single approver" now. It used to say it by leaving leaveMultiApproval at its false default; without
+  // this row it would resolve to the built-in direct_manager → hr_admin fallback and the single-step
+  // Partial Leave Approval demo seeded further down would stop producing per-date rows.
+  await owner.db.insert(schema.leaveApprovalPolicy).values({
+    tenantId: DEV_TENANT_ID,
+    companyId: holding.id,
+    leaveTypeId: null,
+    levels: ['direct_manager'],
   });
   await owner.db.insert(schema.companyStatutoryMy).values({
     tenantId: DEV_TENANT_ID,
@@ -143,7 +155,7 @@ async function main() {
   const annual = { id: leaveTypeIds.ANNUAL };
   // Partial Leave Approval demo (ADR-0068): opt ANNUAL into per-date approval so a tester can actually reach
   // the feature. ANNUAL is full-day + working_days-counted, which the gate requires. The primary demo
-  // `company` runs a MULTI-STEP chain (leaveMultiApproval=true above), where per-date approval intentionally
+  // `company` runs a MULTI-STEP chain (its two-level default policy above), where per-date approval intentionally
   // falls back to the whole-request flow — so the reachable scenario lives in the single-step `holding`
   // company below (see "Partial Leave Approval demo — single-step" block).
   await owner.db.update(schema.leaveType).set({ perDateApproval: true }).where(eq(schema.leaveType.id, annual.id));
@@ -516,7 +528,7 @@ async function main() {
 
   // Partial Leave Approval demo — single-step (ADR-0068): the primary `company` runs a multi-step chain, where
   // per-date approval intentionally does NOT fire. So the REACHABLE per-date scenario lives in the `holding`
-  // company, which is single-step (leaveMultiApproval defaults to false). We hire one employee there reporting
+  // company, which is single-step (its ONE-level default policy above). We hire one employee there reporting
   // to Daniel (already Group CFO at holding), grant ANNUAL, and file a PENDING 3-working-day ANNUAL request.
   // Because ANNUAL now opts into per-date approval and the company is single-step, requestLeave decomposes the
   // request into per-date rows — so a tester who opens Daniel's approvals inbox sees one row with the

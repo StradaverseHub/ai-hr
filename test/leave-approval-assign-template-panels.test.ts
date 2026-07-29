@@ -135,7 +135,6 @@ beforeEach(async () => {
   ).id;
   await setLeaveApprovalPolicy(ctx(), {
     companyId: b.companyId,
-    enabled: true,
     levels: ['direct_manager', 'hr_admin'],
   });
 });

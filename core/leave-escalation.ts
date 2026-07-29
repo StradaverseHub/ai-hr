@@ -17,10 +17,14 @@
  * submission decomposes into: one stuck approver ⇒ ONE alert, not two. Each step fires once EVER —
  * if the request advances and the NEXT step goes quiet, that new (group, step) gets its own single chase.
  *
- * Companies without a multi-step chain generate no leave_approval_step rows (generateApprovalSteps
- * returns early), so they produce no candidates here — per the approved decision, escalation is not
- * offered for single-approver companies in this release (the sole approver is very often the HR admin
- * "escalation" would notify).
+ * Requests that resolve to a SINGLE-APPROVER chain generate no leave_approval_step rows
+ * (generateApprovalSteps returns early), so they produce no candidates here — per the approved decision,
+ * escalation is not offered for single-approver requests in this release (the sole approver is very often
+ * the HR admin "escalation" would notify). r79 0322: that used to be a per-company opt-out
+ * (company.leave_multi_approval); it is now the resolved chain being one level long, so the same company
+ * can escalate on one leave type and not on another. Nothing here changed — this reads leave_approval_step
+ * rows and knows nothing about how they came to exist. The settings themselves (company.escalation_*) are
+ * untouched by r79; only the SCREEN they are edited on moved.
  *
  * Delegation is deliberately NOT special-cased: escalation triggers on nobody having decided. If a
  * stand-in decides the step in time, the step is no longer pending and nothing fires.

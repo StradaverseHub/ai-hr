@@ -74,6 +74,11 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
+  // r79 0322 — the company's default chain decides single- vs multi-step now (there is no
+  // company.leave_multi_approval switch). Most cases here are single-approver manager decisions, so the
+  // company starts on a ONE-step chain — the shape the old opted-out default produced. Case (a+d)
+  // overrides it with an explicit two-step chain where it needs one.
+  await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, levels: ['direct_manager'] });
 });
 
 describe('Approval activity history (44a89810)', () => {
@@ -87,7 +92,7 @@ describe('Approval activity history (44a89810)', () => {
     const standSub = await hire('StandSub');
     await adminLine(standSub.employmentId, stand.employmentId);
     await grantAnnual(sub.employmentId);
-    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
+    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
     const { leaveRequestId } = await requestLeave(A(b), {
       employmentId: sub.employmentId,
       leaveTypeId: b.annualLeaveTypeId,
@@ -341,7 +346,7 @@ describe('Approval activity history (44a89810)', () => {
     const standSub = await hire('TStandSub');
     await adminLine(standSub.employmentId, stand.employmentId);
     const { reportingLineId } = await delegate(mgr.employmentId, stand.employmentId);
-    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, enabled: true, levels: ['direct_manager', 'hr_admin'] });
+    await setLeaveApprovalPolicy(A(b), { companyId: b.companyId, levels: ['direct_manager', 'hr_admin'] });
     const { leaveRequestId: lr1 } = await requestLeave(A(b), {
       employmentId: sub1.employmentId,
       leaveTypeId: b.annualLeaveTypeId,
