@@ -518,8 +518,8 @@ export const person = pgTable(
     // Wave 2 (ADR-0038 2A): self-declared; gate maternity (female) / paternity (married male) eligibility.
     gender: text('gender'), // 'male' | 'female' | 'undisclosed'
     maritalStatus: text('marital_status'), // 'single' | 'married' | 'other'
-    emergencyContactName: text('emergency_contact_name'),
-    emergencyContactPhone: text('emergency_contact_phone'),
+    // 23ad620e — emergency_contact_name / _phone USED to live here. They are GONE (migration 0322): an
+    // emergency contact is now a row in `personEmergencyContact` below, because a person may have several.
     // ── b4682879 Personnel Profile redesign — all NULLABLE, additive, HR-maintained ──
     // Name parts (independent of fullName; display fallback stays fullName).
     firstName: text('first_name'),
@@ -565,10 +565,9 @@ export const person = pgTable(
     // contact may differ from the main mobile/home pair above. Both nullable, optional.
     correspondenceMobilePhone: text('correspondence_mobile_phone'),
     correspondenceHomePhone: text('correspondence_home_phone'),
-    // Extended emergency contact (name + phone above; relationship free text, second phone, address).
-    emergencyContactRelationship: text('emergency_contact_relationship'),
-    emergencyContactPhone2: text('emergency_contact_phone2'),
-    emergencyContactAddress: text('emergency_contact_address'),
+    // 23ad620e — emergency_contact_relationship / _phone2 / _address USED to live here too. Dropped by
+    // migration 0322 along with the two above; `personEmergencyContact` is the single home now. Nothing may
+    // re-add them: a second writable home for the same fact is the defect this feature exists to remove.
     // ADR-0029 scope-out: the single "paymaster" employment through which this person's taxable
     // remuneration runs for PCB when they hold concurrent employments across the group's companies.
     // FK to employment is added in migration 0069 (avoids the person↔employment cycle in TS).
@@ -3546,6 +3545,43 @@ export const employeeDependent = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index('employee_dependent_person_idx').on(t.tenantId, t.personId)],
+);
+
+// ─────────────── Personnel — Emergency contacts (feedback 23ad620e, migration 0322) ───────────────
+// A per-PERSON register of who to call in an emergency, replacing the five flat person.emergency_contact_*
+// columns (which could only ever hold ONE contact). Person-keyed like employee_dependent — an emergency
+// contact is a person fact, not an employment one.
+//
+// `priority` carries the request's own vocabulary — 'primary' | 'secondary' | 'other' — so "only one Primary
+// per employee" is a partial unique index (0322) rather than a convention: person_emergency_contact_one_
+// primary_uq over (tenant_id, person_id) WHERE priority = 'primary' AND archived_at IS NULL. The service
+// demotes the previous primary in the same transaction, so the index is the concurrency backstop, not the
+// happy path. `relationship` stores a profile_option 'relationship' catalog value with legacy tolerance
+// (validated in core/emergency-contacts.ts, not by constraint) — the SAME catalog the replaced person column
+// used, deliberately NOT the separate 'dependentRelationship' one.
+//
+// RLS (0322): USING app.can_see_person / WITH CHECK (is_admin OR is_self_person) — the person_rls write rule,
+// because the contact is self-maintained on /me today and this table must not narrow that privilege.
+export const personEmergencyContact = pgTable(
+  'person_emergency_contact',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id),
+    fullName: text('full_name').notNull(),
+    relationship: text('relationship'), // 'relationship' catalog value (legacy-tolerant)
+    mobilePhone: text('mobile_phone'),
+    homePhone: text('home_phone'),
+    address: text('address'),
+    remarks: text('remarks'),
+    priority: text('priority').notNull().default('other'), // primary | secondary | other (validated in-service)
+    archivedAt: timestamp('archived_at', { withTimezone: true }), // soft-delete
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('person_emergency_contact_person_idx').on(t.tenantId, t.personId)],
 );
 
 // ─────────────── Personnel — Qualification (feedback a949184a, migration 0306) ───────────────

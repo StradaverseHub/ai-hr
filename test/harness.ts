@@ -31,6 +31,10 @@ const ALL_TABLES = [
   'notification', 'notification_pref', 'notification_delivery', 'notification_cursor',
   'tp1_relief',
   'employee_dependent',
+  // 23ad620e — emergency-contact register: a leaked live 'primary' row would trip the partial unique
+  // index (person_emergency_contact_one_primary_uq) in a later test file. CASCADE from `person` would
+  // reach it, but the two tables above are listed explicitly for the same reason and this one matches.
+  'person_emergency_contact',
   // a949184a — qualification register: a leaked live is_highest row would trip the partial unique index
   // (employee_qualification_one_highest_uq) across test files.
   'employee_qualification',

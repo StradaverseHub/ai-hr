@@ -796,32 +796,6 @@ export async function setContactAddressAction(formData: FormData) {
 }
 
 /**
- * b4682879 Emergency Contact — instant-write of the extended emergency-contact block via updatePerson.
- * fullName / primaryEmail / phone are carried through as hidden fields (pass-through, never wiped).
- */
-export async function setEmergencyContactAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  try {
-    await updatePerson(s, {
-      personId: String(formData.get('personId')),
-      fullName: String(formData.get('fullName') ?? ''),
-      primaryEmail: String(formData.get('primaryEmail') ?? ''),
-      phone: orNull(formData.get('phone')),
-      emergencyContactName: orNull(formData.get('emergencyContactName')),
-      emergencyContactRelationship: orNull(formData.get('emergencyContactRelationship')),
-      emergencyContactPhone: orNull(formData.get('emergencyContactPhone')),
-      emergencyContactPhone2: orNull(formData.get('emergencyContactPhone2')),
-      emergencyContactAddress: orNull(formData.get('emergencyContactAddress')),
-    });
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
-}
-
-/**
  * HR/Admin sets the compliance-sensitive identity fields (gender, marital status, date of birth) that
  * drive leave eligibility (Wave 2A-1) and age-band statutory (EPF/SOCSO). Routed through the audited
  * setPersonComplianceFields path, NOT the instant-write updatePerson — ADR-0012 refinement #24 / b4682879.

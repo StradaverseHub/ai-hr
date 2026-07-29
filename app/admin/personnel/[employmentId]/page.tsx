@@ -39,7 +39,6 @@ import {
   setDirectSuperiorAction,
   setComplianceFieldsAction,
   setContactAddressAction,
-  setEmergencyContactAction,
   changeEmploymentCompanyAction,
   setOrganisationAssignmentAction,
   setPaymentMethodAction,
@@ -95,6 +94,9 @@ import { addDependentAction, editDependentAction, archiveDependentAction } from 
 // Feedback a949184a — Qualification tab: per-employment academic/professional qualification register.
 import { listQualifications, type QualificationRow } from '@/core/qualifications';
 import { addQualificationAction, editQualificationAction, archiveQualificationAction } from './qualification-actions';
+// Feedback 23ad620e — Emergency Contact register: a person may have several contacts, not one.
+import { EMERGENCY_CONTACT_PRIORITIES, listEmergencyContacts, type EmergencyContactRow } from '@/core/emergency-contacts';
+import { addEmergencyContactAction, editEmergencyContactAction, deleteEmergencyContactAction } from './emergency-contact-actions';
 import { FamilyFormDialog } from '@/components/family-form-dialog';
 import { FamilyRelationshipFields } from '@/components/family-relationship-fields';
 import { listAssignablePolicies } from '@/core/payroll-policy';
@@ -310,6 +312,10 @@ export default async function EmployeePage({
   // (admin-only surface; employment-keyed, unlike the person-keyed Family register). Sorted by the service:
   // most recent graduation first, in-progress (blank graduation date) last.
   const qualifications = admin ? await listQualifications(s, { employmentId }) : [];
+  // Feedback 23ad620e — Emergency Contact register: every person to call for this employee, in resolution
+  // order (Primary → Secondary → Other). PERSON-keyed like the Family register, so it survives termination
+  // and is visible to a second company's admin.
+  const emergencyContacts = admin ? await listEmergencyContacts(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
   // 297ae65a — the company's configured default salary currency (company_payroll_config.default_currency,
@@ -472,6 +478,173 @@ export default async function EmployeePage({
   // for instant fields, setPersonComplianceFields for the audited compliance fields). The core identity
   // (fullName / primaryEmail / phone) that updatePerson always writes is passed through as hidden fields on
   // the cards that don't visibly own it, so saving one section never wipes another's data.
+  // Feedback 23ad620e — Emergency Contact is a REGISTER, not a single form: an employee may need a spouse
+  // AND a parent AND a guardian on file, and HR needs to know who to try first. Same list-and-dialog shape
+  // as the Family and Qualification tabs (one summary table + one Add/Edit/View dialog + a delete inside
+  // the tab shell), so the three registers on this profile behave identically.
+  //
+  // Priority carries the request's own vocabulary (Primary / Secondary / Other) and only ONE contact can be
+  // Primary: choosing it demotes the previous holder to Secondary (core/emergency-contacts.ts, backstopped
+  // by a partial unique index). The screens that still show ONE contact (/me, the profile card) resolve to
+  // the Primary automatically, so nothing had to be told about the change.
+  const emergencyTaCls = `${inputCls.replace('h-9', 'min-h-16')} py-2`;
+  // Static literal keys, not a dynamic template — test/i18n-coverage.test.ts can then catch a missing
+  // Tamil/Thai label instead of shipping a raw key (the family.rel.* precedent above).
+  const emergencyPriorityLabel = (p: string) => {
+    switch (p) {
+      case 'primary': return t('emergency.priorityPrimary');
+      case 'secondary': return t('emergency.prioritySecondary');
+      case 'other': return t('emergency.priorityOther');
+      default: return p;
+    }
+  };
+  const emergencyFields = (c: EmergencyContactRow | null) => (
+    <>
+      <Field label={t('emergency.name')}>
+        <input name="fullName" required defaultValue={c?.fullName ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('emergency.relationship')}>
+        <ProfileOptionSelect
+          name="relationship"
+          value={c?.relationship}
+          options={profileOptions.relationship}
+          placeholder={t('optionNotSet')}
+          legacySuffix={t('optionLegacySuffix')}
+        />
+      </Field>
+      <Field label={t('emergency.mobilePhone')}>
+        <input name="mobilePhone" defaultValue={c?.mobilePhone ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('emergency.homePhone')}>
+        <input name="homePhone" defaultValue={c?.homePhone ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('emergency.priority')}>
+        <select name="priority" defaultValue={c?.priority ?? 'other'} className={inputCls}>
+          {EMERGENCY_CONTACT_PRIORITIES.map((p) => (
+            <option key={p} value={p}>{emergencyPriorityLabel(p)}</option>
+          ))}
+        </select>
+      </Field>
+      <div className="sm:col-span-2">
+        <Field label={t('emergency.address')}>
+          {/* 7d309da7 — address = multi-line long-text (line breaks preserved) instead of a single input. */}
+          <textarea name="address" rows={3} defaultValue={c?.address ?? ''} className={emergencyTaCls} />
+        </Field>
+      </div>
+      <div className="sm:col-span-2">
+        <Field label={t('emergency.remarks')}>
+          <textarea name="remarks" rows={2} defaultValue={c?.remarks ?? ''} className={emergencyTaCls} />
+        </Field>
+      </div>
+      <p className="text-xs text-muted-foreground sm:col-span-2">{t('emergency.primaryHint')}</p>
+    </>
+  );
+  // One dialog form for Add (c null) and Edit. The STATIC hidden `tab` input keeps the post-save redirect on
+  // this tab (Dialog.Portal reparents the form outside the tab shell, so the shell's submit listener never
+  // sees it — the Family tab note).
+  const emergencyDialogForm = (c: EmergencyContactRow | null) => (
+    <form
+      action={c ? editEmergencyContactAction : addEmergencyContactAction}
+      className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2"
+    >
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      <input type="hidden" name="personId" value={emp.personId} />
+      {c && <input type="hidden" name="id" value={c.id} />}
+      <input type="hidden" name="tab" value="profile" data-tab-tracker="" />
+      {emergencyFields(c)}
+      <div className="flex justify-end sm:col-span-2">
+        <button className={btnPrimary}>{c ? t('emergency.save') : t('emergency.add')}</button>
+      </div>
+    </form>
+  );
+  // View: the SAME server-rendered fields, disabled inside a fieldset with no <form> — the read-only view
+  // can never drift from the Edit layout, and can never post.
+  const emergencyViewBody = (c: EmergencyContactRow) => (
+    <fieldset disabled>
+      <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">{emergencyFields(c)}</div>
+    </fieldset>
+  );
+  const emergencyContactPanel = (
+    <Card id="section-emergency-contact" className="overflow-hidden">
+      <SectionHeader title={t('emergencyTitle')} count={emergencyContacts.length} />
+      <section className="border-t border-border">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+          <FamilyFormDialog triggerLabel={t('emergency.add')} title={t('emergency.addTitle')}>
+            {emergencyDialogForm(null)}
+          </FamilyFormDialog>
+        </div>
+        {emergencyContacts.length === 0 ? (
+          <p className="px-4 pb-4 text-sm text-muted-foreground">{t('emergency.none')}</p>
+        ) : (
+          <div className="overflow-x-auto px-4 pb-4">
+            <table className="w-full min-w-[52rem] text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">{t('emergency.name')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('emergency.relationship')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('emergency.mobilePhone')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('emergency.homePhone')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('emergency.priority')}</th>
+                  <th className="py-2 text-right font-medium">{t('emergency.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {emergencyContacts.map((c) => (
+                  <tr key={c.id} className="border-b border-border/60 align-top">
+                    <td className="py-2 pr-3 font-medium">{c.fullName}</td>
+                    <td className="py-2 pr-3">{c.relationship ?? '—'}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{c.mobilePhone ?? '—'}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{c.homePhone ?? '—'}</td>
+                    <td className="py-2 pr-3">
+                      {c.priority === 'primary' ? (
+                        <Badge variant="success">{t('emergency.priorityPrimary')}</Badge>
+                      ) : (
+                        emergencyPriorityLabel(c.priority)
+                      )}
+                    </td>
+                    <td className="py-2">
+                      <div className="flex items-center justify-end gap-2">
+                        <FamilyFormDialog
+                          triggerLabel={t('emergency.view')}
+                          triggerVariant="outline"
+                          title={t('emergency.viewTitle')}
+                        >
+                          {emergencyViewBody(c)}
+                        </FamilyFormDialog>
+                        <FamilyFormDialog
+                          triggerLabel={t('emergency.edit')}
+                          triggerVariant="outline"
+                          title={t('emergency.editTitle')}
+                        >
+                          {emergencyDialogForm(c)}
+                        </FamilyFormDialog>
+                        {/* Delete lives INSIDE the tab shell, so ConfirmSubmit's requestSubmit() fires a
+                            bubbling submit the shell's capture listener sees (tab retention for free). */}
+                        <form action={deleteEmergencyContactAction}>
+                          <input type="hidden" name="employmentId" value={emp.employmentId} />
+                          <input type="hidden" name="id" value={c.id} />
+                          <ConfirmSubmit
+                            size="sm"
+                            variant="destructive"
+                            title={t('emergency.deleteConfirmTitle')}
+                            description={t('emergency.deleteConfirmBody')}
+                            confirmLabel={t('emergency.delete')}
+                          >
+                            {t('emergency.delete')}
+                          </ConfirmSubmit>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </Card>
+  );
+
   const profilePanel = admin ? (
     <>
       {/* Item e3ce0d4d — IdentityProvider lifts the live Nationality selection so the identity block below can
@@ -754,47 +927,7 @@ export default async function EmployeePage({
         </form>
       </Card>
 
-      <Card id="section-emergency-contact">
-        <SectionHeader title={t('emergencyTitle')} />
-        <form action={setEmergencyContactAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
-          <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <input type="hidden" name="personId" value={emp.personId} />
-          {/* identity trio carried through (pass-through) so an emergency-contact save never wipes it. */}
-          <input type="hidden" name="fullName" value={emp.name} />
-          <input type="hidden" name="primaryEmail" value={emp.email} />
-          <input type="hidden" name="phone" value={emp.phone ?? ''} />
-          <Field label={t('emergencyName')}>
-            <input name="emergencyContactName" defaultValue={emp.emergencyContactName ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('emergencyRelationship')}>
-            <ProfileOptionSelect
-              name="emergencyContactRelationship"
-              value={emp.emergencyContactRelationship}
-              options={profileOptions.relationship}
-              placeholder={t('optionNotSet')}
-              legacySuffix={t('optionLegacySuffix')}
-            />
-          </Field>
-          <Field label={t('emergencyPhone1')}>
-            <input name="emergencyContactPhone" defaultValue={emp.emergencyContactPhone ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('emergencyPhone2')}>
-            <input name="emergencyContactPhone2" defaultValue={emp.emergencyContactPhone2 ?? ''} className={inputCls} />
-          </Field>
-          <Field label={t('emergencyAddress')}>
-            {/* 7d309da7 — address = multi-line long-text (line breaks preserved) instead of a single input. */}
-            <textarea
-              name="emergencyContactAddress"
-              defaultValue={emp.emergencyContactAddress ?? ''}
-              rows={3}
-              className={`${inputCls} sm:col-span-4`}
-            />
-          </Field>
-          <div className="sm:col-span-4 flex justify-end">
-            <button className={btnPrimary}>{t('saveEmergency')}</button>
-          </div>
-        </form>
-      </Card>
+      {emergencyContactPanel}
     </>
   ) : null;
 
