@@ -119,7 +119,12 @@ Check the component source.
 
 ## Live state
 
-**Deployed:** `main@aba3064`, service active, migrations through **0322** (r77 added none).
+**Deployed:** `main@54d25b5`, service active, migrations through **0322** (r77 and the hotfix added none).
+
+**READ THE COMPANIES-LIST HOTFIX ENTRY FIRST if you are about to trust a test on any list screen.**
+A production screen dropped 7 of 8 rows for 24 days while every test passed, because rows are lost in the
+RSC transport (deferred Flight lazies fail `isValidElement`) and no test crossed that boundary. An item
+was marked deployed with a close-out telling the reporter the screen was fine; a screenshot overturned it.
 
 **Board after r77:** 5 items deployed this round, 1 held. **2 BLOCKED** — `fa3f4ccb` (needs `9816a5ad`
 approved first; alone it stops accrual for all 22 employees) and `956cec85` (needs the statutory
@@ -213,7 +218,67 @@ input types + formula setting) · `956cec85` (Malaysia statutory forms submenu) 
 
 # Round history
 
+## Companies list hotfix — 2026-07-29 — the row was lost in TRANSPORT, not in the query (`main@54d25b5`)
+
+**Shipped:** `main@54d25b5`. No migration.
+**Gate:** `tsc` clean · **476 files / 5319 tests** · `next build` clean. Verified live: `GET /` 401, service
+active, and both changed files md5-identical on the box.
+
+**This entry exists because r77 got `ae3bd088` WRONG and told the reporter their screen was fine.**
+It was not. A screenshot settled it: the card header read **"Companies (8)" — correct** — while exactly
+ONE row rendered. Both r77's conclusion ("does not reproduce") and its follow-up theory (the dashboard
+tile) were wrong.
+
+**The mechanism, and it is a Next-version behaviour worth knowing.** React Flight serialises the RSC
+payload row by row, tracking bytes written; past `MAX_ROW_SIZE = 3200` it calls `deferTask`, emits
+`"$L<id>"` in place, and the CLIENT rehydrates that as `createLazyChunkWrapper` — a
+`Symbol.for('react.lazy')` object. React renders lazies transparently, **but `isValidElement()` returns
+FALSE for one.** `components/organization-list.tsx` inspected every row with
+`isValidElement(it.node) ? cloneElement(...) : null`, so every deferred row became `null`. One
+`CompanyPanel` carries the company array, the state catalog and twelve `$F` action refs — enough to blow
+3200 bytes on the FIRST row, dropping all seven remaining companies.
+
+**Why the count stayed right, which is what made it so misleading:** only ELEMENTS are deferred.
+`companies.length`, the tree counts and the statutory-gap names are numbers and strings and serialise
+intact. The array was never wrong. Every layer people inspected — the query, RLS, the scope helper, the
+props — was innocent, because the loss happened after all of them.
+
+**Not a regression.** The guard dates to `f69119c`, 2026-07-05 — 24 days before r77. r77's `adminOnly`
+predicate and `visibleTree` are both identities for a group-wide admin, so rolling r77 back would not
+have fixed this and WOULD have un-fixed the company-scoped disclosure it closed.
+
+**Fix:** `OrganizationList` owns the `<li>` and renders `it.node` without inspecting it; `CompanyPanel`
+returns a `<div>`; `OrgListItem.node` widened to `ReactNode` (the `ReactElement` type was the type-level
+form of the same wrong assumption). No query, RLS or scope change.
+
+### The lesson, which is about testing, not about React
+
+**Every test on this screen was structurally incapable of seeing it.** `organization-companies-reachable`
+and `organization-companies-unscoped` call `OrganizationList` directly, so `node` is always a plain
+element — it never goes through the transport that breaks it. r77 explicitly upgraded its test from
+"checks props" to "asserts rendered markup" and **that was still not enough**, because the markup was
+rendered from props that had never crossed the RSC boundary. `test/organization-list-rsc-lazy.test.ts`
+now feeds the actual post-transport lazy shape; all four assertions were verified RED against the old
+component (company 2 of 8 absent from the HTML — the screenshot) and green after.
+
+**And the process failure: an item was marked deployed with a confident close-out saying the screen was
+correct.** The reporter had to send a screenshot to overturn it. `ae3bd088`'s `build_ref` now carries a
+plain-English correction and an apology. `11355c08` (raised on the mistaken dashboard-tile theory) was
+re-planned to say so — its `count(*)`-when-empty disclosure is still a real fault and worth fixing on its
+own merits, but it is NOT this bug.
+
+**Anything that introspects a server-passed element is suspect.** Grepping
+`cloneElement|isValidElement|Children.` across `app/ components/ lib/` finds this file and nothing else
+today. The cliff is data-dependent — more companies, or fuller address fields, defer more rows — so this
+class fails silently and only past a size threshold.
+
+---
+
 ## r77 — 2026-07-29 — 5 approved items shipped, 1 held, and three reports that were not the bug
+
+> **CORRECTION (same day):** Decision 1's claim that `ae3bd088` "does not reproduce" is WRONG, and
+> Decision 2's dashboard-tile theory is wrong. See the hotfix entry above. The `ae3bd088` work described
+> below — the company-scoped reachability fix — is real and stands; it simply was not the reported bug.
 
 **Shipped:** `main@aba3064` (branch `build/r77`). **No migration.**
 **Gate:** `tsc` clean · **475 files / 5315 tests** · `next build` clean · rehearsal NOT run and not
