@@ -5,6 +5,7 @@ import { getFeedback } from '@/core/feedback';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { statusTone } from '../page';
 import {
+  answerBlockingQuestionAction,
   approveFeedbackPlanAction,
   cancelFeedbackAction,
   contestFeedbackPlanAction,
@@ -72,6 +73,9 @@ export default async function FeedbackDetailPage({
   const canRestore = isReporter && fb.status === 'cancelled';
   // Close the loop: a deployed result the reporter (or admin) judges below standard can be sent back (ADR-0051).
   const canRefute = (isReporter || isAdmin) && fb.status === 'deployed';
+  // 0323 — `blocked` means "waiting on an answer only the reporter can give", and every gate above it
+  // covered some OTHER status, so the one state that explicitly asks a question had no way to receive one.
+  const canAnswer = (isReporter || isAdmin) && fb.status === 'blocked';
   // In-app planning is disabled by default — plans come from the operator-side improvement loop (ADR-0044).
   const inAppPlanning = settingEnabledOrDefault(s, 'feedback.ai_planning_enabled');
   const canGeneratePlan = inAppPlanning && isAdmin && (fb.status === 'open' || fb.status === 'contested');
@@ -137,7 +141,7 @@ export default async function FeedbackDetailPage({
       {/* 0318 — the negotiation, oldest first. Before this existed, each re-plan overwrote the previous
           plan and cleared the push-back that caused it, so a reporter could not see why the current plan
           says what it says. */}
-      {(fb.planHistory.length > 0 || fb.planRevision > 0) && (
+      {(fb.planHistory.length > 0 || fb.planRevision > 0 || fb.blockHistory.length > 0) && (
         <Card className="p-5">
           <SectionHeader title={t('historyTitle')} />
 
@@ -186,6 +190,41 @@ export default async function FeedbackDetailPage({
             ))}
           </ol>
 
+          {/* 0323 — the questions this item was parked on, and what was said back. They live here rather
+              than on the item itself because `blockedReason` is wiped when the item returns to the queue:
+              without this, answering a question would erase the question. Shown for a RESOLVED episode
+              too, so a reader six weeks later can see the decision the build was made on. */}
+          {fb.blockHistory.length > 0 && (
+            <ol className="mt-4 space-y-4 border-t border-border pt-4">
+              {fb.blockHistory.map((b) => (
+                <li key={b.id} className="relative border-l-2 border-amber-300 pl-4 dark:border-amber-500/40">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {t('historyQuestion')}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{fmtDate(b.askedAt)}</span>
+                  </div>
+                  <div className="mt-1 whitespace-pre-wrap rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+                    {b.question}
+                  </div>
+                  {b.answer ? (
+                    <div className="mt-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300">
+                      <div className="text-xs font-medium uppercase tracking-wide">{t('historyAnswer')}</div>
+                      <div className="mt-0.5 whitespace-pre-wrap">{b.answer}</div>
+                      {b.resolvedAt && <div className="mt-1 text-xs opacity-70">{fmtDate(b.resolvedAt)}</div>}
+                    </div>
+                  ) : (
+                    // Two different silences, and conflating them would misreport the history: one is a
+                    // question still waiting, the other is a wait an operator ended without an answer.
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {b.resolvedAt ? t('historyQuestionUnanswered') : t('historyQuestionOpen')}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+
           {/* Say the gap out loud. planRevision counts every version ever drafted; planHistory only has
               the ones recorded since 0318. Showing a partial history as if it were whole is exactly the
               failure this section exists to fix. */}
@@ -194,7 +233,7 @@ export default async function FeedbackDetailPage({
               {t('historyGap', { n: fb.planRevision - fb.planHistory.length })}
             </p>
           )}
-          {fb.planHistory.length === 0 && fb.planRevision === 0 && (
+          {fb.planHistory.length === 0 && fb.planRevision === 0 && fb.blockHistory.length === 0 && (
             <p className="mt-3 text-sm text-muted-foreground">{t('historyEmpty')}</p>
           )}
         </Card>
@@ -241,6 +280,23 @@ export default async function FeedbackDetailPage({
               <a href={`/feedback/${fb.blockedBy.id}`} className="mt-1.5 inline-block text-xs font-medium text-primary hover:underline">
                 {t('blocked_waiting_on', { title: fb.blockedBy.title })} ↗
               </a>
+            )}
+
+            {/* 0323 — THE FIX. The banner above stated a question and offered nothing to answer it with:
+                the reporter could read "which submission channels do you use?" and had no reply box on the
+                page, so the loop stalled indefinitely on a question only they could settle. Sending the
+                answer records it against the question and returns the item to the build queue. */}
+            {canAnswer && (
+              <form action={answerBlockingQuestionAction} className="mt-3 space-y-2 border-t border-amber-200 pt-3 dark:border-amber-500/30">
+                <input type="hidden" name="id" value={fb.id} />
+                <p className="text-sm font-medium">{t('answerPrompt')}</p>
+                <Field label={t('answerLabel')}>
+                  <textarea name="answer" rows={3} required className={inputCls} placeholder={t('answerPlaceholder')} />
+                </Field>
+                <Button type="submit" size="sm">
+                  {t('answerSubmit')}
+                </Button>
+              </form>
             )}
           </div>
         )}

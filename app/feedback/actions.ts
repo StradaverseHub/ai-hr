@@ -6,6 +6,7 @@ import { getSession } from '@/lib/session';
 import { myEmployment } from '@/core/read';
 import {
   addFeedbackAttachment,
+  answerBlockingQuestion,
   approveFeedbackPlan,
   bulkReview,
   cancelFeedback,
@@ -115,6 +116,27 @@ export async function contestFeedbackPlanAction(formData: FormData) {
   redirect(
     `${BASE}/${id}?toast=${encodeURIComponent(attachNote ?? 'Sent back for re-planning')}`,
   );
+}
+
+/**
+ * Answer the question a `blocked` item is waiting on (0323) — blocked → approved, answer kept.
+ *
+ * The loop could ask ("this is waiting on an answer") and could not listen: `blocked` had no control at
+ * all on the detail page. Attachments are deliberately NOT accepted here, unlike contest/refute (0321): a
+ * block is a question of fact — which channel, which format, which rule — and the answer is words. Adding
+ * an upload would be scope the defect does not ask for.
+ */
+export async function answerBlockingQuestionAction(formData: FormData) {
+  const s = await getSession();
+  const id = String(formData.get('id'));
+  try {
+    await answerBlockingQuestion(s, { feedbackId: id, answer: String(formData.get('answer') ?? '') });
+  } catch (e) {
+    fail(e, `${BASE}/${id}`);
+  }
+  revalidatePath(`${BASE}/${id}`);
+  revalidatePath(BASE); // the list shows status — it moves out of "Waiting on an answer" here
+  redirect(`${BASE}/${id}?toast=${encodeURIComponent('Answer sent')}`);
 }
 
 /** Admin "Generate plan now" — runs the planning agent immediately instead of waiting for the cron. */

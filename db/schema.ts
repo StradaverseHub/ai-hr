@@ -5243,6 +5243,46 @@ export const feedbackPlanRevision = pgTable(
   ],
 );
 
+/**
+ * One row per BLOCK EPISODE — the question that parked an approved item, and the reporter's answer to it
+ * (0323).
+ *
+ * WHY IT IS NOT A COLUMN ON feedback_request. `blocked_reason` / `blocked_by_id` are CLEARED on unblock
+ * (deliberately — they describe a CURRENT wait). An answer stored beside them would be cleared with them,
+ * or survive as a reply whose question had been deleted. And an answer kept only in the
+ * `feedback.unblocked` event payload is invisible to scripts/improve/remote.ts, which reads
+ * feedback_request columns — so the build agent, the one reader that has to act on the answer, would
+ * never see it.
+ *
+ * Append-and-close-once, exactly like feedbackPlanRevision (0318): the app may open an episode and
+ * resolve it once; a resolved row matches no UPDATE policy again and a trigger freezes the question.
+ */
+export const feedbackBlock = pgTable(
+  'feedback_block',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    feedbackRequestId: uuid('feedback_request_id')
+      .notNull()
+      .references(() => feedbackRequest.id, { onDelete: 'cascade' }),
+    /** The question, copied at block time — feedback_request.blocked_reason does not survive the unblock. */
+    question: text('question').notNull(),
+    /** What it was waiting on, snapshotted for the same reason. */
+    blockedById: uuid('blocked_by_id').references(() => feedbackRequest.id, { onDelete: 'set null' }),
+    askedAt: timestamp('asked_at', { withTimezone: true }).defaultNow().notNull(),
+    /** The reporter's reply. NULL where an episode ended without one — never a placeholder. */
+    answer: text('answer'),
+    answeredByUserId: uuid('answered_by_user_id').references(() => appUser.id, { onDelete: 'set null' }),
+    /** When the episode ended. NULL ⇒ still waiting. No separate answered_at: an answer IS the ending. */
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (t) => [
+    // At most one open episode per item — an item cannot be waiting on two questions at once.
+    uniqueIndex('feedback_block_open_uq').on(t.feedbackRequestId).where(sql`resolved_at IS NULL`),
+    index('feedback_block_item_idx').on(t.tenantId, t.feedbackRequestId, t.askedAt),
+  ],
+);
+
 export const feedbackAttachment = pgTable(
   'feedback_attachment',
   {
