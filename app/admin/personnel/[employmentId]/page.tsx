@@ -2652,12 +2652,31 @@ export default async function EmployeePage({
           {movements.map((m) => (
             // 66a63bd6 — a rolled-back movement KEEPS its line, visibly marked, and loses its actions. It is
             // never removed: the history is the evidence payroll and statutory reporting lean on.
-            <tr key={m.id} className={m.reversed ? 'text-muted-foreground' : undefined}>
+            <tr
+              key={m.id}
+              className={m.reversed || m.status === 'superseded' ? 'text-muted-foreground' : undefined}
+            >
               <td className="px-4 py-2.5 font-medium text-foreground">
-                <span className={m.reversed ? 'line-through' : undefined}>{movementKindLabel(m.kind)}</span>
+                <span className={m.reversed || m.status === 'superseded' ? 'line-through' : undefined}>
+                  {movementKindLabel(m.kind)}
+                </span>
                 {m.reversed && (
                   <span className="ml-2 rounded border border-border px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-muted-foreground">
                     {m.reversed.corrected ? t('movement.correctedBadge') : t('movement.reversedBadge')}
+                  </span>
+                )}
+                {/* 941c9dac — a movement that has not taken effect says so on its own line. Pending is the
+                    only one drawn in an ACTIVE colour: it is the one that still has a future, and the one
+                    HR may want to correct before it lands. Superseded is muted like a reversal — it is a
+                    dead record kept visible on purpose, never silently dropped. */}
+                {!m.reversed && m.status === 'pending' && (
+                  <span className="ml-2 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-primary">
+                    {t('movement.status.pending')}
+                  </span>
+                )}
+                {!m.reversed && m.status === 'superseded' && (
+                  <span className="ml-2 rounded border border-border px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {t('movement.status.superseded')}
                   </span>
                 )}
               </td>
@@ -2993,9 +3012,38 @@ export default async function EmployeePage({
     current?.employmentType && EMPLOYMENT_TYPE_OPTIONS.includes(current.employmentType)
       ? t(`employmentInfo.employmentType_${current.employmentType}` as 'employmentInfo.employmentType_full_time')
       : (current?.employmentType ?? null);
+  /**
+   * 941c9dac — the movements that have been recorded but have NOT taken effect yet. The values below are
+   * today's, and they stay today's until the effective date arrives; without this note the tab would be
+   * correct but misleading, because HR would have keyed a promotion and see no trace of it anywhere on the
+   * screen that shows what the promotion changes. Earliest first — the next thing to happen leads.
+   */
+  const pendingMovements = movements
+    .filter((m) => m.status === 'pending')
+    .sort((a, b) => (a.effectiveDate < b.effectiveDate ? -1 : a.effectiveDate > b.effectiveDate ? 1 : 0));
   const employmentInfoCard = admin ? (
     <Card id="section-employment-info">
       <SectionHeader title={t('employmentInfo.title')} />
+      {pendingMovements.length > 0 && (
+        <div className="border-b border-border px-4 py-3">
+          <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
+            <p className="font-medium">{t('employmentInfo.pendingMovementTitle')}</p>
+            <ul className="mt-1 space-y-0.5 text-muted-foreground">
+              {pendingMovements.map((m) => (
+                <li key={m.id}>
+                  {t('employmentInfo.pendingMovementItem', {
+                    kind: movementKindLabel(m.kind),
+                    date: m.effectiveDate,
+                  })}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {t('employmentInfo.pendingMovementNote')}
+            </p>
+          </div>
+        </div>
+      )}
       {/* 9464bd56 — Company change before any transaction. A SELF-CONTAINED block ABOVE the consolidated
           assignment form (which stays untouched — one form, one Save). Phase 1 (GET) picks a destination the
           admin manages → ?companyChange=; phase 2 (POST) commits the move via changeEmploymentCompanyAction
