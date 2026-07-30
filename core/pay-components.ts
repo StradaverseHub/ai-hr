@@ -4,10 +4,11 @@
  * helpers that seed components from the legacy compensation + payroll_input so the gated kernel path
  * is byte-identical. Every state-changing method appends a DomainEvent (substrate discipline).
  */
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
+  attendance,
   compensation,
   employment,
   employmentPayComponent,
@@ -20,7 +21,16 @@ import {
 import { countryPacks } from '../localization/registry';
 import type { PayComponentSeed, PcbExemptionTable, PcbRemunerationType } from '../localization/country-pack';
 import { parseCsvRecords } from '../lib/csv';
-import { validatePayRule, type PayRule, type PayRuleErrorCode } from './pay-rule';
+import {
+  payRuleDependencies as payRuleDependenciesOf,
+  planResolutionOrder,
+  resolvePayComponentSet,
+  validatePayRule,
+  validatePayRuleAgainstCatalog,
+  type PayRule,
+  type PayRuleCatalogNode,
+  type PayRuleErrorCode,
+} from './pay-rule';
 
 // ── Pack-supplied vocabulary (ADR-0080 D6, rung 5a) ──────────────────────────────────────────────
 // The default catalog, the backfill-critical code roles, and the LHDN PCB classification vocabulary
@@ -344,6 +354,43 @@ export async function createPayComponent(ctx: SessionContext, p: PayComponentInp
 // stream would violate the payload discipline the comment below enforces).
 const DIFF_FIELDS = ['name', 'label', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode'] as const;
 
+// ── 61bf109d — dependency-graph plumbing ─────────────────────────────────────────────────────────────
+// A pay item may now be a percentage of ANOTHER pay item, or a formula that reads one, so the catalog is a
+// dependency graph. These two helpers are the only place that graph is loaded and its order written.
+
+/** The tenant's catalog as the graph planner sees it (archived rows INCLUDED so a reference to a retired
+ *  code is rejected as such rather than silently reading 0). */
+async function catalogNodesTx(tx: Tx, tenantId: string): Promise<PayRuleCatalogNode[]> {
+  const rows = await tx
+    .select({ code: payComponent.code, rule: payComponent.rule, kind: payComponent.kind, archivedAt: payComponent.archivedAt })
+    .from(payComponent)
+    .where(eq(payComponent.tenantId, tenantId));
+  return rows.map((r) => ({ code: r.code, rule: r.rule, kind: r.kind, archived: r.archivedAt != null }));
+}
+
+/**
+ * Recompute the whole catalog's topological rank and persist it on pay_component.resolution_order. Called
+ * inside the save transaction, AFTER the row is written, so it plans the graph that will actually run.
+ *
+ * planResolutionOrder cannot fail here — validatePayRuleAgainstCatalog already refused every cycle on the
+ * way in — but the result is checked rather than asserted: if it ever did, leaving the previous ranks in
+ * place is the fail-safe outcome (the run keeps using the last order that was proven acyclic).
+ */
+async function recordResolutionOrderTx(tx: Tx, tenantId: string): Promise<void> {
+  const rows = await tx
+    .select({ id: payComponent.id, code: payComponent.code, rule: payComponent.rule, resolutionOrder: payComponent.resolutionOrder })
+    .from(payComponent)
+    .where(eq(payComponent.tenantId, tenantId));
+  const plan = planResolutionOrder(rows.map((r) => ({ code: r.code, rule: r.rule })));
+  if (!plan.ok) return;
+  for (const r of rows) {
+    const next = plan.order.get(r.code.trim().toUpperCase()) ?? 0;
+    if (next !== r.resolutionOrder) {
+      await tx.update(payComponent).set({ resolutionOrder: next }).where(eq(payComponent.id, r.id));
+    }
+  }
+}
+
 /** Admin upsert of a single catalog component (by code). Validates the rule against the component's
  *  proration flag before any write (throws PayRuleInvalidError on failure — same proration/sign/bounds
  *  contract the kernel and the AI validator enforce, from the one pure validatePayRule). */
@@ -352,6 +399,13 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
     const rule = ruleOf(p);
     const v = validatePayRule(rule, p.prorates);
     if (!v.ok) throw new PayRuleInvalidError(v.code);
+    // ── 61bf109d — the CATALOG-AWARE half of the guard, refused at SAVE time ────────────────────────
+    // A rule may now name another pay item, so structural validity is no longer enough: the referenced
+    // code must exist and be active, must not be a legislated statutory line, and the resulting graph must
+    // be acyclic. Discovering a cycle mid-run would mean a half-computed payroll, so it is refused here.
+    const catalog = await catalogNodesTx(tx, ctx.tenantId);
+    const g = validatePayRuleAgainstCatalog({ code: p.code, rule, kind: p.kind }, catalog);
+    if (!g.ok) throw new PayRuleInvalidError(g.code);
     // LHDN PCB 2026 classification guard (feedback 09b554e9) — no-op for legacy callers that don't supply
     // the fields; server-authoritative for every form save (create delegates here — single path).
     const cls = validateStatutoryClassification(p);
@@ -383,6 +437,12 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
         .returning({ id: payComponent.id });
       id = row.id;
     }
+    // 61bf109d — RECORD the resolution order for the whole catalog now that the graph has changed. It is
+    // recomputed rather than patched because one edited rule can re-rank items that were not touched, and
+    // it is written INSIDE the same transaction as the rule, so the order and the rule it was derived from
+    // can never disagree. Only rows whose rank actually moved are written (a catalog of fixed amounts
+    // issues no UPDATE at all, so the byte-identical legacy path stays write-free).
+    await recordResolutionOrderTx(tx, ctx.tenantId);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'pay-component',
@@ -425,6 +485,191 @@ export class PayComponentInUseError extends Error {
     super('pay-component-in-use');
     this.name = 'PayComponentInUseError';
   }
+}
+
+// ── 61bf109d — "show me what this produces for a real employee, before I save" ───────────────────────
+// The preview is a DRY RUN: it opens the tenant transaction read-only, writes nothing, appends no event,
+// and returns a figure plus the exact inputs that figure came from. Critically it calls
+// resolvePayComponentSet — the SAME function core/payroll.ts's kernel calls — rather than a parallel
+// implementation, so a preview that disagrees with the run is not merely unlikely, it is unrepresentable.
+
+/** A pickable employee for the preview selector. */
+export type PayRulePreviewCandidate = { employmentId: string; name: string; basic: number };
+
+export type PayRulePreviewResult =
+  | {
+      ok: true;
+      /** What this pay item would resolve to for this employee, in ringgit (unrounded — the kernel applies
+       *  the component's own rounding and the tenure factor afterwards). */
+      amount: number;
+      /** The real figures the formula read, so the admin can check the arithmetic rather than trust it. */
+      scope: { basic: number; days: number; hours: number };
+      /** Every OTHER pay item the rule referenced, with the amount it resolved to for this employee. */
+      inputs: { code: string; amount: number }[];
+    }
+  | { ok: false; code: PayRuleErrorCode };
+
+/** Employees who can be previewed against: active employments with a compensation record, newest first. */
+export function listPayRulePreviewCandidates(ctx: SessionContext, limit = 50) {
+  return withTenant(ctx, async (tx): Promise<PayRulePreviewCandidate[]> => {
+    const rows = await tx
+      .select({
+        employmentId: employment.id,
+        firstName: person.firstName,
+        lastName: person.lastName,
+        basic: compensation.basicSalary,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(
+        compensation,
+        and(eq(compensation.employmentId, employment.id), isNull(compensation.validTo), isNull(compensation.supersededAt)),
+      )
+      .where(and(eq(employment.tenantId, ctx.tenantId), isNull(employment.terminatedOn)))
+      .orderBy(desc(employment.hiredOn))
+      .limit(limit);
+    return rows.map((r) => ({
+      employmentId: r.employmentId,
+      name: `${r.firstName} ${r.lastName}`.trim(),
+      basic: Number(r.basic ?? 0),
+    }));
+  });
+}
+
+/**
+ * Evaluate a CANDIDATE rule (not yet saved) for one real employee over one period.
+ *
+ * It runs the SAME two guards the save path runs — structural validatePayRule, then the catalog-aware
+ * validatePayRuleAgainstCatalog — so the preview cannot show a figure for a rule that Save would reject;
+ * the admin sees the rejection at the same moment either way.
+ *
+ * `days` is the period's calendar day count and `hours` the employee's actual attendance total for the
+ * period (the same aggregate over attendance.worked_minutes the kernel takes).
+ *
+ * KNOWN, DELIBERATE DIVERGENCE — read before trusting this for a mid-period joiner. The kernel's scope uses
+ * `daysWorked = prorationFactor × daysInMonth`, i.e. the EA-1955 tenure factor is baked into the day count;
+ * this preview uses the FULL period (factor 1), and it does not apply the component's rounding either. For a
+ * full-tenure employee — the ordinary case — preview and run therefore agree exactly. For a joiner/leaver
+ * whose rule reads `days`, the preview is the full-period figure and the run will be the prorated one.
+ * That is why the returned `scope` reports the day count it used and the panel is labelled "for a FULL
+ * period, before proration and rounding": the difference is stated on screen rather than hidden. Replicating
+ * prorationFactor here would mean re-resolving the employee's payroll policy, which is the parallel
+ * implementation this design is trying to avoid — the ARITHMETIC is shared, and the period scaling is
+ * declared. The returned `scope` makes every input visible so the number is checkable rather than magic.
+ */
+export function previewPayRule(
+  ctx: SessionContext,
+  p: {
+    code: string;
+    rule: PayRule | null;
+    kind: PayComponentInput['kind'];
+    prorates: boolean;
+    employmentId: string;
+    /** Defaults to the current calendar month. */
+    periodStart?: string;
+    periodEnd?: string;
+  },
+) {
+  return withTenant(ctx, async (tx): Promise<PayRulePreviewResult> => {
+    const code = p.code.trim().toUpperCase();
+    const structural = validatePayRule(p.rule, p.prorates);
+    if (!structural.ok) return { ok: false, code: structural.code };
+    const catalog = await catalogNodesTx(tx, ctx.tenantId);
+    const graph = validatePayRuleAgainstCatalog({ code, rule: p.rule, kind: p.kind }, catalog);
+    if (!graph.ok) return { ok: false, code: graph.code };
+
+    const now = new Date();
+    const periodStart = p.periodStart ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+    const periodEnd = p.periodEnd ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+    const days = Math.round((Date.parse(periodEnd) - Date.parse(periodStart)) / 86_400_000) + 1;
+
+    // The employee's authoritative basic — the Personnel compensation record, exactly what the kernel's
+    // `rscope.basic` reads (feedback 64fb5e48: Personnel is the ONLY basic source).
+    const [comp] = await tx
+      .select({ basic: compensation.basicSalary })
+      .from(compensation)
+      .where(
+        and(
+          eq(compensation.employmentId, p.employmentId),
+          isNull(compensation.validTo),
+          isNull(compensation.supersededAt),
+        ),
+      )
+      .limit(1);
+    const basic = Number(comp?.basic ?? 0);
+
+    // The employee's actual worked hours for the period — same aggregate the kernel takes.
+    const [att] = await tx
+      .select({ minutes: sql<string>`coalesce(sum(${attendance.workedMinutes}), 0)` })
+      .from(attendance)
+      .where(
+        and(
+          eq(attendance.employmentId, p.employmentId),
+          gte(attendance.attendanceDate, periodStart),
+          lte(attendance.attendanceDate, periodEnd),
+        ),
+      );
+    const hours = Number(att?.minutes ?? 0) / 60;
+
+    // This employee's recurring pay items in the period window (the same period-aware predicate the kernel
+    // uses), so a rule that reads another pay item reads that employee's REAL value for it.
+    const recurring = await tx
+      .select({
+        code: payComponent.code,
+        amount: employmentPayComponent.amount,
+        rule: payComponent.rule,
+        resolutionOrder: payComponent.resolutionOrder,
+      })
+      .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .where(
+        and(
+          eq(employmentPayComponent.employmentId, p.employmentId),
+          lte(employmentPayComponent.validFrom, periodEnd),
+          or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, periodStart)),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      );
+
+    // Rank the graph WITH the candidate rule substituted — an unsaved rule can re-rank the catalog, and the
+    // preview must resolve in the order the save would have recorded, not the order on disk.
+    const pending: PayRuleCatalogNode[] = catalog.map((n) =>
+      n.code.trim().toUpperCase() === code ? { ...n, rule: p.rule } : n,
+    );
+    if (!pending.some((n) => n.code.trim().toUpperCase() === code)) pending.push({ code, rule: p.rule, kind: p.kind });
+    const plan = planResolutionOrder(pending);
+    const rankOf = (c: string) => (plan.ok ? (plan.order.get(c.trim().toUpperCase()) ?? 0) : 0);
+
+    // The set to resolve: the employee's real items, with the item under edit substituted (or added at 0 if
+    // the employee does not have it yet — a brand-new pay code still previews).
+    const set = recurring
+      .filter((r) => r.code.trim().toUpperCase() !== code)
+      .map((r) => ({ code: r.code, rule: r.rule, amount: Number(r.amount), resolutionOrder: rankOf(r.code) }));
+    const targetAmount = Number(recurring.find((r) => r.code.trim().toUpperCase() === code)?.amount ?? 0);
+    set.push({ code, rule: p.rule, amount: targetAmount, resolutionOrder: rankOf(code) });
+    const targetIdx = set.length - 1;
+
+    // BASIC is PINNED to the authoritative Personnel figure, exactly as the kernel pins it — the preview
+    // must agree with the run on what `component:'BASIC'` means, not just on the arithmetic.
+    const scope = { basic, daysWorked: days, hours, components: { BASIC: basic } };
+    let resolved: number[];
+    try {
+      resolved = resolvePayComponentSet(set, scope);
+    } catch {
+      // PayRuleEvalError — a non-finite result from a corrupted value. Fail closed with the structural code
+      // rather than showing a number that the run would refuse to write.
+      return { ok: false, code: 'OUT_OF_RANGE' };
+    }
+
+    // Report only the items the rule actually READ, so the panel explains the figure instead of listing the
+    // employee's whole pay structure.
+    const referenced = new Set(payRuleDependenciesOf(p.rule));
+    const inputs = set
+      .map((s, i) => ({ code: s.code.trim().toUpperCase(), amount: resolved[i] }))
+      .filter((s) => referenced.has(s.code));
+
+    return { ok: true, amount: resolved[targetIdx], scope: { basic, days, hours }, inputs };
+  });
 }
 
 /**

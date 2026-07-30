@@ -1,7 +1,9 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import type { listPayComponents } from '@/core/pay-components';
-import { ROUNDING_METHODS } from '@/core/pay-components';
+import { listPayComponents as loadPayComponents, listPayRulePreviewCandidates, ROUNDING_METHODS } from '@/core/pay-components';
+import { isStatutoryComponent } from '@/core/pay-rule';
+import { requireAdmin } from '@/lib/authz';
 import type { PayRule } from '@/core/pay-rule';
 import { Card, ErrorBanner, Field, PageHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { PayRuleEditor } from './pay-rule-editor';
@@ -35,6 +37,16 @@ export async function ComponentForm({
 }) {
   const t = await getTranslations('payComponents');
   const editing = !!component;
+
+  // 61bf109d — the two lists the Input Type / Formula editor needs, resolved server-side so the client
+  // island never queries. Referenceable pay items exclude THIS item (a rule cannot read itself — the server
+  // rejects it with SELF_REFERENCE, and the picker should not offer the mistake in the first place) and
+  // every statutory line (legislated, out of bounds for a tenant rule).
+  const s = await requireAdmin();
+  const [allItems, previewEmployees] = await Promise.all([loadPayComponents(s), listPayRulePreviewCandidates(s)]);
+  const payItems = allItems
+    .filter((c) => c.code !== component?.code && !isStatutoryComponent(c.code, c.kind))
+    .map((c) => ({ code: c.code, name: c.label ?? c.name }));
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -104,9 +116,12 @@ export async function ComponentForm({
                 (it interacts with per-day/per-hour rules) and is submitted as the form's `prorates` field. */}
             <PayRuleEditor
               code={component?.code ?? ''}
+              kind={component?.kind ?? 'allowance'}
               prorates={component?.prorates ?? true}
               rule={(component?.rule ?? null) as PayRule | null}
               aiEnabled={aiEnabled}
+              payItems={payItems}
+              previewEmployees={previewEmployees.map((e) => ({ employmentId: e.employmentId, name: e.name }))}
             />
           </div>
         </Card>
