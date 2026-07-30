@@ -31,7 +31,9 @@ import { employmentStatusSql } from './employment-status-sql';
 import {
   CARRY_FORFEIT_REASON_CAP,
   CARRY_FORFEIT_REASON_EXPIRY,
+  applyLeaveTypeRules,
   earnedCycleStart,
+  leaveTypeRuleColumns,
   resolveCarryBreakdown,
   resolveGradePolicy,
   serviceYearsAt,
@@ -827,7 +829,9 @@ export async function carryForwardReport(
     const yearEnd = `${year}-12-31`;
 
     const [annualType] = await tx
-      .select({ id: leaveType.id })
+      // 9816a5ad step 2: the type's own carry-forward rules — the cap and expiry date this report prints
+      // must be the ones openLeaveYear / expireCarriedLeave actually enforced.
+      .select({ id: leaveType.id, ...leaveTypeRuleColumns })
       .from(leaveType)
       .where(eq(leaveType.code, 'ANNUAL'))
       .limit(1);
@@ -967,7 +971,11 @@ export async function carryForwardReport(
       const activeAtOpen: GradePolicyRow[] = policies
         .filter((pol) => pol.validFrom <= yearStart && (pol.validTo == null || pol.validTo > yearStart))
         .map((pol) => ({ gradeId: pol.gradeId, companyId: pol.companyId, accrual: pol.accrual }));
-      const policy = resolveGradePolicy(activeAtOpen, e.gradeId, e.companyId, serviceYearsAt(e.hiredOn, yearStart));
+      // 9816a5ad step 2: days from the winning policy row, every RULE from the leave type.
+      const policy = applyLeaveTypeRules(
+        resolveGradePolicy(activeAtOpen, e.gradeId, e.companyId, serviceYearsAt(e.hiredOn, yearStart)),
+        annualType,
+      );
       const carryMax = policy?.carryMax ?? 0;
       const anniversaryEarned = isAnniversaryEarned(e.leaveCycle, policy?.method);
       const priorBalance = priorBalByEmp.get(e.employmentId) ?? 0;

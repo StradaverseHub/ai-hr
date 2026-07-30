@@ -291,6 +291,133 @@ export function isWellFormedBands(bands: unknown): bands is ServiceBand[] {
   return true;
 }
 
+// ── Type-level leave RULES (feedback 9816a5ad, STEP 2 OF 3) ─────────────────────────────────────────
+// Step 1 (migration 0325) added ten rule columns to `leave_type` and backfilled them from the single
+// distinct value each type carried across all of its `leave_policy` rows. They were INERT — read by
+// nothing. This is the seam that makes them live.
+//
+// THE TARGET STRUCTURE, in the reporter's words: "Annual Leave rules are the same for everyone and only
+// the entitlement days differ by grade." So Leave Year Type, Earning Method, Carry Forward Policy,
+// Rounding and Maximum Balance belong to the LEAVE TYPE; Benefit Scheme → Service Based Entitlements
+// controls DAYS ONLY. `resolveGradePolicy` keeps doing exactly what it did — it resolves the winning
+// policy row and its DAYS — and this overlay then replaces every RULE on the result with the type's own.
+// Splitting it this way is deliberate: the days half is the risky half (it is what the ledger is made of)
+// and it is left completely untouched, so a defect in step 2 can only ever be a wrong RULE, never a wrong
+// day count from the wrong policy row.
+
+/** The ten step-1 `leave_type` rule columns, in the shape drizzle selects them. `numeric` columns arrive
+ *  as STRINGS from postgres, so both spellings are accepted and normalised below. */
+export type LeaveTypeRules = {
+  accrualMethod?: string | null;
+  carryForwardMax?: string | number | null;
+  carryForwardEnabled?: boolean | null;
+  carryForwardExpiryMode?: string | null;
+  carryForwardExpiryMonths?: number | null;
+  carryForwardExpiryMonth?: number | null;
+  carryForwardExpiryDay?: number | null;
+  carryForwardIncludeEarned?: boolean | null;
+  roundingMethod?: string | null;
+  maxBalanceDays?: string | number | null;
+};
+
+/** A finite number, or null — the same "absent / garbage ⇒ not configured" contract every other resolver
+ *  in this file applies. Accepts postgres's numeric-as-string spelling. */
+function finiteOrNull(v: string | number | null | undefined): number | null {
+  if (v == null) return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Does this leave type actually CARRY type-level rules? — the engagement test for `applyLeaveTypeRules`.
+ *
+ * THIS IS THE BACK-COMPAT GUARANTEE OF STEP 2, and it is the reason the repointing cannot move a balance
+ * on a type step 1 never reached. Migration 0325's backfill only fires on a type that has `leave_policy`
+ * rows to collapse, and it deliberately no-ops on a type whose columns are already set. So a type created
+ * (or given its first policy) AFTER 0325 ran has ten NULL columns while its policies carry real rules —
+ * and for that type the ONLY correct answer is still the policy's own rules. Engaging unconditionally
+ * would silently strip such a type of its earning method, carry cap and rounding.
+ *
+ * `carryForwardIncludeEarned` is EXCLUDED from the test on purpose. It is config-only — persisted so HR
+ * can set it, read by no engine (see AccrualConfig) — so on its own it says nothing about whether this
+ * type's rules have been consolidated, and letting it flip a type onto the type-level rule set would
+ * change behaviour on the strength of a field that has none.
+ */
+export function hasAnyLeaveTypeRule(rules: LeaveTypeRules | null | undefined): boolean {
+  if (rules == null) return false;
+  return (
+    rules.accrualMethod != null ||
+    rules.carryForwardMax != null ||
+    rules.carryForwardEnabled != null ||
+    rules.carryForwardExpiryMode != null ||
+    rules.carryForwardExpiryMonths != null ||
+    rules.carryForwardExpiryMonth != null ||
+    rules.carryForwardExpiryDay != null ||
+    rules.roundingMethod != null ||
+    rules.maxBalanceDays != null
+  );
+}
+
+/**
+ * Overlay a leave type's own rules onto a policy resolved by `resolveGradePolicy`. DAYS ARE NEVER TOUCHED.
+ *
+ * Returns, in order:
+ *   - `null` when `pol` is null. A null policy means NO policy row matched this employee's scope at all,
+ *     and this function deliberately does NOT fabricate one from the type's rules. Synthesising a policy
+ *     here would hand a carry cap, a rounding method and an earning method to employees who resolve no
+ *     policy today (e.g. a company-scoped type where the employee's company has only other-grade rows),
+ *     which is a behaviour change — and a balance change — that nothing in this item asked for. The
+ *     entitlement DAYS for such an employee still come from the statutory floor / benefit scheme through
+ *     `entitledDays`, exactly as before.
+ *   - `pol` unchanged when the type carries no rules at all (see `hasAnyLeaveTypeRule`).
+ *   - otherwise a policy with `days` from the resolved row and EVERY rule from the type.
+ *
+ * PER-BAND CARRY-FORWARD IS DELIBERATELY NOT READ HERE (the step-2 decision — see also `bandCarryMax` /
+ * `bandCarryExpiry`, which remain exported and are still exercised by the pre-consolidation path). Once
+ * the bands are days-only, a per-band carry cap or per-band carry expiry has no home and no meaning: it is
+ * by definition a rule that differs per band, which is the exact duplication this consolidation removes.
+ * The columns are NOT dropped — the JSONB keys, the `ServiceBand` fields and the two band readers all
+ * survive untouched — they simply stop being consulted once a type's rules are consolidated. Migration
+ * 0328 refuses the release if any policy actually uses them, so this can never silently reprice anyone.
+ *
+ * Every value is read with the SAME defensive filters the pre-consolidation resolver applies, so the
+ * overlay can only ever produce a rule the engine would already have acted on:
+ *   - method: a non-empty string, else undefined (⇒ the lump-sum path, per `isEarnedMethod`);
+ *   - carryMax: a finite number clamped at 0, absent ⇒ 0 (`Math.max(0, Number(acc?.carryForwardMax ?? 0))`);
+ *   - carryExpiry: routed through `parseCarryExpiry` itself, so mode precedence and the 31-Feb rejection
+ *     are literally the same code rather than a re-implementation that could drift;
+ *   - carryForwardEnabled: a real boolean, else undefined (⇒ the `carryEnabled` cap > 0 back-compat rule);
+ *   - roundingMethod: only 'up' / 'down' are honoured, matching `resolveGradePolicy` exactly;
+ *   - maxBalanceDays: a finite number >= 0, else null (no cap).
+ */
+export function applyLeaveTypeRules(
+  pol: ResolvedPolicy | null,
+  rules: LeaveTypeRules | null | undefined,
+): ResolvedPolicy | null {
+  if (pol == null) return null;
+  if (!hasAnyLeaveTypeRule(rules)) return pol;
+  const r = rules as LeaveTypeRules;
+  const carryMax = finiteOrNull(r.carryForwardMax);
+  const maxBalance = finiteOrNull(r.maxBalanceDays);
+  const method = typeof r.accrualMethod === 'string' && r.accrualMethod !== '' ? r.accrualMethod : undefined;
+  return {
+    days: pol.days,
+    carryMax: carryMax != null ? Math.max(0, carryMax) : 0,
+    method,
+    // Reuse parseCarryExpiry rather than restate it: a NULL mode is the back-compat 'date' branch, exactly
+    // as an absent `carryForwardExpiryMode` is on the JSONB side.
+    carryExpiry: parseCarryExpiry({
+      carryForwardExpiryMode: r.carryForwardExpiryMode === 'months' ? 'months' : 'date',
+      carryForwardExpiryMonths: r.carryForwardExpiryMonths ?? undefined,
+      carryForwardExpiryMonth: r.carryForwardExpiryMonth ?? undefined,
+      carryForwardExpiryDay: r.carryForwardExpiryDay ?? undefined,
+    }),
+    carryForwardEnabled: typeof r.carryForwardEnabled === 'boolean' ? r.carryForwardEnabled : undefined,
+    maxBalanceDays: maxBalance != null ? Math.max(0, maxBalance) : null,
+    roundingMethod: r.roundingMethod === 'up' || r.roundingMethod === 'down' ? r.roundingMethod : undefined,
+  };
+}
+
 /** Resolve the leave policy for an employee's grade among a type's active policies: the most-generous
  *  policy scoped to the employee's grade, else the most-generous null-grade (all-grades) policy, else
  *  null. With no grades assigned (employee + every policy null-grade) this is exactly the pre-2E

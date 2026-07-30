@@ -1968,6 +1968,13 @@
       "when": 1781862432000,
       "tag": "0332_review_cycle_include_probation",
       "breakpoints": true
+    },
+    {
+      "idx": 333,
+      "version": "7",
+      "when": 1781862433000,
+      "tag": "0333_leave_type_rules_repoint_guard",
+      "breakpoints": true
     }
   ]
 }
