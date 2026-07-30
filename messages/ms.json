@@ -5639,7 +5639,7 @@
         },
         "hire": {
           "title": "Cipta pekerja baharu",
-          "body": "Klik **+ Cipta pekerja baharu** di kanan atas untuk menambah seseorang dengan syarikat, jabatan dan tarikh mula mereka. Untuk onboarding pukal, gunakan **Import CSV**."
+          "body": "Klik **+ Cipta pekerja baharu** di bahagian atas kanan. Ia membuka skrin langkah demi langkah — anda boleh menyimpan draf pada bila-bila masa dan menyelesaikannya kemudian. Untuk pengambilan pukal, gunakan **Import pekerja** dengan templat Excel."
         },
         "orgTree": {
           "title": "Struktur kumpulan anda",

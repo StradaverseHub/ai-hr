@@ -5639,7 +5639,7 @@
         },
         "hire": {
           "title": "Tạo nhân viên mới",
-          "body": "Nhấp **+ Tạo nhân viên mới** ở góc trên bên phải để thêm người cùng công ty, phòng ban và ngày bắt đầu. Để tiếp nhận hàng loạt, dùng **Nhập CSV**."
+          "body": "Nhấp **+ Tạo nhân viên mới** ở góc trên bên phải. Màn hình từng bước sẽ mở ra — bạn có thể lưu nháp bất cứ lúc nào và hoàn tất sau. Để thêm hàng loạt, hãy dùng **Nhập nhân viên** với mẫu Excel."
         },
         "orgTree": {
           "title": "Cấu trúc tập đoàn của bạn",

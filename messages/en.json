@@ -5639,7 +5639,7 @@
         },
         "hire": {
           "title": "Create new employee",
-          "body": "Click **+ Create new employee** at the top right to add someone with their company, department, and start date. For bulk onboarding, use **Import CSV**."
+          "body": "Click **+ Create new employee** at the top right. It opens a step-by-step screen — you can save a draft at any point and finish it later. For bulk onboarding, use **Import employees** with the Excel template."
         },
         "orgTree": {
           "title": "Your group structure",
