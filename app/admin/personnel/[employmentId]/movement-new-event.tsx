@@ -121,7 +121,7 @@ export function MovementNewEvent({
   locations,
   managers,
   employmentTypes,
-  terminationTypes,
+  terminationReasons,
   cancelHref,
   edit,
 }: {
@@ -137,7 +137,12 @@ export function MovementNewEvent({
   managers: MovementOption[];
   /** Pre-translated by the server page (reuses the existing people.detail labels). */
   employmentTypes: { value: string; label: string }[];
-  terminationTypes: { value: string; label: string }[];
+  /**
+   * ae9350f2 — the built-in exit-reason catalogue (core/termination-reason.ts), pre-translated and grouped
+   * by category on the server. `typeLabel` is the turnover classification the code derives, shown read-only
+   * beside the picker so HR can see what the exit will be reported as without being able to contradict it.
+   */
+  terminationReasons: { code: string; category: string; categoryLabel: string; label: string; typeLabel: string }[];
   cancelHref: string;
   edit?: MovementEditTarget;
 }) {
@@ -171,10 +176,20 @@ export function MovementNewEvent({
   };
 
   const isComparison = COMPARISON_KINDS.includes(kind);
-  const showTerminationType = kind === 'termination';
+  // ae9350f2 — Termination now has a structured exit block. The old free `terminationType` picker is GONE:
+  // the reason is the single thing HR picks and the classification is derived from it server-side, so the
+  // two can never be saved in contradiction (a Misconduct exit filed as "voluntary" is a real data fault,
+  // and nothing in the record says which of the two the user meant).
+  const isTermination = kind === 'termination';
   const showBlacklist = kind === 'blacklist';
-  const showEndDate = ['probationExtension', 'secondment', 'actingPosition', 'resignation'].includes(kind);
+  const showEndDate = ['probationExtension', 'secondment', 'actingPosition', 'resignation', 'termination'].includes(kind);
   const showEffectiveDate = kind !== 'blacklist';
+  const [terminationReason, setTerminationReason] = useState<string>('');
+  // "Resignation Date — mandatory for resignation cases" (the reporter's rule). Shown only for that reason,
+  // because for a dismissal or a contract expiry there is no resignation to date.
+  const showResignationDate = isTermination && terminationReason === 'resignation';
+  const terminationTypeLabel =
+    terminationReasons.find((r) => r.code === terminationReason)?.typeLabel ?? null;
 
   const payModeLabel = (v: string | null): string | null =>
     v == null ? null : PAY_MODE_OPTIONS.includes(v as 'monthly') ? tPay(`payMode_${v}` as 'payMode_monthly') : v;
@@ -339,28 +354,71 @@ export function MovementNewEvent({
 
         {showEndDate && (
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t('form.endDate')}
+            {/* ae9350f2 — for a Termination this slot IS the Last Working Day, and it is mandatory. Same
+                column, same meaning as on a Resignation; only the label differs so it reads as what it is. */}
+            {isTermination ? t('form.lastWorkingDay') : t('form.endDate')}
             <input
               name="endDate"
               type="date"
-              required={kind === 'probationExtension'}
+              required={kind === 'probationExtension' || isTermination}
               defaultValue={edit?.endDate ?? ''}
               className={inputCls}
             />
           </label>
         )}
 
-        {showTerminationType && (
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {t('form.terminationType')}
-            <select name="terminationType" defaultValue="" className={inputCls}>
-              {terminationTypes.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
+        {isTermination && (
+          <>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t('form.terminationReason')}
+              <select
+                name="terminationReasonCode"
+                required
+                value={terminationReason}
+                onChange={(e) => setTerminationReason(e.target.value)}
+                className={inputCls}
+              >
+                <option value="">{t('form.terminationReasonPlaceholder')}</option>
+                {/* One optgroup per category — the Voluntary / Involuntary split the reporter asked for.
+                    Deduped on the fly so the grouping comes from the catalogue's own order, not a second list. */}
+                {[...new Set(terminationReasons.map((r) => r.category))].map((cat) => (
+                  <optgroup key={cat} label={terminationReasons.find((r) => r.category === cat)!.categoryLabel}>
+                    {terminationReasons
+                      .filter((r) => r.category === cat)
+                      .map((r) => (
+                        <option key={r.code} value={r.code}>
+                          {r.label}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))}
+              </select>
+              {/* Read-only, not a second control: the classification is DERIVED from the reason server-side. */}
+              {terminationTypeLabel && (
+                <span className="text-xs text-muted-foreground">
+                  {t('form.terminationTypeDerived', { type: terminationTypeLabel })}
+                </span>
+              )}
+            </label>
+
+            {showResignationDate && (
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('form.resignationDate')}
+                <input name="resignationDate" type="date" required className={inputCls} />
+              </label>
+            )}
+
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {t('form.terminationNoticeDays')}
+              <input
+                name="terminationNoticeDays"
+                type="number"
+                min={0}
+                step={1}
+                className={inputCls}
+              />
+            </label>
+          </>
         )}
 
         {showBlacklist && (

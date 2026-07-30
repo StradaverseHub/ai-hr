@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
+import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
 import {
   createMovementEvent,
@@ -345,28 +345,12 @@ export async function setDefaultShiftAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=${encodeURIComponent(t('defaultShiftAssigned'))}`));
 }
 
-export async function terminateAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  try {
-    const rawType = String(formData.get('terminationType') ?? '');
-    const terminationType = (
-      ['voluntary', 'involuntary', 'retired', 'contract_end', 'death', 'other'] as const
-    ).includes(rawType as never)
-      ? (rawType as 'voluntary' | 'involuntary' | 'retired' | 'contract_end' | 'death' | 'other')
-      : undefined;
-    await terminateEmployment(s, {
-      employmentId,
-      terminationDate: String(formData.get('terminationDate')),
-      terminationType,
-      terminationReason: (formData.get('terminationReason') as string) || undefined,
-    });
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
-  }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
-}
+// ae9350f2 — `terminateAction` DELETED. It was an unreferenced but LIVE `use server` RPC endpoint: no UI
+// called it, but an exported server action is callable by anyone who knows its id regardless. It called
+// terminateEmployment directly, so it bypassed every rule this item just built — the mandatory last working
+// day and coded reason, the "not already terminated" and future-movement checks, the payroll flag, the
+// single-history-row tagging, and the deferral of a future-dated termination. Exactly the finding and
+// exactly the disposal r78 applied to `transferAction`: the Movement module is the one door.
 
 /**
  * Movement tab redesign (78853b97) — the single "New Event" save. Parses the movement kind + its
@@ -390,12 +374,9 @@ function parseMovementForm(formData: FormData) {
     return String(v).trim() || null;
   };
   const rawSalary = String(formData.get('basicSalary') ?? '').trim();
-  const rawTermType = String(formData.get('terminationType') ?? '').trim();
-  const terminationType = (
-    ['voluntary', 'involuntary', 'retired', 'contract_end', 'death', 'other'] as const
-  ).includes(rawTermType as never)
-    ? (rawTermType as 'voluntary' | 'involuntary' | 'retired' | 'contract_end' | 'death' | 'other')
-    : undefined;
+  const rawNoticeDays = String(formData.get('terminationNoticeDays') ?? '').trim();
+  // ae9350f2 — the `terminationType` field is no longer parsed. The form does not post it and the
+  // dispatcher would ignore it: the classification is derived from the reason code, in one place.
   const rawEmpType = String(formData.get('employmentType') ?? '').trim();
   const employmentType = EMPLOYMENT_TYPES.includes(rawEmpType as EmploymentTypeValue)
     ? (rawEmpType as EmploymentTypeValue)
@@ -419,7 +400,12 @@ function parseMovementForm(formData: FormData) {
     paymentTerm: optional('paymentTerm') ?? undefined,
     // The flat, non-dated org columns the comparison screen now carries (Division … Category).
     ...Object.fromEntries(MOVEMENT_FLAT_FIELDS.map((f) => [f, optional(f)])),
-    terminationType,
+    // ae9350f2 — the Termination movement's structured exit fields. The reason CODE is the only thing the
+    // form posts for classification: core/movement.ts validates it against the built-in catalogue and
+    // derives `terminationType` from it, so the two can never be submitted in contradiction.
+    terminationReasonCode: optional('terminationReasonCode'),
+    terminationNoticeDays: rawNoticeDays === '' ? undefined : Number(rawNoticeDays),
+    resignationDate: optional('resignationDate'),
     blacklisted: String(formData.get('blacklisted') ?? 'true') !== 'false',
   };
 }
@@ -427,9 +413,14 @@ function parseMovementForm(formData: FormData) {
 export async function createMovementEventAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  /** ae9350f2 — 'YYYY-MM' payroll periods a backdated termination lands inside. Reported, never adjusted. */
+  let payrollFlagged: string[] = [];
   try {
     const p = parseMovementForm(formData);
-    await createMovementEvent(s, { employmentId, ...p });
+    const res = await createMovementEvent(s, { employmentId, ...p });
+    if (res && 'payrollFlaggedPeriods' in res && Array.isArray(res.payrollFlaggedPeriods)) {
+      payrollFlagged = res.payrollFlaggedPeriods as string[];
+    }
     // Grade, employment type and the org placement all feed benefit-scheme / grade-scoped entitlement
     // resolution, and any comparison-kind movement can now move them in one submit — so recompute for the
     // whole comparison set rather than the three kinds that used to own those fields.
@@ -440,11 +431,18 @@ export async function createMovementEventAction(formData: FormData) {
     // it here would leave the employee on a stale band with no visible symptom. joinDateChange is NOT in
     // the set: join_date feeds no entitlement path (verified — its only consumers are the employeeDetail
     // projection and the Employment tab's current-company service label).
+    // ae9350f2 — `termination` MUST be in this set, and the reason is symmetry rather than a new feature.
+    // The leave kernel already caps a first-year a2c entitlement at `terminatedOn` (core/leave.ts's
+    // serviceEnd), and the SWEEP already recomputes after every scheduled movement it applies — so a
+    // termination that took effect via the cron got a recomputed entitlement while one keyed for today did
+    // not, until some unrelated trigger happened to fire. Best-effort and idempotent, exactly as the other
+    // kinds are. This is NOT the leave PAYOUT, which the approved plan defers to the final-settlement step.
     if (
       isComparisonKind(p.kind) ||
       p.kind === 'confirmation' ||
       p.kind === 'probationExtension' ||
-      p.kind === 'groupJoinDateCorrection'
+      p.kind === 'groupJoinDateCorrection' ||
+      p.kind === 'termination'
     ) {
       await recomputeEntitlement(s, employmentId, 'movement_recorded');
     }
@@ -452,6 +450,20 @@ export async function createMovementEventAction(formData: FormData) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
+  // ae9350f2 — the approved plan's promise about a backdated termination: where a payroll run has already
+  // been processed past the termination date we FLAG it rather than silently adjust a completed run. The
+  // termination itself is saved and correct; what needs a human is the run.
+  if (payrollFlagged.length) {
+    const t = await getTranslations('people.detail.movement');
+    redirect(
+      withTab(
+        formData,
+        `/admin/personnel/${employmentId}?toast=${encodeURIComponent(
+          t('form.terminationPayrollFlag', { periods: payrollFlagged.join(', ') }),
+        )}`,
+      ),
+    );
+  }
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 

@@ -1148,7 +1148,14 @@
           "correctionReason": "เหตุผลของการแก้ไข (ไม่บังคับ)",
           "saveCorrection": "บันทึกการแก้ไข",
           "joinDateChangeHint": "วันที่คุณกรอกจะกลายเป็นวันที่เข้าร่วมใหม่ของพนักงานกับบริษัทปัจจุบัน วันที่เข้าร่วมกลุ่มจะไม่เปลี่ยนแปลง",
-          "groupJoinDateCorrectionHint": "วันที่คุณกรอกจะกลายเป็นวันที่เข้าร่วมกลุ่มที่แก้ไขแล้ว อายุงานคำนวณจากวันที่นี้ จึงอาจเปลี่ยนสิทธิ์การลาของพนักงาน"
+          "groupJoinDateCorrectionHint": "วันที่คุณกรอกจะกลายเป็นวันที่เข้าร่วมกลุ่มที่แก้ไขแล้ว อายุงานคำนวณจากวันที่นี้ จึงอาจเปลี่ยนสิทธิ์การลาของพนักงาน",
+          "lastWorkingDay": "วันทำงานสุดท้าย",
+          "terminationReason": "เหตุผลการสิ้นสุดการจ้าง",
+          "terminationReasonPlaceholder": "— เลือกเหตุผล —",
+          "terminationTypeDerived": "จัดประเภทเป็น: {type}",
+          "resignationDate": "วันที่ยื่นลาออก",
+          "terminationNoticeDays": "ระยะเวลาบอกกล่าวที่ให้ (วัน)",
+          "terminationPayrollFlag": "บันทึกการสิ้นสุดการจ้างแล้ว มีการประมวลผลเงินเดือนงวด {periods} ซึ่งเลยวันที่สิ้นสุดการจ้าง — โปรดตรวจสอบงวดนั้น ระบบไม่ได้แก้ไขให้"
         },
         "edit": "แก้ไข",
         "delete": "ลบ",
@@ -1165,6 +1172,26 @@
           "applied": "มีผลแล้ว",
           "superseded": "ถูกแทนที่",
           "reversed": "ถูกยกเลิก"
+        },
+        "terminationReasonCategory": {
+          "voluntary": "การสิ้นสุดโดยสมัครใจ",
+          "involuntary": "การเลิกจ้าง",
+          "other": "อื่น ๆ"
+        },
+        "terminationReason": {
+          "resignation": "ลาออก",
+          "career_opportunity": "โอกาสในอาชีพ",
+          "personal_reason": "เหตุผลส่วนตัว",
+          "retirement": "เกษียณอายุ",
+          "early_retirement": "เกษียณก่อนกำหนด",
+          "performance_issue": "ปัญหาด้านผลงาน",
+          "misconduct": "ประพฤติมิชอบ",
+          "redundancy": "เลิกจ้างเพื่อลดจำนวนพนักงาน",
+          "contract_expiry": "สัญญาสิ้นสุด",
+          "absconded": "ละทิ้งหน้าที่",
+          "medical_unfit": "ไม่พร้อมทางการแพทย์",
+          "death": "เสียชีวิต",
+          "other": "อื่น ๆ"
         }
       },
       "salaryCurrency": "สกุลเงิน",

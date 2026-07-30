@@ -1148,7 +1148,14 @@
           "correctionReason": "Sebab pembetulan (pilihan)",
           "saveCorrection": "Simpan Pembetulan",
           "joinDateChangeHint": "Tarikh yang anda masukkan menjadi Tarikh Menyertai baharu pekerja dengan syarikat semasa mereka. Tarikh Menyertai Kumpulan mereka tidak berubah.",
-          "groupJoinDateCorrectionHint": "Tarikh yang anda masukkan menjadi Tarikh Menyertai Kumpulan yang dibetulkan. Ini ialah tarikh pengiraan tahun perkhidmatan, jadi ia boleh mengubah kelayakan cuti mereka."
+          "groupJoinDateCorrectionHint": "Tarikh yang anda masukkan menjadi Tarikh Menyertai Kumpulan yang dibetulkan. Ini ialah tarikh pengiraan tahun perkhidmatan, jadi ia boleh mengubah kelayakan cuti mereka.",
+          "lastWorkingDay": "Hari Bekerja Terakhir",
+          "terminationReason": "Sebab Penamatan",
+          "terminationReasonPlaceholder": "— Pilih sebab —",
+          "terminationTypeDerived": "Dilaporkan sebagai: {type}",
+          "resignationDate": "Tarikh Peletakan Jawatan",
+          "terminationNoticeDays": "Notis diberi (hari)",
+          "terminationPayrollFlag": "Penamatan disimpan. Gaji bagi {periods} telah pun diproses melebihi tarikh penamatan — sila semak larian gaji itu. Ia tidak diubah."
         },
         "edit": "Sunting",
         "delete": "Padam",
@@ -1165,6 +1172,26 @@
           "applied": "Berkuat kuasa",
           "superseded": "Digantikan",
           "reversed": "Dibatalkan"
+        },
+        "terminationReasonCategory": {
+          "voluntary": "Penamatan Sukarela",
+          "involuntary": "Penamatan Tidak Sukarela",
+          "other": "Lain-lain"
+        },
+        "terminationReason": {
+          "resignation": "Peletakan Jawatan",
+          "career_opportunity": "Peluang Kerjaya",
+          "personal_reason": "Sebab Peribadi",
+          "retirement": "Persaraan",
+          "early_retirement": "Persaraan Awal",
+          "performance_issue": "Masalah Prestasi",
+          "misconduct": "Salah Laku",
+          "redundancy": "Pemberhentian / Pengurangan Pekerja",
+          "contract_expiry": "Tamat Kontrak",
+          "absconded": "Lari Kerja",
+          "medical_unfit": "Tidak Sihat Untuk Bekerja",
+          "death": "Kematian",
+          "other": "Lain-lain"
         }
       },
       "salaryCurrency": "Mata wang",

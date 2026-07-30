@@ -824,6 +824,15 @@ export const employment = pgTable(
     // Termination classification (Wave 4A). Captured at termination for turnover analytics.
     terminationType: terminationTypeEnum('termination_type'),
     terminationReason: text('termination_reason'),
+    // ae9350f2 (migration 0338) — the Termination movement's structured exit fields.
+    // `terminationReasonCode` is the coded exit reason from the built-in catalogue in
+    // core/termination-reason.ts. Deliberately TEXT, not a second enum: a new enum value cannot be used in
+    // the transaction that adds it, and item 476f23ed will own this list. The code DERIVES terminationType
+    // above, so the coded reason and the turnover classification can never contradict each other.
+    terminationReasonCode: text('termination_reason_code'),
+    // Notice ACTUALLY served on this exit. The resignationNotice* / noticeAfterConfirmation* columns below
+    // are the contractual POLICY (what the contract requires); this is what happened.
+    terminationNoticeDays: integer('termination_notice_days'),
     // Inter-company cost split for shared-services staff (ADR-0009): [{ companyId, percent }].
     costAllocation: jsonb('cost_allocation'),
     // Clocking Location & Geofencing (ADR-0070): per-employee enforcement toggle + radius. Mirrors the

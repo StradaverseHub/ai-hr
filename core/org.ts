@@ -14,6 +14,10 @@ import { a2cFirstYearEntitledToDate, applyLeaveTypeRules, applyMaxBalance, apply
 import { packFor } from '../localization/registry';
 import { labelUsableByCompany } from './system-labels';
 import { deriveEmploymentStatus } from './employment-status';
+// ae9350f2 — the coded exit reason derives the turnover classification. termination-reason.ts imports only
+// the TerminationType TYPE back from this file, so the cycle is erased at compile time and there is no
+// runtime import loop.
+import { terminationTypeForReason } from './termination-reason';
 // Company-change gate (9464bd56): the pre-transaction check lives in core/read.ts (ONE greppable set of
 // module heads). Imported here so the company-change writer re-runs it as its server-side source of truth
 // inside the same transaction. read.ts does not import org.ts, so this adds no import cycle.
@@ -590,21 +594,59 @@ export type TerminationType =
   | 'death'
   | 'other';
 
+/**
+ * The parameters of a termination. Split out so core/movement.ts's Termination movement and the
+ * resignation-approval path (ADR-0042) share one shape.
+ *
+ * ae9350f2 adds `terminationReasonCode`, `terminationNoticeDays` and `movement`. All three are optional and
+ * every pre-existing caller — imports, seeds, the resignation-approval flow, the Wave 4A tests — behaves
+ * exactly as before when they are omitted.
+ */
+export type TerminateEmploymentInput = {
+  employmentId: string;
+  terminationDate: string;
+  terminationType?: TerminationType;
+  terminationReason?: string;
+  /**
+   * ae9350f2 — the coded exit reason (core/termination-reason.ts). When present it DERIVES
+   * `terminationType`, so a caller never has to keep the two in step; an explicitly passed
+   * `terminationType` is only used when no code was given.
+   */
+  terminationReasonCode?: string | null;
+  /** ae9350f2 — notice actually served, in days. */
+  terminationNoticeDays?: number | null;
+  /**
+   * ae9350f2 — movement classification tag (db/events.ts). NOT a column: it rides on the
+   * `employment.terminated` payload so Employment History renders ONE row per termination, with the
+   * companion legs (last working date, notice) tagged `secondary` under the same groupId. r78's finding
+   * was that an untagged companion writer is exactly how a movement grows a second history row.
+   */
+  movement?: MovementTag;
+};
+
 /** The termination write, runnable inside a caller's transaction — so an accepted resignation can
  *  terminate atomically (ADR-0042). Sets the leave date + turnover classification, closes the open
  *  assignment version, and emits employment.terminated. */
 export async function terminateEmploymentTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { employmentId: string; terminationDate: string; terminationType?: TerminationType; terminationReason?: string },
+  p: TerminateEmploymentInput,
 ) {
+  // ae9350f2 — the coded reason is the single source of the classification when it is present. An unknown
+  // code resolves to null and falls back to whatever the caller passed, so a tampered form can neither set
+  // an arbitrary code (core/movement.ts validates before reaching here) nor silently blank the enum.
+  const derivedType = terminationTypeForReason(p.terminationReasonCode);
   await tx
     .update(employment)
     .set({
       terminatedOn: p.terminationDate,
       // Wave 4A: capture the turnover classification (null when not provided).
-      terminationType: p.terminationType ?? null,
+      terminationType: derivedType ?? p.terminationType ?? null,
       terminationReason: p.terminationReason?.trim() || null,
+      // ae9350f2 — only written when the caller supplied them, so the resignation-approval path and the
+      // importers leave both columns untouched rather than clearing a previously recorded value.
+      ...(p.terminationReasonCode !== undefined ? { terminationReasonCode: p.terminationReasonCode || null } : {}),
+      ...(p.terminationNoticeDays !== undefined ? { terminationNoticeDays: p.terminationNoticeDays } : {}),
     })
     .where(eq(employment.id, p.employmentId));
   const [cur] = await tx
@@ -663,16 +705,18 @@ export async function terminateEmploymentTx(
     subjectEmploymentId: p.employmentId,
     payload: {
       terminationDate: p.terminationDate,
-      terminationType: p.terminationType ?? null,
+      terminationType: derivedType ?? p.terminationType ?? null,
       terminationReason: p.terminationReason?.trim() || null,
+      // ae9350f2 — the structured exit detail, on the event as well as the row so the history stays
+      // truthful for a termination recorded years ago (a live column read would show today's value).
+      ...(p.terminationReasonCode !== undefined ? { terminationReasonCode: p.terminationReasonCode || null } : {}),
+      ...(p.terminationNoticeDays !== undefined ? { terminationNoticeDays: p.terminationNoticeDays } : {}),
+      ...(p.movement ? { movement: p.movement } : {}),
     },
   });
 }
 
-export async function terminateEmployment(
-  ctx: SessionContext,
-  p: { employmentId: string; terminationDate: string; terminationType?: TerminationType; terminationReason?: string },
-) {
+export async function terminateEmployment(ctx: SessionContext, p: TerminateEmploymentInput) {
   return withTenant(ctx, (tx) => terminateEmploymentTx(tx, ctx, p));
 }
 

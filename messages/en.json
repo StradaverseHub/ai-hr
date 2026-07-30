@@ -1148,7 +1148,14 @@
           "correctionReason": "Reason for the correction (optional)",
           "saveCorrection": "Save Correction",
           "joinDateChangeHint": "The date you enter becomes the employee’s new Join Date with their current company. Their Group Join Date does not change.",
-          "groupJoinDateCorrectionHint": "The date you enter becomes the employee’s corrected Group Join Date. This is the date years of service is calculated from, so it can change their leave entitlement."
+          "groupJoinDateCorrectionHint": "The date you enter becomes the employee’s corrected Group Join Date. This is the date years of service is calculated from, so it can change their leave entitlement.",
+          "lastWorkingDay": "Last Working Day",
+          "terminationReason": "Termination Reason",
+          "terminationReasonPlaceholder": "— Select a reason —",
+          "terminationTypeDerived": "Reported as: {type}",
+          "resignationDate": "Resignation Date",
+          "terminationNoticeDays": "Notice served (days)",
+          "terminationPayrollFlag": "Termination saved. A payroll run has already been processed for {periods}, past the termination date — review that run. It was not changed."
         },
         "edit": "Edit",
         "delete": "Delete",
@@ -1165,6 +1172,26 @@
           "applied": "Applied",
           "superseded": "Superseded",
           "reversed": "Reversed"
+        },
+        "terminationReasonCategory": {
+          "voluntary": "Voluntary Termination",
+          "involuntary": "Involuntary Termination",
+          "other": "Other"
+        },
+        "terminationReason": {
+          "resignation": "Resignation",
+          "career_opportunity": "Career Opportunity",
+          "personal_reason": "Personal Reason",
+          "retirement": "Retirement",
+          "early_retirement": "Early Retirement",
+          "performance_issue": "Performance Issue",
+          "misconduct": "Misconduct",
+          "redundancy": "Redundancy / Retrenchment",
+          "contract_expiry": "Contract Expiry",
+          "absconded": "Absconded",
+          "medical_unfit": "Medically Unfit",
+          "death": "Death",
+          "other": "Other"
         }
       },
       "salaryCurrency": "Currency",

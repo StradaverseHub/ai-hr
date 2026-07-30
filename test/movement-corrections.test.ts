@@ -238,7 +238,10 @@ describe('reverseMovementEvent — Delete is a rollback recorded as a visible re
       employmentId: hire.employmentId,
       kind: 'termination',
       effectiveDate: '2026-07-31',
-      terminationType: 'involuntary',
+      // ae9350f2 — a coded reason and a last working day are mandatory; 'misconduct' derives 'involuntary',
+      // which is what keeps this row a Termination rather than a Resignation.
+      endDate: '2026-07-31',
+      terminationReasonCode: 'misconduct',
     });
     const term = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'termination')!;
     expect(term.canReverse).toBe(false);

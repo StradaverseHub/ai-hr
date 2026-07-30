@@ -1148,7 +1148,14 @@
           "correctionReason": "Lý do chỉnh sửa (không bắt buộc)",
           "saveCorrection": "Lưu bản chỉnh sửa",
           "joinDateChangeHint": "Ngày bạn nhập sẽ trở thành Ngày gia nhập mới của nhân viên với công ty hiện tại. Ngày gia nhập tập đoàn của họ không thay đổi.",
-          "groupJoinDateCorrectionHint": "Ngày bạn nhập sẽ trở thành Ngày gia nhập tập đoàn đã điều chỉnh. Thâm niên được tính từ ngày này, nên việc này có thể thay đổi số ngày phép của họ."
+          "groupJoinDateCorrectionHint": "Ngày bạn nhập sẽ trở thành Ngày gia nhập tập đoàn đã điều chỉnh. Thâm niên được tính từ ngày này, nên việc này có thể thay đổi số ngày phép của họ.",
+          "lastWorkingDay": "Ngày làm việc cuối cùng",
+          "terminationReason": "Lý do chấm dứt",
+          "terminationReasonPlaceholder": "— Chọn lý do —",
+          "terminationTypeDerived": "Phân loại: {type}",
+          "resignationDate": "Ngày nộp đơn xin nghỉ",
+          "terminationNoticeDays": "Số ngày báo trước đã thực hiện",
+          "terminationPayrollFlag": "Đã lưu việc chấm dứt. Kỳ lương {periods} đã được xử lý vượt quá ngày chấm dứt — hãy kiểm tra kỳ lương đó. Hệ thống không thay đổi nó."
         },
         "edit": "Sửa",
         "delete": "Xóa",
@@ -1165,6 +1172,26 @@
           "applied": "Đã áp dụng",
           "superseded": "Đã bị thay thế",
           "reversed": "Đã hoàn tác"
+        },
+        "terminationReasonCategory": {
+          "voluntary": "Chấm dứt tự nguyện",
+          "involuntary": "Chấm dứt không tự nguyện",
+          "other": "Khác"
+        },
+        "terminationReason": {
+          "resignation": "Xin nghỉ việc",
+          "career_opportunity": "Cơ hội nghề nghiệp",
+          "personal_reason": "Lý do cá nhân",
+          "retirement": "Nghỉ hưu",
+          "early_retirement": "Nghỉ hưu sớm",
+          "performance_issue": "Vấn đề hiệu suất",
+          "misconduct": "Vi phạm kỷ luật",
+          "redundancy": "Cắt giảm nhân sự",
+          "contract_expiry": "Hết hạn hợp đồng",
+          "absconded": "Tự ý bỏ việc",
+          "medical_unfit": "Không đủ sức khỏe",
+          "death": "Qua đời",
+          "other": "Khác"
         }
       },
       "salaryCurrency": "Tiền tệ",

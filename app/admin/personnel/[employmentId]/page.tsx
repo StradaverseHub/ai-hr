@@ -67,6 +67,8 @@ import {
   isComparisonKind,
   MOVEMENT_FLAT_FIELDS,
 } from '@/core/movement';
+// ae9350f2 — the built-in exit-reason catalogue behind the Termination movement.
+import { TERMINATION_REASONS } from '@/core/termination-reason';
 import { MovementNewEvent } from './movement-new-event';
 import { serviceYearsMonthsAt, serviceYearsMonthsDaysAt } from '@/core/leave';
 // 9d13221c — Age beside Date of Birth: shared completed-years helper (kept a separate import so the
@@ -2847,6 +2849,17 @@ export default async function EmployeePage({
   // New Event (?newEvent=1): one entry point for every movement, replacing the separate Transfer /
   // Terminate / Blacklist boxes. Option lists reuse the data this page already loads; employment-type
   // and termination-type labels are pre-translated here (parent namespace) and passed down.
+  // ae9350f2 — the EXISTING termination-type labels, keyed by enum value. Reused rather than re-worded so
+  // the classification a reason derives reads identically to the one turnover analytics already shows.
+  const TERMINATION_TYPE_LABEL: Record<string, string> = {
+    voluntary: t('terminationVoluntary'),
+    involuntary: t('terminationInvoluntary'),
+    retired: t('terminationRetired'),
+    contract_end: t('terminationContractEnd'),
+    death: t('terminationDeath'),
+    other: t('terminationOther'),
+  };
+
   const movementFormProps = movementCurrent
     ? {
         employmentId: emp.employmentId,
@@ -2865,15 +2878,16 @@ export default async function EmployeePage({
           value: v,
           label: t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time'),
         })),
-        terminationTypes: [
-          { value: '', label: t('terminationTypeUnspecified') },
-          { value: 'voluntary', label: t('terminationVoluntary') },
-          { value: 'involuntary', label: t('terminationInvoluntary') },
-          { value: 'retired', label: t('terminationRetired') },
-          { value: 'contract_end', label: t('terminationContractEnd') },
-          { value: 'death', label: t('terminationDeath') },
-          { value: 'other', label: t('terminationOther') },
-        ],
+        // ae9350f2 — the built-in exit-reason catalogue, pre-translated here (the island holds no server
+        // imports). `typeLabel` reuses the EXISTING termination-type labels, so the classification the
+        // reason derives reads the same everywhere it already appears (turnover analytics included).
+        terminationReasons: TERMINATION_REASONS.map((r) => ({
+          code: r.code,
+          category: r.category,
+          categoryLabel: t(`movement.terminationReasonCategory.${r.category}` as 'movement.terminationReasonCategory.voluntary'),
+          label: t(`movement.terminationReason.${r.code}` as 'movement.terminationReason.resignation'),
+          typeLabel: TERMINATION_TYPE_LABEL[r.type],
+        })),
         cancelHref: `/admin/personnel/${employmentId}?tab=careerMovement`,
       }
     : null;

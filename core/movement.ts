@@ -40,10 +40,11 @@ import {
   setEmploymentGrade,
   setEmploymentInfo,
   setReportingLine,
-  terminateEmployment,
+  terminateEmploymentTx,
   type EmploymentTypeValue,
   type TerminationType,
 } from './org';
+import { isTerminationReasonCode, terminationTypeForReason } from './termination-reason';
 import {
   closedPeriodsTx,
   overlapsClosedPeriod,
@@ -568,7 +569,9 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
           ...base,
           kind: p.terminationType === 'voluntary' ? 'resignation' : 'termination',
           effectiveDate: p.terminationDate ?? occDate,
-          endDate: null,
+          // ae9350f2 — the Last Working Day, off the movement tag. Legacy/untagged terminations (the
+          // resignation-approval path, imports) carry none and keep the historical null.
+          endDate: mv?.endDate ?? null,
           remarks: p.terminationReason ?? null,
         });
         break;
@@ -1212,7 +1215,25 @@ export type CreateMovementInput = {
   currency?: string;
   payMode?: string;
   paymentTerm?: string;
-  terminationType?: TerminationType;
+  /**
+   * ae9350f2 — `terminationType` is GONE from this input. It is now DERIVED from the reason code below, and
+   * an input the dispatcher silently ignores is worse than an absent one — it is a control that saves
+   * successfully and does nothing. The enum itself is untouched: core/org.ts still accepts it directly for
+   * the resignation-approval path and the importers, which have no reason code to derive from.
+   *
+   * ae9350f2 — Termination: the coded exit reason (core/termination-reason.ts). MANDATORY for the
+   * `termination` kind and the single thing HR picks — it DERIVES `terminationType`, so the coded reason
+   * and the turnover classification can never contradict each other.
+   */
+  terminationReasonCode?: string | null;
+  /** ae9350f2 — Termination: notice actually served, in days. Optional. */
+  terminationNoticeDays?: number | null;
+  /**
+   * ae9350f2 — Termination: the date the employee tendered their resignation. Mandatory when the reason is
+   * `resignation`, per the reporter's rules. Written to `employment.tender_resignation_date` — the same
+   * column the `resignation` movement kind writes, so the two paths agree on where that date lives.
+   */
+  resignationDate?: string | null;
   /** Blacklist kind: true (default) sets the blacklist, false clears it — the old card's two actions. */
   blacklisted?: boolean;
 } & Partial<Record<MovementFlatField, string | null>>;
@@ -1548,6 +1569,297 @@ async function scheduleMovementTx(
   return { employmentId: p.employmentId, scheduled: true as const, effectiveDate: p.effectiveDate };
 }
 
+// ───────────── Termination — ae9350f2 ─────────────
+//
+// Termination is NOT greenfield: `termination` has been a MOVEMENT_KIND since 78853b97 and the projection
+// has rendered Termination/Resignation rows off `employment.terminated` for as long. What this item adds is
+// the structured exit — a coded reason, a last working day, notice, a tendered-resignation date — and the
+// three properties the reporter asked for and which the old one-line path did not have:
+//
+//   1. EXACTLY ONE Employment History row. The termination now writes TWO legs (the termination itself and
+//      the exit dates), and `employment.info.updated` carrying `lastWorkingDate` projects a RESIGNATION row
+//      of its own (RESIGNATION_FIELDS). That is defect 4d391ab7 in miniature — an untagged companion writer
+//      giving one movement two lines — so the second leg is tagged `secondary` under the first's groupId.
+//   2. A FUTURE-DATED TERMINATION MUST NOT END EMPLOYMENT TODAY. Before this item every termination went
+//      straight to terminateEmploymentTx, which CLOSES the open assignment version and the open reporting
+//      lines at the termination date. The dates themselves were right, but every reader that resolves
+//      "current" as the OPEN row (`isNull(validTo)`) — the Employment tab, the org chart, the directory,
+//      movementCurrentState — lost the employee's department, position and manager the INSTANT a future
+//      termination was keyed. That is 941c9dac's fault with the sign flipped, and it gets 941c9dac's fix:
+//      a future-dated termination records `employment.movement.scheduled` and NOTHING else, and
+//      scripts/review-sweep.ts applies it on the morning of its effective date under the same
+//      apply-once guarantee (migration 0329's partial unique index on payload->>'scheduledId').
+//   3. THE VALIDATION RULES the reporter listed, all of them cheap and all of them here rather than later.
+//
+// No status column is written or read. Employee Status is DERIVED (migration 0331, core/employment-status.ts)
+// from least(resignationDate, lastWorkingDate, terminatedOn) vs today — so recording the DATES is what moves
+// the employee to Resigned on the effective date, and to Active — Serving Notice before it. 0331's header
+// names this item as the writer of that seam; this is it.
+
+/**
+ * The conflict key of a scheduled Termination (see supersededScheduledIds). Deliberately its own pair of
+ * names rather than any comparison-kind field: a pending transfer and a pending termination are not in
+ * conflict, but two pending terminations are, and the later-dated one must win.
+ */
+const TERMINATION_FIELDS = ['terminatedOn', 'lastWorkingDate'] as const;
+
+/** The validated, resolved shape of a Termination — computed once and used by both the write and the schedule. */
+type TerminationPlan = {
+  effectiveDate: string;
+  lastWorkingDate: string;
+  reasonCode: string;
+  terminationType: TerminationType;
+  noticeDays: number | null;
+  /** The tendered-resignation date, when the reason is a resignation. */
+  resignationDate: string | null;
+  remarks: string | null;
+  /**
+   * 'YYYY-MM' payroll periods that have already been PROCESSED or CLOSED past the termination date. A
+   * FLAG, never a refusal: the approved plan says a backdated termination whose period a completed run
+   * already covered is surfaced rather than silently adjusted, because reprocessing a closed run from an
+   * HR screen is exactly the silent-correction this module refuses everywhere else.
+   */
+  payrollFlaggedPeriods: string[];
+};
+
+const isIsoDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+/**
+ * Validate a Termination against the reporter's rules and resolve it into a TerminationPlan.
+ *
+ * `mode` is the one real difference between keying a termination and the sweep applying one months later:
+ *  • 'create' — the full rule set, including the two that only make sense at keying time (this employee is
+ *    not already leaving, and no future movement is scheduled to land after they have gone).
+ *  • 'apply'  — the sweep. The shape and date rules still hold, but the two keying-time rules do not: the
+ *    movement being applied IS the pending termination, and a conflicting movement keyed since is resolved
+ *    by supersession (projection-time), not by refusing the application forever. If somebody terminated the
+ *    employee by hand in the meantime the movement has nothing left to do, which is a MovementNoChangeError
+ *    — the sweep records it as applied-with-no-changes so it leaves the due set instead of retrying nightly.
+ */
+async function planTerminationTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: CreateMovementInput,
+  mode: 'create' | 'apply',
+  excludeMovementId?: string,
+): Promise<TerminationPlan> {
+  const { emp, rows, statusOf } = await projectRows(tx, ctx.tenantId, p.employmentId);
+
+  if (!isIsoDate(p.effectiveDate)) throw new Error('A valid termination date (YYYY-MM-DD) is required.');
+
+  // Rule: "Termination date cannot be earlier than joining date."
+  if (p.effectiveDate < emp.hiredOn) {
+    throw new Error('Termination date cannot be earlier than the hire date.');
+  }
+
+  // The reporter's mandatory field. `endDate` is the Last Working Day — the same slot the `resignation`
+  // kind already uses for it, so Employment History's End Date column means one thing on both.
+  const lastWorkingDate = p.endDate?.trim() || null;
+  if (!isIsoDate(lastWorkingDate)) throw new Error('A last working day (YYYY-MM-DD) is required.');
+  if (lastWorkingDate > p.effectiveDate) {
+    throw new Error('Last working day cannot be later than the termination date.');
+  }
+  if (lastWorkingDate < emp.hiredOn) {
+    throw new Error('Last working day cannot be earlier than the hire date.');
+  }
+
+  const reasonCode = p.terminationReasonCode?.trim() || null;
+  if (!reasonCode) throw new Error('A termination reason is required.');
+  if (!isTerminationReasonCode(reasonCode)) throw new Error('Unknown termination reason.');
+  // Non-null by construction — every catalogue entry carries a type (core/termination-reason.ts).
+  const terminationType = terminationTypeForReason(reasonCode) as TerminationType;
+
+  // "Resignation Date — mandatory for resignation cases."
+  const resignationDate = p.resignationDate?.trim() || null;
+  if (reasonCode === 'resignation') {
+    if (!isIsoDate(resignationDate)) throw new Error('A resignation date (YYYY-MM-DD) is required for a resignation.');
+    if (resignationDate > lastWorkingDate) {
+      throw new Error('Resignation date cannot be later than the last working day.');
+    }
+    if (resignationDate < emp.hiredOn) {
+      throw new Error('Resignation date cannot be earlier than the hire date.');
+    }
+  } else if (resignationDate !== null && !isIsoDate(resignationDate)) {
+    throw new Error('A valid resignation date (YYYY-MM-DD) is required.');
+  }
+
+  const rawNotice = p.terminationNoticeDays;
+  let noticeDays: number | null = null;
+  if (rawNotice !== undefined && rawNotice !== null && String(rawNotice) !== '') {
+    const n = Number(rawNotice);
+    if (!Number.isInteger(n) || n < 0) throw new Error('Notice period must be a whole number of days.');
+    noticeDays = n;
+  }
+
+  // "Employee cannot have duplicate termination movement" / "cannot submit resignation if already terminated".
+  const pendingTermination = rows.find(
+    (r) =>
+      r.id !== excludeMovementId &&
+      r.kind === 'termination' &&
+      r.scheduled &&
+      statusOf(r) === 'pending',
+  );
+  if (mode === 'create') {
+    if (emp.terminatedOn) {
+      throw new Error('This employee is already terminated. Roll back the existing termination before recording another.');
+    }
+    if (pendingTermination) {
+      throw new Error(
+        `A termination is already recorded for ${pendingTermination.effectiveDate}. Cancel or correct it before recording another.`,
+      );
+    }
+    // "Termination effective date must not overlap with future approved movements." A movement scheduled to
+    // take effect on or after the day the employee leaves would apply to somebody who is no longer there —
+    // and the sweep would apply it, because supersession only resolves SAME-FIELD conflicts and a transfer
+    // shares no field with a termination.
+    const clashing = rows.find(
+      (r) =>
+        r.id !== excludeMovementId &&
+        r.scheduled &&
+        r.kind !== 'termination' &&
+        statusOf(r) === 'pending' &&
+        r.effectiveDate >= p.effectiveDate,
+    );
+    if (clashing) {
+      throw new Error(
+        `A movement is already scheduled for ${clashing.effectiveDate}, on or after this termination date. Cancel that movement first.`,
+      );
+    }
+  } else if (emp.terminatedOn) {
+    // The sweep arriving to find the employee already terminated by hand — applied-with-no-changes.
+    throw new MovementNoChangeError('This employee has already been terminated, so the scheduled termination has nothing to apply.');
+  }
+
+  // "Pending payroll cycle must be checked before termination." FLAG, not refuse (see the field comment).
+  const processed = await processedPeriodsTx(tx, p.employmentId);
+  const payrollFlaggedPeriods = processed.filter((period) => overlapsClosedPeriod([period], p.effectiveDate, null));
+
+  return {
+    effectiveDate: p.effectiveDate,
+    lastWorkingDate,
+    reasonCode,
+    terminationType,
+    noticeDays,
+    resignationDate,
+    remarks: p.remarks?.trim() || null,
+    payrollFlaggedPeriods,
+  };
+}
+
+/**
+ * The Termination writer. Two legs in ONE transaction, sharing one groupId, so Employment History shows
+ * exactly ONE row (see the section header — leg 2 would otherwise project its own "Resignation" line).
+ *
+ * `opts` mirrors applyComparisonMovementTx: the sweep passes the SCHEDULED event's groupId and
+ * `allSecondary`, so both legs become companions of the row that is already on the history and the movement
+ * never grows a second line on the morning it takes effect.
+ */
+async function applyTerminationTx(
+  tx: Tx,
+  ctx: SessionContext,
+  employmentId: string,
+  plan: TerminationPlan,
+  opts?: { groupId?: string; allSecondary?: boolean },
+) {
+  const groupId = opts?.groupId ?? randomUUID();
+  let primaryTaken = opts?.allSecondary === true;
+  const tag = (): MovementTag => {
+    const t: MovementTag = {
+      type: 'termination',
+      groupId,
+      remarks: plan.remarks,
+      endDate: plan.lastWorkingDate,
+    };
+    if (primaryTaken) t.secondary = true;
+    primaryTaken = true;
+    return t;
+  };
+
+  // Leg 1 — PRIMARY. terminateEmploymentTx sets terminated_on + the classification, CLOSES the open
+  // assignment version at the termination date and ENDS this employment's open administrative reporting
+  // lines in both directions (ADR-0052). That is the reporter's "remove from the current position holder
+  // list, the reporting hierarchy and the supervisor listing" — already built, and reached here rather than
+  // reimplemented. Nothing is deleted: every closed row keeps its window, so history and reporting are intact.
+  await terminateEmploymentTx(tx, ctx, {
+    employmentId,
+    terminationDate: plan.effectiveDate,
+    terminationReason: plan.remarks ?? undefined,
+    terminationReasonCode: plan.reasonCode,
+    terminationNoticeDays: plan.noticeDays,
+    movement: tag(),
+  });
+
+  // Leg 2 — SECONDARY. The exit dates. lastWorkingDate is what flips Employee Status to Resigned on the
+  // day the person actually stops working when that precedes the termination date
+  // (deriveEmploymentStatus reads the EARLIEST of the three end dates).
+  await setEmploymentInfo(
+    ctx,
+    {
+      employmentId,
+      lastWorkingDate: plan.lastWorkingDate,
+      ...(plan.resignationDate ? { tenderResignationDate: plan.resignationDate } : {}),
+      movement: tag(),
+    },
+    tx,
+  );
+
+  const changes: MovementChange[] = [
+    { field: 'terminatedOn', before: null, after: plan.effectiveDate },
+    { field: 'lastWorkingDate', before: null, after: plan.lastWorkingDate },
+    { field: 'terminationReasonCode', before: null, after: plan.reasonCode },
+  ];
+  return { employmentId, groupId, changes, payrollFlaggedPeriods: plan.payrollFlaggedPeriods };
+}
+
+/**
+ * ae9350f2 + 941c9dac — record a FUTURE-dated termination as an INTENT and write nothing else.
+ *
+ * See the section header for why this matters more for a termination than for any other kind: the writer
+ * closes the open assignment and reporting-line rows, so keying a termination for next month used to blank
+ * the employee's department, position and manager on every "current" screen today.
+ */
+async function scheduleTerminationTx(
+  tx: Tx,
+  ctx: SessionContext,
+  employmentId: string,
+  plan: TerminationPlan,
+) {
+  const groupId = randomUUID();
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'employment',
+    aggregateId: employmentId,
+    eventType: 'employment.movement.scheduled',
+    actor: actorOf(ctx),
+    subjectEmploymentId: employmentId,
+    payload: {
+      type: 'termination',
+      effectiveDate: plan.effectiveDate,
+      endDate: plan.lastWorkingDate,
+      remarks: plan.remarks,
+      fields: [...TERMINATION_FIELDS],
+      /** What HR keyed, replayed verbatim by the sweep on the effective date. */
+      input: {
+        terminationReasonCode: plan.reasonCode,
+        terminationNoticeDays: plan.noticeDays,
+        resignationDate: plan.resignationDate,
+      },
+      movement: {
+        type: 'termination',
+        groupId,
+        remarks: plan.remarks,
+        endDate: plan.lastWorkingDate,
+      } satisfies MovementTag,
+    },
+  });
+  return {
+    employmentId,
+    scheduled: true as const,
+    effectiveDate: plan.effectiveDate,
+    payrollFlaggedPeriods: plan.payrollFlaggedPeriods,
+  };
+}
+
 /**
  * The single New Event entry point. Delegates every kind to the existing audited writer, so effective-
  * date semantics deliberately MATCH those writers (e.g. setEmploymentAssignment rejects dates before the
@@ -1640,12 +1952,14 @@ export async function createMovementEvent(ctx: SessionContext, p: CreateMovement
         movement: { type: 'resignation', remarks, endDate, groupId: randomUUID() },
       });
 
+    // ae9350f2 — Termination. Validated once, then either applied now or scheduled for its effective date;
+    // see the "Termination" section above for why a future-dated one must not write anything today.
     case 'termination':
-      return terminateEmployment(ctx, {
-        employmentId: p.employmentId,
-        terminationDate: p.effectiveDate,
-        terminationType: p.terminationType,
-        terminationReason: remarks ?? undefined,
+      return withTenant(ctx, async (tx) => {
+        const plan = await planTerminationTx(tx, ctx, p, 'create');
+        return plan.effectiveDate > todayInKualaLumpur()
+          ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
+          : applyTerminationTx(tx, ctx, p.employmentId, plan);
       });
 
     case 'blacklist':
@@ -1721,12 +2035,17 @@ export async function applyDueMovementsTx(
     const payload = (ev?.payload ?? {}) as Record<string, any>;
     // Without the groupId the legs could not be tied back to this row and the movement would sprout a
     // duplicate history line. Refuse rather than corrupt the history.
-    if (!r.groupId || !isComparisonKind(r.kind)) continue;
+    if (!r.groupId) continue;
+    // ae9350f2 — Termination is the one scheduled kind that is not a comparison kind. It has its own
+    // writer (two legs, no Current/After deltas), so it is dispatched explicitly rather than being let
+    // through the comparison path, which would compute deltas for fields a termination never moves.
+    const isTermination = r.kind === 'termination';
+    if (!isTermination && !isComparisonKind(r.kind)) continue;
 
     const input: CreateMovementInput = {
       ...(payload.input ?? {}),
       employmentId,
-      kind: r.kind,
+      kind: r.kind as MovementKind,
       effectiveDate: r.effectiveDate,
       endDate: r.endDate,
       remarks: r.remarks,
@@ -1734,10 +2053,18 @@ export async function applyDueMovementsTx(
 
     let changes: MovementChange[] = [];
     try {
-      const res = await applyComparisonMovementTx(tx, ctx, input, r.kind, {
-        groupId: r.groupId,
-        allSecondary: true,
-      });
+      const res = isTermination
+        ? await applyTerminationTx(
+            tx,
+            ctx,
+            employmentId,
+            await planTerminationTx(tx, ctx, input, 'apply', r.id),
+            { groupId: r.groupId, allSecondary: true },
+          )
+        : await applyComparisonMovementTx(tx, ctx, input, r.kind as ComparisonKind, {
+            groupId: r.groupId,
+            allSecondary: true,
+          });
       changes = res.changes;
       applied += 1;
     } catch (e) {
@@ -2091,6 +2418,23 @@ export async function editMovementEvent(ctx: SessionContext, p: EditMovementInpu
      * movement" diverge, and the in-place rule correctly follows the applied one.
      */
     if (row.scheduled && status === 'pending') {
+      // ae9350f2 — a pending TERMINATION is correctable on exactly the same reasoning, and it has to be:
+      // scheduling made `canEdit` true for it (a scheduled event is not state-changing), so without this
+      // branch the Edit button would render and the service would refuse it — an affordance that lies.
+      // Only termination→termination: turning a pending exit into a transfer, or a transfer into an exit,
+      // is recording a different movement, not correcting this one.
+      if (row.kind === 'termination' || p.kind === 'termination') {
+        if (row.kind !== 'termination' || p.kind !== 'termination') {
+          throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
+        }
+        await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+        // Planned AFTER the rollback, so the duplicate-termination rule sees the movement being corrected
+        // as already reversed rather than as a second termination competing with itself.
+        const plan = await planTerminationTx(tx, ctx, { ...p, remarks, endDate }, 'create');
+        return plan.effectiveDate > today
+          ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
+          : applyTerminationTx(tx, ctx, p.employmentId, plan);
+      }
       if (!isComparisonKind(p.kind)) {
         throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
       }
