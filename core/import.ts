@@ -164,16 +164,19 @@ async function analyze(
   // built with the DEFAULT company's pack — the same pack that produced every stored IC in a
   // single-jurisdiction tenant. `normalizeIC` is digit-stripping in every pack today, so this stays
   // correct across a mixed file; if a pack ever normalises differently, this is where to revisit.
-  const normPack = contexts.get(companyId)?.pack ?? [...contexts.values()][0]?.pack;
+  let normPack = contexts.get(companyId)?.pack ?? [...contexts.values()][0]?.pack;
   const { existingEmails, existingIcs, existingCodes } = await withTenant(ctx, async (tx) => {
     if (!normPack) {
-      // No resolvable company at all (the caller passed an id outside scope and no row named one).
+      // No company resolved from `listCompanies` — which EXCLUDES archived companies, so this is
+      // reachable when the screen's selected company has since been archived. Read its country
+      // directly and let the pack registry decide: it either resolves (and we keep going, so the IC
+      // collision set is still built with the right rules) or it throws with its own message.
       const [co] = await tx
         .select({ country: company.country })
         .from(company)
         .where(eq(company.id, companyId))
         .limit(1);
-      requirePackFor(co?.country); // throws with the pack registry's own message
+      normPack = requirePackFor(co?.country);
     }
     const ppl = await tx.select({ email: person.primaryEmail }).from(person);
     const ics = await tx.select({ ic: employeeStatutoryMy.icNumber }).from(employeeStatutoryMy);
