@@ -551,7 +551,8 @@ describe('b81d3c52 · UI source guard — the dropdown-rendering forms post the 
     expect(form).toContain("t('subStep.roundingUp')");
     expect(form).toContain("t('subStep.roundingDown')");
     expect(form).toContain("t('subStep.roundingHelp')");
-    expect(form).toContain('defaultValue={roundingMethodValue(p.roundingMethod)}');
+    // 9816a5ad step 2: the initial value now comes from the leave TYPE's own rules, not a policy row.
+    expect(form).toContain('defaultValue={roundingMethodValue(rules.roundingMethod)}');
     // renders the dropdown ⇒ posts the marker so 'none' CLEARS and up/down SET.
     expect(form).toContain('name="roundingMethodRendered"');
   });
@@ -582,10 +583,13 @@ describe('b81d3c52 · UI source guard — the dropdown-rendering forms post the 
     expect(pageSrc).toContain('roundingMethod: acc?.roundingMethod');
   });
 
-  it('all three policy actions thread the normalized field into the service', () => {
+  it('every action that writes rounding threads the SAME normalized field', () => {
     expect(actionsSrc).toContain('const roundingMethodField =');
-    // createLeavePolicyAction + updateLeavePolicyAction read it inline; the multi action hoists it once.
-    expect(actionsSrc.match(/roundingMethod: roundingMethodField\(formData\)/g)?.length).toBe(2);
+    // createLeavePolicyAction + updateLeavePolicyAction read it inline, and 9816a5ad step 2 added a THIRD
+    // caller: setLeaveTypeRulesAction, which writes the consolidated rule onto the leave type. The count
+    // is pinned so a fourth writer cannot appear with its own ad-hoc normalization — the whole point of
+    // the tri-state helper is that 'none' means CLEAR everywhere, identically.
+    expect(actionsSrc.match(/roundingMethod: roundingMethodField\(formData\)/g)?.length).toBe(3);
     expect(actionsSrc).toContain('roundingMethod: rounding,');
   });
 });

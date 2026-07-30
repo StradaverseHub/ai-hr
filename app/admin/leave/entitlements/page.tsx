@@ -48,6 +48,7 @@ import {
   deleteLeavePolicyAction,
   deleteLeaveTypeAction,
   updateLeavePolicyAction,
+  setLeaveTypeRulesAction,
   updateLeaveTypeAction,
   createGradeGroupAction,
   updateGradeGroupAction,
@@ -765,6 +766,22 @@ export default async function LeaveEntitlementsPage({
               archived={!!lt.archivedAt}
               inUse={lt.inUse}
               isAnnual={lt.code === 'ANNUAL'}
+              // 9816a5ad step 2: the consolidated rules live on the TYPE now, so the Earning Method and
+              // Carry Forward sub-steps read and write them here rather than through a policy row.
+              // numeric() columns arrive as strings from the driver — Number() them, or the number inputs
+              // round-trip a string and the tri-state comparisons in the action misread them.
+              typeRules={{
+                accrualMethod: lt.accrualMethod ?? null,
+                carryForwardEnabled: lt.carryForwardEnabled ?? null,
+                carryForwardMax: lt.carryForwardMax == null ? null : Number(lt.carryForwardMax),
+                carryForwardExpiryMode: (lt.carryForwardExpiryMode as 'date' | 'months' | null) ?? null,
+                carryForwardExpiryMonths: lt.carryForwardExpiryMonths ?? null,
+                carryForwardExpiryMonth: lt.carryForwardExpiryMonth ?? null,
+                carryForwardExpiryDay: lt.carryForwardExpiryDay ?? null,
+                carryForwardIncludeEarned: lt.carryForwardIncludeEarned ?? null,
+                roundingMethod: (lt.roundingMethod as 'up' | 'down' | null) ?? null,
+                maxBalanceDays: lt.maxBalanceDays == null ? null : Number(lt.maxBalanceDays),
+              }}
               floor0={packEntitlement?.(lt.code, 0) ?? 0}
               eligibility={(lt.eligibility as LeaveEligibilityRule | null) ?? null}
               orgAssignmentOptions={orgAssignmentOptions}
@@ -915,6 +932,7 @@ export default async function LeaveEntitlementsPage({
               deleteTypeAction={deleteLeaveTypeAction}
               createPolicyAction={createLeavePoliciesMultiAction}
               updatePolicyAction={updateLeavePolicyAction}
+              setTypeRulesAction={setLeaveTypeRulesAction}
               deletePolicyAction={deleteLeavePolicyAction}
               countInScopeAction={countEmployeesInScopeAction}
               upsertSchemeEntitlementAction={upsertSchemeEntitlementAction}

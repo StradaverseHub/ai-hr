@@ -19,6 +19,8 @@ import {
   resolveLeaveYearCycle,
   isLeaveEligible,
   resolveCarryBreakdown,
+  applyLeaveTypeRules,
+  leaveTypeRuleColumns,
   resolveGradePolicy,
   serviceYearsAt,
   workingDatesForSpan,
@@ -523,6 +525,9 @@ export function listLeaveTypes(
         id: leaveType.id,
         code: leaveType.code,
         name: leaveType.name,
+        // 9816a5ad step 2: the consolidated rule columns, so the Leave Type panel can EDIT them.
+        // Read here rather than via a second query — the panel renders one row per type already.
+        ...leaveTypeRuleColumns,
         // Leave Type master page (feedback 097de541): the free-text description shown in the master listing +
         // the identity edit form (MUST be projected here or the field renders empty on every reload).
         description: leaveType.description,
@@ -2221,7 +2226,9 @@ export function leaveEntitlementBreakdown(
     // here (employment join returns nothing) → a defined empty state, never an error or a leak.
     const [[type], [emp]] = await Promise.all([
       tx
-        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations, yearCycleOverride: leaveType.yearCycleOverride })
+        // 9816a5ad step 2: the type's own rules ride along — the carry cap and expiry this panel shows
+        // must be the ones openLeaveYear / expireCarriedLeave actually enforce.
+        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
         .from(leaveType)
         .where(eq(leaveType.id, leaveTypeId))
         .limit(1),
@@ -2254,7 +2261,11 @@ export function leaveEntitlementBreakdown(
     // Leave Entitlement Rules Engine: service measured at cycleStart keeps carryMax/expiry/earned-flag and
     // the tie-break consistent with the banded winner. This does NOT change currentYearEntitlement below
     // (ledger-derived) — the banded number reaches /me only via the ledger, after a hire grant/year-open.
-    const policy = resolveGradePolicy(policies as GradePolicyRow[], emp.gradeId, emp.companyId, serviceYearsAt(emp.hiredOn, cycleStart));
+    // 9816a5ad step 2: days from the winning policy row, every RULE from the leave type.
+    const policy = applyLeaveTypeRules(
+      resolveGradePolicy(policies as GradePolicyRow[], emp.gradeId, emp.companyId, serviceYearsAt(emp.hiredOn, cycleStart)),
+      type,
+    );
     const earned = isEarnedMethod(policy?.method);
     const carryMax = type.code === 'ANNUAL' ? (policy?.carryMax ?? 0) : 0;
     const expiry = type.code === 'ANNUAL' ? (policy?.carryExpiry ?? null) : null;

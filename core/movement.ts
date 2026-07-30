@@ -370,7 +370,21 @@ function dayBefore(d: string): string {
   return new Date(ms - 86_400_000).toISOString().slice(0, 10);
 }
 
-const dateOf = (d: Date): string => d.toISOString().slice(0, 10);
+/**
+ * The DATE an instant falls on, in the tenant's timezone — NOT in UTC.
+ *
+ * This feeds `entryDate`, the date HR keyed a movement, which sits beside `effectiveDate` on Employment
+ * History. It used to be `d.toISOString().slice(0, 10)`, and toISOString() is UTC. Malaysia is UTC+8, so
+ * between 00:00 and 08:00 local every movement was stamped with YESTERDAY's date — on the very item whose
+ * subject is telling entry date and effective date apart (941c9dac, shipped r83).
+ *
+ * It survived three green gates because the suite only ever ran during the Malaysian working day, when
+ * the UTC and local dates agree. It failed the moment a run happened at 01:46 local. A date derived from
+ * an instant must go through the tenant timezone; only date-only ARITHMETIC (dayBefore above, and the
+ * `${iso}T00:00:00Z` idiom elsewhere) may stay in UTC, because there the UTC-ness is the convention that
+ * makes it exact rather than a bug.
+ */
+const dateOf = (d: Date): string => todayInKualaLumpur(d);
 
 /**
  * Classify the ledger into movement rows. Returns the employment row, the raw events (for the detail's

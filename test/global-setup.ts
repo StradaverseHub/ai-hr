@@ -51,7 +51,7 @@ export function withDatabase(url: string, dbName: string): string {
  * and a stale constant-style reference will not typecheck. That is the point: silently reading a
  * different name than the one that was created is exactly the failure this is meant to prevent.
  */
-import { templateDb, workerDb, workerDbPrefix } from './db-names';
+import { namespaceIsEphemeral, templateDb, workerDb, workerDbPrefix } from './db-names';
 
 export { templateDb, workerDb, workerDbPrefix };
 
@@ -281,4 +281,45 @@ export default async function setup({ provide }: { provide?: (k: string, v: unkn
     `[global-setup] template migrated in ${(migratedMs / 1000).toFixed(1)}s, ` +
       `${workers} worker DBs ready in ${((Date.now() - t0) / 1000).toFixed(1)}s total`,
   );
+
+  // ── TEARDOWN ─────────────────────────────────────────────────────────────────────────────────────
+  //
+  // Vitest runs the returned function when the suite exits. Until this existed, NOTHING ever removed a
+  // namespace's databases: every parallel agent permanently orphaned 1 template + 10 workers, and the
+  // count reached 366 once and 72 again on 2026-07-30. That is not merely untidy — past a threshold
+  // DROP/CREATE DATABASE stops completing at all, and crash recovery walks every database directory
+  // before replaying a single WAL record, which cost ~40 minutes twice in one day.
+  //
+  // ONLY EPHEMERAL NAMESPACES ARE DROPPED. A plain `pnpm vitest run` (no TEST_DB_NAMESPACE) keeps its
+  // databases so templateFingerprint() can reuse them next time — that reuse is what makes a repeat run
+  // start in seconds. Dropping those would trade a disk leak for a permanent cost on the command
+  // everyone actually types.
+  //
+  // BEST-EFFORT, NEVER FATAL. A teardown failure must not turn a green suite red: the run has already
+  // finished and its result is decided. Failures are logged loudly enough to notice and left at that.
+  return async () => {
+    if (!namespaceIsEphemeral()) return;
+    const sql = postgres(adminUrl, { max: 1, onnotice: () => {} });
+    const dropped: string[] = [];
+    try {
+      // Workers first, then the template. A template still serving as the source of a worker database
+      // cannot be dropped, and WITH (FORCE) evicts connections a crashed worker may have left behind.
+      for (let i = 1; i <= workers; i++) {
+        const dbName = workerDb(i);
+        await sql.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+        dropped.push(dbName);
+      }
+      await sql.unsafe(`DROP DATABASE IF EXISTS "${templateName}" WITH (FORCE)`);
+      dropped.push(templateName);
+      console.log(`[global-setup] teardown dropped ${dropped.length} database(s) for namespace '${templateName}'`);
+    } catch (e) {
+      console.warn(
+        `[global-setup] TEARDOWN INCOMPLETE for '${templateName}' — dropped ${dropped.length} of ${workers + 1}. ` +
+          `Left behind databases accumulate and eventually stall DROP/CREATE entirely; sweep them by hand. ` +
+          `Cause: ${String(e)}`,
+      );
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+  };
 }
