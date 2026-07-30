@@ -3041,12 +3041,38 @@ export type ShiftType = 'normal' | 'semi_flexi' | 'full_flexi';
 // only meaningful on per_hour rules — validatePayRule rejects it on any other kind. The flag does NOT change the
 // `rate × scope.hours` math in resolvePayRule; the live hourly compute that feeds shift-bounded hours into that
 // scope is a deferred follow-up (gated on the rate-storage decision).
+// ── 61bf109d (Input Type redesign + Formula Setting) ────────────────────────────────────────────────
+// `qty_rate` and `formula` join the union, and `percent_of` gains a `base: 'component'` arm so a pay item
+// can be a percentage of ANOTHER pay item, not only of basic. The union stays CLOSED and the formula is an
+// AST-shaped VALUE, never an expression string: there is no parser, no `eval`, no `new Function` anywhere in
+// this codebase's pay path. A formula is a seed operand folded left-to-right through a term list, so it has
+// no operator-precedence ambiguity to explain to a payroll admin and no partial-parse failure mode.
+//
+// Operands are the FIXED, NAMED input set — a literal number (a "fixed rate"), the employee's basic, days
+// worked, hours worked, or another pay item by CODE. Anything outside that set cannot be represented, so an
+// out-of-contract input is a compile error here and a save-time rejection in core/pay-rule.ts — never a
+// run-time surprise on a payslip.
+export type FormulaOperand =
+  | { ref: 'number'; value: number } //   a literal / fixed rate
+  | { ref: 'basic' } //                   the employee's Personnel Basic Salary (same figure percent_of reads)
+  | { ref: 'days' } //                    days worked in the period (factor × days-in-month)
+  | { ref: 'hours' } //                   attendance worked hours in the period
+  | { ref: 'component'; code: string }; // another pay item's resolved amount for this employee
+
+export type FormulaOp = '+' | '-' | '*' | '/';
+/** One fold step: apply `op` to the running total with `operand` on the right. */
+export type FormulaTerm = { op: FormulaOp; operand: FormulaOperand };
+
 export type PayRule =
   | { kind: 'fixed' } //                                    = current behaviour; the component's `amount` is the value
-  | { kind: 'percent_of'; base: 'basic'; pct: number } //   pct% of the employee's resolved BASIC component amount
+  // pct% of basic, or (61bf109d) pct% of another pay item named by `componentCode`. Legacy stored rows are
+  // `{base:'basic'}` with no componentCode and parse unchanged.
+  | { kind: 'percent_of'; base: 'basic' | 'component'; pct: number; componentCode?: string }
   | { kind: 'per_day'; rate: number } //                    rate × days_worked (component MUST have prorates=false)
   | { kind: 'per_hour'; rate: number; onlyPullHoursWithinShiftSchedule?: boolean } // rate × attendance hours (component MUST have prorates=false)
-  | { kind: 'flat_capped'; value: number; cap: number }; // min(value, cap)
+  | { kind: 'flat_capped'; value: number; cap: number } //  min(value, cap)
+  | { kind: 'qty_rate'; qty: number; rate: number } //      61bf109d — a quantity multiplied by a rate
+  | { kind: 'formula'; start: FormulaOperand; terms: FormulaTerm[] }; // 61bf109d — the restricted formula
 
 // A reusable named shift for a company (e.g. "Night A", 22:00–06:00). crossesMidnight = endTime ≤ startTime.
 export const shift = pgTable(
@@ -4056,6 +4082,14 @@ export const payComponent = pgTable(
     // existing row stays valid (the compat golden is untouched). Resolved by core/pay-rule.ts and only read
     // inside the kernel's TYPED_PAY_COMPONENTS_ENABLED block — a rule is meaningless with typed components off.
     rule: jsonb('rule').$type<PayRule | null>(),
+    // 61bf109d — RECORDED resolution order (migration 0330). A `percent_of base:'component'` or `formula`
+    // rule makes one pay item depend on another, so the kernel can no longer resolve components in arbitrary
+    // query order without risking two runs of the same payroll disagreeing. The dependency graph is
+    // topologically sorted at SAVE time (planResolutionOrder, core/pay-rule.ts) and the resulting rank is
+    // persisted here, so the run does not re-derive it: the order that was validated is the order that pays.
+    // 0 = no dependencies, which is every legacy row (no pre-0330 rule could reference another component),
+    // hence the DEFAULT 0 backfill is identity-preserving by construction.
+    resolutionOrder: integer('resolution_order').notNull().default(0),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },

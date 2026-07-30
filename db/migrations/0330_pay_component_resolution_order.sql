@@ -1,0 +1,21 @@
+-- 61bf109d — Payroll Pay Items: Input Type redesign + Formula Setting.
+--
+-- A pay item may now be a percentage of ANOTHER pay item, or a formula over basic / a fixed rate /
+-- days / hours / another pay item. That makes the catalog a dependency GRAPH, so the kernel needs a
+-- deterministic, RECORDED resolution order — deriving it afresh on every run would let two runs of the
+-- same payroll disagree. core/pay-rule.ts topologically sorts the graph at save time (refusing cycles)
+-- and core/pay-components.ts persists the resulting rank here.
+--
+-- NO ENUM IS ADDED. The Input Type lives in the existing `pay_component.rule` JSONB discriminant, not in
+-- a Postgres enum, so this migration does not hit the "a new enum value cannot be USED in the same
+-- transaction that added it" trap that a fresh single-transaction replay would otherwise expose.
+--
+-- BACKFILL / IDENTITY: the column is NOT NULL DEFAULT 0 and every pre-existing row therefore lands on 0.
+-- That is provably identity-preserving rather than merely convenient: before this migration the only
+-- rule kinds that existed were fixed / percent_of(base='basic') / per_day / per_hour / flat_capped, NONE
+-- of which can reference another pay item, so every legacy catalog is a graph with zero edges and a flat
+-- rank of 0 IS its topological order. The guard is therefore unconditional and correct on both a fresh
+-- empty chain (no rows to touch) and the populated production database (every row is a zero-edge node).
+-- test/pay-item-formula.test.ts pins this by running the OLD configuration through the NEW evaluator and
+-- asserting identical figures.
+ALTER TABLE "pay_component" ADD COLUMN IF NOT EXISTS "resolution_order" integer DEFAULT 0 NOT NULL;
