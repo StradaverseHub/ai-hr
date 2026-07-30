@@ -17,6 +17,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, type MovementTag } from '../db/events';
 import {
@@ -87,6 +88,15 @@ export type MovementHistoryRow = {
    *  unknown future kind recorded via employment.movement.recorded (the UI humanizes those). */
   kind: string;
   effectiveDate: string;
+  /**
+   * 941c9dac — the date the movement was KEYED, as opposed to the date it takes effect. Captured
+   * automatically: it is `domain_event.occurred_at`, which HR cannot set and cannot edit, so the pair
+   * "chosen effective date + captured entry date" the reporter asked for needs no new column and cannot
+   * be back-dated. Null only for the synthesized Hired row, which projects from no event at all.
+   */
+  entryDate: string | null;
+  /** 941c9dac — derived lifecycle (see MovementStatus). Never stored. */
+  status: MovementStatus;
   endDate: string | null;
   remarks: string | null;
   /** 66a63bd6 — non-null once the movement has been rolled back. The row STAYS: a history that can be
@@ -121,6 +131,24 @@ export type MovementHistoryRow = {
   jobTitle: string | null;
   basic: string | null;
 };
+
+/**
+ * 941c9dac — the lifecycle of a movement, DERIVED at projection time. Deliberately NOT a stored column:
+ * Employment History is a projection over the append-only ledger (see the module header), and a mutable
+ * status column is exactly the thing that can drift out of step with the events it is supposed to
+ * summarise. Every value here is a pure function of the events already in the ledger plus `today`:
+ *
+ *   • `applied`    — the movement has taken effect. Either it was dated today/in the past and applied on
+ *                    save (the historical behaviour, and every pre-941c9dac movement), or it was scheduled
+ *                    and the sweep has since appended its `employment.movement.applied` event.
+ *   • `pending`    — recorded, dated in the FUTURE, not yet applied. It has written NOTHING: no dated row,
+ *                    no flat column. The Employment tab still shows today's values.
+ *   • `superseded` — recorded, never applied, and overtaken by a conflicting movement that has already
+ *                    arrived (see supersededScheduledIds). It will never apply. The row STAYS visible —
+ *                    "not silently ignored" is the whole point.
+ *   • `reversed`   — rolled back (66a63bd6). Takes precedence over the other three.
+ */
+export type MovementStatus = 'applied' | 'pending' | 'superseded' | 'reversed';
 
 /** 66a63bd6 — the visible trace a correction leaves on the movement it undid. */
 export type MovementReversal = {
@@ -164,7 +192,7 @@ export type MovementFlatChange = { field: MovementFlatField; before: string | nu
 /** The identity half of a history row (no correction affordances — the detail view never offers them). */
 export type MovementRowSummary = Pick<
   MovementHistoryRow,
-  'id' | 'kind' | 'effectiveDate' | 'endDate' | 'remarks' | 'reversed'
+  'id' | 'kind' | 'effectiveDate' | 'entryDate' | 'status' | 'endDate' | 'remarks' | 'reversed'
 >;
 
 export type MovementDetail = {
@@ -208,6 +236,13 @@ const MOVEMENT_EVENT_TYPES = [
   'employment.movement.recorded',
   // 66a63bd6 — marks an EXISTING row as rolled back; it never projects a row of its own.
   'employment.movement.reversed',
+  // 941c9dac — a FUTURE-dated movement's recorded INTENT. It owns the history row from the moment HR keys
+  // it; the legs the sweep later writes are all tagged `secondary` under this event's groupId, so the
+  // movement has exactly ONE line in the history whose STATUS moves Pending → Applied.
+  'employment.movement.scheduled',
+  // 941c9dac — the sweep's record that a scheduled movement took effect. Projects no row of its own; it
+  // flips the scheduled row's derived status and carries the what-changed-from-what-to-what audit trail.
+  'employment.movement.applied',
 ];
 
 const EXTENDED_PROBATION_FIELDS = ['extendedProbationValue', 'extendedProbationUnit', 'extendedConfirmationDate'];
@@ -229,6 +264,15 @@ type ProjectedRow = Pick<MovementHistoryRow, 'id' | 'kind' | 'effectiveDate' | '
   /** MovementTag.groupId of the event this row projects — correlates the other legs of the same movement. */
   groupId: string | null;
   reversed: MovementReversal | null;
+  /** 941c9dac — true when this row projects an `employment.movement.scheduled` event, i.e. it was keyed
+   *  with a FUTURE effective date and deferred. False for every movement that applied on save. */
+  scheduled: boolean;
+  /** 941c9dac — when the sweep applied it (null while still pending / superseded). */
+  appliedAt: Date | null;
+  /** 941c9dac — the field names a SCHEDULED movement intends to move, computed from the real deltas at
+   *  keying time and frozen into the scheduled event. Drives the same-field conflict test. Empty for
+   *  movements that were never scheduled (they applied on save; nothing can overtake them). */
+  fields: string[];
 };
 
 /** A movement kind the tag may legitimately name (guards a tampered/unknown tag from becoming a label). */
@@ -264,6 +308,62 @@ function flatChangesOf(groupEvents: RawEvent[]): MovementFlatChange[] {
   return out;
 }
 
+/**
+ * 941c9dac — the scheduled movements that will NEVER apply because a conflicting one overtook them.
+ *
+ * This is a PROJECTION-TIME decision, not a write-time one, and that is deliberate: two movements can
+ * both be legitimately recorded on different days and only later turn out to conflict. Nothing is stamped
+ * on the loser when the winner is keyed — the answer is recomputed from the ledger every read, so it stays
+ * correct if either side is subsequently rolled back.
+ *
+ * A pending movement P loses to Q when ALL of:
+ *   • Q has ARRIVED (its effective date is today or earlier) OR Q has already been applied. A Q still in
+ *     the future and not yet applied cannot overtake anything — P will reach its own effective date first
+ *     and apply normally, and until then nothing is decided. The `already applied` half matters because
+ *     the answer must not depend on WHO IS LOOKING: once the sweep has put Q into effect, P is dead for
+ *     everyone, including a screen rendered with an earlier notion of today.
+ *   • Q moves at least one of the same FIELDS as P. Disjoint movements (a transfer and a raise) are both
+ *     legitimate and both apply; only a genuine same-field conflict has a loser.
+ *   • Q wins latest-effective-date-wins, ties broken by which was keyed later (ledger sequence). The tie
+ *     break is the common real case: HR keys a future promotion, spots a wrong grade, and re-keys it for
+ *     the SAME date. Two dated rows cannot both hold that day, so the earlier entry is the loser.
+ *
+ * P is only a candidate while it has not applied — once a movement has taken effect it is history, and
+ * unwinding it is Cancel's job, not supersession's.
+ */
+function supersededScheduledIds(rows: ProjectedRow[], today: string): Set<string> {
+  const out = new Set<string>();
+  const live = rows.filter((r) => r.scheduled && !r.reversed);
+  for (const p of live) {
+    if (p.appliedAt) continue;
+    for (const q of live) {
+      if (q === p) continue;
+      if (q.effectiveDate > today && !q.appliedAt) continue;
+      if (!q.fields.some((f) => p.fields.includes(f))) continue;
+      const qWins =
+        q.effectiveDate > p.effectiveDate ||
+        (q.effectiveDate === p.effectiveDate && q.sequence > p.sequence);
+      if (qWins) {
+        out.add(p.id);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/** 941c9dac — the derived lifecycle of one row (see MovementStatus). Reversal wins over everything: a
+ *  rolled-back movement reads `reversed` whether it had applied or was still pending. */
+function statusOfRow(r: ProjectedRow, superseded: Set<string>): MovementStatus {
+  if (r.reversed) return 'reversed';
+  // Never scheduled ⇒ it applied on save. That covers every movement recorded before 941c9dac and every
+  // movement dated today or in the past, which the reporter explicitly wants applied immediately.
+  if (!r.scheduled) return 'applied';
+  if (r.appliedAt) return 'applied';
+  if (superseded.has(r.id)) return 'superseded';
+  return 'pending';
+}
+
 /** 'YYYY-MM-DD' minus one day, in pure UTC string math (no TZ drift). */
 function dayBefore(d: string): string {
   const ms = Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)));
@@ -279,7 +379,7 @@ const dateOf = (d: Date): string => d.toISOString().slice(0, 10);
  * hire's own reporting-line.set carries a LOWER sequence than employment.hired, so sequence alone
  * would misorder them).
  */
-async function projectRows(tx: Tx, tenantId: string, employmentId: string) {
+async function projectRows(tx: Tx, tenantId: string, employmentId: string, today = todayInKualaLumpur()) {
   const [emp] = await tx
     .select({
       id: employment.id,
@@ -329,6 +429,9 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string) {
   /** 66a63bd6 — movement id → the rollback that undid it. Applied after the loop: the reversal event is
    *  always later in the ledger than the movement it refers to. */
   const reversals = new Map<string, MovementReversal>();
+  /** 941c9dac — scheduled movement id → when the sweep applied it. Same after-the-loop application as
+   *  `reversals`: the applied event is always later in the ledger than the scheduled event it refers to. */
+  const applications = new Map<string, Date>();
   for (const e of events) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const p = (e.payload ?? {}) as Record<string, any>;
@@ -345,6 +448,9 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string) {
       occurredAt: e.occurredAt,
       groupId: mv?.groupId ?? null,
       reversed: null as MovementReversal | null,
+      scheduled: false,
+      appliedAt: null as Date | null,
+      fields: [] as string[],
     };
     switch (e.eventType) {
       case 'employment.hired':
@@ -486,6 +592,27 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string) {
           remarks: p.remarks ?? null,
         });
         break;
+      case 'employment.movement.scheduled':
+        // 941c9dac — a future-dated movement. This event IS the history row from the moment it is keyed;
+        // it changed no state. When the sweep later applies it, every leg it writes is tagged `secondary`
+        // under THIS event's groupId, so the movement never grows a second row — only its status moves.
+        rows.push({
+          ...base,
+          scheduled: true,
+          kind: isKnownKind(p.type) ? p.type : 'orgAssignmentChange',
+          effectiveDate: String(p.effectiveDate ?? occDate),
+          endDate: (p.endDate as string | null) ?? null,
+          remarks: (p.remarks as string | null) ?? null,
+          fields: Array.isArray(p.fields) ? (p.fields as string[]) : [],
+        });
+        break;
+
+      case 'employment.movement.applied':
+        // 941c9dac — the sweep's record that a scheduled movement took effect. Like the reversal event it
+        // projects NO row of its own; it flips the scheduled row's derived status to `applied`.
+        applications.set(String(p.scheduledId), e.occurredAt);
+        break;
+
       case 'employment.movement.reversed':
         // 66a63bd6 — marks the referenced row as rolled back. Deliberately projects NO row of its own:
         // one movement, one line in the history, with its correction shown on it.
@@ -511,10 +638,16 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string) {
       occurredAt: null,
       groupId: null,
       reversed: null,
+      scheduled: false,
+      appliedAt: null,
+      fields: [],
     });
   }
 
-  for (const r of rows) r.reversed = reversals.get(r.id) ?? null;
+  for (const r of rows) {
+    r.reversed = reversals.get(r.id) ?? null;
+    r.appliedAt = applications.get(r.id) ?? null;
+  }
 
   rows.sort((a, b) => {
     if (a.effectiveDate !== b.effectiveDate) return a.effectiveDate < b.effectiveDate ? -1 : 1;
@@ -527,7 +660,9 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string) {
     return a.sequence - b.sequence;
   });
 
-  return { emp, events, rows };
+  const superseded = supersededScheduledIds(rows, today);
+  const statusOf = (r: ProjectedRow): MovementStatus => statusOfRow(r, superseded);
+  return { emp, events, rows, statusOf, today };
 }
 
 /** The ledger events one movement is made of: every leg of a comparison-form submit (they share a
@@ -549,11 +684,27 @@ const REVERSIBLE_EVENT_TYPES = new Set([
   'employment.info.updated',
   'reporting-line.set',
   'employment.movement.recorded',
+  // 941c9dac — the scheduling event itself is always "undoable" because it changed nothing. Listing it
+  // here is what makes a PENDING movement cancellable (its group is this event alone) and keeps an
+  // APPLIED scheduled movement correctable (its group is this event PLUS the legs the sweep wrote, and
+  // every one of those was already reversible).
+  'employment.movement.scheduled',
 ]);
 
-/** Legs that changed employment/pay STATE — as opposed to the record-only Secondment / Acting Position,
- *  which touch nothing and therefore need neither the payroll guard nor the in-place-edit rule. */
-const STATE_CHANGING_EVENT_TYPES = new Set([...REVERSIBLE_EVENT_TYPES].filter((t) => t !== 'employment.movement.recorded'));
+/**
+ * Legs that changed employment/pay STATE — as opposed to the record-only Secondment / Acting Position,
+ * which touch nothing and therefore need neither the payroll guard nor the in-place-edit rule.
+ *
+ * 941c9dac — `employment.movement.scheduled` is excluded for exactly the same reason, and that exclusion
+ * is what resolves the in-place-edit interaction (see editMovementEvent). Because a scheduled event is
+ * not state-changing, a PENDING movement contributes nothing to latestStateChangingSpanEnd — so keying a
+ * future-dated movement does NOT freeze editing of the movement that is genuinely latest in force today.
+ */
+const STATE_CHANGING_EVENT_TYPES = new Set(
+  [...REVERSIBLE_EVENT_TYPES].filter(
+    (t) => t !== 'employment.movement.recorded' && t !== 'employment.movement.scheduled',
+  ),
+);
 
 /** A flat-column leg is undone field by field. A leg that also moved a LIFECYCLE date (confirmation,
  *  resignation, probation) is out of scope: those derive from one another (finalConfirmationDate) and are
@@ -687,7 +838,7 @@ async function placementColumnsTx(tx: Tx, employmentId: string, companyId: strin
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
 export function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
   return withTenant(ctx, async (tx) => {
-    const { emp, events, rows } = await projectRows(tx, ctx.tenantId, employmentId);
+    const { emp, events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
     // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
     // SAME rule the service refuses on (the Basic Salary card's precedent).
     const closed = await closedPeriodsTx(tx, employmentId);
@@ -697,7 +848,12 @@ export function movementHistory(ctx: SessionContext, employmentId: string): Prom
     return rows.map((r) => {
       const g = groupEventsOf(events, r);
       const spanEnd = g.length ? Math.max(...g.map((e) => e.sequence)) : -1;
+      const status = statusOf(r);
       const c = correctabilityOf(r, g, spanEnd === latest);
+      // 941c9dac — a SUPERSEDED movement is terminal: it never applied and never will, so there is
+      // nothing to cancel and nothing to replay. Editing one would also be a trap — the values HR typed
+      // are precisely the ones another movement has already overridden.
+      const terminal = status === 'superseded';
       // The window a correction disturbs runs from the effective date forward: undoing a raise changes
       // every period after it, not just the one it started in.
       const locked = c.stateChanging && overlapsClosedPeriod(closed, r.effectiveDate, null);
@@ -705,11 +861,13 @@ export function movementHistory(ctx: SessionContext, employmentId: string): Prom
         id: r.id,
         kind: r.kind,
         effectiveDate: r.effectiveDate,
+        entryDate: r.occurredAt ? dateOf(r.occurredAt) : null,
+        status,
         endDate: r.endDate,
         remarks: r.remarks,
         reversed: r.reversed,
-        canEdit: c.canEdit && !locked,
-        canReverse: c.canReverse && !locked,
+        canEdit: c.canEdit && !locked && !terminal,
+        canReverse: c.canReverse && !locked && !terminal,
         payrollLocked: locked,
         payrollWarning: c.stateChanging && !locked && overlapsClosedPeriod(processed, r.effectiveDate, null),
         // The flat-column replay bounds on the WHOLE group's last sequence, exactly as the detail view's
@@ -846,7 +1004,7 @@ export function movementDetail(
   movementId: string,
 ): Promise<MovementDetail | null> {
   return withTenant(ctx, async (tx) => {
-    const { emp, events, rows } = await projectRows(tx, ctx.tenantId, employmentId);
+    const { emp, events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
     const row = rows.find((r) => r.id === movementId);
     if (!row) return null;
     const gradeEvents = events.filter((e) => e.eventType === 'employment.grade.changed');
@@ -883,6 +1041,8 @@ export function movementDetail(
         id: row.id,
         kind: row.kind,
         effectiveDate: row.effectiveDate,
+        entryDate: row.occurredAt ? dateOf(row.occurredAt) : null,
+        status: statusOf(row),
         endDate: row.endDate,
         remarks: row.remarks,
         reversed: row.reversed,
@@ -1063,6 +1223,105 @@ export type ComparisonKind = (typeof COMPARISON_KINDS)[number];
 export const isComparisonKind = (k: string): k is ComparisonKind =>
   (COMPARISON_KINDS as readonly string[]).includes(k);
 
+/** 941c9dac — one field a movement moved, resolved to raw values. The audit record the reporter asked
+ *  for ("what changed, from what to what") is a list of these, stored on the applied event. */
+export type MovementChange = { field: string; before: string | null; after: string | null };
+
+/**
+ * 941c9dac — the DELTA computation, lifted out of applyComparisonMovementTx unchanged so that scheduling
+ * and applying cannot drift apart. It answers two questions from one pass: which legs must be written,
+ * and which FIELD NAMES the movement moves (the input to the same-field conflict test).
+ *
+ * Deliberately re-run at APPLY time rather than trusting what was computed at keying time: between the
+ * two, months can pass and the employee's actual values can move. The stored field list is only ever used
+ * for conflict detection; the values written are always diffed against the state that is real on the day.
+ */
+function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
+  // undefined = the form did not carry the field (untouched); otherwise '' means an explicit clear.
+  // A value equal to the current one collapses back to undefined — that IS the no-op rule.
+  const delta = (v: string | null | undefined, curVal: string | null): string | null | undefined => {
+    if (v === undefined) return undefined;
+    const next = v === null ? null : v.trim() || null;
+    return next === curVal ? undefined : next;
+  };
+
+  const dDept = delta(p.departmentId, cur.departmentId);
+  const dPos = delta(p.positionId, cur.positionId);
+  const dBu = delta(p.businessUnitId, cur.businessUnitId);
+  const dLoc = delta(p.locationId, cur.locationId);
+  const dType = p.employmentType && p.employmentType !== cur.employmentType ? p.employmentType : undefined;
+  const dGrade = delta(p.gradeId, cur.gradeId);
+  const dManager = delta(p.managerEmploymentId, cur.managerEmploymentId);
+
+  // Department is NOT NULL on the assignment — an empty submission means "unchanged", never "clear".
+  if (dDept === null) throw new Error('Department is required.');
+
+  const flat: Partial<Record<MovementFlatField, string | null>> = {};
+  for (const f of MOVEMENT_FLAT_FIELDS) {
+    const d = delta(p[f], cur[f]);
+    if (d !== undefined) flat[f] = d;
+  }
+
+  const dSalary =
+    p.basicSalary !== undefined && Number(p.basicSalary) !== Number(cur.basicSalary ?? NaN)
+      ? p.basicSalary
+      : undefined;
+  const dCurrency = delta(p.currency, cur.currency);
+  const dPayMode = delta(p.payMode, cur.payMode);
+  const dPaymentTerm = delta(p.paymentTerm, cur.paymentTerm);
+
+  const assignmentChanged =
+    dDept !== undefined || dPos !== undefined || dBu !== undefined || dLoc !== undefined || !!dType;
+  const gradeChanged = dGrade !== undefined;
+  const flatChanged = Object.keys(flat).length > 0;
+  const managerChanged = dManager != null; // clearing the superior is the Employment tab's job, not a movement
+  // An employee with no salary record yet has null currency / pay mode / payment term, so the form's
+  // defaults would read as deltas and demand a salary the movement was never about. Structure-only
+  // changes therefore need an existing record; setting the FIRST one stays the Basic Salary screen's job.
+  const hasComp = cur.basicSalary != null;
+  const compChanged =
+    dSalary !== undefined ||
+    (hasComp && (dCurrency !== undefined || dPayMode !== undefined || dPaymentTerm !== undefined));
+
+  const nothingChanged =
+    !assignmentChanged && !gradeChanged && !flatChanged && !managerChanged && !compChanged;
+  if (dSalary !== undefined && (!Number.isFinite(dSalary) || dSalary < 0)) {
+    throw new Error('A valid basic salary amount is required.');
+  }
+
+  // The before/after audit list, and (as its field names) the conflict key. Salary is included by name so
+  // two future-dated raises on the same day resolve against each other.
+  const changes: MovementChange[] = [];
+  const add = (field: string, before: string | null, after: string | null | undefined) => {
+    if (after === undefined) return;
+    changes.push({ field, before, after });
+  };
+  add('departmentId', cur.departmentId, dDept);
+  add('positionId', cur.positionId, dPos);
+  add('businessUnitId', cur.businessUnitId, dBu);
+  add('locationId', cur.locationId, dLoc);
+  add('employmentType', cur.employmentType, dType);
+  add('gradeId', cur.gradeId, dGrade);
+  if (managerChanged) add('managerEmploymentId', cur.managerEmploymentId, dManager);
+  for (const f of MOVEMENT_FLAT_FIELDS) add(f, cur[f], flat[f]);
+  if (dSalary !== undefined) add('basicSalary', cur.basicSalary, String(dSalary));
+  if (hasComp) {
+    add('currency', cur.currency, dCurrency);
+    add('payMode', cur.payMode, dPayMode);
+    add('paymentTerm', cur.paymentTerm, dPaymentTerm);
+  }
+
+  return {
+    cur,
+    dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat,
+    dSalary, dCurrency, dPayMode, dPaymentTerm,
+    assignmentChanged, gradeChanged, flatChanged, managerChanged, compChanged, hasComp,
+    nothingChanged,
+    changes,
+    fields: changes.map((c) => c.field),
+  };
+}
+
 /**
  * The comparison-form writer. HR submits the WHOLE right column, so the deltas — never the submitted
  * values — decide what is written: a field left at its current value must not produce an assignment
@@ -1072,73 +1331,40 @@ export const isComparisonKind = (k: string): k is ComparisonKind =>
  * division and salary either lands whole or not at all. The FIRST leg with a real delta carries the
  * primary movement tag and owns the history row; the rest are tagged `secondary` and share its `groupId`,
  * which is how the detail view finds the flat-column before/after and the full sequence span.
+ *
+ * 941c9dac — `opts` is how the scheduled-movement sweep re-uses this writer verbatim. It passes the
+ * SCHEDULED event's groupId and `allSecondary`, so every leg becomes a companion of the scheduled event
+ * that is already on the history: the movement keeps exactly ONE row, whose status simply moves from
+ * Pending to Applied. Without `allSecondary` the first leg would take the primary tag and the employee
+ * would sprout a second, duplicate history row on the morning the movement took effect.
  */
 async function applyComparisonMovementTx(
   tx: Tx,
   ctx: SessionContext,
   p: CreateMovementInput,
   kind: ComparisonKind,
+  opts?: { groupId?: string; allSecondary?: boolean },
 ) {
   const remarks = p.remarks?.trim() || null;
   const endDate = p.endDate?.trim() || null;
-  const groupId = randomUUID();
+  const groupId = opts?.groupId ?? randomUUID();
 
   {
     const cur = await currentStateTx(tx, p.employmentId);
-    // undefined = the form did not carry the field (untouched); otherwise '' means an explicit clear.
-    // A value equal to the current one collapses back to undefined — that IS the no-op rule.
-    const delta = (v: string | null | undefined, curVal: string | null): string | null | undefined => {
-      if (v === undefined) return undefined;
-      const next = v === null ? null : v.trim() || null;
-      return next === curVal ? undefined : next;
-    };
+    const d = movementDeltas(p, cur);
+    const {
+      dDept, dPos, dBu, dLoc, dType, dGrade, dManager, flat,
+      dSalary, dCurrency, dPayMode, dPaymentTerm,
+      assignmentChanged, gradeChanged, flatChanged, compChanged,
+    } = d;
 
-    const dDept = delta(p.departmentId, cur.departmentId);
-    const dPos = delta(p.positionId, cur.positionId);
-    const dBu = delta(p.businessUnitId, cur.businessUnitId);
-    const dLoc = delta(p.locationId, cur.locationId);
-    const dType = p.employmentType && p.employmentType !== cur.employmentType ? p.employmentType : undefined;
-    const dGrade = delta(p.gradeId, cur.gradeId);
-    const dManager = delta(p.managerEmploymentId, cur.managerEmploymentId);
-
-    // Department is NOT NULL on the assignment — an empty submission means "unchanged", never "clear".
-    if (dDept === null) throw new Error('Department is required.');
-
-    const flat: Partial<Record<MovementFlatField, string | null>> = {};
-    for (const f of MOVEMENT_FLAT_FIELDS) {
-      const d = delta(p[f], cur[f]);
-      if (d !== undefined) flat[f] = d;
-    }
-
-    const dSalary =
-      p.basicSalary !== undefined && Number(p.basicSalary) !== Number(cur.basicSalary ?? NaN)
-        ? p.basicSalary
-        : undefined;
-    const dCurrency = delta(p.currency, cur.currency);
-    const dPayMode = delta(p.payMode, cur.payMode);
-    const dPaymentTerm = delta(p.paymentTerm, cur.paymentTerm);
-
-    const assignmentChanged =
-      dDept !== undefined || dPos !== undefined || dBu !== undefined || dLoc !== undefined || !!dType;
-    const gradeChanged = dGrade !== undefined;
-    const flatChanged = Object.keys(flat).length > 0;
-    const managerChanged = dManager != null; // clearing the superior is the Employment tab's job, not a movement
-    // An employee with no salary record yet has null currency / pay mode / payment term, so the form's
-    // defaults would read as deltas and demand a salary the movement was never about. Structure-only
-    // changes therefore need an existing record; setting the FIRST one stays the Basic Salary screen's job.
-    const hasComp = cur.basicSalary != null;
-    const compChanged =
-      dSalary !== undefined ||
-      (hasComp && (dCurrency !== undefined || dPayMode !== undefined || dPaymentTerm !== undefined));
-
-    if (!assignmentChanged && !gradeChanged && !flatChanged && !managerChanged && !compChanged) {
+    if (d.nothingChanged) {
       throw new MovementNoChangeError();
     }
-    if (dSalary !== undefined && (!Number.isFinite(dSalary) || dSalary < 0)) {
-      throw new Error('A valid basic salary amount is required.');
-    }
 
-    let primaryTaken = false;
+    // 941c9dac — seeded TRUE by the sweep, which makes EVERY leg secondary because the scheduled event
+    // already owns the history row (see the `opts` note in the doc comment).
+    let primaryTaken = opts?.allSecondary === true;
     /** Primary for the first leg with a real delta, `secondary` for every leg after it. */
     const tag = (opts: { withRemarks: boolean }): MovementTag => {
       const t: MovementTag = { type: kind, groupId };
@@ -1190,7 +1416,10 @@ async function applyComparisonMovementTx(
       );
     }
 
-    if (managerChanged) {
+    // `dManager != null` rather than the equivalent `managerChanged` flag purely so TypeScript keeps the
+    // narrowing to a non-null string through the call below (the flag is computed in movementDeltas, so
+    // control-flow analysis cannot tie the two together).
+    if (dManager != null) {
       await setReportingLine(
         ctx,
         {
@@ -1223,12 +1452,87 @@ async function applyComparisonMovementTx(
       );
     }
 
-    return { employmentId: p.employmentId };
+    // 941c9dac — the change list travels back to the sweep, which stores it on the applied event as the
+    // permanent "what changed, from what to what" record of the automatic application.
+    return { employmentId: p.employmentId, changes: d.changes, groupId };
   }
 }
 
 const applyComparisonMovement = (ctx: SessionContext, p: CreateMovementInput, kind: ComparisonKind) =>
   withTenant(ctx, (tx) => applyComparisonMovementTx(tx, ctx, p, kind));
+
+/**
+ * 941c9dac — the fields of the submitted right column, frozen onto the scheduled event so the sweep can
+ * replay EXACTLY what HR typed months later. `undefined` (the form did not offer the field) is dropped
+ * rather than stored as null, because JSON has no `undefined`: round-tripping it as null would turn
+ * "leave the Work Location alone" into "clear the Work Location" on the morning the movement applies.
+ */
+function scheduledInputOf(p: CreateMovementInput): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const keys = [
+    'departmentId', 'positionId', 'businessUnitId', 'locationId', 'gradeId',
+    'employmentType', 'managerEmploymentId', 'basicSalary', 'currency', 'payMode', 'paymentTerm',
+    ...MOVEMENT_FLAT_FIELDS,
+  ] as const;
+  for (const k of keys) {
+    const v = (p as Record<string, unknown>)[k];
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * 941c9dac — record a FUTURE-dated movement as an INTENT and write nothing else.
+ *
+ * This is the whole fix. Previously every kind went straight to the writers, which CLOSE the open dated
+ * row and INSERT a new one carrying the movement's effective date — leaving the NEW row open. Since the
+ * Employment tab (and the ESS profile, the directory, the org chart and analytics) all resolve "current"
+ * as the OPEN row rather than as-of today, a promotion keyed today and effective next month became
+ * current the instant it was saved. Deferring the WRITE fixes every one of those readers at once, which
+ * changing the reads could not have done: the flat `employment` columns (job grade, Division … Category)
+ * are not effective-dated at all, so there is no as-of read to switch them to.
+ *
+ * The deltas are computed and validated HERE, at keying time, so HR finds out immediately that the
+ * movement is a no-op or that the department is missing — not silently, months later, inside a cron job.
+ * The field list they produce is frozen onto the event as the conflict key; the VALUES are recomputed
+ * against live state when the movement actually applies.
+ */
+async function scheduleMovementTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: CreateMovementInput,
+  kind: ComparisonKind,
+) {
+  const cur = await currentStateTx(tx, p.employmentId);
+  const d = movementDeltas(p, cur);
+  if (d.nothingChanged) throw new MovementNoChangeError();
+
+  const remarks = p.remarks?.trim() || null;
+  const endDate = p.endDate?.trim() || null;
+  const groupId = randomUUID();
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'employment',
+    aggregateId: p.employmentId,
+    eventType: 'employment.movement.scheduled',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.employmentId,
+    payload: {
+      type: kind,
+      effectiveDate: p.effectiveDate,
+      endDate,
+      remarks,
+      /** The conflict key — the fields this movement intends to move (see supersededScheduledIds). */
+      fields: d.fields,
+      /** What HR typed, replayed verbatim by the sweep on the effective date. */
+      input: scheduledInputOf(p),
+      // The tag is what makes this event the OWNER of the history row: the sweep's legs share this
+      // groupId and are all `secondary`, so the movement keeps exactly one line in the history.
+      movement: { type: kind, groupId, remarks, endDate } satisfies MovementTag,
+    },
+  });
+  return { employmentId: p.employmentId, scheduled: true as const, effectiveDate: p.effectiveDate };
+}
 
 /**
  * The single New Event entry point. Delegates every kind to the existing audited writer, so effective-
@@ -1262,6 +1566,13 @@ export async function createMovementEvent(ctx: SessionContext, p: CreateMovement
   if (isComparisonKind(p.kind)) {
     if (p.kind === 'employmentTypeChange' && !p.employmentType) {
       throw new Error('Select the new employment type.');
+    }
+    // 941c9dac — the effective-date fork. A movement dated TODAY OR IN THE PAST applies immediately on
+    // save (the reporter specified this explicitly: it must not wait for the next sweep). A movement
+    // dated in the FUTURE is recorded as a pending intent and applies on the morning of its date.
+    const today = todayInKualaLumpur();
+    if (p.effectiveDate > today) {
+      return withTenant(ctx, (tx) => scheduleMovementTx(tx, ctx, p, p.kind as ComparisonKind));
     }
     return applyComparisonMovement(ctx, p, p.kind);
   }
@@ -1351,6 +1662,99 @@ export async function createMovementEvent(ctx: SessionContext, p: CreateMovement
         return { employmentId: p.employmentId };
       });
   }
+}
+
+// ───────────── Scheduled application — 941c9dac ─────────────
+
+/** What one employment's due-movement pass did. `noop` counts movements that arrived to find their
+ *  values already in place — they still get an applied event, so they never retry. */
+export type ApplyDueResult = { applied: number; noop: number };
+
+/**
+ * 941c9dac — apply every PENDING movement of one employment whose effective date has arrived.
+ *
+ * APPLY-ONCE IS A PROPERTY OF THE DATA, NOT OF THE SCHEDULER. Nothing here counts runs or remembers that
+ * it fired. A movement is due iff the ledger says it is: `employment.movement.scheduled` with no
+ * `employment.movement.applied` and no `employment.movement.reversed` referring to it, and not superseded
+ * by a conflicting arrival. Applying appends the applied event, which removes it from that set forever.
+ * So running this twice on the same morning — or five times, or after a crash halfway through — converges
+ * on the same state, because the second pass simply finds nothing due. Migration 0329 backs that with a
+ * partial UNIQUE INDEX on (tenant_id, payload->>'scheduledId') for applied events, so even two concurrent
+ * sweeps cannot both write the application: the loser gets a unique violation and its transaction rolls
+ * back whole, legs included.
+ *
+ * Movements are applied oldest-effective-date first so a backlog (a sweep that did not run for days)
+ * lands in the order HR intended.
+ */
+export async function applyDueMovementsTx(
+  tx: Tx,
+  ctx: SessionContext,
+  employmentId: string,
+  today: string,
+): Promise<ApplyDueResult> {
+  const { events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId, today);
+  const due = rows
+    .filter((r) => r.scheduled && r.effectiveDate <= today && statusOf(r) === 'pending')
+    .sort((a, b) =>
+      a.effectiveDate === b.effectiveDate ? a.sequence - b.sequence : a.effectiveDate < b.effectiveDate ? -1 : 1,
+    );
+
+  let applied = 0;
+  let noop = 0;
+  for (const r of due) {
+    const ev = events.find((e) => e.id === r.id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload = (ev?.payload ?? {}) as Record<string, any>;
+    // Without the groupId the legs could not be tied back to this row and the movement would sprout a
+    // duplicate history line. Refuse rather than corrupt the history.
+    if (!r.groupId || !isComparisonKind(r.kind)) continue;
+
+    const input: CreateMovementInput = {
+      ...(payload.input ?? {}),
+      employmentId,
+      kind: r.kind,
+      effectiveDate: r.effectiveDate,
+      endDate: r.endDate,
+      remarks: r.remarks,
+    };
+
+    let changes: MovementChange[] = [];
+    try {
+      const res = await applyComparisonMovementTx(tx, ctx, input, r.kind, {
+        groupId: r.groupId,
+        allSecondary: true,
+      });
+      changes = res.changes;
+      applied += 1;
+    } catch (e) {
+      // The movement arrived to find its values already in place (someone made the same change by hand in
+      // the meantime). That is a legitimate outcome, not a failure: record it as applied-with-no-changes
+      // so it leaves the due set instead of being retried every morning forever. Any OTHER error is a real
+      // problem — rethrow so this employment's transaction rolls back whole and the sweep reports it.
+      if (!(e instanceof MovementNoChangeError)) throw e;
+      noop += 1;
+    }
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: employmentId,
+      eventType: 'employment.movement.applied',
+      actor: actorOf(ctx),
+      subjectEmploymentId: employmentId,
+      payload: {
+        scheduledId: r.id,
+        kind: r.kind,
+        effectiveDate: r.effectiveDate,
+        /** The day the sweep actually ran it — equal to the effective date on a healthy schedule, later
+         *  when the job had not run for a while. Both are worth keeping; only one is inferable. */
+        appliedOn: today,
+        /** The permanent record of what changed, from what to what. */
+        changes,
+      },
+    });
+  }
+  return { applied, noop };
 }
 
 // ───────────── Corrections: Edit + Delete (Rollback) — 66a63bd6 ─────────────
@@ -1538,6 +1942,14 @@ async function reverseLegTx(
       // Record-only (Secondment / Acting Position): it changed no state, so the reversal event alone is
       // the whole rollback.
       return;
+
+    case 'employment.movement.scheduled':
+      // 941c9dac — the scheduling event never wrote anything itself. Cancelling a PENDING movement is
+      // therefore the reversal event alone, and that is also what stops the sweep picking it up (the
+      // sweep skips any scheduled movement carrying a reversal). Cancelling an APPLIED one still undoes
+      // real state — through the legs the sweep wrote, which are separate members of this same group and
+      // are reversed by the cases above from their own stored before-values.
+      return;
   }
 }
 
@@ -1551,10 +1963,18 @@ async function reverseMovementTx(
   reason: string | null,
   corrected: boolean,
 ): Promise<void> {
-  const { events, rows } = await projectRows(tx, ctx.tenantId, employmentId);
+  const { events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
   const row = rows.find((r) => r.id === movementId);
   if (!row) throw new Error('Movement event not found.');
   if (row.reversed) throw new Error('This movement event has already been rolled back.');
+  // 941c9dac — a superseded movement never took effect and never will; there is nothing to undo. The
+  // service refuses it as well as the UI hiding it, so the affordance and the rule cannot drift apart
+  // (the same posture as the payroll-lock guard below).
+  if (statusOf(row) === 'superseded') {
+    throw new MovementNotCorrectableError(
+      'This movement was overtaken by a later one and never took effect, so there is nothing to roll back.',
+    );
+  }
   const group = groupEventsOf(events, row);
   const c = correctabilityOf(row, group, false);
   if (!c.canReverse) {
@@ -1633,10 +2053,50 @@ export async function editMovementEvent(ctx: SessionContext, p: EditMovementInpu
   const endDate = p.endDate?.trim() || null;
 
   return withTenant(ctx, async (tx) => {
-    const { events, rows } = await projectRows(tx, ctx.tenantId, p.employmentId);
+    const { events, rows, statusOf, today } = await projectRows(tx, ctx.tenantId, p.employmentId);
     const row = rows.find((r) => r.id === p.movementId);
     if (!row) throw new Error('Movement event not found.');
     if (row.reversed) throw new Error('This movement event has already been rolled back.');
+    const status = statusOf(row);
+
+    /**
+     * 941c9dac — correcting a movement that has not taken effect yet.
+     *
+     * THIS IS THE IN-PLACE-EDIT INTERACTION, RESOLVED. The existing rule (only the most recent
+     * state-changing movement may be corrected in place) exists because a correction REPLAYS through
+     * writers that act on the OPEN dated row — replaying an older one would append its result on top of
+     * the chain instead of in its place. A PENDING movement is outside that rule entirely, because it has
+     * written nothing: no dated row, no flat column, nothing for a later movement to sit on top of. So it
+     * is always correctable, whatever else has happened since, and correcting it is not a reverse-and-
+     * replay at all — it is cancelling one intent and recording another.
+     *
+     * The converse half matters just as much and is handled in STATE_CHANGING_EVENT_TYPES: because a
+     * scheduled event is not state-changing, a pending movement does not count towards
+     * latestStateChangingSpanEnd. Keying a future-dated promotion therefore does NOT freeze editing of
+     * the movement that is genuinely latest in force today — "latest movement" and "latest APPLIED
+     * movement" diverge, and the in-place rule correctly follows the applied one.
+     */
+    if (row.scheduled && status === 'pending') {
+      if (!isComparisonKind(p.kind)) {
+        throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
+      }
+      if (p.kind === 'employmentTypeChange' && !p.employmentType) {
+        throw new Error('Select the new employment type.');
+      }
+      await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+      const corrected = { ...p, remarks, endDate };
+      // A correction may also move the date INTO the past — in which case the movement stops being a
+      // schedule and applies at once, exactly as keying it fresh with that date would.
+      return p.effectiveDate > today
+        ? scheduleMovementTx(tx, ctx, corrected, p.kind)
+        : applyComparisonMovementTx(tx, ctx, corrected, p.kind);
+    }
+    if (status === 'superseded') {
+      throw new MovementNotCorrectableError(
+        'This movement was overtaken by a later one and never took effect, so there is nothing to correct.',
+      );
+    }
+
     const group = groupEventsOf(events, row);
     const spanEnd = group.length ? Math.max(...group.map((e) => e.sequence)) : -1;
     const isLatest = spanEnd === latestStateChangingSpanEnd(events, rows);

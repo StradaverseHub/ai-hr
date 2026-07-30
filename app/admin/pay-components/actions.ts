@@ -12,6 +12,7 @@ import {
   PayComponentInUseError,
   PayComponentStatutoryConfigError,
   PayRuleInvalidError,
+  previewPayRule,
   seedPayComponentCatalog,
   upsertPayComponent,
   type PayComponentInput,
@@ -174,6 +175,47 @@ export async function draftPayRuleAction(p: {
       return { error: e.reason === 'not_configured' ? t('assistUnconfigured') : t('assistFailed') };
     }
     return { error: (e as Error).message };
+  }
+}
+
+/**
+ * 61bf109d — evaluate the CANDIDATE Input Type / formula for one real employee, before saving.
+ *
+ * Read-only by construction: previewPayRule opens a tenant transaction, reads, and returns a number — it
+ * writes nothing and appends no event. It runs the SAME resolvePayComponentSet the payroll kernel runs, so
+ * a preview that disagrees with the run is unrepresentable rather than merely unlikely.
+ *
+ * Rejections come back as a LOCALISED message (the stable PayRuleErrorCode mapped to payRule.errors.*), so
+ * the admin is told "these pay items depend on each other in a loop" rather than shown a raw code — and the
+ * preview refuses exactly what Save would refuse, because both call the same two validators.
+ */
+export async function previewPayRuleAction(p: {
+  code: string;
+  kind: string;
+  prorates: boolean;
+  rule: PayRule | null;
+  employmentId: string;
+}): Promise<
+  | { ok: true; amount: number; scope: { basic: number; days: number; hours: number }; inputs: { code: string; amount: number }[] }
+  | { ok: false; message: string }
+> {
+  const s = await getSession();
+  const tr = await getTranslations('payRule');
+  const kind = (['allowance', 'deduction', 'contribution', 'non_payable'] as const).includes(p.kind as never)
+    ? (p.kind as PayComponentInput['kind'])
+    : 'allowance';
+  try {
+    const res = await previewPayRule(s, {
+      code: p.code,
+      rule: p.rule,
+      kind,
+      prorates: p.prorates,
+      employmentId: p.employmentId,
+    });
+    if (!res.ok) return { ok: false, message: tr(`errors.${res.code}`) };
+    return { ok: true, amount: res.amount, scope: res.scope, inputs: res.inputs };
+  } catch {
+    return { ok: false, message: tr('previewFailed') };
   }
 }
 

@@ -56,7 +56,7 @@ import { cp38ForPeriod } from './cp38';
 import { applyLoansForBatch } from './loans';
 import { warnIfHolidaysIncomplete, holidayDatesFor, type HolidayCompletenessWarning } from './holidays';
 import type { ShiftDifferential, PayRule, PayrollPolicyConfig } from '../db/schema';
-import { resolvePayRule } from './pay-rule';
+import { resolvePayComponentSet, type PayRuleScope } from './pay-rule';
 import { resolveAssignedPolicy } from './payroll-policy';
 import {
   applyOvertimeCaps,
@@ -2558,6 +2558,9 @@ export async function generatePayslips(
       // one-off batch component has no override, so this is null there too (⇒ catalog flag, unchanged).
       prorateOverride: boolean | null;
       rule: PayRule | null; // Payroll Setup — configurable pay-rule; null ⇒ stored amount (legacy behaviour).
+      // 61bf109d — the rank recorded at save time (migration 0330). Components resolve in ascending order so
+      // a rule that reads another pay item sees that item's final figure. 0 on every legacy row.
+      resolutionOrder: number;
       // LHDN PCB 2026 classification (feedback 09b554e9). epfBonus2012 routes the amount down the
       // additional-remuneration EPF path regardless of the SOCSO flag; pcbRemunerationType (when declared)
       // overrides the epf/socso stream inference; pcbExemptionCode selects the annual exemption cap.
@@ -2583,6 +2586,7 @@ export async function generatePayslips(
         prorates: payComponent.prorates,
         rounding: payComponent.roundingMethod,
         rule: payComponent.rule, // Payroll Setup — read for the resolver (null on every legacy row).
+        resolutionOrder: payComponent.resolutionOrder, // 61bf109d — recorded dependency rank (0 on legacy rows).
         // LHDN PCB 2026 classification (feedback 09b554e9) — null/false on every legacy row.
         epfBonus2012: payComponent.epfBonus2012,
         pcbRemunerationType: payComponent.pcbRemunerationType,
@@ -2723,14 +2727,17 @@ export async function generatePayslips(
                 prorates: t.compProrates ?? false,
                 prorateOverride: null,
                 rule: null, // keyed amount is authoritative — never re-derive via a catalog rule
+                // 61bf109d — a null rule short-circuits to `amount`, so the rank is inert here; 0 keeps the
+                // one-off row in the first resolution group, exactly where an unranked row belonged before.
+                resolutionOrder: 0,
                 // LHDN PCB 2026 classification rides the catalog row (feedback 09b554e9).
                 epfBonus2012: t.compEpfBonus2012 ?? false,
                 pcbRemunerationType: t.compPcbRemunerationType ?? null,
                 pcbExemptionCode: t.compPcbExemptionCode ?? null,
               }
             : t.kind === 'earning'
-              ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null }
-              : { code: 'TXN_DEDUCTION', name: t.notes ?? 'One-off deduction', kind: 'deduction', amount: amt, rounding: 'none', epf: false, socso: false, pcb: false, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null };
+              ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null }
+              : { code: 'TXN_DEDUCTION', name: t.notes ?? 'One-off deduction', kind: 'deduction', amount: amt, rounding: 'none', epf: false, socso: false, pcb: false, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null };
         const list = batchCompByEmp.get(t.employmentId) ?? [];
         list.push(row);
         batchCompByEmp.set(t.employmentId, list);
@@ -2847,7 +2854,12 @@ export async function generatePayslips(
       // multiplier below does NOT also apply to them — no double-proration. `percent_of basic` reads the
       // Personnel compensation basic (seeded once below, order-independent). There is NO division in
       // the resolver, so a zero-days / zero-hours employee can never abort the batch.
-      const rscope = { basic: 0, daysWorked: factor * dim, hours: hoursByEmp.get(e.employmentId) ?? 0 };
+      // 61bf109d — `components` carries each pay item's resolved amount for rules that read another item.
+      // It starts with BASIC PINNED to the authoritative Personnel figure (seeded just below): the BASIC
+      // component row is inert in this engine, so a rule reading `component:'BASIC'` must get the same
+      // number the `basic` operand gives, never the stale component amount. resolvePayComponentSet does not
+      // overwrite a caller-pinned code.
+      const rscope: PayRuleScope = { basic: 0, daysWorked: factor * dim, hours: hoursByEmp.get(e.employmentId) ?? 0, components: {} };
       // ── Feedback 64fb5e48 (supersedes the R37 62e370b0 fallback): Personnel is the ONLY basic source ──
       // The BASIC line always reads the Personnel Basic Salary record (the compensation join, `e.basic`) —
       // exactly what the legacy path reads. A BASIC employment_pay_component never supplies the amount any
@@ -2859,18 +2871,26 @@ export async function generatePayslips(
       // proration). Daily/hourly modes override both in the payslip loop, as before.
       const compensationBasic = Number(e.basic ?? 0);
       rscope.basic = compensationBasic;
+      rscope.components = { BASIC: compensationBasic }; // pinned — see the rscope comment above
       basicRaw = compensationBasic;
       basicGross = round2(compensationBasic * factor);
       // A single resolved value per component, substituted at BOTH read sites (the line-868 amount and the
       // line-877 basicRaw accumulator) so the gross AND the statutory base see the same number.
-      const resolveAmount = (c: (typeof comps)[number]): number =>
-        c.rule && c.rule.kind !== 'fixed' ? resolvePayRule(c.rule, rscope, c.amount) : c.amount;
+      //
+      // 61bf109d — resolution is now a SET operation over the recorded dependency order, not a per-row map.
+      // A `percent_of base:'component'` or `formula` rule reads ANOTHER pay item, so the value of that item
+      // must already exist when this one is computed; resolvePayComponentSet walks the groups in ascending
+      // pay_component.resolution_order (planned and refused-if-cyclic at save time, migration 0330), which
+      // is what makes two runs of the same payroll agree. For an all-fixed catalog every rank is 0 and each
+      // entry short-circuits to `c.amount` — the exact expression this line used before, hence byte-identical.
+      // The SAME function backs the admin preview, so the preview cannot drift from the run.
+      const resolvedByIdx = resolvePayComponentSet(comps, rscope);
 
-      for (const c of comps) {
+      for (const [ci, c] of comps.entries()) {
         // Feedback 64fb5e48 — a BASIC component is inert in the engine: the Personnel record above already
         // seeded basicRaw/basicGross/rscope.basic, and a stale component amount must never override pay.
         if (c.code === 'BASIC') continue;
-        const resolved = resolveAmount(c);
+        const resolved = resolvedByIdx[ci];
         // 1.2.1 Fixed Transaction — the per-employee override wins over the catalog `prorates` flag; null
         // (every legacy/backfilled row + every one-off batch component) inherits the catalog flag, so this is
         // byte-identical to the prior `c.prorates` behaviour. `factor` is the EA-1955 join/resign tenure

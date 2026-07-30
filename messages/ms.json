@@ -823,7 +823,10 @@
         "blacklistActiveNote": "Pekerja ini sedang disenaraihitamkan.",
         "assignmentViewOnlyNote": "Maklumat ini untuk paparan sahaja. Perubahan tugasan organisasi direkodkan sebagai peristiwa pergerakan, supaya setiap satu mengekalkan tarikh berkuat kuasa, sebabnya dan tempatnya dalam sejarah pekerjaan.",
         "assignmentViewOnlyLink": "Rekod peristiwa pergerakan",
-        "joinDatesViewOnlyNote": "Kedua-dua tarikh menyertai adalah untuk paparan sahaja. Ia ditetapkan bersama semasa pekerja dicipta; selepas itu Perubahan Tarikh Menyertai merekodkan perpindahan ke syarikat lain dalam kumpulan, dan Pembetulan Tarikh Menyertai Kumpulan merekodkan pembetulan yang dibenarkan pada tarikh perkhidmatan induk."
+        "joinDatesViewOnlyNote": "Kedua-dua tarikh menyertai adalah untuk paparan sahaja. Ia ditetapkan bersama semasa pekerja dicipta; selepas itu Perubahan Tarikh Menyertai merekodkan perpindahan ke syarikat lain dalam kumpulan, dan Pembetulan Tarikh Menyertai Kumpulan merekodkan pembetulan yang dibenarkan pada tarikh perkhidmatan induk.",
+        "pendingMovementTitle": "Perubahan berjadual yang belum berkuat kuasa",
+        "pendingMovementItem": "{kind} — berkuat kuasa {date}",
+        "pendingMovementNote": "Nilai di bawah ialah nilai hari ini. Ia tidak akan berubah sehingga tarikh masing-masing tiba."
       },
       "documents": {
         "title": "Dokumen",
@@ -1155,7 +1158,13 @@
         "deleteConfirmDescription": "Maklumat pekerja akan kembali kepada keadaan sebelum peristiwa ini. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan, supaya rekod kekal boleh diaudit.",
         "deleteConfirmPayroll": "Larian gaji yang telah diproses sudah merangkumi tempoh ini. Pembatalan ini TIDAK akan memproses semula sebarang slip gaji — proses semula secara berasingan jika perlu. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan.",
         "correctionReasonLabel": "Sebab pembetulan (pilihan)",
-        "payrollLocked": "Dikunci oleh larian gaji yang telah ditutup"
+        "payrollLocked": "Dikunci oleh larian gaji yang telah ditutup",
+        "status": {
+          "pending": "Menunggu",
+          "applied": "Berkuat kuasa",
+          "superseded": "Digantikan",
+          "reversed": "Dibatalkan"
+        }
       },
       "salaryCurrency": "Mata wang",
       "emergency": {
@@ -5854,7 +5863,9 @@
     "toastSeeded": "Katalog lalai dimuatkan ({created} ditambah)",
     "errorInUse": "Item gaji ini digunakan oleh {refs} rekod — nyahaktifkan dan bukannya memadam.",
     "errorCodeDuplicate": "Kod gaji {code} sudah wujud — kod gaji mesti unik.",
-    "errorCodeDuplicateArchived": "Kod gaji {code} wujud tetapi dinyahaktifkan — aktifkannya semula."
+    "errorCodeDuplicateArchived": "Kod gaji {code} wujud tetapi dinyahaktifkan — aktifkannya semula.",
+    "inputType_qty_rate": "Kuantiti × kadar",
+    "inputType_formula": "Formula"
   },
   "notifications": {
     "title": "Pemberitahuan",
@@ -6568,13 +6579,13 @@
   },
   "payRule": {
     "sectionTitle": "Bagaimana ia dikira?",
-    "sectionHint": "Pilih cara komponen ini dikira. \"Jumlah tetap\" mengekalkan tingkah laku sedia ada.",
-    "kindLabel": "Pengiraan",
+    "sectionHint": "Pilih cara jumlah itu diukur. \"Jumlah tetap\" mengekalkan tingkah laku semasa.",
+    "kindLabel": "Jenis Input",
     "kind_fixed": "Jumlah tetap",
-    "kind_percent_of": "% daripada gaji asas",
-    "kind_per_day": "Setiap hari bekerja",
-    "kind_per_hour": "Setiap jam bekerja",
-    "kind_flat_capped": "Jumlah tetap berhad",
+    "kind_percent_of": "Peratusan daripada jumlah lain",
+    "kind_per_day": "Bilangan hari bekerja",
+    "kind_per_hour": "Bilangan jam bekerja",
+    "kind_flat_capped": "Jumlah tetap dengan had",
     "pctLabel": "Peratusan gaji asas (%)",
     "rateDayLabel": "Kadar sehari (RM)",
     "rateHourLabel": "Kadar sejam (RM)",
@@ -6584,7 +6595,12 @@
     "errors": {
       "BAD_KIND": "Pengiraan itu tidak disokong.",
       "OUT_OF_RANGE": "Masukkan nombor dalam julat yang dibenarkan.",
-      "PRORATION_CONFLICT": "Peraturan sehari atau sejam tidak boleh digunakan pada komponen yang prorata. Matikan \"Prorata\" untuk komponen ini."
+      "PRORATION_CONFLICT": "Peraturan sehari atau sejam tidak boleh digunakan pada komponen yang prorata. Matikan \"Prorata\" untuk komponen ini.",
+      "SELF_REFERENCE": "Item gaji tidak boleh dikira daripada dirinya sendiri.",
+      "CYCLE": "Item gaji ini bergantung antara satu sama lain dalam gelung. Ubah salah satunya supaya rantaian itu mempunyai penghujung.",
+      "UNKNOWN_COMPONENT": "Pilih item gaji yang wujud dan masih aktif.",
+      "STATUTORY_FORBIDDEN": "KWSP, PERKESO, SIP dan PCB ditetapkan oleh undang-undang dan tidak boleh dikira dengan formula.",
+      "UNSAFE_DIVISION": "Anda hanya boleh membahagi dengan nombor tetap yang bukan sifar."
     },
     "assistButton": "Bantuan AI",
     "assistTitle": "Terangkan cara ia patut dikira",
@@ -6595,7 +6611,41 @@
     "assistCancel": "Batal",
     "assistUnconfigured": "AI tidak dikonfigurasikan untuk ruang kerja ini.",
     "assistFailed": "Tidak dapat menghasilkan peraturan yang sah daripada penerangan itu. Cuba ubah ayat.",
-    "assistResultTitle": "Peraturan dicadangkan"
+    "assistResultTitle": "Peraturan dicadangkan",
+    "kind_qty_rate": "Kuantiti didarab dengan kadar",
+    "kind_formula": "Nilai yang dikira oleh formula",
+    "qtyLabel": "Kuantiti",
+    "rateLabel": "Kadar (RM)",
+    "baseLabel": "Peratusan daripada",
+    "base_basic": "Gaji pokok",
+    "base_component": "Item gaji lain",
+    "componentLabel": "Item gaji",
+    "componentPlaceholder": "Pilih item gaji",
+    "formulaTitle": "Formula",
+    "formulaHint": "Bina pengiraan langkah demi langkah. Langkah digunakan mengikut urutan, dari atas ke bawah.",
+    "formulaStart": "Mula dengan",
+    "formulaAddStep": "Tambah langkah",
+    "formulaRemoveStep": "Buang langkah",
+    "operand_number": "Jumlah tetap",
+    "operand_basic": "Gaji pokok",
+    "operand_days": "Hari bekerja",
+    "operand_hours": "Jam bekerja",
+    "operand_component": "Item gaji lain",
+    "op_add": "tambah",
+    "op_sub": "tolak",
+    "op_mul": "darab dengan",
+    "op_div": "bahagi dengan",
+    "previewTitle": "Semak terhadap pekerja",
+    "previewHint": "Pilih pekerja untuk melihat hasilnya daripada angka sebenar mereka. Tiada apa-apa yang disimpan.",
+    "previewEmployee": "Pekerja",
+    "previewRun": "Tunjukkan hasil",
+    "previewResult": "Hasil",
+    "previewDays": "Hari dalam tempoh",
+    "previewHours": "Jam bekerja",
+    "previewInputs": "Item gaji yang digunakan",
+    "previewNone": "Tiada pekerja tersedia untuk disemak.",
+    "previewNote": "Ditunjukkan untuk tempoh PENUH, sebelum pembahagian pro rata dan pembundaran — payroll menggunakannya semasa proses dijalankan.",
+    "previewFailed": "Tidak dapat mengira hasil untuk pekerja itu."
   },
   "review": {
     "title": "Penilaian",

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import { listPayComponents } from '@/core/pay-components';
-import type { PayRule } from '@/core/pay-rule';
+import type { PayRule, PayRuleKind } from '@/core/pay-rule';
 import { Card, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -13,10 +13,10 @@ import { archiveComponentAction, deleteComponentAction, seedCatalogAction } from
 const PAGE = '/admin/pay-components';
 type Status = 'active' | 'inactive' | 'all';
 
-/** Input Type is DERIVED from the pay-rule kind (read-only — making it editable is a later change).
+/** Input Type is DERIVED from the pay-rule kind — this column stays read-only; 61bf109d made the
+ *  underlying field editable on the maintenance form (the "Input Type" selector in pay-rule-editor.tsx).
  *  null / 'fixed' ⇒ fixed amount, matching the kernel's legacy fixed-amount behaviour. */
-const inputTypeOf = (rule: unknown): 'fixed' | 'percent_of' | 'per_day' | 'per_hour' | 'flat_capped' =>
-  (rule as PayRule | null)?.kind ?? 'fixed';
+const inputTypeOf = (rule: unknown): PayRuleKind => (rule as PayRule | null)?.kind ?? 'fixed';
 
 /**
  * Pay Items (feedback 911b2886) — LIST-ONLY page. The Create / Edit maintenance form moved to dedicated
