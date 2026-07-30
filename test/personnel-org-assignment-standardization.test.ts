@@ -127,13 +127,16 @@ describe('1001ff61 (A) — Business Unit on the assignment', () => {
     expect(hist[0].businessUnitId).toBe(bu.id);
   });
 
-  it('carries the BU forward on an unrelated edit (status only)', async () => {
+  // R81 (9cbf5e0d): the "unrelated edit" was a status change, which no longer exists. An employment-type
+  // change is the equivalent unrelated dimension — it still CLOSE+INSERTs a new dated version, and the BU
+  // must survive it exactly as before.
+  it('carries the BU forward on an unrelated edit (employment type only)', async () => {
     const hire = await hireOne();
     const bu = await createBusinessUnit(adminCtx(b), { companyId: b.companyId, code: `BU${randomUUID().slice(0, 8).toUpperCase()}`, name: 'Ops BU' });
     await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-03-01', businessUnitId: bu.id });
-    await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-04-01', status: 'on_leave' });
+    await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-04-01', employmentType: 'contract' });
     const open = await openRow(hire.employmentId);
-    expect(open.status).toBe('on_leave');
+    expect(open.employmentType).toBe('contract');
     expect(open.businessUnitId).toBe(bu.id); // carried forward
   });
 

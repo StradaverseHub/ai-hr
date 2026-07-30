@@ -250,7 +250,8 @@
       "active": "在职",
       "active_serving_notice": "在职 — 通知期内",
       "resigned": "已离职",
-      "blacklisted": "已列入黑名单"
+      "blacklisted": "已列入黑名单",
+      "withhold": "暂扣"
     },
     "list": {
       "title": "员工",
@@ -2265,10 +2266,7 @@
       "previewButtonLabel": "预览符合资格的员工",
       "eligibleCountLabel": "{count, plural, one {当前有 # 名员工符合资格（截至此刻）} other {当前有 # 名员工符合资格（截至此刻）}}",
       "status_active": "在职",
-      "status_on_leave": "休假中",
       "status_probation": "试用期",
-      "status_offboarding": "离职中",
-      "status_terminated": "已终止",
       "employmentType_full_time": "全职",
       "employmentType_part_time": "兼职",
       "employmentType_contract": "合同",
@@ -2278,7 +2276,11 @@
       "chipSelectAll": "全选",
       "chipClearAll": "清除全部",
       "chipAllSelected": "已全选",
-      "chipNSelected": "已选 {count} 项"
+      "chipNSelected": "已选 {count} 项",
+      "status_active_serving_notice": "在职 — 通知期内",
+      "status_resigned": "已离职",
+      "status_blacklisted": "已列入黑名单",
+      "status_withhold": "暂扣"
     },
     "cycle": {
       "back": "绩效",

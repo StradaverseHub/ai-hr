@@ -40,6 +40,7 @@ import {
   type MeritBudget,
   type StageKind,
 } from '@/core/performance';
+import { EMPLOYMENT_STATUSES } from '@/core/employment-status';
 
 const num = (v: FormDataEntryValue | null) => {
   const n = Number(String(v ?? '').trim());
@@ -50,7 +51,12 @@ const str = (v: FormDataEntryValue | null) => {
   return s.length ? s : undefined;
 };
 
-const STATUS_VALUES: readonly AssignmentStatus[] = ['active', 'on_leave', 'probation', 'offboarding', 'terminated'];
+// R81 (9cbf5e0d): the eligibility Status predicate speaks the ONE derived Employee Status vocabulary.
+// Hardcoding the old five (three of them now retired) here is what let a tampered — or merely stale —
+// submit re-introduce the three retired values into a stored rule after the screens had
+// stopped offering them. Sourcing the list from EMPLOYMENT_STATUSES means the parser can only ever accept
+// what the deriver can actually produce.
+const STATUS_VALUES: readonly AssignmentStatus[] = EMPLOYMENT_STATUSES;
 const EMP_TYPE_VALUES: readonly EmploymentTypeValue[] = ['full_time', 'part_time', 'contract', 'intern'];
 
 /** Parse the eligibility-rule form fields (multi-selects + number + date) into an EligibilityRules

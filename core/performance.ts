@@ -38,6 +38,8 @@ import {
   reviewCycle,
   reviewGoal,
 } from '../db/schema';
+import type { EmploymentStatus } from './employment-status';
+import { employmentStatusSql } from './employment-status-sql';
 import { setCompensation } from './comp';
 import { setPayrollInput } from './payroll';
 import { assertCanDecide } from './approvals';
@@ -65,8 +67,19 @@ export type MeritBudget = { kind: 'percent' | 'amount'; value: number } | null;
 
 // ───────────────────────────── Eligibility rules engine ─────────────────────────────
 
-/** assignment.status values used by the Status predicate — mirrors assignmentStatusEnum. */
-export type AssignmentStatus = 'active' | 'on_leave' | 'probation' | 'offboarding' | 'terminated';
+/**
+ * The Status predicate's vocabulary. R81 (9cbf5e0d): this WAS a private mirror of the stored
+ * `assignment_status` enum ('active' | 'on_leave' | 'probation' | 'offboarding' | 'terminated'). That enum
+ * and its column are gone, and three of those five values were retired outright, so the predicate now reads
+ * the ONE derived Employee Status — the same buckets Personnel, the dashboard, leave and analytics show.
+ *
+ * BEHAVIOUR CHANGE, DELIBERATE AND REPORTED: a cycle whose stored rules named a status used to be matched
+ * against a hand-set column that nobody was allowed to keep current — test/performance-eligibility.test.ts
+ * already documented the hazard (an employee with `terminatedOn` null but a stale stored 'terminated'). It
+ * now matches against the employee's real, dated status. Migration 0326 remaps stored rules; the reported
+ * backfill (scripts/report-employee-status-retirement.ts) prints every cycle it touches.
+ */
+export type AssignmentStatus = EmploymentStatus;
 /** assignment.employmentType values used by the Employment-Type predicate — mirrors employmentTypeEnum. */
 export type EmploymentTypeValue = 'full_time' | 'part_time' | 'contract' | 'intern';
 
@@ -80,7 +93,7 @@ export type EmploymentTypeValue = 'full_time' | 'part_time' | 'contract' | 'inte
 export type EligibilityRules = {
   /** Cycle-scope companies (company.id). Empty/absent = every company the cycle already covers. */
   companyIds?: string[];
-  /** assignment.status whitelist. Empty/absent = any status. */
+  /** Derived Employee Status whitelist. Empty/absent = any status. */
   statuses?: AssignmentStatus[];
   /** assignment.employmentType whitelist — how HR excludes interns. Empty/absent = any type. */
   employmentTypes?: EmploymentTypeValue[];
@@ -115,8 +128,11 @@ export function serviceMonths(hiredOn: string, asOf: string): number {
  * decision plus the reasons it failed (for previews / debugging).
  *
  * NULL-HANDLING (explicit, panel-flagged — confirm-before-build item #3, shipping the excluded default):
- *   An employee with NO current assignment row arrives here with status/employmentType/companyId = null.
- *   Any configured statuses / employmentTypes / companyIds predicate then FAILS (excluded by default) —
+ *   An employee with NO current assignment row arrives here with employmentType = null (companyId comes
+ *   from `employment` and is never null; since R81 `status` is DERIVED from `employment` too, so it is
+ *   never null either — an assignment-less employee now gets a real status instead of being excluded by
+ *   a rule they were never actually judged against). Any configured predicate whose value IS null FAILS
+ *   (excluded by default) —
  *   we do NOT silently pass a null through the new stricter predicate set. If NONE of those three
  *   predicates is configured, a null-assignment employee still passes (only hiredOn-based predicates
  *   apply), matching "no filter can't exclude what it doesn't check."
@@ -280,13 +296,17 @@ export async function createCycle(
  * with null status/employmentType (evaluateEligibility's null-handling then decides inclusion).
  *
  * RLS already limits the rows to employments the caller administers. employment.terminatedOn stays the
- * authoritative "terminated" signal (2b) — filtered here in the WHERE — while assignment.status is an
- * ADDITIONAL predicate applied by evaluateEligibility, never a replacement.
+ * authoritative "terminated" signal (2b) — filtered here in the WHERE — while the derived Employee Status
+ * is an ADDITIONAL predicate applied by evaluateEligibility, never a replacement.
  */
 async function eligibilityCandidates(
   tx: Tx,
   tenantId: string,
   cycleCompanyId: string | null,
+  /** R81: the date the Employee Status is derived AS OF — the same `asOf` evaluateEligibility uses, so the
+   *  status predicate and the service/hire-date predicates all judge the employee on one single day. The
+   *  stored column this replaced had no as-of at all; it was simply whatever was last typed. */
+  asOf: string,
 ): Promise<Array<{ employmentId: string } & EligibilityCandidate>> {
   // DISTINCT ON (employment_id) with a latest-row-wins ORDER BY collapses any duplicate "current"
   // assignment rows to one. LEFT JOIN keeps employments with no current assignment (null status/type).
@@ -295,7 +315,7 @@ async function eligibilityCandidates(
       employmentId: employment.id,
       hiredOn: employment.hiredOn,
       companyId: employment.companyId,
-      status: sql<AssignmentStatus | null>`${assignment.status}`,
+      status: sql<AssignmentStatus | null>`${employmentStatusSql(asOf)}`,
       employmentType: sql<EmploymentTypeValue | null>`${assignment.employmentType}`,
     })
     .from(employment)
@@ -346,7 +366,7 @@ export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
 
     const rules = (cycle.eligibilityRules ?? null) as EligibilityRules | null;
     const asOf = new Date().toISOString().slice(0, 10);
-    const candidates = await eligibilityCandidates(tx, ctx.tenantId, cycle.companyId);
+    const candidates = await eligibilityCandidates(tx, ctx.tenantId, cycle.companyId, asOf);
     const members = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible);
 
     let spawned = 0;
@@ -402,7 +422,7 @@ export async function previewEligibleCount(
   }
   return withTenant(ctx, async (tx) => {
     const asOf = new Date().toISOString().slice(0, 10);
-    const candidates = await eligibilityCandidates(tx, ctx.tenantId, p.companyId ?? null);
+    const candidates = await eligibilityCandidates(tx, ctx.tenantId, p.companyId ?? null, asOf);
     const count = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible).length;
     return { count };
   });

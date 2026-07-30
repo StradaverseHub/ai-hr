@@ -74,6 +74,6 @@ describe('deriveEmploymentStatus', () => {
   });
 
   it('exposes the canonical bucket order for pickers/legends', () => {
-    expect(EMPLOYMENT_STATUSES).toEqual(['probation', 'active', 'active_serving_notice', 'resigned', 'blacklisted']);
+    expect(EMPLOYMENT_STATUSES).toEqual(['probation', 'active', 'active_serving_notice', 'resigned', 'blacklisted', 'withhold']);
   });
 });

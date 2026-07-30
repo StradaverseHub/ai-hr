@@ -25,9 +25,20 @@ import type { EmploymentStatus } from './employment-status';
  */
 export function employmentStatusSql(today: string = todayInKualaLumpur()): SQL<EmploymentStatus> {
   const ended = sql`least(${employment.resignationDate}, ${employment.lastWorkingDate}, ${employment.terminatedOn})`;
-  const confirmation = sql`coalesce(${employment.finalConfirmationDate}, ${employment.confirmationDate})`;
+  // R81: the same four-step fallback deriveEmploymentStatus uses — a recorded confirmation first, then
+  // the probation end date, then the provisional end date written at hire. See the TS twin for why the
+  // last two are needed at all (nothing writes a confirmation date at hire).
+  const confirmation = sql`coalesce(${employment.finalConfirmationDate}, ${employment.confirmationDate}, ${employment.probationEndDate}, ${employment.provisionalEndOn})`;
   return sql<EmploymentStatus>`case
     when ${employment.blacklistedAt} is not null then 'blacklisted'
+    /* R81 'withhold' has NO branch here on purpose. The TypeScript twin reads emp.payrollHoldAt, an
+       input that no column feeds (Payroll has no salary-hold setting yet), so the SQL twin has nothing
+       to read and the branch would be a dead "when false then withhold". The two implementations
+       therefore agree on every row the database can actually produce, which is what
+       test/personnel-status-sync.test.ts pins. A BLOCK comment, not a line comment: this fragment is
+       composed into larger statements and a stray -- would comment out whatever followed it on one line.
+       When the payroll hold lands it adds the column, this branch, and the TS input together, in ONE
+       change. */
     when ${ended} is not null and ${today}::date >= ${ended} then 'resigned'
     when ${ended} is not null then 'active_serving_notice'
     when ${confirmation} is not null and ${today}::date < ${confirmation} then 'probation'

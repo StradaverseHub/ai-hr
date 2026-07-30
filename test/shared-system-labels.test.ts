@@ -217,7 +217,6 @@ describe('Shared System Labels — data-integrity guard', () => {
       employmentId: emp.id,
       departmentId: id,
       employmentType: 'full_time',
-      status: 'active',
       validFrom: '2024-01-01',
     });
 

@@ -120,6 +120,11 @@ const STATUS_STYLES: Record<string, string> = {
   active_serving_notice: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   resigned: 'bg-muted text-muted-foreground',
   blacklisted: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
+  // R81 (9cbf5e0d) — the sixth bucket. Orange, deliberately distinct from both the amber "serving notice"
+  // (a normal, expected state) and the rose "blacklisted" (a sanction): a payroll hold is neither routine
+  // nor punitive. No employee can carry it until Payroll grows a hold setting; the colour is here so the
+  // vocabulary is complete on the day it does.
+  withhold: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400',
 };
 
 /**
