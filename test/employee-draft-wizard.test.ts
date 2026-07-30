@@ -317,10 +317,9 @@ describe('§3 a draft creates nothing until it is completed', () => {
     // PROJECTION, not the event log, because the projection is what the reporter actually sees.
     const history = await movementHistory(ctx, employmentId);
     expect(history.filter((r) => r.kind === 'hired')).toHaveLength(1);
-    // The whole history for a brand-new employee is that one row plus the initial salary — a second
-    // Hired-dated row is exactly the fault being guarded against, so the SET is asserted, not just
-    // the count. (`entryDate` is NOT null on the synthesized row despite what core/movement.ts's
-    // type comment says — r85 routed it through todayInKualaLumpur; that stale comment is reported.)
+    // A wizard-created employee DOES have an `employment.hired` event, so its Hired row is the
+    // event-derived one with a real entry date — core/movement.ts only synthesizes an entry-date-less
+    // Hired row for seed/legacy employments that never had the event. What matters here is the COUNT.
     // Exactly ONE row, and it is the Hired row. The initial salary is deliberately part of Hired
     // rather than a movement of its own (core/movement.ts: "Initial salary at hire is part of Hired"),
     // which is why a correct wizard produces a single-row history for a brand-new employee.
