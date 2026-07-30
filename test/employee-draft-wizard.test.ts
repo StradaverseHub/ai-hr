@@ -317,8 +317,14 @@ describe('§3 a draft creates nothing until it is completed', () => {
     // PROJECTION, not the event log, because the projection is what the reporter actually sees.
     const history = await movementHistory(ctx, employmentId);
     expect(history.filter((r) => r.kind === 'hired')).toHaveLength(1);
-    // The synthesized Hired row projects from no event at all, which is what `entryDate: null` means.
-    expect(history.find((r) => r.kind === 'hired')!.entryDate).toBeNull();
+    // The whole history for a brand-new employee is that one row plus the initial salary — a second
+    // Hired-dated row is exactly the fault being guarded against, so the SET is asserted, not just
+    // the count. (`entryDate` is NOT null on the synthesized row despite what core/movement.ts's
+    // type comment says — r85 routed it through todayInKualaLumpur; that stale comment is reported.)
+    // Exactly ONE row, and it is the Hired row. The initial salary is deliberately part of Hired
+    // rather than a movement of its own (core/movement.ts: "Initial salary at hire is part of Hired"),
+    // which is why a correct wizard produces a single-row history for a brand-new employee.
+    expect(history.map((r) => r.kind)).toEqual(['hired']);
     // And nothing recorded a movement of its own.
     const recorded = await owner.db
       .select({ type: schema.domainEvent.eventType })
@@ -374,8 +380,15 @@ describe('§4 migration 0337', () => {
 
   it('is visible to the AUTHOR or an admin — a different rule from an employment row', () => {
     expect(mig).toContain('app.is_admin() OR app.is_self_person(created_by_person_id)');
-    // Deliberately NOT app.can_see_person: a draft is not about a person yet.
-    expect(mig).not.toContain('can_see_person');
+    // Deliberately NOT app.can_see_person: a draft is not about a person yet. Asserted against the
+    // SQL only — the header comment says the same thing in prose, and a guard that trips on its own
+    // explanation is a guard nobody will keep.
+    const sqlOnly = mig
+      .split('\n')
+      .filter((l) => !l.trimStart().startsWith('--'))
+      .join('\n');
+    expect(sqlOnly).not.toContain('can_see_person');
+    expect(sqlOnly).toContain('ENABLE ROW LEVEL SECURITY');
   });
 
   it('its journal entry sits ABOVE the deployed watermark (the r84 stale-number trap)', () => {

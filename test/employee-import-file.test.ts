@@ -116,11 +116,17 @@ describe('§1 readImportFile — File → CSV text', () => {
         code: 'UNSUPPORTED_FILE_TYPE',
       });
     }
-    // A file NAMED .xlsx that is not a workbook fails on its CONTENTS, not its name — a different
-    // code, and a different message to the user.
-    await expect(readImportFile(csvFile('not a workbook', 'employees.xlsx'))).rejects.toMatchObject({
-      code: 'FILE_READ_FAILED',
-    });
+    // A file NAMED .xlsx that is NOT a workbook is a case worth stating precisely, because SheetJS
+    // does not reject it: `XLSX.read` falls back to parsing arbitrary bytes as delimited text, so a
+    // mis-named text file DECODES rather than throwing. That is safe, and this asserts why — the
+    // decoded rows carry none of the required columns, so `analyze()` reports them missing and the
+    // preview offers nothing to import. Nothing is created either way; the difference is only which
+    // message the admin sees.
+    const misnamed = await readImportFile(csvFile('not a workbook', 'employees.xlsx'));
+    expect(misnamed.format).toBe('xlsx');
+    const decoded = parseCsvRecords(misnamed.text);
+    const stillMissing = IMPORT_COLUMNS.required.filter((c) => !decoded.headers.includes(c));
+    expect(stillMissing).toEqual([...IMPORT_COLUMNS.required]);
   });
 
   it('accepts .csv case-insensitively (Windows loves EMPLOYEES.CSV)', async () => {
@@ -338,15 +344,21 @@ describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite
   });
 
   it('keeps check-before-create: the preview renders before any commit is offered', () => {
-    expect(src).toMatch(/\{preview && !result && <PreviewTable/);
+    // The guard is unchanged; d8471481 only broke the JSX across lines to pass the error-report
+    // handler down, so the assertion matches the CONDITION rather than a one-line formatting of it.
+    expect(src).toMatch(/preview && !result && \(?\s*<PreviewTable/);
     // The import button lives inside the preview and is disabled when nothing is importable.
     expect(src).toMatch(/onClick=\{onImport\} disabled=\{busy \|\| preview\.validCount === 0\}/);
   });
 
   it('renders rejected rows, their reasons, and missing columns', () => {
     // Preview: every row is mapped (no filter to the valid ones) and !ok rows print their errors.
+    // d8471481 added an error-report DOWNLOAD that filters to the failed rows — which is the whole
+    // point of an error report — so the no-filtering rule is asserted on the TABLE BODY only.
     expect(src).toMatch(/preview\.rows\.map\(\(r\) =>/);
-    expect(src).not.toMatch(/preview\.rows\.filter/);
+    const tableBody = src.slice(src.indexOf('<tbody'), src.indexOf('</tbody>'));
+    expect(tableBody).not.toMatch(/preview\.rows\.filter/);
+    expect(src).toMatch(/onDownloadErrors\(preview\.rows\.filter\(\(r\) => !r\.ok\)\)/);
     expect(src).toMatch(/r\.errors\.join\('; '\)/);
     expect(src).toMatch(/preview\.missingColumns\.map/);
     // Result card: failures listed with row number and message.

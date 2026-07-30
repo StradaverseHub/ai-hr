@@ -77,7 +77,9 @@ describe('the dedicated screen carries the whole job', () => {
     for (const step of ['profile', 'employment', 'statutory', 'payroll', 'review']) {
       expect(wizard.includes(`step === '${step}'`), step).toBe(true);
     }
-    expect(wizard).toContain("t('steps.");
+    // The step label is a COMPUTED key (`t(`steps.${k}`)`), which is why
+    // test/employee-draft-wizard.test.ts resolves every one of its values in all six locales.
+    expect(wizard).toContain('t(`steps.${k}`)');
   });
 
   it('saves a draft WITHOUT validating, and only validates on create', () => {
@@ -106,7 +108,9 @@ describe('the dedicated screen carries the whole job', () => {
 
   it('a draft consumes no Employee ID — the counter only advances inside hireEmployee', () => {
     expect(draftCore).toContain('employeeCode: str(p.employeeCode)');
-    expect(draftCore).toContain('consumes no Employee ID');
+    // NB: assert a phrase that is not line-wrapped in the source — a comment split across two `//`
+    // lines does not contain the sentence as a contiguous string.
+    expect(draftCore).toContain('the counter only ever advances inside this call');
     // Nothing in the draft path calls the code generator directly.
     expect(draftCore).not.toContain('nextEmployeeCode');
     expect(draftCore).not.toContain('generateEmployeeCode');
