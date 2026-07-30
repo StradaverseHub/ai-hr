@@ -634,7 +634,10 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
       ...(earningRendered
         ? {
             accrualMethod: String(formData.get('method') ?? '') || null,
-            roundingMethod: roundingMethodField(formData) ?? null,
+            // NOT `?? null`. roundingMethodField already carries its own tri-state: undefined means the
+            // dropdown was not rendered, which the service reads as PRESERVE. Coercing that to null would
+            // clear the stored rounding for any form that ever stops rendering the control.
+            roundingMethod: roundingMethodField(formData),
           }
         : {}),
       // Carry half — enable flag, cap, expiry mode and both expiry shapes, plus the max-balance cap.

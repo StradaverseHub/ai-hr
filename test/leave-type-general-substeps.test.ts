@@ -151,12 +151,21 @@ describe('e1a51aea · Leave Year Type (per-type cycle override) — relocated by
   });
 });
 
-describe('e1a51aea · Earning Method + Carry Forward front doors (no new storage)', () => {
-  it('both front-door forms post the SAME updatePolicyAction as the Eligibility policy edit form', () => {
+/**
+ * SUPERSEDED BY 9816a5ad STEP 2, DELIBERATELY. This block used to pin the opposite contract: that both
+ * sub-steps were "front doors" posting updatePolicyAction, with the per-company/grade policy row as the
+ * single source of truth and NO new storage. The consolidation reverses exactly that — the engines now
+ * read the five rules from the leave TYPE, so a policy write would save successfully and change nothing
+ * the calculation reads. The old assertions are not weakened here, they are inverted, and the invariant
+ * they protected (these forms write ONE known place, never a second parallel store) is what is re-pinned.
+ */
+describe('9816a5ad step 2 · Earning Method + Carry Forward write the leave TYPE', () => {
+  it('both sub-steps post setTypeRulesAction, and no longer post updatePolicyAction', () => {
     const seg = generalSegment();
-    // The sub-steps hand updatePolicyAction to the front-door forms…
-    expect((seg.match(/action=\{updatePolicyAction\}/g) ?? []).length).toBeGreaterThanOrEqual(2);
-    // …whose <form>s post it directly (the front-door components).
+    expect((seg.match(/action=\{setTypeRulesAction\}/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    // The regression that matters: if either sub-step goes back to writing a policy row, it becomes a
+    // control that saves and does nothing, which is worse than an absent one.
+    expect(seg).not.toContain('action={updatePolicyAction}');
     expect(panelSrc).toContain('function EarningMethodForm');
     expect(panelSrc).toContain('function CarryPolicyForm');
     const earningForm = panelSrc.slice(
@@ -164,29 +173,36 @@ describe('e1a51aea · Earning Method + Carry Forward front doors (no new storage
       panelSrc.indexOf('function CarryPolicyForm'),
     );
     expect(earningForm).toContain('<form action={action}');
-    // The reporter's vocabulary maps onto the EXISTING per-policy methods — a hidden `method` field posts
-    // the engine value, so the storage contract is byte-identical to the Eligibility select.
+    // The reporter's vocabulary still maps onto the engine's method values; only the destination moved.
     expect(earningForm).toContain('name="method"');
+    expect(earningForm).toContain('name="leaveTypeId"');
     expect(panelSrc).toContain("'by_month' ? 'earned_monthly'");
   });
 
-  it('preserves the non-edited policy fields (identity + carry block) so a front-door save cannot wipe them', () => {
-    expect(panelSrc).toContain('function FrontDoorIdentityFields');
-    expect(panelSrc).toContain('function FrontDoorPreservedCarry');
-    const preserved = panelSrc.slice(
-      panelSrc.indexOf('function FrontDoorIdentityFields'),
+  it('the per-policy scope picker is gone, because there is no longer a scope', () => {
+    const seg = generalSegment();
+    // One leave type, one set of rules — a company/grade picker here would imply per-scope rules again,
+    // which is the duplication the item exists to remove.
+    expect(seg).not.toContain('<PolicyFrontDoor');
+  });
+
+  it('each form marks WHICH half of the rule row it rendered, so the other half survives', () => {
+    const earningForm = panelSrc.slice(
       panelSrc.indexOf('function EarningMethodForm'),
+      panelSrc.indexOf('function CarryPolicyForm'),
     );
-    for (const field of ['name="annualDays"', 'name="validFrom"', 'name="gradeId"', 'name="companyId"', 'name="carryBlockRendered"']) {
-      expect(preserved.includes(field), `${field} preserved`).toBe(true);
-    }
-    // Service bands are preserved by OMISSION (no serviceBandsRendered marker in the front doors) — the
-    // tri-state in app/admin/actions.ts serviceBandsField. The band editor stays Eligibility-only.
-    const frontDoors = panelSrc.slice(
-      panelSrc.indexOf('function FrontDoorIdentityFields'),
+    const carryForm = panelSrc.slice(
+      panelSrc.indexOf('function CarryPolicyForm'),
       panelSrc.indexOf('function PolicyFrontDoor'),
     );
-    expect(frontDoors.includes('serviceBandsRendered')).toBe(false);
+    // Earning and Carry are two forms over ONE row. Without a marker naming the rendered half, an
+    // earning-only save clears the carry configuration — the exact footgun the old front doors worked
+    // around by re-posting the other half as hidden inputs.
+    expect(earningForm).toContain('name="earningRendered"');
+    expect(carryForm).toContain('name="carryBlockRendered"');
+    // Neither may post the other half's fields any more; the tri-state replaces the hidden re-post.
+    expect(earningForm.includes('name="carryForwardMax"')).toBe(false);
+    expect(carryForm.includes('name="roundingMethodRendered"')).toBe(false);
   });
 
   it('renders Earn-Upon-Resignation DISABLED with the pending-engine note', () => {
