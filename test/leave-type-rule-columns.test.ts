@@ -8,26 +8,28 @@
  * across all of its `leave_policy` rows. Step 2 repoints the four `core/leave.ts` call sites to read them.
  * Step 3 zeroes and disconnects `leave_policy`.
  *
- * STEP 1 IS SAFE PRECISELY BECAUSE IT IS ADDITIVE AND INERT, and that is what this file exists to prove.
- * After the migration the system must behave BYTE-IDENTICALLY: if any employee's entitlement, accrual,
- * carry-forward or rounding moves, step 2 has arrived by accident. So the four proofs here are:
+ * STEP 1 WAS SAFE BECAUSE IT WAS ADDITIVE AND INERT. STEP 2 (r83a) HAS NOW SHIPPED, so this file proves
+ * the pair: that the backfill is still correct, and that repointing the engines onto it moves nobody's
+ * balance. The four proofs here are:
  *
  *   1. THE BACKFILL IS CORRECT — every rule lands on every type, numeric spellings collapse ('5' vs '5.0'),
  *      a type with no policy rows stays untouched, and legacy JSONB garbage is read the way the DEFENSIVE
  *      runtime resolvers already read it (a stored 31-Feb, an unknown rounding method, a non-array
  *      serviceBands ⇒ NULL, i.e. "not configured", which is the answer the engine gives today).
  *
- *   2. NOTHING READS THEM YET — asserted twice over. Statically: the four call sites (openLeaveYear,
- *      accrueEarnedLeave, reprojectEntitlementForPolicy → projectExpectedEntitlement, and the a2c
- *      correction reprojectA2cEntitlement) still select from `leave_policy`, and no source file outside
- *      db/schema.ts so much as names one of the ten new columns. Behaviourally: the columns are filled with
- *      values that CONTRADICT the policy — lump instead of earned, round down instead of up, a carry cap of
- *      zero, a maximum balance of one day — and every engine still produces the policy's answer. A static
- *      check alone would miss a dynamic read; a behavioural check alone would miss a read that happens to
- *      agree. Both are needed.
+ *   2. THE COLUMNS ARE NOW READ — proofs 2 and 3 were INVERTED by step 2 (r83a), which repointed the call
+ *      sites onto the type. Statically: the four named sites select the type's rule columns and apply
+ *      `applyLeaveTypeRules`, while still reading `leave_policy` for the DAYS (step 2 moved the rules, not
+ *      the days). Behaviourally: filling the columns with values that CONTRADICT the policy — lump instead
+ *      of earned, round down instead of up, a carry cap of zero, a maximum balance of one day — now
+ *      CHANGES the ledger, where under step 1 it had to leave it alone. A static check alone would miss a
+ *      read that never happens at runtime; a behavioural check alone would miss a read that happens to
+ *      agree. Both are still needed, in the opposite direction.
  *
- *   3. ENTITLEMENT FIGURES ARE UNCHANGED — the same scenario is run three times (columns NULL, columns
- *      backfilled, columns contradicting) and the ledger comes out identical every time.
+ *   3. ENTITLEMENT FIGURES ARE UNCHANGED BY A CORRECT BACKFILL — the release's central safety claim. The
+ *      same scenario is run with the columns NULL and with them BACKFILLED, and the ledger comes out
+ *      identical, because a correct backfill says exactly what the policy said. The third (contradicting)
+ *      world is now pinned to its own DIFFERENT figures rather than to the baseline.
  *
  *   4. THE DISTINCTNESS ASSERTION FIRES — the migration refuses, by name, to collapse a type whose policy
  *      rows disagree about a rule, rather than silently picking one with a LIMIT 1. A database that
@@ -37,7 +39,7 @@
  * from what ships. It is run inside one transaction, mirroring how drizzle-kit applies it, so a failed
  * assertion rolls the whole thing back exactly as it would on deploy.
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -405,7 +407,7 @@ describe('0325 — the distinctness assertion', () => {
   });
 });
 
-describe('0325 — nothing reads the new columns yet (static)', () => {
+describe('step 2 — the call sites now read the rules from the TYPE (static)', () => {
   const leaveSrc = readFileSync(resolve(root, 'core/leave.ts'), 'utf8');
 
   /** The body of a top-level exported function in core/leave.ts, from its signature to the next one. */
@@ -419,60 +421,70 @@ describe('0325 — nothing reads the new columns yet (static)', () => {
     return next >= 0 ? rest.slice(0, next) : rest;
   }
 
-  // The four call sites the plan names. Step 2 repoints these; until then each must still LOAD its rules
-  // from leave_policy and RESOLVE them the old way — directly through resolveGradePolicy, or by handing
-  // the loaded rows to the pure projectExpectedEntitlement kernel, which resolves them itself.
+  // The four call sites the plan names. Step 2 has repointed them: each still LOADS its policy rows (the
+  // DAYS half, which step 2 deliberately does not touch) but every RULE now comes off the leave type —
+  // either by applying the overlay itself, or by handing the type row to the projectExpectedEntitlement
+  // kernel, which applies it internally.
   it.each([
-    ['openLeaveYear', 'resolveGradePolicy('],
-    ['accrueEarnedLeave', 'resolveGradePolicy('],
+    ['openLeaveYear', 'applyLeaveTypeRules('],
+    ['accrueEarnedLeave', 'applyLeaveTypeRules('],
     ['reprojectEntitlementForPolicy', 'projectExpectedEntitlement('],
     ['reprojectA2cEntitlement', 'projectExpectedEntitlement('],
-  ])('%s still resolves its rules from leave_policy', (fn, resolver) => {
+  ])('%s resolves its rules from leave_type', (fn, resolver) => {
     const body = bodyOf(String(fn));
-    expect(body, `${fn} no longer reads leave_policy`).toContain('.from(leavePolicy)');
+    // The DAYS still come from leave_policy — this is the invariant step 3 will change, not step 2.
+    expect(body, `${fn} no longer reads leave_policy for its days`).toContain('.from(leavePolicy)');
     expect(body, `${fn} no longer resolves through ${resolver}`).toContain(String(resolver));
-    // And it must not have grown a read of any step-1 column.
-    for (const [field] of RULE_COLUMNS) expect(body).not.toContain(`leaveType.${field}`);
+    // ...and it selects the type's rule columns, through the ONE shared shape (a hand-copied column list
+    // is how the granting engines and the recalc kernel would drift apart).
+    expect(body, `${fn} does not select the type's rule columns`).toContain('...leaveTypeRuleColumns');
   });
 
-  it('projectExpectedEntitlement still takes its rules from the policyRows argument', () => {
+  it('projectExpectedEntitlement overlays the type rules onto BOTH of its resolutions', () => {
+    // The kernel re-resolves the policy on the anniversary/upfront branch. An overlay applied by the
+    // CALLER would only ever cover the first resolution and the second would silently revert to the
+    // policy's own rules — a bug that would show up as a recalc oscillating against the ledger forever.
     const body = bodyOf('projectExpectedEntitlement');
-    expect(body).toContain('resolveGradePolicy(policyRows');
+    const overlays = body.match(/applyLeaveTypeRules\(resolveGradePolicy\(policyRows/g) ?? [];
+    expect(overlays, 'both resolutions must be overlaid').toHaveLength(2);
   });
 
-  it('no source file outside db/schema.ts names any of the ten new columns', () => {
-    // A dynamic read would slip past the per-function checks above, so this sweeps the whole tree. The
-    // drizzle field names are searched as PROPERTY ACCESSES on a leave-type object (`.accrualMethod`),
-    // because bare names like `carryForwardMax` and `roundingMethod` are the long-standing AccrualConfig
-    // JSONB keys and appear legitimately in dozens of files. The snake_case SQL names are searched bare —
-    // those are unambiguous.
-    const dirs = ['core', 'app', 'components', 'lib', 'packs', 'localization', 'scripts'];
-    const files: string[] = [];
-    const walk = (dir: string) => {
-      for (const e of readdirSync(resolve(root, dir), { withFileTypes: true })) {
-        if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
-        const p = `${dir}/${e.name}`;
-        if (e.isDirectory()) walk(p);
-        else if (/\.(ts|tsx|mjs)$/.test(e.name)) files.push(p);
-      }
-    };
-    for (const d of dirs) walk(d);
-    expect(files.length).toBeGreaterThan(200);
-
+  it('every engine that resolves a leave RULE has been repointed — none left reading leave_policy alone', () => {
+    // The four above are the named sites, but they are not all of them, and a half-repointed system is
+    // worse than an unrepointed one: the granting engines (hire grant / year-open / earned accrual) and
+    // the projection kernel must agree to the DAY or the recalc posts a permanent oscillating delta
+    // against a ledger written under a different rule. These are the readers found by enumerating every
+    // resolveGradePolicy caller in the tree; each must apply the overlay.
+    const sites: ReadonlyArray<readonly [string, string]> = [
+      ['core/leave.ts', 'openLeaveYear'],
+      ['core/leave.ts', 'accrueEarnedLeave'],
+      ['core/leave.ts', 'projectExpectedEntitlement'],
+      ['core/leave.ts', 'expireCarriedLeave'],
+      ['core/org.ts', 'hireEmployee (the hire grant)'],
+      ['core/read.ts', 'the leave entitlement breakdown'],
+      ['core/analytics.ts', 'the carry-forward report'],
+    ];
     const offenders: string[] = [];
-    for (const f of files) {
-      const src = readFileSync(resolve(root, f), 'utf8');
-      for (const [field, column] of RULE_COLUMNS) {
-        if (src.includes(column)) offenders.push(`${f}: ${column}`);
-        if (new RegExp(`\\bleaveType\\.${field}\\b`).test(src)) offenders.push(`${f}: leaveType.${field}`);
-      }
+    for (const [file, label] of sites) {
+      const src = readFileSync(resolve(root, file), 'utf8');
+      if (!src.includes('applyLeaveTypeRules')) offenders.push(`${file} (${label})`);
     }
-    expect(offenders, `step 1 must be inert — these files reference a step-1 column:\n${offenders.join('\n')}`)
-      .toEqual([]);
+    expect(offenders, `these rule readers were not repointed:\n${offenders.join('\n')}`).toEqual([]);
+  });
+
+  it('the days half is untouched — no engine resolves DAYS from the leave type', () => {
+    // Step 2's whole safety argument is that only the rules moved. `entitledDays(floor, scheme, policy)`
+    // is the one composition that decides days, and none of its three inputs may come from a rule column.
+    for (const [field] of RULE_COLUMNS) {
+      expect(
+        new RegExp(`entitledDays\\([^)]*\\b${field}\\b`).test(leaveSrc),
+        `entitledDays must not read leaveType.${field}`,
+      ).toBe(false);
+    }
   });
 });
 
-describe('0325 — nothing reads the new columns yet (behavioural), and entitlement is unchanged', () => {
+describe('step 2 — the engines read the type, and the BACKFILLED figures are unchanged', () => {
   /**
    * Two policies, deliberately built so that EVERY relocated rule is visible in the resulting ledger:
    *   - annualDays 15.4 with roundingMethod 'up'  ⇒ the figure is a ROUNDED one. Round DOWN gives one day
@@ -555,13 +567,21 @@ describe('0325 — nothing reads the new columns yet (behavioural), and entitlem
   }
 
   /**
-   * Run the same scenario in all three worlds and require one answer.
-   *   (a) TODAY   — the columns exist but were never filled. This is the baseline the release must match.
-   *   (b) AFTER   — the columns hold the type's real rules, exactly as the migration leaves production.
-   *   (c) CONTRADICTED — the columns hold rules that DISAGREE with the policy. This is the load-bearing
-   *       one: if any engine had started reading the type, (c) would diverge from (a) in the entry types,
-   *       the day counts and the balance all at once. Agreement between (a) and (b) alone proves nothing,
-   *       because a correct backfill agrees with the policy by construction.
+   * Run the same scenario in all three worlds. Step 2 INVERTS what this proves, and the inversion is the
+   * whole release:
+   *   (a) TODAY   — the columns exist but were never filled. Still the baseline.
+   *   (b) BACKFILLED — the columns hold the type's real rules, exactly as migration 0325 leaves
+   *       production. This MUST still equal (a). It is the release's central safety claim in executable
+   *       form: repointing the engines onto a CORRECT backfill moves nobody's balance, because a correct
+   *       backfill says exactly what the policy said. If (b) ever diverges from (a), the repointing has a
+   *       defect — that is not an acceptable consequence of step 2, it is the bug step 2 must not have.
+   *   (c) CONTRADICTED — the columns hold rules that DISAGREE with the policy. Under step 1 this was
+   *       required to EQUAL (a) (nothing read the columns). It must now DIVERGE, or the repointing did
+   *       not happen at all and (b)'s agreement would be vacuous.
+   *
+   * Note what (c) deliberately does NOT do: discriminate WHICH rule moved. `maxBalanceDays: 1` clamps
+   * every figure to 1 and masks the others. One-rule-at-a-time discrimination — and the produced day
+   * value for each rule separately — lives in test/leave-type-rules-repoint.test.ts.
    */
   async function inAllThreeWorlds(accrual: Record<string, unknown>) {
     const asToday = await figures(accrual);
@@ -587,12 +607,25 @@ describe('0325 — nothing reads the new columns yet (behavioural), and entitlem
       expect(r.accrualMethod).toBe('grant_on_hire_prorated');
     });
 
+    // THE SAFETY CLAIM: a correct backfill changes nothing.
     expect(backfilled).toEqual(asToday);
-    expect(contradicted).toEqual(asToday);
+    // Every contradicted rule funnels through the same clamp, so both policies land on the same figures:
+    //   hire        — 15.4 rounded DOWN to 15, then clamped by maxBalanceDays 1 ⇒ 1.
+    //   year-open   — carryForwardEnabled false ⇒ carry cap 0 ⇒ the 1 already held is forfeited (-1), and
+    //                 the new grant is again 15 rounded down, clamped to 1.
+    //   accrual     — the type says the lump method, so accrueEarnedLeave does not own this type and adds
+    //                 nothing (for EARNED_POLICY that alone is a total change of engine).
+    expect(contradicted).toEqual({
+      afterHire: 1,
+      afterYearOpen: 1,
+      afterAccrual: 1,
+      ledger: ['accrual:1', 'accrual:1', 'adjustment:-1'],
+    });
+    expect(contradicted, 'the columns must actually be read now').not.toEqual(asToday);
     return asToday;
   }
 
-  it('EARNED: identical figures with the columns NULL, backfilled, and contradicting the policy', async () => {
+  it('EARNED: the backfill leaves the figures untouched; a contradicting type changes the engine', async () => {
     const f = await inAllThreeWorlds(EARNED_POLICY);
     // Pinned, not merely self-consistent: 7 elapsed months of 15.4/12 = 8.98…, rounded UP to 9, granted by
     // accrueEarnedLeave and by nothing else. Rounding DOWN would give 8; the maxBalanceDays=1 clamp would
@@ -600,7 +633,7 @@ describe('0325 — nothing reads the new columns yet (behavioural), and entitlem
     expect(f).toEqual({ afterHire: 0, afterYearOpen: 0, afterAccrual: 9, ledger: ['accrual:9'] });
   });
 
-  it('LUMP: identical figures with the columns NULL, backfilled, and contradicting the policy', async () => {
+  it('LUMP: the backfill leaves the figures untouched; a contradicting type changes the figures', async () => {
     const f = await inAllThreeWorlds(LUMP_POLICY);
     // The up-front engines, and the carry-forward rule with them:
     //   hire grant (core/org.ts)  — 15.4 rounds UP to 16.

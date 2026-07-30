@@ -10,7 +10,7 @@ import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } fr
 import { nextEmployeeCode } from './comp';
 import { generateEmployeeCode } from './employee-id-config';
 import { requireEmployeeCode } from '../lib/employee-code';
-import { a2cFirstYearEntitledToDate, applyMaxBalance, applyRounding, buildSchemeEntitlementResolver, entitledDays, isA2cFirstYear, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
+import { a2cFirstYearEntitledToDate, applyLeaveTypeRules, applyMaxBalance, applyRounding, buildSchemeEntitlementResolver, entitledDays, isA2cFirstYear, isEarnedMethod, leaveTypeRuleColumns, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
 import { labelUsableByCompany } from './system-labels';
 // Company-change gate (9464bd56): the pre-transaction check lives in core/read.ts (ONE greppable set of
@@ -30,6 +30,7 @@ import {
   department,
   holidayGroup,
   leavePolicy,
+  leaveType,
   location,
   position,
   reportingLine,
@@ -339,12 +340,27 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           [{ employmentId: emp.id, companyId: p.companyId, gradeId: p.gradeId ?? null, overrideSchemeId: null }],
           p.grantLeaveTypes.map((t) => t.id),
         );
+        // Feedback 9816a5ad step 2 — the hire grant is a GRANTING ENGINE and must resolve its rules from
+        // the same place openLeaveYear / accrueEarnedLeave / the recalc kernel do, or a new hire's opening
+        // balance disagrees with the very next reprojection and the recalc posts a permanent delta.
+        // The rules are loaded here rather than threaded through `grantLeaveTypes` deliberately: that
+        // parameter is built by three separate callers (the admin hire action, the bulk importer, tests)
+        // and a caller that forgot to populate them would silently fall back to the policy's rules.
+        const typeRuleRows = await tx
+          .select({ id: leaveType.id, ...leaveTypeRuleColumns })
+          .from(leaveType)
+          .where(inArray(leaveType.id, p.grantLeaveTypes.map((t) => t.id)));
+        const typeRulesById = new Map(typeRuleRows.map((r) => [r.id, r]));
         const month = Number(p.hiredOn.slice(5, 7));
         for (const lt of p.grantLeaveTypes) {
           // ADR-0066: scope to the new hire's company so a per-company UPFRONT entitlement reaches joiners.
           // Leave Entitlement Rules Engine: a new hire has 0 completed years of service (explicit — the
           // param is required so a band-configured policy resolves its 0-year band at hire).
-          const polFor = resolveGradePolicy(policyByType.get(lt.id) ?? [], p.gradeId ?? null, p.companyId, 0);
+          // 9816a5ad step 2: the winning policy row supplies the DAYS; the leave TYPE supplies every rule.
+          const polFor = applyLeaveTypeRules(
+            resolveGradePolicy(policyByType.get(lt.id) ?? [], p.gradeId ?? null, p.companyId, 0),
+            typeRulesById.get(lt.id),
+          );
           // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not the hire lump.
           if (isEarnedMethod(polFor?.method)) continue;
           const floor = pack.leave.entitlement(lt.code, 0);
