@@ -31,6 +31,7 @@ import { setCompensation } from '../core/comp';
 import { createBusinessUnit, createPosition, createJobGrade } from '../core/admin';
 import { createLocation } from '../core/location';
 import { createMovementEvent, movementCurrentState, movementDetail, movementHistory } from '../core/movement';
+import { sweepDueMovements } from '../core/movement-apply';
 import * as schema from '../db/schema';
 import { expectNoLeakedValue } from './helpers/leaf-values';
 
@@ -424,7 +425,18 @@ describe('createMovementEvent — the New Event dispatcher', () => {
     expect(detail?.flatChanges).toEqual([{ field: 'orgDivision', before: null, after: 'Retail' }]);
   });
 
-  it('a future-dated pay change leaves an earlier period on the old rate (payroll is unaffected)', async () => {
+  /**
+   * 941c9dac — this test's guarantee (an earlier payroll period keeps the old rate) is unchanged, but the
+   * mechanism behind it is now stronger and the test says so. It used to assert that a future-dated
+   * increment wrote its compensation row IMMEDIATELY and relied on the dated window to keep June honest.
+   * That immediate write is the very fault 941c9dac fixed — it also made the future rate the OPEN row,
+   * which is what the Employment tab, the ESS profile and the directory all read as "current".
+   *
+   * Now the increment writes NOTHING until its effective date arrives, and the sweep writes it then. June
+   * is protected twice over: before the date there is no new record at all, and after it the record starts
+   * in September.
+   */
+  it('a future-dated pay change writes nothing until it applies, and never disturbs an earlier period', async () => {
     const hire = await hireOne();
     await setCompensation(adminCtx(b), { employmentId: hire.employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
     await createMovementEvent(adminCtx(b), {
@@ -433,11 +445,24 @@ describe('createMovementEvent — the New Event dispatcher', () => {
       effectiveDate: '2026-09-01',
       basicSalary: 4800,
     });
-    const comps = await owner.db
-      .select()
-      .from(schema.compensation)
-      .where(eq(schema.compensation.employmentId, hire.employmentId))
-      .orderBy(schema.compensation.validFrom);
+
+    const compsOf = () =>
+      owner.db
+        .select()
+        .from(schema.compensation)
+        .where(eq(schema.compensation.employmentId, hire.employmentId))
+        .orderBy(schema.compensation.validFrom);
+
+    // Before the effective date: no revision exists, and the OPEN row is still the current rate — so no
+    // reader anywhere can show September's salary as today's.
+    const pending = await compsOf();
+    expect(pending).toHaveLength(1);
+    expect(pending[0].basicSalary).toBe('4000.00');
+    expect(pending[0].validTo).toBeNull();
+
+    // On the effective date the sweep applies it.
+    await sweepDueMovements(adminCtx(b), { today: '2026-09-01' });
+    const comps = await compsOf();
     expect(comps).toHaveLength(2);
     // The window a June payroll run resolves is still the OLD record — the new one starts in September.
     const june = comps.filter((c) => c.validFrom <= '2026-06-01' && (c.validTo == null || c.validTo > '2026-06-01'));

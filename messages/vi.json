@@ -823,7 +823,10 @@
         "blacklistActiveNote": "Nhân viên này hiện đang trong danh sách đen.",
         "assignmentViewOnlyNote": "Thông tin này chỉ để xem. Các thay đổi về phân bổ tổ chức được ghi nhận dưới dạng sự kiện điều động, nhờ đó mỗi thay đổi đều giữ được ngày hiệu lực, lý do và vị trí của nó trong lịch sử công tác.",
         "assignmentViewOnlyLink": "Ghi nhận sự kiện điều động",
-        "joinDatesViewOnlyNote": "Cả hai ngày gia nhập đều chỉ để xem. Chúng được đặt cùng nhau khi tạo nhân viên; sau đó, Thay đổi Ngày gia nhập ghi nhận việc chuyển sang công ty khác trong tập đoàn, còn Điều chỉnh Ngày gia nhập tập đoàn ghi nhận việc sửa có thẩm quyền đối với ngày thâm niên gốc."
+        "joinDatesViewOnlyNote": "Cả hai ngày gia nhập đều chỉ để xem. Chúng được đặt cùng nhau khi tạo nhân viên; sau đó, Thay đổi Ngày gia nhập ghi nhận việc chuyển sang công ty khác trong tập đoàn, còn Điều chỉnh Ngày gia nhập tập đoàn ghi nhận việc sửa có thẩm quyền đối với ngày thâm niên gốc.",
+        "pendingMovementTitle": "Các thay đổi đã lên lịch nhưng chưa có hiệu lực",
+        "pendingMovementItem": "{kind} — có hiệu lực ngày {date}",
+        "pendingMovementNote": "Các giá trị bên dưới là giá trị hiện tại. Chúng sẽ không thay đổi cho đến khi đến ngày tương ứng."
       },
       "documents": {
         "title": "Tài liệu",
@@ -1155,7 +1158,13 @@
         "deleteConfirmDescription": "Thông tin nhân viên sẽ trở lại trạng thái ngay trước sự kiện này. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác, nên hồ sơ vẫn có thể kiểm toán.",
         "deleteConfirmPayroll": "Một kỳ lương đã xử lý bao trùm giai đoạn này. Việc hoàn tác sẽ KHÔNG xử lý lại bất kỳ phiếu lương nào — hãy xử lý lại riêng nếu bạn cần. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác.",
         "correctionReasonLabel": "Lý do chỉnh sửa (không bắt buộc)",
-        "payrollLocked": "Bị khóa bởi một kỳ lương đã đóng"
+        "payrollLocked": "Bị khóa bởi một kỳ lương đã đóng",
+        "status": {
+          "pending": "Chờ hiệu lực",
+          "applied": "Đã áp dụng",
+          "superseded": "Đã bị thay thế",
+          "reversed": "Đã hoàn tác"
+        }
       },
       "salaryCurrency": "Tiền tệ",
       "emergency": {

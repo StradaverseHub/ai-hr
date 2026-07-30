@@ -823,7 +823,10 @@
         "blacklistActiveNote": "Pekerja ini sedang disenaraihitamkan.",
         "assignmentViewOnlyNote": "Maklumat ini untuk paparan sahaja. Perubahan tugasan organisasi direkodkan sebagai peristiwa pergerakan, supaya setiap satu mengekalkan tarikh berkuat kuasa, sebabnya dan tempatnya dalam sejarah pekerjaan.",
         "assignmentViewOnlyLink": "Rekod peristiwa pergerakan",
-        "joinDatesViewOnlyNote": "Kedua-dua tarikh menyertai adalah untuk paparan sahaja. Ia ditetapkan bersama semasa pekerja dicipta; selepas itu Perubahan Tarikh Menyertai merekodkan perpindahan ke syarikat lain dalam kumpulan, dan Pembetulan Tarikh Menyertai Kumpulan merekodkan pembetulan yang dibenarkan pada tarikh perkhidmatan induk."
+        "joinDatesViewOnlyNote": "Kedua-dua tarikh menyertai adalah untuk paparan sahaja. Ia ditetapkan bersama semasa pekerja dicipta; selepas itu Perubahan Tarikh Menyertai merekodkan perpindahan ke syarikat lain dalam kumpulan, dan Pembetulan Tarikh Menyertai Kumpulan merekodkan pembetulan yang dibenarkan pada tarikh perkhidmatan induk.",
+        "pendingMovementTitle": "Perubahan berjadual yang belum berkuat kuasa",
+        "pendingMovementItem": "{kind} — berkuat kuasa {date}",
+        "pendingMovementNote": "Nilai di bawah ialah nilai hari ini. Ia tidak akan berubah sehingga tarikh masing-masing tiba."
       },
       "documents": {
         "title": "Dokumen",
@@ -1155,7 +1158,13 @@
         "deleteConfirmDescription": "Maklumat pekerja akan kembali kepada keadaan sebelum peristiwa ini. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan, supaya rekod kekal boleh diaudit.",
         "deleteConfirmPayroll": "Larian gaji yang telah diproses sudah merangkumi tempoh ini. Pembatalan ini TIDAK akan memproses semula sebarang slip gaji — proses semula secara berasingan jika perlu. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan.",
         "correctionReasonLabel": "Sebab pembetulan (pilihan)",
-        "payrollLocked": "Dikunci oleh larian gaji yang telah ditutup"
+        "payrollLocked": "Dikunci oleh larian gaji yang telah ditutup",
+        "status": {
+          "pending": "Menunggu",
+          "applied": "Berkuat kuasa",
+          "superseded": "Digantikan",
+          "reversed": "Dibatalkan"
+        }
       },
       "salaryCurrency": "Mata wang",
       "emergency": {

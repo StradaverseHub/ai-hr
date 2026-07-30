@@ -376,10 +376,15 @@ describe('editMovementEvent — a correction is a replay through the same writer
       effectiveDate: '2026-03-01',
       departmentId: b.deptB,
     });
+    // 941c9dac — this used to read 2026-09-01, a date that was in the FUTURE when the test was written.
+    // It passed only because a future-dated movement applied on save, which is the fault that item fixed;
+    // such a movement is now Pending and changes nothing, so it could no longer be the "later movement"
+    // this test needs. The date moves into the past: the rule under test (only the most recent
+    // state-changing movement may be corrected in place) is about ORDER, not about future dating.
     await createMovementEvent(adminCtx(b), {
       employmentId: hire.employmentId,
       kind: 'transfer',
-      effectiveDate: '2026-09-01',
+      effectiveDate: '2026-06-01',
       departmentId: b.deptA,
     });
     const rows = await movementHistory(adminCtx(b), hire.employmentId);
@@ -408,10 +413,13 @@ describe('editMovementEvent — a correction is a replay through the same writer
       effectiveDate: '2026-03-01',
       orgDivision: 'Retail',
     });
+    // 941c9dac — was 2026-09-01, future at the time of writing (see the note in the test above). The
+    // last-write-wins rule this asserts is about which movement wrote the flat column LAST, so the date
+    // simply has to be later than the first movement's and already in effect.
     await createMovementEvent(adminCtx(b), {
       employmentId: hire.employmentId,
       kind: 'orgAssignmentChange',
-      effectiveDate: '2026-09-01',
+      effectiveDate: '2026-06-01',
       orgDivision: 'Wholesale',
     });
     const moves = (await movementHistory(adminCtx(b), hire.employmentId)).filter(
@@ -459,10 +467,14 @@ describe('payroll interaction — block on closed, warn on processed, never repr
       basicSalary: 4000,
       effectiveFrom: '2026-01-01',
     });
+    // 941c9dac — was 2026-08-01, future at the time of writing, so the increment would now be Pending and
+    // write no compensation row for the correction to warn about. Dated in the past instead; the payroll
+    // period below stays 2026-08 because the guard measures the window from the effective date FORWARD,
+    // so a July increment still overlaps an August run — which is exactly the overlap under test.
     await createMovementEvent(adminCtx(b), {
       employmentId: hire.employmentId,
       kind: 'increment',
-      effectiveDate: '2026-08-01',
+      effectiveDate: '2026-07-01',
       basicSalary: 5000,
     });
     // pay_period is unique per (company, period), so this case uses its own month.

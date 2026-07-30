@@ -1947,6 +1947,13 @@
       "when": 1781862428000,
       "tag": "0328_leave_type_rules_repoint_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 329,
+      "version": "7",
+      "when": 1781862429000,
+      "tag": "0329_movement_scheduled_apply_once",
+      "breakpoints": true
     }
   ]
 }
