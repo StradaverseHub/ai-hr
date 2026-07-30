@@ -1155,7 +1155,14 @@
           "correctionReason": "更正原因（选填）",
           "saveCorrection": "保存更正",
           "joinDateChangeHint": "您输入的日期将成为该员工在当前公司的新入职日期。其集团入职日期不会改变。",
-          "groupJoinDateCorrectionHint": "您输入的日期将成为更正后的集团入职日期。年资由此日期计算，因此可能改变其休假额度。"
+          "groupJoinDateCorrectionHint": "您输入的日期将成为更正后的集团入职日期。年资由此日期计算，因此可能改变其休假额度。",
+          "lastWorkingDay": "最后工作日",
+          "terminationReason": "离职原因",
+          "terminationReasonPlaceholder": "— 选择原因 —",
+          "terminationTypeDerived": "归类为：{type}",
+          "resignationDate": "辞职日期",
+          "terminationNoticeDays": "已服务通知期（天）",
+          "terminationPayrollFlag": "离职已保存。{periods} 的薪资已处理且超过离职日期 — 请检查该薪资批次。系统未作更改。"
         },
         "edit": "编辑",
         "delete": "删除",
@@ -1172,6 +1179,26 @@
           "applied": "已生效",
           "superseded": "已被取代",
           "reversed": "已撤销"
+        },
+        "terminationReasonCategory": {
+          "voluntary": "主动离职",
+          "involuntary": "被动离职",
+          "other": "其他"
+        },
+        "terminationReason": {
+          "resignation": "辞职",
+          "career_opportunity": "职业发展",
+          "personal_reason": "个人原因",
+          "retirement": "退休",
+          "early_retirement": "提前退休",
+          "performance_issue": "绩效问题",
+          "misconduct": "违纪",
+          "redundancy": "裁员",
+          "contract_expiry": "合同到期",
+          "absconded": "擅自离职",
+          "medical_unfit": "健康不适任",
+          "death": "身故",
+          "other": "其他"
         }
       },
       "salaryCurrency": "货币",
