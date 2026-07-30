@@ -5,16 +5,21 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-07-30, end of a seven-round session)
+## CURRENT STATE — read this first (updated 2026-07-30, after r83)
 
 **If you read nothing else, read these seven lines.**
-1. Deployed head is `main@c8bb831`, migrations through `0327`. **Next free number is `0328`** — but
-   `9cbf5e0d` on branch `build/r81b` already claims **0326** and is HELD, not merged. Do not reuse it.
-2. **CHECK `git branch --show-current` AT THE REPO ROOT BEFORE CREATING ANY WORKTREE.** The root is on
-   `fix/companies-list`, not `main`. A subagent branched there and every later commit followed it; r79
-   was then built off a stale `main` and would have reverted r78 had the rehearsal not refused to run.
-3. **The board is clear of open and contested items.** ~9 approved remain, mostly Large. The next piece
-   of work is **`9816a5ad` STEP 2** — see below; step 1 shipped in r81 and is inert.
+1. Deployed head is `main@69d8968`, migrations through `0330`, **279 applied on production**. **Next free
+   number is `0331`.** Two numbers are ALLOCATED BUT UNMERGED and must not be reused: **`0326`**
+   (`9cbf5e0d` on `build/r81b`) and **`0328`** (`9816a5ad` step 2 on `build/r83a`).
+2. **CHECK `git branch --show-current` AT THE REPO ROOT BEFORE ANYTHING.** The root is on
+   `fix/companies-list`, four rounds behind. **The HANDOFF.md at the repo root is STALE — reading it will
+   give you a board state and a deployed head that are both wrong.** `main` lives at
+   `.claude/worktrees/mainwt`. r83 lost a full suite run to a `cd` that silently left the shell at the
+   root; see Traps.
+3. **`9816a5ad` step 2 is BUILT and HELD on `build/r83a`**, re-planned to the reporter as revision 7 and
+   awaiting approval. Its guard migration `0328` was run against production and **FIRED** — see below.
+   **`fa3f4ccb` is now `approved` and NO LONGER BLOCKED on the board, which is dangerous: building it
+   before step 2 deploys stops accrual for all 22 employees.**
 4. **Three live payroll faults are raised and unanswered, and one is severe:** `ef31d251` — **no employee
    has ever seen a payslip**, because no run has ever been closed (47 payslips, 18 runs, all invisible).
    Also `d0d2c9d1` (RM23,150 entered and never paid) and `97a9b0ab` (same gross, two different tax
@@ -23,31 +28,41 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
    worked — everyone displayed Active from day one) drops 12 of 22 employees out of the 2026 Annual
    review, because that cycle names four old statuses and cannot name one that never existed.
 6. **Nothing has been browser-verified since r70**, and it has now produced a false "fixed" once: a screen
-   served 1 of 8 rows for 24 days behind a fully green suite.
-7. **EIGHT reports this session were not the bug they described** and **FOUR checks passed without
-   crossing the boundary where the thing breaks.** Both patterns are written up in Traps. One wrong
-   diagnosis was in a plan written by the operator, and one bad check was the operator's own merge.
+   served 1 of 8 rows for 24 days behind a fully green suite. r83 added a pay-rule editor and changed the
+   movement screens; neither has been seen.
+7. **The board is NOT quiet — the previous version of this line said it was, and it was wrong within
+   hours.** Counted 2026-07-30: **10 approved · 3 contested · 16 open**. The reporter is actively editing
+   leave and payroll configuration during working hours; assume the data moves under you.
 
-### `9816a5ad` — where the keystone stands, and what step 2 must decide
+### `9816a5ad` — the keystone, and why its own guard stopped it
 
-Step 1 shipped (r81, migration `0325`): ten rule columns on `leave_type`, backfilled from
-`leave_policy.accrual`, **read by nothing**. Verified on production before deploy: **zero conflicts across
-all ten rule keys** (so the migration's distinctness assertion will not fire) and **zero policies use
-per-band `carryForwardDays`**.
+Step 1 shipped (r81, `0325`): ten rule columns on `leave_type`, backfilled, read by nothing.
+Step 2 (`build/r83a`, `0328`) repoints the engines onto those columns. It is **built, gated and held.**
 
-**Step 2 repoints the four call sites** in `core/leave.ts` (`openLeaveYear`, `accrueEarnedLeave`,
-`projectExpectedEntitlement`, the a2c correction) to read rules from the type. **This is where balances
-move — the upgrade rehearsal is mandatory.** Step 2 must also decide explicitly what happens to per-band
-`carryForwardDays` and per-band carry expiry (`9d8cf621`): they lose their home when bands become
-days-only, they are not among the approved five, and collapsing them into the type-level cap is a product
-decision. Nobody uses them today, so the decision is cheap now and expensive later.
+**`0328` is an assertion with no DDL, and on 2026-07-30 it FIRED against production:**
 
-**Step 3 is `fa3f4ccb`**, currently blocked with `blockedById` pointing at `9816a5ad`. It removes the
-Company Entitlements band surface and zeroes `leave_policy`. Shipping it before step 2 **stops accrual for
-all 22 employees**, because `leave_policy` is still the only home for earning method, carry-forward,
-rounding and `maxBalanceDays` — 57 of 67 policy rows are `earned_monthly`.
+    leave type ANNUAL, rule carryForwardExpiryMonths, 1 policy row disagreeing
 
-Written 2026-07-29 at the end of a long session, for whoever picks this up next. Everything below the
+56 of 57 ANNUAL policy rows read 8 months; one reads 6. **It is a LIVE EDIT, not stale data** —
+`leave-policy.updated` carries 8 at 10:06 that morning and 6 at 11:10. Consolidating would have silently
+reverted it and aborted `deploy.sh` partway. Blast radius is nil (0 employments on that company+grade),
+so **the agreed fix is to harmonise that row to 8, not to weaken the assertion.** Revision 7 of the plan
+tells the reporter exactly that and invites a reject if they meant 6 for everyone.
+
+**`leave_policy` has no `updated_at`.** `created_at` on that row is 2026-07-26, which says nothing about
+when the value changed — that is why `0325`'s distinctness check passed on 07-29 and `0328` fires now.
+**On this table, use the `leave-policy.updated` events, never `created_at`, to date a change.**
+
+Step 2 also already decides the per-band question this file previously flagged as open: per-band
+`carryForwardDays` and per-band carry expiry (`9d8cf621`) collapse into the type-level setting and stop
+being read; the columns, JSONB keys and readers are retained, not dropped.
+
+**Step 3 is `fa3f4ccb`** — it removes the Company Entitlements band surface and zeroes `leave_policy`.
+Its `blockedById` guard has been released, so **nothing but this note now stops it being built first.**
+Alone it stops accrual for all 22 employees: `leave_policy` is still the only home for earning method,
+carry-forward, rounding and `maxBalanceDays`, and 57 of 67 policy rows are `earned_monthly`.
+
+Written 2026-07-29, updated after r83 on 2026-07-30. Everything below the
 `---` after this section is the per-round history; this part is the standing contract and the live
 state. Update it when the state changes, not just when a round ships.
 
@@ -152,9 +167,36 @@ a **silent skip**, not a conflict.
 template plus ten workers. It reached **366 test databases**, at which point DROP/CREATE DATABASE hangs
 and a normally 1-7s template build took **1308s**. It looked exactly like a catastrophically slow
 migration and nearly got reported as a 22-minute production deploy window. It is not: production has a
-handful of databases. Cleanup restored a 7-second rehearsal. **106 databases and 138 git worktrees are
-still lying around — both want a sweep.** The harness should drop a namespace's databases when its run
-ends.
+handful of databases. Cleanup restored a 7-second rehearsal. The harness should drop a namespace's
+databases when its run ends.
+
+**r83 found where that bill is REALLY paid, and it is not the checkpoint.** The box wedged: `CREATE
+DATABASE` and `DROP DATABASE` both hung 10+ minutes at `CheckpointStart`, and an explicit `CHECKPOINT`
+timed out at 120s while `checkpoints_req` / `buffers_checkpoint` / `checkpoint_sync_time` stayed
+**byte-identical across 40 minutes**. That triple staying frozen is the diagnostic: **frozen counters mean
+wedged, not slow.** Disk was fine, no fsync or panic in the log. `pg_ctl -m fast` cannot stop it — fast
+shutdown waits on the very checkpoint that is stuck — so it takes `-m immediate`.
+
+Recovery then ran **42 minutes**, and the log is the lesson:
+
+    redo done at 50/E14139D0 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+
+**WAL replay was INSTANTANEOUS.** All 42 minutes were the pre-redo pass where Postgres walks every
+database directory on disk, and there were **67**. Confirmed live with `lsof` on the startup process,
+which held `base/` and one database directory open throughout. So the leaked databases do not slow
+checkpoints — **they slow CRASH RECOVERY, and they slow it entirely.** Sweep them BEFORE you need them
+swept. After the restart a `CHECKPOINT` completes in **0.078s**; the sweep then dropped 28 in seconds
+(67 → 39).
+
+**Each `CREATE DATABASE` forces a checkpoint, and test setup does ELEVEN of them** (one template + ten
+workers). On a dirtied 8 GB `shared_buffers` that is what turns a ~3s template build into the
+**2943s** one r83 measured — the same shape as the 1308s incident, arrived at from the other direction.
+
+**`TaskStop` DOES NOT STOP THE DATABASE WORK A TEST RUN STARTED.** Killing a background vitest left its
+server-side `CREATE DATABASE` running and wedged. The next full-suite run returned **12 failures, every
+one a 30-second timeout — including a test whose body is only a file read** — and took 947s against 438s
+for the same tree. All twelve were artefacts of that one orphaned statement. **Kill the client, then check
+`pg_stat_activity` and cancel what it left behind.**
 
 **Local Postgres after a reboot.** Data dir `/opt/homebrew/var/aihr-pg14`, but its config defaults to
 port **5432** while the project uses **5433** — it must be started with `-o "-p 5433"`. After an unclean
@@ -184,6 +226,26 @@ chain; Drizzle wraps errors as "Failed query: …".
 **Fetching page HTML to check the UI gives false positives.** Next.js embeds the whole i18n catalog in
 the payload, so grepping rendered HTML for a label finds it whether or not the component rendered.
 Check the component source.
+
+**A GATE YOU CANNOT TRACE TO A TREE IS NOT EVIDENCE — and it will read GREEN.** In r83 a single `cd` to
+the repo root (to read a script) left the shell there, and the next full suite AND `next build` ran
+against **`fix/companies-list`** instead of the integration branch. Both reported clean. The tell was in
+the output the whole time: **vitest prints its root on the `RUN` line**, and the counts were 479 files /
+5359 tests where the tree under test was 488 / 5576. **Start every gate command with an explicit `cd` to
+the worktree, or echo `pwd` alongside it**, and read the count against the tree you think you are on.
+This is the same root-worktree trap that cost r79 a round, arriving by a different route.
+
+**`next build` OOMs ON THE SERVER as the tree grows, and `deploy.sh` runs it BEFORE `db:migrate`.**
+r83 died at ~3013 MB against the 3072 MB cap with "Ineffective mark-compacts near heap limit" during
+"Running TypeScript" — the identical failure R52 hit at ~1.95 GB against the old 2 GB default, and the
+same diagnosis both times: nothing wrong with the code, `tsc --noEmit` and the full suite green locally.
+**Raised to 4096 in r83.** The ordering is the saving grace and worth knowing: because the build precedes
+the migrate, an OOM aborts with production's schema UNTOUCHED and the service still serving the previous
+`.next` — a non-event rather than a half-applied release. Always verify that after a failed deploy
+(`systemctl is-active aihr`, `GET /` 401, and the migration count) rather than assuming it. If it OOMs
+again, check `free -m` first: the box has 3.9 GB RAM and 3.9 GB swap, so past ~4096 this stops being a
+headroom problem and becomes a bigger-box one. **Never reach for `typescript.ignoreBuildErrors`** — the
+build's type pass catches RSC client/server boundary errors that `tsc` alone does not.
 
 ## Live state — accurate as of the end of the 2026-07-29 session
 
@@ -345,6 +407,116 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r83 — 2026-07-30 — two of three shipped, and the keystone held by its own guard
+
+**Shipped:** `main@69d8968`. Migrations **0329** and **0330**. `0328` is deliberately UNUSED — see below.
+**Gate:** `tsc` clean · **487 files / 5549 tests** · `next build` clean · **upgrade rehearsal PASS** (leave balances unchanged at 488.00).
+
+**Shipped:** `941c9dac` (movements take effect on their effective date) · `61bf109d` (pay item input
+types + formula).
+**HELD, built and unmerged on `build/r83a`:** `9816a5ad` step 2 — the entitlement keystone. Re-planned
+as revision 7 and returned to the reporter.
+
+### Decisions
+
+**1. THE ROUND WAS INHERITED, NOT STARTED. Three branches were already built and never integrated.**
+`build/r83a`, `build/r83b` and `build/r83c` were committed between 02:59 and 03:42 on 2026-07-30 with no
+merge, no gate and no HANDOFF entry — a session ended mid-round. Nothing in the repo said so. The signal
+was `git branch --sort=-committerdate` showing three `build/r83*` branches ahead of `main`.
+
+**And the repo root was on the wrong branch, exactly as the previous handoff warned.** The root worktree
+is parked on `fix/companies-list`, four rounds behind. **The HANDOFF.md read from the repo root was the
+STALE one** — it described the board as "11 approved, 4 contested" and the head as `e82c519`, both of
+which were four rounds out of date. `main` is checked out at `.claude/worktrees/mainwt`. Read the handoff
+from there, or read nothing.
+
+**2. `0328` FIRED ON PRODUCTION, AND HOLDING THE KEYSTONE IS THIS ROUND'S REAL OUTPUT.**
+`9816a5ad` step 2 repoints the leave engines onto `leave_type`. Its migration `0328` is an assertion with
+no DDL, which refuses the release if any policy row of a consolidated type would resolve a different rule
+than the type carries. Run against production before deploying, it **fired**:
+
+    leave type ANNUAL, rule carryForwardExpiryMonths, 1 policy row disagreeing
+
+56 of 57 ANNUAL policy rows read 8 months; one reads 6. The audit trail settles that it is a LIVE EDIT,
+not stale data — `leave-policy.updated` at **2026-07-30 10:06 carries 8**, and at **11:10 the same day
+carries 6**. Consolidating would have silently reverted an edit made three hours earlier, and `deploy.sh`
+would have aborted on `0328` with `0329`/`0330` unapplied.
+
+`leave_policy` has **no `updated_at` column**, so `created_at` (2026-07-26) says nothing about when a
+value changed. That is precisely why r81's `0325` distinctness assertion passed on 2026-07-29 and `0328`
+fires now, and it is the general lesson: **on this table, creation time is not change time — use the
+`leave-policy.updated` events.**
+
+Blast radius is nil (0 employments on that company+grade), which is why the agreed resolution is to
+harmonise that row to **8** and let `0328` pass on its own terms. **The assertion was not weakened.**
+
+**A second reason to hold, which no guard could see:** the reporter was editing leave configuration
+*while the round was being integrated* — `leave-type.updated` 12:07, `scheme-leave-entitlement.set` 11:53.
+Repointing where those settings are read from, mid-edit, is its own hazard.
+
+**3. TWO INTEGRATION DEFECTS, AND BOTH WERE RED ON THEIR OWN BRANCH.** This is a NEW failure mode: r74
+and r75 shipped defects that were genuinely invisible to any single agent, but these two were not.
+- `core/movement-apply.ts`, a file `build/r83b` created, imports `core/leave` directly and breaches
+  ADR-0080 D9's import ratchet (`test/leave-pack-drift.test.ts`, allowlist "only ever shrinks"). This is
+  a purely STATIC test over that branch's own file — it could never have passed there. Routed through
+  `packs/leave/service`.
+- `test/movement-effective-date.test.ts` asserted `sweepDueMovements(...).applied === 1`. The sweep is the
+  nightly TENANT-WIDE job, and an earlier test in the same file leaves a pending future movement behind,
+  so the honest answer is 2. Re-asserted against that employment's `employment.movement.applied` ledger —
+  strictly stronger for the property under test and immune to file order. The run-twice test carried the
+  same coupling and is now a lower bound, its exactly-once proof being the per-employment query it
+  already had.
+
+**So the rule gains a clause: per-agent runs are necessary and never sufficient — but confirm the agent
+actually RAN one.** A branch that was never gated is cheaper to catch than a cross-item defect, and
+neither is caught by reading the diff.
+
+**4. THE ROUND WAS SPLIT RATHER THAN HELD WHOLE.** r83b and r83c touch movement and pay components and
+have no dependency on r83a. Shipping them keeps two approved items moving while the keystone waits on one
+answer. `0328` stays unallocated as a NUMBER GAP, which is already precedented — `0326` has been held for
+`build/r81b` since r81. A gap is safe; a REUSED number merges as a silent skip (r76).
+
+**5. LOCAL POSTGRES: A WEDGED CHECKPOINTER, AND THE TEST-DB LEAK BILLED IN A NEW PLACE.**
+Mid-round the box stopped being able to `CREATE DATABASE` or `DROP DATABASE` — both hung at
+`CheckpointStart` for 10+ minutes. The diagnosis that mattered: `checkpoints_req`, `buffers_checkpoint`
+and `checkpoint_sync_time` were **byte-identical across 40 minutes**, and an explicit `CHECKPOINT` timed
+out at 120s. Not slow — **wedged**. Disk was fine (382 GiB free), no fsync or panic in the log.
+
+`pg_ctl -m fast` could not stop it (fast shutdown waits on the very checkpoint that is stuck), so it took
+`-m immediate`. Recovery then ran **42 minutes** — and the log is the punchline:
+
+    redo done at 50/E14139D0 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+
+**WAL replay was instantaneous.** All 42 minutes were the pre-redo pass in which Postgres walks every
+database directory on disk, and there were **67**, each a full HR schema. Confirmed live by `lsof` on the
+startup process, which held `base/` and one database directory open throughout.
+
+**So the leaked test databases do not slow checkpoints — they slow CRASH RECOVERY, entirely.** That is a
+different bill from the one this file has recorded since the 1308s incident, and it is paid at the worst
+possible moment. After the restart a `CHECKPOINT` completes in **0.078s**. The sweep then ran clean:
+**28 dropped, 0 failed, 67 → 39 databases.**
+
+**6. THE ROOT-WORKTREE TRAP BIT AGAIN, MID-GATE, AND THE GATE READ GREEN ANYWAY.** One `cd` to the repo
+root to read `scripts/improve/cli.ts` left the shell there, and the next full suite and `next build` ran
+against **`fix/companies-list`** instead of the integration branch. Both reported clean. The tell was in
+the output all along — vitest prints its root on the `RUN` line, and the counts were **479 files / 5359
+tests** where the r83 tree is **488 / 5576**.
+
+**A gate is only evidence if you can prove which tree it ran on.** Read the `RUN` path, or start every
+gate command with an explicit `cd` to the worktree. The previous handoff put this trap in its second
+line and it still cost a full suite run.
+
+**7. `TaskStop` DOES NOT STOP THE DATABASE WORK A TEST RUN STARTED.** Killing a background vitest left its
+server-side `CREATE DATABASE` running, wedged at `CheckpointStart`. The next full-suite run came back with
+**12 failures — every one a 30-second timeout, including a test whose body is only a file read** — and
+took 947s against 438s for the same tree. All twelve were artefacts of that one orphaned statement. Kill
+the client, then check `pg_stat_activity` and cancel what it left behind.
+
+**Carried:** still nothing browser-verified since r70. `61bf109d`'s pay-rule editor and `941c9dac`'s
+movement screens are both source-reasoned only.
+
+---
 
 ## r82 — 2026-07-30 — the shared leave group gets a door, and a cap that never existed
 
