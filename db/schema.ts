@@ -75,7 +75,7 @@ export const employmentTypeEnum = pgEnum('employment_type', [
  * account the bulk file is drawn on.
  */
 export const paymentMethodEnum = pgEnum('payment_method', ['bank_transfer', 'cheque', 'cash']);
-// R81 (9cbf5e0d), migration 0326 — the `assignment_status` pgEnum and the `assignment.status` column it
+// R81 (9cbf5e0d), migration 0331 — the `assignment_status` pgEnum and the `assignment.status` column it
 // typed are DROPPED. The reporter's rule set retired three of its five values (On Leave / Offboarding /
 // Terminated) and made Employee Status non-editable, which left the column holding a value that (a) nothing
 // displayed any more and (b) no caller was allowed to change — a permanently stale field that could only

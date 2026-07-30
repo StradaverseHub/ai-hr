@@ -76,7 +76,7 @@ export type MeritBudget = { kind: 'percent' | 'amount'; value: number } | null;
  * BEHAVIOUR CHANGE, DELIBERATE AND REPORTED: a cycle whose stored rules named a status used to be matched
  * against a hand-set column that nobody was allowed to keep current — test/performance-eligibility.test.ts
  * already documented the hazard (an employee with `terminatedOn` null but a stale stored 'terminated'). It
- * now matches against the employee's real, dated status. Migration 0326 remaps stored rules; the reported
+ * now matches against the employee's real, dated status. Migration 0331 remaps stored rules; the reported
  * backfill (scripts/report-employee-status-retirement.ts) prints every cycle it touches.
  */
 export type AssignmentStatus = EmploymentStatus;

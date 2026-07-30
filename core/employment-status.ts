@@ -14,7 +14,7 @@
  *
  * R81 (9cbf5e0d, superseding R43/r75) — the reporter supplied the FULL rule set: six statuses, three retired
  * (On Leave / Offboarding / Terminated), and NO MANUAL EDITING. This module is the single derivation; the
- * stored `assignment.status` column and its `assignment_status` enum are GONE (migration 0326), so there is
+ * stored `assignment.status` column and its `assignment_status` enum are GONE (migration 0331), so there is
  * no longer any field an administrator can type a status into. Status changes only by recording the event
  * that causes it — a confirmation, a resignation, a blacklist, a payroll hold.
  *

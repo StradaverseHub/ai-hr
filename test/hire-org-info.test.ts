@@ -141,7 +141,7 @@ describe('hireEmployee — organization + employment info', () => {
     const emp = await employmentRow(hire.employmentId);
     expect(emp.provisionalEndOn).toBe('2026-06-01');
     // R81 — the hire is on PROBATION, and that is now read from the date above rather than from a stored
-    // status column (dropped in 0326). Before R81 the deriver read only the confirmation dates, which a
+    // status column (dropped in 0331). Before R81 the deriver read only the confirmation dates, which a
     // hire never writes, so this employee displayed "Active" throughout their probation.
     expect(deriveEmploymentStatus(emp, '2026-05-02')).toBe('probation');
     expect(deriveEmploymentStatus(emp, '2026-06-01')).toBe('active');

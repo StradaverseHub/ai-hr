@@ -44,7 +44,7 @@ import {
 
 export type EmploymentTypeValue = (typeof employmentTypeEnum.enumValues)[number];
 // R81 (9cbf5e0d): `AssignmentStatusValue` is GONE with the `assignment_status` enum it aliased (migration
-// 0326). Employee Status is derived — the only status vocabulary left is EmploymentStatus in
+// 0331). Employee Status is derived — the only status vocabulary left is EmploymentStatus in
 // core/employment-status.ts, and it has no stored counterpart to alias.
 
 /** Hiring enhancement: a position / cost-center / department chosen for a hire must belong to the
@@ -225,7 +225,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       .values({ tenantId: ctx.tenantId, personId, companyId: p.companyId, hiredOn: p.hiredOn, joinDate: p.hiredOn, employeeCode, gradeId: p.gradeId ?? null, provisionalEndOn })
       .returning({ id: employment.id });
 
-    // R81 (9cbf5e0d): the `status` column is GONE from `assignment` (migration 0326). A hire used to write
+    // R81 (9cbf5e0d): the `status` column is GONE from `assignment` (migration 0331). A hire used to write
     // 'probation' or 'active' here from the employment type + provisional end date; Employee Status is now
     // DERIVED for every employee from the lifecycle dates (core/employment-status.ts), and `provisionalEndOn`
     // — which this block already computed — is exactly what the deriver reads to return 'probation'. So the
@@ -1607,7 +1607,7 @@ export async function setEmploymentAssignment(
      * end of the manual path: the Personnel form behind it was already deleted (8ebabbf2) and no caller
      * passed it, but an exported service parameter is callable whether or not any UI references it, so
      * leaving it would have kept "no manual editing" a convention rather than a guarantee. The column it
-     * wrote is gone too (migration 0326) — the parameter could not be re-added without re-adding the schema.
+     * wrote is gone too (migration 0331) — the parameter could not be re-added without re-adding the schema.
      */
     /** 78853b97 — optional movement classification tag merged into the event payload (see db/events.ts). */
     movement?: MovementTag;

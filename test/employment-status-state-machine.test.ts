@@ -164,7 +164,7 @@ describe('§3 no manual editing — there is no writer, no column, and no parame
     expect(schema).not.toHaveProperty('assignmentStatusEnum');
   });
 
-  it('the database itself has neither the column nor the type (migration 0326 really ran)', async () => {
+  it('the database itself has neither the column nor the type (migration 0331 really ran)', async () => {
     const col = await owner.db.execute(sql`select 1 from information_schema.columns
       where table_schema = 'public' and table_name = 'assignment' and column_name = 'status'`);
     expect(Array.from(col as unknown as unknown[])).toHaveLength(0);
@@ -337,5 +337,87 @@ describe('§5 Probation until confirmed — the rule that was not working', () =
     const h = await hire('No Probation', null);
     const d = await employeeDetail(adminCtx(b), h.employmentId);
     expect(deriveEmploymentStatus(d!, '2026-01-05')).toBe('active');
+  });
+});
+
+/**
+ * §6  THE REVIEW-CYCLE SIDE EFFECT (feedback 00659c34, migration 0332).
+ *
+ * 0331 remaps stored review-cycle eligibility onto the surviving vocabulary, faithfully — but it cannot
+ * map anything TO `probation`, because that value was never storable. Before 0331 nobody ever displayed as
+ * being on probation, which is the very fault 9cbf5e0d fixes. So the moment probation becomes real, a
+ * cycle written to mean "everyone" silently stops meaning everyone, and on production that is 12 of 22
+ * employments dropping out of the 2026 Annual review.
+ *
+ * The reporter was asked and answered on 2026-07-30: include them. 0332 applies that.
+ *
+ * These run the SHIPPED SQL against fixtures rather than asserting on the migration's text — a test that
+ * greps the file would pass on a migration that never executes.
+ */
+describe('§6 review-cycle eligibility keeps probation employees (0332)', () => {
+  const migrationSql = () =>
+    fs.readFileSync(
+      path.join(__dirname, '..', 'db', 'migrations', '0332_review_cycle_include_probation.sql'),
+      'utf8',
+    );
+
+  const makeCycle = async (name: string, statuses: string[]) => {
+    const id = randomUUID();
+    // period_start / period_end / rating_scale are NOT NULL. Supplying them is not incidental: a fixture
+    // missing a required column fails on the constraint before it ever reaches the behaviour under test,
+    // which is how two tests in this repo previously passed for the wrong reason.
+    await owner.db.execute(
+      sql`insert into review_cycle
+            (id, tenant_id, name, period_start, period_end, status, rating_scale, eligibility_rules)
+          values (${id}, ${b.tenantId}, ${name}, '2026-01-01', '2026-12-31', 'draft',
+                  ${JSON.stringify([{ value: 1, label: 'Poor' }, { value: 5, label: 'Excellent' }])}::jsonb,
+                  ${JSON.stringify({ statuses })}::jsonb)`,
+    );
+    return id;
+  };
+
+  const statusesOf = async (id: string): Promise<string[]> => {
+    const [row] = await owner.db
+      .select({ rules: schema.reviewCycle.eligibilityRules })
+      .from(schema.reviewCycle)
+      .where(eq(schema.reviewCycle.id, id));
+    return ((row?.rules as { statuses?: string[] } | null)?.statuses ?? []) as string[];
+  };
+
+  it('adds probation to a cycle that asks for active employees, and does not disturb the rest', async () => {
+    // The post-0331 shape of production's "2026 Annual": written to mean everyone, remapped, probation absent.
+    const id = await makeCycle('Annual Fixture', ['active', 'active_serving_notice', 'resigned']);
+    await owner.db.execute(sql.raw(migrationSql()));
+    const after = await statusesOf(id);
+    expect(after).toContain('probation');
+    // Additive only — nothing the cycle already selected may be dropped.
+    for (const kept of ['active', 'active_serving_notice', 'resigned']) expect(after).toContain(kept);
+  });
+
+  it('leaves a cycle alone when it is not asking for currently-working employees', async () => {
+    const id = await makeCycle('Leavers Only', ['resigned']);
+    await owner.db.execute(sql.raw(migrationSql()));
+    expect(await statusesOf(id)).toEqual(['resigned']);
+  });
+
+  it('is safe to run twice — no duplicate probation entry', async () => {
+    const id = await makeCycle('Rerun Fixture', ['active']);
+    await owner.db.execute(sql.raw(migrationSql()));
+    await owner.db.execute(sql.raw(migrationSql()));
+    const after = await statusesOf(id);
+    expect(after.filter((s) => s === 'probation')).toHaveLength(1);
+  });
+
+  it('THE POINT: a real employee serving probation is inside the cycle after the fix', async () => {
+    const h = await hire('Probationer In Review', '2026-09-30');
+    const d = await employeeDetail(adminCtx(b), h.employmentId);
+    expect(deriveEmploymentStatus(d!, '2026-07-30')).toBe('probation');
+
+    const id = await makeCycle('Covers Everyone', ['active', 'active_serving_notice', 'resigned']);
+    // Before the fix this employee is outside the cycle's stated population...
+    expect(await statusesOf(id)).not.toContain('probation');
+    await owner.db.execute(sql.raw(migrationSql()));
+    // ...and after it, inside.
+    expect(await statusesOf(id)).toContain(deriveEmploymentStatus(d!, '2026-07-30'));
   });
 });

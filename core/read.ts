@@ -131,7 +131,7 @@ export type EmployeeListRow = {
   email: string;
   employeeCode: string | null;
   // R81 (9cbf5e0d): the legacy stored `status` field is GONE from this row — the column behind it was
-  // dropped (migration 0326). Every consumer already derived the badge from the lifecycle dates below via
+  // dropped (migration 0331). Every consumer already derived the badge from the lifecycle dates below via
   // deriveEmploymentStatus; nothing read this field for display. Derive, do not re-add.
   department: string | null;
   departmentId: string | null;
@@ -1794,7 +1794,7 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
         // 570e3311 — BU display name (additive), so the detail page can label a pinned-current BU that is
         // no longer in the company-scoped option list (legacy / later-unshared data).
         businessUnit: businessUnit.name,
-        // R81 (9cbf5e0d): no `status` here any more — the column is dropped (migration 0326). This read
+        // R81 (9cbf5e0d): no `status` here any more — the column is dropped (migration 0331). This read
         // powers the dated org history (department / position / BU / type), which is what actually varies
         // per version; the Movement tab replaced the old status column in this table back at 78853b97, so
         // nothing rendered it. Current Employee Status is derived, once, from the lifecycle dates.

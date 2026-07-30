@@ -82,7 +82,7 @@ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name = 'assignment' AND column_name = 'status'
   ) THEN
-    RAISE NOTICE '0326 STEP 1: assignment.status already dropped — nothing to report (re-run or fresh chain).';
+    RAISE NOTICE '0331 STEP 1: assignment.status already dropped — nothing to report (re-run or fresh chain).';
     RETURN;
   END IF;
 
@@ -106,7 +106,7 @@ BEGIN
   LOOP
     IF r.stored IN ('on_leave', 'offboarding', 'terminated') THEN
       n_retired := n_retired + 1;
-      RAISE NOTICE '0326 retired-value holder: employee % — stored "%" (retired) -> displayed "%"', r.employee_code, r.stored, r.derived;
+      RAISE NOTICE '0331 retired-value holder: employee % — stored "%" (retired) -> displayed "%"', r.employee_code, r.stored, r.derived;
     END IF;
     IF r.stored IS DISTINCT FROM r.derived THEN
       n_changed := n_changed + 1;
@@ -116,7 +116,7 @@ BEGIN
   -- n_changed counts rows where the DROPPED column disagreed with what the screens were already showing.
   -- It is expected to be non-zero and is not a status move: the derived value was authoritative before
   -- this migration and is unchanged by it. Printed so the size of the historical drift is on the record.
-  RAISE NOTICE '0326 STEP 1 summary: % employment(s) held a retired value; % held a value that already disagreed with the displayed status. Displayed statuses are UNCHANGED by this migration.', n_retired, n_changed;
+  RAISE NOTICE '0331 STEP 1 summary: % employment(s) held a retired value; % held a value that already disagreed with the displayed status. Displayed statuses are UNCHANGED by this migration.', n_retired, n_changed;
 END $$;--> statement-breakpoint
 
 -- ── STEP 2 · Remap performance-eligibility rules off the retired vocabulary ──────────────────────────

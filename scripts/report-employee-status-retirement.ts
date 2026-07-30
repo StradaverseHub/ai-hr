@@ -1,7 +1,7 @@
 // One-shot PRE-DEPLOY REPORT (feedback 9cbf5e0d, r81b) — the before-and-after list the reporter was
-// promised, printed BEFORE migration 0326 drops `assignment.status` and the `assignment_status` enum.
+// promised, printed BEFORE migration 0331 drops `assignment.status` and the `assignment_status` enum.
 //
-// WHY A SEPARATE SCRIPT WHEN 0326 ALSO PRINTS. The migration's own STEP 1 notice block writes the same
+// WHY A SEPARATE SCRIPT WHEN 0331 ALSO PRINTS. The migration's own STEP 1 notice block writes the same
 // facts into the deploy log, which is the durable audit record. This script exists so the mapping can be
 // READ AND AGREED first, on a day of someone's choosing, without applying anything — "we will show you
 // that mapping before it is applied" is not satisfied by output that only appears at the moment of
@@ -19,7 +19,7 @@
 //   2. Every employment whose stored value disagreed with the displayed status, as a count — the size of
 //      the drift that made this request necessary. These are NOT status changes: the displayed value was
 //      authoritative before this migration and is untouched by it.
-//   3. Every performance review cycle whose eligibility rules name a status, with the exact remap 0326
+//   3. Every performance review cycle whose eligibility rules name a status, with the exact remap 0331
 //      will apply. This is the ONE place where behaviour genuinely changes, so it is listed by cycle name.
 import { createDb } from '../db/client';
 
@@ -27,7 +27,7 @@ type RetiredRow = { employee_code: string | null; company: string; stored: strin
 type DriftRow = { n: string };
 type CycleRow = { id: string; name: string; company: string | null; statuses: string[] };
 
-/** The retirement mapping, single-sourced with migration 0326 STEP 2. */
+/** The retirement mapping, single-sourced with migration 0331 STEP 2. */
 const REMAP: Record<string, string> = {
   on_leave: 'active',
   offboarding: 'active_serving_notice',
@@ -52,11 +52,11 @@ async function main() {
     ) as present
   `) as unknown as [{ present: boolean }];
 
-  console.log('Employee Status retirement — read-only report (9cbf5e0d / migration 0326)');
+  console.log('Employee Status retirement — read-only report (9cbf5e0d / migration 0331)');
   console.log('─'.repeat(100));
 
   if (!present) {
-    console.log('assignment.status is already dropped: migration 0326 has been applied. Nothing to report.');
+    console.log('assignment.status is already dropped: migration 0331 has been applied. Nothing to report.');
     console.log('The per-employment before/after is in the deploy log from the run that applied it.');
     await sql.end();
     return;
@@ -92,7 +92,7 @@ async function main() {
     console.log('   (none — no stored row holds On Leave, Offboarding or Terminated)');
   } else {
     console.log('   These employees are ALREADY shown the "displayed" value on every screen; the stored');
-    console.log('   value is the one being removed. Nobody\'s status moves when 0326 runs.\n');
+    console.log('   value is the one being removed. Nobody\'s status moves when 0331 runs.\n');
     for (const r of retired) {
       console.log(
         `   ${(r.employee_code ?? '(no code)').padEnd(14)} ${r.company.slice(0, 30).padEnd(32)} stored "${r.stored}" (retired)  ->  displayed "${r.derived}"`,
@@ -111,7 +111,7 @@ async function main() {
 
   console.log(`\n2. STORED-vs-DISPLAYED DRIFT — ${drift.n} employment(s) held a stored value that already`);
   console.log('   disagreed with the status their screens show. This is the drift the request describes.');
-  console.log('   It is reported for the record only: these are not changes, and 0326 makes none.');
+  console.log('   It is reported for the record only: these are not changes, and 0331 makes none.');
 
   // ── 3. Performance eligibility rules — the one real behaviour change ────────────────────────────
   const cycles = (await sql`
@@ -130,7 +130,7 @@ async function main() {
     console.log('   (none — no stored eligibility rule names a status, so no cycle changes population)');
   } else {
     console.log('   THIS IS THE ONE PLACE BEHAVIOUR CHANGES. These cycles matched employees against the');
-    console.log('   stored column; after 0326 they match against the real derived status.\n');
+    console.log('   stored column; after 0331 they match against the real derived status.\n');
     for (const c of cycles) {
       const after = [...new Set(c.statuses.map(remap))];
       const changed = JSON.stringify(after) !== JSON.stringify([...new Set(c.statuses)]);
@@ -141,7 +141,7 @@ async function main() {
   }
 
   console.log('\n' + '─'.repeat(100));
-  console.log('Read-only: nothing was written. Apply migration 0326 to carry this out.');
+  console.log('Read-only: nothing was written. Apply migration 0331 to carry this out.');
   await sql.end();
 }
 
