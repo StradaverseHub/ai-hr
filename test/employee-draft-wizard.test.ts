@@ -35,6 +35,7 @@ import {
   listEmployeeDrafts,
   saveEmployeeDraft,
 } from '../core/employee-draft';
+import { movementHistory } from '../core/movement';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -304,19 +305,26 @@ describe('§3 a draft creates nothing until it is completed', () => {
     expect(ev?.type).toBe('employee-draft.completed');
   });
 
-  it('emits exactly ONE Hired-shaped movement — no spurious second history row', async () => {
+  it('opens Employment History with exactly ONE Hired row — no spurious second row', async () => {
     const ctx = adminCtx(b);
-    const { id } = await saveEmployeeDraft(ctx, { data: completeDraft(), currentStep: 5 });
+    const data = completeDraft();
+    data.employment!.reportingManagerEmploymentId = undefined;
+    const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 5 });
     const { employmentId } = await completeEmployeeDraft(ctx, id);
     // r78 (4d391ab7): the initial assignment is SYNTHESIZED as the Hired row from the employment
-    // itself. If the wizard ever started emitting a movement event for it, every new employee would
-    // open their history with two rows for one action.
-    const rows = await owner.db
+    // itself. Emitting a movement event for it would give every new employee TWO rows for one
+    // action — the exact fault that round fixed for the hire-time reporting line. This asserts the
+    // PROJECTION, not the event log, because the projection is what the reporter actually sees.
+    const history = await movementHistory(ctx, employmentId);
+    expect(history.filter((r) => r.kind === 'hired')).toHaveLength(1);
+    // The synthesized Hired row projects from no event at all, which is what `entryDate: null` means.
+    expect(history.find((r) => r.kind === 'hired')!.entryDate).toBeNull();
+    // And nothing recorded a movement of its own.
+    const recorded = await owner.db
       .select({ type: schema.domainEvent.eventType })
       .from(schema.domainEvent)
       .where(eq(schema.domainEvent.subjectEmploymentId, employmentId));
-    const movementish = rows.map((r) => r.type).filter((t) => t.startsWith('movement.'));
-    expect(movementish).toEqual([]);
+    expect(recorded.map((r) => r.type)).not.toContain('employment.movement.recorded');
   });
 
   it('discarding a draft removes it and creates nothing', async () => {
