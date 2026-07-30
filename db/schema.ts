@@ -5712,3 +5712,43 @@ export const tenantProvisionRequestModule = pgTable(
   },
   (t) => [primaryKey({ columns: [t.requestId, t.moduleCode] })],
 );
+
+// ─────────────── Personnel — Create New Employee drafts (feedback 6d671f44, migration 0337) ───────────────
+// Captured INPUT for the step-by-step Create New Employee wizard, deliberately NOT a partially-populated
+// person + employment. A draft creates nothing: it holds what HR has typed so far and, on the wizard's
+// final step, is replayed through the SAME writers a hand-entered hire uses (hireEmployee → the company
+// pack's statutory.set → setCompensation), then deleted. That is what makes every one of the reporter's
+// draft rules true by construction rather than by an exclusion added to each list read: a draft does not
+// appear as an employee, is not selected for payroll, triggers no statutory calculation, is absent from
+// reports, and — because `nextEmployeeCode` only runs inside hireEmployee — consumes no Employee ID.
+//
+// `data` is opaque to SQL. The wizard's field set IS the profile's field set; mirroring it as columns
+// would mean a migration every time the profile screen changes, and two definitions of "an employee's
+// details" that drift apart. `label` and `companyId` are lifted out only so the drafts LIST can show a
+// name and a company without parsing every payload.
+//
+// RLS (0337): visible to the AUTHOR or to an admin — a different rule from an employment's, because a
+// draft is not about a person yet. An admin can finish a colleague's draft, which is a real handover need.
+export const employeeDraft = pgTable(
+  'employee_draft',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Set once the Employment step picks a company; null before that. */
+    companyId: uuid('company_id').references(() => company.id),
+    /** The author, for the RLS visibility rule and the "started by" line in the list. */
+    createdByPersonId: uuid('created_by_person_id').references(() => person.id),
+    /** Full name typed so far — '' rather than null so the list never special-cases it. */
+    label: text('label').notNull().default(''),
+    /** Everything captured, step by step. See core/employee-draft.ts for the shape. */
+    data: jsonb('data').notNull().default({}),
+    /** Where the wizard reopens. 1-based, matching the on-screen step numbers. */
+    currentStep: integer('current_step').notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('employee_draft_tenant_updated_idx').on(t.tenantId, t.updatedAt),
+    index('employee_draft_author_idx').on(t.tenantId, t.createdByPersonId),
+  ],
+);

@@ -342,7 +342,14 @@
       "employeeIdLabel": "Employee ID",
       "employeeIdPlaceholder": "e.g. EMP-0001",
       "employeeIdHint": "Letters, numbers and dashes; up to 30 characters.",
-      "hiringDefaults": "Hiring defaults"
+      "hiringDefaults": "Hiring defaults",
+      "draftsHeading": "Unfinished new employees",
+      "draftsCount": "{count} draft",
+      "draftUntitled": "Unnamed draft",
+      "draftNoCompany": "No company chosen yet",
+      "draftMissing": "{count} still needed",
+      "draftReady": "Ready to create",
+      "draftContinue": "Continue"
     },
     "detail": {
       "backToPeople": "People",
@@ -1266,6 +1273,126 @@
       "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
       "reviewReminderDays": "Review reminders (days before end date)",
       "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
+    },
+    "wizard": {
+      "fields": {
+        "fullName": "Full name",
+        "primaryEmail": "Email",
+        "employeeCode": "Employee ID",
+        "company": "Company",
+        "businessUnit": "Business unit",
+        "department": "Department",
+        "position": "Position / Job title",
+        "costCenter": "Cost center",
+        "jobGrade": "Job grade",
+        "reportingManager": "Reporting manager",
+        "employmentType": "Employment type",
+        "hiredOn": "Hire date",
+        "provisionalEndOn": "Provisional end date",
+        "basicSalary": "Initial basic salary (MYR)",
+        "remarks": "Remarks",
+        "icNumber": "Identity No (NRIC)",
+        "phone": "Mobile Phone Number",
+        "gender": "Gender",
+        "maritalStatus": "Marital status",
+        "epfNumber": "EPF number",
+        "socsoNumber": "SOCSO number",
+        "taxNumber": "Tax number",
+        "dateOfBirth": "Date of birth",
+        "bankName": "Bank",
+        "bankAccountNo": "Bank account number",
+        "bankAccount": "Bank details",
+        "numChildren": "Number of children",
+        "epfCitizenship": "EPF citizenship",
+        "eisEligible": "EIS eligible",
+        "isResident": "Tax resident",
+        "taxCategory": "PCB category",
+        "monthlyAllowance": "Monthly allowance",
+        "payMode": "Pay mode",
+        "paymentTerm": "Payment term",
+        "rateAmount": "Rate amount"
+      },
+      "employmentType": {
+        "full_time": "Full-time",
+        "part_time": "Part-time",
+        "contract": "Contract",
+        "intern": "Intern"
+      },
+      "taxCategory": {
+        "1": "Single",
+        "2": "Married · spouse not working",
+        "3": "Married · spouse working"
+      },
+      "none": "— None —",
+      "orgLabelsEmptyForCompany": "No organization labels are configured for the selected company.",
+      "hints": {
+        "provisionalEndOn": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none.",
+        "employeeCode": "Leave blank and the system generates the next Employee ID when the employee is created. A draft never uses one up.",
+        "icNumber": "Optional — leave blank for a passport holder. If given, it must be a valid identity number for the company’s country.",
+        "dateOfBirth": "Leave blank and it is taken from the identity number where possible.",
+        "businessUnit": "Narrows the department list only. It is not stored on the employee.",
+        "hiredOn": "The first day of employment. After creation this date changes only through a movement event.",
+        "bankAccount": "Give both the bank and the account number, or neither.",
+        "rateAmount": "Required for a daily or hourly pay mode."
+      },
+      "backLabel": "Back to Personnel",
+      "title": "Create new employee",
+      "description": "Enter the details step by step. Save as a draft at any point and come back to it — nothing is created until the final step.",
+      "progressLabel": "Creation steps",
+      "steps": {
+        "profile": "Profile",
+        "employment": "Employment",
+        "statutory": "Bank & Statutory",
+        "payroll": "Payroll",
+        "review": "Review & create"
+      },
+      "notSet": "— Not set —",
+      "selectPrompt": "— Select —",
+      "yes": "Yes",
+      "no": "No",
+      "gender": {
+        "male": "Male",
+        "female": "Female"
+      },
+      "marital": {
+        "single": "Single",
+        "married": "Married"
+      },
+      "citizenship": {
+        "citizen": "Citizen",
+        "pr": "Permanent resident",
+        "non_citizen": "Non-citizen"
+      },
+      "payMode": {
+        "monthly": "Monthly",
+        "daily": "Daily",
+        "hourly": "Hourly",
+        "custom_period": "Custom period"
+      },
+      "paymentTerm": {
+        "monthly": "Monthly",
+        "weekly": "Weekly",
+        "biweekly": "Fortnightly"
+      },
+      "continueDraft": "Continue a draft ({count})",
+      "untitledDraft": "Unnamed draft",
+      "stepOf": "Step {current} of {total}",
+      "missingCount": "{count} still needed",
+      "readyToCreate": "Ready to create",
+      "lastSaved": "Saved {when}",
+      "startedBy": "Started by {name}",
+      "continue": "Continue",
+      "complete": "Complete",
+      "reviewReady": "Everything needed is here. Creating the employee generates the Employee ID and opens their record.",
+      "reviewIncomplete": "Fill in what is listed above, or save this as a draft and come back to it.",
+      "back": "Back",
+      "next": "Next",
+      "saveDraft": "Save draft",
+      "saving": "Saving…",
+      "draftSaved": "Draft saved",
+      "discardDraft": "Discard draft",
+      "createEmployee": "Create employee",
+      "creating": "Creating…"
     }
   },
   "leave": {

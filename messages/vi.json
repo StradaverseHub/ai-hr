@@ -342,7 +342,14 @@
       "employeeIdLabel": "Mã nhân viên",
       "employeeIdPlaceholder": "vd. EMP-0001",
       "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 30 ký tự.",
-      "hiringDefaults": "Mặc định tuyển dụng"
+      "hiringDefaults": "Mặc định tuyển dụng",
+      "draftsHeading": "Nhân viên mới chưa hoàn tất",
+      "draftsCount": "{count} bản nháp",
+      "draftUntitled": "Bản nháp chưa đặt tên",
+      "draftNoCompany": "Chưa chọn công ty",
+      "draftMissing": "Còn thiếu {count}",
+      "draftReady": "Sẵn sàng tạo",
+      "draftContinue": "Tiếp tục"
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -1266,6 +1273,126 @@
       "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
       "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
       "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
+    },
+    "wizard": {
+      "fields": {
+        "fullName": "Họ và tên",
+        "primaryEmail": "Email",
+        "employeeCode": "Mã nhân viên",
+        "company": "Công ty",
+        "businessUnit": "Đơn vị kinh doanh",
+        "department": "Phòng ban",
+        "position": "Vị trí / Chức danh",
+        "costCenter": "Trung tâm chi phí",
+        "jobGrade": "Ngạch công việc",
+        "reportingManager": "Quản lý trực tiếp",
+        "employmentType": "Loại hợp đồng",
+        "hiredOn": "Ngày tuyển dụng",
+        "provisionalEndOn": "Ngày kết thúc tạm thời",
+        "basicSalary": "Lương cơ bản ban đầu (MYR)",
+        "remarks": "Ghi chú",
+        "icNumber": "Số định danh (NRIC)",
+        "phone": "Số điện thoại di động",
+        "gender": "Giới tính",
+        "maritalStatus": "Tình trạng hôn nhân",
+        "epfNumber": "Số EPF",
+        "socsoNumber": "Số SOCSO",
+        "taxNumber": "Mã số thuế",
+        "dateOfBirth": "Ngày sinh",
+        "bankName": "Ngân hàng",
+        "bankAccountNo": "Số tài khoản ngân hàng",
+        "bankAccount": "Thông tin ngân hàng",
+        "numChildren": "Số con",
+        "epfCitizenship": "Quốc tịch EPF",
+        "eisEligible": "Đủ điều kiện EIS",
+        "isResident": "Cư trú thuế",
+        "taxCategory": "Nhóm PCB",
+        "monthlyAllowance": "Phụ cấp hàng tháng",
+        "payMode": "Hình thức trả lương",
+        "paymentTerm": "Kỳ trả lương",
+        "rateAmount": "Mức đơn giá"
+      },
+      "employmentType": {
+        "full_time": "Toàn thời gian",
+        "part_time": "Bán thời gian",
+        "contract": "Hợp đồng",
+        "intern": "Thực tập"
+      },
+      "taxCategory": {
+        "1": "Độc thân",
+        "2": "Đã kết hôn · vợ/chồng không đi làm",
+        "3": "Đã kết hôn · vợ/chồng đi làm"
+      },
+      "none": "— Không có —",
+      "orgLabelsEmptyForCompany": "Chưa có nhãn tổ chức nào được cấu hình cho công ty đã chọn.",
+      "hints": {
+        "provisionalEndOn": "Kết thúc thử việc cho toàn thời gian (mặc định +3 tháng); nếu không là ngày kết thúc hợp đồng hoặc thực tập. Để trống nếu không có.",
+        "employeeCode": "Để trống thì hệ thống sẽ sinh Mã nhân viên kế tiếp khi nhân viên được tạo. Bản nháp không bao giờ dùng mã nào.",
+        "icNumber": "Không bắt buộc — để trống với người dùng hộ chiếu. Nếu nhập, phải là số định danh hợp lệ theo quốc gia của công ty.",
+        "dateOfBirth": "Để trống thì hệ thống lấy từ số định danh nếu có thể.",
+        "businessUnit": "Chỉ để lọc danh sách phòng ban. Không lưu vào hồ sơ nhân viên.",
+        "hiredOn": "Ngày làm việc đầu tiên. Sau khi tạo, ngày này chỉ thay đổi qua sự kiện điều động.",
+        "bankAccount": "Nhập cả ngân hàng và số tài khoản, hoặc bỏ trống cả hai.",
+        "rateAmount": "Bắt buộc với hình thức trả lương theo ngày hoặc theo giờ."
+      },
+      "backLabel": "Quay lại Nhân sự",
+      "title": "Tạo nhân viên mới",
+      "description": "Nhập thông tin theo từng bước. Có thể lưu nháp bất cứ lúc nào và quay lại sau — không có gì được tạo cho đến bước cuối cùng.",
+      "progressLabel": "Các bước tạo",
+      "steps": {
+        "profile": "Hồ sơ",
+        "employment": "Việc làm",
+        "statutory": "Ngân hàng & Luật định",
+        "payroll": "Lương",
+        "review": "Xem lại & tạo"
+      },
+      "notSet": "— Chưa đặt —",
+      "selectPrompt": "— Chọn —",
+      "yes": "Có",
+      "no": "Không",
+      "gender": {
+        "male": "Nam",
+        "female": "Nữ"
+      },
+      "marital": {
+        "single": "Độc thân",
+        "married": "Đã kết hôn"
+      },
+      "citizenship": {
+        "citizen": "Công dân",
+        "pr": "Thường trú nhân",
+        "non_citizen": "Không phải công dân"
+      },
+      "payMode": {
+        "monthly": "Hàng tháng",
+        "daily": "Hàng ngày",
+        "hourly": "Theo giờ",
+        "custom_period": "Kỳ tùy chỉnh"
+      },
+      "paymentTerm": {
+        "monthly": "Hàng tháng",
+        "weekly": "Hàng tuần",
+        "biweekly": "Hai tuần một lần"
+      },
+      "continueDraft": "Tiếp tục bản nháp ({count})",
+      "untitledDraft": "Bản nháp chưa đặt tên",
+      "stepOf": "Bước {current}/{total}",
+      "missingCount": "Còn thiếu {count}",
+      "readyToCreate": "Sẵn sàng tạo",
+      "lastSaved": "Đã lưu {when}",
+      "startedBy": "Bắt đầu bởi {name}",
+      "continue": "Tiếp tục",
+      "complete": "Hoàn tất",
+      "reviewReady": "Đã có đủ thông tin cần thiết. Tạo nhân viên sẽ sinh Mã nhân viên và mở hồ sơ của họ.",
+      "reviewIncomplete": "Hãy điền những mục liệt kê ở trên, hoặc lưu nháp và quay lại sau.",
+      "back": "Quay lại",
+      "next": "Tiếp",
+      "saveDraft": "Lưu nháp",
+      "saving": "Đang lưu…",
+      "draftSaved": "Đã lưu nháp",
+      "discardDraft": "Bỏ bản nháp",
+      "createEmployee": "Tạo nhân viên",
+      "creating": "Đang tạo…"
     }
   },
   "leave": {

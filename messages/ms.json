@@ -342,7 +342,14 @@
       "employeeIdLabel": "ID Pekerja",
       "employeeIdPlaceholder": "cth. EMP-0001",
       "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 30 aksara.",
-      "hiringDefaults": "Tetapan lalai pengambilan"
+      "hiringDefaults": "Tetapan lalai pengambilan",
+      "draftsHeading": "Pekerja baharu yang belum selesai",
+      "draftsCount": "{count} draf",
+      "draftUntitled": "Draf tanpa nama",
+      "draftNoCompany": "Syarikat belum dipilih",
+      "draftMissing": "{count} masih diperlukan",
+      "draftReady": "Sedia untuk dicipta",
+      "draftContinue": "Sambung"
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -1266,6 +1273,126 @@
       "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
       "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
       "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
+    },
+    "wizard": {
+      "fields": {
+        "fullName": "Nama penuh",
+        "primaryEmail": "E-mel",
+        "employeeCode": "ID Pekerja",
+        "company": "Syarikat",
+        "businessUnit": "Unit perniagaan",
+        "department": "Jabatan",
+        "position": "Jawatan / Tajuk kerja",
+        "costCenter": "Pusat kos",
+        "jobGrade": "Gred kerja",
+        "reportingManager": "Pengurus pelapor",
+        "employmentType": "Jenis pekerjaan",
+        "hiredOn": "Tarikh ambil",
+        "provisionalEndOn": "Tarikh tamat sementara",
+        "basicSalary": "Gaji asas permulaan (MYR)",
+        "remarks": "Catatan",
+        "icNumber": "No. Identiti (NRIC)",
+        "phone": "Nombor Telefon Bimbit",
+        "gender": "Jantina",
+        "maritalStatus": "Status perkahwinan",
+        "epfNumber": "Nombor EPF",
+        "socsoNumber": "Nombor SOCSO",
+        "taxNumber": "Nombor cukai",
+        "dateOfBirth": "Tarikh lahir",
+        "bankName": "Bank",
+        "bankAccountNo": "Nombor akaun bank",
+        "bankAccount": "Maklumat bank",
+        "numChildren": "Bilangan anak",
+        "epfCitizenship": "Kewarganegaraan KWSP",
+        "eisEligible": "Layak SIP",
+        "isResident": "Pemastautin cukai",
+        "taxCategory": "Kategori PCB",
+        "monthlyAllowance": "Elaun bulanan",
+        "payMode": "Mod bayaran",
+        "paymentTerm": "Tempoh bayaran",
+        "rateAmount": "Jumlah kadar"
+      },
+      "employmentType": {
+        "full_time": "Sepenuh masa",
+        "part_time": "Separuh masa",
+        "contract": "Kontrak",
+        "intern": "Pelatih"
+      },
+      "taxCategory": {
+        "1": "Bujang",
+        "2": "Berkahwin · pasangan tidak bekerja",
+        "3": "Berkahwin · pasangan bekerja"
+      },
+      "none": "— Tiada —",
+      "orgLabelsEmptyForCompany": "Tiada label organisasi dikonfigurasikan untuk syarikat yang dipilih.",
+      "hints": {
+        "provisionalEndOn": "Tamat percubaan untuk sepenuh masa (lalai +3 bulan); jika tidak, tamat kontrak atau latihan. Biarkan kosong jika tiada.",
+        "employeeCode": "Biarkan kosong dan sistem akan menjana ID Pekerja seterusnya semasa pekerja dicipta. Draf tidak pernah menggunakannya.",
+        "icNumber": "Pilihan — biarkan kosong bagi pemegang pasport. Jika diisi, ia mesti nombor pengenalan yang sah bagi negara syarikat.",
+        "dateOfBirth": "Biarkan kosong dan ia diambil daripada nombor pengenalan jika boleh.",
+        "businessUnit": "Hanya menapis senarai jabatan. Ia tidak disimpan pada pekerja.",
+        "hiredOn": "Hari pertama bekerja. Selepas penciptaan, tarikh ini hanya berubah melalui peristiwa pergerakan.",
+        "bankAccount": "Isikan kedua-dua bank dan nombor akaun, atau tiada langsung.",
+        "rateAmount": "Diperlukan untuk mod bayaran harian atau sejam."
+      },
+      "backLabel": "Kembali ke Personel",
+      "title": "Cipta pekerja baharu",
+      "description": "Masukkan maklumat langkah demi langkah. Simpan sebagai draf pada bila-bila masa dan kembali kemudian — tiada apa-apa dicipta sehingga langkah terakhir.",
+      "progressLabel": "Langkah penciptaan",
+      "steps": {
+        "profile": "Profil",
+        "employment": "Pekerjaan",
+        "statutory": "Bank & Statutori",
+        "payroll": "Gaji",
+        "review": "Semak & cipta"
+      },
+      "notSet": "— Tidak ditetapkan —",
+      "selectPrompt": "— Pilih —",
+      "yes": "Ya",
+      "no": "Tidak",
+      "gender": {
+        "male": "Lelaki",
+        "female": "Perempuan"
+      },
+      "marital": {
+        "single": "Bujang",
+        "married": "Berkahwin"
+      },
+      "citizenship": {
+        "citizen": "Warganegara",
+        "pr": "Penduduk tetap",
+        "non_citizen": "Bukan warganegara"
+      },
+      "payMode": {
+        "monthly": "Bulanan",
+        "daily": "Harian",
+        "hourly": "Sejam",
+        "custom_period": "Tempoh tersuai"
+      },
+      "paymentTerm": {
+        "monthly": "Bulanan",
+        "weekly": "Mingguan",
+        "biweekly": "Dua minggu sekali"
+      },
+      "continueDraft": "Sambung draf ({count})",
+      "untitledDraft": "Draf tanpa nama",
+      "stepOf": "Langkah {current} daripada {total}",
+      "missingCount": "{count} masih diperlukan",
+      "readyToCreate": "Sedia untuk dicipta",
+      "lastSaved": "Disimpan {when}",
+      "startedBy": "Dimulakan oleh {name}",
+      "continue": "Sambung",
+      "complete": "Lengkap",
+      "reviewReady": "Semua yang diperlukan sudah ada. Mencipta pekerja akan menjana ID Pekerja dan membuka rekod mereka.",
+      "reviewIncomplete": "Isikan perkara yang disenaraikan di atas, atau simpan sebagai draf dan kembali kemudian.",
+      "back": "Kembali",
+      "next": "Seterusnya",
+      "saveDraft": "Simpan draf",
+      "saving": "Menyimpan…",
+      "draftSaved": "Draf disimpan",
+      "discardDraft": "Buang draf",
+      "createEmployee": "Cipta pekerja",
+      "creating": "Mencipta…"
     }
   },
   "leave": {
