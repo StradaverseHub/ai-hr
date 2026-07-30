@@ -15,7 +15,8 @@
  * ESS-view gating (65dec703) it already renders from the "View Breakdown" link on the secondary rows.
  *
  * The RSC hands each card its already-computed plain data (remaining figure + the breakdown envelope). A card
- * whose breakdown is absent OR ESS-hidden (essView.entitlementCalcBreakdown=false) renders as a static tile —
+ * whose breakdown is absent OR whose every Leave Summary line HR has hidden (essViewHasAnyVisibleRow, 1f6fd6d8)
+ * renders as a static tile —
  * still shows the balance, but has nothing to open, so it is not a button. A `null` remaining (the Available
  * figure ESS-hidden for this type) renders an em-dash, never a leaked number.
  *

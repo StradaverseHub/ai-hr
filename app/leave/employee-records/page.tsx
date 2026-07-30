@@ -161,7 +161,12 @@ export default async function EmployeeLeaveRecordPage({
   // Clearing every filter keeps the employee — otherwise "clear all" silently jumps to someone else.
   const chipAction = `/leave/employee-records${selected ? `?emp=${selected.employmentId}` : ''}`;
 
-  const th = 'px-3 py-2 font-medium';
+  // Layout (feedback 026e16b9) — presentation only, and the SAME three moves as Employee Balances so the
+  // two tabs do not read as different screens: a wider container cap, a narrower inquiry rail (in
+  // leave-inquiry-nav) with a tighter gap, and px-2 cells. Date/day columns get whitespace-nowrap so an
+  // ISO date can never break across two lines; Reason keeps its truncation but is allowed to take the
+  // recovered slack rather than staying the narrowest column on the row.
+  const th = 'px-2 py-2 font-medium';
   const sortableTh = (key: string, label: string) => (
     <th className={th} aria-sort={sort === key ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
       <Link
@@ -179,9 +184,9 @@ export default async function EmployeeLeaveRecordPage({
   const day = (v: Date | string | null) => (v ? new Date(v).toISOString().slice(0, 10) : '—');
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader title={tInq('recordsTitle')} description={tInq('recordsDescription')} />
-      <div className="flex flex-col gap-6 sm:flex-row">
+      <div className="flex flex-col gap-4 sm:flex-row">
         <LeaveInquiryNav active="records" employmentId={selected?.employmentId} />
         <div className="min-w-0 flex-1 space-y-4">
           <div className="flex flex-wrap items-end gap-2">
@@ -255,7 +260,10 @@ export default async function EmployeeLeaveRecordPage({
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                {/* 026e16b9: no `tracking-wide` on these inquiry tables. Measured live, the extra letter-spacing
+                      cost this header row 23px across eleven columns — the last of the horizontal overflow.
+                      Uppercase small-caps headings read fine without it. */}
+                <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className={th}>{t('filters.employeeId')}</th>
                     {sortableTh('name', t('colEmployee'))}
@@ -279,11 +287,13 @@ export default async function EmployeeLeaveRecordPage({
                   )}
                   {rows.map((r) => (
                     <tr key={r.id}>
-                      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.employeeCode ?? '—'}</td>
-                      <td className="px-3 py-2 font-medium">{r.employee}</td>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground">{r.startDate}</td>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground">{r.endDate}</td>
-                      <td className="px-3 py-2 tabular-nums">
+                      <td className="whitespace-nowrap px-2 py-2 font-mono text-xs text-muted-foreground">
+                        {r.employeeCode ?? '—'}
+                      </td>
+                      <td className="px-2 py-2 font-medium">{r.employee}</td>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{r.startDate}</td>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{r.endDate}</td>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums">
                         {Number(r.days)}
                         {durationLabel(t, r.durationType, r.hours) && (
                           <span className="ml-1 text-[10px] font-medium uppercase text-muted-foreground">
@@ -291,11 +301,13 @@ export default async function EmployeeLeaveRecordPage({
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2">{r.typeCode ?? r.leaveType}</td>
-                      <td className="max-w-[16rem] truncate px-3 py-2 text-muted-foreground" title={r.reason ?? ''}>
+                      <td className="whitespace-nowrap px-2 py-2">{r.typeCode ?? r.leaveType}</td>
+                      {/* Reason is the one free-text column: it takes the width the compacted columns give
+                          back (up to 24rem, was 16rem) and keeps its truncation + full-text title beyond that. */}
+                      <td className="max-w-[24rem] truncate px-2 py-2 text-muted-foreground" title={r.reason ?? ''}>
                         {r.reason || '—'}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="whitespace-nowrap px-2 py-2">
                         {r.hasDocument ? (
                           <Link
                             href={`/me/leave/attachment/${r.id}?inline=1`}
@@ -307,8 +319,8 @@ export default async function EmployeeLeaveRecordPage({
                           '—'
                         )}
                       </td>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground">{day(r.appliedOn)}</td>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground">{day(r.decidedAt)}</td>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{day(r.appliedOn)}</td>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{day(r.decidedAt)}</td>
                     </tr>
                   ))}
                 </tbody>

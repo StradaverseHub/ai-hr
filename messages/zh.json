@@ -1393,88 +1393,43 @@
     "employeeRemarkRequiredHint": "某些请假类型需要填写备注。",
     "documentRequiredBadge": "需要文件",
     "breakdown": {
-      "title": "额度明细",
       "viewBreakdown": "明细",
-      "hide": "隐藏明细",
       "asAtDate": "截至日期",
       "apply": "应用",
-      "currentYearEntitlement": "本年度额度",
-      "monthlyAccrued": "本年度至今累计",
-      "carriedForward": "结转",
-      "carryForwardRemaining": "结转剩余",
-      "carryForwardExpiry": "结转到期日",
       "noExpiry": "不过期",
-      "forfeited": "已作废",
-      "totalAvailable": "可用总额",
-      "transactionsHeading": "交易记录",
-      "noTransactions": "此期间无交易记录。",
-      "colDate": "日期",
-      "colEntry": "条目",
-      "colDays": "天数",
-      "colSource": "来源",
-      "entryType": {
-        "accrual": "累计",
-        "debit": "已休假",
-        "adjustment": "调整",
-        "inLieuAccrual": "补休累计"
-      },
       "section": {
-        "summary": "假期摘要",
-        "entitlement": "应享明细",
-        "utilization": "假期使用情况",
-        "adjustments": "调整",
-        "transactions": "交易记录",
-        "calcBreakdown": "应享计算明细",
-        "reconciliation": "余额是如何算出来的"
+        "summary": "假期摘要"
       },
       "field": {
-        "available": "可用",
+        "eligible": "应享（全年额度）",
+        "ytdEntitled": "年初至今应享",
+        "broughtForward": "结转",
+        "adjustments": "调整",
+        "total": "合计",
         "taken": "已使用",
         "pendingApproval": "待批准",
-        "ytdEntitled": "年初至今应享",
-        "entitlementToDate": "截至目前应享",
-        "broughtForward": "结转",
-        "expiredBroughtForward": "已过期结转",
-        "carryForwardExpiry": "结转到期日",
-        "forfeited": "被没收余额",
-        "unplanned": "非计划",
-        "overutilized": "超额使用",
-        "adjustment": "调整",
-        "balance": "余额",
-        "systemCorrection": "系统校正"
+        "broughtForwardForfeited": "结转作废",
+        "availableBalance": "可用余额"
       },
       "panelSubtitle": "截至 {date}",
       "close": "关闭",
-      "colBalanceChange": "余额变动",
       "explanationShow": "显示说明",
       "explanationHide": "隐藏说明",
       "explanationDescription": "含义",
       "explanationFormula": "计算方式",
-      "explanationResult": "结果",
       "summaryTip": {
-        "ytdEntitled": "本年度至今授予您的休假总额。",
+        "eligible": "您在整个假期年度可获得的天数，尚未计入累积、结转、调整或使用。",
+        "ytdEntitled": "截至「截止日期」为止已授予您的天数。按月累积的假期会在全年逐步增加；一次性预先授予的假期从第一天起即显示全额。",
+        "broughtForward": "从去年结转到本假期年度、尚未使用的天数。",
+        "adjustments": "增加或扣减的天数，可能由人力资源手动录入，也可能在政策、职级或入职日期变更时由系统自动记录。",
+        "total": "至今已授予的天数，加上结转与调整——尚未扣除您已使用或已申请的部分。",
         "taken": "您已使用的休假（已批准并已休）。",
         "pendingApproval": "您已申请但仍在等待批准的休假。",
-        "available": "在扣除待批准申请后，您现在仍可休的休假。",
-        "balance": "您的剩余余额，即：结转 + 本周期额度 + 调整 + 系统校正 − 作废 − 已休。下方的「余额是如何算出来的」列出每一项。"
-      },
-      "tip": {
-        "configAdjustment": "由人力资源部在休假额度设置的「调整」步骤中设定的增加或扣减天数。每一笔连同原因列于下方。",
-        "systemCorrection": "当休假政策被修改，或您的职级、入职日期变更时，系统自动记入的校正。这些不会出现在「调整」设置页面。"
+        "broughtForwardForfeited": "从去年结转但已失去的天数，原因是超过到期日或超出结转上限。",
+        "available": "您今天实际可以申请的天数。这与其他各处显示的数字完全相同，包括申请休假时看到的数字。"
       },
       "adjustmentNoReason": "未填写原因",
-      "reconcile": {
-        "caption": "结转 + 本期额度 + 调整 + 系统校正 − 作废 − 已休 = 余额。余额 − 待审批 = 可用。",
-        "broughtForward": "结转",
-        "entitled": "+ 本周期额度",
-        "adjustments": "+ 调整",
-        "systemCorrections": "+ 系统校正",
-        "forfeited": "− 作废",
-        "taken": "− 已休",
-        "balance": "= 余额",
-        "pending": "− 待审批",
-        "available": "= 可用"
-      }
+      "expiresOn": "到期：{date}"
     },
     "preview": {
       "loading": "计算中…"
@@ -4236,20 +4191,18 @@
       "reasonLabel": "变更原因（可选）",
       "reasonPlaceholder": "为何要进行此变更？",
       "essView": {
-        "sectionTitle": "员工休假视图配置",
-        "help": "选择员工在“我的资料 → 休假”中可见的此休假类型的应享和余额数字，并在同一处为每项填写说明：勾选某项后，其说明和公式栏会显示在旁边——员工将鼠标悬停在该项的信息图标上即可看到这些文字。未勾选的项目仅在自助服务中隐藏；HR 始终可见全部。说明仅更改文字，不会改变任何休假数字。",
-        "available": "可用",
-        "taken": "已使用",
+        "sectionTitle": "员工假期视图配置",
+        "help": "选择员工在「我的资料 → 假期」中针对此假期类型可以看到的假期余额摘要行，并在同一处说明每一行：勾选某项后，其「说明」与「公式说明」输入框会出现在旁边——员工将鼠标悬停在该项的信息图标上时即可看到这些文字。未勾选的项目仅在自助服务中隐藏；人力资源始终可以看到全部内容。说明只改变措辞，绝不改变任何假期数字。措辞取自您配置的第一个假期类型，因此只需撰写一次；如果此假期类型需要不同的措辞，可在此修改，未按「保存」前不会存储任何内容。",
+        "eligible": "应享",
+        "ytdEntitled": "年初至今应享",
         "broughtForward": "结转",
-        "unplanned": "未计划",
         "adjustment": "调整",
-        "overutilized": "超额使用",
-        "ytdEntitled": "年度至今应享",
+        "total": "合计",
+        "taken": "已使用",
         "pendingApproval": "待批准",
-        "carryForwardExpiry": "结转到期日",
-        "forfeited": "已作废余额",
-        "groupOther": "其他",
-        "entitlementCalcBreakdown": "应享额计算明细"
+        "forfeited": "结转作废",
+        "available": "可用余额",
+        "groupOther": "其他"
       },
       "dayTypeInclusion": {
         "sectionTitle": "日期类型计入",
@@ -4384,16 +4337,7 @@
       "formula": {
         "descriptionLabel": "说明",
         "formulaLabel": "公式说明",
-        "resultLabel": "结果／日期（可选）",
-        "component": {
-          "currentYearEntitlement": "本年度额度",
-          "monthlyAccrued": "本年度至今累计",
-          "carriedForward": "结转",
-          "carryForwardRemaining": "结转剩余",
-          "carryForwardExpiry": "结转到期",
-          "forfeited": "已作废",
-          "totalAvailable": "可用总额"
-        }
+        "templateHint": "建议措辞，取自您配置的第一个假期类型。如果此假期类型有所不同，请修改——未按「保存」前不会存储任何内容。"
       },
       "gradeSearchLabel": "搜索职级",
       "gradeSearchPlaceholder": "按代码或名称搜索…",

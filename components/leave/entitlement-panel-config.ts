@@ -3,11 +3,9 @@
 // This is the CORE of the item: a DECLARATIVE descriptor of the panel's sections + fields so a future
 // breakdown line is added as ONE entry here — never a JSX change in LeaveDetailsPanel.tsx. Per the
 // reporter's explicit mandate, NO leave-entitlement formula is hardcoded: a field's `select` merely PICKS
-// an already-computed value out of the data the server assembled (leaveEntitlementBreakdown + leaveBalances
-// + the loaded requests). A field with NO `select` is a configured LABEL whose calculation mapping is
-// deferred to a future enhancement — the panel renders it with an em-dash placeholder. That is exactly how
-// §3 Utilization (Unplanned / Overutilized) and §2 "Expired Brought Forward" are surfaced today: the label
-// and display order are configurable now; the value wiring lands later without a redesign.
+// an already-computed value out of the data the server assembled (leaveEntitlementBreakdown + leaveBalances).
+// A field with NO `select` is a configured LABEL whose calculation mapping is deferred to a future
+// enhancement — the panel renders it with an em-dash placeholder.
 //
 // ESS gating (65dec703): each section / field carries the SAME `ess-view` key HR toggles per leave type, so
 // the panel honours the Employee Leave View Configuration on /me (admin/HR pass applyEssConfig=false and see
@@ -16,18 +14,19 @@
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewComponentKey } from '@/core/ess-view';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
 
-/** §1 Leave Summary figures — sourced from the balance row (leaveBalances) the page already loaded. */
+/**
+ * The figures the redesigned Leave Summary takes from the BALANCE ROW (leaveBalances) rather than from the
+ * as-at breakdown.
+ *
+ * Reduced to one field by 1f6fd6d8. Every other line of the summary comes from the breakdown, because the
+ * whole column has to close onto the last line and only the breakdown's ledger partition guarantees that.
+ * Available Balance is the exception on purpose: the reporter's requirement is verbatim that it "should
+ * always reflect this amount in the leave balances amount out there", so it stays the SAME figure
+ * `availableLeaveBalance` and the leave-apply popup use — never a number this screen adds up for itself.
+ */
 export type PanelSummary = {
+  /** leaveBalances' `available` (ledger balance − pending). The authoritative bookable figure. */
   available: number;
-  taken: number;
-  pending: number;
-  /** YTD Entitled = the accrued figure (accrual + in-lieu accrual to date). */
-  ytdEntitled: number;
-  /** §1 Balance (877f2f37): the authoritative ledger remaining figure — b.balance from leaveBalances (= sum of
-   *  ledger days), passed in by the call site GROSS of pending (6574c6b4). Formerly re-derived by a helper here
-   *  that double-counted carried/adjustments/taken over the ledger sum; now a plain pass-through, so the panel and
-   *  the balance table always agree. Display only — no entitlement-engine change. */
-  balance: number;
 };
 
 /** The full data envelope a field's `select` reads from. DB-free: every value is already computed. */
@@ -40,11 +39,11 @@ export type PanelFieldValue = number | string | null;
 
 export type PanelField = {
   key: string;
-  /** i18n key under `leave.breakdown` (e.g. 'field.available' or a legacy '<name>' key for §7). */
+  /** i18n key under `leave.breakdown` for the row label. */
   labelKey: string;
-  /** §1 Leave Summary (877f2f37): i18n key under `leave.breakdown` for a STATIC hover tooltip on this row —
-   *  a fixed plain-English explanation of the figure (no HR config). Omit ⇒ no tooltip icon. Distinct from the
-   *  §7 formula info-icon (b8b665ff), which is click-to-expand HR-authored content keyed by field key. */
+  /** i18n key under `leave.breakdown` for a STATIC hover tooltip on this row — a fixed plain-English
+   *  explanation of the figure (no HR config). Omit ⇒ no tooltip icon. Distinct from the HR-authored
+   *  explanation (b8b665ff), which is keyed by field key and SUPERSEDES this when present. */
   tooltipKey?: string;
   /** Employee Leave View Configuration key (missing ⇒ visible). Omit ⇒ the field is never ESS-gated. */
   essKey?: EssViewComponentKey;
@@ -57,193 +56,198 @@ export type PanelField = {
    * placeholder.
    */
   select?: (d: PanelData) => PanelFieldValue;
-  /** §7 only: a legitimately not-applicable figure (e.g. monthly accrual on a grant-on-open type) is
-   *  hidden rather than shown as a placeholder, matching the legacy inline breakdown's behaviour. */
+  /** A legitimately not-applicable figure is hidden rather than shown as a placeholder. */
   omitWhenNull?: boolean;
+  // ── Redesigned Leave Summary presentation (feedback 1f6fd6d8) ──────────────────────────────────────
+  // The reporter supplied a LAYOUT, not just a list: signed addends, two horizontal rules, two emphasised
+  // result lines and an expiry date under the forfeit. All four are declared here rather than special-cased
+  // in JSX, so the descriptor stays the single place the summary is defined.
+  /** Prefix rendered before the label ('+' / '−'). The arithmetic is NOT done from this — every value is
+   *  already signed correctly by the server; this is the reader's cue to how the column adds up. */
+  sign?: '+' | '-';
+  /** Draw a horizontal rule ABOVE this row — the reporter's dividing lines before Total and before
+   *  Available Balance. */
+  ruleBefore?: boolean;
+  /** Render the row as a result line (bolder, larger) rather than an addend. Total and Available Balance. */
+  emphasis?: 'result';
+  /** A muted secondary line under the value — used for the Brought Forward Forfeited expiry date, which the
+   *  reporter wants beside the figure it explains rather than as a row of its own. Returns null ⇒ no note. */
+  noteSelect?: (d: PanelData) => string | null;
+  /** i18n key under `leave.breakdown` wrapping `noteSelect`'s value (e.g. 'expiresOn' ⇒ "Expires: {date}"). */
+  noteLabelKey?: string;
 };
 
-/** A DATA-DERIVED row (feedback 0315dac7): unlike a `PanelField` — whose label is a fixed i18n key — these
- *  rows come one-per-record out of the loaded data, so their label is user-authored text (an adjustment
- *  reason). `label` null ⇒ the panel renders its own "no reason given" copy. `note` is optional muted
- *  secondary text (the effective date). Still a pure PICK: no formula, the descriptor only maps. */
+/** A DATA-DERIVED row: unlike a `PanelField` — whose label is a fixed i18n key — these rows come
+ *  one-per-record out of the loaded data, so their label is user-authored text. `label` null ⇒ the panel
+ *  renders its own fallback copy. Still a pure PICK: no formula, the descriptor only maps. Nothing declares
+ *  one today (1f6fd6d8 removed the itemised adjustments with the §4 section); the hook is retained because
+ *  it is the mechanism a future itemisation would use without a panel redesign. */
 export type PanelItemRow = { key: string; label: string | null; note?: string | null; value: number };
 
 export type PanelSection = {
   key: string;
   /** i18n key under `leave.breakdown` for the section heading. */
   labelKey: string;
-  /** Optional i18n key under `leave.breakdown` for a one-line caption under the heading — used by the
-   *  reconciliation block to spell out the formula in words (feedback 0315dac7). */
+  /** Optional i18n key under `leave.breakdown` for a one-line caption under the heading. */
   captionKey?: string;
   /** Display order (ascending). A future line inserts by picking an order between two existing ones. */
   order: number;
-  // The `kind` discriminator ('upcoming' §5 list / 'transactions' §6 ledger) is GONE: with §6 removed
-  // (1dd4d827) and §5 removed (11876072), every remaining section is plain label/value field rows.
   /** Whole-section ESS gate (missing ⇒ visible). */
   essKey?: EssViewComponentKey;
   fields?: PanelField[];
-  /** 0315dac7: extra rows PICKED one-per-record out of the data, rendered after `fields`. Used only by §4
-   *  to itemise the config adjustments (reason + days each). Returns [] ⇒ nothing extra renders. */
+  /** Extra rows PICKED one-per-record out of the data, rendered after `fields`. Returns [] ⇒ nothing renders. */
   itemsSelect?: (d: PanelData) => PanelItemRow[];
   /** ESS gate for `itemsSelect`'s rows — they are the detail BEHIND a field, so they hide with it. */
   itemsEssKey?: EssViewComponentKey;
 };
 
 /**
- * The seven sections of the reporter's expected_function, declared with order + labels + field mappings.
- * Iterated by LeaveDetailsPanel; adding a breakdown line = one entry here.
+ * THE Leave Balance Summary — one section, one column, in the reporter's order (feedback 1f6fd6d8).
+ *
+ * The panel used to carry four sections that each explained the arithmetic from a different angle: a Leave
+ * Summary, an Entitlement Calculation Breakdown, a Leave Utilization block and an Adjustments block, with a
+ * "How this adds up" reconciliation block underneath trying to tie them together. The reporter's push-back
+ * supplied the replacement verbatim — a single column that starts at what they get for the year and ends at
+ * what they can book today:
+ *
+ *     Eligible (Full Year Entitlement)      20.00
+ *     YTD Entitled  (as at today)           11.45
+ *   + Brought Forward                        2.00
+ *   + Adjustments                            1.00
+ *   ─────────────────────────────────────────────
+ *   = Total                                 14.45
+ *   − Taken                                  6.50
+ *   − Pending Approval                       2.00
+ *   − Brought Forward Forfeited              2.00
+ *       (Expires: 31/08/2026)
+ *   ─────────────────────────────────────────────
+ *   = Available Balance                      3.95
+ *
+ * WHY IT ADDS UP. Every addend is a bucket of the ledger PARTITION the server computes (0315dac7): the six
+ * buckets tile every ledger row ≤ asOf, so `broughtForward + entitled + adjustments − forfeited − taken =
+ * balance` is an identity, not an agreement. `totalEntitlement` and `adjustments` are those buckets summed
+ * server-side (core/read.ts), which is what keeps every row here a pure PICK.
+ *
+ * THE ONE DEVIATION, AND WHY IT IS DELIBERATE. The reporter's formula reads
+ * `YTD Entitled = Eligible × (days elapsed ÷ days in leave year)`. That is a PROJECTION, and it is right for
+ * leave earned month by month — 57 of 67 production entitlement rows. But 10 rows grant the whole year up
+ * front, and for those the full grant is already posted to the ledger on day one. Showing a part-year share
+ * against an already-granted balance would make this column stop reaching Available Balance, and the
+ * reporter's other, stronger requirement is that Available Balance must ALWAYS match the figure shown
+ * everywhere else. So YTD Entitled renders the GRANTED-TO-DATE ledger figure: identical to the prorated
+ * projection for earned-monthly types, and equal to the full grant for up-front ones. The column always adds
+ * up and Available Balance is always the real balance. ed17a4f9's Formula Explanation wording is written
+ * against this, not against the original formula.
+ *
+ * Eligible is the ONE line that is not ledger-derived — it is the winning policy's full-year days
+ * (`eligibleDays`), because no ledger can say what a whole year would grant.
+ *
+ * Adding a future line is still ONE entry here and never a JSX change; that framework property (584edf44)
+ * is unchanged, and the layout affordances the reporter asked for (signs, rules, result emphasis, the expiry
+ * note) are declared as field properties for exactly that reason.
  */
 export const ENTITLEMENT_PANEL_SECTIONS: PanelSection[] = [
-  // §1 Leave Summary
   {
     key: 'summary',
     labelKey: 'section.summary',
     order: 1,
-    // Reordered (877f2f37) to read the way employees think — from what they were granted, through what they've
-    // used, to what's left: YTD Entitled → Taken → Pending Approval → Available → Balance. Each row carries a
-    // STATIC hover tooltip (tooltipKey; no HR config). Balance is the authoritative ledger remaining figure,
-    // PICKED from the precomputed d.summary.balance (the call site passes b.balance directly, 6574c6b4) so this
-    // stays a declarative pick, not a hardcoded formula in the descriptor.
     fields: [
-      { key: 'ytdEntitled', labelKey: 'field.ytdEntitled', essKey: 'ytdEntitled', tooltipKey: 'summaryTip.ytdEntitled', select: (d) => d.summary.ytdEntitled },
-      { key: 'taken', labelKey: 'field.taken', essKey: 'taken', tooltipKey: 'summaryTip.taken', select: (d) => d.summary.taken },
-      { key: 'pendingApproval', labelKey: 'field.pendingApproval', essKey: 'pendingApproval', tooltipKey: 'summaryTip.pendingApproval', select: (d) => d.summary.pending },
-      { key: 'available', labelKey: 'field.available', essKey: 'available', tooltipKey: 'summaryTip.available', select: (d) => d.summary.available },
-      // Balance has no essKey (never ESS-gated) — it is the headline reconciled remaining figure and always shows.
-      { key: 'balance', labelKey: 'field.balance', tooltipKey: 'summaryTip.balance', select: (d) => d.summary.balance },
-    ],
-  },
-  // §2 Entitlement Breakdown — REMOVED (feedback e503f284): the employee saw two overlapping sections,
-  // "Entitlement Breakdown" (§2) and "Entitlement Calculation Breakdown" (§7). §7 is the fuller of the two, so
-  // §2 is dropped from the panel and §7 is promoted to order 2 (immediately after the summary) — see below. No
-  // backend data is removed; the underlying figures still feed §7. The removal is a pure display change (the
-  // descriptor entry is dropped, exactly like the §6 transaction-history removal), so no leave figure changes.
-  // §3 Leave Utilization — NOT computed by the engine today. Per the no-hardcoded-formula mandate these are
-  // configured labels with em-dash placeholders, wired to the framework so the values land later.
-  {
-    key: 'utilization',
-    labelKey: 'section.utilization',
-    order: 3,
-    fields: [
-      { key: 'unplanned', labelKey: 'field.unplanned', essKey: 'unplanned' },
-      { key: 'overutilized', labelKey: 'field.overutilized', essKey: 'overutilized' },
-    ],
-  },
-  // §4 Adjustments — SPLIT in two (feedback 0315dac7). The single "Adjustment" line used to be
-  // `otherAdjustments`, which commingles the festive / one-off days HR enters on Leave Config → Entitlement →
-  // Adjustment with the automatic `sys:policy_recalc` / `sys:profile_recalc` corrections the system posts by
-  // itself — and dropped negatives and `sys:profile_recalc` entirely. So the figure could not be traced back
-  // to the Adjustment screen (the reporter's unexplained 13 days). Now:
-  //   • "Adjustment"        = configAdjustments  → ties EXACTLY to the Adjustment configuration (ask 1's
-  //                            single source of truth), both signs, itemised below with each row's reason.
-  //   • "System correction" = systemAdjustments  → the automatic corrections, labelled for what they are and
-  //                            summarised (they are machine-posted, so there is no config row to point at).
-  // Both share the `adjustment` ESS key: HR's one Adjustment toggle hides or shows the whole subsection.
-  {
-    key: 'adjustments',
-    labelKey: 'section.adjustments',
-    order: 4,
-    fields: [
-      { key: 'adjustment', labelKey: 'field.adjustment', essKey: 'adjustment', tooltipKey: 'tip.configAdjustment', select: (d) => d.breakdown.configAdjustments },
-      { key: 'systemCorrection', labelKey: 'field.systemCorrection', essKey: 'adjustment', tooltipKey: 'tip.systemCorrection', select: (d) => d.breakdown.systemAdjustments },
-    ],
-    // Narrow, config-ONLY itemisation (deliberately NOT a revival of the removed §6 generic transaction
-    // table, 1dd4d827): one row per configured adjustment, carrying the reason HR typed, so every adjusted
-    // day is traceable to the grant that created it ("CNY 2026: +2.00").
-    itemsEssKey: 'adjustment',
-    itemsSelect: (d) =>
-      d.breakdown.configAdjustmentItems.map((it, i) => ({
-        key: `${it.effectiveOn}:${i}`,
-        label: it.reason,
-        note: it.effectiveOn,
-        value: it.days,
-      })),
-  },
-  // §5 Upcoming Leave — REMOVED (feedback 11876072): the reporter asked for the Upcoming Leave subsection to
-  // be dropped from BOTH the admin Employee Leave View Configuration and the employee panel. The descriptor
-  // entry (and its `upcomingApprovedLeave` ess-view key, removed from core/ess-view.ts) is gone, so no leave
-  // type can re-surface it; a legacy stored toggle is ignored on read (resolveEssView drops unknown keys).
-  // Approved-future requests are untouched data — they still show in the /leave Leave History list.
-  // §6 Transaction History — REMOVED (feedback 1dd4d827): universally hidden from the breakdown side-sheet to
-  // keep the panel focused on balance/entitlement. Ledger data is untouched and stays visible in the /leave
-  // Leave History table. The removal is deliberately universal, not the per-leave-type `transactionHistory` ESS
-  // toggle — the descriptor entry is dropped so no leave type can re-surface it here.
-  // §7 Entitlement Calculation Breakdown — the existing calculation details from the current engine, verbatim.
-  // Promoted to order 2 (feedback e503f284): now the single entitlement explanation, shown immediately after the
-  // Leave Summary in the spot the removed §2 "Entitlement Breakdown" used to hold. Sections render by ascending
-  // `order`, so 2 places it right after the summary (order 1) and ahead of Utilization/Adjustments/Upcoming.
-  {
-    key: 'calcBreakdown',
-    labelKey: 'section.calcBreakdown',
-    order: 2,
-    essKey: 'entitlementCalcBreakdown',
-    fields: [
-      { key: 'currentYearEntitlement', labelKey: 'currentYearEntitlement', select: (d) => d.breakdown.currentYearEntitlement },
-      { key: 'monthlyAccrued', labelKey: 'monthlyAccrued', omitWhenNull: true, select: (d) => d.breakdown.monthlyAccruedToDate },
-      // 0315dac7: this row shows broughtForward — the RAW signed balance that crossed the cycle boundary —
-      // so the panel carries ONE carried number, the same one the reconciliation block adds up. The derived
-      // `carriedForward` (post-cap, floored at 0) conflicted with it: after a year-open cap forfeit the two
-      // disagreed and neither closed the sum. carryForwardRemaining + carryForwardExpiry stay below as the
-      // annual-carry detail they always were.
-      // 37a1141e closed the last inconsistency: this row was still LABELLED "Carried forward" while the
-      // reconciliation row below labelled the identical figure "Brought forward". Both now read brought
-      // forward. Keys are untouched — only the English label moved.
-      // 1f6fd6d8: this row, the expiry date and the forfeit below now carry the ess-view keys that NAME them.
-      // All three keys existed and gated nothing — `broughtForward`, `carryForwardExpiry` and `forfeited` were
-      // left over from the balance-table columns 776cd1b5 dropped and the §2 section e503f284 removed, so HR
-      // could tick "Brought Forward" and watch the row stay put. Wiring them here is the same fix from the
-      // other side: three rows that only a whole-section toggle could hide now hide individually, which is
-      // what the configuration screen has claimed all along.
-      { key: 'carriedForward', labelKey: 'carriedForward', essKey: 'broughtForward', select: (d) => d.breakdown.broughtForward },
-      { key: 'carryForwardRemaining', labelKey: 'carryForwardRemaining', select: (d) => d.breakdown.carryForwardRemaining },
-      { key: 'carryForwardExpiry', labelKey: 'carryForwardExpiry', essKey: 'carryForwardExpiry', format: 'date', select: (d) => d.breakdown.carryForwardExpiryDate },
-      // 0315dac7: sourced from the ACTUAL forfeit ledger rows (all three reasons) rather than the derived
-      // cap-excess, which double-subtracted whenever a cap or maxBalanceDays clamp fired.
-      { key: 'forfeited', labelKey: 'forfeited', essKey: 'forfeited', select: (d) => d.breakdown.forfeitedThisCycle },
-      { key: 'totalAvailable', labelKey: 'totalAvailable', select: (d) => d.breakdown.totalAvailable },
-    ],
-  },
-  // §8 How this adds up — the consolidated reconciliation block (feedback 0315dac7 ask 3).
-  //
-  // The reporter could not tell how Balance was derived because the addends are SCATTERED: Taken/Pending sit
-  // in §1, Adjustments in §4, entitlement/carried/forfeited in §7. This section co-locates all six addends
-  // with the two result lines so a user can watch the parts add up:
-  //
-  //   Brought forward + Entitled + Adjustments + System corrections − Forfeited − Taken = Balance
-  //   Balance − Pending approval = Available
-  //
-  // Every line is a plain PICK of a precomputed ledger-partition bucket (core/read.ts) — no formula lives
-  // here. The identity closes BY CONSTRUCTION because those buckets tile the ledger (each row ≤ asOf lands in
-  // exactly one), which is why this block reconciles even in the cases the old derived arithmetic did not
-  // (year-open cap forfeit, maxBalanceDays clamp, overdrawn carry-in, a debit dated after carry expiry).
-  //
-  // AS-AT: these lines are as-at the BREAKDOWN's asOf, while §1's Balance is the live leaveBalances figure.
-  // At the default asOf = today they are the same number; under ?asOf= time-travel this block still
-  // self-reconciles to its own as-at balance. Never ESS-gated (no essKey anywhere): a transparency block that
-  // an HR toggle could half-hide would show a sum that does not add up.
-  {
-    key: 'reconciliation',
-    labelKey: 'section.reconciliation',
-    captionKey: 'reconcile.caption',
-    order: 5,
-    fields: [
-      { key: 'reconBroughtForward', labelKey: 'reconcile.broughtForward', select: (d) => d.breakdown.broughtForward },
-      { key: 'reconEntitled', labelKey: 'reconcile.entitled', select: (d) => d.breakdown.currentYearEntitlement },
-      { key: 'reconConfigAdjustments', labelKey: 'reconcile.adjustments', select: (d) => d.breakdown.configAdjustments },
-      { key: 'reconSystemAdjustments', labelKey: 'reconcile.systemCorrections', select: (d) => d.breakdown.systemAdjustments },
-      { key: 'reconForfeited', labelKey: 'reconcile.forfeited', select: (d) => d.breakdown.forfeitedThisCycle },
-      { key: 'reconTaken', labelKey: 'reconcile.taken', select: (d) => d.breakdown.takenThisCycle },
-      { key: 'reconBalance', labelKey: 'reconcile.balance', select: (d) => d.breakdown.balance },
-      { key: 'reconPending', labelKey: 'reconcile.pending', select: (d) => d.breakdown.pendingApproval },
-      { key: 'reconAvailable', labelKey: 'reconcile.available', select: (d) => d.breakdown.totalAvailable },
+      // Eligible — the full leave year's entitlement, before proration, carry, adjustment or usage.
+      {
+        key: 'eligible',
+        labelKey: 'field.eligible',
+        essKey: 'eligible',
+        tooltipKey: 'summaryTip.eligible',
+        select: (d) => d.breakdown.eligibleDays,
+      },
+      // YTD Entitled — granted to date. See the deviation note above before changing this to a projection.
+      {
+        key: 'ytdEntitled',
+        labelKey: 'field.ytdEntitled',
+        essKey: 'ytdEntitled',
+        tooltipKey: 'summaryTip.ytdEntitled',
+        select: (d) => d.breakdown.currentYearEntitlement,
+      },
+      {
+        key: 'broughtForward',
+        labelKey: 'field.broughtForward',
+        essKey: 'broughtForward',
+        tooltipKey: 'summaryTip.broughtForward',
+        sign: '+',
+        select: (d) => d.breakdown.broughtForward,
+      },
+      // ONE Adjustments line. The config/system split the old §4 drew is retained in the data (the balance
+      // table and the identity are keyed off it) but was never a distinction an employee needed.
+      {
+        key: 'adjustment',
+        labelKey: 'field.adjustments',
+        essKey: 'adjustment',
+        tooltipKey: 'summaryTip.adjustments',
+        sign: '+',
+        select: (d) => d.breakdown.adjustments,
+      },
+      {
+        key: 'total',
+        labelKey: 'field.total',
+        essKey: 'total',
+        tooltipKey: 'summaryTip.total',
+        ruleBefore: true,
+        emphasis: 'result',
+        select: (d) => d.breakdown.totalEntitlement,
+      },
+      {
+        key: 'taken',
+        labelKey: 'field.taken',
+        essKey: 'taken',
+        tooltipKey: 'summaryTip.taken',
+        sign: '-',
+        select: (d) => d.breakdown.takenThisCycle,
+      },
+      {
+        key: 'pendingApproval',
+        labelKey: 'field.pendingApproval',
+        essKey: 'pendingApproval',
+        tooltipKey: 'summaryTip.pendingApproval',
+        sign: '-',
+        select: (d) => d.breakdown.pendingApproval,
+      },
+      // Brought Forward Forfeited carries its expiry date as a sub-line — the reporter's "(Expires: …)".
+      // 9816a5ad/r85 relocated carry expiry onto the LEAVE TYPE; `carryForwardExpiryDate` is resolved
+      // through applyLeaveTypeRules, so this note already reads the type's rule and not leave_policy's.
+      {
+        key: 'forfeited',
+        labelKey: 'field.broughtForwardForfeited',
+        essKey: 'forfeited',
+        tooltipKey: 'summaryTip.broughtForwardForfeited',
+        sign: '-',
+        select: (d) => d.breakdown.forfeitedThisCycle,
+        noteSelect: (d) => d.breakdown.carryForwardExpiryDate,
+        noteLabelKey: 'expiresOn',
+      },
+      // Available Balance — leaveBalances' figure, NOT the sum of the lines above it. Recomputing it here is
+      // exactly what would let this screen and the leave-apply popup disagree, which is the thing the
+      // reporter asked for in the strongest terms and which test/r75-leave-apply-available.test.ts pins.
+      {
+        key: 'available',
+        labelKey: 'field.availableBalance',
+        essKey: 'available',
+        tooltipKey: 'summaryTip.available',
+        ruleBefore: true,
+        emphasis: 'result',
+        select: (d) => d.summary.available,
+      },
     ],
   },
 ];
 
 /**
- * The reconciliation identity the §8 block renders, as data (feedback 0315dac7). Exported so the server-side
- * reconciliation tests and the panel assert the SAME arithmetic — a future line added to §8 without a matching
- * entry here (or vice-versa) shows up as a failing test, not as a block whose numbers stop adding up.
+ * The reconciliation identity the summary's Total and Available Balance lines rest on (feedback 0315dac7).
+ *
+ * The "How this adds up" block that used to RENDER these six addends is gone — 1f6fd6d8 replaced it with the
+ * single column above, which is the same arithmetic read top to bottom instead of restated underneath. The
+ * identity itself is now MORE load-bearing, not less: `totalEntitlement` and `adjustments` (core/read.ts)
+ * are sums of exactly these buckets, and it is this identity that makes the column close onto Available
+ * Balance rather than merely appear to. Exported so the server-side reconciliation tests assert it directly.
  *
  *   Σ(addends · sign) = balance     and     balance − pendingApproval = totalAvailable
  */
@@ -262,22 +266,21 @@ export function reconciledBalance(b: EntitlementBreakdownData): number {
   return Math.round(total * 100) / 100;
 }
 
-// ─── Admin checklist grouping (feedback 11876072) ───────────────────────────────────────────────────────────
+// ─── Admin checklist grouping (feedback 11876072, re-derived by ed17a4f9) ────────────────────────────────
 //
-// The Employee Leave View Configuration checklist (components/leave-type-panel.tsx, Custom step) used to be a
-// FLAT grid over ESS_VIEW_COMPONENT_KEYS. It now mirrors the employee panel: the checkboxes are grouped into
-// the SAME sections, in the SAME order, the panel above renders — derived HERE from ENTITLEMENT_PANEL_SECTIONS
-// so the two can never drift (one source of grouping). Each checkbox keeps its exact key and therefore its
-// exact current effect; only the admin-side arrangement changed.
+// The Employee Leave View Configuration checklist (components/leave-type-panel.tsx, Custom step) is DERIVED
+// from ENTITLEMENT_PANEL_SECTIONS, so the configuration screen can never list an item the summary does not
+// render, and can never omit one it does. That is the reporter's synchronisation requirement stated as code
+// rather than as a convention.
+//
+// Since 1f6fd6d8 there is exactly ONE group — the Leave Summary — holding all nine keys in the summary's own
+// display order. The trailing "Other" bucket is retained and empty: it is the mechanism that makes a FUTURE
+// orphaned key VISIBLE in the admin screen instead of silently unreachable, and the builder drops it while
+// it stays empty.
 
 /** One group of the admin ESS-view checklist: a panel section (heading = the section's own title) + the
  *  ess-view keys it gates. `labelKey` is the section's i18n key under `leave.breakdown`; null ⇒ the trailing
- *  "Other" group (admin-side heading `admin.leave.essView.groupOther`) collecting keys no section references.
- *
- *  Since 1f6fd6d8 that group is EMPTY and the filter below drops it: every remaining key gates a row in a
- *  section, so the checklist is now the panel's own list in the panel's own order — the reporter's ask that
- *  "the configuration order matches the display order". The Other bucket is deliberately kept rather than
- *  deleted: it is the mechanism that makes a future orphaned key VISIBLE instead of silently unreachable. */
+ *  "Other" group (admin-side heading `admin.leave.essView.groupOther`) collecting keys no section references. */
 export type EssViewChecklistGroup = {
   key: string;
   labelKey: string | null;
@@ -289,8 +292,8 @@ export const ESS_VIEW_CHECKLIST_GROUPS: EssViewChecklistGroup[] = (() => {
   const groups: EssViewChecklistGroup[] = [...ENTITLEMENT_PANEL_SECTIONS]
     .sort((a, b) => a.order - b.order)
     .map((s) => {
-      // A section-level gate (e.g. calcBreakdown's entitlementCalcBreakdown) lists first, then field gates in
-      // the section's own display order — the checklist reads exactly like the panel.
+      // A section-level gate lists first, then field gates in the section's own display order — the
+      // checklist reads exactly like the panel.
       const keys: EssViewComponentKey[] = [];
       if (s.essKey && !seen.has(s.essKey)) {
         keys.push(s.essKey);

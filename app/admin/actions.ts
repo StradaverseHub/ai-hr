@@ -1570,14 +1570,18 @@ export async function updateLeaveTypeAction(fd: FormData) {
         ) as EssViewConfig,
       }
     : {};
-  // Leave Entitlement Formula Management (79011509, consolidated by 2bc2f2a3): the merged view-configuration
-  // sub-form posts `formula=1` (marker) plus, per component, up to three free-text fields
-  // (`formula_<key>_description`, `formula_<key>_formula`, `formula_<key>_result`). We build the COMPLETE
-  // { key: entry } map from the closed key list — WIDENED (2bc2f2a3) from the 7 legacy calc-breakdown keys to
-  // LEAVE_EXPLANATION_KEYS (legacy 7 ∪ every ess-view key) so any configurable view item can be annotated; a
-  // key the form never rendered posts nothing ⇒ '' ⇒ dropped by the service, which trims + drops blanks +
-  // normalises an all-blank map to null (clear). Any other sub-form save omits the marker ⇒
+  // Leave Entitlement Formula Management (79011509, consolidated by 2bc2f2a3, narrowed by ed17a4f9): the
+  // view-configuration sub-form posts `formula=1` (marker) plus, per Leave Summary item, two free-text fields
+  // (`formula_<key>_description`, `formula_<key>_formula`). We build the COMPLETE { key: entry } map from
+  // LEAVE_EXPLANATION_KEYS, which ed17a4f9 reduced to exactly the ess-view key set (the summary's own items);
+  // a key the form never rendered posts nothing ⇒ '' ⇒ dropped by the service, which trims + drops blanks +
+  // normalises an all-blank map to null (clear). The third "Result / Date (optional)" field is gone at the
+  // reporter's request and is no longer read. Any other sub-form save omits the marker ⇒
   // formula_explanations stays untouched (same tri-state guard as essView).
+  //
+  // Smart content reuse (ed17a4f9 §4) needs NOTHING here, and that is the design: the template only pre-fills
+  // the textareas, so what arrives in this FormData is whatever HR reviewed and left in the boxes. There is
+  // no separate "apply template" write path that could overwrite wording behind their back.
   const touchFormula = fd.get('formula') === '1';
   const formulaFields = touchFormula
     ? {
@@ -1587,7 +1591,6 @@ export async function updateLeaveTypeAction(fd: FormData) {
             {
               description: String(fd.get(`formula_${key}_description`) ?? ''),
               formula: String(fd.get(`formula_${key}_formula`) ?? ''),
-              result: String(fd.get(`formula_${key}_result`) ?? ''),
             },
           ]),
         ) as LeaveFormulaConfig,

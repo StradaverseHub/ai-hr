@@ -1393,88 +1393,43 @@
     "employeeRemarkRequiredHint": "Một số loại nghỉ phép yêu cầu phải có ghi chú.",
     "documentRequiredBadge": "cần tài liệu",
     "breakdown": {
-      "title": "Phân tích quyền lợi",
       "viewBreakdown": "Phân tích",
-      "hide": "Ẩn phân tích",
       "asAtDate": "Tính đến ngày",
       "apply": "Áp dụng",
-      "currentYearEntitlement": "Quyền lợi năm nay",
-      "monthlyAccrued": "Tích lũy đến nay trong năm",
-      "carriedForward": "Chuyển sang",
-      "carryForwardRemaining": "Số dư chuyển sang còn lại",
-      "carryForwardExpiry": "Ngày hết hạn số dư chuyển sang",
       "noExpiry": "Không hết hạn",
-      "forfeited": "Bị mất",
-      "totalAvailable": "Tổng khả dụng",
-      "transactionsHeading": "Giao dịch",
-      "noTransactions": "Không có giao dịch trong kỳ này.",
-      "colDate": "Ngày",
-      "colEntry": "Mục",
-      "colDays": "Ngày",
-      "colSource": "Nguồn",
-      "entryType": {
-        "accrual": "Tích lũy",
-        "debit": "Nghỉ đã dùng",
-        "adjustment": "Điều chỉnh",
-        "inLieuAccrual": "Tích lũy bù"
-      },
       "section": {
-        "summary": "Tóm tắt nghỉ phép",
-        "entitlement": "Chi tiết quyền lợi",
-        "utilization": "Sử dụng nghỉ phép",
-        "adjustments": "Điều chỉnh",
-        "transactions": "Lịch sử giao dịch",
-        "calcBreakdown": "Chi tiết tính quyền lợi",
-        "reconciliation": "Số dư được tính thế nào"
+        "summary": "Tóm tắt nghỉ phép"
       },
       "field": {
-        "available": "Khả dụng",
+        "eligible": "Được hưởng (quyền lợi cả năm)",
+        "ytdEntitled": "Quyền lợi từ đầu năm",
+        "broughtForward": "Chuyển sang",
+        "adjustments": "Điều chỉnh",
+        "total": "Tổng",
         "taken": "Đã dùng",
         "pendingApproval": "Chờ phê duyệt",
-        "ytdEntitled": "Quyền lợi từ đầu năm",
-        "entitlementToDate": "Quyền lợi đến nay",
-        "broughtForward": "Chuyển sang",
-        "expiredBroughtForward": "Chuyển sang đã hết hạn",
-        "carryForwardExpiry": "Ngày hết hạn chuyển sang",
-        "forfeited": "Số dư bị tịch thu",
-        "unplanned": "Không kế hoạch",
-        "overutilized": "Sử dụng vượt mức",
-        "adjustment": "Điều chỉnh",
-        "balance": "Số dư",
-        "systemCorrection": "Điều chỉnh của hệ thống"
+        "broughtForwardForfeited": "Chuyển sang bị mất",
+        "availableBalance": "Số dư khả dụng"
       },
       "panelSubtitle": "Tính đến {date}",
       "close": "Đóng",
-      "colBalanceChange": "Thay đổi số dư",
       "explanationShow": "Hiện giải thích",
       "explanationHide": "Ẩn giải thích",
       "explanationDescription": "Ý nghĩa",
       "explanationFormula": "Cách tính",
-      "explanationResult": "Kết quả",
       "summaryTip": {
-        "ytdEntitled": "Tổng số ngày nghỉ bạn được cấp cho đến nay trong năm.",
+        "eligible": "Số ngày bạn nhận cho cả năm nghỉ phép, trước khi tích lũy, chuyển sang, điều chỉnh hay sử dụng.",
+        "ytdEntitled": "Số ngày bạn đã được cấp tính đến ngày \"Tính đến\". Phép tích lũy hàng tháng tăng dần trong năm; phép cấp trọn gói từ đầu hiển thị đủ số ngay từ ngày đầu tiên.",
+        "broughtForward": "Số ngày chưa dùng được chuyển từ năm ngoái sang năm nghỉ phép này.",
+        "adjustments": "Số ngày cộng thêm hoặc trừ đi, do nhân sự nhập hoặc do hệ thống tự ghi khi chính sách, cấp bậc hay ngày vào làm thay đổi.",
+        "total": "Đã được cấp đến nay, cộng chuyển sang, cộng điều chỉnh — trước khi trừ những gì bạn đã dùng hoặc đã xin.",
         "taken": "Ngày nghỉ bạn đã dùng (đã duyệt và đã nghỉ).",
         "pendingApproval": "Ngày nghỉ bạn đã xin và đang chờ duyệt.",
-        "available": "Ngày nghỉ bạn vẫn có thể dùng ngay bây giờ, sau khi trừ các yêu cầu đang chờ.",
-        "balance": "Số dư còn lại của bạn, tính bằng: chuyển sang + được hưởng kỳ này + điều chỉnh + điều chỉnh của hệ thống − bị mất − đã nghỉ. Mục \"Số dư được tính thế nào\" bên dưới liệt kê từng phần."
-      },
-      "tip": {
-        "configAdjustment": "Số ngày cộng thêm hoặc trừ bớt do HR thiết lập ở bước Điều chỉnh trong cấu hình quyền lợi nghỉ phép. Mỗi khoản được liệt kê kèm lý do bên dưới.",
-        "systemCorrection": "Các điều chỉnh tự động do hệ thống ghi nhận khi chính sách nghỉ phép được sửa hoặc khi cấp bậc, ngày vào làm của bạn thay đổi. Chúng không được nhập ở màn hình Điều chỉnh."
+        "broughtForwardForfeited": "Ngày chuyển từ năm ngoái nhưng đã mất, do quá hạn sử dụng hoặc vượt mức chuyển sang cho phép.",
+        "available": "Số ngày bạn thực sự có thể xin nghỉ hôm nay. Đây là con số giống hệt con số hiển thị ở mọi nơi khác, kể cả khi bạn xin nghỉ."
       },
       "adjustmentNoReason": "Không có lý do",
-      "reconcile": {
-        "caption": "Chuyển sang + Được hưởng + Điều chỉnh + Điều chỉnh của hệ thống − Bị mất − Đã nghỉ = Số dư. Số dư − Chờ duyệt = Khả dụng.",
-        "broughtForward": "Chuyển sang",
-        "entitled": "+ Được hưởng kỳ này",
-        "adjustments": "+ Điều chỉnh",
-        "systemCorrections": "+ Điều chỉnh của hệ thống",
-        "forfeited": "− Bị mất",
-        "taken": "− Đã nghỉ",
-        "balance": "= Số dư",
-        "pending": "− Chờ duyệt",
-        "available": "= Khả dụng"
-      }
+      "expiresOn": "Hết hạn: {date}"
     },
     "preview": {
       "loading": "Đang tính toán…"
@@ -4236,20 +4191,18 @@
       "reasonLabel": "Lý do thay đổi (tùy chọn)",
       "reasonPlaceholder": "Vì sao thực hiện thay đổi này?",
       "essView": {
-        "sectionTitle": "Cấu hình Hiển thị Nghỉ phép của Nhân viên",
-        "help": "Chọn các số liệu quyền lợi và số dư mà nhân viên thấy cho loại nghỉ phép này trong Hồ sơ của tôi → Nghỉ phép, và giải thích từng mục ngay tại đây: đánh dấu một mục thì các ô Mô tả và Công thức sẽ hiện bên cạnh — nhân viên thấy nội dung đó khi di chuột vào biểu tượng thông tin của mục. Các mục không chọn chỉ bị ẩn trong tự phục vụ; HR luôn thấy tất cả. Phần giải thích chỉ thay đổi câu chữ, không thay đổi bất kỳ số liệu nghỉ phép nào.",
-        "available": "Khả dụng",
-        "taken": "Đã nghỉ",
-        "broughtForward": "Chuyển sang",
-        "unplanned": "Không kế hoạch",
-        "adjustment": "Điều chỉnh",
-        "overutilized": "Sử dụng vượt mức",
+        "sectionTitle": "Cấu hình hiển thị nghỉ phép cho nhân viên",
+        "help": "Chọn những dòng của Tóm tắt số dư nghỉ phép mà nhân viên nhìn thấy cho loại nghỉ phép này trong Hồ sơ của tôi → Nghỉ phép, và giải thích từng dòng ngay tại đây: tích vào một mục thì ô Mô tả và Giải thích công thức sẽ hiện bên cạnh — nhân viên thấy nội dung đó khi rê chuột lên biểu tượng thông tin của mục. Mục không tích chỉ bị ẩn trong tự phục vụ; nhân sự luôn thấy đầy đủ. Phần giải thích chỉ đổi câu chữ, không bao giờ đổi con số nghỉ phép. Câu chữ được lấy từ loại nghỉ phép đầu tiên bạn đã cấu hình, nên bạn chỉ cần viết một lần; sửa tại đây nếu loại nghỉ phép này cần câu chữ khác, và không có gì được lưu cho đến khi bạn bấm Lưu.",
+        "eligible": "Được hưởng",
         "ytdEntitled": "Quyền lợi từ đầu năm",
+        "broughtForward": "Chuyển sang",
+        "adjustment": "Điều chỉnh",
+        "total": "Tổng",
+        "taken": "Đã dùng",
         "pendingApproval": "Chờ phê duyệt",
-        "carryForwardExpiry": "Ngày hết hạn chuyển sang",
-        "forfeited": "Số dư bị mất",
-        "groupOther": "Khác",
-        "entitlementCalcBreakdown": "Chi tiết tính toán quyền lợi"
+        "forfeited": "Chuyển sang bị mất",
+        "available": "Số dư khả dụng",
+        "groupOther": "Khác"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Bao gồm loại ngày",
@@ -4384,16 +4337,7 @@
       "formula": {
         "descriptionLabel": "Mô tả",
         "formulaLabel": "Giải thích công thức",
-        "resultLabel": "Kết quả / ngày (tùy chọn)",
-        "component": {
-          "currentYearEntitlement": "Quyền lợi năm nay",
-          "monthlyAccrued": "Tích lũy đến nay trong năm",
-          "carriedForward": "Chuyển sang",
-          "carryForwardRemaining": "Số chuyển sang còn lại",
-          "carryForwardExpiry": "Hết hạn số chuyển sang",
-          "forfeited": "Bị mất",
-          "totalAvailable": "Tổng khả dụng"
-        }
+        "templateHint": "Câu chữ gợi ý, lấy từ loại nghỉ phép đầu tiên bạn đã cấu hình. Hãy sửa nếu loại nghỉ phép này khác — không có gì được lưu cho đến khi bạn bấm Lưu."
       },
       "gradeSearchLabel": "Tìm kiếm bậc",
       "gradeSearchPlaceholder": "Tìm theo mã hoặc tên…",

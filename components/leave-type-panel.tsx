@@ -14,7 +14,7 @@ import {
 } from '@/core/leave-compute';
 import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/leave-org-criteria';
 import { ESS_VIEW_CHECKLIST_GROUPS } from '@/components/leave/entitlement-panel-config';
-import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaEntry } from '@/core/leave-formula';
+import { applyLeaveFormulaTemplate, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
 import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -1282,6 +1282,7 @@ export function LeaveTypePanel({
   customMessages,
   essViewConfig,
   formulaExplanations,
+  formulaTemplate,
   dayTypeInclusion,
   color,
   icon,
@@ -1373,10 +1374,14 @@ export function LeaveTypePanel({
   /** Employee Leave View Configuration (65dec703 / dup 1fedb473): per-component ESS visibility map, threaded
    *  so each checkbox round-trips its stored value. null / missing key ⇒ visible (all-visible default). */
   essViewConfig: Record<string, boolean> | null;
-  /** Leave Entitlement Formula Management (79011509): stored per-component explanation map, threaded so each
-   *  component's description / formula / result textareas round-trip their saved value. null / missing key ⇒
+  /** Leave Entitlement Formula Management (79011509): stored per-item explanation map, threaded so each
+   *  item's Description / Formula Explanation textareas round-trip their saved value. null / missing key ⇒
    *  no explanation (the employee-panel info icon stays hidden). */
   formulaExplanations: Record<string, LeaveFormulaEntry> | null;
+  /** Smart content reuse (ed17a4f9 §4): the FIRST configured leave type's explanation map, resolved once
+   *  per page. Pre-fills only the items THIS type has not configured; never overwrites and never persists
+   *  on its own. null ⇒ no leave type is configured yet. */
+  formulaTemplate: Record<string, LeaveFormulaEntry> | null;
   /** Day Type Inclusion (ef6d7146): stored { offDay, restDay, publicHoliday, companyHoliday, shutdownDay }
    *  map, threaded so each toggle round-trips its saved value. null / missing key ⇒ off (day type skipped,
    *  the counting-mode default). */
@@ -3373,6 +3378,7 @@ export function LeaveTypePanel({
             name={name}
             essViewConfig={essViewConfig}
             formulaExplanations={formulaExplanations}
+            formulaTemplate={formulaTemplate}
             updateTypeAction={updateTypeAction}
           />
           {/* Leave Type Employee Visibility (7b11f1c1). Its own self-contained sub-form (own tri-state) posts
@@ -3503,39 +3509,52 @@ export function LeaveTypePanel({
   );
 }
 
-// ─── Consolidated Employee Leave View Configuration (feedback 2bc2f2a3) ────────────────────────────────────
+// ─── Employee Leave View Configuration (65dec703 · 2bc2f2a3 · ed17a4f9) ────────────────────────────────────
 //
-// ONE sub-form now owns both concerns the Custom step used to split across two sections: WHICH breakdown
+// ONE sub-form owns both concerns the Custom step used to split across two sections: WHICH Leave Summary
 // items an employee sees (ess_view_config, feedback 65dec703) and HOW each item is explained
 // (formula_explanations, feedback 79011509 — the standalone "Leave Entitlement Formula Management" section is
-// retired). Ticking an item reveals its Description / Formula / Result fields inline; ONE Save posts BOTH
+// retired). Ticking an item reveals its Description / Formula Explanation fields inline; ONE Save posts BOTH
 // tri-state markers (`essView=1` + `formula=1`) so selections and explanations persist together — same two
 // storage targets as before, no content migration. Unticking an item HIDES its editor without unmounting it
 // (the `hidden` attribute), so the concealed inputs still post and stored explanations survive an
 // untick-then-save round-trip.
 //
-// Annotatable keys: the items of the four employee-panel sections. The grouped checklist mirrors the employee
-// panel (ESS_VIEW_CHECKLIST_GROUPS, feedback 11876072); for the panel-section groups each checkbox key IS the
-// employee row's field key, so its explanation is stored under that same key and the employee hover icon finds
-// it. The Entitlement Calculation Breakdown group is special: its single section-level checkbox reveals the
-// SEVEN legacy per-component editors (LEAVE_FORMULA_COMPONENT_KEYS — the §7 rows the employee actually sees),
-// preserving 79011509 content verbatim. The trailing "Other" group's keys gate non-panel surfaces (e.g. the
-// balance-table columns) that have no explanation render site — they stay plain checkboxes.
+// ed17a4f9 SYNCHRONISED the list. The checklist is derived from ENTITLEMENT_PANEL_SECTIONS
+// (ESS_VIEW_CHECKLIST_GROUPS), so it now lists exactly the nine lines of the redesigned Leave Summary in the
+// summary's own order and nothing else. Every checkbox key IS the employee row's field key, so its
+// explanation is stored under that same key and the employee hover icon finds it. The old special cases are
+// gone with the sections they served: there is no Entitlement Calculation Breakdown group revealing seven
+// legacy sub-editors, and the trailing "Other" group is empty (the builder drops it) because no key gates a
+// non-panel surface any more. The "Result / Date (optional)" input is removed at the reporter's request.
+//
+// SMART CONTENT REUSE (ed17a4f9 §4). A tenant with 30–60 leave types had HR retyping the same nine
+// explanations for each one. The Description / Formula Explanation boxes of a leave type that has NO saved
+// configuration are pre-filled from the first leave type that does (`applyLeaveFormulaTemplate`, resolved on
+// the server in app/admin/leave/entitlements). Three properties matter and all three are the reporter's own
+// words: nothing is written until Save is pressed (these are form DEFAULTS — leaving the page stores
+// nothing); a leave type that already has its own wording keeps it exactly; and the fill is per ITEM, so a
+// partly-configured type is completed rather than overwritten.
 
-/** The three inline explanation inputs for one annotatable item. Names follow the 79011509 FormData contract
- *  (`formula_<key>_description|formula|result`) so the existing action/service path persists them unchanged. */
+/** The two inline explanation inputs for one Leave Summary item. Names follow the 79011509 FormData contract
+ *  (`formula_<key>_description|formula`) so the existing action/service path persists them unchanged.
+ *  `isTemplate` marks values that arrived from another leave type's configuration rather than this one's —
+ *  the hint tells HR the wording is a suggestion they are free to edit, and that it is not stored yet. */
 function ViewConfigExplanationFields({
   fieldKey,
   entry,
+  isTemplate,
   t,
 }: {
   fieldKey: string;
-  entry: LeaveFormulaEntry | undefined;
+  entry: LeaveFormulaEntry | undefined | null;
+  isTemplate?: boolean;
   /** The parent's admin.leave translator (labels live under `admin.leave.formula.*`). */
   t: (key: string) => string;
 }) {
   return (
     <div className="space-y-2">
+      {isTemplate && <p className="text-[11px] text-muted-foreground">{t('formula.templateHint')}</p>}
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         {t('formula.descriptionLabel')}
         <textarea
@@ -3554,10 +3573,6 @@ function ViewConfigExplanationFields({
           className={`${inputCls} text-xs`}
         />
       </label>
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {t('formula.resultLabel')}
-        <input name={`formula_${fieldKey}_result`} defaultValue={entry?.result ?? ''} className={`${inputCls} text-xs`} />
-      </label>
     </div>
   );
 }
@@ -3567,16 +3582,24 @@ function ViewConfigSection({
   name,
   essViewConfig,
   formulaExplanations,
+  formulaTemplate,
   updateTypeAction,
 }: {
   id: string;
   name: string;
   essViewConfig: Record<string, boolean> | null;
   formulaExplanations: Record<string, LeaveFormulaEntry> | null;
+  /** Smart content reuse (ed17a4f9 §4): the wording of the first leave type that HAS a saved configuration,
+   *  resolved server-side. Used only to PRE-FILL items this type has not configured; null ⇒ no template
+   *  exists yet (this is the tenant's first configuration) and the boxes start empty as before. */
+  formulaTemplate: Record<string, LeaveFormulaEntry> | null;
   updateTypeAction: Action;
 }) {
   const t = useTranslations('admin.leave');
   const tBreakdown = useTranslations('leave.breakdown');
+  // Per item: this type's own wording where it has any, the template's where it does not. Nothing is written
+  // by resolving this — these become the form's defaultValues and persist only on Save.
+  const defaults = applyLeaveFormulaTemplate(formulaExplanations, formulaTemplate);
   // Client-island reveal state: checked ⇒ the item's inline explanation editor shows. Initialised from the
   // stored config (missing ⇒ visible/ticked, the 65dec703 backward-compatible default).
   const [checked, setChecked] = useState<Record<string, boolean>>(() =>
@@ -3625,7 +3648,9 @@ function ViewConfigSection({
                 <div className="space-y-1.5">
                   {group.keys.map((key) => {
                     const on = checked[key] ?? true;
-                    const isCalcSection = key === 'entitlementCalcBreakdown';
+                    // Template-sourced ⇒ this type has no wording of its own for this item, so what is shown
+                    // came from another leave type and is a suggestion until HR saves it.
+                    const fromTemplate = !formulaExplanations?.[key] && defaults[key] != null;
                     return (
                       <div key={key} className="rounded-md border border-border px-2.5 py-1.5">
                         <label className="flex items-center gap-2 text-xs font-medium text-foreground">
@@ -3640,28 +3665,14 @@ function ViewConfigSection({
                         </label>
                         {/* hidden (not unmounted) when unticked: the inputs still post, so an untick+save
                             never wipes the stored explanation. */}
-                        {isCalcSection ? (
-                          <div hidden={!on} className="mt-2 space-y-1.5 border-t border-border pt-2">
-                            {LEAVE_FORMULA_COMPONENT_KEYS.map((componentKey) => (
-                              <details key={componentKey} className="rounded-md border border-border">
-                                <summary className="cursor-pointer px-2.5 py-1.5 text-xs font-medium text-foreground">
-                                  {t(`formula.component.${componentKey}`)}
-                                </summary>
-                                <div className="border-t border-border px-2.5 py-2">
-                                  <ViewConfigExplanationFields
-                                    fieldKey={componentKey}
-                                    entry={formulaExplanations?.[componentKey]}
-                                    t={t}
-                                  />
-                                </div>
-                              </details>
-                            ))}
-                          </div>
-                        ) : (
-                          <div hidden={!on} className="mt-2 border-t border-border pt-2">
-                            <ViewConfigExplanationFields fieldKey={key} entry={formulaExplanations?.[key]} t={t} />
-                          </div>
-                        )}
+                        <div hidden={!on} className="mt-2 border-t border-border pt-2">
+                          <ViewConfigExplanationFields
+                            fieldKey={key}
+                            entry={defaults[key]}
+                            isTemplate={fromTemplate}
+                            t={t}
+                          />
+                        </div>
                       </div>
                     );
                   })}

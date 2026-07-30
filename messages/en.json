@@ -1393,88 +1393,43 @@
     "employeeRemarkRequiredHint": "A remark is required for some leave types.",
     "documentRequiredBadge": "document required",
     "breakdown": {
-      "title": "Entitlement breakdown",
       "viewBreakdown": "Breakdown",
-      "hide": "Hide breakdown",
       "asAtDate": "As at date",
       "apply": "Apply",
-      "currentYearEntitlement": "This year's entitlement",
-      "monthlyAccrued": "Accrued so far this year",
-      "carriedForward": "Brought forward",
-      "carryForwardRemaining": "Brought-forward remaining",
-      "carryForwardExpiry": "Brought-forward expiry",
       "noExpiry": "Does not expire",
-      "forfeited": "Forfeited",
-      "totalAvailable": "Total available",
-      "transactionsHeading": "Transactions",
-      "noTransactions": "No transactions in this period.",
-      "colDate": "Date",
-      "colEntry": "Entry",
-      "colDays": "Days",
-      "colSource": "Source",
-      "entryType": {
-        "accrual": "Accrual",
-        "debit": "Leave taken",
-        "adjustment": "Adjustment",
-        "inLieuAccrual": "In-lieu accrual"
-      },
       "section": {
-        "summary": "Leave summary",
-        "entitlement": "Entitlement breakdown",
-        "utilization": "Leave utilization",
-        "adjustments": "Adjustments",
-        "transactions": "Transaction history",
-        "calcBreakdown": "Entitlement calculation breakdown",
-        "reconciliation": "How this adds up"
+        "summary": "Leave summary"
       },
       "field": {
-        "available": "Available",
+        "eligible": "Eligible (full year entitlement)",
+        "ytdEntitled": "YTD entitled",
+        "broughtForward": "Brought forward",
+        "adjustments": "Adjustments",
+        "total": "Total",
         "taken": "Taken",
         "pendingApproval": "Pending approval",
-        "ytdEntitled": "YTD entitled",
-        "entitlementToDate": "Entitlement to date",
-        "broughtForward": "Brought forward",
-        "expiredBroughtForward": "Expired brought forward",
-        "carryForwardExpiry": "Brought-forward expiry date",
-        "forfeited": "Forfeited balance",
-        "unplanned": "Unplanned",
-        "overutilized": "Overutilized",
-        "adjustment": "Adjustment",
-        "balance": "Balance",
-        "systemCorrection": "System correction"
+        "broughtForwardForfeited": "Brought forward forfeited",
+        "availableBalance": "Available balance"
       },
       "panelSubtitle": "As at {date}",
       "close": "Close",
-      "colBalanceChange": "Balance change",
       "explanationShow": "Show explanation",
       "explanationHide": "Hide explanation",
       "explanationDescription": "What it means",
       "explanationFormula": "How it's calculated",
-      "explanationResult": "Result",
       "summaryTip": {
-        "ytdEntitled": "The total leave you've been granted so far this year.",
+        "eligible": "What you receive for the whole leave year, before anything is earned, carried, adjusted or used.",
+        "ytdEntitled": "What you have been granted so far, up to the As at date. Leave earned month by month builds up over the year; leave granted in full up front shows the whole amount from day one.",
+        "broughtForward": "Unused days carried into this leave year from last year.",
+        "adjustments": "Extra or deducted days, whether entered by HR or posted automatically when a policy, grade or hire date changed.",
+        "total": "Granted so far, plus brought forward, plus adjustments — before anything you have used or applied for.",
         "taken": "Leave you have already used (approved and taken).",
         "pendingApproval": "Leave you've applied for that is still awaiting approval.",
-        "available": "Leave you can still take now, after pending requests are set aside.",
-        "balance": "Your remaining balance, as: brought forward + entitled this cycle + adjustments + system corrections − forfeited − taken. The \"How this adds up\" section below shows every part."
-      },
-      "tip": {
-        "configAdjustment": "Extra or deducted days set by HR on the Adjustment step of the leave entitlement setup. Each one is listed below with its reason.",
-        "systemCorrection": "Automatic corrections the system posted by itself when a leave policy was edited or your grade or hire date changed. They are not entered on the Adjustment screen."
+        "broughtForwardForfeited": "Days carried in from last year that you lost, because they passed their expiry date or exceeded the carry limit.",
+        "available": "What you can actually apply for today. This is the same figure shown everywhere else, including when you apply for leave."
       },
       "adjustmentNoReason": "No reason given",
-      "reconcile": {
-        "caption": "Brought forward + Entitled + Adjustments + System corrections − Forfeited − Taken = Balance. Balance − Pending approval = Available.",
-        "broughtForward": "Brought forward",
-        "entitled": "+ Entitled this cycle",
-        "adjustments": "+ Adjustments",
-        "systemCorrections": "+ System corrections",
-        "forfeited": "− Forfeited",
-        "taken": "− Taken",
-        "balance": "= Balance",
-        "pending": "− Pending approval",
-        "available": "= Available"
-      }
+      "expiresOn": "Expires: {date}"
     },
     "preview": {
       "loading": "Calculating…"
@@ -4274,19 +4229,17 @@
       "reasonPlaceholder": "Why is this being changed?",
       "essView": {
         "sectionTitle": "Employee Leave View Configuration",
-        "help": "Choose which entitlement and balance figures employees see for this leave type in My Profile → Leave, and explain each one in the same place: tick an item and its Description and Formula fields appear beside it — employees see that text when they hover the item's info icon. Unticked items are hidden in self-service only; HR always sees everything. Explanations change wording only, never any leave figure.",
-        "available": "Available",
-        "taken": "Taken",
-        "broughtForward": "Brought Forward",
-        "unplanned": "Unplanned",
-        "adjustment": "Adjustment",
-        "overutilized": "Overutilized",
+        "help": "Choose which lines of the Leave Balance Summary employees see for this leave type in My Profile → Leave, and explain each one in the same place: tick an item and its Description and Formula Explanation fields appear beside it — employees see that text when they hover the item's info icon. Unticked items are hidden in self-service only; HR always sees everything. Explanations change wording only, never any leave figure. Wording is carried over from the first leave type you configured, so you only write it once; edit it here if this leave type needs different wording, and nothing is stored until you press Save.",
+        "eligible": "Eligible",
         "ytdEntitled": "YTD Entitled",
+        "broughtForward": "Brought Forward",
+        "adjustment": "Adjustments",
+        "total": "Total",
+        "taken": "Taken",
         "pendingApproval": "Pending Approval",
-        "carryForwardExpiry": "Brought Forward Expiry Date",
-        "forfeited": "Forfeited Balance",
-        "groupOther": "Other",
-        "entitlementCalcBreakdown": "Entitlement Calculation Breakdown"
+        "forfeited": "Brought Forward Forfeited",
+        "available": "Available Balance",
+        "groupOther": "Other"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Day Type Inclusion",
@@ -4384,16 +4337,7 @@
       "formula": {
         "descriptionLabel": "Description",
         "formulaLabel": "Formula explanation",
-        "resultLabel": "Result / date (optional)",
-        "component": {
-          "currentYearEntitlement": "This Year's Entitlement",
-          "monthlyAccrued": "Accrued So Far This Year",
-          "carriedForward": "Brought Forward",
-          "carryForwardRemaining": "Brought-Forward Remaining",
-          "carryForwardExpiry": "Brought-Forward Expiry",
-          "forfeited": "Forfeited",
-          "totalAvailable": "Total Available"
-        }
+        "templateHint": "Suggested wording, carried over from your first configured leave type. Edit it if this leave type differs — nothing is stored until you press Save."
       },
       "gradeSearchLabel": "Search grades",
       "gradeSearchPlaceholder": "Search by code or name…",

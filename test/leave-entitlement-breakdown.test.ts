@@ -342,22 +342,30 @@ describe('leave.breakdown i18n — real translations, not English passthrough', 
   // The clearly-translatable label keys (skip structural/short tokens like 'apply' that may legitimately
   // coincide). Non-Latin scripts (ta/th/zh) MUST differ byte-for-byte from en; ms/vi share the Latin
   // alphabet so a token may legitimately coincide — we only guard the non-Latin locales here.
-  const LABEL_KEYS = [
-    'title',
-    'currentYearEntitlement',
-    'monthlyAccrued',
-    'carriedForward',
-    'carryForwardRemaining',
-    'carryForwardExpiry',
-    'forfeited',
-    'totalAvailable',
-    'transactionsHeading',
+  // 1f6fd6d8 rebuilt the panel as ONE Leave Summary column, so the old flat calc-breakdown label keys are
+  // gone. The guard follows the labels: every row label and every row tooltip of the new summary, which is
+  // now the whole of what this namespace renders — a broader check than before, not a narrower one.
+  const nested = (o: Record<string, unknown>, k: string) => (o[k] ?? {}) as Record<string, unknown>;
+  const LABEL_PAIRS: [string, string][] = [
+    ...Object.keys(nested(en, 'field')).map((k): [string, string] => ['field', k]),
+    ...Object.keys(nested(en, 'summaryTip')).map((k): [string, string] => ['summaryTip', k]),
   ];
   for (const loc of ['ta', 'th', 'zh'] as const) {
-    it(`${loc} translates the breakdown labels (not byte-identical to en)`, () => {
+    it(`${loc} translates every summary label + tooltip (not byte-identical to en)`, () => {
       const dict = load(loc).leave.breakdown as Record<string, unknown>;
-      const untranslated = LABEL_KEYS.filter((k) => dict[k] === en[k]);
+      const untranslated = LABEL_PAIRS.filter(([g, k]) => nested(dict, g)[k] === nested(en, g)[k]).map(
+        ([g, k]) => `${g}.${k}`,
+      );
       expect(untranslated, `[${loc}] English passthrough: ${untranslated.join(', ')}`).toEqual([]);
     });
   }
+
+  it('every summary label + tooltip is present in all six locales (no silent English fallback)', () => {
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const) {
+      const dict = load(loc).leave.breakdown as Record<string, unknown>;
+      for (const [g, k] of LABEL_PAIRS) {
+        expect(nested(dict, g)[k], `[${loc}] leave.breakdown.${g}.${k}`).toBeTruthy();
+      }
+    }
+  });
 });

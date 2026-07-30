@@ -7,6 +7,7 @@ import { listAdHocLeaveGrants, listLeavePolicies, listBusinessUnits, listPositio
 // needs the same delete pre-check the Application Rules tab used to run.
 import { listLeaveYearConfigs, leaveYearsWithRecords } from '@/core/leave';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
+import { leaveFormulaTemplateFrom, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { listAllProfileOptions } from '@/core/profile-options';
 // e1a51aea — the Approval Workflow sub-step's data + shared matrix labels (one source with the Approval tab).
 import { getLeaveApprovalPolicy, isCompanyDefaultApprovalRule, listLeaveApprovalRules } from '@/core/leave-approval-policy';
@@ -155,6 +156,15 @@ export default async function LeaveEntitlementsPage({
       c.category,
       (profileOptionsActive[c.category] ?? []).map((o) => ({ value: o.value, label: o.label })),
     ]),
+  );
+  // Smart content reuse (ed17a4f9 §4): the wording template every not-yet-configured leave type is
+  // PRE-FILLED from — the first leave type that already carries an Employee Leave View Configuration.
+  // Resolved once here off the ALREADY-LOADED `types`, so a tenant with 60 leave types costs no extra query.
+  // "First" is `listLeaveTypes`' order, which is alphabetical by the viewer's display name — deterministic,
+  // so the same template is offered on every reload rather than whichever row Postgres happened to return.
+  // Read-side only: this fills FORM DEFAULTS. Nothing is written unless HR presses Save on a type.
+  const formulaTemplate = leaveFormulaTemplateFrom(
+    types.map((lt) => lt.formulaExplanations as Record<string, LeaveFormulaEntry> | null),
   );
   const gradeOptions = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
   // ADR-0066: companies for the per-policy scope select. companyOptions stays the FULL list — policy writes
@@ -804,7 +814,8 @@ export default async function LeaveEntitlementsPage({
               expiryUnit={lt.expiryUnit ?? null}
               customMessages={(lt.customMessages as Record<string, string> | null) ?? null}
               essViewConfig={(lt.essViewConfig as Record<string, boolean> | null) ?? null}
-              formulaExplanations={(lt.formulaExplanations as Record<string, { description?: string; formula?: string; result?: string }> | null) ?? null}
+              formulaExplanations={(lt.formulaExplanations as Record<string, LeaveFormulaEntry> | null) ?? null}
+              formulaTemplate={formulaTemplate}
               dayTypeInclusion={(lt.dayTypeInclusion as Record<string, boolean> | null) ?? null}
               color={lt.color ?? null}
               icon={lt.icon ?? null}

@@ -23,6 +23,9 @@ export type EntitlementBreakdownData = {
   leaveType: string;
   asOf: string;
   cycleStart: string;
+  /** 1f6fd6d8 — "Eligible (Full Year Entitlement)": the winning policy's whole-year days. The one summary
+   *  line that is not ledger-derived, and the top of the reporter's column. */
+  eligibleDays: number;
   currentYearEntitlement: number;
   monthlyAccruedToDate: number | null;
   carriedForward: number;
@@ -48,17 +51,22 @@ export type EntitlementBreakdownData = {
   /** The individual CONFIG adjustment rows behind `configAdjustments` (reason + days each), so the panel can
    *  show where every adjusted day came from. System corrections are automatic ⇒ summarised, never itemised. */
   configAdjustmentItems: { effectiveOn: string; days: number; reason: string | null }[];
+  /** 1f6fd6d8 roll-ups the redesigned summary reads — configAdjustments + systemAdjustments, and
+   *  broughtForward + currentYearEntitlement + adjustments. Computed server-side beside the buckets they sum
+   *  so the panel descriptor stays a pure pick; see core/read.ts LeaveEntitlementBreakdown. */
+  adjustments: number;
+  totalEntitlement: number;
   totalAvailable: number;
   transactions: { effectiveOn: string; entryType: string; days: number; sourceRequestId: string | null; reason: string | null }[];
   /** Employee Leave View Configuration (65dec703): per-component ESS visibility (missing key ⇒ visible).
    *  Only consulted when `applyEssConfig` is set — i.e. on /me; admin/HR pass it false and see every row. */
   essView?: Record<string, boolean>;
-  /** Leave Entitlement Formula Management (79011509, widened by 2bc2f2a3): HR-authored per-component
-   *  explanations, keyed by the row's field key — the §7 calcBreakdown component keys plus every ess-view key
-   *  (core/leave-formula.ts LEAVE_EXPLANATION_KEYS). A key present with content ⇒ that row shows an info icon
-   *  whose hover tooltip carries the description + formula (feedback b8b665ff). Missing key / null ⇒ no icon.
-   *  Structural mirror of core/read.ts ResolvedLeaveFormula (kept db-free). */
-  formulaExplanations?: Record<string, { description?: string; formula?: string; result?: string } | null>;
+  /** Leave Entitlement Formula Management (79011509, widened by 2bc2f2a3, narrowed by ed17a4f9): HR-authored
+   *  per-item explanations, keyed by the row's field key — which since ed17a4f9 is exactly the ess-view key
+   *  set (core/leave-formula.ts LEAVE_EXPLANATION_KEYS). A key present with content ⇒ that row shows an info
+   *  icon whose hover tooltip carries the description + formula explanation (feedback b8b665ff). Missing key
+   *  / null ⇒ no icon. Structural mirror of core/read.ts ResolvedLeaveFormula (kept db-free). */
+  formulaExplanations?: Record<string, { description?: string; formula?: string } | null>;
 };
 
 export function EntitlementBreakdown({
