@@ -256,7 +256,7 @@
     "list": {
       "title": "Personnel",
       "employeeCount": "{count, plural, one {# employee} other {# employees}}",
-      "importCsv": "Import CSV",
+      "importCsv": "Import employees",
       "profileChangeRequests": "Profile change requests",
       "pendingCount": "{count, plural, one {# pending} other {# pending}}",
       "profileChangeHint": "Approving applies the change to the employee’s statutory profile (bank / PCB). You cannot approve your own request.",
@@ -342,7 +342,14 @@
       "employeeIdLabel": "Employee ID",
       "employeeIdPlaceholder": "e.g. EMP-0001",
       "employeeIdHint": "Letters, numbers and dashes; up to 30 characters.",
-      "hiringDefaults": "Hiring defaults"
+      "hiringDefaults": "Hiring defaults",
+      "draftsHeading": "Unfinished new employees",
+      "draftsCount": "{count} draft",
+      "draftUntitled": "Unnamed draft",
+      "draftNoCompany": "No company chosen yet",
+      "draftMissing": "{count} still needed",
+      "draftReady": "Ready to create",
+      "draftContinue": "Continue"
     },
     "detail": {
       "backToPeople": "People",
@@ -1196,26 +1203,26 @@
     },
     "import": {
       "title": "Import employees",
-      "description": "Bulk-load employees, statutory profiles and pay from a CSV. Validate first, then import.",
+      "description": "Bulk-load employees, statutory profiles and pay from an Excel (.xlsx) file. Download the template, fill it in, upload it — nothing is created until you have seen the check.",
       "backLabel": "People",
       "noCompanies": "Create a company before importing employees.",
       "targetCompany": "Target company",
-      "uploadFile": "Upload CSV file",
-      "dropHere": "Drop your CSV here or click to browse",
-      "uploadHint": "Accepts CSV only. Save your spreadsheet as CSV before uploading.",
+      "uploadFile": "Upload file",
+      "dropHere": "Drop a file here or click to browse",
+      "uploadHint": "Accepts CSV, XLSX or XLS. The first worksheet is read.",
       "reading": "Reading file…",
       "fileLoaded": "{name} loaded",
       "pasteToggle": "Or paste CSV instead",
       "csvData": "CSV data",
       "csvPlaceholder": "Paste CSV with a header row — full_name,email,department,hired_on,ic_number,basic_salary,…",
-      "unsupportedFileType": "Unsupported file type. Save your spreadsheet as CSV (.csv) and upload it again.",
+      "unsupportedFileType": "Unsupported file type. Upload a CSV, XLSX or XLS file.",
       "fileTooLarge": "File is too large. Split it into smaller batches and try again.",
       "emptyFile": "That file is empty.",
       "fileReadError": "Could not read that file. Check the format and try again.",
       "validate": "Validate",
       "validating": "Validating…",
       "loadSample": "Load sample",
-      "resolveHint": "Department / position resolve by name within {company}.",
+      "resolveHint": "Department / position resolve by name within the row's company. A blank Company column means {company}.",
       "theCompany": "the company",
       "columnReference": "Column reference",
       "required": "Required",
@@ -1241,7 +1248,20 @@
       "colName": "Name",
       "colEmail": "Email",
       "colResult": "Result",
-      "ready": "Ready"
+      "ready": "Ready",
+      "emptySheet": "The first worksheet is empty.",
+      "downloadTemplateXlsx": "Download Excel template",
+      "colCompany": "Company",
+      "colRow": "Row",
+      "downloadErrors": "Download error report",
+      "referenceHeading": "Accepted values — copy these exactly",
+      "instructionsHeading": "How to fill in this template",
+      "instructionRequired": "Required columns: {columns}. Every other column may be left blank.",
+      "instructionDates": "Enter dates as real Excel dates, or type them as YYYY-MM-DD.",
+      "instructionIdentityText": "The IC, phone, bank account, EPF, SOCSO and tax number columns are formatted as text so leading zeros are kept. Do not change their format to General.",
+      "instructionCompany": "Leave the Company column blank to use the company selected on the import screen, or name a company to import employees for several companies in one file.",
+      "instructionReference": "The Reference sheet lists every accepted value for Company, Department, Position and Cost Center. Anything else is rejected with the reason.",
+      "instructionSamples": "Delete the two sample rows before uploading."
     },
     "hiringDefaults": {
       "title": "Hiring Defaults",
@@ -1253,6 +1273,126 @@
       "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
       "reviewReminderDays": "Review reminders (days before end date)",
       "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
+    },
+    "wizard": {
+      "fields": {
+        "fullName": "Full name",
+        "primaryEmail": "Email",
+        "employeeCode": "Employee ID",
+        "company": "Company",
+        "businessUnit": "Business unit",
+        "department": "Department",
+        "position": "Position / Job title",
+        "costCenter": "Cost center",
+        "jobGrade": "Job grade",
+        "reportingManager": "Reporting manager",
+        "employmentType": "Employment type",
+        "hiredOn": "Hire date",
+        "provisionalEndOn": "Provisional end date",
+        "basicSalary": "Initial basic salary (MYR)",
+        "remarks": "Remarks",
+        "icNumber": "Identity No (NRIC)",
+        "phone": "Mobile Phone Number",
+        "gender": "Gender",
+        "maritalStatus": "Marital status",
+        "epfNumber": "EPF number",
+        "socsoNumber": "SOCSO number",
+        "taxNumber": "Tax number",
+        "dateOfBirth": "Date of birth",
+        "bankName": "Bank",
+        "bankAccountNo": "Bank account number",
+        "bankAccount": "Bank details",
+        "numChildren": "Number of children",
+        "epfCitizenship": "EPF citizenship",
+        "eisEligible": "EIS eligible",
+        "isResident": "Tax resident",
+        "taxCategory": "PCB category",
+        "monthlyAllowance": "Monthly allowance",
+        "payMode": "Pay mode",
+        "paymentTerm": "Payment term",
+        "rateAmount": "Rate amount"
+      },
+      "employmentType": {
+        "full_time": "Full-time",
+        "part_time": "Part-time",
+        "contract": "Contract",
+        "intern": "Intern"
+      },
+      "taxCategory": {
+        "1": "Single",
+        "2": "Married · spouse not working",
+        "3": "Married · spouse working"
+      },
+      "none": "— None —",
+      "orgLabelsEmptyForCompany": "No organization labels are configured for the selected company.",
+      "hints": {
+        "provisionalEndOn": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none.",
+        "employeeCode": "Leave blank and the system generates the next Employee ID when the employee is created. A draft never uses one up.",
+        "icNumber": "Optional — leave blank for a passport holder. If given, it must be a valid identity number for the company’s country.",
+        "dateOfBirth": "Leave blank and it is taken from the identity number where possible.",
+        "businessUnit": "Narrows the department list only. It is not stored on the employee.",
+        "hiredOn": "The first day of employment. After creation this date changes only through a movement event.",
+        "bankAccount": "Give both the bank and the account number, or neither.",
+        "rateAmount": "Required for a daily or hourly pay mode."
+      },
+      "backLabel": "Back to Personnel",
+      "title": "Create new employee",
+      "description": "Enter the details step by step. Save as a draft at any point and come back to it — nothing is created until the final step.",
+      "progressLabel": "Creation steps",
+      "steps": {
+        "profile": "Profile",
+        "employment": "Employment",
+        "statutory": "Bank & Statutory",
+        "payroll": "Payroll",
+        "review": "Review & create"
+      },
+      "notSet": "— Not set —",
+      "selectPrompt": "— Select —",
+      "yes": "Yes",
+      "no": "No",
+      "gender": {
+        "male": "Male",
+        "female": "Female"
+      },
+      "marital": {
+        "single": "Single",
+        "married": "Married"
+      },
+      "citizenship": {
+        "citizen": "Citizen",
+        "pr": "Permanent resident",
+        "non_citizen": "Non-citizen"
+      },
+      "payMode": {
+        "monthly": "Monthly",
+        "daily": "Daily",
+        "hourly": "Hourly",
+        "custom_period": "Custom period"
+      },
+      "paymentTerm": {
+        "monthly": "Monthly",
+        "weekly": "Weekly",
+        "biweekly": "Fortnightly"
+      },
+      "continueDraft": "Continue a draft ({count})",
+      "untitledDraft": "Unnamed draft",
+      "stepOf": "Step {current} of {total}",
+      "missingCount": "{count} still needed",
+      "readyToCreate": "Ready to create",
+      "lastSaved": "Saved {when}",
+      "startedBy": "Started by {name}",
+      "continue": "Continue",
+      "complete": "Complete",
+      "reviewReady": "Everything needed is here. Creating the employee generates the Employee ID and opens their record.",
+      "reviewIncomplete": "Fill in what is listed above, or save this as a draft and come back to it.",
+      "back": "Back",
+      "next": "Next",
+      "saveDraft": "Save draft",
+      "saving": "Saving…",
+      "draftSaved": "Draft saved",
+      "discardDraft": "Discard draft",
+      "createEmployee": "Create employee",
+      "creating": "Creating…"
     }
   },
   "leave": {
@@ -5466,7 +5606,7 @@
         },
         "hire": {
           "title": "Create new employee",
-          "body": "Click **+ Create new employee** at the top right to add someone with their company, department, and start date. For bulk onboarding, use **Import CSV**."
+          "body": "Click **+ Create new employee** at the top right. It opens a step-by-step screen — you can save a draft at any point and finish it later. For bulk onboarding, use **Import employees** with the Excel template."
         },
         "orgTree": {
           "title": "Your group structure",

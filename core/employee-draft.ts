@@ -1,0 +1,329 @@
+/**
+ * Create New Employee — drafts (item 6d671f44).
+ *
+ * A DRAFT IS CAPTURED INPUT, NOT A RECORD. Nothing is created until `completeEmployeeDraft`, and when
+ * it is, it goes through the SAME writers the single-hire form and the bulk importer use —
+ * `hireEmployee` → the company pack's `statutory.set` → `setCompensation` (+ the IC-derived date of
+ * birth autofill) — so a wizard-created employee is indistinguishable from a hand-entered or imported
+ * one, events included. This is the plan's explicit requirement ("Creation on completion must go
+ * through the existing writers, not a bespoke insert") and it is what makes the r73 Decision 3 failure
+ * mode — a writer silently dropping a column it predates — impossible to reintroduce here: there is no
+ * second writer to fall behind.
+ *
+ * IT ALSO DOES NOT EMIT A MOVEMENT EVENT. The initial assignment IS the Hired row, which
+ * `core/movement.ts` synthesizes from the employment itself with a pseudo-id; emitting an event for it
+ * would give every new employee a spurious second history row — the exact fault r78 (`4d391ab7`) fixed
+ * for the reporting line. `hireEmployee` already tags its inline `reporting-line.set` as `secondary`;
+ * nothing here untags or duplicates it.
+ *
+ * WHY THE DRAFT IS NOT AN EMPLOYMENT WITH A FLAG — see migration 0337's header. In short: every list
+ * read in the product joins `employment`, so a flag would need a new exclusion in each of them forever,
+ * and the failure mode is a half-entered person appearing in a headcount or a payroll run.
+ */
+import { desc, eq } from 'drizzle-orm';
+import { withTenant, type SessionContext } from '../db/client';
+import { company, employeeDraft, person } from '../db/schema';
+import { appendEvent, actorOf } from '../db/events';
+import { hireEmployee } from './org';
+import { setCompensation } from './comp';
+import { setPersonComplianceFields } from './profile';
+import { listLeaveTypes } from './read';
+import { requirePackFor } from '../localization/registry';
+import {
+  draftLabel,
+  missingForCreation,
+  stepKey,
+  type EmployeeDraftData,
+} from '../lib/employee-draft-schema';
+
+/** Standing entitlements granted on hire — the same three the hire form and the importer grant. */
+const STANDING_GRANTS = new Set(['ANNUAL', 'SICK', 'HOSPITALIZATION']);
+
+export type EmployeeDraftRow = {
+  id: string;
+  label: string;
+  companyId: string | null;
+  companyName: string | null;
+  currentStep: number;
+  createdByName: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  /** Outstanding required fields, recomputed on read so an old draft is judged by today's rules. */
+  missing: string[];
+};
+
+const asData = (v: unknown): EmployeeDraftData => (v && typeof v === 'object' ? (v as EmployeeDraftData) : {});
+const str = (v: string | undefined) => {
+  const s = (v ?? '').trim();
+  return s === '' ? undefined : s;
+};
+
+/** Drafts visible to the caller, most recently touched first. RLS (0337) is the authority: an author
+ *  sees their own, an admin sees the tenant's. */
+export function listEmployeeDrafts(ctx: SessionContext): Promise<EmployeeDraftRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: employeeDraft.id,
+        label: employeeDraft.label,
+        companyId: employeeDraft.companyId,
+        companyName: company.legalName,
+        currentStep: employeeDraft.currentStep,
+        createdByName: person.fullName,
+        createdAt: employeeDraft.createdAt,
+        updatedAt: employeeDraft.updatedAt,
+        data: employeeDraft.data,
+      })
+      .from(employeeDraft)
+      .leftJoin(company, eq(company.id, employeeDraft.companyId))
+      .leftJoin(person, eq(person.id, employeeDraft.createdByPersonId))
+      .orderBy(desc(employeeDraft.updatedAt));
+    return rows.map(({ data, ...r }) => ({ ...r, missing: missingForCreation(asData(data)) }));
+  });
+}
+
+export function getEmployeeDraft(
+  ctx: SessionContext,
+  id: string,
+): Promise<{ id: string; data: EmployeeDraftData; currentStep: number } | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ id: employeeDraft.id, data: employeeDraft.data, currentStep: employeeDraft.currentStep })
+      .from(employeeDraft)
+      .where(eq(employeeDraft.id, id))
+      .limit(1);
+    return row ? { id: row.id, data: asData(row.data), currentStep: row.currentStep } : null;
+  });
+}
+
+/**
+ * Create or update a draft. Returns its id so the wizard can keep saving into the same one.
+ *
+ * `label` and `companyId` are DERIVED from the payload here rather than passed in, so the list can
+ * never show a name the draft does not actually contain.
+ */
+export async function saveEmployeeDraft(
+  ctx: SessionContext,
+  p: { id?: string; data: EmployeeDraftData; currentStep: number },
+): Promise<{ id: string }> {
+  assertAdmin(ctx);
+  const label = draftLabel(p.data);
+  const companyId = str(p.data.employment?.companyId) ?? null;
+  const currentStep = Math.min(Math.max(Math.trunc(p.currentStep) || 1, 1), 20);
+  return withTenant(ctx, async (tx) => {
+    let id = p.id;
+    if (id) {
+      // RLS decides whether this row is even visible; `returning` tells us whether it applied.
+      const updated = await tx
+        .update(employeeDraft)
+        .set({ label, companyId, data: p.data, currentStep, updatedAt: new Date() })
+        .where(eq(employeeDraft.id, id))
+        .returning({ id: employeeDraft.id });
+      if (updated.length === 0) throw new Error('Draft not found (or not visible).');
+    } else {
+      const [row] = await tx
+        .insert(employeeDraft)
+        .values({
+          tenantId: ctx.tenantId,
+          companyId,
+          createdByPersonId: ctx.personId ?? null,
+          label,
+          data: p.data,
+          currentStep,
+        })
+        .returning({ id: employeeDraft.id });
+      id = row.id;
+    }
+    // One event per explicit save (the wizard saves on a button press, not on a keystroke), so the
+    // audit trail records that a draft was worked on without recording what was typed into it.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employee-draft',
+      aggregateId: id,
+      eventType: p.id ? 'employee-draft.updated' : 'employee-draft.created',
+      actor: actorOf(ctx),
+      payload: { currentStep, step: stepKey(currentStep), companyId, hasLabel: label !== '' },
+    });
+    return { id };
+  });
+}
+
+export async function discardEmployeeDraft(ctx: SessionContext, id: string): Promise<void> {
+  assertAdmin(ctx);
+  await withTenant(ctx, async (tx) => {
+    const deleted = await tx
+      .delete(employeeDraft)
+      .where(eq(employeeDraft.id, id))
+      .returning({ id: employeeDraft.id });
+    if (deleted.length === 0) throw new Error('Draft not found (or not visible).');
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employee-draft',
+      aggregateId: id,
+      eventType: 'employee-draft.discarded',
+      actor: actorOf(ctx),
+      payload: {},
+    });
+  });
+}
+
+/**
+ * Turn a completed draft into a real employee.
+ *
+ * NOT one transaction, and that is deliberate rather than an oversight: each writer owns its own
+ * transaction (this is the same composition `commitEmployeeImport` performs, for the same reason —
+ * the services are the contract, not their internals). The consequence is honest and worth stating:
+ * if the statutory or compensation write fails, the EMPLOYEE EXISTS and the draft is kept, so HR can
+ * see what is missing and finish it on the profile screen. Deleting the employee to "roll back" would
+ * be worse — it would silently discard an employment that other tables may already reference.
+ *
+ * The draft is deleted only after every writer has succeeded.
+ */
+export async function completeEmployeeDraft(
+  ctx: SessionContext,
+  id: string,
+): Promise<{ employmentId: string }> {
+  assertAdmin(ctx);
+  const draft = await getEmployeeDraft(ctx, id);
+  if (!draft) throw new Error('Draft not found (or not visible).');
+  const data = draft.data;
+
+  // The client renders the same rules, but the client is not trusted: re-run them here.
+  const missing = missingForCreation(data);
+  if (missing.length > 0) throw new Error(`Cannot create the employee yet: ${missing.join(', ')}`);
+
+  const p = data.profile ?? {};
+  const e = data.employment ?? {};
+  const s = data.statutory ?? {};
+  const pay = data.payroll ?? {};
+  const companyId = str(e.companyId)!;
+  const hiredOn = str(e.hiredOn)!;
+
+  // The company's country pack owns the IC rules (ADR-0080 D1/D6) — resolved from the COMPANY, never
+  // from a hardcoded jurisdiction, and fail-loud when the country resolves nothing.
+  const country = await withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ country: company.country })
+      .from(company)
+      .where(eq(company.id, companyId))
+      .limit(1);
+    if (!row) throw new Error('Company not found (or not visible).');
+    return row.country;
+  });
+  const pack = requirePackFor(country);
+  const icNumber = str(p.icNumber);
+  // Optional (item e3ce0d4d — a non-Malaysian passport holder has no IC) but validated when supplied,
+  // because an invalid IC stored now is a payroll fault later.
+  if (icNumber && !pack.statutory.validateIC(icNumber)) throw new Error(`Invalid identity number "${icNumber}".`);
+
+  const types = await listLeaveTypes(ctx);
+  const { employmentId, personId } = await hireEmployee(ctx, {
+    person: { fullName: str(p.fullName)!, primaryEmail: str(p.primaryEmail)!, phone: str(p.phone) },
+    // Blank ⇒ hireEmployee generates the next code. That IS the reporter's rule that a draft consumes
+    // no Employee ID: the counter only ever advances inside this call.
+    employeeCode: str(p.employeeCode),
+    companyId,
+    departmentId: str(e.departmentId)!,
+    positionId: str(e.positionId),
+    costCenterId: str(e.costCenterId),
+    gradeId: str(e.gradeId) ?? null,
+    reportingManagerEmploymentId: str(e.reportingManagerEmploymentId),
+    employmentType: (str(e.employmentType) ?? 'full_time') as 'full_time' | 'part_time' | 'contract' | 'intern',
+    hiredOn,
+    provisionalEndOn: str(e.provisionalEndOn) ?? null,
+    grantLeaveTypes: types
+      .filter((t) => STANDING_GRANTS.has(t.code))
+      .map((t) => ({ id: t.id, code: t.code, yearCycleOverride: t.yearCycleOverride })),
+  });
+
+  if (icNumber || hasAnyStatutory(s)) {
+    await pack.statutory.set(ctx, {
+      personId,
+      icNumber: icNumber ?? '',
+      epfNumber: str(s.epfNumber),
+      socsoNumber: str(s.socsoNumber),
+      taxNumber: str(s.taxNumber),
+      taxCategory: numOrUndef(s.taxCategory),
+      numChildren: numOrUndef(s.numChildren),
+      eisEligible: boolOrUndef(s.eisEligible),
+      isResident: boolOrUndef(s.isResident),
+      epfCitizenship: citizenship(s.epfCitizenship),
+      bankName: str(s.bankName),
+      bankAccountNo: str(s.bankAccountNo),
+    });
+  }
+
+  // Gender / marital status / date of birth are compliance-gated fields with their own writer. An
+  // explicitly typed DOB wins; otherwise the IC derives one, exactly as setIcAction and the importer
+  // do (`dobOnlyIfEmpty` guarantees a real value is never overwritten).
+  const typedDob = str(p.dateOfBirth);
+  const derivedDob = icNumber ? pack.statutory.dobFromIC(icNumber) : null;
+  const dob = typedDob ?? derivedDob ?? undefined;
+  if (str(p.gender) || str(p.maritalStatus) || dob) {
+    try {
+      await setPersonComplianceFields(ctx, {
+        employmentId,
+        ...(str(p.gender) ? { gender: str(p.gender) } : {}),
+        ...(str(p.maritalStatus) ? { maritalStatus: str(p.maritalStatus) } : {}),
+        ...(dob ? { dateOfBirth: dob, dobOnlyIfEmpty: !typedDob } : {}),
+      });
+    } catch {
+      // Best-effort, matching commitEmployeeImport: the employee exists and is payable; a rejected
+      // profile detail must not strand the whole creation.
+    }
+  }
+
+  await setCompensation(ctx, {
+    employmentId,
+    basicSalary: Number((pay.basicSalary ?? '').replace(/[,_]/g, '')),
+    monthlyAllowance: numOrUndef(pay.monthlyAllowance),
+    payMode: str(pay.payMode),
+    paymentTerm: str(pay.paymentTerm),
+    rateAmount: numOrUndef(pay.rateAmount),
+    effectiveFrom: hiredOn,
+    remarks: str(pay.remarks),
+  });
+
+  // Only now: the draft has become an employee, so it stops existing as a draft.
+  await withTenant(ctx, async (tx) => {
+    await tx.delete(employeeDraft).where(eq(employeeDraft.id, id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employee-draft',
+      aggregateId: id,
+      eventType: 'employee-draft.completed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: employmentId,
+      payload: { employmentId, companyId },
+    });
+  });
+
+  return { employmentId };
+}
+
+function hasAnyStatutory(s: Record<string, string | undefined>): boolean {
+  return Object.values(s).some((v) => (v ?? '').trim() !== '');
+}
+function numOrUndef(v: string | undefined): number | undefined {
+  const s = (v ?? '').replace(/[,_]/g, '').trim();
+  if (s === '') return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+}
+function boolOrUndef(v: string | undefined): boolean | undefined {
+  const s = (v ?? '').trim().toLowerCase();
+  if (s === '') return undefined;
+  return ['true', 'yes', 'y', '1'].includes(s);
+}
+function citizenship(v: string | undefined): 'citizen' | 'pr' | 'non_citizen' | undefined {
+  const s = (v ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (s === 'citizen' || s === 'pr' || s === 'non_citizen') return s;
+  return undefined;
+}
+
+function assertAdmin(ctx: SessionContext): void {
+  const roles = ctx.roles ?? [];
+  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
+    throw new Error('Only an admin can create employees.');
+  }
+}

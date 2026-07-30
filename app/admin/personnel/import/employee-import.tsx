@@ -10,6 +10,17 @@ import { DownloadTemplate } from '@/components/download-template';
 import { employeeTemplate } from '@/lib/import-template';
 import { IMPORT_COLUMNS, type ImportPreview, type ImportResult } from '@/lib/import-schema';
 import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
+import { toCsv } from '@/lib/csv';
+import {
+  buildInstructionRows,
+  buildReferenceRows,
+  employeeColumnLabel,
+  employeeTextColumnIndexes,
+  EMPLOYEE_ENUM_VALUES,
+  EMPLOYEE_XLSX_FILENAME,
+  EMPLOYEE_XLSX_HEADERS,
+  EMPLOYEE_XLSX_SHEETS,
+} from '@/lib/import-template-xlsx';
 import { validateImportAction, commitImportAction } from './actions';
 
 const SAMPLE = `full_name,email,department,position,hired_on,employment_type,ic_number,basic_salary,monthly_allowance,bank_name,bank_account_no,tax_category,num_children
@@ -19,12 +30,21 @@ Siti Aminah,siti@demo.test,Operations,,2026-06-15,contract,950909093456,4100,0,,
 
 type Phase = 'idle' | 'previewed' | 'done';
 
+export type ImportReference = {
+  departments: string[];
+  positions: string[];
+  costCenters: string[];
+};
+
 export function EmployeeImport({
   companies,
   defaultCompanyId,
+  reference,
 }: {
   companies: { id: string; name: string }[];
   defaultCompanyId: string;
+  /** Live catalog values for the Excel template's Reference sheet (d8471481). */
+  reference: ImportReference;
 }) {
   const t = useTranslations('people.import');
   const router = useRouter();
@@ -91,6 +111,85 @@ export function EmployeeImport({
       // Allow re-picking the same file after fixing it — the change event won't fire otherwise.
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  // d8471481 — the Excel template. Built in the BROWSER (SheetJS is dynamically imported so the
+  // ~400 KB library never enters the initial bundle or any server action), from the live catalogs the
+  // server passed down. Three sheets; the data sheet stays FIRST because `workbookToCsvText` reads
+  // the first worksheet on re-upload.
+  const downloadXlsxTemplate = async () => {
+    setError(null);
+    try {
+      const { buildXlsx } = await import('@/lib/spreadsheet');
+      const enumList = (key: keyof typeof EMPLOYEE_ENUM_VALUES) => ({
+        label: employeeColumnLabel(key),
+        values: [...EMPLOYEE_ENUM_VALUES[key]],
+      });
+      const bytes = await buildXlsx(
+        [...EMPLOYEE_XLSX_HEADERS],
+        employeeTemplate.sampleRows,
+        {
+          sheetName: EMPLOYEE_XLSX_SHEETS.data,
+          textColumns: employeeTextColumnIndexes(),
+          extraSheets: [
+            {
+              name: EMPLOYEE_XLSX_SHEETS.reference,
+              rows: buildReferenceRows(t('referenceHeading'), [
+                { label: employeeColumnLabel('company'), values: companies.map((c) => c.name) },
+                { label: employeeColumnLabel('department'), values: reference.departments },
+                { label: employeeColumnLabel('position'), values: reference.positions },
+                { label: employeeColumnLabel('cost_center'), values: reference.costCenters },
+                enumList('employment_type'),
+                enumList('pay_mode'),
+                enumList('payment_term'),
+                enumList('epf_citizenship'),
+                enumList('tax_category'),
+                enumList('eis_eligible'),
+              ]),
+            },
+            {
+              name: EMPLOYEE_XLSX_SHEETS.instructions,
+              rows: buildInstructionRows(t('instructionsHeading'), [
+                t('instructionRequired', { columns: IMPORT_COLUMNS.required.map(employeeColumnLabel).join(', ') }),
+                t('instructionDates'),
+                t('instructionIdentityText'),
+                t('instructionCompany'),
+                t('instructionReference'),
+                t('instructionSamples'),
+              ]),
+            },
+          ],
+        },
+      );
+      const url = URL.createObjectURL(
+        new Blob([bytes as BlobPart], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+      );
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = EMPLOYEE_XLSX_FILENAME;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError(t('fileReadError'));
+    }
+  };
+
+  // Error feedback report (d8471481): just the rows that cannot be accepted, with the reason, so HR
+  // fixes those and re-uploads instead of hunting through the file. Uses toCsv's csvSafeCell
+  // formula-injection guard because it echoes user-supplied values back into a file opened in Excel.
+  const downloadErrors = (rows: { rowNum: number; fullName: string; email: string; errors: string[] }[]) => {
+    const csvOut = toCsv([
+      [t('colRow'), t('colName'), t('colEmail'), t('colResult')],
+      ...rows.map((r) => [r.rowNum, r.fullName, r.email, r.errors.join('; ')]),
+    ]);
+    const url = URL.createObjectURL(new Blob([csvOut], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'employee-import-errors.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const commit = () =>
@@ -221,6 +320,16 @@ export function EmployeeImport({
           >
             {t('loadSample')}
           </Button>
+          {/* d8471481 — the Excel template is the PRIMARY one now (text-typed identity columns +
+              a live Reference sheet). The CSV template stays beside it: the reporter's existing
+              files are CSV and removing that path would break a workflow that works. */}
+          <button
+            type="button"
+            onClick={() => void downloadXlsxTemplate()}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            {t('downloadTemplateXlsx')}
+          </button>
           <DownloadTemplate spec={employeeTemplate} />
           <span className="ml-auto text-xs text-muted-foreground">
             {t('resolveHint', { company: company?.name ?? t('theCompany') })}
@@ -305,7 +414,14 @@ export function EmployeeImport({
         </Card>
       )}
 
-      {preview && !result && <PreviewTable preview={preview} onImport={commit} busy={pending} />}
+      {preview && !result && (
+        <PreviewTable
+          preview={preview}
+          onImport={commit}
+          onDownloadErrors={downloadErrors}
+          busy={pending}
+        />
+      )}
     </div>
   );
 }
@@ -313,10 +429,12 @@ export function EmployeeImport({
 function PreviewTable({
   preview,
   onImport,
+  onDownloadErrors,
   busy,
 }: {
   preview: ImportPreview;
   onImport: () => void;
+  onDownloadErrors: (rows: ImportPreview['rows']) => void;
   busy: boolean;
 }) {
   const t = useTranslations('people.import');
@@ -338,9 +456,21 @@ function PreviewTable({
             </>
           )}
         </h2>
-        <Button onClick={onImport} disabled={busy || preview.validCount === 0} size="sm">
-          {busy ? t('importing') : t('importValid', { count: preview.validCount })}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Function 3 of the reporter's flow: download just the rows that need correcting. */}
+          {invalid > 0 && (
+            <button
+              type="button"
+              onClick={() => onDownloadErrors(preview.rows.filter((r) => !r.ok))}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted"
+            >
+              {t('downloadErrors')}
+            </button>
+          )}
+          <Button onClick={onImport} disabled={busy || preview.validCount === 0} size="sm">
+            {busy ? t('importing') : t('importValid', { count: preview.validCount })}
+          </Button>
+        </div>
       </div>
 
       {preview.missingColumns.length > 0 && (
@@ -360,6 +490,9 @@ function PreviewTable({
             <th className="w-12 px-4 py-2 font-medium">#</th>
             <th className="px-4 py-2 font-medium">{t('colName')}</th>
             <th className="px-4 py-2 font-medium">{t('colEmail')}</th>
+            {/* d8471481 — one file may span companies, so the preview must show WHERE each row lands
+                before anything is created. Blank company cell ⇒ the target company selected above. */}
+            <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
             <th className="px-4 py-2 font-medium">{t('colResult')}</th>
           </tr>
         </thead>
@@ -369,6 +502,7 @@ function PreviewTable({
               <td className="px-4 py-2 tabular-nums text-muted-foreground">{r.rowNum}</td>
               <td className="px-4 py-2 font-medium">{r.fullName || <span className="text-muted-foreground">—</span>}</td>
               <td className="px-4 py-2 text-muted-foreground">{r.email || '—'}</td>
+              <td className="px-4 py-2 text-muted-foreground">{r.company || '—'}</td>
               <td className="px-4 py-2">
                 {r.ok ? (
                   <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">

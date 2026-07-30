@@ -3,99 +3,23 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { computeProvisionalEndOn, hireEmployee, resolveProbationMonths } from '@/core/org';
-import { setCompensation } from '@/core/comp';
-import { listLeaveTypes } from '@/core/read';
-import { getHiringDefaults } from '@/core/hiring-defaults';
 import { decideProfileChange } from '@/core/profile';
 
-type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
-
-// Standing entitlements granted on hire (pack-driven, ADR-0008); situational types
-// (maternity / paternity / unpaid) are claimed per event, not granted as balances.
-const STANDING_GRANTS = new Set(['ANNUAL', 'SICK', 'HOSPITALIZATION']);
-
-export async function hireAction(formData: FormData) {
-  const session = await requireAdmin();
-  const str = (k: string) => {
-    const v = String(formData.get(k) ?? '').trim();
-    return v || undefined;
-  };
-  try {
-    const types = await listLeaveTypes(session);
-    const companyId = String(formData.get('companyId'));
-    // Create Initial Basic Salary (feedback 87c82b18, flow #2): the admin is PROMPTED for — and required
-    // to supply — the employee's initial basic salary at creation. Validate before hiring so a bad value
-    // never creates an employee with no salary. The client also marks the field required.
-    const initialBasicSalary = Number(formData.get('initialBasicSalary') ?? '');
-    if (!Number.isFinite(initialBasicSalary) || initialBasicSalary <= 0) {
-      throw new Error('Initial basic salary is required');
-    }
-    const employmentType = String(formData.get('employmentType')) as EmploymentType;
-    const hiredOn = String(formData.get('hiredOn'));
-    const rawEnd = str('provisionalEndOn');
-    // Server is the source of truth for the provisional end date (never trust the client to have
-    // hidden/derived the right field): part_time → null; full_time → user date or the computed default
-    // (company-configured probation months) when blank; contract / intern → the user-entered fixed-term
-    // date (or null). r79a (4fb8b75a step 3): the configured probation length now comes from the company's
-    // HIRING defaults (core/hiring-defaults.ts, company.probation_months) instead of the payroll config
-    // table it used to sit in — same value, same resolveProbationMonths default of 3.
-    let provisionalEndOn: string | null;
-    if (employmentType === 'part_time') {
-      provisionalEndOn = null;
-    } else if (employmentType === 'full_time') {
-      const cfg = await getHiringDefaults(session, companyId);
-      const probationMonths = resolveProbationMonths(cfg?.probationMonths);
-      provisionalEndOn = rawEnd ?? computeProvisionalEndOn(hiredOn, 'full_time', probationMonths);
-    } else {
-      provisionalEndOn = rawEnd ?? null;
-    }
-    const { employmentId } = await hireEmployee(session, {
-      person: {
-        fullName: String(formData.get('fullName') ?? '').trim(),
-        primaryEmail: String(formData.get('primaryEmail') ?? '').trim(),
-      },
-      // Employee ID (feedback 38668d9b): HR keys it in. hireEmployee validates format + tenant-uniqueness
-      // and surfaces a clear error (caught below → redirect error param) on a bad/duplicate value.
-      employeeCode: String(formData.get('employeeCode') ?? '').trim(),
-      companyId,
-      departmentId: String(formData.get('departmentId')),
-      positionId: str('positionId'),
-      costCenterId: str('costCenterId'),
-      gradeId: str('gradeId') ?? null,
-      reportingManagerEmploymentId: str('reportingManagerEmploymentId'),
-      employmentType,
-      hiredOn,
-      provisionalEndOn,
-      grantLeaveTypes: types
-        .filter((t) => STANDING_GRANTS.has(t.code))
-        // f3a64d90: forward the type's Leave Year Type so an 'a2c' ANNUAL opens at its day-to-date sliver
-        // instead of the hire-month lump. Any other value (or null) leaves the grant unchanged.
-        .map((t) => ({ id: t.id, code: t.code, yearCycleOverride: t.yearCycleOverride })),
-    });
-    // Seed the first salary-history record (validated above) with the JOIN DATE as its effective date.
-    // The service CLOSEs/INSERTs, appends the compensation.set event, and marks it active — no extra
-    // plumbing (feedback 87c82b18, Create Initial Basic Salary flow #2).
-    // ADR-0078 — the hire form MAY carry the salary structure so a new employee gets their pay mode on
-    // day one (not on a second revision). Absent fields fall through to the service defaults
-    // (monthly / monthly / no rate); the service rejects daily/hourly without a positive rate.
-    const rateRaw = str('rateAmount');
-    await setCompensation(session, {
-      employmentId,
-      basicSalary: initialBasicSalary,
-      payMode: str('payMode'),
-      paymentTerm: str('paymentTerm'),
-      rateAmount: rateRaw !== undefined ? Number(rateRaw) : undefined,
-      effectiveFrom: hiredOn,
-      remarks: str('initialSalaryRemarks'),
-    });
-  } catch (e) {
-    redirect(`/admin/personnel?error=${encodeURIComponent((e as Error).message)}`);
-  }
-  revalidatePath('/admin/personnel');
-  redirect('/admin/personnel?toast=Employee hired');
-}
-
+/**
+ * 6d671f44 — `hireAction` USED TO LIVE HERE, and it is gone rather than merely unused.
+ *
+ * Create New Employee is now a dedicated step-by-step screen (app/admin/personnel/new) whose final
+ * step calls `completeEmployeeDraft`, which runs the same writers this action ran (hireEmployee →
+ * the company pack's statutory.set → setCompensation). Leaving the old action exported would have
+ * left a SECOND way to create an employee — and every export of a 'use server' module is a callable
+ * endpoint whether or not any screen posts to it. That is exactly the vestige r80 found and removed
+ * for leave decisions (`decideLeaveAction`), for the same reason.
+ *
+ * What moved with it: the initial basic salary is still required and still validated before anything
+ * is created; the provisional end date is still computed SERVER-side from the company's configured
+ * probation months (r79a / 4fb8b75a step 3), never trusted from the client; and the three standing
+ * leave grants (ANNUAL / SICK / HOSPITALIZATION) are still made on hire.
+ */
 export async function decideProfileChangeAction(formData: FormData) {
   const session = await requireAdmin();
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';

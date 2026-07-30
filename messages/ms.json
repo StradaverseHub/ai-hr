@@ -256,7 +256,7 @@
     "list": {
       "title": "Kakitangan",
       "employeeCount": "{count, plural, one {# pekerja} other {# pekerja}}",
-      "importCsv": "Import CSV",
+      "importCsv": "Import pekerja",
       "profileChangeRequests": "Permohonan tukar profil",
       "pendingCount": "{count, plural, one {# tertangguh} other {# tertangguh}}",
       "profileChangeHint": "Meluluskan akan menggunakan perubahan pada profil berkanun pekerja (bank / PCB). Anda tidak boleh meluluskan permohonan sendiri.",
@@ -342,7 +342,14 @@
       "employeeIdLabel": "ID Pekerja",
       "employeeIdPlaceholder": "cth. EMP-0001",
       "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 30 aksara.",
-      "hiringDefaults": "Tetapan lalai pengambilan"
+      "hiringDefaults": "Tetapan lalai pengambilan",
+      "draftsHeading": "Pekerja baharu yang belum selesai",
+      "draftsCount": "{count} draf",
+      "draftUntitled": "Draf tanpa nama",
+      "draftNoCompany": "Syarikat belum dipilih",
+      "draftMissing": "{count} masih diperlukan",
+      "draftReady": "Sedia untuk dicipta",
+      "draftContinue": "Sambung"
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -1196,26 +1203,26 @@
     },
     "import": {
       "title": "Import pekerja",
-      "description": "Muat pukal pekerja, profil berkanun dan gaji daripada CSV. Sahkan dahulu, kemudian import.",
+      "description": "Muat pukal pekerja, profil berkanun dan gaji daripada fail Excel (.xlsx). Muat turun templat, isikannya, muat naik — tiada apa-apa dicipta sehingga anda melihat semakan.",
       "backLabel": "Kakitangan",
       "noCompanies": "Cipta syarikat sebelum mengimport pekerja.",
       "targetCompany": "Syarikat sasaran",
-      "uploadFile": "Muat naik fail CSV",
-      "dropHere": "Lepaskan CSV anda di sini atau klik untuk memilih",
-      "uploadHint": "Menerima CSV sahaja. Simpan hamparan anda sebagai CSV sebelum memuat naik.",
+      "uploadFile": "Muat naik fail",
+      "dropHere": "Lepaskan fail di sini atau klik untuk memilih",
+      "uploadHint": "Menerima CSV, XLSX atau XLS. Lembaran kerja pertama akan dibaca.",
       "reading": "Membaca fail…",
       "fileLoaded": "{name} dimuatkan",
       "pasteToggle": "Atau tampal CSV sebaliknya",
       "csvData": "Data CSV",
       "csvPlaceholder": "Tampal CSV dengan baris pengepala — full_name,email,department,hired_on,ic_number,basic_salary,…",
-      "unsupportedFileType": "Jenis fail tidak disokong. Simpan hamparan anda sebagai CSV (.csv) dan muat naik semula.",
+      "unsupportedFileType": "Jenis fail tidak disokong. Muat naik fail CSV, XLSX atau XLS.",
       "fileTooLarge": "Fail terlalu besar. Bahagikan kepada kelompok lebih kecil dan cuba lagi.",
       "emptyFile": "Fail itu kosong.",
       "fileReadError": "Tidak dapat membaca fail itu. Semak format dan cuba lagi.",
       "validate": "Sahkan",
       "validating": "Mengesahkan…",
       "loadSample": "Muat sampel",
-      "resolveHint": "Jabatan / jawatan diselesaikan mengikut nama dalam {company}.",
+      "resolveHint": "Jabatan / jawatan diselesaikan mengikut nama dalam syarikat baris berkenaan. Lajur Syarikat yang kosong bermaksud {company}.",
       "theCompany": "syarikat",
       "columnReference": "Rujukan lajur",
       "required": "Diperlukan",
@@ -1241,7 +1248,20 @@
       "colName": "Nama",
       "colEmail": "E-mel",
       "colResult": "Keputusan",
-      "ready": "Sedia"
+      "ready": "Sedia",
+      "emptySheet": "Lembaran kerja pertama kosong.",
+      "downloadTemplateXlsx": "Muat turun templat Excel",
+      "colCompany": "Syarikat",
+      "colRow": "Baris",
+      "downloadErrors": "Muat turun laporan ralat",
+      "referenceHeading": "Nilai yang diterima — salin dengan tepat",
+      "instructionsHeading": "Cara mengisi templat ini",
+      "instructionRequired": "Lajur wajib: {columns}. Lajur lain boleh dibiarkan kosong.",
+      "instructionDates": "Masukkan tarikh sebagai tarikh Excel sebenar, atau taip dalam format YYYY-MM-DD.",
+      "instructionIdentityText": "Lajur IC, telefon, akaun bank, KWSP, PERKESO dan nombor cukai diformat sebagai teks supaya sifar di hadapan dikekalkan. Jangan tukar formatnya kepada General.",
+      "instructionCompany": "Biarkan lajur Syarikat kosong untuk menggunakan syarikat yang dipilih pada skrin import, atau namakan syarikat untuk mengimport pekerja bagi beberapa syarikat dalam satu fail.",
+      "instructionReference": "Lembaran Reference menyenaraikan setiap nilai yang diterima untuk Syarikat, Jabatan, Jawatan dan Pusat Kos. Nilai lain akan ditolak berserta sebabnya.",
+      "instructionSamples": "Padamkan dua baris contoh sebelum memuat naik."
     },
     "hiringDefaults": {
       "title": "Tetapan Lalai Pengambilan",
@@ -1253,6 +1273,126 @@
       "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
       "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
       "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
+    },
+    "wizard": {
+      "fields": {
+        "fullName": "Nama penuh",
+        "primaryEmail": "E-mel",
+        "employeeCode": "ID Pekerja",
+        "company": "Syarikat",
+        "businessUnit": "Unit perniagaan",
+        "department": "Jabatan",
+        "position": "Jawatan / Tajuk kerja",
+        "costCenter": "Pusat kos",
+        "jobGrade": "Gred kerja",
+        "reportingManager": "Pengurus pelapor",
+        "employmentType": "Jenis pekerjaan",
+        "hiredOn": "Tarikh ambil",
+        "provisionalEndOn": "Tarikh tamat sementara",
+        "basicSalary": "Gaji asas permulaan (MYR)",
+        "remarks": "Catatan",
+        "icNumber": "No. Identiti (NRIC)",
+        "phone": "Nombor Telefon Bimbit",
+        "gender": "Jantina",
+        "maritalStatus": "Status perkahwinan",
+        "epfNumber": "Nombor EPF",
+        "socsoNumber": "Nombor SOCSO",
+        "taxNumber": "Nombor cukai",
+        "dateOfBirth": "Tarikh lahir",
+        "bankName": "Bank",
+        "bankAccountNo": "Nombor akaun bank",
+        "bankAccount": "Maklumat bank",
+        "numChildren": "Bilangan anak",
+        "epfCitizenship": "Kewarganegaraan KWSP",
+        "eisEligible": "Layak SIP",
+        "isResident": "Pemastautin cukai",
+        "taxCategory": "Kategori PCB",
+        "monthlyAllowance": "Elaun bulanan",
+        "payMode": "Mod bayaran",
+        "paymentTerm": "Tempoh bayaran",
+        "rateAmount": "Jumlah kadar"
+      },
+      "employmentType": {
+        "full_time": "Sepenuh masa",
+        "part_time": "Separuh masa",
+        "contract": "Kontrak",
+        "intern": "Pelatih"
+      },
+      "taxCategory": {
+        "1": "Bujang",
+        "2": "Berkahwin · pasangan tidak bekerja",
+        "3": "Berkahwin · pasangan bekerja"
+      },
+      "none": "— Tiada —",
+      "orgLabelsEmptyForCompany": "Tiada label organisasi dikonfigurasikan untuk syarikat yang dipilih.",
+      "hints": {
+        "provisionalEndOn": "Tamat percubaan untuk sepenuh masa (lalai +3 bulan); jika tidak, tamat kontrak atau latihan. Biarkan kosong jika tiada.",
+        "employeeCode": "Biarkan kosong dan sistem akan menjana ID Pekerja seterusnya semasa pekerja dicipta. Draf tidak pernah menggunakannya.",
+        "icNumber": "Pilihan — biarkan kosong bagi pemegang pasport. Jika diisi, ia mesti nombor pengenalan yang sah bagi negara syarikat.",
+        "dateOfBirth": "Biarkan kosong dan ia diambil daripada nombor pengenalan jika boleh.",
+        "businessUnit": "Hanya menapis senarai jabatan. Ia tidak disimpan pada pekerja.",
+        "hiredOn": "Hari pertama bekerja. Selepas penciptaan, tarikh ini hanya berubah melalui peristiwa pergerakan.",
+        "bankAccount": "Isikan kedua-dua bank dan nombor akaun, atau tiada langsung.",
+        "rateAmount": "Diperlukan untuk mod bayaran harian atau sejam."
+      },
+      "backLabel": "Kembali ke Personel",
+      "title": "Cipta pekerja baharu",
+      "description": "Masukkan maklumat langkah demi langkah. Simpan sebagai draf pada bila-bila masa dan kembali kemudian — tiada apa-apa dicipta sehingga langkah terakhir.",
+      "progressLabel": "Langkah penciptaan",
+      "steps": {
+        "profile": "Profil",
+        "employment": "Pekerjaan",
+        "statutory": "Bank & Statutori",
+        "payroll": "Gaji",
+        "review": "Semak & cipta"
+      },
+      "notSet": "— Tidak ditetapkan —",
+      "selectPrompt": "— Pilih —",
+      "yes": "Ya",
+      "no": "Tidak",
+      "gender": {
+        "male": "Lelaki",
+        "female": "Perempuan"
+      },
+      "marital": {
+        "single": "Bujang",
+        "married": "Berkahwin"
+      },
+      "citizenship": {
+        "citizen": "Warganegara",
+        "pr": "Penduduk tetap",
+        "non_citizen": "Bukan warganegara"
+      },
+      "payMode": {
+        "monthly": "Bulanan",
+        "daily": "Harian",
+        "hourly": "Sejam",
+        "custom_period": "Tempoh tersuai"
+      },
+      "paymentTerm": {
+        "monthly": "Bulanan",
+        "weekly": "Mingguan",
+        "biweekly": "Dua minggu sekali"
+      },
+      "continueDraft": "Sambung draf ({count})",
+      "untitledDraft": "Draf tanpa nama",
+      "stepOf": "Langkah {current} daripada {total}",
+      "missingCount": "{count} masih diperlukan",
+      "readyToCreate": "Sedia untuk dicipta",
+      "lastSaved": "Disimpan {when}",
+      "startedBy": "Dimulakan oleh {name}",
+      "continue": "Sambung",
+      "complete": "Lengkap",
+      "reviewReady": "Semua yang diperlukan sudah ada. Mencipta pekerja akan menjana ID Pekerja dan membuka rekod mereka.",
+      "reviewIncomplete": "Isikan perkara yang disenaraikan di atas, atau simpan sebagai draf dan kembali kemudian.",
+      "back": "Kembali",
+      "next": "Seterusnya",
+      "saveDraft": "Simpan draf",
+      "saving": "Menyimpan…",
+      "draftSaved": "Draf disimpan",
+      "discardDraft": "Buang draf",
+      "createEmployee": "Cipta pekerja",
+      "creating": "Mencipta…"
     }
   },
   "leave": {
@@ -5466,7 +5606,7 @@
         },
         "hire": {
           "title": "Cipta pekerja baharu",
-          "body": "Klik **+ Cipta pekerja baharu** di kanan atas untuk menambah seseorang dengan syarikat, jabatan dan tarikh mula mereka. Untuk onboarding pukal, gunakan **Import CSV**."
+          "body": "Klik **+ Cipta pekerja baharu** di bahagian atas kanan. Ia membuka skrin langkah demi langkah — anda boleh menyimpan draf pada bila-bila masa dan menyelesaikannya kemudian. Untuk pengambilan pukal, gunakan **Import pekerja** dengan templat Excel."
         },
         "orgTree": {
           "title": "Struktur kumpulan anda",
