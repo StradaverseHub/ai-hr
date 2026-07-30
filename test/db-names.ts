@@ -52,6 +52,24 @@ function namespaceSuffix(): string {
   return raw.startsWith('_') ? raw : `_${raw}`;
 }
 
+/**
+ * Is this run using a THROWAWAY namespace, or the shared default?
+ *
+ * This is the teardown predicate, and the distinction is load-bearing. A namespaced run
+ * (TEST_DB_NAMESPACE=r85, one per parallel agent) is ephemeral: nothing will ever ask for those
+ * databases again, and leaving them behind is the leak that reached 366 databases once and 72 again on
+ * 2026-07-30 — at which point DROP/CREATE DATABASE stops completing and crash recovery, which walks every
+ * database directory before replaying a single WAL record, takes ~40 minutes.
+ *
+ * The DEFAULT namespace is the opposite case and must NOT be dropped. `pnpm vitest run` with no variable
+ * set reuses its template across invocations via templateFingerprint(), which is what makes a repeat run
+ * start in seconds instead of rebuilding. Tearing that down every time would trade a disk leak for a
+ * permanent time cost on the command everyone actually types.
+ */
+export function namespaceIsEphemeral(): boolean {
+  return namespaceSuffix() !== '';
+}
+
 /** The schema-only template database every worker database is stamped from. */
 export function templateDb(): string {
   return `${TEMPLATE_BASE}${namespaceSuffix()}`;

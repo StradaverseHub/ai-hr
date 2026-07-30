@@ -43,7 +43,21 @@
 # Exit code 0 = the upgrade applied and every invariant held. Non-zero = do not deploy.
 set -uo pipefail
 
+# --rebuild forces the from-scratch baseline path. Default is CARRY FORWARD; see "REUSE" below.
+REBUILD=0
+ARGS=()
+for a in "$@"; do
+  case "$a" in
+    --rebuild) REBUILD=1 ;;
+    *) ARGS+=("$a") ;;
+  esac
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
+
 BASELINE_REF="${1:-build/r70}"
+# ONE stable database, deliberately. A per-round name (…_r84, …_r85) means a fresh CREATE DATABASE every
+# round, which is both the slowest operation on this box and a permanent leak — that habit is part of how
+# the cluster reached 72 databases on 2026-07-30.
 SCRATCH="${2:-ai_hr_upgrade_rehearsal}"
 PGHOST=127.0.0.1; PGPORT=5433; SUPER=postgres
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -72,9 +86,36 @@ echo "   baseline worktree: $BASELINE_WT"
 echo "   scratch database:  $SCRATCH"
 
 # ── 1. A database at the BASELINE release ────────────────────────────────────────────────────────
-say "1/6  building the baseline database"
-psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d postgres -q \
-  -c "DROP DATABASE IF EXISTS \"$SCRATCH\" WITH (FORCE)" -c "CREATE DATABASE \"$SCRATCH\"" || exit 1
+# ── REUSE, AND WHY IT IS ALSO MORE FAITHFUL ──────────────────────────────────────────────────────
+# This script used to DROP and CREATE the scratch database on every run. That was slower AND a weaker
+# simulation than it needed to be.
+#
+# Production is never rebuilt. It is one long-lived database that has accumulated every migration, in
+# order, across every release — including the odd ones: a column added then widened, a backfill that ran
+# when the table was small, an index built before the data arrived. A freshly-built baseline has none of
+# that history; it only ever proves "the chain applies to a database made this morning".
+#
+# So the default is now CARRY FORWARD: keep the database between rounds and apply each release on top,
+# exactly as the server does. It removes the single most expensive operation here (CREATE DATABASE forces
+# a checkpoint and copies the template directory — it has taken 25 to 52 minutes on this machine) and it
+# accumulates real history as the releases go by.
+#
+# `--rebuild` keeps the clean-room path for when you want determinism instead: after a failed rehearsal
+# left the database half-migrated, when the baseline ref changes, or periodically to prove the whole chain
+# still applies from nothing.
+EXISTING_MIGRATIONS=$(psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d "$SCRATCH" -tAc \
+  "SELECT count(*) FROM drizzle.__drizzle_migrations" 2>/dev/null | tr -d ' ')
+if [ "$REBUILD" = "0" ] && [ -n "${EXISTING_MIGRATIONS:-}" ] && [ "${EXISTING_MIGRATIONS:-0}" -gt 0 ]; then
+  say "1/6  reusing the carried-forward database ($EXISTING_MIGRATIONS migrations already applied)"
+  echo "   this is the upgrade production actually performs: an existing database moved forward"
+  echo "   pass --rebuild to construct a fresh baseline instead"
+  CARRIED=1
+else
+  CARRIED=0
+  say "1/6  building the baseline database"
+  psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d postgres -q \
+    -c "DROP DATABASE IF EXISTS \"$SCRATCH\" WITH (FORCE)" -c "CREATE DATABASE \"$SCRATCH\"" || exit 1
+fi
 
 # Grants the app role needs, mirroring deploy/bootstrap-db.sql, so the seed and the app can connect.
 psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d "$SCRATCH" -q \
@@ -89,15 +130,23 @@ trap 'rm -f "$ENVFILE"' EXIT
 } > "$ENVFILE"
 
 # Migrate + seed with the BASELINE's own code. Nothing from the new release runs yet.
-( cd "$BASELINE_WT" && cp "$ENVFILE" .env.rehearsal \
-  && DATABASE_URL="postgres://$SUPER@$PGHOST:$PGPORT/$SCRATCH" \
-     MIGRATION_DATABASE_URL="postgres://$SUPER@$PGHOST:$PGPORT/$SCRATCH" \
-     pnpm exec drizzle-kit migrate >/dev/null 2>&1 ) \
-  && ok "baseline migrations applied" || { fail "baseline migrations"; exit 1; }
+# Skipped entirely when carrying forward: the database already holds the baseline schema AND the data
+# every previous round left in it, which is the state we want to upgrade. Re-running the baseline
+# migrator would be a no-op and re-seeding would pile a second tenant on top of the first.
+if [ "$CARRIED" = "0" ]; then
+  ( cd "$BASELINE_WT" && cp "$ENVFILE" .env.rehearsal \
+    && DATABASE_URL="postgres://$SUPER@$PGHOST:$PGPORT/$SCRATCH" \
+       MIGRATION_DATABASE_URL="postgres://$SUPER@$PGHOST:$PGPORT/$SCRATCH" \
+       pnpm exec drizzle-kit migrate >/dev/null 2>&1 ) \
+    && ok "baseline migrations applied" || { fail "baseline migrations"; exit 1; }
 
-say "2/6  populating it like a customer's database"
-( cd "$BASELINE_WT" && node --env-file=.env.rehearsal --import tsx db/seed.ts >/dev/null 2>&1 ) \
-  && ok "baseline seed applied" || fail "baseline seed (continuing — some assertions will be weaker)"
+  say "2/6  populating it like a customer's database"
+  ( cd "$BASELINE_WT" && node --env-file=.env.rehearsal --import tsx db/seed.ts >/dev/null 2>&1 ) \
+    && ok "baseline seed applied" || fail "baseline seed (continuing — some assertions will be weaker)"
+else
+  say "2/6  carrying the existing customer data forward"
+  ok "no re-seed — the data already in this database IS the customer's data"
+fi
 
 # ── 3. Snapshot what the customer has, BEFORE the upgrade ────────────────────────────────────────
 say "3/6  recording the customer's data before the upgrade"
