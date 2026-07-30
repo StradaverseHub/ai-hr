@@ -234,4 +234,24 @@ describe('§4 i18n', () => {
       }
     }
   });
+
+  it('the two COMPUTED keys resolve — check C of i18n-coverage cannot see them', () => {
+    // `t(`status.${r.status}`)` and `t(`filters.stage.${r.currentStepKind}`)` are computed, so the
+    // coverage guard's literal-key regex is blind to them. The value sets are closed and small:
+    // the four leave statuses, and the two approver kinds the source narrows to before calling t().
+    for (const loc of LOCALES) {
+      const leave = JSON.parse(read(`messages/${loc}.json`)).leave;
+      for (const s of ['pending', 'approved', 'rejected', 'cancelled']) {
+        expect(String(leave.status?.[s] ?? '').trim(), `${loc}.leave.status.${s}`).not.toBe('');
+      }
+      for (const k of ['direct_manager', 'hr_admin']) {
+        expect(String(leave.filters?.stage?.[k] ?? '').trim(), `${loc}.leave.filters.stage.${k}`).not.toBe('');
+      }
+      for (const k of ['decidedByLine', 'pendingWithLine']) {
+        expect(String(leave.filters?.[k] ?? ''), `${loc}.leave.filters.${k}`).toMatch(/\{(name|stage)\}/);
+      }
+    }
+    // And the source really does narrow to those two before computing the key.
+    expect(recordsPage).toContain("r.currentStepKind === 'direct_manager' || r.currentStepKind === 'hr_admin'");
+  });
 });

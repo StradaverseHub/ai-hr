@@ -355,6 +355,26 @@ export default async function EmployeeLeaveRecordPage({
                             {t('cancelPendingBadge')}
                           </span>
                         )}
+                        {/* fe3eb141 — the Approval Information lines (0773bda9). This screen already had
+                            the Final Approval DATE; the Requests subsection also names WHO decided, and
+                            which stage a still-pending record is waiting on. Both are on the row already,
+                            so carrying them across costs nothing and closes two more of the gaps between
+                            the two tables. */}
+                        {r.decidedByName && (
+                          <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                            {t('filters.decidedByLine', { name: r.decidedByName })}
+                          </span>
+                        )}
+                        {r.status === 'pending' && r.currentStepKind && (
+                          <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                            {t('filters.pendingWithLine', {
+                              stage:
+                                r.currentStepKind === 'direct_manager' || r.currentStepKind === 'hr_admin'
+                                  ? t(`filters.stage.${r.currentStepKind}`)
+                                  : r.currentStepKind,
+                            })}
+                          </span>
+                        )}
                       </td>
                       <td className="max-w-[16rem] truncate px-3 py-2 text-muted-foreground" title={r.reason ?? ''}>
                         {r.reason || '—'}
