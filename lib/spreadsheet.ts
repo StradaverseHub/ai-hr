@@ -53,7 +53,12 @@ function toIsoDate(d: Date): string {
  */
 export function numberToPlainString(n: number): string {
   if (!Number.isFinite(n)) return String(n);
-  if (Number.isInteger(n)) return n.toFixed(0);
+  if (Number.isInteger(n)) {
+    // `toFixed(0)` ALSO switches to exponential at 1e21 — the exact magnitude this helper exists for,
+    // so it cannot be the whole answer. BigInt renders an integer positionally at any size. (Verified
+    // in Node: (1e21).toFixed(0) === '1e+21'; BigInt(1e21).toString() === '1000000000000000000000'.)
+    return Math.abs(n) < 1e21 ? n.toFixed(0) : BigInt(n).toString();
+  }
   const s = String(n);
   if (!/e/i.test(s)) return s;
   // Fractional AND exponential (e.g. 1e-7): expand without trailing-zero noise.
