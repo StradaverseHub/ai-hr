@@ -78,7 +78,14 @@ echo "▸ Building production server…"
 # does not apply here; the box has ~3 GB free plus swap. If this OOMs again, raise the number rather than
 # setting typescript.ignoreBuildErrors — the build's type pass catches RSC client/server boundary errors
 # that tsc alone does not.
-NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=3072" pnpm build
+#
+# RAISED 3072 -> 4096 on 2026-07-30 deploying r83, which hit the identical wall at ~3013 MB: "Ineffective
+# mark-compacts near heap limit", again partway through "Running TypeScript", again with tsc --noEmit and
+# the full suite green locally. Same story as R52 — the tree simply grew. The box has 3.9 GB RAM (~3.4 GB
+# available) and 3.9 GB of swap, so 4096 overcommits physical memory by design and leans on swap for the
+# tail of the type pass; that is slower but it completes. If it OOMs a third time, check `free -m` first:
+# past ~4096 this stops being a headroom problem and becomes a "needs a bigger box" one.
+NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=4096" pnpm build
 
 echo "▸ Applying database migrations (as ai_hr_owner)…"
 pnpm db:migrate
