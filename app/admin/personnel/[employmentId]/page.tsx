@@ -227,7 +227,9 @@ export default async function EmployeePage({
 
   const [history, balances, requests, departments, reporting, employees, grades, delegations, recalcAudit] = await Promise.all([
     assignmentHistory(s, employmentId),
-    leaveBalances(s, employmentId),
+    // 994a5287: an ADMIN read — `includeHidden` keeps leave types HR has hidden from employee self-service,
+    // which is a rule about what the EMPLOYEE sees and never about what HR may look up on this profile.
+    leaveBalances(s, employmentId, undefined, { includeHidden: true }),
     leaveRequestsFor(s, employmentId),
     // 570e3311 — departments scoped to THIS employee's company (origin ∪ shared-in ∪ global via the
     // System Labels resolver), matching the Position/BU/Location pickers. Feeds exactly two places:
@@ -1944,7 +1946,7 @@ export default async function EmployeePage({
               {breakdownByType.get(b.leaveTypeId) && (
                 <EntitlementBreakdown
                   data={breakdownByType.get(b.leaveTypeId)!}
-                  summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: b.balance }}
+                  summary={{ available: b.available }}
                   // §5 Upcoming Approved Leave removed from the panel (feedback 11876072).
                   visual={{ color: b.color, icon: b.icon, code: b.code }}
                   asOf={breakdownAsOf}

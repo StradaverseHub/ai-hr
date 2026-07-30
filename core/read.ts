@@ -1822,7 +1822,37 @@ function pickName(name: string, i18n: LeaveTypeI18n, locale?: string): string {
   return (locale && locale !== 'en' && i18n?.[locale]?.name) || name;
 }
 
-export function leaveBalances(ctx: SessionContext, employmentId: string, locale?: string) {
+/**
+ * One employment's balance per leave type — the source for the employee's own Leave page AND for the two
+ * admin surfaces (Employee Balances, the Personnel profile's leave card).
+ *
+ * Feedback 994a5287 added `opts.includeHidden`, and the reason is a gap this function's own comment
+ * previously denied. The 7b11f1c1 gate at the bottom drops any type HR has set `visible_to_employee = false`,
+ * and the comment there asserted that gating "is /me ONLY; admin/HR balance reads (leaveBalancesAll) do not
+ * call this". That was true when it was written and is not true now: `/leave/employee-balances` and
+ * `/admin/personnel/[id]` both read THIS function, so a type HR had hidden from self-service also vanished
+ * from the two screens HR uses to answer "what is this person entitled to" — reproduced with a seeded
+ * `visible_to_employee = false` type that was absent from the admin rows while an eligible-but-inactive type
+ * showed correctly at 0.00.
+ *
+ * So `includeHidden: true` is passed by the ADMIN callers and only by them. Employee self-service keeps the
+ * default and its behaviour is byte-identical.
+ *
+ * NOTE for anyone reading 994a5287's plan: its stated root cause — that this function selects only FROM
+ * leave_ledger and so cannot produce a row for a type with no ledger entry — does NOT hold. The
+ * eligible-but-inactive tail below has existed since R18 (2F-1) and is pinned by
+ * test/leave-balances-all-types.test.ts. The hidden-type gate was the whole of the real defect.
+ */
+export function leaveBalances(
+  ctx: SessionContext,
+  employmentId: string,
+  locale?: string,
+  opts: {
+    /** ADMIN reads only: keep leave types HR has hidden from employee self-service. The employee's own
+     *  screens must never pass this — a hidden type is hidden from THEM by design (7b11f1c1). */
+    includeHidden?: boolean;
+  } = {},
+) {
   return withTenant(ctx, async (tx) => {
     const [rows, pend] = await Promise.all([
       tx
@@ -1966,12 +1996,19 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
     // entry all disappear. SINGLE choke point covering all three ways a row enters `out` (ledger rows, the
     // pending-only tail, the eligible-no-activity tail): build the hidden-type-id set from the active `types`
     // select and filter `out` once here. NULL ⇒ visible (backward compatible). Archived types (present only
-    // via old ledger rows, not in `types`) are never flagged hidden — they already surface as today. Gating
-    // is /me ONLY; admin/HR balance reads (leaveBalancesAll) do not call this and are never gated. Because a
-    // hidden type is dropped here, leaveEntitlementBreakdown is never requested for it downstream (it is
-    // called per surviving balance row), so no separate change is needed there.
+    // via old ledger rows, not in `types`) are never flagged hidden — they already surface as today.
+    //
+    // 994a5287: the gate is SELF-SERVICE ONLY, which is what `includeHidden` now makes true rather than
+    // merely asserted. Hiding a leave type from employees is a statement about what THEY see; it was never
+    // meant to remove the type from HR's own Employee Balances screen, and doing so is exactly the "some
+    // Leave Types may not appear" the reporter raised. Admin callers pass includeHidden and see everything.
+    // Because a hidden type is dropped here for self-service, leaveEntitlementBreakdown is never requested
+    // for it on that path (it is called per surviving balance row), so no separate change is needed there.
     const hiddenTypeIds = new Set(types.filter((t) => t.visibleToEmployee === false).map((t) => t.id));
-    const visible = hiddenTypeIds.size === 0 ? out : out.filter((r) => !hiddenTypeIds.has(r.leaveTypeId));
+    const visible =
+      opts.includeHidden || hiddenTypeIds.size === 0
+        ? out
+        : out.filter((r) => !hiddenTypeIds.has(r.leaveTypeId));
     return visible.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
   });
 }
@@ -2118,6 +2155,12 @@ export type LeaveEntitlementBreakdown = {
   asOf: string;
   /** Cycle/leave-year start used for the in-scope reconstruction (calendar or hire-anniversary). */
   cycleStart: string;
+  /** Feedback 1f6fd6d8 — "Eligible (Full Year Entitlement)": the days the WINNING policy grants for a whole
+   *  leave year at this employee's company / grade / service band, BEFORE any proration, carry, adjustment or
+   *  usage. It is the top line of the redesigned Leave Summary and the only figure there that is not
+   *  ledger-derived: the ledger records what has been granted, never what a full year would grant. 0 when no
+   *  policy resolves for this (type, grade, company) — i.e. the employee holds the type but earns nothing on it. */
+  eligibleDays: number;
   /** Sum of accrual + in_lieu_accrual days effective within [cycleStart, asOf]. */
   currentYearEntitlement: number;
   /** Earned types only: the prorated-to-date accrual within the current cycle. Null for grant-on-open. */
@@ -2174,6 +2217,20 @@ export type LeaveEntitlementBreakdown = {
    *  each adjusted day came from ("CNY 2026: +2.00"). Config rows only — system corrections are automatic
    *  and stay a single summarised line. */
   configAdjustmentItems: { effectiveOn: string; days: number; reason: string | null }[];
+  // ── Redesigned Leave Summary roll-ups (feedback 1f6fd6d8) ───────────────────────────────────────────
+  // The reporter's summary is ONE column that adds up, so the two subtotals it needs are computed HERE, on
+  // the server, beside the buckets they sum. They are not new facts — they are sums of the partition above —
+  // but computing them here keeps the panel descriptor a pure PICK (its standing no-hardcoded-formula
+  // mandate) and keeps the arithmetic in the one place the reconciliation identity is already proven.
+  /** configAdjustments + systemAdjustments — the ONE "Adjustments" line the redesigned summary shows.
+   *  The employee never needed the config/system split the old §4 drew; the partition is retained above
+   *  because the identity and the balance table are keyed off it. */
+  adjustments: number;
+  /** broughtForward + currentYearEntitlement + adjustments — the summary's "Total" subtotal line.
+   *  Because the six buckets tile the ledger, `totalEntitlement − takenThisCycle − forfeitedThisCycle
+   *  = balance` and hence `… − pendingApproval = totalAvailable`: the reporter's column closes onto the
+   *  authoritative Available Balance BY CONSTRUCTION, not by agreement. */
+  totalEntitlement: number;
   /** Ledger balance as at asOf minus pending requests (mirrors leaveBalances' `available`). */
   totalAvailable: number;
   /** Raw in-scope ledger rows so the UI can show the source of each component. */
@@ -2421,12 +2478,21 @@ export function leaveEntitlementBreakdown(
       }
     }
 
+    // Feedback 1f6fd6d8 — the two roll-ups the redesigned Leave Summary reads, computed beside the buckets
+    // they sum so the client descriptor stays a pure pick. See the type docs above for why they close.
+    const adjustments = r2(configAdjustments + systemAdjustments);
+    const totalEntitlement = r2(priorBalance + cycleAccrual + adjustments);
+
     const i18n = type.i18n as Record<string, { name: string }> | null;
     return {
       leaveTypeId: type.id,
       leaveType: pickName(type.name, i18n, locale),
       asOf,
       cycleStart,
+      // 1f6fd6d8: the full-year grant from the SAME winning policy row every other figure here resolves
+      // against (`policy`), so Eligible and the accrual that lands in the ledger can never describe
+      // different policies.
+      eligibleDays: r2(policy?.days ?? 0),
       currentYearEntitlement: cycleAccrual,
       monthlyAccruedToDate: earned ? cycleAccrual : null,
       carriedForward: carried,
@@ -2442,6 +2508,8 @@ export function leaveEntitlementBreakdown(
       forfeitedThisCycle,
       takenThisCycle,
       configAdjustmentItems,
+      adjustments,
+      totalEntitlement,
       totalAvailable: Math.round((balance - num(pendRow?.pending)) * 100) / 100,
       transactions: rows.map((r) => ({
         effectiveOn: r.effectiveOn,
@@ -2578,7 +2646,20 @@ export function replacementLeaveSummary(ctx: SessionContext, companyIds?: string
   });
 }
 
-/** Per-employee × leave-type balances for everyone in scope (the Leave page matrix). */
+/**
+ * Per-employee × leave-type balances for everyone in scope — the all-employee pivot.
+ *
+ * NO SCREEN READS THIS TODAY. The /leave page dropped it (test/leave-balance-relocation.test.ts pins that);
+ * Employee Balances reads the per-employment `leaveBalances` instead. It survives as the bulk read and is
+ * covered by the reconciliation test, which asserts it reports the same ledger balance as `leaveBalances`
+ * and the breakdown.
+ *
+ * It DELIBERATELY has no eligible-but-inactive tail, and 994a5287 left it that way. `leaveBalances` can
+ * afford one because it resolves eligibility for ONE employment; doing the same here is an employees ×
+ * leave-types cross product, and it would change the row count of a read whose only current consumers are
+ * tests. If a screen ever adopts this function, that tail has to be added first — the two must agree about
+ * which types exist for a person, and today they only agree about the FIGURES.
+ */
 export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, async (tx) => {
     const scope = and(

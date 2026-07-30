@@ -137,12 +137,25 @@ const bdOf = async (employmentId: string, leaveTypeId: string, asOf: string) => 
 };
 
 /**
- * THE assertion of this suite. `reconciledBalance` is the very helper the panel's §8 "How this adds up"
- * block sums, so a breakdown that passes here is a block whose visible lines add up to the Balance it shows.
+ * THE assertion of this suite, and 1f6fd6d8 made it MORE load-bearing rather than less.
+ *
+ * `reconciledBalance` used to back the panel's separate "How this adds up" block. That block is gone: the
+ * redesigned Leave Summary IS the sum, read top to bottom. So the same identity now underwrites what every
+ * employee sees on the main column, and the two server-side roll-ups the column reads (`adjustments`,
+ * `totalEntitlement`) are asserted here to be sums of exactly these buckets — which is what makes
+ *   Total − Taken − Pending Approval − Brought Forward Forfeited = Available Balance
+ * true by construction rather than by agreement.
  */
 const expectReconciles = (bd: LeaveEntitlementBreakdown) => {
   expect(reconciledBalance(bd)).toBe(r2(bd.balance));
   expect(r2(bd.balance - bd.pendingApproval)).toBe(bd.totalAvailable);
+  // 1f6fd6d8: the summary's two subtotal lines, over the same buckets.
+  expect(bd.adjustments).toBe(r2(bd.configAdjustments + bd.systemAdjustments));
+  expect(bd.totalEntitlement).toBe(r2(bd.broughtForward + bd.currentYearEntitlement + bd.adjustments));
+  // …and the column the employee actually reads closes onto the available figure.
+  expect(r2(bd.totalEntitlement - bd.takenThisCycle - bd.pendingApproval - bd.forfeitedThisCycle)).toBe(
+    bd.totalAvailable,
+  );
 };
 
 /** Independent read of what the engines ACTUALLY stamped as a forfeit, straight from the ledger. */
@@ -429,6 +442,35 @@ describe('cross-surface consistency — one Balance everywhere', () => {
     expect(bd.balance).toBe(await ledgerBalance(emp.employmentId, b.annualLeaveTypeId));
     // …and that one figure is exactly what the reconciliation block adds up to.
     expectReconciles(bd);
+  });
+
+  it('1f6fd6d8 — Eligible is the winning policy\'s FULL-YEAR days, independent of what the ledger holds', async () => {
+    // Eligible is the one summary line no ledger can produce: it is what the employee gets for a whole leave
+    // year, before proration, carry, adjustment or use. Seeded against a 12-day policy and a hire mid-way
+    // through the prior year, so the granted-to-date figure and the full-year figure genuinely differ — the
+    // case where conflating them would be invisible.
+    await annualPolicy({ annualDays: 12, carryForwardMax: 5, expiry: { month: 3, day: 31 } });
+    const emp = await hire('2025-01-01');
+    const bd = await bdOf(emp.employmentId, b.annualLeaveTypeId, '2026-06-30');
+    expect(bd.eligibleDays).toBe(12);
+    // It comes from the policy, NOT from the ledger: posting more accrual moves YTD Entitled and leaves
+    // Eligible alone.
+    await post(emp.employmentId, b.annualLeaveTypeId, 'accrual', 3, '2026-05-01');
+    const after = await bdOf(emp.employmentId, b.annualLeaveTypeId, '2026-06-30');
+    expect(after.eligibleDays).toBe(12);
+    expect(after.currentYearEntitlement).toBe(r2(bd.currentYearEntitlement + 3));
+    // And the column still closes — Eligible sits above the sum, it is not part of it.
+    expectReconciles(after);
+  });
+
+  it('1f6fd6d8 — no resolvable policy ⇒ Eligible is 0, never null or NaN', async () => {
+    // An employee can hold a leave type their grade/company has no policy row for. The summary must show a
+    // number there, not a placeholder that looks like a fault.
+    const emp = await hire('2025-01-01');
+    const bd = await bdOf(emp.employmentId, b.annualLeaveTypeId, '2026-06-30');
+    expect(typeof bd.eligibleDays).toBe('number');
+    expect(Number.isFinite(bd.eligibleDays)).toBe(true);
+    expect(bd.eligibleDays).toBeGreaterThanOrEqual(0);
   });
 
   it('pending requests never enter the ledger sum — they only separate Balance from Available', async () => {

@@ -107,13 +107,36 @@ export default async function EmployeeBalancesPage({
   // Clearing filters must not clear the employee — the chips' base action carries the selection.
   const chipAction = `/leave/employee-balances${selected ? `?emp=${selected.employmentId}` : ''}`;
 
-  const th = 'px-3 py-2 font-medium';
+  // Layout (feedback 026e16b9) — presentation only, no figure, rule or setting is touched.
+  //
+  // Measured in a browser before changing anything: window 1512, content area capped at 1232 by max-w-7xl,
+  // of which the inquiry rail + gap took 248, leaving the table 982px for 1118px of columns — a 136px
+  // horizontal scroll, with LEAVE CODE squeezed to 237px (wrapping "Hospitalization Leave" onto two lines)
+  // while ADJUSTMENT sat at 104 and OVERUTILIZED at 112 for a two-decimal number. That is the reporter's
+  // complaint exactly: the text column starved while the numeric ones spread.
+  //
+  // Three changes, in order of how much width each returns:
+  //   • the container cap goes to 100rem, so a wide monitor is actually used (at 1512 this alone returns the
+  //     ~32px the cap was eating; at 1920 it returns ~440px). It stays capped rather than going full-bleed
+  //     because an uncapped table on an ultrawide display is unreadable in the other direction.
+  //   • the rail narrows (leave-inquiry-nav) and the gap tightens: ~56px back.
+  //   • numeric cells drop to px-2 — 9 numeric columns × 8px = ~72px back — and gain whitespace-nowrap so a
+  //     figure can never wrap mid-number. The HEADINGS still wrap on their spaces, which is what keeps the
+  //     numeric columns narrow: the header word, not the number, was setting their width.
+  // The leave-type column takes the recovered slack (w-[26%]) with a min width so it does not collapse on a
+  // small screen; the table stays inside overflow-x-auto, so anything that still cannot fit scrolls the
+  // table rather than the page.
+  // NOTE the asymmetry, which is the whole trick: the HEADINGS must keep wrapping (no whitespace-nowrap on
+  // th) — "Pending approval" over two lines is what holds that column to the width of "approval" instead of
+  // the width of both words — while the VALUES must not wrap, so a figure never breaks across lines.
+  const th = 'px-2 py-2 font-medium';
   const thNum = `${th} text-right`;
+  const tdNum = 'whitespace-nowrap px-2 py-2 text-right tabular-nums';
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader title={tInq('balancesTitle')} description={tInq('balancesDescription')} />
-      <div className="flex flex-col gap-6 sm:flex-row">
+      <div className="flex flex-col gap-4 sm:flex-row">
         <LeaveInquiryNav active="balances" employmentId={selected?.employmentId} />
         <div className="min-w-0 flex-1 space-y-4">
           {/* Employee + as-at date in ONE GET form: both re-run the same breakdown, so submitting them
@@ -186,9 +209,15 @@ export default async function EmployeeBalancesPage({
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                {/* 026e16b9: no `tracking-wide` on these inquiry tables. Measured live, the extra letter-spacing
+                      cost this header row 23px across eleven columns — the last of the horizontal overflow.
+                      Uppercase small-caps headings read fine without it. */}
+                <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                   <tr>
-                    <th className={th} aria-sort={dir === 'asc' ? 'ascending' : 'descending'}>
+                    <th
+                      className={`${th} w-[26%] min-w-[13rem]`}
+                      aria-sort={dir === 'asc' ? 'ascending' : 'descending'}
+                    >
                       <Link
                         href={sortHref()}
                         aria-label={t('filters.sortAria', { column: tInq('colLeaveCode') })}
@@ -222,22 +251,24 @@ export default async function EmployeeBalancesPage({
                   )}
                   {rows.map((r) => (
                     <tr key={r.leaveTypeId} className="hover:bg-muted/40">
-                      <td className="px-3 py-2">
+                      <td className="px-2 py-2">
                         <Link href={recordsHref(r.leaveTypeId)} className="font-medium text-primary hover:underline">
                           {r.code || r.leaveType}
                         </Link>
                         <span className="ml-1.5 text-xs text-muted-foreground">{r.leaveType}</span>
                       </td>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground">{r.entitlementYear ?? '—'}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{num(r.ytdEntitled)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{num(r.broughtForward)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{num(r.taken)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{num(r.pending)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{num(r.adjustment)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{num(r.overutilized)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{num(r.forfeitedBf)}</td>
-                      <td className="px-3 py-2 text-right font-medium tabular-nums">{num(r.balance)}</td>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground">{asOf}</td>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">
+                        {r.entitlementYear ?? '—'}
+                      </td>
+                      <td className={tdNum}>{num(r.ytdEntitled)}</td>
+                      <td className={tdNum}>{num(r.broughtForward)}</td>
+                      <td className={tdNum}>{num(r.taken)}</td>
+                      <td className={tdNum}>{num(r.pending)}</td>
+                      <td className={tdNum}>{num(r.adjustment)}</td>
+                      <td className={tdNum}>{num(r.overutilized)}</td>
+                      <td className={tdNum}>{num(r.forfeitedBf)}</td>
+                      <td className={`${tdNum} font-medium`}>{num(r.balance)}</td>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{asOf}</td>
                     </tr>
                   ))}
                 </tbody>

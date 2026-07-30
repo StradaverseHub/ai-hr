@@ -101,7 +101,11 @@ describe('56a0deb9 §2: the secondary-type "Other leave" breakdown section is re
     const start = leavePage.indexOf('const secondaryBreakdownCard');
     const card = leavePage.slice(start, leavePage.indexOf(') : null;', start));
     expect(card).toContain('deriveBalanceRow(b, bd ?? null).available');
-    expect(card).toContain("b.essView.entitlementCalcBreakdown !== false");
+    // 1f6fd6d8: the gate is no longer the `entitlementCalcBreakdown` key — that named a section the panel no
+    // longer has. The question the call site was really asking is "does HR still show this employee ANY line
+    // of the Leave Summary", which is what essViewHasAnyVisibleRow answers. The PROPERTY this test pins —
+    // that the side-sheet is ESS-gated at all — is unchanged.
+    expect(card).toContain('essViewHasAnyVisibleRow(b.essView)');
     expect(card).toContain('<EntitlementBreakdown');
     expect(card).toContain('action="/leave"');
     expect(card).toContain('applyEssConfig');

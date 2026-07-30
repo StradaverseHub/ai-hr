@@ -115,7 +115,9 @@ describe('20c699f8: Employee Balances', () => {
   const rowsHelper = read('app/leave/employee-balances/rows.ts');
 
   it('derives from the SAME reads and the SAME helper the employee sees on their own page', () => {
-    expect(rowsHelper).toContain('leaveBalances(ctx, employmentId, locale)');
+    // 994a5287 added the ADMIN opt-in: a leave type HR has hidden from employee self-service must still be
+    // listed on HR's own screen. Same read, same figures — only the visibility gate differs.
+    expect(rowsHelper).toContain('leaveBalances(ctx, employmentId, locale, { includeHidden: true })');
     expect(rowsHelper).toContain('leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale)');
     expect(rowsHelper).toContain('deriveBalanceRow(');
     // ESS per-component hiding is a self-service rule; HR sees the figure.
@@ -343,30 +345,32 @@ describe('37a1141e: Carried Forward → Brought Forward (English labels only)', 
     dotted.split('.').reduce<never>((o, k) => (o as never as Record<string, never>)[k], en as never);
 
   it('every label naming the BALANCE now says brought forward', () => {
-    expect(at('leave.breakdown.carriedForward')).toBe('Brought forward');
-    expect(at('leave.breakdown.carryForwardRemaining')).toBe('Brought-forward remaining');
-    expect(at('leave.breakdown.carryForwardExpiry')).toBe('Brought-forward expiry');
-    expect(at('leave.breakdown.field.carryForwardExpiry')).toBe('Brought-forward expiry date');
+    // 1f6fd6d8 rebuilt the panel around ONE Leave Summary column, so several of the labels this item
+    // originally renamed no longer exist as rows (Brought-forward remaining, the standalone expiry row, the
+    // seven per-component formula editors). The PROPERTY the item pinned is unchanged and is asserted on the
+    // labels that survive: nothing an employee or HR reads calls this figure "carried forward" any more.
+    expect(at('leave.breakdown.field.broughtForward')).toBe('Brought forward');
+    expect(at('leave.breakdown.field.broughtForwardForfeited')).toBe('Brought forward forfeited');
     expect(at('me.leaveBalanceTable.colCarriedForward')).toBe('Brought Forward');
-    expect(at('admin.leave.essView.carryForwardExpiry')).toBe('Brought Forward Expiry Date');
-    expect(at('admin.leave.formula.component.carriedForward')).toBe('Brought Forward');
-    expect(at('admin.leave.formula.component.carryForwardRemaining')).toBe('Brought-Forward Remaining');
-    expect(at('admin.leave.formula.component.carryForwardExpiry')).toBe('Brought-Forward Expiry');
+    expect(at('admin.leave.essView.broughtForward')).toBe('Brought Forward');
+    expect(at('admin.leave.essView.forfeited')).toBe('Brought Forward Forfeited');
     expect(at('analytics.carryForwardCarried')).toBe('Brought forward');
     expect(at('analytics.carryForwardTitle')).toBe('Brought-forward & forfeiture');
   });
 
   it('the panel no longer shows one figure under two names on the same screen', () => {
-    // The breakdown row and the reconciliation row both select breakdown.broughtForward; before this item
-    // one was labelled "Carried forward" and the other "Brought forward".
-    // Asserted as three separate properties of the row rather than one literal line: 1f6fd6d8 added an
-    // essKey to it (the toggle that names Brought Forward gated nothing before), and what this item pinned is
-    // the label/source pairing, not the exact character sequence.
+    // Before 37a1141e the same broughtForward bucket was labelled "Carried forward" in one section and
+    // "Brought forward" in another. 1f6fd6d8 removed the duplication at its root — there is now exactly ONE
+    // row reading that bucket — which is the strongest possible form of the same guarantee.
     const cfg = read('components/leave/entitlement-panel-config.ts');
-    const row = cfg.split('\n').find((l) => l.includes("key: 'carriedForward'"))!;
-    expect(row).toContain("labelKey: 'carriedForward'");
-    expect(row).toContain('select: (d) => d.breakdown.broughtForward');
-    expect(at('leave.breakdown.carriedForward')).toBe(at('leave.breakdown.reconcile.broughtForward'));
+    const readers = cfg.split('\n').filter((l) => l.includes('d.breakdown.broughtForward'));
+    expect(readers).toHaveLength(1);
+    expect(readers[0]).toContain("(d) => d.breakdown.broughtForward");
+    const row = cfg.split('\n').find((l) => l.includes("labelKey: 'field.broughtForward'"))!;
+    expect(row).toBeTruthy();
+    // No label anywhere in the panel's namespace still says "Carried forward".
+    const breakdown = JSON.stringify((msgs('en') as unknown as { leave: { breakdown: unknown } }).leave.breakdown);
+    expect(breakdown.toLowerCase()).not.toContain('carried forward');
   });
 
   it('the RULE that produces the balance deliberately keeps its wording', () => {
@@ -384,27 +388,34 @@ describe('37a1141e: Carried Forward → Brought Forward (English labels only)', 
   });
 
   it('no English leave-balance label still says "carried forward"', () => {
+    // The key list follows the surfaces that survive. `leave.breakdown.carriedForward` and
+    // `admin.leave.formula.component.carriedForward` were removed outright by 1f6fd6d8 / ed17a4f9 — a label
+    // that no longer exists cannot say the wrong thing, and the summary's own row is checked above.
     const stale = [
-      'leave.breakdown.carriedForward',
+      'leave.breakdown.field.broughtForward',
+      'leave.breakdown.field.broughtForwardForfeited',
       'me.leaveBalanceTable.colCarriedForward',
-      'admin.leave.formula.component.carriedForward',
+      'admin.leave.essView.broughtForward',
       'analytics.carryForwardCarried',
     ].filter((k) => /carr(y|ied)[\s-]*forward/i.test(at(k)));
     expect(stale, stale.join(', ')).toEqual([]);
   });
 
-  it('the other five locales are unchanged — they already said brought forward', () => {
-    // Spot-check the headline label in each: none of them is an English string.
-    const expected: Record<string, string> = {
-      ms: 'Dibawa ke hadapan',
-      th: 'ยกยอดมา',
-      vi: 'Chuyển sang',
-      zh: '结转',
-      ta: 'முன்னெடுத்துச் செல்லப்பட்டது',
-    };
-    for (const [loc, value] of Object.entries(expected)) {
-      const leave = (msgs(loc) as unknown as { leave: { breakdown: Record<string, string> } }).leave.breakdown;
-      expect(leave.carriedForward, loc).toBe(value);
+  it('the other five locales say brought forward on the row that survives', () => {
+    // The spot-check moves with the label: `leave.breakdown.carriedForward` is gone, and the row that reads
+    // the same bucket is now `field.broughtForward`. Each locale must still carry its OWN translation there
+    // — an English string in a non-English catalogue is the regression this guards.
+    const en = (msgs('en') as unknown as { leave: { breakdown: { field: Record<string, string> } } }).leave.breakdown.field;
+    for (const loc of ['ms', 'th', 'vi', 'zh', 'ta'] as const) {
+      const field = (msgs(loc) as unknown as { leave: { breakdown: { field: Record<string, string> } } }).leave.breakdown.field;
+      expect(field.broughtForward, `${loc} field.broughtForward`).toBeTruthy();
+      expect(field.broughtForwardForfeited, `${loc} field.broughtForwardForfeited`).toBeTruthy();
+      // Non-Latin catalogues must not be an English passthrough. ms/vi share the Latin alphabet, so only the
+      // three non-Latin scripts can be asserted byte-for-byte.
+      if (loc === 'th' || loc === 'zh' || loc === 'ta') {
+        expect(field.broughtForward, `${loc} is English passthrough`).not.toBe(en.broughtForward);
+        expect(field.broughtForwardForfeited, `${loc} is English passthrough`).not.toBe(en.broughtForwardForfeited);
+      }
     }
   });
 });

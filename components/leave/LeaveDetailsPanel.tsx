@@ -4,10 +4,15 @@
  * Leave Details Side Panel (feedback 584edf44).
  *
  * A modern slide-out RIGHT side-sheet that replaces the old inline-expand "Breakdown" card. It presents the
- * full leave picture for ONE leave type — grouped into the reporter's seven logical sections — driven ENTIRELY
- * by the declarative descriptor in entitlement-panel-config.ts. The panel iterates that descriptor, so adding a
- * future breakdown line is a one-line config change here, never a JSX edit (the item's core "configurable
- * Calculation-Breakdown-Display framework").
+ * leave picture for ONE leave type, driven ENTIRELY by the declarative descriptor in
+ * entitlement-panel-config.ts. The panel iterates that descriptor, so adding a future breakdown line is a
+ * one-line config change here, never a JSX edit (the item's core "configurable Calculation-Breakdown-Display
+ * framework").
+ *
+ * 1f6fd6d8 rebuilt what it renders: four overlapping sections plus a reconciliation block became ONE column
+ * that adds up (Eligible → … → Available Balance). The descriptor carries the layout too — signs, the two
+ * dividing rules, the emphasised result rows and the expiry note under Brought Forward Forfeited — so this
+ * file stayed a renderer rather than gaining a hardcoded copy of the reporter's design.
  *
  * DB-free client component: every figure arrives as a prop (the server already ran leaveEntitlementBreakdown +
  * leaveBalances and filtered the loaded requests). No formula is computed here — a field either PICKS an
@@ -117,18 +122,28 @@ export function LeaveDetailsPanel({
     // resolve by their own field key (= the ess-view key HR ticked in the merged admin screen). The icon is
     // hidden entirely for any row HR left blank. Read-only presentation — no persistence here.
     return (
-      <div className="divide-y divide-border">
+      <div>
         {rows.map(({ f, value }) => {
           const explanation = data.formulaExplanations?.[f.key] ?? null;
-          const hasExpl = !!(explanation && (explanation.description || explanation.formula || explanation.result));
+          const hasExpl = !!(explanation && (explanation.description || explanation.formula));
           const rowKey = `${section.key}:${f.key}`;
           const isOpen = hasExpl && (hoverRow === rowKey || pinnedRows.has(rowKey));
           const tooltipId = `leave-expl-${section.key}-${f.key}`;
           const muted = value === PLACEHOLDER || (f.format === 'date' && value === t('noExpiry'));
+          // 1f6fd6d8: the reporter's layout, rendered from the descriptor — a rule above the two subtotal
+          // lines, a bolder result row for Total and Available Balance, and a signed prefix on the addends
+          // so the column reads as arithmetic rather than as an unexplained list of numbers.
+          const isResult = f.emphasis === 'result';
+          const note = f.noteSelect ? f.noteSelect(panel) : null;
           return (
-            <div key={f.key} className="py-1.5">
-              <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="flex items-center gap-1 text-muted-foreground">
+            <div key={f.key} className={`py-1.5 ${f.ruleBefore ? 'mt-1 border-t-2 border-border pt-2' : ''}`}>
+              <div className={`flex items-baseline justify-between gap-3 ${isResult ? 'text-sm font-semibold' : 'text-sm'}`}>
+                <span className={`flex items-center gap-1 ${isResult ? 'text-foreground' : 'text-muted-foreground'}`}>
+                  {f.sign && (
+                    <span aria-hidden className="w-2 shrink-0 tabular-nums">
+                      {f.sign === '+' ? '+' : '−'}
+                    </span>
+                  )}
                   {t(f.labelKey)}
                   {/* §1 Leave Summary (877f2f37): a STATIC hover tooltip on the row — fixed plain-English copy,
                       no HR config. Suppressed when HR authored a custom explanation for this row (2bc2f2a3:
@@ -184,12 +199,6 @@ export function LeaveDetailsPanel({
                               {explanation!.formula}
                             </p>
                           )}
-                          {explanation!.result && (
-                            <p>
-                              <span className="font-medium text-foreground">{t('explanationResult')}: </span>
-                              {explanation!.result}
-                            </p>
-                          )}
                         </div>
                       )}
                     </span>
@@ -199,6 +208,11 @@ export function LeaveDetailsPanel({
                   {value}
                 </span>
               </div>
+              {/* 1f6fd6d8: the carry-expiry date sits UNDER the Brought Forward Forfeited figure it explains
+                  ("Expires: 31/08/2026"), rather than as a row of its own that a reader has to connect back. */}
+              {note && f.noteLabelKey && (
+                <p className="mt-0.5 pl-3 text-xs text-muted-foreground">{t(f.noteLabelKey, { date: note })}</p>
+              )}
             </div>
           );
         })}

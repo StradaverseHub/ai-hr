@@ -1392,88 +1392,43 @@
     "employeeRemarkRequiredHint": "Catatan diperlukan untuk sesetengah jenis cuti.",
     "documentRequiredBadge": "dokumen diperlukan",
     "breakdown": {
-      "title": "Pecahan kelayakan",
       "viewBreakdown": "Pecahan",
-      "hide": "Sembunyikan pecahan",
       "asAtDate": "Pada tarikh",
       "apply": "Guna",
-      "currentYearEntitlement": "Kelayakan tahun ini",
-      "monthlyAccrued": "Terkumpul setakat ini tahun ini",
-      "carriedForward": "Dibawa ke hadapan",
-      "carryForwardRemaining": "Baki bawa ke hadapan",
-      "carryForwardExpiry": "Tarikh luput bawa ke hadapan",
       "noExpiry": "Tidak luput",
-      "forfeited": "Dilucutkan",
-      "totalAvailable": "Jumlah tersedia",
-      "transactionsHeading": "Transaksi",
-      "noTransactions": "Tiada transaksi dalam tempoh ini.",
-      "colDate": "Tarikh",
-      "colEntry": "Catatan",
-      "colDays": "Hari",
-      "colSource": "Sumber",
-      "entryType": {
-        "accrual": "Terkumpul",
-        "debit": "Cuti diambil",
-        "adjustment": "Pelarasan",
-        "inLieuAccrual": "Terkumpul ganti"
-      },
       "section": {
-        "summary": "Ringkasan cuti",
-        "entitlement": "Pecahan kelayakan",
-        "utilization": "Penggunaan cuti",
-        "adjustments": "Pelarasan",
-        "transactions": "Sejarah transaksi",
-        "calcBreakdown": "Pecahan pengiraan kelayakan",
-        "reconciliation": "Bagaimana jumlah ini terhasil"
+        "summary": "Ringkasan cuti"
       },
       "field": {
-        "available": "Tersedia",
+        "eligible": "Layak (kelayakan setahun penuh)",
+        "ytdEntitled": "Kelayakan setakat ini",
+        "broughtForward": "Bawa ke hadapan",
+        "adjustments": "Pelarasan",
+        "total": "Jumlah",
         "taken": "Diambil",
         "pendingApproval": "Menunggu kelulusan",
-        "ytdEntitled": "Kelayakan setakat ini",
-        "entitlementToDate": "Kelayakan setakat tarikh",
-        "broughtForward": "Bawa ke hadapan",
-        "expiredBroughtForward": "Bawa hadapan luput",
-        "carryForwardExpiry": "Tarikh luput bawa hadapan",
-        "forfeited": "Baki dilucuthak",
-        "unplanned": "Tidak dirancang",
-        "overutilized": "Penggunaan berlebihan",
-        "adjustment": "Pelarasan",
-        "balance": "Baki",
-        "systemCorrection": "Pembetulan sistem"
+        "broughtForwardForfeited": "Bawa hadapan dilucuthak",
+        "availableBalance": "Baki tersedia"
       },
       "panelSubtitle": "Setakat {date}",
       "close": "Tutup",
-      "colBalanceChange": "Perubahan baki",
       "explanationShow": "Tunjuk penerangan",
       "explanationHide": "Sembunyikan penerangan",
       "explanationDescription": "Maksudnya",
       "explanationFormula": "Cara ia dikira",
-      "explanationResult": "Keputusan",
       "summaryTip": {
-        "ytdEntitled": "Jumlah cuti yang diberikan kepada anda setakat ini tahun ini.",
+        "eligible": "Jumlah yang anda terima untuk keseluruhan tahun cuti, sebelum apa-apa diperoleh, dibawa ke hadapan, dilaraskan atau digunakan.",
+        "ytdEntitled": "Jumlah yang telah diberikan kepada anda setakat tarikh \"Setakat\". Cuti yang diperoleh bulan demi bulan terkumpul sepanjang tahun; cuti yang diberikan sepenuhnya pada awal menunjukkan jumlah penuh dari hari pertama.",
+        "broughtForward": "Hari yang tidak digunakan dan dibawa ke tahun cuti ini dari tahun lepas.",
+        "adjustments": "Hari tambahan atau potongan, sama ada dimasukkan oleh HR atau dicatat secara automatik apabila polisi, gred atau tarikh mula bertukar.",
+        "total": "Diberikan setakat ini, campur bawa ke hadapan, campur pelarasan — sebelum apa-apa yang anda gunakan atau mohon.",
         "taken": "Cuti yang telah anda gunakan (diluluskan dan diambil).",
         "pendingApproval": "Cuti yang anda mohon dan masih menunggu kelulusan.",
-        "available": "Cuti yang masih boleh anda ambil sekarang, selepas permohonan yang menunggu diketepikan.",
-        "balance": "Baki anda yang tinggal, iaitu: bawa ke hadapan + kelayakan kitaran ini + pelarasan + pembetulan sistem − dilucutkan − diambil. Bahagian \"Bagaimana jumlah ini terhasil\" di bawah menunjukkan setiap bahagian."
-      },
-      "tip": {
-        "configAdjustment": "Hari tambahan atau potongan yang ditetapkan HR pada langkah Pelarasan dalam tetapan kelayakan cuti. Setiap satu disenaraikan di bawah dengan sebabnya.",
-        "systemCorrection": "Pembetulan automatik yang dicatat sendiri oleh sistem apabila polisi cuti disunting atau gred atau tarikh mula kerja anda berubah. Ia tidak dimasukkan pada skrin Pelarasan."
+        "broughtForwardForfeited": "Hari yang dibawa dari tahun lepas dan hilang, kerana telah melepasi tarikh luput atau melebihi had bawa ke hadapan.",
+        "available": "Jumlah yang benar-benar boleh anda mohon hari ini. Ini angka yang sama dipaparkan di tempat lain, termasuk semasa anda memohon cuti."
       },
       "adjustmentNoReason": "Tiada sebab dinyatakan",
-      "reconcile": {
-        "caption": "Bawa ke hadapan + Kelayakan + Pelarasan + Pembetulan sistem − Dilucutkan − Diambil = Baki. Baki − Menunggu kelulusan = Tersedia.",
-        "broughtForward": "Bawa ke hadapan",
-        "entitled": "+ Kelayakan kitaran ini",
-        "adjustments": "+ Pelarasan",
-        "systemCorrections": "+ Pembetulan sistem",
-        "forfeited": "− Dilucutkan",
-        "taken": "− Diambil",
-        "balance": "= Baki",
-        "pending": "− Menunggu kelulusan",
-        "available": "= Tersedia"
-      }
+      "expiresOn": "Luput: {date}"
     },
     "preview": {
       "loading": "Mengira…"
@@ -4218,19 +4173,17 @@
       "reasonPlaceholder": "Mengapa ini diubah?",
       "essView": {
         "sectionTitle": "Konfigurasi Paparan Cuti Pekerja",
-        "help": "Pilih angka kelayakan dan baki yang dilihat pekerja untuk jenis cuti ini di Profil Saya → Cuti, dan terangkan setiap satu di tempat yang sama: tanda satu item dan medan Penerangan serta Formula akan muncul di sebelahnya — pekerja melihat teks itu apabila menuding ikon maklumat item tersebut. Item yang tidak ditanda disembunyikan dalam layan diri sahaja; HR sentiasa melihat semuanya. Penerangan hanya mengubah teks, bukan sebarang angka cuti.",
-        "available": "Tersedia",
-        "taken": "Diambil",
-        "broughtForward": "Dibawa Ke Hadapan",
-        "unplanned": "Tidak Dirancang",
+        "help": "Pilih baris Ringkasan Baki Cuti yang dilihat pekerja untuk jenis cuti ini di Profil Saya → Cuti, dan terangkan setiap satu di tempat yang sama: tandakan item dan medan Penerangan serta Penerangan Formula akan muncul di sebelahnya — pekerja melihat teks itu apabila menuding ikon maklumat item tersebut. Item yang tidak ditandakan disembunyikan dalam layan diri sahaja; HR sentiasa melihat semuanya. Penerangan hanya mengubah perkataan, tidak pernah mengubah angka cuti. Perkataan dibawa daripada jenis cuti pertama yang anda konfigurasikan, jadi anda hanya menulisnya sekali; sunting di sini jika jenis cuti ini memerlukan perkataan berbeza, dan tiada apa disimpan sehingga anda menekan Simpan.",
+        "eligible": "Layak",
+        "ytdEntitled": "Kelayakan Setakat Ini",
+        "broughtForward": "Bawa Ke Hadapan",
         "adjustment": "Pelarasan",
-        "overutilized": "Terlebih Guna",
-        "ytdEntitled": "Kelayakan Setakat Tahun",
+        "total": "Jumlah",
+        "taken": "Diambil",
         "pendingApproval": "Menunggu Kelulusan",
-        "carryForwardExpiry": "Tarikh Luput Bawa Ke Hadapan",
-        "forfeited": "Baki Dilucuthak",
-        "groupOther": "Lain-lain",
-        "entitlementCalcBreakdown": "Pecahan Pengiraan Kelayakan"
+        "forfeited": "Bawa Hadapan Dilucuthak",
+        "available": "Baki Tersedia",
+        "groupOther": "Lain-lain"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Kemasukan Jenis Hari",
@@ -4365,16 +4318,7 @@
       "formula": {
         "descriptionLabel": "Penerangan",
         "formulaLabel": "Penerangan formula",
-        "resultLabel": "Keputusan / tarikh (pilihan)",
-        "component": {
-          "currentYearEntitlement": "Kelayakan Tahun Ini",
-          "monthlyAccrued": "Terkumpul Setakat Ini Tahun Ini",
-          "carriedForward": "Dibawa Ke Hadapan",
-          "carryForwardRemaining": "Baki Bawa Ke Hadapan",
-          "carryForwardExpiry": "Tamat Tempoh Bawa Ke Hadapan",
-          "forfeited": "Dilucutkan",
-          "totalAvailable": "Jumlah Tersedia"
-        }
+        "templateHint": "Cadangan perkataan, dibawa daripada jenis cuti pertama yang anda konfigurasikan. Sunting jika jenis cuti ini berbeza — tiada apa disimpan sehingga anda menekan Simpan."
       },
       "gradeSearchLabel": "Cari gred",
       "gradeSearchPlaceholder": "Cari mengikut kod atau nama…",
