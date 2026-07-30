@@ -551,8 +551,15 @@ describe('b81d3c52 · UI source guard — the dropdown-rendering forms post the 
     expect(form).toContain("t('subStep.roundingUp')");
     expect(form).toContain("t('subStep.roundingDown')");
     expect(form).toContain("t('subStep.roundingHelp')");
-    // 9816a5ad step 2: the initial value now comes from the leave TYPE's own rules, not a policy row.
-    expect(form).toContain('defaultValue={roundingMethodValue(rules.roundingMethod)}');
+    // 9816a5ad step 2: the initial value comes from the leave TYPE's own rules, not a policy row.
+    //
+    // 9f5164d8 made the select CONTROLLED rather than defaultValue'd, and the reason is behavioural, not
+    // stylistic: the "Customize decimal thresholds" checkbox and the threshold table only render under
+    // 'nearest_half', and the worked example recomputes as the method changes. An uncontrolled select
+    // cannot drive either. The SEED is unchanged — `roundingMethodValue(rules.roundingMethod)` is still
+    // what the state starts from — so what an administrator sees on load is byte-identical.
+    expect(form).toContain("value={rounding}");
+    expect(form).toContain('useState<LeaveRoundingMethod>(roundingMethodValue(rules.roundingMethod))');
     // renders the dropdown ⇒ posts the marker so 'none' CLEARS and up/down SET.
     expect(form).toContain('name="roundingMethodRendered"');
   });

@@ -228,6 +228,12 @@ describe('applyLeaveTypeRules — the pure overlay', () => {
       carryForwardEnabled: false,
       maxBalanceDays: 12,
       roundingMethod: 'down',
+      // 9f5164d8 (migration 0335) added the ELEVENTH rule column. It is carried on the overlay
+      // unconditionally — null here, because this type sets no custom threshold — and read only by the
+      // 'nearest_half' branch of applyRounding, so its presence cannot move a 'down' figure. The exhaustive
+      // toEqual is deliberately left exhaustive: a new rule column silently appearing on the overlay is
+      // exactly what this assertion exists to surface.
+      roundingThreshold: null,
     });
   });
 

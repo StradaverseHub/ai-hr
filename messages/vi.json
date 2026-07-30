@@ -1384,7 +1384,8 @@
       "duplicateApplication": "Đã tồn tại một đơn xin nghỉ phép cho ngày đã chọn. Không được phép nộp nhiều đơn xin nghỉ phép trong cùng một ngày.",
       "insufficientBalance": "Số dư phép không đủ. Số dư phép khả dụng của bạn thấp hơn thời lượng nghỉ phép được yêu cầu.",
       "combinedLimitExceeded": "Giới hạn nghỉ gộp \"{poolName}\" ({days} ngày mỗi năm) sẽ bị vượt qua trên các loại nghỉ dùng chung.",
-      "combinedApplicationTooLong": "Nhóm nghỉ dùng chung \"{poolName}\" cho phép tối đa {maxDays} ngày mỗi đơn; đơn này là {days} ngày. Vui lòng rút ngắn hoặc nộp thành nhiều đơn riêng."
+      "combinedApplicationTooLong": "Nhóm nghỉ dùng chung \"{poolName}\" cho phép tối đa {maxDays} ngày mỗi đơn; đơn này là {days} ngày. Vui lòng rút ngắn hoặc nộp thành nhiều đơn riêng.",
+      "leaveYearApplicationLimit": "{typeName} bị giới hạn {maxDays} ngày mỗi năm nghỉ phép. Đã xin {usedDays} ngày trong khoảng {yearStart} đến {yearEnd}, nên đơn xin {days} ngày này không thể nộp."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -3830,7 +3831,19 @@
         "carryAnnualOnly": "Chuyển tiếp chỉ áp dụng cho Nghỉ phép năm — số dư của loại này không được chuyển sang năm sau.",
         "noActivePolicy": "Chưa có chính sách quyền lợi đang hiệu lực — hãy thêm một chính sách trong mục Điều kiện trước.",
         "frontDoorScopeLabel": "Áp dụng cho chính sách",
-        "workflowUnavailable": "Thiết lập quy trình phê duyệt không khả dụng tại đây — hãy mở thẻ Phê duyệt."
+        "workflowUnavailable": "Thiết lập quy trình phê duyệt không khả dụng tại đây — hãy mở thẻ Phê duyệt.",
+        "yearType": "Loại năm nghỉ phép",
+        "yearTypeStepHelp": "Hãy chọn chu kỳ nghỉ phép trước. Các bước Phương thức tích lũy và Làm tròn tiếp theo quyết định cách ghi có phép trong chu kỳ đó.",
+        "roundingNearestHalf": "Gần nhất 0,5 ngày",
+        "roundingCustomize": "Tùy chỉnh ngưỡng thập phân",
+        "roundingThresholdsTitle": "Ngưỡng thập phân tùy chỉnh",
+        "roundingDownRangeLabel": "Làm tròn xuống 0,5 ngày gần nhất",
+        "roundingUpRangeLabel": "Làm tròn lên 0,5 ngày gần nhất",
+        "roundingFromInclusive": "Từ (bao gồm)",
+        "roundingToExclusive": "Đến (không bao gồm)",
+        "roundingToInclusive": "Đến (bao gồm)",
+        "roundingThresholdHelp": "Hai khoảng luôn phủ kín từ 0,000 đến 1,000, không có khoảng trống và không chồng lấn, nên chỉ có một ranh giới cần đặt. Thay đổi ranh giới đó thì cả hai khoảng đều theo. Bỏ trống ô này để dùng quy tắc chuẩn: 0,000-0,499 làm tròn xuống, 0,500-1,000 làm tròn lên.",
+        "roundingWorkedExample": "Với quy tắc này, {raw} ngày tính được sẽ được ghi có là {rounded} ngày."
       },
       "conditionStep": {
         "criteria": "Tiêu chí",
@@ -3838,7 +3851,13 @@
         "expiry": "Hết hạn",
         "halfDayCompanyWideBadge": "Áp dụng toàn công ty",
         "expiryAnnualPointer": "Hạn sử dụng của Nghỉ phép năm do chính sách chuyển tiếp quyết định — cấu hình tại Chung → Chính sách chuyển tiếp.",
-        "expiryEmergencyNote": "Nghỉ khẩn cấp không có số dư, nên không áp dụng hết hạn."
+        "expiryEmergencyNote": "Nghỉ khẩn cấp không có số dư, nên không áp dụng hết hạn.",
+        "applicationLimitsTitle": "Giới hạn đơn xin nghỉ",
+        "applicationLimitYearLabel": "Số ngày xin nghỉ tối đa mỗi năm nghỉ phép",
+        "applicationLimitUnlimited": "Không giới hạn",
+        "applicationLimitLimited": "Có giới hạn",
+        "applicationLimitMaxLabel": "Tối đa (ngày)",
+        "applicationLimitHelp": "Giới hạn tổng số ngày nhân viên được PHÉP XIN nghỉ loại này trong một năm nghỉ phép, bất kể có số dư quyền lợi hay không — quy tắc dành cho các loại như Nghỉ không lương. Được kiểm tra khi nộp đơn và kiểm tra lại khi phê duyệt. Quyền lợi, tích lũy và số dư hiển thị trong Tổng hợp phép đều không đổi. Hiện tại mọi loại nghỉ phép đều là Không giới hạn."
       },
       "entitlementStep": {
         "schemes": "Chương trình phúc lợi",
@@ -5197,7 +5216,11 @@
       "maxDaysPerApplication": "Số ngày tối đa mỗi đơn",
       "maxDaysPerApplicationShort": "Tối đa / đơn",
       "maxDaysPerApplicationNone": "Không giới hạn",
-      "maxDaysPerApplicationHelp": "Tùy chọn. Để trống nếu không giới hạn. Đặt là 3 thì không đơn nào của bất kỳ loại nghỉ nào trong nhóm được vượt quá 3 ngày theo lịch — tách biệt với giới hạn tổng mỗi năm dùng chung."
+      "maxDaysPerApplicationHelp": "Tùy chọn. Để trống nếu không giới hạn. Đặt là 3 thì không đơn nào của bất kỳ loại nghỉ nào trong nhóm được vượt quá 3 ngày theo lịch — tách biệt với giới hạn tổng mỗi năm dùng chung.",
+      "colSchemeCategory": "Nhóm chế độ",
+      "schemeCategoryPlaceholder": "ví dụ: Chính thức, Hợp đồng (Đặc biệt)",
+      "schemeCategoryUnset": "Chưa nhóm",
+      "schemeCategoryHelp": "Nhóm các chế độ liên quan lại với nhau ở mọi nơi liệt kê chế độ để chọn. Đây chỉ là nhãn — không bao giờ ảnh hưởng đến điều kiện hưởng, chế độ mà nhân viên được áp dụng, hay số ngày họ nhận được. Hệ thống gợi ý dựa trên tên chế độ và loại hình lao động; bạn có thể sửa hoặc xóa bất cứ lúc nào."
     },
     "systemExplorer": {
       "title": "Phân tích hệ thống & trình khám phá phụ thuộc",

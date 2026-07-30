@@ -549,6 +549,11 @@ export function listLeaveTypes(
         // Minimum advance-notice rule (0159): feeds the admin panel's "Minimum advance days" input (same
         // MUST-be-projected reason as backdatingLimitDays above).
         minAdvanceDays: leaveType.minAdvanceDays,
+        // Application Limits (c6ffa725): feeds the admin panel's "Application Limits" card — the Unlimited /
+        // Limited radio reads its state from whether this is null, so it MUST be projected or the card
+        // renders as Unlimited on every reload for a type that actually has a limit ("my setting didn't
+        // save", the report this projection list has already had twice).
+        maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
         // Leave Type Expiry Field (fec49317): the age-from-earning expiry pair — feeds the admin panel's
         // "Leave expiry" sub-form (MUST be projected or the inputs render empty on every reload).
         expiryValue: leaveType.expiryValue,

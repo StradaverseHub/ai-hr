@@ -21,6 +21,9 @@ import {
   benefitSchemeDisplayName,
   bySchemeDisplayOrder,
   schemeNameIsRedundant,
+  // Feedback 0890a555 — the Scheme Category "smart default". Lives in the shared naming module (the r76
+  // Decision 4 contract: one place composes a scheme's identity), not inline here.
+  suggestSchemeCategory,
 } from '@/lib/benefit-scheme-label';
 import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
 import { Combobox } from '@/components/ui/combobox';
@@ -76,6 +79,8 @@ type Scheme = {
   gradeGroupName: string | null;
   name: string;
   status: string;
+  /** Feedback 0890a555: the grouping label. null ⇒ ungrouped. */
+  schemeCategory: string | null;
 };
 type Entitlement = {
   id: string;
@@ -347,6 +352,11 @@ export function BenefitSchemeConfig({
                     <thead>
                       <tr className="border-b border-border text-left text-xs text-muted-foreground">
                         <th className="px-3 py-2 font-medium">{t('colEmpType')}</th>
+                        {/* Feedback 0890a555: Scheme Category sits immediately after Employment Type, the
+                            position the reporter tabulated. A scheme with no category reads "Ungrouped"
+                            rather than blank — an empty cell in a column of names looks like missing data,
+                            and "not grouped yet" is a real, chooseable state. */}
+                        <th className="px-3 py-2 font-medium">{t('colSchemeCategory')}</th>
                         <th className="px-3 py-2 font-medium">{t('colGradeGroup')}</th>
                         <th className="px-3 py-2 font-medium">{t('colName')}</th>
                         <th className="px-3 py-2 font-medium">{t('colStatus')}</th>
@@ -357,6 +367,11 @@ export function BenefitSchemeConfig({
                       {group.schemes.map((s) => (
                         <tr key={s.id} className="border-b border-border last:border-0 align-top">
                           <td className="px-3 py-2">{empTypeLabel(s.employmentType)}</td>
+                          <td className="px-3 py-2">
+                            {s.schemeCategory ?? (
+                              <span className="text-muted-foreground">{t('schemeCategoryUnset')}</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2">{s.gradeGroupId ? (groupName.get(s.gradeGroupId) ?? '—') : t('anyGroup')}</td>
                           <td className="px-3 py-2 font-medium">{s.name}</td>
                           <td className="px-3 py-2">
@@ -405,6 +420,10 @@ export function BenefitSchemeConfig({
             ))}
           </div>
         )}
+        {/* Feedback 0890a555 — what the new column is and, more importantly, what it is NOT. Stated on the
+            screen rather than left to be inferred, because a field that looks like it decides eligibility
+            and does not is exactly the kind of control that gets configured hopefully. */}
+        <p className="text-xs text-muted-foreground">{t('schemeCategoryHelp')}</p>
         <div className="rounded-lg border border-dashed border-border p-3">
           <p className="mb-2 text-xs font-medium text-muted-foreground">{t('addScheme')}</p>
           <SchemeForm
@@ -1175,6 +1194,20 @@ function SchemeForm({
   layout?: 'inline' | 'dialog';
 }) {
   const inDialog = layout === 'dialog';
+  // Feedback 0890a555 — the "smart default". The two inputs the suggestion is derived from (name and
+  // employment type) become controlled so the suggestion can follow what is actually being typed.
+  const [schemeName, setSchemeName] = useState(scheme?.name ?? '');
+  const [empType, setEmpType] = useState(scheme?.employmentType ?? 'full_time');
+  const [category, setCategory] = useState(scheme?.schemeCategory ?? '');
+  // Once HR types in the category field, the suggestion stops writing to it — for good, including after
+  // they clear it back to empty. Blank is a deliberate choice ("ungrouped"), and re-suggesting over it
+  // would make the field impossible to empty.
+  const [categoryTouched, setCategoryTouched] = useState(false);
+  const suggestion = suggestSchemeCategory({ name: schemeName }, empTypeLabel(empType));
+  // An EXISTING scheme is never overwritten by a suggestion, whatever its stored value: the tenant already
+  // made this decision, and silently re-deciding it on an unrelated rename is the failure this whole
+  // feature is trying to avoid. Suggestions apply to the ADD form only.
+  const effectiveCategory = scheme == null && !categoryTouched ? suggestion : category;
   return (
     <form action={action} className={SCHEME_FORM_GRID[layout]}>
       {scheme && <input type="hidden" name="id" value={scheme.id} />}
@@ -1187,11 +1220,32 @@ function SchemeForm({
         </select>
       </Field>
       <Field label={t('colEmpType')}>
-        <select name="employmentType" defaultValue={scheme?.employmentType ?? 'full_time'} className={inputCls}>
+        <select
+          name="employmentType"
+          value={empType}
+          onChange={(e) => setEmpType(e.target.value)}
+          className={inputCls}
+        >
           {EMPLOYMENT_TYPES.map((v) => (
             <option key={v} value={v}>{empTypeLabel(v)}</option>
           ))}
         </select>
+      </Field>
+      {/* Feedback 0890a555 — Scheme Category, immediately after Employment Type as the reporter tabulated
+          it. Free text with a live suggestion: on the ADD form it follows the scheme name and employment
+          type until HR types here, at which point it is theirs. Blank saves as "ungrouped". */}
+      <Field label={t('colSchemeCategory')}>
+        <input
+          name="schemeCategory"
+          value={effectiveCategory}
+          onChange={(e) => {
+            setCategoryTouched(true);
+            setCategory(e.target.value);
+          }}
+          maxLength={120}
+          placeholder={t('schemeCategoryPlaceholder')}
+          className={inputCls}
+        />
       </Field>
       {/* R44 d28dffe7: searchable single-select combobox (type-ahead) replaces the plain grade-group dropdown.
           Same name/value FormData contract (hidden input carries gradeGroupId), so updateScheme is unchanged.
@@ -1208,7 +1262,14 @@ function SchemeForm({
         />
       </Field>
       <Field label={t('colName')} className={inDialog ? 'sm:col-span-2' : undefined}>
-        <input name="name" defaultValue={scheme?.name ?? ''} required placeholder={t('schemeNamePlaceholder')} className={inputCls} />
+        <input
+          name="name"
+          value={schemeName}
+          onChange={(e) => setSchemeName(e.target.value)}
+          required
+          placeholder={t('schemeNamePlaceholder')}
+          className={inputCls}
+        />
       </Field>
       <Field label={t('colStatus')}>
         <select name="status" defaultValue={scheme?.status ?? 'active'} className={inputCls}>

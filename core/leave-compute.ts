@@ -54,19 +54,66 @@ export type ResolvedPolicy = {
   /** Feedback b81d3c52 — Rounding Method, resolved from the SAME winning policy row as days/method.
    *  Absent/undefined ⇒ 'none' (no rounding, byte-identical to pre-b81d3c52 behaviour). */
   roundingMethod?: LeaveRoundingMethod;
+  /** Feedback 9f5164d8 — the custom decimal threshold, read ONLY by the 'nearest_half' method. Absent ⇒
+   *  DEFAULT_ROUNDING_THRESHOLD. Meaningless (and ignored) for every other method, so a stored value can
+   *  never change what 'up' / 'down' / 'none' produce. */
+  roundingThreshold?: number | null;
 };
 
 /** Feedback b81d3c52 — how a CALCULATED leave entitlement is tidied before it is credited:
  *   - 'none' (or absent) — keep the calculated value exactly as-is (today's behaviour);
  *   - 'up'              — always lift a part-day to the next WHOLE day (10.10 ⇒ 11, 10.50 ⇒ 11);
  *   - 'down'            — always drop a part-day to the previous WHOLE day (10.90 ⇒ 10, 10.49 ⇒ 10).
- *  DELIBERATELY WHOLE-DAY ONLY: the request's option labels say "to Nearest 0.5" but every worked example
- *  in it rounds to a whole day, and the approved plan flagged the ambiguity — half-day steps are an
- *  explicit follow-up, so no half-day branch is pre-written here.
+ *   - 'nearest_half'    — feedback 9f5164d8: snap to the 0.5-day grid, up or down according to where the
+ *                         value's DECIMAL PORTION falls relative to a configurable threshold. See
+ *                         `applyRounding` for the rule and `DEFAULT_ROUNDING_THRESHOLD` for the default.
+ *
+ *  The first three are UNCHANGED by 9f5164d8 and are the only values migration 0325 ever backfilled, so
+ *  every leave type configured before that item behaves byte-identically (pinned by
+ *  test/leave-entitlement-rounding-thresholds.test.ts, which runs all three through the new evaluator).
  *
  *  This is a SEPARATE concept from the pay-component `roundingMethod` (core/pay-components.ts, values
  *  none/nearest) — different domain, different values, deliberately no shared code. */
-export type LeaveRoundingMethod = 'none' | 'up' | 'down';
+export type LeaveRoundingMethod = 'none' | 'up' | 'down' | 'nearest_half';
+
+/**
+ * Feedback 9f5164d8 — the threshold the reporter documented as the STANDARD rule, used whenever
+ * 'nearest_half' is configured without a custom one: decimal 0.000–0.499 rounds down, 0.500–1.000 rounds up.
+ *
+ * The request describes TWO ranges (a round-down range and a round-up range) and requires them to cover
+ * 0.000–1.000 with no gaps and no overlaps. Two complementary ranges over a fixed interval have exactly ONE
+ * degree of freedom — the boundary between them — so the whole configuration is this single number, and the
+ * "no gap / no overlap / full coverage" invariant holds by construction rather than by validation. The
+ * editor still presents both rows, and `roundingThresholdRanges` derives them from this value.
+ */
+export const DEFAULT_ROUNDING_THRESHOLD = 0.5;
+
+/**
+ * The stored threshold as a usable number: a finite value in (0, 1], else the default. Defensive for the
+ * same reason every other resolver in this file is — it runs inside cron sweeps over hand-written and
+ * seeded rows, where garbage must degrade to the documented default rather than abort a tenant's sweep.
+ * Postgres numerics arrive as strings, hence the string branch.
+ */
+export function resolveRoundingThreshold(v: string | number | null | undefined): number {
+  if (v == null) return DEFAULT_ROUNDING_THRESHOLD;
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n) || n <= 0 || n > 1) return DEFAULT_ROUNDING_THRESHOLD;
+  return n;
+}
+
+/**
+ * The two ranges the reporter's editor shows, derived from ONE threshold. Returned as the exact shape the
+ * request tabulated: a round-DOWN range [0, t) and a round-UP range [t, 1]. There is no second stored
+ * number to disagree with the first, which is why "the ranges must not overlap" and "there must not be any
+ * gaps" can never fail at runtime.
+ */
+export function roundingThresholdRanges(threshold: string | number | null | undefined): {
+  down: { from: number; to: number };
+  up: { from: number; to: number };
+} {
+  const t = resolveRoundingThreshold(threshold);
+  return { down: { from: 0, to: t }, up: { from: t, to: 1 } };
+}
 
 /** Leave Entitlement Rules Engine: one contiguous service-length band. `toYears` null = open-ended (the
  *  final band). Matching is half-open on completed service years: fromYears <= years < toYears.
@@ -118,6 +165,9 @@ export type AccrualConfig = {
    *  is 'up' or 'down': a No-Rounding policy OMITS the key entirely, so a re-saved untouched row stays
    *  byte-identical to what it was before this feature existed. Absent is read as 'none' everywhere. */
   roundingMethod?: LeaveRoundingMethod;
+  /** Feedback 9f5164d8 — the custom decimal threshold for 'nearest_half'. Read for symmetry with the
+   *  type-level rule columns; nothing writes it here, because the only rounding editor writes the TYPE. */
+  roundingThreshold?: number | null;
 };
 
 /**
@@ -257,12 +307,47 @@ function round2dp(n: number): number {
  * non-finite value passes straight through unchanged rather than throwing — these run inside cron sweeps
  * over hand-written / seeded JSONB where a bad row must not abort a tenant's whole sweep.
  *
- * Whole-day only (see `LeaveRoundingMethod`): 'up' ⇒ ceil, 'down' ⇒ floor, anything else ⇒ unchanged.
+ * 'up' ⇒ ceil to a whole day, 'down' ⇒ floor to a whole day, anything else ⇒ unchanged. Those three are
+ * exactly as b81d3c52 shipped them and 9f5164d8 did not touch them — `threshold` is read by NOTHING except
+ * the 'nearest_half' branch, so passing one can never move an existing type's figures.
+ *
+ * FEEDBACK 9f5164d8 — 'nearest_half'. The value is snapped to the 0.5-day grid, and the threshold decides
+ * which way:
+ *
+ *     f = value − floor(value)                    the DECIMAL PORTION the request talks about
+ *     f <  threshold  ⇒  floor to the 0.5 grid    (the "Round down to nearest 0.5 day" range)
+ *     f >= threshold  ⇒  ceil  to the 0.5 grid    (the "Round up to nearest 0.5 day" range)
+ *
+ * With the default 0.500 threshold this reproduces the request's own worked default: 1.17 ⇒ 1.0 (0.17 is in
+ * the down range, floor to grid), 1.50 ⇒ 1.5, 1.60 ⇒ 2.0 (0.60 is in the up range, ceil to grid). Raising
+ * the threshold is what makes the half-day step visible — at 0.750, 1.60 lands on 1.5 instead of 2.0, which
+ * is the behaviour a company that rounds late actually wants.
+ *
+ * DEFENSIVE like the rest of this file: a non-finite value or an unknown method passes straight through,
+ * and a garbage threshold degrades to the default rather than throwing.
  */
-export function applyRounding(value: number, method: LeaveRoundingMethod | string | null | undefined): number {
+export function applyRounding(
+  value: number,
+  method: LeaveRoundingMethod | string | null | undefined,
+  threshold?: string | number | null,
+): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return value;
   if (method === 'up') return round2dp(Math.ceil(value));
   if (method === 'down') return round2dp(Math.floor(value));
+  if (method === 'nearest_half') {
+    const t = resolveRoundingThreshold(threshold);
+    const whole = Math.floor(value);
+    // THE DECIMAL PORTION, ROUNDED TO THREE PLACES FIRST — the precision the threshold itself is stored at.
+    // Everything below is derived from `f`, never from `value`, and that is load-bearing rather than tidy:
+    // a naive `Math.ceil(value * 2) / 2` turns 1.5000000000000002 (which is what 0.1 + 0.2 + 1.2 actually
+    // is in IEEE754) into 2.0 instead of 1.5, because the binary tail survives the multiply. Snapping the
+    // FRACTION to the grid and adding the whole part back cannot do that.
+    const f = Math.round((value - whole) * 1000) / 1000;
+    // Down ⇒ the 0.5 step at or below f. Up ⇒ the 0.5 step at or above it.
+    const down = f < 0.5 ? 0 : 0.5;
+    const up = f === 0 ? 0 : f <= 0.5 ? 0.5 : 1;
+    return round2dp(whole + (f < t ? down : up));
+  }
   return value;
 }
 
@@ -317,6 +402,8 @@ export type LeaveTypeRules = {
   carryForwardExpiryDay?: number | null;
   carryForwardIncludeEarned?: boolean | null;
   roundingMethod?: string | null;
+  /** Feedback 9f5164d8 (migration 0335) — the eleventh column. Read only alongside a 'nearest_half' method. */
+  roundingThreshold?: string | number | null;
   maxBalanceDays?: string | number | null;
 };
 
@@ -356,6 +443,15 @@ export function hasAnyLeaveTypeRule(rules: LeaveTypeRules | null | undefined): b
     rules.roundingMethod != null ||
     rules.maxBalanceDays != null
   );
+}
+
+/** Feedback 9f5164d8 — the rounding methods the ENGINE acts on, i.e. the ones `applyRounding` changes a
+ *  value for. Anything else (including 'none' and NULL) means "leave the calculated value alone". One
+ *  definition so the overlay, the write-time validator and the editor cannot drift apart. */
+export type EngineRoundingMethod = Exclude<LeaveRoundingMethod, 'none'>;
+export const ENGINE_ROUNDING_METHODS: readonly EngineRoundingMethod[] = ['up', 'down', 'nearest_half'];
+export function isEngineRoundingMethod(v: unknown): v is EngineRoundingMethod {
+  return typeof v === 'string' && (ENGINE_ROUNDING_METHODS as readonly string[]).includes(v);
 }
 
 /**
@@ -414,7 +510,13 @@ export function applyLeaveTypeRules(
     }),
     carryForwardEnabled: typeof r.carryForwardEnabled === 'boolean' ? r.carryForwardEnabled : undefined,
     maxBalanceDays: maxBalance != null ? Math.max(0, maxBalance) : null,
-    roundingMethod: r.roundingMethod === 'up' || r.roundingMethod === 'down' ? r.roundingMethod : undefined,
+    // 9f5164d8 widened this from the 'up'/'down' pair to the ENGINE_ROUNDING_METHODS set. 'none' and NULL
+    // still resolve to undefined (no rounding) exactly as before, so no configured type moves.
+    roundingMethod: isEngineRoundingMethod(r.roundingMethod) ? r.roundingMethod : undefined,
+    // Carried alongside so the 'nearest_half' branch can read it. Deliberately NOT gated on the method:
+    // applyRounding ignores it for every other method, and dropping it here would mean a type that
+    // temporarily switches away from 'nearest_half' and back loses the threshold it had configured.
+    roundingThreshold: finiteOrNull(r.roundingThreshold),
   };
 }
 
@@ -475,9 +577,13 @@ export function resolveGradePolicy(
           // Feedback b81d3c52: the Rounding Method rides the SAME winning policy row as days/method —
           // assigned INSIDE this block under the identical discipline as carryExpiry/carryForwardEnabled,
           // so a rejected lower-`days` policy can never leak its rounding onto the selected one.
-          // Only the two real methods are honoured; anything else (absent / garbage) ⇒ undefined ⇒ none.
-          roundingMethod:
-            acc?.roundingMethod === 'up' || acc?.roundingMethod === 'down' ? acc.roundingMethod : undefined,
+          // Only real engine methods are honoured; anything else (absent / garbage) ⇒ undefined ⇒ none.
+          // 9f5164d8 widened the set here as well as on the type-level overlay, deliberately: an engine that
+          // honoured a method through one storage home and silently ignored it through the other is the
+          // shape of defect that takes a release to notice. Nothing writes 'nearest_half' into this JSONB
+          // today — the only editor writes the leave TYPE — so this is symmetry, not a live path.
+          roundingMethod: isEngineRoundingMethod(acc?.roundingMethod) ? acc.roundingMethod : undefined,
+          roundingThreshold: finiteOrNull(acc?.roundingThreshold),
         };
       }
     }
@@ -537,7 +643,7 @@ export function previewEntitlement(
   // the granting engines apply it, so this function's docstring guarantee ("the admin preview can never
   // disagree with the real engine") still holds once a Rounding Method is configured. `floorDays` /
   // `policyDays` stay RAW so the UI can still explain which input won.
-  const days = applyRounding(Math.max(floor, policyDays ?? 0), policy?.roundingMethod);
+  const days = applyRounding(Math.max(floor, policyDays ?? 0), policy?.roundingMethod, policy?.roundingThreshold);
   // Derive which scope tier actually won, mirroring resolveGradePolicy's own subset filters exactly —
   // including the case where the company scope EXISTS but resolves to a policy days of 0 (i.e. the
   // company has only other-grade rows and no null-grade default): scope is still 'company' (short-circuit

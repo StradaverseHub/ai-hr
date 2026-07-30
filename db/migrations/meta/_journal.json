@@ -1982,6 +1982,13 @@
       "when": 1781862434000,
       "tag": "0334_leave_type_rules_repoint_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 335,
+      "version": "7",
+      "when": 1781862435000,
+      "tag": "0335_scheme_category_rounding_thresholds_application_limits",
+      "breakpoints": true
     }
   ]
 }

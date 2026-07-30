@@ -1384,7 +1384,8 @@
       "duplicateApplication": "所选日期已存在一份请假申请。不允许在同一日期提交多份请假申请。",
       "insufficientBalance": "假期余额不足。您的可用假期余额低于所申请的假期时长。",
       "combinedLimitExceeded": "合并假期上限「{poolName}」（每年{days}天）将在其共享假期类型中被超出。",
-      "combinedApplicationTooLong": "共享假期组「{poolName}」每次申请最多 {maxDays} 天，本次申请为 {days} 天。请缩短申请天数，或分成多次申请。"
+      "combinedApplicationTooLong": "共享假期组「{poolName}」每次申请最多 {maxDays} 天，本次申请为 {days} 天。请缩短申请天数，或分成多次申请。",
+      "leaveYearApplicationLimit": "{typeName} 每个假期年度上限为 {maxDays} 天。在 {yearStart} 至 {yearEnd} 期间已申请 {usedDays} 天，因此本次 {days} 天的申请无法提交。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -3830,7 +3831,19 @@
         "carryAnnualOnly": "结转仅适用于年假——此类型的余额不会滚存。",
         "noActivePolicy": "尚无生效的额度政策——请先在“资格”下添加一条。",
         "frontDoorScopeLabel": "适用的政策",
-        "workflowUnavailable": "此处无法使用审批流程设置——请打开“审批”标签页。"
+        "workflowUnavailable": "此处无法使用审批流程设置——请打开“审批”标签页。",
+        "yearType": "假期年度类型",
+        "yearTypeStepHelp": "请先选择假期周期。随后的赚取方式与取整步骤决定该周期内假期如何入账。",
+        "roundingNearestHalf": "最接近的 0.5 天",
+        "roundingCustomize": "自定义小数阈值",
+        "roundingThresholdsTitle": "自定义小数阈值",
+        "roundingDownRangeLabel": "向下取整到最接近的 0.5 天",
+        "roundingUpRangeLabel": "向上取整到最接近的 0.5 天",
+        "roundingFromInclusive": "起始（含）",
+        "roundingToExclusive": "截止（不含）",
+        "roundingToInclusive": "截止（含）",
+        "roundingThresholdHelp": "两个区间始终覆盖 0.000 至 1.000，既无间隙也无重叠，因此只需设置一个分界值。移动分界值，两个区间会随之调整。不勾选则使用标准规则：0.000-0.499 向下取整，0.500-1.000 向上取整。",
+        "roundingWorkedExample": "按此规则，计算得出的 {raw} 天将按 {rounded} 天入账。"
       },
       "conditionStep": {
         "criteria": "资格条件",
@@ -3838,7 +3851,13 @@
         "expiry": "过期",
         "halfDayCompanyWideBadge": "适用于全公司",
         "expiryAnnualPointer": "年假的过期由结转政策决定 — 请在“常规 → 结转政策”中配置。",
-        "expiryEmergencyNote": "紧急假不带余额，因此没有过期设置。"
+        "expiryEmergencyNote": "紧急假不带余额，因此没有过期设置。",
+        "applicationLimitsTitle": "申请上限",
+        "applicationLimitYearLabel": "每个假期年度的最高申请天数",
+        "applicationLimitUnlimited": "不限",
+        "applicationLimitLimited": "限制",
+        "applicationLimitMaxLabel": "上限（天）",
+        "applicationLimitHelp": "限制员工在一个假期年度内可就该假期类型申请的总天数，无论是否存在可用余额——适用于无薪假等类型。提交申请时校验一次，审批时再校验一次。假期额度、累计与假期汇总中显示的余额均不受影响。目前所有假期类型均为“不限”。"
       },
       "entitlementStep": {
         "schemes": "福利方案",
@@ -5197,7 +5216,11 @@
       "maxDaysPerApplication": "每次申请最多天数",
       "maxDaysPerApplicationShort": "每次上限",
       "maxDaysPerApplicationNone": "不限",
-      "maxDaysPerApplicationHelp": "可选。留空表示不限。设为 3 后，本组任一假期类型的单次申请都不得超过 3 个日历日——这与共享年度总额是两条独立规则。"
+      "maxDaysPerApplicationHelp": "可选。留空表示不限。设为 3 后，本组任一假期类型的单次申请都不得超过 3 个日历日——这与共享年度总额是两条独立规则。",
+      "colSchemeCategory": "方案类别",
+      "schemeCategoryPlaceholder": "例如：正式、合同（特殊）",
+      "schemeCategoryUnset": "未分组",
+      "schemeCategoryHelp": "在任何列出方案供选择的位置，将相关方案归为一组。它仅是一个标签——不会影响资格、员工匹配到哪个方案，或可获得的天数。系统会根据方案名称与雇佣类型给出建议；你可以随时修改或清空。"
     },
     "systemExplorer": {
       "title": "系统分析与依赖关系浏览器",

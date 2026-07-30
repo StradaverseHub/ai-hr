@@ -321,6 +321,9 @@ export default async function LeaveEntitlementsPage({
       gradeGroupName: sc.gradeGroupName,
       name: sc.name,
       status: sc.status,
+      // Feedback 0890a555: the grouping label. MUST be projected or the column renders "Ungrouped" for
+      // every scheme and the edit dialog opens empty on a scheme that has one.
+      schemeCategory: sc.schemeCategory,
     })),
     entitlements: schemeEntitlements.map((e) => ({
       id: e.id,
@@ -779,7 +782,9 @@ export default async function LeaveEntitlementsPage({
                 carryForwardExpiryMonth: lt.carryForwardExpiryMonth ?? null,
                 carryForwardExpiryDay: lt.carryForwardExpiryDay ?? null,
                 carryForwardIncludeEarned: lt.carryForwardIncludeEarned ?? null,
-                roundingMethod: (lt.roundingMethod as 'up' | 'down' | null) ?? null,
+                roundingMethod: (lt.roundingMethod as 'up' | 'down' | 'nearest_half' | null) ?? null,
+                // 9f5164d8: numeric(4,3) — same string-to-number treatment as the other numerics above.
+                roundingThreshold: lt.roundingThreshold == null ? null : Number(lt.roundingThreshold),
                 maxBalanceDays: lt.maxBalanceDays == null ? null : Number(lt.maxBalanceDays),
               }}
               floor0={packEntitlement?.(lt.code, 0) ?? 0}
@@ -793,6 +798,7 @@ export default async function LeaveEntitlementsPage({
               employeeRemarkRequired={lt.employeeRemarkRequired}
               hrRemarkRequired={lt.hrRemarkRequired}
               backdatingLimitDays={lt.backdatingLimitDays ?? null}
+              maxDaysPerLeaveYear={lt.maxDaysPerLeaveYear == null ? null : Number(lt.maxDaysPerLeaveYear)}
               minAdvanceDays={lt.minAdvanceDays ?? null}
               expiryValue={lt.expiryValue ?? null}
               expiryUnit={lt.expiryUnit ?? null}
