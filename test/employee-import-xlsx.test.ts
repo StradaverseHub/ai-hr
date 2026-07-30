@@ -181,8 +181,10 @@ describe('§3 the downloaded Excel template', () => {
     for (const key of ['basic_salary', 'monthly_allowance', 'rate_amount', 'tax_category']) {
       expect(EMPLOYEE_TEXT_COLUMN_KEYS).not.toContain(key);
       const c = EMPLOYEE_XLSX_COLUMNS.indexOf(key);
+      // NB: with cellNF an UNFORMATTED cell reads back as 'General', not undefined — verified in
+      // Node. The assertion that matters is that it is not TEXT.
       const cell = ws[XLSX.utils.encode_cell({ c, r: 1 })] as { z?: string } | undefined;
-      expect(cell?.z).toBeUndefined();
+      expect(cell?.z).not.toBe('@');
     }
   });
 
