@@ -58,6 +58,7 @@ import { pageState, parsePageQuery } from '@/lib/pagination';
 // time — importing it from the client table would trip the RSC boundary guard (b7d84266). R37 e5a158d3.
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
 import { durationLabel } from '@/lib/leave-duration';
+import { LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
 import {
   requestLeaveAction,
   requestLeaveCancellationAction,
@@ -68,14 +69,10 @@ import {
   leaveApplySummaryAction,
 } from './actions';
 
-const REQ_STATUS: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-  approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-  rejected: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
-  // My Absence merge (a7cbd895, ported from /me R17 600be8ac): display-only badge for an approved request
-  // that had ≥1 date rejected — amber, distinct from a clean green "Approved". DB status stays 'approved'.
-  partial: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-};
+// fe3eb141 — the pill palette moved to lib/leave-status.ts so Employee Leave Records, which now shows
+// the same Status column, cannot drift from this table. `partial` is display-only (an approved request
+// with ≥1 rejected date, a7cbd895 / /me R17 600be8ac); the DB status stays 'approved'.
+const REQ_STATUS = LEAVE_STATUS_PILL;
 
 // Employee Details listing page size — the reporter asked for exactly ten employees per page (650b6eb8).
 const EMPLOYEE_PAGE = 10;
@@ -1372,7 +1369,7 @@ export default async function LeavePage({
                     <td className="px-4 py-2.5">
                       {/* Admin history keeps its plain status pill (the amber "Partially approved" display
                           badge is a self-service affordance — it lives on the compact list above). */}
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${REQ_STATUS[r.status] ?? 'bg-muted text-muted-foreground'}`}>
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${REQ_STATUS[r.status] ?? LEAVE_STATUS_PILL_DEFAULT}`}>
                         {t(`status.${r.status}`)}
                       </span>
                       {/* Partial Leave Cancellation (ADR-0065): a pending give-back request shows a pill. */}

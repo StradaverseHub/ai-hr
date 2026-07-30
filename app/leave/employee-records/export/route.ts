@@ -13,6 +13,7 @@ import { listEmployees, listLeaveRequestsPage } from '@/core/read';
 import { toCsvReport, toXlsxReport, type ReportData } from '@/lib/report-export';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { durationLabel } from '@/lib/leave-duration';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 
 const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'];
 
@@ -52,12 +53,16 @@ export async function GET(req: Request) {
       })
     : { rows: [] };
 
-  const day = (v: Date | string | null) => (v ? new Date(v).toISOString().slice(0, 10) : '');
+  // Instants, not date-onlys: route them through the tenant timezone or the exported Applied and
+  // Final Approval dates read as YESTERDAY between 00:00 and 08:00 MYT (r85's toISOString class).
+  const day = (v: Date | string | null) => (v ? todayInKualaLumpur(new Date(v)) : '');
   const data: ReportData = {
     filename: `leave-records-${selected?.employeeCode ?? 'employee'}-${new Date().toISOString().slice(0, 10)}`,
     title: tInq('recordsTitle'),
     columns: [
       t('filters.employeeId'),
+      // fe3eb141 — the short leave reference, so the export carries the handle the screen now shows.
+      t('filters.reference'),
       t('colEmployee'),
       t('filters.dateFrom'),
       t('filters.dateTo'),
@@ -71,6 +76,7 @@ export async function GET(req: Request) {
     ],
     rows: rows.map((r) => [
       r.employeeCode ?? '',
+      `#${r.id.slice(0, 8)}`,
       r.employee,
       r.startDate,
       r.endDate,

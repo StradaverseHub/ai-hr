@@ -2,13 +2,23 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { listCompanies, listDepartments } from '@/core/read';
+import { listCostCenters, listPositions } from '@/core/admin';
 import { PageHeader } from '@/components/ui';
 import { EmployeeImport } from './employee-import';
 
 export default async function ImportPage() {
   const t = await getTranslations('people.import');
   const s = await requireAdmin();
-  const [companies, departments] = await Promise.all([listCompanies(s), listDepartments(s)]);
+  // d8471481 — the Excel template's Reference sheet is generated from these LIVE catalogs, the same
+  // ones core/import's analyze() validates a row against. Reading them here (rather than
+  // hand-maintaining a second list) is what makes "the value in the template is a value the importer
+  // accepts" true by construction. Unscoped on purpose: a file may now span several companies.
+  const [companies, departments, positions, costCenters] = await Promise.all([
+    listCompanies(s),
+    listDepartments(s),
+    listPositions(s),
+    listCostCenters(s),
+  ]);
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
   // Default to the active scope if it's a single company; otherwise the company with the most
   // departments — i.e. the operating entity people are actually hired into, not a holding shell.
@@ -33,8 +43,21 @@ export default async function ImportPage() {
         <EmployeeImport
           companies={companies.map((c) => ({ id: c.id, name: c.name }))}
           defaultCompanyId={defaultCompanyId}
+          reference={{
+            // Sorted + de-duplicated: a shared label (62de487d) resolves for several companies and
+            // would otherwise appear once per company in the reference list.
+            departments: uniqSorted(departments.map((d) => d.name)),
+            positions: uniqSorted(positions.map((p) => p.title)),
+            costCenters: uniqSorted(costCenters.map((c) => c.code ?? c.name ?? '')),
+          }}
         />
       )}
     </div>
+  );
+}
+
+function uniqSorted(values: (string | null)[]): string[] {
+  return [...new Set(values.filter((v): v is string => !!v && v.trim() !== ''))].sort((a, b) =>
+    a.localeCompare(b),
   );
 }

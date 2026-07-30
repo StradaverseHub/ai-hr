@@ -23,7 +23,7 @@ import { setPersonComplianceFields } from './profile';
 // whose country resolves no pack fails the import loudly (D3) instead of validating under MY rules.
 import { requirePackFor, type CountryPack } from '../localization/registry';
 import { normalizeEmployeeCode, isValidEmployeeCode, EMPLOYEE_CODE_MAX_LEN } from '../lib/employee-code';
-import { listDepartments, listLeaveTypes } from './read';
+import { listCompanies, listDepartments, listLeaveTypes } from './read';
 import { listPositions, listCostCenters } from './admin';
 import { appendEvent, actorOf } from '../db/events';
 import { IMPORT_COLUMNS, type ImportRecord, type RowResult, type ImportPreview, type ImportResult } from '../lib/import-schema';
@@ -39,8 +39,22 @@ const DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const TRUTHY = new Set(['', 'true', 'yes', 'y', '1']); // default-true fields: blank = true
 const FALSY = new Set(['false', 'no', 'n', '0']);
 
+/** Everything the per-row validation needs for ONE company: its catalogs and its country pack.
+ *  d8471481 made this per-company because a file may now span several. */
+type CompanyContext = {
+  id: string;
+  name: string;
+  deptByName: Map<string, string>;
+  posByName: Map<string, string>;
+  ccByName: Map<string, string>;
+  pack: CountryPack;
+};
+
 type ResolvedRow = {
   result: RowResult;
+  /** The company's pack — resolved from the ROW's company, not the screen's, so a Singapore company
+   *  in a mostly-Malaysian file is validated under its own statutory rules (ADR-0080 D1/D6). */
+  pack: CountryPack;
   hire: {
     person: { fullName: string; primaryEmail: string; phone?: string };
     companyId: string;
@@ -78,39 +92,89 @@ type ResolvedRow = {
 const norm = (s: string | undefined) => (s ?? '').trim();
 const lc = (s: string | undefined) => norm(s).toLowerCase();
 
-/** Read the company catalog + existing identifiers once, then validate every record in memory. */
-async function analyze(
+/** Build the catalog + pack context for ONE company. Called once per DISTINCT company named in the
+ *  file, so a single-company import does exactly the work it always did. */
+async function loadCompanyContext(
   ctx: SessionContext,
-  companyId: string,
-  records: ImportRecord[],
-): Promise<{ preview: ImportPreview; resolved: ResolvedRow[]; pack: CountryPack }> {
-  const [departments, positions, costCenters, leaveTypes] = await Promise.all([
-    listDepartments(ctx, { companyIds: [companyId] }),
-    listPositions(ctx, { companyIds: [companyId] }),
-    listCostCenters(ctx, { companyIds: [companyId] }),
-    listLeaveTypes(ctx),
+  co: { id: string; name: string; country: string | null },
+): Promise<CompanyContext> {
+  const [departments, positions, costCenters] = await Promise.all([
+    listDepartments(ctx, { companyIds: [co.id] }),
+    listPositions(ctx, { companyIds: [co.id] }),
+    listCostCenters(ctx, { companyIds: [co.id] }),
   ]);
-  const deptByName = new Map(departments.map((d) => [d.name.toLowerCase(), d.id]));
-  const posByName = new Map(positions.map((p) => [p.title.toLowerCase(), p.id]));
   const ccByName = new Map<string, string>();
   for (const c of costCenters) {
     if (c.name) ccByName.set(c.name.toLowerCase(), c.id);
     if (c.code) ccByName.set(c.code.toLowerCase(), c.id);
   }
+  return {
+    id: co.id,
+    name: co.name,
+    deptByName: new Map(departments.map((d) => [d.name.toLowerCase(), d.id])),
+    posByName: new Map(positions.map((p) => [p.title.toLowerCase(), p.id])),
+    ccByName,
+    // Rung 5a (ADR-0080 D1/D6): IC rules come from the COMPANY'S country pack, fail-loud when the
+    // country resolves nothing — so a per-row company change also changes the statutory rules applied.
+    pack: requirePackFor(co.country),
+  };
+}
+
+/** Read the company catalogs + existing identifiers once, then validate every record in memory. */
+async function analyze(
+  ctx: SessionContext,
+  companyId: string,
+  records: ImportRecord[],
+): Promise<{ preview: ImportPreview; resolved: ResolvedRow[] }> {
+  const [allCompanies, leaveTypes] = await Promise.all([listCompanies(ctx), listLeaveTypes(ctx)]);
+  // d8471481 — company lookup keys. Legal name is what the reporter's template shows; company label
+  // and registration number are accepted because those are what an HR spreadsheet usually carries.
+  // The id is accepted too so a machine-generated file can be exact. All matched case-insensitively.
+  const companyByKey = new Map<string, (typeof allCompanies)[number]>();
+  const key = (v: string | null | undefined) => (v ?? '').trim().toLowerCase();
+  for (const c of allCompanies) {
+    for (const k of [c.id, c.name, c.companyLabel, c.registrationNo]) {
+      const kk = key(k);
+      // First writer wins: a duplicate label must never silently retarget an unrelated company.
+      if (kk && !companyByKey.has(kk)) companyByKey.set(kk, c);
+    }
+  }
+  const defaultCompany = allCompanies.find((c) => c.id === companyId);
+
   const grants = leaveTypes
     .filter((t) => STANDING_GRANTS.has(t.code))
     .map((t) => ({ id: t.id, code: t.code }));
 
+  // PASS 1 — resolve each row's company from the file, so we know which catalogs to load. Pure and
+  // synchronous; the unresolved ones are recorded and surface as a per-row error in pass 2.
+  const rowCompanies = records.map((rec) => {
+    const raw = norm(rec.company);
+    if (!raw) return { raw, co: defaultCompany, unknown: false };
+    const co = companyByKey.get(raw.toLowerCase());
+    return { raw, co, unknown: !co };
+  });
+  const needed = new Map<string, (typeof allCompanies)[number]>();
+  for (const rc of rowCompanies) if (rc.co) needed.set(rc.co.id, rc.co);
+  if (defaultCompany) needed.set(defaultCompany.id, defaultCompany);
+  const contexts = new Map<string, CompanyContext>();
+  for (const [id, co] of needed) contexts.set(id, await loadCompanyContext(ctx, co));
+
   // Existing identifiers (tenant-scoped via RLS) so the import can't create dup ICs (DB-unique)
-  // or silently re-add someone by email. Rung 5a: the same read resolves the company's country pack
-  // (fail-loud) so every IC rule below is the acting company's, not a hardcoded jurisdiction.
-  const { existingEmails, existingIcs, existingCodes, pack } = await withTenant(ctx, async (tx) => {
-    const [co] = await tx
-      .select({ country: company.country })
-      .from(company)
-      .where(eq(company.id, companyId))
-      .limit(1);
-    const pack = requirePackFor(co?.country);
+  // or silently re-add someone by email. IC normalisation is pack-specific, so the collision set is
+  // built with the DEFAULT company's pack — the same pack that produced every stored IC in a
+  // single-jurisdiction tenant. `normalizeIC` is digit-stripping in every pack today, so this stays
+  // correct across a mixed file; if a pack ever normalises differently, this is where to revisit.
+  const normPack = contexts.get(companyId)?.pack ?? [...contexts.values()][0]?.pack;
+  const { existingEmails, existingIcs, existingCodes } = await withTenant(ctx, async (tx) => {
+    if (!normPack) {
+      // No resolvable company at all (the caller passed an id outside scope and no row named one).
+      const [co] = await tx
+        .select({ country: company.country })
+        .from(company)
+        .where(eq(company.id, companyId))
+        .limit(1);
+      requirePackFor(co?.country); // throws with the pack registry's own message
+    }
     const ppl = await tx.select({ email: person.primaryEmail }).from(person);
     const ics = await tx.select({ ic: employeeStatutoryMy.icNumber }).from(employeeStatutoryMy);
     // Employee IDs already in use in this tenant (feedback 38668d9b) — an import must not collide with an
@@ -120,9 +184,10 @@ async function analyze(
       existingEmails: new Set(ppl.map((r) => r.email.toLowerCase())),
       // Item e3ce0d4d — icNumber is now nullable (non-Malaysian passport rows); skip null ICs so a blank never
       // enters the collision set (mirrors the employeeCode filter below).
-      existingIcs: new Set(ics.filter((r) => r.ic).map((r) => pack.statutory.normalizeIC(r.ic as string))),
+      existingIcs: new Set(
+        ics.filter((r) => r.ic).map((r) => normPack!.statutory.normalizeIC(r.ic as string)),
+      ),
       existingCodes: new Set(codes.filter((r) => r.code).map((r) => normalizeEmployeeCode(r.code))),
-      pack,
     };
   });
 
@@ -139,6 +204,19 @@ async function analyze(
     const warnings: string[] = [];
     const fullName = norm(rec.full_name);
     const email = norm(rec.email);
+
+    // PASS 2 begins with the company: every catalog lookup below is against THIS row's company, which
+    // is what makes the reporter's "Department does not belong to selected company" a real check.
+    const rc = rowCompanies[idx];
+    if (rc.unknown) errors.push(`Unknown company "${rc.raw}"`);
+    else if (!rc.co) errors.push('Missing company');
+    const cctx = rc.co ? contexts.get(rc.co.id) : undefined;
+    const { deptByName, posByName, ccByName } = cctx ?? {
+      deptByName: new Map<string, string>(),
+      posByName: new Map<string, string>(),
+      ccByName: new Map<string, string>(),
+    };
+    const pack = cctx?.pack ?? normPack!;
 
     // Employee ID (feedback 38668d9b): HR MAY supply one — the feature is manual-entry ABILITY, not an
     // obligation. Blank or absent → hireEmployee auto-generates via nextEmployeeCode, exactly like a
@@ -289,12 +367,21 @@ async function analyze(
     }
 
     const ok = errors.length === 0;
-    const result: RowResult = { rowNum: idx + 1, fullName, email, ok, errors, warnings };
+    const result: RowResult = {
+      rowNum: idx + 1,
+      fullName,
+      email,
+      ok,
+      errors,
+      warnings,
+      company: rc.co?.name ?? '',
+    };
     resolved.push({
       result,
+      pack,
       hire: {
         person: { fullName, primaryEmail: email, phone: norm(rec.phone) || undefined },
-        companyId,
+        companyId: rc.co?.id ?? companyId,
         departmentId: departmentId ?? '',
         positionId,
         costCenterId,
@@ -333,7 +420,7 @@ async function analyze(
     rows: resolved.map((r) => r.result),
     missingColumns,
   };
-  return { preview, resolved, pack };
+  return { preview, resolved };
 }
 
 /** Dry run: validate the records against the company catalog without writing anything. */
@@ -352,12 +439,15 @@ export async function commitEmployeeImport(
   ctx: SessionContext,
   p: { companyId: string; records: ImportRecord[] },
 ): Promise<ImportResult> {
-  const { resolved, pack } = await analyze(ctx, p.companyId, p.records);
+  const { resolved } = await analyze(ctx, p.companyId, p.records);
   const valid = resolved.filter((r) => r.result.ok);
   const failed: ImportResult['failed'] = [];
   let imported = 0;
 
   for (const row of valid) {
+    // Per-ROW pack (d8471481): a file may span companies, and a company's statutory writer is its
+    // own country's. Reading it off the row rather than the batch is what keeps that honest.
+    const pack = row.pack;
     try {
       const { employmentId, personId } = await hireEmployee(ctx, row.hire);
       await pack.statutory.set(ctx, { personId, ...row.statutory });
@@ -397,7 +487,16 @@ export async function commitEmployeeImport(
       aggregateId: p.companyId,
       eventType: 'employee-import.completed',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, imported, failed: failed.length, skipped: resolved.length - valid.length },
+      payload: {
+        companyId: p.companyId,
+        imported,
+        failed: failed.length,
+        skipped: resolved.length - valid.length,
+        // d8471481 — one file may now create employees at several companies. The aggregate stays the
+        // SELECTED company (a stable aggregate id the audit trail already keys on); the distinct
+        // companies actually written are recorded here so the event still describes what happened.
+        companyIds: [...new Set(valid.map((r) => r.hire.companyId))],
+      },
     }),
   );
 

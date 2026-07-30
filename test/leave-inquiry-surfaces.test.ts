@@ -175,7 +175,7 @@ describe('953be4b0: Employee Leave Record', () => {
     expect(recordsPage).toContain("const dir: 'asc' | 'desc' = sp.dir === 'asc' ? 'asc' : 'desc';");
   });
 
-  it('renders all ten requested columns', () => {
+  it('renders all ten originally requested columns, plus the three fe3eb141 added', () => {
     for (const col of [
       "t('filters.employeeId')",
       "t('colEmployee')",
@@ -187,10 +187,15 @@ describe('953be4b0: Employee Leave Record', () => {
       "tInq('colAttachment')",
       "t('colApplied')",
       "tInq('colFinalApproval')",
+      // fe3eb141 — the reference the Requests subsection shows, a Status column (without which
+      // "why is there no Cancel button" is unanswerable), and the Action column itself.
+      "t('filters.reference')",
+      "t('filters.statusLabel')",
+      "t('colAction')",
     ]) {
       expect(recordsPage.includes(col), col).toBe(true);
     }
-    expect(recordsPage).toContain('colSpan={10}');
+    expect(recordsPage).toContain('colSpan={13}');
   });
 
   it('reuses the existing per-request attachment route and its authorization', () => {

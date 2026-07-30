@@ -7,29 +7,41 @@
  *   2. PARSE   CSV text               → records         ← lib/csv  (parseCsvRecords)
  *   3. WRITE   records                → employments     ← core/import via the server actions
  *
- * Only step 1 is new. Steps 2 and 3 already worked; the employee import screen simply had no way to
- * get a file into step 2 other than pasting its contents into a textarea. So this module deliberately
- * stops at "text": it hands back the exact same string a human would have pasted, and every downstream
- * guarantee (validation, per-row errors, the server-side re-validate on commit) is unchanged.
+ * d8471481 REPLACED STEP 1 ONLY, exactly as r78 designed it to be replaceable. An Excel workbook is
+ * decoded here into the same CSV text a human would have pasted, using the SAME decoder the leave
+ * importer uses (`lib/spreadsheet`'s `workbookToCsvText` — there is deliberately only ONE workbook
+ * decoder in this repo). Steps 2 and 3 are untouched: the server still receives plain CSV text and
+ * still re-validates everything, so no workbook ever reaches a server action.
  *
- * SEQUENCING NOTE (d8471481 — .xlsx employee template with dropdown reference values): that work
- * replaces step 1 only. It swaps/extends `readImportFile` to decode a workbook (lib/spreadsheet's
- * `workbookToCsvText` already does this for the leave importer) and leaves steps 2 and 3 untouched.
- * Nothing in this file knows what a column means, so widening it cannot regress the write path.
+ * WHY THE BOM STRIP STILL MATTERS. `Blob.text()` performs a UTF-8 decode, which drops a leading
+ * byte-order mark. Excel's "CSV UTF-8" export writes one, and without the strip the first header
+ * reads as `﻿full_name` — so `full_name`, a REQUIRED column, is reported missing on a file that
+ * looks perfectly correct. Verified in Node, not assumed. CSV remains a first-class input (the
+ * reporter's own existing files are CSV) and keeps that guarantee.
  */
 
-/** `accept` for the file input. CSV only today — d8471481 widens this alongside `readImportFile`. */
-export const IMPORT_FILE_ACCEPT = '.csv,text/csv';
+/** `accept` for the file input. Extensions FIRST (browsers report wildly inconsistent MIME types),
+ *  with the MIME types appended for the pickers that use them. */
+export const IMPORT_FILE_ACCEPT =
+  '.xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv';
 
 /** Next Server Functions default to a ~1 MB request body and the CSV text is sent as an argument.
  *  A 500-row employee file is ~60 KB, so this is a generous ceiling that still fails fast and
- *  locally instead of as an opaque 413 from the server action. */
+ *  locally instead of as an opaque 413 from the server action. Checked against the DECODED TEXT,
+ *  which is what actually crosses the wire. */
 export const MAX_IMPORT_CSV_BYTES = 900_000;
+
+/** Ceiling on the picked file itself, checked before any decode so a 200 MB video is never read.
+ *  Higher than the text ceiling because an .xlsx is a ZIP: a workbook whose CSV projection is 900 KB
+ *  is far smaller on disk, and rejecting on the compressed size would reject valid files. The text
+ *  ceiling above is the one that protects the server action. */
+export const MAX_IMPORT_FILE_BYTES = 5_000_000;
 
 export type ImportFileErrorCode =
   | 'UNSUPPORTED_FILE_TYPE'
   | 'FILE_TOO_LARGE'
   | 'EMPTY_FILE'
+  | 'EMPTY_SHEET'
   | 'FILE_READ_FAILED';
 
 /** Thrown by `readImportFile`. Carries a stable code so the UI maps it to a translated message
@@ -43,11 +55,13 @@ export class ImportFileError extends Error {
   }
 }
 
+/** What was decoded. The Excel formats go through `workbookToCsvText`; 'csv' is read natively. */
+export type ImportFileFormat = 'csv' | 'xlsx' | 'xls';
+
 export type ImportFileRead = {
   /** The file's own name, for the "loaded" confirmation line. */
   name: string;
-  /** What was decoded. Only 'csv' today; d8471481 adds 'xlsx'. */
-  format: 'csv';
+  format: ImportFileFormat;
   /** CSV text — byte-for-byte what the user would otherwise have pasted. */
   text: string;
 };
@@ -59,27 +73,52 @@ export function isCsvFileName(name: string): boolean {
   return name.toLowerCase().trim().endsWith('.csv');
 }
 
+/** The format a file name declares, or null when it is not an import file at all. Same
+ *  extension-only reasoning as `isCsvFileName` — Excel's MIME types are just as inconsistent. */
+export function importFileFormat(name: string): ImportFileFormat | null {
+  const n = name.toLowerCase().trim();
+  if (n.endsWith('.xlsx')) return 'xlsx';
+  if (n.endsWith('.xls')) return 'xls';
+  if (n.endsWith('.csv')) return 'csv';
+  return null;
+}
+
 /**
  * Read a picked/dropped file into CSV text.
  *
  * Checks run cheapest-first so a 200 MB video never gets decoded: name, then size, then contents.
- * `Blob.text()` performs a UTF-8 decode, which strips a leading byte-order mark — the BOM Excel's
- * "CSV UTF-8" export writes would otherwise turn the first header into `﻿full_name` and make
- * the importer report `full_name` as a missing required column.
+ * SheetJS is imported lazily (it is ~400 KB) so an admin who only ever uploads CSV never downloads
+ * it, and it never enters a server bundle.
  */
 export async function readImportFile(file: File): Promise<ImportFileRead> {
-  if (!isCsvFileName(file.name)) throw new ImportFileError('UNSUPPORTED_FILE_TYPE');
-  if (file.size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
+  const format = importFileFormat(file.name);
+  if (!format) throw new ImportFileError('UNSUPPORTED_FILE_TYPE');
+  if (file.size > MAX_IMPORT_FILE_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
 
   let text: string;
-  try {
-    text = await file.text();
-  } catch {
-    throw new ImportFileError('FILE_READ_FAILED');
+  if (format === 'csv') {
+    if (file.size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
+    try {
+      text = await file.text();
+    } catch {
+      throw new ImportFileError('FILE_READ_FAILED');
+    }
+  } else {
+    const { workbookToCsvText } = await import('./spreadsheet');
+    try {
+      text = await workbookToCsvText(await file.arrayBuffer());
+    } catch (e) {
+      // The decoder's one meaningful failure is a workbook whose first sheet holds nothing; it is a
+      // user-fixable mistake and deserves its own message rather than "could not read that file".
+      throw new ImportFileError((e as Error)?.message === 'EMPTY_SHEET' ? 'EMPTY_SHEET' : 'FILE_READ_FAILED');
+    }
+    // A workbook's CSV projection can be far larger than the compressed file, so the text ceiling is
+    // enforced AFTER the decode for this path — that is the size the server action actually receives.
+    if (new Blob([text]).size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
   }
-  if (text.trim() === '') throw new ImportFileError('EMPTY_FILE');
+  if (text.trim() === '') throw new ImportFileError(format === 'csv' ? 'EMPTY_FILE' : 'EMPTY_SHEET');
 
-  return { name: file.name, format: 'csv', text };
+  return { name: file.name, format, text };
 }
 
 /** Error code → i18n key under the importer's namespace. Exported (rather than inlined in the
@@ -90,6 +129,7 @@ export const IMPORT_FILE_MESSAGE_KEYS = {
   UNSUPPORTED_FILE_TYPE: 'unsupportedFileType',
   FILE_TOO_LARGE: 'fileTooLarge',
   EMPTY_FILE: 'emptyFile',
+  EMPTY_SHEET: 'emptySheet',
   FILE_READ_FAILED: 'fileReadError',
 } as const satisfies Record<ImportFileErrorCode, string>;
 
