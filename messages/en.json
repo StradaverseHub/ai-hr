@@ -256,7 +256,7 @@
     "list": {
       "title": "Personnel",
       "employeeCount": "{count, plural, one {# employee} other {# employees}}",
-      "importCsv": "Import CSV",
+      "importCsv": "Import employees",
       "profileChangeRequests": "Profile change requests",
       "pendingCount": "{count, plural, one {# pending} other {# pending}}",
       "profileChangeHint": "Approving applies the change to the employee’s statutory profile (bank / PCB). You cannot approve your own request.",
@@ -1203,7 +1203,7 @@
     },
     "import": {
       "title": "Import employees",
-      "description": "Bulk-load employees, statutory profiles and pay from a CSV. Validate first, then import.",
+      "description": "Bulk-load employees, statutory profiles and pay from an Excel (.xlsx) file. Download the template, fill it in, upload it — nothing is created until you have seen the check.",
       "backLabel": "People",
       "noCompanies": "Create a company before importing employees.",
       "targetCompany": "Target company",

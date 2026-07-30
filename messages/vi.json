@@ -256,7 +256,7 @@
     "list": {
       "title": "Nhân sự",
       "employeeCount": "{count, plural, one {# nhân viên} other {# nhân viên}}",
-      "importCsv": "Nhập CSV",
+      "importCsv": "Nhập nhân viên",
       "profileChangeRequests": "Yêu cầu thay đổi hồ sơ",
       "pendingCount": "{count, plural, one {# chờ duyệt} other {# chờ duyệt}}",
       "profileChangeHint": "Phê duyệt sẽ áp dụng thay đổi vào hồ sơ pháp lý của nhân viên (ngân hàng / PCB). Bạn không thể tự duyệt yêu cầu của chính mình.",
@@ -1203,7 +1203,7 @@
     },
     "import": {
       "title": "Nhập nhân viên",
-      "description": "Nạp hàng loạt nhân viên, hồ sơ pháp lý và lương từ tệp CSV. Hãy xác thực trước rồi nhập.",
+      "description": "Nạp hàng loạt nhân viên, hồ sơ pháp lý và lương từ tệp Excel (.xlsx). Tải mẫu, điền thông tin rồi tải lên — không có gì được tạo cho đến khi bạn xem kết quả kiểm tra.",
       "backLabel": "Nhân sự",
       "noCompanies": "Hãy tạo công ty trước khi nhập nhân viên.",
       "targetCompany": "Công ty đích",

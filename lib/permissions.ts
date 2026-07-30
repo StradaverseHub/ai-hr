@@ -206,7 +206,16 @@ export const SCREENS: readonly ScreenEntry[] = [
     // and review-reminder cadence, relocated off the Payroll Schedule screen. Registered as a ROUTE of the
     // existing personnel-admin screen rather than a new screenKey: it is the same admin surface behind the
     // same requireAdmin guard, so it inherits the function-access column instead of minting one.
-    routes: ['/admin/personnel', '/admin/personnel/[employmentId]', '/admin/personnel/import', '/admin/personnel/settings'],
+    // 6d671f44: /admin/personnel/new is the Create New Employee wizard, registered here for the same
+    // reason — it is the same admin surface behind the same requireAdmin guard, and creating an
+    // employee is not a separate function-access right from managing them.
+    routes: [
+      '/admin/personnel',
+      '/admin/personnel/[employmentId]',
+      '/admin/personnel/import',
+      '/admin/personnel/new',
+      '/admin/personnel/settings',
+    ],
   },
   {
     screenKey: 'systemLabels',

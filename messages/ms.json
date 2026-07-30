@@ -256,7 +256,7 @@
     "list": {
       "title": "Kakitangan",
       "employeeCount": "{count, plural, one {# pekerja} other {# pekerja}}",
-      "importCsv": "Import CSV",
+      "importCsv": "Import pekerja",
       "profileChangeRequests": "Permohonan tukar profil",
       "pendingCount": "{count, plural, one {# tertangguh} other {# tertangguh}}",
       "profileChangeHint": "Meluluskan akan menggunakan perubahan pada profil berkanun pekerja (bank / PCB). Anda tidak boleh meluluskan permohonan sendiri.",
@@ -1203,7 +1203,7 @@
     },
     "import": {
       "title": "Import pekerja",
-      "description": "Muat pukal pekerja, profil berkanun dan gaji daripada CSV. Sahkan dahulu, kemudian import.",
+      "description": "Muat pukal pekerja, profil berkanun dan gaji daripada fail Excel (.xlsx). Muat turun templat, isikannya, muat naik — tiada apa-apa dicipta sehingga anda melihat semakan.",
       "backLabel": "Kakitangan",
       "noCompanies": "Cipta syarikat sebelum mengimport pekerja.",
       "targetCompany": "Syarikat sasaran",

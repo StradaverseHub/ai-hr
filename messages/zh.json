@@ -256,7 +256,7 @@
     "list": {
       "title": "员工",
       "employeeCount": "{count, plural, one {# 名员工} other {# 名员工}}",
-      "importCsv": "导入 CSV",
+      "importCsv": "导入员工",
       "profileChangeRequests": "资料变更申请",
       "pendingCount": "{count, plural, one {# 项待处理} other {# 项待处理}}",
       "profileChangeHint": "批准后将把变更应用到员工的法定资料（银行 / PCB）。您不能批准自己的申请。",
@@ -1203,7 +1203,7 @@
     },
     "import": {
       "title": "导入员工",
-      "description": "通过 CSV 批量加载员工、法定资料及薪酬。请先校验，再导入。",
+      "description": "通过 Excel (.xlsx) 文件批量加载员工、法定资料及薪酬。下载模板、填写并上传 — 在您查看校验结果之前不会创建任何记录。",
       "backLabel": "员工",
       "noCompanies": "导入员工前请先创建一家公司。",
       "targetCompany": "目标公司",

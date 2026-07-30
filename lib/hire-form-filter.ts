@@ -17,12 +17,12 @@
  * (a shared-in department whose BU stayed origin-only), the BU rule degrades to "unassigned" so
  * the department is not permanently hidden the moment any BU is picked.
  *
- * `hireOptionVisible` is the single pure visibility rule. The page's inline script (kept pure-DOM,
- * no React client island — see the comment in `app/admin/personnel/page.tsx`) embeds this exact
- * function via `HIRE_ORG_FILTER_SCRIPT`, so the unit-tested logic and the shipped script cannot
- * drift. Keep the function body self-contained (no outer-scope references — the csv-contains
- * helper is inlined) — it is serialised with `Function.prototype.toString` into the inline
- * `<script>`.
+ * `hireOptionVisible` is the single pure visibility rule, and its one caller is now the Create New
+ * Employee wizard (app/admin/personnel/new/wizard.tsx), which is a client component and simply calls
+ * it. It used to be serialised into a pure-DOM inline `<script>` on the Personnel LIST page via
+ * `HIRE_ORG_FILTER_SCRIPT` — see the note where that constant used to be, at the foot of this file.
+ * The body is still written self-contained (the csv-contains helper is inlined) because that costs
+ * nothing and keeps it trivially portable.
  */
 
 export interface HireOptionVisibleArgs {
