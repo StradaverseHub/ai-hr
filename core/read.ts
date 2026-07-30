@@ -89,7 +89,6 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
         // The person behind the employment — the invite form (0279) binds an invitation to a PERSON,
         // not an employment, so it needs this id. Additive; existing callers ignore it.
         personId: employment.personId,
-        status: assignment.status,
         department: department.name,
         // Current-assignment department id — the Individual Transaction wizard uses it (client-side) to
         // filter Step-2 batches whose scope names departments the employee belongs to (a UX filter; the
@@ -131,9 +130,9 @@ export type EmployeeListRow = {
   name: string;
   email: string;
   employeeCode: string | null;
-  // Legacy stored assignment.status — kept for callers that still read it (analytics/perf); the People list
-  // now shows the DERIVED status (deriveEmploymentStatus) computed from the lifecycle dates below.
-  status: string | null;
+  // R81 (9cbf5e0d): the legacy stored `status` field is GONE from this row — the column behind it was
+  // dropped (migration 0331). Every consumer already derived the badge from the lifecycle dates below via
+  // deriveEmploymentStatus; nothing read this field for display. Derive, do not re-add.
   department: string | null;
   departmentId: string | null;
   position: string | null;
@@ -172,7 +171,7 @@ export function listEmployeesPage(
     departmentIds?: string[];
     /** Derived Employee Status buckets (9cbf5e0d). A WHERE predicate cannot call the TypeScript
      *  deriver, so it narrows through employmentStatusSql — the twin pinned equal by
-     *  test/personnel-status-sync.test.ts. Never the legacy stored assignment.status. */
+     *  test/personnel-status-sync.test.ts. There is no stored status column to confuse it with (R81). */
     employmentStatuses?: EmploymentStatus[];
     /** 'company' = company A→Z then employee name A→Z (650b6eb8's reading order); default is name. */
     sort?: 'name' | 'company';
@@ -216,7 +215,6 @@ export function listEmployeesPage(
         name: person.fullName,
         email: person.primaryEmail,
         employeeCode: employment.employeeCode,
-        status: assignment.status,
         department: department.name,
         departmentId: assignment.departmentId,
         position: position.title,
@@ -227,6 +225,10 @@ export function listEmployeesPage(
         // R43 c26c3ce5 — lifecycle inputs for the derived status badge.
         confirmationDate: employment.confirmationDate,
         finalConfirmationDate: employment.finalConfirmationDate,
+        // R81 — the probation fallbacks. Nothing writes a confirmation date at hire, so without these two
+        // a new hire serving probation derived to "Active" on day one. See core/employment-status.ts.
+        probationEndDate: employment.probationEndDate,
+        provisionalEndOn: employment.provisionalEndOn,
         resignationDate: employment.resignationDate,
         lastWorkingDate: employment.lastWorkingDate,
         blacklistedAt: employment.blacklistedAt,
@@ -430,6 +432,7 @@ export type PayrollRunEmployeeRow = {
   gradeId: string | null;
   costCenterId: string | null;
   employmentType: string | null;
+  /** R81: the DERIVED Employee Status bucket (core/employment-status.ts), never a stored column. */
   status: string | null;
   hiredOn: string;
   terminatedOn: string | null;
@@ -442,7 +445,7 @@ export type PayrollRunEmployeeRow = {
  * Payroll Process wizard (Step 2 population, plan §2) — the employee set for a company + 'YYYY-MM' pay
  * period, using generatePayslips' OWN period predicate (hired on/before period end AND not terminated
  * before period start) — NOT current-roster semantics — so this preview always equals what generation
- * would pick up. A mid-period leaver appears by default; assignment.status is NOT part of generation's
+ * would pick up. A mid-period leaver appears by default; Employee Status is NOT part of generation's
  * predicate, so a status filter narrowing this list is a visible user choice, not a silent drop. Read-only
  * — no DomainEvent (derived recomputation, substrate's documented skip).
  */
@@ -483,7 +486,11 @@ export function listEmployeesForPayrollRun(
         gradeId: employment.gradeId,
         costCenterId: assignment.costCenterId,
         employmentType: assignment.employmentType,
-        status: assignment.status,
+        // R81 (9cbf5e0d): the DERIVED Employee Status, not the dropped stored column. Step 2's Status filter
+        // now offers the same six buckets Personnel shows. It stays a FILTER, never a gate — generation's
+        // own predicate (hired-by-period-end, not-terminated-before-period-start) is unchanged, so nobody's
+        // pay eligibility moves; only the option labels in that dropdown do.
+        status: employmentStatusSql(),
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
         hasCurrentCompensation: sql<boolean>`${compensation.id} is not null`,
@@ -1434,9 +1441,13 @@ export function recentHires(
         hiredOn: employment.hiredOn,
         // Employee Status sync (5afcda91): project the lifecycle inputs so the dashboard badge shows the
         // SAME system-derived Employee Status as the Personnel screens (deriveEmploymentStatus), instead
-        // of the legacy stored assignment.status (obsolete on_leave/offboarding values must not render).
+        // rather than any stored column — R81 dropped assignment.status along with its retired values.
         confirmationDate: employment.confirmationDate,
         finalConfirmationDate: employment.finalConfirmationDate,
+        // R81 — the probation fallbacks. Nothing writes a confirmation date at hire, so without these two
+        // a new hire serving probation derived to "Active" on day one. See core/employment-status.ts.
+        probationEndDate: employment.probationEndDate,
+        provisionalEndOn: employment.provisionalEndOn,
         resignationDate: employment.resignationDate,
         lastWorkingDate: employment.lastWorkingDate,
         terminatedOn: employment.terminatedOn,
@@ -1667,6 +1678,10 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         noticeAfterConfirmationUnit: employment.noticeAfterConfirmationUnit,
         extendedConfirmationDate: employment.extendedConfirmationDate,
         finalConfirmationDate: employment.finalConfirmationDate,
+        // R81 — the probation fallbacks deriveEmploymentStatus needs. Nothing writes a confirmation date at
+        // hire, so without these two an employee serving probation reads "Active" on their own profile.
+        probationEndDate: employment.probationEndDate,
+        provisionalEndOn: employment.provisionalEndOn,
         tenderResignationDate: employment.tenderResignationDate,
         lastWorkingDate: employment.lastWorkingDate,
         orgBranch: employment.orgBranch,
@@ -1779,7 +1794,10 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
         // 570e3311 — BU display name (additive), so the detail page can label a pinned-current BU that is
         // no longer in the company-scoped option list (legacy / later-unshared data).
         businessUnit: businessUnit.name,
-        status: assignment.status,
+        // R81 (9cbf5e0d): no `status` here any more — the column is dropped (migration 0331). This read
+        // powers the dated org history (department / position / BU / type), which is what actually varies
+        // per version; the Movement tab replaced the old status column in this table back at 78853b97, so
+        // nothing rendered it. Current Employee Status is derived, once, from the lifecycle dates.
         employmentType: assignment.employmentType,
         validFrom: assignment.validFrom,
         validTo: assignment.validTo,

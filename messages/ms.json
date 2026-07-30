@@ -250,7 +250,8 @@
       "active": "Aktif",
       "active_serving_notice": "Aktif — Menjalani Notis",
       "resigned": "Berhenti",
-      "blacklisted": "Disenaraihitamkan"
+      "blacklisted": "Disenaraihitamkan",
+      "withhold": "Tahan Bayaran"
     },
     "list": {
       "title": "Kakitangan",
@@ -305,7 +306,7 @@
       "allStatuses": "Semua status",
       "allTypes": "Semua jenis",
       "statusActive": "Aktif",
-      "statusTerminated": "Ditamatkan",
+      "statusTerminated": "Berhenti",
       "emptyFiltered": "Tiada pekerja sepadan dengan tapisan.",
       "orgInfoHeading": "Maklumat organisasi",
       "employmentInfoHeading": "Maklumat pekerjaan",
@@ -2265,10 +2266,7 @@
       "previewButtonLabel": "Pratonton pekerja yang layak",
       "eligibleCountLabel": "{count, plural, one {# pekerja layak setakat ini (setakat sekarang)} other {# pekerja layak setakat ini (setakat sekarang)}}",
       "status_active": "Aktif",
-      "status_on_leave": "Bercuti",
       "status_probation": "Percubaan",
-      "status_offboarding": "Penamatan",
-      "status_terminated": "Ditamatkan",
       "employmentType_full_time": "Sepenuh masa",
       "employmentType_part_time": "Separuh masa",
       "employmentType_contract": "Kontrak",
@@ -2278,7 +2276,11 @@
       "chipSelectAll": "Pilih semua",
       "chipClearAll": "Kosongkan semua",
       "chipAllSelected": "Semua dipilih",
-      "chipNSelected": "{count} dipilih"
+      "chipNSelected": "{count} dipilih",
+      "status_active_serving_notice": "Aktif — Menjalani Notis",
+      "status_resigned": "Berhenti",
+      "status_blacklisted": "Disenaraihitamkan",
+      "status_withhold": "Tahan Bayaran"
     },
     "cycle": {
       "back": "Prestasi",

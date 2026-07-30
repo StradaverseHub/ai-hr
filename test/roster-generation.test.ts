@@ -40,7 +40,6 @@ async function assignDept(employmentId: string, departmentId: string) {
     employmentId,
     departmentId,
     employmentType: 'full_time',
-    status: 'active',
     validFrom: '2020-01-01',
   });
 }

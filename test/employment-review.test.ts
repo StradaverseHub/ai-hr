@@ -185,10 +185,11 @@ describe('state machine + advisory decisions', () => {
     const [asgBefore] = await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId, E1.employmentId));
     await submitManagerEvaluation(a, { reviewId: r1.reviewId, recommendation: 'recommend_confirm' });
     await decideReview(a, { reviewId: r1.reviewId, decision: 'confirm' });
-    // the live assignment row is UNCHANGED by confirm — decisions are advisory (no status flip, no new version)
+    // the live assignment row is UNCHANGED by confirm — decisions are advisory (no new version). R81:
+    // there is no stored status left to flip, so this compares the row's identity and dated window instead.
     const asgAfter = await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId, E1.employmentId));
     expect(asgAfter).toHaveLength(1);
-    expect(asgAfter[0].status).toBe(asgBefore.status);
+    expect(asgAfter[0].validFrom).toBe(asgBefore.validFrom);
     expect(asgAfter[0].id).toBe(asgBefore.id);
 
     // extend

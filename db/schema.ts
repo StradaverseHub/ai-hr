@@ -75,13 +75,13 @@ export const employmentTypeEnum = pgEnum('employment_type', [
  * account the bulk file is drawn on.
  */
 export const paymentMethodEnum = pgEnum('payment_method', ['bank_transfer', 'cheque', 'cash']);
-export const assignmentStatusEnum = pgEnum('assignment_status', [
-  'active',
-  'on_leave',
-  'probation',
-  'offboarding',
-  'terminated',
-]);
+// R81 (9cbf5e0d), migration 0331 — the `assignment_status` pgEnum and the `assignment.status` column it
+// typed are DROPPED. The reporter's rule set retired three of its five values (On Leave / Offboarding /
+// Terminated) and made Employee Status non-editable, which left the column holding a value that (a) nothing
+// displayed any more and (b) no caller was allowed to change — a permanently stale field that could only
+// ever drift back into disagreeing with the screens. Employee Status now has exactly ONE definition:
+// core/employment-status.ts (TypeScript) / core/employment-status-sql.ts (SQL). See the migration header
+// for the before/after report and the retired-value mapping.
 export const reportingLineTypeEnum = pgEnum('reporting_line_type', [
   'administrative',
   'functional',
@@ -952,7 +952,6 @@ export const assignment = pgTable(
     // `state` overrides holiday resolution; see location table + core/attendance.ts.
     locationId: uuid('location_id').references((): AnyPgColumn => location.id),
     employmentType: employmentTypeEnum('employment_type').notNull(),
-    status: assignmentStatusEnum('status').notNull(),
     validFrom: date('valid_from').notNull(),
     validTo: date('valid_to'), // null = open / current
     recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),

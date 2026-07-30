@@ -38,6 +38,15 @@ afterAll(async () => {
 
 /** Fixed "today" so every vector is deterministic — the deriver is pure in (inputs, today). */
 const TODAY = '2026-07-15';
+
+/**
+ * R81 (9cbf5e0d) — the buckets a DATABASE ROW CAN PRODUCE. `withhold` is deliberately absent: it is driven
+ * by a Payroll hold, and Payroll has no hold setting yet, so no column, writer or fixture can put anybody
+ * into it. Every "one vector per bucket" assertion below iterates THIS list; a separate case pins the other
+ * half of the guarantee — that withhold derives correctly when its input is supplied, and that nothing in
+ * the schema supplies it. When the payroll hold ships, delete this constant and the two lists become one.
+ */
+const DB_REACHABLE_STATUSES = EMPLOYMENT_STATUSES.filter((s) => s !== 'withhold');
 const HIRED_ON = '2026-02-01';
 
 const hire = (name: string) =>
@@ -93,8 +102,27 @@ describe('Employee Status sync — one derived status across every payload (5afc
     expected.set(blacklisted.employmentId, 'blacklisted');
   });
 
-  it('covers every derived bucket with a vector', () => {
-    expect(new Set(expected.values())).toEqual(new Set(EMPLOYMENT_STATUSES));
+  it('covers every DB-reachable derived bucket with a vector', () => {
+    expect(new Set(expected.values())).toEqual(new Set(DB_REACHABLE_STATUSES));
+  });
+
+  // The sixth bucket, both halves. It is not enough to assert the deriver returns 'withhold' for a hold —
+  // that would pass even if a stray column were quietly wired up to set one. This also asserts the reverse:
+  // reading every employment through the real projections, nobody is in it.
+  it('withhold derives from a payroll hold, and NOTHING in the schema can produce one', async () => {
+    expect(deriveEmploymentStatus({ payrollHoldAt: '2026-07-01' }, TODAY)).toBe('withhold');
+    // It outranks the date ladder but not blacklist.
+    expect(deriveEmploymentStatus({ payrollHoldAt: '2026-07-01', resignationDate: '2026-01-01' }, TODAY)).toBe('withhold');
+    expect(deriveEmploymentStatus({ payrollHoldAt: '2026-07-01', blacklistedAt: '2026-01-01' }, TODAY)).toBe('blacklisted');
+    // No real row reaches it, on either side of the language boundary.
+    const { rows } = await listEmployeesPage(adminCtx(b), { limit: 200, offset: 0 });
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(deriveEmploymentStatus(row, TODAY)).not.toBe('withhold');
+    const sqlRows = await withTenant(adminCtx(b), (tx) =>
+      tx.select({ derived: employmentStatusSql(TODAY) }).from(employment),
+    );
+    expect(sqlRows.length).toBeGreaterThan(0);
+    for (const r of sqlRows) expect(r.derived).not.toBe('withhold');
   });
 
   it('directory / search payload (listEmployeesPage) derives each bucket', async () => {
@@ -132,10 +160,11 @@ describe('Employee Status sync — one derived status across every payload (5afc
   it('the analytics Employee Status chart tallies the same buckets (no retired stored values)', async () => {
     const d = await workforceDemographics(adminCtx(b), undefined, { asOf: TODAY });
     const counts = new Map(d.byEmploymentStatus.map((r) => [r.name, r.count]));
-    for (const bucket of EMPLOYMENT_STATUSES) {
+    for (const bucket of DB_REACHABLE_STATUSES) {
       expect(counts.get(bucket), `chart bucket ${bucket}`).toBe(1);
     }
-    // Nothing outside the five derived buckets may reach the chart.
+    expect(counts.get('withhold')).toBeUndefined();
+    // Nothing outside the derived buckets may reach the chart.
     expect(d.byEmploymentStatus.every((r) => (EMPLOYMENT_STATUSES as readonly string[]).includes(r.name))).toBe(true);
   });
 
@@ -183,6 +212,9 @@ describe('drift guard — no surface renders the obsolete statuses', () => {
     const PAYROLL_VIEW = read('core/payroll-view.ts');
     expect(ANALYTICS).toContain('employmentStatusSql');
     expect(ANALYTICS).not.toMatch(/assignmentStatus:\s*assignment\.status/);
+    // R81 — the column is gone; no projection anywhere may name it again.
+    expect(ANALYTICS).not.toMatch(/status:\s*assignment\.status/);
+    expect(read('core/read.ts')).not.toMatch(/status:\s*assignment\.status/);
     expect(PAYROLL_VIEW).toContain('employmentStatusSql');
     expect(PAYROLL_VIEW).not.toMatch(/employmentStatus:\s*assignment\.status/);
     // The dashboard filter must offer the derived buckets, never the retired stored ones.
@@ -191,7 +223,7 @@ describe('drift guard — no surface renders the obsolete statuses', () => {
     expect(FILTER_BAR).not.toMatch(/on_leave|offboarding/);
   });
 
-  it('the StatusBadge vocabulary contains exactly the five derived buckets — no legacy keys', () => {
+  it('the StatusBadge vocabulary contains exactly the six derived buckets — no legacy keys', () => {
     const block = UI.match(/const STATUS_STYLES[\s\S]*?\n\};/)?.[0];
     expect(block).toBeDefined();
     for (const bucket of EMPLOYMENT_STATUSES) expect(block!).toMatch(new RegExp(`^\\s*${bucket}:`, 'm'));
@@ -199,7 +231,7 @@ describe('drift guard — no surface renders the obsolete statuses', () => {
   });
 });
 
-describe('i18n — badge labels for all five buckets in all six locales', () => {
+describe('i18n — badge labels for all six buckets in all six locales', () => {
   const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
   it.each(LOCALES)('%s has people.employeeStatus.* for every bucket', (locale) => {
     const messages = JSON.parse(
