@@ -5,34 +5,40 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-07-30, after r83)
+## CURRENT STATE — read this first (updated 2026-07-30, after r84)
 
 **If you read nothing else, read these seven lines.**
-1. Deployed head is `main@69d8968`, migrations through `0330`, **279 applied on production**. **Next free
-   number is `0331`.** Two numbers are ALLOCATED BUT UNMERGED and must not be reused: **`0326`**
-   (`9cbf5e0d` on `build/r81b`) and **`0328`** (`9816a5ad` step 2 on `build/r83a`).
-2. **CHECK `git branch --show-current` AT THE REPO ROOT BEFORE ANYTHING.** The root is on
-   `fix/companies-list`, four rounds behind. **The HANDOFF.md at the repo root is STALE — reading it will
-   give you a board state and a deployed head that are both wrong.** `main` lives at
-   `.claude/worktrees/mainwt`. r83 lost a full suite run to a `cd` that silently left the shell at the
-   root; see Traps.
-3. **`9816a5ad` step 2 is BUILT and HELD on `build/r83a`**, re-planned to the reporter as revision 7 and
-   awaiting approval. Its guard migration `0328` was run against production and **FIRED** — see below.
-   **`fa3f4ccb` is now `approved` and NO LONGER BLOCKED on the board, which is dangerous: building it
-   before step 2 deploys stops accrual for all 22 employees.**
-4. **Three live payroll faults are raised and unanswered, and one is severe:** `ef31d251` — **no employee
+1. Deployed head is `main@b1260b5`, migrations through `0332`, **281 applied on production**. **Next free
+   number is `0333`.** One number is ALLOCATED BUT UNMERGED: **`0328`** (`9816a5ad` step 2 on
+   `build/r83a`) — and **its `when` is now BELOW the deployed watermark, so merging it as-is would be a
+   SILENT SKIP.** Renumber it before merging. See Traps: this is what bit `build/r81b` in r84.
+2. **CHECK `git branch --show-current` AT THE REPO ROOT BEFORE ANYTHING, and `pwd` in every gate
+   command.** The root is on `fix/companies-list`, five rounds behind. **The HANDOFF.md at the repo root
+   is STALE — it will give you a board state and a deployed head that are both wrong.** `main` lives at
+   `.claude/worktrees/mainwt`. r83 lost a full suite AND a `next build` to a `cd` that silently left the
+   shell at the root, and both reported GREEN.
+3. **`9816a5ad` step 2 is BUILT and HELD on `build/r83a`**, at plan revision 8, awaiting reporter
+   approval. The reporter has CONFIRMED the structure and set the consolidated Annual carry-forward
+   expiry to **6 months, not 8** ("this is the new policy"). Rev 8 also brings a **type-level EDITOR**
+   into scope — without it the five settings become permanently un-editable, which the approved plan
+   never noticed. **`fa3f4ccb` has been pushed back to `planned`, which re-arms the guard**:
+   `startFeedbackBuild` accepts only `approved`, so it can no longer be built first.
+4. **Three live payroll faults are planned and unanswered, and one is severe:** `ef31d251` — **no employee
    has ever seen a payslip**, because no run has ever been closed (47 payslips, 18 runs, all invisible).
-   Also `d0d2c9d1` (RM23,150 entered and never paid) and `97a9b0ab` (same gross, two different tax
-   figures). These outrank every feature on the board.
-5. **`9cbf5e0d` is built and HELD** on `build/r81b`, waiting on `00659c34`: fixing probation (which never
-   worked — everyone displayed Active from day one) drops 12 of 22 employees out of the 2026 Annual
-   review, because that cycle names four old statuses and cannot name one that never existed.
-6. **Nothing has been browser-verified since r70**, and it has now produced a false "fixed" once: a screen
-   served 1 of 8 rows for 24 days behind a fully green suite. r83 added a pay-rule editor and changed the
-   movement screens; neither has been seen.
-7. **The board is NOT quiet — the previous version of this line said it was, and it was wrong within
-   hours.** Counted 2026-07-30: **10 approved · 3 contested · 16 open**. The reporter is actively editing
-   leave and payroll configuration during working hours; assume the data moves under you.
+   Also `d0d2c9d1` (RM23,170 entered and never paid) and `97a9b0ab` (tax differing between re-runs —
+   **NOT a fault**, see its plan: PCB is cumulative, so revising an earlier month legitimately moves a
+   later one). These outrank every feature on the board.
+5. **The board has NO open items.** All 19 were planned on 2026-07-30. Counted after r84: **515 deployed ·
+   ~21 planned · 8 approved · 4 contested · 0 open**. The reporter edits configuration daily — assume the
+   data moves under you, and re-read before asserting.
+6. **Browser verification is back, and it immediately paid.** `1ef1cf95` was contested as "not even
+   visible"; five minutes on the live screen proved r82 shipped correctly and the fault is a scheme
+   selector defaulting to an empty scheme. **How to get in:** ai-hr is NOT publicly served — it is
+   loopback-only behind a **cloudflared quick tunnel**,
+   `https://remove-source-wood-currently.trycloudflare.com` (running since 18 June, and its hostname
+   CHANGES if that process restarts). Everything else since r70 remains unverified.
+7. **Reply on Telegram when the owner writes from Telegram.** Terminal output never reaches their chat;
+   three separate updates were missed this way in one session.
 
 ### `9816a5ad` — the keystone, and why its own guard stopped it
 
@@ -155,6 +161,24 @@ live. The lesson is the same one this file gives agents and it was broken while 
 had value — the keys were renamed so key ≡ its own string, closing a real landmine, and a test now pins
 key ≡ camelCase(English label). No i18n guard could see this: check C walks only `app/` + `components/`,
 so a nav key naming the wrong screen inside `packs/` was invisible.)
+
+**A STALE MIGRATION NUMBER IS A SILENT SKIP — and it is far likelier than the reused-number case.**
+drizzle-kit reads the LAST APPLIED `when` as a watermark and ignores every journal entry below it. So a
+branch cut before other migrations merged carries a `when` that is now too old, and merging it produces
+no error, no conflict, and no migration: the tables are simply never created, surfacing weeks later as a
+missing relation.
+
+r76 found the REUSED-number version of this (an abandoned branch reusing a shipped number). r84 found the
+STALE version: `build/r81b`'s `0326` (`when=…426000`) against a production watermark of `0330`
+(`when=…430000`). **Every held branch is a candidate**, because the watermark moves every time anything
+else ships.
+
+**Before merging ANY held branch: compare its journal `when` against the deployed watermark, and renumber
+above it if lower.** Check with
+`psql "$MIGRATION_DATABASE_URL" -At -c "select max(created_at) from drizzle.__drizzle_migrations"` or
+simply against the highest `idx` in `main`'s journal. Renumbering means the SQL file, the journal entry's
+`idx`/`when`/`tag`, and any source comment citing the old number — a number no file carries is a dead end
+for the next reader.
 
 **THIS DOCUMENT'S SHIPPED LISTS ARE NOT EVIDENCE.** r76 found an item recorded here as shipped in r74
 that had never merged — and the same file listed it as still planned twenty lines earlier. The reporter
@@ -407,6 +431,88 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r84 — 2026-07-30 — the status state machine lands, and a migration that would have been skipped
+
+**Shipped:** `main@b1260b5`. Migrations **0331** and **0332**.
+**Gate:** `tsc` clean · **488 files / 5588 tests** · `next build` clean · **upgrade rehearsal PASS**
+(all row counts held across a column drop and an eligibility rewrite; leave balances unchanged at 488.00).
+Verified live: `GET /` 401, service active, **281 migrations**, `assignment.status` column GONE, and the
+2026 Annual cycle reading `["active","active_serving_notice","probation","resigned"]`.
+
+**Shipped:** `9cbf5e0d` (Employee Status state machine, built in r81 and held since) · `00659c34`
+(probation stays in the review cycle).
+**Re-planned, not built:** `1ef1cf95` — browser-verified instead. `9816a5ad` rev 8 · `fa3f4ccb` rev 3.
+
+### Decisions
+
+**1. A MIGRATION THAT WOULD HAVE BEEN SILENTLY SKIPPED ON PRODUCTION — the r76 trap from a new
+direction.** `build/r81b` was cut before r82 and r83 and carried migration `0326`, `when=…426000`.
+Production had already applied through `0330` (`when=…430000`). **drizzle-kit reads the last applied
+`when` as a watermark and ignores anything below it**, so `0326` would not have errored, not conflicted —
+it would simply never have run, and the employee-status tables would have surfaced later as a missing
+relation. Renumbered to `0331`.
+
+r76's version of this was a REUSED number on an abandoned branch. This is the same failure from a
+**stale** number, and that is the more dangerous variant: **any branch cut before other migrations merge
+is a candidate, which is every held branch in the repo.** `build/r83a` (`0328`) is in exactly this state
+right now — check its `when` against the deployed watermark before merging it, not after.
+
+The 5 source comments citing "migration 0326" were updated too; a number in a comment that no file
+carries is a dead end for the next reader.
+
+**2. `0331` COULD NOT MAP ANYTHING TO `probation`, AND THAT IS WHY 12 PEOPLE WOULD HAVE VANISHED FROM
+THEIR OWN REVIEW.** `0331` remaps stored review-cycle eligibility faithfully — `on_leave→active`,
+`offboarding→active_serving_notice`, `terminated→resigned`. But `probation` was never a storable value,
+**because before `0331` nobody ever displayed as being on probation** — the deriver read only the
+confirmation dates and everyone showed Active from day one. That display fault IS `9cbf5e0d`'s subject.
+
+So the instant probation becomes real, a cycle written to mean "everyone" quietly stops meaning everyone.
+Production's 2026 Annual cycle named all four pre-`0331` values; 12 of 22 employments have a future
+probation end date. **The fix is not part of the item that causes it, and no gate could have seen it** —
+both changes are individually correct and the collision exists only in the customer's configuration.
+
+`0332` adds `probation` to any cycle naming `active`, **deliberately not keyed to the one production
+UUID**: `active` means currently working, somebody on probation is currently working, and no cycle can
+have excluded the value deliberately because it did not exist to exclude. Keying it to one id would leave
+the trap armed for the next cycle created from an old template. Additive and idempotent; production
+reported `[0332] added probation to 1 review cycle(s)`.
+
+**3. THE FIRST BROWSER VERIFICATION SINCE r70, AND IT SAVED A REBUILD.** `1ef1cf95` came back contested
+with "there is nothing build as according to my request, the shared leave group is not even visible now" —
+a post-deploy refutation of r82, shipped hours earlier. Looked at the live screen rather than arguing from
+source:
+- The **Create shared leave group button renders**. r82 is deployed and correct.
+- The group **exists**: Chin Hin Construction Engineering / GRADE H (Permanent) carries
+  `Shared limit "Special Leave": 10 days/year`.
+- The Leave Entitlements table is **scheme-scoped**, and its selector defaults to `CONTRACT - SPECIAL
+  (40 AL)` — a scheme with zero entitlement rows — so the screen opens on "No entitlements configured for
+  this scheme" with no hint that the group lives elsewhere.
+
+**Default selection, not a missing feature.** Building "according to my request" would have produced a
+second copy of a working feature. Five minutes in a browser settled what eight rounds of source-reasoning
+could not. **Reinstate this as routine.**
+
+**4. HOW THE CUSTOMER ACTUALLY REACHES THE APP — undocumented until now, and fragile.** ai-hr is NOT
+publicly served: Next listens on `127.0.0.1:3000` only and no nginx vhost points at it
+(`sfm.stradaprop.com` is Odoo on 8069). The reporter reaches it through a **cloudflared QUICK TUNNEL**,
+`https://remove-source-wood-currently.trycloudflare.com`, running since 18 June.
+**A quick tunnel's hostname is random and CHANGES on restart.** If that process dies the reporter loses
+access and returns on a different URL. Worth converting to a named tunnel before it bites.
+
+**5. TWO OF MY OWN MISTAKES, both of a shape this file already warns about.**
+- **A gate that ran on the wrong tree and reported GREEN.** One `cd` to the repo root left the shell
+  there, and a full suite plus `next build` ran against `fix/companies-list`. The tell was in the output:
+  vitest prints its root on the `RUN` line, and the counts were 479/5359 where the tree under test was
+  488/5576. **Every gate command now starts with `pwd`.**
+- **A test fixture that failed on NOT NULL before reaching the behaviour under test** — omitted
+  `period_start`, `period_end` and `rating_scale`. The fixture now carries a comment saying why those
+  columns are present, so the next editor does not strip them.
+
+**Carried:** `9816a5ad` step 2 remains built and unmerged on `build/r83a` with migration `0328` — see the
+watermark warning in Decision 1. Everything in r84 except `1ef1cf95` is still browser-unverified.
+
+---
 
 ## r83 — 2026-07-30 — two of three shipped, and the keystone held by its own guard
 
