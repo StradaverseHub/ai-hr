@@ -27,7 +27,9 @@ import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { domainEvent } from '../db/schema';
 import { applyDueMovementsTx } from './movement';
-import { reprojectEntitlementForEmployment } from './leave';
+// Through the pack facade, not `core/leave` directly: this file is NEW, and ADR-0080 D9's import
+// ratchet only ever shrinks its allowlist (test/leave-pack-drift.test.ts).
+import { reprojectEntitlementForEmployment } from '../packs/leave/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 export type MovementSweepResult = {
