@@ -107,17 +107,27 @@ describe('§1 readImportFile — File → CSV text', () => {
     expect(records.map((r) => r.email)).toEqual(['crlf1@demo.test', 'crlf2@demo.test']);
   });
 
-  it('rejects anything that is not a .csv, rather than feeding binary to the parser', async () => {
-    for (const name of ['employees.xlsx', 'employees.xls', 'employees.txt', 'employees', 'employees.csv.pdf']) {
+  it('rejects anything that is not an import file, rather than feeding binary to the parser', async () => {
+    // d8471481 widened the reader to spreadsheets, so .xlsx / .xls moved OUT of this list — their
+    // own handling (including a .xlsx that is not really a workbook) is covered in
+    // test/employee-import-xlsx.test.ts. Everything else is still refused on the extension.
+    for (const name of ['employees.txt', 'employees', 'employees.csv.pdf', 'employees.numbers']) {
       await expect(readImportFile(csvFile('anything', name)), name).rejects.toMatchObject({
         code: 'UNSUPPORTED_FILE_TYPE',
       });
     }
+    // A file NAMED .xlsx that is not a workbook fails on its CONTENTS, not its name — a different
+    // code, and a different message to the user.
+    await expect(readImportFile(csvFile('not a workbook', 'employees.xlsx'))).rejects.toMatchObject({
+      code: 'FILE_READ_FAILED',
+    });
   });
 
   it('accepts .csv case-insensitively (Windows loves EMPLOYEES.CSV)', async () => {
     expect(isCsvFileName('EMPLOYEES.CSV')).toBe(true);
     expect(isCsvFileName('Employees.Csv')).toBe(true);
+    // `isCsvFileName` still answers only the CSV question — it is the spreadsheet formats that
+    // `importFileFormat` distinguishes.
     expect(isCsvFileName('employees.xlsx')).toBe(false);
     await expect(readImportFile(csvFile(`${HEADER}\n`, 'EMPLOYEES.CSV'))).resolves.toMatchObject({
       format: 'csv',
@@ -144,9 +154,9 @@ describe('§1 readImportFile — File → CSV text', () => {
   });
 
   it('the accept attribute advertises exactly what the reader will take', () => {
-    expect(IMPORT_FILE_ACCEPT).toContain('.csv');
-    // Not yet widened to spreadsheets — d8471481 does that to reader and accept together.
-    expect(IMPORT_FILE_ACCEPT).not.toContain('.xlsx');
+    // d8471481 widened reader and accept TOGETHER, which is the property worth pinning: an accept
+    // list that promises a format the reader refuses is a picker that silently does nothing.
+    for (const ext of ['.csv', '.xlsx', '.xls']) expect(IMPORT_FILE_ACCEPT).toContain(ext);
   });
 });
 
