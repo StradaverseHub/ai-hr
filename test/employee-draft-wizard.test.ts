@@ -398,7 +398,11 @@ describe('§4 migration 0337', () => {
     expect(mine).toBeTruthy();
     expect(mine!.idx).toBe(337);
     // drizzle-kit reads the last applied `when` as a watermark and SILENTLY SKIPS anything below it.
-    const highest = Math.max(...journal.entries.filter((e) => e.tag !== '0337_employee_draft').map((e) => e.when));
-    expect(mine!.when).toBeGreaterThan(highest);
+    // The invariant is monotonicity against everything that runs BEFORE this migration — not against
+    // every entry in the journal. Comparing against the global maximum passed in isolation and then
+    // failed the moment a SIBLING agent's higher-numbered migration merged alongside it, which is an
+    // integration artefact rather than the trap being guarded.
+    const priorMax = Math.max(...journal.entries.filter((e) => e.idx < mine!.idx).map((e) => e.when));
+    expect(mine!.when).toBeGreaterThan(priorMax);
   });
 });

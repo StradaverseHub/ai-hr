@@ -108,10 +108,15 @@ describe('1ef1cf95 · sharing caps what is TAKEN, never what is GRANTED', () => 
       schemaSrc.indexOf("export const schemeLeaveCombinedLimitMember = pgTable"),
     );
     expect(block).toContain("numeric('max_days_per_application'");
-    const leaveTypeBlock = schemaSrc.slice(
-      schemaSrc.indexOf("export const leaveType = pgTable"),
-      schemaSrc.indexOf("export const leavePolicy = pgTable"),
-    );
+    // COMMENTS STRIPPED FIRST. This guard forbids a rival COLUMN, and it was matching prose: r86a added
+    // leave_type.max_days_per_leave_year (a per-YEAR total, a different rule) and correctly cited this
+    // very table's max_days_per_application as the naming precedent in a comment. Grepping raw source
+    // turned a citation of the invariant into a violation of it. The column names are what matter.
+    const leaveTypeBlock = schemaSrc
+      .slice(schemaSrc.indexOf("export const leaveType = pgTable"), schemaSrc.indexOf("export const leavePolicy = pgTable"))
+      .split('\n')
+      .filter((l) => !l.trimStart().startsWith('//') && !l.trimStart().startsWith('*') && !l.trimStart().startsWith('/*'))
+      .join('\n');
     expect(leaveTypeBlock).not.toMatch(/max_days_per_application|max_consecutive|per_request_limit/);
   });
 });

@@ -110,7 +110,13 @@ describe('026e16b9 · numeric columns compact, the text column gets the room', (
         read(p).includes('bg-muted/50 text-left text-xs uppercase text-muted-foreground'),
         `${p} heading row`,
       ).toBe(true);
-      expect(read(p).includes('uppercase tracking-wide'), `${p} still tracking-wide`).toBe(false);
+      // SCOPED TO THE HEADING ROW. The measurement this pins is about <th> tracking, and the assertion
+      // above already states the heading row's exact classes. Scanning the WHOLE FILE also caught BODY
+      // cells: r86c's #reference column and its cancel-pending badge both use `uppercase tracking-wide`
+      // deliberately on small-caps labels, which costs the table nothing. A guard on headings must look
+      // at headings.
+      const thead = read(p).slice(read(p).indexOf('<thead'), read(p).indexOf('</thead>'));
+      expect(thead.includes('uppercase tracking-wide'), `${p} heading still tracking-wide`).toBe(false);
     }
   });
 });
