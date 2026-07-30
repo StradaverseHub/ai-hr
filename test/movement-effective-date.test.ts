@@ -83,6 +83,19 @@ const assignmentsOf = (employmentId: string) =>
 const rowById = (rows: Awaited<ReturnType<typeof movementHistory>>, id: string) =>
   rows.find((r) => r.id === id)!;
 
+/** The applications the sweep recorded against ONE employment — the isolation-proof form of "it ran". */
+const appliedEventsFor = (employmentId: string) =>
+  owner.db
+    .select()
+    .from(schema.domainEvent)
+    .where(
+      and(
+        eq(schema.domainEvent.tenantId, b.tenantId),
+        eq(schema.domainEvent.subjectEmploymentId, employmentId),
+        eq(schema.domainEvent.eventType, 'employment.movement.applied'),
+      ),
+    );
+
 describe('the fault this item fixes', () => {
   /**
    * NOT a test of the new behaviour — a test of the MECHANISM. setEmploymentAssignment is unchanged and
@@ -186,10 +199,13 @@ describe('the scheduled-application sweep', () => {
     expect(early.applied).toBe(0);
     expect((await movementCurrentState(adminCtx(b), employmentId)).departmentId).toBe(b.deptA);
 
-    // The morning of: applied, with no HR action.
+    // The morning of: applied, with no HR action. The sweep is TENANT-WIDE — it is the nightly job, not
+    // a per-employee call — so its `applied` total also counts pending movements other tests in this
+    // file left behind. Assert the property under test against THIS employment's ledger instead; a
+    // global count here silently couples the test to file order.
     const due = await sweepDueMovements(adminCtx(b), { today: FUTURE });
-    expect(due.applied).toBe(1);
     expect(due.failed).toBe(0);
+    expect(await appliedEventsFor(employmentId)).toHaveLength(1);
     expect((await movementCurrentState(adminCtx(b), employmentId)).departmentId).toBe(b.deptB);
 
     // ONE line in the history, whose status moved — not a second row appearing on the effective date.
@@ -218,7 +234,9 @@ describe('the scheduled-application sweep', () => {
     const second = await sweepDueMovements(adminCtx(b), { today: FUTURE });
     const third = await sweepDueMovements(adminCtx(b), { today: plusDays(FUTURE, 3) });
 
-    expect(first.applied).toBe(1);
+    // Tenant-wide again, so only the lower bound is this test's to claim; the exactly-once proof is the
+    // per-employment `applied` ledger query at the end.
+    expect(first.applied).toBeGreaterThanOrEqual(1);
     expect(second.applied).toBe(0); // nothing due — the ledger already records the application
     expect(second.failed).toBe(0);
     expect(third.applied).toBe(0);
