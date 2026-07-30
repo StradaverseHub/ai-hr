@@ -5,42 +5,39 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-07-30, after r84)
+## CURRENT STATE — read this first (updated 2026-07-31, after r85)
 
 **If you read nothing else, read these seven lines.**
-1. Deployed head is `main@b1260b5`, migrations through `0332`, **281 applied on production**. **Next free
-   number is `0333`.** One number is ALLOCATED BUT UNMERGED: **`0328`** (`9816a5ad` step 2 on
-   `build/r83a`) — and **its `when` is now BELOW the deployed watermark, so merging it as-is would be a
-   SILENT SKIP.** Renumber it before merging. See Traps: this is what bit `build/r81b` in r84.
-2. **CHECK `git branch --show-current` AT THE REPO ROOT BEFORE ANYTHING, and `pwd` in every gate
-   command.** The root is on `fix/companies-list`, five rounds behind. **The HANDOFF.md at the repo root
-   is STALE — it will give you a board state and a deployed head that are both wrong.** `main` lives at
-   `.claude/worktrees/mainwt`. r83 lost a full suite AND a `next build` to a `cd` that silently left the
-   shell at the root, and both reported GREEN.
-3. **`9816a5ad` step 2 is BUILT and HELD on `build/r83a`**, at plan revision 8, awaiting reporter
-   approval. The reporter has CONFIRMED the structure and set the consolidated Annual carry-forward
-   expiry to **6 months, not 8** ("this is the new policy"). Rev 8 also brings a **type-level EDITOR**
-   into scope — without it the five settings become permanently un-editable, which the approved plan
-   never noticed. **`fa3f4ccb` has been pushed back to `planned`, which re-arms the guard**:
-   `startFeedbackBuild` accepts only `approved`, so it can no longer be built first.
+1. Deployed head is `main@e05099b`, migrations through `0334`, **283 applied on production**. **Next free
+   number is `0335`.** No held branch currently claims a number — but **check any held branch's `when`
+   against the deployed watermark before merging it** (see Traps: a stale number is a SILENT SKIP, and
+   r85 caught `build/r83a` in exactly that state).
+2. **CHECK `git branch --show-current` AT THE REPO ROOT, and `pwd` in every gate command.** The root is
+   on `fix/companies-list`, many rounds behind, and **its HANDOFF.md is STALE**. `main` lives at
+   `.claude/worktrees/mainwt`. r83 lost a full suite AND a `next build` to a `cd` that left the shell at
+   the root — both reported GREEN.
+3. **THE ENTITLEMENT KEYSTONE IS DONE.** `9816a5ad` step 2 is deployed: the engines read the five rules
+   from `leave_type`, there is a real editor for them, and ANNUAL carry-forward expiry is **6 months**
+   (the reporter's new policy — carried leave now forfeits two months earlier than before).
+   **Step 3 `fa3f4ccb` is CONTESTED**, because the reporter asked to remove the STATUTORY MINIMUM. That
+   was refused in rev 4 — it is the EA 1955 legal floor. Do not build it without an explicit written
+   instruction from them.
 4. **Three live payroll faults are planned and unanswered, and one is severe:** `ef31d251` — **no employee
-   has ever seen a payslip**, because no run has ever been closed (47 payslips, 18 runs, all invisible).
-   Also `d0d2c9d1` (RM23,170 entered and never paid) and `97a9b0ab` (tax differing between re-runs —
-   **NOT a fault**, see its plan: PCB is cumulative, so revising an earlier month legitimately moves a
-   later one). These outrank every feature on the board.
-5. **The board has NO open items.** All 19 were planned on 2026-07-30. Counted after r84: **515 deployed ·
-   ~21 planned · 8 approved · 4 contested · 0 open**. The reporter edits configuration daily — assume the
-   data moves under you, and re-read before asserting.
-6. **Browser verification is back, and it immediately paid.** `1ef1cf95` was contested as "not even
-   visible"; five minutes on the live screen proved r82 shipped correctly and the fault is a scheme
-   selector defaulting to an empty scheme. **How to get in:** ai-hr is NOT publicly served — it is
-   loopback-only behind a **cloudflared quick tunnel**,
-   `https://remove-source-wood-currently.trycloudflare.com` (running since 18 June, and its hostname
-   CHANGES if that process restarts). Everything else since r70 remains unverified.
-7. **Reply on Telegram when the owner writes from Telegram.** Terminal output never reaches their chat;
-   three separate updates were missed this way in one session.
+   has ever seen a payslip**, because no run has ever been closed (47 payslips, 18 runs). Also
+   `d0d2c9d1` (RM23,170 entered and never paid) and `97a9b0ab` (which is **NOT a fault** — PCB is
+   cumulative, so revising an earlier month legitimately moves a later one; see its plan).
+5. **THE LOCAL POSTGRES WAS WIPED AND REBUILT on 2026-07-31**, and the difference is the whole argument
+   for keeping it clean: rehearsal **6s** (was 25–52 min), full migration chain from zero **2.3s** (the
+   test template alone once took 49 min), Postgres starts in **4s** (recovery once took 53 min). The old
+   data directory is at `/opt/homebrew/var/aihr-pg14.broken-20260731`. Teardown now stops the leak
+   returning — **do not invent a `TEST_DB_NAMESPACE` unless you are running parallel agents.**
+6. **Browser verification works and is worth doing.** It settled a contested item in five minutes.
+   ai-hr is NOT publicly served — it is loopback-only behind a **cloudflared quick tunnel**,
+   `https://remove-source-wood-currently.trycloudflare.com` (whose hostname CHANGES if that process
+   restarts). Everything since r70 except `1ef1cf95` remains unverified.
+7. **Reply on Telegram when the owner writes from Telegram.** Terminal output never reaches their chat.
 
-### `9816a5ad` — the keystone, and why its own guard stopped it
+### `9816a5ad` — SHIPPED in r85. Kept for the reasoning; step 3 is the open part
 
 Step 1 shipped (r81, `0325`): ten rule columns on `leave_type`, backfilled, read by nothing.
 Step 2 (`build/r83a`, `0328`) repoints the engines onto those columns. It is **built, gated and held.**
@@ -161,6 +158,20 @@ live. The lesson is the same one this file gives agents and it was broken while 
 had value — the keys were renamed so key ≡ its own string, closing a real landmine, and a test now pins
 key ≡ camelCase(English label). No i18n guard could see this: check C walks only `app/` + `components/`,
 so a nav key naming the wrong screen inside `packs/` was invisible.)
+
+**A DATE DERIVED FROM AN INSTANT MUST GO THROUGH THE TENANT TIMEZONE — and the suite will not tell you.**
+`toISOString()` is UTC and this product runs at UTC+8, so `new Date().toISOString().slice(0, 10)` is
+YESTERDAY between 00:00 and 08:00 Malaysian time. r85 found one live for a day on `core/movement.ts`'s
+`entryDate`, and it had passed three green gates purely because **the suite had only ever been run during
+the Malaysian working day.** It failed the first time a run happened at 01:46.
+
+Use `todayInKualaLumpur()` — it accepts an optional `Date`, so it converts a stored instant too. The
+distinction that matters: date-only ARITHMETIC (`Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS`) is
+correct in UTC and must stay that way; only "what date is this INSTANT" needs the timezone. Of 92
+`toISOString().slice(0, 10)` sites, most are the former. About five are the latter and remain unfixed —
+raised as `bb4f2265`.
+
+**If you are ever debugging a date that is off by one, check the clock before the code.**
 
 **A STALE MIGRATION NUMBER IS A SILENT SKIP — and it is far likelier than the reused-number case.**
 drizzle-kit reads the LAST APPLIED `when` as a watermark and ignores every journal entry below it. So a
@@ -431,6 +442,101 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r85 — 2026-07-31 — the keystone lands, and the machine that was slowing everything down
+
+**Shipped:** `main@e05099b`. Migrations **0333** and **0334**.
+**Gate:** `tsc` clean · **490 files / 5627 tests** · `next build` clean · **upgrade rehearsal PASS**.
+Verified live: `GET /` 401, **283 migrations**, `leave_type` ANNUAL reading
+`carry_forward_expiry_months = 6`, and **zero** policy rows disagreeing — so `0334`'s assertion applied
+without refusing, which is the proof the data genuinely agrees rather than the guard being lenient.
+
+**Shipped:** `9816a5ad` step 2 — the entitlement keystone, three rounds in the making.
+
+### Decisions
+
+**1. THE APPROVED PLAN WOULD HAVE FROZEN FIVE SETTINGS FOREVER, AND NOBODY NOTICED FOR THREE ROUNDS.**
+The sequence was: step 1 adds rule columns to `leave_type` (r81), step 2 makes the engines read them,
+step 3 (`fa3f4ccb`) deletes the old per-policy editors. **Nothing in it ever built a writer.**
+`updateLeaveType` (`core/admin.ts`) sets name/code/eligibility/probation and none of the rule columns;
+`build/r83a` touched zero files under `app/` or `components/`.
+
+Ship all three as approved and Earning Method, Carry Forward + expiry, Rounding and Maximum Balance are
+un-editable for all time, fixed at whatever `0325` backfilled. Worse, the screen that *looks* like it
+edits them survives and writes `leave_policy` rows nothing reads — **a control that saves successfully
+and does nothing**, which is worse than an absent one.
+
+**The owner found this by asking a question, not by reading the plan:** "can't we just make this
+configurable for future customers?" The honest answer turned out to be no, and it never would have been.
+`setLeaveTypeRules` + `setLeaveTypeRulesAction` close it, and the two General sub-steps now post the type
+action. The per-policy scope picker is gone — one leave type, one set of rules, which IS the consolidation.
+
+**2. THE REPORTER REVERSED THE VALUE, AND THE GUARD IS WHY WE ASKED.** `0334` (as `0328`) was run against
+production BEFORE deploying and **fired**: ANNUAL `carryForwardExpiryMonths`, one policy row disagreeing.
+The audit trail showed it was a live edit — 8 at 10:06, 6 at 11:10 the same morning. Rather than
+overwrite it, we asked; the reporter answered "**6 months, as this is the new policy**", reversing the
+operator's earlier call of 8. `0333` harmonises all 57 rows to 6. **Carried Annual Leave now forfeits two
+months earlier than before** — a real behaviour change, disclosed in the approved plan and recorded in
+the migration so nobody later reads it as a tidy-up.
+
+**3. A DATE BUG THAT ONLY EXISTS FOR EIGHT HOURS A DAY, FOUND BY RUNNING THE SUITE AT 01:46.**
+`core/movement.ts`'s `dateOf` was `d.toISOString().slice(0, 10)`. `toISOString()` is UTC; Malaysia is
+UTC+8. So between **00:00 and 08:00 local, every movement's `entryDate` was stamped with YESTERDAY** —
+on `941c9dac`, the item whose entire subject is telling entry date and effective date apart, live since
+r83 that morning.
+
+**It survived three green gates because the suite had only ever run during the Malaysian working day**,
+when the UTC and local dates agree. Fixed by routing the instant through `todayInKualaLumpur`, which
+already accepts a `Date`.
+
+**The wider class is real and deliberately NOT swept:** 92 sites use `toISOString().slice(0, 10)`. Most
+are legitimate date-only arithmetic (`${iso}T00:00:00Z` + days), where UTC is the convention that makes
+it exact. But roughly five derive TODAY from a real instant — `core/read.ts:696` and `:1917`,
+`core/reporting.ts:224`, `core/roster.ts:921`, `core/performance.ts:368` — and carry the same fault.
+Raised as **`bb4f2265`** rather than changed blind mid-round.
+
+**4. THE MACHINE WAS THE BOTTLENECK, AND THE OWNER DIAGNOSED IT BETTER THAN I DID.**
+Three separate causes, all closed:
+- **Test namespaces.** `TEST_DB_NAMESPACE` exists so parallel AGENTS do not clobber each other's
+  template. Running SOLO the operator invented one per round anyway (`r83int`, `r83bc`, `r84`, `r85`) —
+  **~44 of the 72 databases, for no benefit.** Use the default when not running agents.
+- **No teardown.** `test/global-setup.ts` now returns one, dropping the namespace it created. **Only
+  ephemeral namespaces** — the default keeps its databases so `templateFingerprint()` reuse survives,
+  which is what makes a repeat `pnpm vitest run` start in seconds. Verified: 11 created, 11 dropped.
+- **A rehearsal database per round.** Passing `ai_hr_rehearsal_r84`, `_r85` minted a fresh one each time.
+  Back to one stable name.
+
+**The owner's design point, and it is better than what the script did:** the rehearsal now CARRIES THE
+DATABASE FORWARD instead of rebuilding it. Production is never rebuilt — it is one long-lived database
+that has accumulated every migration in order, including the awkward history a fresh baseline never has.
+Carrying forward is both faster and a **more faithful simulation**. `--rebuild` keeps the clean-room path.
+
+**The numbers, because they are the argument:** with 72 databases the rehearsal took 25–52 minutes and
+often never finished, `DROP DATABASE` timed out at 90s, and crash recovery took **53 minutes** (all of it
+the pre-redo walk over every database directory; WAL replay itself was 0.00s). After a wipe to 5
+databases: **whole migration chain from zero in 2.3s, rehearsal PASS in 6s, Postgres starts in 4s.**
+The old data directory is preserved at `/opt/homebrew/var/aihr-pg14.broken-20260731`.
+
+**5. THREE SOURCE GUARDS PINNED THE OLD DESIGN AND WERE INVERTED, NOT DELETED.**
+`leave-type-general-substeps` asserted both sub-steps post `updatePolicyAction` with the policy row as
+the single source of truth — the exact contract this item reverses. It now asserts they post the TYPE
+action and **not** the policy action, that the scope picker is gone, and that each form marks which HALF
+of the rule row it rendered. Updating them also caught a live defect in the new action:
+`roundingMethodField(formData) ?? null` would have CLEARED stored rounding whenever the marker was
+absent, defeating the very tri-state the helper exists to provide.
+
+**Operator errors this round, all caught before shipping:** the harmonisation migration was first
+numbered AFTER its own guard (the guard would have refused the release that fixes it); JSX comments were
+written in an attribute position; and `0328` needed renumbering to `0334` because `build/r83a` predated
+r84 — **the first held branch checked against r84's watermark trap, and it was indeed stale.**
+
+**Carried:** `fa3f4ccb` is contested — the reporter asked to remove the STATUTORY MINIMUM. Refused in
+plan rev 4: it is the EA 1955 legal floor, not a setting, and removing it grants less leave than the law
+requires. The plan offers what they likely want instead (show when the floor overrides the configured
+figure) and states that removal needs an explicit written instruction. `1ef1cf95` is also contested —
+they want Shared Leave Groups redesigned up to leave-type level, which is a data-model change.
+
+---
 
 ## r84 — 2026-07-30 — the status state machine lands, and a migration that would have been skipped
 
