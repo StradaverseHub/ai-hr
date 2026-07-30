@@ -356,8 +356,11 @@ describe('08bc6841 · Leave Application Rules — the seven rule groups as a car
     // The height-locked grid it replaced must not come back.
     expect(rules.includes('grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3')).toBe(false);
     // Every card opts out of being split across a column boundary — one card, one column.
+    // Feedback c6ffa725 added a NINTH: the Application Limits card. The count is asserted rather than
+    // ">= 1" on purpose — a card that forgets the opt-out is invisible until a browser splits it across a
+    // column boundary, so a new card must come here and say so.
     const cards = rules.split('break-inside-avoid').length - 1;
-    expect(cards, 'every rule card (plus the half-day slot wrapper) carries break-inside-avoid').toBe(8);
+    expect(cards, 'every rule card (plus the half-day slot wrapper) carries break-inside-avoid').toBe(9);
   });
 
   it('each rule card is a single surface — no padded box nested inside a padded box', () => {

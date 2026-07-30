@@ -204,7 +204,21 @@ export type BenefitSchemeListRow = {
   gradeGroupName: string | null;
   name: string;
   status: SchemeStatus;
+  /** Feedback 0890a555: the grouping label. null ⇒ ungrouped. */
+  schemeCategory: string | null;
 };
+
+/**
+ * Feedback 0890a555 — normalise a posted Scheme Category. Blank / whitespace-only ⇒ null (ungrouped), which
+ * is what the DB CHECK in migration 0335 also enforces: a whitespace category would render as an unnamed
+ * group heading nobody can select or clear. Otherwise the tenant's own text with whitespace collapsed —
+ * NOT re-cased, for the same reason `normalizeSchemeText` does not re-case a scheme name (title-casing
+ * would mangle acronyms and is a rewrite of their words rather than a tidy-up of ours).
+ */
+export function cleanSchemeCategory(v: string | null | undefined): string | null {
+  const text = (v ?? '').replace(/\s+/g, ' ').trim();
+  return text.length === 0 ? null : text.slice(0, 120);
+}
 
 export async function listBenefitSchemes(ctx: SessionContext): Promise<BenefitSchemeListRow[]> {
   return withTenant(ctx, async (tx) => {
@@ -217,6 +231,7 @@ export async function listBenefitSchemes(ctx: SessionContext): Promise<BenefitSc
         gradeGroupName: gradeGroup.name,
         name: benefitScheme.name,
         status: benefitScheme.status,
+        schemeCategory: benefitScheme.schemeCategory,
       })
       .from(benefitScheme)
       .leftJoin(gradeGroup, eq(gradeGroup.id, benefitScheme.gradeGroupId))
@@ -231,6 +246,7 @@ export async function listBenefitSchemes(ctx: SessionContext): Promise<BenefitSc
       gradeGroupName: r.gradeGroupName,
       name: r.name,
       status: r.status as SchemeStatus,
+      schemeCategory: r.schemeCategory,
     }));
   });
 }
@@ -243,17 +259,20 @@ export async function createBenefitScheme(
     gradeGroupId?: string | null;
     name: string;
     status?: string;
+    /** Feedback 0890a555: grouping label only. Blank ⇒ null (ungrouped). */
+    schemeCategory?: string | null;
   },
 ) {
   const name = cleanName(p.name, 'Benefit scheme name');
   const employmentType = coerceEmploymentType(p.employmentType);
   const status = coerceStatus(p.status);
   const gradeGroupId = p.gradeGroupId || null;
+  const schemeCategory = cleanSchemeCategory(p.schemeCategory);
   if (!p.companyId) throw new Error('Company is required.');
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(benefitScheme)
-      .values({ tenantId: ctx.tenantId, companyId: p.companyId, employmentType, gradeGroupId, name, status })
+      .values({ tenantId: ctx.tenantId, companyId: p.companyId, employmentType, gradeGroupId, name, status, schemeCategory })
       .returning({ id: benefitScheme.id })
       .catch((e) => {
         const code = String((e as { code?: string })?.code);
@@ -272,7 +291,7 @@ export async function createBenefitScheme(
       aggregateId: row.id,
       eventType: 'benefit-scheme.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, employmentType, gradeGroupId, name, status },
+      payload: { companyId: p.companyId, employmentType, gradeGroupId, name, status, schemeCategory },
     });
     return row;
   });
@@ -287,12 +306,15 @@ export async function updateBenefitScheme(
     gradeGroupId?: string | null;
     name: string;
     status?: string;
+    /** Feedback 0890a555: grouping label only. Blank ⇒ null (ungrouped). */
+    schemeCategory?: string | null;
   },
 ) {
   const name = cleanName(p.name, 'Benefit scheme name');
   const employmentType = coerceEmploymentType(p.employmentType);
   const status = coerceStatus(p.status);
   const gradeGroupId = p.gradeGroupId || null;
+  const schemeCategory = cleanSchemeCategory(p.schemeCategory);
   if (!p.companyId) throw new Error('Company is required.');
   return withTenant(ctx, async (tx) => {
     const [prev] = await tx
@@ -302,13 +324,14 @@ export async function updateBenefitScheme(
         gradeGroupId: benefitScheme.gradeGroupId,
         name: benefitScheme.name,
         status: benefitScheme.status,
+        schemeCategory: benefitScheme.schemeCategory,
       })
       .from(benefitScheme)
       .where(eq(benefitScheme.id, p.id))
       .limit(1);
     await tx
       .update(benefitScheme)
-      .set({ companyId: p.companyId, employmentType, gradeGroupId, name, status })
+      .set({ companyId: p.companyId, employmentType, gradeGroupId, name, status, schemeCategory })
       .where(eq(benefitScheme.id, p.id))
       .catch((e) => {
         const code = String((e as { code?: string })?.code);
@@ -329,7 +352,7 @@ export async function updateBenefitScheme(
       actor: actorOf(ctx),
       payload: {
         before: prev ?? null,
-        after: { companyId: p.companyId, employmentType, gradeGroupId, name, status },
+        after: { companyId: p.companyId, employmentType, gradeGroupId, name, status, schemeCategory },
       },
     });
     // ae5b84d5: tell the action whether the scheme's MATCH IDENTITY / usability moved (status, employment

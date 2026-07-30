@@ -1384,7 +1384,8 @@
       "duplicateApplication": "A leave application already exists for the selected date. Multiple leave applications on the same date are not allowed.",
       "insufficientBalance": "Insufficient leave balance. Your available leave balance is lower than the requested leave duration.",
       "combinedLimitExceeded": "Combined leave limit \"{poolName}\" ({days} days a year) would be exceeded across its shared leave types.",
-      "combinedApplicationTooLong": "Shared leave group \"{poolName}\" allows at most {maxDays} days per application; this one covers {days}. Please shorten it or apply in separate applications."
+      "combinedApplicationTooLong": "Shared leave group \"{poolName}\" allows at most {maxDays} days per application; this one covers {days}. Please shorten it or apply in separate applications.",
+      "leaveYearApplicationLimit": "{typeName} is limited to {maxDays} day(s) per leave year. {usedDays} day(s) have already been applied for between {yearStart} and {yearEnd}, so this application of {days} day(s) cannot be submitted."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
@@ -3830,7 +3831,19 @@
         "carryAnnualOnly": "Carry-forward applies to Annual Leave — this type's balance does not roll over.",
         "noActivePolicy": "No active entitlement policy yet — add one under Eligibility first.",
         "frontDoorScopeLabel": "Applies to policy",
-        "workflowUnavailable": "Approval workflow settings are unavailable here — open the Approval tab."
+        "workflowUnavailable": "Approval workflow settings are unavailable here — open the Approval tab.",
+        "yearType": "Leave Year Type",
+        "yearTypeStepHelp": "Choose the leave cycle first. The Earning Method and Rounding steps that follow decide how leave is credited within that cycle.",
+        "roundingNearestHalf": "Nearest 0.5 day",
+        "roundingCustomize": "Customize decimal thresholds",
+        "roundingThresholdsTitle": "Custom decimal thresholds",
+        "roundingDownRangeLabel": "Round down to nearest 0.5 day",
+        "roundingUpRangeLabel": "Round up to nearest 0.5 day",
+        "roundingFromInclusive": "From (inclusive)",
+        "roundingToExclusive": "To (exclusive)",
+        "roundingToInclusive": "To (inclusive)",
+        "roundingThresholdHelp": "The two ranges always cover 0.000 to 1.000 with no gap and no overlap, so there is a single boundary to set. Move it and both ranges follow. Leave the box unticked to use the standard rule: 0.000-0.499 rounds down, 0.500-1.000 rounds up.",
+        "roundingWorkedExample": "With this rule, a calculated {raw} days is credited as {rounded} days."
       },
       "conditionStep": {
         "criteria": "Criteria",
@@ -3838,7 +3851,13 @@
         "expiry": "Expiry",
         "halfDayCompanyWideBadge": "Applies company-wide",
         "expiryAnnualPointer": "Annual Leave expiry is governed by the carry-forward policy — configure it under General → Carry Forward Policy.",
-        "expiryEmergencyNote": "Emergency Leave carries no balance, so no expiry applies."
+        "expiryEmergencyNote": "Emergency Leave carries no balance, so no expiry applies.",
+        "applicationLimitsTitle": "Application Limits",
+        "applicationLimitYearLabel": "Maximum application per leave year",
+        "applicationLimitUnlimited": "Unlimited",
+        "applicationLimitLimited": "Limited",
+        "applicationLimitMaxLabel": "Maximum (days)",
+        "applicationLimitHelp": "Caps the total days an employee may APPLY for of this type in one leave year, whether or not any entitlement balance exists — the rule for types such as Unpaid Leave. It is checked when the application is submitted and again when it is approved. Entitlement, accrual and the balance shown in Leave Summary are untouched. Unlimited is how every leave type behaves today."
       },
       "entitlementStep": {
         "schemes": "Benefit Schemes",
@@ -5197,7 +5216,11 @@
       "maxDaysPerApplication": "Maximum days per application",
       "maxDaysPerApplicationShort": "Max / application",
       "maxDaysPerApplicationNone": "No cap",
-      "maxDaysPerApplicationHelp": "Optional. Leave blank for no limit. Set it to 3 and no single application for any leave type in this group may cover more than 3 calendar days — separately from the shared yearly total."
+      "maxDaysPerApplicationHelp": "Optional. Leave blank for no limit. Set it to 3 and no single application for any leave type in this group may cover more than 3 calendar days — separately from the shared yearly total.",
+      "colSchemeCategory": "Scheme category",
+      "schemeCategoryPlaceholder": "e.g. Permanent, Contract (Special)",
+      "schemeCategoryUnset": "Ungrouped",
+      "schemeCategoryHelp": "Groups related schemes together wherever schemes are listed for selection. It is a label only — it never affects who is eligible, which scheme an employee resolves to, or how many days they get. A suggestion is offered from the scheme name and employment type; you can change or clear it at any time."
     },
     "systemExplorer": {
       "title": "System analysis & dependency explorer",
