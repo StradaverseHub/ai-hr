@@ -255,7 +255,7 @@ BEGIN
 
 	IF conflicts IS NOT NULL THEN
 		RAISE EXCEPTION
-			'[0333_leave_type_rules_repoint_guard] refusing to repoint the leave engines onto leave_type: %', conflicts
+			'[0334_leave_type_rules_repoint_guard] refusing to repoint the leave engines onto leave_type: %', conflicts
 			USING HINT =
 				'Reading these rules from the leave type instead of leave_policy would change what at least '
 				'one employee is entitled to, carries forward, or accrues — the one thing step 2 promises '

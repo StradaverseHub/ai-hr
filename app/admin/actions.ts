@@ -45,6 +45,8 @@ import {
   saveServiceEntitlement,
   updateLeaveType,
   updatePosition,
+  setLeaveTypeRules,
+  LeaveTypeRuleError,
 } from '@/core/admin';
 import {
   openLeaveYear,
@@ -595,6 +597,65 @@ export async function countEmployeesInScopeAction(p: {
 }): Promise<number> {
   const s = await getSession();
   return countEmployeesInScope(s, { companyIds: p.companyIds, gradeIds: p.gradeIds });
+}
+
+/**
+ * THE TYPE-LEVEL RULE EDITOR (9816a5ad step 2). Writes the five consolidated settings to the leave TYPE.
+ *
+ * This replaces what the Earning Method and Carry Forward Policy sub-steps used to do. They were "front
+ * doors" onto a per-company/grade `leave_policy` row; once step 2 repoints the engines at `leave_type`,
+ * writing a policy row changes nothing the calculation reads — a form that saves successfully and has no
+ * effect, which is worse than no form at all.
+ *
+ * TRI-STATE, PER SUB-FORM. Earning Method and Carry Forward are separate forms editing disjoint halves of
+ * one row, so each posts a marker naming the half it rendered and only that half is forwarded. Without
+ * that, an earning-only save would clear the carry configuration. The old front doors solved this by
+ * re-posting the other half as hidden inputs; markers are the same idea without the footgun of a stale
+ * hidden value overwriting a concurrent edit.
+ */
+export async function setLeaveTypeRulesAction(formData: FormData) {
+  const s = await getSession();
+  const t = await getTranslations('admin');
+  const id = String(formData.get('leaveTypeId') ?? '');
+  const num = (name: string): number | null | undefined => {
+    if (formData.get(name) == null) return undefined;
+    const raw = String(formData.get(name) ?? '');
+    if (raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+  const earningRendered = formData.get('earningRendered') != null;
+  const carryRendered = formData.get('carryBlockRendered') != null;
+
+  try {
+    await setLeaveTypeRules(s, {
+      id,
+      // Earning half — method + rounding. roundingMethodField already carries its own tri-state marker.
+      ...(earningRendered
+        ? {
+            accrualMethod: String(formData.get('method') ?? '') || null,
+            roundingMethod: roundingMethodField(formData) ?? null,
+          }
+        : {}),
+      // Carry half — enable flag, cap, expiry mode and both expiry shapes, plus the max-balance cap.
+      ...(carryRendered
+        ? {
+            carryForwardEnabled: formData.get('carryForwardEnabled') === 'on',
+            carryForwardMax: num('carryForwardMax') ?? null,
+            carryForwardExpiryMode: carryExpiryMode(formData),
+            carryForwardExpiryMonths: carryExpiryField(formData.get('carryForwardExpiryMonths')),
+            carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
+            carryForwardExpiryDay: carryExpiryField(formData.get('carryForwardExpiryDay')),
+            carryForwardIncludeEarned: formData.get('carryForwardIncludeEarned') === 'on',
+            maxBalanceDays: num('maxBalanceDays'),
+          }
+        : {}),
+    });
+  } catch (e) {
+    if (e instanceof LeaveTypeRuleError) return fail(ENTITLEMENTS, e.message);
+    throw e;
+  }
+  okEntitlements(t('entitlementUpdatedToast'), id);
 }
 
 export async function updateLeavePolicyAction(formData: FormData) {

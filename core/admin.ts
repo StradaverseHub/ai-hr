@@ -106,6 +106,16 @@ export class InUseError extends Error {
   }
 }
 
+/** A rule value the operator supplied is outside what the engine (and the 0325 CHECK constraints) accept.
+ *  Separate from DuplicateError so the caller can distinguish "you typed something impossible" from
+ *  "that name is taken" — and so a constraint violation never reaches the operator as an opaque 23514. */
+export class LeaveTypeRuleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LeaveTypeRuleError';
+  }
+}
+
 export class DuplicateError extends Error {
   constructor(message: string) {
     super(message);
@@ -4005,6 +4015,116 @@ export async function updateLeaveType(
     });
   });
 }
+/**
+ * THE TYPE-LEVEL RULE EDITOR (9816a5ad step 2). The five settings the reporter agreed to consolidate —
+ * Earning Method, Carry Forward (+ expiry), Rounding, Maximum Balance, and the Leave Year Type that rides
+ * with them — now live on `leave_type` and are READ by the engines via `applyLeaveTypeRules`. This is the
+ * only thing that WRITES them.
+ *
+ * WHY IT HAD TO EXIST BEFORE STEP 3. Migration 0325 backfilled these columns and nothing has ever written
+ * them since; `updateLeaveType` above sets name/code/eligibility/probation and none of the rule columns.
+ * So without this function the sequence was: add columns → read them → delete the old editors
+ * (`fa3f4ccb`), leaving five settings frozen at their backfilled values with no screen anywhere able to
+ * change them. That gap is the reason 9816a5ad reached revision 8.
+ *
+ * TRI-STATE, NOT PATCH-BY-PRESENCE. Every field is `undefined ⇒ leave alone`, `null ⇒ clear`, value ⇒ set.
+ * The Earning Method and Carry Forward sub-steps are separate forms editing disjoint halves of the same
+ * row; a patch keyed on truthiness would let an earning-only save wipe the carry configuration, which is
+ * precisely the trap the old per-policy front doors documented and worked around with hidden re-posts.
+ *
+ * VALIDATION MIRRORS THE 0325 CHECK CONSTRAINTS rather than trusting them. A constraint violation surfaces
+ * as an opaque 23514 to the operator; these throw named, readable errors. The DB checks remain the backstop.
+ */
+export async function setLeaveTypeRules(
+  ctx: SessionContext,
+  p: {
+    id: string;
+    accrualMethod?: string | null;
+    carryForwardEnabled?: boolean | null;
+    carryForwardMax?: number | null;
+    carryForwardExpiryMode?: 'date' | 'months' | null;
+    carryForwardExpiryMonths?: number | null;
+    carryForwardExpiryMonth?: number | null;
+    carryForwardExpiryDay?: number | null;
+    carryForwardIncludeEarned?: boolean | null;
+    roundingMethod?: 'up' | 'down' | null;
+    maxBalanceDays?: number | null;
+  },
+) {
+  const intIn = (v: number | null | undefined, lo: number, hi: number, label: string) => {
+    if (v === null || v === undefined) return v;
+    if (!Number.isInteger(v) || v < lo || v > hi) throw new LeaveTypeRuleError(`${label} must be a whole number between ${lo} and ${hi}.`);
+    return v;
+  };
+  const decIn = (v: number | null | undefined, label: string) => {
+    if (v === null || v === undefined) return v;
+    if (!Number.isFinite(v) || v < 0 || v > 9999.99) throw new LeaveTypeRuleError(`${label} must be between 0 and 9999.99.`);
+    return Math.round(v * 100) / 100;
+  };
+  if (p.roundingMethod !== undefined && p.roundingMethod !== null && !['up', 'down'].includes(p.roundingMethod)) {
+    throw new LeaveTypeRuleError('Rounding method must be Up or Down, or cleared.');
+  }
+  if (p.carryForwardExpiryMode !== undefined && p.carryForwardExpiryMode !== null && !['date', 'months'].includes(p.carryForwardExpiryMode)) {
+    throw new LeaveTypeRuleError('Carry-forward expiry mode must be a date or a number of months.');
+  }
+  // Leap-correct, matching isValidMonthDay in core/leave-compute.ts and 0325's own SQL: February is taken
+  // from a leap year so a savable 29-Feb is not rejected here and then accepted by the engine.
+  const month = intIn(p.carryForwardExpiryMonth, 1, 12, 'Carry-forward expiry month');
+  const day = intIn(p.carryForwardExpiryDay, 1, 31, 'Carry-forward expiry day');
+  if (month != null && day != null) {
+    const last = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+    if (day > last) throw new LeaveTypeRuleError(`Carry-forward expiry day is not a real date in that month.`);
+  }
+  const set: Record<string, unknown> = {};
+  const put = (k: string, v: unknown) => {
+    if (v !== undefined) set[k] = v;
+  };
+  put('accrualMethod', p.accrualMethod);
+  put('carryForwardEnabled', p.carryForwardEnabled);
+  put('carryForwardMax', decIn(p.carryForwardMax, 'Carry-forward maximum'));
+  put('carryForwardExpiryMode', p.carryForwardExpiryMode);
+  put('carryForwardExpiryMonths', intIn(p.carryForwardExpiryMonths, 1, 12, 'Carry-forward expiry months'));
+  put('carryForwardExpiryMonth', month);
+  put('carryForwardExpiryDay', day);
+  put('carryForwardIncludeEarned', p.carryForwardIncludeEarned);
+  put('roundingMethod', p.roundingMethod);
+  put('maxBalanceDays', decIn(p.maxBalanceDays, 'Maximum balance days'));
+  if (Object.keys(set).length === 0) return;
+
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({
+        accrualMethod: leaveType.accrualMethod,
+        carryForwardEnabled: leaveType.carryForwardEnabled,
+        carryForwardMax: leaveType.carryForwardMax,
+        carryForwardExpiryMode: leaveType.carryForwardExpiryMode,
+        carryForwardExpiryMonths: leaveType.carryForwardExpiryMonths,
+        carryForwardExpiryMonth: leaveType.carryForwardExpiryMonth,
+        carryForwardExpiryDay: leaveType.carryForwardExpiryDay,
+        carryForwardIncludeEarned: leaveType.carryForwardIncludeEarned,
+        roundingMethod: leaveType.roundingMethod,
+        maxBalanceDays: leaveType.maxBalanceDays,
+      })
+      .from(leaveType)
+      .where(eq(leaveType.id, p.id))
+      .limit(1);
+    if (!before) throw new LeaveTypeRuleError('Leave type not found.');
+
+    await tx.update(leaveType).set(set).where(eq(leaveType.id, p.id));
+
+    // The rules decide what every employee accrues, carries and forfeits, so the change is recorded with
+    // both sides. `after` is the merge, not the posted patch — a reader must see the resulting state.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-type',
+      aggregateId: p.id,
+      eventType: 'leave-type.rules.updated',
+      actor: actorOf(ctx),
+      payload: { before, after: { ...before, ...set } },
+    });
+  });
+}
+
 export function archiveLeaveType(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
     await tx.update(leaveType).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(leaveType.id, p.id)).catch((e) => {

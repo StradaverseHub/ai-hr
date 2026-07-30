@@ -378,7 +378,7 @@ export function hasAnyLeaveTypeRule(rules: LeaveTypeRules | null | undefined): b
  * by definition a rule that differs per band, which is the exact duplication this consolidation removes.
  * The columns are NOT dropped — the JSONB keys, the `ServiceBand` fields and the two band readers all
  * survive untouched — they simply stop being consulted once a type's rules are consolidated. Migration
- * 0328 refuses the release if any policy actually uses them, so this can never silently reprice anyone.
+ * 0334 refuses the release if any policy actually uses them, so this can never silently reprice anyone.
  *
  * Every value is read with the SAME defensive filters the pre-consolidation resolver applies, so the
  * overlay can only ever produce a rule the engine would already have acted on:

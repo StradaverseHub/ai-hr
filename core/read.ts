@@ -525,6 +525,9 @@ export function listLeaveTypes(
         id: leaveType.id,
         code: leaveType.code,
         name: leaveType.name,
+        // 9816a5ad step 2: the consolidated rule columns, so the Leave Type panel can EDIT them.
+        // Read here rather than via a second query — the panel renders one row per type already.
+        ...leaveTypeRuleColumns,
         // Leave Type master page (feedback 097de541): the free-text description shown in the master listing +
         // the identity edit form (MUST be projected here or the field renders empty on every reload).
         description: leaveType.description,

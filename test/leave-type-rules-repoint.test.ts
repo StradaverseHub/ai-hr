@@ -19,7 +19,7 @@
  *      does NOT do (fabricate a policy out of nothing; read per-band carry-forward).
  *   2. THE ENGINES — one rule changed on the type, one produced day value asserted, against a baseline
  *      run of the identical policy with the type's columns left NULL.
- *   3. MIGRATION 0328 — the guard that refuses the release when repointing WOULD move a balance. Its
+ *   3. MIGRATION 0334 — the guard that refuses the release when repointing WOULD move a balance. Its
  *      failures are matched through the `.cause` chain on the real Postgres message, never `toThrow()`.
  */
 import { readFileSync } from 'node:fs';
@@ -52,7 +52,7 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 const MIGRATION_0325 = resolve(root, 'db/migrations/0325_leave_type_rule_columns.sql');
-const MIGRATION_0328 = resolve(root, 'db/migrations/0328_leave_type_rules_repoint_guard.sql');
+const MIGRATION_0334 = resolve(root, 'db/migrations/0334_leave_type_rules_repoint_guard.sql');
 
 let b: Base;
 
@@ -76,8 +76,8 @@ async function runMigration(path: string, ...mustContain: string[]): Promise<voi
 
 const runMigration0325 = () =>
   runMigration(MIGRATION_0325, '_r0325_leave_type_rule_source', 'UPDATE "leave_type" lt');
-const runMigration0328 = () =>
-  runMigration(MIGRATION_0328, '[0328_leave_type_rules_repoint_guard] refusing to repoint');
+const runMigration0334 = () =>
+  runMigration(MIGRATION_0334, '[0334_leave_type_rules_repoint_guard] refusing to repoint');
 
 /** Every message in a thrown error's `.cause` chain. Drizzle wraps the real Postgres error as
  *  "Failed query: …", so a bare `rejects.toThrow()` would pass just as happily on a typo or a missing
@@ -93,14 +93,14 @@ function causeMessages(err: unknown): string {
   return out.join(' | ');
 }
 
-/** Run 0328 and return the cause-chain message of the failure it is expected to raise. */
+/** Run 0334 and return the cause-chain message of the failure it is expected to raise. */
 async function guardFailure(): Promise<string> {
   try {
-    await runMigration0328();
+    await runMigration0334();
   } catch (err) {
     return causeMessages(err);
   }
-  throw new Error('migration 0328 was expected to refuse, but it succeeded');
+  throw new Error('migration 0334 was expected to refuse, but it succeeded');
 }
 
 /** Insert a leave_policy row with an EXACT accrual JSONB, bypassing core/admin's write-time validation —
@@ -326,7 +326,7 @@ describe('the engines resolve each rule from the type — asserted on produced d
   it('MAXIMUM BALANCE from the type caps a policy that has no service bands at all', async () => {
     // The sharpest case for the relocation. `maxBalanceDays` exists TODAY only inside a service band, so a
     // flat policy has no cap and nothing clamps it. Moved to the type it applies to everyone — which is
-    // precisely why migration 0328 refuses to ship this shape without a human deciding. Here the columns
+    // precisely why migration 0334 refuses to ship this shape without a human deciding. Here the columns
     // are set DIRECTLY (not via the backfill), because this asserts what the ENGINE does with a cap, not
     // what the guard permits.
     const { baseline, repointed } = await baselineAndRepointed(LUMP, {
@@ -356,17 +356,17 @@ describe('the engines resolve each rule from the type — asserted on produced d
   });
 });
 
-// ── 3. migration 0328, the guard ───────────────────────────────────────────────────────────────────
+// ── 3. migration 0334, the guard ───────────────────────────────────────────────────────────────────
 
-describe('0328 — refuses to repoint when it would move a balance', () => {
+describe('0334 — refuses to repoint when it would move a balance', () => {
   it('passes when every policy row already states what the type says', async () => {
     // The production shape the release is claiming: many identical copies of one rule, one per
-    // (company, grade). 0325 collapses them, 0328 confirms the collapse changed nothing.
+    // (company, grade). 0325 collapses them, 0334 confirms the collapse changed nothing.
     const full = { annualDays: 16, method: 'earned_monthly', carryForwardMax: 5, roundingMethod: 'up' };
     await policy(full, '2020-01-01');
     await policy({ ...full, annualDays: 12 }, '2021-01-01');
     await runMigration0325();
-    await runMigration0328(); // must not raise
+    await runMigration0334(); // must not raise
     const [t] = await owner.db
       .select()
       .from(schema.leaveType)
@@ -378,7 +378,7 @@ describe('0328 — refuses to repoint when it would move a balance', () => {
     // Ten NULL columns ⇒ the engines still read the policy ⇒ there is nothing to disagree about.
     await policy({ annualDays: 16, method: 'earned_monthly' }, '2020-01-01');
     await policy({ annualDays: 12 }, '2021-01-01'); // silent on method — would be a conflict if consolidated
-    await runMigration0328(); // must not raise: 0325 was never run, so no column is set
+    await runMigration0334(); // must not raise: 0325 was never run, so no column is set
   });
 
   // THE CASE 0325's ASSERTION CANNOT SEE. count(DISTINCT …) ignores NULLs, so a rule stated by one row and
@@ -403,7 +403,7 @@ describe('0328 — refuses to repoint when it would move a balance', () => {
       await runMigration0325(); // collapses cleanly — this is exactly 0325's blind spot
 
       const msg = await guardFailure();
-      expect(msg).toContain('[0328_leave_type_rules_repoint_guard] refusing to repoint');
+      expect(msg).toContain('[0334_leave_type_rules_repoint_guard] refusing to repoint');
       expect(msg).toContain(rule);
       expect(msg).toContain('ANNUAL'); // names the offending type so a human can act on it
     });
@@ -415,7 +415,7 @@ describe('0328 — refuses to repoint when it would move a balance', () => {
     await policy({ annualDays: 16, carryForwardMax: 0 }, '2020-01-01');
     await policy({ annualDays: 12 }, '2021-01-01');
     await runMigration0325();
-    await runMigration0328(); // must not raise
+    await runMigration0334(); // must not raise
   });
 
   it('refuses when the type gains a maximum balance that a band-less policy never had', async () => {

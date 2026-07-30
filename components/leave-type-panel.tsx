@@ -422,22 +422,22 @@ const earningMethodOf = (c: EarningChoice): string =>
 /** Earning Method sub-step (e1a51aea): a type-level front door to the active policy's `method`. */
 function EarningMethodForm({
   t,
-  p,
-  isAnnual,
+  rules,
   action,
   leaveTypeId,
 }: {
   t: ReturnType<typeof useTranslations>;
-  p: EntitlementPolicy;
-  isAnnual: boolean;
+  rules: LeaveTypeRules;
   action: Action;
   leaveTypeId: string;
 }) {
-  const [choice, setChoice] = useState<EarningChoice>(earningChoiceOf(p.method));
+  const [choice, setChoice] = useState<EarningChoice>(earningChoiceOf(rules.accrualMethod ?? undefined));
   return (
     <form action={action} className="space-y-2 rounded-lg bg-background p-3">
-      <FrontDoorIdentityFields p={p} leaveTypeId={leaveTypeId} />
-      <FrontDoorPreservedCarry p={p} isAnnual={isAnnual} />
+      <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
+      {/* Tri-state marker: names the HALF of the rule row this form renders. The carry half is a separate
+          form, and without this marker an earning-only save would clear its configuration. */}
+      <input type="hidden" name="earningRendered" value="1" />
       {/* the mapped engine value — the select below speaks the reporter's vocabulary */}
       <input type="hidden" name="method" value={earningMethodOf(choice)} />
       <Field label={t('subStep.earningMethodLabel')}>
@@ -451,7 +451,7 @@ function EarningMethodForm({
           <option value="by_month">{t('subStep.earningByMonth')}</option>
           <option value="by_year">{t('subStep.earningByYear')}</option>
           {/* round-trip only: surfaced when the policy already stores quarterly earning */}
-          {earningChoiceOf(p.method) === 'by_quarter' && (
+          {earningChoiceOf(rules.accrualMethod ?? undefined) === 'by_quarter' && (
             <option value="by_quarter">{t('methodEarnedQuarterly')}</option>
           )}
           {/* disabled pending engine work — no resignation-earning semantics exist yet. f3a64d90 retired the
@@ -473,7 +473,7 @@ function EarningMethodForm({
       <Field label={t('subStep.roundingMethodLabel')}>
         <select
           name="roundingMethod"
-          defaultValue={roundingMethodValue(p.roundingMethod)}
+          defaultValue={roundingMethodValue(rules.roundingMethod)}
           aria-label={t('subStep.roundingMethodLabel')}
           className={`${inputCls} w-72`}
         >
@@ -499,27 +499,29 @@ function EarningMethodForm({
  *  mode switch). The stored cap/expiry survive a "None" save (only the enable flag turns off). */
 function CarryPolicyForm({
   t,
-  p,
+  rules,
   action,
   leaveTypeId,
 }: {
   t: ReturnType<typeof useTranslations>;
-  p: EntitlementPolicy;
+  rules: LeaveTypeRules;
   action: Action;
   leaveTypeId: string;
 }) {
-  const [carryOn, setCarryOn] = useState<boolean>(carryRuleEnabled(p));
+  // Mirrors carryRuleEnabled's back-compat rule at the TYPE level: an explicit flag wins, and when it is
+  // absent a positive cap means carry is on. Migration 0325 backfilled both, but a type created since then
+  // has neither, and "no flag, no cap" must read as OFF rather than crashing.
+  const [carryOn, setCarryOn] = useState<boolean>(rules.carryForwardEnabled ?? Number(rules.carryForwardMax ?? 0) > 0);
+  const cap = rules.carryForwardMax ?? 0;
   return (
     <form action={action} className="space-y-2 rounded-lg bg-background p-3">
-      <FrontDoorIdentityFields p={p} leaveTypeId={leaveTypeId} />
-      {/* preserve the method — this front door only edits carry */}
-      <input type="hidden" name="method" value={methodValue(p.method)} />
-      {/* b81d3c52 (tri-state, this ticket): the Rounding Method now remembers itself. This front door does
-          NOT render the Rounding dropdown, so it posts NO `roundingMethodRendered` marker — the writer
-          preserves the stored value. The former hidden `roundingMethod` pass-through input is gone. */}
+      <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
+      {/* Tri-state marker: this form renders the CARRY half of the rule row. The earning half is a separate
+          form; without the marker a carry-only save would clear the method and rounding. carryBlockRendered
+          keeps its existing name because app/admin/actions.ts already reads it. */}
       <input type="hidden" name="carryBlockRendered" value="1" />
       {carryOn && <input type="hidden" name="carryForwardEnabled" value="on" />}
-      {!!p.carryForwardIncludeEarned && <input type="hidden" name="carryForwardIncludeEarned" value="on" />}
+      {!!rules.carryForwardIncludeEarned && <input type="hidden" name="carryForwardIncludeEarned" value="on" />}
       <Field label={t('subStep.carryPolicyLabel')}>
         <select
           value={carryOn ? 'fixed_max' : 'none'}
@@ -534,38 +536,27 @@ function CarryPolicyForm({
       {carryOn ? (
         <div className="flex flex-wrap items-end gap-2">
           <Field label={t('carryCapLabel')}>
-            <input
-              name="carryForwardMax"
-              type="number"
-              min="0"
-              step="0.5"
-              defaultValue={p.carryForwardMax}
-              className={`${inputCls} w-24`}
-            />
+            <input name="carryForwardMax" type="number" min="0" step="0.5" defaultValue={cap} className={`${inputCls} w-24`} />
           </Field>
           <CarryExpiryFields
             t={t}
-            mode={p.carryForwardExpiryMode}
-            month={p.carryForwardExpiryMonth}
-            day={p.carryForwardExpiryDay}
-            months={p.carryForwardExpiryMonths}
+            mode={rules.carryForwardExpiryMode}
+            month={rules.carryForwardExpiryMonth}
+            day={rules.carryForwardExpiryDay}
+            months={rules.carryForwardExpiryMonths}
           />
         </div>
       ) : (
         // None = disabled carry: keep the stored cap/expiry so switching back to Fixed Max restores them.
         <>
-          <input type="hidden" name="carryForwardMax" value={p.carryForwardMax} />
-          <input
-            type="hidden"
-            name="carryForwardExpiryMode"
-            value={p.carryForwardExpiryMode === 'months' ? 'months' : 'date'}
-          />
-          {p.carryForwardExpiryMode === 'months' ? (
-            <input type="hidden" name="carryForwardExpiryMonths" value={p.carryForwardExpiryMonths ?? ''} />
+          <input type="hidden" name="carryForwardMax" value={cap} />
+          <input type="hidden" name="carryForwardExpiryMode" value={rules.carryForwardExpiryMode === 'months' ? 'months' : 'date'} />
+          {rules.carryForwardExpiryMode === 'months' ? (
+            <input type="hidden" name="carryForwardExpiryMonths" value={rules.carryForwardExpiryMonths ?? ''} />
           ) : (
             <>
-              <input type="hidden" name="carryForwardExpiryMonth" value={p.carryForwardExpiryMonth ?? ''} />
-              <input type="hidden" name="carryForwardExpiryDay" value={p.carryForwardExpiryDay ?? ''} />
+              <input type="hidden" name="carryForwardExpiryMonth" value={rules.carryForwardExpiryMonth ?? ''} />
+              <input type="hidden" name="carryForwardExpiryDay" value={rules.carryForwardExpiryDay ?? ''} />
             </>
           )}
         </>
@@ -980,6 +971,24 @@ function LeaveVisualForm({
  * entitlement policies (add / correct / remove) so there's no separate, disconnected policy
  * form — the two tables stay split underneath, but the editing surface is unified.
  */
+/**
+ * The five consolidated settings, read from the leave TYPE (9816a5ad step 2, migration 0325 columns).
+ * Shaped to overlap `EntitlementPolicy` field-for-field so the Earning Method and Carry Forward forms —
+ * which already render exactly these controls — can be pointed at it without being rewritten.
+ */
+export type LeaveTypeRules = {
+  accrualMethod?: string | null;
+  carryForwardEnabled?: boolean | null;
+  carryForwardMax?: number | null;
+  carryForwardExpiryMode?: 'date' | 'months' | null;
+  carryForwardExpiryMonths?: number | null;
+  carryForwardExpiryMonth?: number | null;
+  carryForwardExpiryDay?: number | null;
+  carryForwardIncludeEarned?: boolean | null;
+  roundingMethod?: LeaveRoundingMethod | null;
+  maxBalanceDays?: number | null;
+};
+
 export function LeaveTypePanel({
   id,
   name,
@@ -1023,6 +1032,7 @@ export function LeaveTypePanel({
   allowUnpaidLeave,
   balanceSourceOptions,
   policies,
+  typeRules,
   grades,
   companies,
   schemeEntitlements,
@@ -1038,6 +1048,7 @@ export function LeaveTypePanel({
   deleteTypeAction,
   createPolicyAction,
   updatePolicyAction,
+  setTypeRulesAction,
   deletePolicyAction,
   countInScopeAction,
   upsertSchemeEntitlementAction,
@@ -1153,6 +1164,8 @@ export function LeaveTypePanel({
    *  would only produce a rejected save). Prepared once at page level, not per panel. */
   balanceSourceOptions: { id: string; name: string }[];
   policies: EntitlementPolicy[];
+  /** 9816a5ad step 2: the consolidated rules, read from and written back to the leave TYPE. */
+  typeRules: LeaveTypeRules;
   grades: GradeOption[];
   /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
   companies: CompanyOption[];
@@ -1203,6 +1216,8 @@ export function LeaveTypePanel({
   deleteTypeAction: Action;
   createPolicyAction: Action;
   updatePolicyAction: Action;
+  /** 9816a5ad step 2: writes the five consolidated settings to the leave type. */
+  setTypeRulesAction: Action;
   deletePolicyAction: Action;
   /** Feedback 9d8cf621: server action returning the count of active employees the selected
    *  companies/grades cover — drives the live "entitled employees" figure next to the chips. */
@@ -1757,19 +1772,16 @@ export function LeaveTypePanel({
               Custom Settings step's Leave Year Configuration section, beside the managed leave-year
               records relocated off the retired Application Rules tab. Same sub-form, same `yearCycle=1`
               tri-state marker — only its home changed. */}
-          {/* Sub-step 2 — Earning Method (e1a51aea): a front door to the ACTIVE policy's per-policy method
-              (posts the SAME updatePolicyAction as the Eligibility edit form — no new storage; the
-              per-policy selects there keep working, the policy row is the single source of truth). */}
+          {/* Sub-step 2 — Earning Method. 9816a5ad step 2 CHANGED WHAT THIS WRITES. It used to be a "front
+              door" onto the active per-company/grade policy row, posting updatePolicyAction. The engines now
+              read these rules from the leave TYPE, so a policy write would save successfully and change
+              nothing the calculation reads — the worst kind of control. It now posts setTypeRulesAction
+              against the type, and the per-policy scope picker is gone because there is no longer a scope:
+              one leave type, one set of rules, exactly the consolidation the reporter asked for. */}
           {generalSubStep === 'earning' && (
           <div className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">{t('subStep.earning')}</span>
-            <PolicyFrontDoor
-              t={t}
-              policies={policies}
-              renderForm={(p) => (
-                <EarningMethodForm t={t} p={p} isAnnual={isAnnual} action={updatePolicyAction} leaveTypeId={id} />
-              )}
-            />
+            <EarningMethodForm t={t} rules={typeRules} action={setTypeRulesAction} leaveTypeId={id} />
             <p className="text-xs text-muted-foreground">{t('subStep.earningHelp')}</p>
           </div>
           )}
@@ -1781,11 +1793,7 @@ export function LeaveTypePanel({
           <div className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">{t('subStep.carry')}</span>
             {isAnnual ? (
-              <PolicyFrontDoor
-                t={t}
-                policies={policies}
-                renderForm={(p) => <CarryPolicyForm t={t} p={p} action={updatePolicyAction} leaveTypeId={id} />}
-              />
+              <CarryPolicyForm t={t} rules={typeRules} action={setTypeRulesAction} leaveTypeId={id} />
             ) : (
               <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
                 {t('subStep.carryAnnualOnly')}
