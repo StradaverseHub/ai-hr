@@ -5,13 +5,15 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-07-31, after r87)
+## CURRENT STATE — read this first (updated 2026-08-01, after r88)
 
-> **r87 SHIPPED `main@6e967cf`, no migration** — production stays at **286**.
-> Two payroll faults shipped (`ef31d251`, `d0d2c9d1`); `97a9b0ab` was **held** because checking
-> production showed its plan was wrong — see the r87 entry, it is the most useful thing in it.
+> ### DEPLOYED HEAD IS `main@6b82c8e` — production on **288** migrations.
 >
-> ### r88 SHIPPED 2026-08-01 — `main@6b82c8e`, migrations `0340` + `0341`, production on **288**
+> r87 (`main@6e967cf`, no migration) shipped two payroll faults — `ef31d251` and `d0d2c9d1` — and
+> **held `97a9b0ab`** because checking production showed its plan was wrong. That is still the most
+> useful thing in the r87 entry, and `97a9b0ab` rev 2 is still awaiting the reporter.
+>
+> ### r88 SHIPPED 2026-08-01 — migrations `0340` + `0341`, taking production 286 → **288**
 >
 > **Next free migration number is `0342`.** `0339` is SPENT BUT UNSHIPPED — see below.
 >
