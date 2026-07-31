@@ -11,6 +11,7 @@ import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { deleteDraftBatchAction, resetAction } from './actions';
 import { resumeHref } from './process/selection-logic';
 import { settingEnabledOrDefault } from '@/core/entitlements';
+import { payrollPublicationState } from '@/lib/payroll-publication';
 
 const STATUS_STYLE: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -47,6 +48,10 @@ export default async function PayrollPage({
   const batches = activePeriod ? allBatches.filter((b) => b.payPeriod === activePeriod) : allBatches;
   // fc776376 — payroll runs accumulate every period, so the list pages like every other list.
   const { rows: batchPage, state: pgState } = paginateRows(batches, parsePageQuery(sp));
+  // Feedback ef31d251 — "a skipped one cannot sit unnoticed for months". Counted off `allBatches`, NOT
+  // `batches` (period-filtered above) or `batchPage` (paginated): either would let a ?period selection or
+  // page 2 hide the exact warning this exists to raise. Same shared derivation as the run detail screen.
+  const unpublishedCount = allBatches.filter((b) => payrollPublicationState(b) === 'unpublished').length;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -66,6 +71,12 @@ export default async function PayrollPage({
         <PeriodSwitcher options={periodOptions} active={activePeriod} />
       </div>
       <ErrorBanner message={error} />
+
+      {unpublishedCount > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+          🙈 {t('notPublishedBanner', { n: unpublishedCount })}
+        </div>
+      )}
 
       <Card className="overflow-hidden" data-tour="payroll-batches">
         <SectionHeader title={t('batches')} count={batches.length} />
@@ -120,6 +131,14 @@ export default async function PayrollPage({
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLE[b.status]}`}>
                       {t(`status.${b.status}`)}
                     </span>
+                    {/* ef31d251 — a second badge, from the SHARED derivation rather than a repeated
+                        inline `b.status === 'processed'` test, so this and the run detail header can
+                        never drift apart about what has actually reached employees. */}
+                    {payrollPublicationState(b) === 'unpublished' && (
+                      <span className="ml-1.5 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                        {t('notPublishedBadge')}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     {/* Delete is available for DRAFT runs ONLY (feedback 4f00d8f0) — processed/closed rows

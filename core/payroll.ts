@@ -3702,7 +3702,7 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     if (!batch) throw new Error('batch not found');
     // Granular RBAC (9bc442bc): payroll.close (configurable per company/tenant), not a coarse admin check.
     await assertPayrollPermission(tx, ctx, 'payroll.close', batch.companyId);
-    if (batch.status !== 'processed') throw new Error('Only a processed batch can be closed');
+    if (batch.status !== 'processed') throw new BatchNotCloseableError();
     // Step 6 (f3148da1) — compute the payslip RELEASE instant NOW, under this admin session (which can read the
     // company release config; the ESS employee session cannot, so the gate must be materialized here, not at
     // read time). We read the company's release config + pay-day and derive releasedAt from the close instant;
@@ -4014,6 +4014,19 @@ export class BatchNotUnlockableError extends Error {
   constructor() {
     super('Only a closed payroll process can be unlocked');
     this.name = 'BatchNotUnlockableError';
+  }
+}
+/**
+ * Close target is not a processed run (feedback ef31d251). Named, rather than the bare Error it replaced,
+ * for the same two reasons BatchNotUnlockableError is named: closeAction can map the refusal to translated
+ * copy instead of pushing a raw English core string into the URL, and a test can assert the constraint
+ * NAME rather than a message string that would also match the wrong throw. Message text is unchanged from
+ * the bare Error so anything that logs it reads identically.
+ */
+export class BatchNotCloseableError extends Error {
+  constructor() {
+    super('Only a processed batch can be closed');
+    this.name = 'BatchNotCloseableError';
   }
 }
 /**
@@ -4336,6 +4349,12 @@ export function listBatches(ctx: SessionContext, companyIds?: string[], payPerio
         // runs (both stored as runType='off_cycle'). Surfaced in the listing's "Payroll Cycle" column so
         // they display distinctly, matching the batch detail page. Read-only; no schema/migration change.
         remarks: payrollBatch.remarks,
+        // ef31d251 — the payroll LIST has to say which months have actually reached employees, and it
+        // cannot tell 'published' from 'scheduled' without the release instant (lib/payroll-publication.ts).
+        // Purely additive: all three callers filter/map explicit fields, and the by-batches context test
+        // compares two listBatches results to each other rather than to a literal row shape.
+        closedAt: payrollBatch.closedAt,
+        releasedAt: payrollBatch.releasedAt,
       })
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))

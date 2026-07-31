@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
+  BatchNotCloseableError,
   BatchNotDraftError,
   BatchNotResettableError,
   BatchNotUnlockableError,
@@ -406,14 +407,34 @@ export async function unlockAction(formData: FormData) {
   redirect(`/payroll/${batchId}?toast=${encodeURIComponent(toast)}`);
 }
 
+/**
+ * Close (publish) a processed run — feedback ef31d251.
+ *
+ * Three fixes, none of them touching the close mechanics (all authority stays in closeBatch: payroll.close,
+ * processed-only, the release derivation and the payroll-batch.closed event that fans out payslip.ready):
+ *  - `revalidatePath('/payroll')`. This action revalidated ONLY the run's own page, so the list's new
+ *    unpublished badge + banner would have gone stale the instant a run was closed.
+ *  - The success toast was the hardcoded English `?toast=Batch closed`. It IS rendered (ToastFromQuery is
+ *    mounted in app/layout.tsx), so it was untranslated copy on the confirmed flow.
+ *  - The catch pushed `(e as Error).message` — raw English core strings — into the URL. Mapped to
+ *    translated copy per named error, mirroring unlockAction.
+ */
 export async function closeAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  const t = await getTranslations('payroll.batch');
   try {
     await closeBatch(s, { batchId });
   } catch (e) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+    const msg =
+      e instanceof BatchNotCloseableError
+        ? t('closeNotProcessed')
+        : e instanceof PayrollPermissionDeniedError
+          ? t('closePermissionDenied')
+          : (e as Error).message;
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(`/payroll/${batchId}`);
-  redirect(`/payroll/${batchId}?toast=Batch closed`);
+  revalidatePath('/payroll');
+  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(t('closeDone'))}`);
 }

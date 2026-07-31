@@ -18,6 +18,7 @@ import { OtInputRow } from './ot-input-row';
 import { ReprocessPanel } from './reprocess-panel';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { packFor } from '@/localization/registry';
+import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -46,6 +47,18 @@ export default async function BatchPage({
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
   const { batch, slips } = data;
+  // Feedback ef31d251 — this header used to render the RAW status enum, and "Processed" reads as
+  // finished. It is not: payslips stay invisible to employees until Close, which is why eighteen runs
+  // were calculated and never published. Derived through the shared helper the payroll LIST also uses,
+  // so the two screens cannot start disagreeing about what "published" means. batchDetail does a bare
+  // select() of the batch row, so releasedAt is already in hand — no extra read.
+  const pubState = payrollPublicationState(batch);
+  const PUBLICATION_LABEL: Record<PayrollPublicationState, string> = {
+    draft: t('publishStateDraft'),
+    unpublished: t('publishStateUnpublished'),
+    scheduled: t('publishStateScheduled'),
+    published: t('publishStatePublished'),
+  };
   const totals = (batch.totals ?? {}) as Record<string, number>;
   const inputs = batch.status === 'draft' ? await batchInputRows(s, batchId) : [];
   const leavers = batch.status === 'draft' ? await leaverAdvisory(s, batchId) : [];
@@ -161,7 +174,7 @@ export default async function BatchPage({
         description={
           <>
             {fromWizard ? `${t('step3Title')} · ` : ''}
-            {t('subtitle')} · <span className="capitalize">{batch.status}</span>
+            {t('subtitle')} · <span>{PUBLICATION_LABEL[pubState]}</span>
           </>
         }
         actions={
@@ -204,9 +217,18 @@ export default async function BatchPage({
             {batch.status === 'processed' && (
               <form action={closeAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
-                <Button type="submit" variant="secondary">
+                {/* ef31d251 — Close is the step that publishes pay to employees and fans out a
+                    payslip.ready notification to every one of them, and it was a plain button that
+                    said nothing about either. variant="secondary" is mandatory: ConfirmSubmit
+                    defaults to 'destructive' (red), and closing a run is not destructive. */}
+                <ConfirmSubmit
+                  variant="secondary"
+                  title={t('closeConfirmTitle')}
+                  description={t('closeConfirmBody', { n: slips.length })}
+                  confirmLabel={t('closeConfirmYes')}
+                >
                   {t('closeBatch')}
-                </Button>
+                </ConfirmSubmit>
               </form>
             )}
             {/* Reset / Zeroize (feedback a03b2d9b): PROCESSED-only — never draft (nothing to reset;
@@ -239,6 +261,48 @@ export default async function BatchPage({
           🔒 {t('lockedNote')}
         </div>
       )}
+
+      {/* ef31d251 — the "hidden from employees" statement. Nothing on this screen has ever said that a
+          calculated run's payslips are invisible until Close, which is why the step was skipped on all
+          eighteen runs. Keyed off the publication state, not `status === 'processed'`, so a draft (which
+          has no payslips at all) never claims to be hiding pay. */}
+      {pubState === 'unpublished' && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+          <div className="font-medium">🙈 {t('unpublishedBannerTitle')}</div>
+          <p className="mt-1">{t('unpublishedBannerBody')}</p>
+        </div>
+      )}
+
+      {/* ef31d251 — who published this run and when. Read off the batch's own `payroll-batch.closed`
+          domain event, already fetched above for the History card; no new read and no new column.
+          `history` is desc(occurredAt), so .find() yields the MOST RECENT close, which is the right one
+          after an unlock → re-close cycle. The no-record branch is NOT optional: core/payroll-history-
+          import.ts sets status='closed' directly with closed_at/released_at NULL and appends no close
+          event, so an imported run would otherwise render "Published by undefined on Invalid Date". */}
+      {(pubState === 'published' || pubState === 'scheduled') &&
+        (() => {
+          const closeEv = history.find((ev) => ev.eventType === 'payroll-batch.closed');
+          const releasedOn = batch.releasedAt ? new Date(batch.releasedAt).toLocaleDateString() : null;
+          return (
+            <div className="text-xs text-muted-foreground">
+              <div>
+                {closeEv
+                  ? t('publishedBy', {
+                      actor: closeEv.actorName ?? t('historySystemActor'),
+                      when: new Date(closeEv.occurredAt).toLocaleString(),
+                    })
+                  : pubState === 'scheduled' && releasedOn
+                    ? t('publishedScheduledOn', { when: releasedOn })
+                    : t('publishedNoRecord')}
+              </div>
+              {closeEv && pubState === 'scheduled' && releasedOn && (
+                <div className="mt-0.5 text-amber-700 dark:text-amber-400">
+                  {t('publishedScheduledOn', { when: releasedOn })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
       {/* Unlock a CLOSED run (feedback 9bc442bc, reporter ask #2; simplified in 62e85140): a controlled,
           audited reversal of the closed-immutability freeze. A single confirm dialog (no OTP) collects the
