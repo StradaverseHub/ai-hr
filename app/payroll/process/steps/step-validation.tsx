@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { checkPayrollCycleReadiness, validatePayrollSelection } from '../actions';
+import { checkPayrollCycleReadiness, checkUnattachedForSelection, validatePayrollSelection } from '../actions';
 import type { PreProcessAdvisory } from '@/core/payroll';
 import type { IntendedRunType } from '@/core/payroll-run-group';
 
@@ -43,6 +43,10 @@ export function StepValidation({
   const [loading, setLoading] = useState(true);
   // Organization Module (361e3b15) — companies with no active cycle of the intended run type (pre-flight).
   const [missingCycle, setMissingCycle] = useState<{ companyId: string; companyName: string }[]>([]);
+  // d0d2c9d1 — employees this NARROWED run will leave out who are holding transactions for the month.
+  // Informational only, exactly like missingCycle above: it is never fed into onStatusChange, because a
+  // narrowed run can be precisely what the operator intends. It must be SEEN, not prevented.
+  const [unattached, setUnattached] = useState<{ employmentId: string; name: string; count: number; amount: string }[]>([]);
 
   // A stable, order-independent key for the selection so the effect refires when the admin goes back and
   // changes companies / period / who is included — never on a bare array-reference change.
@@ -64,6 +68,16 @@ export function StepValidation({
     } else {
       setMissingCycle([]);
     }
+    // d0d2c9d1 — fired in the SAME effect, off the same `key` (which already includes the sorted
+    // employmentIds), so it re-runs whenever the operator changes who is in the run. Returns [] for an
+    // unscoped run, which collects everything and has nothing to warn about.
+    checkUnattachedForSelection({ companyIds, payPeriod, employmentIds })
+      .then((rows) => {
+        if (live) setUnattached(rows);
+      })
+      .catch(() => {
+        if (live) setUnattached([]);
+      });
     setLoading(true);
     onStatusChange({ loading: true, hasBlockers: false });
     validatePayrollSelection({ companyIds, payPeriod, employmentIds })
@@ -127,10 +141,29 @@ export function StepValidation({
       </div>
     ) : null;
 
+  // d0d2c9d1 — the money this narrowed run is about to walk past. Rendered in BOTH branches below (a
+  // run can be otherwise all-clear and still be leaving RM7,500 of somebody's bonus behind), and never
+  // counted into `warnings`, which drives the blocker/warning arithmetic and the Process gate.
+  const unattachedBanner =
+    unattached.length > 0 ? (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+        <p className="font-medium">⚠ {t('unattachedScopeTitle', { n: unattached.length })}</p>
+        <p className="mt-0.5 text-xs">{t('unattachedScopeWarning')}</p>
+        <ul className="mt-1 space-y-0.5 text-xs">
+          {unattached.map((u) => (
+            <li key={u.employmentId}>
+              {t('unattachedScopeEmployee', { name: u.name, n: u.count, amount: u.amount })}
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
+
   if (blockers + warnings === 0) {
     return (
       <div className="space-y-4">
         {missingCycleBanner}
+        {unattachedBanner}
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
           <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
             <span aria-hidden>✓</span> {t('validationAllClear')}
@@ -154,6 +187,7 @@ export function StepValidation({
   return (
     <div className="space-y-4">
       {missingCycleBanner}
+      {unattachedBanner}
       {blockers > 0 ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
           <p className="font-medium">✗ {t('validationBlockerTitle', { n: blockers })}</p>

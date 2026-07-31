@@ -8,12 +8,14 @@ import {
   listIndividualTxnCreators,
   listIndividualTxnsAcross,
   listProcessedPayslipsAcross,
+  listUnattachedTxnSummary,
 } from '@/core/payroll-view';
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
 import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { employeeLabel } from '@/lib/employee-code';
 import { packFor } from '@/localization/registry';
 import { IndividualTxnTable } from './individual-table';
+import { OutstandingTable } from './outstanding-table';
 import { HistoryTable } from './history-table';
 
 /**
@@ -35,7 +37,11 @@ import { HistoryTable } from './history-table';
  * keying screens, so the namespace is NOT moved despite the route relocation.
  */
 
-const TABS = ['fixed', 'individual', 'history'] as const;
+// 'outstanding' (feedback d0d2c9d1) is a 4th SUB-TAB, deliberately not a new top-level nav entry:
+// test/payroll-flyout-nav.test.ts pins the six payroll destinations character for character and
+// asserts no entry is invented, and a new one would also need packs/payroll/index.ts +
+// lib/permissions.ts. A sub-tab needs none of that and inherits this route's scopedAdmin() fence.
+const TABS = ['fixed', 'individual', 'history', 'outstanding'] as const;
 type Tab = (typeof TABS)[number];
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
@@ -115,7 +121,7 @@ export default async function TransactionViewPage({
   const createdTo = sp.createdTo && ISO_DATE.test(sp.createdTo) ? sp.createdTo : undefined;
 
   // Only the active tab's query runs — the other two stay empty (single round-trip per view).
-  const [fixedRows, individualRows, historyRows] = await Promise.all([
+  const [fixedRows, individualRows, historyRows, outstandingRows] = await Promise.all([
     tab === 'fixed'
       ? listFixedTransactionsAcross(s, { companyIds, employmentId, componentId, status })
       : Promise.resolve([]),
@@ -135,6 +141,11 @@ export default async function TransactionViewPage({
       : Promise.resolve([]),
     tab === 'history'
       ? listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle })
+      : Promise.resolve([]),
+    // d0d2c9d1 — money entered but never paid, grouped and totalled. Same scope-guarded filters as the
+    // other tabs; deliberately NO default run-state filter (see the read's doc comment).
+    tab === 'outstanding'
+      ? listUnattachedTxnSummary(s, { companyIds, year, month, employmentId })
       : Promise.resolve([]),
   ]);
 
@@ -207,7 +218,7 @@ export default async function TransactionViewPage({
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader title={t('view.title')} description={t('view.subtitle')} />
 
-      {/* Sub-tab strip (Fixed | Individual | History). Switching tabs resets the filters on purpose —
+      {/* Sub-tab strip (Fixed | Individual | History | Outstanding). Switching tabs resets the filters on purpose —
           each view has its own filter set. */}
       <div className="flex gap-1 border-b border-border">
         {TABS.map((k) => (
@@ -420,6 +431,18 @@ export default async function TransactionViewPage({
         <Card className="overflow-hidden">
           <SectionHeader title={t('view.tabs.history')} count={historyRows.length} />
           <HistoryTable rows={historyRows} hrdfRegisteredCompanyIds={hrdfRegisteredCompanyIds} />
+        </Card>
+      )}
+
+      {/* ── 4. Outstanding transactions (feedback d0d2c9d1) ──
+          Money entered against an employee and a month that has never reached a payslip. The rows were
+          always listable on the Individual tab (?txnStatus=unattached); what was missing — and what let
+          RM23,170 accumulate unnoticed — is the per-employee/per-month grouping and the grand total. */}
+      {tab === 'outstanding' && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('view.tabs.outstanding')} count={outstandingRows.length} />
+          <p className="px-4 pb-2 text-xs text-muted-foreground">{t('view.outstanding.hint')}</p>
+          <OutstandingTable rows={outstandingRows} />
         </Card>
       )}
     </div>

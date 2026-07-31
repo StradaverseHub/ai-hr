@@ -2603,7 +2603,9 @@
       "deleteDraftBody": "确定要删除此薪资流程吗？此操作无法撤销。",
       "deleteDraftNotDraft": "只能删除草稿状态的薪资流程。",
       "deleteDraftFailed": "无法删除草稿薪资流程。请重试，如果问题持续存在，请联系管理员。",
-      "toastDeleted": "薪资流程草稿已删除"
+      "toastDeleted": "薪资流程草稿已删除",
+      "notPublishedBadge": "未发布",
+      "notPublishedBanner": "有 {n} 个薪资批次已计算但尚未发布 — 其中的员工还看不到自己的工资单。打开批次并关闭它即可发布。"
     },
     "reports": {
       "pageTitle": "薪资",
@@ -2948,6 +2950,16 @@
       "resetPayroll": "重置薪资",
       "resetTitle": "重置薪资流程",
       "resetDescription": "确定要重置此薪资流程吗？本次运行的所有薪资计算结果将被清除，流程将恢复为草稿状态。此操作仅限获授权的用户执行。",
+      "scopeUnattachedTitle": "本批次范围之外的 {n} 位员工有待处理的交易",
+      "scopeUnattachedWarning": "此批次已缩小至选定员工。计算它不会收集下列交易 — 在本月份的完整批次被计算之前，它们会一直未支付。",
+      "outstandingTxnTitle": "本月有 {n} 笔交易，合计 {amount}，尚未进入工资单",
+      "outstandingTxnHint": "最早一笔录入于 {when}。将此批次退回草稿并重新计算即可收集全部。",
+      "outstandingTxnAfterProcessing": "其中部分是在此批次计算之后录入的。交易仅在批次首次计算时收集，因此之后录入的不会被纳入。",
+      "outstandingTxnLeftOutByScope": "其中部分属于被此批次范围遗漏的员工，因此计算时没有收集它们。",
+      "outstandingTxnLink": "查看未支付交易",
+      "outstandingTxnHolder": "{name} — {n} 条，{amount}",
+      "resetCollectsOutstanding": "退回草稿并重新计算也会收集本月所有未支付的交易。",
+      "reprocessDoesNotCollect": "重新处理选定员工不会收集本月未支付的交易 — 只有将批次退回草稿并重新计算才会。",
       "resetConfirm": "重置薪资",
       "resetDone": "薪资流程已重置为草稿",
       "resetOnlyProcessed": "只有已处理状态的薪资流程才能重置。",
@@ -2991,6 +3003,21 @@
       "unlockNotClosed": "只有已关闭的薪资流程才能解锁。",
       "unlockPermissionDenied": "您无权解锁已关闭的薪资流程。",
       "unlockReasonRequired": "解锁已关闭的薪资流程需要填写原因。",
+      "publishStateDraft": "草稿",
+      "publishStateUnpublished": "已计算 · 尚未发布",
+      "publishStateScheduled": "已关闭 · 已排定发布",
+      "publishStatePublished": "已发布给员工",
+      "unpublishedBannerTitle": "这些工资单尚未对员工可见",
+      "unpublishedBannerBody": "此批次已计算但尚未发布。在您关闭它之前，员工无法看到自己的工资单。关闭会通知此批次中的每位员工其工资单已就绪，并将其发布 — 立即发布，或在公司已设定的工资单发布日期发布。",
+      "closeConfirmTitle": "关闭此批次并发布给员工？",
+      "closeConfirmBody": "此操作会向此批次中的员工发布 {n} 份工资单，并逐一通知他们。除非此公司设定了工资单发布日期（那样会排定在该日期），否则将立即发布。关闭后，此批次不可再修改。",
+      "closeConfirmYes": "是，关闭并发布",
+      "closeDone": "薪资批次已关闭 — 工资单已发布给员工。",
+      "closeNotProcessed": "只有已处理的薪资批次才能关闭。",
+      "closePermissionDenied": "您没有关闭薪资批次的权限。",
+      "publishedBy": "由 {actor} 于 {when} 发布",
+      "publishedScheduledOn": "已关闭 — 工资单将于 {when} 对员工可见",
+      "publishedNoRecord": "已发布，但此批次没有关闭记录 — 它是从先前的薪资系统导入的，并非在此关闭。",
       "preChecksTitle": "处理前检查",
       "preChecksAllClear": "所有检查已通过——本次运行的员工信息完整。",
       "preChecksBlockerHint": "{n} 名员工没有当前薪资记录。此前他们会被悄悄排除在运行之外——必须先解决此问题（或将其排除在运行范围之外）才能处理薪资。",
@@ -3214,7 +3241,7 @@
         "pendingRun": "等待薪资批次",
         "unattachedOption": "未挂接 — 等待薪资批次",
         "unattachedTitle": "未挂接交易",
-        "unattachedHint": "这些条目是在该月份尚无薪资批次时录入的。生成薪资时，每条将自动挂接到该月的常规批次。",
+        "unattachedHint": "这些条目是在其月份尚无薪资批次时录入的。当该月份的常规批次首次计算时，每一条都会附加到该批次 — 前提是该批次涵盖了这位员工。缩小到部分员工的批次会让其余条目保持未支付，而在批次计算之后录入的内容不会被纳入。",
         "unattachedEmpty": "暂无未挂接交易。",
         "periodInvalid": "请选择有效的月份。",
         "componentRequired": "每一行收入或扣款都必须选择薪资项目——一次性项目会通过薪资发放，因此必须明确其法定处理方式。",
@@ -3306,7 +3333,8 @@
         "tabs": {
           "fixed": "固定",
           "individual": "个人",
-          "history": "历史"
+          "history": "历史",
+          "outstanding": "未支付"
         },
         "filters": {
           "company": "公司",
@@ -3338,7 +3366,23 @@
           "totalEmployerContributions": "雇主缴纳总额",
           "hrdfNotRegistered": "未注册"
         },
-        "exportCsv": "导出 CSV"
+        "exportCsv": "导出 CSV",
+        "outstanding": {
+          "hint": "已记入某位员工某个月份但尚未出现在工资单上的金额，按员工和月份汇总。尚未运行薪资批次的月份属正常情况 — 这些条目只是在等待。而常规批次已计算或已发布的月份则跳过了它们，这需要处理。",
+          "empty": "没有未支付项 — 已录入的每笔交易都已进入工资单。",
+          "colEntries": "条目数",
+          "colAmount": "金额",
+          "colOldest": "最早条目",
+          "colRunState": "薪资批次",
+          "grandTotal": "未支付合计",
+          "strandedTotal": "其中 {amount} 属于批次已计算的月份",
+          "runStateNone": "尚无批次",
+          "runStateDraft": "草稿",
+          "runStateProcessed": "已计算",
+          "runStateClosed": "已发布",
+          "arrivedAfterProcessing": "在本月批次计算之后录入",
+          "leftOutByScope": "批次范围被缩小，遗漏了这位员工"
+        }
       }
     },
     "setup": {
@@ -3550,7 +3594,10 @@
         "missingBank": "银行资料不完整",
         "currencyMismatch": "薪资货币不是 MYR — 金额按输入值处理",
         "hrdfSubjectUnregistered": "已设为需缴 HRDF，但公司未注册——不会征收任何征费"
-      }
+      },
+      "unattachedScopeTitle": "本次批次遗漏的 {n} 位员工有待处理的交易",
+      "unattachedScopeWarning": "将批次缩小到部分员工，意味着其他人本月的交易不会被收集。它们会一直未支付，直到该月份的完整批次被计算。您可以继续 — 这是提醒，不是阻止。",
+      "unattachedScopeEmployee": "{name} — {n} 条，{amount}"
     },
     "guide": {
       "title": "薪资工作流程指南",

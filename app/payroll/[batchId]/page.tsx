@@ -18,6 +18,8 @@ import { OtInputRow } from './ot-input-row';
 import { ReprocessPanel } from './reprocess-panel';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { packFor } from '@/localization/registry';
+import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
+import { listUnattachedTxnSummary, unattachedHoldersOutsideBatchScope } from '@/core/payroll-view';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -46,6 +48,18 @@ export default async function BatchPage({
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
   const { batch, slips } = data;
+  // Feedback ef31d251 — this header used to render the RAW status enum, and "Processed" reads as
+  // finished. It is not: payslips stay invisible to employees until Close, which is why eighteen runs
+  // were calculated and never published. Derived through the shared helper the payroll LIST also uses,
+  // so the two screens cannot start disagreeing about what "published" means. batchDetail does a bare
+  // select() of the batch row, so releasedAt is already in hand — no extra read.
+  const pubState = payrollPublicationState(batch);
+  const PUBLICATION_LABEL: Record<PayrollPublicationState, string> = {
+    draft: t('publishStateDraft'),
+    unpublished: t('publishStateUnpublished'),
+    scheduled: t('publishStateScheduled'),
+    published: t('publishStatePublished'),
+  };
   const totals = (batch.totals ?? {}) as Record<string, number>;
   const inputs = batch.status === 'draft' ? await batchInputRows(s, batchId) : [];
   const leavers = batch.status === 'draft' ? await leaverAdvisory(s, batchId) : [];
@@ -153,6 +167,36 @@ export default async function BatchPage({
   const scope = (batch.scope ?? null) as { departmentIds?: string[]; employmentIds?: string[] } | null;
   const isScoped = !!(scope?.departmentIds?.length || scope?.employmentIds?.length);
 
+  // ── Feedback d0d2c9d1 — money entered for this month that has never reached a payslip. ──
+  // GATED TO runType === 'regular' on purpose: off_cycle / bonus / adjustment runs NEVER collect
+  // transactions by design (the attach guard in generatePayslips), so an indicator on them would be a
+  // permanent, un-actionable alert about behaviour that is working correctly. Reuses the `isRegular`
+  // declared above for the loan summary — same expression, one binding.
+  const [txnYear, txnMonth] = batch.payPeriod.split('-').map(Number);
+  // Before Generate on a SCOPED draft: who this run is about to leave out, and what they are holding.
+  const scopeHolders =
+    isRegular && isScoped && batch.status === 'draft'
+      ? await unattachedHoldersOutsideBatchScope(s, {
+          companyId: batch.companyId,
+          payPeriod: batch.payPeriod,
+          scope,
+        })
+      : [];
+  // After Generate: whatever is still outstanding for the month. For a processed run EVERY unattached
+  // row of its (company, period) is outstanding, regardless of when it arrived — arrival time only
+  // decides which of the two causes the copy should name.
+  const outstanding =
+    isRegular && batch.status !== 'draft'
+      ? await listUnattachedTxnSummary(s, { companyIds: [batch.companyId], year: txnYear, month: txnMonth })
+      : [];
+  // Summed in CENTS — float-summing the decimal strings would drift on four-figure bonuses.
+  const outstandingTotal =
+    outstanding.reduce((cents, g) => cents + Math.round(Number(g.totalAmount) * 100), 0) / 100;
+  const outstandingEntries = outstanding.reduce((n, g) => n + g.count, 0);
+  const outstandingOldest = outstanding.map((g) => g.oldestTxnDate).sort()[0] ?? null;
+  const outstandingAfterProcessing = outstanding.some((g) => g.arrivedAfterProcessing);
+  const outstandingHref = `/payroll/transaction-view?tab=outstanding&companyId=${batch.companyId}&year=${txnYear}&month=${String(txnMonth).padStart(2, '0')}`;
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
@@ -161,7 +205,7 @@ export default async function BatchPage({
         description={
           <>
             {fromWizard ? `${t('step3Title')} · ` : ''}
-            {t('subtitle')} · <span className="capitalize">{batch.status}</span>
+            {t('subtitle')} · <span>{PUBLICATION_LABEL[pubState]}</span>
           </>
         }
         actions={
@@ -204,9 +248,18 @@ export default async function BatchPage({
             {batch.status === 'processed' && (
               <form action={closeAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
-                <Button type="submit" variant="secondary">
+                {/* ef31d251 — Close is the step that publishes pay to employees and fans out a
+                    payslip.ready notification to every one of them, and it was a plain button that
+                    said nothing about either. variant="secondary" is mandatory: ConfirmSubmit
+                    defaults to 'destructive' (red), and closing a run is not destructive. */}
+                <ConfirmSubmit
+                  variant="secondary"
+                  title={t('closeConfirmTitle')}
+                  description={t('closeConfirmBody', { n: slips.length })}
+                  confirmLabel={t('closeConfirmYes')}
+                >
                   {t('closeBatch')}
-                </Button>
+                </ConfirmSubmit>
               </form>
             )}
             {/* Reset / Zeroize (feedback a03b2d9b): PROCESSED-only — never draft (nothing to reset;
@@ -216,9 +269,12 @@ export default async function BatchPage({
             {batch.status === 'processed' && resetOn && (
               <form action={resetAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
+                {/* d0d2c9d1 — returning to Draft and calculating again DOES collect every outstanding
+                    transaction for the month (the attach guard runs on a full draft→processed
+                    generation). That is the one working recovery path and nothing said so. */}
                 <ConfirmSubmit
                   title={t('resetTitle')}
-                  description={t('resetDescription')}
+                  description={`${t('resetDescription')} ${t('resetCollectsOutstanding')}`}
                   confirmLabel={t('resetConfirm')}
                   reasonField={{ name: 'reason', label: t('resetReasonLabel'), placeholder: t('resetReasonPlaceholder'), required: true }}
                 >
@@ -239,6 +295,86 @@ export default async function BatchPage({
           🔒 {t('lockedNote')}
         </div>
       )}
+
+      {/* ef31d251 — the "hidden from employees" statement. Nothing on this screen has ever said that a
+          calculated run's payslips are invisible until Close, which is why the step was skipped on all
+          eighteen runs. Keyed off the publication state, not `status === 'processed'`, so a draft (which
+          has no payslips at all) never claims to be hiding pay. */}
+      {pubState === 'unpublished' && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+          <div className="font-medium">🙈 {t('unpublishedBannerTitle')}</div>
+          <p className="mt-1">{t('unpublishedBannerBody')}</p>
+        </div>
+      )}
+
+      {/* d0d2c9d1 — BEFORE Generate on a scoped draft: the employees this run will leave out are
+          holding transactions for this month, and generating will walk straight past them. Informational,
+          never a block: a narrowed run can be exactly what the operator intends. */}
+      {scopeHolders.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+          <div className="font-medium">⚠ {t('scopeUnattachedTitle', { n: scopeHolders.length })}</div>
+          <p className="mt-1">{t('scopeUnattachedWarning')}</p>
+          <ul className="mt-1 space-y-0.5">
+            {scopeHolders.map((h) => (
+              <li key={h.employmentId}>
+                {t('outstandingTxnHolder', { name: h.name, n: h.count, amount: h.amount })}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* d0d2c9d1 — AFTER Generate: money for this month that never reached a payslip. The two causes
+          are split into separate sentences so the operator knows which one applies: a row that arrived
+          after processing is a different problem from one the run's scope left out. */}
+      {outstanding.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+          <div className="font-medium">
+            ⚠ {t('outstandingTxnTitle', { n: outstandingEntries, amount: outstandingTotal.toFixed(2) })}
+          </div>
+          <p className="mt-1">{t('outstandingTxnHint', { when: outstandingOldest ?? '—' })}</p>
+          {outstandingAfterProcessing && <p className="mt-1">{t('outstandingTxnAfterProcessing')}</p>}
+          {outstanding.some((g) => !g.arrivedAfterProcessing) && (
+            <p className="mt-1">{t('outstandingTxnLeftOutByScope')}</p>
+          )}
+          <p className="mt-1.5">
+            <Link href={outstandingHref} className="font-medium underline">
+              {t('outstandingTxnLink')}
+            </Link>
+          </p>
+        </div>
+      )}
+
+      {/* ef31d251 — who published this run and when. Read off the batch's own `payroll-batch.closed`
+          domain event, already fetched above for the History card; no new read and no new column.
+          `history` is desc(occurredAt), so .find() yields the MOST RECENT close, which is the right one
+          after an unlock → re-close cycle. The no-record branch is NOT optional: core/payroll-history-
+          import.ts sets status='closed' directly with closed_at/released_at NULL and appends no close
+          event, so an imported run would otherwise render "Published by undefined on Invalid Date". */}
+      {(pubState === 'published' || pubState === 'scheduled') &&
+        (() => {
+          const closeEv = history.find((ev) => ev.eventType === 'payroll-batch.closed');
+          const releasedOn = batch.releasedAt ? new Date(batch.releasedAt).toLocaleDateString() : null;
+          return (
+            <div className="text-xs text-muted-foreground">
+              <div>
+                {closeEv
+                  ? t('publishedBy', {
+                      actor: closeEv.actorName ?? t('historySystemActor'),
+                      when: new Date(closeEv.occurredAt).toLocaleString(),
+                    })
+                  : pubState === 'scheduled' && releasedOn
+                    ? t('publishedScheduledOn', { when: releasedOn })
+                    : t('publishedNoRecord')}
+              </div>
+              {closeEv && pubState === 'scheduled' && releasedOn && (
+                <div className="mt-0.5 text-amber-700 dark:text-amber-400">
+                  {t('publishedScheduledOn', { when: releasedOn })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
       {/* Unlock a CLOSED run (feedback 9bc442bc, reporter ask #2; simplified in 62e85140): a controlled,
           audited reversal of the closed-immutability freeze. A single confirm dialog (no OTP) collects the
@@ -748,7 +884,12 @@ export default async function BatchPage({
         <Card>
           <SectionHeader title={t('reprocessTitle')} />
           <div className="px-4 pb-4">
-            <p className="mb-3 text-xs text-muted-foreground">{t('reprocessHint')}</p>
+            {/* d0d2c9d1 — the counterpart to the reset copy. A selective reprocess passes
+                `reprocessSubset`, and the attach guard is `!subset && runType === 'regular'`, so it
+                does NOT collect outstanding transactions. Reset-and-regenerate is the path that does. */}
+            <p className="mb-3 text-xs text-muted-foreground">
+              {t('reprocessHint')} {t('reprocessDoesNotCollect')}
+            </p>
             <ReprocessPanel
               batchId={batch.id}
               employees={slips.map((sl) => ({ employmentId: sl.employmentId, employeeCode: sl.employeeCode, name: sl.name }))}
