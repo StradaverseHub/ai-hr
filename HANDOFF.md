@@ -40,9 +40,13 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 3. **THE ENTITLEMENT KEYSTONE IS DONE.** `9816a5ad` step 2 is deployed: the engines read the five rules
    from `leave_type`, there is a real editor for them, and ANNUAL carry-forward expiry is **6 months**
    (the reporter's new policy — carried leave now forfeits two months earlier than before).
-   **Step 3 `fa3f4ccb` is CONTESTED**, because the reporter asked to remove the STATUTORY MINIMUM. That
-   was refused in rev 4 — it is the EA 1955 legal floor. Do not build it without an explicit written
-   instruction from them.
+   **Step 3 `fa3f4ccb` is now PLANNED TO PROCEED (rev 5, 2026-07-31).** The reporter asked a SECOND time
+   to remove the statutory minimum, giving their reason ("HR user itself... well trained about the law in
+   Malaysia"). rev 4 refused; a reaffirmed instruction is the owner's decision, so rev 5 builds it — the
+   configured figure wins and the EA 1955 floor becomes an on-screen warning instead of a silent
+   override, with the transfer of responsibility stated in writing in the plan. **Scope boundary:**
+   entitlement DAYS only. The right to APPLY for annual and sick leave (`core/leave.ts:553`/`:557`) and
+   the `updateLeaveType` statutory guard are NOT in scope and were never asked for.
 4. **Three live payroll faults are planned and unanswered, and one is severe:** `ef31d251` — **no employee
    has ever seen a payslip**, because no run has ever been closed (47 payslips, 18 runs). Also
    `d0d2c9d1` (RM23,170 entered and never paid) and `97a9b0ab` (which is **NOT a fault** — PCB is
@@ -113,13 +117,20 @@ Step 2 also already decides the per-band question this file previously flagged a
 `carryForwardDays` and per-band carry expiry (`9d8cf621`) collapse into the type-level setting and stop
 being read; the columns, JSONB keys and readers are retained, not dropped.
 
-**Step 3 is `fa3f4ccb`, and it is CONTESTED — do not build it.** It removes the Company Entitlements
-band surface and zeroes `leave_policy`. Its `blockedById` guard has been released, so **nothing but
-this note stops it being built.** Two independent reasons to hold:
-1. **The reporter asked to remove the STATUTORY MINIMUM**, which is the EA 1955 legal floor. Rev 4
-   refused. It needs a written instruction from them, not an inference.
-2. **`leave_policy` still supplies DAYS** and remains the rule fallback for any type carrying no
-   type-level rules. Zeroing it is not the no-op it looks like now that the rules have moved.
+**Step 3 is `fa3f4ccb`, planned as rev 5 on 2026-07-31 and awaiting approval.** It removes the Company
+Entitlements band surface and the statutory floor's override behaviour.
+
+**The statutory-minimum question is SETTLED — do not re-refuse it.** Rev 4 refused; the reporter asked
+again with their reasoning, and a reaffirmed instruction is theirs to make. Rev 5 builds it: the
+configured figure wins, and the floor renders as a non-blocking warning so a typo is still visible.
+Keep `floorDays` flowing through the return shape and keep the `floorApplied` signal (renamed) — the
+warning needs exactly that value, and recomputing the floor in the UI is how the two figures drift.
+
+**What is NOT settled, and is the part still to get right:** `leave_policy` still supplies DAYS and
+remains the rule fallback for any leave type carrying no type-level rules (10 of them carry rules; there
+are 67 policy rows). **Zeroing `leave_policy` wholesale would stop accrual for every type that falls
+through** — that half of the original objection stands and the plan says so. Removing the band SURFACE
+is safe now that r85 relocated the rules; emptying the TABLE is not the same act.
 
 **Correction, because the pre-r85 version of this paragraph is quoted elsewhere:** it used to say
 `leave_policy` is "the only home for earning method, carry-forward, rounding and `maxBalanceDays`".
@@ -400,32 +411,54 @@ build's type pass catches RSC client/server boundary errors that `tsc` alone doe
 number is `0339`** — allocate it centrally, never let an agent pick one (r76 found an abandoned branch
 reusing a shipped number, and r84 found one carrying a STALE number; both merge as a SILENT SKIP).
 
-**Board, counted on production:** `approved = 14` · `contested = 7` · `open = 1` · `deployed = 527` ·
-`cancelled = 11` · `blocked = 0`.
+**Board, after the 2026-07-31 planning pass:** `approved = 14` · `planned = 7` · `contested = 1` ·
+`open = 0` · `deployed = 527` · `cancelled = 11` · `blocked = 0`.
 
-**The 7 contested items** (all need a re-plan, none is building): `deec1691` · `241817ef` ·
-`fa3f4ccb` · `1ef1cf95` · `a324a4b3` · `61bf109d` · `c33d9bbb`. **`c33d9bbb` is effectively answered
-already** — the reporter replied "Let's defer this enhancement for now… we'll revisit a grouped Benefit
-Scheme selector and default/override mechanism as a separate enhancement." It is a DEFER, not a
-rejection of the design; it needs closing or parking rather than re-planning. **`fa3f4ccb` still must
-not be built** without written instruction (it asks to remove the EA 1955 statutory floor).
+### The 7 items planned on 2026-07-31 — all awaiting the reporter's approve/reject
 
-**The 1 open item** is `bb4f2265` (dates stamped in UTC read as yesterday before 08:00 MYT — about five
-remaining sites; r86 fixed two more of them on the leave-records columns while building `fe3eb141`).
+Plans are pushed and the board is waiting on the reporter, not on us. **Do not re-plan these**; if one
+comes back contested, read its new reason first. Three of the seven changed answer once investigated,
+and those findings are the round's real output:
 
-### The 7 contested items — every one needs a re-plan, none is mid-build
+- **`deec1691` — NOT MISSING, SWITCHED OFF.** Built and deployed in r79. `system_explorer` is a
+  billable module with **no `tenant_module` row for this tenant**, so it resolves OFF and has no screen
+  for any role. The fix is an activation row, not a build. `toil` is off the same way.
+- **`61bf109d` — NOT MISSING, UNDISCOVERABLE.** Verified present on the deployed box. The Pay Items
+  LIST keeps a read-only Input Type column (left behind by `13b7517b`); the editable selector and the
+  formula builder are in the maintenance form under "Pay Settings". The plan asks the reporter to
+  confirm they can see it **before** anything is built — deliberately not repeating r77's "your screen
+  is fine" close-out.
+- **`241817ef` — r75's REFUSAL IS NOW STALE AND THE REPORTER IS RIGHT.** Counted on production:
+  **213 of 217** approval rules already reference a template, only **11** are unconditional base chains,
+  **4** carry no template, and `escalation_enabled` is true for **0 of 8** companies. So the sections
+  can go. The plan converts the 15 leftovers FIRST — removing the surface first does not make requests
+  unroutable, it makes them **silently re-route**, which is worse because it fails quietly.
+- **`fa3f4ccb` — NOW PLANNED TO PROCEED.** The reporter asked a second time to remove the statutory
+  minimum ("HR user itself... well trained about the law in Malaysia"). Per the standing rule that a
+  reaffirmed instruction is the owner's decision, the plan builds it: the configured figure wins and the
+  legal floor becomes an on-screen warning instead of a silent override. The transfer of responsibility
+  is stated once, in writing, in the plan. **Scope boundary that must hold:** this is the entitlement
+  DAYS floor only — `core/leave.ts:553`/`:557` (the right to APPLY for annual and sick leave) and the
+  `updateLeaveType` statutory guard are NOT in scope and were not asked for.
+- **`1ef1cf95`** — replanned as the reporter's actual redesign (shared group at LEAVE TYPE level with
+  its own name, shared limit, per-application cap and a multi-select of types), superseding r82's
+  scheme-level work. Includes the reset they asked for, with the current config to be dumped to the
+  `build_ref` first so they can recreate from it.
+- **`a324a4b3`** — settled by the attached screenshot (`menu.png`): merge the three Attendance nav nodes
+  into ONE, ordered Records, Holidays, Shift settings, Attendance policy, Attendance allowance, Clocking
+  location, Time off in lieu, Roster, Import. All ten labels already resolve exactly as pictured, so
+  **no string changes** — it is purely a regrouping. The r78 header-vs-nav question is dropped: the
+  reporter answered with a picture instead.
+- **`bb4f2265`** — the UTC-date sweep. 44 occurrences of the pattern exist and **most are legitimate
+  date arithmetic that must stay UTC**; only the "what date is NOW" ones are bugs. Classify each.
 
-- **`fa3f4ccb`** rev 4 — step 3 of the entitlement consolidation. **DO NOT BUILD** without a written
-  instruction: the reporter asked to remove the STATUTORY MINIMUM, which is the EA 1955 legal floor,
-  and rev 4 refused. Everything else in `9816a5ad` has shipped, so this is the only piece left.
-- **`c33d9bbb`** rev 1 — **already answered; it needs closing, not re-planning.** The reporter replied
-  "Let's defer this enhancement for now… we'll revisit a grouped Benefit Scheme selector and
-  default/override mechanism as a separate enhancement." That is a DEFER of a design we proposed and
-  they accepted in principle, not a rejection. Park or cancel it rather than writing rev 2.
-- **`1ef1cf95`** rev 4 · **`241817ef`** rev 2 · **`deec1691`** rev 2 · **`a324a4b3`** rev 1 ·
-  **`61bf109d`** rev 1 — ordinary push-backs awaiting a new revision. `a324a4b3` still carries the
-  open question r78 returned: `/admin/attendance-policy`'s header reads "Lateness, Early Out &
-  Overtime Settings" while its nav row reads "Attendance policy" — the reporter must say which changes.
+### The 1 contested item — PARKED BY THE OWNER, do not re-plan
+
+- **`c33d9bbb`** rev 1 — the reporter replied "Let's defer this enhancement for now… we'll revisit a
+  grouped Benefit Scheme selector and default/override mechanism as a separate enhancement." That is a
+  DEFER of a design they accepted in principle, not a rejection. **The owner decided on 2026-07-31 to
+  leave it parked** rather than cancel it. It stays in `contested` because the board has no defer state
+  and no cancel command in the CLI. **Writing a rev 2 for it would be re-opening a settled decision.**
 
 ### The 14 approved items — the payroll faults first
 
@@ -453,11 +486,10 @@ may already be built.
 **Standalone:** `fc776376` rev 2 (pagination — **SOLO AND LAST**, cross-cutting, ~30 list pages) ·
 `d64d0df4` (tax information: disability status).
 
-### The 1 open item
+### No open items
 
-**`bb4f2265`** — dates stamped in UTC read as yesterday before 08:00 MYT. About five sites remain; r85
-fixed `core/movement.ts` and r86 fixed the two leave-records columns while building `fe3eb141`. The
-reporter has been asked to confirm priority, since the window only affects early/overnight workers.
+The board has **no `open` items** as of 2026-07-31. `bb4f2265` (the UTC-date sweep) was the last one and
+is now planned — see the planning-pass section above.
 
 ### Entitlement facts you will need before touching leave (re-verified on production 2026-07-31)
 
