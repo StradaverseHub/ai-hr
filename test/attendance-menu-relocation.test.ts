@@ -28,10 +28,15 @@ const root = path.resolve(__dirname, '..');
 const read = (rel: string) => readFileSync(path.join(root, rel), 'utf8');
 
 describe('0bb0e303 — the relocated admin screens guard themselves, not via the menu', () => {
-  // Derived from the pack rather than hardcoded: a row added to the Admin node later is covered
+  // Derived from the pack rather than hardcoded: a row added to the merged node later is covered
   // automatically. A list copied by hand here would silently stop covering the thing it names.
-  const adminNode = attendancePack.navNodes!.find((n) => n.group === 'admin')!;
-  const adminRoutes = adminNode.children.map((c) => c.href);
+  // a324a4b3 rev2 merged the admin node into the single day-to-day Attendance node, so the admin rows
+  // are now identified by their own adminOnly FLAG rather than by which node they hang under — which
+  // is also exactly the gate that now hides them, so deriving from it is deriving from the protection.
+  const adminRoutes = attendancePack
+    .navNodes!.flatMap((n) => n.children)
+    .filter((c) => c.adminOnly === true)
+    .map((c) => c.href);
 
   it('covers every row that landed in the Admin node', () => {
     expect(adminRoutes).toEqual([
@@ -58,15 +63,34 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     expect(src, `${route} must call requireAdmin() or scopedAdmin()`).toMatch(/requireAdmin\(|scopedAdmin\(/);
   });
 
-  it('the sidebar mounts the admin node inside the adminOnly group, not the day-to-day one', () => {
+  it('THE INVERTED GUARD: the merged node sits in the day-to-day group, so every admin row carries its OWN gate', () => {
+    // 0bb0e303 asserted the opposite placement — the admin node INSIDE the adminOnly group. a324a4b3
+    // rev2 merged that node into the single Attendance menu, which must live in the ungated day-to-day
+    // group or Records disappears for plain employees and Roster/Import for non-admin managers.
+    //
+    // The assertion is inverted rather than deleted because the PROTECTION it stood for is unchanged:
+    // an administrative screen must not be reachable by a non-administrator. What used to supply that
+    // in the rail was the group gate; now it is the per-row adminOnly flag, so that is what is pinned
+    // here — together with the it.each above, which proves the rail was never the real protection.
     const sidebar = read('components/sidebar.tsx');
     const adminGroupStart = sidebar.indexOf("labelKey: 'admin',");
     expect(adminGroupStart, 'admin group exists').toBeGreaterThan(-1);
-    expect(sidebar.indexOf('ATTENDANCE_ADMIN_NODE', adminGroupStart), 'admin node is in the admin group').toBeGreaterThan(
-      adminGroupStart,
-    );
-    // …and My Attendance is NOT, or the split achieved nothing.
-    expect(sidebar.indexOf('MY_ATTENDANCE_NODE')).toBeLessThan(adminGroupStart);
+    expect(sidebar, 'the admin-only attendance node is gone').not.toContain('ATTENDANCE_ADMIN_NODE');
+    // Both attendance nodes mount ABOVE the Manage and Admin headings (the screenshot's upper section).
+    const manageGroupStart = sidebar.indexOf("labelKey: 'manage',");
+    expect(manageGroupStart, 'manage group exists').toBeGreaterThan(-1);
+    // Matched as a whole line (`^\s*NAME,$`) so the mount point is found rather than the declaration,
+    // and so MY_ATTENDANCE_NODE cannot satisfy the ATTENDANCE_NODE search by being a superstring.
+    for (const konst of ['MY_ATTENDANCE_NODE', 'ATTENDANCE_NODE']) {
+      const at = sidebar.search(new RegExp(`^[ \\t]*${konst},$`, 'm'));
+      expect(at, `${konst} is mounted in a group`).toBeGreaterThan(-1);
+      expect(at, `${konst} sits above the MANAGE heading`).toBeLessThan(manageGroupStart);
+    }
+    // Every one of the six relocated screens is still admin-gated, now per row rather than per group.
+    const merged = attendancePack.navNodes!.find((n) => n.labelKey === 'attendance')!;
+    for (const route of adminRoutes) {
+      expect(merged.children.find((c) => c.href === route)?.adminOnly, `${route} adminOnly`).toBe(true);
+    }
   });
 });
 
