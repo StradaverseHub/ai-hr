@@ -7,9 +7,20 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ## CURRENT STATE — read this first (updated 2026-07-31, after r87)
 
-> **r87 SHIPPED `main@6e967cf`, no migration** — production stays at **286**, next free number is still
-> **`0339`**. Two payroll faults shipped (`ef31d251`, `d0d2c9d1`); `97a9b0ab` was **held** because
-> checking production showed its plan was wrong — see the r87 entry, it is the most useful thing in it.
+> **r87 SHIPPED `main@6e967cf`, no migration** — production stays at **286**.
+> Two payroll faults shipped (`ef31d251`, `d0d2c9d1`); `97a9b0ab` was **held** because checking
+> production showed its plan was wrong — see the r87 entry, it is the most useful thing in it.
+>
+> ### ⚠️ r88 IS IN FLIGHT AS OF 2026-07-31 — READ BEFORE ALLOCATING A MIGRATION OR STARTING WORK
+>
+> **`0339`, `0340` and `0341` are ALREADY ALLOCATED** to four r88 build agents running in parallel
+> (`build/r88a`–`r88d`). **The next genuinely free number is `0342`.** Taking `0339` because an older
+> line in this file said so is precisely the collision that merges as a SILENT SKIP.
+>
+> **10 items are `building`, not available:** `fa3f4ccb`, `1ef1cf95` (r88a) · `e523e85d`, `30325fc1`,
+> `10fcf6df`, `476f23ed` (r88b) · `a324a4b3`, `61bf109d` (r88c) · `cf43c909`, `d64d0df4` (r88d).
+> Board is `approved = 8` · `building = 10` · `planned = 1` · `contested = 2` · `deployed = 528`.
+> If r88 was abandoned, those 10 are stuck in `building` and must be reset before they can be rebuilt.
 >
 > **THE REPORTER THEN APPROVED ALL SEVEN PLANS from the 2026-07-31 planning pass.** Board is now
 > **`approved = 18` · `planned = 1` (97a9b0ab rev 2) · `contested = 2` · `deployed = 528`**.
@@ -88,7 +99,15 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
    (Tailwind emission order beating a template-string width, not the class attribute) was found rather
    than guessed. ai-hr is NOT publicly served — it is loopback-only behind a **cloudflared quick
    tunnel**, `https://remove-source-wood-currently.trycloudflare.com` (whose hostname CHANGES if that
-   process restarts). **Everything since r70 except `1ef1cf95` and `4dbe04c6` remains unverified, and
+   process restarts). **Verified live 2026-07-31: that URL returns 401, which is the healthy password
+   gate.**
+
+   **`cloudflared` RUNS ON THE SERVER, NOT ON THE MAC.** A `pgrep cloudflared` locally finds nothing
+   and means nothing — r88 briefly concluded the tunnel was down that way. Check it on the box
+   (`ssh … pgrep -fl cloudflared`) or just curl the URL. And curl it WITHOUT `-f`: with `-f` a 401 is
+   treated as failure, so the healthy state looks dead.
+
+   **Everything since r70 except `1ef1cf95` and `4dbe04c6` remains unverified, and
    r86 just added a lot to that pile:** a step-by-step Create New Employee wizard with drafts, an
    .xlsx import with preview and error-report download, a rebuilt Leave Balance Summary, and a Cancel
    Leave action on Employee Leave Records. **None of it has been seen in a browser**, and this repo
