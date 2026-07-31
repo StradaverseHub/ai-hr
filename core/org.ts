@@ -364,9 +364,10 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not the hire lump.
           if (isEarnedMethod(polFor?.method)) continue;
           const floor = pack.leave.entitlement(lt.code, 0);
-          // ae5b84d5: scheme band days (0-year band) supersede the policy days; EA floor still clamps —
-          // the SAME entitledDays composition openLeaveYear / accrueEarnedLeave / the recalc kernel use.
-          const days = entitledDays(floor, schemeDaysFor(emp.id, lt.id, 0), polFor?.days ?? 0);
+          // ae5b84d5: scheme band days (0-year band) supersede the policy days — the SAME entitledDays
+          // composition openLeaveYear / accrueEarnedLeave / the recalc kernel use. fa3f4ccb: the EA floor
+          // is passed for the below-minimum flag only; it no longer clamps the hire grant.
+          const { days } = entitledDays(floor, schemeDaysFor(emp.id, lt.id, 0), polFor?.days ?? 0);
           if (days <= 0) continue;
           // ANNUAL pro-rates by months remaining in the hire year (s.60E practice).
           // SICK / HOSPITALIZATION grant in full: s.60F is a per-calendar-year

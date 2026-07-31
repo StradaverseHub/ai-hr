@@ -323,7 +323,11 @@ describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite
     // loadFile ends in the shared validate; commit still sends the shared csv string.
     expect(src).toMatch(/const loadFile[\s\S]*?runValidate\(text\)/);
     expect(src).toMatch(/validateImportAction\(text, companyId\)/);
-    expect(src).toMatch(/commitImportAction\(csv, companyId\)/);
+    // r88 (cf43c909): commit now also carries the FILE NAME, because import history records what was
+    // uploaded. Widened rather than pinned to the old two-arg form — the subject of this assertion is
+    // "one shared commit action", not its arity. The single-call-site checks below are what actually
+    // enforce that no file-specific server action was introduced.
+    expect(src).toMatch(/commitImportAction\(csv, companyId(,[^)]*)?\)/);
     // Exactly one call site each — no second, file-specific server action was introduced.
     expect(src.match(/validateImportAction\(/g) ?? []).toHaveLength(1);
     expect(src.match(/commitImportAction\(/g) ?? []).toHaveLength(1);
@@ -332,9 +336,12 @@ describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite
   it('leaves the parse and write path untouched (actions.ts still just parses and delegates)', () => {
     expect(actions).toMatch(/parseCsvRecords\(csv\)/);
     expect(actions).toMatch(/validateEmployeeImport\(s, \{ companyId, records \}\)/);
-    expect(actions).toMatch(/commitEmployeeImport\(s, \{ companyId, records \}\)/);
+    // r88 (cf43c909): the commit payload gained `fileName` so the import-history row can name what was
+    // uploaded. Still the same delegate call with the same companyId + records — only an extra scalar.
+    expect(actions).toMatch(/commitEmployeeImport\(s, \{ companyId, records(, [^}]*)? \}\)/);
     // No file/FormData handling leaked to the server — the reader is browser-side by design so
-    // d8471481 can swap it without touching anything that writes.
+    // d8471481 can swap it without touching anything that writes. A file NAME is a string and is fine;
+    // a File OBJECT or FormData would mean the reader had moved server-side, which is what this forbids.
     expect(actions).not.toMatch(/FormData|File\b/);
   });
 

@@ -115,9 +115,17 @@ export function LeaveRulePreview({
           <span className="text-muted-foreground">
             {t('previewPolicyDays', { days: result.policyDays ?? '—' })}
           </span>
-          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            {result.floorApplied ? t('previewWinnerFloor') : t('previewWinnerPolicy')}
-          </span>
+          {/* fa3f4ccb — the configured figure is what employees get; the statutory minimum is guidance.
+              This warning replaces the old "floor / policy — which won" badge, because after fa3f4ccb the
+              configured figure ALWAYS wins and a badge saying so said nothing. It is advisory, never
+              blocking: the admin can save and proceed. `result.belowStatutoryFloor` and
+              `result.floorDays` both come from previewEntitlement — the UI does not re-derive the floor,
+              which is how the flagged figure and the quoted minimum stay the same two numbers. */}
+          {result.belowStatutoryFloor && (
+            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+              {t('previewBelowFloorWarning', { days: result.floorDays ?? '—' })}
+            </span>
+          )}
           {!clientPackFor(company.country) && <span className="text-muted-foreground">{t('previewNoPack')}</span>}
         </div>
       ) : null}

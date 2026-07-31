@@ -225,6 +225,19 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/admin/settings/system-labels'],
   },
   {
+    // 476f23ed (r88b) — Movement Settings, the tenant's overlay on the built-in career-event catalogue.
+    // ADDED AT INTEGRATION, not by the building agent: the page shipped with its own requireAdmin() guard,
+    // so it was never reachable without admin — but it was missing from THIS registry, which is what drives
+    // the users/roles matrix. test/function-access.test.ts's reverse-completeness check is exactly the guard
+    // that caught it, and it is the same omission class the integration gate caught in r74 and r75. The
+    // guard here MUST match the page's own (requireAdmin), or the matrix misreports who can reach it.
+    screenKey: 'movementSettings',
+    href: '/admin/settings/movement',
+    labelKey: 'nav.movementSettings',
+    guard: 'requireAdmin',
+    routes: ['/admin/settings/movement'],
+  },
+  {
     // R22 7d309da7: Personnel profile dropdown catalog (religion/race/nationality/state/country/relationship).
     // fbdeee87: relocated INTO the System Labels surface as a tab — the catalog is unchanged (flat tenant-wide
     // table, requireAdmin), only its route moved under /admin/settings/system-labels/. The old standalone route

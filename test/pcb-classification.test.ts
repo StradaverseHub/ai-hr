@@ -322,8 +322,7 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
 });
 
 describe('09b554e9 — statutory pack round-trip', () => {
-  it('DEFAULT_MY_STATUTORY validates and the bundled pack carries the 2026.5 exemption tables', () => {
-    expect(MY_STATUTORY_VERSION).toBe('2026.5');
+  it('DEFAULT_MY_STATUTORY validates and the bundled pack is the CODE DEFAULT, rebuilt and re-signed', () => {
     expect(validateStatutoryRuleset(DEFAULT_MY_STATUTORY)).toEqual([]);
     expect(Object.keys(DEFAULT_MY_STATUTORY.pcbExemptions!.pcb)).toHaveLength(7);
     expect(Object.keys(DEFAULT_MY_STATUTORY.pcbExemptions!.lp)).toHaveLength(24);
@@ -334,7 +333,14 @@ describe('09b554e9 — statutory pack round-trip', () => {
       fs.readFileSync(path.resolve(__dirname, '../localization/statutory-pack/bundled/my-2026.01.01.pack.json'), 'utf8'),
     ) as { payload: string };
     const payload = JSON.parse(envelope.payload) as { rulesets: { version: string; data: typeof DEFAULT_MY_STATUTORY }[] };
-    expect(payload.rulesets[0].version).toBe('2026.5');
-    expect(payload.rulesets[0].data.pcbExemptions).toEqual(DEFAULT_MY_STATUTORY.pcbExemptions);
+    // d64d0df4 — the two hard-coded '2026.5' literals here are GONE, replaced by the invariant they were a
+    // proxy for. They asserted that 09b554e9's bump had happened; what the guard actually exists to protect
+    // is that the SHIPPED, SIGNED pack is in step with the code default — which the literals could not say,
+    // and which went stale the moment the next figure changed (this item's 2026.6). Comparing the whole
+    // ruleset is strictly STRONGER: any edit to DEFAULT_MY_STATUTORY that is not followed by
+    // `node --import tsx scripts/statutory-pack-build-my.ts` now fails here, whatever the figure was.
+    // Both sides go through JSON so the last PCB band's `upTo: Infinity` serialises the same way on each.
+    expect(payload.rulesets[0].version).toBe(MY_STATUTORY_VERSION);
+    expect(payload.rulesets[0].data).toEqual(JSON.parse(JSON.stringify(DEFAULT_MY_STATUTORY)));
   });
 });

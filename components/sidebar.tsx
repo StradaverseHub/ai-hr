@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
+  ArrowLeftRight,
   BarChart3,
   BookOpen,
   Building2,
@@ -76,17 +77,22 @@ type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; item
 // registered by the static side-effect import above, so the non-null assertions cannot fire.
 // NavChildDescriptor mirrors ChildItem by construction (packs/registry.ts), so the spread
 // type-checks against the sidebar's own Row machinery unchanged.
-// 0bb0e303 split the one Attendance node into three, by audience. Since 895c80f9 a pack contributes an
-// ARRAY of group-tagged nodes, so each resolves by its group — the same idiom the flat-row packs use
-// below. The rows, hrefs, icons and gates are the pack's verbatim; only which node they hang under moved.
+// 0bb0e303 split the one Attendance node into three, by audience; a324a4b3 rev2 merged the manager and
+// admin nodes back into ONE "Attendance" fly-out (the reporter's screenshot), leaving My Attendance to
+// carry Clock in/out alone. Since 895c80f9 a pack contributes an ARRAY of group-tagged nodes; BOTH
+// attendance nodes now declare group 'main', so they resolve by labelKey rather than by group — group
+// alone stopped identifying a node the moment two of them shared one, and `.find(n => n.group === …)`
+// would silently have returned My Attendance for both. The rows, hrefs, icons and per-child gates are
+// the pack's verbatim; only which node they hang under moved.
 const ATTENDANCE_NODES = modulePackById('attendance')!.navNodes!;
-const node = (group: string): CollapsibleGroupItem => ({
+const node = (labelKey: string): CollapsibleGroupItem => ({
   collapsible: true,
-  ...ATTENDANCE_NODES.find((n) => n.group === group)!,
+  ...ATTENDANCE_NODES.find((n) => n.labelKey === labelKey)!,
 });
-const MY_ATTENDANCE_NODE = node('main');
-const ATTENDANCE_MANAGE_NODE = node('manage');
-const ATTENDANCE_ADMIN_NODE = node('admin');
+const MY_ATTENDANCE_NODE = node('myAttendance');
+// The merged menu: Records, the six admin config screens, Roster, Import. It sits in the ungated
+// day-to-day group precisely so each child keeps its OWN gate — see packs/attendance/index.ts.
+const ATTENDANCE_NODE = node('attendance');
 
 // Claims nav rows (ADR-0080 rung 3): two flat rows the claims pack contributes
 // (packs/claims/index.ts, CLAIMS_NAV_LINKS — provenance comments moved with them), placed at
@@ -183,6 +189,10 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // admin entries collapse into this single "System Labels" entry (profile options now live at
     // /admin/settings/system-labels/profile-options).
     { href: '/admin/settings/system-labels', labelKey: 'systemLabels', icon: Tags, adminOnly: true },
+    // 476f23ed: Movement Settings — the configurable catalogue of career event types (rename / switch off /
+    // add your own). A system-wide setup screen like its three siblings, so it lands here rather than as a
+    // loose row; the types it governs are recorded from Personnel > Employment History > New Event.
+    { href: '/admin/settings/movement', labelKey: 'movementSettings', icon: ArrowLeftRight, adminOnly: true },
     // deec1691: System Analysis & Dependency Explorer. Unlike its three siblings this row is ALSO
     // entitlement-gated (MODULE_OF_HREF above): it is a sellable module that defaults OFF, so a tenant
     // that was not sold it never sees the row — and, unlike the role flags here, that hiding is backed
@@ -203,6 +213,9 @@ const GROUPS: Group[] = [
       // by const reference (LEAVE_ABSENCE_ROW).
       LEAVE_ABSENCE_ROW,
       MY_ATTENDANCE_NODE,
+      // a324a4b3 rev2: the ONE Attendance menu, here in the upper section beside My Absence and Claims
+      // exactly as the reporter's screenshot shows it — above the MANAGE heading, not inside Admin.
+      ATTENDANCE_NODE,
       CLAIMS_ROW,
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
@@ -220,9 +233,9 @@ const GROUPS: Group[] = [
       { href: '/personnel', labelKey: 'people', icon: Users },
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
       PERFORMANCE_ROW,
-      // Roster + Import (0bb0e303). Here rather than under the Admin node because both are managerUp and
-      // the Admin group is gated adminOnly as a whole — placing them there would hide them from managers.
-      ATTENDANCE_MANAGE_NODE,
+      // a324a4b3 rev2: Roster + Import used to have their own Attendance node here (0bb0e303). They moved
+      // into the single Attendance menu in the group above, which is ungated at group level, so both keep
+      // their managerUp row flag and every manager who could reach them still can.
     ],
   },
   {
@@ -238,10 +251,12 @@ const GROUPS: Group[] = [
       // into its Approval Workflow tab). Since ADR-0080 rung 6 the row lives on the leave pack and
       // mounts here by const reference (LEAVE_CONFIG_ROW).
       LEAVE_CONFIG_ROW,
-      // 0bb0e303: the attendance settings (Holidays, Shift settings, Policy, Allowance, Clocking
-      // location, TOIL) moved here from the day-to-day group. Holidays still lives inside this node
-      // rather than the flat admin list (5cb199b3).
-      ATTENDANCE_ADMIN_NODE,
+      // a324a4b3 rev2: the six attendance settings (Holidays, Shift settings, Policy, Allowance,
+      // Clocking location, TOIL) that 0bb0e303 moved here are now children of the single Attendance
+      // menu in the day-to-day group. Each keeps its own adminOnly ROW flag, so they still render for
+      // administrators only — the group gate they used to sit behind is no longer what hides them, and
+      // every one of those pages calls requireAdmin()/scopedAdmin() for itself regardless
+      // (test/attendance-menu-relocation.test.ts).
       CLAIMS_CONFIG_ROW,
       // Since ADR-0080 rung 7 the payroll nav lives on the payroll pack and mounts here by const
       // reference (PAYROLL_NODE — a flyout node since 1459e116, a flat row before that).

@@ -78,17 +78,26 @@ import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../r
 // NOTE: /admin/holidays, /roster and /admin/toil are NAV placement only — the holiday, roster and
 // TOIL services stay outside this pack (they are not attendance services; nav grouping ≠ ownership).
 /**
- * 0bb0e303 splits the single Attendance node into THREE, by who each row is for. The rows themselves,
- * their hrefs, icons, order and gates are unchanged — only which node they hang under moved.
+ * 0bb0e303 split the single Attendance node into THREE, by who each row is for. a324a4b3 rev2 puts
+ * NINE of those ten rows back under ONE parent, because the reporter's screenshot settled it: they
+ * want one "Attendance" fly-out, not the same word three times with different things inside each.
+ * The rows themselves, their hrefs, icons and gates are unchanged — only which node they hang under.
  *
- * WHY THREE AND NOT TWO. The obvious split is "staff rows" and "admin rows", but two rows are neither:
- * Roster and Import are `managerUp`, and the sidebar's Administration group is gated adminOnly at the
- * GROUP level. Putting them under the admin node would hide them from every manager who can see them
- * today — a silent access regression, and precisely the outcome the reporter did not ask for. They get
- * their own node in the per-row-gated Manage group instead, where managerUp still resolves.
+ * WHY TWO NODES AND NOT ONE. "Clock in/out" stays in its own My Attendance node: the screenshot does
+ * NOT list it, and 5249d43f deliberately asked for a self-service node carrying clocking. Folding it
+ * into the merged menu would undo that request to satisfy a screenshot that never mentioned it.
  *
- * The reporter asked for "My Attendance" to carry clock in, clock out and their own record ONLY, so
- * nothing else was folded into it to keep the node count down.
+ * WHY THE MERGED NODE IS group 'main' AND NOT 'admin'. The sidebar's Administration group is gated
+ * adminOnly at the GROUP level, and its Manage group renders per-row. A node in 'admin' would hide
+ * Records from every employee and Roster/Import from every non-admin manager — the exact silent
+ * access regression 0bb0e303's three-way split existed to avoid. 'main' is ungated at group level,
+ * so each child keeps its OWN gate (components/sidebar.tsx canSeeChild) and the parent renders for
+ * anyone who can see at least one child: an employee sees Attendance containing just Records, a
+ * manager also sees Roster + Import, an admin sees all nine. That also matches the picture, which
+ * shows Attendance in the upper section beside My Absence and Claims, above the MANAGE heading.
+ *
+ * THE FLAGS ARE PER ROW AND MUST STAY THAT WAY. attendanceRecords carries NEITHER flag — carrying it
+ * into a node whose other members are adminOnly must not make it, or the node, admin-only.
  */
 const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
   labelKey: 'myAttendance',
@@ -96,31 +105,32 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
   group: 'main',
   children: [
     // Feedback 5249d43f: "Clock in/out" — the employee-facing clocking page — is the PRIMARY day-to-day
-    // action, so it sits FIRST, above Records (the node's documented day-to-day-first ordering, f60cd403).
-    // Visible to every employee (self-service, like /me).
+    // action. Records moved out to the merged Attendance node (a324a4b3 rev2), so this is now the node's
+    // only row; it remains visible to every employee (self-service, like /me).
     { href: '/attendance/clock', labelKey: 'attendanceClock', icon: Clock },
-    { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
   ],
 };
 
-/** The manager-facing pair. See MY_ATTENDANCE_NAV for why these are not under the admin node. */
-const ATTENDANCE_MANAGE_NAV: NavNodeGroupDescriptor = {
+/**
+ * The ONE Attendance menu (a324a4b3 rev2), in the reporter's screenshot order:
+ * Records, Holidays, Shift settings, Attendance policy, Attendance allowance, Clocking location,
+ * Time off in lieu, Roster, Import.
+ *
+ * This merges the former ATTENDANCE_MANAGE_NAV (roster + import, managerUp) and ATTENDANCE_ADMIN_NAV
+ * (the six adminOnly config screens) and pulls attendanceRecords up from MY_ATTENDANCE_NAV to the top.
+ * All ten labels already resolved exactly as the screenshot before this change (r78 fixed the
+ * key-vs-label drift); NO catalog string moved here — this is purely a regrouping.
+ *
+ * Icon: CalendarRange, carried from the Manage node rather than the Admin node's Clock, so the merged
+ * parent does not render the same glyph as My Attendance directly above it in the collapsed rail.
+ */
+const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
   labelKey: 'attendance',
   icon: CalendarRange,
-  group: 'manage',
+  group: 'main',
   children: [
-    { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
-    // Import stays last: administrative bulk-upload, used less than daily attendance (f60cd403).
-    { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
-  ],
-};
-
-/** The administrative settings the reporter wanted out of the day-to-day menu. Order unchanged. */
-const ATTENDANCE_ADMIN_NAV: NavNodeGroupDescriptor = {
-  labelKey: 'attendance',
-  icon: Clock,
-  group: 'admin',
-  children: [
+    // Every employee's own attendance record — NO gate, deliberately. See the node comment above.
+    { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
     { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
     // R33 f21d6eee: "Shift settings" (/admin/attendance) is now the shared shift library; the per-company
     // working-hours + overtime-rates config moved to its own "Attendance policy" screen.
@@ -139,15 +149,20 @@ const ATTENDANCE_ADMIN_NAV: NavNodeGroupDescriptor = {
     { href: '/admin/attendance-policy', labelKey: 'attendancePolicy', icon: SlidersHorizontal, adminOnly: true },
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
-    // e776d17d reserves the "Overtime Configuration" child slot here (after Clocking Location, before Import).
+    // e776d17d reserves the "Overtime Configuration" child slot here (after Clocking Location, before Roster).
     { href: '/admin/toil', labelKey: 'timeOffInLieu', icon: Hourglass, adminOnly: true },
+    // The two manager rows, last per the screenshot. managerUp resolves per row here (the node is in
+    // the ungated 'main' group), so no manager loses Roster or Import to the merge.
+    { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
+    // Import stays last: administrative bulk-upload, used less than daily attendance (f60cd403).
+    { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
   ],
 };
 
 export const attendancePack: ModulePack = {
   id: 'attendance',
   kind: 'module',
-  navNodes: [MY_ATTENDANCE_NAV, ATTENDANCE_MANAGE_NAV, ATTENDANCE_ADMIN_NAV],
+  navNodes: [MY_ATTENDANCE_NAV, ATTENDANCE_NAV],
   // Pack-owned satellite tables (D5/D11 criterion 2 — documentation, not DDL). Audited from
   // db/schema.ts 2026-07-23. shift/roster_assignment/toil_* stay OUTSIDE (roster + TOIL services
   // are not part of this pack, mirroring the nav note above).

@@ -165,13 +165,17 @@ describe('49809272 — upfront correction (up / down / floor)', () => {
     expect((events[0].payload as Record<string, unknown>).delta).toBe(-2);
   });
 
-  it('EA-FLOOR invariant: correcting 12 → 6 claws back only to the floor (8), never below', async () => {
+  // fa3f4ccb — THE REPLACEMENT FOR THE EA-FLOOR INVARIANT. This test used to assert the override: a
+  // correction to 6 clawed back only to the 8-day statutory floor. The reporter asked twice for that to
+  // go, and approved it in writing. The configured figure is now the figure, so the correction lands on 6.
+  // A real MY leave type at a real statutory band (ANNUAL, <2y ⇒ 8) — not a fixture floor of 0, which
+  // would pass whatever the composition did.
+  it('fa3f4ccb: correcting 12 → 6 claws back to 6, THROUGH the 8-day statutory minimum', async () => {
     const { id } = await policy(12);
     const emp = await hireIn(b.companyId, b.deptA);
     const res = await updateLeavePolicy(adminCtx(b), { id, annualDays: 6, validFrom: '2026-01-01', asOf: ASOF });
-    // entitlement = max(EA floor 8 for <2y service, policy 6) = 8 ⇒ delta −4, NOT −6.
-    expect(res.totalDelta).toBe(-4);
-    expect(await annualBalance(emp.employmentId)).toBe(8);
+    expect(res.totalDelta).toBe(-6);
+    expect(await annualBalance(emp.employmentId)).toBe(6);
   });
 
   it('the enriched leave-policy.updated event carries the recalc summary', async () => {
@@ -364,17 +368,24 @@ describe('ae5b84d5 — kernel: entitledDays + the scheme hook in projectExpected
   const upfront12: GradePolicyRow[] = [{ gradeId: null, companyId: null, accrual: { annualDays: 12 } }];
   const floor8 = () => 8;
 
-  it('entitledDays: scheme supersedes policy (even 0), EA floor clamps on top, null falls back', () => {
-    expect(entitledDays(8, null, 12)).toBe(12); // no scheme ⇒ policy
-    expect(entitledDays(8, 15, 12)).toBe(15); // scheme supersedes policy
-    expect(entitledDays(16, 10, 20)).toBe(16); // floor clamps a below-floor scheme
-    expect(entitledDays(8, 0, 12)).toBe(8); // an explicit scheme 0 supersedes policy; floor holds
+  // fa3f4ccb — the statutory floor NO LONGER CLAMPS. It is still passed in and still resolved; all it
+  // produces now is the `belowStatutoryFloor` warning flag, which is what the admin surfaces read.
+  it('entitledDays: scheme supersedes policy (even 0), null falls back, floor only FLAGS', () => {
+    expect(entitledDays(8, null, 12).days).toBe(12); // no scheme ⇒ policy
+    expect(entitledDays(8, 15, 12).days).toBe(15); // scheme supersedes policy
+    expect(entitledDays(16, 10, 20).days).toBe(10); // a below-floor scheme is GRANTED, not clamped to 16
+    expect(entitledDays(16, 10, 20).belowStatutoryFloor).toBe(true); // …and flagged
+    expect(entitledDays(8, 0, 12).days).toBe(0); // an explicit scheme 0 supersedes policy; nothing clamps it
+    expect(entitledDays(8, 0, 12).belowStatutoryFloor).toBe(true);
+    expect(entitledDays(8, 15, 12).belowStatutoryFloor).toBe(false); // above the minimum ⇒ no warning
   });
 
-  it('the hook supersedes policy days; the EA floor still clamps; null-returning hook is a no-op', () => {
+  it('the hook supersedes policy days; a below-minimum hook is granted as configured; null hook is a no-op', () => {
     expect(projectExpectedEntitlement(CAL, 'ANNUAL', upfront12, floor8, ASOF)?.expected).toBe(12);
     expect(projectExpectedEntitlement(CAL, 'ANNUAL', upfront12, floor8, ASOF, () => 20)?.expected).toBe(20);
-    expect(projectExpectedEntitlement(CAL, 'ANNUAL', upfront12, floor8, ASOF, () => 4)?.expected).toBe(8); // floor
+    // fa3f4ccb: was 8 (the floor). The kernel now projects what is configured, so a correction can claw
+    // back below the EA minimum — the requested behaviour, and the reason the preview warns instead.
+    expect(projectExpectedEntitlement(CAL, 'ANNUAL', upfront12, floor8, ASOF, () => 4)?.expected).toBe(4);
     // A hook that resolves no scheme is byte-identical to the absent hook.
     expect(projectExpectedEntitlement(CAL, 'ANNUAL', upfront12, floor8, ASOF, () => null)?.expected).toBe(12);
   });

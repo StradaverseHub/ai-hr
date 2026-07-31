@@ -5701,10 +5701,11 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
         if (isEarnedMethod(pol?.method)) continue;
         // Benefit Scheme (b83c6a3b): a resolved scheme entitlement SUPERSEDES the grade policy days for this
-        // type; the EA-1955 floor still clamps on top. null ⇒ no scheme ⇒ use policy days. One shared
-        // composition (entitledDays, feedback ae5b84d5) so this can never drift from the recalc kernel.
+        // type. null ⇒ no scheme ⇒ use policy days. One shared composition (entitledDays, feedback
+        // ae5b84d5) so this can never drift from the recalc kernel. fa3f4ccb: the statutory floor is passed
+        // for the below-minimum SIGNAL only — it no longer clamps the granted figure.
         const schemeDays = schemeDaysFor(e.employmentId, t.id, years);
-        const days = entitledDays(pack.leave.entitlement(t.code, years), schemeDays, pol?.days ?? 0);
+        const { days } = entitledDays(pack.leave.entitlement(t.code, years), schemeDays, pol?.days ?? 0);
         if (days <= 0) continue;
         const before = balanceBy.get(key) ?? 0;
         // Carry-forward enhancement: ANNUAL carries only when the explicit toggle is on (back-compat
@@ -6274,11 +6275,12 @@ export async function accrueEarnedLeave(
             forfeits += 1;
           }
         }
-        // Benefit Scheme (b83c6a3b): scheme band days supersede pol.days as the annual target; EA floor still
-        // clamps. null ⇒ fall back to the earned policy's own days. Shared composition (entitledDays,
-        // feedback ae5b84d5) — identical to openLeaveYear / the hire grant / the recalc kernel.
+        // Benefit Scheme (b83c6a3b): scheme band days supersede pol.days as the annual target. null ⇒ fall
+        // back to the earned policy's own days. Shared composition (entitledDays, feedback ae5b84d5) —
+        // identical to openLeaveYear / the hire grant / the recalc kernel. fa3f4ccb: the EA floor no longer
+        // clamps here (or anywhere) — it is passed only so the shared helper can flag a below-minimum figure.
         const schemeTargetDays = schemeDaysFor(e.employmentId, typeId, years);
-        const entitlement = entitledDays(pack.leave.entitlement(type.code, years), schemeTargetDays, pol!.days);
+        const { days: entitlement } = entitledDays(pack.leave.entitlement(type.code, years), schemeTargetDays, pol!.days);
         if (entitlement <= 0) continue;
         const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
         const accrualStart =
@@ -6444,11 +6446,13 @@ export function projectExpectedEntitlement(
   const a2cFirstYear = isA2cFirstYear(yearCycleOverride, typeCode, emp.hiredOn, asOf);
   const windowStart = !a2cFirstYear && earnedMethod ? cycleStartEarned : yearStart;
 
-  // ⚠️ EA-FLOOR INVARIANT — identical to openLeaveYear / the hire grant / accrueEarnedLeave: the resolved
-  // entitlement is max(statutory floor, scheme ?? policy) — one shared composition (entitledDays). A
-  // below-floor correction claws back only down TO the floor. The scheme hook receives the FINAL years
-  // (post-re-resolution above), matching the sweeps' own band anchor.
-  const days = entitledDays(floor(typeCode, years), schemeDaysForYears?.(years) ?? null, pol?.days ?? 0);
+  // ⚠️ ONE-COMPOSITION INVARIANT — identical to openLeaveYear / the hire grant / accrueEarnedLeave: the
+  // resolved entitlement is `scheme ?? policy`, through the one shared composition (entitledDays). The
+  // scheme hook receives the FINAL years (post-re-resolution above), matching the sweeps' own band anchor.
+  // fa3f4ccb: the statutory floor no longer clamps, so a correction can now claw back BELOW the EA minimum
+  // when that is what the configuration says — which is the requested behaviour, not a defect. `floor` is
+  // still resolved and still passed, purely to feed the below-minimum flag.
+  const { days } = entitledDays(floor(typeCode, years), schemeDaysForYears?.(years) ?? null, pol?.days ?? 0);
   let expected: number;
   if (a2cFirstYear) {
     // Anniversary to Calendar (f3a64d90 → adcdf215), FIRST (hire) year only: the entitlement is the full

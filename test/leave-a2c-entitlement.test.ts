@@ -246,17 +246,27 @@ describe('f3a64d90 — a2cFirstYearEntitledToDate', () => {
 
 // ── (3) NON-ANNUAL — statutory full grant ──────────────────────────────────────────────────────────
 describe('f3a64d90 — non-ANNUAL types are never day-sliced', () => {
-  it('a2c on SICK grants the full statutory entitlement to a mid-year joiner', async () => {
+  // fa3f4ccb: the statutory pack no longer BACKFILLS an unconfigured type, so this test now configures
+  // SICK explicitly (14 days — the s.60F <2y figure) and asserts the invariant it actually exists to
+  // protect: a non-ANNUAL a2c type is granted in FULL, never day-sliced to 14/365 × 1.
+  it('a2c on SICK grants the configured entitlement in FULL to a mid-year joiner', async () => {
     const [sick] = await owner.db
       .insert(schema.leaveType)
       .values({ tenantId: b.tenantId, code: 'SICK', name: 'Sick Leave', paid: true, yearCycleOverride: 'a2c' })
       .returning({ id: schema.leaveType.id });
+    await owner.db.insert(schema.leavePolicy).values({
+      tenantId: b.tenantId,
+      leaveTypeId: sick.id,
+      gradeId: null,
+      companyId: null,
+      accrual: { annualDays: 14 },
+      validFrom: '2020-01-01',
+    });
     const { employmentId } = await hire({
       grants: [{ id: sick.id, code: 'SICK', yearCycleOverride: 'a2c' }],
     });
-    // EA-1955 s.60F floor for under 2 years' service — granted in FULL, not 14/365 × 1.
     const granted = await ledgerBalance(employmentId, sick.id);
-    expect(granted).toBeGreaterThanOrEqual(14);
+    expect(granted).toBe(14); // FULL, not 14/365 × 1
 
     // And the a2c correction leaves it alone (delta 0 — the ordinary full-grant projection matches).
     await reprojectEntitlementForEmployment(adminCtx(b), { employmentId, asOf: ASOF, trigger: 'test' });
@@ -338,11 +348,13 @@ describe('f3a64d90 — the slice is taken off the fully resolved entitlement', (
     { gradeId: null, companyId: null, accrual: { annualDays: days } },
   ];
 
-  it('a below-floor policy still slices the STATUTORY floor, not the raw policy days', () => {
-    // Policy says 5, the EA-1955 floor says 8 ⇒ the up-front slice is 8/365 × 360 = 7.89, never 5/365 × 360.
+  // fa3f4ccb: was "a below-floor policy still slices the STATUTORY floor". The floor no longer clamps, so
+  // the slice is taken off the CONFIGURED days. The invariant this test protects is unchanged — the slice
+  // is taken off the FULLY RESOLVED entitlement, whatever resolution now returns.
+  it('fa3f4ccb: a below-minimum policy slices its own days, not the statutory floor', () => {
     const res = projectExpectedEntitlement(emp, 'ANNUAL', policyRows(5), () => 8, ASOF, undefined, 'a2c');
-    expect(res!.expected).toBe(a2cFirstYearEntitledToDate(HIRED, ASOF, 8));
-    expect(res!.expected).toBe(7.89);
+    expect(res!.expected).toBe(a2cFirstYearEntitledToDate(HIRED, ASOF, 5));
+    expect(res!.expected).toBe(4.93); // 5/365 × 360
     expect(res!.windowStart).toBe('2026-01-01');
   });
 

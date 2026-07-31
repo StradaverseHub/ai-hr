@@ -1,6 +1,6 @@
 # Malaysia Statutory Figures — Sources & Verification
 
-**Statutory-table version:** `2026.3` (see `MY_STATUTORY_VERSION`)
+**Statutory-table version:** `2026.6` (see `MY_STATUTORY_VERSION`)
 **Retrieved:** 2026-06-06 (PCB/EPF) · 2026-06-11 (SOCSO/EIS exact schedules) · 2026-06-19 (EPF Third Schedule Part A #95; SOCSO Lindung-24-Jam/SKBBK #155)
 **Encoded in:** `localization/my/statutory-tables.ts`, applied by `localization/my/payroll.ts`
 
@@ -56,7 +56,27 @@ to these tables is traceable to the exact runs it affects.
   table rows; ∑LP and Z accumulate through the payslip replay.
 - **Non-resident — ✅ implemented**: flat **30%** of taxable remuneration (spec §D.a, golden:
   RM3,000 → RM900), toggled by the statutory profile's residency flag; §E rounding applies.
+- **Disabled individual (OKU) further deduction — ⚠️ RATE-ONLY, NOT VERIFIED. NEEDS SIGN-OFF.**
+  `MY_RELIEFS.disabledIndividual` = **RM7,000**, the further deduction under **s.46(1)(g) ITA 1967**
+  on top of the RM9,000 individual deduction, raised from RM6,000 by Budget 2025 with effect from
+  **YA2025** (item `d64d0df4`, statutory-table version **2026.6**).
+  - **Source (secondary):** PwC _Worldwide Tax Summaries_ — Malaysia · Individual · Deductions
+    (YA2026 personal reliefs: self disabled **MYR 7,000** further relief).
+    <https://taxsummaries.pwc.com/malaysia/individual/deductions>
+  - **Why it is not ✅ Verified:** every other figure in `MY_RELIEFS` was transcribed from the LHDN MTD
+    computerised-calculation spec PDF itself. That URL now returns **HTTP 404**, so this figure could
+    only be sourced from a high-trust secondary reference. A secondary source is not the primary one.
+  - **Blast radius if wrong:** bounded and opt-in. The deduction is applied **only** to an employee an
+    admin has explicitly flagged as a disabled individual on the Tax Information card, so no existing
+    employee's PCB moves until someone makes that claim. Nothing else in the ruleset changed.
+  - **Action before a real filing:** confirm RM7,000 (and whether the MTD spec expresses it inside `D`
+    or as a separate deduction) against the current LHDN publication, then either record the sign-off
+    below or correct the figure and rebuild the bundled pack
+    (`node --import tsx scripts/statutory-pack-build-my.ts`).
 - **Known limitations (documented, not bugs):**
+  - **Disabled spouse / disabled child** further deductions are **not** implemented. Child relief is
+    still a flat `perChild × numChildren`; the five LHDN s.48 child-relief CATEGORIES are captured on
+    the Family tab (item `6c635212`) but do not yet weight the PCB deduction. See `d64d0df4`'s notes.
   - **Arrears / ESOS** other additional-remuneration types reuse the bonus steps; only bonus is
     surfaced in the UI so far.
   - **REP / knowledge-worker / C-suite** special categories are not implemented.

@@ -120,7 +120,13 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     expect(NEW_EVENT.includes("t('form.currentInformation')")).toBe(true);
     expect(NEW_EVENT.includes("t('form.afterInformation')")).toBe(true);
     // The grid is only for the change kinds; lifecycle kinds keep their dedicated inputs.
-    expect(NEW_EVENT.includes('const isComparison = COMPARISON_KINDS.includes(kind);')).toBe(true);
+    //
+    // 476f23ed moved the decision from the selected CODE to the BEHAVIOUR that code carries: the event-type
+    // list is now the tenant's Movement Settings catalogue, so a tenant's own "Redeployment" mapped onto
+    // Transfer must render the Transfer grid. The invariant is unchanged — the grid follows the change
+    // kinds — so the guard follows the construct that now expresses it.
+    expect(NEW_EVENT.includes('const behaviour = behaviourOf(kind);')).toBe(true);
+    expect(NEW_EVENT.includes('const isComparison = COMPARISON_KINDS.includes(behaviour);')).toBe(true);
   });
 
   it('has the comparison labels in all six locales (no raw key at runtime)', () => {
@@ -139,18 +145,28 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     }
   });
 
-  // 66a63bd6 — Edit + Delete (Rollback) on each Employment History row.
-  it('offers View / Edit / Delete on the Action column, gated by the service flags', () => {
+  // 66a63bd6 — Edit + Rollback on each Employment History row. 10fcf6df renamed the second affordance
+  // from Delete: the service has reversed rather than erased since 66a63bd6, and the label was the last
+  // thing still promising a deletion the system never performed.
+  it('offers View / Edit / Roll Back on the Action column, gated by the service flags', () => {
     expect(PAGE.includes("t('movement.edit')")).toBe(true);
-    expect(PAGE.includes("t('movement.delete')")).toBe(true);
+    expect(PAGE.includes("t('movement.rollback')")).toBe(true);
     // The affordance reads the SAME flags the service refuses on — no second copy of the rule here.
     expect(PAGE.includes('m.canEdit')).toBe(true);
     expect(PAGE.includes('m.canReverse')).toBe(true);
     expect(PAGE.includes('m.payrollLocked')).toBe(true);
-    // Delete is confirmed, and collects the optional "reason for the change" the audit trail asks for.
-    expect(PAGE.includes("t('movement.deleteConfirmTitle')")).toBe(true);
+    // Rollback is confirmed, and collects the optional "reason for the change" the audit trail asks for.
+    expect(PAGE.includes("t('movement.rollbackConfirmTitle')")).toBe(true);
     expect(PAGE.includes("reasonField={{ name: 'reason'")).toBe(true);
     expect(PAGE.includes('reverseMovementEventAction')).toBe(true);
+  });
+
+  // 10fcf6df — the word "Delete" is gone from the Employment History affordance. Scoped to the movement
+  // namespace: other cards on this page (emergency contacts, qualifications, documents) genuinely delete
+  // and keep their own delete labels.
+  it('no longer offers a Delete on a movement row', () => {
+    expect(PAGE.includes("t('movement.delete')")).toBe(false);
+    expect(PAGE.includes("t('movement.deleteConfirm")).toBe(false);
   });
 
   it('shows a rolled-back movement as reversed rather than removing the row', () => {
@@ -174,8 +190,9 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
       const msg = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));
       const mv = msg?.people?.detail?.movement ?? {};
       for (const k of [
-        'edit', 'delete', 'editTitle', 'reversedBadge', 'correctedBadge', 'deleteConfirmTitle',
-        'deleteConfirmDescription', 'deleteConfirmPayroll', 'correctionReasonLabel', 'payrollLocked',
+        'edit', 'rollback', 'reversedBy', 'editTitle', 'reversedBadge', 'correctedBadge',
+        'rollbackConfirmTitle', 'rollbackConfirmDescription', 'rollbackConfirmPayroll',
+        'correctionReasonLabel', 'payrollLocked',
       ]) {
         expect(typeof mv[k], `messages/${loc}.json missing movement.${k}`).toBe('string');
       }

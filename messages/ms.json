@@ -149,7 +149,8 @@
     "dashboardCardConfig": "Kad papan pemuka",
     "scheduledActions": "Tugas Berjadual",
     "systemSettings": "Tetapan Sistem",
-    "systemExplorer": "Peneroka kebergantungan"
+    "systemExplorer": "Peneroka kebergantungan",
+    "movementSettings": "Tetapan Pergerakan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -1165,13 +1166,14 @@
           "terminationPayrollFlag": "Penamatan disimpan. Gaji bagi {periods} telah pun diproses melebihi tarikh penamatan — sila semak larian gaji itu. Ia tidak diubah."
         },
         "edit": "Sunting",
-        "delete": "Padam",
+        "rollback": "Batalkan",
+        "reversedBy": "Dibatalkan oleh",
         "editTitle": "Sunting Peristiwa Pergerakan",
         "reversedBadge": "Dibatalkan",
         "correctedBadge": "Dibetulkan",
-        "deleteConfirmTitle": "Batalkan peristiwa pergerakan ini?",
-        "deleteConfirmDescription": "Maklumat pekerja akan kembali kepada keadaan sebelum peristiwa ini. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan, supaya rekod kekal boleh diaudit.",
-        "deleteConfirmPayroll": "Larian gaji yang telah diproses sudah merangkumi tempoh ini. Pembatalan ini TIDAK akan memproses semula sebarang slip gaji — proses semula secara berasingan jika perlu. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan.",
+        "rollbackConfirmTitle": "Batalkan peristiwa pergerakan ini?",
+        "rollbackConfirmDescription": "Maklumat pekerja akan kembali kepada keadaan sebelum peristiwa ini. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan, supaya rekod kekal boleh diaudit.",
+        "rollbackConfirmPayroll": "Larian gaji yang telah diproses sudah merangkumi tempoh ini. Pembatalan ini TIDAK akan memproses semula sebarang slip gaji — proses semula secara berasingan jika perlu. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan.",
         "correctionReasonLabel": "Sebab pembetulan (pilihan)",
         "payrollLocked": "Dikunci oleh larian gaji yang telah ditutup",
         "status": {
@@ -1226,7 +1228,11 @@
         "priorityOther": "Lain-lain",
         "primaryHint": "Hanya satu hubungan boleh menjadi utama. Memilih Utama di sini akan mengalihkan penanda daripada hubungan sebelumnya.",
         "actions": "Tindakan"
-      }
+      },
+      "disabledIndividualLabel": "Individu kurang upaya (OKU)",
+      "disabledIndividualYes": "Ya",
+      "disabledIndividualNo": "Tidak",
+      "disabledIndividualHint": "Individu OKU berdaftar berhak mendapat pelepasan cukai tahunan tambahan. Menetapkannya kepada Ya akan mengubah cukai bulanan pekerja: kerana cukai bulanan dikira dari awal tahun hingga kini, bulan anda membuat perubahan akan menyerap pembetulan bagi tahun setakat ini."
     },
     "import": {
       "title": "Import pekerja",
@@ -1288,7 +1294,24 @@
       "instructionIdentityText": "Lajur IC, telefon, akaun bank, KWSP, PERKESO dan nombor cukai diformat sebagai teks supaya sifar di hadapan dikekalkan. Jangan tukar formatnya kepada General.",
       "instructionCompany": "Biarkan lajur Syarikat kosong untuk menggunakan syarikat yang dipilih pada skrin import, atau namakan syarikat untuk mengimport pekerja bagi beberapa syarikat dalam satu fail.",
       "instructionReference": "Lembaran Reference menyenaraikan setiap nilai yang diterima untuk Syarikat, Jabatan, Jawatan dan Pusat Kos. Nilai lain akan ditolak berserta sebabnya.",
-      "instructionSamples": "Padamkan dua baris contoh sebelum memuat naik."
+      "instructionSamples": "Padamkan dua baris contoh sebelum memuat naik.",
+      "historyTitle": "Sejarah import",
+      "historyHint": "Setiap import yang telah dijalankan, dan baris yang tidak dapat dimuatkan. Fail yang dimuat naik tidak disimpan.",
+      "historyEmpty": "Belum ada import. Setelah anda menjalankannya, ia disenaraikan di sini bersama keputusannya.",
+      "historyColWhen": "Bila",
+      "historyColFile": "Fail",
+      "historyColBy": "Oleh",
+      "historyColResult": "Keputusan",
+      "historyPasted": "CSV ditampal",
+      "historyActorUnknown": "Tidak diketahui",
+      "historyOutcomeSucceeded": "Berjaya",
+      "historyOutcomePartial": "Sebahagian diimport",
+      "historyOutcomeFailed": "Tiada yang diimport",
+      "historyCounts": "{imported} diimport, {failed} gagal",
+      "historyViewFailed": "Baris gagal",
+      "historyErrorsShown": "{count, plural, other {# baris tidak dapat diimport}}",
+      "historyErrorsTruncated": "Memaparkan {shown} daripada {total} baris yang gagal.",
+      "historyNoDetail": "Tiada butiran baris disimpan untuk import ini."
     },
     "hiringDefaults": {
       "title": "Tetapan Lalai Pengambilan",
@@ -4061,10 +4084,10 @@
       "paidLabel": "Berbayar",
       "addType": "+ Tambah jenis cuti",
       "addTypeDialogTitle": "Tambah Jenis Cuti",
-      "typesHelp": "Minimum berkanun datang daripada pek negara (EA 1955; jalur ialah <2 / 2–5 / 5+ tahun perkhidmatan) dan tidak boleh dikonfigurasikan. Pemberian menggunakan yang <strong>lebih besar</strong> antara minimum dan dasar syarikat — dasar di bawah minimum direkodkan tetapi tidak pernah digunakan. Kelayakan berkuat kuasa tarikh: <strong>tambah</strong> satu untuk mengubah masa hadapan, <strong>edit</strong> satu untuk membetulkannya. Cuti tahunan diprorata pada tahun ambil; cuti sakit dan hospitalisasi diberi sepenuhnya.",
+      "typesHelp": "Minimum berkanun datang daripada pek negara (EA 1955; jalur ialah <2 / 2–5 / 5+ tahun perkhidmatan) dan tidak boleh dikonfigurasikan. Pemberian menggunakan kelayakan yang <strong>anda konfigurasikan</strong> — minimum berkanun dipaparkan sebagai panduan dan angka di bawahnya ditandakan, bukan diganti. Kelayakan berkuat kuasa tarikh: <strong>tambah</strong> satu untuk mengubah masa hadapan, <strong>edit</strong> satu untuk membetulkannya. Cuti tahunan diprorata pada tahun ambil; cuti sakit dan hospitalisasi diberi sepenuhnya.",
       "leaveYearTitle": "Tahun cuti",
       "leaveYearConfigTitle": "Konfigurasi Tahun Cuti",
-      "leaveYearHelp": "Membuka tahun mencatat kelayakan baharu setiap pekerja aktif pada <strong>jalur perkhidmatan semasa</strong> mereka (jadi naik taraf 2t/5t terpakai), diselesaikan sebagai maks(minimum berkanun, dasar). Cuti tahunan tidak digunakan dibawa sehingga had dasar dan selebihnya dilucutkan (s.60E menjangkakan cuti dalam tahun); cuti sakit dan hospitalisasi ditetapkan semula. Idempoten — pekerja yang sudah dibuka dilangkau; pekerja yang diambil dalam tahun dilindungi oleh pemberian ambil mereka.",
+      "leaveYearHelp": "Membuka tahun mencatat kelayakan baharu setiap pekerja aktif pada <strong>jalur perkhidmatan semasa</strong> mereka (jadi naik taraf 2t/5t terpakai), diselesaikan daripada kelayakan yang dikonfigurasikan. Cuti tahunan tidak digunakan dibawa sehingga had dasar dan selebihnya dilucutkan (s.60E menjangkakan cuti dalam tahun); cuti sakit dan hospitalisasi ditetapkan semula. Idempoten — pekerja yang sudah dibuka dilangkau; pekerja yang diambil dalam tahun dilindungi oleh pemberian ambil mereka.",
       "yearLabel": "Tahun",
       "openLeaveYear": "Mula",
       "accrualMethodLabel": "Pengumpulan",
@@ -4128,11 +4151,10 @@
       "previewResultDays": "{days} hari diberikan",
       "previewFloorDays": "had berkanun: {days}",
       "previewPolicyDays": "polisi: {days}",
-      "previewWinnerFloor": "had minimum berkanun terpakai",
-      "previewWinnerPolicy": "polisi terpakai",
+      "previewBelowFloorWarning": "di bawah minimum berkanun ({days} hari) — disimpan seperti dikonfigurasikan",
       "previewNoPack": "tiada pakej had berkanun untuk negara syarikat ini — polisi sahaja",
       "serviceBandsLabel": "Jalur panjang perkhidmatan",
-      "serviceBandsHelp": "Pilihan — beri kelayakan berbeza mengikut panjang perkhidmatan, melebihi hari/tahun rata. Jalur mesti meliputi semua panjang perkhidmatan tanpa jurang: yang pertama bermula pada 0, yang terakhir dibiarkan terbuka. Guna frasa \"kurang 2 tahun\", \"2 hingga kurang 5 tahun\", \"5 tahun ke atas\" apabila menerangkan kepada kakitangan — cth. untuk sepadan dengan polisi \"2–5 tahun termasuk = 16 hari\", masukkan dari 2 hingga 6 (memasukkan hingga 5 akan menggerakkan pekerja tepat 5 tahun ke jalur seterusnya). Had minimum berkanun itu sendiri meningkat selepas 5 tahun genap dan sentiasa terpakai sebagai had bawah.",
+      "serviceBandsHelp": "Pilihan — beri kelayakan berbeza mengikut panjang perkhidmatan, melebihi hari/tahun rata. Jalur mesti meliputi semua panjang perkhidmatan tanpa jurang: yang pertama bermula pada 0, yang terakhir dibiarkan terbuka. Guna frasa \"kurang 2 tahun\", \"2 hingga kurang 5 tahun\", \"5 tahun ke atas\" apabila menerangkan kepada kakitangan — cth. untuk sepadan dengan polisi \"2–5 tahun termasuk = 16 hari\", masukkan dari 2 hingga 6 (memasukkan hingga 5 akan menggerakkan pekerja tepat 5 tahun ke jalur seterusnya). Had minimum berkanun itu sendiri meningkat selepas 5 tahun genap, tetapi ia panduan sahaja — jalur di bawahnya ditandakan, bukan diganti.",
       "serviceBandsEmpty": "Tiada jalur — angka hari/tahun rata di atas terpakai kepada semua orang.",
       "serviceBandFrom": "dari",
       "serviceBandTo": "hingga",
@@ -4192,7 +4214,7 @@
       "daysValue": "{days} hari",
       "none": "tiada",
       "companyEntitlements": "Kelayakan syarikat",
-      "noCompanyPolicy": "Tiada dasar syarikat — minimum berkanun terpakai.",
+      "noCompanyPolicy": "Tiada dasar syarikat — tiada apa-apa diberikan untuk skop ini.",
       "daysPerYearLabel": "Hari / tahun",
       "carryCapLabel": "Had bawa",
       "effectiveFromLabel": "Berkuat kuasa dari",
@@ -4520,7 +4542,7 @@
         "help": "Pilih di mana jenis cuti ini dipaparkan pada tab Cuti pekerja: kad Utama di atas, dimasukkan ke dalam kumpulan Sekunder di bawah, atau Tersembunyi sepenuhnya daripada pekerja. Tersembunyi menggunakan suis keterlihatan yang sama di atas. Sehingga anda memilih, setiap jenis menggunakan tetapan lalai yang munasabah."
       },
       "benefitSchemeTitle": "Skim Faedah",
-      "benefitSchemeHelp": "Kumpulkan gred, kemudian tentukan skim faedah bernama (Syarikat × Jenis Pekerjaan × Kumpulan Gred) dan kelayakan cuti mereka. Pekerja dipadankan secara automatik kepada skim; kelayakannya mengatasi polisi gred, dan minimum statutori masih terpakai.",
+      "benefitSchemeHelp": "Kumpulkan gred, kemudian tentukan skim faedah bernama (Syarikat × Jenis Pekerjaan × Kumpulan Gred) dan kelayakan cuti mereka. Pekerja dipadankan secara automatik kepada skim; kelayakannya mengatasi polisi gred; minimum statutori dipaparkan sebagai panduan sahaja.",
       "duplicatePolicySectionTitle": "Permohonan cuti berganda",
       "duplicatePolicyAllow": "Benarkan berbilang permohonan cuti pada tarikh yang sama",
       "duplicatePolicyRestrictSame": "Hadkan jenis cuti yang sama sahaja",
@@ -6048,7 +6070,10 @@
     "errorCodeDuplicate": "Kod gaji {code} sudah wujud — kod gaji mesti unik.",
     "errorCodeDuplicateArchived": "Kod gaji {code} wujud tetapi dinyahaktifkan — aktifkannya semula.",
     "inputType_qty_rate": "Kuantiti × kadar",
-    "inputType_formula": "Formula"
+    "inputType_formula": "Formula",
+    "colFormula": "Pengiraan",
+    "inputTypeLinkTitle": "Buka {code} untuk menukar Jenis Inputnya",
+    "sectionPaySettingsHint": "Cara jumlah dikira — pembundaran, Jenis Input dan pembina Formula."
   },
   "notifications": {
     "title": "Pemberitahuan",
@@ -7683,5 +7708,38 @@
     "truncated": "Memaparkan {shown, number} baris pertama daripada {total, number} baris.",
     "truncatedHint": "Guna Laporan → Eksport untuk set lengkap.",
     "truncatedExport": "Eksport set lengkap"
+  },
+  "movementSettings": {
+    "title": "Tetapan Pergerakan",
+    "description": "Jenis peristiwa kerjaya yang boleh direkodkan oleh HR untuk pekerja. Namakan semula mengikut istilah organisasi anda, matikan yang tidak digunakan, dan tambah jenis anda sendiri.",
+    "behaviourNotice": "Beberapa jenis peristiwa membawa akibat sebenar — Penamatan menamatkan pekerjaan, Pengesahan melengkapkan tempoh percubaan, pembetulan tarikh menyertai mengubah kelayakan cuti. Anda boleh menamakannya semula atau mematikannya; anda tidak boleh mengubah fungsinya. Jenis peristiwa anda sendiri hanya merekodkan maklumat yang anda masukkan.",
+    "catalogTitle": "Jenis Peristiwa",
+    "save": "Simpan",
+    "builtInBehaviour": "Makna terbina dalam",
+    "inUse": "Digunakan oleh pergerakan yang direkodkan",
+    "add": "Tambah Jenis Peristiwa",
+    "addTitle": "Tambah Jenis Peristiwa Anda Sendiri",
+    "addHint": "Berikan nama yang digunakan organisasi anda dan pilih fungsinya. Ia kemudian muncul bersama jenis terbina dalam apabila HR merekodkan pergerakan.",
+    "addNamePlaceholder": "cth. Penempatan Semula",
+    "addBehaviourPlaceholder": "— Pilih fungsinya —",
+    "deactivate": "Matikan",
+    "activate": "Hidupkan",
+    "delete": "Padam",
+    "deactivateConfirmTitle": "Matikan jenis peristiwa ini?",
+    "deactivateConfirmDescription": "Ia tidak lagi muncul apabila HR merekodkan pergerakan. Rekod sedia ada tidak berubah dan kekal bermakna. Anda boleh menghidupkannya semula bila-bila masa.",
+    "activateConfirmTitle": "Hidupkan jenis peristiwa ini?",
+    "activateConfirmDescription": "Ia muncul semula apabila HR merekodkan pergerakan.",
+    "deleteConfirmTitle": "Padam jenis peristiwa ini?",
+    "deleteConfirmDescription": "Ia dibuang daripada senarai. Ini hanya ditawarkan untuk jenis peristiwa anda sendiri yang belum digunakan oleh mana-mana rekod — apa yang telah direkodkan boleh dimatikan tetapi tidak boleh dipadam.",
+    "columns": {
+      "name": "Nama",
+      "behaviour": "Fungsinya",
+      "status": "Status",
+      "action": "Tindakan"
+    },
+    "status": {
+      "active": "Aktif",
+      "inactive": "Dimatikan"
+    }
   }
 }

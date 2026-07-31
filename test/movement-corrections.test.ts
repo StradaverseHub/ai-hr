@@ -1,5 +1,9 @@
 /**
- * Employment History — Edit + Delete (Rollback), feedback 66a63bd6.
+ * Employment History — Edit + Rollback, feedback 66a63bd6.
+ *
+ * 10fcf6df renamed the affordance from "Delete" to "Roll Back": the service below has reversed rather than
+ * erased since this suite was written, and the label was the last thing still promising a deletion the
+ * system never performed. The behaviour asserted here is unchanged.
  *
  * The reporter's answer to decision item 9064cffb chose corrections recorded as VISIBLE REVERSALS, never a
  * hard delete. Employment History is a projection over the append-only domain_event ledger, so this suite
@@ -124,7 +128,7 @@ async function closedPayrollFor(employmentId: string, period: string) {
   });
 }
 
-describe('reverseMovementEvent — Delete is a rollback recorded as a visible reversal', () => {
+describe('reverseMovementEvent — Rollback is recorded as a visible reversal', () => {
   it('restores the previous department and keeps the row on the history, marked reversed', async () => {
     const hire = await hireOne();
     await createMovementEvent(adminCtx(b), {

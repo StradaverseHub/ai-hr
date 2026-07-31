@@ -108,16 +108,18 @@ describe('ae5b84d5 — hire grants scheme band days immediately', () => {
     expect(await annualBalance(emp.employmentId)).toBe(8);
   });
 
-  it('no-scheme tenant is unchanged (back-compat: floor-prorated as before)', async () => {
+  // fa3f4ccb: was "floor-prorated as before" (8 × 8/12 = 5.33). With no scheme and no policy row there
+  // is no configured entitlement, and the statutory pack no longer backfills one, so the hire grants none.
+  it('fa3f4ccb: no scheme AND no policy ⇒ the hire grants nothing', async () => {
     const emp = await hire({ hiredOn: '2026-05-01' });
-    // EA floor 8 × 8/12 = 5.33 — byte-identical pre-existing hire behaviour.
-    expect(await annualBalance(emp.employmentId)).toBe(5.33);
+    expect(await annualBalance(emp.employmentId)).toBe(0);
   });
 
-  it('EA floor still clamps a below-floor scheme at hire', async () => {
-    const { grade } = await gradeHScheme(4); // below the <2y floor of 8
+  // fa3f4ccb: was "EA floor still clamps a below-floor scheme at hire".
+  it('fa3f4ccb: a scheme below the EA minimum is granted as configured at hire', async () => {
+    const { grade } = await gradeHScheme(4); // below the <2y statutory minimum of 8
     const emp = await hire({ hiredOn: '2026-01-01', gradeId: grade.id });
-    expect(await annualBalance(emp.employmentId)).toBe(8); // floor wins
+    expect(await annualBalance(emp.employmentId)).toBe(4);
   });
 
   it('the bulk-import hire path grants scheme days too (inherits hireEmployee)', async () => {
@@ -161,7 +163,16 @@ describe('ae5b84d5 — hire grants scheme band days immediately', () => {
 describe('ae5b84d5 — profile-change recalc reads the scheme table', () => {
   it('a grade change into a grade group posts the upfront delta, records the audit row, and is idempotent', async () => {
     const { grade } = await gradeHScheme(16);
-    const emp = await hire({ hiredOn: '2026-01-01' }); // ungraded ⇒ floor 8
+    // fa3f4ccb: an unconfigured type grants nothing now that the statutory pack no longer backfills, and
+    // the recalc path only CORRECTS an existing grant. This test is about the grade change moving the
+    // balance, so it needs a configured baseline — 8 days, the same figure the EA floor used to supply, so
+    // the delta and final balance asserted below are unchanged.
+    await createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 8,
+      validFrom: '2020-01-01',
+    });
+    const emp = await hire({ hiredOn: '2026-01-01' }); // ungraded ⇒ the group-default policy
     expect(await annualBalance(emp.employmentId)).toBe(8);
 
     await setEmploymentGrade(adminCtx(b), { employmentId: emp.employmentId, gradeId: grade.id });

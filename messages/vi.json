@@ -149,7 +149,8 @@
     "dashboardCardConfig": "Thẻ bảng điều khiển",
     "scheduledActions": "Tác vụ theo lịch",
     "systemSettings": "Cài đặt hệ thống",
-    "systemExplorer": "Trình khám phá phụ thuộc"
+    "systemExplorer": "Trình khám phá phụ thuộc",
+    "movementSettings": "Cài đặt biến động"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1165,13 +1166,14 @@
           "terminationPayrollFlag": "Đã lưu việc chấm dứt. Kỳ lương {periods} đã được xử lý vượt quá ngày chấm dứt — hãy kiểm tra kỳ lương đó. Hệ thống không thay đổi nó."
         },
         "edit": "Sửa",
-        "delete": "Xóa",
+        "rollback": "Hoàn tác",
+        "reversedBy": "Hoàn tác bởi",
         "editTitle": "Sửa sự kiện biến động nhân sự",
         "reversedBadge": "Đã hoàn tác",
         "correctedBadge": "Đã chỉnh sửa",
-        "deleteConfirmTitle": "Hoàn tác sự kiện biến động này?",
-        "deleteConfirmDescription": "Thông tin nhân viên sẽ trở lại trạng thái ngay trước sự kiện này. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác, nên hồ sơ vẫn có thể kiểm toán.",
-        "deleteConfirmPayroll": "Một kỳ lương đã xử lý bao trùm giai đoạn này. Việc hoàn tác sẽ KHÔNG xử lý lại bất kỳ phiếu lương nào — hãy xử lý lại riêng nếu bạn cần. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác.",
+        "rollbackConfirmTitle": "Hoàn tác sự kiện biến động này?",
+        "rollbackConfirmDescription": "Thông tin nhân viên sẽ trở lại trạng thái ngay trước sự kiện này. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác, nên hồ sơ vẫn có thể kiểm toán.",
+        "rollbackConfirmPayroll": "Một kỳ lương đã xử lý bao trùm giai đoạn này. Việc hoàn tác sẽ KHÔNG xử lý lại bất kỳ phiếu lương nào — hãy xử lý lại riêng nếu bạn cần. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác.",
         "correctionReasonLabel": "Lý do chỉnh sửa (không bắt buộc)",
         "payrollLocked": "Bị khóa bởi một kỳ lương đã đóng",
         "status": {
@@ -1226,7 +1228,11 @@
         "priorityOther": "Khác",
         "primaryHint": "Chỉ một liên hệ được là liên hệ chính. Chọn Chính ở đây sẽ chuyển dấu này khỏi liên hệ trước đó.",
         "actions": "Thao tác"
-      }
+      },
+      "disabledIndividualLabel": "Người khuyết tật (OKU)",
+      "disabledIndividualYes": "Có",
+      "disabledIndividualNo": "Không",
+      "disabledIndividualHint": "Người khuyết tật đã đăng ký được hưởng thêm khoản giảm trừ thuế hằng năm. Đặt thành Có sẽ thay đổi thuế hằng tháng của nhân viên: vì thuế hằng tháng được tính từ đầu năm đến nay, tháng bạn thay đổi sẽ hấp thụ phần điều chỉnh cho cả năm tính đến thời điểm đó."
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -1288,7 +1294,24 @@
       "instructionIdentityText": "Các cột CMND/CCCD, điện thoại, tài khoản ngân hàng, EPF, SOCSO và mã số thuế được định dạng văn bản để giữ số 0 ở đầu. Đừng đổi định dạng sang General.",
       "instructionCompany": "Để trống cột Công ty để dùng công ty đã chọn trên màn hình nhập, hoặc ghi tên công ty để nhập nhân viên của nhiều công ty trong một tệp.",
       "instructionReference": "Trang tính Reference liệt kê mọi giá trị được chấp nhận cho Công ty, Phòng ban, Chức vụ và Trung tâm chi phí. Giá trị khác sẽ bị từ chối kèm lý do.",
-      "instructionSamples": "Xóa hai hàng mẫu trước khi tải lên."
+      "instructionSamples": "Xóa hai hàng mẫu trước khi tải lên.",
+      "historyTitle": "Lịch sử nhập",
+      "historyHint": "Mọi lần nhập đã chạy và những hàng không tải được. Tệp đã tải lên không được lưu giữ.",
+      "historyEmpty": "Chưa có lần nhập nào. Sau khi bạn chạy, lần nhập sẽ được liệt kê ở đây kèm kết quả.",
+      "historyColWhen": "Thời điểm",
+      "historyColFile": "Tệp",
+      "historyColBy": "Bởi",
+      "historyColResult": "Kết quả",
+      "historyPasted": "CSV đã dán",
+      "historyActorUnknown": "Không rõ",
+      "historyOutcomeSucceeded": "Thành công",
+      "historyOutcomePartial": "Nhập một phần",
+      "historyOutcomeFailed": "Không nhập được gì",
+      "historyCounts": "{imported} đã nhập, {failed} lỗi",
+      "historyViewFailed": "Hàng lỗi",
+      "historyErrorsShown": "{count, plural, other {# hàng không nhập được}}",
+      "historyErrorsTruncated": "Đang hiển thị {shown} trong {total} hàng lỗi.",
+      "historyNoDetail": "Không có chi tiết hàng nào được lưu cho lần nhập này."
     },
     "hiringDefaults": {
       "title": "Mặc định tuyển dụng",
@@ -4061,10 +4084,10 @@
       "paidLabel": "Có lương",
       "addType": "+ Thêm loại nghỉ phép",
       "addTypeDialogTitle": "Thêm loại nghỉ phép",
-      "typesHelp": "Mức tối thiểu pháp định đến từ gói quốc gia (EA 1955; các bậc là <2 / 2–5 / 5+ năm thâm niên) và không thể cấu hình. Khi cấp phép, áp dụng mức <strong>lớn hơn</strong> giữa mức sàn và chính sách công ty — chính sách thấp hơn mức tối thiểu được ghi lại nhưng không bao giờ áp dụng. Mức hưởng theo ngày hiệu lực: <strong>thêm</strong> một mục để thay đổi về sau, <strong>chỉnh sửa</strong> một mục để sửa lại. Phép năm được tính theo tỷ lệ trong năm tuyển dụng; nghỉ ốm và nghỉ nằm viện được cấp đầy đủ.",
+      "typesHelp": "Mức tối thiểu pháp định đến từ gói quốc gia (EA 1955; các bậc là <2 / 2–5 / 5+ năm thâm niên) và không thể cấu hình. Khi cấp phép, áp dụng đúng mức hưởng bạn <strong>cấu hình</strong> — mức tối thiểu pháp định chỉ hiển thị để tham khảo, con số thấp hơn sẽ được cảnh báo chứ không bị thay thế. Mức hưởng theo ngày hiệu lực: <strong>thêm</strong> một mục để thay đổi về sau, <strong>chỉnh sửa</strong> một mục để sửa lại. Phép năm được tính theo tỷ lệ trong năm tuyển dụng; nghỉ ốm và nghỉ nằm viện được cấp đầy đủ.",
       "leaveYearTitle": "Năm phép",
       "leaveYearConfigTitle": "Cấu hình năm phép",
-      "leaveYearHelp": "Mở một năm sẽ ghi nhận mức hưởng mới của mỗi nhân viên đang làm việc tại <strong>bậc thâm niên hiện tại</strong> của họ (nên các nâng bậc 2 năm/5 năm được áp dụng), được tính là max(mức sàn pháp định, chính sách). Phép năm chưa dùng được chuyển sang đến mức trần của chính sách và phần còn lại bị mất (s.60E yêu cầu nghỉ phép trong năm); nghỉ ốm và nghỉ nằm viện được đặt lại. Có tính bất biến — nhân viên đã mở sẽ bị bỏ qua; nhân viên được tuyển trong năm được bao gồm qua mức cấp khi tuyển dụng.",
+      "leaveYearHelp": "Mở một năm sẽ ghi nhận mức hưởng mới của mỗi nhân viên đang làm việc tại <strong>bậc thâm niên hiện tại</strong> của họ (nên các nâng bậc 2 năm/5 năm được áp dụng), được tính từ mức hưởng đã cấu hình. Phép năm chưa dùng được chuyển sang đến mức trần của chính sách và phần còn lại bị mất (s.60E yêu cầu nghỉ phép trong năm); nghỉ ốm và nghỉ nằm viện được đặt lại. Có tính bất biến — nhân viên đã mở sẽ bị bỏ qua; nhân viên được tuyển trong năm được bao gồm qua mức cấp khi tuyển dụng.",
       "yearLabel": "Năm",
       "openLeaveYear": "Bắt đầu",
       "accrualMethodLabel": "Tích lũy",
@@ -4128,11 +4151,10 @@
       "previewResultDays": "Cấp {days} ngày",
       "previewFloorDays": "mức tối thiểu theo luật: {days}",
       "previewPolicyDays": "chính sách: {days}",
-      "previewWinnerFloor": "áp dụng mức tối thiểu theo luật",
-      "previewWinnerPolicy": "áp dụng chính sách",
+      "previewBelowFloorWarning": "thấp hơn mức tối thiểu theo luật ({days} ngày) — vẫn lưu theo cấu hình",
       "previewNoPack": "không có gói mức tối thiểu theo luật cho quốc gia của công ty này — chỉ theo chính sách",
       "serviceBandsLabel": "Mức thâm niên",
-      "serviceBandsHelp": "Tùy chọn — cấp quyền lợi khác nhau theo thâm niên, cao hơn số ngày/năm cố định. Các mức phải bao phủ mọi mức thâm niên không có khoảng trống: mức đầu tiên bắt đầu từ 0, mức cuối cùng để mở. Dùng cách diễn đạt \"dưới 2 năm\", \"từ 2 đến dưới 5 năm\", \"từ 5 năm trở lên\" khi giải thích cho nhân viên — ví dụ để khớp với chính sách \"2–5 năm (bao gồm) = 16 ngày\", hãy nhập từ 2 đến 6 (nhập đến 5 sẽ khiến nhân viên vừa tròn 5 năm chuyển sang mức tiếp theo). Bản thân mức tối thiểu theo luật sẽ tăng sau khi hoàn thành 5 năm và luôn áp dụng như một mức sàn.",
+      "serviceBandsHelp": "Tùy chọn — cấp quyền lợi khác nhau theo thâm niên, cao hơn số ngày/năm cố định. Các mức phải bao phủ mọi mức thâm niên không có khoảng trống: mức đầu tiên bắt đầu từ 0, mức cuối cùng để mở. Dùng cách diễn đạt \"dưới 2 năm\", \"từ 2 đến dưới 5 năm\", \"từ 5 năm trở lên\" khi giải thích cho nhân viên — ví dụ để khớp với chính sách \"2–5 năm (bao gồm) = 16 ngày\", hãy nhập từ 2 đến 6 (nhập đến 5 sẽ khiến nhân viên vừa tròn 5 năm chuyển sang mức tiếp theo). Bản thân mức tối thiểu theo luật sẽ tăng sau khi hoàn thành 5 năm, nhưng chỉ mang tính tham khảo — bậc thấp hơn sẽ được cảnh báo chứ không bị thay thế.",
       "serviceBandsEmpty": "Không có mức — số ngày/năm cố định ở trên áp dụng cho tất cả mọi người.",
       "serviceBandFrom": "từ",
       "serviceBandTo": "đến",
@@ -4192,7 +4214,7 @@
       "daysValue": "{days} ngày",
       "none": "không có",
       "companyEntitlements": "Mức hưởng của công ty",
-      "noCompanyPolicy": "Không có chính sách công ty — áp dụng mức sàn pháp định.",
+      "noCompanyPolicy": "Không có chính sách công ty — không cấp gì cho phạm vi này.",
       "daysPerYearLabel": "Số ngày / năm",
       "carryCapLabel": "Mức trần chuyển sang",
       "effectiveFromLabel": "Hiệu lực từ",
@@ -4520,7 +4542,7 @@
         "help": "Chọn nơi loại nghỉ phép này xuất hiện trên tab Nghỉ phép của nhân viên: thẻ Chính ở trên cùng, nằm trong nhóm Phụ bên dưới, hoặc Ẩn hoàn toàn khỏi nhân viên. Ẩn sử dụng cùng công tắc hiển thị ở trên. Cho đến khi bạn chọn, mỗi loại sử dụng giá trị mặc định hợp lý."
       },
       "benefitSchemeTitle": "Chương trình phúc lợi",
-      "benefitSchemeHelp": "Nhóm các bậc lương, sau đó xác định các chương trình phúc lợi có tên (Công ty × Loại hình lao động × Nhóm bậc) và quyền nghỉ phép của chúng. Nhân viên được tự động khớp với một chương trình; quyền lợi của chương trình thay thế chính sách theo bậc, và mức tối thiểu theo luật vẫn được áp dụng.",
+      "benefitSchemeHelp": "Nhóm các bậc lương, sau đó xác định các chương trình phúc lợi có tên (Công ty × Loại hình lao động × Nhóm bậc) và quyền nghỉ phép của chúng. Nhân viên được tự động khớp với một chương trình; quyền lợi của chương trình thay thế chính sách theo bậc; mức tối thiểu theo luật chỉ hiển thị để tham khảo.",
       "duplicatePolicySectionTitle": "Đơn xin nghỉ trùng lặp",
       "duplicatePolicyAllow": "Cho phép nhiều đơn xin nghỉ trong cùng một ngày",
       "duplicatePolicyRestrictSame": "Chỉ hạn chế cùng một loại nghỉ phép",
@@ -6048,7 +6070,10 @@
     "errorCodeDuplicate": "Mã lương {code} đã tồn tại — mã lương phải là duy nhất.",
     "errorCodeDuplicateArchived": "Mã lương {code} đã tồn tại nhưng bị vô hiệu hóa — hãy kích hoạt lại.",
     "inputType_qty_rate": "Số lượng × đơn giá",
-    "inputType_formula": "Công thức"
+    "inputType_formula": "Công thức",
+    "colFormula": "Cách tính",
+    "inputTypeLinkTitle": "Mở {code} để thay đổi Kiểu nhập",
+    "sectionPaySettingsHint": "Cách tính ra số tiền — làm tròn, Kiểu nhập và trình tạo Công thức."
   },
   "notifications": {
     "title": "Thông báo",
@@ -7683,5 +7708,38 @@
     "truncated": "Đang hiển thị {shown, number} dòng đầu tiên trong tổng số {total, number} dòng.",
     "truncatedHint": "Dùng Báo cáo → Xuất dữ liệu để lấy toàn bộ.",
     "truncatedExport": "Xuất toàn bộ dữ liệu"
+  },
+  "movementSettings": {
+    "title": "Cài đặt biến động",
+    "description": "Các loại sự kiện nghề nghiệp mà HR có thể ghi nhận cho nhân viên. Đổi tên cho khớp với cách gọi của tổ chức bạn, tắt những loại không dùng, và thêm loại của riêng bạn.",
+    "behaviourNotice": "Một vài loại sự kiện có hệ quả thực sự — Chấm dứt kết thúc việc làm, Xác nhận hoàn tất thử việc, sửa ngày gia nhập làm thay đổi phép năm. Bạn có thể đổi tên hoặc tắt chúng; bạn không thể thay đổi việc chúng làm. Loại sự kiện của riêng bạn chỉ ghi nhận những thông tin bạn nhập.",
+    "catalogTitle": "Loại sự kiện",
+    "save": "Lưu",
+    "builtInBehaviour": "Ý nghĩa mặc định",
+    "inUse": "Đã được các biến động ghi nhận sử dụng",
+    "add": "Thêm loại sự kiện",
+    "addTitle": "Thêm loại sự kiện của riêng bạn",
+    "addHint": "Đặt tên theo cách tổ chức bạn gọi và chọn việc nó làm. Sau đó nó xuất hiện cùng các loại mặc định khi HR ghi nhận một biến động.",
+    "addNamePlaceholder": "ví dụ: Điều chuyển",
+    "addBehaviourPlaceholder": "— Chọn việc nó làm —",
+    "deactivate": "Tắt",
+    "activate": "Bật",
+    "delete": "Xóa",
+    "deactivateConfirmTitle": "Tắt loại sự kiện này?",
+    "deactivateConfirmDescription": "Nó không còn xuất hiện khi HR ghi nhận biến động. Các hồ sơ đã dùng nó không thay đổi và vẫn giữ nguyên ý nghĩa. Bạn có thể bật lại bất cứ lúc nào.",
+    "activateConfirmTitle": "Bật loại sự kiện này?",
+    "activateConfirmDescription": "Nó sẽ xuất hiện trở lại khi HR ghi nhận biến động.",
+    "deleteConfirmTitle": "Xóa loại sự kiện này?",
+    "deleteConfirmDescription": "Nó bị xóa khỏi danh sách. Chỉ áp dụng cho loại sự kiện của riêng bạn mà chưa hồ sơ nào dùng — những gì đã ghi nhận có thể tắt nhưng không bao giờ xóa được.",
+    "columns": {
+      "name": "Tên",
+      "behaviour": "Việc nó làm",
+      "status": "Trạng thái",
+      "action": "Thao tác"
+    },
+    "status": {
+      "active": "Đang dùng",
+      "inactive": "Đã tắt"
+    }
   }
 }

@@ -2022,6 +2022,9 @@ export async function generatePayslips(
         rateAmount: compensation.rateAmount,
         taxCategory: employeeStatutoryMy.taxCategory,
         numChildren: employeeStatutoryMy.numChildren,
+        // Item d64d0df4 — registered disabled individual (OKU). Drives the FURTHER annual deduction in the
+        // PCB projection of P; the amount itself is statutory and comes from the country pack's ruleset.
+        disabledIndividual: employeeStatutoryMy.disabledIndividual,
         isResident: employeeStatutoryMy.isResident,
         // Item 8b5334db — tax residency drives the PCB method (resident MTD / non-resident flat 30% / REP +
         // Knowledge Worker flat 15%); employer_bears_tax funds the employee's PCB from employer cost.
@@ -3171,7 +3174,14 @@ export async function generatePayslips(
       // (Wave 2C): the INCREMENT of the cumulative month — re-run with/without this run's additional
       // remuneration and take the delta, so the normal wage's SOCSO/EPF (already charged by the regular
       // run) cancels, SOCSO/EIS add 0, and PCB nets against earlier same-month MTD (ADR-0024 §4).
-      const taxProfile = { category: (e.taxCategory ?? 1) as 1 | 2 | 3, children: e.numChildren ?? 0 };
+      // Item d64d0df4 — `disabled` is the employee's CIRCUMSTANCE; the deduction it entitles them to is a
+      // figure in the pack's ruleset, applied inside pcbMonth. `?? false` keeps a row that predates
+      // migration 0341 (or a person with no statutory row at all) computing exactly as it does today.
+      const taxProfile = {
+        category: (e.taxCategory ?? 1) as 1 | 2 | 3,
+        children: e.numChildren ?? 0,
+        disabled: e.disabledIndividual ?? false,
+      };
       // Item a7271737 — persisted SOCSO / EIS category override. 'auto' reproduces the age/citizenship derivation
       // below byte-for-byte; 'first'/'second' pin the SOCSO band; 'none' gates the respective scheme off (exactly
       // like subject_to_socso=false / eis_eligible=false do — the setter also derives those legacy booleans from

@@ -147,11 +147,13 @@ describe('scheme entitlement drives openLeaveYear grant', () => {
     expect(await balance(emp.employmentId)).toBe(20); // max(floor 16, scheme 20)
   });
 
-  it('EA-1955 floor still clamps when the scheme band is below it', async () => {
+  // fa3f4ccb: was "EA-1955 floor still clamps when the scheme band is below it". Approved in writing —
+  // the scheme band is now granted as configured and flagged on screen, not silently raised to 16.
+  it('fa3f4ccb: a scheme band below the EA minimum is granted as configured', async () => {
     const { grade } = await setupScheme([12, 14, 10]);
-    const emp = await hire('2018-01-01', grade.id); // ≥5y band = 10, floor = 16
+    const emp = await hire('2018-01-01', grade.id); // ≥5y band = 10, statutory minimum = 16
     await openLeaveYear(adminCtx(b), { year: 2026 });
-    expect(await balance(emp.employmentId)).toBe(16); // floor wins
+    expect(await balance(emp.employmentId)).toBe(10);
   });
 
   it('picks the correct band for a shorter-service employee (2–5y)', async () => {
@@ -161,12 +163,16 @@ describe('scheme entitlement drives openLeaveYear grant', () => {
     expect(await balance(emp.employmentId)).toBe(15); // max(floor 12, scheme 15)
   });
 
-  it('falls back to the EA floor when the employee has no scheme (back-compat)', async () => {
-    // A graded employee whose grade is NOT in any scheme's group ⇒ no scheme ⇒ floor-only.
+  // fa3f4ccb: was "falls back to the EA floor when the employee has no scheme". The statutory pack no
+  // longer BACKFILLS an unconfigured type: with no scheme AND no leave_policy row there is nothing to
+  // grant, so the sweep grants nothing. This is the single most visible consequence of the approved
+  // change and is asserted here deliberately rather than left to be discovered.
+  it('fa3f4ccb: no scheme AND no policy ⇒ nothing granted (the floor no longer backfills)', async () => {
+    // A graded employee whose grade is NOT in any scheme's group ⇒ no scheme ⇒ policy-only.
     const grade = await createJobGrade(adminCtx(b), { code: 'GX', name: 'Grade X' });
     const emp = await hire('2018-01-01', grade.id);
     await openLeaveYear(adminCtx(b), { year: 2026 });
-    expect(await balance(emp.employmentId)).toBe(16); // EA floor at ≥5y, no scheme override
+    expect(await balance(emp.employmentId)).toBe(0);
   });
 
   it('a manual override supersedes auto-match', async () => {
@@ -241,7 +247,16 @@ describe('ae5b84d5 — manual override corrects the balance on the spot', () => 
   it('assigning and clearing the override both post correcting adjustments immediately', async () => {
     const ctx = adminCtx(b);
     const { scheme } = await schemeSetup(15);
-    const emp = await hire('2026-01-01', null); // ungraded ⇒ no auto-match ⇒ EA floor 8 at hire
+    // fa3f4ccb: an unconfigured type grants nothing now that the statutory pack no longer backfills, and
+    // the recalc path only CORRECTS an existing grant — so the baseline this test is about (assign the
+    // override, watch the balance move) needs a real configured entitlement. 8 days is the same baseline
+    // figure the EA floor used to supply, so every assertion below is unchanged.
+    await createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 8,
+      validFrom: '2020-01-01',
+    });
+    const emp = await hire('2026-01-01', null); // ungraded ⇒ no auto-match ⇒ the group-default policy
     expect(await balance(emp.employmentId)).toBe(8);
 
     await setEmploymentBenefitScheme(ctx, { employmentId: emp.employmentId, benefitSchemeId: scheme.id });

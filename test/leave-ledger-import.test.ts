@@ -313,6 +313,15 @@ describe('leave import — year boundary interaction', () => {
     // it does not corrupt or shift what openLeaveYear computes for 2026 — so both employees land on the exact
     // same 2026 opening balance. (This is the plan's "confirm the cron is idempotent/order-independent
     // against imported rows" gate.)
+    // fa3f4ccb: seedBase has no policy, and the statutory pack no longer backfills one — an unconfigured
+    // type now grants 0 and openLeaveYear skips it entirely, so there would be no rollover to be
+    // order-independent ABOUT. State the entitlement the test always assumed it had.
+    await owner.db.insert(schema.leavePolicy).values({
+      tenantId: b.tenantId,
+      leaveTypeId: b.annualLeaveTypeId,
+      validFrom: '2020-01-01',
+      accrual: { annualDays: 8 },
+    });
     const eCtrl = await hire({ hiredOn: '2025-01-01' });
     const eImport = await hire({ hiredOn: '2025-01-01' });
 
@@ -335,6 +344,14 @@ describe('leave import — year boundary interaction', () => {
   });
 
   it('(k2) importing into an already-rolled-over year is flagged as a non-blocking warning', async () => {
+    // fa3f4ccb: same reason as (k) — without a configured entitlement openLeaveYear grants nothing and
+    // posts no open-marker, so there is no rolled-over year for the warning to detect.
+    await owner.db.insert(schema.leavePolicy).values({
+      tenantId: b.tenantId,
+      leaveTypeId: b.annualLeaveTypeId,
+      validFrom: '2020-01-01',
+      accrual: { annualDays: 8 },
+    });
     const e = await hire({ hiredOn: '2025-01-01' });
     // Roll over 2026 first (posts a Jan-1 2026 accrual open-marker), then import a row dated in 2026.
     await openLeaveYear(adminCtx(b), { year: 2026 });

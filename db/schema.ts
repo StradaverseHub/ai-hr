@@ -2348,6 +2348,13 @@ export const employeeStatutoryMy = pgTable(
     zakatFixed: numeric('zakat_fixed', { precision: 12, scale: 2 }),
     zakatEffectiveFrom: date('zakat_effective_from'),
     zakatEffectiveTo: date('zakat_effective_to'),
+    // Item d64d0df4 (migration 0341) — the employee is a registered disabled individual (OKU). A fact about
+    // the PERSON, so it is tenant data and belongs here. The RELIEF AMOUNT it entitles them to is statutory
+    // and deliberately does NOT live here: it is a deduction in the country pack's ruleset
+    // (localization/my/statutory-tables.ts `MY_RELIEFS.disabledIndividual`, applied by pcbMonth), exactly like
+    // the individual / spouse / per-child deductions. Default false ⇒ every pre-existing row keeps today's PCB
+    // byte-for-byte; only an employee an admin explicitly flags starts claiming the extra deduction.
+    disabledIndividual: boolean('disabled_individual').notNull().default(false),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -5788,4 +5795,90 @@ export const employeeDraft = pgTable(
     index('employee_draft_tenant_updated_idx').on(t.tenantId, t.updatedAt),
     index('employee_draft_author_idx').on(t.tenantId, t.createdByPersonId),
   ],
+);
+
+// 476f23ed — Movement Settings: the configurable catalogue of movement (career) event types.
+//
+// AN OVERLAY, NOT A REPLACEMENT. The built-in kinds (core/movement.ts MOVEMENT_KINDS) stay in code and
+// stay the source of BEHAVIOUR; this table records what a tenant did to that list — renamed a label,
+// switched a type off, or added one of their own. A tenant with no rows here behaves exactly as before,
+// which is why there is no backfill and no per-tenant seed to keep in step.
+//
+// `code` is the stable identity written into the ledger (the movement tag's `type`). For an override of a
+// built-in it IS the MovementKind; for a custom type it is an admin-chosen slug. `behaviour_kind` is the
+// built-in kind whose semantics the type carries — that separation is the whole design: rename and
+// enable/disable are free, semantics stay with the built-in kind, and a tenant cannot invent a type that
+// claims to be a Termination (core/movement-type.ts CONFIGURABLE_BEHAVIOUR_KINDS enforces it).
+//
+// Deliberately NOT a Postgres enum: a new enum value cannot be used in the transaction that added it (a
+// trap this repo has hit), and this is a list whose whole nature is that it grows. Same reasoning that
+// kept employment.termination_reason_code as text (migration 0338).
+//
+// RLS (0340) mirrors profile_option: tenant-read for every member, admin-only write.
+export const movementEventType = pgTable(
+  'movement_event_type',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Stable identity recorded in the ledger. Equals a MovementKind when this row overrides a built-in. */
+    code: text('code').notNull(),
+    /** The built-in MovementKind whose behaviour this type carries. */
+    behaviourKind: text('behaviour_kind').notNull(),
+    /** Display text. Null on a built-in override means "use the shipped translation". */
+    label: text('label'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('movement_event_type_tenant_idx').on(t.tenantId),
+    uniqueIndex('movement_event_type_tenant_code_uq').on(t.tenantId, t.code),
+  ],
+);
+
+// ─────────────── Personnel — employee import history (feedback cf43c909, migration 0341) ───────────────
+// One row per employee-import RUN. The Excel reader, the pre-import validation preview and the downloadable
+// error report all shipped in r86 (d8471481); what was missing is the RECORD — once an upload finished there
+// was nothing to look back at, so a bad import could not be traced and its rejected rows could not be
+// recovered for correction.
+//
+// This is a READ MODEL for a screen, not a second audit trail: the event log keeps its
+// `employee-import.completed` event unchanged. It exists as a table because it is queried by (tenant,
+// recency), because its jsonb error detail would bloat every event-log scan, and because it is the thing an
+// admin can delete when they want that detail gone.
+//
+// THE UPLOADED FILE IS NEVER STORED. An employee import file carries IC numbers, bank accounts, EPF / SOCSO /
+// tax numbers and salaries for the whole workforce; retaining it would turn an audit feature into a
+// data-retention liability. Correcting a rejected row needs the row's IDENTITY and the REASON, which is all
+// `errors` holds — never the row's data. The file's NAME is kept because that is what HR recognises a run by.
+//
+// The outcome shown on screen (succeeded / partly / failed) is DERIVED from the three counts. A stored status
+// would be a fourth fact that can disagree with the other three. RLS (0341) is admin-only: a run is not
+// "about" one person, and its error detail names employees the uploader may be the only one entitled to see.
+export const employeeImportRun = pgTable(
+  'employee_import_run',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** The company SELECTED on the import screen. One file may create employees at several companies
+     *  (d8471481), so this is the run's target, not an exhaustive list of what it wrote. */
+    companyId: uuid('company_id').references(() => company.id),
+    /** Who ran it — the person for the display name, the user id so an admin with no person row
+     *  (operator / support login) is still attributable. */
+    createdByPersonId: uuid('created_by_person_id').references(() => person.id),
+    createdByUserId: text('created_by_user_id'),
+    /** The uploaded file's name; '' when the CSV was pasted rather than uploaded. Not the file. */
+    fileName: text('file_name').notNull().default(''),
+    totalRows: integer('total_rows').notNull().default(0),
+    importedRows: integer('imported_rows').notNull().default(0),
+    /** Every row that did not become an employee: REJECTED by validation or FAILED at write. */
+    failedRows: integer('failed_rows').notNull().default(0),
+    /** [{ rowNum, fullName, email, errors: [...] }] — identity + reason only. See core/import.ts. */
+    errors: jsonb('errors').notNull().default([]),
+    /** True when more rows failed than `errors` holds (IMPORT_RUN_ERROR_CAP). The screen says so rather
+     *  than letting HR believe a truncated report is the whole story. */
+    errorsTruncated: boolean('errors_truncated').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [index('employee_import_run_tenant_created_idx').on(t.tenantId, t.createdAt)],
 );
