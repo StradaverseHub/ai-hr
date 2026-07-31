@@ -140,6 +140,63 @@ export function schemeNameIsRedundant(
 }
 
 /**
+ * Feedback 0890a555 — the SCHEME CATEGORY: a grouping label, and the "smart default" the request asks for.
+ *
+ * The rule the reporter's own table implies, read off their examples:
+ *
+ *     Permanent  | Grade 12-15        | Grade 12-15 (Permanent)         ⇒ "Permanent"
+ *     Contract   | Contract Special   | Contract - Special (40 AL)      ⇒ "Contract (Special)"
+ *     Contract   | Grade H            | Contract - Grade H (Retiree)    ⇒ "Contract (Retiree)"
+ *     Part-time  | Part Time          | Part Time                       ⇒ "Part Time"
+ *
+ * So: the employment type is the base, and where the scheme's own NAME adds a qualifier the employment type
+ * does not already state — "Special", "Retiree" — that qualifier is carried into the category in
+ * parentheses. Two schemes that add the same qualifier land in the same category, which is exactly what
+ * "multiple benefit schemes may share the same category" means.
+ *
+ * WHAT THIS IS NOT. It is a SUGGESTION, offered when a category has not been set, and it is never written
+ * behind the administrator's back: nothing calls it on read, no migration backfills it, and the value it
+ * proposes is editable and clearable before and after saving. That distinction is the whole reason the
+ * column is nullable with no default — a guessed category stored as fact would file schemes under headings
+ * the tenant never chose, and they would then have to un-choose them one at a time.
+ *
+ * Returns '' when it cannot form a sensible answer, which the request explicitly allows ("leave the field
+ * blank ... and allow HR to manually enter").
+ *
+ * Pure and import-free like the rest of this module, so the client editor and any server caller run the
+ * same rule.
+ */
+export function suggestSchemeCategory(
+  scheme: { name?: string | null; gradeGroupName?: string | null },
+  employmentTypeLabel: string,
+): string {
+  const base = normalizeSchemeText(employmentTypeLabel);
+  if (base.length === 0) return '';
+  const name = normalizeSchemeText(scheme.name);
+  if (name.length === 0) return base;
+
+  // Every parenthetical the scheme name carries, in order, minus the ones that merely restate the
+  // employment type ("(Permanent)") — those say nothing a category needs to repeat.
+  const baseKey = schemeTextKey(base);
+  const qualifiers: string[] = [];
+  for (const m of name.matchAll(/\(([^()]*)\)/g)) {
+    const inner = normalizeSchemeText(m[1]);
+    const key = schemeTextKey(inner);
+    if (key.length === 0 || key === baseKey) continue;
+    // A qualifier that is purely a number or a measurement ("40 AL", "14 days") describes the ENTITLEMENT,
+    // not the population, and grouping by it would produce one category per scheme — the flat list this
+    // feature exists to replace. Require at least one letter and reject anything containing a digit.
+    if (!/[a-z]/i.test(inner) || /\d/.test(inner)) continue;
+    qualifiers.push(inner);
+  }
+  if (qualifiers.length === 0) return base;
+  // Only the FIRST qualifier is used. A second one is almost always a further sub-division of the first
+  // (and would split the category back into singletons); the administrator can type a fuller category if
+  // they want one, which is why this is a suggestion and not a computed column.
+  return `${base} (${qualifiers[0]})`;
+}
+
+/**
  * The display order, as a comparator factory: primary employment type (the fixed list above), secondary the
  * grade wording each surface actually shows, and finally the scheme id.
  *

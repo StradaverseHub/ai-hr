@@ -2,10 +2,19 @@
 
 import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import type { LeaveRoundingMethod, ServiceBand } from '@/core/leave-compute';
+// core/leave-compute.ts is the RSC-SAFE half of the leave engine (it imports no db/postgres, see its
+// header), which is why a client component may pull VALUES from it. Feedback 9f5164d8's worked example runs
+// the real `applyRounding` rather than a lookalike: an administrator is shown what a rule produces BEFORE
+// saving it, and a second implementation of the rule is a second thing that can disagree with the ledger.
+import {
+  applyRounding,
+  DEFAULT_ROUNDING_THRESHOLD,
+  type LeaveRoundingMethod,
+  type ServiceBand,
+} from '@/core/leave-compute';
 import { ORG_ASSIGNMENT_CRITERIA, type OrgAssignmentCriterionKey } from '@/core/leave-org-criteria';
 import { ESS_VIEW_CHECKLIST_GROUPS } from '@/components/leave/entitlement-panel-config';
-import { LEAVE_FORMULA_COMPONENT_KEYS, type LeaveFormulaEntry } from '@/core/leave-formula';
+import { applyLeaveFormulaTemplate, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
 import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -146,26 +155,150 @@ const methodValue = (m?: string) => (isEarned(m) ? m! : 'grant_on_hire_prorated'
 
 /** Feedback b81d3c52 — normalise a stored Rounding Method to a select/hidden-input value. Nothing stored
  *  (the No-Rounding default, and every policy written before this feature) ⇒ 'none'. The action maps
- *  'none' straight back to "store nothing", so a round-trip through any form is a no-op on the JSONB. */
+ *  'none' straight back to "store nothing", so a round-trip through any form is a no-op on the JSONB.
+ *  9f5164d8 added 'nearest_half' to the recognised set. */
 const roundingMethodValue = (m?: LeaveRoundingMethod | null): LeaveRoundingMethod =>
-  m === 'up' || m === 'down' ? m : 'none';
+  m === 'up' || m === 'down' || m === 'nearest_half' ? m : 'none';
 
-/** General step sub-flow (e1a51aea, shortened by 1e4eb8af): the four sub-steps of step 1, in walk order —
- *  1 Details, 2 Earning Method, 3 Carry Forward Policy, 4 Approval Workflow. The keys are storage keys
- *  (persisted as `generalSubStep` in the leaveTypeCards:<id> localStorage shape, next to activeStep) —
- *  'workflow' is deliberately NOT named after the retired accordion card keys (approval/display/calculation),
- *  which must never reappear in this file (see leave-type-config-categories.test.ts).
+/** Feedback 9f5164d8 — format a threshold for the editor's number inputs at the three decimal places the
+ *  reporter's own table uses. Mirrors DEFAULT_ROUNDING_THRESHOLD when nothing is stored. */
+const thresholdText = (v: number) => v.toFixed(3);
+
+/** A finite number or null — postgres numerics reach the client as strings. */
+const numOrNullFinite = (v: string | number | null | undefined): number | null => {
+  if (v == null) return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** The figure the rounding worked example is computed against: one month of a 14-day annual entitlement
+ *  earned monthly (14 ÷ 12 = 1.1666…), which is the reporter's own arithmetic in item 4d6eae7b and the
+ *  case that made blunt whole-day rounding unsatisfactory in the first place. */
+const ROUNDING_EXAMPLE_RAW = Math.round((14 / 12) * 100) / 100;
+
+/**
+ * Feedback 9f5164d8 — the "Custom decimal thresholds" editor, exactly the two-row table the reporter drew,
+ * driven by ONE stored number.
  *
- *  1e4eb8af dropped the Leave Year Type sub-step: leave-year decisions are now made in ONE place, the
- *  Custom Settings step's Leave Year Configuration section, beside the managed leave-year records the
- *  retired Application Rules tab used to host. A persisted payload still pointing at the old 'yearType'
- *  key needs no migration — the hydration guard below only restores keys present in this list, so such a
- *  payload falls back to sub-step 1 (Details) exactly as an unknown key always has. */
-const GENERAL_SUB_STEP_KEYS = ['details', 'earning', 'carry', 'workflow'] as const;
+ * WHY ONE NUMBER AND NOT FOUR. The request lists four validation rules — values within 0.000–1.000, ranges
+ * covering the whole interval, no overlap, no gaps — and every one of them is a statement that the two
+ * ranges meet at a single point and stop at the two fixed ends. Storing four independent figures would make
+ * all four rules violable and then need all four checks; storing the BOUNDARY makes them true by
+ * construction. So the table renders four cells, of which the two ends are fixed (0.000 and 1.000) and the
+ * two middle ones are the same value: typing in either moves the boundary and the other follows
+ * immediately, which is also the clearest way to show that they are one decision.
+ *
+ * The single editable value is posted as `roundingThreshold`; the fixed ends are never posted at all.
+ *
+ * THE VALUE IS HELD AS A STRING, deliberately. A controlled number input backed by a number cannot be
+ * typed into: "0.7" passes through "0." on the way, `Number('0.')` is 0, and the field snaps back to
+ * "0.000" before the second digit arrives. Keeping the raw text lets an administrator type; the SERVER
+ * decides whether what they typed is legal, with a named error, which is where that decision belongs.
+ */
+function RoundingThresholdEditor({
+  t,
+  value,
+  onChange,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const cell = 'px-1.5 py-1';
+  const readOnlyCls = 'w-24 cursor-not-allowed opacity-70';
+  const boundary = (
+    <input
+      type="number"
+      min="0.001"
+      max="1"
+      step="0.001"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={cn(inputCls, 'w-24')}
+      aria-label={t('subStep.roundingThresholdsTitle')}
+    />
+  );
+  return (
+    <div className="space-y-2 rounded-lg border border-border p-2">
+      {/* The ONE posted field. Rendered once, outside both rows, so there is no doubt which cell is stored. */}
+      <input type="hidden" name="roundingThreshold" value={value} />
+      <span className="text-xs font-medium text-muted-foreground">{t('subStep.roundingThresholdsTitle')}</span>
+      {/* Two tables, each with its own header, because the request's two ranges close differently: the
+          round-DOWN range is exclusive at its top, the round-UP range is inclusive at its top. Collapsing
+          them into one table would have to pick one heading and misstate the other. */}
+      <div className="space-y-2 overflow-x-auto">
+        <div>
+          <span className="text-xs text-muted-foreground">{t('subStep.roundingDownRangeLabel')}</span>
+          <table className="w-full min-w-[20rem] text-xs">
+            <thead>
+              <tr className="text-left text-muted-foreground">
+                <th className={`${cell} font-medium`}>{t('subStep.roundingFromInclusive')}</th>
+                <th className={`${cell} font-medium`}>{t('subStep.roundingToExclusive')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className={cell}>
+                  <input type="text" readOnly value={thresholdText(0)} className={cn(inputCls, readOnlyCls)} tabIndex={-1} />
+                </td>
+                <td className={cell}>{boundary}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <span className="text-xs text-muted-foreground">{t('subStep.roundingUpRangeLabel')}</span>
+          <table className="w-full min-w-[20rem] text-xs">
+            <thead>
+              <tr className="text-left text-muted-foreground">
+                <th className={`${cell} font-medium`}>{t('subStep.roundingFromInclusive')}</th>
+                <th className={`${cell} font-medium`}>{t('subStep.roundingToInclusive')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className={cell}>{boundary}</td>
+                <td className={cell}>
+                  <input type="text" readOnly value={thresholdText(1)} className={cn(inputCls, readOnlyCls)} tabIndex={-1} />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">{t('subStep.roundingThresholdHelp')}</p>
+    </div>
+  );
+}
+
+/** General step sub-flow (e1a51aea, shortened by 1e4eb8af, RESTORED to five by 4d6eae7b): the five
+ *  sub-steps of step 1, in the reporter's stated walk order — 1 Details, 2 Leave Year Type, 3 Earning
+ *  Method, 4 Carry Forward Policy, 5 Approval Workflow. The keys are storage keys (persisted as
+ *  `generalSubStep` in the leaveTypeCards:<id> localStorage shape, next to activeStep) — 'workflow' is
+ *  deliberately NOT named after the retired accordion card keys (approval/display/calculation), which must
+ *  never reappear in this file (see leave-type-config-categories.test.ts).
+ *
+ *  WHY 'yearType' IS BACK, HAVING BEEN REMOVED. 1e4eb8af dropped it and moved the control into Custom
+ *  Settings, on the reasoning that every leave-year decision should be made in one place. Feedback
+ *  4d6eae7b reverses that for the TYPE-LEVEL choice specifically, and gives the reason: "The Leave Year
+ *  Type determines the leave cycle, while the Earning Method and Rounding Method determine how leave is
+ *  credited within that cycle." The cycle is decided BEFORE the rules that operate inside it, so it reads
+ *  in the order the decisions are actually made. This is presentation only — the same `yearCycle=1`
+ *  tri-state marker, the same `updateTypeAction`, the same `year_cycle_override` column.
+ *
+ *  WHAT DID NOT MOVE BACK: the tenant-wide MANAGED LEAVE-YEAR RECORDS (the `leaveYearSection` slot) stay
+ *  in Custom Settings. They are not a property of this leave type — they are tenant-wide rows carrying an
+ *  "applies company-wide" badge — so putting them inside a per-type walk would say something untrue about
+ *  their scope. Only the per-type override moved.
+ *
+ *  A persisted payload pointing at 'yearType' from before 1e4eb8af now resolves again rather than falling
+ *  back to Details; the hydration guard restores any key present in this list. */
+const GENERAL_SUB_STEP_KEYS = ['details', 'yearType', 'earning', 'carry', 'workflow'] as const;
 type GeneralSubStepKey = (typeof GENERAL_SUB_STEP_KEYS)[number];
 /** Sub-step → its admin.leave title key (all 6 locales). */
 const GENERAL_SUB_STEP_TITLE_KEY: Record<GeneralSubStepKey, string> = {
   details: 'subStep.details',
+  yearType: 'subStep.yearType',
   earning: 'subStep.earning',
   carry: 'subStep.carry',
   workflow: 'subStep.workflow',
@@ -432,6 +565,21 @@ function EarningMethodForm({
   leaveTypeId: string;
 }) {
   const [choice, setChoice] = useState<EarningChoice>(earningChoiceOf(rules.accrualMethod ?? undefined));
+  // Feedback 9f5164d8 — the rounding half of this form is now three linked controls (method, a customize
+  // toggle, and the threshold), so it needs local state where a single uncontrolled <select> sufficed.
+  const [rounding, setRounding] = useState<LeaveRoundingMethod>(roundingMethodValue(rules.roundingMethod));
+  // Ticked iff a threshold is actually stored. A type on the standard rule stores nothing, so the box opens
+  // unticked exactly as the request specifies — and unticking it POSTS a blank threshold, i.e. an explicit
+  // "use the standard rule", rather than leaving a stale custom value behind the unticked box.
+  const storedThreshold = numOrNullFinite(rules.roundingThreshold);
+  const [custom, setCustom] = useState<boolean>(storedThreshold != null);
+  const [threshold, setThreshold] = useState<string>(thresholdText(storedThreshold ?? DEFAULT_ROUNDING_THRESHOLD));
+  const showThresholds = rounding === 'nearest_half';
+  // The worked example needs a NUMBER. A half-typed value (or a cleared field) falls back to the standard
+  // rule for the preview only — the posted string is untouched, so the server still sees and judges exactly
+  // what was typed.
+  const effectiveThreshold =
+    showThresholds && custom ? (numOrNullFinite(threshold) ?? DEFAULT_ROUNDING_THRESHOLD) : DEFAULT_ROUNDING_THRESHOLD;
   return (
     <form action={action} className="space-y-2 rounded-lg bg-background p-3">
       <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
@@ -473,16 +621,49 @@ function EarningMethodForm({
       <Field label={t('subStep.roundingMethodLabel')}>
         <select
           name="roundingMethod"
-          defaultValue={roundingMethodValue(rules.roundingMethod)}
+          value={rounding}
+          onChange={(e) => setRounding(e.target.value as LeaveRoundingMethod)}
           aria-label={t('subStep.roundingMethodLabel')}
-          className={`${inputCls} w-72`}
+          className={cn(inputCls, 'w-72')}
         >
           <option value="none">{t('subStep.roundingNone')}</option>
+          {/* Feedback 9f5164d8 — the fourth option, listed in the reporter's own order (it sits between
+              "no rounding" and the two whole-day options because it is the least aggressive of the three
+              that actually change a figure). The other three are UNCHANGED in both value and behaviour. */}
+          <option value="nearest_half">{t('subStep.roundingNearestHalf')}</option>
           <option value="up">{t('subStep.roundingUp')}</option>
           <option value="down">{t('subStep.roundingDown')}</option>
         </select>
       </Field>
+      {/* The checkbox and the threshold table appear ONLY under "Nearest 0.5 day" — the request is explicit
+          that they belong to that method. When another method is selected no `roundingThreshold` field is
+          rendered at all, which the action reads as a clear: a threshold is part of the nearest-half
+          configuration, not a setting that outlives it. */}
+      {showThresholds && (
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={custom}
+              onChange={(e) => setCustom(e.target.checked)}
+              className="h-4 w-4 rounded border-input"
+            />
+            {t('subStep.roundingCustomize')}
+          </label>
+          {custom && <RoundingThresholdEditor t={t} value={threshold} onChange={setThreshold} />}
+        </div>
+      )}
       <p className="text-xs text-muted-foreground">{t('subStep.roundingHelp')}</p>
+      {/* A worked example against a real figure, computed with the SAME evaluator the engines use, so what
+          the administrator is shown before saving cannot disagree with what is credited afterwards. */}
+      {rounding !== 'none' && (
+        <p className="text-xs text-muted-foreground">
+          {t('subStep.roundingWorkedExample', {
+            raw: ROUNDING_EXAMPLE_RAW.toFixed(2),
+            rounded: applyRounding(ROUNDING_EXAMPLE_RAW, rounding, effectiveThreshold).toFixed(2),
+          })}
+        </p>
+      )}
       {/* Integration r66: b81d3c52 was cut against main and still referenced the shared
           `pendingEngineNote`, which eee43966/f3a64d90 retired in favour of the dedicated
           `resignationPendingNote` (the old key also named Anniversary to Calendar, now live). */}
@@ -562,6 +743,89 @@ function CarryPolicyForm({
         </>
       )}
       <p className="text-xs text-muted-foreground">{t('subStep.carryHelp')}</p>
+      <Button type="submit" size="sm">
+        {t('save')}
+      </Button>
+    </form>
+  );
+}
+
+/**
+ * Feedback c6ffa725 — Application Limits, under Condition · Leave Application Rules.
+ *
+ * Unlimited / Limited as a radio pair rather than "leave the box blank", because blank-means-no-limit is
+ * invisible: an administrator reading an empty field cannot tell whether the rule is off or simply not
+ * filled in yet. Unlimited posts an EMPTY value, which the action reads as a clear — so the stored column
+ * genuinely is NULL and every leave type keeps behaving exactly as it does today until someone picks
+ * Limited and types a figure.
+ *
+ * The `applicationLimits=1` marker is the same tri-state discipline every other card on this grid uses: a
+ * save from any neighbouring card does not carry this field and therefore cannot clear it.
+ */
+function ApplicationLimitsForm({
+  t,
+  id,
+  name,
+  maxDaysPerLeaveYear,
+  action,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  id: string;
+  name: string;
+  maxDaysPerLeaveYear: number | null;
+  action: Action;
+}) {
+  const [limited, setLimited] = useState<boolean>(maxDaysPerLeaveYear != null);
+  return (
+    <form action={action} className="space-y-2">
+      <input type="hidden" name="id" value={id} />
+      {/* preserve the name — this form does not edit it */}
+      <input type="hidden" name="name" value={name} />
+      {/* marker: tells the action to touch the max_days_per_leave_year column (tri-state guard) */}
+      <input type="hidden" name="applicationLimits" value="1" />
+      <Field label={t('conditionStep.applicationLimitYearLabel')}>
+        <div className="flex flex-col gap-1.5">
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="radio"
+              name="maxDaysPerLeaveYearMode"
+              value="unlimited"
+              checked={!limited}
+              onChange={() => setLimited(false)}
+              className="h-4 w-4"
+            />
+            {t('conditionStep.applicationLimitUnlimited')}
+          </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="radio"
+              name="maxDaysPerLeaveYearMode"
+              value="limited"
+              checked={limited}
+              onChange={() => setLimited(true)}
+              className="h-4 w-4"
+            />
+            {t('conditionStep.applicationLimitLimited')}
+          </label>
+        </div>
+      </Field>
+      {limited ? (
+        <Field label={t('conditionStep.applicationLimitMaxLabel')}>
+          <input
+            name="maxDaysPerLeaveYear"
+            type="number"
+            min="0.5"
+            step="0.5"
+            defaultValue={maxDaysPerLeaveYear ?? ''}
+            className={cn(inputCls, 'w-full')}
+          />
+        </Field>
+      ) : (
+        // Unlimited posts the field EXPLICITLY EMPTY rather than omitting it: the marker is present, so an
+        // omitted field and a blank one would both have to mean something, and only one of them can. Blank
+        // is the clear.
+        <input type="hidden" name="maxDaysPerLeaveYear" value="" />
+      )}
       <Button type="submit" size="sm">
         {t('save')}
       </Button>
@@ -986,6 +1250,8 @@ export type LeaveTypeRules = {
   carryForwardExpiryDay?: number | null;
   carryForwardIncludeEarned?: boolean | null;
   roundingMethod?: LeaveRoundingMethod | null;
+  /** Feedback 9f5164d8 — the custom decimal threshold. Postgres numeric ⇒ may arrive as a string. */
+  roundingThreshold?: string | number | null;
   maxBalanceDays?: number | null;
 };
 
@@ -1009,12 +1275,14 @@ export function LeaveTypePanel({
   employeeRemarkRequired,
   hrRemarkRequired,
   backdatingLimitDays,
+  maxDaysPerLeaveYear,
   minAdvanceDays,
   expiryValue,
   expiryUnit,
   customMessages,
   essViewConfig,
   formulaExplanations,
+  formulaTemplate,
   dayTypeInclusion,
   color,
   icon,
@@ -1088,6 +1356,8 @@ export function LeaveTypePanel({
   /** Configurable backdated-leave restriction (0133): how many days back a leave of this type may be applied;
    *  null = no limit. Threaded so the sub-form round-trips. Field hidden for Emergency Leave (code === 'EMERGENCY'). */
   backdatingLimitDays: number | null;
+  /** Application Limits (c6ffa725): max days APPLIED FOR per leave year. null = no limit. */
+  maxDaysPerLeaveYear: number | null;
   /** Minimum advance-notice rule (0159): how many days before its start date a leave of this type must be
    *  submitted; null = no requirement. Threaded so the sub-form round-trips. Field hidden for Emergency Leave
    *  (code === 'EMERGENCY' — EL exists precisely for short-notice absence and is never guarded). */
@@ -1104,10 +1374,14 @@ export function LeaveTypePanel({
   /** Employee Leave View Configuration (65dec703 / dup 1fedb473): per-component ESS visibility map, threaded
    *  so each checkbox round-trips its stored value. null / missing key ⇒ visible (all-visible default). */
   essViewConfig: Record<string, boolean> | null;
-  /** Leave Entitlement Formula Management (79011509): stored per-component explanation map, threaded so each
-   *  component's description / formula / result textareas round-trip their saved value. null / missing key ⇒
+  /** Leave Entitlement Formula Management (79011509): stored per-item explanation map, threaded so each
+   *  item's Description / Formula Explanation textareas round-trip their saved value. null / missing key ⇒
    *  no explanation (the employee-panel info icon stays hidden). */
   formulaExplanations: Record<string, LeaveFormulaEntry> | null;
+  /** Smart content reuse (ed17a4f9 §4): the FIRST configured leave type's explanation map, resolved once
+   *  per page. Pre-fills only the items THIS type has not configured; never overwrites and never persists
+   *  on its own. null ⇒ no leave type is configured yet. */
+  formulaTemplate: Record<string, LeaveFormulaEntry> | null;
   /** Day Type Inclusion (ef6d7146): stored { offDay, restDay, publicHoliday, companyHoliday, shutdownDay }
    *  map, threaded so each toggle round-trips its saved value. null / missing key ⇒ off (day type skipped,
    *  the counting-mode default). */
@@ -1768,11 +2042,51 @@ export function LeaveTypePanel({
           </div>
           </>
           )}
-          {/* 1e4eb8af — the Leave Year Type sub-step that used to sit HERE (sub-step 2) moved into the
-              Custom Settings step's Leave Year Configuration section, beside the managed leave-year
-              records relocated off the retired Application Rules tab. Same sub-form, same `yearCycle=1`
-              tri-state marker — only its home changed. */}
-          {/* Sub-step 2 — Earning Method. 9816a5ad step 2 CHANGED WHAT THIS WRITES. It used to be a "front
+          {/* Sub-step 2 — Leave Year Type (4d6eae7b). Restored to the General walk from Custom Settings,
+              where 1e4eb8af had parked it: the reporter's order puts the CYCLE before the rules that
+              operate inside it, because the earning method and rounding below only mean anything relative
+              to a leave year. Presentation only — the SAME form, the SAME `yearCycle=1` tri-state marker
+              (so an unrelated save still cannot reset year_cycle_override) and the SAME updateTypeAction
+              writing the SAME year_cycle_override column. The tenant-wide managed leave-year RECORDS stay
+              in Custom Settings; they are not a property of this leave type. */}
+          {generalSubStep === 'yearType' && (
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('subStep.yearType')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the year_cycle_override column (tri-state guard) */}
+              <input type="hidden" name="yearCycle" value="1" />
+              <Field label={t('subStep.yearTypeLabel')}>
+                <select
+                  name="yearCycleValue"
+                  defaultValue={
+                    yearCycleOverride === 'a2a' || yearCycleOverride === 'c2c' || yearCycleOverride === 'a2c'
+                      ? yearCycleOverride
+                      : ''
+                  }
+                  aria-label={t('subStep.yearTypeLabel')}
+                  className={cn(inputCls, 'w-72')}
+                >
+                  {/* The blank option is kept deliberately. It is the state EVERY type that has never made
+                      an explicit choice is in, and removing it would leave those types unrepresentable in
+                      their own editor — the first save would then silently pick a cycle for them. */}
+                  <option value="">{t('subStep.yearTypeCompanyDefault')}</option>
+                  <option value="a2a">{t('subStep.yearTypeA2a')}</option>
+                  <option value="a2c">{t('subStep.yearTypeA2c')}</option>
+                  <option value="c2c">{t('subStep.yearTypeC2c')}</option>
+                </select>
+              </Field>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('subStep.yearTypeHelp')}</p>
+            <p className="text-xs text-muted-foreground">{t('subStep.yearTypeStepHelp')}</p>
+          </div>
+          )}
+          {/* Sub-step 3 — Earning Method. 9816a5ad step 2 CHANGED WHAT THIS WRITES. It used to be a "front
               door" onto the active per-company/grade policy row, posting updatePolicyAction. The engines now
               read these rules from the leave TYPE, so a policy write would save successfully and change
               nothing the calculation reads — the worst kind of control. It now posts setTypeRulesAction
@@ -1785,7 +2099,7 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('subStep.earningHelp')}</p>
           </div>
           )}
-          {/* Sub-step 3 — Carry Forward Policy (e1a51aea): the same front-door pattern over the active
+          {/* Sub-step 4 — Carry Forward Policy (e1a51aea): the same front-door pattern over the active
               policy's carry fields (enable + cap + the existing CarryExpiryFields days/months switch).
               Carry-forward is an ANNUAL-engine concept (expireCarriedLeave / openLeaveYear read it for the
               ANNUAL code only), so non-annual types get an explanatory note instead of a dead form. */}
@@ -1802,7 +2116,7 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('subStep.carryStepHelp')}</p>
           </div>
           )}
-          {/* Sub-step 4 — Approval Workflow (e1a51aea): this type's approval rules from the rule matrix,
+          {/* Sub-step 5 — Approval Workflow (e1a51aea): this type's approval rules from the rule matrix,
               editable right here (server-composed slot, scoped to this leaveTypeId), with company-wide
               chains + templates one click away on the Approval tab. */}
           {generalSubStep === 'workflow' && (
@@ -2478,7 +2792,22 @@ export function LeaveTypePanel({
                       mirroring the expiry {value, unit} field. Absent stored unit ⇒ 'months' default so a
                       legacy row shows exactly as before. #165baee5: the duration flexes to the cell instead
                       of a fixed w-20, and an empty value spells out "No restriction" — the same wording the
-                      probation select offers, so an unset rule never reads as merely blank. */}
+                      probation select offers, so an unset rule never reads as merely blank.
+
+                      FEEDBACK 4dbe04c6 — WHY THESE TWO USE cn() AND NOT A TEMPLATE STRING. `inputCls` ends
+                      in `w-full`. Concatenating `w-28` after it does NOT win: both are width utilities, the
+                      cascade is decided by the order Tailwind emits them into the stylesheet (where w-full
+                      comes last), not by the order they appear in the class attribute. So the unit select
+                      resolved to width:100% of the row, and `shrink-0` then forbade the shrink that would
+                      have hidden the mistake — the select overflowed the panel by ~32px and squeezed the
+                      number input to 26px, which is the reported fault: the typed value was clipped and the
+                      control sat outside its container. Measured live before the fix (input 26px, select
+                      336px in a 336px row, scrollWidth 368).
+
+                      `cn` is tailwind-merge, which resolves same-property conflicts by LAST WINS, so w-28
+                      and flex-1 actually take effect. Anywhere `${inputCls} w-…` still appears in this file
+                      it is either inside a non-flex container (where a 100% width is harmless) or has no
+                      shrink-0, where the flex shrink absorbs it — this was the only pair with both. */}
                   <div className="flex items-center gap-1.5">
                     <input
                       name="minServiceMonths"
@@ -2487,13 +2816,13 @@ export function LeaveTypePanel({
                       step="1"
                       defaultValue={eligibility?.minServiceMonths ?? ''}
                       placeholder={t('eligibilityProbationNone')}
-                      className={`${inputCls} min-w-0 flex-1`}
+                      className={cn(inputCls, 'min-w-0 flex-1')}
                     />
                     <select
                       name="minServiceUnit"
                       defaultValue={eligibility?.minServiceUnit ?? 'months'}
                       aria-label={t('eligibilityMinServiceUnitLabel')}
-                      className={`${inputCls} w-28 shrink-0`}
+                      className={cn(inputCls, 'w-28 shrink-0')}
                     >
                       <option value="months">{t('expiryUnitMonths')}</option>
                       <option value="days">{t('expiryUnitDays')}</option>
@@ -2747,6 +3076,25 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('allowUplHelp')}</p>
+          </div>
+          {/* Application Limits (c6ffa725): the maximum days an employee may APPLY for of this type within
+              one leave year, regardless of whether any entitlement balance exists. Its own sub-form and its
+              own `applicationLimits=1` marker, exactly like every other card on this grid.
+
+              WHY IT SITS HERE AND NOT UNDER ENTITLEMENT: it is an application rule. It does not grant,
+              accrue, carry or display a single day — an Unpaid Leave type still shows 0 available in Leave
+              Summary, which is the reporter's stated requirement. It is enforced at submission and again at
+              approval (core/leave.ts enforceLeaveYearApplicationLimit). */}
+          <div className="mb-3 break-inside-avoid space-y-2 rounded-lg border border-border bg-background p-3">
+            <span className="text-xs font-medium text-muted-foreground">{t('conditionStep.applicationLimitsTitle')}</span>
+            <ApplicationLimitsForm
+              t={t}
+              id={id}
+              name={name}
+              maxDaysPerLeaveYear={maxDaysPerLeaveYear}
+              action={updateTypeAction}
+            />
+            <p className="text-xs text-muted-foreground">{t('conditionStep.applicationLimitHelp')}</p>
           </div>
           {/* Configurable backdated-leave restriction (0133). Its own sub-form (own tri-state) posts
               `backdating=1`. Hidden for Emergency Leave — EL is inherently retroactive and is never guarded,
@@ -3004,44 +3352,18 @@ export function LeaveTypePanel({
               <CardTitle>{t('categoryCustom')}</CardTitle>
             </CardHeader>
             <CardContent id={`cat-custom-${id}`} className="space-y-3">
-          {/* Leave Year Configuration (1e4eb8af) — the single home for every leave-year decision, first in
-              Custom Settings because HR sets the year before the display/visibility switches below it.
-              Two parts that used to live apart: (1) this type's Leave Year Type override, moved verbatim
-              from General · sub-step 2 (same `yearCycle=1` tri-state marker, so an unrelated save still
-              cannot reset year_cycle_override), and (2) the managed leave-year records, moved off the
-              retired Application Rules tab as the server-composed leaveYearSection slot. The records are
-              tenant-wide, hence the applies-company-wide badge — the same honesty the relocated Half-Day
-              Deduction card carries in the Condition step. */}
+          {/* Leave Year Configuration (1e4eb8af, narrowed by 4d6eae7b) — the tenant-wide managed leave-year
+              RECORDS, moved off the retired Application Rules tab as the server-composed leaveYearSection
+              slot. The records are tenant-wide, hence the applies-company-wide badge — the same honesty the
+              relocated Half-Day Deduction card carries in the Condition step.
+
+              THE PER-TYPE LEAVE YEAR TYPE OVERRIDE IS NO LONGER HERE. 4d6eae7b moved it back into the
+              General walk as sub-step 2, where the reporter wants it — the cycle is chosen before the
+              earning and rounding rules that operate inside it. It is rendered in exactly ONE place: two
+              editors over one column, each with its own default, is how a stale value silently overwrites a
+              fresh one. Only the records, which are not a property of this leave type, stay behind. */}
           <div className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">{t('leaveYearConfigTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the year_cycle_override column (tri-state guard) */}
-              <input type="hidden" name="yearCycle" value="1" />
-              <Field label={t('subStep.yearTypeLabel')}>
-                <select
-                  name="yearCycleValue"
-                  defaultValue={
-                    yearCycleOverride === 'a2a' || yearCycleOverride === 'c2c' || yearCycleOverride === 'a2c'
-                      ? yearCycleOverride
-                      : ''
-                  }
-                  aria-label={t('subStep.yearTypeLabel')}
-                  className={`${inputCls} w-72`}
-                >
-                  <option value="">{t('subStep.yearTypeCompanyDefault')}</option>
-                  <option value="a2a">{t('subStep.yearTypeA2a')}</option>
-                  <option value="a2c">{t('subStep.yearTypeA2c')}</option>
-                  <option value="c2c">{t('subStep.yearTypeC2c')}</option>
-                </select>
-              </Field>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('subStep.yearTypeHelp')}</p>
             {leaveYearSection}
           </div>
           {/* Restructure (123c1e76): the former "Leave Information Display" card's sub-forms (view
@@ -3056,6 +3378,7 @@ export function LeaveTypePanel({
             name={name}
             essViewConfig={essViewConfig}
             formulaExplanations={formulaExplanations}
+            formulaTemplate={formulaTemplate}
             updateTypeAction={updateTypeAction}
           />
           {/* Leave Type Employee Visibility (7b11f1c1). Its own self-contained sub-form (own tri-state) posts
@@ -3186,39 +3509,52 @@ export function LeaveTypePanel({
   );
 }
 
-// ─── Consolidated Employee Leave View Configuration (feedback 2bc2f2a3) ────────────────────────────────────
+// ─── Employee Leave View Configuration (65dec703 · 2bc2f2a3 · ed17a4f9) ────────────────────────────────────
 //
-// ONE sub-form now owns both concerns the Custom step used to split across two sections: WHICH breakdown
+// ONE sub-form owns both concerns the Custom step used to split across two sections: WHICH Leave Summary
 // items an employee sees (ess_view_config, feedback 65dec703) and HOW each item is explained
 // (formula_explanations, feedback 79011509 — the standalone "Leave Entitlement Formula Management" section is
-// retired). Ticking an item reveals its Description / Formula / Result fields inline; ONE Save posts BOTH
+// retired). Ticking an item reveals its Description / Formula Explanation fields inline; ONE Save posts BOTH
 // tri-state markers (`essView=1` + `formula=1`) so selections and explanations persist together — same two
 // storage targets as before, no content migration. Unticking an item HIDES its editor without unmounting it
 // (the `hidden` attribute), so the concealed inputs still post and stored explanations survive an
 // untick-then-save round-trip.
 //
-// Annotatable keys: the items of the four employee-panel sections. The grouped checklist mirrors the employee
-// panel (ESS_VIEW_CHECKLIST_GROUPS, feedback 11876072); for the panel-section groups each checkbox key IS the
-// employee row's field key, so its explanation is stored under that same key and the employee hover icon finds
-// it. The Entitlement Calculation Breakdown group is special: its single section-level checkbox reveals the
-// SEVEN legacy per-component editors (LEAVE_FORMULA_COMPONENT_KEYS — the §7 rows the employee actually sees),
-// preserving 79011509 content verbatim. The trailing "Other" group's keys gate non-panel surfaces (e.g. the
-// balance-table columns) that have no explanation render site — they stay plain checkboxes.
+// ed17a4f9 SYNCHRONISED the list. The checklist is derived from ENTITLEMENT_PANEL_SECTIONS
+// (ESS_VIEW_CHECKLIST_GROUPS), so it now lists exactly the nine lines of the redesigned Leave Summary in the
+// summary's own order and nothing else. Every checkbox key IS the employee row's field key, so its
+// explanation is stored under that same key and the employee hover icon finds it. The old special cases are
+// gone with the sections they served: there is no Entitlement Calculation Breakdown group revealing seven
+// legacy sub-editors, and the trailing "Other" group is empty (the builder drops it) because no key gates a
+// non-panel surface any more. The "Result / Date (optional)" input is removed at the reporter's request.
+//
+// SMART CONTENT REUSE (ed17a4f9 §4). A tenant with 30–60 leave types had HR retyping the same nine
+// explanations for each one. The Description / Formula Explanation boxes of a leave type that has NO saved
+// configuration are pre-filled from the first leave type that does (`applyLeaveFormulaTemplate`, resolved on
+// the server in app/admin/leave/entitlements). Three properties matter and all three are the reporter's own
+// words: nothing is written until Save is pressed (these are form DEFAULTS — leaving the page stores
+// nothing); a leave type that already has its own wording keeps it exactly; and the fill is per ITEM, so a
+// partly-configured type is completed rather than overwritten.
 
-/** The three inline explanation inputs for one annotatable item. Names follow the 79011509 FormData contract
- *  (`formula_<key>_description|formula|result`) so the existing action/service path persists them unchanged. */
+/** The two inline explanation inputs for one Leave Summary item. Names follow the 79011509 FormData contract
+ *  (`formula_<key>_description|formula`) so the existing action/service path persists them unchanged.
+ *  `isTemplate` marks values that arrived from another leave type's configuration rather than this one's —
+ *  the hint tells HR the wording is a suggestion they are free to edit, and that it is not stored yet. */
 function ViewConfigExplanationFields({
   fieldKey,
   entry,
+  isTemplate,
   t,
 }: {
   fieldKey: string;
-  entry: LeaveFormulaEntry | undefined;
+  entry: LeaveFormulaEntry | undefined | null;
+  isTemplate?: boolean;
   /** The parent's admin.leave translator (labels live under `admin.leave.formula.*`). */
   t: (key: string) => string;
 }) {
   return (
     <div className="space-y-2">
+      {isTemplate && <p className="text-[11px] text-muted-foreground">{t('formula.templateHint')}</p>}
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         {t('formula.descriptionLabel')}
         <textarea
@@ -3237,10 +3573,6 @@ function ViewConfigExplanationFields({
           className={`${inputCls} text-xs`}
         />
       </label>
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {t('formula.resultLabel')}
-        <input name={`formula_${fieldKey}_result`} defaultValue={entry?.result ?? ''} className={`${inputCls} text-xs`} />
-      </label>
     </div>
   );
 }
@@ -3250,16 +3582,24 @@ function ViewConfigSection({
   name,
   essViewConfig,
   formulaExplanations,
+  formulaTemplate,
   updateTypeAction,
 }: {
   id: string;
   name: string;
   essViewConfig: Record<string, boolean> | null;
   formulaExplanations: Record<string, LeaveFormulaEntry> | null;
+  /** Smart content reuse (ed17a4f9 §4): the wording of the first leave type that HAS a saved configuration,
+   *  resolved server-side. Used only to PRE-FILL items this type has not configured; null ⇒ no template
+   *  exists yet (this is the tenant's first configuration) and the boxes start empty as before. */
+  formulaTemplate: Record<string, LeaveFormulaEntry> | null;
   updateTypeAction: Action;
 }) {
   const t = useTranslations('admin.leave');
   const tBreakdown = useTranslations('leave.breakdown');
+  // Per item: this type's own wording where it has any, the template's where it does not. Nothing is written
+  // by resolving this — these become the form's defaultValues and persist only on Save.
+  const defaults = applyLeaveFormulaTemplate(formulaExplanations, formulaTemplate);
   // Client-island reveal state: checked ⇒ the item's inline explanation editor shows. Initialised from the
   // stored config (missing ⇒ visible/ticked, the 65dec703 backward-compatible default).
   const [checked, setChecked] = useState<Record<string, boolean>>(() =>
@@ -3308,7 +3648,9 @@ function ViewConfigSection({
                 <div className="space-y-1.5">
                   {group.keys.map((key) => {
                     const on = checked[key] ?? true;
-                    const isCalcSection = key === 'entitlementCalcBreakdown';
+                    // Template-sourced ⇒ this type has no wording of its own for this item, so what is shown
+                    // came from another leave type and is a suggestion until HR saves it.
+                    const fromTemplate = !formulaExplanations?.[key] && defaults[key] != null;
                     return (
                       <div key={key} className="rounded-md border border-border px-2.5 py-1.5">
                         <label className="flex items-center gap-2 text-xs font-medium text-foreground">
@@ -3323,28 +3665,14 @@ function ViewConfigSection({
                         </label>
                         {/* hidden (not unmounted) when unticked: the inputs still post, so an untick+save
                             never wipes the stored explanation. */}
-                        {isCalcSection ? (
-                          <div hidden={!on} className="mt-2 space-y-1.5 border-t border-border pt-2">
-                            {LEAVE_FORMULA_COMPONENT_KEYS.map((componentKey) => (
-                              <details key={componentKey} className="rounded-md border border-border">
-                                <summary className="cursor-pointer px-2.5 py-1.5 text-xs font-medium text-foreground">
-                                  {t(`formula.component.${componentKey}`)}
-                                </summary>
-                                <div className="border-t border-border px-2.5 py-2">
-                                  <ViewConfigExplanationFields
-                                    fieldKey={componentKey}
-                                    entry={formulaExplanations?.[componentKey]}
-                                    t={t}
-                                  />
-                                </div>
-                              </details>
-                            ))}
-                          </div>
-                        ) : (
-                          <div hidden={!on} className="mt-2 border-t border-border pt-2">
-                            <ViewConfigExplanationFields fieldKey={key} entry={formulaExplanations?.[key]} t={t} />
-                          </div>
-                        )}
+                        <div hidden={!on} className="mt-2 border-t border-border pt-2">
+                          <ViewConfigExplanationFields
+                            fieldKey={key}
+                            entry={defaults[key]}
+                            isTemplate={fromTemplate}
+                            t={t}
+                          />
+                        </div>
                       </div>
                     );
                   })}

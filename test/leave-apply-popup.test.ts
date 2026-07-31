@@ -219,14 +219,20 @@ describe('LeaveDurationFields: summary + day-by-day disclosure', () => {
     // because the popup stopped using them. components/leave/entitlement-panel-config.ts still points the
     // summary section's rows at them, and there is no static guard that would catch the missing key — a
     // deleted key type-checks and fails at runtime, in all six locales.
+    // DERIVED FROM THE CONFIG, not a hand-written list. The original spelled out
+    // taken / balance / pendingApproval / available, and r86b's summary rebuild (1f6fd6d8) renamed
+    // `balance` to `availableBalance` to match the layout the reporter specified — so a hardcoded list
+    // failed while the thing it protects was perfectly healthy. Reading the keys out of the config keeps
+    // the real invariant (every row the panel renders resolves in every locale) and cannot go stale when
+    // the row set legitimately changes.
     const panelConfig = read('components/leave/entitlement-panel-config.ts');
-    expect(panelConfig.includes("labelKey: 'field.taken'")).toBe(true);
-    expect(panelConfig.includes("labelKey: 'field.balance'")).toBe(true);
+    const keys = [...panelConfig.matchAll(/labelKey: 'field\.([A-Za-z]+)'/g)].map((m) => m[1]);
+    expect(keys.length, 'no labelKeys found — the config shape changed').toBeGreaterThanOrEqual(4);
     for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
       const m = JSON.parse(read(`messages/${loc}.json`)) as {
         leave: { breakdown: { field: Record<string, string> } };
       };
-      for (const k of ['taken', 'balance', 'pendingApproval', 'available']) {
+      for (const k of keys) {
         expect(m.leave.breakdown.field[k], `${loc}.leave.breakdown.field.${k}`).toBeTruthy();
       }
     }

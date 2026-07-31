@@ -30,6 +30,7 @@ import {
   InsufficientLeaveBalanceOnSubmitError,
   CombinedLeaveLimitExceededError,
   CombinedLeaveApplicationTooLongError,
+  LeaveYearApplicationLimitExceededError,
   LeaveApplyNotAllowedError,
   MissingRejectReasonError,
   LeaveCancellationNotAllowedError,
@@ -306,6 +307,19 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
       poolName: e.poolName,
       maxDays: e.maxDaysPerApplication,
       days: e.requestedSpanDays,
+    });
+  // Application Limits (c6ffa725): a THIRD, distinct refusal — this leave TYPE's own annual application
+  // ceiling, which applies whether or not the type has any entitlement balance. Named separately from the
+  // two shared-pool refusals above because the configuration to change is a different one: the leave type,
+  // not a benefit scheme's shared group.
+  if (e instanceof LeaveYearApplicationLimitExceededError)
+    return t('leaveYearApplicationLimit', {
+      typeName: e.leaveTypeName,
+      maxDays: e.maxDaysPerLeaveYear,
+      usedDays: e.usedDays,
+      yearStart: e.yearStart,
+      yearEnd: e.yearEnd,
+      days: e.requestedDays,
     });
   // Leave Type Employee Visibility (7b11f1c1): HR has closed this leave type to employee applications
   // (employee_can_apply=false). Localized so the /me apply form shows a clear "contact HR" message.

@@ -27,6 +27,7 @@ import {
 import { listBusinessUnits } from '@/core/admin';
 import { listLocations } from '@/core/location';
 import { todayInKualaLumpur } from '@/core/leave';
+import { essViewHasAnyVisibleRow } from '@/core/ess-view';
 import { Avatar, Button, Card, EmployeeCode, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 // Employee Details (feedback 650b6eb8): the left-side inquiry nav wave 1 built for the two screens this
@@ -58,6 +59,7 @@ import { pageState, parsePageQuery } from '@/lib/pagination';
 // time — importing it from the client table would trip the RSC boundary guard (b7d84266). R37 e5a158d3.
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
 import { durationLabel } from '@/lib/leave-duration';
+import { LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
 import {
   requestLeaveAction,
   requestLeaveCancellationAction,
@@ -68,14 +70,10 @@ import {
   leaveApplySummaryAction,
 } from './actions';
 
-const REQ_STATUS: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-  approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-  rejected: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
-  // My Absence merge (a7cbd895, ported from /me R17 600be8ac): display-only badge for an approved request
-  // that had ≥1 date rejected — amber, distinct from a clean green "Approved". DB status stays 'approved'.
-  partial: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-};
+// fe3eb141 — the pill palette moved to lib/leave-status.ts so Employee Leave Records, which now shows
+// the same Status column, cannot drift from this table. `partial` is display-only (an approved request
+// with ≥1 rejected date, a7cbd895 / /me R17 600be8ac); the DB status stays 'approved'.
+const REQ_STATUS = LEAVE_STATUS_PILL;
 
 // Employee Details listing page size — the reporter asked for exactly ten employees per page (650b6eb8).
 const EMPLOYEE_PAGE = 10;
@@ -302,17 +300,20 @@ export default async function LeavePage({
   // ── "My Leave" primary summary cards (My Absence merge · a7cbd895) ───────────────────────────────────
   // The clickable colour-coded PRIMARY-type cards that headed the /me Leave tab (6d78f373) now open the
   // merged page, so the at-a-glance summary employees know moved with the tab. Same source (selfBalances +
-  // breakdownByType), same ESS gating (deriveBalanceRow / entitlementCalcBreakdown) — presentation only.
+  // breakdownByType), same ESS gating (deriveBalanceRow / essViewHasAnyVisibleRow) — presentation only.
   // Secondary types render again as their own grouped section (feedback 56a0deb9 reversed the R54 call to
   // skip them): the reporter wants the old /me arrangement back, and with the detailed balance table now
   // COLLAPSED by default the double-listing that motivated the skip is no longer prominent.
   type SelfBalance = (typeof selfBalances)[number];
   const buildCardPanel = (b: SelfBalance) => {
     const bd = breakdownByType.get(b.leaveTypeId);
-    if (b.essView.entitlementCalcBreakdown === false || !bd) return null;
+    // 1f6fd6d8: the `entitlementCalcBreakdown` toggle named a section that no longer exists. The honest
+    // form of the question the three call sites were really asking is essViewHasAnyVisibleRow — a side-sheet
+    // whose every line HR has hidden is an empty panel, and an empty panel should not be offered.
+    if (!essViewHasAnyVisibleRow(b.essView) || !bd) return null;
     return {
       data: bd,
-      summary: { available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: b.balance },
+      summary: { available: b.available },
       // §5 Upcoming Approved Leave removed from the panel (feedback 11876072) — no upcoming list is built.
       visual: { color: b.color, icon: b.icon, code: b.code },
       asOf: breakdownAsOf,
@@ -871,7 +872,7 @@ export default async function LeavePage({
             label: tMe(`leaveGroups.${group}`),
             types: types.map((b) => {
               const bd = breakdownByType.get(b.leaveTypeId);
-              const showBreakdown = b.essView.entitlementCalcBreakdown !== false;
+              const showBreakdown = essViewHasAnyVisibleRow(b.essView);
               return {
                 leaveTypeId: b.leaveTypeId,
                 leaveType: b.leaveType,
@@ -883,7 +884,7 @@ export default async function LeavePage({
                   showBreakdown && bd ? (
                     <EntitlementBreakdown
                       data={bd}
-                      summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: b.balance }}
+                      summary={{ available: b.available }}
                       visual={{ color: b.color, icon: b.icon, code: b.code }}
                       asOf={breakdownAsOf}
                       action="/leave"
@@ -898,7 +899,11 @@ export default async function LeavePage({
     ) : null;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    // Layout (feedback 026e16b9): the container cap goes to 100rem so this page — whose Employee Details
+    // listing is one of the three inquiry tabs — uses the width a wide monitor actually has, and matches
+    // Employee Balances and Employee Leave Record rather than being 6xl where they are wider. Presentation
+    // only; nothing about the data, filters or pagination changes.
+    <div className="mx-auto max-w-[100rem] space-y-6">
       {/* The submission success toast (45c781e2) is NOT raised here any more — feedback 29710798. This page
           mounted its own listener for `?toast=leaveSubmitted` while the globally-mounted ToastFromQuery
           (app/layout.tsx) answered the same param, so one submission produced two pop-ups. requestLeaveAction
@@ -1053,9 +1058,9 @@ export default async function LeavePage({
             </form>
             <LeaveBalanceTable
               rows={detailedBalances.map((b) => {
-                // deriveBalanceRow applies the ESS available/taken/overutilized gating; the Entitlement
-                // Calculation Breakdown side-sheet is its own ESS toggle — off ⇒ the expander doesn't mount.
-                const showBreakdown = b.essView.entitlementCalcBreakdown !== false;
+                // deriveBalanceRow applies the ESS available/taken gating; the breakdown side-sheet is offered only
+                // when HR has left at least one Leave Summary line visible (1f6fd6d8) — else the expander never mounts.
+                const showBreakdown = essViewHasAnyVisibleRow(b.essView);
                 const bd = breakdownByType.get(b.leaveTypeId);
                 return {
                   ...deriveBalanceRow(b, bd ?? null),
@@ -1063,7 +1068,7 @@ export default async function LeavePage({
                     showBreakdown && bd ? (
                       <EntitlementBreakdown
                         data={bd}
-                        summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued, balance: b.balance }}
+                        summary={{ available: b.available }}
                         visual={{ color: b.color, icon: b.icon, code: b.code }}
                         asOf={breakdownAsOf}
                         action="/leave"
@@ -1124,7 +1129,7 @@ export default async function LeavePage({
           not reach. /approvals loads PENDING leave only, capped at 200 rows, with no filters, no export and
           no cancel. The full enumeration is pinned in test/leave-requests-not-approvals.test.ts. */}
       {admin && (
-      <div className="flex flex-col gap-6 sm:flex-row">
+      <div className="flex flex-col gap-4 sm:flex-row">
         <LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />
         <div className="min-w-0 flex-1 space-y-6">
           <Card className="overflow-hidden">
@@ -1179,14 +1184,16 @@ export default async function LeavePage({
             )}
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                {/* 026e16b9: no `tracking-wide` here — the extra letter-spacing widened every heading
+                    and was measurably part of the inquiry tables' horizontal overflow. */}
+                <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-2 font-medium">{t('filters.employeeId')}</th>
-                    <th className="px-4 py-2 font-medium">{tInq('colEmployeeName')}</th>
-                    <th className="px-4 py-2 font-medium">{t('filters.company')}</th>
-                    <th className="px-4 py-2 font-medium">{t('filters.department')}</th>
-                    <th className="px-4 py-2 font-medium">{tInq('colPosition')}</th>
-                    <th className="px-4 py-2 font-medium">{tPeople('colStatus')}</th>
+                    <th className="whitespace-nowrap px-3 py-2 font-medium">{t('filters.employeeId')}</th>
+                    <th className="px-3 py-2 font-medium">{tInq('colEmployeeName')}</th>
+                    <th className="px-3 py-2 font-medium">{t('filters.company')}</th>
+                    <th className="px-3 py-2 font-medium">{t('filters.department')}</th>
+                    <th className="px-3 py-2 font-medium">{tInq('colPosition')}</th>
+                    <th className="whitespace-nowrap px-3 py-2 font-medium">{tPeople('colStatus')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -1197,10 +1204,10 @@ export default async function LeavePage({
                       aria-current={e.employmentId === inquiryEmploymentId ? 'true' : undefined}
                       className={e.employmentId === inquiryEmploymentId ? 'bg-muted/60' : 'hover:bg-muted/40'}
                     >
-                      <td className="px-4 py-2.5">
+                      <td className="whitespace-nowrap px-3 py-2.5">
                         <EmployeeCode code={e.employeeCode} />
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-3 py-2.5">
                         <div className="flex items-center gap-2.5">
                           <Avatar name={e.name} className="size-7 text-[10px]" />
                           <Link
@@ -1212,10 +1219,10 @@ export default async function LeavePage({
                           </Link>
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{e.company}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{e.department ?? '—'}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{e.position ?? '—'}</td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-3 py-2.5 text-muted-foreground">{e.company}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{e.department ?? '—'}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{e.position ?? '—'}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5">
                         {(() => {
                           // The DERIVED status (9cbf5e0d), as of the page's MYT today — same badge and same
                           // vocabulary as Personnel, so the two screens cannot tell different stories.
@@ -1372,7 +1379,7 @@ export default async function LeavePage({
                     <td className="px-4 py-2.5">
                       {/* Admin history keeps its plain status pill (the amber "Partially approved" display
                           badge is a self-service affordance — it lives on the compact list above). */}
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${REQ_STATUS[r.status] ?? 'bg-muted text-muted-foreground'}`}>
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${REQ_STATUS[r.status] ?? LEAVE_STATUS_PILL_DEFAULT}`}>
                         {t(`status.${r.status}`)}
                       </span>
                       {/* Partial Leave Cancellation (ADR-0065): a pending give-back request shows a pill. */}

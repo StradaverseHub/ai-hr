@@ -241,18 +241,30 @@ export async function adminCancelLeaveAction(formData: FormData) {
   const session = await getSession();
   const leaveRequestId = String(formData.get('leaveRequestId'));
   const reason = String(formData.get('reason') ?? '').trim() || undefined;
-  // Whitelist the return surface so a crafted form can't redirect off-app.
-  const back = String(formData.get('back') ?? '') === '/' ? '/' : '/leave';
+  // Whitelist the return surface so a crafted form can't redirect off-app. fe3eb141 adds Employee
+  // Leave Records, which selects its employee via `?emp=` — that id is carried back (re-validated as
+  // a uuid here, never interpolated raw) so cancelling does not silently jump to another employee.
+  const backRaw = String(formData.get('back') ?? '');
+  const backEmp = String(formData.get('backEmp') ?? '');
+  let back: string;
+  if (backRaw === '/') back = '/';
+  else if (backRaw === '/leave/employee-records') {
+    back = /^[0-9a-f-]{36}$/i.test(backEmp)
+      ? `/leave/employee-records?emp=${encodeURIComponent(backEmp)}`
+      : '/leave/employee-records';
+  } else back = '/leave';
+  const withParam = (kv: string) => `${back}${back.includes('?') ? '&' : '?'}${kv}`;
   try {
     const me = await myEmployment(session);
     await adminCancelLeave(session, { leaveRequestId, reason, cancelledByEmploymentId: me?.employmentId });
   } catch (e) {
-    redirect(`${back}?error=${encodeURIComponent(await localizeLeaveError(e))}`);
+    redirect(withParam(`error=${encodeURIComponent(await localizeLeaveError(e))}`));
   }
   revalidatePath('/leave');
+  revalidatePath('/leave/employee-records');
   revalidatePath('/approvals');
   revalidatePath('/');
-  redirect(`${back}?toast=adminCancelled`);
+  redirect(withParam('toast=adminCancelled'));
 }
 
 // Edit / cancel own leave by status (item c9a19e34): an employee edits or withdraws their OWN PENDING leave

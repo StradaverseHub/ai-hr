@@ -42,7 +42,6 @@ import {
   setCompanySharedLabels,
 } from '../core/admin';
 import { assignLabelToCompanies, labelIdsForCompany, setLabelGlobal } from '../core/system-labels';
-import { HIRE_ORG_FILTER_SCRIPT } from '../lib/hire-form-filter';
 
 let b: Base;
 
@@ -360,37 +359,30 @@ describe('d61f0ff2 — 0298 backfill turns pre-existing Criteria rows into visib
  * company" below the select instead of an unexplained empty dropdown. Drift guards pin the inline
  * script's toggle wiring + the page's server-rendered (hydration-parity) message elements.
  */
-describe('d61f0ff2 — hire form zero-visible-options empty state', () => {
-  const HIRE_PAGE = fs.readFileSync(path.resolve(__dirname, '../app/admin/personnel/page.tsx'), 'utf8');
+describe('d61f0ff2 — zero-visible-options empty state (now on the Create New Employee wizard)', () => {
+  // 6d671f44 moved employee creation off the Personnel list page onto a dedicated client wizard, so
+  // this behaviour moved with it. The rule is unchanged — a company that may use NONE of a select's
+  // options gets an explanation instead of a bare placeholder — but it is now computed in React from
+  // `hireOptionVisible` rather than stamped by an inline script, so there is no hydration parity to
+  // pin any more (the markup is produced once, by the same code, on both sides).
+  const WIZARD = fs.readFileSync(path.resolve(__dirname, '../app/admin/personnel/new/wizard.tsx'), 'utf8');
 
-  it('the inline script toggles a per-select `-empty` message from the visible-option count', () => {
-    expect(HIRE_ORG_FILTER_SCRIPT).toContain(`document.getElementById(sel.id+'-empty')`);
-    expect(HIRE_ORG_FILTER_SCRIPT).toContain('if(show)visCount++;');
-    expect(HIRE_ORG_FILTER_SCRIPT).toContain('if(empty)empty.hidden=visCount>0;');
-  });
-
-  it('each filtered select renders the i18n message with server-computed initial visibility (hydration parity)', () => {
-    for (const id of [
-      'hire-business-unit-empty',
-      'hire-department-empty',
-      'hire-position-empty',
-      'hire-cost-center-empty',
-    ]) {
-      expect(HIRE_PAGE).toContain(`id="${id}"`);
+  it('each narrowed select renders the i18n message from the shared rule', () => {
+    expect(WIZARD).toContain('const orgEmpty = (opts: Option[])');
+    expect(WIZARD).toContain('opts.every((o) => !visible(o, false))');
+    expect(WIZARD.match(/\{t\('orgLabelsEmptyForCompany'\)\}/g)).toHaveLength(4);
+    for (const list of ['businessUnits', 'departments', 'positions', 'costCenters']) {
+      expect(WIZARD.includes(`orgEmpty(${list})`), list).toBe(true);
     }
-    expect(HIRE_PAGE.match(/\{t\('orgLabelsEmptyForCompany'\)\}/g)).toHaveLength(4);
-    // Initial hidden state derives from the SAME pure rule the script embeds (parity with the
-    // hidden/disabled option stamps — see the hydration-parity suite in test/hire-form-filter.test.ts).
-    expect(HIRE_PAGE.match(/hidden=\{!hireInitiallyEmpty\(\w+\)\}/g)).toHaveLength(4);
-    expect(HIRE_PAGE).toContain('const hireInitiallyEmpty = (csvs: string[]) => csvs.every((csv) => hireInitiallyHidden(csv));');
   });
 
-  it('the empty-state message exists in all six locales', () => {
+  it('the message exists in all six locales, under BOTH namespaces it is read from', () => {
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const messages = JSON.parse(
         fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'),
-      ) as { people: { list: Record<string, string> } };
-      expect(messages.people.list.orgLabelsEmptyForCompany, `missing in ${loc}`).toBeTruthy();
+      ) as { people: { list: Record<string, string>; wizard: Record<string, string> } };
+      expect(messages.people.list.orgLabelsEmptyForCompany, `people.list missing in ${loc}`).toBeTruthy();
+      expect(messages.people.wizard.orgLabelsEmptyForCompany, `people.wizard missing in ${loc}`).toBeTruthy();
     }
   });
 });

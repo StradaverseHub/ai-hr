@@ -256,7 +256,7 @@
     "list": {
       "title": "Kakitangan",
       "employeeCount": "{count, plural, one {# pekerja} other {# pekerja}}",
-      "importCsv": "Import CSV",
+      "importCsv": "Import pekerja",
       "profileChangeRequests": "Permohonan tukar profil",
       "pendingCount": "{count, plural, one {# tertangguh} other {# tertangguh}}",
       "profileChangeHint": "Meluluskan akan menggunakan perubahan pada profil berkanun pekerja (bank / PCB). Anda tidak boleh meluluskan permohonan sendiri.",
@@ -342,7 +342,14 @@
       "employeeIdLabel": "ID Pekerja",
       "employeeIdPlaceholder": "cth. EMP-0001",
       "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 30 aksara.",
-      "hiringDefaults": "Tetapan lalai pengambilan"
+      "hiringDefaults": "Tetapan lalai pengambilan",
+      "draftsHeading": "Pekerja baharu yang belum selesai",
+      "draftsCount": "{count} draf",
+      "draftUntitled": "Draf tanpa nama",
+      "draftNoCompany": "Syarikat belum dipilih",
+      "draftMissing": "{count} masih diperlukan",
+      "draftReady": "Sedia untuk dicipta",
+      "draftContinue": "Sambung"
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -1148,7 +1155,14 @@
           "correctionReason": "Sebab pembetulan (pilihan)",
           "saveCorrection": "Simpan Pembetulan",
           "joinDateChangeHint": "Tarikh yang anda masukkan menjadi Tarikh Menyertai baharu pekerja dengan syarikat semasa mereka. Tarikh Menyertai Kumpulan mereka tidak berubah.",
-          "groupJoinDateCorrectionHint": "Tarikh yang anda masukkan menjadi Tarikh Menyertai Kumpulan yang dibetulkan. Ini ialah tarikh pengiraan tahun perkhidmatan, jadi ia boleh mengubah kelayakan cuti mereka."
+          "groupJoinDateCorrectionHint": "Tarikh yang anda masukkan menjadi Tarikh Menyertai Kumpulan yang dibetulkan. Ini ialah tarikh pengiraan tahun perkhidmatan, jadi ia boleh mengubah kelayakan cuti mereka.",
+          "lastWorkingDay": "Hari Bekerja Terakhir",
+          "terminationReason": "Sebab Penamatan",
+          "terminationReasonPlaceholder": "— Pilih sebab —",
+          "terminationTypeDerived": "Dilaporkan sebagai: {type}",
+          "resignationDate": "Tarikh Peletakan Jawatan",
+          "terminationNoticeDays": "Notis diberi (hari)",
+          "terminationPayrollFlag": "Penamatan disimpan. Gaji bagi {periods} telah pun diproses melebihi tarikh penamatan — sila semak larian gaji itu. Ia tidak diubah."
         },
         "edit": "Sunting",
         "delete": "Padam",
@@ -1165,6 +1179,26 @@
           "applied": "Berkuat kuasa",
           "superseded": "Digantikan",
           "reversed": "Dibatalkan"
+        },
+        "terminationReasonCategory": {
+          "voluntary": "Penamatan Sukarela",
+          "involuntary": "Penamatan Tidak Sukarela",
+          "other": "Lain-lain"
+        },
+        "terminationReason": {
+          "resignation": "Peletakan Jawatan",
+          "career_opportunity": "Peluang Kerjaya",
+          "personal_reason": "Sebab Peribadi",
+          "retirement": "Persaraan",
+          "early_retirement": "Persaraan Awal",
+          "performance_issue": "Masalah Prestasi",
+          "misconduct": "Salah Laku",
+          "redundancy": "Pemberhentian / Pengurangan Pekerja",
+          "contract_expiry": "Tamat Kontrak",
+          "absconded": "Lari Kerja",
+          "medical_unfit": "Tidak Sihat Untuk Bekerja",
+          "death": "Kematian",
+          "other": "Lain-lain"
         }
       },
       "salaryCurrency": "Mata wang",
@@ -1196,26 +1230,26 @@
     },
     "import": {
       "title": "Import pekerja",
-      "description": "Muat pukal pekerja, profil berkanun dan gaji daripada CSV. Sahkan dahulu, kemudian import.",
+      "description": "Muat pukal pekerja, profil berkanun dan gaji daripada fail Excel (.xlsx). Muat turun templat, isikannya, muat naik — tiada apa-apa dicipta sehingga anda melihat semakan.",
       "backLabel": "Kakitangan",
       "noCompanies": "Cipta syarikat sebelum mengimport pekerja.",
       "targetCompany": "Syarikat sasaran",
-      "uploadFile": "Muat naik fail CSV",
-      "dropHere": "Lepaskan CSV anda di sini atau klik untuk memilih",
-      "uploadHint": "Menerima CSV sahaja. Simpan hamparan anda sebagai CSV sebelum memuat naik.",
+      "uploadFile": "Muat naik fail",
+      "dropHere": "Lepaskan fail di sini atau klik untuk memilih",
+      "uploadHint": "Menerima CSV, XLSX atau XLS. Lembaran kerja pertama akan dibaca.",
       "reading": "Membaca fail…",
       "fileLoaded": "{name} dimuatkan",
       "pasteToggle": "Atau tampal CSV sebaliknya",
       "csvData": "Data CSV",
       "csvPlaceholder": "Tampal CSV dengan baris pengepala — full_name,email,department,hired_on,ic_number,basic_salary,…",
-      "unsupportedFileType": "Jenis fail tidak disokong. Simpan hamparan anda sebagai CSV (.csv) dan muat naik semula.",
+      "unsupportedFileType": "Jenis fail tidak disokong. Muat naik fail CSV, XLSX atau XLS.",
       "fileTooLarge": "Fail terlalu besar. Bahagikan kepada kelompok lebih kecil dan cuba lagi.",
       "emptyFile": "Fail itu kosong.",
       "fileReadError": "Tidak dapat membaca fail itu. Semak format dan cuba lagi.",
       "validate": "Sahkan",
       "validating": "Mengesahkan…",
       "loadSample": "Muat sampel",
-      "resolveHint": "Jabatan / jawatan diselesaikan mengikut nama dalam {company}.",
+      "resolveHint": "Jabatan / jawatan diselesaikan mengikut nama dalam syarikat baris berkenaan. Lajur Syarikat yang kosong bermaksud {company}.",
       "theCompany": "syarikat",
       "columnReference": "Rujukan lajur",
       "required": "Diperlukan",
@@ -1241,7 +1275,20 @@
       "colName": "Nama",
       "colEmail": "E-mel",
       "colResult": "Keputusan",
-      "ready": "Sedia"
+      "ready": "Sedia",
+      "emptySheet": "Lembaran kerja pertama kosong.",
+      "downloadTemplateXlsx": "Muat turun templat Excel",
+      "colCompany": "Syarikat",
+      "colRow": "Baris",
+      "downloadErrors": "Muat turun laporan ralat",
+      "referenceHeading": "Nilai yang diterima — salin dengan tepat",
+      "instructionsHeading": "Cara mengisi templat ini",
+      "instructionRequired": "Lajur wajib: {columns}. Lajur lain boleh dibiarkan kosong.",
+      "instructionDates": "Masukkan tarikh sebagai tarikh Excel sebenar, atau taip dalam format YYYY-MM-DD.",
+      "instructionIdentityText": "Lajur IC, telefon, akaun bank, KWSP, PERKESO dan nombor cukai diformat sebagai teks supaya sifar di hadapan dikekalkan. Jangan tukar formatnya kepada General.",
+      "instructionCompany": "Biarkan lajur Syarikat kosong untuk menggunakan syarikat yang dipilih pada skrin import, atau namakan syarikat untuk mengimport pekerja bagi beberapa syarikat dalam satu fail.",
+      "instructionReference": "Lembaran Reference menyenaraikan setiap nilai yang diterima untuk Syarikat, Jabatan, Jawatan dan Pusat Kos. Nilai lain akan ditolak berserta sebabnya.",
+      "instructionSamples": "Padamkan dua baris contoh sebelum memuat naik."
     },
     "hiringDefaults": {
       "title": "Tetapan Lalai Pengambilan",
@@ -1253,6 +1300,126 @@
       "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
       "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
       "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
+    },
+    "wizard": {
+      "fields": {
+        "fullName": "Nama penuh",
+        "primaryEmail": "E-mel",
+        "employeeCode": "ID Pekerja",
+        "company": "Syarikat",
+        "businessUnit": "Unit perniagaan",
+        "department": "Jabatan",
+        "position": "Jawatan / Tajuk kerja",
+        "costCenter": "Pusat kos",
+        "jobGrade": "Gred kerja",
+        "reportingManager": "Pengurus pelapor",
+        "employmentType": "Jenis pekerjaan",
+        "hiredOn": "Tarikh ambil",
+        "provisionalEndOn": "Tarikh tamat sementara",
+        "basicSalary": "Gaji asas permulaan (MYR)",
+        "remarks": "Catatan",
+        "icNumber": "No. Identiti (NRIC)",
+        "phone": "Nombor Telefon Bimbit",
+        "gender": "Jantina",
+        "maritalStatus": "Status perkahwinan",
+        "epfNumber": "Nombor EPF",
+        "socsoNumber": "Nombor SOCSO",
+        "taxNumber": "Nombor cukai",
+        "dateOfBirth": "Tarikh lahir",
+        "bankName": "Bank",
+        "bankAccountNo": "Nombor akaun bank",
+        "bankAccount": "Maklumat bank",
+        "numChildren": "Bilangan anak",
+        "epfCitizenship": "Kewarganegaraan KWSP",
+        "eisEligible": "Layak SIP",
+        "isResident": "Pemastautin cukai",
+        "taxCategory": "Kategori PCB",
+        "monthlyAllowance": "Elaun bulanan",
+        "payMode": "Mod bayaran",
+        "paymentTerm": "Tempoh bayaran",
+        "rateAmount": "Jumlah kadar"
+      },
+      "employmentType": {
+        "full_time": "Sepenuh masa",
+        "part_time": "Separuh masa",
+        "contract": "Kontrak",
+        "intern": "Pelatih"
+      },
+      "taxCategory": {
+        "1": "Bujang",
+        "2": "Berkahwin · pasangan tidak bekerja",
+        "3": "Berkahwin · pasangan bekerja"
+      },
+      "none": "— Tiada —",
+      "orgLabelsEmptyForCompany": "Tiada label organisasi dikonfigurasikan untuk syarikat yang dipilih.",
+      "hints": {
+        "provisionalEndOn": "Tamat percubaan untuk sepenuh masa (lalai +3 bulan); jika tidak, tamat kontrak atau latihan. Biarkan kosong jika tiada.",
+        "employeeCode": "Biarkan kosong dan sistem akan menjana ID Pekerja seterusnya semasa pekerja dicipta. Draf tidak pernah menggunakannya.",
+        "icNumber": "Pilihan — biarkan kosong bagi pemegang pasport. Jika diisi, ia mesti nombor pengenalan yang sah bagi negara syarikat.",
+        "dateOfBirth": "Biarkan kosong dan ia diambil daripada nombor pengenalan jika boleh.",
+        "businessUnit": "Hanya menapis senarai jabatan. Ia tidak disimpan pada pekerja.",
+        "hiredOn": "Hari pertama bekerja. Selepas penciptaan, tarikh ini hanya berubah melalui peristiwa pergerakan.",
+        "bankAccount": "Isikan kedua-dua bank dan nombor akaun, atau tiada langsung.",
+        "rateAmount": "Diperlukan untuk mod bayaran harian atau sejam."
+      },
+      "backLabel": "Kembali ke Personel",
+      "title": "Cipta pekerja baharu",
+      "description": "Masukkan maklumat langkah demi langkah. Simpan sebagai draf pada bila-bila masa dan kembali kemudian — tiada apa-apa dicipta sehingga langkah terakhir.",
+      "progressLabel": "Langkah penciptaan",
+      "steps": {
+        "profile": "Profil",
+        "employment": "Pekerjaan",
+        "statutory": "Bank & Statutori",
+        "payroll": "Gaji",
+        "review": "Semak & cipta"
+      },
+      "notSet": "— Tidak ditetapkan —",
+      "selectPrompt": "— Pilih —",
+      "yes": "Ya",
+      "no": "Tidak",
+      "gender": {
+        "male": "Lelaki",
+        "female": "Perempuan"
+      },
+      "marital": {
+        "single": "Bujang",
+        "married": "Berkahwin"
+      },
+      "citizenship": {
+        "citizen": "Warganegara",
+        "pr": "Penduduk tetap",
+        "non_citizen": "Bukan warganegara"
+      },
+      "payMode": {
+        "monthly": "Bulanan",
+        "daily": "Harian",
+        "hourly": "Sejam",
+        "custom_period": "Tempoh tersuai"
+      },
+      "paymentTerm": {
+        "monthly": "Bulanan",
+        "weekly": "Mingguan",
+        "biweekly": "Dua minggu sekali"
+      },
+      "continueDraft": "Sambung draf ({count})",
+      "untitledDraft": "Draf tanpa nama",
+      "stepOf": "Langkah {current} daripada {total}",
+      "missingCount": "{count} masih diperlukan",
+      "readyToCreate": "Sedia untuk dicipta",
+      "lastSaved": "Disimpan {when}",
+      "startedBy": "Dimulakan oleh {name}",
+      "continue": "Sambung",
+      "complete": "Lengkap",
+      "reviewReady": "Semua yang diperlukan sudah ada. Mencipta pekerja akan menjana ID Pekerja dan membuka rekod mereka.",
+      "reviewIncomplete": "Isikan perkara yang disenaraikan di atas, atau simpan sebagai draf dan kembali kemudian.",
+      "back": "Kembali",
+      "next": "Seterusnya",
+      "saveDraft": "Simpan draf",
+      "saving": "Menyimpan…",
+      "draftSaved": "Draf disimpan",
+      "discardDraft": "Buang draf",
+      "createEmployee": "Cipta pekerja",
+      "creating": "Mencipta…"
     }
   },
   "leave": {
@@ -1384,7 +1551,8 @@
       "duplicateApplication": "Permohonan cuti telah wujud untuk tarikh yang dipilih. Berbilang permohonan cuti pada tarikh yang sama tidak dibenarkan.",
       "insufficientBalance": "Baki cuti tidak mencukupi. Baki cuti anda yang tersedia adalah lebih rendah daripada tempoh cuti yang dipohon.",
       "combinedLimitExceeded": "Had cuti gabungan \"{poolName}\" ({days} hari setahun) akan melebihi merentasi jenis cuti kongsinya.",
-      "combinedApplicationTooLong": "Kumpulan cuti kongsi \"{poolName}\" membenarkan paling banyak {maxDays} hari bagi setiap permohonan; permohonan ini meliputi {days}. Sila pendekkannya atau mohon dalam permohonan berasingan."
+      "combinedApplicationTooLong": "Kumpulan cuti kongsi \"{poolName}\" membenarkan paling banyak {maxDays} hari bagi setiap permohonan; permohonan ini meliputi {days}. Sila pendekkannya atau mohon dalam permohonan berasingan.",
+      "leaveYearApplicationLimit": "{typeName} dihadkan kepada {maxDays} hari setiap tahun cuti. {usedDays} hari telah pun dipohon antara {yearStart} dan {yearEnd}, jadi permohonan {days} hari ini tidak boleh dihantar."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -1392,88 +1560,43 @@
     "employeeRemarkRequiredHint": "Catatan diperlukan untuk sesetengah jenis cuti.",
     "documentRequiredBadge": "dokumen diperlukan",
     "breakdown": {
-      "title": "Pecahan kelayakan",
       "viewBreakdown": "Pecahan",
-      "hide": "Sembunyikan pecahan",
       "asAtDate": "Pada tarikh",
       "apply": "Guna",
-      "currentYearEntitlement": "Kelayakan tahun ini",
-      "monthlyAccrued": "Terkumpul setakat ini tahun ini",
-      "carriedForward": "Dibawa ke hadapan",
-      "carryForwardRemaining": "Baki bawa ke hadapan",
-      "carryForwardExpiry": "Tarikh luput bawa ke hadapan",
       "noExpiry": "Tidak luput",
-      "forfeited": "Dilucutkan",
-      "totalAvailable": "Jumlah tersedia",
-      "transactionsHeading": "Transaksi",
-      "noTransactions": "Tiada transaksi dalam tempoh ini.",
-      "colDate": "Tarikh",
-      "colEntry": "Catatan",
-      "colDays": "Hari",
-      "colSource": "Sumber",
-      "entryType": {
-        "accrual": "Terkumpul",
-        "debit": "Cuti diambil",
-        "adjustment": "Pelarasan",
-        "inLieuAccrual": "Terkumpul ganti"
-      },
       "section": {
-        "summary": "Ringkasan cuti",
-        "entitlement": "Pecahan kelayakan",
-        "utilization": "Penggunaan cuti",
-        "adjustments": "Pelarasan",
-        "transactions": "Sejarah transaksi",
-        "calcBreakdown": "Pecahan pengiraan kelayakan",
-        "reconciliation": "Bagaimana jumlah ini terhasil"
+        "summary": "Ringkasan cuti"
       },
       "field": {
-        "available": "Tersedia",
+        "eligible": "Layak (kelayakan setahun penuh)",
+        "ytdEntitled": "Kelayakan setakat ini",
+        "broughtForward": "Bawa ke hadapan",
+        "adjustments": "Pelarasan",
+        "total": "Jumlah",
         "taken": "Diambil",
         "pendingApproval": "Menunggu kelulusan",
-        "ytdEntitled": "Kelayakan setakat ini",
-        "entitlementToDate": "Kelayakan setakat tarikh",
-        "broughtForward": "Bawa ke hadapan",
-        "expiredBroughtForward": "Bawa hadapan luput",
-        "carryForwardExpiry": "Tarikh luput bawa hadapan",
-        "forfeited": "Baki dilucuthak",
-        "unplanned": "Tidak dirancang",
-        "overutilized": "Penggunaan berlebihan",
-        "adjustment": "Pelarasan",
-        "balance": "Baki",
-        "systemCorrection": "Pembetulan sistem"
+        "broughtForwardForfeited": "Bawa hadapan dilucuthak",
+        "availableBalance": "Baki tersedia"
       },
       "panelSubtitle": "Setakat {date}",
       "close": "Tutup",
-      "colBalanceChange": "Perubahan baki",
       "explanationShow": "Tunjuk penerangan",
       "explanationHide": "Sembunyikan penerangan",
       "explanationDescription": "Maksudnya",
       "explanationFormula": "Cara ia dikira",
-      "explanationResult": "Keputusan",
       "summaryTip": {
-        "ytdEntitled": "Jumlah cuti yang diberikan kepada anda setakat ini tahun ini.",
+        "eligible": "Jumlah yang anda terima untuk keseluruhan tahun cuti, sebelum apa-apa diperoleh, dibawa ke hadapan, dilaraskan atau digunakan.",
+        "ytdEntitled": "Jumlah yang telah diberikan kepada anda setakat tarikh \"Setakat\". Cuti yang diperoleh bulan demi bulan terkumpul sepanjang tahun; cuti yang diberikan sepenuhnya pada awal menunjukkan jumlah penuh dari hari pertama.",
+        "broughtForward": "Hari yang tidak digunakan dan dibawa ke tahun cuti ini dari tahun lepas.",
+        "adjustments": "Hari tambahan atau potongan, sama ada dimasukkan oleh HR atau dicatat secara automatik apabila polisi, gred atau tarikh mula bertukar.",
+        "total": "Diberikan setakat ini, campur bawa ke hadapan, campur pelarasan — sebelum apa-apa yang anda gunakan atau mohon.",
         "taken": "Cuti yang telah anda gunakan (diluluskan dan diambil).",
         "pendingApproval": "Cuti yang anda mohon dan masih menunggu kelulusan.",
-        "available": "Cuti yang masih boleh anda ambil sekarang, selepas permohonan yang menunggu diketepikan.",
-        "balance": "Baki anda yang tinggal, iaitu: bawa ke hadapan + kelayakan kitaran ini + pelarasan + pembetulan sistem − dilucutkan − diambil. Bahagian \"Bagaimana jumlah ini terhasil\" di bawah menunjukkan setiap bahagian."
-      },
-      "tip": {
-        "configAdjustment": "Hari tambahan atau potongan yang ditetapkan HR pada langkah Pelarasan dalam tetapan kelayakan cuti. Setiap satu disenaraikan di bawah dengan sebabnya.",
-        "systemCorrection": "Pembetulan automatik yang dicatat sendiri oleh sistem apabila polisi cuti disunting atau gred atau tarikh mula kerja anda berubah. Ia tidak dimasukkan pada skrin Pelarasan."
+        "broughtForwardForfeited": "Hari yang dibawa dari tahun lepas dan hilang, kerana telah melepasi tarikh luput atau melebihi had bawa ke hadapan.",
+        "available": "Jumlah yang benar-benar boleh anda mohon hari ini. Ini angka yang sama dipaparkan di tempat lain, termasuk semasa anda memohon cuti."
       },
       "adjustmentNoReason": "Tiada sebab dinyatakan",
-      "reconcile": {
-        "caption": "Bawa ke hadapan + Kelayakan + Pelarasan + Pembetulan sistem − Dilucutkan − Diambil = Baki. Baki − Menunggu kelulusan = Tersedia.",
-        "broughtForward": "Bawa ke hadapan",
-        "entitled": "+ Kelayakan kitaran ini",
-        "adjustments": "+ Pelarasan",
-        "systemCorrections": "+ Pembetulan sistem",
-        "forfeited": "− Dilucutkan",
-        "taken": "− Diambil",
-        "balance": "= Baki",
-        "pending": "− Menunggu kelulusan",
-        "available": "= Tersedia"
-      }
+      "expiresOn": "Luput: {date}"
     },
     "preview": {
       "loading": "Mengira…"
@@ -3830,7 +3953,19 @@
         "carryAnnualOnly": "Bawa ke hadapan terpakai untuk Cuti Tahunan — baki jenis ini tidak dibawa ke tahun berikutnya.",
         "noActivePolicy": "Belum ada polisi kelayakan aktif — tambah satu di bawah Kelayakan dahulu.",
         "frontDoorScopeLabel": "Terpakai kepada polisi",
-        "workflowUnavailable": "Tetapan aliran kerja kelulusan tidak tersedia di sini — buka tab Kelulusan."
+        "workflowUnavailable": "Tetapan aliran kerja kelulusan tidak tersedia di sini — buka tab Kelulusan.",
+        "yearType": "Jenis Tahun Cuti",
+        "yearTypeStepHelp": "Pilih kitaran cuti dahulu. Langkah Kaedah Perolehan dan Pembundaran selepas ini menentukan cara cuti dikreditkan dalam kitaran tersebut.",
+        "roundingNearestHalf": "Terdekat 0.5 hari",
+        "roundingCustomize": "Sesuaikan ambang perpuluhan",
+        "roundingThresholdsTitle": "Ambang perpuluhan tersuai",
+        "roundingDownRangeLabel": "Bundar ke bawah ke 0.5 hari terdekat",
+        "roundingUpRangeLabel": "Bundar ke atas ke 0.5 hari terdekat",
+        "roundingFromInclusive": "Dari (termasuk)",
+        "roundingToExclusive": "Hingga (tidak termasuk)",
+        "roundingToInclusive": "Hingga (termasuk)",
+        "roundingThresholdHelp": "Kedua-dua julat sentiasa meliputi 0.000 hingga 1.000 tanpa jurang dan tanpa pertindihan, jadi hanya satu sempadan perlu ditetapkan. Ubah sempadan itu dan kedua-dua julat akan mengikut. Biarkan kotak tidak bertanda untuk menggunakan peraturan standard: 0.000-0.499 dibundar ke bawah, 0.500-1.000 dibundar ke atas.",
+        "roundingWorkedExample": "Dengan peraturan ini, {raw} hari yang dikira dikreditkan sebagai {rounded} hari."
       },
       "conditionStep": {
         "criteria": "Kriteria",
@@ -3838,7 +3973,13 @@
         "expiry": "Luput",
         "halfDayCompanyWideBadge": "Terpakai seluruh syarikat",
         "expiryAnnualPointer": "Luput Cuti Tahunan ditadbir oleh polisi bawa ke hadapan — tetapkannya di Umum → Polisi Bawa ke Hadapan.",
-        "expiryEmergencyNote": "Cuti Kecemasan tidak membawa baki, jadi tiada luput terpakai."
+        "expiryEmergencyNote": "Cuti Kecemasan tidak membawa baki, jadi tiada luput terpakai.",
+        "applicationLimitsTitle": "Had Permohonan",
+        "applicationLimitYearLabel": "Permohonan maksimum setiap tahun cuti",
+        "applicationLimitUnlimited": "Tanpa had",
+        "applicationLimitLimited": "Terhad",
+        "applicationLimitMaxLabel": "Maksimum (hari)",
+        "applicationLimitHelp": "Mengehadkan jumlah hari yang boleh DIPOHON oleh pekerja bagi jenis ini dalam satu tahun cuti, sama ada baki kelayakan wujud atau tidak — peraturan untuk jenis seperti Cuti Tanpa Gaji. Ia disemak semasa permohonan dihantar dan sekali lagi semasa diluluskan. Kelayakan, terakru dan baki dalam Ringkasan Cuti tidak berubah. Tanpa had ialah cara setiap jenis cuti berkelakuan hari ini."
       },
       "entitlementStep": {
         "schemes": "Skim Faedah",
@@ -4218,19 +4359,17 @@
       "reasonPlaceholder": "Mengapa ini diubah?",
       "essView": {
         "sectionTitle": "Konfigurasi Paparan Cuti Pekerja",
-        "help": "Pilih angka kelayakan dan baki yang dilihat pekerja untuk jenis cuti ini di Profil Saya → Cuti, dan terangkan setiap satu di tempat yang sama: tanda satu item dan medan Penerangan serta Formula akan muncul di sebelahnya — pekerja melihat teks itu apabila menuding ikon maklumat item tersebut. Item yang tidak ditanda disembunyikan dalam layan diri sahaja; HR sentiasa melihat semuanya. Penerangan hanya mengubah teks, bukan sebarang angka cuti.",
-        "available": "Tersedia",
-        "taken": "Diambil",
-        "broughtForward": "Dibawa Ke Hadapan",
-        "unplanned": "Tidak Dirancang",
+        "help": "Pilih baris Ringkasan Baki Cuti yang dilihat pekerja untuk jenis cuti ini di Profil Saya → Cuti, dan terangkan setiap satu di tempat yang sama: tandakan item dan medan Penerangan serta Penerangan Formula akan muncul di sebelahnya — pekerja melihat teks itu apabila menuding ikon maklumat item tersebut. Item yang tidak ditandakan disembunyikan dalam layan diri sahaja; HR sentiasa melihat semuanya. Penerangan hanya mengubah perkataan, tidak pernah mengubah angka cuti. Perkataan dibawa daripada jenis cuti pertama yang anda konfigurasikan, jadi anda hanya menulisnya sekali; sunting di sini jika jenis cuti ini memerlukan perkataan berbeza, dan tiada apa disimpan sehingga anda menekan Simpan.",
+        "eligible": "Layak",
+        "ytdEntitled": "Kelayakan Setakat Ini",
+        "broughtForward": "Bawa Ke Hadapan",
         "adjustment": "Pelarasan",
-        "overutilized": "Terlebih Guna",
-        "ytdEntitled": "Kelayakan Setakat Tahun",
+        "total": "Jumlah",
+        "taken": "Diambil",
         "pendingApproval": "Menunggu Kelulusan",
-        "carryForwardExpiry": "Tarikh Luput Bawa Ke Hadapan",
-        "forfeited": "Baki Dilucuthak",
-        "groupOther": "Lain-lain",
-        "entitlementCalcBreakdown": "Pecahan Pengiraan Kelayakan"
+        "forfeited": "Bawa Hadapan Dilucuthak",
+        "available": "Baki Tersedia",
+        "groupOther": "Lain-lain"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Kemasukan Jenis Hari",
@@ -4365,16 +4504,7 @@
       "formula": {
         "descriptionLabel": "Penerangan",
         "formulaLabel": "Penerangan formula",
-        "resultLabel": "Keputusan / tarikh (pilihan)",
-        "component": {
-          "currentYearEntitlement": "Kelayakan Tahun Ini",
-          "monthlyAccrued": "Terkumpul Setakat Ini Tahun Ini",
-          "carriedForward": "Dibawa Ke Hadapan",
-          "carryForwardRemaining": "Baki Bawa Ke Hadapan",
-          "carryForwardExpiry": "Tamat Tempoh Bawa Ke Hadapan",
-          "forfeited": "Dilucutkan",
-          "totalAvailable": "Jumlah Tersedia"
-        }
+        "templateHint": "Cadangan perkataan, dibawa daripada jenis cuti pertama yang anda konfigurasikan. Sunting jika jenis cuti ini berbeza — tiada apa disimpan sehingga anda menekan Simpan."
       },
       "gradeSearchLabel": "Cari gred",
       "gradeSearchPlaceholder": "Cari mengikut kod atau nama…",
@@ -5197,7 +5327,11 @@
       "maxDaysPerApplication": "Hari maksimum bagi setiap permohonan",
       "maxDaysPerApplicationShort": "Maks / permohonan",
       "maxDaysPerApplicationNone": "Tiada had",
-      "maxDaysPerApplicationHelp": "Pilihan. Biarkan kosong jika tiada had. Tetapkan 3 dan tiada satu permohonan bagi mana-mana jenis cuti dalam kumpulan ini boleh melebihi 3 hari kalendar — berasingan daripada jumlah tahunan kongsi."
+      "maxDaysPerApplicationHelp": "Pilihan. Biarkan kosong jika tiada had. Tetapkan 3 dan tiada satu permohonan bagi mana-mana jenis cuti dalam kumpulan ini boleh melebihi 3 hari kalendar — berasingan daripada jumlah tahunan kongsi.",
+      "colSchemeCategory": "Kategori skim",
+      "schemeCategoryPlaceholder": "cth. Tetap, Kontrak (Khas)",
+      "schemeCategoryUnset": "Tidak dikumpulkan",
+      "schemeCategoryHelp": "Mengumpulkan skim berkaitan di mana-mana skim disenaraikan untuk pemilihan. Ia label sahaja — ia tidak pernah mempengaruhi kelayakan, skim yang dipadankan kepada pekerja, atau bilangan hari yang diperoleh. Cadangan diberikan daripada nama skim dan jenis pekerjaan; anda boleh mengubah atau mengosongkannya bila-bila masa."
     },
     "systemExplorer": {
       "title": "Analisis sistem & peneroka kebergantungan",
@@ -5499,7 +5633,7 @@
         },
         "hire": {
           "title": "Cipta pekerja baharu",
-          "body": "Klik **+ Cipta pekerja baharu** di kanan atas untuk menambah seseorang dengan syarikat, jabatan dan tarikh mula mereka. Untuk onboarding pukal, gunakan **Import CSV**."
+          "body": "Klik **+ Cipta pekerja baharu** di bahagian atas kanan. Ia membuka skrin langkah demi langkah — anda boleh menyimpan draf pada bila-bila masa dan menyelesaikannya kemudian. Untuk pengambilan pukal, gunakan **Import pekerja** dengan templat Excel."
         },
         "orgTree": {
           "title": "Struktur kumpulan anda",

@@ -12,22 +12,29 @@ type Action = (fd: FormData) => void | Promise<void>;
  * HR Admin Leave Cancellation on behalf of an employee (feedback 22e68ff0).
  *
  * An HR administrator cancels another employee's PENDING or APPROVED leave immediately, with no approval
- * workflow. The affordance appears on both the Leave Management page (a labelled destructive "Cancel leave"
- * button) and the Dashboard leave calendar (a compact XCircle icon inside the leave pill, via the `trigger`
+ * workflow. The affordance appears on the Leave Management page (a labelled destructive "Cancel leave"
+ * button), on Employee Leave Records (fe3eb141 — same labelled button, right of Final Approval Date) and
+ * on the Dashboard leave calendar (a compact XCircle icon inside the leave pill, via the `trigger`
  * prop — same pattern as CancelDatesDialog). Clicking opens a confirmation dialog with an optional reason
  * field; submitting posts `adminCancelLeaveAction` with `leaveRequestId`, `reason`, and a whitelisted `back`
- * surface ('/leave' or '/'). The service re-runs every eligibility gate authoritatively.
+ * surface ('/leave', '/leave/employee-records' or '/'). The service re-runs every eligibility gate
+ * authoritatively.
  */
 export function AdminCancelLeaveDialog({
   leaveRequestId,
   back,
+  backEmp,
   submitAction,
   // Calendar entry point: the dashboard passes a COMPACT icon trigger on the leave pill instead of the default
   // labelled button the Leave page uses. When omitted, the Leave-page labelled button renders.
   trigger,
 }: {
   leaveRequestId: string;
-  back: '/leave' | '/';
+  back: '/leave' | '/leave/employee-records' | '/';
+  /** Employee Leave Records only: the employment being viewed. That page selects an employee via
+   *  `?emp=`, so a bare redirect would silently jump the admin to a DIFFERENT employee's records
+   *  right after they cancelled something. The action re-validates this as a uuid. */
+  backEmp?: string;
   submitAction: Action;
   trigger?: ReactNode;
 }) {
@@ -59,6 +66,7 @@ export function AdminCancelLeaveDialog({
           <form action={submitAction} className="mt-4 space-y-3" onSubmit={() => setOpen(false)}>
             <input type="hidden" name="leaveRequestId" value={leaveRequestId} />
             <input type="hidden" name="back" value={back} />
+            {backEmp && <input type="hidden" name="backEmp" value={backEmp} />}
             <input name="reason" className={inputCls} placeholder={t('adminCancelReasonPlaceholder')} />
             <div className="flex justify-end gap-2 pt-1">
               <Dialog.Close asChild>

@@ -256,7 +256,7 @@
     "list": {
       "title": "员工",
       "employeeCount": "{count, plural, one {# 名员工} other {# 名员工}}",
-      "importCsv": "导入 CSV",
+      "importCsv": "导入员工",
       "profileChangeRequests": "资料变更申请",
       "pendingCount": "{count, plural, one {# 项待处理} other {# 项待处理}}",
       "profileChangeHint": "批准后将把变更应用到员工的法定资料（银行 / PCB）。您不能批准自己的申请。",
@@ -342,7 +342,14 @@
       "employeeIdLabel": "员工编号",
       "employeeIdPlaceholder": "例如 EMP-0001",
       "employeeIdHint": "字母、数字和连字符；最多 30 个字符。",
-      "hiringDefaults": "入职默认设置"
+      "hiringDefaults": "入职默认设置",
+      "draftsHeading": "未完成的新员工",
+      "draftsCount": "{count} 份草稿",
+      "draftUntitled": "未命名草稿",
+      "draftNoCompany": "尚未选择公司",
+      "draftMissing": "还需 {count} 项",
+      "draftReady": "可以创建",
+      "draftContinue": "继续"
     },
     "detail": {
       "backToPeople": "员工",
@@ -1148,7 +1155,14 @@
           "correctionReason": "更正原因（选填）",
           "saveCorrection": "保存更正",
           "joinDateChangeHint": "您输入的日期将成为该员工在当前公司的新入职日期。其集团入职日期不会改变。",
-          "groupJoinDateCorrectionHint": "您输入的日期将成为更正后的集团入职日期。年资由此日期计算，因此可能改变其休假额度。"
+          "groupJoinDateCorrectionHint": "您输入的日期将成为更正后的集团入职日期。年资由此日期计算，因此可能改变其休假额度。",
+          "lastWorkingDay": "最后工作日",
+          "terminationReason": "离职原因",
+          "terminationReasonPlaceholder": "— 选择原因 —",
+          "terminationTypeDerived": "归类为：{type}",
+          "resignationDate": "辞职日期",
+          "terminationNoticeDays": "已服务通知期（天）",
+          "terminationPayrollFlag": "离职已保存。{periods} 的薪资已处理且超过离职日期 — 请检查该薪资批次。系统未作更改。"
         },
         "edit": "编辑",
         "delete": "删除",
@@ -1165,6 +1179,26 @@
           "applied": "已生效",
           "superseded": "已被取代",
           "reversed": "已撤销"
+        },
+        "terminationReasonCategory": {
+          "voluntary": "主动离职",
+          "involuntary": "被动离职",
+          "other": "其他"
+        },
+        "terminationReason": {
+          "resignation": "辞职",
+          "career_opportunity": "职业发展",
+          "personal_reason": "个人原因",
+          "retirement": "退休",
+          "early_retirement": "提前退休",
+          "performance_issue": "绩效问题",
+          "misconduct": "违纪",
+          "redundancy": "裁员",
+          "contract_expiry": "合同到期",
+          "absconded": "擅自离职",
+          "medical_unfit": "健康不适任",
+          "death": "身故",
+          "other": "其他"
         }
       },
       "salaryCurrency": "货币",
@@ -1196,26 +1230,26 @@
     },
     "import": {
       "title": "导入员工",
-      "description": "通过 CSV 批量加载员工、法定资料及薪酬。请先校验，再导入。",
+      "description": "通过 Excel (.xlsx) 文件批量加载员工、法定资料及薪酬。下载模板、填写并上传 — 在您查看校验结果之前不会创建任何记录。",
       "backLabel": "员工",
       "noCompanies": "导入员工前请先创建一家公司。",
       "targetCompany": "目标公司",
-      "uploadFile": "上传 CSV 文件",
-      "dropHere": "将 CSV 文件拖放到此处或点击浏览",
-      "uploadHint": "仅支持 CSV。上传前请将电子表格另存为 CSV。",
+      "uploadFile": "上传文件",
+      "dropHere": "将文件拖放到此处或点击浏览",
+      "uploadHint": "支持 CSV、XLSX 或 XLS。读取第一个工作表。",
       "reading": "正在读取文件…",
       "fileLoaded": "已加载 {name}",
       "pasteToggle": "或改为粘贴 CSV",
       "csvData": "CSV 数据",
       "csvPlaceholder": "粘贴带表头行的 CSV — full_name,email,department,hired_on,ic_number,basic_salary,…",
-      "unsupportedFileType": "不支持的文件类型。请将电子表格另存为 CSV (.csv) 后重新上传。",
+      "unsupportedFileType": "不支持的文件类型。请上传 CSV、XLSX 或 XLS 文件。",
       "fileTooLarge": "文件过大。请拆分为较小批次后重试。",
       "emptyFile": "该文件为空。",
       "fileReadError": "无法读取该文件。请检查格式后重试。",
       "validate": "校验",
       "validating": "校验中…",
       "loadSample": "加载示例",
-      "resolveHint": "部门 / 职位按名称在 {company} 内匹配。",
+      "resolveHint": "部门 / 职位按名称在该行所属公司内匹配。公司列留空表示 {company}。",
       "theCompany": "该公司",
       "columnReference": "列说明",
       "required": "必填",
@@ -1241,7 +1275,20 @@
       "colName": "姓名",
       "colEmail": "邮箱",
       "colResult": "结果",
-      "ready": "就绪"
+      "ready": "就绪",
+      "emptySheet": "第一个工作表为空。",
+      "downloadTemplateXlsx": "下载 Excel 模板",
+      "colCompany": "公司",
+      "colRow": "行",
+      "downloadErrors": "下载错误报告",
+      "referenceHeading": "可接受的值 — 请原样复制",
+      "instructionsHeading": "如何填写此模板",
+      "instructionRequired": "必填列：{columns}。其他列可以留空。",
+      "instructionDates": "请输入真正的 Excel 日期，或按 YYYY-MM-DD 格式填写。",
+      "instructionIdentityText": "身份证、电话、银行账号、EPF、SOCSO 和税号列已设为文本格式，以保留前导零。请勿将其格式改为常规。",
+      "instructionCompany": "公司列留空表示使用导入页面上所选的公司；填写公司名称即可在一个文件中导入多家公司的员工。",
+      "instructionReference": "Reference 工作表列出了公司、部门、职位和成本中心的所有可接受值。其他值将被拒绝并说明原因。",
+      "instructionSamples": "上传前请删除两行示例数据。"
     },
     "hiringDefaults": {
       "title": "入职默认设置",
@@ -1253,6 +1300,126 @@
       "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。",
       "reviewReminderDays": "评估提醒（结束日期前天数）",
       "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
+    },
+    "wizard": {
+      "fields": {
+        "fullName": "全名",
+        "primaryEmail": "邮箱",
+        "employeeCode": "员工编号",
+        "company": "公司",
+        "businessUnit": "业务单位",
+        "department": "部门",
+        "position": "职位 / 职称",
+        "costCenter": "成本中心",
+        "jobGrade": "职级",
+        "reportingManager": "汇报经理",
+        "employmentType": "雇佣类型",
+        "hiredOn": "入职日期",
+        "provisionalEndOn": "临时结束日期",
+        "basicSalary": "初始基本薪资 (MYR)",
+        "remarks": "备注",
+        "icNumber": "身份识别号码 (NRIC)",
+        "phone": "手机号码",
+        "gender": "性别",
+        "maritalStatus": "婚姻状况",
+        "epfNumber": "EPF 号码",
+        "socsoNumber": "SOCSO 号码",
+        "taxNumber": "税号",
+        "dateOfBirth": "出生日期",
+        "bankName": "银行",
+        "bankAccountNo": "银行账号",
+        "bankAccount": "银行信息",
+        "numChildren": "子女人数",
+        "epfCitizenship": "EPF 公民身份",
+        "eisEligible": "符合 EIS 资格",
+        "isResident": "税务居民",
+        "taxCategory": "PCB 类别",
+        "monthlyAllowance": "每月津贴",
+        "payMode": "计薪方式",
+        "paymentTerm": "支付周期",
+        "rateAmount": "费率金额"
+      },
+      "employmentType": {
+        "full_time": "全职",
+        "part_time": "兼职",
+        "contract": "合同工",
+        "intern": "实习生"
+      },
+      "taxCategory": {
+        "1": "单身",
+        "2": "已婚 · 配偶无业",
+        "3": "已婚 · 配偶在职"
+      },
+      "none": "— 无 —",
+      "orgLabelsEmptyForCompany": "所选公司未配置任何组织标签。",
+      "hints": {
+        "provisionalEndOn": "全职为试用期结束（默认 +3 个月）；否则为合同或实习结束日期。如无则留空。",
+        "employeeCode": "留空则在创建员工时由系统生成下一个员工编号。草稿不会占用编号。",
+        "icNumber": "可选 — 持护照者可留空。如填写，必须是符合公司所在国家规则的有效身份证号。",
+        "dateOfBirth": "留空时将尽可能从身份证号推导。",
+        "businessUnit": "仅用于筛选部门列表，不会保存到员工记录。",
+        "hiredOn": "入职首日。创建之后，此日期只能通过异动事件更改。",
+        "bankAccount": "银行与账号请同时填写，或都留空。",
+        "rateAmount": "日薪或时薪方式必填。"
+      },
+      "backLabel": "返回人事",
+      "title": "创建新员工",
+      "description": "按步骤填写信息。随时可保存为草稿并稍后继续 — 在最后一步之前不会创建任何记录。",
+      "progressLabel": "创建步骤",
+      "steps": {
+        "profile": "个人资料",
+        "employment": "雇佣信息",
+        "statutory": "银行与法定",
+        "payroll": "薪资",
+        "review": "检查并创建"
+      },
+      "notSet": "— 未设置 —",
+      "selectPrompt": "— 请选择 —",
+      "yes": "是",
+      "no": "否",
+      "gender": {
+        "male": "男",
+        "female": "女"
+      },
+      "marital": {
+        "single": "单身",
+        "married": "已婚"
+      },
+      "citizenship": {
+        "citizen": "公民",
+        "pr": "永久居民",
+        "non_citizen": "非公民"
+      },
+      "payMode": {
+        "monthly": "月薪",
+        "daily": "日薪",
+        "hourly": "时薪",
+        "custom_period": "自定义周期"
+      },
+      "paymentTerm": {
+        "monthly": "每月",
+        "weekly": "每周",
+        "biweekly": "每两周"
+      },
+      "continueDraft": "继续草稿（{count}）",
+      "untitledDraft": "未命名草稿",
+      "stepOf": "第 {current} 步，共 {total} 步",
+      "missingCount": "还需 {count} 项",
+      "readyToCreate": "可以创建",
+      "lastSaved": "保存于 {when}",
+      "startedBy": "由 {name} 创建",
+      "continue": "继续",
+      "complete": "已完成",
+      "reviewReady": "所需信息齐全。创建员工将生成员工编号并打开其档案。",
+      "reviewIncomplete": "请补齐上面列出的内容，或保存为草稿稍后继续。",
+      "back": "上一步",
+      "next": "下一步",
+      "saveDraft": "保存草稿",
+      "saving": "正在保存…",
+      "draftSaved": "草稿已保存",
+      "discardDraft": "放弃草稿",
+      "createEmployee": "创建员工",
+      "creating": "正在创建…"
     }
   },
   "leave": {
@@ -1384,7 +1551,8 @@
       "duplicateApplication": "所选日期已存在一份请假申请。不允许在同一日期提交多份请假申请。",
       "insufficientBalance": "假期余额不足。您的可用假期余额低于所申请的假期时长。",
       "combinedLimitExceeded": "合并假期上限「{poolName}」（每年{days}天）将在其共享假期类型中被超出。",
-      "combinedApplicationTooLong": "共享假期组「{poolName}」每次申请最多 {maxDays} 天，本次申请为 {days} 天。请缩短申请天数，或分成多次申请。"
+      "combinedApplicationTooLong": "共享假期组「{poolName}」每次申请最多 {maxDays} 天，本次申请为 {days} 天。请缩短申请天数，或分成多次申请。",
+      "leaveYearApplicationLimit": "{typeName} 每个假期年度上限为 {maxDays} 天。在 {yearStart} 至 {yearEnd} 期间已申请 {usedDays} 天，因此本次 {days} 天的申请无法提交。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -1392,88 +1560,43 @@
     "employeeRemarkRequiredHint": "某些请假类型需要填写备注。",
     "documentRequiredBadge": "需要文件",
     "breakdown": {
-      "title": "额度明细",
       "viewBreakdown": "明细",
-      "hide": "隐藏明细",
       "asAtDate": "截至日期",
       "apply": "应用",
-      "currentYearEntitlement": "本年度额度",
-      "monthlyAccrued": "本年度至今累计",
-      "carriedForward": "结转",
-      "carryForwardRemaining": "结转剩余",
-      "carryForwardExpiry": "结转到期日",
       "noExpiry": "不过期",
-      "forfeited": "已作废",
-      "totalAvailable": "可用总额",
-      "transactionsHeading": "交易记录",
-      "noTransactions": "此期间无交易记录。",
-      "colDate": "日期",
-      "colEntry": "条目",
-      "colDays": "天数",
-      "colSource": "来源",
-      "entryType": {
-        "accrual": "累计",
-        "debit": "已休假",
-        "adjustment": "调整",
-        "inLieuAccrual": "补休累计"
-      },
       "section": {
-        "summary": "假期摘要",
-        "entitlement": "应享明细",
-        "utilization": "假期使用情况",
-        "adjustments": "调整",
-        "transactions": "交易记录",
-        "calcBreakdown": "应享计算明细",
-        "reconciliation": "余额是如何算出来的"
+        "summary": "假期摘要"
       },
       "field": {
-        "available": "可用",
+        "eligible": "应享（全年额度）",
+        "ytdEntitled": "年初至今应享",
+        "broughtForward": "结转",
+        "adjustments": "调整",
+        "total": "合计",
         "taken": "已使用",
         "pendingApproval": "待批准",
-        "ytdEntitled": "年初至今应享",
-        "entitlementToDate": "截至目前应享",
-        "broughtForward": "结转",
-        "expiredBroughtForward": "已过期结转",
-        "carryForwardExpiry": "结转到期日",
-        "forfeited": "被没收余额",
-        "unplanned": "非计划",
-        "overutilized": "超额使用",
-        "adjustment": "调整",
-        "balance": "余额",
-        "systemCorrection": "系统校正"
+        "broughtForwardForfeited": "结转作废",
+        "availableBalance": "可用余额"
       },
       "panelSubtitle": "截至 {date}",
       "close": "关闭",
-      "colBalanceChange": "余额变动",
       "explanationShow": "显示说明",
       "explanationHide": "隐藏说明",
       "explanationDescription": "含义",
       "explanationFormula": "计算方式",
-      "explanationResult": "结果",
       "summaryTip": {
-        "ytdEntitled": "本年度至今授予您的休假总额。",
+        "eligible": "您在整个假期年度可获得的天数，尚未计入累积、结转、调整或使用。",
+        "ytdEntitled": "截至「截止日期」为止已授予您的天数。按月累积的假期会在全年逐步增加；一次性预先授予的假期从第一天起即显示全额。",
+        "broughtForward": "从去年结转到本假期年度、尚未使用的天数。",
+        "adjustments": "增加或扣减的天数，可能由人力资源手动录入，也可能在政策、职级或入职日期变更时由系统自动记录。",
+        "total": "至今已授予的天数，加上结转与调整——尚未扣除您已使用或已申请的部分。",
         "taken": "您已使用的休假（已批准并已休）。",
         "pendingApproval": "您已申请但仍在等待批准的休假。",
-        "available": "在扣除待批准申请后，您现在仍可休的休假。",
-        "balance": "您的剩余余额，即：结转 + 本周期额度 + 调整 + 系统校正 − 作废 − 已休。下方的「余额是如何算出来的」列出每一项。"
-      },
-      "tip": {
-        "configAdjustment": "由人力资源部在休假额度设置的「调整」步骤中设定的增加或扣减天数。每一笔连同原因列于下方。",
-        "systemCorrection": "当休假政策被修改，或您的职级、入职日期变更时，系统自动记入的校正。这些不会出现在「调整」设置页面。"
+        "broughtForwardForfeited": "从去年结转但已失去的天数，原因是超过到期日或超出结转上限。",
+        "available": "您今天实际可以申请的天数。这与其他各处显示的数字完全相同，包括申请休假时看到的数字。"
       },
       "adjustmentNoReason": "未填写原因",
-      "reconcile": {
-        "caption": "结转 + 本期额度 + 调整 + 系统校正 − 作废 − 已休 = 余额。余额 − 待审批 = 可用。",
-        "broughtForward": "结转",
-        "entitled": "+ 本周期额度",
-        "adjustments": "+ 调整",
-        "systemCorrections": "+ 系统校正",
-        "forfeited": "− 作废",
-        "taken": "− 已休",
-        "balance": "= 余额",
-        "pending": "− 待审批",
-        "available": "= 可用"
-      }
+      "expiresOn": "到期：{date}"
     },
     "preview": {
       "loading": "计算中…"
@@ -3830,7 +3953,19 @@
         "carryAnnualOnly": "结转仅适用于年假——此类型的余额不会滚存。",
         "noActivePolicy": "尚无生效的额度政策——请先在“资格”下添加一条。",
         "frontDoorScopeLabel": "适用的政策",
-        "workflowUnavailable": "此处无法使用审批流程设置——请打开“审批”标签页。"
+        "workflowUnavailable": "此处无法使用审批流程设置——请打开“审批”标签页。",
+        "yearType": "假期年度类型",
+        "yearTypeStepHelp": "请先选择假期周期。随后的赚取方式与取整步骤决定该周期内假期如何入账。",
+        "roundingNearestHalf": "最接近的 0.5 天",
+        "roundingCustomize": "自定义小数阈值",
+        "roundingThresholdsTitle": "自定义小数阈值",
+        "roundingDownRangeLabel": "向下取整到最接近的 0.5 天",
+        "roundingUpRangeLabel": "向上取整到最接近的 0.5 天",
+        "roundingFromInclusive": "起始（含）",
+        "roundingToExclusive": "截止（不含）",
+        "roundingToInclusive": "截止（含）",
+        "roundingThresholdHelp": "两个区间始终覆盖 0.000 至 1.000，既无间隙也无重叠，因此只需设置一个分界值。移动分界值，两个区间会随之调整。不勾选则使用标准规则：0.000-0.499 向下取整，0.500-1.000 向上取整。",
+        "roundingWorkedExample": "按此规则，计算得出的 {raw} 天将按 {rounded} 天入账。"
       },
       "conditionStep": {
         "criteria": "资格条件",
@@ -3838,7 +3973,13 @@
         "expiry": "过期",
         "halfDayCompanyWideBadge": "适用于全公司",
         "expiryAnnualPointer": "年假的过期由结转政策决定 — 请在“常规 → 结转政策”中配置。",
-        "expiryEmergencyNote": "紧急假不带余额，因此没有过期设置。"
+        "expiryEmergencyNote": "紧急假不带余额，因此没有过期设置。",
+        "applicationLimitsTitle": "申请上限",
+        "applicationLimitYearLabel": "每个假期年度的最高申请天数",
+        "applicationLimitUnlimited": "不限",
+        "applicationLimitLimited": "限制",
+        "applicationLimitMaxLabel": "上限（天）",
+        "applicationLimitHelp": "限制员工在一个假期年度内可就该假期类型申请的总天数，无论是否存在可用余额——适用于无薪假等类型。提交申请时校验一次，审批时再校验一次。假期额度、累计与假期汇总中显示的余额均不受影响。目前所有假期类型均为“不限”。"
       },
       "entitlementStep": {
         "schemes": "福利方案",
@@ -4217,20 +4358,18 @@
       "reasonLabel": "变更原因（可选）",
       "reasonPlaceholder": "为何要进行此变更？",
       "essView": {
-        "sectionTitle": "员工休假视图配置",
-        "help": "选择员工在“我的资料 → 休假”中可见的此休假类型的应享和余额数字，并在同一处为每项填写说明：勾选某项后，其说明和公式栏会显示在旁边——员工将鼠标悬停在该项的信息图标上即可看到这些文字。未勾选的项目仅在自助服务中隐藏；HR 始终可见全部。说明仅更改文字，不会改变任何休假数字。",
-        "available": "可用",
-        "taken": "已使用",
+        "sectionTitle": "员工假期视图配置",
+        "help": "选择员工在「我的资料 → 假期」中针对此假期类型可以看到的假期余额摘要行，并在同一处说明每一行：勾选某项后，其「说明」与「公式说明」输入框会出现在旁边——员工将鼠标悬停在该项的信息图标上时即可看到这些文字。未勾选的项目仅在自助服务中隐藏；人力资源始终可以看到全部内容。说明只改变措辞，绝不改变任何假期数字。措辞取自您配置的第一个假期类型，因此只需撰写一次；如果此假期类型需要不同的措辞，可在此修改，未按「保存」前不会存储任何内容。",
+        "eligible": "应享",
+        "ytdEntitled": "年初至今应享",
         "broughtForward": "结转",
-        "unplanned": "未计划",
         "adjustment": "调整",
-        "overutilized": "超额使用",
-        "ytdEntitled": "年度至今应享",
+        "total": "合计",
+        "taken": "已使用",
         "pendingApproval": "待批准",
-        "carryForwardExpiry": "结转到期日",
-        "forfeited": "已作废余额",
-        "groupOther": "其他",
-        "entitlementCalcBreakdown": "应享额计算明细"
+        "forfeited": "结转作废",
+        "available": "可用余额",
+        "groupOther": "其他"
       },
       "dayTypeInclusion": {
         "sectionTitle": "日期类型计入",
@@ -4365,16 +4504,7 @@
       "formula": {
         "descriptionLabel": "说明",
         "formulaLabel": "公式说明",
-        "resultLabel": "结果／日期（可选）",
-        "component": {
-          "currentYearEntitlement": "本年度额度",
-          "monthlyAccrued": "本年度至今累计",
-          "carriedForward": "结转",
-          "carryForwardRemaining": "结转剩余",
-          "carryForwardExpiry": "结转到期",
-          "forfeited": "已作废",
-          "totalAvailable": "可用总额"
-        }
+        "templateHint": "建议措辞，取自您配置的第一个假期类型。如果此假期类型有所不同，请修改——未按「保存」前不会存储任何内容。"
       },
       "gradeSearchLabel": "搜索职级",
       "gradeSearchPlaceholder": "按代码或名称搜索…",
@@ -5197,7 +5327,11 @@
       "maxDaysPerApplication": "每次申请最多天数",
       "maxDaysPerApplicationShort": "每次上限",
       "maxDaysPerApplicationNone": "不限",
-      "maxDaysPerApplicationHelp": "可选。留空表示不限。设为 3 后，本组任一假期类型的单次申请都不得超过 3 个日历日——这与共享年度总额是两条独立规则。"
+      "maxDaysPerApplicationHelp": "可选。留空表示不限。设为 3 后，本组任一假期类型的单次申请都不得超过 3 个日历日——这与共享年度总额是两条独立规则。",
+      "colSchemeCategory": "方案类别",
+      "schemeCategoryPlaceholder": "例如：正式、合同（特殊）",
+      "schemeCategoryUnset": "未分组",
+      "schemeCategoryHelp": "在任何列出方案供选择的位置，将相关方案归为一组。它仅是一个标签——不会影响资格、员工匹配到哪个方案，或可获得的天数。系统会根据方案名称与雇佣类型给出建议；你可以随时修改或清空。"
     },
     "systemExplorer": {
       "title": "系统分析与依赖关系浏览器",
@@ -5499,7 +5633,7 @@
         },
         "hire": {
           "title": "创建新员工",
-          "body": "点击右上角的 **+ 创建新员工** 添加人员及其公司、部门和入职日期。批量入职可使用 **导入 CSV**。"
+          "body": "点击右上角的 **+ 创建新员工**，将打开分步骤的页面 — 您可以随时保存草稿并稍后继续。批量入职请使用 **导入员工** 和 Excel 模板。"
         },
         "orgTree": {
           "title": "你的集团架构",

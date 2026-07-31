@@ -824,6 +824,15 @@ export const employment = pgTable(
     // Termination classification (Wave 4A). Captured at termination for turnover analytics.
     terminationType: terminationTypeEnum('termination_type'),
     terminationReason: text('termination_reason'),
+    // ae9350f2 (migration 0338) — the Termination movement's structured exit fields.
+    // `terminationReasonCode` is the coded exit reason from the built-in catalogue in
+    // core/termination-reason.ts. Deliberately TEXT, not a second enum: a new enum value cannot be used in
+    // the transaction that adds it, and item 476f23ed will own this list. The code DERIVES terminationType
+    // above, so the coded reason and the turnover classification can never contradict each other.
+    terminationReasonCode: text('termination_reason_code'),
+    // Notice ACTUALLY served on this exit. The resignationNotice* / noticeAfterConfirmation* columns below
+    // are the contractual POLICY (what the contract requires); this is what happened.
+    terminationNoticeDays: integer('termination_notice_days'),
     // Inter-company cost split for shared-services staff (ADR-0009): [{ companyId, percent }].
     costAllocation: jsonb('cost_allocation'),
     // Clocking Location & Geofencing (ADR-0070): per-employee enforcement toggle + radius. Mirrors the
@@ -1300,9 +1309,30 @@ export const leaveType = pgTable('leave_type', {
   //   carryForwardIncludeEarned — `accrual.carryForwardIncludeEarned`. Config-only in the engine too (the
   //     include-monthly-earned-balance behaviour is still deferred); it round-trips so HR can set it.
   carryForwardIncludeEarned: boolean('carry_forward_include_earned'),
-  //   roundingMethod — 'none' | 'up' | 'down' (b81d3c52). NULL ⇒ none. Only 'up'/'down' are ever written by
-  //     the backfill, mirroring resolveGradePolicy, which honours nothing else.
-  roundingMethod: text('rounding_method').$type<'none' | 'up' | 'down'>(),
+  //   roundingMethod — 'none' | 'up' | 'down' (b81d3c52) | 'nearest_half' (9f5164d8, migration 0335).
+  //     NULL ⇒ none. Only 'up'/'down' were ever written by the 0325 backfill, mirroring resolveGradePolicy,
+  //     which honoured nothing else; 'nearest_half' is only ever written by a deliberate admin save.
+  roundingMethod: text('rounding_method').$type<'none' | 'up' | 'down' | 'nearest_half'>(),
+  //   roundingThreshold — 9f5164d8 (migration 0335): the decimal point at which the fractional part of a
+  //     calculated entitlement rounds UP to the next 0.5 instead of DOWN to the previous one. Read ONLY when
+  //     roundingMethod is 'nearest_half'; NULL ⇒ the reporter's documented standard rule (0.000–0.499 down,
+  //     0.500–1.000 up), i.e. 0.500. The reporter specified two complementary ranges over 0.000–1.000 whose
+  //     validation forbids gaps and overlaps — that shape has exactly one degree of freedom, the boundary,
+  //     which is what this column is. See DEFAULT_ROUNDING_THRESHOLD in core/leave-compute.ts.
+  roundingThreshold: numeric('rounding_threshold', { precision: 4, scale: 3 }),
+  // Application Limits (feedback c6ffa725, migration 0335): the maximum total days an employee may APPLY
+  // for, of this type, within one leave year — regardless of entitlement balance. The home for the
+  // reporter's Unpaid Leave case (entitlement 0, Leave Summary showing 0 available, applications still
+  // permitted up to a company figure).
+  //
+  // AN APPLICATION RULE, NOT AN ENTITLEMENT. No granting, accrual, carry-forward, rounding or
+  // balance-display path reads it. It is enforced in exactly two places, at submission and again at
+  // approval (enforceLeaveYearApplicationLimit in core/leave.ts) — either alone is bypassable.
+  //
+  // NULL ⇒ NO LIMIT, which is what every existing leave type means. There is deliberately no default: a
+  // silently-defaulted limit would begin refusing real leave applications the moment it deployed (the
+  // r82 precedent, scheme_leave_combined_limit.max_days_per_application).
+  maxDaysPerLeaveYear: numeric('max_days_per_leave_year', { precision: 6, scale: 2 }),
   //   maxBalanceDays — the Maximum Balance clamp (9d8cf621). NOTE its source: this exists TODAY only as a
   //     PER-SERVICE-BAND value inside `accrual.serviceBands[].maxBalanceDays`, never at policy level. The
   //     bands are the DAYS half of the split and move to scheme_leave_entitlement.service_bands, so the cap
@@ -1423,6 +1453,13 @@ export const benefitScheme = pgTable(
       .notNull()
       .references(() => company.id),
     employmentType: employmentTypeEnum('employment_type').notNull(),
+    // Scheme Category (feedback 0890a555, migration 0335): a grouping LABEL, and nothing more. It decides
+    // how schemes are bunched in the pickers that list them; it is deliberately read by no entitlement,
+    // eligibility or resolution path — resolveSchemeForEmployment, scheme_leave_entitlement and
+    // resolveGradePolicy never see it, so a scheme resolves for an employee identically whether its category
+    // is set, changed or cleared. Free text, because the reporter's own examples ("Contract (Special)",
+    // "Contract (Retiree)") are their wording for their own population. NULL ⇒ ungrouped.
+    schemeCategory: text('scheme_category'),
     // Nullable: a scheme can be defined before its grade group, or apply to an ungrouped population.
     gradeGroupId: uuid('grade_group_id').references(() => gradeGroup.id, { onDelete: 'set null' }),
     name: text('name').notNull(),
@@ -5711,4 +5748,44 @@ export const tenantProvisionRequestModule = pgTable(
     moduleCode: text('module_code').notNull(),
   },
   (t) => [primaryKey({ columns: [t.requestId, t.moduleCode] })],
+);
+
+// ─────────────── Personnel — Create New Employee drafts (feedback 6d671f44, migration 0337) ───────────────
+// Captured INPUT for the step-by-step Create New Employee wizard, deliberately NOT a partially-populated
+// person + employment. A draft creates nothing: it holds what HR has typed so far and, on the wizard's
+// final step, is replayed through the SAME writers a hand-entered hire uses (hireEmployee → the company
+// pack's statutory.set → setCompensation), then deleted. That is what makes every one of the reporter's
+// draft rules true by construction rather than by an exclusion added to each list read: a draft does not
+// appear as an employee, is not selected for payroll, triggers no statutory calculation, is absent from
+// reports, and — because `nextEmployeeCode` only runs inside hireEmployee — consumes no Employee ID.
+//
+// `data` is opaque to SQL. The wizard's field set IS the profile's field set; mirroring it as columns
+// would mean a migration every time the profile screen changes, and two definitions of "an employee's
+// details" that drift apart. `label` and `companyId` are lifted out only so the drafts LIST can show a
+// name and a company without parsing every payload.
+//
+// RLS (0337): visible to the AUTHOR or to an admin — a different rule from an employment's, because a
+// draft is not about a person yet. An admin can finish a colleague's draft, which is a real handover need.
+export const employeeDraft = pgTable(
+  'employee_draft',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Set once the Employment step picks a company; null before that. */
+    companyId: uuid('company_id').references(() => company.id),
+    /** The author, for the RLS visibility rule and the "started by" line in the list. */
+    createdByPersonId: uuid('created_by_person_id').references(() => person.id),
+    /** Full name typed so far — '' rather than null so the list never special-cases it. */
+    label: text('label').notNull().default(''),
+    /** Everything captured, step by step. See core/employee-draft.ts for the shape. */
+    data: jsonb('data').notNull().default({}),
+    /** Where the wizard reopens. 1-based, matching the on-screen step numbers. */
+    currentStep: integer('current_step').notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('employee_draft_tenant_updated_idx').on(t.tenantId, t.updatedAt),
+    index('employee_draft_author_idx').on(t.tenantId, t.createdByPersonId),
+  ],
 );

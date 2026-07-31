@@ -15,6 +15,11 @@ import { getTranslations } from 'next-intl/server';
  *
  * `emp` is threaded through every link so switching tab keeps the employee you are looking at — losing the
  * selection on each hop is the thing that makes an inquiry screen unusable.
+ *
+ * Width (feedback 026e16b9): the rail is `sm:w-44`, narrowed from `w-56`. Measured in a browser, the old
+ * width plus its gap took 248px off a 1232px content area and left the Employee Balances table overflowing
+ * by 136px — a rail holding three short labels was costing the table a horizontal scrollbar. Nothing else
+ * about the nav changed; the longest label still fits on one line at this width.
  */
 export async function LeaveInquiryNav({
   active,
@@ -31,7 +36,7 @@ export async function LeaveInquiryNav({
     { key: 'records', href: withEmp('/leave/employee-records'), label: t('employeeLeaveRecord') },
   ] as const;
   return (
-    <nav aria-label={t('navLabel')} className="shrink-0 sm:w-56">
+    <nav aria-label={t('navLabel')} className="shrink-0 sm:w-44">
       <ul className="flex gap-1 overflow-x-auto sm:flex-col sm:overflow-visible">
         {tabs.map((tab) => (
           <li key={tab.key}>

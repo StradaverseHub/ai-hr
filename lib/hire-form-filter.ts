@@ -17,12 +17,12 @@
  * (a shared-in department whose BU stayed origin-only), the BU rule degrades to "unassigned" so
  * the department is not permanently hidden the moment any BU is picked.
  *
- * `hireOptionVisible` is the single pure visibility rule. The page's inline script (kept pure-DOM,
- * no React client island — see the comment in `app/admin/personnel/page.tsx`) embeds this exact
- * function via `HIRE_ORG_FILTER_SCRIPT`, so the unit-tested logic and the shipped script cannot
- * drift. Keep the function body self-contained (no outer-scope references — the csv-contains
- * helper is inlined) — it is serialised with `Function.prototype.toString` into the inline
- * `<script>`.
+ * `hireOptionVisible` is the single pure visibility rule, and its one caller is now the Create New
+ * Employee wizard (app/admin/personnel/new/wizard.tsx), which is a client component and simply calls
+ * it. It used to be serialised into a pure-DOM inline `<script>` on the Personnel LIST page via
+ * `HIRE_ORG_FILTER_SCRIPT` — see the note where that constant used to be, at the foot of this file.
+ * The body is still written self-contained (the csv-contains helper is inlined) because that costs
+ * nothing and keeps it trivially portable.
  */
 
 export interface HireOptionVisibleArgs {
@@ -74,56 +74,19 @@ export function hireOptionVisible(args: HireOptionVisibleArgs): boolean {
 }
 
 /**
- * Inline script for the Hire form: Company → {BU, Department, Position, Cost Centre} cascade,
- * wrapping the original BU → Department cascade. Self-heals stale selections: a selection that
- * became hidden ALWAYS falls back to the '' placeholder option — the Department select now has a
- * disabled "Select a department" placeholder (still `required`, so submit stays blocked until a
- * real pick), which means switching Company CLEARS the previous pick instead of silently
- * auto-picking the new company's first department (Scenario 2 of feedback 570e3311). Options
- * without a `data-companies` stamp (the placeholders) are never re-stamped, so the Department
- * placeholder keeps its markup `disabled` state.
+ * 6d671f44 — `HIRE_ORG_FILTER_SCRIPT` USED TO LIVE HERE.
  *
- * Zero-visible-options empty state (feedback d61f0ff2): when a select ends up with NO visible
- * stamped options for the selected company, the sibling message element `<select id>-empty`
- * ("No organization labels are configured for the selected company", server-rendered per locale in
- * app/admin/personnel/page.tsx) is unhidden — an explained empty list instead of a bare placeholder.
+ * It was a pure-DOM inline script that embedded `hireOptionVisible` above via
+ * `Function.prototype.toString`, because the old hire form lived on a server-rendered list page with
+ * no client island to run the rule in. Create New Employee is now a dedicated CLIENT wizard
+ * (app/admin/personnel/new/wizard.tsx), which calls the rule directly — so the serialised copy, its
+ * hydration-parity dance (server-rendering the same initial hidden/disabled stamps the script would
+ * apply at parse time) and the `<id>-empty` toggle wiring are all gone with it.
+ *
+ * WHAT SURVIVED, because it is behaviour and not plumbing:
+ *   - `hireOptionVisible` — still the ONE definition of the visibility rule, now with one caller.
+ *   - the self-heal on company change: the wizard CLEARS department / position / cost centre rather
+ *     than auto-picking the first visible option (feedback 570e3311, scenario 2).
+ *   - the zero-visible-options message (feedback d61f0ff2), rendered from the same rule.
+ *   - the server-side `CrossCompanyError` guard in core/org.ts, which was always the real defence.
  */
-export const HIRE_ORG_FILTER_SCRIPT = `(function(){
-  var visible=${hireOptionVisible.toString()};
-  var company=document.getElementById('hire-company');
-  var bu=document.getElementById('hire-business-unit');
-  var dept=document.getElementById('hire-department');
-  var pos=document.getElementById('hire-position');
-  var cc=document.getElementById('hire-cost-center');
-  if(!company||!dept)return;
-  function applySelect(sel,useBu){
-    if(!sel)return;
-    var visCount=0;
-    for(var i=0;i<sel.options.length;i++){
-      var o=sel.options[i];
-      if(!o.getAttribute('data-companies'))continue;
-      var show=visible({
-        optCompanies:o.getAttribute('data-companies')||'',
-        optBusinessUnit:useBu?(o.getAttribute('data-business-unit')||''):null,
-        optBuCompanies:o.getAttribute('data-bu-companies')||'',
-        selectedCompany:company.value,
-        selectedBusinessUnit:useBu&&bu?bu.value:''
-      });
-      o.hidden=!show;o.disabled=!show;
-      if(show)visCount++;
-    }
-    var cur=sel.options[sel.selectedIndex];
-    if(!cur||cur.hidden){sel.value='';}
-    var empty=document.getElementById(sel.id+'-empty');
-    if(empty)empty.hidden=visCount>0;
-  }
-  function applyAll(){
-    applySelect(bu,false);
-    applySelect(dept,true);
-    applySelect(pos,false);
-    applySelect(cc,false);
-  }
-  company.addEventListener('change',applyAll);
-  if(bu)bu.addEventListener('change',function(){applySelect(dept,true);});
-  applyAll();
-})();`;

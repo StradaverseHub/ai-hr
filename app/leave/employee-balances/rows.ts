@@ -35,7 +35,11 @@ export async function employeeBalanceRows(
   locale: string,
   filter: { q?: string; typeIds?: string[]; dir?: 'asc' | 'desc' } = {},
 ): Promise<EmployeeBalanceRow[]> {
-  const balances = await leaveBalances(ctx, employmentId, locale);
+  // 994a5287: `includeHidden` — this is HR's own screen, so a leave type HR has hidden from EMPLOYEE
+  // self-service must still be listed here. Without it the reporter's "some Leave Types may not appear"
+  // reproduced exactly: a visible_to_employee=false type was absent from these rows. The eligible-but-
+  // inactive types (0.00, no ledger entry) were already handled inside leaveBalances since R18.
+  const balances = await leaveBalances(ctx, employmentId, locale, { includeHidden: true });
   const breakdowns = await Promise.all(
     balances.map((b) => leaveEntitlementBreakdown(ctx, employmentId, b.leaveTypeId, asOf, locale)),
   );

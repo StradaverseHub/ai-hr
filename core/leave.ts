@@ -36,6 +36,7 @@ import {
   entitledDays,
   hasAnyCarryExpiry,
   hasAnyLeaveTypeRule,
+  isEngineRoundingMethod,
   isValidMonthDay,
   isWellFormedBands,
   lastRealDayOfMonth,
@@ -44,7 +45,12 @@ import {
   resolveGradePolicy,
   resolveEffectiveSchemeId,
   schemeBandDays,
+  DEFAULT_ROUNDING_THRESHOLD,
+  ENGINE_ROUNDING_METHODS,
+  resolveRoundingThreshold,
+  roundingThresholdRanges,
   type AccrualConfig,
+  type EngineRoundingMethod,
   type BenefitSchemeRow,
   type CarryExpiry,
   type GradePolicyRow,
@@ -69,6 +75,7 @@ export {
   entitledDays,
   hasAnyCarryExpiry,
   hasAnyLeaveTypeRule,
+  isEngineRoundingMethod,
   isValidMonthDay,
   isWellFormedBands,
   lastRealDayOfMonth,
@@ -77,7 +84,12 @@ export {
   resolveGradePolicy,
   resolveEffectiveSchemeId,
   schemeBandDays,
+  DEFAULT_ROUNDING_THRESHOLD,
+  ENGINE_ROUNDING_METHODS,
+  resolveRoundingThreshold,
+  roundingThresholdRanges,
   type AccrualConfig,
+  type EngineRoundingMethod,
   type BenefitSchemeRow,
   type CarryExpiry,
   type GradePolicyRow,
@@ -200,6 +212,56 @@ export class CombinedLeaveApplicationTooLongError extends Error {
     this.poolName = poolName;
     this.maxDaysPerApplication = maxDaysPerApplication;
     this.requestedSpanDays = requestedSpanDays;
+  }
+}
+
+// Application Limits (feedback c6ffa725, migration 0335): this leave TYPE sets a maximum number of days an
+// employee may apply for within one leave year, and this application would push them past it.
+//
+// A THIRD, DISTINCT REFUSAL — deliberately not merged into either combined-pool error above. Those two are
+// properties of a SHARED POOL configured on a benefit scheme and they name the pool; this one is a property
+// of ONE leave type and names the type. An employee told "the shared pool is spent" when what is actually
+// full is Unpaid Leave's own annual ceiling would go and look at the wrong configuration. The three carry
+// their own names, their own payloads and their own localized messages
+// (test/leave-application-limit.test.ts asserts each by class AND payload, and `not.toBeInstanceOf` its
+// neighbours — a bare rejects.toThrow() passes on any throw, and this repo has been bitten by that twice).
+//
+// The reason it exists at all is that entitlement and application eligibility were tightly coupled: every
+// cap on how much leave may be taken worked by checking a BALANCE, and the reporter's cases (Unpaid Leave,
+// Prolonged Illness Leave) have no balance by design. Their Leave Summary must keep reading 0 available.
+//
+// The request is REFUSED, never silently shortened — the same rule the shared-group cap follows. Clipping an
+// application to the remaining allowance would approve dates the employee did not ask for.
+export class LeaveYearApplicationLimitExceededError extends Error {
+  readonly leaveTypeName: string;
+  readonly maxDaysPerLeaveYear: number;
+  /** Days of this type already applied for (pending + approved) inside the same leave year. */
+  readonly usedDays: number;
+  /** Days this application would add. */
+  readonly requestedDays: number;
+  /** The leave-year window the usage was measured over, ISO yyyy-mm-dd, inclusive of both ends. Carried so
+   *  an operator reading the error can tell WHICH year filled up — an anniversary-cycle type's year is not
+   *  the calendar year, and "you have used 14 of 14 days" is unanswerable without it. */
+  readonly yearStart: string;
+  readonly yearEnd: string;
+  constructor(p: {
+    leaveTypeName: string;
+    maxDaysPerLeaveYear: number;
+    usedDays: number;
+    requestedDays: number;
+    yearStart: string;
+    yearEnd: string;
+  }) {
+    super(
+      `Leave type "${p.leaveTypeName}" allows at most ${p.maxDaysPerLeaveYear} days per leave year (${p.yearStart}..${p.yearEnd}); ${p.usedDays} already applied for and this application adds ${p.requestedDays}`,
+    );
+    this.name = 'LeaveYearApplicationLimitExceededError';
+    this.leaveTypeName = p.leaveTypeName;
+    this.maxDaysPerLeaveYear = p.maxDaysPerLeaveYear;
+    this.usedDays = p.usedDays;
+    this.requestedDays = p.requestedDays;
+    this.yearStart = p.yearStart;
+    this.yearEnd = p.yearEnd;
   }
 }
 
@@ -1241,6 +1303,125 @@ async function enforceCombinedLeaveLimit(
   }
 }
 
+/**
+ * Application Limits (feedback c6ffa725) — THE LEAVE-YEAR WINDOW the annual application limit is measured
+ * over, as an inclusive [start, end] ISO pair.
+ *
+ * The boundary is read from the CYCLE, which `resolveLeaveYearCycle` resolves from the leave TYPE's own
+ * `year_cycle_override` falling back to the company's `leave_cycle`. That is the settled home for the
+ * question after 9816a5ad — `leave_policy` is deliberately not consulted, and neither is any second notion
+ * of "the year" invented here.
+ *
+ * `earnedCycleStart` is REUSED rather than restated. It is the existing, engine-wide definition of where an
+ * employee's anniversary cycle begins (hire-MONTH granularity, yyyy-mm-01), and the accrual engine already
+ * measures the year that way. A limit that counted over a subtly different window from the one the accrual
+ * engine grants over would be a second, quietly-disagreeing definition of the leave year — which is exactly
+ * the duplication the consolidation removed. A calendar cycle (including 'a2c', which resolves to calendar)
+ * is 1 Jan → 31 Dec, matching the combined-pool window and `leave_year_config`'s calendar keying.
+ *
+ * The end is computed by UTC date arithmetic on the date-only string, the convention the rest of this file
+ * uses: date-only maths in UTC is exact, and no instant is being converted, so no timezone is involved.
+ */
+export function leaveYearWindow(
+  hiredOn: string,
+  onDate: string,
+  cycle: string | null | undefined,
+): { start: string; end: string } {
+  const start = earnedCycleStart(hiredOn, onDate, cycle);
+  const [sy, sm, sd] = start.split('-').map(Number);
+  // One year on, minus one day — Date.UTC normalises the 29-Feb case (2024-02-29 + 1y ⇒ 2025-03-01, minus a
+  // day ⇒ 2025-02-28) rather than producing an impossible date.
+  const end = new Date(Date.UTC(sy + 1, sm - 1, sd) - 86_400_000).toISOString().slice(0, 10);
+  return { start, end };
+}
+
+/**
+ * Application Limits (feedback c6ffa725, migration 0335) — refuse an application that would push the
+ * employee past this leave TYPE's maximum days per leave year.
+ *
+ * NULL ⇒ no limit, and that is the state of every leave type in every existing database, so this is a no-op
+ * until an administrator deliberately types a figure in. There is no default (see migration 0335).
+ *
+ * WHAT IT COUNTS: days APPLIED FOR — every pending and approved request of this type whose start date falls
+ * inside the same leave year, minus the request being re-evaluated. Not the balance, not the ledger: the
+ * whole point of the setting is that it works for types with NO balance. It therefore reads exactly the same
+ * shape of usage the combined-pool rule already reads, over a window resolved from the leave type's own
+ * Leave Year Type instead of a hardcoded calendar year.
+ *
+ * WHAT IT DOES NOT TOUCH: entitlement, accrual, earning method, carry-forward, rounding, the ledger and the
+ * balance shown in Leave Summary. Nothing below writes.
+ *
+ * CALLED AT BOTH SUBMISSION AND APPROVAL, for the reason the shared-group cap is: a submit-only check is
+ * bypassed by anything already pending when the limit is set or tightened, and an approval-only check lets
+ * an employee file applications that will all be refused later. Neither alone is enforcement.
+ */
+async function enforceLeaveYearApplicationLimit(
+  tx: Tx,
+  p: {
+    employmentId: string;
+    leaveTypeId: string;
+    /** The application's FIRST date — the leave year it falls in is the year that is charged. */
+    startDate: string;
+    requestedDays: number;
+    excludeRequestId?: string;
+  },
+): Promise<void> {
+  if (p.requestedDays <= 0) return;
+  const [lt] = await tx
+    .select({
+      name: leaveType.name,
+      maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
+      yearCycleOverride: leaveType.yearCycleOverride,
+    })
+    .from(leaveType)
+    .where(eq(leaveType.id, p.leaveTypeId))
+    .limit(1);
+  // NULL ⇒ unlimited. A non-positive figure is refused by the DB CHECK and by the write-time validator, but
+  // the guard is restated here so a hand-edited row cannot refuse every application of a type.
+  if (!lt || lt.maxDaysPerLeaveYear == null) return;
+  const limit = Number(lt.maxDaysPerLeaveYear);
+  if (!Number.isFinite(limit) || limit <= 0) return;
+
+  const [emp] = await tx
+    .select({ companyId: employment.companyId, hiredOn: employment.hiredOn })
+    .from(employment)
+    .where(eq(employment.id, p.employmentId))
+    .limit(1);
+  if (!emp) return;
+  const [co] = await tx
+    .select({ leaveCycle: company.leaveCycle })
+    .from(company)
+    .where(eq(company.id, emp.companyId))
+    .limit(1);
+  const cycle = resolveLeaveYearCycle(lt.yearCycleOverride, co?.leaveCycle ?? null);
+  const { start, end } = leaveYearWindow(String(emp.hiredOn), p.startDate, cycle);
+
+  const [used] = await tx
+    .select({ total: sql<string>`coalesce(sum(${leaveRequest.days}), 0)` })
+    .from(leaveRequest)
+    .where(
+      and(
+        eq(leaveRequest.employmentId, p.employmentId),
+        eq(leaveRequest.leaveTypeId, p.leaveTypeId),
+        inArray(leaveRequest.status, ['pending', 'approved']),
+        gte(leaveRequest.startDate, start),
+        lte(leaveRequest.startDate, end),
+        ...(p.excludeRequestId ? [sql`${leaveRequest.id} <> ${p.excludeRequestId}`] : []),
+      ),
+    );
+  const usedDays = round2(Number(used?.total ?? 0));
+  if (round2(usedDays + p.requestedDays) > limit) {
+    throw new LeaveYearApplicationLimitExceededError({
+      leaveTypeName: lt.name,
+      maxDaysPerLeaveYear: limit,
+      usedDays,
+      requestedDays: p.requestedDays,
+      yearStart: start,
+      yearEnd: end,
+    });
+  }
+}
+
 // ── Emergency Leave (0106) ─────────────────────────────────────────────────────────────────────────
 // EL is an APPLICATION TYPE ONLY (no balance, no ledger). On submission requestLeave decomposes it into
 // up to two ordinary child requests over the same dates: an ANNUAL request for the AL-covered portion and
@@ -1966,6 +2147,17 @@ export async function requestLeave(
       leaveTypeId: p.leaveTypeId,
       startDate: p.startDate,
       endDate: p.endDate,
+      requestedDays: days,
+    });
+
+    // Application Limits (c6ffa725): the leave TYPE's own maximum days per leave year — the rule that works
+    // for types with NO entitlement balance (Unpaid Leave, Prolonged Illness Leave). Runs AFTER the balance
+    // gate and the pool gate, deliberately: those are the rules an employee is most likely to be hitting,
+    // and an unconfigured limit (every existing type) makes this a no-op query-and-return.
+    await enforceLeaveYearApplicationLimit(tx, {
+      employmentId: p.employmentId,
+      leaveTypeId: p.leaveTypeId,
+      startDate: p.startDate,
       requestedDays: days,
     });
 
@@ -3043,6 +3235,18 @@ async function finalizeLeaveApproval(
     leaveTypeId: req.leaveTypeId,
     startDate: req.startDate,
     endDate: req.endDate,
+    requestedDays: approvedDays,
+    excludeRequestId: req.id,
+  });
+  // Application Limits (c6ffa725): re-check the TYPE's annual application ceiling at approval, for the same
+  // reason the pool limit is re-checked — a limit set or tightened after submission, or a second approver
+  // clearing a stale pending set, must not be approvable through. THIS request is excluded from the usage
+  // sum and its days added back, so the pending row it represents is counted exactly once. Counts the days
+  // TAKEN (approvedDays), unpaid ones included: this caps absence, not balance spend.
+  await enforceLeaveYearApplicationLimit(tx, {
+    employmentId: req.employmentId,
+    leaveTypeId: req.leaveTypeId,
+    startDate: req.startDate,
     requestedDays: approvedDays,
     excludeRequestId: req.id,
   });
@@ -5323,6 +5527,10 @@ export const leaveTypeRuleColumns = {
   carryForwardExpiryDay: leaveType.carryForwardExpiryDay,
   carryForwardIncludeEarned: leaveType.carryForwardIncludeEarned,
   roundingMethod: leaveType.roundingMethod,
+  // 9f5164d8 (0335): the eleventh column. Added HERE rather than at any call site for exactly the reason
+  // the header gives — a rounding threshold read by the grant engine but not by the projection kernel
+  // would post a permanent oscillating delta on every reproject.
+  roundingThreshold: leaveType.roundingThreshold,
   maxBalanceDays: leaveType.maxBalanceDays,
 } as const;
 
@@ -5509,7 +5717,7 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         // / the recalc kernel's projection) so the ledger and the kernel can never disagree. The carry-in
         // (`rawCarry`) is deliberately NOT rounded — a fractional carry-over plus a whole-day grant still
         // yields a fractional balance; rounding shapes the ENTITLEMENT, not every balance.
-        const grantRounded = applyRounding(days, pol?.roundingMethod);
+        const grantRounded = applyRounding(days, pol?.roundingMethod, pol?.roundingThreshold);
         // Feedback 9d8cf621 — Maximum Balance Days: clamp the carry-in AND this year's grant so the
         // resulting balance (carry + grant) never exceeds the resolved band's cap. Reducing the carry
         // increases the forfeit below by construction (forfeit = before − carry). No cap ⇒ pass-through.
@@ -6084,7 +6292,7 @@ export async function accrueEarnedLeave(
         // guard never posts a NEGATIVE top-up, switching to 'down' mid-cycle cannot claw back what is
         // already credited — only forward periods accrue less (the forward-only contract; the save-time
         // recalc kernel deliberately does not reproject on a rounding-only edit either).
-        earnedToDate = applyRounding(earnedToDate, pol!.roundingMethod);
+        earnedToDate = applyRounding(earnedToDate, pol!.roundingMethod, pol!.roundingThreshold);
         // Feedback 9d8cf621 — Maximum Balance Days: cap the cumulative earned so retainedCarry + earned
         // never exceeds the cap (i.e. the running balance stays ≤ cap across the cycle). null ⇒ no cap.
         if (pol!.maxBalanceDays != null) {
@@ -6270,7 +6478,7 @@ export function projectExpectedEntitlement(
   // joiner pro-ration, full grant). REQUIRED for ledger agreement: without it, any reproject triggered by
   // an unrelated days/method change would compare a raw projection against a rounded ledger and post a
   // permanent oscillating delta. `pol` null (floor-only / scheme-only) ⇒ no method ⇒ pass-through.
-  expected = applyRounding(expected, pol?.roundingMethod);
+  expected = applyRounding(expected, pol?.roundingMethod, pol?.roundingThreshold);
   // Feedback 9d8cf621 mirrored into the kernel (ae5b84d5): the winning band's Maximum Balance cap bounds
   // what the granting engines will ever materialize this cycle (applyMaxBalance at year-open/hire; the
   // earned room-cap in accrueEarnedLeave), so the projection must not exceed it either — on BOTH the

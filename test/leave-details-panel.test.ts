@@ -1,17 +1,23 @@
 /**
- * Leave Details Side Panel (feedback 584edf44) — configurable Calculation-Breakdown-Display framework.
+ * Leave Details Side Panel (feedback 584edf44) — configurable Calculation-Breakdown-Display framework,
+ * REBUILT to the reporter's Leave Balance Summary by feedback 1f6fd6d8.
  *
- * DB-free / jsdom-free guard (the suite has no DOM runner). It proves the item's CORE property: the panel is
- * driven by a DECLARATIVE descriptor (entitlement-panel-config.ts) covering the reporter's sections in
- * order, each field either PICKING an already-computed value (no hardcoded formula) or — for a not-yet-mapped
- * label — carrying NO `select` so the panel renders a placeholder. Plus source guards that the inline expand
- * became a Radix right side-sheet, the ?asOf= form was preserved, ESS-view + visual behaviour survives, and
- * both call sites feed the new §1 summary / visual props.
+ * DB-free / jsdom-free guard (the suite has no DOM runner). It proves two things:
  *
- * Sync Employee Leave View Configuration (feedback 11876072): the §5 Upcoming Leave section is REMOVED from
- * the panel (and its `upcomingApprovedLeave` toggle from core/ess-view.ts), and the admin ESS-view checklist
- * is now GROUPED by the panel's own sections via ESS_VIEW_CHECKLIST_GROUPS — the drift guards below assert
- * the grouping is derived from ENTITLEMENT_PANEL_SECTIONS and covers every configurable key exactly once.
+ *   1. The panel is still driven by a DECLARATIVE descriptor (entitlement-panel-config.ts) — every row PICKS
+ *      an already-computed value, no formula is hardcoded, and the layout the reporter specified (order,
+ *      signs, dividing rules, emphasised results, the expiry sub-line) is declared as data rather than as
+ *      JSX. That property is what makes a future line one entry instead of a redesign.
+ *
+ *   2. THE COLUMN ADDS UP, and it adds up onto the authoritative Available Balance. This is the substance of
+ *      the item: Total = Eligible-independent sums of the ledger partition, and
+ *      Total − Taken − Pending − Forfeited = Available. Asserted here on a fixture that satisfies the
+ *      server's reconciliation identity, so a descriptor edit that quietly repoints a row at a different
+ *      bucket fails rather than merely looks different.
+ *
+ * Also pinned: the four removed sections cannot come back, and the admin checklist is DERIVED from this
+ * descriptor (ed17a4f9's synchronisation requirement) so the configuration screen and the summary cannot
+ * drift apart.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -30,26 +36,29 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 // A synthetic, fully-populated envelope — every field's `select` is a pure pick over this (no formula).
 //
-// The 0315dac7 ledger-partition figures are deliberately chosen so each new bucket is DISTINCT from the legacy
-// derived figure it replaced (broughtForward 5 vs carriedForward 4, forfeitedThisCycle 3 vs forfeited 1,
-// configAdjustments 4 vs the commingled otherAdjustments 5) — otherwise a repointed line would pass by
-// coincidence. They also satisfy the reconciliation identity:
+// The figures satisfy the server's reconciliation identity, and each bucket is deliberately DISTINCT from
+// the legacy derived figure it replaced (broughtForward 5 vs carriedForward 4, forfeitedThisCycle 3 vs
+// forfeited 1) so a mis-pointed row cannot pass by coincidence:
 //   5 (brought forward) + 12 (entitled) + 4 (config) + 1 (system) − 3 (forfeited) − 2 (taken) = 17 = balance
 //   17 (balance) − 1 (pending) = 16 = totalAvailable
+// and the two 1f6fd6d8 roll-ups over the same buckets:
+//   adjustments      = 4 + 1                 = 5
+//   totalEntitlement = 5 + 12 + 5            = 22
+// Eligible (20) is deliberately NOT equal to the granted-to-date 12: a full-year entitlement that is only
+// partly granted is the ordinary case, and conflating the two is the exact mistake the deviation avoids.
 const DATA: PanelData = {
   breakdown: {
     leaveTypeId: 'lt1',
     leaveType: 'Annual Leave',
     asOf: '2026-02-15',
     cycleStart: '2026-01-01',
+    eligibleDays: 20,
     currentYearEntitlement: 12,
     monthlyAccruedToDate: 2,
     carriedForward: 4,
     carryForwardRemaining: 3,
     carryForwardExpiryDate: '2026-03-31',
     forfeited: 1,
-    // Commingled legacy figure = config 4 + system 1. Still fed to the balance TABLE's Adjustment column;
-    // the panel's Adjustment line no longer reads it.
     otherAdjustments: 5,
     balance: 17,
     pendingApproval: 1,
@@ -58,226 +67,129 @@ const DATA: PanelData = {
     systemAdjustments: 1,
     forfeitedThisCycle: 3,
     takenThisCycle: 2,
-    configAdjustmentItems: [
-      { effectiveOn: '2026-02-01', days: 3, reason: 'CNY 2026' },
-      { effectiveOn: '2026-02-10', days: 1, reason: null },
-    ],
+    configAdjustmentItems: [],
+    adjustments: 5,
+    totalEntitlement: 22,
     totalAvailable: 16,
     transactions: [
       { effectiveOn: '2026-01-01', entryType: 'accrual', days: 12, sourceRequestId: null, reason: null },
     ],
     essView: {},
   },
-  // §1 Balance (6574c6b4): the authoritative ledger remaining (b.balance), passed straight into summary.balance
-  // by the call site — no longer re-derived here. 17 is this fixture's ledger figure; the field just picks it.
-  summary: { available: 15, taken: 2, pending: 1, ytdEntitled: 12, balance: 17 },
+  // The authoritative bookable figure from leaveBalances — the ONE line not taken from the breakdown.
+  summary: { available: 16 },
 };
 
-describe('entitlement-panel-config: sections in order (1dd4d827 removed §6, 11876072 removed §5)', () => {
-  it('no longer declares the §6 transactions, §2 entitlement or §5 upcoming sections; calcBreakdown at order 2', () => {
-    const keys = ENTITLEMENT_PANEL_SECTIONS.map((s) => s.key);
-    // §6 Transaction History (1dd4d827), §2 Entitlement Breakdown (e503f284) and §5 Upcoming Leave (11876072)
-    // are all removed; the remaining four descriptor entries keep their declared order values (array order is
-    // unchanged: calcBreakdown was re-numbered from 7 to 2 in place).
-    expect(keys).toEqual([
-      'summary',
-      'utilization',
-      'adjustments',
-      'calcBreakdown',
-      // 0315dac7: the consolidated "how this adds up" reconciliation block.
-      'reconciliation',
-    ]);
-    // e503f284: §2 "Entitlement Breakdown" is gone and §7 "Entitlement Calculation Breakdown" now sorts to
-    // order 2 — immediately after the summary (order 1), the slot §2 used to hold.
-    expect(keys).not.toContain('entitlement');
-    const byKey = Object.fromEntries(ENTITLEMENT_PANEL_SECTIONS.map((s) => [s.key, s]));
-    expect(byKey.calcBreakdown.order).toBe(2);
-    const sorted = [...ENTITLEMENT_PANEL_SECTIONS].sort((a, b) => a.order - b.order).map((s) => s.key);
-    // The reconciliation block sorts LAST — it is the summing-up of everything above it.
-    expect(sorted).toEqual(['summary', 'calcBreakdown', 'utilization', 'adjustments', 'reconciliation']);
-    // Universal removals: no leave type / ESS config can re-surface either — the descriptor entries are gone.
-    expect(keys).not.toContain('transactions');
-    expect(keys).not.toContain('upcoming');
-  });
+const summary = () => ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === 'summary')!;
+const field = (fieldKey: string) => summary().fields!.find((f) => f.key === fieldKey)!;
+const value = (fieldKey: string) => field(fieldKey).select!(DATA) as number;
 
-  it('11876072: the Upcoming Leave toggle is gone from the closed ess-view key list too', () => {
-    // The §5 section AND its per-type toggle are removed together — a stored legacy `upcomingApprovedLeave`
-    // entry is ignored on read (resolveEssView drops unknown keys; asserted in leave-ess-view-config.test.ts).
-    expect(ESS_VIEW_COMPONENT_KEYS).not.toContain('upcomingApprovedLeave');
-    // The remaining section-level gate is unchanged.
-    const byKey = Object.fromEntries(ENTITLEMENT_PANEL_SECTIONS.map((s) => [s.key, s]));
-    expect(byKey.calcBreakdown.essKey).toBe('entitlementCalcBreakdown');
-    expect(byKey.transactions).toBeUndefined();
-    expect(byKey.upcoming).toBeUndefined();
-  });
-
-  it('a future breakdown line is one descriptor entry (fields carry key + labelKey, no JSX)', () => {
-    for (const s of ENTITLEMENT_PANEL_SECTIONS) {
-      for (const f of s.fields ?? []) {
-        expect(typeof f.key).toBe('string');
-        expect(typeof f.labelKey).toBe('string');
-      }
+describe('1f6fd6d8: the panel is ONE Leave Summary column in the reporter’s order', () => {
+  it('declares exactly one section, and the four overlapping ones cannot come back', () => {
+    expect(ENTITLEMENT_PANEL_SECTIONS.map((s) => s.key)).toEqual(['summary']);
+    // Each of these was its own section before the redesign. The descriptor entry is GONE, so no leave type
+    // and no stored ESS config can re-surface any of them.
+    for (const gone of ['utilization', 'adjustments', 'calcBreakdown', 'reconciliation', 'entitlement', 'transactions', 'upcoming']) {
+      expect(ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === gone), `${gone} must be removed`).toBeUndefined();
     }
   });
+
+  it('lists the nine rows the reporter specified, in their order', () => {
+    expect(summary().fields!.map((f) => f.key)).toEqual([
+      'eligible',
+      'ytdEntitled',
+      'broughtForward',
+      'adjustment',
+      'total',
+      'taken',
+      'pendingApproval',
+      'forfeited',
+      'available',
+    ]);
+  });
+
+  it('every row is configurable and carries a static tooltip (nothing shows without a switch)', () => {
+    for (const f of summary().fields!) {
+      expect(typeof f.key).toBe('string');
+      expect(typeof f.labelKey).toBe('string');
+      expect(f.essKey, `${f.key} must be ESS-configurable`).toBeTruthy();
+      expect(typeof f.tooltipKey, `${f.key} needs a static tooltip`).toBe('string');
+    }
+  });
+
+  it('declares the LAYOUT as data: signed addends, two rules, two emphasised results, the expiry note', () => {
+    // The reporter supplied a layout, not just a list. Declaring it here rather than in JSX is what keeps a
+    // future line a one-entry change.
+    expect(summary().fields!.filter((f) => f.sign === '+').map((f) => f.key)).toEqual(['broughtForward', 'adjustment']);
+    expect(summary().fields!.filter((f) => f.sign === '-').map((f) => f.key)).toEqual(['taken', 'pendingApproval', 'forfeited']);
+    // A rule above each subtotal, and only there.
+    expect(summary().fields!.filter((f) => f.ruleBefore).map((f) => f.key)).toEqual(['total', 'available']);
+    expect(summary().fields!.filter((f) => f.emphasis === 'result').map((f) => f.key)).toEqual(['total', 'available']);
+    // Brought Forward Forfeited carries the expiry date as its own sub-line, not as a separate row.
+    expect(field('forfeited').noteSelect!(DATA)).toBe('2026-03-31');
+    expect(field('forfeited').noteLabelKey).toBe('expiresOn');
+    // …and no OTHER row does, so the date appears exactly once, beside the figure it explains.
+    expect(summary().fields!.filter((f) => f.noteSelect).map((f) => f.key)).toEqual(['forfeited']);
+  });
 });
 
-describe('entitlement-panel-config: fields PICK existing values (no hardcoded formula)', () => {
-  const field = (sectionKey: string, fieldKey: string) => {
-    const s = ENTITLEMENT_PANEL_SECTIONS.find((x) => x.key === sectionKey)!;
-    return s.fields!.find((f) => f.key === fieldKey)!;
-  };
-
-  it('§1 summary reads the balance-row figures (available/taken/pending/ytdEntitled) + picks Balance', () => {
-    expect(field('summary', 'available').select!(DATA)).toBe(15);
-    expect(field('summary', 'taken').select!(DATA)).toBe(2);
-    expect(field('summary', 'pendingApproval').select!(DATA)).toBe(1);
-    expect(field('summary', 'ytdEntitled').select!(DATA)).toBe(12);
-    // Balance (877f2f37) is a declarative PICK of the precomputed d.summary.balance, not a hardcoded formula.
-    expect(field('summary', 'balance').select!(DATA)).toBe(17);
-  });
-
-  it('§1 summary is reordered YTD Entitled → Taken → Pending → Available → Balance, each with a static tooltip', () => {
-    const summary = ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === 'summary')!;
-    expect(summary.fields!.map((f) => f.key)).toEqual(['ytdEntitled', 'taken', 'pendingApproval', 'available', 'balance']);
-    // Every summary row carries a STATIC hover tooltip (no HR config); Balance is never ESS-gated (no essKey).
-    expect(summary.fields!.every((f) => typeof f.tooltipKey === 'string')).toBe(true);
-    expect(summary.fields!.find((f) => f.key === 'balance')!.essKey).toBeUndefined();
-  });
-
-  it('§1 Balance is a plain pick of d.summary.balance — the call site passes b.balance directly (6574c6b4)', () => {
-    // deriveSummaryBalance is DELETED: the old panel formula double-subtracted forfeited and re-added carry/
-    // adjustments over the ledger sum. The ledger remaining (b.balance) is now passed straight into
-    // summary.balance, so the panel and the balance table always show the same authoritative figure.
-    const balanceField = ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === 'summary')!.fields!.find((f) => f.key === 'balance')!;
-    expect(balanceField.select!(DATA)).toBe(DATA.summary.balance);
-    // Mei Ling regression: a true +14 flows through untouched (no re-derivation).
-    expect(balanceField.select!({ ...DATA, summary: { ...DATA.summary, balance: 14 } })).toBe(14);
-  });
-
-  it('the §7 calc-breakdown carries the engine figures §2 used to duplicate (e503f284 removed §2)', () => {
-    // §2 "Entitlement Breakdown" is removed; its engine figures live on in §7 (currentYearEntitlement =
-    // entitlement-to-date, carriedForward = brought-forward, plus carry-forward expiry + forfeited).
-    expect(field('calcBreakdown', 'currentYearEntitlement').select!(DATA)).toBe(12);
-    expect(field('calcBreakdown', 'carryForwardExpiry').select!(DATA)).toBe('2026-03-31');
-  });
-
-  it('0315dac7: §7 Carried forward / Forfeited read the LEDGER buckets, not the derived carry arithmetic', () => {
-    // Carried forward now shows broughtForward (the raw signed balance that crossed the boundary, 5), NOT the
-    // post-cap derived `carriedForward` (4) — one carried number, and the one the reconciliation sums.
-    expect(field('calcBreakdown', 'carriedForward').select!(DATA)).toBe(DATA.breakdown.broughtForward);
-    expect(field('calcBreakdown', 'carriedForward').select!(DATA)).not.toBe(DATA.breakdown.carriedForward);
-    // Forfeited now sums the ACTUAL forfeit ledger rows (3), not the derived cap-excess (1) that
+describe('1f6fd6d8: every row PICKS a precomputed figure (no hardcoded formula)', () => {
+  it('reads the ledger partition, not the derived carry arithmetic', () => {
+    expect(value('eligible')).toBe(20);
+    expect(value('ytdEntitled')).toBe(12);
+    expect(value('broughtForward')).toBe(5);
+    expect(value('adjustment')).toBe(5);
+    expect(value('total')).toBe(22);
+    expect(value('taken')).toBe(2);
+    expect(value('pendingApproval')).toBe(1);
+    expect(value('forfeited')).toBe(3);
+    expect(value('available')).toBe(16);
+    // Brought Forward is the RAW signed figure that crossed the boundary (5), never the post-cap derived
+    // `carriedForward` (4) — one carried number, and the one the identity sums.
+    expect(value('broughtForward')).not.toBe(DATA.breakdown.carriedForward);
+    // Forfeited sums the ACTUAL forfeit ledger rows (3), not the derived cap-excess (1) which
     // double-subtracted whenever a year-open cap or maxBalanceDays clamp fired.
-    expect(field('calcBreakdown', 'forfeited').select!(DATA)).toBe(DATA.breakdown.forfeitedThisCycle);
-    expect(field('calcBreakdown', 'forfeited').select!(DATA)).not.toBe(DATA.breakdown.forfeited);
-    // The annual-carry DETAIL lines are untouched — they stay as the carry-specific explanation.
-    expect(field('calcBreakdown', 'carryForwardRemaining').select!(DATA)).toBe(3);
+    expect(value('forfeited')).not.toBe(DATA.breakdown.forfeited);
+    // Adjustments is the ONE line: config + system, not the commingled legacy otherAdjustments.
+    expect(value('adjustment')).toBe(DATA.breakdown.configAdjustments + DATA.breakdown.systemAdjustments);
   });
 
-  it('0315dac7 ask 1: §4 Adjustment = configAdjustments (the Adjustment config), system corrections split out', () => {
-    // The Adjustment line ties to Leave Config → Entitlement → Adjustment ONLY. The commingled
-    // otherAdjustments (5 = config 4 + system 1) is no longer what the employee sees on this line.
-    expect(field('adjustments', 'adjustment').select!(DATA)).toBe(DATA.breakdown.configAdjustments);
-    expect(field('adjustments', 'adjustment').select!(DATA)).not.toBe(DATA.breakdown.otherAdjustments);
-    // The automatic corrections get their own labelled line rather than hiding inside "Adjustment".
-    expect(field('adjustments', 'systemCorrection').select!(DATA)).toBe(DATA.breakdown.systemAdjustments);
-    // Both hide together behind HR's single Adjustment toggle.
-    expect(field('adjustments', 'adjustment').essKey).toBe('adjustment');
-    expect(field('adjustments', 'systemCorrection').essKey).toBe('adjustment');
+  it('THE COLUMN ADDS UP — Total, then down to the Available Balance the rest of the system shows', () => {
+    // This is the item. Reading the panel top to bottom must arrive at the last line.
+    expect(value('broughtForward') + value('ytdEntitled') + value('adjustment')).toBe(value('total'));
+    expect(value('total') - value('taken') - value('pendingApproval') - value('forfeited')).toBe(value('available'));
+    // …and the last line is the AUTHORITATIVE figure from leaveBalances, not one this screen worked out.
+    // If it were recomputed from the lines above, this screen and the leave-apply popup could diverge —
+    // which the reporter called out in the strongest terms.
+    expect(field('available').select!(DATA)).toBe(DATA.summary.available);
+    expect(field('available').select!({ ...DATA, summary: { available: 99 } })).toBe(99);
   });
 
-  it('0315dac7: §4 itemises each CONFIG adjustment with its own reason + day count, and they sum to the line', () => {
-    const section = ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === 'adjustments')!;
-    const items = section.itemsSelect!(DATA);
-    expect(items.map((i) => ({ label: i.label, value: i.value, note: i.note }))).toEqual([
-      { label: 'CNY 2026', value: 3, note: '2026-02-01' },
-      // A row with no typed reason keeps its days and lets the panel render its own fallback copy.
-      { label: null, value: 1, note: '2026-02-10' },
-    ]);
-    // The itemisation must account for the whole Adjustment figure — otherwise it explains nothing.
-    expect(items.reduce((s, i) => s + i.value, 0)).toBe(DATA.breakdown.configAdjustments);
-    // Config rows ONLY — system corrections are machine-posted and stay a single summarised line, and this
-    // is deliberately NOT a revival of the removed §6 generic transaction table.
-    expect(items.length).toBe(DATA.breakdown.configAdjustmentItems.length);
-    expect(section.itemsEssKey).toBe('adjustment');
-  });
-
-  it('§7 calc-breakdown surfaces the engine values verbatim, incl. total available', () => {
-    expect(field('calcBreakdown', 'currentYearEntitlement').select!(DATA)).toBe(12);
-    expect(field('calcBreakdown', 'carryForwardRemaining').select!(DATA)).toBe(3);
-    expect(field('calcBreakdown', 'totalAvailable').select!(DATA)).toBe(16);
-    // monthlyAccrued is omitWhenNull so a grant-on-open type hides the row rather than showing a placeholder.
-    expect(field('calcBreakdown', 'monthlyAccrued').omitWhenNull).toBe(true);
-  });
-});
-
-describe('0315dac7 ask 3: the consolidated "how this adds up" reconciliation block', () => {
-  const recon = () => ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === 'reconciliation')!;
-
-  it('co-locates all six addends with = Balance and − Pending = Available, in that reading order', () => {
-    // The reporter could not follow the Balance because the addends were SCATTERED across §1/§4/§7. Every
-    // part of the sum now appears together, in the order it is added.
-    expect(recon().fields!.map((f) => f.key)).toEqual([
-      'reconBroughtForward',
-      'reconEntitled',
-      'reconConfigAdjustments',
-      'reconSystemAdjustments',
-      'reconForfeited',
-      'reconTaken',
-      'reconBalance',
-      'reconPending',
-      'reconAvailable',
-    ]);
-    // A caption spells the formula out in words above the lines.
-    expect(recon().captionKey).toBe('reconcile.caption');
-  });
-
-  it('every line is a plain PICK of a precomputed bucket, and the lines ADD UP to the Balance shown', () => {
-    const v = (k: string) => recon().fields!.find((f) => f.key === k)!.select!(DATA) as number;
-    expect(v('reconBroughtForward')).toBe(5);
-    expect(v('reconEntitled')).toBe(12);
-    expect(v('reconConfigAdjustments')).toBe(4);
-    expect(v('reconSystemAdjustments')).toBe(1);
-    expect(v('reconForfeited')).toBe(3);
-    expect(v('reconTaken')).toBe(2);
-    // The whole point: what the user reads off the block equals the Balance line it ends on.
-    expect(v('reconBroughtForward') + v('reconEntitled') + v('reconConfigAdjustments') + v('reconSystemAdjustments') - v('reconForfeited') - v('reconTaken')).toBe(v('reconBalance'));
-    expect(v('reconBalance') - v('reconPending')).toBe(v('reconAvailable'));
-    // …and the exported identity helper (shared with the server-side reconciliation test) agrees.
+  it('the arithmetic holds because the server buckets tile the ledger (the identity, not an agreement)', () => {
     expect(reconciledBalance(DATA.breakdown)).toBe(DATA.breakdown.balance);
+    expect(DATA.breakdown.balance - DATA.breakdown.pendingApproval).toBe(DATA.breakdown.totalAvailable);
+    // The two roll-ups the summary reads are sums of exactly those buckets.
+    const addends = Object.fromEntries(RECONCILIATION_ADDENDS.map((a) => [a.key, a.sign]));
+    expect(addends.forfeitedThisCycle).toBe(-1);
+    expect(addends.takenThisCycle).toBe(-1);
+    expect(DATA.breakdown.adjustments).toBe(DATA.breakdown.configAdjustments + DATA.breakdown.systemAdjustments);
+    expect(DATA.breakdown.totalEntitlement).toBe(
+      DATA.breakdown.broughtForward + DATA.breakdown.currentYearEntitlement + DATA.breakdown.adjustments,
+    );
   });
 
-  it('the rendered addends and RECONCILIATION_ADDENDS cannot drift apart', () => {
-    // A line added to the block without a matching addend (or vice-versa) would silently stop the block
-    // adding up. Assert the two lists describe the same six buckets.
-    const rendered = recon()
-      .fields!.filter((f) => f.key.startsWith('recon') && !['reconBalance', 'reconPending', 'reconAvailable'].includes(f.key))
-      .map((f) => f.select!(DATA) as number);
-    const declared = RECONCILIATION_ADDENDS.map((a) => DATA.breakdown[a.key] as number);
-    expect(rendered).toEqual(declared);
-    expect(RECONCILIATION_ADDENDS.filter((a) => a.sign === -1).map((a) => a.key)).toEqual([
-      'forfeitedThisCycle',
-      'takenThisCycle',
-    ]);
-  });
-
-  it('is never ESS-gated — a half-hidden transparency block would show a sum that does not add up', () => {
-    expect(recon().essKey).toBeUndefined();
-    expect(recon().fields!.every((f) => f.essKey === undefined)).toBe(true);
-  });
-});
-
-describe('entitlement-panel-config: not-yet-mapped labels carry NO select (placeholder path)', () => {
-  it('§3 unplanned/overutilized are configured labels only (§2 removed, e503f284)', () => {
-    const noSelect = (sk: string, fk: string) => {
-      const s = ENTITLEMENT_PANEL_SECTIONS.find((x) => x.key === sk)!;
-      return s.fields!.find((f) => f.key === fk)!.select;
-    };
-    expect(noSelect('utilization', 'unplanned')).toBeUndefined();
-    expect(noSelect('utilization', 'overutilized')).toBeUndefined();
-    // …yet they still carry an ess key so HR can show/hide them and a future enhancement wires the value.
-    const util = ENTITLEMENT_PANEL_SECTIONS.find((x) => x.key === 'utilization')!;
-    expect(util.fields!.map((f) => f.essKey)).toEqual(['unplanned', 'overutilized']);
+  it('THE RECORDED DEVIATION: YTD Entitled is the granted-to-date LEDGER figure, not a prorated projection', () => {
+    // The reporter's formula was Eligible × (elapsed ÷ year). For the ten up-front-granted policies the full
+    // grant is already in the ledger on day one, so a part-year share would stop the column reaching
+    // Available Balance. Rendering the ledger figure keeps the column closed for BOTH earning methods.
+    // Guard: YTD Entitled must never be derived from Eligible.
+    expect(value('ytdEntitled')).toBe(DATA.breakdown.currentYearEntitlement);
+    expect(value('ytdEntitled')).not.toBe(DATA.breakdown.eligibleDays);
+    // Changing Eligible alone must move NOTHING else on the column — proof there is no projection wired in.
+    const richer: PanelData = { ...DATA, breakdown: { ...DATA.breakdown, eligibleDays: 200 } };
+    expect(field('ytdEntitled').select!(richer)).toBe(12);
+    expect(field('total').select!(richer)).toBe(22);
+    expect(field('available').select!(richer)).toBe(16);
   });
 });
 
@@ -291,23 +203,23 @@ describe('Leave Details panel i18n: every descriptor label resolves in all 6 loc
 
   const labelKeys = [
     ...ENTITLEMENT_PANEL_SECTIONS.map((s) => s.labelKey),
-    // 0315dac7: a section caption (the reconciliation formula in words) must resolve everywhere too.
     ...ENTITLEMENT_PANEL_SECTIONS.flatMap((s) => (s.captionKey ? [s.captionKey] : [])),
     ...ENTITLEMENT_PANEL_SECTIONS.flatMap((s) => (s.fields ?? []).map((f) => f.labelKey)),
-    // §1 static hover tooltips (877f2f37) — each summary row's tooltipKey must resolve in every locale.
     ...ENTITLEMENT_PANEL_SECTIONS.flatMap((s) => (s.fields ?? []).flatMap((f) => (f.tooltipKey ? [f.tooltipKey] : []))),
-    // Info-icon per component (b8b665ff) literals + §1 literals the panel renders directly.
+    // 1f6fd6d8: the expiry sub-line under Brought Forward Forfeited.
+    ...ENTITLEMENT_PANEL_SECTIONS.flatMap((s) => (s.fields ?? []).flatMap((f) => (f.noteLabelKey ? [f.noteLabelKey] : []))),
+    // Literals the panel renders directly.
     'explanationShow',
     'explanationHide',
     'explanationDescription',
     'explanationFormula',
-    'explanationResult',
     'panelSubtitle',
     'close',
     'noExpiry',
     'viewBreakdown',
-    // 0315dac7: the fallback copy for an itemised config adjustment that carries no typed reason.
     'adjustmentNoReason',
+    'asAtDate',
+    'apply',
   ];
 
   for (const loc of LOCALES) {
@@ -316,17 +228,26 @@ describe('Leave Details panel i18n: every descriptor label resolves in all 6 loc
       expect(missing, `[${loc}] missing: ${missing.join(', ')}`).toEqual([]);
     });
   }
+
+  it('the removed sections’ i18n keys are gone from EVERY locale, not just English', () => {
+    // A leftover label is how a removed row quietly comes back. Sweep all six.
+    for (const loc of LOCALES) {
+      const b = dicts[loc] as Record<string, unknown>;
+      expect(Object.keys(b.section as object), `[${loc}] section`).toEqual(['summary']);
+      for (const gone of ['reconcile', 'currentYearEntitlement', 'monthlyAccrued', 'carriedForward', 'carryForwardRemaining', 'totalAvailable', 'explanationResult']) {
+        expect(b[gone], `[${loc}] leave.breakdown.${gone} should be removed`).toBeUndefined();
+      }
+    }
+  });
 });
 
-describe('Leave Details panel: the inline expand became a Radix right side-sheet', () => {
+describe('Leave Details panel: the inline expand is still a Radix right side-sheet', () => {
   const panel = read('/components/leave/LeaveDetailsPanel.tsx');
   const adapter = read('/components/leave/EntitlementBreakdown.tsx');
 
   it('panel is a DB-free client island using the app Dialog primitive', () => {
     expect(panel.startsWith("'use client'")).toBe(true);
     expect(panel).toMatch(/@radix-ui\/react-dialog/);
-    expect(panel.includes('import') && panel.includes('client')).toBe(true);
-    // DB-free: no drizzle/server-action import.
     expect(panel.includes("from '@/db")).toBe(false);
   });
 
@@ -335,7 +256,6 @@ describe('Leave Details panel: the inline expand became a Radix right side-sheet
     expect(panel).toMatch(/max-w-md/);
     expect(panel).toMatch(/bg-popover/);
     expect(panel).toMatch(/border-l/);
-    // Mobile responsive: full width down to max-w-md.
     expect(panel).toMatch(/w-full/);
   });
 
@@ -356,125 +276,86 @@ describe('Leave Details panel: the inline expand became a Radix right side-sheet
     expect(adapter.includes('substrate: read-only, no event')).toBe(true);
   });
 
-  it('feedback 1dd4d827: no longer renders a Transaction History table (renderer + dispatch removed)', () => {
-    // Presentation-only removal — the ledger renderer and its dispatch branch are gone from the panel.
-    expect(panel.includes('renderTransactions')).toBe(false);
-    expect(panel).not.toMatch(/kind === 'transactions'/);
-    // Ledger data on the breakdown type is untouched — the panel simply stops rendering it here.
-    // (data.transactions still powers the /leave Leave History table.)
-  });
-
-  it('feedback 11876072: no longer renders an Upcoming Leave list (renderer + dispatch + prop removed)', () => {
-    // Presentation-only removal — the §5 renderer, its dispatch branch and the `upcoming` prop are gone.
-    expect(panel.includes('renderUpcoming')).toBe(false);
-    expect(panel).not.toMatch(/kind === 'upcoming'/);
-    expect(panel.includes('UpcomingLeaveItem')).toBe(false);
-    // The adapter no longer threads an upcoming list either.
-    expect(adapter.includes('upcoming')).toBe(false);
-    // Approved-future requests are untouched data — the /leave history list still shows them.
-  });
-
-  it('EntitlementBreakdown adapter delegates to LeaveDetailsPanel + re-adds otherAdjustments', () => {
-    expect(adapter.includes('LeaveDetailsPanel')).toBe(true);
-    expect(adapter.includes('otherAdjustments')).toBe(true);
-  });
-
-  it('0315dac7: the mirror type carries the whole ledger partition (else the panel silently loses lines)', () => {
-    // The adapter's structural mirror is what the RSC's breakdown object is assigned to. A bucket missing
-    // here would compile fine on the server and render nothing in the block.
-    for (const k of [
-      'balance',
-      'pendingApproval',
-      'broughtForward',
-      'configAdjustments',
-      'systemAdjustments',
-      'forfeitedThisCycle',
-      'takenThisCycle',
-      'configAdjustmentItems',
-    ]) {
-      expect(adapter.includes(`${k}:`), `mirror type missing ${k}`).toBe(true);
+  it('renders the layout FROM the descriptor rather than hardcoding the reporter’s design', () => {
+    // If any of these move into JSX conditionals keyed off a field NAME, the framework property is lost.
+    for (const prop of ['f.sign', 'f.ruleBefore', 'f.emphasis', 'f.noteSelect', 'f.noteLabelKey']) {
+      expect(panel.includes(prop), `panel must render ${prop} from the descriptor`).toBe(true);
     }
   });
 
-  it('0315dac7: the panel renders the section caption and the itemised config adjustments', () => {
-    expect(panel.includes('section.captionKey')).toBe(true);
-    expect(panel.includes('itemsSelect')).toBe(true);
-    expect(panel.includes('itemsEssKey')).toBe(true);
-    // The itemised reason is USER data, rendered verbatim; only the empty-reason fallback is translated.
-    expect(panel.includes("t('adjustmentNoReason')")).toBe(true);
+  it('ed17a4f9: the panel no longer renders a Result line (that field is removed)', () => {
+    expect(panel.includes('explanationResult')).toBe(false);
+    expect(panel.includes('explanation!.result')).toBe(false);
+  });
+
+  it('the mirror type carries every figure the summary reads (else the panel silently loses lines)', () => {
+    // The adapter's structural mirror is what the RSC's breakdown object is assigned to. A field missing
+    // here would compile fine on the server and render nothing.
+    for (const k of ['eligibleDays', 'adjustments', 'totalEntitlement', 'broughtForward', 'forfeitedThisCycle', 'takenThisCycle', 'pendingApproval', 'carryForwardExpiryDate']) {
+      expect(adapter.includes(`${k}:`), `mirror type missing ${k}`).toBe(true);
+    }
   });
 });
 
-describe('Leave Details panel: both call sites feed §1 summary / visual (upcoming removed, 11876072)', () => {
-  // a7cbd895 (My Absence): the /me Leave tab (cards + secondary rows) moved to /leave, so the ESS call
-  // site is now app/leave/page.tsx; the admin personnel page is unchanged.
+describe('Leave Details panel: both call sites feed the trimmed §1 summary + visual', () => {
   const PAGES = ['/app/leave/page.tsx', '/app/admin/personnel/[employmentId]/page.tsx'] as const;
   for (const p of PAGES) {
     const src = read(p);
-    it(`${p} passes summary + visual to EntitlementBreakdown — and no upcoming list (11876072)`, () => {
+    it(`${p} passes summary + visual to EntitlementBreakdown`, () => {
       expect(src.includes('summary={{')).toBe(true);
       expect(src.includes('visual={{')).toBe(true);
-      // 11876072: the §5 Upcoming Leave section is removed, so no call site builds or passes an upcoming prop.
       expect(src.includes('upcoming={')).toBe(false);
-      expect(src.includes('upcoming:')).toBe(false);
     });
   }
+
+  it('1f6fd6d8: no call site still feeds the four figures the summary stopped taking from leaveBalances', () => {
+    // PanelSummary is down to `available`. A call site still passing taken/pending/ytdEntitled/balance would
+    // be a type error today, but this pins the INTENT: those figures now come from the breakdown, whose
+    // buckets are what make the column close.
+    for (const p of PAGES) {
+      expect(read(p).includes('ytdEntitled: b.accrued'), `${p} still feeds the old summary shape`).toBe(false);
+    }
+  });
 });
 
-describe('Admin ESS-view checklist mirrors the employee panel sections (feedback 11876072)', () => {
+describe('ed17a4f9: the admin checklist is DERIVED from the panel, so the two cannot drift', () => {
   it('ESS_VIEW_CHECKLIST_GROUPS covers every configurable key exactly once (drift guard)', () => {
     const flat = ESS_VIEW_CHECKLIST_GROUPS.flatMap((g) => g.keys);
-    // Coverage: every key of the closed allow-list appears, and none appears twice — nothing orphaned,
-    // nothing double-listed, whatever future edits do to ENTITLEMENT_PANEL_SECTIONS.
     expect([...flat].sort()).toEqual([...ESS_VIEW_COMPONENT_KEYS].sort());
     expect(new Set(flat).size).toBe(flat.length);
   });
 
-  it('groups derive from ENTITLEMENT_PANEL_SECTIONS: same sections, same order, orphans in a trailing Other', () => {
-    const sectionKeys = [...ENTITLEMENT_PANEL_SECTIONS]
-      .sort((a, b) => a.order - b.order)
-      .filter((s) => s.essKey != null || (s.fields ?? []).some((f) => f.essKey != null))
-      .map((s) => s.key);
-    const groupKeys = ESS_VIEW_CHECKLIST_GROUPS.map((g) => g.key);
-    // No trailing 'other' since feedback 1f6fd6d8: the keys that used to land there either gated nothing at
-    // all (removed from the allow-list) or now carry the §7 field they name. The bucket itself stays in the
-    // builder — it is what would make a FUTURE orphan visible instead of unreachable — but it is empty, and
-    // the builder drops empty groups.
-    expect(groupKeys).toEqual(sectionKeys);
-    // Section groups reuse the panel's OWN heading key; only the orphan group has none (admin-side label).
+  it('is ONE group — the Leave Summary — listing the nine items in the summary’s own display order', () => {
+    // The reporter's synchronisation requirement, stated as code: the configuration screen offers exactly
+    // the lines the summary renders, in the order it renders them, and nothing else.
+    expect(ESS_VIEW_CHECKLIST_GROUPS.map((g) => ({ key: g.key, keys: g.keys }))).toEqual([
+      {
+        key: 'summary',
+        keys: ['eligible', 'ytdEntitled', 'broughtForward', 'adjustment', 'total', 'taken', 'pendingApproval', 'forfeited', 'available'],
+      },
+    ]);
+    expect(ESS_VIEW_CHECKLIST_GROUPS[0].keys).toEqual(summary().fields!.map((f) => f.essKey));
+    // No trailing "Other" group: nothing gates a surface outside the panel any more. The bucket stays in the
+    // builder (it is what would make a FUTURE orphan visible) but it is empty and dropped.
+    expect(ESS_VIEW_CHECKLIST_GROUPS.some((g) => g.key === 'other')).toBe(false);
+  });
+
+  it('groups reuse the panel’s OWN heading key, never an admin-side copy of it', () => {
     for (const g of ESS_VIEW_CHECKLIST_GROUPS) {
-      if (g.key === 'other') expect(g.labelKey).toBeNull();
-      else expect(g.labelKey).toBe(ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === g.key)!.labelKey);
+      expect(g.labelKey).toBe(ENTITLEMENT_PANEL_SECTIONS.find((s) => s.key === g.key)!.labelKey);
     }
   });
 
-  it('current grouping reads exactly like the panel: summary → calcBreakdown → utilization → adjustments', () => {
-    // Feedback 1f6fd6d8. The six keys that used to sit in a trailing "Other" bucket were the reporter's
-    // complaint made concrete: a configuration list that no longer described the summary. Three of them
-    // (entitlementToDate, expiredBroughtForward, transactionHistory) gated rows that had already been removed
-    // from the product and left the allow-list; the other three now hang off the §7 rows they name, so the
-    // checklist is the panel's list in the panel's order, with nothing left over.
-    expect(ESS_VIEW_CHECKLIST_GROUPS.map((g) => ({ key: g.key, keys: g.keys }))).toEqual([
-      { key: 'summary', keys: ['ytdEntitled', 'taken', 'pendingApproval', 'available'] },
-      {
-        key: 'calcBreakdown',
-        keys: ['entitlementCalcBreakdown', 'broughtForward', 'carryForwardExpiry', 'forfeited'],
-      },
-      { key: 'utilization', keys: ['unplanned', 'overutilized'] },
-      { key: 'adjustments', keys: ['adjustment'] },
-    ]);
-  });
-
-  it('the admin checklist renders the GROUPS (with panel headings), not the flat key list', () => {
+  it('the admin checklist renders the GROUPS, not the flat key list', () => {
     const src = read('/components/leave-type-panel.tsx');
     expect(src.includes('ESS_VIEW_CHECKLIST_GROUPS')).toBe(true);
-    // The flat render over ESS_VIEW_COMPONENT_KEYS is gone from the checklist.
     expect(src.includes('ESS_VIEW_COMPONENT_KEYS')).toBe(false);
-    // Headings reuse the employee panel's own section titles (leave.breakdown namespace) + the Other label.
     expect(src.includes("useTranslations('leave.breakdown')")).toBe(true);
-    expect(src.includes("t('essView.groupOther')")).toBe(true);
     // The persistence contract is untouched: same marker + per-key checkbox names.
     expect(src.includes('name="essView"')).toBe(true);
     expect(src.includes('essView_${key}')).toBe(true);
+    // ed17a4f9: the seven legacy calc-breakdown sub-editors are gone with their section.
+    expect(src.includes('LEAVE_FORMULA_COMPONENT_KEYS')).toBe(false);
+    expect(src.includes('entitlementCalcBreakdown')).toBe(false);
   });
 });

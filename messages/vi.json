@@ -256,7 +256,7 @@
     "list": {
       "title": "Nhân sự",
       "employeeCount": "{count, plural, one {# nhân viên} other {# nhân viên}}",
-      "importCsv": "Nhập CSV",
+      "importCsv": "Nhập nhân viên",
       "profileChangeRequests": "Yêu cầu thay đổi hồ sơ",
       "pendingCount": "{count, plural, one {# chờ duyệt} other {# chờ duyệt}}",
       "profileChangeHint": "Phê duyệt sẽ áp dụng thay đổi vào hồ sơ pháp lý của nhân viên (ngân hàng / PCB). Bạn không thể tự duyệt yêu cầu của chính mình.",
@@ -342,7 +342,14 @@
       "employeeIdLabel": "Mã nhân viên",
       "employeeIdPlaceholder": "vd. EMP-0001",
       "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 30 ký tự.",
-      "hiringDefaults": "Mặc định tuyển dụng"
+      "hiringDefaults": "Mặc định tuyển dụng",
+      "draftsHeading": "Nhân viên mới chưa hoàn tất",
+      "draftsCount": "{count} bản nháp",
+      "draftUntitled": "Bản nháp chưa đặt tên",
+      "draftNoCompany": "Chưa chọn công ty",
+      "draftMissing": "Còn thiếu {count}",
+      "draftReady": "Sẵn sàng tạo",
+      "draftContinue": "Tiếp tục"
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -1148,7 +1155,14 @@
           "correctionReason": "Lý do chỉnh sửa (không bắt buộc)",
           "saveCorrection": "Lưu bản chỉnh sửa",
           "joinDateChangeHint": "Ngày bạn nhập sẽ trở thành Ngày gia nhập mới của nhân viên với công ty hiện tại. Ngày gia nhập tập đoàn của họ không thay đổi.",
-          "groupJoinDateCorrectionHint": "Ngày bạn nhập sẽ trở thành Ngày gia nhập tập đoàn đã điều chỉnh. Thâm niên được tính từ ngày này, nên việc này có thể thay đổi số ngày phép của họ."
+          "groupJoinDateCorrectionHint": "Ngày bạn nhập sẽ trở thành Ngày gia nhập tập đoàn đã điều chỉnh. Thâm niên được tính từ ngày này, nên việc này có thể thay đổi số ngày phép của họ.",
+          "lastWorkingDay": "Ngày làm việc cuối cùng",
+          "terminationReason": "Lý do chấm dứt",
+          "terminationReasonPlaceholder": "— Chọn lý do —",
+          "terminationTypeDerived": "Phân loại: {type}",
+          "resignationDate": "Ngày nộp đơn xin nghỉ",
+          "terminationNoticeDays": "Số ngày báo trước đã thực hiện",
+          "terminationPayrollFlag": "Đã lưu việc chấm dứt. Kỳ lương {periods} đã được xử lý vượt quá ngày chấm dứt — hãy kiểm tra kỳ lương đó. Hệ thống không thay đổi nó."
         },
         "edit": "Sửa",
         "delete": "Xóa",
@@ -1165,6 +1179,26 @@
           "applied": "Đã áp dụng",
           "superseded": "Đã bị thay thế",
           "reversed": "Đã hoàn tác"
+        },
+        "terminationReasonCategory": {
+          "voluntary": "Chấm dứt tự nguyện",
+          "involuntary": "Chấm dứt không tự nguyện",
+          "other": "Khác"
+        },
+        "terminationReason": {
+          "resignation": "Xin nghỉ việc",
+          "career_opportunity": "Cơ hội nghề nghiệp",
+          "personal_reason": "Lý do cá nhân",
+          "retirement": "Nghỉ hưu",
+          "early_retirement": "Nghỉ hưu sớm",
+          "performance_issue": "Vấn đề hiệu suất",
+          "misconduct": "Vi phạm kỷ luật",
+          "redundancy": "Cắt giảm nhân sự",
+          "contract_expiry": "Hết hạn hợp đồng",
+          "absconded": "Tự ý bỏ việc",
+          "medical_unfit": "Không đủ sức khỏe",
+          "death": "Qua đời",
+          "other": "Khác"
         }
       },
       "salaryCurrency": "Tiền tệ",
@@ -1196,26 +1230,26 @@
     },
     "import": {
       "title": "Nhập nhân viên",
-      "description": "Nạp hàng loạt nhân viên, hồ sơ pháp lý và lương từ tệp CSV. Hãy xác thực trước rồi nhập.",
+      "description": "Nạp hàng loạt nhân viên, hồ sơ pháp lý và lương từ tệp Excel (.xlsx). Tải mẫu, điền thông tin rồi tải lên — không có gì được tạo cho đến khi bạn xem kết quả kiểm tra.",
       "backLabel": "Nhân sự",
       "noCompanies": "Hãy tạo công ty trước khi nhập nhân viên.",
       "targetCompany": "Công ty đích",
-      "uploadFile": "Tải tệp CSV lên",
-      "dropHere": "Thả tệp CSV vào đây hoặc nhấp để chọn",
-      "uploadHint": "Chỉ chấp nhận CSV. Hãy lưu bảng tính của bạn dưới dạng CSV trước khi tải lên.",
+      "uploadFile": "Tải tệp lên",
+      "dropHere": "Thả tệp vào đây hoặc nhấp để chọn",
+      "uploadHint": "Chấp nhận CSV, XLSX hoặc XLS. Trang tính đầu tiên sẽ được đọc.",
       "reading": "Đang đọc tệp…",
       "fileLoaded": "Đã tải {name}",
       "pasteToggle": "Hoặc dán CSV thay thế",
       "csvData": "Dữ liệu CSV",
       "csvPlaceholder": "Dán CSV có hàng tiêu đề — full_name,email,department,hired_on,ic_number,basic_salary,…",
-      "unsupportedFileType": "Loại tệp không được hỗ trợ. Hãy lưu bảng tính dưới dạng CSV (.csv) rồi tải lên lại.",
+      "unsupportedFileType": "Loại tệp không được hỗ trợ. Hãy tải lên tệp CSV, XLSX hoặc XLS.",
       "fileTooLarge": "Tệp quá lớn. Chia thành các lô nhỏ hơn và thử lại.",
       "emptyFile": "Tệp đó trống.",
       "fileReadError": "Không thể đọc tệp đó. Kiểm tra định dạng và thử lại.",
       "validate": "Xác thực",
       "validating": "Đang xác thực…",
       "loadSample": "Tải mẫu",
-      "resolveHint": "Phòng ban / chức vụ được khớp theo tên trong {company}.",
+      "resolveHint": "Phòng ban / chức vụ được khớp theo tên trong công ty của hàng đó. Cột Công ty để trống nghĩa là {company}.",
       "theCompany": "công ty",
       "columnReference": "Tham chiếu cột",
       "required": "Bắt buộc",
@@ -1241,7 +1275,20 @@
       "colName": "Tên",
       "colEmail": "Email",
       "colResult": "Kết quả",
-      "ready": "Sẵn sàng"
+      "ready": "Sẵn sàng",
+      "emptySheet": "Trang tính đầu tiên trống.",
+      "downloadTemplateXlsx": "Tải xuống mẫu Excel",
+      "colCompany": "Công ty",
+      "colRow": "Dòng",
+      "downloadErrors": "Tải báo cáo lỗi",
+      "referenceHeading": "Các giá trị được chấp nhận — hãy sao chép chính xác",
+      "instructionsHeading": "Cách điền mẫu này",
+      "instructionRequired": "Cột bắt buộc: {columns}. Các cột khác có thể để trống.",
+      "instructionDates": "Nhập ngày dưới dạng ngày Excel thực, hoặc gõ theo định dạng YYYY-MM-DD.",
+      "instructionIdentityText": "Các cột CMND/CCCD, điện thoại, tài khoản ngân hàng, EPF, SOCSO và mã số thuế được định dạng văn bản để giữ số 0 ở đầu. Đừng đổi định dạng sang General.",
+      "instructionCompany": "Để trống cột Công ty để dùng công ty đã chọn trên màn hình nhập, hoặc ghi tên công ty để nhập nhân viên của nhiều công ty trong một tệp.",
+      "instructionReference": "Trang tính Reference liệt kê mọi giá trị được chấp nhận cho Công ty, Phòng ban, Chức vụ và Trung tâm chi phí. Giá trị khác sẽ bị từ chối kèm lý do.",
+      "instructionSamples": "Xóa hai hàng mẫu trước khi tải lên."
     },
     "hiringDefaults": {
       "title": "Mặc định tuyển dụng",
@@ -1253,6 +1300,126 @@
       "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
       "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
       "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
+    },
+    "wizard": {
+      "fields": {
+        "fullName": "Họ và tên",
+        "primaryEmail": "Email",
+        "employeeCode": "Mã nhân viên",
+        "company": "Công ty",
+        "businessUnit": "Đơn vị kinh doanh",
+        "department": "Phòng ban",
+        "position": "Vị trí / Chức danh",
+        "costCenter": "Trung tâm chi phí",
+        "jobGrade": "Ngạch công việc",
+        "reportingManager": "Quản lý trực tiếp",
+        "employmentType": "Loại hợp đồng",
+        "hiredOn": "Ngày tuyển dụng",
+        "provisionalEndOn": "Ngày kết thúc tạm thời",
+        "basicSalary": "Lương cơ bản ban đầu (MYR)",
+        "remarks": "Ghi chú",
+        "icNumber": "Số định danh (NRIC)",
+        "phone": "Số điện thoại di động",
+        "gender": "Giới tính",
+        "maritalStatus": "Tình trạng hôn nhân",
+        "epfNumber": "Số EPF",
+        "socsoNumber": "Số SOCSO",
+        "taxNumber": "Mã số thuế",
+        "dateOfBirth": "Ngày sinh",
+        "bankName": "Ngân hàng",
+        "bankAccountNo": "Số tài khoản ngân hàng",
+        "bankAccount": "Thông tin ngân hàng",
+        "numChildren": "Số con",
+        "epfCitizenship": "Quốc tịch EPF",
+        "eisEligible": "Đủ điều kiện EIS",
+        "isResident": "Cư trú thuế",
+        "taxCategory": "Nhóm PCB",
+        "monthlyAllowance": "Phụ cấp hàng tháng",
+        "payMode": "Hình thức trả lương",
+        "paymentTerm": "Kỳ trả lương",
+        "rateAmount": "Mức đơn giá"
+      },
+      "employmentType": {
+        "full_time": "Toàn thời gian",
+        "part_time": "Bán thời gian",
+        "contract": "Hợp đồng",
+        "intern": "Thực tập"
+      },
+      "taxCategory": {
+        "1": "Độc thân",
+        "2": "Đã kết hôn · vợ/chồng không đi làm",
+        "3": "Đã kết hôn · vợ/chồng đi làm"
+      },
+      "none": "— Không có —",
+      "orgLabelsEmptyForCompany": "Chưa có nhãn tổ chức nào được cấu hình cho công ty đã chọn.",
+      "hints": {
+        "provisionalEndOn": "Kết thúc thử việc cho toàn thời gian (mặc định +3 tháng); nếu không là ngày kết thúc hợp đồng hoặc thực tập. Để trống nếu không có.",
+        "employeeCode": "Để trống thì hệ thống sẽ sinh Mã nhân viên kế tiếp khi nhân viên được tạo. Bản nháp không bao giờ dùng mã nào.",
+        "icNumber": "Không bắt buộc — để trống với người dùng hộ chiếu. Nếu nhập, phải là số định danh hợp lệ theo quốc gia của công ty.",
+        "dateOfBirth": "Để trống thì hệ thống lấy từ số định danh nếu có thể.",
+        "businessUnit": "Chỉ để lọc danh sách phòng ban. Không lưu vào hồ sơ nhân viên.",
+        "hiredOn": "Ngày làm việc đầu tiên. Sau khi tạo, ngày này chỉ thay đổi qua sự kiện điều động.",
+        "bankAccount": "Nhập cả ngân hàng và số tài khoản, hoặc bỏ trống cả hai.",
+        "rateAmount": "Bắt buộc với hình thức trả lương theo ngày hoặc theo giờ."
+      },
+      "backLabel": "Quay lại Nhân sự",
+      "title": "Tạo nhân viên mới",
+      "description": "Nhập thông tin theo từng bước. Có thể lưu nháp bất cứ lúc nào và quay lại sau — không có gì được tạo cho đến bước cuối cùng.",
+      "progressLabel": "Các bước tạo",
+      "steps": {
+        "profile": "Hồ sơ",
+        "employment": "Việc làm",
+        "statutory": "Ngân hàng & Luật định",
+        "payroll": "Lương",
+        "review": "Xem lại & tạo"
+      },
+      "notSet": "— Chưa đặt —",
+      "selectPrompt": "— Chọn —",
+      "yes": "Có",
+      "no": "Không",
+      "gender": {
+        "male": "Nam",
+        "female": "Nữ"
+      },
+      "marital": {
+        "single": "Độc thân",
+        "married": "Đã kết hôn"
+      },
+      "citizenship": {
+        "citizen": "Công dân",
+        "pr": "Thường trú nhân",
+        "non_citizen": "Không phải công dân"
+      },
+      "payMode": {
+        "monthly": "Hàng tháng",
+        "daily": "Hàng ngày",
+        "hourly": "Theo giờ",
+        "custom_period": "Kỳ tùy chỉnh"
+      },
+      "paymentTerm": {
+        "monthly": "Hàng tháng",
+        "weekly": "Hàng tuần",
+        "biweekly": "Hai tuần một lần"
+      },
+      "continueDraft": "Tiếp tục bản nháp ({count})",
+      "untitledDraft": "Bản nháp chưa đặt tên",
+      "stepOf": "Bước {current}/{total}",
+      "missingCount": "Còn thiếu {count}",
+      "readyToCreate": "Sẵn sàng tạo",
+      "lastSaved": "Đã lưu {when}",
+      "startedBy": "Bắt đầu bởi {name}",
+      "continue": "Tiếp tục",
+      "complete": "Hoàn tất",
+      "reviewReady": "Đã có đủ thông tin cần thiết. Tạo nhân viên sẽ sinh Mã nhân viên và mở hồ sơ của họ.",
+      "reviewIncomplete": "Hãy điền những mục liệt kê ở trên, hoặc lưu nháp và quay lại sau.",
+      "back": "Quay lại",
+      "next": "Tiếp",
+      "saveDraft": "Lưu nháp",
+      "saving": "Đang lưu…",
+      "draftSaved": "Đã lưu nháp",
+      "discardDraft": "Bỏ bản nháp",
+      "createEmployee": "Tạo nhân viên",
+      "creating": "Đang tạo…"
     }
   },
   "leave": {
@@ -1384,7 +1551,8 @@
       "duplicateApplication": "Đã tồn tại một đơn xin nghỉ phép cho ngày đã chọn. Không được phép nộp nhiều đơn xin nghỉ phép trong cùng một ngày.",
       "insufficientBalance": "Số dư phép không đủ. Số dư phép khả dụng của bạn thấp hơn thời lượng nghỉ phép được yêu cầu.",
       "combinedLimitExceeded": "Giới hạn nghỉ gộp \"{poolName}\" ({days} ngày mỗi năm) sẽ bị vượt qua trên các loại nghỉ dùng chung.",
-      "combinedApplicationTooLong": "Nhóm nghỉ dùng chung \"{poolName}\" cho phép tối đa {maxDays} ngày mỗi đơn; đơn này là {days} ngày. Vui lòng rút ngắn hoặc nộp thành nhiều đơn riêng."
+      "combinedApplicationTooLong": "Nhóm nghỉ dùng chung \"{poolName}\" cho phép tối đa {maxDays} ngày mỗi đơn; đơn này là {days} ngày. Vui lòng rút ngắn hoặc nộp thành nhiều đơn riêng.",
+      "leaveYearApplicationLimit": "{typeName} bị giới hạn {maxDays} ngày mỗi năm nghỉ phép. Đã xin {usedDays} ngày trong khoảng {yearStart} đến {yearEnd}, nên đơn xin {days} ngày này không thể nộp."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -1392,88 +1560,43 @@
     "employeeRemarkRequiredHint": "Một số loại nghỉ phép yêu cầu phải có ghi chú.",
     "documentRequiredBadge": "cần tài liệu",
     "breakdown": {
-      "title": "Phân tích quyền lợi",
       "viewBreakdown": "Phân tích",
-      "hide": "Ẩn phân tích",
       "asAtDate": "Tính đến ngày",
       "apply": "Áp dụng",
-      "currentYearEntitlement": "Quyền lợi năm nay",
-      "monthlyAccrued": "Tích lũy đến nay trong năm",
-      "carriedForward": "Chuyển sang",
-      "carryForwardRemaining": "Số dư chuyển sang còn lại",
-      "carryForwardExpiry": "Ngày hết hạn số dư chuyển sang",
       "noExpiry": "Không hết hạn",
-      "forfeited": "Bị mất",
-      "totalAvailable": "Tổng khả dụng",
-      "transactionsHeading": "Giao dịch",
-      "noTransactions": "Không có giao dịch trong kỳ này.",
-      "colDate": "Ngày",
-      "colEntry": "Mục",
-      "colDays": "Ngày",
-      "colSource": "Nguồn",
-      "entryType": {
-        "accrual": "Tích lũy",
-        "debit": "Nghỉ đã dùng",
-        "adjustment": "Điều chỉnh",
-        "inLieuAccrual": "Tích lũy bù"
-      },
       "section": {
-        "summary": "Tóm tắt nghỉ phép",
-        "entitlement": "Chi tiết quyền lợi",
-        "utilization": "Sử dụng nghỉ phép",
-        "adjustments": "Điều chỉnh",
-        "transactions": "Lịch sử giao dịch",
-        "calcBreakdown": "Chi tiết tính quyền lợi",
-        "reconciliation": "Số dư được tính thế nào"
+        "summary": "Tóm tắt nghỉ phép"
       },
       "field": {
-        "available": "Khả dụng",
+        "eligible": "Được hưởng (quyền lợi cả năm)",
+        "ytdEntitled": "Quyền lợi từ đầu năm",
+        "broughtForward": "Chuyển sang",
+        "adjustments": "Điều chỉnh",
+        "total": "Tổng",
         "taken": "Đã dùng",
         "pendingApproval": "Chờ phê duyệt",
-        "ytdEntitled": "Quyền lợi từ đầu năm",
-        "entitlementToDate": "Quyền lợi đến nay",
-        "broughtForward": "Chuyển sang",
-        "expiredBroughtForward": "Chuyển sang đã hết hạn",
-        "carryForwardExpiry": "Ngày hết hạn chuyển sang",
-        "forfeited": "Số dư bị tịch thu",
-        "unplanned": "Không kế hoạch",
-        "overutilized": "Sử dụng vượt mức",
-        "adjustment": "Điều chỉnh",
-        "balance": "Số dư",
-        "systemCorrection": "Điều chỉnh của hệ thống"
+        "broughtForwardForfeited": "Chuyển sang bị mất",
+        "availableBalance": "Số dư khả dụng"
       },
       "panelSubtitle": "Tính đến {date}",
       "close": "Đóng",
-      "colBalanceChange": "Thay đổi số dư",
       "explanationShow": "Hiện giải thích",
       "explanationHide": "Ẩn giải thích",
       "explanationDescription": "Ý nghĩa",
       "explanationFormula": "Cách tính",
-      "explanationResult": "Kết quả",
       "summaryTip": {
-        "ytdEntitled": "Tổng số ngày nghỉ bạn được cấp cho đến nay trong năm.",
+        "eligible": "Số ngày bạn nhận cho cả năm nghỉ phép, trước khi tích lũy, chuyển sang, điều chỉnh hay sử dụng.",
+        "ytdEntitled": "Số ngày bạn đã được cấp tính đến ngày \"Tính đến\". Phép tích lũy hàng tháng tăng dần trong năm; phép cấp trọn gói từ đầu hiển thị đủ số ngay từ ngày đầu tiên.",
+        "broughtForward": "Số ngày chưa dùng được chuyển từ năm ngoái sang năm nghỉ phép này.",
+        "adjustments": "Số ngày cộng thêm hoặc trừ đi, do nhân sự nhập hoặc do hệ thống tự ghi khi chính sách, cấp bậc hay ngày vào làm thay đổi.",
+        "total": "Đã được cấp đến nay, cộng chuyển sang, cộng điều chỉnh — trước khi trừ những gì bạn đã dùng hoặc đã xin.",
         "taken": "Ngày nghỉ bạn đã dùng (đã duyệt và đã nghỉ).",
         "pendingApproval": "Ngày nghỉ bạn đã xin và đang chờ duyệt.",
-        "available": "Ngày nghỉ bạn vẫn có thể dùng ngay bây giờ, sau khi trừ các yêu cầu đang chờ.",
-        "balance": "Số dư còn lại của bạn, tính bằng: chuyển sang + được hưởng kỳ này + điều chỉnh + điều chỉnh của hệ thống − bị mất − đã nghỉ. Mục \"Số dư được tính thế nào\" bên dưới liệt kê từng phần."
-      },
-      "tip": {
-        "configAdjustment": "Số ngày cộng thêm hoặc trừ bớt do HR thiết lập ở bước Điều chỉnh trong cấu hình quyền lợi nghỉ phép. Mỗi khoản được liệt kê kèm lý do bên dưới.",
-        "systemCorrection": "Các điều chỉnh tự động do hệ thống ghi nhận khi chính sách nghỉ phép được sửa hoặc khi cấp bậc, ngày vào làm của bạn thay đổi. Chúng không được nhập ở màn hình Điều chỉnh."
+        "broughtForwardForfeited": "Ngày chuyển từ năm ngoái nhưng đã mất, do quá hạn sử dụng hoặc vượt mức chuyển sang cho phép.",
+        "available": "Số ngày bạn thực sự có thể xin nghỉ hôm nay. Đây là con số giống hệt con số hiển thị ở mọi nơi khác, kể cả khi bạn xin nghỉ."
       },
       "adjustmentNoReason": "Không có lý do",
-      "reconcile": {
-        "caption": "Chuyển sang + Được hưởng + Điều chỉnh + Điều chỉnh của hệ thống − Bị mất − Đã nghỉ = Số dư. Số dư − Chờ duyệt = Khả dụng.",
-        "broughtForward": "Chuyển sang",
-        "entitled": "+ Được hưởng kỳ này",
-        "adjustments": "+ Điều chỉnh",
-        "systemCorrections": "+ Điều chỉnh của hệ thống",
-        "forfeited": "− Bị mất",
-        "taken": "− Đã nghỉ",
-        "balance": "= Số dư",
-        "pending": "− Chờ duyệt",
-        "available": "= Khả dụng"
-      }
+      "expiresOn": "Hết hạn: {date}"
     },
     "preview": {
       "loading": "Đang tính toán…"
@@ -3830,7 +3953,19 @@
         "carryAnnualOnly": "Chuyển tiếp chỉ áp dụng cho Nghỉ phép năm — số dư của loại này không được chuyển sang năm sau.",
         "noActivePolicy": "Chưa có chính sách quyền lợi đang hiệu lực — hãy thêm một chính sách trong mục Điều kiện trước.",
         "frontDoorScopeLabel": "Áp dụng cho chính sách",
-        "workflowUnavailable": "Thiết lập quy trình phê duyệt không khả dụng tại đây — hãy mở thẻ Phê duyệt."
+        "workflowUnavailable": "Thiết lập quy trình phê duyệt không khả dụng tại đây — hãy mở thẻ Phê duyệt.",
+        "yearType": "Loại năm nghỉ phép",
+        "yearTypeStepHelp": "Hãy chọn chu kỳ nghỉ phép trước. Các bước Phương thức tích lũy và Làm tròn tiếp theo quyết định cách ghi có phép trong chu kỳ đó.",
+        "roundingNearestHalf": "Gần nhất 0,5 ngày",
+        "roundingCustomize": "Tùy chỉnh ngưỡng thập phân",
+        "roundingThresholdsTitle": "Ngưỡng thập phân tùy chỉnh",
+        "roundingDownRangeLabel": "Làm tròn xuống 0,5 ngày gần nhất",
+        "roundingUpRangeLabel": "Làm tròn lên 0,5 ngày gần nhất",
+        "roundingFromInclusive": "Từ (bao gồm)",
+        "roundingToExclusive": "Đến (không bao gồm)",
+        "roundingToInclusive": "Đến (bao gồm)",
+        "roundingThresholdHelp": "Hai khoảng luôn phủ kín từ 0,000 đến 1,000, không có khoảng trống và không chồng lấn, nên chỉ có một ranh giới cần đặt. Thay đổi ranh giới đó thì cả hai khoảng đều theo. Bỏ trống ô này để dùng quy tắc chuẩn: 0,000-0,499 làm tròn xuống, 0,500-1,000 làm tròn lên.",
+        "roundingWorkedExample": "Với quy tắc này, {raw} ngày tính được sẽ được ghi có là {rounded} ngày."
       },
       "conditionStep": {
         "criteria": "Tiêu chí",
@@ -3838,7 +3973,13 @@
         "expiry": "Hết hạn",
         "halfDayCompanyWideBadge": "Áp dụng toàn công ty",
         "expiryAnnualPointer": "Hạn sử dụng của Nghỉ phép năm do chính sách chuyển tiếp quyết định — cấu hình tại Chung → Chính sách chuyển tiếp.",
-        "expiryEmergencyNote": "Nghỉ khẩn cấp không có số dư, nên không áp dụng hết hạn."
+        "expiryEmergencyNote": "Nghỉ khẩn cấp không có số dư, nên không áp dụng hết hạn.",
+        "applicationLimitsTitle": "Giới hạn đơn xin nghỉ",
+        "applicationLimitYearLabel": "Số ngày xin nghỉ tối đa mỗi năm nghỉ phép",
+        "applicationLimitUnlimited": "Không giới hạn",
+        "applicationLimitLimited": "Có giới hạn",
+        "applicationLimitMaxLabel": "Tối đa (ngày)",
+        "applicationLimitHelp": "Giới hạn tổng số ngày nhân viên được PHÉP XIN nghỉ loại này trong một năm nghỉ phép, bất kể có số dư quyền lợi hay không — quy tắc dành cho các loại như Nghỉ không lương. Được kiểm tra khi nộp đơn và kiểm tra lại khi phê duyệt. Quyền lợi, tích lũy và số dư hiển thị trong Tổng hợp phép đều không đổi. Hiện tại mọi loại nghỉ phép đều là Không giới hạn."
       },
       "entitlementStep": {
         "schemes": "Chương trình phúc lợi",
@@ -4217,20 +4358,18 @@
       "reasonLabel": "Lý do thay đổi (tùy chọn)",
       "reasonPlaceholder": "Vì sao thực hiện thay đổi này?",
       "essView": {
-        "sectionTitle": "Cấu hình Hiển thị Nghỉ phép của Nhân viên",
-        "help": "Chọn các số liệu quyền lợi và số dư mà nhân viên thấy cho loại nghỉ phép này trong Hồ sơ của tôi → Nghỉ phép, và giải thích từng mục ngay tại đây: đánh dấu một mục thì các ô Mô tả và Công thức sẽ hiện bên cạnh — nhân viên thấy nội dung đó khi di chuột vào biểu tượng thông tin của mục. Các mục không chọn chỉ bị ẩn trong tự phục vụ; HR luôn thấy tất cả. Phần giải thích chỉ thay đổi câu chữ, không thay đổi bất kỳ số liệu nghỉ phép nào.",
-        "available": "Khả dụng",
-        "taken": "Đã nghỉ",
-        "broughtForward": "Chuyển sang",
-        "unplanned": "Không kế hoạch",
-        "adjustment": "Điều chỉnh",
-        "overutilized": "Sử dụng vượt mức",
+        "sectionTitle": "Cấu hình hiển thị nghỉ phép cho nhân viên",
+        "help": "Chọn những dòng của Tóm tắt số dư nghỉ phép mà nhân viên nhìn thấy cho loại nghỉ phép này trong Hồ sơ của tôi → Nghỉ phép, và giải thích từng dòng ngay tại đây: tích vào một mục thì ô Mô tả và Giải thích công thức sẽ hiện bên cạnh — nhân viên thấy nội dung đó khi rê chuột lên biểu tượng thông tin của mục. Mục không tích chỉ bị ẩn trong tự phục vụ; nhân sự luôn thấy đầy đủ. Phần giải thích chỉ đổi câu chữ, không bao giờ đổi con số nghỉ phép. Câu chữ được lấy từ loại nghỉ phép đầu tiên bạn đã cấu hình, nên bạn chỉ cần viết một lần; sửa tại đây nếu loại nghỉ phép này cần câu chữ khác, và không có gì được lưu cho đến khi bạn bấm Lưu.",
+        "eligible": "Được hưởng",
         "ytdEntitled": "Quyền lợi từ đầu năm",
+        "broughtForward": "Chuyển sang",
+        "adjustment": "Điều chỉnh",
+        "total": "Tổng",
+        "taken": "Đã dùng",
         "pendingApproval": "Chờ phê duyệt",
-        "carryForwardExpiry": "Ngày hết hạn chuyển sang",
-        "forfeited": "Số dư bị mất",
-        "groupOther": "Khác",
-        "entitlementCalcBreakdown": "Chi tiết tính toán quyền lợi"
+        "forfeited": "Chuyển sang bị mất",
+        "available": "Số dư khả dụng",
+        "groupOther": "Khác"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Bao gồm loại ngày",
@@ -4365,16 +4504,7 @@
       "formula": {
         "descriptionLabel": "Mô tả",
         "formulaLabel": "Giải thích công thức",
-        "resultLabel": "Kết quả / ngày (tùy chọn)",
-        "component": {
-          "currentYearEntitlement": "Quyền lợi năm nay",
-          "monthlyAccrued": "Tích lũy đến nay trong năm",
-          "carriedForward": "Chuyển sang",
-          "carryForwardRemaining": "Số chuyển sang còn lại",
-          "carryForwardExpiry": "Hết hạn số chuyển sang",
-          "forfeited": "Bị mất",
-          "totalAvailable": "Tổng khả dụng"
-        }
+        "templateHint": "Câu chữ gợi ý, lấy từ loại nghỉ phép đầu tiên bạn đã cấu hình. Hãy sửa nếu loại nghỉ phép này khác — không có gì được lưu cho đến khi bạn bấm Lưu."
       },
       "gradeSearchLabel": "Tìm kiếm bậc",
       "gradeSearchPlaceholder": "Tìm theo mã hoặc tên…",
@@ -5197,7 +5327,11 @@
       "maxDaysPerApplication": "Số ngày tối đa mỗi đơn",
       "maxDaysPerApplicationShort": "Tối đa / đơn",
       "maxDaysPerApplicationNone": "Không giới hạn",
-      "maxDaysPerApplicationHelp": "Tùy chọn. Để trống nếu không giới hạn. Đặt là 3 thì không đơn nào của bất kỳ loại nghỉ nào trong nhóm được vượt quá 3 ngày theo lịch — tách biệt với giới hạn tổng mỗi năm dùng chung."
+      "maxDaysPerApplicationHelp": "Tùy chọn. Để trống nếu không giới hạn. Đặt là 3 thì không đơn nào của bất kỳ loại nghỉ nào trong nhóm được vượt quá 3 ngày theo lịch — tách biệt với giới hạn tổng mỗi năm dùng chung.",
+      "colSchemeCategory": "Nhóm chế độ",
+      "schemeCategoryPlaceholder": "ví dụ: Chính thức, Hợp đồng (Đặc biệt)",
+      "schemeCategoryUnset": "Chưa nhóm",
+      "schemeCategoryHelp": "Nhóm các chế độ liên quan lại với nhau ở mọi nơi liệt kê chế độ để chọn. Đây chỉ là nhãn — không bao giờ ảnh hưởng đến điều kiện hưởng, chế độ mà nhân viên được áp dụng, hay số ngày họ nhận được. Hệ thống gợi ý dựa trên tên chế độ và loại hình lao động; bạn có thể sửa hoặc xóa bất cứ lúc nào."
     },
     "systemExplorer": {
       "title": "Phân tích hệ thống & trình khám phá phụ thuộc",
@@ -5499,7 +5633,7 @@
         },
         "hire": {
           "title": "Tạo nhân viên mới",
-          "body": "Nhấp **+ Tạo nhân viên mới** ở góc trên bên phải để thêm người cùng công ty, phòng ban và ngày bắt đầu. Để tiếp nhận hàng loạt, dùng **Nhập CSV**."
+          "body": "Nhấp **+ Tạo nhân viên mới** ở góc trên bên phải. Màn hình từng bước sẽ mở ra — bạn có thể lưu nháp bất cứ lúc nào và hoàn tất sau. Để thêm hàng loạt, hãy dùng **Nhập nhân viên** với mẫu Excel."
         },
         "orgTree": {
           "title": "Cấu trúc tập đoàn của bạn",

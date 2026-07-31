@@ -5,8 +5,12 @@ import { listEmployees, listLeaveRequestsPage, listLeaveTypes } from '@/core/rea
 import { Button, Card, PageHeader, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
+import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
+import { adminCancelLeaveAction } from '@/app/leave/actions';
 import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { durationLabel } from '@/lib/leave-duration';
+import { canAdminCancelLeave, LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import { Pager, type PagerHrefOver } from '@/components/pager';
 import { pageState, parsePageQuery } from '@/lib/pagination';
 
@@ -19,6 +23,20 @@ import { pageState, parsePageQuery } from '@/lib/pagination';
  * approvals inbox always describe the same records. Attachments link to the SAME per-request route the
  * employee's own page uses, whose authorization is unchanged — being able to read a leave record here does
  * not by itself grant the document behind it.
+ *
+ * fe3eb141 — CONSOLIDATION, STEP 1 OF 2. The reporter asked to fold the Requests subsection on
+ * /leave into this page and then delete it. This page now carries the three things they named:
+ *
+ *   - the Cancel Leave action, to the RIGHT of Final Approval Date, exactly as asked;
+ *   - the short leave REFERENCE (`#7b096403`) — it is a real handle, not decoration: the `q` search on
+ *     both screens matches a uuid prefix (core/read.ts listLeaveRequestsPage `isRef`), so the id was
+ *     already searchable here with nothing on screen to reveal it;
+ *   - a STATUS column, without which "why is there no Cancel button on this row" is unanswerable.
+ *
+ * STEP 2 — deleting the Requests subsection — IS NOT DONE, deliberately. That subsection is not a
+ * duplicate of this page: it is the ORG-WIDE register (this one is hard-narrowed to a single
+ * employment) and it is the only home of four other controls. The enumeration is in
+ * test/leave-records-cancel.test.ts; do not delete it without reading that.
  */
 
 const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
@@ -37,6 +55,8 @@ export default async function EmployeeLeaveRecordPage({
     dir?: string;
     page?: string;
     size?: string;
+    toast?: string;
+    error?: string;
   }>;
 }) {
   const { s: session, scopeIds } = await scopedAdmin();
@@ -161,7 +181,12 @@ export default async function EmployeeLeaveRecordPage({
   // Clearing every filter keeps the employee — otherwise "clear all" silently jumps to someone else.
   const chipAction = `/leave/employee-records${selected ? `?emp=${selected.employmentId}` : ''}`;
 
-  const th = 'px-3 py-2 font-medium';
+  // Layout (feedback 026e16b9) — presentation only, and the SAME three moves as Employee Balances so the
+  // two tabs do not read as different screens: a wider container cap, a narrower inquiry rail (in
+  // leave-inquiry-nav) with a tighter gap, and px-2 cells. Date/day columns get whitespace-nowrap so an
+  // ISO date can never break across two lines; Reason keeps its truncation but is allowed to take the
+  // recovered slack rather than staying the narrowest column on the row.
+  const th = 'px-2 py-2 font-medium';
   const sortableTh = (key: string, label: string) => (
     <th className={th} aria-sort={sort === key ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
       <Link
@@ -176,12 +201,32 @@ export default async function EmployeeLeaveRecordPage({
       </Link>
     </th>
   );
-  const day = (v: Date | string | null) => (v ? new Date(v).toISOString().slice(0, 10) : '—');
+  // A DATE DERIVED FROM AN INSTANT MUST GO THROUGH THE TENANT TIMEZONE. `appliedOn` and `decidedAt`
+  // are timestamps; `toISOString()` is UTC and this product runs at UTC+8, so the previous
+  // `.toISOString().slice(0, 10)` printed YESTERDAY for anything applied or decided between 00:00 and
+  // 08:00 Malaysian time — including, on this very screen, the Final Approval Date column that
+  // fe3eb141 anchors its Cancel action to. Same class as the r85 `core/movement.ts` fault.
+  const day = (v: Date | string | null) => (v ? todayInKualaLumpur(new Date(v)) : '—');
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader title={tInq('recordsTitle')} description={tInq('recordsDescription')} />
-      <div className="flex flex-col gap-6 sm:flex-row">
+
+      {/* fe3eb141 — the Cancel Leave action redirects back here, so this page needs the same two
+          banners /leave has. Without them a refusal (closed payroll month, approved TOIL) would land
+          silently on an unchanged table. */}
+      {sp.error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+          {sp.error}
+        </div>
+      )}
+      {sp.toast === 'adminCancelled' && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
+          {t('adminCancelledToast')}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-4 sm:flex-row">
         <LeaveInquiryNav active="records" employmentId={selected?.employmentId} />
         <div className="min-w-0 flex-1 space-y-4">
           <div className="flex flex-wrap items-end gap-2">
@@ -255,35 +300,48 @@ export default async function EmployeeLeaveRecordPage({
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                {/* 026e16b9: no `tracking-wide` on these inquiry tables. Measured live, the extra letter-spacing
+                      cost this header row 23px across eleven columns — the last of the horizontal overflow.
+                      Uppercase small-caps headings read fine without it. */}
+                <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className={th}>{t('filters.employeeId')}</th>
+                    {/* fe3eb141 — the short leave reference the Requests subsection shows under its
+                        Applied date. It is a working handle: the `q` box above matches a uuid prefix. */}
+                    <th className={th}>{t('filters.reference')}</th>
                     {sortableTh('name', t('colEmployee'))}
                     {sortableTh('start', t('filters.dateFrom'))}
                     {sortableTh('end', t('filters.dateTo'))}
                     <th className={th}>{t('colDays')}</th>
                     <th className={th}>{tInq('colLeaveCode')}</th>
+                    {sortableTh('status', t('filters.statusLabel'))}
                     <th className={th}>{tInq('colReason')}</th>
                     <th className={th}>{tInq('colAttachment')}</th>
                     {sortableTh('applied', t('colApplied'))}
                     <th className={th}>{tInq('colFinalApproval')}</th>
+                    {/* Reporter's placement, verbatim: "on the right side of the Final Approval Date
+                        column for each leave record". */}
+                    <th className={th}>{t('colAction')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">
+                      <td colSpan={13} className="px-4 py-6 text-center text-muted-foreground">
                         {tInq('noRecords')}
                       </td>
                     </tr>
                   )}
                   {rows.map((r) => (
                     <tr key={r.id}>
-                      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.employeeCode ?? '—'}</td>
-                      <td className="px-3 py-2 font-medium">{r.employee}</td>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground">{r.startDate}</td>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground">{r.endDate}</td>
-                      <td className="px-3 py-2 tabular-nums">
+                      <td className="whitespace-nowrap px-2 py-2 font-mono text-xs text-muted-foreground">{r.employeeCode ?? '—'}</td>
+                      <td className="whitespace-nowrap px-2 py-2 font-mono text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                        #{r.id.slice(0, 8)}
+                      </td>
+                      <td className="px-2 py-2 font-medium">{r.employee}</td>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{r.startDate}</td>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{r.endDate}</td>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums">
                         {Number(r.days)}
                         {durationLabel(t, r.durationType, r.hours) && (
                           <span className="ml-1 text-[10px] font-medium uppercase text-muted-foreground">
@@ -291,11 +349,45 @@ export default async function EmployeeLeaveRecordPage({
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2">{r.typeCode ?? r.leaveType}</td>
-                      <td className="max-w-[16rem] truncate px-3 py-2 text-muted-foreground" title={r.reason ?? ''}>
+                      <td className="whitespace-nowrap px-2 py-2">{r.typeCode ?? r.leaveType}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${LEAVE_STATUS_PILL[r.status] ?? LEAVE_STATUS_PILL_DEFAULT}`}
+                        >
+                          {t(`status.${r.status}`)}
+                        </span>
+                        {/* A pending give-back (ADR-0065) is the one thing that changes what cancelling
+                            this record means, so it is shown here exactly as the Requests table shows it. */}
+                        {r.pendingCancellationId && (
+                          <span className="ml-1.5 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                            {t('cancelPendingBadge')}
+                          </span>
+                        )}
+                        {/* fe3eb141 — the Approval Information lines (0773bda9). This screen already had
+                            the Final Approval DATE; the Requests subsection also names WHO decided, and
+                            which stage a still-pending record is waiting on. Both are on the row already,
+                            so carrying them across costs nothing and closes two more of the gaps between
+                            the two tables. */}
+                        {r.decidedByName && (
+                          <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                            {t('filters.decidedByLine', { name: r.decidedByName })}
+                          </span>
+                        )}
+                        {r.status === 'pending' && r.currentStepKind && (
+                          <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                            {t('filters.pendingWithLine', {
+                              stage:
+                                r.currentStepKind === 'direct_manager' || r.currentStepKind === 'hr_admin'
+                                  ? t(`filters.stage.${r.currentStepKind}`)
+                                  : r.currentStepKind,
+                            })}
+                          </span>
+                        )}
+                      </td>
+                      <td className="max-w-[24rem] truncate px-2 py-2 text-muted-foreground" title={r.reason ?? ''}>
                         {r.reason || '—'}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="whitespace-nowrap px-2 py-2">
                         {r.hasDocument ? (
                           <Link
                             href={`/me/leave/attachment/${r.id}?inline=1`}
@@ -307,8 +399,27 @@ export default async function EmployeeLeaveRecordPage({
                           '—'
                         )}
                       </td>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground">{day(r.appliedOn)}</td>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground">{day(r.decidedAt)}</td>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{day(r.appliedOn)}</td>
+                      <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{day(r.decidedAt)}</td>
+                      {/* fe3eb141 — Cancel Leave, on the right of Final Approval Date. This is
+                          `adminCancelLeave`: IMMEDIATE cancellation of someone else's pending OR
+                          approved record, which for an approved one REVERSES the net ledger debit and
+                          gives the days back. It is deliberately NOT the employee give-back flow
+                          (`requestLeaveCancellation`), which needs an approval and only exists for the
+                          subject's own leave — an admin on this screen is never the subject, because
+                          the service self-bans below super_admin and `canAdminCancelLeave` mirrors it. */}
+                      <td className="px-3 py-2">
+                        {canAdminCancelLeave(r, session.personId) ? (
+                          <AdminCancelLeaveDialog
+                            leaveRequestId={r.id}
+                            back="/leave/employee-records"
+                            backEmp={selected?.employmentId}
+                            submitAction={adminCancelLeaveAction}
+                          />
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

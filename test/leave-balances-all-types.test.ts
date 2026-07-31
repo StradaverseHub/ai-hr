@@ -5,6 +5,7 @@
  * their ledger balance.
  */
 import { eq } from 'drizzle-orm';
+import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -80,5 +81,96 @@ describe('ADR-0038 2F-1 (R18) — all entitled leave types in the balance list',
     const annualRow = rows.find((r) => r.leaveType === 'T_ANN');
     expect(annualRow?.accrued).toBe(12);
     expect(annualRow?.available).toBe(12);
+  });
+});
+
+/**
+ * Feedback 994a5287 — "Automatically Display All Eligible Leave Types".
+ *
+ * REPRODUCTION FIRST, and it changed the fix. The item's plan located the root cause in `leaveBalances`
+ * selecting only FROM leave_ledger, so that a type with no ledger row could not produce a row. That is NOT
+ * true and has not been true since R18: the eligible-no-activity tail above is exactly that behaviour, and
+ * the suite has pinned it ever since. Seeding an eligible type with no ledger entry and no request produced
+ * a 0.00 row on the admin screen straight away.
+ *
+ * What DID reproduce is narrower and was not in the ticket: a leave type HR had hidden from EMPLOYEE
+ * self-service (7b11f1c1, `visible_to_employee = false`) was ALSO missing from the two ADMIN screens, because
+ * both read `leaveBalances` and the gate applied to every caller. The code comment on that gate asserted the
+ * opposite — that only /me reached it — which is how it went unnoticed. Hiding a type from employees is a
+ * statement about what THEY see; it was never meant to remove the type from HR's own balances screen.
+ *
+ * These tests pin both halves: the admin read shows the hidden type, and self-service still does not.
+ */
+describe('994a5287 — a type hidden from self-service still appears on the ADMIN balances read', () => {
+  async function hiddenTypeSetup() {
+    const emp = await hire('female', 'married');
+    await owner.db
+      .insert(schema.leaveType)
+      .values({
+        tenantId: b.tenantId,
+        code: 'T_HID',
+        name: 'T_HID',
+        paid: true,
+        counting: 'calendar_days',
+        visibleToEmployee: false,
+      });
+    return emp;
+  }
+
+  it('ADMIN (includeHidden) sees the hidden type; self-service does not', async () => {
+    const emp = await hiddenTypeSetup();
+
+    const adminNames = new Set(
+      (await leaveBalances(adminCtx(b), emp.employmentId, undefined, { includeHidden: true })).map((r) => r.leaveType),
+    );
+    expect(adminNames.has('T_HID')).toBe(true);
+    // The eligible-but-inactive tail keeps working alongside it — this is the part that was already built.
+    expect(adminNames.has('T_ANN')).toBe(true);
+
+    // Self-service is UNCHANGED: the default still hides it, so 7b11f1c1 is not weakened.
+    const essNames = new Set((await leaveBalances(adminCtx(b), emp.employmentId)).map((r) => r.leaveType));
+    expect(essNames.has('T_HID')).toBe(false);
+    expect(essNames.has('T_ANN')).toBe(true);
+  });
+
+  it('includeHidden does NOT loosen the ELIGIBILITY gate — an ineligible type stays out either way', async () => {
+    // The plan is explicit that this is a visibility fix and not an eligibility one: `listEligibleLeaveTypesFor`
+    // and `assertEligible` keep their strict-equality contract, under which an employee whose gated attribute
+    // is NULL is EXCLUDED (the lawful conservative default). Showing everything to admins must not become a
+    // back door around that.
+    const male = await hire('male', 'married');
+    const names = new Set(
+      (await leaveBalances(adminCtx(b), male.employmentId, undefined, { includeHidden: true })).map((r) => r.leaveType),
+    );
+    expect(names.has('T_MAT')).toBe(false); // female-only type, male employee — still excluded
+    expect(names.has('T_PAT')).toBe(true);
+  });
+
+  it('a hidden type with NO activity still lists at zero (the two tails compose)', async () => {
+    const emp = await hiddenTypeSetup();
+    const row = (await leaveBalances(adminCtx(b), emp.employmentId, undefined, { includeHidden: true })).find(
+      (r) => r.leaveType === 'T_HID',
+    );
+    expect(row).toBeDefined();
+    expect(row!.balance).toBe(0);
+    expect(row!.accrued).toBe(0);
+    expect(row!.taken).toBe(0);
+    expect(row!.pending).toBe(0);
+    expect(row!.available).toBe(0);
+  });
+
+  it('the two ADMIN surfaces both opt in, so they cannot tell different stories', () => {
+    // Employee Balances and the Personnel profile card are the screens HR uses to answer "what is this
+    // person entitled to". One passing includeHidden and the other not would be worse than neither.
+    const rows = readFileSync(new URL('../app/leave/employee-balances/rows.ts', import.meta.url), 'utf8');
+    const personnel = readFileSync(
+      new URL('../app/admin/personnel/[employmentId]/page.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(rows.includes('includeHidden: true')).toBe(true);
+    expect(personnel.includes('includeHidden: true')).toBe(true);
+    // …and the self-service page must NOT, or hiding a leave type would stop meaning anything.
+    const leavePage = readFileSync(new URL('../app/leave/page.tsx', import.meta.url), 'utf8');
+    expect(leavePage.includes('includeHidden')).toBe(false);
   });
 });

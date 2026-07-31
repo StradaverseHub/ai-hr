@@ -256,7 +256,7 @@
     "list": {
       "title": "Personnel",
       "employeeCount": "{count, plural, one {# employee} other {# employees}}",
-      "importCsv": "Import CSV",
+      "importCsv": "Import employees",
       "profileChangeRequests": "Profile change requests",
       "pendingCount": "{count, plural, one {# pending} other {# pending}}",
       "profileChangeHint": "Approving applies the change to the employee’s statutory profile (bank / PCB). You cannot approve your own request.",
@@ -342,7 +342,14 @@
       "employeeIdLabel": "Employee ID",
       "employeeIdPlaceholder": "e.g. EMP-0001",
       "employeeIdHint": "Letters, numbers and dashes; up to 30 characters.",
-      "hiringDefaults": "Hiring defaults"
+      "hiringDefaults": "Hiring defaults",
+      "draftsHeading": "Unfinished new employees",
+      "draftsCount": "{count} draft",
+      "draftUntitled": "Unnamed draft",
+      "draftNoCompany": "No company chosen yet",
+      "draftMissing": "{count} still needed",
+      "draftReady": "Ready to create",
+      "draftContinue": "Continue"
     },
     "detail": {
       "backToPeople": "People",
@@ -1148,7 +1155,14 @@
           "correctionReason": "Reason for the correction (optional)",
           "saveCorrection": "Save Correction",
           "joinDateChangeHint": "The date you enter becomes the employee’s new Join Date with their current company. Their Group Join Date does not change.",
-          "groupJoinDateCorrectionHint": "The date you enter becomes the employee’s corrected Group Join Date. This is the date years of service is calculated from, so it can change their leave entitlement."
+          "groupJoinDateCorrectionHint": "The date you enter becomes the employee’s corrected Group Join Date. This is the date years of service is calculated from, so it can change their leave entitlement.",
+          "lastWorkingDay": "Last Working Day",
+          "terminationReason": "Termination Reason",
+          "terminationReasonPlaceholder": "— Select a reason —",
+          "terminationTypeDerived": "Reported as: {type}",
+          "resignationDate": "Resignation Date",
+          "terminationNoticeDays": "Notice served (days)",
+          "terminationPayrollFlag": "Termination saved. A payroll run has already been processed for {periods}, past the termination date — review that run. It was not changed."
         },
         "edit": "Edit",
         "delete": "Delete",
@@ -1165,6 +1179,26 @@
           "applied": "Applied",
           "superseded": "Superseded",
           "reversed": "Reversed"
+        },
+        "terminationReasonCategory": {
+          "voluntary": "Voluntary Termination",
+          "involuntary": "Involuntary Termination",
+          "other": "Other"
+        },
+        "terminationReason": {
+          "resignation": "Resignation",
+          "career_opportunity": "Career Opportunity",
+          "personal_reason": "Personal Reason",
+          "retirement": "Retirement",
+          "early_retirement": "Early Retirement",
+          "performance_issue": "Performance Issue",
+          "misconduct": "Misconduct",
+          "redundancy": "Redundancy / Retrenchment",
+          "contract_expiry": "Contract Expiry",
+          "absconded": "Absconded",
+          "medical_unfit": "Medically Unfit",
+          "death": "Death",
+          "other": "Other"
         }
       },
       "salaryCurrency": "Currency",
@@ -1196,26 +1230,26 @@
     },
     "import": {
       "title": "Import employees",
-      "description": "Bulk-load employees, statutory profiles and pay from a CSV. Validate first, then import.",
+      "description": "Bulk-load employees, statutory profiles and pay from an Excel (.xlsx) file. Download the template, fill it in, upload it — nothing is created until you have seen the check.",
       "backLabel": "People",
       "noCompanies": "Create a company before importing employees.",
       "targetCompany": "Target company",
-      "uploadFile": "Upload CSV file",
-      "dropHere": "Drop your CSV here or click to browse",
-      "uploadHint": "Accepts CSV only. Save your spreadsheet as CSV before uploading.",
+      "uploadFile": "Upload file",
+      "dropHere": "Drop a file here or click to browse",
+      "uploadHint": "Accepts CSV, XLSX or XLS. The first worksheet is read.",
       "reading": "Reading file…",
       "fileLoaded": "{name} loaded",
       "pasteToggle": "Or paste CSV instead",
       "csvData": "CSV data",
       "csvPlaceholder": "Paste CSV with a header row — full_name,email,department,hired_on,ic_number,basic_salary,…",
-      "unsupportedFileType": "Unsupported file type. Save your spreadsheet as CSV (.csv) and upload it again.",
+      "unsupportedFileType": "Unsupported file type. Upload a CSV, XLSX or XLS file.",
       "fileTooLarge": "File is too large. Split it into smaller batches and try again.",
       "emptyFile": "That file is empty.",
       "fileReadError": "Could not read that file. Check the format and try again.",
       "validate": "Validate",
       "validating": "Validating…",
       "loadSample": "Load sample",
-      "resolveHint": "Department / position resolve by name within {company}.",
+      "resolveHint": "Department / position resolve by name within the row's company. A blank Company column means {company}.",
       "theCompany": "the company",
       "columnReference": "Column reference",
       "required": "Required",
@@ -1241,7 +1275,20 @@
       "colName": "Name",
       "colEmail": "Email",
       "colResult": "Result",
-      "ready": "Ready"
+      "ready": "Ready",
+      "emptySheet": "The first worksheet is empty.",
+      "downloadTemplateXlsx": "Download Excel template",
+      "colCompany": "Company",
+      "colRow": "Row",
+      "downloadErrors": "Download error report",
+      "referenceHeading": "Accepted values — copy these exactly",
+      "instructionsHeading": "How to fill in this template",
+      "instructionRequired": "Required columns: {columns}. Every other column may be left blank.",
+      "instructionDates": "Enter dates as real Excel dates, or type them as YYYY-MM-DD.",
+      "instructionIdentityText": "The IC, phone, bank account, EPF, SOCSO and tax number columns are formatted as text so leading zeros are kept. Do not change their format to General.",
+      "instructionCompany": "Leave the Company column blank to use the company selected on the import screen, or name a company to import employees for several companies in one file.",
+      "instructionReference": "The Reference sheet lists every accepted value for Company, Department, Position and Cost Center. Anything else is rejected with the reason.",
+      "instructionSamples": "Delete the two sample rows before uploading."
     },
     "hiringDefaults": {
       "title": "Hiring Defaults",
@@ -1253,6 +1300,126 @@
       "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
       "reviewReminderDays": "Review reminders (days before end date)",
       "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
+    },
+    "wizard": {
+      "fields": {
+        "fullName": "Full name",
+        "primaryEmail": "Email",
+        "employeeCode": "Employee ID",
+        "company": "Company",
+        "businessUnit": "Business unit",
+        "department": "Department",
+        "position": "Position / Job title",
+        "costCenter": "Cost center",
+        "jobGrade": "Job grade",
+        "reportingManager": "Reporting manager",
+        "employmentType": "Employment type",
+        "hiredOn": "Hire date",
+        "provisionalEndOn": "Provisional end date",
+        "basicSalary": "Initial basic salary (MYR)",
+        "remarks": "Remarks",
+        "icNumber": "Identity No (NRIC)",
+        "phone": "Mobile Phone Number",
+        "gender": "Gender",
+        "maritalStatus": "Marital status",
+        "epfNumber": "EPF number",
+        "socsoNumber": "SOCSO number",
+        "taxNumber": "Tax number",
+        "dateOfBirth": "Date of birth",
+        "bankName": "Bank",
+        "bankAccountNo": "Bank account number",
+        "bankAccount": "Bank details",
+        "numChildren": "Number of children",
+        "epfCitizenship": "EPF citizenship",
+        "eisEligible": "EIS eligible",
+        "isResident": "Tax resident",
+        "taxCategory": "PCB category",
+        "monthlyAllowance": "Monthly allowance",
+        "payMode": "Pay mode",
+        "paymentTerm": "Payment term",
+        "rateAmount": "Rate amount"
+      },
+      "employmentType": {
+        "full_time": "Full-time",
+        "part_time": "Part-time",
+        "contract": "Contract",
+        "intern": "Intern"
+      },
+      "taxCategory": {
+        "1": "Single",
+        "2": "Married · spouse not working",
+        "3": "Married · spouse working"
+      },
+      "none": "— None —",
+      "orgLabelsEmptyForCompany": "No organization labels are configured for the selected company.",
+      "hints": {
+        "provisionalEndOn": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none.",
+        "employeeCode": "Leave blank and the system generates the next Employee ID when the employee is created. A draft never uses one up.",
+        "icNumber": "Optional — leave blank for a passport holder. If given, it must be a valid identity number for the company’s country.",
+        "dateOfBirth": "Leave blank and it is taken from the identity number where possible.",
+        "businessUnit": "Narrows the department list only. It is not stored on the employee.",
+        "hiredOn": "The first day of employment. After creation this date changes only through a movement event.",
+        "bankAccount": "Give both the bank and the account number, or neither.",
+        "rateAmount": "Required for a daily or hourly pay mode."
+      },
+      "backLabel": "Back to Personnel",
+      "title": "Create new employee",
+      "description": "Enter the details step by step. Save as a draft at any point and come back to it — nothing is created until the final step.",
+      "progressLabel": "Creation steps",
+      "steps": {
+        "profile": "Profile",
+        "employment": "Employment",
+        "statutory": "Bank & Statutory",
+        "payroll": "Payroll",
+        "review": "Review & create"
+      },
+      "notSet": "— Not set —",
+      "selectPrompt": "— Select —",
+      "yes": "Yes",
+      "no": "No",
+      "gender": {
+        "male": "Male",
+        "female": "Female"
+      },
+      "marital": {
+        "single": "Single",
+        "married": "Married"
+      },
+      "citizenship": {
+        "citizen": "Citizen",
+        "pr": "Permanent resident",
+        "non_citizen": "Non-citizen"
+      },
+      "payMode": {
+        "monthly": "Monthly",
+        "daily": "Daily",
+        "hourly": "Hourly",
+        "custom_period": "Custom period"
+      },
+      "paymentTerm": {
+        "monthly": "Monthly",
+        "weekly": "Weekly",
+        "biweekly": "Fortnightly"
+      },
+      "continueDraft": "Continue a draft ({count})",
+      "untitledDraft": "Unnamed draft",
+      "stepOf": "Step {current} of {total}",
+      "missingCount": "{count} still needed",
+      "readyToCreate": "Ready to create",
+      "lastSaved": "Saved {when}",
+      "startedBy": "Started by {name}",
+      "continue": "Continue",
+      "complete": "Complete",
+      "reviewReady": "Everything needed is here. Creating the employee generates the Employee ID and opens their record.",
+      "reviewIncomplete": "Fill in what is listed above, or save this as a draft and come back to it.",
+      "back": "Back",
+      "next": "Next",
+      "saveDraft": "Save draft",
+      "saving": "Saving…",
+      "draftSaved": "Draft saved",
+      "discardDraft": "Discard draft",
+      "createEmployee": "Create employee",
+      "creating": "Creating…"
     }
   },
   "leave": {
@@ -1384,7 +1551,8 @@
       "duplicateApplication": "A leave application already exists for the selected date. Multiple leave applications on the same date are not allowed.",
       "insufficientBalance": "Insufficient leave balance. Your available leave balance is lower than the requested leave duration.",
       "combinedLimitExceeded": "Combined leave limit \"{poolName}\" ({days} days a year) would be exceeded across its shared leave types.",
-      "combinedApplicationTooLong": "Shared leave group \"{poolName}\" allows at most {maxDays} days per application; this one covers {days}. Please shorten it or apply in separate applications."
+      "combinedApplicationTooLong": "Shared leave group \"{poolName}\" allows at most {maxDays} days per application; this one covers {days}. Please shorten it or apply in separate applications.",
+      "leaveYearApplicationLimit": "{typeName} is limited to {maxDays} day(s) per leave year. {usedDays} day(s) have already been applied for between {yearStart} and {yearEnd}, so this application of {days} day(s) cannot be submitted."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
@@ -1392,88 +1560,43 @@
     "employeeRemarkRequiredHint": "A remark is required for some leave types.",
     "documentRequiredBadge": "document required",
     "breakdown": {
-      "title": "Entitlement breakdown",
       "viewBreakdown": "Breakdown",
-      "hide": "Hide breakdown",
       "asAtDate": "As at date",
       "apply": "Apply",
-      "currentYearEntitlement": "This year's entitlement",
-      "monthlyAccrued": "Accrued so far this year",
-      "carriedForward": "Brought forward",
-      "carryForwardRemaining": "Brought-forward remaining",
-      "carryForwardExpiry": "Brought-forward expiry",
       "noExpiry": "Does not expire",
-      "forfeited": "Forfeited",
-      "totalAvailable": "Total available",
-      "transactionsHeading": "Transactions",
-      "noTransactions": "No transactions in this period.",
-      "colDate": "Date",
-      "colEntry": "Entry",
-      "colDays": "Days",
-      "colSource": "Source",
-      "entryType": {
-        "accrual": "Accrual",
-        "debit": "Leave taken",
-        "adjustment": "Adjustment",
-        "inLieuAccrual": "In-lieu accrual"
-      },
       "section": {
-        "summary": "Leave summary",
-        "entitlement": "Entitlement breakdown",
-        "utilization": "Leave utilization",
-        "adjustments": "Adjustments",
-        "transactions": "Transaction history",
-        "calcBreakdown": "Entitlement calculation breakdown",
-        "reconciliation": "How this adds up"
+        "summary": "Leave summary"
       },
       "field": {
-        "available": "Available",
+        "eligible": "Eligible (full year entitlement)",
+        "ytdEntitled": "YTD entitled",
+        "broughtForward": "Brought forward",
+        "adjustments": "Adjustments",
+        "total": "Total",
         "taken": "Taken",
         "pendingApproval": "Pending approval",
-        "ytdEntitled": "YTD entitled",
-        "entitlementToDate": "Entitlement to date",
-        "broughtForward": "Brought forward",
-        "expiredBroughtForward": "Expired brought forward",
-        "carryForwardExpiry": "Brought-forward expiry date",
-        "forfeited": "Forfeited balance",
-        "unplanned": "Unplanned",
-        "overutilized": "Overutilized",
-        "adjustment": "Adjustment",
-        "balance": "Balance",
-        "systemCorrection": "System correction"
+        "broughtForwardForfeited": "Brought forward forfeited",
+        "availableBalance": "Available balance"
       },
       "panelSubtitle": "As at {date}",
       "close": "Close",
-      "colBalanceChange": "Balance change",
       "explanationShow": "Show explanation",
       "explanationHide": "Hide explanation",
       "explanationDescription": "What it means",
       "explanationFormula": "How it's calculated",
-      "explanationResult": "Result",
       "summaryTip": {
-        "ytdEntitled": "The total leave you've been granted so far this year.",
+        "eligible": "What you receive for the whole leave year, before anything is earned, carried, adjusted or used.",
+        "ytdEntitled": "What you have been granted so far, up to the As at date. Leave earned month by month builds up over the year; leave granted in full up front shows the whole amount from day one.",
+        "broughtForward": "Unused days carried into this leave year from last year.",
+        "adjustments": "Extra or deducted days, whether entered by HR or posted automatically when a policy, grade or hire date changed.",
+        "total": "Granted so far, plus brought forward, plus adjustments — before anything you have used or applied for.",
         "taken": "Leave you have already used (approved and taken).",
         "pendingApproval": "Leave you've applied for that is still awaiting approval.",
-        "available": "Leave you can still take now, after pending requests are set aside.",
-        "balance": "Your remaining balance, as: brought forward + entitled this cycle + adjustments + system corrections − forfeited − taken. The \"How this adds up\" section below shows every part."
-      },
-      "tip": {
-        "configAdjustment": "Extra or deducted days set by HR on the Adjustment step of the leave entitlement setup. Each one is listed below with its reason.",
-        "systemCorrection": "Automatic corrections the system posted by itself when a leave policy was edited or your grade or hire date changed. They are not entered on the Adjustment screen."
+        "broughtForwardForfeited": "Days carried in from last year that you lost, because they passed their expiry date or exceeded the carry limit.",
+        "available": "What you can actually apply for today. This is the same figure shown everywhere else, including when you apply for leave."
       },
       "adjustmentNoReason": "No reason given",
-      "reconcile": {
-        "caption": "Brought forward + Entitled + Adjustments + System corrections − Forfeited − Taken = Balance. Balance − Pending approval = Available.",
-        "broughtForward": "Brought forward",
-        "entitled": "+ Entitled this cycle",
-        "adjustments": "+ Adjustments",
-        "systemCorrections": "+ System corrections",
-        "forfeited": "− Forfeited",
-        "taken": "− Taken",
-        "balance": "= Balance",
-        "pending": "− Pending approval",
-        "available": "= Available"
-      }
+      "expiresOn": "Expires: {date}"
     },
     "preview": {
       "loading": "Calculating…"
@@ -3830,7 +3953,19 @@
         "carryAnnualOnly": "Carry-forward applies to Annual Leave — this type's balance does not roll over.",
         "noActivePolicy": "No active entitlement policy yet — add one under Eligibility first.",
         "frontDoorScopeLabel": "Applies to policy",
-        "workflowUnavailable": "Approval workflow settings are unavailable here — open the Approval tab."
+        "workflowUnavailable": "Approval workflow settings are unavailable here — open the Approval tab.",
+        "yearType": "Leave Year Type",
+        "yearTypeStepHelp": "Choose the leave cycle first. The Earning Method and Rounding steps that follow decide how leave is credited within that cycle.",
+        "roundingNearestHalf": "Nearest 0.5 day",
+        "roundingCustomize": "Customize decimal thresholds",
+        "roundingThresholdsTitle": "Custom decimal thresholds",
+        "roundingDownRangeLabel": "Round down to nearest 0.5 day",
+        "roundingUpRangeLabel": "Round up to nearest 0.5 day",
+        "roundingFromInclusive": "From (inclusive)",
+        "roundingToExclusive": "To (exclusive)",
+        "roundingToInclusive": "To (inclusive)",
+        "roundingThresholdHelp": "The two ranges always cover 0.000 to 1.000 with no gap and no overlap, so there is a single boundary to set. Move it and both ranges follow. Leave the box unticked to use the standard rule: 0.000-0.499 rounds down, 0.500-1.000 rounds up.",
+        "roundingWorkedExample": "With this rule, a calculated {raw} days is credited as {rounded} days."
       },
       "conditionStep": {
         "criteria": "Criteria",
@@ -3838,7 +3973,13 @@
         "expiry": "Expiry",
         "halfDayCompanyWideBadge": "Applies company-wide",
         "expiryAnnualPointer": "Annual Leave expiry is governed by the carry-forward policy — configure it under General → Carry Forward Policy.",
-        "expiryEmergencyNote": "Emergency Leave carries no balance, so no expiry applies."
+        "expiryEmergencyNote": "Emergency Leave carries no balance, so no expiry applies.",
+        "applicationLimitsTitle": "Application Limits",
+        "applicationLimitYearLabel": "Maximum application per leave year",
+        "applicationLimitUnlimited": "Unlimited",
+        "applicationLimitLimited": "Limited",
+        "applicationLimitMaxLabel": "Maximum (days)",
+        "applicationLimitHelp": "Caps the total days an employee may APPLY for of this type in one leave year, whether or not any entitlement balance exists — the rule for types such as Unpaid Leave. It is checked when the application is submitted and again when it is approved. Entitlement, accrual and the balance shown in Leave Summary are untouched. Unlimited is how every leave type behaves today."
       },
       "entitlementStep": {
         "schemes": "Benefit Schemes",
@@ -4255,19 +4396,17 @@
       "reasonPlaceholder": "Why is this being changed?",
       "essView": {
         "sectionTitle": "Employee Leave View Configuration",
-        "help": "Choose which entitlement and balance figures employees see for this leave type in My Profile → Leave, and explain each one in the same place: tick an item and its Description and Formula fields appear beside it — employees see that text when they hover the item's info icon. Unticked items are hidden in self-service only; HR always sees everything. Explanations change wording only, never any leave figure.",
-        "available": "Available",
-        "taken": "Taken",
-        "broughtForward": "Brought Forward",
-        "unplanned": "Unplanned",
-        "adjustment": "Adjustment",
-        "overutilized": "Overutilized",
+        "help": "Choose which lines of the Leave Balance Summary employees see for this leave type in My Profile → Leave, and explain each one in the same place: tick an item and its Description and Formula Explanation fields appear beside it — employees see that text when they hover the item's info icon. Unticked items are hidden in self-service only; HR always sees everything. Explanations change wording only, never any leave figure. Wording is carried over from the first leave type you configured, so you only write it once; edit it here if this leave type needs different wording, and nothing is stored until you press Save.",
+        "eligible": "Eligible",
         "ytdEntitled": "YTD Entitled",
+        "broughtForward": "Brought Forward",
+        "adjustment": "Adjustments",
+        "total": "Total",
+        "taken": "Taken",
         "pendingApproval": "Pending Approval",
-        "carryForwardExpiry": "Brought Forward Expiry Date",
-        "forfeited": "Forfeited Balance",
-        "groupOther": "Other",
-        "entitlementCalcBreakdown": "Entitlement Calculation Breakdown"
+        "forfeited": "Brought Forward Forfeited",
+        "available": "Available Balance",
+        "groupOther": "Other"
       },
       "dayTypeInclusion": {
         "sectionTitle": "Day Type Inclusion",
@@ -4365,16 +4504,7 @@
       "formula": {
         "descriptionLabel": "Description",
         "formulaLabel": "Formula explanation",
-        "resultLabel": "Result / date (optional)",
-        "component": {
-          "currentYearEntitlement": "This Year's Entitlement",
-          "monthlyAccrued": "Accrued So Far This Year",
-          "carriedForward": "Brought Forward",
-          "carryForwardRemaining": "Brought-Forward Remaining",
-          "carryForwardExpiry": "Brought-Forward Expiry",
-          "forfeited": "Forfeited",
-          "totalAvailable": "Total Available"
-        }
+        "templateHint": "Suggested wording, carried over from your first configured leave type. Edit it if this leave type differs — nothing is stored until you press Save."
       },
       "gradeSearchLabel": "Search grades",
       "gradeSearchPlaceholder": "Search by code or name…",
@@ -5197,7 +5327,11 @@
       "maxDaysPerApplication": "Maximum days per application",
       "maxDaysPerApplicationShort": "Max / application",
       "maxDaysPerApplicationNone": "No cap",
-      "maxDaysPerApplicationHelp": "Optional. Leave blank for no limit. Set it to 3 and no single application for any leave type in this group may cover more than 3 calendar days — separately from the shared yearly total."
+      "maxDaysPerApplicationHelp": "Optional. Leave blank for no limit. Set it to 3 and no single application for any leave type in this group may cover more than 3 calendar days — separately from the shared yearly total.",
+      "colSchemeCategory": "Scheme category",
+      "schemeCategoryPlaceholder": "e.g. Permanent, Contract (Special)",
+      "schemeCategoryUnset": "Ungrouped",
+      "schemeCategoryHelp": "Groups related schemes together wherever schemes are listed for selection. It is a label only — it never affects who is eligible, which scheme an employee resolves to, or how many days they get. A suggestion is offered from the scheme name and employment type; you can change or clear it at any time."
     },
     "systemExplorer": {
       "title": "System analysis & dependency explorer",
@@ -5499,7 +5633,7 @@
         },
         "hire": {
           "title": "Create new employee",
-          "body": "Click **+ Create new employee** at the top right to add someone with their company, department, and start date. For bulk onboarding, use **Import CSV**."
+          "body": "Click **+ Create new employee** at the top right. It opens a step-by-step screen — you can save a draft at any point and finish it later. For bulk onboarding, use **Import employees** with the Excel template."
         },
         "orgTree": {
           "title": "Your group structure",

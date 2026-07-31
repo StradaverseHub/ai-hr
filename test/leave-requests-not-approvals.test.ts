@@ -189,11 +189,18 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     expect(leavePage).toContain('const ess = !admin;');
   });
 
-  it('ENUMERATION: the per-employee record screen is a read-only alternative, not a replacement', () => {
-    // /leave/employee-records answers "this ONE employee's history" and carries no action column at all,
-    // so it cannot stand in for the org-wide table's cancel/edit affordances.
+  it('ENUMERATION: the per-employee record screen is a PER-EMPLOYEE alternative, not a replacement', () => {
+    // /leave/employee-records answers "this ONE employee's history".
     expect(recordsPage).toContain('employmentIds: [selected.employmentId]');
-    for (const absent of ['<AdminCancelLeaveDialog', '<EditLeaveDialog', '<CancelLeaveDialog', '<CancelDatesDialog']) {
+    // fe3eb141 MOVED the admin cancel-on-behalf action there, as the reporter asked — so this is now
+    // the ONE dialog the records page legitimately carries.
+    expect(recordsPage).toContain('<AdminCancelLeaveDialog');
+    // The other three remain absent, and that is precisely why the Requests subsection cannot be
+    // deleted: they are SUBJECT-ONLY controls, and an admin on the records page is never the subject.
+    // For an HR admin (whose ESS blocks on /leave are suppressed by `ess`, 8ec63139) the Requests
+    // table is still the only place their OWN pending leave can be edited, withdrawn or partly given
+    // back. See test/leave-records-cancel.test.ts for the full hold-back enumeration.
+    for (const absent of ['<EditLeaveDialog', '<CancelLeaveDialog', '<CancelDatesDialog']) {
       expect(recordsPage.includes(absent), absent).toBe(false);
     }
   });

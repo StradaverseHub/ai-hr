@@ -62,6 +62,8 @@ import {
   grantAdHocLeaveMulti,
   reprojectEntitlementForSchemeCohort,
   todayInKualaLumpur,
+  // Feedback 9f5164d8 — the engine's own set of savable rounding methods.
+  isEngineRoundingMethod,
   DAY_TYPE_INCLUSION_KEYS,
   type DayTypeInclusion,
   type EarnedAccrualGroup,
@@ -475,14 +477,37 @@ const carryFlagField = (fd: FormData, name: string): boolean | undefined =>
  * instead of riding a hidden input on every unrelated form (the footgun the codebase itself flagged):
  *  - marker `roundingMethodRendered` ABSENT ⇒ `undefined` = PRESERVE (the form did not render the Rounding
  *    dropdown — Carry Forward / Eligibility inline edit — so the writer keeps the stored value);
- *  - marker present + 'up' / 'down' ⇒ that value = SET;
+ *  - marker present + an engine method ('up' / 'down' / 'nearest_half') ⇒ that value = SET;
  *  - marker present + anything else (incl. 'none') ⇒ `null` = explicit CLEAR (omit the key).
  * Only the forms that actually render the dropdown (Earning Method, the multi-scope add form) post the marker.
+ *
+ * Feedback 9f5164d8 widened the accepted set with 'nearest_half'. The add-entitlement form's own dropdown
+ * still offers only none/up/down, so nothing about the JSONB path changes; the widening is here rather than
+ * at the Earning Method call site so the two readers cannot disagree about what a savable method is.
  */
-const roundingMethodField = (fd: FormData): 'up' | 'down' | null | undefined => {
+const roundingMethodField = (fd: FormData): 'up' | 'down' | 'nearest_half' | null | undefined => {
   if (fd.get('roundingMethodRendered') == null) return undefined;
   const v = String(fd.get('roundingMethod') ?? '');
-  return v === 'up' || v === 'down' ? v : null;
+  return isEngineRoundingMethod(v) ? v : null;
+};
+
+/**
+ * Feedback 9f5164d8 — the custom decimal threshold, riding the SAME `roundingMethodRendered` marker as the
+ * dropdown it belongs to. It is not a second tri-state: the threshold is part of the rounding
+ * configuration, so a form that does not render the rounding control preserves both, and a form that does
+ * render it decides both together.
+ *
+ * Marker present + a parseable number ⇒ SET. Marker present + blank / unparseable ⇒ null = CLEAR, which is
+ * exactly what "Customize decimal thresholds" being unticked means: use the standard rule. The bounds are
+ * NOT enforced here — `setLeaveTypeRules` throws a readable, localizable error for an out-of-range value,
+ * and silently swallowing it here would let a typo save as "standard rule" without telling anyone.
+ */
+const roundingThresholdField = (fd: FormData): number | null | undefined => {
+  if (fd.get('roundingMethodRendered') == null) return undefined;
+  const raw = String(fd.get('roundingThreshold') ?? '').trim();
+  if (raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
 };
 
 /**
@@ -638,6 +663,9 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
             // dropdown was not rendered, which the service reads as PRESERVE. Coercing that to null would
             // clear the stored rounding for any form that ever stops rendering the control.
             roundingMethod: roundingMethodField(formData),
+            // 9f5164d8 — the threshold rides the same marker as the dropdown, for the same reason and with
+            // the same NOT-`?? null` discipline.
+            roundingThreshold: roundingThresholdField(formData),
           }
         : {}),
       // Carry half — enable flag, cap, expiry mode and both expiry shapes, plus the max-balance cap.
@@ -1437,6 +1465,14 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const backdatingFields = touchBackdating
     ? { backdatingLimitDays: backdatingRaw === '' ? null : Number(backdatingRaw) }
     : {};
+  // Application Limits (feedback c6ffa725): its own sub-form posts `applicationLimits=1` (marker),
+  // mirroring the backdating tri-state guard above. Empty input ⇒ null (Unlimited, which is what every
+  // existing leave type means and how it behaves today); a number sets the annual application ceiling.
+  const touchApplicationLimits = fd.get('applicationLimits') === '1';
+  const maxDaysPerLeaveYearRaw = String(fd.get('maxDaysPerLeaveYear') ?? '').trim();
+  const applicationLimitFields = touchApplicationLimits
+    ? { maxDaysPerLeaveYear: maxDaysPerLeaveYearRaw === '' ? null : Number(maxDaysPerLeaveYearRaw) }
+    : {};
   // Minimum advance-notice rule (0159): its own sub-form posts `minAdvance=1` (marker), mirroring the
   // backdating tri-state guard above. Empty input ⇒ null (clears the requirement); a number sets it.
   const touchMinAdvance = fd.get('minAdvance') === '1';
@@ -1444,6 +1480,17 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const minAdvanceFields = touchMinAdvance
     ? { minAdvanceDays: minAdvanceRaw === '' ? null : Number(minAdvanceRaw) }
     : {};
+  // The three REQUEST-VALIDATION rules, pre-merged into one fragment. They stay three independent
+  // tri-states; only the assembly is flattened, because the updateLeaveType call below is already at
+  // TypeScript's union-complexity ceiling (TS2590) and one more conditional spread tips it over.
+  // The ANNOTATION is load-bearing: each `touchX ? {…} : {}` fragment is a two-member union, and spreading
+  // enough of them into one literal multiplies out until TypeScript refuses with TS2590. Declaring the
+  // merged shape collapses these three to one member.
+  const requestRuleFields: {
+    backdatingLimitDays?: number | null;
+    maxDaysPerLeaveYear?: number | null;
+    minAdvanceDays?: number | null;
+  } = { ...backdatingFields, ...applicationLimitFields, ...minAdvanceFields };
   // Leave Type Expiry Field (fec49317): its own sub-form posts `expiry=1` (marker) so any other save leaves
   // expiry_value / expiry_unit untouched (same tri-state guard). A blank value clears the pair (both null ⇒
   // no expiry); a number + unit configures age-from-earning expiry. The service normalizes/validates and
@@ -1523,14 +1570,18 @@ export async function updateLeaveTypeAction(fd: FormData) {
         ) as EssViewConfig,
       }
     : {};
-  // Leave Entitlement Formula Management (79011509, consolidated by 2bc2f2a3): the merged view-configuration
-  // sub-form posts `formula=1` (marker) plus, per component, up to three free-text fields
-  // (`formula_<key>_description`, `formula_<key>_formula`, `formula_<key>_result`). We build the COMPLETE
-  // { key: entry } map from the closed key list — WIDENED (2bc2f2a3) from the 7 legacy calc-breakdown keys to
-  // LEAVE_EXPLANATION_KEYS (legacy 7 ∪ every ess-view key) so any configurable view item can be annotated; a
-  // key the form never rendered posts nothing ⇒ '' ⇒ dropped by the service, which trims + drops blanks +
-  // normalises an all-blank map to null (clear). Any other sub-form save omits the marker ⇒
+  // Leave Entitlement Formula Management (79011509, consolidated by 2bc2f2a3, narrowed by ed17a4f9): the
+  // view-configuration sub-form posts `formula=1` (marker) plus, per Leave Summary item, two free-text fields
+  // (`formula_<key>_description`, `formula_<key>_formula`). We build the COMPLETE { key: entry } map from
+  // LEAVE_EXPLANATION_KEYS, which ed17a4f9 reduced to exactly the ess-view key set (the summary's own items);
+  // a key the form never rendered posts nothing ⇒ '' ⇒ dropped by the service, which trims + drops blanks +
+  // normalises an all-blank map to null (clear). The third "Result / Date (optional)" field is gone at the
+  // reporter's request and is no longer read. Any other sub-form save omits the marker ⇒
   // formula_explanations stays untouched (same tri-state guard as essView).
+  //
+  // Smart content reuse (ed17a4f9 §4) needs NOTHING here, and that is the design: the template only pre-fills
+  // the textareas, so what arrives in this FormData is whatever HR reviewed and left in the boxes. There is
+  // no separate "apply template" write path that could overwrite wording behind their back.
   const touchFormula = fd.get('formula') === '1';
   const formulaFields = touchFormula
     ? {
@@ -1540,7 +1591,6 @@ export async function updateLeaveTypeAction(fd: FormData) {
             {
               description: String(fd.get(`formula_${key}_description`) ?? ''),
               formula: String(fd.get(`formula_${key}_formula`) ?? ''),
-              result: String(fd.get(`formula_${key}_result`) ?? ''),
             },
           ]),
         ) as LeaveFormulaConfig,
@@ -1650,8 +1700,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       durations,
       ...docFields,
       ...payrollFields,
-      ...backdatingFields,
-      ...minAdvanceFields,
+      ...requestRuleFields,
       ...expiryFields,
       ...partialFields,
       ...duplicatePolicyFields,
@@ -2037,6 +2086,8 @@ export async function createBenefitSchemeAction(fd: FormData) {
       gradeGroupId: (String(fd.get('gradeGroupId') ?? '') || null),
       name: String(fd.get('name') ?? ''),
       status: String(fd.get('status') ?? 'active'),
+      // Feedback 0890a555: grouping label only — the service blanks whitespace to null (ungrouped).
+      schemeCategory: String(fd.get('schemeCategory') ?? ''),
     });
   } catch (e) {
     fail(ENTITLEMENTS, e);
@@ -2055,6 +2106,8 @@ export async function updateBenefitSchemeAction(fd: FormData) {
       gradeGroupId: (String(fd.get('gradeGroupId') ?? '') || null),
       name: String(fd.get('name') ?? ''),
       status: String(fd.get('status') ?? 'active'),
+      // Feedback 0890a555: grouping label only — the service blanks whitespace to null (ungrouped).
+      schemeCategory: String(fd.get('schemeCategory') ?? ''),
     });
     // ae5b84d5: only a match-identity/usability change (status / employment type / grade group / company)
     // re-shuffles coverage — activate/deactivate included, so a mass-revert lands NOW with an honest

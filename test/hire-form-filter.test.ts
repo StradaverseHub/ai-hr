@@ -13,7 +13,7 @@
  * remains the regression backstop for non-JS / direct-POST paths.
  */
 import { describe, expect, it } from 'vitest';
-import { HIRE_ORG_FILTER_SCRIPT, hireOptionVisible } from '../lib/hire-form-filter';
+import { hireOptionVisible } from '../lib/hire-form-filter';
 
 const A = 'company-a';
 const B = 'company-b';
@@ -127,89 +127,62 @@ describe('hireOptionVisible — department rule (company AND business-unit)', ()
   });
 });
 
-describe('HIRE_ORG_FILTER_SCRIPT — inline script embeds the tested rule', () => {
-  it('contains the serialised hireOptionVisible function (no drift between test and page)', () => {
-    expect(HIRE_ORG_FILTER_SCRIPT).toContain(hireOptionVisible.toString());
-  });
-
-  it('is syntactically valid standalone JS (survives Function.prototype.toString embedding)', () => {
-    // Compiles the script without executing it — catches a transform ever producing an inline
-    // script the browser cannot parse.
-    expect(() => new Function(HIRE_ORG_FILTER_SCRIPT)).not.toThrow();
-  });
-
-  it('wires all five hire-form selects', () => {
-    for (const id of [
-      'hire-company',
-      'hire-business-unit',
-      'hire-department',
-      'hire-position',
-      'hire-cost-center',
-    ]) {
-      expect(HIRE_ORG_FILTER_SCRIPT).toContain(`'${id}'`);
-    }
-  });
-
-  it('reads the CSV stamps (data-companies / data-bu-companies)', () => {
-    expect(HIRE_ORG_FILTER_SCRIPT).toContain(`getAttribute('data-companies')`);
-    expect(HIRE_ORG_FILTER_SCRIPT).toContain(`getAttribute('data-bu-companies')`);
-  });
-
-  it("self-heals a hidden selection to the '' placeholder — never auto-picks the first visible option", () => {
-    // Scenario 2 (feedback 570e3311): switching Company must CLEAR stale picks, so the one and only
-    // self-heal target is the '' option (the Department select now has a disabled placeholder).
-    expect(HIRE_ORG_FILTER_SCRIPT).toContain(`sel.value='';`);
-    expect(HIRE_ORG_FILTER_SCRIPT).not.toContain('firstVisible');
-  });
-
-  it('never re-stamps placeholder options (the disabled Department prompt keeps its markup state)', () => {
-    expect(HIRE_ORG_FILTER_SCRIPT).toContain(`if(!o.getAttribute('data-companies'))continue;`);
-  });
-});
-
 /**
- * Hydration parity (spawned from the 2026-07-22 hydration-mismatch report): HIRE_ORG_FILTER_SCRIPT
- * runs at parse time — BEFORE React hydrates — and stamps hidden/disabled from the current company
- * selection. The company select has no placeholder, so the browser auto-selects companies[0]; the
- * page must therefore server-render that SAME initial state (via hireInitiallyHidden →
- * hireOptionVisible) on every filtered option, or each non-companies[0] option hydrates with a
- * mismatch warning. These assertions pin the parity wiring in the page source.
+ * 6d671f44 — the cascade moved from a pure-DOM inline script on the Personnel LIST page to the
+ * dedicated Create New Employee wizard, which is a client component and can simply CALL the rule.
+ *
+ * The suites that used to live here pinned the serialised script and the hydration-parity stamps
+ * that made it safe on a server-rendered page. Neither exists any more, and asserting on them would
+ * have been asserting on plumbing. What still matters — and is asserted below — is that there is
+ * exactly ONE visibility rule, that the wizard uses it rather than reimplementing it, and that the
+ * two behaviours the script was written to guarantee (self-heal on company change; an explained
+ * empty list) survived the move.
  */
-describe('hire form — server-rendered initial visibility matches the inline script', () => {
+describe('6d671f44 — the wizard uses the one rule, and keeps its two behaviours', () => {
   const fs = require('node:fs') as typeof import('node:fs');
   const path = require('node:path') as typeof import('node:path');
+  const WIZARD = fs.readFileSync(path.resolve(__dirname, '../app/admin/personnel/new/wizard.tsx'), 'utf8');
   const PAGE = fs.readFileSync(path.resolve(__dirname, '../app/admin/personnel/page.tsx'), 'utf8');
+  const LIB = fs.readFileSync(path.resolve(__dirname, '../lib/hire-form-filter.ts'), 'utf8');
 
-  it('derives the initial state from the same pure rule the script embeds', () => {
-    expect(PAGE).toContain('hireOptionVisible');
-    expect(PAGE).toContain('const hireInitiallyHidden');
-    // Must key off the SAME company the browser auto-selects (companies[0], no placeholder).
-    expect(PAGE).toMatch(/selectedCompany:\s*defaultCompanyId \?\? ''/);
+  it('the wizard calls hireOptionVisible instead of reimplementing the rule', () => {
+    expect(WIZARD).toContain("import { hireOptionVisible } from '@/lib/hire-form-filter'");
+    expect(WIZARD).toContain('hireOptionVisible({');
+    // All four narrowed selects go through it.
+    expect(WIZARD).toContain('businessUnits.filter((b) => visible(b, false))');
+    expect(WIZARD).toContain('departments.filter((d) => visible(d, true))');
+    expect(WIZARD).toContain('positions.filter((p) => visible(p, false))');
+    expect(WIZARD).toContain('costCenters.filter((c) => visible(c, false))');
   });
 
-  it('sources the data-companies CSVs from the SQL resolver (labelIdsForCompany), not a JS mirror', () => {
-    expect(PAGE).toContain('labelIdsForCompany(session, kind, c.id)');
+  it('the serialised inline script is GONE, not merely unused', () => {
+    // A dead export is still a live surface — the r80 lesson. It is removed, and the reason is
+    // recorded where the next reader will look for it.
+    expect(LIB).not.toContain('export const HIRE_ORG_FILTER_SCRIPT');
+    expect(LIB).toContain('`HIRE_ORG_FILTER_SCRIPT` USED TO LIVE HERE');
+    expect(PAGE).not.toContain('HIRE_ORG_FILTER_SCRIPT');
+    expect(PAGE).not.toContain('dangerouslySetInnerHTML');
   });
 
-  it('stamps data-companies + hidden AND disabled from the same CSV on every filtered option (4 selects)', () => {
-    const csvStamps = PAGE.match(/data-companies=\{csv\}/g);
-    expect(csvStamps).toHaveLength(4); // business unit, department, position, cost centre
-    const stamps = PAGE.match(/hidden=\{hireInitiallyHidden\((\w+)\)\}\s*\n\s*disabled=\{hireInitiallyHidden\(\1\)\}/g);
-    expect(stamps).toHaveLength(4);
+  it('changing company CLEARS the dependent picks — never auto-picks the first visible option', () => {
+    // Feedback 570e3311 scenario 2, carried over verbatim in behaviour.
+    expect(WIZARD).toContain("e.departmentId = '';");
+    expect(WIZARD).toContain("e.positionId = '';");
+    expect(WIZARD).toContain("e.costCenterId = '';");
+    expect(WIZARD).not.toContain('firstVisible');
   });
 
-  it('department options carry the BU-companies CSV for the BU-degrade rule', () => {
-    expect(PAGE).toMatch(/data-bu-companies=\{d\.businessUnitId \? \(buCompaniesCsv\.get\(d\.businessUnitId\) \?\? ''\) : ''\}/);
+  it('a company that may use NONE of a select\'s options still says so (d61f0ff2)', () => {
+    expect(WIZARD).toContain('const orgEmpty = (opts: Option[])');
+    expect((WIZARD.match(/\{t\('orgLabelsEmptyForCompany'\)\}/g) ?? []).length).toBe(4);
   });
 
-  it("the Department select has a disabled '' placeholder (the clear-on-company-switch target)", () => {
-    expect(PAGE).toMatch(/<select name="departmentId" id="hire-department" required defaultValue=""/);
-    expect(PAGE).toMatch(/<option value="" disabled>\s*\n\s*\{t\('departmentSelectPrompt'\)\}/);
-  });
-
-  it('the company select still has no placeholder (companies[0] IS the initial selection)', () => {
-    // If a placeholder option is ever added, the initial selectedCompany becomes '' and
-    // hireInitiallyHidden must be re-derived — this assertion forces that reconsideration.
-    expect(PAGE).toMatch(/<select name="companyId" id="hire-company" required/);
+  it('the list page no longer carries a data-entry form at all', () => {
+    // The reporter's requirement, asserted as an absence: "The current employee list screen shall not
+    // be used for data entry."
+    expect(PAGE).not.toContain('hireAction');
+    expect(PAGE).not.toContain('<HireFormPanel>');
+    expect(PAGE).not.toContain('id="hire-company"');
+    expect(PAGE).toContain('href="/admin/personnel/new"');
   });
 });

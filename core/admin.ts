@@ -38,6 +38,9 @@ import {
   type LeaveYearCycleOverride,
   // Feedback b81d3c52 — the Rounding Method value set persisted on `leave_policy.accrual`.
   type LeaveRoundingMethod,
+  // Feedback 9f5164d8 — the methods the engine actually acts on ('up' | 'down' | 'nearest_half'), so the
+  // write-time validator and the engine cannot drift apart on what a savable method is.
+  isEngineRoundingMethod,
   type ServiceBand,
 } from './leave';
 import { countryPacks, requirePackFor } from '../localization/registry';
@@ -3254,6 +3257,12 @@ export async function updateLeaveType(
     // request-validation rule with its own sub-form, so an unrelated save must not touch it and the audit
     // diff must label it correctly.
     minAdvanceDays?: number | null;
+    // Application Limits (feedback c6ffa725, migration 0335): the maximum total days an employee may APPLY
+    // for of this type within one leave year, regardless of entitlement balance. OWN tri-state (undefined =
+    // leave column untouched), mirroring backdatingLimitDays — it has its own sub-form, so an unrelated
+    // save must not touch it and the audit diff must label it correctly. null ⇒ Unlimited, which is what
+    // every existing leave type means.
+    maxDaysPerLeaveYear?: number | null;
     // Leave Type Expiry Field (fec49317): OPTIONAL age-from-earning expiry, stored as a (value, unit) pair.
     // OWN tri-state — both keys are undefined (block not rendered) ⇒ columns untouched; both present ⇒ set;
     // an explicit clear posts value=null unit=null (its own sub-form marks the pair as touched). value must
@@ -3415,6 +3424,10 @@ export async function updateLeaveType(
   // Minimum advance-notice rule (0159): its OWN tri-state, mirroring touchBackdating above — a save from any
   // other sub-form omits minAdvanceDays, so min_advance_days stays untouched (no silent reset).
   const touchMinAdvance = p.minAdvanceDays !== undefined;
+  // Application Limits (c6ffa725): its OWN tri-state, mirroring touchBackdating — a save from any other
+  // sub-form omits maxDaysPerLeaveYear, so max_days_per_leave_year stays untouched (no silent reset, and no
+  // silently-imposed ceiling on a type nobody configured one for).
+  const touchApplicationLimits = p.maxDaysPerLeaveYear !== undefined;
   // Leave Type Expiry Field (fec49317): its OWN tri-state — the pair is touched when EITHER key is present
   // (its sub-form always posts both together). Both null ⇒ clear (no expiry); both set ⇒ configure.
   const touchExpiry = p.expiryValue !== undefined || p.expiryUnit !== undefined;
@@ -3597,6 +3610,16 @@ export async function updateLeaveType(
   if (p.minAdvanceDays != null && (!Number.isInteger(p.minAdvanceDays) || p.minAdvanceDays < 0)) {
     throw new Error('“Minimum advance days” must be a whole number ≥ 0.');
   }
+  // Application Limits (c6ffa725): mirrors the DB CHECK in migration 0335. A zero or negative ceiling would
+  // refuse EVERY application of the type, which is a configuration mistake, not a policy — archive or hide
+  // the leave type instead. Fractional figures ARE allowed (half-day leave exists), unlike the whole-day
+  // rules above.
+  if (
+    p.maxDaysPerLeaveYear != null &&
+    (!Number.isFinite(p.maxDaysPerLeaveYear) || p.maxDaysPerLeaveYear <= 0 || p.maxDaysPerLeaveYear > 9999)
+  ) {
+    throw new Error('“Maximum application per leave year” must be greater than 0 and no more than 9999 days.');
+  }
   // Leave Type Expiry Field (fec49317): normalize + validate the (value, unit) pair. Both null = clear (no
   // expiry). A partial pair (one set, the other empty) is a user error — reject it so a half-configured
   // expiry can never persist. value must be a whole number >= 1; unit must be 'months' | 'days'.
@@ -3654,6 +3677,25 @@ export async function updateLeaveType(
   const backdatingSet = touchBackdating ? { backdatingLimitDays: p.backdatingLimitDays } : {};
   // Minimum advance-notice rule (0159): its own set fragment, mirroring backdatingSet.
   const minAdvanceSet = touchMinAdvance ? { minAdvanceDays: p.minAdvanceDays } : {};
+  // Application Limits (c6ffa725): its own set fragment, mirroring backdatingSet. It is PRE-MERGED with the
+  // two fragments above rather than spread as a fourth key in the `.set({...})` below — that literal is
+  // already at TypeScript's union-complexity ceiling (TS2590 "union type that is too complex to represent"),
+  // and one more conditional spread tips it over. The tri-states remain three genuinely independent ones;
+  // only the assembly is flattened.
+  // numeric(6,2) is a STRING column to drizzle, so the figure is serialised here rather than handed over as
+  // a number — the same treatment leave_policy's numeric columns get on the way in.
+  const applicationLimitSet = touchApplicationLimits
+    ? { maxDaysPerLeaveYear: p.maxDaysPerLeaveYear == null ? null : p.maxDaysPerLeaveYear.toFixed(2) }
+    : {};
+  // The ANNOTATION is load-bearing, not decoration. Each `touchX ? {...} : {}` fragment has the union type
+  // `{} | { x: … }`, and spreading N of them into one literal multiplies out to 2^N members; the `.set({…})`
+  // below spreads enough of them that TypeScript gives up with TS2590. Declaring the merged shape collapses
+  // these three back to ONE member and buys the headroom this column needed.
+  const requestRuleSet: {
+    backdatingLimitDays?: number | null;
+    minAdvanceDays?: number | null;
+    maxDaysPerLeaveYear?: string | null;
+  } = { ...backdatingSet, ...minAdvanceSet, ...applicationLimitSet };
   // Leave Type Expiry Field (fec49317): its own set fragment (the normalized pair, or both null to clear).
   const expirySet = touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {};
   // Partial Leave Approval (ADR-0068): its own set fragment.
@@ -3695,6 +3737,8 @@ export async function updateLeaveType(
         paid: leaveType.paid,
         backdatingLimitDays: leaveType.backdatingLimitDays,
         minAdvanceDays: leaveType.minAdvanceDays,
+        // Application Limits (c6ffa725): selected for the before/after audit diff.
+        maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
         expiryValue: leaveType.expiryValue,
         expiryUnit: leaveType.expiryUnit,
         perDateApproval: leaveType.perDateApproval,
@@ -3860,8 +3904,7 @@ export async function updateLeaveType(
         ...probationSet,
         ...(touchDurations ? { durations: nextDurations } : {}),
         ...docSet,
-        ...backdatingSet,
-        ...minAdvanceSet,
+        ...requestRuleSet,
         ...expirySet,
         ...partialSet,
         ...descriptionSet,
@@ -3946,6 +3989,7 @@ export async function updateLeaveType(
           ...(touchAllowUpl ? { allowUnpaidLeave: before?.allowUnpaidLeave ?? null } : {}),
           ...(touchBackdating ? { backdatingLimitDays: before?.backdatingLimitDays ?? null } : {}),
           ...(touchMinAdvance ? { minAdvanceDays: before?.minAdvanceDays ?? null } : {}),
+          ...(touchApplicationLimits ? { maxDaysPerLeaveYear: before?.maxDaysPerLeaveYear ?? null } : {}),
           ...(touchExpiry ? { expiryValue: before?.expiryValue ?? null, expiryUnit: before?.expiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: before?.customMessages ?? null } : {}),
@@ -3993,6 +4037,12 @@ export async function updateLeaveType(
             : {}),
           ...(touchMinAdvance
             ? { minAdvanceDays: p.minAdvanceDays !== undefined ? p.minAdvanceDays : (before?.minAdvanceDays ?? null) }
+            : {}),
+          ...(touchApplicationLimits
+            ? {
+                maxDaysPerLeaveYear:
+                  p.maxDaysPerLeaveYear !== undefined ? p.maxDaysPerLeaveYear : (before?.maxDaysPerLeaveYear ?? null),
+              }
             : {}),
           ...(touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),
@@ -4047,7 +4097,9 @@ export async function setLeaveTypeRules(
     carryForwardExpiryMonth?: number | null;
     carryForwardExpiryDay?: number | null;
     carryForwardIncludeEarned?: boolean | null;
-    roundingMethod?: 'up' | 'down' | null;
+    roundingMethod?: 'up' | 'down' | 'nearest_half' | null;
+    /** Feedback 9f5164d8 — the custom decimal threshold for 'nearest_half'. null ⇒ the standard rule. */
+    roundingThreshold?: number | null;
     maxBalanceDays?: number | null;
   },
 ) {
@@ -4061,8 +4113,26 @@ export async function setLeaveTypeRules(
     if (!Number.isFinite(v) || v < 0 || v > 9999.99) throw new LeaveTypeRuleError(`${label} must be between 0 and 9999.99.`);
     return Math.round(v * 100) / 100;
   };
-  if (p.roundingMethod !== undefined && p.roundingMethod !== null && !['up', 'down'].includes(p.roundingMethod)) {
-    throw new LeaveTypeRuleError('Rounding method must be Up or Down, or cleared.');
+  if (p.roundingMethod !== undefined && p.roundingMethod !== null && !isEngineRoundingMethod(p.roundingMethod)) {
+    throw new LeaveTypeRuleError('Rounding method must be Up, Down or Nearest half day, or cleared.');
+  }
+  // Feedback 9f5164d8 — the reporter's four validation rules, all of which reduce to a bound on ONE number.
+  // "Values between 0.000 and 1.000", "ranges must cover the whole interval", "must not overlap", "must not
+  // have gaps" and "From must be less than To" are all satisfied by construction once the configuration is a
+  // single boundary in (0, 1]: the down range is [0, t) and the up range is [t, 1]. A threshold of exactly 0
+  // would make the down range empty (every value rounds up, which is what 'up' is for) and is refused;
+  // exactly 1 is legal and means "only a whole 1.000 rounds up", the reporter's own upper bound.
+  if (p.roundingThreshold !== undefined && p.roundingThreshold !== null) {
+    const t = p.roundingThreshold;
+    if (!Number.isFinite(t) || t <= 0 || t > 1) {
+      throw new LeaveTypeRuleError('Rounding threshold must be greater than 0.000 and no more than 1.000.');
+    }
+    // Three decimal places, compared with a tolerance rather than an equality: 0.123 * 1000 is
+    // 122.99999999999999 in binary floating point, so a strict `Math.round(x) !== x` would reject a value
+    // the reporter's own table uses.
+    if (Math.abs(t * 1000 - Math.round(t * 1000)) > 1e-6) {
+      throw new LeaveTypeRuleError('Rounding threshold supports at most three decimal places.');
+    }
   }
   if (p.carryForwardExpiryMode !== undefined && p.carryForwardExpiryMode !== null && !['date', 'months'].includes(p.carryForwardExpiryMode)) {
     throw new LeaveTypeRuleError('Carry-forward expiry mode must be a date or a number of months.');
@@ -4088,6 +4158,10 @@ export async function setLeaveTypeRules(
   put('carryForwardExpiryDay', day);
   put('carryForwardIncludeEarned', p.carryForwardIncludeEarned);
   put('roundingMethod', p.roundingMethod);
+  put(
+    'roundingThreshold',
+    p.roundingThreshold == null ? p.roundingThreshold : Math.round(p.roundingThreshold * 1000) / 1000,
+  );
   put('maxBalanceDays', decIn(p.maxBalanceDays, 'Maximum balance days'));
   if (Object.keys(set).length === 0) return;
 
@@ -4103,6 +4177,7 @@ export async function setLeaveTypeRules(
         carryForwardExpiryDay: leaveType.carryForwardExpiryDay,
         carryForwardIncludeEarned: leaveType.carryForwardIncludeEarned,
         roundingMethod: leaveType.roundingMethod,
+        roundingThreshold: leaveType.roundingThreshold,
         maxBalanceDays: leaveType.maxBalanceDays,
       })
       .from(leaveType)

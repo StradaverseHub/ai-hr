@@ -131,7 +131,11 @@ describe('movementHistory — projection over the domain_event ledger', () => {
       employmentId: hire.employmentId,
       kind: 'termination',
       effectiveDate: '2026-07-31',
-      terminationType: 'voluntary',
+      // ae9350f2 — the classification is DERIVED from the coded reason now, never submitted beside it.
+      // `resignation` maps to termination_type 'voluntary', which is what this test is about.
+      endDate: '2026-07-31',
+      terminationReasonCode: 'resignation',
+      resignationDate: '2026-07-01',
       remarks: 'Better offer',
     });
     const rows = await movementHistory(adminCtx(b), hire.employmentId);

@@ -148,14 +148,50 @@ describe('1f6fd6d8 — every switch gates a row, every gated row has a switch', 
     expect(orphans).toEqual([]);
   });
 
-  it('the three obsolete keys are gone, and nothing else was dropped with them', () => {
-    for (const dead of ['entitlementToDate', 'expiredBroughtForward', 'transactionHistory']) {
+  it('obsolete keys are gone, and every line of the revised summary is configurable', () => {
+    for (const dead of [
+      // Dropped by r75: their rows had already left the product.
+      'entitlementToDate',
+      'expiredBroughtForward',
+      'transactionHistory',
+      // Dropped by 1f6fd6d8 with the sections they gated. `unplanned`/`overutilized` were labels with no
+      // value wiring at all; `carryForwardExpiry`'s date moved onto the Brought Forward Forfeited row and
+      // hides with it; `entitlementCalcBreakdown` was that section's own gate and now names nothing.
+      'unplanned',
+      'overutilized',
+      'carryForwardExpiry',
+      'entitlementCalcBreakdown',
+    ]) {
       expect(ESS_VIEW_COMPONENT_KEYS as readonly string[]).not.toContain(dead);
     }
-    // The keys the reporter's revised summary names must all still be configurable.
-    for (const live of ['ytdEntitled', 'broughtForward', 'adjustment', 'taken', 'pendingApproval', 'forfeited', 'carryForwardExpiry', 'available']) {
-      expect(ESS_VIEW_COMPONENT_KEYS as readonly string[]).toContain(live);
+    // The nine lines the reporter's revised summary names must all be configurable, and nothing else may be:
+    // an item HR can tick that the summary does not render is precisely what ed17a4f9 was raised about.
+    expect([...ESS_VIEW_COMPONENT_KEYS]).toEqual([
+      'eligible',
+      'ytdEntitled',
+      'broughtForward',
+      'adjustment',
+      'total',
+      'taken',
+      'pendingApproval',
+      'forfeited',
+      'available',
+    ]);
+  });
+
+  it('seven of the nine keys are the ORIGINAL strings, so stored selections survive the redesign', () => {
+    // Key CHOICE is a data-migration decision, not cosmetics: reusing the existing key string is what keeps
+    // an HR admin's saved show/hide choice for that row after the summary was rebuilt around it. Only the
+    // two genuinely new lines needed new keys.
+    for (const preserved of ['ytdEntitled', 'broughtForward', 'adjustment', 'taken', 'pendingApproval', 'forfeited', 'available']) {
+      expect(ESS_VIEW_COMPONENT_KEYS as readonly string[]).toContain(preserved);
     }
+    expect(resolveEssView({ taken: false, ytdEntitled: false }).taken).toBe(false);
+    expect(resolveEssView({ taken: false, ytdEntitled: false }).ytdEntitled).toBe(false);
+    // …and a stored value under a RETIRED key is ignored rather than throwing or leaking through.
+    const legacy = resolveEssView({ unplanned: false, entitlementCalcBreakdown: false, taken: false });
+    expect((legacy as Record<string, unknown>).unplanned).toBeUndefined();
+    expect(legacy.taken).toBe(false);
   });
 
   it('every ess-gated key the panel references is a REAL component key (no typo gates nothing)', () => {
@@ -174,15 +210,16 @@ describe('1f6fd6d8 — every switch gates a row, every gated row has a switch', 
     expect(flat.slice().sort()).toEqual([...ESS_VIEW_COMPONENT_KEYS].sort());
   });
 
-  it('every ungated rendered row is ungated ON PURPOSE (the documented two)', () => {
-    // Section §8 reconciliation is never gated — a sum an HR toggle could half-hide would not add up — and
-    // §1's Balance is the headline reconciled figure. Any OTHER field without an essKey must sit inside a
-    // section that carries one, or it is a row no configuration can reach.
-    const unreachable = ENTITLEMENT_PANEL_SECTIONS.filter((s) => s.key !== 'reconciliation')
-      .flatMap((s) => (s.fields ?? []).map((f) => ({ section: s, field: f })))
+  it('EVERY rendered row is now reachable from the configuration screen — no exceptions left', () => {
+    // This used to allow two documented exceptions: the reconciliation block (a sum an HR toggle could
+    // half-hide would not add up) and §1's un-gated Balance row. 1f6fd6d8 removed the reconciliation block
+    // and replaced Balance with Available Balance, which IS configurable — so the exception list is empty and
+    // the reporter's ask ("any field enabled or disabled in the configuration should immediately reflect in
+    // the Leave Balance Summary") holds for every line without a carve-out.
+    const unreachable = ENTITLEMENT_PANEL_SECTIONS.flatMap((s) => (s.fields ?? []).map((f) => ({ section: s, field: f })))
       .filter(({ section, field }) => field.essKey == null && section.essKey == null)
       .map(({ section, field }) => `${section.key}.${field.key}`);
-    expect(unreachable).toEqual(['summary.balance']);
+    expect(unreachable).toEqual([]);
   });
 });
 

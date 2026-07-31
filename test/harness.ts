@@ -16,6 +16,10 @@ const ALL_TABLES = [
   'assignment', 'reporting_line', 'leave_type', 'leave_policy', 'leave_ledger',
   'leave_request', 'leave_request_date', 'leave_cancellation_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
+  // 6d671f44 — Create New Employee drafts (migration 0337). Listed explicitly rather than left to the
+  // TRUNCATE ... CASCADE from `tenant`: the ADR-0071 note below is what happens when a table is only
+  // ever cleared by accident.
+  'employee_draft',
   'holiday', 'holiday_group_holiday', 'attendance', 'attendance_policy', 'travel_request',
   'payroll_batch', 'payslip', 'payroll_input', 'payroll_individual_txn', 'employee_cp38', 'company_statutory_my',
   'payroll_policy',
