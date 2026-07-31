@@ -7,7 +7,7 @@
  * with nothing pointing at the screen that changes it, and said nothing at all about a formula. So this
  * item is presentation only, and this file covers the three things it changed:
  *
- *   1. lib/pay-rule-words.ts — the formula, in plain words. THE ONLY REAL LOGIC HERE, so it gets
+ *   1. app/admin/pay-components/pay-rule-words.ts — the formula, in plain words. THE ONLY REAL LOGIC HERE, so it gets
  *      behavioural tests rather than source assertions, driven through the REAL en.json catalog so what is
  *      asserted is the sentence an administrator actually reads.
  *   2. The list's Input Type cell is a link into the pay item, and prints those words underneath.
@@ -27,7 +27,7 @@ import {
   type FormulaOperand,
   type PayRule,
 } from '../core/pay-rule';
-import { formulaOperandInWords, payRuleInWords, type PayRuleWordsOptions } from '../lib/pay-rule-words';
+import { formulaOperandInWords, payRuleInWords, type PayRuleWordsOptions } from '../app/admin/pay-components/pay-rule-words';
 
 const ROOT = join(__dirname, '..');
 const read = (...p: string[]) => readFileSync(join(ROOT, ...p), 'utf8');
@@ -184,7 +184,7 @@ describe('61bf109d rev2 — the list points at the screen that changes the value
 });
 
 describe('61bf109d rev2 — THE SCOPE GUARD: still no parser, no eval, no expression string', () => {
-  const wordsSrc = read('lib', 'pay-rule-words.ts');
+  const wordsSrc = read('app', 'admin', 'pay-components', 'pay-rule-words.ts');
 
   it('the words module evaluates nothing and reads no expression text', () => {
     // Scoped to THIS module on purpose: it is the one file the item added, and the one place a

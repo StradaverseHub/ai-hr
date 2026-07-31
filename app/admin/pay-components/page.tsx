@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import { listPayComponents } from '@/core/pay-components';
 import type { FormulaOp, FormulaOperand, PayRule, PayRuleKind } from '@/core/pay-rule';
-import { payRuleInWords } from '@/lib/pay-rule-words';
+import { payRuleInWords } from './pay-rule-words';
 import { Card, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -35,7 +35,7 @@ export default async function PayComponentsPage({
   const s = await requireAdmin();
   const t = await getTranslations('payComponents');
   // 61bf109d rev2 — the formula description reads the BUILDER's own operand/operator strings, so the list
-  // and the editor cannot word the same formula two different ways. See lib/pay-rule-words.ts.
+  // and the editor cannot word the same formula two different ways. See ./pay-rule-words.ts.
   const tr = await getTranslations('payRule');
   const sp = await searchParams;
   // Back-compat: the pre-split UI minted ?new=1 / ?edit=CODE links (bookmarks, browser history) — send

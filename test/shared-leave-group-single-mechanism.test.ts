@@ -74,13 +74,28 @@ describe('1ef1cf95 · sharing caps what is TAKEN, never what is GRANTED', () => 
     expect(computeSrc).not.toMatch(/combinedLimit|combined_limit/i);
   });
 
-  it('entitledDays still resolves from exactly three inputs', () => {
-    // floor (statutory pack) vs scheme days vs policy days — schemeDays null, not zero, is the fallback
-    // trigger. A group day-source would appear here as a fourth input.
-    expect(computeSrc).toContain('return Math.max(floorDays, schemeDays ?? policyDays);');
+  it('entitledDays still resolves from exactly three inputs, and the floor no longer overrides', () => {
+    // INVERTED IN r88 (fa3f4ccb), not deleted. This guard's REAL subject is "no FOURTH day-source" — a
+    // shared-group day figure must never become an input here. That invariant is unchanged and is still
+    // pinned by the signature below.
+    //
+    // What DID change, deliberately and at the reporter's twice-stated instruction: the statutory floor
+    // stops OVERRIDING configuration. It was Math.max(floorDays, schemeDays ?? policyDays); it is now
+    // schemeDays ?? policyDays, with floorDays retained SOLELY to raise the below-floor warning. Pinning
+    // the old expression here would have re-asserted the behaviour the round was approved to remove.
+    // COMMENTS STRIPPED BEFORE MATCHING. The first version of this assertion did not, and failed against
+    // the comment two lines above entitledDays that RECORDS the change ("was Math.max(...); the resolved
+    // value is now ..."). A guard that greps raw source will eventually match a comment citing the very
+    // invariant it protects — r86 hit that four times in one integration. Match code, not prose.
+    const code = computeSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code).toContain('const days = schemeDays ?? policyDays;');
+    expect(code).not.toContain('Math.max(floorDays, schemeDays ?? policyDays)');
     expect(computeSrc).toMatch(
-      /export function entitledDays\(\s*floorDays: number,\s*schemeDays: number \| null,\s*policyDays: number,\s*\): number/,
+      /export function entitledDays\(\s*floorDays: number,\s*schemeDays: number \| null,\s*policyDays: number,\s*\): \{ days: number; belowStatutoryFloor: boolean \}/,
     );
+    // floorDays must still REACH the caller as a signal, or the warning has no source and the UI would
+    // have to recompute the floor — which is how two figures drift apart.
+    expect(computeSrc).toContain('belowStatutoryFloor: belowStatutoryFloor(floorDays, days)');
   });
 
   it('the group carries usage caps and no entitlement bands', () => {
