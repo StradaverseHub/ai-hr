@@ -534,12 +534,22 @@ those employees drop to the statutory floor until their schemes are filled in.
    pre-teardown era. **Do not invent a `TEST_DB_NAMESPACE` unless you are running parallel agents** —
    that is what created the namespaces that leaked.
 
-   **What is NOT fixed is git worktree/branch sprawl.** r86 counted **152 worktrees and 79 `build/*`
-   branches**, nearly all of them finished rounds. They cost disk and make
-   `git worktree list` useless for finding the tree you want. Prune with
-   `git worktree prune` plus `git worktree remove` for merged rounds, and delete merged `build/*`
-   branches — but **check `git log --oneline main..<branch>` is empty first**: r86 itself was an
-   unmerged round sitting in exactly that pile.
+   **Worktree sprawl is also fixed — and the safe way to do it is worth knowing.** r86 found **152
+   worktrees using 33 GB**; the repo is now down to **2** (the root and `mainwt`) using **732 MB**.
+
+   **`git worktree remove` deletes the working DIRECTORY, not the branch.** Every commit survives in
+   `.git` as long as the branch ref does, so removing a clean worktree is **lossless** even when it
+   holds commits `main` has never seen — all 108 `worktree-wf_*` branches were kept and their commits
+   are still reachable (`git log main..<branch>` still lists them). What removal *does* discard is
+   **uncommitted** work in the tree, which is the only thing to check:
+
+       git -C <path> status --porcelain     # empty ⇒ removal loses nothing
+
+   Do not use `git log main..<branch>` as the safety test for removing a worktree — that is the test
+   for whether a *round* is unshipped (item 0 in CURRENT STATE), and conflating the two makes you keep
+   30 GB of directories you do not need. The 24 branches carrying unmerged commits are abandoned agent
+   builds whose items shipped by other routes (`23ad620e` in r76, `9cbf5e0d` in r84, `9816a5ad` in
+   r85); the branches are kept anyway, since they cost nothing now.
 
 6. **Two dead/misplaced things found in r78 and still not changed:** `payment_basis` on the payroll
    config screen is written, validated, stored and **read by nothing**; and probation months, review
