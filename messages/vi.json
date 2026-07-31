@@ -1228,7 +1228,11 @@
         "priorityOther": "Khác",
         "primaryHint": "Chỉ một liên hệ được là liên hệ chính. Chọn Chính ở đây sẽ chuyển dấu này khỏi liên hệ trước đó.",
         "actions": "Thao tác"
-      }
+      },
+      "disabledIndividualLabel": "Người khuyết tật (OKU)",
+      "disabledIndividualYes": "Có",
+      "disabledIndividualNo": "Không",
+      "disabledIndividualHint": "Người khuyết tật đã đăng ký được hưởng thêm khoản giảm trừ thuế hằng năm. Đặt thành Có sẽ thay đổi thuế hằng tháng của nhân viên: vì thuế hằng tháng được tính từ đầu năm đến nay, tháng bạn thay đổi sẽ hấp thụ phần điều chỉnh cho cả năm tính đến thời điểm đó."
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -1290,7 +1294,24 @@
       "instructionIdentityText": "Các cột CMND/CCCD, điện thoại, tài khoản ngân hàng, EPF, SOCSO và mã số thuế được định dạng văn bản để giữ số 0 ở đầu. Đừng đổi định dạng sang General.",
       "instructionCompany": "Để trống cột Công ty để dùng công ty đã chọn trên màn hình nhập, hoặc ghi tên công ty để nhập nhân viên của nhiều công ty trong một tệp.",
       "instructionReference": "Trang tính Reference liệt kê mọi giá trị được chấp nhận cho Công ty, Phòng ban, Chức vụ và Trung tâm chi phí. Giá trị khác sẽ bị từ chối kèm lý do.",
-      "instructionSamples": "Xóa hai hàng mẫu trước khi tải lên."
+      "instructionSamples": "Xóa hai hàng mẫu trước khi tải lên.",
+      "historyTitle": "Lịch sử nhập",
+      "historyHint": "Mọi lần nhập đã chạy và những hàng không tải được. Tệp đã tải lên không được lưu giữ.",
+      "historyEmpty": "Chưa có lần nhập nào. Sau khi bạn chạy, lần nhập sẽ được liệt kê ở đây kèm kết quả.",
+      "historyColWhen": "Thời điểm",
+      "historyColFile": "Tệp",
+      "historyColBy": "Bởi",
+      "historyColResult": "Kết quả",
+      "historyPasted": "CSV đã dán",
+      "historyActorUnknown": "Không rõ",
+      "historyOutcomeSucceeded": "Thành công",
+      "historyOutcomePartial": "Nhập một phần",
+      "historyOutcomeFailed": "Không nhập được gì",
+      "historyCounts": "{imported} đã nhập, {failed} lỗi",
+      "historyViewFailed": "Hàng lỗi",
+      "historyErrorsShown": "{count, plural, other {# hàng không nhập được}}",
+      "historyErrorsTruncated": "Đang hiển thị {shown} trong {total} hàng lỗi.",
+      "historyNoDetail": "Không có chi tiết hàng nào được lưu cho lần nhập này."
     },
     "hiringDefaults": {
       "title": "Mặc định tuyển dụng",

@@ -196,7 +196,9 @@ export function EmployeeImport({
     startTransition(async () => {
       setError(null);
       try {
-        const r = await commitImportAction(csv, companyId);
+        // cf43c909 — the file's NAME rides along as the history row's label. The file itself never leaves
+        // the browser: `csv` is still the only thing sent, so the write path is unchanged.
+        const r = await commitImportAction(csv, companyId, fileName ?? '');
         setResult(r);
         setPhase('done');
         router.refresh();

@@ -2010,6 +2010,13 @@
       "when": 1781862440000,
       "tag": "0340_movement_event_type",
       "breakpoints": true
+    },
+    {
+      "idx": 341,
+      "version": "7",
+      "when": 1781862441000,
+      "tag": "0341_import_history_and_disabled_individual",
+      "breakpoints": true
     }
   ]
 }

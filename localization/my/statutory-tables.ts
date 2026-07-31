@@ -9,7 +9,14 @@
  * Retrieved: 2026-06-06.
  */
 
-export const MY_STATUTORY_VERSION = '2026.5';
+export const MY_STATUTORY_VERSION = '2026.6';
+// 2026.6 (2026-07-31): PCB reliefs gain `disabledIndividual` — the FURTHER deduction a registered disabled
+//   individual (OKU) is entitled to under s.46(1)(g) ITA 1967, on top of the RM9,000 individual deduction
+//   (item d64d0df4). Optional on the ruleset: an override or pack predating 2026.6 omits it and `pcbMonth`
+//   falls back to 0, and the deduction is only applied to an employee an admin has explicitly flagged — so
+//   every existing DB override AND every existing employee stays byte-identical. See §1 of
+//   docs/architecture/STATUTORY-SOURCES.md: this figure is RATE-ONLY (sourced, NOT yet verified against the
+//   LHDN MTD spec PDF) and must be signed off before it is relied on for a real filing.
 // 2026.5 (2026-07-22): PCB pay-code classification tables (feedback 09b554e9, LHDN "Spesifikasi Pengiraan
 //   PCB 2026 Menggunakan Pengiraan Berkomputer"): pcbExemptions gains the PCB_* exemption codes (annual caps;
 //   -1 = fully exempt, 0 = fully taxable) for Normal/Additional remuneration and the 24 LP_* optional-
@@ -61,7 +68,8 @@ export const MY_PCB_BANDS: PcbBand[] = [
   { upTo: Infinity, M: 2000000, R: 0.3, bCat13: 528400, bCat2: 528400 },
 ];
 
-/** Annual reliefs (RM) used to project chargeable income P. Source: LHDN 2026 MTD spec. VERIFIED. */
+/** Annual reliefs (RM) used to project chargeable income P. Source: LHDN 2026 MTD spec. VERIFIED,
+ *  EXCEPT `disabledIndividual` — see its own note. */
 export const MY_RELIEFS = {
   /** D — individual + dependent relatives. */
   individual: 9000,
@@ -71,6 +79,23 @@ export const MY_RELIEFS = {
   perChild: 2000,
   /** K — mandatory EPF qualifying cap per year (life insurance is a separate TP1 item). */
   epfReliefCap: 4000,
+  /**
+   * FURTHER deduction for a registered disabled individual (OKU), on top of `individual` — s.46(1)(g)
+   * ITA 1967, raised from RM6,000 to RM7,000 by Budget 2025 with effect from YA2025 (item d64d0df4).
+   *
+   * ⚠️ RATE-ONLY, NOT YET VERIFIED. Every other figure in this object was transcribed from the LHDN
+   * MTD computerised-calculation spec PDF itself. This one is sourced from PwC Worldwide Tax Summaries
+   * (Malaysia — Individual — Deductions, YA2026) because the LHDN spec URL recorded above now 404s, and
+   * a secondary source is not the same thing as the primary one. It is listed as RATE-ONLY in
+   * docs/architecture/STATUTORY-SOURCES.md §1 and MUST be signed off against the current LHDN
+   * publication before a real filing relies on it.
+   *
+   * The exposure is bounded and opt-in by construction: it is applied ONLY to an employee an admin has
+   * explicitly flagged as a disabled individual, so no existing employee's PCB moves until someone
+   * makes that claim. That is why it ships as a wrong-figure RISK on flagged employees rather than as
+   * a guaranteed over-deduction on every entitled one, which is what leaving it out means.
+   */
+  disabledIndividual: 7000,
 };
 
 /** PCB tax categories (LHDN). */
@@ -564,7 +589,16 @@ export type StatutoryRuleset = {
   eis: { bands: ContribBand[]; rates: { employer: number; employee: number } };
   pcb: {
     bands: PcbBand[];
-    reliefs: { individual: number; spouse: number; perChild: number; epfReliefCap: number };
+    reliefs: {
+      individual: number;
+      spouse: number;
+      perChild: number;
+      epfReliefCap: number;
+      /** d64d0df4 — the further deduction for a registered disabled individual (OKU). OPTIONAL: an
+       *  override or pack predating 2026.6 omits it and `pcbMonth` falls back to the built-in
+       *  MY_RELIEFS value, exactly as `hrdfLevy` falls back to MY_HRDF. */
+      disabledIndividual?: number;
+    };
   };
   ot: {
     wageCeiling: number;

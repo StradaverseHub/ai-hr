@@ -25,6 +25,8 @@ export type IdentityTaxDefaults = {
   numChildren: number;
   childReliefMode: string;
   employerBearsTax: boolean;
+  /** Item d64d0df4 — registered disabled individual (OKU). Defaults to false. */
+  disabledIndividual: boolean;
 };
 
 /**
@@ -114,7 +116,23 @@ export function IdentityTaxCard({
                 <option value="knowledge_worker">{t('taxResidencyKnowledgeWorker')}</option>
               </select>
             </Field>
+            {/* Item d64d0df4 — Disabled Individual (OKU). Yes/No, defaulting to No, so nobody's monthly tax
+                moves until an admin makes the claim. Setting it to Yes DOES move it: monthly tax is worked
+                out from the year to date, so the month of the change absorbs the whole year-to-date
+                correction — which is what the rules require, and what the hint below says out loud rather
+                than letting it arrive as a surprise on a payslip. */}
+            <Field label={t('disabledIndividualLabel')}>
+              <select
+                name="disabledIndividual"
+                defaultValue={defaults.disabledIndividual ? 'yes' : 'no'}
+                className={inputCls}
+              >
+                <option value="no">{t('disabledIndividualNo')}</option>
+                <option value="yes">{t('disabledIndividualYes')}</option>
+              </select>
+            </Field>
           </div>
+          <p className="text-xs text-muted-foreground">{t('disabledIndividualHint')}</p>
         </fieldset>
 
         {/* Children (PCB relief) — manual or auto (derive from Family records, confirm into numChildren). */}

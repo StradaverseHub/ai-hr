@@ -3,8 +3,10 @@ import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { listCompanies, listDepartments } from '@/core/read';
 import { listCostCenters, listPositions } from '@/core/admin';
+import { listEmployeeImportRuns } from '@/core/import';
 import { PageHeader } from '@/components/ui';
 import { EmployeeImport } from './employee-import';
+import { ImportHistory } from './import-history';
 
 export default async function ImportPage() {
   const t = await getTranslations('people.import');
@@ -13,11 +15,14 @@ export default async function ImportPage() {
   // ones core/import's analyze() validates a row against. Reading them here (rather than
   // hand-maintaining a second list) is what makes "the value in the template is a value the importer
   // accepts" true by construction. Unscoped on purpose: a file may now span several companies.
-  const [companies, departments, positions, costCenters] = await Promise.all([
+  const [companies, departments, positions, costCenters, importRuns] = await Promise.all([
     listCompanies(s),
     listDepartments(s),
     listPositions(s),
     listCostCenters(s),
+    // cf43c909 — past runs. Read here (not inside the client island) so the history is server-rendered and
+    // RLS-scoped; `commitImportAction` revalidates this path, so a finished import appears without a reload.
+    listEmployeeImportRuns(s),
   ]);
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
   // Default to the active scope if it's a single company; otherwise the company with the most
@@ -40,17 +45,22 @@ export default async function ImportPage() {
       {companies.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('noCompanies')}</p>
       ) : (
-        <EmployeeImport
-          companies={companies.map((c) => ({ id: c.id, name: c.name }))}
-          defaultCompanyId={defaultCompanyId}
-          reference={{
-            // Sorted + de-duplicated: a shared label (62de487d) resolves for several companies and
-            // would otherwise appear once per company in the reference list.
-            departments: uniqSorted(departments.map((d) => d.name)),
-            positions: uniqSorted(positions.map((p) => p.title)),
-            costCenters: uniqSorted(costCenters.map((c) => c.code ?? c.name ?? '')),
-          }}
-        />
+        <>
+          <EmployeeImport
+            companies={companies.map((c) => ({ id: c.id, name: c.name }))}
+            defaultCompanyId={defaultCompanyId}
+            reference={{
+              // Sorted + de-duplicated: a shared label (62de487d) resolves for several companies and
+              // would otherwise appear once per company in the reference list.
+              departments: uniqSorted(departments.map((d) => d.name)),
+              positions: uniqSorted(positions.map((p) => p.title)),
+              costCenters: uniqSorted(costCenters.map((c) => c.code ?? c.name ?? '')),
+            }}
+          />
+          {/* cf43c909 — the record of what has been loaded. Always rendered, empty state included, so an
+              admin who has never imported still learns that a history exists before they upload. */}
+          <ImportHistory runs={importRuns} />
+        </>
       )}
     </div>
   );

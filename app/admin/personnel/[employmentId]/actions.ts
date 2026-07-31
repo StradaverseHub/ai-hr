@@ -1371,6 +1371,10 @@ export async function setTaxAction(formData: FormData) {
       numChildren: Number(formData.get('numChildren')) || 0,
       childReliefMode: (formData.get('childReliefMode') as string) || 'manual',
       employerBearsTax: formData.get('employerBearsTax') === 'on',
+      // Item d64d0df4 — Disabled Individual is a Yes/No SELECT, not a checkbox, so read the value rather
+      // than `=== 'on'`. Anything other than an explicit 'yes' (including a missing field, which is what a
+      // caller predating this control sends) is No — the default that reproduces today's PCB exactly.
+      disabledIndividual: formData.get('disabledIndividual') === 'yes',
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
