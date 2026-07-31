@@ -5,13 +5,17 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-07-31, after r85)
+## CURRENT STATE — read this first (updated 2026-07-31, after r86)
 
-**If you read nothing else, read these seven lines.**
-1. Deployed head is `main@e05099b`, migrations through `0334`, **283 applied on production**. **Next free
-   number is `0335`.** No held branch currently claims a number — but **check any held branch's `when`
-   against the deployed watermark before merging it** (see Traps: a stale number is a SILENT SKIP, and
-   r85 caught `build/r83a` in exactly that state).
+**If you read nothing else, read these eight lines.**
+1. Deployed head is `main@c95e2b5`, migrations through `0338`, **286 applied on production**. **Next free
+   number is `0339`** (`0336` was never used — the gap is real and harmless). No held branch currently
+   claims a number — but **check any held branch's `when` against the deployed watermark before merging
+   it** (see Traps: a stale number is a SILENT SKIP, and r85 caught `build/r83a` in exactly that state).
+0. **BEFORE PLANNING ANYTHING, CHECK FOR AN UNSHIPPED ROUND:**
+   `for b in $(git branch --list 'build/*'); do echo "$b $(git log --oneline main..$b | wc -l)"; done`.
+   r86 was found this way — 13 finished items, fully integrated, sitting unmerged and ungated while
+   `main` stood at r85. A finished round nobody shipped looks exactly like no round at all.
 2. **CHECK `git branch --show-current` AT THE REPO ROOT, and `pwd` in every gate command.** The root is
    on `fix/companies-list`, many rounds behind, and **its HANDOFF.md is STALE**. `main` lives at
    `.claude/worktrees/mainwt`. r83 lost a full suite AND a `next build` to a `cd` that left the shell at
@@ -26,15 +30,34 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
    has ever seen a payslip**, because no run has ever been closed (47 payslips, 18 runs). Also
    `d0d2c9d1` (RM23,170 entered and never paid) and `97a9b0ab` (which is **NOT a fault** — PCB is
    cumulative, so revising an earlier month legitimately moves a later one; see its plan).
-5. **THE LOCAL POSTGRES WAS WIPED AND REBUILT on 2026-07-31**, and the difference is the whole argument
-   for keeping it clean: rehearsal **6s** (was 25–52 min), full migration chain from zero **2.3s** (the
-   test template alone once took 49 min), Postgres starts in **4s** (recovery once took 53 min). The old
-   data directory is at `/opt/homebrew/var/aihr-pg14.broken-20260731`. Teardown now stops the leak
-   returning — **do not invent a `TEST_DB_NAMESPACE` unless you are running parallel agents.**
-6. **Browser verification works and is worth doing.** It settled a contested item in five minutes.
-   ai-hr is NOT publicly served — it is loopback-only behind a **cloudflared quick tunnel**,
-   `https://remove-source-wood-currently.trycloudflare.com` (whose hostname CHANGES if that process
-   restarts). Everything since r70 except `1ef1cf95` remains unverified.
+5. **THE LOCAL POSTGRES WAS WIPED AND REBUILT TWICE on 2026-07-31**, and the difference is the whole
+   argument for keeping it clean: rehearsal **6s** (was 25–52 min), full migration chain from zero
+   **2.3s** (the test template alone once took 49 min), Postgres starts in **4s** (recovery once took
+   53 min). Teardown now stops the leak returning — **do not invent a `TEST_DB_NAMESPACE` unless you
+   are running parallel agents.**
+
+   **r86 rebuilt it from scratch and two things about that cluster are NEW — read these before you
+   lose an hour to them.** See "Rebuilding the local cluster" in Traps for the exact recipe.
+   - **`ai_hr_app` MUST be `NOSUPERUSER … NOBYPASSRLS`.** `initdb` gives you nothing and it is
+     tempting to make the app role a superuser. Do that and **Postgres bypasses RLS**, and about
+     **18 tests fail** — privilege-escalation, cross-company leave access, per-company entitlement —
+     all of which read as a security regression in the code. `deploy/bootstrap-db.sql` is the
+     authority.
+   - **`shared_buffers` is now the 128MB `initdb` default**, not whatever the old data dir carried.
+     That is probably an improvement (r83 blames a dirtied **8GB** pool for a 2943s template build),
+     but nobody chose it deliberately. r86 also added `max_wal_size = 4GB` and
+     `checkpoint_timeout = 30min` to the fresh `postgresql.conf` to take pressure off the
+     `CREATE DATABASE` checkpoint wedge.
+6. **Browser verification works and is worth doing.** It settled a contested item in five minutes, and
+   r86's `4dbe04c6` was REPRODUCED and re-measured in a browser — which is the only reason its cause
+   (Tailwind emission order beating a template-string width, not the class attribute) was found rather
+   than guessed. ai-hr is NOT publicly served — it is loopback-only behind a **cloudflared quick
+   tunnel**, `https://remove-source-wood-currently.trycloudflare.com` (whose hostname CHANGES if that
+   process restarts). **Everything since r70 except `1ef1cf95` and `4dbe04c6` remains unverified, and
+   r86 just added a lot to that pile:** a step-by-step Create New Employee wizard with drafts, an
+   .xlsx import with preview and error-report download, a rebuilt Leave Balance Summary, and a Cancel
+   Leave action on Employee Leave Records. **None of it has been seen in a browser**, and this repo
+   still has no DOM or interaction test runner.
 7. **Reply on Telegram when the owner writes from Telegram.** Terminal output never reaches their chat.
 
 ### `9816a5ad` — SHIPPED in r85. Kept for the reasoning; step 3 is the open part
@@ -269,6 +292,52 @@ the output the whole time: **vitest prints its root on the `RUN` line**, and the
 5359 tests where the tree under test was 488 / 5576. **Start every gate command with an explicit `cd` to
 the worktree, or echo `pwd` alongside it**, and read the count against the tree you think you are on.
 This is the same root-worktree trap that cost r79 a round, arriving by a different route.
+**r86 walked into it again** — a `cd` to the root to run a board command left the shell there, and the
+next suite printed `RUN … /Users/zenlam/Projects/ai-hr`. Caught only by reading the `RUN` line. Read it
+every time; it is the cheapest check in this file.
+
+**A DEPLOY CAN REPORT SUCCESS WITH HALF THE TREE ON THE BOX — r86 did.** The rsync died mid-transfer
+(`Broken pipe`, `unexpected end of file`), and the wrapper printed **`RSYNC_EXIT=0`** because the exit
+code was taken through a pipe (`rsync … | tail -3; echo $?` reports **`tail`'s** status). `deploy.sh`
+then built, applied all three migrations and restarted — every signal green — while **93 source files
+were still the previous release**. Production sat with its schema ahead of its code.
+
+Two rules:
+1. **Never read an exit code through a pipe.** Run the bare command, capture `rc=$?` on the very next
+   line, then format the log.
+2. **`deploy.sh` succeeding is NOT evidence the tree arrived.** The proof is
+   `rsync -azi --delete --dry-run …` afterwards reporting **zero** changed files. Note plain
+   `--dry-run` prints NOTHING without `-i`/`-v`, which looks identical to "nothing to do" — r86 was
+   briefly fooled by that too. Use `--partial --timeout=120` and `ssh -o ServerAliveInterval=15` to
+   make the drop less likely in the first place.
+
+This is the deploy-side twin of the gate trap above: a green signal computed against the wrong tree.
+
+**REBUILDING THE LOCAL CLUSTER — the recipe, because two details are not guessable.**
+Everything in the local cluster is disposable (test DBs + `ai_hr_dev`), so when it wedges, **wiping
+beats waiting**: r86 sat through 27 minutes of WAL replay before realising that. The full rebuild is
+under a minute.
+
+    pg_ctl -D /opt/homebrew/var/aihr-pg14 -m immediate stop     # -m fast CANNOT stop a checkpoint wedge
+    rm -rf /opt/homebrew/var/aihr-pg14
+    initdb -U postgres -D /opt/homebrew/var/aihr-pg14 --encoding=UTF8 --locale=en_US.UTF-8
+    # append to postgresql.conf: max_wal_size = 4GB / checkpoint_timeout = 30min
+    pg_ctl -D /opt/homebrew/var/aihr-pg14 -o "-p 5433" -l …/server.log start
+    psql -p 5433 -U postgres -d postgres \
+      -c "CREATE ROLE ai_hr_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;" \
+      -c "CREATE DATABASE ai_hr_dev OWNER ai_hr_app;" \
+      -c "CREATE DATABASE ai_hr_test OWNER ai_hr_app;"
+
+**`NOBYPASSRLS` is the detail that costs an hour.** A superuser `ai_hr_app` bypasses RLS and fails
+~18 tests (`invitation-privesc` alone drops 14) in a way that reads as a security regression in the
+code rather than a role attribute. The authority on these roles is `deploy/bootstrap-db.sql`.
+
+**`-m immediate` BUYS A FULL WAL REPLAY, and the suite writes a lot of WAL.** After a 5812-test run
+`pg_wal` was **1.8 GB**; replaying it is single-threaded random I/O and ran 27+ minutes. Diagnose the
+wedge with the r83 triple (`CheckpointStart` wait + frozen `pg_stat_bgwriter` counters), then decide:
+if the data is disposable — locally it always is — **wipe instead of replaying.** And distinguish the
+two slow shapes with `lsof` on the startup process: many open `base/<db>/<rel>` files means genuine
+redo; sitting on directories means the pre-redo walk that leaked databases cause.
 
 **`next build` OOMs ON THE SERVER as the tree grows, and `deploy.sh` runs it BEFORE `db:migrate`.**
 r83 died at ~3013 MB against the 3072 MB cap with "Ineffective mark-compacts near heap limit" during
@@ -282,14 +351,29 @@ again, check `free -m` first: the box has 3.9 GB RAM and 3.9 GB swap, so past ~4
 headroom problem and becomes a bigger-box one. **Never reach for `typescript.ignoreBuildErrors`** — the
 build's type pass catches RSC client/server boundary errors that `tsc` alone does not.
 
-## Live state — accurate as of the end of the 2026-07-29 session
+## Live state — counted on production 2026-07-31, after r86
 
-**Deployed:** `main@e82c519`, service active, migrations through **0322**. r77, the companies hotfix and
-r78 added no migration, so **the next free number is `0323`** — allocate it centrally, never let an agent
-pick one (r76 found an abandoned branch reusing a shipped number, which merges as a SILENT SKIP).
+**Deployed:** `main@c95e2b5`, service active, migrations through **0338**, **286 applied**. **Next free
+number is `0339`** — allocate it centrally, never let an agent pick one (r76 found an abandoned branch
+reusing a shipped number, and r84 found one carrying a STALE number; both merge as a SILENT SKIP).
 
-**Board, counted on production at handover:** `approved = 11` · `contested = 4` · `open = 6` ·
-`blocked = 2` · `deployed = 506` · `cancelled = 9`.
+**Board, counted on production:** `approved = 14` · `contested = 7` · `open = 1` · `deployed = 527` ·
+`cancelled = 11` · `blocked = 0`.
+
+**The 7 contested items** (all need a re-plan, none is building): `deec1691` · `241817ef` ·
+`fa3f4ccb` · `1ef1cf95` · `a324a4b3` · `61bf109d` · `c33d9bbb`. **`c33d9bbb` is effectively answered
+already** — the reporter replied "Let's defer this enhancement for now… we'll revisit a grouped Benefit
+Scheme selector and default/override mechanism as a separate enhancement." It is a DEFER, not a
+rejection of the design; it needs closing or parking rather than re-planning. **`fa3f4ccb` still must
+not be built** without written instruction (it asks to remove the EA 1955 statutory floor).
+
+**The 1 open item** is `bb4f2265` (dates stamped in UTC read as yesterday before 08:00 MYT — about five
+remaining sites; r86 fixed two more of them on the leave-records columns while building `fe3eb141`).
+
+> ⚠️ **EVERYTHING FROM HERE TO "Carried debt" IS THE 2026-07-29 SNAPSHOT AND IS NOW LARGELY STALE.**
+> Most of the items it tells you to "START HERE" on have since shipped (r79–r86). The counts above are
+> the live ones. Treat the sections below as reasoning to consult per item, never as a work queue, and
+> confirm any item's status with `improve:pull` / `improve:pull-approved` before acting on it.
 
 ### START HERE — the four contested items are all small and all actionable
 
@@ -442,6 +526,112 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r86 — 2026-07-31 — 13 items that were built a session early and never shipped
+
+**Shipped:** `main@c95e2b5`. Migrations `0335`, `0337`, `0338` (production **283 → 286** applied).
+**Gate:** `tsc` clean · **499 files / 5812 tests** · `next build` clean · **upgrade rehearsal PASS**
+(8 employments, 63 events, 488.00 leave days all intact across the upgrade).
+Verified live: `GET /` 401, service active, 286 migrations, watermark `1781862438000` = `0338`, all
+five new columns present, and `app/admin/personnel/new/page.tsx` on the box.
+
+**Shipped:** 0890a555 (Scheme Category) · 4d6eae7b (Leave Year Type step) · 9f5164d8 (rounding
+thresholds) · c6ffa725 (application limits) · 4dbe04c6 (Minimum Service overflow) · 1f6fd6d8 +
+ed17a4f9 + 994a5287 + 026e16b9 (the leave-summary cluster) · 6d671f44 (Create New Employee wizard) ·
+d8471481 (.xlsx employee import) · fe3eb141 (**step 1 of 2**) · ae9350f2 (Termination movement).
+
+### THE ROUND WAS ALREADY BUILT AND HAD NEVER BEEN GATED, MERGED OR DEPLOYED
+
+Four agent branches and a clean integration commit sat on `build/r86` while `main` stood at r85. The
+work was complete; nothing had verified it. **Run `git log --oneline main..build/rNN` for every recent
+`build/*` branch before planning new work** — a finished round nobody shipped looks exactly like no
+round at all. The session that built it also left the local Postgres wedged mid-`CREATE DATABASE`,
+which is probably why it stopped where it did.
+
+### Decisions
+
+**1. FOUR INTEGRATION FAILURES, ALL THE SAME SHAPE: a source-text guard matching more than it meant.**
+Every agent was green on its own files; these appeared only where branches met, which is what the
+integration gate is for. None was a defect in shipped behaviour.
+- `employee-draft-wizard` asserted its migration's number exceeded EVERY other entry — true alone,
+  false the moment a sibling's higher-numbered migration merged beside it. The real invariant is
+  monotonicity against what runs BEFORE it. Now compares against lower idx only.
+- `shared-leave-group` (r82's guard) forbids a rival per-application cap column on `leave_type`.
+  r86a added `max_days_per_leave_year` — a per-YEAR total, a different rule — and CITED the existing
+  column by name in a comment as the naming precedent. The guard greps raw source, so **a citation of
+  the invariant read as a violation of it.** Comments are now stripped before matching.
+- `leave-inquiry-layout` scanned the WHOLE FILE for a class whose subject is table HEADINGS. Scoped
+  to `<thead>`.
+- `leave-apply-popup` pinned a hand-written key list; r86b's summary rebuild legitimately renamed a
+  key, so the list failed while the thing it protects was healthy. Now DERIVED from
+  entitlement-panel-config's own labelKeys.
+
+**The rule: a guard that greps source text will eventually match a comment, a sibling's file, or a
+renamed-but-correct key. Scope it to the construct it is about, or derive it from the thing it is
+protecting.**
+
+**2. THE GROUPING ERROR THIS FILE ALREADY WARNED ABOUT, MADE AGAIN.** `026e16b9` (compact the Employee
+Leave Records layout) and `fe3eb141` (add a `#reference` column, Status pill, approval lines and Cancel
+Leave to the same rows) went to DIFFERENT agents because they read as different themes. They land on
+the same file. That is an INTEGRATOR error, not an agent one — **group by FILE OVERLAP, not by theme**,
+which this document has said since r74. Resolved by keeping C's structure and re-applying B's layout
+over it; B had widened the reason column precisely because the compacted columns give that width back,
+so taking one without the other would have re-created the overflow `026e16b9` exists to fix.
+
+**3. A FUTURE-DATED TERMINATION ENDED EMPLOYMENT TODAY — a live defect, not a gap.**
+`terminateEmploymentTx` closed the open assignment version and open reporting lines at the termination
+date, so every reader resolving "current" as the OPEN row lost the employee's department, position and
+manager **the instant a future exit was keyed**. Now follows `941c9dac`: record
+`employment.movement.scheduled` and nothing else; the sweep applies it on the morning of its effective
+date, apply-once via `0329`'s index. Pending terminations can be cancelled and corrected. Termination
+was never greenfield — `termination` has been a MOVEMENT_KIND since `78853b97`.
+
+**4. The Leave Balance Summary ADDS UP BY CONSTRUCTION.** Every addend is a bucket of the `0315dac7`
+ledger partition, and those buckets tile every ledger row <= asOf, so
+`brought forward + entitled + adjustments − forfeited − taken = balance` is an identity rather than an
+agreement. **The recorded deviation is kept and now pinned:** the reporter's formula
+`YTD Entitled = Eligible x (elapsed / year)` is a projection — right for the 57 earned-monthly policy
+rows, wrong for the 10 that grant the year up front, where a part-year share would stop the column
+reaching Available Balance. YTD Entitled renders the granted-to-date LEDGER figure, and a test asserts
+that moving Eligible alone moves nothing else on the column.
+
+**5. A BROWSER REPRODUCTION SETTLED A CSS BUG THAT SOURCE READING WOULD HAVE MIS-DIAGNOSED.**
+`4dbe04c6`: `inputCls` ends in `w-full`, and a template-string `${inputCls} w-28` does not beat it,
+because the cascade is decided by **the order Tailwind emits the utilities, not by the class
+attribute**. `shrink-0` then turned the losing width into an overflow. Measured live at 26px / 336px in
+a 336px cell (scrollWidth 368); fixed by composing through `cn()` (tailwind-merge) and re-measured at
+218px / 112px, scrollWidth == clientWidth. A guard now fails any control pairing a template-string
+width with `shrink-0`.
+
+**6. `fe3eb141` SHIPPED HALF, DELIBERATELY.** The Cancel Leave action, `#reference` and Status column
+landed; **the removal of the Requests subsection is HELD** — it is the org-wide register and the only
+home of three subject-only controls. The reporter is told this plainly in the `build_ref` and asked
+where those controls should move. Also fixed unasked: Applied and Final Approval Date rendered with
+`toISOString()`, so they read as YESTERDAY between 00:00 and 08:00 MYT — the same class as r85's
+`core/movement.ts` fault, on the very column this item anchors to.
+
+**7. `0890a555`'s "smart default" is a SUGGESTION and nothing writes it.** `suggestSchemeCategory()`
+is offered only on the ADD form and only until HR types. An existing scheme is never re-categorised
+behind the tenant's back, and entitlement resolution never reads the category.
+
+### Deploy: THE RSYNC LIED, AND THE ONLY REASON IT WAS CAUGHT IS THAT IT WAS RE-CHECKED
+
+The first rsync died mid-transfer (`Broken pipe`, `unexpected end of file`) and the wrapper reported
+**`RSYNC_EXIT=0`** — because the exit code came from the `tail` at the end of the pipeline, not from
+rsync. `deploy.sh` then ran happily: it built, applied all three migrations and restarted, so **every
+signal said success while 93 source files on the box were still the previous release.** Production sat
+with its schema ahead of its code.
+
+A `rsync -azi --delete --dry-run` re-check afterwards is what found it — it must report **zero**
+changed files. Re-synced (with `--partial --timeout=120` and `ServerAliveInterval`), verified zero,
+redeployed, and only then verified live.
+
+**Two rules from this.** Never read an exit code through a pipe — `cmd | tail` reports `tail`'s
+status; assign `rc=$?` immediately after the bare command. And **`deploy.sh` succeeding is not evidence
+the tree arrived**; the dry-run diff is. This is the deploy-side twin of the r83 gate trap: a green
+signal computed against the wrong tree.
+
+---
 
 ## r85 — 2026-07-31 — the keystone lands, and the machine that was slowing everything down
 
