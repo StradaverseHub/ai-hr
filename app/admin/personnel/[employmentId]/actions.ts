@@ -12,7 +12,6 @@ import {
   editMovementEvent,
   isComparisonKind,
   MOVEMENT_FLAT_FIELDS,
-  MOVEMENT_KINDS,
   MovementNoChangeError,
   reverseMovementEvent,
   type MovementKind,
@@ -366,7 +365,11 @@ export async function setDefaultShiftAction(formData: FormData) {
  */
 function parseMovementForm(formData: FormData) {
   const kindRaw = String(formData.get('kind') ?? '').trim();
-  if (!(MOVEMENT_KINDS as readonly string[]).includes(kindRaw)) throw new Error('Select an event type.');
+  // 476f23ed — the type may be one of the ORGANISATION's own (Movement Settings), so this can no longer be
+  // an allowlist of the built-in kinds. It is a shape check only; core/movement.ts resolves the code
+  // against the tenant's catalogue inside the transaction and refuses anything unknown or switched off.
+  // That keeps ONE authority for what a type means, which is the whole point of the catalogue.
+  if (!kindRaw) throw new Error('Select an event type.');
   /** absent → undefined (untouched); present-but-blank → null (explicit clear). */
   const optional = (name: string): string | null | undefined => {
     const v = formData.get(name);
@@ -540,6 +543,15 @@ export async function setDirectSuperiorAction(formData: FormData) {
         managerEmploymentId: superiorEmploymentId,
         lineType: 'administrative',
         validFrom: today,
+        // 30325fc1 — TAG THIS WRITE. Employment History now requires a movement tag on every generic
+        // writer's event (core/movement.ts projectRows), because an untagged event is an ordinary edit and
+        // the fallback labels that invented a kind for one are gone. Direct Superior is the one generic
+        // writer r78 deliberately left outside the Movement module (the CLEAR path emits
+        // `reporting-line.ended`, not a movement event type, so routing only the SET path through Movement
+        // would remove the only way to clear a superior). Tagging it at source keeps the Reporting Line
+        // Change row it has always produced — now backed by a recorded intent instead of a guess — without
+        // touching the clear path. This EXTENDS r78's tagging; it untags nothing.
+        movement: { type: 'reportingLineChange', groupId: randomUUID() },
       });
     }
   } catch (e) {

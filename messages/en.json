@@ -149,7 +149,8 @@
     "dashboardCardConfig": "Dashboard cards",
     "scheduledActions": "Scheduled actions",
     "systemSettings": "System Settings",
-    "systemExplorer": "Dependency explorer"
+    "systemExplorer": "Dependency explorer",
+    "movementSettings": "Movement Settings"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1165,13 +1166,14 @@
           "terminationPayrollFlag": "Termination saved. A payroll run has already been processed for {periods}, past the termination date — review that run. It was not changed."
         },
         "edit": "Edit",
-        "delete": "Delete",
+        "rollback": "Roll Back",
+        "reversedBy": "Rolled back by",
         "editTitle": "Edit Movement Event",
         "reversedBadge": "Reversed",
         "correctedBadge": "Corrected",
-        "deleteConfirmTitle": "Roll this movement event back?",
-        "deleteConfirmDescription": "The employee's details go back to the state immediately before this event. The event stays in Employment History, marked as reversed, so the record remains auditable.",
-        "deleteConfirmPayroll": "A processed payroll run already covered this period. The rollback will NOT reprocess any payslip — reprocess it separately if that is what you need. The event stays in Employment History, marked as reversed.",
+        "rollbackConfirmTitle": "Roll this movement event back?",
+        "rollbackConfirmDescription": "The employee's details go back to the state immediately before this event. The event stays in Employment History, marked as reversed, so the record remains auditable.",
+        "rollbackConfirmPayroll": "A processed payroll run already covered this period. The rollback will NOT reprocess any payslip — reprocess it separately if that is what you need. The event stays in Employment History, marked as reversed.",
         "correctionReasonLabel": "Reason for the correction (optional)",
         "payrollLocked": "Locked by a closed payroll run",
         "status": {
@@ -7682,5 +7684,38 @@
     "truncated": "Showing the first {shown, number} of {total, number} rows.",
     "truncatedHint": "Use Reports → Export for the complete set.",
     "truncatedExport": "Export the complete set"
+  },
+  "movementSettings": {
+    "title": "Movement Settings",
+    "description": "The career event types HR can record on an employee. Rename them to match the language your organisation uses, switch off the ones you do not use, and add your own.",
+    "behaviourNotice": "A few event types drive real consequences — Termination ends employment, Confirmation completes probation, a join-date correction changes leave entitlement. You can rename those or switch them off; you cannot change what they do. Your own event types are recorded on the employee and change only the details you enter.",
+    "catalogTitle": "Event Types",
+    "save": "Save",
+    "builtInBehaviour": "Built-in meaning",
+    "inUse": "Used by recorded movements",
+    "add": "Add Event Type",
+    "addTitle": "Add Your Own Event Type",
+    "addHint": "Give it the name your organisation uses and choose what it should do. It then appears alongside the built-in types when HR records a movement.",
+    "addNamePlaceholder": "e.g. Redeployment",
+    "addBehaviourPlaceholder": "— Choose what it does —",
+    "deactivate": "Switch Off",
+    "activate": "Switch On",
+    "delete": "Delete",
+    "deactivateConfirmTitle": "Switch this event type off?",
+    "deactivateConfirmDescription": "It stops appearing when HR records a movement. Records that already use it are not changed and keep their meaning. You can switch it back on at any time.",
+    "activateConfirmTitle": "Switch this event type on?",
+    "activateConfirmDescription": "It appears again when HR records a movement.",
+    "deleteConfirmTitle": "Delete this event type?",
+    "deleteConfirmDescription": "It is removed from the list. This is only offered for your own event types that no record uses yet — anything already recorded can be switched off but never deleted.",
+    "columns": {
+      "name": "Name",
+      "behaviour": "What It Does",
+      "status": "Status",
+      "action": "Action"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Switched off"
+    }
   }
 }

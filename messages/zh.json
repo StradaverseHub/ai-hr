@@ -149,7 +149,8 @@
     "dashboardCardConfig": "仪表板卡片",
     "scheduledActions": "计划任务",
     "systemSettings": "系统设置",
-    "systemExplorer": "依赖关系浏览器"
+    "systemExplorer": "依赖关系浏览器",
+    "movementSettings": "异动设置"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -1165,13 +1166,14 @@
           "terminationPayrollFlag": "离职已保存。{periods} 的薪资已处理且超过离职日期 — 请检查该薪资批次。系统未作更改。"
         },
         "edit": "编辑",
-        "delete": "删除",
+        "rollback": "撤销",
+        "reversedBy": "撤销人",
         "editTitle": "编辑异动事件",
         "reversedBadge": "已撤销",
         "correctedBadge": "已更正",
-        "deleteConfirmTitle": "撤销此异动事件？",
-        "deleteConfirmDescription": "员工资料将恢复到此事件发生前的状态。该事件仍保留在任职历史中并标记为已撤销，记录依然可供审计。",
-        "deleteConfirmPayroll": "已处理的薪资批次已覆盖此期间。撤销不会重新处理任何工资单——如有需要请另行重新处理。该事件仍保留在任职历史中并标记为已撤销。",
+        "rollbackConfirmTitle": "撤销此异动事件？",
+        "rollbackConfirmDescription": "员工资料将恢复到此事件发生前的状态。该事件仍保留在任职历史中并标记为已撤销，记录依然可供审计。",
+        "rollbackConfirmPayroll": "已处理的薪资批次已覆盖此期间。撤销不会重新处理任何工资单——如有需要请另行重新处理。该事件仍保留在任职历史中并标记为已撤销。",
         "correctionReasonLabel": "更正原因（选填）",
         "payrollLocked": "已被关账的薪资批次锁定",
         "status": {
@@ -7682,5 +7684,38 @@
     "truncated": "仅显示前 {shown, number} 条，共 {total, number} 条。",
     "truncatedHint": "请使用「报表 → 导出」获取完整数据。",
     "truncatedExport": "导出完整数据"
+  },
+  "movementSettings": {
+    "title": "异动设置",
+    "description": "HR 可为员工记录的职涯事件类型。可按贵机构的用语重命名、关闭不使用的类型，并新增自订类型。",
+    "behaviourNotice": "少数事件类型会带来实际后果——离职终止雇佣、转正完成试用期、入职日期更正会改变休假额度。您可以重命名或关闭它们，但无法更改它们的作用。您自订的事件类型只会记录您填写的资料。",
+    "catalogTitle": "事件类型",
+    "save": "保存",
+    "builtInBehaviour": "内建含义",
+    "inUse": "已被记录的异动使用",
+    "add": "新增事件类型",
+    "addTitle": "新增自订事件类型",
+    "addHint": "填入贵机构使用的名称并选择其作用。之后 HR 记录异动时，它会与内建类型一同出现。",
+    "addNamePlaceholder": "例如：调派",
+    "addBehaviourPlaceholder": "— 请选择其作用 —",
+    "deactivate": "关闭",
+    "activate": "开启",
+    "delete": "删除",
+    "deactivateConfirmTitle": "关闭此事件类型？",
+    "deactivateConfirmDescription": "HR 记录异动时将不再出现。已使用它的记录不会变动，含义保持不变。您可以随时重新开启。",
+    "activateConfirmTitle": "开启此事件类型？",
+    "activateConfirmDescription": "HR 记录异动时会再次出现。",
+    "deleteConfirmTitle": "删除此事件类型？",
+    "deleteConfirmDescription": "它将从列表中移除。仅适用于尚无任何记录使用的自订类型——已被记录使用的类型可以关闭，但永远无法删除。",
+    "columns": {
+      "name": "名称",
+      "behaviour": "作用",
+      "status": "状态",
+      "action": "操作"
+    },
+    "status": {
+      "active": "启用中",
+      "inactive": "已关闭"
+    }
   }
 }

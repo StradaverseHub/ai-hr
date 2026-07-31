@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
+  ArrowLeftRight,
   BarChart3,
   BookOpen,
   Building2,
@@ -183,6 +184,10 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // admin entries collapse into this single "System Labels" entry (profile options now live at
     // /admin/settings/system-labels/profile-options).
     { href: '/admin/settings/system-labels', labelKey: 'systemLabels', icon: Tags, adminOnly: true },
+    // 476f23ed: Movement Settings — the configurable catalogue of career event types (rename / switch off /
+    // add your own). A system-wide setup screen like its three siblings, so it lands here rather than as a
+    // loose row; the types it governs are recorded from Personnel > Employment History > New Event.
+    { href: '/admin/settings/movement', labelKey: 'movementSettings', icon: ArrowLeftRight, adminOnly: true },
     // deec1691: System Analysis & Dependency Explorer. Unlike its three siblings this row is ALSO
     // entitlement-gated (MODULE_OF_HREF above): it is a sellable module that defaults OFF, so a tenant
     // that was not sold it never sees the row — and, unlike the role flags here, that hiding is backed

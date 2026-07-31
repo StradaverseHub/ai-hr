@@ -2003,6 +2003,13 @@
       "when": 1781862438000,
       "tag": "0338_termination_movement",
       "breakpoints": true
+    },
+    {
+      "idx": 340,
+      "version": "7",
+      "when": 1781862440000,
+      "tag": "0340_movement_event_type",
+      "breakpoints": true
     }
   ]
 }

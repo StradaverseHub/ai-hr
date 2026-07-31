@@ -149,7 +149,8 @@
     "dashboardCardConfig": "Thẻ bảng điều khiển",
     "scheduledActions": "Tác vụ theo lịch",
     "systemSettings": "Cài đặt hệ thống",
-    "systemExplorer": "Trình khám phá phụ thuộc"
+    "systemExplorer": "Trình khám phá phụ thuộc",
+    "movementSettings": "Cài đặt biến động"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1165,13 +1166,14 @@
           "terminationPayrollFlag": "Đã lưu việc chấm dứt. Kỳ lương {periods} đã được xử lý vượt quá ngày chấm dứt — hãy kiểm tra kỳ lương đó. Hệ thống không thay đổi nó."
         },
         "edit": "Sửa",
-        "delete": "Xóa",
+        "rollback": "Hoàn tác",
+        "reversedBy": "Hoàn tác bởi",
         "editTitle": "Sửa sự kiện biến động nhân sự",
         "reversedBadge": "Đã hoàn tác",
         "correctedBadge": "Đã chỉnh sửa",
-        "deleteConfirmTitle": "Hoàn tác sự kiện biến động này?",
-        "deleteConfirmDescription": "Thông tin nhân viên sẽ trở lại trạng thái ngay trước sự kiện này. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác, nên hồ sơ vẫn có thể kiểm toán.",
-        "deleteConfirmPayroll": "Một kỳ lương đã xử lý bao trùm giai đoạn này. Việc hoàn tác sẽ KHÔNG xử lý lại bất kỳ phiếu lương nào — hãy xử lý lại riêng nếu bạn cần. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác.",
+        "rollbackConfirmTitle": "Hoàn tác sự kiện biến động này?",
+        "rollbackConfirmDescription": "Thông tin nhân viên sẽ trở lại trạng thái ngay trước sự kiện này. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác, nên hồ sơ vẫn có thể kiểm toán.",
+        "rollbackConfirmPayroll": "Một kỳ lương đã xử lý bao trùm giai đoạn này. Việc hoàn tác sẽ KHÔNG xử lý lại bất kỳ phiếu lương nào — hãy xử lý lại riêng nếu bạn cần. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác.",
         "correctionReasonLabel": "Lý do chỉnh sửa (không bắt buộc)",
         "payrollLocked": "Bị khóa bởi một kỳ lương đã đóng",
         "status": {
@@ -7682,5 +7684,38 @@
     "truncated": "Đang hiển thị {shown, number} dòng đầu tiên trong tổng số {total, number} dòng.",
     "truncatedHint": "Dùng Báo cáo → Xuất dữ liệu để lấy toàn bộ.",
     "truncatedExport": "Xuất toàn bộ dữ liệu"
+  },
+  "movementSettings": {
+    "title": "Cài đặt biến động",
+    "description": "Các loại sự kiện nghề nghiệp mà HR có thể ghi nhận cho nhân viên. Đổi tên cho khớp với cách gọi của tổ chức bạn, tắt những loại không dùng, và thêm loại của riêng bạn.",
+    "behaviourNotice": "Một vài loại sự kiện có hệ quả thực sự — Chấm dứt kết thúc việc làm, Xác nhận hoàn tất thử việc, sửa ngày gia nhập làm thay đổi phép năm. Bạn có thể đổi tên hoặc tắt chúng; bạn không thể thay đổi việc chúng làm. Loại sự kiện của riêng bạn chỉ ghi nhận những thông tin bạn nhập.",
+    "catalogTitle": "Loại sự kiện",
+    "save": "Lưu",
+    "builtInBehaviour": "Ý nghĩa mặc định",
+    "inUse": "Đã được các biến động ghi nhận sử dụng",
+    "add": "Thêm loại sự kiện",
+    "addTitle": "Thêm loại sự kiện của riêng bạn",
+    "addHint": "Đặt tên theo cách tổ chức bạn gọi và chọn việc nó làm. Sau đó nó xuất hiện cùng các loại mặc định khi HR ghi nhận một biến động.",
+    "addNamePlaceholder": "ví dụ: Điều chuyển",
+    "addBehaviourPlaceholder": "— Chọn việc nó làm —",
+    "deactivate": "Tắt",
+    "activate": "Bật",
+    "delete": "Xóa",
+    "deactivateConfirmTitle": "Tắt loại sự kiện này?",
+    "deactivateConfirmDescription": "Nó không còn xuất hiện khi HR ghi nhận biến động. Các hồ sơ đã dùng nó không thay đổi và vẫn giữ nguyên ý nghĩa. Bạn có thể bật lại bất cứ lúc nào.",
+    "activateConfirmTitle": "Bật loại sự kiện này?",
+    "activateConfirmDescription": "Nó sẽ xuất hiện trở lại khi HR ghi nhận biến động.",
+    "deleteConfirmTitle": "Xóa loại sự kiện này?",
+    "deleteConfirmDescription": "Nó bị xóa khỏi danh sách. Chỉ áp dụng cho loại sự kiện của riêng bạn mà chưa hồ sơ nào dùng — những gì đã ghi nhận có thể tắt nhưng không bao giờ xóa được.",
+    "columns": {
+      "name": "Tên",
+      "behaviour": "Việc nó làm",
+      "status": "Trạng thái",
+      "action": "Thao tác"
+    },
+    "status": {
+      "active": "Đang dùng",
+      "inactive": "Đã tắt"
+    }
   }
 }

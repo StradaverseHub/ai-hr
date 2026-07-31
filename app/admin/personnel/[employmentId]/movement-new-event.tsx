@@ -55,7 +55,12 @@ const btnPrimary =
 const btnGhost =
   'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-transparent px-4 py-2 text-sm font-medium transition hover:bg-accent';
 
-// Mirrors core/movement.ts MOVEMENT_KINDS (Rehire/Custom deferred).
+/**
+ * 476f23ed — the FALLBACK order of the built-in kinds. The list the form actually offers now comes from
+ * the server as `types` (the tenant's Movement Settings catalogue, already filtered to the active ones and
+ * already labelled). This constant remains only as the ordering the catalogue follows and as the safety
+ * net for a render with no types at all — it mirrors core/movement-kinds.ts MOVEMENT_KINDS.
+ */
 const KINDS = [
   'transfer',
   'promotion',
@@ -122,6 +127,7 @@ export function MovementNewEvent({
   managers,
   employmentTypes,
   terminationReasons,
+  types,
   cancelHref,
   edit,
 }: {
@@ -143,16 +149,33 @@ export function MovementNewEvent({
    * beside the picker so HR can see what the exit will be reported as without being able to contradict it.
    */
   terminationReasons: { code: string; category: string; categoryLabel: string; label: string; typeLabel: string }[];
+  /**
+   * 476f23ed — the event types this organisation offers, from Movement Settings. `code` is what the ledger
+   * records; `label` is the organisation's own name (null = use the shipped translation); `behaviourKind`
+   * is the built-in kind whose behaviour it carries, and it — not the code — decides which fields this form
+   * asks for. That is how a tenant's own "Redeployment" gets the Transfer form without the form knowing
+   * anything about Redeployment.
+   */
+  types?: { code: string; label: string | null; behaviourKind: string }[];
   cancelHref: string;
   edit?: MovementEditTarget;
 }) {
   const t = useTranslations('people.detail.movement');
   const tPay = useTranslations('people.detail');
-  const [kind, setKind] = useState<string>(edit?.kind ?? 'transfer');
+  // 476f23ed — the catalogue, with the built-in list as the fallback for a render that was given none.
+  const catalog = types?.length ? types : KINDS.map((k) => ({ code: k, label: null, behaviourKind: k }));
+  const byCode = new Map(catalog.map((c) => [c.code, c]));
+  /** What a code DOES. Every branch below asks this, never the code itself. */
+  const behaviourOf = (k: string): string => byCode.get(k)?.behaviourKind ?? k;
+  const [kind, setKind] = useState<string>(edit?.kind ?? catalog[0]?.code ?? 'transfer');
+  const behaviour = behaviourOf(kind);
 
   // Static-key label map with a humanized fallback for future kinds — no dynamic t() keys, so a raw
   // key can never render in any locale.
   const kindLabel = (k: string): string => {
+    // 476f23ed — the organisation's own name wins; null means they never renamed it.
+    const configured = byCode.get(k)?.label;
+    if (configured) return configured;
     switch (k) {
       case 'transfer': return t('eventType.transfer');
       case 'promotion': return t('eventType.promotion');
@@ -175,15 +198,15 @@ export function MovementNewEvent({
     }
   };
 
-  const isComparison = COMPARISON_KINDS.includes(kind);
+  const isComparison = COMPARISON_KINDS.includes(behaviour);
   // ae9350f2 — Termination now has a structured exit block. The old free `terminationType` picker is GONE:
   // the reason is the single thing HR picks and the classification is derived from it server-side, so the
   // two can never be saved in contradiction (a Misconduct exit filed as "voluntary" is a real data fault,
   // and nothing in the record says which of the two the user meant).
-  const isTermination = kind === 'termination';
-  const showBlacklist = kind === 'blacklist';
-  const showEndDate = ['probationExtension', 'secondment', 'actingPosition', 'resignation', 'termination'].includes(kind);
-  const showEffectiveDate = kind !== 'blacklist';
+  const isTermination = behaviour === 'termination';
+  const showBlacklist = behaviour === 'blacklist';
+  const showEndDate = ['probationExtension', 'secondment', 'actingPosition', 'resignation', 'termination'].includes(behaviour);
+  const showEffectiveDate = behaviour !== 'blacklist';
   const [terminationReason, setTerminationReason] = useState<string>('');
   // "Resignation Date — mandatory for resignation cases" (the reporter's rule). Shown only for that reason,
   // because for a dismissal or a contract expiry there is no resignation to date.
@@ -303,7 +326,7 @@ export function MovementNewEvent({
       </select>),
   ];
 
-  const kindOptions: readonly string[] = edit ? edit.allowedKinds : KINDS;
+  const kindOptions: readonly string[] = edit ? edit.allowedKinds : catalog.map((c) => c.code);
 
   return (
     <form action={edit ? editMovementEventAction : createMovementEventAction}>
@@ -344,9 +367,9 @@ export function MovementNewEvent({
               defaultValue={edit?.effectiveDate ?? today}
               className={inputCls}
             />
-            {DATE_VALUE_KINDS.includes(kind) && (
+            {DATE_VALUE_KINDS.includes(behaviour) && (
               <span className="text-xs text-muted-foreground">
-                {kind === 'joinDateChange' ? t('form.joinDateChangeHint') : t('form.groupJoinDateCorrectionHint')}
+                {behaviour === 'joinDateChange' ? t('form.joinDateChangeHint') : t('form.groupJoinDateCorrectionHint')}
               </span>
             )}
           </label>
@@ -360,7 +383,7 @@ export function MovementNewEvent({
             <input
               name="endDate"
               type="date"
-              required={kind === 'probationExtension' || isTermination}
+              required={behaviour === 'probationExtension' || isTermination}
               defaultValue={edit?.endDate ?? ''}
               className={inputCls}
             />
@@ -463,7 +486,7 @@ export function MovementNewEvent({
         <a href={cancelHref} className={btnGhost}>
           {t('form.cancel')}
         </a>
-        {kind === 'termination' && !edit ? (
+        {behaviour === 'termination' && !edit ? (
           <ConfirmSubmit
             title={t('form.terminateConfirmTitle')}
             description={t('form.terminateConfirmDescription')}
