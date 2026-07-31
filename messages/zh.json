@@ -1226,7 +1226,11 @@
         "priorityOther": "其他",
         "primaryHint": "只能有一位首要联系人。在此选择“首要”会把标记从上一位联系人移走。",
         "actions": "操作"
-      }
+      },
+      "disabledIndividualLabel": "残障人士（OKU）",
+      "disabledIndividualYes": "是",
+      "disabledIndividualNo": "否",
+      "disabledIndividualHint": "已登记的残障人士可享受额外的年度税务减免。设为「是」会改变该员工的每月税额：由于每月税额按年初至今累计计算，作出更改的当月将吸收本年度至今的全部调整。"
     },
     "import": {
       "title": "导入员工",

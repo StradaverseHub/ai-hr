@@ -1226,7 +1226,11 @@
         "priorityOther": "Lain-lain",
         "primaryHint": "Hanya satu hubungan boleh menjadi utama. Memilih Utama di sini akan mengalihkan penanda daripada hubungan sebelumnya.",
         "actions": "Tindakan"
-      }
+      },
+      "disabledIndividualLabel": "Individu kurang upaya (OKU)",
+      "disabledIndividualYes": "Ya",
+      "disabledIndividualNo": "Tidak",
+      "disabledIndividualHint": "Individu OKU berdaftar berhak mendapat pelepasan cukai tahunan tambahan. Menetapkannya kepada Ya akan mengubah cukai bulanan pekerja: kerana cukai bulanan dikira dari awal tahun hingga kini, bulan anda membuat perubahan akan menyerap pembetulan bagi tahun setakat ini."
     },
     "import": {
       "title": "Import pekerja",

@@ -1226,7 +1226,11 @@
         "priorityOther": "Khác",
         "primaryHint": "Chỉ một liên hệ được là liên hệ chính. Chọn Chính ở đây sẽ chuyển dấu này khỏi liên hệ trước đó.",
         "actions": "Thao tác"
-      }
+      },
+      "disabledIndividualLabel": "Người khuyết tật (OKU)",
+      "disabledIndividualYes": "Có",
+      "disabledIndividualNo": "Không",
+      "disabledIndividualHint": "Người khuyết tật đã đăng ký được hưởng thêm khoản giảm trừ thuế hằng năm. Đặt thành Có sẽ thay đổi thuế hằng tháng của nhân viên: vì thuế hằng tháng được tính từ đầu năm đến nay, tháng bạn thay đổi sẽ hấp thụ phần điều chỉnh cho cả năm tính đến thời điểm đó."
     },
     "import": {
       "title": "Nhập nhân viên",

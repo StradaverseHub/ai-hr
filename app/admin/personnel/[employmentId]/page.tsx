@@ -2395,6 +2395,8 @@ export default async function EmployeePage({
           numChildren: statutory?.numChildren ?? 0,
           childReliefMode: statutory?.childReliefMode ?? 'manual',
           employerBearsTax: statutory?.employerBearsTax ?? false,
+          // Item d64d0df4 — No unless explicitly claimed, matching the column default and today's PCB.
+          disabledIndividual: statutory?.disabledIndividual ?? false,
         }}
       />
     </Card>

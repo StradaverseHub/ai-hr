@@ -1226,7 +1226,11 @@
         "priorityOther": "Other",
         "primaryHint": "Only one contact can be the primary. Choosing Primary here moves the marker off the previous contact.",
         "actions": "Actions"
-      }
+      },
+      "disabledIndividualLabel": "Disabled individual (OKU)",
+      "disabledIndividualYes": "Yes",
+      "disabledIndividualNo": "No",
+      "disabledIndividualHint": "A registered disabled individual is entitled to a further annual tax relief. Setting this to Yes changes the employee's monthly tax: because monthly tax is worked out from the year to date, the month you change it in absorbs the correction for the year so far."
     },
     "import": {
       "title": "Import employees",
