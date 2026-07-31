@@ -5834,6 +5834,8 @@ export const movementEventType = pgTable(
     index('movement_event_type_tenant_idx').on(t.tenantId),
     uniqueIndex('movement_event_type_tenant_code_uq').on(t.tenantId, t.code),
   ],
+);
+
 // ─────────────── Personnel — employee import history (feedback cf43c909, migration 0341) ───────────────
 // One row per employee-import RUN. The Excel reader, the pre-import validation preview and the downloadable
 // error report all shipped in r86 (d8471481); what was missing is the RECORD — once an upload finished there
