@@ -155,8 +155,15 @@ export type MovementStatus = 'applied' | 'pending' | 'superseded' | 'reversed';
 export type MovementReversal = {
   at: Date;
   reason: string | null;
-  /** true when the rollback was the first half of an EDIT (reverse + re-apply), false for a plain Delete. */
+  /** true when the rollback was the first half of an EDIT (reverse + re-apply), false for a plain Rollback. */
   corrected: boolean;
+  /**
+   * 10fcf6df — WHO rolled it back. The plan promises the movement stays in the history "together with who
+   * did it and when"; `at` was already there, this is the other half. Resolved from the reversal event's
+   * own actor (domain_event.actor_id → app_user → person), so it cannot be set by the caller and cannot
+   * disagree with the audit trail. Null for a SYSTEM/import rollback or an actor whose person row is gone.
+   */
+  by: string | null;
 };
 
 /** Before/After comparison snapshot — ids resolved to labels at read time (stays correct after renames). */
@@ -449,6 +456,8 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
   /** 66a63bd6 — movement id → the rollback that undid it. Applied after the loop: the reversal event is
    *  always later in the ledger than the movement it refers to. */
   const reversals = new Map<string, MovementReversal>();
+  /** 10fcf6df — movement id → the actor of its rollback, resolved to a NAME after the loop (one query). */
+  const reversalActorIds = new Map<string, string | null>();
   /** 941c9dac — scheduled movement id → when the sweep applied it. Same after-the-loop application as
    *  `reversals`: the applied event is always later in the ledger than the scheduled event it refers to. */
   const applications = new Map<string, Date>();
@@ -680,7 +689,10 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
           at: e.occurredAt,
           reason: (p.reason as string | null) ?? null,
           corrected: p.corrected === true,
+          // 10fcf6df — resolved to a name after the loop, in ONE query for every reversal on the page.
+          by: null,
         });
+        reversalActorIds.set(String(p.movementId), e.actorId);
         break;
     }
   }
@@ -702,6 +714,22 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
       appliedAt: null,
       fields: [],
     });
+  }
+
+  // 10fcf6df — resolve every rollback's actor to a display name in ONE query (per-employee volumes are
+  // tiny, and a reversal is rare, so this is usually skipped entirely).
+  const actorIds = [...new Set([...reversalActorIds.values()].filter((v): v is string => !!v))];
+  if (actorIds.length) {
+    const names = await tx
+      .select({ id: appUser.id, name: person.fullName })
+      .from(appUser)
+      .innerJoin(person, eq(person.id, appUser.personId))
+      .where(inArray(appUser.id, actorIds));
+    const byId = new Map(names.map((n) => [n.id, n.name]));
+    for (const [movementId, actorId] of reversalActorIds) {
+      const rev = reversals.get(movementId);
+      if (rev && actorId) rev.by = byId.get(actorId) ?? null;
+    }
   }
 
   for (const r of rows) {
@@ -2144,7 +2172,7 @@ export async function applyDueMovementsTx(
   return { applied, noop };
 }
 
-// ───────────── Corrections: Edit + Delete (Rollback) — 66a63bd6 ─────────────
+// ───────────── Corrections: Edit + Rollback — 66a63bd6, renamed by 10fcf6df ─────────────
 //
 // The reporter's answer to decision item 9064cffb picked option (a): a correction is recorded as a VISIBLE
 // REVERSAL, never a hard delete. Employment History is a projection over the append-only domain_event ledger
@@ -2340,8 +2368,8 @@ async function reverseLegTx(
   }
 }
 
-/** The shared rollback body. `corrected` distinguishes the first half of an Edit from a plain Delete — both
- *  leave the same visible trace, and the history says which one happened. */
+/** The shared rollback body. `corrected` distinguishes the first half of an Edit from a plain Rollback —
+ *  both leave the same visible trace, and the history says which one happened. */
 async function reverseMovementTx(
   tx: Tx,
   ctx: SessionContext,
@@ -2392,10 +2420,14 @@ async function reverseMovementTx(
 }
 
 /**
- * Delete (Rollback). The movement stops applying and everything it changed goes back to what it was
- * immediately before — but the row STAYS in Employment History, marked reversed, with who did it, when and
- * why. That is the approved shape (9064cffb option a): an employment history that can be silently emptied
- * is no longer evidence, and payroll and statutory reporting both lean on it.
+ * Rollback. The movement stops applying and everything it changed goes back to what it was immediately
+ * before — but the row STAYS in Employment History, marked reversed, with who did it, when and why. That
+ * is the approved shape (9064cffb option a): an employment history that can be silently emptied is no
+ * longer evidence, and payroll and statutory reporting both lean on it.
+ *
+ * 10fcf6df — the screen called this Delete until r88. It never deleted anything: the reporter reasonably
+ * expected a deletion to leave the employee's details alone, saw them change, and read that as the record
+ * being removed without being undone. The affordance is now labelled Roll Back, which is what it does.
  */
 export async function reverseMovementEvent(
   ctx: SessionContext,

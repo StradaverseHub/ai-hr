@@ -1165,13 +1165,14 @@
           "terminationPayrollFlag": "Termination saved. A payroll run has already been processed for {periods}, past the termination date — review that run. It was not changed."
         },
         "edit": "Edit",
-        "delete": "Delete",
+        "rollback": "Roll Back",
+        "reversedBy": "Rolled back by",
         "editTitle": "Edit Movement Event",
         "reversedBadge": "Reversed",
         "correctedBadge": "Corrected",
-        "deleteConfirmTitle": "Roll this movement event back?",
-        "deleteConfirmDescription": "The employee's details go back to the state immediately before this event. The event stays in Employment History, marked as reversed, so the record remains auditable.",
-        "deleteConfirmPayroll": "A processed payroll run already covered this period. The rollback will NOT reprocess any payslip — reprocess it separately if that is what you need. The event stays in Employment History, marked as reversed.",
+        "rollbackConfirmTitle": "Roll this movement event back?",
+        "rollbackConfirmDescription": "The employee's details go back to the state immediately before this event. The event stays in Employment History, marked as reversed, so the record remains auditable.",
+        "rollbackConfirmPayroll": "A processed payroll run already covered this period. The rollback will NOT reprocess any payslip — reprocess it separately if that is what you need. The event stays in Employment History, marked as reversed.",
         "correctionReasonLabel": "Reason for the correction (optional)",
         "payrollLocked": "Locked by a closed payroll run",
         "status": {

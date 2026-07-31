@@ -1165,13 +1165,14 @@
           "terminationPayrollFlag": "Đã lưu việc chấm dứt. Kỳ lương {periods} đã được xử lý vượt quá ngày chấm dứt — hãy kiểm tra kỳ lương đó. Hệ thống không thay đổi nó."
         },
         "edit": "Sửa",
-        "delete": "Xóa",
+        "rollback": "Hoàn tác",
+        "reversedBy": "Hoàn tác bởi",
         "editTitle": "Sửa sự kiện biến động nhân sự",
         "reversedBadge": "Đã hoàn tác",
         "correctedBadge": "Đã chỉnh sửa",
-        "deleteConfirmTitle": "Hoàn tác sự kiện biến động này?",
-        "deleteConfirmDescription": "Thông tin nhân viên sẽ trở lại trạng thái ngay trước sự kiện này. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác, nên hồ sơ vẫn có thể kiểm toán.",
-        "deleteConfirmPayroll": "Một kỳ lương đã xử lý bao trùm giai đoạn này. Việc hoàn tác sẽ KHÔNG xử lý lại bất kỳ phiếu lương nào — hãy xử lý lại riêng nếu bạn cần. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác.",
+        "rollbackConfirmTitle": "Hoàn tác sự kiện biến động này?",
+        "rollbackConfirmDescription": "Thông tin nhân viên sẽ trở lại trạng thái ngay trước sự kiện này. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác, nên hồ sơ vẫn có thể kiểm toán.",
+        "rollbackConfirmPayroll": "Một kỳ lương đã xử lý bao trùm giai đoạn này. Việc hoàn tác sẽ KHÔNG xử lý lại bất kỳ phiếu lương nào — hãy xử lý lại riêng nếu bạn cần. Sự kiện vẫn nằm trong Lịch sử công tác, được đánh dấu là đã hoàn tác.",
         "correctionReasonLabel": "Lý do chỉnh sửa (không bắt buộc)",
         "payrollLocked": "Bị khóa bởi một kỳ lương đã đóng",
         "status": {

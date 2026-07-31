@@ -2640,7 +2640,7 @@ export default async function EmployeePage({
               Department, Job Title, Basic. End Date and Remarks moved OFF the list (they are not in the
               requested set and seven data columns is already the width of the panel); both still render on
               the row's detail view, one click away via Action, so nothing became unreachable. Action stays:
-              it is the affordance, not data, and View / Edit / Delete hang off it. */}
+              it is the affordance, not data, and View / Edit / Roll Back hang off it. */}
           <tr>
             <th className="px-4 py-2 font-medium">{t('movement.columns.eventType')}</th>
             <th className="px-4 py-2 font-medium">{t('movement.columns.effectiveDate')}</th>
@@ -2712,21 +2712,27 @@ export default async function EmployeePage({
                     <form action={reverseMovementEventAction} className="inline-flex">
                       <input type="hidden" name="employmentId" value={employmentId} />
                       <input type="hidden" name="movementId" value={m.id} />
+                      {/* 10fcf6df — the affordance is ROLLBACK, not Delete. The service behind it has
+                          reversed rather than erased since 66a63bd6 (reverseMovementEventAction →
+                          reverseMovementEvent), and the confirmation has said so all along; the word on
+                          the row was the last thing still promising a deletion that never happened. It is
+                          no longer drawn in the destructive colour either — undoing a movement restores
+                          the employee's previous values, it does not remove a record. */}
                       <ConfirmSubmit
-                        title={t('movement.deleteConfirmTitle')}
+                        title={t('movement.rollbackConfirmTitle')}
                         subtitle={`${movementKindLabel(m.kind)} · ${m.effectiveDate}`}
                         description={
                           m.payrollWarning
-                            ? t('movement.deleteConfirmPayroll')
-                            : t('movement.deleteConfirmDescription')
+                            ? t('movement.rollbackConfirmPayroll')
+                            : t('movement.rollbackConfirmDescription')
                         }
-                        confirmLabel={t('movement.delete')}
+                        confirmLabel={t('movement.rollback')}
                         reasonField={{ name: 'reason', label: t('movement.correctionReasonLabel') }}
                         variant="ghost"
                         size="sm"
-                        className="h-auto p-0 text-sm font-normal text-destructive hover:bg-transparent hover:underline"
+                        className="h-auto p-0 text-sm font-normal text-primary hover:bg-transparent hover:underline"
                       >
-                        {t('movement.delete')}
+                        {t('movement.rollback')}
                       </ConfirmSubmit>
                     </form>
                   )}
@@ -2810,6 +2816,11 @@ export default async function EmployeePage({
               : t('movement.reversedBadge')}
           </span>{' '}
           · {movementDetailData.row.reversed.at.toISOString().slice(0, 16).replace('T', ' ')}
+          {/* 10fcf6df — WHO rolled it back, beside WHEN. Resolved in the projection from the reversal
+              event's own actor, so this cannot disagree with the audit trail. */}
+          {movementDetailData.row.reversed.by
+            ? ` · ${t('movement.reversedBy')} ${movementDetailData.row.reversed.by}`
+            : ''}
           {movementDetailData.row.reversed.reason ? ` · ${movementDetailData.row.reversed.reason}` : ''}
         </div>
       )}

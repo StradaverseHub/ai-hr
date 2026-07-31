@@ -1165,13 +1165,14 @@
           "terminationPayrollFlag": "Penamatan disimpan. Gaji bagi {periods} telah pun diproses melebihi tarikh penamatan — sila semak larian gaji itu. Ia tidak diubah."
         },
         "edit": "Sunting",
-        "delete": "Padam",
+        "rollback": "Batalkan",
+        "reversedBy": "Dibatalkan oleh",
         "editTitle": "Sunting Peristiwa Pergerakan",
         "reversedBadge": "Dibatalkan",
         "correctedBadge": "Dibetulkan",
-        "deleteConfirmTitle": "Batalkan peristiwa pergerakan ini?",
-        "deleteConfirmDescription": "Maklumat pekerja akan kembali kepada keadaan sebelum peristiwa ini. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan, supaya rekod kekal boleh diaudit.",
-        "deleteConfirmPayroll": "Larian gaji yang telah diproses sudah merangkumi tempoh ini. Pembatalan ini TIDAK akan memproses semula sebarang slip gaji — proses semula secara berasingan jika perlu. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan.",
+        "rollbackConfirmTitle": "Batalkan peristiwa pergerakan ini?",
+        "rollbackConfirmDescription": "Maklumat pekerja akan kembali kepada keadaan sebelum peristiwa ini. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan, supaya rekod kekal boleh diaudit.",
+        "rollbackConfirmPayroll": "Larian gaji yang telah diproses sudah merangkumi tempoh ini. Pembatalan ini TIDAK akan memproses semula sebarang slip gaji — proses semula secara berasingan jika perlu. Peristiwa itu kekal dalam Sejarah Pekerjaan, ditanda sebagai dibatalkan.",
         "correctionReasonLabel": "Sebab pembetulan (pilihan)",
         "payrollLocked": "Dikunci oleh larian gaji yang telah ditutup",
         "status": {
