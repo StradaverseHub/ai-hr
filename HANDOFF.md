@@ -12,14 +12,31 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
    number is `0339`** (`0336` was never used — the gap is real and harmless). No held branch currently
    claims a number — but **check any held branch's `when` against the deployed watermark before merging
    it** (see Traps: a stale number is a SILENT SKIP, and r85 caught `build/r83a` in exactly that state).
-0. **BEFORE PLANNING ANYTHING, CHECK FOR AN UNSHIPPED ROUND:**
-   `for b in $(git branch --list 'build/*'); do echo "$b $(git log --oneline main..$b | wc -l)"; done`.
-   r86 was found this way — 13 finished items, fully integrated, sitting unmerged and ungated while
-   `main` stood at r85. A finished round nobody shipped looks exactly like no round at all.
-2. **CHECK `git branch --show-current` AT THE REPO ROOT, and `pwd` in every gate command.** The root is
-   on `fix/companies-list`, many rounds behind, and **its HANDOFF.md is STALE**. `main` lives at
-   `.claude/worktrees/mainwt`. r83 lost a full suite AND a `next build` to a `cd` that left the shell at
-   the root — both reported GREEN.
+0. **BEFORE PLANNING ANYTHING, CHECK FOR AN UNSHIPPED ROUND.** r86 was found this way — 13 finished
+   items, fully integrated, sitting unmerged and ungated while `main` stood at r85. A finished round
+   nobody shipped looks exactly like no round at all.
+
+       for b in $(git branch --list 'build/*' | tr -d ' *'); do \
+         n=$(git log --oneline main..$b | wc -l | tr -d ' '); \
+         [ "$n" != 0 ] && echo "$b: $n unmerged"; done
+
+   **Then LOOK at what it prints — the count alone lies.** `build/r71` reports 4 unmerged commits and
+   is NOT an unshipped round: its changes reached `main` by another route, so the commit objects are
+   not ancestors while the content is fully present. Confirm with `git diff --stat main <branch>` —
+   if that shows main deleting thousands of lines, the branch is simply old, not pending. A real
+   pending round looks like r86 did: recent commits, a merge/integration commit, and a small
+   `main...<branch>` diff of genuinely new files.
+2. **CHECK `pwd` AND `git branch --show-current` IN EVERY GATE COMMAND.** `main` lives at
+   `.claude/worktrees/mainwt`; the repo root is a separate worktree on **`local/root-scratch`**.
+   r83 lost a full suite AND a `next build` to a `cd` that left the shell at the root — both reported
+   GREEN — and r86 hit it again, caught only by reading vitest's `RUN` line.
+
+   **r86 defused the worst half of this:** the root branch used to be `fix/companies-list`, many rounds
+   behind, carrying a **stale HANDOFF.md that a fresh session would read and believe** (that is exactly
+   how the r86 session began — acting on r78-era state). It has been fast-forwarded to `main` and
+   renamed, so the root's content now matches main and its HANDOFF is current. **The `pwd` discipline
+   still matters** — a gate run at the root proves nothing about an integration branch — but reading
+   the wrong HANDOFF is no longer one of the failure modes.
 3. **THE ENTITLEMENT KEYSTONE IS DONE.** `9816a5ad` step 2 is deployed: the engines read the five rules
    from `leave_type`, there is a real editor for them, and ANNUAL carry-forward expiry is **6 months**
    (the reporter's new policy — carried leave now forfeits two months earlier than before).
@@ -63,34 +80,56 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 ### `9816a5ad` — SHIPPED in r85. Kept for the reasoning; step 3 is the open part
 
 Step 1 shipped (r81, `0325`): ten rule columns on `leave_type`, backfilled, read by nothing.
-Step 2 (`build/r83a`, `0328`) repoints the engines onto those columns. It is **built, gated and held.**
+**Step 2 SHIPPED in r85.** It was built on `build/r83a` as `0328` and **renumbered to `0334` at merge**
+(the stale-number trap — `build/r83a` predated everything r84 shipped). **`0328` no longer exists**, so
+do not go looking for it; the guard is `0334_leave_type_rules_repoint_guard`. r85 then added a second,
+NEW migration beside it: `0333_annual_carry_expiry_six_months`.
 
-**`0328` is an assertion with no DDL, and on 2026-07-30 it FIRED against production:**
+> ⚠️ **`0333`'s own file header mislabels itself** — it opens "0333 refuses the release when any policy
+> row…", but the thing that refuses is `0334`. The comment was written before the renumber. Left
+> uncorrected on purpose: **never edit an applied migration file**, because drizzle records a hash of
+> its contents. Read `0334` for the assertion and `0333` for the 6-month harmonisation.
+
+**That guard is an assertion with no DDL, and on 2026-07-30 it FIRED against production:**
 
     leave type ANNUAL, rule carryForwardExpiryMonths, 1 policy row disagreeing
 
-56 of 57 ANNUAL policy rows read 8 months; one reads 6. **It is a LIVE EDIT, not stale data** —
-`leave-policy.updated` carries 8 at 10:06 that morning and 6 at 11:10. Consolidating would have silently
-reverted it and aborted `deploy.sh` partway. Blast radius is nil (0 employments on that company+grade),
-so **the agreed fix is to harmonise that row to 8, not to weaken the assertion.** Revision 7 of the plan
-tells the reporter exactly that and invites a reject if they meant 6 for everyone.
+56 of 57 ANNUAL policy rows read 8 months; one read 6. **It was a LIVE EDIT, not stale data** —
+`leave-policy.updated` carries 8 at 10:06 that morning and 6 at 11:10. Consolidating blind would have
+silently reverted it and aborted `deploy.sh` partway.
+
+**The resolution went the OTHER way from what was first proposed, and that is the part to know:** the
+plan initially offered to harmonise the odd row UP to 8; the reporter's answer was that **6 is the new
+policy for everyone**, and r85 shipped it as `0333_annual_carry_expiry_six_months`. So **ANNUAL
+carry-forward now expires after 6 months and carried leave forfeits two months earlier than before.**
+If someone reports "my carried leave disappeared early", this is why, and it is intended.
 
 **`leave_policy` has no `updated_at`.** `created_at` on that row is 2026-07-26, which says nothing about
-when the value changed — that is why `0325`'s distinctness check passed on 07-29 and `0328` fires now.
+when the value changed — that is why `0325`'s distinctness check passed on 07-29 and the `0334` guard
+fired on 07-30.
 **On this table, use the `leave-policy.updated` events, never `created_at`, to date a change.**
 
 Step 2 also already decides the per-band question this file previously flagged as open: per-band
 `carryForwardDays` and per-band carry expiry (`9d8cf621`) collapse into the type-level setting and stop
 being read; the columns, JSONB keys and readers are retained, not dropped.
 
-**Step 3 is `fa3f4ccb`** — it removes the Company Entitlements band surface and zeroes `leave_policy`.
-Its `blockedById` guard has been released, so **nothing but this note now stops it being built first.**
-Alone it stops accrual for all 22 employees: `leave_policy` is still the only home for earning method,
-carry-forward, rounding and `maxBalanceDays`, and 57 of 67 policy rows are `earned_monthly`.
+**Step 3 is `fa3f4ccb`, and it is CONTESTED — do not build it.** It removes the Company Entitlements
+band surface and zeroes `leave_policy`. Its `blockedById` guard has been released, so **nothing but
+this note stops it being built.** Two independent reasons to hold:
+1. **The reporter asked to remove the STATUTORY MINIMUM**, which is the EA 1955 legal floor. Rev 4
+   refused. It needs a written instruction from them, not an inference.
+2. **`leave_policy` still supplies DAYS** and remains the rule fallback for any type carrying no
+   type-level rules. Zeroing it is not the no-op it looks like now that the rules have moved.
 
-Written 2026-07-29, updated after r83 on 2026-07-30. Everything below the
-`---` after this section is the per-round history; this part is the standing contract and the live
-state. Update it when the state changes, not just when a round ships.
+**Correction, because the pre-r85 version of this paragraph is quoted elsewhere:** it used to say
+`leave_policy` is "the only home for earning method, carry-forward, rounding and `maxBalanceDays`".
+**That is no longer true** — those live on `leave_type` and are applied by `applyLeaveTypeRules`.
+See "Entitlement facts" in Live state for the current arrangement.
+
+Written 2026-07-29; updated after r83 (2026-07-30), and rewritten after r85/r86 (2026-07-31) because
+step 2 had shipped and this section still described it as held. Everything below the `---` after this
+section is the per-round history; this part is the standing contract and the live state. **Update it
+when the state changes, not just when a round ships.**
 
 ## How this project is actually run
 
@@ -170,7 +209,11 @@ Established pattern, used for r73/r74/r75. It works, with rules learned the hard
   r75; the full suite still found a permission-matrix omission and a nested-form bug. Per-agent runs
   are necessary and never sufficient.
 
-## Traps that cost real time this session
+## Traps — accumulated across r70–r86, not one session
+
+Each of these cost at least one round. They are ordered roughly by how likely you are to hit them, not
+by when they were found. **Several have recurred after being written down** (the wrong-tree gate trap
+has now bitten three times), so treat them as live hazards rather than history.
 
 **A `labelKey` IS NOT THE LABEL — and a plan written off key names will be wrong.** r78's `a324a4b3`
 plan asserted that the shift-library nav row "reads Attendance Policy", because its descriptor says
@@ -370,121 +413,101 @@ not be built** without written instruction (it asks to remove the EA 1955 statut
 **The 1 open item** is `bb4f2265` (dates stamped in UTC read as yesterday before 08:00 MYT — about five
 remaining sites; r86 fixed two more of them on the leave-records columns while building `fe3eb141`).
 
-> ⚠️ **EVERYTHING FROM HERE TO "Carried debt" IS THE 2026-07-29 SNAPSHOT AND IS NOW LARGELY STALE.**
-> Most of the items it tells you to "START HERE" on have since shipped (r79–r86). The counts above are
-> the live ones. Treat the sections below as reasoning to consult per item, never as a work queue, and
-> confirm any item's status with `improve:pull` / `improve:pull-approved` before acting on it.
+### The 7 contested items — every one needs a re-plan, none is mid-build
 
-### START HERE — the four contested items are all small and all actionable
+- **`fa3f4ccb`** rev 4 — step 3 of the entitlement consolidation. **DO NOT BUILD** without a written
+  instruction: the reporter asked to remove the STATUTORY MINIMUM, which is the EA 1955 legal floor,
+  and rev 4 refused. Everything else in `9816a5ad` has shipped, so this is the only piece left.
+- **`c33d9bbb`** rev 1 — **already answered; it needs closing, not re-planning.** The reporter replied
+  "Let's defer this enhancement for now… we'll revisit a grouped Benefit Scheme selector and
+  default/override mechanism as a separate enhancement." That is a DEFER of a design we proposed and
+  they accepted in principle, not a rejection. Park or cancel it rather than writing rev 2.
+- **`1ef1cf95`** rev 4 · **`241817ef`** rev 2 · **`deec1691`** rev 2 · **`a324a4b3`** rev 1 ·
+  **`61bf109d`** rev 1 — ordinary push-backs awaiting a new revision. `a324a4b3` still carries the
+  open question r78 returned: `/admin/attendance-policy`'s header reads "Lateness, Early Out &
+  Overtime Settings" while its nav row reads "Attendance policy" — the reporter must say which changes.
 
-Three of these are post-deploy push-backs on work that shipped THIS session. None disputes the build;
-each asks for a little more. Re-plan and build them first — they are the cheapest value on the board.
+### The 14 approved items — the payroll faults first
 
-- **`9816a5ad` rev 5 — this is an AGREEMENT, not an objection.** The reporter writes "we can proceed
-  with consolidating these settings" and confirms the split: **Leave Year Type, Earning Method, Carry
-  Forward Policy, Rounding and Maximum Balance stay at LEAVE TYPE level and stop being duplicated per
-  company+grade; Benefit Scheme → Service Based Entitlements controls DAYS only.** Their stated business
-  rule: "Annual Leave rules are the same for everyone and only the entitlement days differ by grade."
-  That matches what the data already shows (see below). **This is the keystone item — `fa3f4ccb` is
-  blocked solely on it.** Re-plan as rev 6 restating the agreed structure and get it approved.
-- **`33bf1a2d`** — remove the "13.5d left" sub-line under the Days column, and apply the same layout to
-  the **leave cancellation** category as well. (r77 restyled only the leave-request table.)
-- **`d6429eb4`** — "Submit Decision" → "Submit", **including inside the pop-out after Review dates**.
-  Note r77 deliberately held `submitDecisions` back as outside the approved plan; the reporter has now
-  asked for it explicitly, so it is in scope.
-- **`1ef1cf95`** — the reporter finally states the real rule, and it is more than r78 investigated:
-  seven leave types (CGL, CPL, NDL, EXM, GD, MRL, STD) share **one combined 10-day annual entitlement**,
-  AND **each application is capped at 3 consecutive days regardless of type**. The combined pool already
-  exists (`scheme_leave_combined_limit`, migration 0220). **The per-application 3-day cap is the part to
-  verify — it may not exist at all.** Check before planning.
+**Three live payroll faults, and the first is severe:**
+- **`ef31d251`** — **no employee has ever seen a payslip**, because no run has ever been closed
+  (47 payslips, 18 runs).
+- **`d0d2c9d1`** — RM23,150 entered and never paid.
+- **`97a9b0ab`** — **NOT a fault.** PCB is cumulative, so revising an earlier month legitimately moves
+  a later one. Its plan says so; it needs the reporter to accept, not a build.
 
-### The 11 approved items — nothing is blocked, but read the sequencing
+**Payroll redesign cluster** (sequence together, they overlap): `a1d82340` rev 2 (overall process flow)
+· `ec845c7d` (fixed + individual transaction interfaces) · `862ed0ad` (transaction view history) ·
+`956cec85` (statutory forms — still needs the reporter to name submission channels and file formats;
+a statutory form with an invented layout is worse than no form).
 
-**Ready to build now, no dependencies:** `fc776376` (pagination — **SOLO AND LAST**, cross-cutting, ~30
-list pages) · `deec1691` (dependency explorer) · `9cbf5e0d` (Employee Status state machine, LARGE —
-supersedes what r75 shipped) · `241817ef` (approval workflow — **the plan requires repointing the gate
-BEFORE removing the company toggle**; 6 of 8 companies currently have multi-step OFF and would start
-running their assigned template).
+**Movement cluster** (all land on `core/movement.ts`, freshly reworked by r83/r86 — read those entries
+first): `e523e85d` (Movement Effective Date) · `30325fc1` (auto-generated movement without HR action) ·
+`10fcf6df` (Replace Delete with Rollback) · `476f23ed` (configurable career events — **it owns the
+termination-reason catalogue that r86 deliberately left as TEXT, not an enum**).
 
-**The movement cluster — one body of work, in this order:** `941c9dac` (effective date vs entry date)
-→ `ae9350f2` (Termination movement type). Both land on `core/movement.ts` and its projection, which r78
-has just reworked. `4d391ab7` shipped in r78 and is the enabler; do not undo its tagging.
+**Import pair:** `cf43c909` (Excel import + import history) — r86 shipped the `.xlsx` reader
+(`d8471481`), so what remains here is chiefly the **import history**. Re-read it before planning; part
+may already be built.
 
-**The import pair:** `d8471481` (.xlsx redesign) supersedes the file picker r78 shipped. `lib/import-file.ts`
-was deliberately built so the READ step swaps for a workbook decoder without touching PARSE or the write
-path — `lib/spreadsheet.ts` `workbookToCsvText` already does this for the leave importer.
+**Standalone:** `fc776376` rev 2 (pagination — **SOLO AND LAST**, cross-cutting, ~30 list pages) ·
+`d64d0df4` (tax information: disability status).
 
-**The payroll cluster:** `4fb8b75a` rev 2 is the approved MAP with a six-step order (see r78 Decision 3).
-Steps 1–4 do not touch Payroll Items, so `61bf109d` (pay item input types + formula) can run in parallel
-— but any later step reorganising Payroll Items must follow it.
+### The 1 open item
 
-**`1f6fd6d8`** (Leave Balance Summary rebuild, LARGE) — the reporter supplied an exact layout and
-formula. Its plan flags one deviation to keep: YTD Entitled must render the granted-to-date ledger figure,
-not a prorated projection, or the column stops adding up to Available Balance for the 10 up-front-granted
-policies. **Sequence AFTER `9816a5ad`**, because it reads carry-forward expiry from settings that item
-relocates.
+**`bb4f2265`** — dates stamped in UTC read as yesterday before 08:00 MYT. About five sites remain; r85
+fixed `core/movement.ts` and r86 fixed the two leave-records columns while building `fe3eb141`. The
+reporter has been asked to confirm priority, since the window only affects early/overnight workers.
 
-### The 2 blocked items — each needs one answer, then unblock
+### Entitlement facts you will need before touching leave (re-verified on production 2026-07-31)
 
-- **`fa3f4ccb`** — blocked on `9816a5ad` being approved. It is step 3 of that same job. Alone it removes
-  the only home for earning method and carry-forward and **stops accrual for all 22 employees**.
-- **`956cec85`** (statutory forms) — blocked on the reporter naming which submission channels and file
-  formats they actually use. A statutory form with an invented layout is worse than no form.
+**READ THIS FIRST: r85 MOVED THE RULES. Anything written before r85 that says `leave_policy` owns
+earning method or carry-forward is now WRONG.**
 
-### The 6 open items — 4 are new and unplanned, 2 were raised by us
-
-New from the reporter, never planned: `4d6eae7b` (Leave Year Type step in General workflow) ·
-`9f5164d8` (entitlement rounding with custom decimals) · `a1d82340` (redesign the overall payroll process
-flow) · `031fa21b` (remove a duplicate Request subsection from Employee Details).
-
-Raised by us from the r78 payroll map, both with live evidence and both correctness issues:
-- **`b84821cf`** — two employees flagged subject to HRDF at companies that are not registered. The
-  payslip stamps `hrdfSubject: true` then computes zero. **ISEDECOR BINA has run eight payrolls in this
-  state.** UI-only warning exists at `app/admin/personnel/[employmentId]/page.tsx:2460-2464`; there is NO
-  run-level check.
-- **`707b3851`** — Chin Hin Property Group and SpaceX both name "Monthly" as their default payroll cycle
-  while having **no cycle defined at all**, so both are silently blocked from running payroll and never
-  have. `core/payroll-run-group.ts:224-238` refuses with `INVALID_CYCLE`.
-
-### Entitlement facts you will need before touching leave (verified on production)
-
-Both configurations are live: for Annual Leave **6 of 22 employees take days from a Benefit Scheme and
-16 fall through to `leave_policy`** (Medical 5 / 17). Precedence is one composition,
-`entitledDays = max(floorDays, schemeDays ?? policyDays)` (`core/leave-compute.ts:502`), four call sites
-in `core/leave.ts`. `schemeBandDays` returning **null — not zero** — is the fallback trigger.
-
-`leave_policy.accrual` exclusively owns earning method, carry-forward + expiry, rounding and
-`maxBalanceDays`, read for **every** employee including scheme-driven ones; `accrueEarnedLeave` asserts
-`pol!` non-null, so an earned-method type cannot accrue without a policy row. **57 of 67 policy rows are
-`earned_monthly`.**
-
-**What makes the reporter's consolidation safe:** grouping `leave_policy` by leave type, EVERY type has
-exactly ONE distinct method, ONE carryForwardMax and ONE roundingMethod across all its rows — ANNUAL has
-57 rows and 1 of each. The collapse to type level is therefore lossless against current data. The
-capability lost is per-company rule variation, which is real but unexercised; the reporter has been told
-and has accepted.
+- **Rules live on `leave_type`** (columns added `0325`, engines repointed `0334`). `applyLeaveTypeRules`
+  (`core/leave-compute.ts:489`) overlays them onto the resolved policy, overriding method, carry-forward
+  max, carry expiry, rounding (+ `roundingThreshold`, added by r86's `9f5164d8`) and `maxBalanceDays`.
+  It is a **whole-set** overlay gated on `hasAnyLeaveTypeRule` — a type either carries the rule set or
+  it does not. **10 leave types carry type-level rules today.**
+- **`leave_policy` still supplies DAYS**, and is the fallback for rules on any type carrying none.
+  **67 policy rows, 57 of them `earned_monthly`, 22 active employments.**
+- **DAYS precedence is unchanged:** `entitledDays = max(floorDays, schemeDays ?? policyDays)`.
+  `schemeBandDays` returning **null — not zero** — is the fallback trigger.
+- **Per-band carry-forward is no longer read.** r85's step 2 collapsed per-band `carryForwardDays` and
+  per-band carry expiry into the type-level setting. The columns, JSONB keys and readers were retained
+  deliberately, not dropped — do not "tidy" them away.
+- **ANNUAL carry-forward expiry is 6 months** (r85, `0333`) — the reporter's policy change; carried
+  leave now forfeits two months earlier than before.
 
 **Coverage gap that bites at reset time:** 12 of 41 benefit schemes have zero entitlement rows, and
-ISEDECOR BINA + Demo Group Holdings have no schemes at all between their 8 employments. After the reset
+ISEDECOR BINA + Demo Group Holdings have no schemes at all between their 8 employments. After a reset
 those employees drop to the statutory floor until their schemes are filled in.
+
+<!-- Superseded queue removed 2026-07-31 (r86 housekeeping): the r78-era "START HERE / 11 approved /
+     2 blocked / 6 open" lists and the pre-r85 entitlement description lived here. Every item in them
+     has since shipped, been re-planned, or been contradicted by r85's rule relocation. They were
+     actively misleading — this file's own rule is that a record nobody checks against the tree is
+     worse than no record. Round history below is the audit trail. -->
 
 ## Carried debt — none of it blocking, all of it real
 
-1. **BROWSER VERIFICATION IS NOW THE TOP RECOMMENDATION, not just debt.** Nothing has been
-   browser-verified since **r70**. r71–r78 plus slice 4 moved Payroll's navigation to a fly-out, split
-   Attendance three ways, renamed leave labels, added four inquiry surfaces, added pagination to ~17
-   screens, gated menu rows by entitlement, restyled the approvals table, made the Employment tab
-   read-only and rebuilt the emergency-contact section.
+1. **BROWSER VERIFICATION IS THE TOP RECOMMENDATION, and the pile now runs r71–r86.** Only two things
+   have ever been browser-checked: the item r85 settled, and r86's `4dbe04c6`. Everything else since
+   **r70** is source-reasoned only, and r86 added the largest surfaces yet — a step-by-step Create New
+   Employee wizard with drafts, an `.xlsx` import with preview and error-report download, a rebuilt
+   Leave Balance Summary, and a Cancel Leave action on Employee Leave Records.
 
    **This stopped being theoretical on 2026-07-29.** The Organization Companies screen rendered 1 of 8
    companies for 24 days behind a fully green suite, an item was closed telling the reporter the screen
-   was correct, and only a user's screenshot overturned it. See the hotfix entry. **Two specific
-   unexercised surfaces to look at first:** r77's approvals client island
-   (`app/approvals/leave-decide-controls.tsx` — reject-reason box revealed by state) and r78's
-   employee-import file picker. This repo has **no DOM or interaction test runner at all**, so neither
-   can be covered by a test today.
+   was correct, and only a user's screenshot overturned it. See the hotfix entry.
 
-   Recommended first move for a new session: a browser pass over r71–r78 before building anything new.
+   **The argument FOR doing it is now evidence, not principle:** `4dbe04c6` was reproduced and measured
+   in a browser, and that is the only reason its real cause was found — Tailwind's emission order beats
+   a template-string width, so `${inputCls} w-28` loses to the `w-full` inside `inputCls`. Reading the
+   source would have concluded the width was set. This repo has **no DOM or interaction test runner at
+   all**, so none of this can be covered by a test today.
+
+   Access: loopback-only behind a cloudflared quick tunnel (see CURRENT STATE line 6).
 
 2. **A rendered-markup test can still be blind.** The companies bug survived a test upgraded from
    "checks props" to "asserts rendered markup", because the markup came from props that had never
@@ -503,20 +526,28 @@ those employees drop to the statutory floor until their schemes are filled in.
    had to be re-aimed at r74's `navNodes` contract because the plan predates it — expect the same for
    later slices.
 
-5. **TEST-DB TEARDOWN IS A CONCRETE ONE-PLACE FIX — do this before the next big parallel round.**
-   `test/global-setup.ts` drops databases only for its OWN namespace and only at the START of a run
-   (drop-then-recreate). There is no teardown, so every finished agent orphans 1 template + 10 workers
-   **permanently**. ~20 namespaces were created in the 2026-07-29 session alone. It reached 296 databases
-   / 7.3 GB, a single checkpoint ran 46 minutes, five agents queued behind it, and the upgrade rehearsal
-   could not create its scratch database at all. Swept to 31 DBs / 1.6 GB with the owner's authorisation.
-   **The fix: drop the namespace's template and workers when the run exits.** Note `git branch -f` and
-   bare `DROP DATABASE` are both blocked by the permission classifier — the sweep needs the owner to run
-   it, or a `Bash(psql:*)` rule. **138 git worktrees** are also still lying around.
+5. **TEST-DB TEARDOWN IS FIXED — this entry is kept only so nobody "fixes" it again.** r85 added
+   teardown to `test/global-setup.ts` (`:298`, best-effort and never fatal, so a teardown failure cannot
+   turn a green suite red). A run now drops its own template and workers on exit. r86 confirmed it
+   live: after a full 5812-test suite the cluster held exactly **template + 10 workers**, and after the
+   run **2** databases. The old symptoms (296 databases / 7.3 GB, 46-minute checkpoints) came from the
+   pre-teardown era. **Do not invent a `TEST_DB_NAMESPACE` unless you are running parallel agents** —
+   that is what created the namespaces that leaked.
 
-6. **Two dead/misplaced things found in r78 and deliberately not changed:** `payment_basis` on the
-   payroll config screen is written, validated, stored and **read by nothing**; and probation months,
-   review reminder days and default currency live on the payroll screen while belonging to hiring,
-   appraisals and compensation. Both are steps 2 and 3 of the approved `4fb8b75a` order.
+   **What is NOT fixed is git worktree/branch sprawl.** r86 counted **152 worktrees and 79 `build/*`
+   branches**, nearly all of them finished rounds. They cost disk and make
+   `git worktree list` useless for finding the tree you want. Prune with
+   `git worktree prune` plus `git worktree remove` for merged rounds, and delete merged `build/*`
+   branches — but **check `git log --oneline main..<branch>` is empty first**: r86 itself was an
+   unmerged round sitting in exactly that pile.
+
+6. **Two dead/misplaced things found in r78 and still not changed:** `payment_basis` on the payroll
+   config screen is written, validated, stored and **read by nothing**; and probation months, review
+   reminder days and default currency live on the payroll screen while belonging to hiring, appraisals
+   and compensation. These were steps 2 and 3 of `4fb8b75a`'s agreed order — **but `4fb8b75a` is now
+   `deployed`**, so no open item carries them any more. If they matter, they need raising afresh;
+   otherwise they are simply known debt. The live payroll redesign items (`a1d82340`, `ec845c7d`,
+   `862ed0ad`) are the natural home.
 
 7. **`transferEmployee` now has zero production callers** but was kept deliberately (r78) — it is the
    only writer of `assignment.transferred`, a type years of production history contains and which
