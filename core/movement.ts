@@ -246,8 +246,13 @@ const MOVEMENT_EVENT_TYPES = [
   'employment.movement.applied',
 ];
 
-const EXTENDED_PROBATION_FIELDS = ['extendedProbationValue', 'extendedProbationUnit', 'extendedConfirmationDate'];
-const RESIGNATION_FIELDS = ['tenderResignationDate', 'lastWorkingDate'];
+/* 30325fc1 — EXTENDED_PROBATION_FIELDS / RESIGNATION_FIELDS were DELETED here. They were the field groups
+ * the projection used to INFER a movement kind from an untagged `employment.info.updated`: touching
+ * extendedConfirmationDate meant "Probation Extension", touching lastWorkingDate meant "Resignation". That
+ * inference is precisely the fault the reporter raised — an ordinary Employment Dates save minting a
+ * movement of a type nobody chose — so the classification now comes from the movement tag alone (see the
+ * block comment above the switch in projectRows). Do not reintroduce a field-group inference: it re-opens
+ * this defect for every future field that happens to share a group. */
 
 type RawEvent = {
   id: string;
@@ -467,6 +472,35 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
       appliedAt: null as Date | null,
       fields: [] as string[],
     };
+    /**
+     * 30325fc1 — "movement records auto-generated without HR admin action".
+     *
+     * Employment History is a projection, so a movement row is never CREATED — it is DECIDED here. Five of
+     * the event types below come from GENERIC WRITERS that any screen may drive (assignment, grade, pay,
+     * employment info, reporting line). Each of them used to fall back to an invented kind when the event
+     * carried no movement tag: an assignment change became `orgAssignmentChange`, a grade edit became
+     * `gradeChange`, a pay write became `salaryAdjustment`, a reporting-line write became
+     * `reportingLineChange`, and an `employment.info.updated` was classified by which FIELD GROUP it
+     * touched (confirmationDate ⇒ Confirmation, and so on). Nobody chose any of those types, and the
+     * reporter was right that the resulting rows are not movements.
+     *
+     * THE RULE NOW: a generic writer's event projects a movement row only if it carries a movement TAG.
+     * The tag records HR's INTENT and is written by `createMovementEvent` (and by the two screens r78
+     * rerouted through it). Untagged events are NOT deleted, hidden or changed — they stay in the ledger
+     * and stay on the admin Audit trail (/admin/audit, core/read.ts auditEvents); they simply stop being
+     * reported as career movements.
+     *
+     * The event types that are NOT generic writers keep projecting unconditionally, because each one IS a
+     * deliberate act with its own effective date and its own screen: `employment.hired`,
+     * `employment.terminated`, `employment.blacklisted`, `employment.blacklist.cleared`,
+     * `employment-review.decided` (the probation approval workflow), `assignment.transferred`
+     * (transferEmployee, the sole writer, and inherently a Transfer) and the two movement-native events
+     * `employment.movement.recorded` / `.scheduled`.
+     *
+     * This DEPENDS ON r78 and does not reverse it: r78 (4d391ab7) walked every writer emitting a projected
+     * event type and tagged the HR-initiated ones. That work is what makes "tagged" a trustworthy proxy for
+     * "HR created this". Nothing here untags anything.
+     */
     switch (e.eventType) {
       case 'employment.hired':
         sawHiredEvent = true;
@@ -482,21 +516,26 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         });
         break;
       case 'employment.assignment.changed':
+        // 30325fc1 — GENERIC WRITER, TAG REQUIRED (see the block comment above the switch).
+        if (!isKnownKind(mv?.type)) break;
         rows.push({
           ...base,
-          // Any known movement kind may now own the assignment leg (a Salary Adjustment that also moves
-          // department is one submit on the comparison form); an unknown/legacy tag keeps the factual label.
-          kind: isKnownKind(mv?.type) ? mv.type : 'orgAssignmentChange',
+          // Any known movement kind may own the assignment leg (a Salary Adjustment that also moves
+          // department is one submit on the comparison form).
+          kind: mv.type,
           effectiveDate: p.effectiveDate ?? occDate,
           endDate: mv?.endDate ?? null,
           remarks: mv?.remarks ?? null,
         });
         break;
       case 'employment.grade.changed':
-        // Untagged legacy grade edits keep a factual Grade Change label (companion legs already skipped above).
+        // 30325fc1 — GENERIC WRITER, TAG REQUIRED. r78c deleted the last untagged grade writer
+        // (setEmploymentGradeAction, the Leave tab's one-field Job Grade save), so nothing an admin can
+        // do today reaches here without a tag.
+        if (!isKnownKind(mv?.type)) break;
         rows.push({
           ...base,
-          kind: mv?.type ?? 'gradeChange',
+          kind: mv.type,
           effectiveDate: occDate,
           endDate: mv?.endDate ?? null,
           remarks: mv?.remarks ?? null,
@@ -506,30 +545,27 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         // Initial salary at hire is part of Hired, not a movement (suppresses the every-new-hire
         // "Salary Adjustment" noise; applies to import and seed too).
         if (p.effectiveFrom === emp.hiredOn) break;
+        // 30325fc1 — GENERIC WRITER, TAG REQUIRED. The Basic Salary card routes through the movement
+        // recorder (r78), so a real pay movement always carries a tag; an import or a background
+        // repricing does not, and is no longer announced as a Salary Adjustment nobody keyed.
+        if (!isKnownKind(mv?.type)) break;
         rows.push({
           ...base,
-          // A pay change may be the primary leg of any movement (a Promotion whose only delta is salary);
-          // untagged / legacy comp writes keep the factual Salary Adjustment label.
-          kind: isKnownKind(mv?.type) ? mv.type : 'salaryAdjustment',
+          // A pay change may be the primary leg of any movement (a Promotion whose only delta is salary).
+          kind: mv.type,
           effectiveDate: p.effectiveFrom ?? occDate,
           endDate: null,
           remarks: compRemarks.get(e.aggregateId) ?? null,
         });
         break;
       case 'employment.info.updated': {
-        // Classify by the movement tag when present, else by the written field group. First-match
-        // priority (confirmation → probation extension → resignation) is deterministic and read-time
-        // tunable; events touching none of these stay off the history (still on the Others tab).
-        const fields: string[] = Array.isArray(p.fields) ? p.fields : [];
-        const kind = mv?.type
-          ? mv.type
-          : fields.includes('confirmationDate')
-            ? 'confirmation'
-            : fields.some((f) => EXTENDED_PROBATION_FIELDS.includes(f))
-              ? 'probationExtension'
-              : fields.some((f) => RESIGNATION_FIELDS.includes(f))
-                ? 'resignation'
-                : null;
+        // 30325fc1 — GENERIC WRITER, TAG REQUIRED, and this is the writer the reporter actually hit.
+        // The Employment Dates card (setEmploymentInfoAction) saves confirmationDate / tenderResignationDate
+        // / lastWorkingDate with no movement tag. The classification used to be INFERRED from the field
+        // group — confirmationDate ⇒ Confirmation, EXTENDED_PROBATION_FIELDS ⇒ Probation Extension,
+        // RESIGNATION_FIELDS ⇒ Resignation — so an ordinary date edit minted a movement of a type nobody
+        // chose. The inference is gone: only the tag decides.
+        const kind = isKnownKind(mv?.type) ? mv.type : null;
         if (!kind) break;
         const after = (p.after ?? {}) as Record<string, unknown>;
         // 89ea527b — for the two date movements the row's Effective Date is the date the movement SET, read
@@ -590,9 +626,16 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
       case 'reporting-line.set':
         // Delegations are approver cover, not employment movement — structural lines only.
         if (p.lineType === 'delegate') break;
+        // 30325fc1 — GENERIC WRITER, TAG REQUIRED. Direct Superior stays editable outside Movement (r78's
+        // deliberate exemption: the CLEAR path emits `reporting-line.ended`, which is not a movement event
+        // type, so routing only the SET path through Movement would leave no way to clear a superior).
+        // That writer is now TAGGED at source instead — setDirectSuperiorAction passes a
+        // `reportingLineChange` tag — so the row it has always produced is unchanged, and it is now backed
+        // by a recorded intent rather than by a fallback label.
+        if (!isKnownKind(mv?.type)) break;
         rows.push({
           ...base,
-          kind: isKnownKind(mv?.type) ? mv.type : 'reportingLineChange',
+          kind: mv.type,
           effectiveDate: p.validFrom ?? occDate,
           endDate: null,
           remarks: null,
@@ -1576,10 +1619,13 @@ async function scheduleMovementTx(
 // the structured exit — a coded reason, a last working day, notice, a tendered-resignation date — and the
 // three properties the reporter asked for and which the old one-line path did not have:
 //
-//   1. EXACTLY ONE Employment History row. The termination now writes TWO legs (the termination itself and
-//      the exit dates), and `employment.info.updated` carrying `lastWorkingDate` projects a RESIGNATION row
-//      of its own (RESIGNATION_FIELDS). That is defect 4d391ab7 in miniature — an untagged companion writer
-//      giving one movement two lines — so the second leg is tagged `secondary` under the first's groupId.
+//   1. EXACTLY ONE Employment History row. The termination writes TWO legs (the termination itself and the
+//      exit dates), and an `employment.info.updated` carrying `lastWorkingDate` used to project a
+//      RESIGNATION row of its own off the field-group inference. That is defect 4d391ab7 in miniature — a
+//      companion writer giving one movement two lines — so the second leg is tagged `secondary` under the
+//      first's groupId. 30325fc1 has since removed the inference as well, but the `secondary` tag stays:
+//      it is what makes the leg a companion rather than a movement of its own, and it is also what a
+//      rollback follows to undo both legs together.
 //   2. A FUTURE-DATED TERMINATION MUST NOT END EMPLOYMENT TODAY. Before this item every termination went
 //      straight to terminateEmploymentTx, which CLOSES the open assignment version and the open reporting
 //      lines at the termination date. The dates themselves were right, but every reader that resolves
