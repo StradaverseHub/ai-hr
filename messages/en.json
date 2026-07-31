@@ -6048,7 +6048,10 @@
     "errorCodeDuplicate": "Pay code {code} already exists — pay codes must be unique.",
     "errorCodeDuplicateArchived": "Pay code {code} exists but is deactivated — reactivate it instead.",
     "inputType_qty_rate": "Quantity × rate",
-    "inputType_formula": "Formula"
+    "inputType_formula": "Formula",
+    "colFormula": "Calculation",
+    "inputTypeLinkTitle": "Open {code} to change its Input Type",
+    "sectionPaySettingsHint": "How the amount is worked out — rounding, Input Type and the Formula builder."
   },
   "notifications": {
     "title": "Notifications",
