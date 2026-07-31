@@ -264,7 +264,10 @@ describe('ADR-0069 — sweeps skip a frozen employment', () => {
     // Configure ANNUAL as an earned-method policy so accrueEarnedLeave has something to do.
     await owner.db.insert(schema.leavePolicy).values({
       tenantId: b.tenantId, leaveTypeId: b.annualLeaveTypeId, validFrom: '2020-01-01',
-      accrual: { method: 'earned_monthly', days: 12 },
+      // fa3f4ccb: `days` is not a key resolveGradePolicy reads — this policy resolved to 0 days and the
+      // EA floor used to supply the 8 the assertion below depends on. Now that the floor only warns, the
+      // entitlement has to be stated: annualDays is the key the engine actually reads.
+      accrual: { method: 'earned_monthly', annualDays: 12 },
     });
     const frozenEmp = await hire('Frozen');
     const otherEmp = await hire('Other');

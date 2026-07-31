@@ -177,40 +177,50 @@ describe('resolveGradePolicy — band-resolved most-generous pick + back-compat 
   });
 });
 
-describe('previewEntitlement — scope derivation + floorApplied, incl. company-resolves-null short-circuit', () => {
+describe('previewEntitlement — scope derivation + belowStatutoryFloor, incl. company-resolves-null short-circuit', () => {
   const row = (annualDays: number, companyId: string | null, gradeId: string | null = null): GradePolicyRow => ({
     gradeId,
     companyId,
     accrual: { annualDays },
   });
 
-  it('policy beats floor when higher; floorApplied is false', () => {
+  it('a configured figure ABOVE the statutory minimum resolves to itself; no warning', () => {
     const rows = [row(20, null)];
     const r = previewEntitlement(rows, null, null, 3, 12);
-    expect(r).toEqual({ floorDays: 12, policyDays: 20, days: 20, scope: 'group', floorApplied: false });
+    expect(r).toEqual({ floorDays: 12, policyDays: 20, days: 20, scope: 'group', belowStatutoryFloor: false });
   });
 
-  it('floor beats policy when higher; floorApplied is true', () => {
+  // fa3f4ccb — THE behaviour change. This case used to resolve to 12 (the floor overrode the 5). The
+  // configured figure now wins outright and the warning flag is the only thing the minimum produces.
+  it('a configured figure BELOW the statutory minimum resolves to ITSELF and raises the warning flag', () => {
     const rows = [row(5, null)];
     const r = previewEntitlement(rows, null, null, 3, 12);
-    expect(r).toEqual({ floorDays: 12, policyDays: 5, days: 12, scope: 'group', floorApplied: true });
+    expect(r).toEqual({ floorDays: 12, policyDays: 5, days: 5, scope: 'group', belowStatutoryFloor: true });
   });
 
-  it('no policy at all ⇒ scope none, floor-only, floorApplied true', () => {
+  it('no policy at all ⇒ scope none, nothing granted, warning raised', () => {
     const r = previewEntitlement([], null, 'co-a', 3, 12);
-    expect(r).toEqual({ floorDays: 12, policyDays: null, days: 12, scope: 'none', floorApplied: true });
+    expect(r).toEqual({ floorDays: 12, policyDays: null, days: 0, scope: 'none', belowStatutoryFloor: true });
   });
 
-  it('company scope EXISTS but resolves to null (only other-grade rows) ⇒ scope company, floor-only result', () => {
+  it('no statutory pack (non-MY company) ⇒ no warning, whatever the configured figure is', () => {
+    // The jurisdictions with no pack already ran with no floor. fa3f4ccb makes MY behave like them, so a
+    // null floor must never raise the flag — not even against a configured 0.
+    const r = previewEntitlement([row(0, null)], null, null, 3, null);
+    expect(r).toEqual({ floorDays: null, policyDays: 0, days: 0, scope: 'group', belowStatutoryFloor: false });
+  });
+
+  it('company scope EXISTS but resolves to null (only other-grade rows) ⇒ scope company, nothing granted', () => {
     const rows = [row(20, 'co-a', 'exec')]; // company has a policy, but only for grade "exec"
     const r = previewEntitlement(rows, null, 'co-a', 3, 12); // querying with no grade
     // Short-circuit: the company tier is non-empty (has an exec-scoped row), so resolution stays within it
     // and NEVER falls back to group — but no null-grade row exists there, so resolveGradePolicy returns
-    // null (no match), not a fabricated 0. previewEntitlement then floors it: policyDays null, days = floor.
+    // null (no match), not a fabricated 0. fa3f4ccb: the floor no longer backfills that gap, so the
+    // resolved figure is 0 and the below-minimum warning is what tells the admin.
     expect(r.scope).toBe('company');
     expect(r.policyDays).toBeNull();
-    expect(r.days).toBe(12);
-    expect(r.floorApplied).toBe(true);
+    expect(r.days).toBe(0);
+    expect(r.belowStatutoryFloor).toBe(true);
   });
 });
 
@@ -470,7 +480,10 @@ describe('Leave Entitlement Rules Engine — integration: hire, openLeaveYear, a
     expect(await balance(emp.employmentId)).toBe(14);
   });
 
-  it('a 6-day band clamps up to the 8-day statutory floor at hire', async () => {
+  // fa3f4ccb: was "a 6-day band clamps up to the 8-day statutory floor at hire". The floor no longer
+  // overrides a configured figure, so the 6-day band is granted as 6. ANNUAL at 0 years is a real MY
+  // statutory band (8 days), so this genuinely crosses the minimum rather than passing on a floor of 0.
+  it('fa3f4ccb: a 6-day band is granted as 6 at hire, BELOW the 8-day statutory minimum', async () => {
     await createLeavePolicy(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 12,
@@ -478,7 +491,7 @@ describe('Leave Entitlement Rules Engine — integration: hire, openLeaveYear, a
       validFrom: '2026-01-01',
     });
     const emp = await hire('2026-01-01');
-    expect(await balance(emp.employmentId)).toBe(8); // max(floor 8, band 6)
+    expect(await balance(emp.employmentId)).toBe(6); // configured wins; the 8-day minimum only warns
   });
 
   it('openLeaveYear band upgrade crossing the 2-year boundary (14 -> 16, the request example)', async () => {

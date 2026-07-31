@@ -45,8 +45,26 @@ import {
 let b: Base;
 
 /** Hire an employee (as admin) and return its OWN non-admin employee ctx + ids. Hired long ago so any
- *  leave year is "opened" for it (openLeaveYear posts grants for pre-1-Jan hires). */
+ *  leave year is "opened" for it (openLeaveYear posts grants for pre-1-Jan hires).
+ *
+ *  fa3f4ccb: the statutory pack no longer backfills an unconfigured leave type, so the ANNUAL entitlement
+ *  these grants depend on has to be CONFIGURED — an unconfigured type resolves to 0 and openLeaveYear
+ *  skips it, which would make every "a grant was posted" assertion in this file vacuous. 8 days is exactly
+ *  what the EA floor used to supply, so no assertion here changes. Idempotent per tenant: the helper is
+ *  called several times in one test, and a duplicate active policy would fan out extra rows. */
 async function hireEmployeeCtx(): Promise<{ ctx: SessionContext; employmentId: string }> {
+  const existing = await owner.db
+    .select({ id: schema.leavePolicy.id })
+    .from(schema.leavePolicy)
+    .where(eq(schema.leavePolicy.leaveTypeId, b.annualLeaveTypeId));
+  if (existing.length === 0) {
+    await owner.db.insert(schema.leavePolicy).values({
+      tenantId: b.tenantId,
+      leaveTypeId: b.annualLeaveTypeId,
+      validFrom: '2015-01-01',
+      accrual: { annualDays: 8 },
+    });
+  }
   const { employmentId, personId } = await hireEmployee(adminCtx(b), {
     person: { fullName: 'LY', primaryEmail: `ly_${randomUUID().slice(0, 8)}@t.local` },
     companyId: b.companyId,

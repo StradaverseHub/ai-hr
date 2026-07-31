@@ -64,11 +64,13 @@ describe('ADR-0041 2E — grade-based leave entitlements', () => {
     expect(await annualBalance(execEmp.employmentId)).toBe(12);
   });
 
-  it('the EA floor still clamps a grade policy set below it', async () => {
+  // fa3f4ccb: was "the EA floor still clamps a grade policy set below it". Approved in writing — a grade
+  // policy below the statutory minimum is now GRANTED as configured and flagged on screen, not overridden.
+  it('fa3f4ccb: a grade policy below the EA minimum is granted as configured', async () => {
     const intern = await grade('INTERN', 'Intern');
     await policy(5, intern.id); // below the 8-day ANNUAL floor (<2y)
     const internEmp = await hire(intern.id);
-    expect(await annualBalance(internEmp.employmentId)).toBe(8); // max(floor 8, policy 5)
+    expect(await annualBalance(internEmp.employmentId)).toBe(5);
   });
 
   it('Leave Entitlement Rules Engine — a second same-scope default SUPERSEDES the first (not a duplicate)', async () => {
