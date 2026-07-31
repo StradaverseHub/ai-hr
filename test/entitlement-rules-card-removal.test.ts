@@ -53,8 +53,9 @@ const KEPT_PREVIEW_KEYS = [
   'previewResultDays',
   'previewFloorDays',
   'previewPolicyDays',
-  'previewWinnerFloor',
-  'previewWinnerPolicy',
+  // fa3f4ccb replaced the "floor vs policy — which won" badge pair with a single below-minimum WARNING:
+  // after fa3f4ccb the configured figure always wins, so a badge announcing the winner said nothing.
+  'previewBelowFloorWarning',
   'previewNoPack',
   'gradeAll',
 ] as const;

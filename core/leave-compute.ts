@@ -606,20 +606,45 @@ export function resolveGradePolicy(
   return resolveWithinScope(groupScope);
 }
 
-/** Leave Entitlement Rules Engine — the admin preview's result shape. Mirrors what resolveGradePolicy +
- *  the floor-clamp produce, plus which scope tier won, so the UI can show "policy beats floor" etc. without
- *  duplicating the resolution logic. */
+/**
+ * THE STATUTORY FLOOR IS ADVISORY, NOT AN OVERRIDE (feedback fa3f4ccb).
+ *
+ * Until fa3f4ccb the entitlement composition was `max(statutoryFloor, configured)`: a configured figure
+ * below the Employment Act minimum was silently replaced by the minimum, with nothing on screen saying so.
+ * The reporter asked twice for that override to go and approved the change in writing, on the record that
+ * the people who configure this are trained HR practitioners and that responsibility for staying lawful
+ * moves to them. So the floor no longer participates in the arithmetic anywhere.
+ *
+ * It is still COMPUTED and still carried, because the surfaces have to warn. `belowStatutoryFloor` is that
+ * one signal: derived HERE, beside the resolution it describes, so a screen never recomputes the floor for
+ * itself — recomputation is exactly how the figure shown and the figure granted drift apart.
+ *
+ * NOT part of this change, and deliberately untouched: the EA-1955 right to APPLY for annual and sick
+ * leave (core/leave.ts), and the statutory guard in updateLeaveType that stops lawful-entitlement codes
+ * being misconfigured. Different protections; neither was asked about.
+ */
+export function belowStatutoryFloor(floorDays: number | null | undefined, days: number): boolean {
+  return floorDays != null && Number.isFinite(floorDays) && days < floorDays;
+}
+
+/** Leave Entitlement Rules Engine — the admin preview's result shape. Mirrors what resolveGradePolicy
+ *  produces, plus which scope tier won and whether the resolved figure sits under the statutory minimum,
+ *  so the UI can render the warning without duplicating the resolution logic. */
 export type PreviewResult = {
-  /** The statutory floor for this leave type / service length, or null when no pack applies (non-MY company). */
+  /** The statutory floor for this leave type / service length, or null when no pack applies (non-MY company).
+   *  fa3f4ccb: ADVISORY — it is what the warning quotes, never what the grant uses. */
   floorDays: number | null;
   /** The resolved policy's days (band-resolved), or null when no policy matches at all (no default exists). */
   policyDays: number | null;
-  /** The final granted amount: max(floorDays ?? 0, policyDays ?? 0). */
+  /** The final granted amount: the CONFIGURED figure (policyDays ?? 0), rounded. fa3f4ccb removed the
+   *  `max(floorDays, …)` clamp that used to sit here. */
   days: number;
-  /** Which scope tier the winning policy came from. 'none' = no policy matched (floor-only, or nothing). */
+  /** Which scope tier the winning policy came from. 'none' = no policy matched (nothing configured). */
   scope: 'company' | 'group' | 'none';
-  /** Whether the statutory floor is what determined the final amount (floorDays > policyDays, or no policy). */
-  floorApplied: boolean;
+  /** fa3f4ccb (was `floorApplied`): the resolved figure is BELOW the statutory minimum. The rename is the
+   *  point — it used to mean "the floor overrode you", it now means "you are under the minimum, and we let
+   *  you". The UI reads exactly this rather than comparing the two numbers itself. */
+  belowStatutoryFloor: boolean;
 };
 
 /**
@@ -627,6 +652,10 @@ export type PreviewResult = {
  * admin preview can never disagree with a real grant. `floorDays` is passed in by the caller (the client
  * component imports `entitlement` from localization/my/leave directly — see components/leave-rule-preview.tsx
  * — because the full pack registry is not client-safe); pass null when no statutory pack applies.
+ *
+ * fa3f4ccb: this and `entitledDays` MUST move together — the guarantee above is why the preview restates
+ * the composition at all, and a preview that still clamped to the floor would promise days the engines no
+ * longer grant.
  */
 export function previewEntitlement(
   rows: GradePolicyRow[],
@@ -637,21 +666,19 @@ export function previewEntitlement(
 ): PreviewResult {
   const policy = resolveGradePolicy(rows, employeeGradeId, employeeCompanyId, serviceYears);
   const policyDays = policy?.days ?? null;
-  const floor = floorDays ?? 0;
   // Feedback b81d3c52 — the preview must show the TIDIED figure, because that is what the engines credit.
   // Rounding is applied to the composed entitlement (the `entitledDays` equivalent) at exactly the point
   // the granting engines apply it, so this function's docstring guarantee ("the admin preview can never
   // disagree with the real engine") still holds once a Rounding Method is configured. `floorDays` /
-  // `policyDays` stay RAW so the UI can still explain which input won.
-  const days = applyRounding(Math.max(floor, policyDays ?? 0), policy?.roundingMethod, policy?.roundingThreshold);
+  // `policyDays` stay RAW so the UI can still quote the minimum in its warning.
+  const days = applyRounding(policyDays ?? 0, policy?.roundingMethod, policy?.roundingThreshold);
   // Derive which scope tier actually won, mirroring resolveGradePolicy's own subset filters exactly —
   // including the case where the company scope EXISTS but resolves to a policy days of 0 (i.e. the
   // company has only other-grade rows and no null-grade default): scope is still 'company' (short-circuit
   // never falls back to group), policyDays reflects whatever pick() returned (possibly null).
   const companyScope = employeeCompanyId != null ? rows.filter((r) => r.companyId === employeeCompanyId) : [];
   const scope: PreviewResult['scope'] = companyScope.length > 0 ? 'company' : policy ? 'group' : 'none';
-  const floorApplied = policyDays == null || floor > policyDays;
-  return { floorDays, policyDays, days, scope, floorApplied };
+  return { floorDays, policyDays, days, scope, belowStatutoryFloor: belowStatutoryFloor(floorDays, days) };
 }
 
 // ── Benefit Scheme & Leave Entitlement resolution (feedback b83c6a3b) — RSC-SAFE, pure ───────────────
@@ -724,18 +751,33 @@ export function schemeBandDays(serviceBands: unknown, serviceYears: number): num
 }
 
 /**
- * Auto-link entitlement to profile (feedback ae5b84d5) — the ONE composition of statutory floor ×
- * benefit-scheme days × grade-policy days used by EVERY granting/projection site (openLeaveYear, the
- * hire grant, accrueEarnedLeave, projectExpectedEntitlement): a resolved scheme entitlement SUPERSEDES
- * the grade policy days (even an explicit 0), and the EA-1955 floor still clamps on top. `schemeDays`
- * null = no scheme / no entitlement for the type ⇒ fall back to the policy days — byte-identical to the
- * pre-existing inline `Math.max(floor, schemeDays ?? policyDays)` at both composition sites. Keeping the
- * formula in one pure helper removes the drift class the recalc/cron idempotency depends on.
+ * Auto-link entitlement to profile (feedback ae5b84d5) — the ONE composition of benefit-scheme days ×
+ * grade-policy days used by EVERY granting/projection site (openLeaveYear, the hire grant,
+ * accrueEarnedLeave, projectExpectedEntitlement): a resolved scheme entitlement SUPERSEDES the grade
+ * policy days (even an explicit 0). `schemeDays` null = no scheme / no entitlement for the type ⇒ fall
+ * back to the policy days. Keeping the formula in one pure helper removes the drift class the recalc/cron
+ * idempotency depends on.
+ *
+ * fa3f4ccb — THE STATUTORY FLOOR NO LONGER CLAMPS. This used to be
+ * `Math.max(floorDays, schemeDays ?? policyDays)`; the resolved value is now `schemeDays ?? policyDays`
+ * and nothing else. See `belowStatutoryFloor` above for why (approved in writing, twice asked for) and
+ * for the boundaries of the change.
+ *
+ * `floorDays` STAYS in the signature and stays computed at every call site, and the helper returns it as
+ * a FLAG rather than folding it into the number. Two reasons, both learned the hard way:
+ *   - a screen that wants to warn "this is under the EA minimum" must read the same floor the engine saw,
+ *     not recompute one of its own;
+ *   - a silently-ignored argument is worse than no argument. Returning `{ days, belowStatutoryFloor }`
+ *     means every input still has a job, and a reader can see at a glance that the floor informs but does
+ *     not decide.
+ * `floorDays` is supplied by the CALLER from the company's country pack and is 0 / null for jurisdictions
+ * with no pack — those already ran with no floor, so this makes MY behave like everywhere else.
  */
 export function entitledDays(
   floorDays: number,
   schemeDays: number | null,
   policyDays: number,
-): number {
-  return Math.max(floorDays, schemeDays ?? policyDays);
+): { days: number; belowStatutoryFloor: boolean } {
+  const days = schemeDays ?? policyDays;
+  return { days, belowStatutoryFloor: belowStatutoryFloor(floorDays, days) };
 }

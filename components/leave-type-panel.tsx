@@ -875,161 +875,16 @@ function PolicyFrontDoor({
 }
 
 /**
- * Leave Entitlement Rules Engine — the service-length band sub-editor. Maintains rows client-side (add /
- * remove) and serializes them into a hidden JSON field + a `serviceBandsRendered=1` marker on submit (the
- * exact carryBlockRendered/carryFlagField precedent — see app/admin/actions.ts's serviceBandsField), so the
- * action can tell "block rendered, editor now empty" (⇒ clear) apart from "block not shown at all" (⇒
- * preserve). Contiguity (first from 0, last open-ended, no gaps) is enforced server-side; this editor keeps
- * the UI simple (from / to / days rows) and lets the server reject a malformed shape with a clear message.
+ * fa3f4ccb — ServiceBandEditor (the service-length band sub-editor, with its BandRow per-range columns)
+ * has been REMOVED along with the Company Entitlements band surface it was the only mount for. Service-
+ * length steps are configured per benefit scheme in Service Based Entitlements, whose band days already
+ * supersede this row's days; a second band table here answered the same question twice.
+ *
+ * The DATA is untouched: `accrual.serviceBands` still exists on every leave_policy row that has it, the
+ * resolver still band-resolves those days (bandDaysFor / resolveGradePolicy), and the forms deliberately
+ * post no `serviceBandsRendered` marker so serviceBandsField preserves them. app/admin/actions.ts keeps
+ * serviceBandsField for exactly that reason — it is the PRESERVE half of the tri-state, not dead code.
  */
-/** Feedback 9d8cf621: the entitlement-rules table row. Extends the engine's `ServiceBand` (from/to/days —
- *  the only fields the resolver reads) with the reporter's per-range config columns. These extra fields ride
- *  the serviceBands JSON untouched (the write-time validator + defensive resolver ignore unknown keys), so
- *  they are captured/persisted per range without a migration or an engine change. */
-type BandRow = ServiceBand & {
-  carryForwardDays?: number | null;
-  carryForwardExpiryMonth?: number | null;
-  carryForwardExpiryDay?: number | null;
-  maxBalanceDays?: number | null;
-};
-
-const numOrNull = (v: string): number | null => (v === '' ? null : Number(v));
-
-function ServiceBandEditor({ t, initial }: { t: ReturnType<typeof useTranslations>; initial: ServiceBand[] | null | undefined }) {
-  const [rows, setRows] = useState<BandRow[]>((initial as BandRow[] | null | undefined) ?? []);
-
-  const update = (i: number, patch: Partial<BandRow>) =>
-    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  const remove = (i: number) => setRows((prev) => prev.filter((_, idx) => idx !== i));
-  const add = () => {
-    const lastTo = rows.length > 0 ? rows[rows.length - 1].toYears : null;
-    setRows((prev) => [...prev, { fromYears: lastTo ?? 0, toYears: null, days: 0 }]);
-  };
-
-  return (
-    <div className="w-full space-y-1.5 rounded-lg bg-background p-3 lg:col-span-2">
-      <input type="hidden" name="serviceBandsRendered" value="1" />
-      <input type="hidden" name="serviceBands" value={JSON.stringify(rows)} />
-      <span className="text-xs font-medium text-muted-foreground">{t('serviceBandsLabel')}</span>
-      <p className="text-xs text-muted-foreground">{t('serviceBandsHelp')}</p>
-      {rows.length === 0 && <p className="text-xs text-muted-foreground">{t('serviceBandsEmpty')}</p>}
-      {rows.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[42rem] text-xs">
-            <thead>
-              <tr className="text-left text-muted-foreground">
-                <th className="px-1.5 py-1 font-medium">{t('bandColFromYear')}</th>
-                <th className="px-1.5 py-1 font-medium">{t('bandColToYear')}</th>
-                <th className="px-1.5 py-1 font-medium">{t('bandColEntitledDays')}</th>
-                <th className="px-1.5 py-1 font-medium">{t('bandColCarryDays')}</th>
-                <th className="px-1.5 py-1 font-medium">{t('bandColCarryExpiry')}</th>
-                <th className="px-1.5 py-1 font-medium">{t('bandColMaxBalance')}</th>
-                <th className="px-1.5 py-1" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i} className="align-middle">
-                  <td className="px-1.5 py-1">
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      aria-label={t('bandColFromYear')}
-                      value={r.fromYears}
-                      onChange={(e) => update(i, { fromYears: Number(e.target.value) || 0 })}
-                      className={`${inputCls} w-16`}
-                    />
-                  </td>
-                  <td className="px-1.5 py-1">
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      aria-label={t('bandColToYear')}
-                      value={r.toYears ?? ''}
-                      placeholder={t('serviceBandOpenEnded')}
-                      onChange={(e) => update(i, { toYears: e.target.value === '' ? null : Number(e.target.value) || 0 })}
-                      className={`${inputCls} w-16`}
-                    />
-                  </td>
-                  <td className="px-1.5 py-1">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      aria-label={t('bandColEntitledDays')}
-                      value={r.days}
-                      onChange={(e) => update(i, { days: Number(e.target.value) || 0 })}
-                      className={`${inputCls} w-20`}
-                    />
-                  </td>
-                  <td className="px-1.5 py-1">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      aria-label={t('bandColCarryDays')}
-                      value={r.carryForwardDays ?? ''}
-                      onChange={(e) => update(i, { carryForwardDays: numOrNull(e.target.value) })}
-                      className={`${inputCls} w-20`}
-                    />
-                  </td>
-                  <td className="px-1.5 py-1">
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        min="1"
-                        max="12"
-                        step="1"
-                        aria-label={t('carryExpiryMonthLabel')}
-                        placeholder={t('carryExpiryMonthLabel')}
-                        value={r.carryForwardExpiryMonth ?? ''}
-                        onChange={(e) => update(i, { carryForwardExpiryMonth: numOrNull(e.target.value) })}
-                        className={`${inputCls} w-14`}
-                      />
-                      <span className="text-muted-foreground">/</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="31"
-                        step="1"
-                        aria-label={t('carryExpiryDayLabel')}
-                        placeholder={t('carryExpiryDayLabel')}
-                        value={r.carryForwardExpiryDay ?? ''}
-                        onChange={(e) => update(i, { carryForwardExpiryDay: numOrNull(e.target.value) })}
-                        className={`${inputCls} w-14`}
-                      />
-                    </div>
-                  </td>
-                  <td className="px-1.5 py-1">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      aria-label={t('bandColMaxBalance')}
-                      value={r.maxBalanceDays ?? ''}
-                      onChange={(e) => update(i, { maxBalanceDays: numOrNull(e.target.value) })}
-                      className={`${inputCls} w-20`}
-                    />
-                  </td>
-                  <td className="px-1.5 py-1 text-right">
-                    <Button type="button" size="sm" variant="ghost" onClick={() => remove(i)}>
-                      {t('remove')}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <Button type="button" size="sm" variant="outline" onClick={add} aria-label={t('serviceBandAdd')}>
-        {t('bandAddPlus')}
-      </Button>
-    </div>
-  );
-}
 
 /**
  * Leave Type Visual Configuration Enhancement (639fdf77): the self-contained visual sub-form — a SEARCHABLE
@@ -1739,7 +1594,12 @@ export function LeaveTypePanel({
   const bandDaysRange = winningBands
     ? [...new Set(winningBands.map((b) => b.days))].sort((a, b) => a - b)
     : null;
-  const effective = Math.max(floor0, bestActive);
+  // fa3f4ccb — the headline is the CONFIGURED figure, not max(floor, configured). It used to show the
+  // clamped number, which was the whole complaint: an 8 configured against a statutory 12 displayed as 12
+  // and granted as 12, with nothing saying the 8 had been ignored. The amber `belowMinimumBadge` beside it
+  // (unchanged, and already built) is now the entire statutory behaviour on this screen: it warns, it does
+  // not correct.
+  const effective = bestActive;
   const belowFloor = active.length > 0 && !winningBands && bestActive < floor0;
   const above = active.length > 0 && bestActive > floor0;
   const thisYear = new Date().getUTCFullYear();
@@ -2251,54 +2111,18 @@ export function LeaveTypePanel({
                       className={`${inputCls} w-24`}
                     />
                   </Field>
-                  {isAnnual ? (
-                    <>
-                      {/* Carry-forward enhancement: marker lets the action tell "block rendered, checkbox
-                          unchecked" (⇒ false) apart from "block not shown" (⇒ leave default). */}
-                      <input type="hidden" name="carryBlockRendered" value="1" />
-                      <Field label={t('carryEnabledLabel')}>
-                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={t('carryEnabledHelp')}>
-                          <input
-                            type="checkbox"
-                            name="carryForwardEnabled"
-                            defaultChecked={carryRuleEnabled(p)}
-                            className="h-4 w-4 rounded border-border"
-                          />
-                          {t('carryEnabledLabel')}
-                        </label>
-                      </Field>
-                      <Field label={t('carryCapLabel')}>
-                        <input
-                          name="carryForwardMax"
-                          type="number"
-                          min="0"
-                          step="0.5"
-                          defaultValue={p.carryForwardMax}
-                          className={`${inputCls} w-24`}
-                        />
-                      </Field>
-                      <CarryExpiryFields
-                        t={t}
-                        mode={p.carryForwardExpiryMode}
-                        month={p.carryForwardExpiryMonth}
-                        day={p.carryForwardExpiryDay}
-                        months={p.carryForwardExpiryMonths}
-                      />
-                      <Field label={t('carryIncludeEarnedLabel')}>
-                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={t('carryIncludeEarnedHelp')}>
-                          <input
-                            type="checkbox"
-                            name="carryForwardIncludeEarned"
-                            defaultChecked={!!p.carryForwardIncludeEarned}
-                            className="h-4 w-4 rounded border-border"
-                          />
-                          {t('carryIncludeEarnedHelp')}
-                        </label>
-                      </Field>
-                    </>
-                  ) : (
-                    <input type="hidden" name="carryForwardMax" value="0" />
-                  )}
+                  {/* fa3f4ccb — THE CARRY-FORWARD SURFACE IS GONE FROM COMPANY ENTITLEMENTS. Carry forward
+                      (enable flag, cap, expiry, include-earned) is configured on the LEAVE TYPE since
+                      9816a5ad step 2 / migrations 0333-0334, and the engines read it from there; leaving a
+                      second set of controls here meant editing a figure that mostly did nothing. What
+                      remains here is what this row genuinely owns: DAYS, scope and effective date.
+                      The stored carry values are RE-POSTED as hidden inputs (FrontDoorPreservedCarry, the
+                      existing precedent) because updateLeavePolicyAction rebuilds the accrual JSONB
+                      wholesale from what it receives — `carryForwardMax` is NOT tri-state, so a form that
+                      simply stopped posting it would zero the cap on every save. That would silently drop
+                      carry for the leave types that still fall back to the policy row (only 10 of 67 carry
+                      type-level rules today), which is a data change nobody asked for. */}
+                  <FrontDoorPreservedCarry p={p} isAnnual={isAnnual} />
                   <Field label={t('effectiveFromLabel')}>
                     <input name="validFrom" type="date" required defaultValue={p.validFrom} className={inputCls} />
                   </Field>
@@ -2348,7 +2172,14 @@ export function LeaveTypePanel({
                       {t('entitledEmployeesCount', { count: entitledCount })}
                     </p>
                   )}
-                  <ServiceBandEditor t={t} initial={p.serviceBands} />
+                  {/* fa3f4ccb — THE SERVICE-LENGTH BAND EDITOR IS GONE FROM COMPANY ENTITLEMENTS. Service
+                      bands are configured per benefit scheme in Service Based Entitlements above (the
+                      scheme's band days supersede this row's days anyway), so a second band table here was
+                      a second place to answer one question. NOT posting the `serviceBandsRendered` marker
+                      makes serviceBandsField return undefined = PRESERVE, so any bands already stored on
+                      this policy row keep working — the engine still reads them (bandDaysFor), they are
+                      simply no longer edited here. The row is not rewritten and leave_policy is not
+                      emptied: this removes a SURFACE, not data. */}
                   {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event so HR can
                       answer the reporter's "Why the change was made" column. */}
                   <Field label={t('reasonLabel')}>
@@ -2385,34 +2216,11 @@ export function LeaveTypePanel({
                     <span className="font-semibold tabular-nums text-foreground">
                       {t('daysPerYearText', { days: fmt(p.annualDays) })}
                     </span>
-                    {isAnnual && p.carryForwardMax > 0 && (
-                      <span className="text-muted-foreground">
-                        {t('carryCapText', { max: fmt(p.carryForwardMax) })}
-                      </span>
-                    )}
-                    {/* Carry-forward enhancement: a single explicit indicator when carry is disabled —
-                        a cap-set-but-disabled policy is otherwise confusing now the toggle exists. */}
-                    {isAnnual && !carryRuleEnabled(p) && (
-                      <span className={badge.muted}>{t('carryOffText')}</span>
-                    )}
-                    {/* R4 Build #1: months-mode expiry summary ("expires 3 mo after year-end"). */}
-                    {isAnnual &&
-                      p.carryForwardMax > 0 &&
-                      p.carryForwardExpiryMode === 'months' &&
-                      p.carryForwardExpiryMonths != null && (
-                        <span className="text-muted-foreground">
-                          {t('carryExpiryMonthsText', { months: p.carryForwardExpiryMonths })}
-                        </span>
-                      )}
-                    {isAnnual &&
-                      p.carryForwardMax > 0 &&
-                      p.carryForwardExpiryMode !== 'months' &&
-                      p.carryForwardExpiryMonth != null &&
-                      p.carryForwardExpiryDay != null && (
-                        <span className="text-muted-foreground">
-                          {t('carryExpiryText', { date: `${p.carryForwardExpiryDay}/${p.carryForwardExpiryMonth}` })}
-                        </span>
-                      )}
+                    {/* fa3f4ccb — the carry cap / carry-off / carry-expiry summaries are gone with the
+                        controls that set them. A read-only carry figure on a row that can no longer edit
+                        carry, describing a value the engines read from the leave TYPE, is worse than
+                        nothing: it looks like the configuration in force. Carry forward is stated once, in
+                        General → Carry Forward Policy. */}
                     <span className="text-muted-foreground">
                       {p.validTo
                         ? t('validFromTo', { from: p.validFrom, to: p.validTo })
@@ -2484,47 +2292,10 @@ export function LeaveTypePanel({
                   className={`${inputCls} w-24`}
                 />
               </Field>
-              {isAnnual ? (
-                <>
-                  {/* Carry-forward enhancement: marker + enable toggle (defaults on, matching the cap > 0
-                      back-compat convention since a new policy usually sets a cap to enable carry). */}
-                  <input type="hidden" name="carryBlockRendered" value="1" />
-                  <Field label={t('carryEnabledLabel')}>
-                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={t('carryEnabledHelp')}>
-                      <input
-                        type="checkbox"
-                        name="carryForwardEnabled"
-                        defaultChecked
-                        className="h-4 w-4 rounded border-border"
-                      />
-                      {t('carryEnabledLabel')}
-                    </label>
-                  </Field>
-                  <Field label={t('carryCapLabel')}>
-                    <input
-                      name="carryForwardMax"
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      defaultValue="0"
-                      className={`${inputCls} w-24`}
-                    />
-                  </Field>
-                  <CarryExpiryFields t={t} mode="date" />
-                  <Field label={t('carryIncludeEarnedLabel')}>
-                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={t('carryIncludeEarnedHelp')}>
-                      <input
-                        type="checkbox"
-                        name="carryForwardIncludeEarned"
-                        className="h-4 w-4 rounded border-border"
-                      />
-                      {t('carryIncludeEarnedHelp')}
-                    </label>
-                  </Field>
-                </>
-              ) : (
-                <input type="hidden" name="carryForwardMax" value="0" />
-              )}
+              {/* fa3f4ccb — no carry-forward controls on the add form either (see the edit form above for
+                  why). A NEW policy row simply carries no carry configuration: the leave TYPE owns that
+                  setting now, so posting a fixed 0 here is the honest value rather than a lost one. */}
+              <input type="hidden" name="carryForwardMax" value="0" />
               <Field label={t('effectiveFromLabel')}>
                 <input name="validFrom" type="date" required defaultValue={`${thisYear}-01-01`} className={inputCls} />
               </Field>
@@ -2653,7 +2424,10 @@ export function LeaveTypePanel({
                   </p>
                 )}
               </div>
-              <ServiceBandEditor t={t} initial={null} />
+              {/* fa3f4ccb — no band editor on the add form either; see the edit form. Omitting the
+                  `serviceBandsRendered` marker is a no-op on create (serviceBandsField ⇒ undefined), so a
+                  new policy row is created flat and its service-length steps are configured where they
+                  belong: the scheme's Service Based Entitlements table. */}
               {/* Feedback 9d8cf621: save button with a confirmation prompt before writing. */}
               <ConfirmSubmit
                 size="sm"

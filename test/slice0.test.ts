@@ -214,8 +214,12 @@ describe('UC4 — reporting cycle guard', () => {
 describe('UC6 — leave approval atomicity & balance', () => {
   it('approves within balance; rejects over-balance without debiting', async () => {
     const a = adminCtx(base);
+    // fa3f4ccb: the statutory pack no longer backfills an unconfigured type, so the 8-day opening balance
+    // this test needs has to be CONFIGURED. 8 is the same figure the EA floor used to supply, so every
+    // assertion below is unchanged — the subject here is approval atomicity, not entitlement resolution.
+    await createLeavePolicy(a, { leaveTypeId: base.annualLeaveTypeId, annualDays: 8, validFrom: '2020-01-01' });
     const { employmentId } = await hire(a, base, 'Bala', { annual: true });
-    expect(await ledgerBalance(employmentId, base.annualLeaveTypeId)).toBe(8); // EA-1955: <2yr = 8
+    expect(await ledgerBalance(employmentId, base.annualLeaveTypeId)).toBe(8);
 
     const r1 = await requestLeave(a, {
       employmentId,
@@ -1246,12 +1250,14 @@ describe('Leave policy resolution — grant = max(statutory floor, company polic
     expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(20); // policy 20 > floor 8
   });
 
-  it('a below-minimum policy is clamped to the statutory floor', async () => {
+  // fa3f4ccb: was "a below-minimum policy is clamped to the statutory floor". Approved in writing — the
+  // configured 3 is now granted and the admin screens flag it as below the EA minimum.
+  it('fa3f4ccb: a below-minimum policy is granted as configured, not clamped', async () => {
     const b = await seedBase();
     const a = adminCtx(b);
     await createLeavePolicy(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 3, validFrom: '2026-01-01' });
     const { employmentId } = await hire(a, b, 'Clamped', { annual: true });
-    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(8); // EA floor 8 wins over 3
+    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(3);
   });
 
   it('editing a policy changes later grants AND recalculates already-granted employees (feedback 49809272)', async () => {
@@ -1273,10 +1279,12 @@ describe('Leave policy resolution — grant = max(statutory floor, company polic
     expect(await ledgerBalance(mid.employmentId, b.annualLeaveTypeId)).toBe(10); // max(floor 8, policy 10)
     expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(10); // recalculated 20 → 10
 
-    // Remove → the floor applies again (no recalc on delete: past grants stay untouched).
+    // fa3f4ccb: was "Remove → the floor applies again". With no policy there is no configured
+    // entitlement and the statutory pack no longer backfills one, so a later hire grants nothing. The
+    // clause this test really protects is unchanged: deleting does NOT recalc past grants.
     await deleteLeavePolicy(a, { id: policyId });
     const post = await hire(a, b, 'PostDelete', { annual: true });
-    expect(await ledgerBalance(post.employmentId, b.annualLeaveTypeId)).toBe(8); // floor only
+    expect(await ledgerBalance(post.employmentId, b.annualLeaveTypeId)).toBe(0); // nothing configured
     expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(10); // delete leaves history alone
   });
 });
@@ -1286,6 +1294,19 @@ describe('Leave year boundary — openLeaveYear', () => {
     const b = await seedBase();
     const a = adminCtx(b);
     // Hired Jun 2023 → 2 completed years at 2026-01-01 → annual band steps 8 → 12.
+    // fa3f4ccb: the bands used to come from the statutory pack, which no longer grants. The SAME
+    // 8 / 12 / 16 figures are now configured as service bands on the policy, so the behaviour under test
+    // — the year-open grants at the CURRENT band, not the hire band — is asserted unchanged.
+    await createLeavePolicy(a, {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 8,
+      serviceBands: [
+        { fromYears: 0, toYears: 2, days: 8 },
+        { fromYears: 2, toYears: 5, days: 12 },
+        { fromYears: 5, toYears: null, days: 16 },
+      ],
+      validFrom: '2020-01-01',
+    });
     const { employmentId } = await hireEmployee(a, {
       person: { fullName: 'Bander', primaryEmail: 'bander@acme.test' },
       companyId: b.companyId,
@@ -1305,6 +1326,9 @@ describe('Leave year boundary — openLeaveYear', () => {
   it('carries unused annual up to the policy cap, on top of the new grant', async () => {
     const b = await seedBase();
     const a = adminCtx(b);
+    // fa3f4ccb: the 8 days this employee opens with used to come from the statutory pack. Configure it —
+    // the point of the test is the LATER policy (12 days + carry 5) taking effect at the year boundary.
+    await createLeavePolicy(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 8, validFrom: '2020-01-01' });
     await createLeavePolicy(a, {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 12,
@@ -1329,6 +1353,9 @@ describe('Leave year boundary — openLeaveYear', () => {
   it('is idempotent, and leaves in-year hires to their hire grant', async () => {
     const b = await seedBase();
     const a = adminCtx(b);
+    // fa3f4ccb: an unconfigured type grants nothing and openLeaveYear skips it, so idempotency would be
+    // vacuous. 8 days is the figure the statutory pack used to supply — every count below is unchanged.
+    await createLeavePolicy(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 8, validFrom: '2020-01-01' });
     const vet = await hireEmployee(a, {
       person: { fullName: 'Vetera', primaryEmail: 'vetera@acme.test' },
       companyId: b.companyId,
@@ -1739,8 +1766,12 @@ describe('Leave-type code integrity (0031)', () => {
     const [row] = await owner.db.select().from(schema.leaveType).where(eq(schema.leaveType.id, lt.id));
     expect(row.code).toBe('SICK');
     expect(row.name).toBe('Sick Leave');
-    // The whole point: entitlement() matches exact uppercase codes, so the EA s.60F floor
-    // (14 days, <2y service) now actually lands on hire instead of silently granting 0.
+    // The whole point: the code is STORED uppercase, so everything keyed on it (the statutory pack's
+    // entitlement(), the leave engines, the import matcher) lands on the type instead of missing it.
+    // fa3f4ccb: the grant itself now comes from configuration rather than the pack, so the 14-day s.60F
+    // figure is configured here — the assertion still fails loudly if the code were stored lower-case,
+    // because the policy is looked up by the type this createLeaveType returned.
+    await createLeavePolicy(a, { leaveTypeId: lt.id, annualDays: 14, validFrom: '2020-01-01' });
     const { employmentId } = await hireEmployee(a, {
       person: { fullName: 'Floor Check', primaryEmail: 'floor@acme.test' },
       companyId: b.companyId,
