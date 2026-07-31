@@ -120,7 +120,13 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     expect(NEW_EVENT.includes("t('form.currentInformation')")).toBe(true);
     expect(NEW_EVENT.includes("t('form.afterInformation')")).toBe(true);
     // The grid is only for the change kinds; lifecycle kinds keep their dedicated inputs.
-    expect(NEW_EVENT.includes('const isComparison = COMPARISON_KINDS.includes(kind);')).toBe(true);
+    //
+    // 476f23ed moved the decision from the selected CODE to the BEHAVIOUR that code carries: the event-type
+    // list is now the tenant's Movement Settings catalogue, so a tenant's own "Redeployment" mapped onto
+    // Transfer must render the Transfer grid. The invariant is unchanged — the grid follows the change
+    // kinds — so the guard follows the construct that now expresses it.
+    expect(NEW_EVENT.includes('const behaviour = behaviourOf(kind);')).toBe(true);
+    expect(NEW_EVENT.includes('const isComparison = COMPARISON_KINDS.includes(behaviour);')).toBe(true);
   });
 
   it('has the comparison labels in all six locales (no raw key at runtime)', () => {

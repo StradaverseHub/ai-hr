@@ -149,7 +149,8 @@
     "dashboardCardConfig": "Kad papan pemuka",
     "scheduledActions": "Tugas Berjadual",
     "systemSettings": "Tetapan Sistem",
-    "systemExplorer": "Peneroka kebergantungan"
+    "systemExplorer": "Peneroka kebergantungan",
+    "movementSettings": "Tetapan Pergerakan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -7684,5 +7685,38 @@
     "truncated": "Memaparkan {shown, number} baris pertama daripada {total, number} baris.",
     "truncatedHint": "Guna Laporan → Eksport untuk set lengkap.",
     "truncatedExport": "Eksport set lengkap"
+  },
+  "movementSettings": {
+    "title": "Tetapan Pergerakan",
+    "description": "Jenis peristiwa kerjaya yang boleh direkodkan oleh HR untuk pekerja. Namakan semula mengikut istilah organisasi anda, matikan yang tidak digunakan, dan tambah jenis anda sendiri.",
+    "behaviourNotice": "Beberapa jenis peristiwa membawa akibat sebenar — Penamatan menamatkan pekerjaan, Pengesahan melengkapkan tempoh percubaan, pembetulan tarikh menyertai mengubah kelayakan cuti. Anda boleh menamakannya semula atau mematikannya; anda tidak boleh mengubah fungsinya. Jenis peristiwa anda sendiri hanya merekodkan maklumat yang anda masukkan.",
+    "catalogTitle": "Jenis Peristiwa",
+    "save": "Simpan",
+    "builtInBehaviour": "Makna terbina dalam",
+    "inUse": "Digunakan oleh pergerakan yang direkodkan",
+    "add": "Tambah Jenis Peristiwa",
+    "addTitle": "Tambah Jenis Peristiwa Anda Sendiri",
+    "addHint": "Berikan nama yang digunakan organisasi anda dan pilih fungsinya. Ia kemudian muncul bersama jenis terbina dalam apabila HR merekodkan pergerakan.",
+    "addNamePlaceholder": "cth. Penempatan Semula",
+    "addBehaviourPlaceholder": "— Pilih fungsinya —",
+    "deactivate": "Matikan",
+    "activate": "Hidupkan",
+    "delete": "Padam",
+    "deactivateConfirmTitle": "Matikan jenis peristiwa ini?",
+    "deactivateConfirmDescription": "Ia tidak lagi muncul apabila HR merekodkan pergerakan. Rekod sedia ada tidak berubah dan kekal bermakna. Anda boleh menghidupkannya semula bila-bila masa.",
+    "activateConfirmTitle": "Hidupkan jenis peristiwa ini?",
+    "activateConfirmDescription": "Ia muncul semula apabila HR merekodkan pergerakan.",
+    "deleteConfirmTitle": "Padam jenis peristiwa ini?",
+    "deleteConfirmDescription": "Ia dibuang daripada senarai. Ini hanya ditawarkan untuk jenis peristiwa anda sendiri yang belum digunakan oleh mana-mana rekod — apa yang telah direkodkan boleh dimatikan tetapi tidak boleh dipadam.",
+    "columns": {
+      "name": "Nama",
+      "behaviour": "Fungsinya",
+      "status": "Status",
+      "action": "Tindakan"
+    },
+    "status": {
+      "active": "Aktif",
+      "inactive": "Dimatikan"
+    }
   }
 }

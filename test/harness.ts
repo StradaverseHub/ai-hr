@@ -20,6 +20,10 @@ const ALL_TABLES = [
   // TRUNCATE ... CASCADE from `tenant`: the ADR-0071 note below is what happens when a table is only
   // ever cleared by accident.
   'employee_draft',
+  // 476f23ed — the movement event-type catalogue (migration 0340). Explicit for the same reason as the
+  // line above: a surviving overlay row would rename or switch off an event type for a later test file,
+  // and the symptom would be a movement that "disappeared" from Employment History with no obvious cause.
+  'movement_event_type',
   'holiday', 'holiday_group_holiday', 'attendance', 'attendance_policy', 'travel_request',
   'payroll_batch', 'payslip', 'payroll_input', 'payroll_individual_txn', 'employee_cp38', 'company_statutory_my',
   'payroll_policy',

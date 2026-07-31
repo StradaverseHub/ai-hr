@@ -30,6 +30,7 @@ import {
   domainEvent,
   employment,
   jobGrade,
+  movementEventType,
   person,
   position,
   reportingLine,
@@ -46,6 +47,14 @@ import {
 } from './org';
 import { isTerminationReasonCode, terminationTypeForReason } from './termination-reason';
 import {
+  COMPARISON_KINDS,
+  MOVEMENT_KINDS,
+  isComparisonKind,
+  type ComparisonKind,
+  type MovementKind,
+} from './movement-kinds';
+import { resolveMovementEventTypeTx } from './movement-type';
+import {
   closedPeriodsTx,
   overlapsClosedPeriod,
   processedPeriodsTx,
@@ -53,32 +62,12 @@ import {
   supersedeCompensation,
 } from './comp';
 
-/** The movement kinds HR can CREATE from the New Event form (this round's scoped event set). Rehire and
- *  Custom Event are deliberately excluded (future enhancements per the approved plan). */
-export const MOVEMENT_KINDS = [
-  'transfer',
-  'promotion',
-  'demotion',
-  'increment',
-  'confirmation',
-  'probationExtension',
-  'secondment',
-  'actingPosition',
-  'resignation',
-  'termination',
-  'blacklist',
-  'salaryAdjustment',
-  'orgAssignmentChange',
-  'reportingLineChange',
-  'employmentTypeChange',
-  // 89ea527b — the two employment-date movements. Both follow the `confirmation` precedent: the movement's
-  // EFFECTIVE DATE *is* the new value of the date it sets, so the history row's Effective Date column and the
-  // stored column can never disagree. They are the ONLY writers of employment.hired_on / employment.join_date
-  // after creation (setEmploymentInfo ignores both fields without the matching tag).
-  'joinDateChange',
-  'groupJoinDateCorrection',
-] as const;
-export type MovementKind = (typeof MOVEMENT_KINDS)[number];
+/* 476f23ed — MOVEMENT_KINDS / COMPARISON_KINDS moved to core/movement-kinds.ts and are RE-EXPORTED here,
+ * so every existing importer of core/movement is untouched. The move exists to break one import cycle:
+ * core/movement-type.ts (the configurable catalogue) needs the built-in kind list, and this module needs
+ * the catalogue to resolve a tenant's own event type — a leaf module both can import is the whole fix. */
+export { COMPARISON_KINDS, MOVEMENT_KINDS, isComparisonKind };
+export type { ComparisonKind, MovementKind };
 
 /** One row of the Employment History list. `id` is the domain_event id, or the pseudo-id 'hired' when
  *  the Hired row is synthesized from employment.hiredOn (seed/legacy employments with no hired event —
@@ -451,6 +440,25 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
     : [];
   const compRemarks = new Map(compRows.map((r) => [r.id, r.remarks]));
 
+  /**
+   * 476f23ed — the tenant's OWN event-type codes. The projection's rule (30325fc1) is that a generic
+   * writer's event needs a movement tag naming a kind this system recognises; a code the organisation
+   * configured is exactly that. Read here, once, rather than through core/movement-type.ts, because this
+   * function runs inside the caller's transaction and must not open a second one.
+   *
+   * A tenant with no configured types gets an empty set and the built-in list, i.e. today's behaviour.
+   */
+  const tenantCodes = new Set(
+    (
+      await tx
+        .select({ code: movementEventType.code })
+        .from(movementEventType)
+        .where(eq(movementEventType.tenantId, tenantId))
+    ).map((r) => r.code),
+  );
+  /** A kind the tag may legitimately name: a built-in, or one of this tenant's configured codes. */
+  const knownKind = (v: string | undefined): v is string => !!v && (isKnownKind(v) || tenantCodes.has(v));
+
   let sawHiredEvent = false;
   const rows: ProjectedRow[] = [];
   /** 66a63bd6 — movement id → the rollback that undid it. Applied after the loop: the reversal event is
@@ -526,7 +534,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         break;
       case 'employment.assignment.changed':
         // 30325fc1 — GENERIC WRITER, TAG REQUIRED (see the block comment above the switch).
-        if (!isKnownKind(mv?.type)) break;
+        if (!knownKind(mv?.type)) break;
         rows.push({
           ...base,
           // Any known movement kind may own the assignment leg (a Salary Adjustment that also moves
@@ -541,7 +549,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         // 30325fc1 — GENERIC WRITER, TAG REQUIRED. r78c deleted the last untagged grade writer
         // (setEmploymentGradeAction, the Leave tab's one-field Job Grade save), so nothing an admin can
         // do today reaches here without a tag.
-        if (!isKnownKind(mv?.type)) break;
+        if (!knownKind(mv?.type)) break;
         rows.push({
           ...base,
           kind: mv.type,
@@ -557,7 +565,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         // 30325fc1 — GENERIC WRITER, TAG REQUIRED. The Basic Salary card routes through the movement
         // recorder (r78), so a real pay movement always carries a tag; an import or a background
         // repricing does not, and is no longer announced as a Salary Adjustment nobody keyed.
-        if (!isKnownKind(mv?.type)) break;
+        if (!knownKind(mv?.type)) break;
         rows.push({
           ...base,
           // A pay change may be the primary leg of any movement (a Promotion whose only delta is salary).
@@ -574,7 +582,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         // group — confirmationDate ⇒ Confirmation, EXTENDED_PROBATION_FIELDS ⇒ Probation Extension,
         // RESIGNATION_FIELDS ⇒ Resignation — so an ordinary date edit minted a movement of a type nobody
         // chose. The inference is gone: only the tag decides.
-        const kind = isKnownKind(mv?.type) ? mv.type : null;
+        const kind = knownKind(mv?.type) ? mv.type : null;
         if (!kind) break;
         const after = (p.after ?? {}) as Record<string, unknown>;
         // 89ea527b — for the two date movements the row's Effective Date is the date the movement SET, read
@@ -641,7 +649,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         // That writer is now TAGGED at source instead — setDirectSuperiorAction passes a
         // `reportingLineChange` tag — so the row it has always produced is unchanged, and it is now backed
         // by a recorded intent rather than by a fallback label.
-        if (!isKnownKind(mv?.type)) break;
+        if (!knownKind(mv?.type)) break;
         rows.push({
           ...base,
           kind: mv.type,
@@ -668,7 +676,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         rows.push({
           ...base,
           scheduled: true,
-          kind: isKnownKind(p.type) ? p.type : 'orgAssignmentChange',
+          kind: knownKind(p.type) ? p.type : 'orgAssignmentChange',
           effectiveDate: String(p.effectiveDate ?? occDate),
           endDate: (p.endDate as string | null) ?? null,
           remarks: (p.remarks as string | null) ?? null,
@@ -1268,7 +1276,17 @@ export function movementCurrentState(
 
 export type CreateMovementInput = {
   employmentId: string;
-  kind: MovementKind;
+  /**
+   * 476f23ed — WIDENED from MovementKind to string. The submitted type may be one of the ORGANISATION's
+   * own catalogue codes (Movement Settings), which by definition cannot be enumerated at compile time.
+   *
+   * The check did not disappear, it moved to where it can actually be made: `resolveInputType` resolves
+   * this against the tenant's catalogue inside the request, refuses an unknown or switched-off code, and
+   * REPLACES this field with the built-in behaviour kind before any writer sees it. So every branch below
+   * still reasons about a built-in kind — it is just resolved at runtime instead of asserted by the type,
+   * because "is this a type this tenant configured" is a question only the database can answer.
+   */
+  kind: string;
   effectiveDate: string;
   endDate?: string | null;
   remarks?: string | null;
@@ -1307,27 +1325,19 @@ export type CreateMovementInput = {
   resignationDate?: string | null;
   /** Blacklist kind: true (default) sets the blacklist, false clears it — the old card's two actions. */
   blacklisted?: boolean;
+  /**
+   * 476f23ed — the CATALOGUE CODE this movement was recorded as, when it differs from `kind`.
+   *
+   * `kind` is the BEHAVIOUR (a built-in MovementKind); `typeCode` is what the organisation calls it. For a
+   * built-in type the two are the same and this stays undefined. For a tenant's own type — "Redeployment"
+   * mapped onto `transfer` — the ledger records the code, so Employment History shows the type HR chose
+   * while every writer, guard and rollback path runs the built-in behaviour unchanged.
+   *
+   * Set by createMovementEvent / editMovementEvent from the catalogue. It is NOT read from a form: a
+   * forged field cannot make a movement claim a type this tenant never configured.
+   */
+  typeCode?: string;
 } & Partial<Record<MovementFlatField, string | null>>;
-
-/**
- * 08913328 — the kinds that record a CHANGE to the employee's employment/pay data, and therefore render as
- * the side-by-side comparison screen. The rest (Confirmation, Probation Extension, Resignation,
- * Termination, Blacklist, Secondment, Acting Position) are lifecycle events with their own dedicated
- * inputs — a Current/After grid would be meaningless for them.
- */
-export const COMPARISON_KINDS = [
-  'transfer',
-  'promotion',
-  'demotion',
-  'increment',
-  'salaryAdjustment',
-  'orgAssignmentChange',
-  'employmentTypeChange',
-  'reportingLineChange',
-] as const;
-export type ComparisonKind = (typeof COMPARISON_KINDS)[number];
-export const isComparisonKind = (k: string): k is ComparisonKind =>
-  (COMPARISON_KINDS as readonly string[]).includes(k);
 
 /** 941c9dac — one field a movement moved, resolved to raw values. The audit record the reporter asked
  *  for ("what changed, from what to what") is a list of these, stored on the applied event. */
@@ -1473,7 +1483,9 @@ async function applyComparisonMovementTx(
     let primaryTaken = opts?.allSecondary === true;
     /** Primary for the first leg with a real delta, `secondary` for every leg after it. */
     const tag = (opts: { withRemarks: boolean }): MovementTag => {
-      const t: MovementTag = { type: kind, groupId };
+      // 476f23ed — the TAG carries the catalogue code (what the organisation calls this event); `kind`
+      // carries the behaviour that just ran. They are identical for every built-in type.
+      const t: MovementTag = { type: p.typeCode ?? kind, groupId };
       // ADR-0030 redact-to-reference: comp events never carry remark text — it lives on the comp row.
       if (opts.withRemarks) {
         t.remarks = remarks;
@@ -1624,7 +1636,9 @@ async function scheduleMovementTx(
     actor: actorOf(ctx),
     subjectEmploymentId: p.employmentId,
     payload: {
-      type: kind,
+      // 476f23ed — the catalogue code, so a pending movement reads on the history as the type HR chose.
+      // The sweep resolves it back to a behaviour kind when it applies (applyDueMovementsTx).
+      type: p.typeCode ?? kind,
       effectiveDate: p.effectiveDate,
       endDate,
       remarks,
@@ -1634,7 +1648,7 @@ async function scheduleMovementTx(
       input: scheduledInputOf(p),
       // The tag is what makes this event the OWNER of the history row: the sweep's legs share this
       // groupId and are all `secondary`, so the movement keeps exactly one line in the history.
-      movement: { type: kind, groupId, remarks, endDate } satisfies MovementTag,
+      movement: { type: p.typeCode ?? kind, groupId, remarks, endDate } satisfies MovementTag,
     },
   });
   return { employmentId: p.employmentId, scheduled: true as const, effectiveDate: p.effectiveDate };
@@ -1935,6 +1949,38 @@ async function scheduleTerminationTx(
 }
 
 /**
+ * 476f23ed — resolve a submitted event type through the tenant's CATALOGUE, returning the input with
+ * `kind` set to the BEHAVIOUR that must run and `typeCode` set to what the organisation calls it.
+ *
+ * Every write path into this module goes through here, so there is exactly one place that decides what a
+ * submitted type means. Three rules, all of them the reason this function exists rather than an inline
+ * `MOVEMENT_KINDS.includes`:
+ *   • an unknown code is refused — a forged form field cannot invent an event type;
+ *   • a type the organisation switched OFF is refused for a NEW movement (`allowInactive: false`) and
+ *     allowed for a correction, because a movement already recorded under a since-retired type must stay
+ *     correctable;
+ *   • the behaviour is never taken from the submission. It comes from the catalogue row, which
+ *     core/movement-type.ts will only ever point at a built-in kind — and, for a tenant's own type, only
+ *     at one of the consequence-free kinds. That is what stops a renamed type from acting like a
+ *     Termination.
+ */
+async function resolveInputType<T extends CreateMovementInput>(
+  ctx: SessionContext,
+  p: T,
+  verb: 'record' | 'correct',
+  opts?: { allowInactive?: boolean },
+): Promise<T> {
+  const resolved = await withTenant(ctx, (tx) => resolveMovementEventTypeTx(tx, ctx.tenantId, p.kind));
+  if (!resolved) throw new Error('Unknown movement event type.');
+  if (!resolved.active && !opts?.allowInactive) {
+    throw new Error(
+      `That movement event type has been switched off in Movement Settings, so it cannot be used to ${verb} a movement.`,
+    );
+  }
+  return { ...p, kind: resolved.behaviourKind, typeCode: resolved.code };
+}
+
+/**
  * The single New Event entry point. Delegates every kind to the existing audited writer, so effective-
  * date semantics deliberately MATCH those writers (e.g. setEmploymentAssignment rejects dates before the
  * current record's validFrom — the error is surfaced verbatim). Admin-gated as defence-in-depth over
@@ -1950,14 +1996,16 @@ async function scheduleTerminationTx(
  * state. NOTE (ADR-0015): subject-scoped events are readable by the employee themselves — like the
  * existing termination reason, movement remarks are staff-visible by design.
  */
-export async function createMovementEvent(ctx: SessionContext, p: CreateMovementInput) {
+export async function createMovementEvent(ctx: SessionContext, rawInput: CreateMovementInput) {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error('Only an admin can record a movement.');
   }
-  if (!(MOVEMENT_KINDS as readonly string[]).includes(p.kind)) {
-    throw new Error('Unknown movement event type.');
-  }
+  // 476f23ed — resolve the submitted event type through the tenant's CATALOGUE before anything else. A
+  // built-in kind resolves to itself; one of the organisation's own types resolves to the behaviour it was
+  // mapped to, and its code travels on as `typeCode` so the ledger records what HR chose. A type that was
+  // switched off is refused here rather than silently applied — that is the whole point of switching it off.
+  const p = await resolveInputType(ctx, rawInput, 'record');
   if (p.kind !== 'blacklist' && !/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
     throw new Error('A valid effective date (YYYY-MM-DD) is required.');
   }
@@ -2059,7 +2107,7 @@ export async function createMovementEvent(ctx: SessionContext, p: CreateMovement
           eventType: 'employment.movement.recorded',
           actor: actorOf(ctx),
           subjectEmploymentId: p.employmentId,
-          payload: { type: p.kind, effectiveDate: p.effectiveDate, endDate, remarks },
+          payload: { type: p.typeCode ?? p.kind, effectiveDate: p.effectiveDate, endDate, remarks },
         });
         return { employmentId: p.employmentId };
       });
@@ -2113,13 +2161,21 @@ export async function applyDueMovementsTx(
     // ae9350f2 — Termination is the one scheduled kind that is not a comparison kind. It has its own
     // writer (two legs, no Current/After deltas), so it is dispatched explicitly rather than being let
     // through the comparison path, which would compute deltas for fields a termination never moves.
-    const isTermination = r.kind === 'termination';
-    if (!isTermination && !isComparisonKind(r.kind)) continue;
+    // 476f23ed — the scheduled event records the CATALOGUE CODE, which may be one of the organisation's
+    // own types. Resolve it back to the behaviour that must run; the code travels on as `typeCode` so the
+    // legs the sweep writes stay tagged with the type HR chose. A code that no longer resolves (deleted
+    // around the in-use guard) is skipped rather than applied as something else.
+    const resolved = await resolveMovementEventTypeTx(tx, ctx.tenantId, r.kind);
+    if (!resolved) continue;
+    const behaviourKind = resolved.behaviourKind;
+    const isTermination = behaviourKind === 'termination';
+    if (!isTermination && !isComparisonKind(behaviourKind)) continue;
 
     const input: CreateMovementInput = {
       ...(payload.input ?? {}),
       employmentId,
-      kind: r.kind as MovementKind,
+      kind: behaviourKind,
+      typeCode: resolved.code,
       effectiveDate: r.effectiveDate,
       endDate: r.endDate,
       remarks: r.remarks,
@@ -2135,7 +2191,7 @@ export async function applyDueMovementsTx(
             await planTerminationTx(tx, ctx, input, 'apply', r.id),
             { groupId: r.groupId, allSecondary: true },
           )
-        : await applyComparisonMovementTx(tx, ctx, input, r.kind as ComparisonKind, {
+        : await applyComparisonMovementTx(tx, ctx, input, behaviourKind as ComparisonKind, {
             groupId: r.groupId,
             allSecondary: true,
           });
@@ -2459,11 +2515,13 @@ export type EditMovementInput = CreateMovementInput & {
  *    through writers that act on the OPEN dated row. Correcting an older one means rolling back the later
  *    movements first; the message says so rather than silently appending the replay at the end of the chain.
  */
-export async function editMovementEvent(ctx: SessionContext, p: EditMovementInput) {
+export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMovementInput) {
   assertMovementAdmin(ctx, 'correct a movement');
-  if (!(MOVEMENT_KINDS as readonly string[]).includes(p.kind)) {
-    throw new Error('Unknown movement event type.');
-  }
+  // 476f23ed — same catalogue resolution as createMovementEvent, and for the same reason: a correction
+  // replays through the same writers, so it has to arrive carrying the same behaviour kind + code pair.
+  // An INACTIVE type is allowed here — a movement already recorded under a type since switched off must
+  // still be correctable, or switching a type off would strand its history.
+  const p = await resolveInputType(ctx, rawEdit, 'correct', { allowInactive: true });
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
     throw new Error('A valid effective date (YYYY-MM-DD) is required.');
   }
@@ -2547,8 +2605,14 @@ export async function editMovementEvent(ctx: SessionContext, p: EditMovementInpu
 
     // The unchanged-replay no-op, checked BEFORE anything is written — against the same date/remark fields
     // the history shows and the same current values the comparison form pre-filled from.
+    // 476f23ed — compare the CATALOGUE CODE, not the behaviour. `row.kind` is what the projection read off
+    // the ledger (the code HR chose); `p.kind` has already been resolved to the built-in behaviour by
+    // resolveInputType. For a built-in type the two are equal, but for one of the organisation's own types
+    // ('regional_assignment' → secondment) comparing them would ALWAYS differ, so an unchanged re-save
+    // would slip past this guard and append a spurious reverse + re-record pair to the history.
+    const submittedCode = p.typeCode ?? p.kind;
     const datesUnchanged =
-      p.kind === row.kind &&
+      submittedCode === row.kind &&
       p.effectiveDate === row.effectiveDate &&
       endDate === row.endDate &&
       remarks === row.remarks;
@@ -2565,7 +2629,16 @@ export async function editMovementEvent(ctx: SessionContext, p: EditMovementInpu
         eventType: 'employment.movement.recorded',
         actor: actorOf(ctx),
         subjectEmploymentId: p.employmentId,
-        payload: { type: p.kind, effectiveDate: p.effectiveDate, endDate, remarks, correctionOf: p.movementId },
+        // 476f23ed — record the CATALOGUE CODE, exactly as createMovementEvent does. The projection reads
+        // this field straight back as the history row's kind, so writing the behaviour here would silently
+        // re-label a corrected "Regional Assignment" as a plain Secondment.
+        payload: {
+          type: submittedCode,
+          effectiveDate: p.effectiveDate,
+          endDate,
+          remarks,
+          correctionOf: p.movementId,
+        },
       });
       return { employmentId: p.employmentId };
     }

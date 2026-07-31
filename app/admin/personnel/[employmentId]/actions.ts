@@ -12,7 +12,6 @@ import {
   editMovementEvent,
   isComparisonKind,
   MOVEMENT_FLAT_FIELDS,
-  MOVEMENT_KINDS,
   MovementNoChangeError,
   reverseMovementEvent,
   type MovementKind,
@@ -366,7 +365,11 @@ export async function setDefaultShiftAction(formData: FormData) {
  */
 function parseMovementForm(formData: FormData) {
   const kindRaw = String(formData.get('kind') ?? '').trim();
-  if (!(MOVEMENT_KINDS as readonly string[]).includes(kindRaw)) throw new Error('Select an event type.');
+  // 476f23ed — the type may be one of the ORGANISATION's own (Movement Settings), so this can no longer be
+  // an allowlist of the built-in kinds. It is a shape check only; core/movement.ts resolves the code
+  // against the tenant's catalogue inside the transaction and refuses anything unknown or switched off.
+  // That keeps ONE authority for what a type means, which is the whole point of the catalogue.
+  if (!kindRaw) throw new Error('Select an event type.');
   /** absent → undefined (untouched); present-but-blank → null (explicit clear). */
   const optional = (name: string): string | null | undefined => {
     const v = formData.get(name);

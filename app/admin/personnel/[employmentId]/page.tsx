@@ -69,6 +69,8 @@ import {
 } from '@/core/movement';
 // ae9350f2 — the built-in exit-reason catalogue behind the Termination movement.
 import { TERMINATION_REASONS } from '@/core/termination-reason';
+// 476f23ed — the tenant's configurable movement event-type catalogue.
+import { listMovementEventTypes } from '@/core/movement-type';
 import { MovementNewEvent } from './movement-new-event';
 import { serviceYearsMonthsAt, serviceYearsMonthsDaysAt } from '@/core/leave';
 // 9d13221c — Age beside Date of Birth: shared completed-years helper (kept a separate import so the
@@ -366,6 +368,11 @@ export default async function EmployeePage({
   // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
   const movements = admin ? await movementHistory(s, employmentId) : [];
+  // 476f23ed — the tenant's movement event-type catalogue. Read UNFILTERED, because Employment History has
+  // to label a movement recorded under a type that has since been switched off; the New Event form filters
+  // to the active ones below. A tenant that has configured nothing gets the built-in list unchanged.
+  const movementTypes = admin ? await listMovementEventTypes(s) : [];
+  const movementTypeByCode = new Map(movementTypes.map((r) => [r.code, r]));
   const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
   // 08913328 — the Current column of the New Event comparison screen. Only read when that screen is open.
   // 66a63bd6 — the Edit screen is the same form, so it reads the same Current column: a correction is
@@ -2585,6 +2592,10 @@ export default async function EmployeePage({
   // Event-type labels via a STATIC key map (never a dynamic t() template) with a humanized fallback for
   // unknown/extensible kinds — nothing can render a raw i18n key in any locale.
   const movementKindLabel = (kind: string): string => {
+    // 476f23ed — the organisation's own name for this type wins over the shipped translation. Null means
+    // they never renamed it, so the six-locale catalogue below still applies.
+    const configured = movementTypeByCode.get(kind)?.label;
+    if (configured) return configured;
     switch (kind) {
       case 'hired': return t('movement.eventType.hired');
       case 'transfer': return t('movement.eventType.transfer');
@@ -2901,6 +2912,12 @@ export default async function EmployeePage({
           label: t(`movement.terminationReason.${r.code}` as 'movement.terminationReason.resignation'),
           typeLabel: TERMINATION_TYPE_LABEL[r.type],
         })),
+        // 476f23ed — the event types this organisation offers, already filtered to the active ones and
+        // already labelled. The island holds no server imports, so the catalogue is resolved here; passing
+        // `behaviourKind` is what lets the form ask for the right fields for one of their OWN types.
+        types: movementTypes
+          .filter((r) => r.active)
+          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind })),
         cancelHref: `/admin/personnel/${employmentId}?tab=careerMovement`,
       }
     : null;
@@ -2928,9 +2945,23 @@ export default async function EmployeePage({
           remarks: movementEditRow.remarks,
           // A correction may re-classify the movement within its own family (a Transfer that should have
           // been a Promotion), never across it — the service replays the same set of writers either way.
-          allowedKinds: isComparisonKind(movementEditRow.kind)
-            ? [...COMPARISON_KINDS]
-            : Array.from(new Set([movementEditRow.kind, 'secondment', 'actingPosition'])),
+          // 476f23ed — the family is decided by the BEHAVIOUR, not by the code, so a correction of one of
+          // the organisation's own types offers the same alternatives its behaviour allows. The list is
+          // then expressed back in catalogue codes, so a re-classification cannot pick a type that no
+          // longer exists here.
+          allowedKinds: (() => {
+            const behaviour =
+              movementTypeByCode.get(movementEditRow.kind)?.behaviourKind ?? movementEditRow.kind;
+            const family = isComparisonKind(behaviour)
+              ? [...COMPARISON_KINDS]
+              : [behaviour, 'secondment', 'actingPosition'];
+            const codes = movementTypes
+              .filter((r) => r.active && family.includes(r.behaviourKind))
+              .map((r) => r.code);
+            // The movement's own type always stays selectable, even if it has since been switched off —
+            // otherwise correcting it would silently re-classify it.
+            return Array.from(new Set([movementEditRow.kind, ...codes]));
+          })(),
           payrollWarning: movementEditRow.payrollWarning,
         }}
       />

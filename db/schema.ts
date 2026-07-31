@@ -5789,3 +5789,42 @@ export const employeeDraft = pgTable(
     index('employee_draft_author_idx').on(t.tenantId, t.createdByPersonId),
   ],
 );
+
+// 476f23ed — Movement Settings: the configurable catalogue of movement (career) event types.
+//
+// AN OVERLAY, NOT A REPLACEMENT. The built-in kinds (core/movement.ts MOVEMENT_KINDS) stay in code and
+// stay the source of BEHAVIOUR; this table records what a tenant did to that list — renamed a label,
+// switched a type off, or added one of their own. A tenant with no rows here behaves exactly as before,
+// which is why there is no backfill and no per-tenant seed to keep in step.
+//
+// `code` is the stable identity written into the ledger (the movement tag's `type`). For an override of a
+// built-in it IS the MovementKind; for a custom type it is an admin-chosen slug. `behaviour_kind` is the
+// built-in kind whose semantics the type carries — that separation is the whole design: rename and
+// enable/disable are free, semantics stay with the built-in kind, and a tenant cannot invent a type that
+// claims to be a Termination (core/movement-type.ts CONFIGURABLE_BEHAVIOUR_KINDS enforces it).
+//
+// Deliberately NOT a Postgres enum: a new enum value cannot be used in the transaction that added it (a
+// trap this repo has hit), and this is a list whose whole nature is that it grows. Same reasoning that
+// kept employment.termination_reason_code as text (migration 0338).
+//
+// RLS (0340) mirrors profile_option: tenant-read for every member, admin-only write.
+export const movementEventType = pgTable(
+  'movement_event_type',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Stable identity recorded in the ledger. Equals a MovementKind when this row overrides a built-in. */
+    code: text('code').notNull(),
+    /** The built-in MovementKind whose behaviour this type carries. */
+    behaviourKind: text('behaviour_kind').notNull(),
+    /** Display text. Null on a built-in override means "use the shipped translation". */
+    label: text('label'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('movement_event_type_tenant_idx').on(t.tenantId),
+    uniqueIndex('movement_event_type_tenant_code_uq').on(t.tenantId, t.code),
+  ],
+);
