@@ -5,7 +5,21 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-07-31, after r86)
+## CURRENT STATE — read this first (updated 2026-07-31, after r87)
+
+> **r87 SHIPPED `main@6e967cf`, no migration** — production stays at **286**, next free number is still
+> **`0339`**. Two payroll faults shipped (`ef31d251`, `d0d2c9d1`); `97a9b0ab` was **held** because
+> checking production showed its plan was wrong — see the r87 entry, it is the most useful thing in it.
+>
+> **THE REPORTER THEN APPROVED ALL SEVEN PLANS from the 2026-07-31 planning pass.** Board is now
+> **`approved = 18` · `planned = 1` (97a9b0ab rev 2) · `contested = 2` · `deployed = 528`**.
+> **`fa3f4ccb` rev 5 is APPROVED**, which is the written instruction that was missing — the statutory
+> minimum removal may now be built, within the scope boundary recorded below.
+> **`deec1691` rev 3 is approved and is mostly a `tenant_module` row, not a build.**
+>
+> **Before running a workflow on this repo, read r87 Decision 2** — async agents are killed after 3
+> minutes of silence and this repo's test startup exceeds that. `.claude/settings.local.json` now sets
+> `CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS=600000`.
 
 **If you read nothing else, read these eight lines.**
 1. Deployed head is `main@c95e2b5`, migrations through `0338`, **286 applied on production**. **Next free
@@ -599,6 +613,85 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r87 — 2026-07-31 — two payroll faults shipped, and the third was stopped by its own evidence
+
+**Shipped:** `main@6e967cf`. **No migration** (production stays at 286) — so the upgrade rehearsal was
+NOT required. Stated rather than skipped silently.
+**Gate:** `tsc` clean · **501 files / 5829 tests** · `next build` clean.
+Verified live: `GET /` 401, service active, 286 migrations, and both new files present on the box.
+
+**Shipped:** `ef31d251` (payslips can finally be published) · `d0d2c9d1` (money that never reached a
+payslip is now visible).
+**HELD before building:** `97a9b0ab` — re-planned as rev 2. **This is the round's most valuable
+output.**
+
+### Decisions
+
+**1. `97a9b0ab` WAS HELD BECAUSE CHECKING PRODUCTION FIRST SHOWED THE APPROVED PLAN WAS WRONG.**
+The plan said the resolved statutory pack "is simply never stamped on the output" and that historic
+months "cannot be filled in retrospectively". Both are false, and the difference changes the build:
+- **`statutory_pack` has ZERO rows.** This tenant computes from the BUILT-IN ruleset, not a signed
+  pack. `core/payroll.ts:1943` records `packVersion`/`signedKeyId` only when `resolved.source === 'pack'`,
+  so the planned stamp would have written **nothing** for every existing company.
+- **The provenance ALREADY EXISTS per-slip** as `statutory.version`. The plan asked for a migration to
+  add what is already recorded, and told the reporter their history was unexplainable when it is not.
+- **THE RULESET MOVED MID-YEAR AND CORRELATES PERFECTLY WITH REVISION:** 14 slips on `2026.4`
+  (**0 revised**), 33 on `2026.5` (**all 15 revisions**). The plan attributed the reporter's two tax
+  figures solely to cumulative PCB replay. That is now insufficient — the rules themselves changed
+  between computations, and shipping the plan would have told the reporter something reassuring and
+  incomplete **about their own tax figures**.
+
+Rev 2 carries this evidence and flags what must be settled first: **diff the built-in ruleset between
+`2026.4` and `2026.5`** to see whether the bump was behavioural. If it was not, the disclosure must not
+imply it moved anyone's tax. **Migration `0339` is NOT required for the read-side half and was not
+allocated** — the value is already in the JSONB.
+
+**Still true and not to be re-opened:** the PCB accumulator is CORRECT. It replays `priorSlips`, so
+revising month N legitimately moves month N+1 with that month's gross unchanged. A scout corrected the
+plan's line numbers to `core/payroll.ts:2451-2519`. **Do not "fix" it.**
+
+**2. THE WORKFLOW HARNESS KILLED THE BUILD AGENT SIX TIMES, AND THE CAUSE IS A TIMEOUT, NOT THE WORK.**
+The run cost **2.4 hours / 948k subagent tokens / 387 tool calls** and failed with
+`agent stalled on all 6 attempts (no progress for 180000ms each)`.
+
+**Async agents are killed after 3 minutes with no visible output, and this repo's test startup exceeds
+that**: a targeted vitest run builds a template plus ten worker databases, and every `CREATE DATABASE`
+forces a Postgres checkpoint. The agent was being killed MID-TEST-RUN, repeatedly, and each restart
+re-oriented from scratch. Two of the six also died on a genuine `server_error`, which no timeout change
+fixes.
+
+**The knob is `CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS`** (the only agent-stall env var;
+`CLAUDE_CODE_STALL_TIMEOUT_MS_FOR_TESTING` is a test-only variant). **r87 set it to `600000` in
+`.claude/settings.local.json`.** Without that, do not run a build agent on this repo under a workflow —
+it will not converge. Note the trade-off: a genuinely hung agent now burns 10 minutes before being
+killed.
+
+**What the workflow DID earn its keep on:** the three parallel read-only MAP agents all succeeded, and
+one corrected the plan's drifted line numbers. **Parallelise investigation and review; keep the BUILD
+single-threaded** when items share files — which these three did (all land on the run detail screen and
+`core/payroll.ts`), and which is why they were one agent rather than three.
+
+**3. The killed agent left a real breakage that only `tsc` caught** — a duplicate `isRegular`
+declaration in `app/payroll/[batchId]/page.tsx` (declared once for the loan summary, again for the
+d0d2c9d1 indicator). Harmless-looking, and it would have failed the gate. **Anything a killed agent
+leaves behind is half-finished by definition: re-run the gate over its work rather than assuming the
+commits are complete.** The i18n catalogs were the near-miss — `en`/`ms` were done and the other four
+empty at one point; had it died there, the i18n coverage check would have caught it, but only because
+that guard exists.
+
+**4. Both shipped items deliberately STOP SHORT of the destructive half, and the reporter is told so.**
+`ef31d251` does not auto-close the 18 historic runs — the close path fires the payslip-ready
+notification, so a backfill would notify every employee for every month at once. `d0d2c9d1` does not
+pay the outstanding RM23,170 and adds no automatic reset-and-regenerate, which would silently unwind
+loan ledger entries. Both `build_ref`s say this in plain words and invite the reporter to commission
+the rest.
+
+**5. The deploy verification introduced in r86 paid off immediately** — `rsync` real exit code captured
+without a pipe, then a `--dry-run -i` re-check proving **zero** outstanding files before running
+`deploy.sh`. No repeat of r86's half-synced tree.
+
+---
 
 ## r86 — 2026-07-31 — 13 items that were built a session early and never shipped
 
