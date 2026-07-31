@@ -6049,7 +6049,10 @@
     "errorCodeDuplicate": "薪资代码 {code} 已存在——代码必须唯一。",
     "errorCodeDuplicateArchived": "薪资代码 {code} 已存在但被停用——请重新启用。",
     "inputType_qty_rate": "数量 × 费率",
-    "inputType_formula": "公式"
+    "inputType_formula": "公式",
+    "colFormula": "计算方式",
+    "inputTypeLinkTitle": "打开 {code} 以更改其输入类型",
+    "sectionPaySettingsHint": "金额如何计算 — 舍入、输入类型和公式生成器。"
   },
   "notifications": {
     "title": "通知",

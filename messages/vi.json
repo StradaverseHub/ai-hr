@@ -6049,7 +6049,10 @@
     "errorCodeDuplicate": "Mã lương {code} đã tồn tại — mã lương phải là duy nhất.",
     "errorCodeDuplicateArchived": "Mã lương {code} đã tồn tại nhưng bị vô hiệu hóa — hãy kích hoạt lại.",
     "inputType_qty_rate": "Số lượng × đơn giá",
-    "inputType_formula": "Công thức"
+    "inputType_formula": "Công thức",
+    "colFormula": "Cách tính",
+    "inputTypeLinkTitle": "Mở {code} để thay đổi Kiểu nhập",
+    "sectionPaySettingsHint": "Cách tính ra số tiền — làm tròn, Kiểu nhập và trình tạo Công thức."
   },
   "notifications": {
     "title": "Thông báo",

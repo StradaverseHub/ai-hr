@@ -6049,7 +6049,10 @@
     "errorCodeDuplicate": "Kod gaji {code} sudah wujud — kod gaji mesti unik.",
     "errorCodeDuplicateArchived": "Kod gaji {code} wujud tetapi dinyahaktifkan — aktifkannya semula.",
     "inputType_qty_rate": "Kuantiti × kadar",
-    "inputType_formula": "Formula"
+    "inputType_formula": "Formula",
+    "colFormula": "Pengiraan",
+    "inputTypeLinkTitle": "Buka {code} untuk menukar Jenis Inputnya",
+    "sectionPaySettingsHint": "Cara jumlah dikira — pembundaran, Jenis Input dan pembina Formula."
   },
   "notifications": {
     "title": "Pemberitahuan",

@@ -22,9 +22,12 @@ export type PayComponentRow = Awaited<ReturnType<typeof listPayComponents>>[numb
  * (identity), Pay Settings (how it is calculated: rounding + the pay rule) and Government Statutory
  * Configuration (EPF / SOCSO-EIS / PCB / HRDF mappings) — with a Save / Save & New / Cancel toolbar.
  * The derived Input Type field was removed from this screen (13b7517b): it was read-only display with no
- * functional impact; the list page keeps its own Input Type column and derivation. `error` comes from the
- * action's redirect-with-error and renders through ErrorBanner above the form (the global ToastFromQuery
- * still fires as well, same as attendance).
+ * functional impact; the list page keeps its own Input Type column and derivation. 61bf109d rev2 turned
+ * that column into a LINK here — the EDITABLE Input Type selector and the Formula builder have always been
+ * inside Pay Settings below, and nothing on the list said so, which is how the reporter concluded they were
+ * missing. Hence the section's new one-line subtitle. `error` comes from the action's redirect-with-error
+ * and renders through ErrorBanner above the form (the global ToastFromQuery still fires as well, same as
+ * attendance).
  */
 export async function ComponentForm({
   component,
@@ -101,9 +104,12 @@ export async function ComponentForm({
 
         {/* Pay Settings (13b7517b) — calculation concerns grouped in their own card: the rounding method
             and the "How is this calculated?" pay-rule editor, clearly separated from the statutory card
-            below. Everything stays inside the single form, so submission is unchanged. */}
+            below. Everything stays inside the single form, so submission is unchanged.
+            61bf109d rev2 adds the one-line subtitle: the heading alone named the card but not its CONTENTS,
+            and the reporter went looking for Input Type and Formula without ever opening this section. */}
         <Card className="space-y-3 p-4">
           <h2 className="text-sm font-semibold text-foreground">{t('sectionPaySettings')}</h2>
+          <p className="text-xs text-muted-foreground">{t('sectionPaySettingsHint')}</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label={t('colRounding')}>
               <select name="roundingMethod" defaultValue={component?.roundingMethod ?? 'none'} className={inputCls}>

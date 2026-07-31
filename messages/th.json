@@ -6049,7 +6049,10 @@
     "errorCodeDuplicate": "รหัสเงินเดือน {code} มีอยู่แล้ว — รหัสต้องไม่ซ้ำกัน",
     "errorCodeDuplicateArchived": "รหัสเงินเดือน {code} มีอยู่แต่ถูกปิดใช้งาน — ให้เปิดใช้งานใหม่แทน",
     "inputType_qty_rate": "จำนวน × อัตรา",
-    "inputType_formula": "สูตร"
+    "inputType_formula": "สูตร",
+    "colFormula": "การคำนวณ",
+    "inputTypeLinkTitle": "เปิด {code} เพื่อเปลี่ยนประเภทการป้อนค่า",
+    "sectionPaySettingsHint": "วิธีคำนวณจำนวนเงิน — การปัดเศษ ประเภทการป้อนค่า และตัวสร้างสูตร"
   },
   "notifications": {
     "title": "การแจ้งเตือน",
