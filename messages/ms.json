@@ -2950,6 +2950,16 @@
       "resetPayroll": "Set semula gaji",
       "resetTitle": "Set Semula Proses Gaji",
       "resetDescription": "Adakah anda pasti mahu set semula proses gaji ini? Semua hasil pengiraan gaji untuk larian ini akan dipadamkan dan proses akan kembali ke status Draf. Tindakan ini hanya boleh dilakukan oleh pengguna yang diberi kuasa.",
+      "scopeUnattachedTitle": "{n} pekerja di luar skop proses ini mempunyai transaksi menunggu",
+      "scopeUnattachedWarning": "Proses ini disempitkan kepada pekerja terpilih. Mengiranya tidak akan mengutip transaksi di bawah — ia kekal tertunggak sehingga proses penuh bagi bulan ini dikira.",
+      "outstandingTxnTitle": "{n} transaksi bagi bulan ini, berjumlah {amount}, belum sampai ke slip gaji",
+      "outstandingTxnHint": "Yang terawal dimasukkan pada {when}. Mengembalikan proses ini kepada Draf dan mengiranya semula akan mengutip kesemuanya.",
+      "outstandingTxnAfterProcessing": "Sebahagiannya dimasukkan selepas proses ini dikira. Transaksi hanya dikutip apabila proses dikira buat kali pertama, jadi entri kemudian tidak diambil.",
+      "outstandingTxnLeftOutByScope": "Sebahagiannya milik pekerja yang tercicir daripada skop proses ini, jadi pengiraan tidak mengutipnya.",
+      "outstandingTxnLink": "Lihat transaksi tertunggak",
+      "outstandingTxnHolder": "{name} — {n} entri, {amount}",
+      "resetCollectsOutstanding": "Mengembalikan kepada Draf dan mengira semula juga akan mengutip setiap transaksi tertunggak bagi bulan ini.",
+      "reprocessDoesNotCollect": "Memproses semula pekerja terpilih TIDAK mengutip transaksi tertunggak bagi bulan ini — hanya mengembalikan proses kepada Draf dan mengiranya semula yang berbuat demikian.",
       "resetConfirm": "Set Semula Gaji",
       "resetDone": "Proses gaji diset semula ke Draf",
       "resetOnlyProcessed": "Hanya proses gaji yang berstatus Diproses boleh diset semula.",
@@ -3231,7 +3241,7 @@
         "pendingRun": "Menunggu larian gaji",
         "unattachedOption": "Belum dilampirkan — menunggu larian gaji",
         "unattachedTitle": "Transaksi belum dilampirkan",
-        "unattachedHint": "Entri ini dimasukkan sebelum larian gaji wujud untuk bulannya. Setiap satu akan dilampirkan secara automatik pada larian biasa bulan tersebut apabila gaji dijana.",
+        "unattachedHint": "Entri ini dimasukkan sebelum wujud sebarang proses gaji bagi bulannya. Setiap satu akan dilampirkan pada proses biasa bulan itu apabila proses tersebut dikira buat kali pertama — dengan syarat proses itu merangkumi pekerja berkenaan. Proses yang disempitkan kepada sebahagian pekerja meninggalkan selebihnya tertunggak, dan apa-apa yang dimasukkan selepas proses dikira tidak akan diambil.",
         "unattachedEmpty": "Tiada transaksi belum dilampirkan.",
         "periodInvalid": "Pilih bulan yang sah.",
         "componentRequired": "Pilih item gaji untuk setiap baris pendapatan atau potongan — item sekali sahaja dibayar melalui penggajian, jadi layanan statutorinya mesti ditakrifkan.",
@@ -3323,7 +3333,8 @@
         "tabs": {
           "fixed": "Tetap",
           "individual": "Individu",
-          "history": "Sejarah"
+          "history": "Sejarah",
+          "outstanding": "Tertunggak"
         },
         "filters": {
           "company": "Syarikat",
@@ -3355,7 +3366,23 @@
           "totalEmployerContributions": "Jumlah caruman majikan",
           "hrdfNotRegistered": "Tidak berdaftar"
         },
-        "exportCsv": "Eksport CSV"
+        "exportCsv": "Eksport CSV",
+        "outstanding": {
+          "hint": "Wang yang dimasukkan bagi seorang pekerja dan sebulan tetapi belum sampai ke slip gaji, dikumpulkan mengikut pekerja dan bulan. Bulan yang belum ada proses gaji adalah normal — entri itu sekadar menunggu. Bulan yang proses biasanya sudah dikira atau diterbitkan telah melepasi entri ini, dan itu memerlukan tindakan.",
+          "empty": "Tiada tertunggak — setiap transaksi yang dimasukkan telah sampai ke slip gaji.",
+          "colEntries": "Entri",
+          "colAmount": "Jumlah",
+          "colOldest": "Entri terawal",
+          "colRunState": "Proses gaji",
+          "grandTotal": "Jumlah tertunggak",
+          "strandedTotal": "termasuk {amount} dalam bulan yang prosesnya telah dikira",
+          "runStateNone": "Belum ada proses",
+          "runStateDraft": "Draf",
+          "runStateProcessed": "Telah dikira",
+          "runStateClosed": "Diterbitkan",
+          "arrivedAfterProcessing": "Dimasukkan selepas proses bulan ini dikira",
+          "leftOutByScope": "Proses telah disempitkan dan meninggalkan pekerja ini"
+        }
       }
     },
     "setup": {
@@ -3567,7 +3594,10 @@
         "missingBank": "Butiran bank tidak lengkap",
         "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan",
         "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan"
-      }
+      },
+      "unattachedScopeTitle": "{n} pekerja yang tercicir daripada proses ini mempunyai transaksi menunggu",
+      "unattachedScopeWarning": "Menyempitkan proses kepada sebahagian pekerja bermakna transaksi pekerja lain bagi bulan ini tidak dikutip. Ia kekal tertunggak sehingga proses penuh bagi bulan itu dikira. Anda boleh teruskan — ini amaran, bukan sekatan.",
+      "unattachedScopeEmployee": "{name} — {n} entri, {amount}"
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",

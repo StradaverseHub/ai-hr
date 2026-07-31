@@ -19,6 +19,7 @@ import { ReprocessPanel } from './reprocess-panel';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { packFor } from '@/localization/registry';
 import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
+import { listUnattachedTxnSummary, unattachedHoldersOutsideBatchScope } from '@/core/payroll-view';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -166,6 +167,36 @@ export default async function BatchPage({
   const scope = (batch.scope ?? null) as { departmentIds?: string[]; employmentIds?: string[] } | null;
   const isScoped = !!(scope?.departmentIds?.length || scope?.employmentIds?.length);
 
+  // ── Feedback d0d2c9d1 — money entered for this month that has never reached a payslip. ──
+  // GATED TO runType === 'regular' on purpose: off_cycle / bonus / adjustment runs NEVER collect
+  // transactions by design (the attach guard in generatePayslips), so an indicator on them would be a
+  // permanent, un-actionable alert about behaviour that is working correctly. Reuses the `isRegular`
+  // declared above for the loan summary — same expression, one binding.
+  const [txnYear, txnMonth] = batch.payPeriod.split('-').map(Number);
+  // Before Generate on a SCOPED draft: who this run is about to leave out, and what they are holding.
+  const scopeHolders =
+    isRegular && isScoped && batch.status === 'draft'
+      ? await unattachedHoldersOutsideBatchScope(s, {
+          companyId: batch.companyId,
+          payPeriod: batch.payPeriod,
+          scope,
+        })
+      : [];
+  // After Generate: whatever is still outstanding for the month. For a processed run EVERY unattached
+  // row of its (company, period) is outstanding, regardless of when it arrived — arrival time only
+  // decides which of the two causes the copy should name.
+  const outstanding =
+    isRegular && batch.status !== 'draft'
+      ? await listUnattachedTxnSummary(s, { companyIds: [batch.companyId], year: txnYear, month: txnMonth })
+      : [];
+  // Summed in CENTS — float-summing the decimal strings would drift on four-figure bonuses.
+  const outstandingTotal =
+    outstanding.reduce((cents, g) => cents + Math.round(Number(g.totalAmount) * 100), 0) / 100;
+  const outstandingEntries = outstanding.reduce((n, g) => n + g.count, 0);
+  const outstandingOldest = outstanding.map((g) => g.oldestTxnDate).sort()[0] ?? null;
+  const outstandingAfterProcessing = outstanding.some((g) => g.arrivedAfterProcessing);
+  const outstandingHref = `/payroll/transaction-view?tab=outstanding&companyId=${batch.companyId}&year=${txnYear}&month=${String(txnMonth).padStart(2, '0')}`;
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
@@ -238,9 +269,12 @@ export default async function BatchPage({
             {batch.status === 'processed' && resetOn && (
               <form action={resetAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
+                {/* d0d2c9d1 — returning to Draft and calculating again DOES collect every outstanding
+                    transaction for the month (the attach guard runs on a full draft→processed
+                    generation). That is the one working recovery path and nothing said so. */}
                 <ConfirmSubmit
                   title={t('resetTitle')}
-                  description={t('resetDescription')}
+                  description={`${t('resetDescription')} ${t('resetCollectsOutstanding')}`}
                   confirmLabel={t('resetConfirm')}
                   reasonField={{ name: 'reason', label: t('resetReasonLabel'), placeholder: t('resetReasonPlaceholder'), required: true }}
                 >
@@ -270,6 +304,44 @@ export default async function BatchPage({
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
           <div className="font-medium">🙈 {t('unpublishedBannerTitle')}</div>
           <p className="mt-1">{t('unpublishedBannerBody')}</p>
+        </div>
+      )}
+
+      {/* d0d2c9d1 — BEFORE Generate on a scoped draft: the employees this run will leave out are
+          holding transactions for this month, and generating will walk straight past them. Informational,
+          never a block: a narrowed run can be exactly what the operator intends. */}
+      {scopeHolders.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+          <div className="font-medium">⚠ {t('scopeUnattachedTitle', { n: scopeHolders.length })}</div>
+          <p className="mt-1">{t('scopeUnattachedWarning')}</p>
+          <ul className="mt-1 space-y-0.5">
+            {scopeHolders.map((h) => (
+              <li key={h.employmentId}>
+                {t('outstandingTxnHolder', { name: h.name, n: h.count, amount: h.amount })}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* d0d2c9d1 — AFTER Generate: money for this month that never reached a payslip. The two causes
+          are split into separate sentences so the operator knows which one applies: a row that arrived
+          after processing is a different problem from one the run's scope left out. */}
+      {outstanding.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+          <div className="font-medium">
+            ⚠ {t('outstandingTxnTitle', { n: outstandingEntries, amount: outstandingTotal.toFixed(2) })}
+          </div>
+          <p className="mt-1">{t('outstandingTxnHint', { when: outstandingOldest ?? '—' })}</p>
+          {outstandingAfterProcessing && <p className="mt-1">{t('outstandingTxnAfterProcessing')}</p>}
+          {outstanding.some((g) => !g.arrivedAfterProcessing) && (
+            <p className="mt-1">{t('outstandingTxnLeftOutByScope')}</p>
+          )}
+          <p className="mt-1.5">
+            <Link href={outstandingHref} className="font-medium underline">
+              {t('outstandingTxnLink')}
+            </Link>
+          </p>
         </div>
       )}
 
@@ -812,7 +884,12 @@ export default async function BatchPage({
         <Card>
           <SectionHeader title={t('reprocessTitle')} />
           <div className="px-4 pb-4">
-            <p className="mb-3 text-xs text-muted-foreground">{t('reprocessHint')}</p>
+            {/* d0d2c9d1 — the counterpart to the reset copy. A selective reprocess passes
+                `reprocessSubset`, and the attach guard is `!subset && runType === 'regular'`, so it
+                does NOT collect outstanding transactions. Reset-and-regenerate is the path that does. */}
+            <p className="mb-3 text-xs text-muted-foreground">
+              {t('reprocessHint')} {t('reprocessDoesNotCollect')}
+            </p>
             <ReprocessPanel
               batchId={batch.id}
               employees={slips.map((sl) => ({ employmentId: sl.employmentId, employeeCode: sl.employeeCode, name: sl.name }))}

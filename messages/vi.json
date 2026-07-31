@@ -2950,6 +2950,16 @@
       "resetPayroll": "Đặt lại lương",
       "resetTitle": "Đặt lại quy trình tính lương",
       "resetDescription": "Bạn có chắc muốn đặt lại quy trình tính lương này không? Toàn bộ kết quả tính lương của đợt chạy này sẽ bị xóa và quy trình sẽ trở về trạng thái Nháp. Thao tác này chỉ nên được thực hiện bởi người dùng được ủy quyền.",
+      "scopeUnattachedTitle": "{n} nhân viên ngoài phạm vi kỳ lương này đang có giao dịch chờ",
+      "scopeUnattachedWarning": "Kỳ lương này được thu hẹp cho các nhân viên đã chọn. Việc tính toán sẽ không thu thập các giao dịch bên dưới — chúng vẫn tồn đọng cho đến khi một kỳ lương đầy đủ của tháng này được tính.",
+      "outstandingTxnTitle": "{n} giao dịch của tháng này, tổng {amount}, chưa lên phiếu lương",
+      "outstandingTxnHint": "Giao dịch cũ nhất được nhập ngày {when}. Đưa kỳ lương này về Bản nháp và tính lại sẽ thu thập toàn bộ.",
+      "outstandingTxnAfterProcessing": "Một số được nhập sau khi kỳ lương này đã được tính. Giao dịch chỉ được thu thập khi kỳ lương được tính lần đầu, nên mục nhập sau đó không được lấy.",
+      "outstandingTxnLeftOutByScope": "Một số thuộc về những nhân viên bị phạm vi kỳ lương này bỏ sót, nên việc tính toán đã không thu thập chúng.",
+      "outstandingTxnLink": "Xem giao dịch tồn đọng",
+      "outstandingTxnHolder": "{name} — {n} mục, {amount}",
+      "resetCollectsOutstanding": "Đưa về Bản nháp và tính lại cũng thu thập mọi giao dịch tồn đọng của tháng này.",
+      "reprocessDoesNotCollect": "Xử lý lại các nhân viên đã chọn KHÔNG thu thập giao dịch tồn đọng của tháng — chỉ việc đưa kỳ lương về Bản nháp và tính lại mới làm được.",
       "resetConfirm": "Đặt lại lương",
       "resetDone": "Đã đặt lại quy trình tính lương về Nháp",
       "resetOnlyProcessed": "Chỉ có thể đặt lại quy trình tính lương ở trạng thái Đã xử lý.",
@@ -3231,7 +3241,7 @@
         "pendingRun": "Đang chờ đợt lương",
         "unattachedOption": "Chưa gắn đợt — đang chờ đợt lương",
         "unattachedTitle": "Giao dịch chưa gắn đợt",
-        "unattachedHint": "Các mục này được nhập trước khi tháng đó có đợt lương. Mỗi mục sẽ tự động gắn vào đợt thường kỳ của tháng khi tính lương.",
+        "unattachedHint": "Các mục này được nhập trước khi có kỳ lương nào cho tháng của chúng. Mỗi mục sẽ gắn vào kỳ lương chính của tháng đó khi kỳ lương được tính lần đầu — với điều kiện kỳ lương bao gồm nhân viên đó. Một kỳ lương thu hẹp cho một số nhân viên sẽ để phần còn lại tồn đọng, và bất kỳ mục nào nhập sau khi kỳ lương đã tính đều không được lấy.",
         "unattachedEmpty": "Không có giao dịch chưa gắn đợt.",
         "periodInvalid": "Chọn tháng hợp lệ.",
         "componentRequired": "Hãy chọn khoản mục lương cho từng dòng thu nhập hoặc khấu trừ — khoản mục một lần được chi trả qua bảng lương nên phải xác định cách xử lý theo luật định.",
@@ -3323,7 +3333,8 @@
         "tabs": {
           "fixed": "Cố định",
           "individual": "Cá nhân",
-          "history": "Lịch sử"
+          "history": "Lịch sử",
+          "outstanding": "Chưa thanh toán"
         },
         "filters": {
           "company": "Công ty",
@@ -3355,7 +3366,23 @@
           "totalEmployerContributions": "Tổng đóng góp của người sử dụng lao động",
           "hrdfNotRegistered": "Chưa đăng ký"
         },
-        "exportCsv": "Xuất CSV"
+        "exportCsv": "Xuất CSV",
+        "outstanding": {
+          "hint": "Khoản tiền đã nhập cho một nhân viên và một tháng nhưng chưa xuất hiện trên phiếu lương, nhóm theo nhân viên và tháng. Tháng chưa có kỳ lương là bình thường — các mục đó chỉ đang chờ. Tháng mà kỳ lương chính đã được tính hoặc công bố thì đã bỏ qua chúng, và điều đó cần được xử lý.",
+          "empty": "Không có khoản nào tồn đọng — mọi giao dịch đã nhập đều đã lên phiếu lương.",
+          "colEntries": "Mục",
+          "colAmount": "Số tiền",
+          "colOldest": "Mục cũ nhất",
+          "colRunState": "Kỳ lương",
+          "grandTotal": "Tổng tồn đọng",
+          "strandedTotal": "trong đó {amount} thuộc các tháng đã tính kỳ lương",
+          "runStateNone": "Chưa có kỳ lương",
+          "runStateDraft": "Bản nháp",
+          "runStateProcessed": "Đã tính",
+          "runStateClosed": "Đã công bố",
+          "arrivedAfterProcessing": "Nhập sau khi kỳ lương tháng này đã được tính",
+          "leftOutByScope": "Kỳ lương đã bị thu hẹp và bỏ sót nhân viên này"
+        }
       }
     },
     "setup": {
@@ -3567,7 +3594,10 @@
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
         "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
         "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào"
-      }
+      },
+      "unattachedScopeTitle": "{n} nhân viên bị loại khỏi kỳ lương này đang có giao dịch chờ",
+      "unattachedScopeWarning": "Thu hẹp kỳ lương xuống một số nhân viên đồng nghĩa giao dịch của những người còn lại trong tháng này sẽ không được thu thập. Chúng vẫn tồn đọng cho đến khi một kỳ lương đầy đủ của tháng được tính. Bạn có thể tiếp tục — đây là cảnh báo, không phải rào chặn.",
+      "unattachedScopeEmployee": "{name} — {n} mục, {amount}"
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",

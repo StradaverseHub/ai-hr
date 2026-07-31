@@ -2712,6 +2712,16 @@
       "resetPayroll": "Reset payroll",
       "resetTitle": "Reset Payroll Process",
       "resetDescription": "Are you sure you want to reset this payroll process? All payroll calculation results for this payroll run will be cleared, and the process will return to Draft status. This action should only be performed by authorized users.",
+      "scopeUnattachedTitle": "{n} employee(s) outside this run's scope have transactions waiting",
+      "scopeUnattachedWarning": "This run is narrowed to selected employees. Calculating it will not collect the transactions below — they stay outstanding until a full run for this month is calculated.",
+      "outstandingTxnTitle": "{n} transaction(s) for this month, totalling {amount}, have not reached a payslip",
+      "outstandingTxnHint": "The oldest was entered on {when}. Returning this run to Draft and calculating it again collects all of them.",
+      "outstandingTxnAfterProcessing": "Some were entered after this run was calculated. Transactions are only collected when a run is calculated for the first time, so a later entry is not picked up.",
+      "outstandingTxnLeftOutByScope": "Some belong to employees this run's scope left out, so calculating it did not collect them.",
+      "outstandingTxnLink": "View outstanding transactions",
+      "outstandingTxnHolder": "{name} — {n} entry/entries, {amount}",
+      "resetCollectsOutstanding": "Returning to Draft and calculating again also collects every outstanding transaction for this month.",
+      "reprocessDoesNotCollect": "Reprocessing selected employees does NOT collect outstanding transactions for the month — only returning the run to Draft and calculating it again does.",
       "resetConfirm": "Reset Payroll",
       "resetDone": "Payroll process reset to Draft",
       "resetOnlyProcessed": "Only a processed payroll process can be reset.",
@@ -3231,7 +3241,7 @@
         "pendingRun": "Awaiting payroll run",
         "unattachedOption": "Unattached — awaiting payroll run",
         "unattachedTitle": "Unattached transactions",
-        "unattachedHint": "These entries were keyed in before a payroll run existed for their month. Each one attaches automatically to its month’s regular run when payroll is generated.",
+        "unattachedHint": "These entries were keyed in before a payroll run existed for their month. Each one attaches to its month’s regular run when that run is calculated for the first time — provided the run covers that employee. A run narrowed to some employees leaves the rest outstanding, and anything keyed in after a run is calculated is not picked up.",
         "unattachedEmpty": "No unattached transactions.",
         "periodInvalid": "Choose a valid month.",
         "componentRequired": "Pick a pay item for each earning or deduction row — one-off pay items are paid through payroll, so the item's statutory treatment must be defined.",
@@ -3323,7 +3333,8 @@
         "tabs": {
           "fixed": "Fixed",
           "individual": "Individual",
-          "history": "History"
+          "history": "History",
+          "outstanding": "Outstanding"
         },
         "filters": {
           "company": "Company",
@@ -3355,7 +3366,23 @@
           "totalEmployerContributions": "Total employer contributions",
           "hrdfNotRegistered": "Not registered"
         },
-        "exportCsv": "Export CSV"
+        "exportCsv": "Export CSV",
+        "outstanding": {
+          "hint": "Money entered against an employee and a month that has not reached a payslip, grouped by employee and month. A month with no payroll run yet is normal — those entries are simply waiting. A month whose regular run is already calculated or published has gone past them, and that needs action.",
+          "empty": "Nothing outstanding — every transaction entered has reached a payslip.",
+          "colEntries": "Entries",
+          "colAmount": "Amount",
+          "colOldest": "Oldest entry",
+          "colRunState": "Payroll run",
+          "grandTotal": "Total outstanding",
+          "strandedTotal": "of which {amount} is in months whose run has already been calculated",
+          "runStateNone": "No run yet",
+          "runStateDraft": "Draft",
+          "runStateProcessed": "Calculated",
+          "runStateClosed": "Published",
+          "arrivedAfterProcessing": "Entered after this month's run was calculated",
+          "leftOutByScope": "The run was narrowed and left this employee out"
+        }
       }
     },
     "setup": {
@@ -3567,7 +3594,10 @@
         "missingBank": "Bank details incomplete",
         "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
         "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged"
-      }
+      },
+      "unattachedScopeTitle": "{n} employee(s) left out of this run have transactions waiting",
+      "unattachedScopeWarning": "Narrowing a run to some employees means the others' transactions for this month are not collected. They stay outstanding until a full run for the month is calculated. You can continue — this is a warning, not a block.",
+      "unattachedScopeEmployee": "{name} — {n} entry/entries, {amount}"
     },
     "guide": {
       "title": "Payroll Workflow Guide",

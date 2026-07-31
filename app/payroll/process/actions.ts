@@ -8,6 +8,7 @@ import { createAdditionalRun, createBatch, preProcessAdvisoryForSelection, updat
 import { getActivePayrollCycle } from '@/core/payroll-cycle';
 import { listEmployees, listEmployeesForPayrollRun, type PayrollRunEmployeeRow } from '@/core/read';
 import { companiesMissingCycle, encodeRunGroupResult, runMultiCompanyPayroll, type IntendedRunType } from '@/core/payroll-run-group';
+import { unattachedHoldersOutsideSelection, type UnattachedHolderRow } from '@/core/payroll-view';
 
 /** Step 2 population (plan §2) — fetched by the client once company(ies) + period are chosen. Accepts one
  *  or more company ids so the multi-company run's Step-2 list spans every selected company (3653d14b). */
@@ -65,6 +66,33 @@ export async function checkPayrollCycleReadiness(input: {
   const companyIds = (input.companyIds ?? []).filter(Boolean);
   if (companyIds.length === 0) return [];
   return companiesMissingCycle(s, companyIds, input.intendedRunType);
+}
+
+/**
+ * Feedback d0d2c9d1 — Validation-step PRE-FLIGHT: which employees the run is about to LEAVE OUT are
+ * holding transactions that have not reached a payslip, and how much.
+ *
+ * This is the first of the two ways RM23,170 went unpaid: `generatePayslips` only attaches on
+ * `!subset && runType === 'regular'`, so narrowing a run to some employees silently strands everyone
+ * else's transactions for that month. Nothing said so at any point before or after submit.
+ *
+ * DELIBERATELY A SEPARATE ACTION, NOT A FIELD ON PreProcessAdvisory. generateAction (app/payroll/
+ * actions.ts) and app/payroll/[batchId]/page.tsx both SUM the advisory's optional arrays into a
+ * `warnings` count that decides whether the ackWarnings=1 confirm dialog is demanded. Adding an array
+ * there would silently change that gate for every tenant on every run — for something that is purely
+ * informational. It is modelled on checkPayrollCycleReadiness above, which is informational for the
+ * same reason: a narrowed run can be exactly what the operator intends.
+ *
+ * Returns [] for an UNSCOPED run: a full regular run collects every outstanding row for the month, so
+ * there is nothing to warn about. Read-only — no state mutation, no event.
+ */
+export async function checkUnattachedForSelection(input: {
+  companyIds: string[];
+  payPeriod: string;
+  employmentIds?: string[];
+}): Promise<UnattachedHolderRow[]> {
+  const s = await getSession();
+  return unattachedHoldersOutsideSelection(s, input);
 }
 
 /**

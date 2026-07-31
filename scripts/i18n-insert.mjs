@@ -29,7 +29,10 @@ for (const locale of LOCALES) {
     let parent = root;
     for (const seg of segments) {
       if (parent[seg] == null || typeof parent[seg] !== 'object') {
-        throw new Error(`${file}: namespace ${block.path} missing at segment "${seg}"`);
+        // `create` is opt-in per block so a TYPO in an existing namespace path still throws loudly
+        // instead of silently conjuring a second, parallel namespace that renders as raw keys.
+        if (!block.create) throw new Error(`${file}: namespace ${block.path} missing at segment "${seg}"`);
+        parent[seg] = {};
       }
       parent = parent[seg];
     }

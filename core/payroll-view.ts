@@ -31,6 +31,11 @@ import { actorOf, appendEvent } from '../db/events';
 import { toCsv } from '../lib/csv';
 // 9cbf5e0d — one Employee Status engine, shared with Personnel and the dashboard.
 import { employmentStatusSql } from './employment-status-sql';
+// d0d2c9d1 — the scope resolver generatePayslips itself uses, so the "who will this run leave out?"
+// warning and the attach guard can never disagree about what a departments-only scope means.
+// (core/payroll is a pack boundary and core/payroll-view.ts is ALWAYS_ALLOWED — implementation files
+// import each other freely under ADR-0080 D9. No cycle: core/payroll does not import this module.)
+import { resolveBatchScopeFilter, type BatchScope } from './payroll';
 import {
   appUser,
   assignment,
@@ -342,6 +347,196 @@ export function listIndividualTxnCreators(
       )
       .orderBy(asc(creatorPerson.fullName));
     return rows.filter((r): r is { id: string; name: string } => r.id != null && r.name != null);
+  });
+}
+
+// ───────────────────── 2b. Outstanding (unattached) transaction summary ─────────────────────
+
+/** One (employee, month) group of transactions that were entered but have never reached a payslip. */
+export type UnattachedGroupRow = {
+  employmentId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  companyId: string;
+  company: string;
+  payPeriod: string;
+  count: number;
+  totalAmount: string;
+  oldestTxnDate: string;
+  /** The month's REGULAR run, which is the only run that ever collects transactions. */
+  runState: 'none' | 'draft' | 'processed' | 'closed';
+  /** The row was keyed in AFTER that run was processed — one of the two ways money strands. */
+  arrivedAfterProcessing: boolean;
+};
+
+/**
+ * Money that was entered against an employee and a month and has never appeared on a payslip
+ * (feedback d0d2c9d1) — grouped, totalled, and labelled with the state of the month's regular run.
+ *
+ * WHY THIS EXISTS WHEN THE ROWS WERE ALREADY LISTABLE. /payroll/transaction-view?tab=individual
+ * &txnStatus=unattached has listed every `batch_id IS NULL` row since f1564110 Phase 2, RBAC- and
+ * RLS-fenced. Eleven rows totalling RM23,170 still accumulated unnoticed across several months,
+ * because a flat list of individual rows answers "show me the transactions" and nobody was asking
+ * that question. What was missing is the aggregate: a per-employee, per-month total, a grand total,
+ * and — critically — whether the month's run has already gone past these rows.
+ *
+ * THE RUN-STATE COLUMN IS THE POINT, NOT DECORATION. An unattached row in a month with no run yet is
+ * the DESIGNED pre-run entry flow (f1564110 Phase 2) and is not stranded at all. An unattached row in
+ * a month whose regular run is already processed or closed IS the fault. Showing only the fault class
+ * would hide the pipeline; showing both undifferentiated is what let RM23,170 go invisible. So the
+ * distinction is a column, and there is deliberately NO default filter on it.
+ *
+ * THE JOIN PREDICATE IS THE INVARIANT. The batch LEFT JOIN is keyed on run_type = 'regular' because
+ * `generatePayslips` only ever attaches on `!subset && batch.runType === 'regular'` (core/payroll.ts).
+ * An off_cycle / bonus / adjustment run for the same month never collects, so joining without that
+ * predicate would report a month as "processed" on the strength of a sibling run that was never
+ * going to attach anything.
+ *
+ * `arrivedAfterProcessing` derives from the payroll-batch.processed DOMAIN EVENT, not from a column:
+ * there is no payroll_batch.processed_at, and payroll_batch.created_at is the wrong instant (the
+ * batch row exists from the moment the draft is created, long before it is processed). It is a
+ * correlated scalar subquery rather than a join so it cannot multiply the grouped counts.
+ *
+ * DEGRADES, NEVER FLIPS. domain_event rows with a NULL subject_employment_id are admin-only under
+ * ADR-0015 and 'payroll-batch.processed' carries no subject, so a payroll_partner reads NULL here and
+ * every group comes back `arrivedAfterProcessing: false` — "outstanding, cause unknown". That loses a
+ * qualifier; it never reports an outstanding group as not outstanding.
+ *
+ * Read-only, no domain event (pure SELECT). Fails CLOSED on an empty scope, like every read here.
+ */
+export function listUnattachedTxnSummary(
+  ctx: SessionContext,
+  p: { companyIds: string[]; year?: number; month?: number; employmentId?: string },
+): Promise<UnattachedGroupRow[]> {
+  if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
+  return withTenant(ctx, async (tx) => {
+    // The instant the month's regular run was processed. Correlated on the grouped batch id, so it is
+    // a per-group constant — which is what lets the bool below be a plain max() comparison.
+    const processedAt = sql<Date | null>`(
+      select max(de.occurred_at) from domain_event de
+      where de.aggregate_type = 'payroll-batch'
+        and de.aggregate_id = ${payrollBatch.id}
+        and de.event_type = 'payroll-batch.processed'
+    )`;
+
+    const rows = await tx
+      .select({
+        employmentId: payrollIndividualTxn.employmentId,
+        employeeName: person.fullName,
+        employeeCode: employment.employeeCode,
+        companyId: sql<string>`${payrollIndividualTxn.companyId}`,
+        company: company.legalName,
+        payPeriod: sql<string>`${payrollIndividualTxn.payPeriod}`,
+        count: sql<number>`count(*)::int`,
+        totalAmount: sql<string>`sum(${payrollIndividualTxn.amount})::numeric(12,2)`,
+        oldestTxnDate: sql<string>`to_char(min(${payrollIndividualTxn.txnDate}), 'YYYY-MM-DD')`,
+        runState: sql<'none' | 'draft' | 'processed' | 'closed'>`coalesce(${payrollBatch.status}::text, 'none')`,
+        // bool_or(created_at > processedAt) collapses to max(created_at) > processedAt because
+        // processedAt is constant within the group. NULL (no processed event, or an event this role
+        // cannot read) coalesces to false — "cause unknown", never "not outstanding".
+        arrivedAfterProcessing: sql<boolean>`coalesce(max(${payrollIndividualTxn.createdAt}) > ${processedAt}, false)`,
+      })
+      .from(payrollIndividualTxn)
+      // Only the month's REGULAR run ever attaches — see the doc comment. Joined on the row's own
+      // (company, period) columns, which are authoritative since 0175.
+      .leftJoin(
+        payrollBatch,
+        and(
+          eq(payrollBatch.companyId, payrollIndividualTxn.companyId),
+          eq(payrollBatch.payPeriod, payrollIndividualTxn.payPeriod),
+          eq(payrollBatch.runType, 'regular'),
+        ),
+      )
+      .innerJoin(company, eq(company.id, payrollIndividualTxn.companyId))
+      .innerJoin(employment, eq(employment.id, payrollIndividualTxn.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          isNull(payrollIndividualTxn.batchId), // "entered but never paid" — the whole population
+          inArray(payrollIndividualTxn.companyId, p.companyIds),
+          periodFilter(p.year, p.month, payrollIndividualTxn.payPeriod),
+          p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
+        ),
+      )
+      .groupBy(
+        payrollIndividualTxn.employmentId,
+        payrollIndividualTxn.payPeriod,
+        payrollIndividualTxn.companyId,
+        person.fullName,
+        employment.employeeCode,
+        company.legalName,
+        payrollBatch.id,
+        payrollBatch.status,
+      )
+      .orderBy(desc(sql`${payrollIndividualTxn.payPeriod}`), asc(person.fullName));
+    return rows as UnattachedGroupRow[];
+  });
+}
+
+/** One employee a narrowed run is about to leave out, with what they are holding for that month. */
+export type UnattachedHolderRow = { employmentId: string; name: string; count: number; amount: string };
+
+/**
+ * The employees a NARROWED run will leave out who are holding transactions for that month
+ * (feedback d0d2c9d1). Backs the Payroll Process wizard's Validation-step pre-flight and the same
+ * warning on a scoped draft's own page.
+ *
+ * Returns [] for an UNSCOPED run: a full regular run collects every outstanding row for the month, so
+ * there is nothing to warn about. Lives here rather than in the server action so it is reachable by a
+ * test without a session — the action is a thin `getSession()` wrapper over it.
+ *
+ * Read-only, no domain event (pure SELECT via listUnattachedTxnSummary).
+ */
+export async function unattachedHoldersOutsideSelection(
+  ctx: SessionContext,
+  p: { companyIds: string[]; payPeriod: string; employmentIds?: string[] },
+): Promise<UnattachedHolderRow[]> {
+  const companyIds = (p.companyIds ?? []).filter(Boolean);
+  if (companyIds.length === 0 || !/^\d{4}-\d{2}$/.test(p.payPeriod)) return [];
+  const selected = (p.employmentIds ?? []).filter(Boolean);
+  if (selected.length === 0) return []; // unscoped run — it collects everything
+  const [year, month] = p.payPeriod.split('-').map(Number);
+
+  const groups = await listUnattachedTxnSummary(ctx, { companyIds, year, month });
+  const inScope = new Set(selected);
+  // Money is summed in CENTS. Adding the decimal strings as floats would drift on exactly the
+  // four-figure bonuses this feature exists to surface.
+  const byEmployment = new Map<string, { employmentId: string; name: string; count: number; cents: number }>();
+  for (const g of groups) {
+    if (inScope.has(g.employmentId)) continue;
+    const acc = byEmployment.get(g.employmentId) ?? { employmentId: g.employmentId, name: g.employeeName, count: 0, cents: 0 };
+    acc.count += g.count;
+    acc.cents += Math.round(Number(g.totalAmount) * 100);
+    byEmployment.set(g.employmentId, acc);
+  }
+  return [...byEmployment.values()]
+    .sort((a, b) => b.cents - a.cents)
+    .map(({ employmentId, name, count, cents }) => ({ employmentId, name, count, amount: (cents / 100).toFixed(2) }));
+}
+
+/**
+ * The same warning as above, for a SCOPED DRAFT that already exists (feedback d0d2c9d1).
+ *
+ * The wizard is not the only way a run gets narrowed: `updateBatchScope` (core/payroll.ts) re-narrows an
+ * existing draft on resume, and on the single-company path `createBatch` and `generatePayslips` are two
+ * separate operator steps, so there is a second moment where the warning has somewhere to land.
+ *
+ * Scope resolution goes through `resolveBatchScopeFilter` — the SAME helper generatePayslips itself uses
+ * — rather than reading scope.employmentIds directly. A departments-only scope resolves to its current
+ * assignees, and a second implementation of that rule here would drift from the attach guard and make
+ * the warning lie in exactly the case it exists for.
+ */
+export async function unattachedHoldersOutsideBatchScope(
+  ctx: SessionContext,
+  p: { companyId: string; payPeriod: string; scope: BatchScope | null },
+): Promise<UnattachedHolderRow[]> {
+  const resolved = await withTenant(ctx, (tx) => resolveBatchScopeFilter(tx, p.scope));
+  // `employmentIds: null` ⇒ no scope ⇒ whole company ⇒ the run collects everything: nothing to warn about.
+  if (resolved.employmentIds == null || resolved.employmentIds.length === 0) return [];
+  return unattachedHoldersOutsideSelection(ctx, {
+    companyIds: [p.companyId],
+    payPeriod: p.payPeriod,
+    employmentIds: resolved.employmentIds,
   });
 }
 
