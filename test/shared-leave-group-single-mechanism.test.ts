@@ -135,8 +135,8 @@ describe('1ef1cf95 · sharing caps what is TAKEN, never what is GRANTED', () => 
     // (the day figures) live on scheme_leave_entitlement / leave_policy, per leave type — the group never
     // restates them.
     const block = schemaSrc.slice(
-      schemaSrc.indexOf("export const schemeLeaveCombinedLimit = pgTable"),
-      schemaSrc.indexOf("export const schemeLeaveCombinedLimitMember = pgTable"),
+      schemaSrc.indexOf("export const leaveSharedGroup = pgTable"),
+      schemaSrc.indexOf("export const leaveSharedGroupMember = pgTable"),
     );
     expect(block).toContain("numeric('total_limit_days'");
     expect(block).not.toMatch(/service_bands|annual_days|accrual|carry_forward/);
@@ -150,8 +150,8 @@ describe('1ef1cf95 · sharing caps what is TAKEN, never what is GRANTED', () => 
     // may take. The table-name assertion above already forbids a second table; this pins the column to the
     // group and forbids a rival per-type column on leave_type.
     const block = schemaSrc.slice(
-      schemaSrc.indexOf("export const schemeLeaveCombinedLimit = pgTable"),
-      schemaSrc.indexOf("export const schemeLeaveCombinedLimitMember = pgTable"),
+      schemaSrc.indexOf("export const leaveSharedGroup = pgTable"),
+      schemaSrc.indexOf("export const leaveSharedGroupMember = pgTable"),
     );
     expect(block).toContain("numeric('max_days_per_application'");
     // COMMENTS STRIPPED FIRST. This guard forbids a rival COLUMN, and it was matching prose: r86a added
@@ -167,36 +167,57 @@ describe('1ef1cf95 · sharing caps what is TAKEN, never what is GRANTED', () => 
   });
 });
 
-describe('1ef1cf95 · group membership is already visible on the Leave Type screen', () => {
-  it('a scoped Entitlement step names the other types sharing the cap', () => {
-    // 6c775d68's badge. Without it, editing a shared total from one type silently moves another type.
-    expect(schemeConfigSrc).toContain("t('sharedWithTypes'");
-    expect(schemeConfigSrc).toContain("t('perTypeSharedPool'");
+describe('1ef1cf95 · the group is configured at LEAVE TYPE level, from one labelled control', () => {
+  // REWRITTEN IN r88. This block used to assert against the BENEFIT SCHEME config component
+  // (`schemeConfigSrc`), because that is where groups lived. The reporter rejected that shape outright
+  // — "I don't want to improve the existing Benefit Scheme selector" — so the surface moved to
+  // components/leave-shared-group-config.tsx and these assertions moved with it. The INVARIANTS are the
+  // ones r82a established and they are unchanged: a labelled way in, and exactly ONE of it.
+
+  it('the group is named, capped and given its members from ONE labelled form', () => {
+    expect(groupConfigSrc).toContain("t('nameLabel')");
+    expect(groupConfigSrc).toContain("t('membersLabel')");
+    expect(groupConfigSrc).toContain("t('maxPerApplicationLabel')");
   });
 
-  it('a group can be created from a LABELLED control, not only by discovering the drag (r82a 1ef1cf95)', () => {
-    // The reporter reported this feature as missing because the only way to reach it was to drag one row
-    // onto another, with nothing on screen saying so. The button is the fix — and it must open the SAME
-    // dialog and post the SAME action as the drag, so exactly one CreateGroupDialog may be declared and
-    // exactly one component may post groupLeaveTypes. A second creation path is a second mechanism.
-    expect(schemeConfigSrc).toContain("t('createGroupButton')");
-    expect(schemeConfigSrc.match(/function CreateGroupDialog\(/g) ?? []).toHaveLength(1);
-    expect(schemeConfigSrc.match(/<CreateGroupDialog\b/g) ?? []).toHaveLength(1);
-    expect(schemeConfigSrc.match(/action=\{actions\.groupLeaveTypes\}/g) ?? []).toHaveLength(1);
+  it('there is exactly ONE create path, and it is a labelled control rather than a discovered gesture', () => {
+    // The reporter originally reported this feature as missing because the only way to reach it was to
+    // DRAG one row onto another, with nothing on screen saying so. A labelled form is the fix. Exactly
+    // one create action may be posted: a second creation path is a second mechanism, and the one that is
+    // not exercised is the one that silently rots.
+    expect(groupConfigSrc).toContain("t('createTitle')");
+    expect(groupConfigSrc.match(/action=\{actions\.create\}/g) ?? []).toHaveLength(1);
+    // …and the drag-to-group gesture really is gone, not merely unused.
+    expect(groupConfigSrc).not.toMatch(/onDrop|dragStart|draggable/i);
   });
 
   it('every locale carries the three shared-group strings', () => {
     // tsc cannot see a missing translation key; six locales, no guard.
     for (const loc of LOCALES) {
       const m = JSON.parse(read(`../messages/${loc}.json`));
-      expect(m.admin.benefitScheme.sharedWithTypes, `${loc} sharedWithTypes`).toBeTruthy();
-      expect(m.admin.benefitScheme.perTypeSharedPool, `${loc} perTypeSharedPool`).toBeTruthy();
+      // r88 — the surface moved from admin.benefitScheme to its own admin.leave.sharedGroup namespace
+      // when the group stopped being a property of a benefit scheme. Same guard, new home: tsc cannot
+      // see a missing translation key, and the i18n coverage check skips multi-namespace files and only
+      // matches literal t('key'), so these six locales are not covered anywhere else.
+      const g = m.admin.leave.sharedGroup;
+      expect(g, `${loc} admin.leave.sharedGroup`).toBeTruthy();
+      for (const k of [
+        'createTitle',
+        'nameLabel',
+        'membersLabel',
+        'maxPerApplicationLabel',
+        'errorAlreadyGrouped',
+        'errorNameTaken',
+      ]) {
+        expect(g[k], `${loc} sharedGroup.${k}`).toBeTruthy();
+      }
+      // The two refusals the employee actually sees. They must stay DISTINCT in every locale — an
+      // employee told the wrong one would fix the wrong thing about their application.
       expect(m.leave.errors.combinedLimitExceeded, `${loc} combinedLimitExceeded`).toBeTruthy();
-      // r82a 1ef1cf95 — the affordance + the per-application cap. The i18n guard skips multi-namespace
-      // files and only matches literal t('key'), so these six locales are not covered anywhere else.
-      expect(m.admin.benefitScheme.createGroupButton, `${loc} createGroupButton`).toBeTruthy();
-      expect(m.admin.benefitScheme.maxDaysPerApplication, `${loc} maxDaysPerApplication`).toBeTruthy();
       expect(m.leave.errors.combinedApplicationTooLong, `${loc} combinedApplicationTooLong`).toBeTruthy();
+      expect(m.leave.errors.combinedLimitExceeded, `${loc} refusals must differ`).not.toBe(
+        m.leave.errors.combinedApplicationTooLong,
+      );
     }
   });
 });

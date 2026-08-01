@@ -29,6 +29,7 @@
  * out of the way of the cap under test.
  */
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -39,14 +40,14 @@ import {
   CombinedLeaveLimitExceededError,
   CombinedLeaveApplicationTooLongError,
 } from '../core/leave';
+import { createBenefitScheme, setEmploymentBenefitScheme } from '../core/benefit-scheme';
+// r88/1ef1cf95 — shared groups are no longer owned by a benefit scheme, so their CRUD moved out of
+// core/benefit-scheme.ts into its own tenant-level module.
 import {
-  createBenefitScheme,
-  createSchemeCombinedLimit,
-  updateSchemeCombinedLimit,
-  listSchemeCombinedLimits,
-  groupSchemeLeaveTypes,
-  setEmploymentBenefitScheme,
-} from '../core/benefit-scheme';
+  createLeaveSharedGroup,
+  updateLeaveSharedGroup,
+  listLeaveSharedGroups,
+} from '../core/leave-shared-group';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -126,8 +127,7 @@ async function specialLeaveGroup(
   types: Record<string, string>,
   maxDaysPerApplication: number | null,
 ) {
-  return createSchemeCombinedLimit(ctx, {
-    benefitSchemeId: scheme.id,
+  return createLeaveSharedGroup(ctx, {
     name: 'Special Leave Group',
     totalLimitDays: 10,
     maxDaysPerApplication,
@@ -268,8 +268,7 @@ describe('1ef1cf95 · the cap measures CALENDAR days (the documented reading of 
     await setEmploymentBenefitScheme(ctx, { employmentId: emp.employmentId, benefitSchemeId: scheme.id });
     await grant(emp.employmentId, wdA, 50);
     await grant(emp.employmentId, wdB, 50);
-    await createSchemeCombinedLimit(ctx, {
-      benefitSchemeId: scheme.id,
+    await createLeaveSharedGroup(ctx, {
       name: 'Weekend group',
       totalLimitDays: 10,
       maxDaysPerApplication: 3,
@@ -319,7 +318,7 @@ describe('1ef1cf95 · the cap is enforced on the APPROVAL path too', () => {
       today: TODAY,
     });
     // HR then sets the 3-day cap. The pending 4-day request must not sail through approval.
-    await updateSchemeCombinedLimit(ctx, {
+    await updateLeaveSharedGroup(ctx, {
       id: pool.id,
       name: 'Special Leave Group',
       totalLimitDays: 10,
@@ -351,7 +350,7 @@ describe('1ef1cf95 · configuring the cap', () => {
   it('create → list round-trips the cap; it is null when never set', async () => {
     const { ctx, scheme, types } = await fixture();
     await specialLeaveGroup(ctx, scheme, types, 3);
-    const [row] = await listSchemeCombinedLimits(ctx, { benefitSchemeId: scheme.id });
+    const [row] = await listLeaveSharedGroups(ctx);
     expect(row).toMatchObject({ name: 'Special Leave Group', totalLimitDays: 10, maxDaysPerApplication: 3 });
   });
 
@@ -359,31 +358,42 @@ describe('1ef1cf95 · configuring the cap', () => {
     const { ctx, scheme, types } = await fixture();
     const pool = await specialLeaveGroup(ctx, scheme, types, null);
     const ids = Object.values(types);
-    let [row] = await listSchemeCombinedLimits(ctx, { benefitSchemeId: scheme.id });
+    let [row] = await listLeaveSharedGroups(ctx);
     expect(row.maxDaysPerApplication).toBeNull();
-    await updateSchemeCombinedLimit(ctx, { id: pool.id, name: 'Special Leave Group', totalLimitDays: 10, maxDaysPerApplication: 3, leaveTypeIds: ids });
-    [row] = await listSchemeCombinedLimits(ctx, { benefitSchemeId: scheme.id });
+    await updateLeaveSharedGroup(ctx, { id: pool.id, name: 'Special Leave Group', totalLimitDays: 10, maxDaysPerApplication: 3, leaveTypeIds: ids });
+    [row] = await listLeaveSharedGroups(ctx);
     expect(row.maxDaysPerApplication).toBe(3);
     // Omitting the field CLEARS it — the reason every form that posts this action carries it.
-    await updateSchemeCombinedLimit(ctx, { id: pool.id, name: 'Special Leave Group', totalLimitDays: 10, leaveTypeIds: ids });
-    [row] = await listSchemeCombinedLimits(ctx, { benefitSchemeId: scheme.id });
+    await updateLeaveSharedGroup(ctx, { id: pool.id, name: 'Special Leave Group', totalLimitDays: 10, leaveTypeIds: ids });
+    [row] = await listLeaveSharedGroups(ctx);
     expect(row.maxDaysPerApplication).toBeNull();
   });
 
-  it('the drag/button create path (groupSchemeLeaveTypes) carries the cap too', async () => {
-    const { ctx, scheme, types, employmentId } = await fixture();
-    await groupSchemeLeaveTypes(ctx, {
-      benefitSchemeId: scheme.id,
+  // r88/1ef1cf95 — was "the drag/button create path (groupSchemeLeaveTypes) carries the cap too".
+  // That second create path is GONE: groups moved off benefit schemes, and with them the drag-to-group
+  // entrypoint. The assertion's real subject was "EVERY way of creating a group carries the cap", and
+  // the way to keep that honest now is to pin that there is exactly ONE creator — so there is no second
+  // path that could forget. Kept rather than deleted, because "only one way in" is the stronger claim.
+  it('there is exactly ONE create path, and it carries the cap', async () => {
+    const { ctx, types, employmentId } = await fixture();
+    await createLeaveSharedGroup(ctx, {
       name: 'Grouped in the UI',
       totalLimitDays: 10,
       maxDaysPerApplication: 3,
       leaveTypeIds: [types.MRL, types.CPL],
     });
-    const [row] = await listSchemeCombinedLimits(ctx, { benefitSchemeId: scheme.id });
+    const [row] = await listLeaveSharedGroups(ctx);
     expect(row.maxDaysPerApplication).toBe(3);
     await expect(
       requestLeave(ctx, { employmentId, leaveTypeId: types.MRL, startDate: '2026-06-01', endDate: '2026-06-04', today: TODAY }),
     ).rejects.toThrow(CombinedLeaveApplicationTooLongError);
+
+    // No surviving second creator: core/leave-shared-group.ts is the only module that inserts a group,
+    // and core/benefit-scheme.ts must not have grown one back.
+    const schemeSrc = readFileSync(new URL('../core/benefit-scheme.ts', import.meta.url), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    expect(schemeSrc).not.toMatch(/insert\(\s*leaveSharedGroup\s*\)/);
   });
 
   it('rejects a zero, negative or absurd cap rather than storing a group nobody can apply to', async () => {
@@ -391,26 +401,26 @@ describe('1ef1cf95 · configuring the cap', () => {
     const ids = Object.values(types);
     for (const bad of [0, -1]) {
       await expect(
-        createSchemeCombinedLimit(ctx, { benefitSchemeId: scheme.id, name: 'Bad', totalLimitDays: 10, maxDaysPerApplication: bad, leaveTypeIds: ids }),
+        createLeaveSharedGroup(ctx, { name: 'Bad', totalLimitDays: 10, maxDaysPerApplication: bad, leaveTypeIds: ids }),
       ).rejects.toThrow(/greater than zero/i);
     }
     await expect(
-      createSchemeCombinedLimit(ctx, { benefitSchemeId: scheme.id, name: 'Huge', totalLimitDays: 10, maxDaysPerApplication: 1000, leaveTypeIds: ids }),
+      createLeaveSharedGroup(ctx, { name: 'Huge', totalLimitDays: 10, maxDaysPerApplication: 1000, leaveTypeIds: ids }),
     ).rejects.toThrow(/too large/i);
   });
 
-  it('the DB refuses a non-positive cap even when the validator is bypassed (migration 0327 CHECK)', async () => {
+  it('the DB refuses a non-positive cap even when the validator is bypassed (the CHECK carried forward into 0342)', async () => {
     // Defence in depth: the named CHECK is the guarantee an importer or a hand-written UPDATE cannot store
     // a cap that would refuse every application. Asserted through the driver error, not the ORM wrapper.
     const { ctx, scheme, types } = await fixture();
     const pool = await specialLeaveGroup(ctx, scheme, types, 3);
     const attempt = owner.db.execute(
-      sql`update scheme_leave_combined_limit set max_days_per_application = 0 where id = ${pool.id}`,
+      sql`update leave_shared_group set max_days_per_application = 0 where id = ${pool.id}`,
     );
     // Drizzle wraps the driver error (DrizzleQueryError), so the SQLSTATE and the constraint name live on
     // `.cause` — asserting on the wrapper would pass on ANY failed query, including a typo in the SQL above.
     await expect(attempt).rejects.toMatchObject({
-      cause: { code: '23514', constraint_name: 'scheme_leave_combined_limit_max_days_check' },
+      cause: { code: '23514', constraint_name: 'leave_shared_group_max_days_check' },
     });
   });
 });

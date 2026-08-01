@@ -79,7 +79,16 @@ CREATE TABLE IF NOT EXISTS "leave_shared_group" (
 	"name" text NOT NULL,
 	"total_limit_days" numeric(6, 2) NOT NULL,
 	"max_days_per_application" numeric(6, 2),
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	-- CARRIED FORWARD FROM 0327, which this migration supersedes. The first draft of this table dropped
+	-- these two CHECKs along with the old table, and test/shared-leave-group-max-days.test.ts caught it —
+	-- it exists precisely to prove an importer or a hand-written UPDATE cannot store a cap that would
+	-- refuse EVERY application. Renaming a table is not a reason to lose its defence in depth.
+	CONSTRAINT "leave_shared_group_max_days_check"
+		CHECK ("max_days_per_application" IS NULL
+		       OR ("max_days_per_application" > 0 AND "max_days_per_application" <= 999)),
+	CONSTRAINT "leave_shared_group_total_limit_check"
+		CHECK ("total_limit_days" > 0 AND "total_limit_days" <= 999)
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "leave_shared_group_name_uq" ON "leave_shared_group" ("tenant_id", "name");--> statement-breakpoint
