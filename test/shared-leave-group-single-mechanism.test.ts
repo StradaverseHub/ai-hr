@@ -23,6 +23,16 @@
  * the invariant, and re-pointing the names is not the same act as relaxing it. The assertions below are
  * therefore the SAME assertions against the SAME properties, aimed at the tables that now hold them.
  *
+ * WHAT CHANGED IN r90b, also deliberately and also in the open: the per-application cap is now ONE
+ * COMPOSITION OVER TWO SOURCES rather than one source. c6ffa725 asked for "Maximum Consecutive Leave" on
+ * the LEAVE TYPE, with a Calendar/Working unit the group cap does not have; r86a shipped only the per-year
+ * half and reported the item done, so r90b built the missing half. The assertion that used to forbid a
+ * per-type column now pins the composition instead — one function gathers both caps, the stricter binds,
+ * the refusal names which one, and each cap may be compared with an application in exactly one place. See
+ * the long comment on that test for the full reasoning; the invariant it protects (two configurations must
+ * never silently disagree about one application) is unchanged, and the count of ways to CONFIGURE sharing
+ * is still one.
+ *
  * Static source guard (repo convention for this area — see benefit-scheme-scoped-step.test.ts). Behaviour
  * of the mechanism is covered by test/combined-leave-limit.test.ts; nothing here re-tests it.
  */
@@ -142,28 +152,75 @@ describe('1ef1cf95 · sharing caps what is TAKEN, never what is GRANTED', () => 
     expect(block).not.toMatch(/service_bands|annual_days|accrual|carry_forward/);
   });
 
-  it('the per-application cap lives on THAT group, not on a mechanism of its own (r82a 1ef1cf95)', () => {
-    // 1ef1cf95's second rule — "each application is capped at N consecutive days regardless of which type
-    // is chosen" — is a statement about the SAME set of leave types the shared pool already names. Putting
-    // it anywhere else (a new table, a per-leave-type column, a tenant-wide setting) recreates exactly the
-    // disagreement this file exists to prevent: two places that both decide how much leave one application
-    // may take. The table-name assertion above already forbids a second table; this pins the column to the
-    // group and forbids a rival per-type column on leave_type.
+  it('the per-application cap is ONE COMPOSITION, NOT ONE SOURCE (r82a 1ef1cf95, WIDENED by c6ffa725 r90b)', () => {
+    // WHAT THIS ASSERTION USED TO SAY, and why it changed. It used to forbid a per-leave-type
+    // per-application column outright — the group's max_days_per_application had to be the ONLY place a
+    // single application's length was decided. That was the right guard for a world with one scope, and it
+    // was written to be changed rather than deleted, in the open, by whoever needed the second one.
+    //
+    // c6ffa725 needed it. The reporter asked for "Maximum Consecutive Leave" ON THE LEAVE TYPE, with a unit
+    // (Calendar Days / Working Days) the group cap does not have. r86a shipped only the per-YEAR half and
+    // told them it was done; r90b builds the per-APPLICATION half, which necessarily means a second scope.
+    //
+    // THE INVARIANT IS UNCHANGED AND IS RE-AIMED, NOT RELAXED. What this file has always protected is that
+    // two configurations must never SILENTLY DISAGREE about how much leave one application may take. The
+    // fix for that is not "only one may exist" — it is "they are not independent". So:
+    //
+    //   ONE COMPOSITION, NOT ONE SOURCE. Both caps are gathered, measured and compared in exactly ONE
+    //   function, the stricter binds, and the refusal NAMES which limit bound and what it is. That is the
+    //   same shape entitledDays has carried for three entitlement sources since 4c48fd1f, asserted two
+    //   tests above — a composition is how this codebase already answers "several sources, one answer".
+    //
+    // A future reader asking "why are two per-application caps allowed here" should be able to answer it
+    // from this comment and the three assertions below without opening a plan document.
     const block = schemaSrc.slice(
       schemaSrc.indexOf("export const leaveSharedGroup = pgTable"),
       schemaSrc.indexOf("export const leaveSharedGroupMember = pgTable"),
     );
+    // 1. The GROUP's cap still lives on the group. Moving or duplicating it is still forbidden.
     expect(block).toContain("numeric('max_days_per_application'");
-    // COMMENTS STRIPPED FIRST. This guard forbids a rival COLUMN, and it was matching prose: r86a added
-    // leave_type.max_days_per_leave_year (a per-YEAR total, a different rule) and correctly cited this
-    // very table's max_days_per_application as the naming precedent in a comment. Grepping raw source
-    // turned a citation of the invariant into a violation of it. The column names are what matter.
+
+    // 2. The leave TYPE's cap is the ONLY other per-application column, and it carries its own UNIT — the
+    //    thing that makes it a different rule rather than a rival copy of the group's. COMMENTS STRIPPED
+    //    FIRST: this checks COLUMN NAMES, and r86a already proved that grepping raw source turns a comment
+    //    correctly CITING the group's column into a phantom violation.
     const leaveTypeBlock = schemaSrc
       .slice(schemaSrc.indexOf("export const leaveType = pgTable"), schemaSrc.indexOf("export const leavePolicy = pgTable"))
       .split('\n')
       .filter((l) => !l.trimStart().startsWith('//') && !l.trimStart().startsWith('*') && !l.trimStart().startsWith('/*'))
       .join('\n');
-    expect(leaveTypeBlock).not.toMatch(/max_days_per_application|max_consecutive|per_request_limit/);
+    // Still forbidden on leave_type: a column NAMED like the group's, or a third invented spelling. Only
+    // the two max_consecutive_* columns 0343 added are permitted, and only as a pair.
+    expect(leaveTypeBlock).not.toMatch(/max_days_per_application|per_request_limit|max_consecutive_span/);
+    expect(leaveTypeBlock).toContain("numeric('max_consecutive_days'");
+    expect(leaveTypeBlock).toContain("text('max_consecutive_unit')");
+
+    // 3. THE ASSERTION THAT REPLACES THE OLD PROHIBITION, and the one that actually protects the invariant.
+    //    Neither cap may be compared with an application anywhere except inside the single composition. Two
+    //    call sites of applicationSpanDays outside it, or a second throw of either refusal, is the silent
+    //    disagreement returning — so both refusals must be constructed in exactly ONE place each, and that
+    //    place must be the function that ranks the candidates.
+    const leaveSrc = read('../core/leave.ts');
+    const leaveCode = leaveSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(leaveCode.match(/new CombinedLeaveApplicationTooLongError\(/g) ?? []).toHaveLength(1);
+    expect(leaveCode.match(/new LeaveTypeApplicationTooLongError\(/g) ?? []).toHaveLength(1);
+    // ONE span helper, giving "consecutive days" its units once. `unit:` is how the per-type reading is
+    // selected; a second helper is how the two readings drift apart.
+    expect(leaveCode.match(/function applicationSpanDays\(/g) ?? []).toHaveLength(1);
+    expect(leaveCode).toMatch(/export function bindingApplicationLengthLimit\(/);
+    // Both throws must sit inside the resolver, not scattered through requestLeave and decideLeave. The
+    // resolver body is everything from its declaration to the next top-level function.
+    const resolver = leaveCode.slice(
+      leaveCode.indexOf('async function enforceApplicationLengthLimit('),
+      leaveCode.indexOf('async function enforceSharedLeaveGroupLimit('),
+    );
+    expect(resolver).toContain('new CombinedLeaveApplicationTooLongError(');
+    expect(resolver).toContain('new LeaveTypeApplicationTooLongError(');
+    // …and the shared-group guard must NOT have kept a copy of the cap it used to own.
+    const groupGuard = leaveCode.slice(leaveCode.indexOf('async function enforceSharedLeaveGroupLimit('));
+    expect(groupGuard.slice(0, groupGuard.indexOf('export function leaveYearWindow'))).not.toContain(
+      'applicationSpanDays(',
+    );
   });
 });
 
@@ -211,12 +268,28 @@ describe('1ef1cf95 · the group is configured at LEAVE TYPE level, from one labe
       ]) {
         expect(g[k], `${loc} sharedGroup.${k}`).toBeTruthy();
       }
-      // The two refusals the employee actually sees. They must stay DISTINCT in every locale — an
-      // employee told the wrong one would fix the wrong thing about their application.
-      expect(m.leave.errors.combinedLimitExceeded, `${loc} combinedLimitExceeded`).toBeTruthy();
-      expect(m.leave.errors.combinedApplicationTooLong, `${loc} combinedApplicationTooLong`).toBeTruthy();
-      expect(m.leave.errors.combinedLimitExceeded, `${loc} refusals must differ`).not.toBe(
-        m.leave.errors.combinedApplicationTooLong,
+      // The refusals the employee actually sees. They must stay DISTINCT in every locale — an employee
+      // told the wrong one would fix the wrong thing about their application.
+      //
+      // c6ffa725 r90b adds a THIRD to this set, and it is the one this file's widened guard is really
+      // about: leaveTypeApplicationTooLong and combinedApplicationTooLong both mean "this application is
+      // too long", but they are fixed in DIFFERENT SCREENS — the leave type, or the shared group. Two caps
+      // may be configured at once and only the binding one is thrown, so a locale that let these two
+      // collapse into the same sentence would send the employee to the wrong configuration, which is
+      // exactly the silent disagreement the single-mechanism rule exists to prevent.
+      const refusals = {
+        combinedLimitExceeded: m.leave.errors.combinedLimitExceeded,
+        combinedApplicationTooLong: m.leave.errors.combinedApplicationTooLong,
+        leaveTypeApplicationTooLong: m.leave.errors.leaveTypeApplicationTooLong,
+      };
+      for (const [k, v] of Object.entries(refusals)) expect(v, `${loc} ${k}`).toBeTruthy();
+      expect(new Set(Object.values(refusals)).size, `${loc} all three refusals must differ`).toBe(3);
+      // The unit names the third refusal interpolates — a cap with no unit reads as a mistake to an
+      // employee who counted the other way (Friday→Monday is 4 calendar days but 2 working days).
+      expect(m.leave.errors.consecutiveUnitCalendar, `${loc} consecutiveUnitCalendar`).toBeTruthy();
+      expect(m.leave.errors.consecutiveUnitWorking, `${loc} consecutiveUnitWorking`).toBeTruthy();
+      expect(m.leave.errors.consecutiveUnitCalendar, `${loc} units must differ`).not.toBe(
+        m.leave.errors.consecutiveUnitWorking,
       );
     }
   });
