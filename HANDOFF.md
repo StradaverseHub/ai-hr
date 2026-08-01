@@ -7,30 +7,33 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 
 ## CURRENT STATE — read this first (updated 2026-08-01, after r88)
 
-> ### DEPLOYED HEAD IS `main@3f2a8c6` — production on **290** migrations.
+> ### DEPLOYED HEAD IS `main@3f2a8c6` — production on **290** migrations. UNCHANGED BY r91.
 >
-> **Next free migration number is `0344`.** No held branch claims a number.
+> **Next free migration number is `0344`.** r91 added no migration.
 >
-> **r90 shipped `97a9b0ab` and `c6ffa725`.** `241817ef` is STEP 1 OF 2 and is deliberately left
-> `building` — its conversion script shipped, the section removal did NOT, and nothing user-visible
-> changed. Marking it deployed would tell the reporter it is done while their screen is unchanged.
+> ### ⚠️ r91 IS BUILT BUT NOT SHIPPED — DO NOT ASSUME IT IS LIVE
 >
-> **TO FINISH `241817ef`:** run `scripts/convert-approval-rules.ts` against production (dry run first),
-> show the reporter the converted list as their plan promises, then `--apply`, then delete the two
-> sections. The conversion criterion is `(template_id IS NULL OR leave_type_id IS NULL)` — NOT "has no
-> template", which is what my plan wrongly said. See r90 Decision 3.
+> Three commits sit on `build/r91a`, merged into `build/r91`. `tsc` is clean and there is no migration,
+> but **the full suite has never completed** — it was stopped externally twice, four lines in, with
+> 357 GB disk free, 44% memory free and nothing orphaned — and `next build` has not run.
+> **Finish both before merging.** `a1d82340`, `ec845c7d` and `862ed0ad` are still `building` on the
+> board, which is accurate: nothing of theirs is on production.
 >
-> **AFTER r88's `fa3f4ccb`, A LEAVE TYPE WITH NO POLICY AND NO SCHEME ROW GRANTS ZERO** — the statutory
-> floor no longer supplies days for an unconfigured type. Production is unaffected and was checked, not
-> assumed. See r89 Decision 3.
+> **THE r91 FINDINGS MATTER MORE THAN ITS CODE.** Two must reach the reporter before anyone acts:
+> `a1d82340` step 4 would delete the ONLY writer of `payroll_input.tp1_deduction` and the ONLY writer of
+> `payroll_permission_grant`; and `862ed0ad`'s itemisation has **no stored data behind it** for recurring
+> pay components. See the r91 entry.
 >
-> **THE POSTGRES WEDGE DIAGNOSIS IN r89 WAS WRONG AND IS CORRECTED IN r90.** `fsync=off` does NOT prevent
-> it; the checkpointer sits in uninterruptible kernel wait, which no Postgres setting can shorten.
-> `pkill -9` cannot kill it — kill the POSTMASTER. Renaming the data dir does not stop a running server.
-> Read the r90 section before touching the local cluster.
+> ### BROWSER VERIFICATION IS ACTIVE — and the recipe is in the r91 entry
 >
-> **Board: `approved = 6` · `contested = 1` (`c33d9bbb`, parked by the owner) · `building = 1`
-> (`241817ef`, step 2 pending) · `deployed = 541`.**
+> Run it against a **LOCAL dev server**, never production (production is behind WorkOS OAuth; dev uses
+> the `dev_user` identity switcher). `a324a4b3` and `6d671f44` are now CONFIRMED in a browser — the first
+> items verified since `4dbe04c6`. It also found a live defect: **"Seed Malaysia defaults" on Pay Items
+> silently does nothing**, suspected module-load evaluation of `countryPacks()`.
+>
+> **Board: `approved = 3` · `building = 3` (r91, not shipped) · `contested = 1` (`c33d9bbb`, parked) ·
+> `deployed = 541`.** The 3 approved are `956cec85` (blocked on the reporter), `fc776376` and `bb4f2265`
+> (both cross-cutting — SOLO AND LAST).
 >
 > **THE REPORTER THEN APPROVED ALL SEVEN PLANS from the 2026-07-31 planning pass.** Board is now
 > **`approved = 18` · `planned = 1` (97a9b0ab rev 2) · `contested = 2` · `deployed = 528`**.
@@ -658,6 +661,98 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r91 — 2026-08-01 — BUILT, NOT SHIPPED. The gate is incomplete; the findings are the deliverable
+
+> **STATUS: NOT DEPLOYED.** Three commits sit on `build/r91a`, merged into `build/r91`. `tsc` is clean on
+> the integration and there is **NO migration**, so no rehearsal is required — but **the full suite has
+> never completed** (it was stopped externally twice, 4 lines in, with 357 GB disk and 44% memory free
+> and nothing orphaned) and `next build` has not run. **Do not merge to main until both are green.**
+> The three items are still `building` on the board, which is accurate.
+
+**Built (three genuinely-missing slices):** `a1d82340` **step 3 only** · `ec845c7d` **bullet 2 only** ·
+`862ed0ad` (History default tab + bounded read + an honest heading).
+Commits: `a166f114`, `6febe0b1`, `a4bbeec1`.
+
+### THE ROUND'S VALUE IS WHAT IT REFUSED TO BUILD
+
+**1. HALF OF `a1d82340` WAS ALREADY SHIPPED, BY ITEMS RAISED OUT OF ITS OWN PLAN.** Step 1 ("make the
+runs finish") is `ef31d251`, shipped r87. Step 2 ("stop pay being stranded") is `d0d2c9d1`, shipped r87.
+The agent reused `d0d2c9d1`'s read rather than writing a second definition of "unpaid" — which is the
+right instinct and worth copying.
+
+**2. STEP 4 — "RETIRE THE UNUSED SCREENS" — IS A ONE-WAY DOOR, AND THREE OF ITS FOUR TARGETS ARE NOT
+DEAD.** This is the most important finding in the round and it must reach the reporter before anyone
+acts on that step:
+- **The run-screen input grid** (`app/payroll/[batchId]/ot-input-row.tsx`) is the ONLY manual entry point
+  for the four EA s.60/60A/60D overtime buckets, bonus, TP1 deduction and zakat on a draft batch — and
+  **the only form that writes `payroll_input.tp1_deduction`, which is the field `generatePayslips`
+  actually reads.** The plan's own "faults found but not raised" section records that the TP1 relief
+  screen writes `tp1_relief` and its only bridge (`prefillTp1FromSelfRelief`) is bound to no form. So
+  deleting this grid removes **the last path by which TP1 can reach a payslip at all**.
+- **`/admin/payroll-permissions`** is the only writer of `payroll_permission_grant`. Deleting it makes
+  `payroll.rollback`, `payroll.reprocess.selective` and their siblings **permanently unreachable** — a
+  capability narrowing dressed as a tidy-up.
+- **The file import** (`component-import.tsx` → `payroll_batch_component`) is one of the eight places
+  money can be added. Retiring it belongs INSIDE step 5's consolidation; removing it first decides where
+  that money goes by default rather than by design.
+- The fourth ("pay items never assigned to anybody") is DATA, not code, and `61bf109d` owns that screen.
+
+**3. `862ed0ad`'s ITEMISATION PREMISE IS FALSE.** The plan says "the component detail already exists on
+the payslip — the summary is an aggregation over it — so this is a disclosure change". That holds for
+ONE-OFF items (`f1564110` Phase 3 stamps per-transaction provenance into `statutory.recordLines`). It
+does **NOT** hold for RECURRING pay components: `core/payroll.ts` `earningsOf` sums them into
+`wageAllow`/`ot`/`bonusAmt`/`reimburse`/`deduct` and **stores no per-item detail**. So for the reporter's
+own example (Allowance MYR 200.00) **there is nothing stored to disclose**. Both ways to supply it are
+forbidden by the plan itself: stamping it at generate time is a payslip change (and would show nothing
+for the 18 historical runs), and re-deriving it from `employment_pay_component` is a recomputation that
+can disagree with the figure printed beside it. The screen now says so plainly instead. **If the reporter
+wants it, it is a write-path follow-up that can only ever work forwards.**
+
+**4. `ec845c7d` WAS ALREADY BUILT IN R45** — bullets 1, 3 and 4, and bullet 2 on the Fixed screen, all
+shipped as `ee21508c` / `65377ed0` / `b7fc8583`. Only bullet 2 on the Individual side was genuinely
+absent. Nothing was rebuilt.
+
+**5. A DEFECT THE AGENT FIXED ON ONE SCREEN AND DELIBERATELY DID NOT FIX ON THE OTHER.**
+`me.payslip.recordLinesHeading` reads "Recorded items (no cash impact)" over a list that can now contain
+PAID one-off items. Same mislabel it corrected in History — but that screen is the EMPLOYEE's own payslip,
+and quietly editing what an employee reads about their pay is not a side effect to take on an item scoped
+elsewhere. **Left, named, and worth raising as its own item.**
+
+### Browser verification — ACTIVATED, and it works. Here is the recipe
+
+**Point it at a LOCAL dev server, never production.** Production sits behind WorkOS OAuth that cannot be
+completed from here; `lib/session.ts` gates on `NODE_ENV`, and in dev the identity switcher resolves the
+principal from the `dev_user` cookie / `DEV_USER_ID` with no WorkOS at all.
+
+    cd .claude/worktrees/mainwt
+    pnpm db:migrate
+    node --env-file=.env.local --import tsx db/seed.ts     # seeds DEV_USER_ID (HR Admin, hr_admin)
+    pnpm dev                                                # :3000, no SHARE_PASSWORD gate locally
+    # then drive it with the claude-in-chrome tools
+
+**CONFIRMED WORKING, both previously unverified:**
+- **`a324a4b3`** — ONE Attendance menu, matching the reporter's screenshot exactly: Records, Holidays,
+  Shift settings, Attendance policy, Attendance allowance, Clocking location, Time off in lieu, Roster,
+  Import — with "My attendance" correctly still separate.
+- **`6d671f44`** — the Create New Employee wizard renders: five steps, Save draft, and "nothing is
+  created until the final step".
+
+**DEFECT FOUND, and this is what browser verification is for:** on Pay Items, **"Seed Malaysia defaults"
+silently does nothing.** Clicked it, waited, catalog still `(0)`, `pay_component` still 0 rows, no error
+and no toast. Suspected cause, NOT yet confirmed on production:
+
+    core/pay-components.ts:41
+    const DEFAULT_PAY_COMPONENTS = countryPacks().flatMap((p) => p.payComponents.defaults)
+
+That is evaluated **at module load**. `countryPacks()` reads a registry populated by side-effect imports,
+so if registration has not happened in that module graph yet the array is empty **for the life of the
+process** — the seed loop iterates zero times, inserts nothing, and reports success.
+`BACKFILL_COMPONENT_CODES` on the next line has the identical shape. **Not fixed here:** it is outside
+this round's approved scope, it needs reproducing on production rather than inferring, and it sits on the
+screen `a1d82340`/`61bf109d` are actively rewriting.
+
+---
 
 ## r90 — 2026-08-01 — two shipped, one deliberately half-shipped, and two plans of mine corrected by the agents
 
