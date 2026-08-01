@@ -1,6 +1,9 @@
 'use client';
 
 import { Fragment, useMemo, useState } from 'react';
+import { paginateRows } from '@/lib/pagination';
+import { ClientPager, useClientPageQuery } from '@/components/client-pager';
+
 import { useTranslations } from 'next-intl';
 import { Badge } from './ui/badge';
 import { ConfirmSubmit } from './ui/confirm-submit';
@@ -60,6 +63,8 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  const pq = useClientPageQuery();
+
   const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const statusLabel = (s: SalaryStatus) =>
@@ -100,6 +105,9 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, query, statusFilter, sortKey, sortDir]);
+
+  // Filter and sort first, page second — so sorting orders the whole matching set rather than one page.
+  const { rows: pageRows, state } = paginateRows(filtered, pq);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -229,7 +237,7 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
                 </td>
               </tr>
             ) : (
-              filtered.map((r) => (
+              pageRows.map((r) => (
                 <Fragment key={r.id}>
                   <tr className={`border-b border-border/60 ${r.status === 'active' ? 'bg-primary/5' : ''}`}>
                     <td className="whitespace-nowrap px-4 py-2 tabular-nums">{r.effectiveDate}</td>
@@ -361,6 +369,7 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
           </tbody>
         </table>
       </div>
+      <ClientPager state={state} />
     </div>
   );
 }

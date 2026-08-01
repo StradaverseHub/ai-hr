@@ -20,6 +20,8 @@ import { overtimeReport, attendanceDailyReport, performanceGoalReport, performan
 import { listProcessedPayslipsAcross, listPayrollRegisterAcross } from './payroll-view';
 import { listClaimTypes } from './claims';
 
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 /** Alignment/type of a field. Drives the AI designer's default alignment + numeric summary eligibility. */
 export type ReportFieldType = 'text' | 'date' | 'number' | 'currency' | 'status';
 
@@ -681,7 +683,7 @@ export async function runReportSpec(
   const title = L?.title || ds.label;
   return {
     title,
-    filename: `${ds.id}_${new Date().toISOString().slice(0, 10)}`,
+    filename: `${ds.id}_${todayInKualaLumpur()}`,
     columns,
     rows: body,
     layout: {

@@ -11,6 +11,8 @@ import { listLeaveRequestsPage } from '@/core/read';
 import { toCsvReport, toXlsxReport, type ReportData } from '@/lib/report-export';
 import { durationLabel } from '@/lib/leave-duration';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'];
 
 export async function GET(req: Request) {
@@ -57,7 +59,7 @@ export async function GET(req: Request) {
   });
 
   const data: ReportData = {
-    filename: `leave-requests-${new Date().toISOString().slice(0, 10)}`,
+    filename: `leave-requests-${todayInKualaLumpur()}`,
     title: t('requestsTitle'),
     columns: [
       t('colEmployee'),

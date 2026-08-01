@@ -12,6 +12,8 @@ import { isoWeekday, shiftSpan } from './attendance';
 import { approvedLeaveDates } from './leave';
 import { listEmployeesPage } from './read';
 
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 const DIFF_KINDS = ['percent', 'flat_hourly', 'flat_per_shift'] as const;
 
 function validateDifferential(d: ShiftDifferential | null | undefined): ShiftDifferential | null {
@@ -918,7 +920,7 @@ export function rosterVariance(
   p: { from: string; to: string; companyIds?: string[]; today?: string },
 ): Promise<RosterVarianceRow[]> {
   return withTenant(ctx, async (tx) => {
-    const today = p.today ?? new Date().toISOString().slice(0, 10);
+    const today = p.today ?? todayInKualaLumpur();
     const ras = await tx
       .select({
         employmentId: rosterAssignment.employmentId,

@@ -14,7 +14,6 @@ import {
   previewLeaveDeduction,
   validateLeaveDocument,
   isEmergencyReasonCategory,
-  todayInKualaLumpur,
   LeaveEditNotAllowedError,
   LeaveBackdatingNotAllowedError,
   LeaveAdvanceNoticeRequiredError,
@@ -53,6 +52,7 @@ import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } fr
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
 import { addResignationAttachment, submitResignation, withdrawResignation } from '@/core/offboarding';
 import { LeaveBalanceFrozenError } from '@/core/leave-encashment';
+import { timeInKualaLumpur, todayInKualaLumpur } from '@/lib/hr-date';
 import {
   createGoal,
   declinePeerFeedback,
@@ -70,9 +70,12 @@ async function resolveMe() {
   return { s, employmentId: me.employmentId };
 }
 
+/** SERVER clock, both halves read in MYT — see the same helper in app/attendance/clock/actions.ts.
+ *  The date used to be toISOString() (UTC), so a punch between midnight and 08:00 MYT was stamped
+ *  with YESTERDAY's date beside today's time. */
 function nowParts() {
   const d = new Date();
-  return { date: d.toISOString().slice(0, 10), time: d.toTimeString().slice(0, 5) };
+  return { date: todayInKualaLumpur(d), time: timeInKualaLumpur(d) };
 }
 
 /** Feedback 31474452 (Step 5): read-only pre-submission preview for the /me leave form — "this will deduct X

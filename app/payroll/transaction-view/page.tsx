@@ -18,6 +18,8 @@ import { IndividualTxnTable } from './individual-table';
 import { OutstandingTable } from './outstanding-table';
 import { HistoryTable } from './history-table';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 /**
  * Transaction View (feedback a4a05174; relocated to a top-level Payroll tab by feedback 59178702) —
  * the centralized READ-ONLY payroll transaction inquiry. Now a standalone module tab at
@@ -190,7 +192,7 @@ export default async function TransactionViewPage({
   const historyTruncated = historyRows.length > HISTORY_ROW_CAP;
   const shownHistoryRows = historyTruncated ? historyRows.slice(0, HISTORY_ROW_CAP) : historyRows;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   const nowYear = new Date().getFullYear();
   const years = Array.from({ length: 11 }, (_, i) => nowYear + 1 - i);
 

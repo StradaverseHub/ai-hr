@@ -6757,6 +6757,7 @@
     "boardTitle": "Papan status",
     "boardAll": "Semua",
     "bulkSelected": "{count} dipilih",
+    "bulkPageScope": "Pemilihan hanya untuk halaman ini",
     "bulkApprove": "Lulus",
     "bulkCancel": "Batal",
     "bulkRestore": "Pulihkan",

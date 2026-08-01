@@ -19,6 +19,8 @@ import {
 } from '@/core/attendance';
 import { DeviceNotRegisteredError, registerDevice } from '@/core/attendance-device';
 
+import { timeInKualaLumpur, todayInKualaLumpur } from '@/lib/hr-date';
+
 const PAGE = '/attendance/clock';
 
 /** Resolve the caller's own employment from the session — never from a form field. */
@@ -29,10 +31,12 @@ async function resolveMe() {
   return { s, employmentId: me.employmentId };
 }
 
-/** SERVER clock — the date/time the punch is recorded at. The browser's clock is display-only. */
+/** SERVER clock — the date/time the punch is recorded at. The browser's clock is display-only.
+ *  Both halves are read in MYT: the date used to be toISOString() (UTC), so a punch between midnight
+ *  and 08:00 MYT was stamped with YESTERDAY's date beside today's time. */
 function nowParts() {
   const d = new Date();
-  return { date: d.toISOString().slice(0, 10), time: d.toTimeString().slice(0, 5) };
+  return { date: todayInKualaLumpur(d), time: timeInKualaLumpur(d) };
 }
 
 /** The optional hidden lat/lng fields the client-side geolocation capture writes (ADR-0070). Missing/

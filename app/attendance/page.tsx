@@ -11,6 +11,8 @@ import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { decideCorrectionAction } from './actions';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 function Pill({ label, cls }: { label: string; cls: string }) {
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${cls}`}>{label}</span>
@@ -60,7 +62,7 @@ export default async function AttendancePage({
   await requireModule('attendance');
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayInKualaLumpur();
   const month = sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : todayIso.slice(0, 7);
   const [summary, corrections] = await Promise.all([
     attendanceMonthSummary(s, { month, companyIds: scopeIds, today: todayIso }),

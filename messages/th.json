@@ -6757,6 +6757,7 @@
     "boardTitle": "กระดานสถานะ",
     "boardAll": "ทั้งหมด",
     "bulkSelected": "เลือกแล้ว {count} รายการ",
+    "bulkPageScope": "การเลือกมีผลเฉพาะหน้านี้เท่านั้น",
     "bulkApprove": "อนุมัติ",
     "bulkCancel": "ยกเลิก",
     "bulkRestore": "กู้คืน",

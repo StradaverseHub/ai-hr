@@ -12,6 +12,7 @@ import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import { auditEvents } from '@/core/read';
 import { serializeReport, type ReportFormat } from '@/lib/report-export';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
   actionOf,
   aggregateLabel,
@@ -102,7 +103,7 @@ export async function GET(req: Request) {
       ];
     });
 
-    const stamp = new Date().toISOString().slice(0, 10);
+    const stamp = todayInKualaLumpur();
     const data = {
       filename: `leave-audit-${stamp}`,
       title: 'Leave configuration audit trail',

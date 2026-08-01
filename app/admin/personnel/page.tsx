@@ -12,6 +12,8 @@ import { Pager } from '@/components/pager';
 import { pageState, parsePageQuery } from '@/lib/pagination';
 import { decideProfileChangeAction } from './actions';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 /** Render a pay-affecting change bundle as human-readable "field → value" pairs. */
 function describeProposed(
   p: unknown,
@@ -53,7 +55,7 @@ export default async function PeoplePage({
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
   const { s: session, scopeIds } = await scopedSession();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const sp = await searchParams;
   const { error, q, company, dept, status, type } = sp;

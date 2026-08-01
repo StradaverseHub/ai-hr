@@ -77,6 +77,8 @@ import { resolvePlacement, type EssPlacement } from '../lib/leave-groups';
 import type { EmploymentStatus } from './employment-status';
 import { employmentStatusSql } from './employment-status-sql';
 
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
 // employee, not a page, or the checkbox set would silently drop people past the page boundary.
@@ -704,7 +706,7 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
         .where(eq(employment.id, employmentId))
         .limit(1),
     ]);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayInKualaLumpur();
     return types
       .filter((t) => isLeaveEligible(t.eligibility as LeaveEligibility | null, emp, today))
       // Leave Type Employee Visibility (7b11f1c1): drop types HR has closed to employee applications
@@ -1955,7 +1957,7 @@ export function leaveBalances(
         .where(eq(employment.id, employmentId))
         .limit(1),
     ]);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayInKualaLumpur();
     for (const lt of types) {
       if (seen.has(lt.id)) continue;
       if (!isLeaveEligible(lt.eligibility as LeaveEligibility | null, emp, today)) continue;

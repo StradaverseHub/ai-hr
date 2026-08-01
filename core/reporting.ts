@@ -34,6 +34,8 @@ import type { EaStatement, ReportDef, ReportResult } from '../localization/count
 import type { ReportData } from '../lib/report-export';
 import { daysInMonth } from './payroll';
 
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 async function companyCountry(ctx: SessionContext, companyId: string): Promise<string | null> {
   return withTenant(ctx, async (tx) => {
     const [co] = await tx
@@ -221,7 +223,7 @@ export function complianceWorklist(
   ctx: SessionContext,
   p: { companyId: string; today?: string },
 ): Promise<WorklistItem[]> {
-  const today = p.today ?? new Date().toISOString().slice(0, 10);
+  const today = p.today ?? todayInKualaLumpur();
   const hireFloor = isoAddDays(today, -60); // recent hires still within / just past the 30-day window
   const ceaseFloor = isoAddDays(today, -60);
   const ceaseCeil = isoAddDays(today, 90); // upcoming cessations need notice before the date

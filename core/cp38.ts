@@ -19,6 +19,8 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employeeCp38, payrollBatch, payslip } from '../db/schema';
 
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 const money = (n: number | string): string => (typeof n === 'number' ? n.toFixed(2) : String(n));
 
 /** Normalise any `YYYY-MM-DD` (or `YYYY-MM`) date to the first day of its month (`YYYY-MM-01`). */
@@ -244,7 +246,7 @@ export function terminateCp38(ctx: SessionContext, p: { id: string }): Promise<{
     if (!existing) throw new Error('CP38 record not found.');
     await assertNoProcessedPeriod(tx, existing.employmentId, existing.validFrom, existing.validTo);
 
-    const closeAt = monthStart(new Date().toISOString().slice(0, 10));
+    const closeAt = monthStart(todayInKualaLumpur());
     // Don't reopen a window that already ended before this month; clamp validTo to the earlier bound.
     const validTo = existing.validTo && existing.validTo < closeAt ? existing.validTo : closeAt;
     await tx

@@ -30,6 +30,8 @@ type EmploymentType = (typeof employmentTypeEnum.enumValues)[number];
 import { assertCanDecide } from './approvals';
 import { currentAdminManager } from './performance';
 
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 export class ReviewError extends Error {
   constructor(message: string) {
     super(message);
@@ -590,7 +592,7 @@ export async function sweepDueReviews(
   ctx: SessionContext,
   opts: { today?: string } = {},
 ): Promise<{ opened: number }> {
-  const today = opts.today ?? new Date().toISOString().slice(0, 10);
+  const today = opts.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
     // Enumerate active employments left-joined to the current open assignment row.
     const rows = await tx
@@ -704,7 +706,7 @@ export async function sweepReviewReminders(
   ctx: SessionContext,
   opts: { today?: string } = {},
 ): Promise<{ reminders: number }> {
-  const today = opts.today ?? new Date().toISOString().slice(0, 10);
+  const today = opts.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({

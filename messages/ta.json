@@ -6757,6 +6757,7 @@
     "boardTitle": "நிலை பலகை",
     "boardAll": "அனைத்தும்",
     "bulkSelected": "{count} தேர்ந்தெடுக்கப்பட்டது",
+    "bulkPageScope": "தேர்வு இந்தப் பக்கத்திற்கு மட்டுமே பொருந்தும்",
     "bulkApprove": "ஒப்புதல்",
     "bulkCancel": "ரத்து",
     "bulkRestore": "மீட்டெடு",

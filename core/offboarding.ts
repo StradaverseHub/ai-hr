@@ -14,6 +14,8 @@ import { freezeOnResignationApprovalTx } from './leave-encashment';
 import { validateLeaveDocument } from './leave';
 import { terminateEmploymentTx } from './org';
 
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 // #42cff598: the file types the resignation ticket specifies (PDF / JPG / PNG) and a fixed 10 MB ceiling.
 // Resignation has no per-type config table like leave, so the allowed set + ceiling are constants here.
 // The gate itself (validateLeaveDocument + its LeaveDocumentTypeError/LeaveDocumentSizeError) is reused,
@@ -36,7 +38,7 @@ export async function submitResignation(
   if (!ctx.personId) throw new ResignationError('This account is not linked to an employee profile.');
   const lastWorkingDay = String(p.lastWorkingDay ?? '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(lastWorkingDay)) throw new ResignationError('A valid last working day is required.');
-  const today = p.today ?? new Date().toISOString().slice(0, 10);
+  const today = p.today ?? todayInKualaLumpur();
   if (lastWorkingDay < today) throw new ResignationError('The last working day cannot be in the past.');
   const personId = ctx.personId;
   return withTenant(ctx, async (tx) => {
@@ -129,7 +131,7 @@ export async function decideResignation(
           employmentId: req.employmentId,
           companyId: emp.companyId,
           resignationRequestId: req.id,
-          asOf: new Date().toISOString().slice(0, 10),
+          asOf: todayInKualaLumpur(),
         });
       }
     }

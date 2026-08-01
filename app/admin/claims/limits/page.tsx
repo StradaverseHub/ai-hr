@@ -6,6 +6,8 @@ import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ClaimsTabs } from '@/components/claims-tabs';
 import { ClaimLimitEditor } from '@/components/claim-limit-editor';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 const rm = (n: number | null): string =>
   n == null ? '—' : `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
 
@@ -20,7 +22,7 @@ export default async function ClaimLimitsPage({ searchParams }: { searchParams: 
   ]);
   const activeGrades = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
   const typeOptions = types.map((ct) => ({ id: ct.id, code: ct.code, name: ct.name }));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">

@@ -49,7 +49,7 @@ export default async function PersonnelDetailPage({
   // deriveEmploymentStatus over the lifecycle dates (employeeDetail already projects them all), so the
   // same employee reads the same status here, on the directory, and on the admin record.
   const tStatus = await getTranslations('people.employeeStatus');
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   const derivedStatus = deriveEmploymentStatus(emp, today);
 
   // "12–14 Aug 2026" for a same-month span, "12 Aug 2026" for a single day, both ends in full otherwise.

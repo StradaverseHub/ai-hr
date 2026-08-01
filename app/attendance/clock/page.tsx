@@ -9,6 +9,8 @@ import { Card, ErrorBanner } from '@/components/ui';
 import { cumulativeWorkedSeconds, type ShiftOption } from './clock-display';
 import { ClockPageClient, type PunchEvent } from './clock-client';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 /**
  * Attendance > Clock in/out (feedback 5249d43f; redesigned by af552c5d) — the phone-first clocking
  * screen: header row with the conditional shift Switch, the matched-location + date block, the big
@@ -43,7 +45,7 @@ export default async function AttendanceClockPage({
   }
 
   const now = new Date(); // SERVER clock — the same clock the punch actions stamp with
-  const today = now.toISOString().slice(0, 10); // same day-key convention as the /me card
+  const today = todayInKualaLumpur(now); // same day-key convention as the /me card, read in MYT
   const [recent, punchesByDay, requireDevice, devices, todayRange, assignedSites, tenantShifts] =
     await Promise.all([
       myAttendance(s, me.employmentId, 3),

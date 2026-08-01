@@ -6,6 +6,8 @@ import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputC
 import { HolidayTabs } from '@/components/holiday-tabs';
 import { createHolidayAction, deleteHolidayAction, updateHolidayAction } from '../actions';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 /**
  * Holiday tab (66b8f5a8, simplified 3e831868) — the centralized Holiday MASTER. One tab of the two-tab
  * Holiday module (Holiday · Holiday Group).
@@ -43,7 +45,7 @@ export default async function HolidaysPage({
     optional: t('holidayType.optional'),
   };
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   const defaultCountry = country ?? countries[0] ?? 'MY';
   // Hidden fields echo the active filter so actions redirect back into the same view.
   const filterFields = (

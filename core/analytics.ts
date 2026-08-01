@@ -26,6 +26,7 @@ import {
 import { withTenant, type SessionContext } from '../db/client';
 import { isAdmin } from '../lib/authz';
 import { todayInKualaLumpur } from '../lib/hr-date';
+
 // 9cbf5e0d — one Employee Status engine; the dashboard reads it instead of the legacy stored enum.
 import { employmentStatusSql } from './employment-status-sql';
 import {
@@ -123,7 +124,7 @@ export type AnalyticsFilters = {
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export function analyticsDateRange(
   get: (k: string) => string | null | undefined,
-  today = new Date().toISOString().slice(0, 10),
+  today = todayInKualaLumpur(),
 ): { from: string; to: string } {
   const isDate = (v: string | null | undefined): v is string => !!v && ISO_DATE_RE.test(v);
   const fromRaw = get('from');
@@ -140,7 +141,7 @@ export function analyticsDateRange(
  *  they can never disagree on which year is showing. */
 export function parseReportYear(
   get: (k: string) => string | null | undefined,
-  today = new Date().toISOString().slice(0, 10),
+  today = todayInKualaLumpur(),
 ): number {
   const currentYear = Number(today.slice(0, 4));
   const raw = get('year');

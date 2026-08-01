@@ -6757,6 +6757,7 @@
     "boardTitle": "Bảng trạng thái",
     "boardAll": "Tất cả",
     "bulkSelected": "Đã chọn {count}",
+    "bulkPageScope": "Lựa chọn chỉ áp dụng cho trang này",
     "bulkApprove": "Duyệt",
     "bulkCancel": "Hủy",
     "bulkRestore": "Khôi phục",

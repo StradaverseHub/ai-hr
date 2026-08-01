@@ -13,6 +13,8 @@ import {
 } from './actions';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
 /**
  * Fixed Transaction (feedback b7fc8583) — a SELF-CONTAINED screen. Pick an employee (mandatory, via
  * ?employmentId=), then add a recurring fixed pay component directly here: pay item, Payroll Cycle, amount,
@@ -61,7 +63,7 @@ export default async function FixedTransactionPage({
     : [[], []];
   const activeComponents = components.filter((c) => c.archivedAt == null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInKualaLumpur();
   // Friendly error keys thrown by the action → localised; anything else is a raw message.
   const errorKeys = new Set(['dateError', 'currencyUnsupported', 'amountError', 'required', 'outOfScope', 'notFound']);
   const errorMessage = error && errorKeys.has(error) ? t(`fixed.${error}`) : error;

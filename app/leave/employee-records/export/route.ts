@@ -57,7 +57,7 @@ export async function GET(req: Request) {
   // Final Approval dates read as YESTERDAY between 00:00 and 08:00 MYT (r85's toISOString class).
   const day = (v: Date | string | null) => (v ? todayInKualaLumpur(new Date(v)) : '');
   const data: ReportData = {
-    filename: `leave-records-${selected?.employeeCode ?? 'employee'}-${new Date().toISOString().slice(0, 10)}`,
+    filename: `leave-records-${selected?.employeeCode ?? 'employee'}-${todayInKualaLumpur()}`,
     title: tInq('recordsTitle'),
     columns: [
       t('filters.employeeId'),

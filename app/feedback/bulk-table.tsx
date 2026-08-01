@@ -4,6 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import type { FeedbackRow } from '@/core/feedback';
+import { paginateRows } from '@/lib/pagination';
+import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 import { bulkReviewAction } from './actions';
 
 // Kept in sync with statusTone in page.tsx (a pure mapping; duplicated to stay inside the client boundary).
@@ -36,19 +38,29 @@ export function BulkTable({ rows }: { rows: FeedbackRow[] }) {
   const t = useTranslations('feedback');
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  // Paging happens AFTER the caller's ordering and filtering, over the full set — see client-pager.tsx.
+  // This is the product's largest list (517 rows on production) and the one the reporter noticed missing.
+  const q = useClientPageQuery();
+  const { rows: pageRows, state } = paginateRows(rows, q);
+  const pageIds = new Set(pageRows.map((r) => r.id));
+
   const toggle = (id: string) =>
     setSelected((s) => {
       const n = new Set(s);
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
-  const allSelected = rows.length > 0 && selected.size === rows.length;
-  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
-  const ids = [...selected];
+  // Selection is confined to the page you can see: "approve all" must never quietly mean "approve all
+  // 517". Intersecting here rather than clearing on page change makes that structural — the form can only
+  // ever carry rows that are on screen — and it needs no effect, so a selection you left on page 2 is
+  // simply invisible until you go back to it.
+  const ids = [...selected].filter((id) => pageIds.has(id));
+  const allSelected = pageRows.length > 0 && ids.length === pageRows.length;
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(pageRows.map((r) => r.id)));
 
   return (
     <div>
-      {selected.size > 0 && (
+      {ids.length > 0 && (
         <form
           action={bulkReviewAction}
           className="flex flex-wrap items-center gap-2 border-b border-border bg-primary/5 px-4 py-2.5"
@@ -56,7 +68,8 @@ export function BulkTable({ rows }: { rows: FeedbackRow[] }) {
           {ids.map((id) => (
             <input key={id} type="hidden" name="ids" value={id} />
           ))}
-          <span className="text-sm font-medium">{t('bulkSelected', { count: selected.size })}</span>
+          <span className="text-sm font-medium">{t('bulkSelected', { count: ids.length })}</span>
+          <span className="text-xs text-muted-foreground">{t('bulkPageScope')}</span>
           <div className="ml-auto flex items-center gap-2">
             <button
               type="submit"
@@ -111,7 +124,7 @@ export function BulkTable({ rows }: { rows: FeedbackRow[] }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {rows.map((r) => (
+          {pageRows.map((r) => (
             <tr key={r.id} className={selected.has(r.id) ? 'bg-primary/5' : 'hover:bg-muted/40'}>
               <td className="px-4 py-2.5">
                 <input
@@ -146,6 +159,7 @@ export function BulkTable({ rows }: { rows: FeedbackRow[] }) {
           ))}
         </tbody>
       </table>
+      <ClientPager state={state} />
     </div>
   );
 }

@@ -37,6 +37,8 @@ import {
 } from '../db/schema';
 import { parseAttendanceCsv } from '../lib/attendance-csv';
 
+import { todayInKualaLumpur } from '../lib/hr-date';
+
 // ADR-0070: two aliases of clocking_location so attendanceForDate can resolve BOTH the check-in and
 // check-out matched-site names in one query (mirrors core/read.ts myAttendance).
 const dayCheckInSite = alias(clockingLocation, 'day_check_in_site');
@@ -1522,7 +1524,7 @@ export function attendanceMonthSummary(
     const monthStart = `${p.month}-01`;
     const [y, m] = p.month.split('-').map(Number);
     const monthEnd = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-    const today = p.today ?? new Date().toISOString().slice(0, 10);
+    const today = p.today ?? todayInKualaLumpur();
     const lastCounted = today < monthEnd ? today : monthEnd; // absence only up to today
 
     const emps = await tx

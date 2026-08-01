@@ -133,9 +133,30 @@ export function pageHref(
 }
 
 /**
- * Whether the pager chrome is worth rendering at all. A list that fits on one page at the default size
- * shows nothing — the control would only be noise on a five-row table.
+ * Whether the pager chrome is worth rendering at all — now ALWAYS true on a paginated list.
+ *
+ * This used to return `hasPrev || hasNext || truncated || total > DEFAULT_PAGE_SIZE`, hiding the whole bar
+ * on any list of 25 rows or fewer. On this tenant that is nearly every list (23 active employees, 36 leave
+ * requests, 47 payslips), so the reporter's reading — "there is still no pagination" — was accurate from
+ * where they sat: they had never seen the control, because it had never rendered for them (fc776376).
+ *
+ * What was asked for is a FRAMEWORK: every list shows how many records it holds and lets you change the
+ * page size, whether it holds twenty rows or five hundred. A control that appears only once a list gets
+ * big is not a framework, it is a surprise. So the bar renders whenever a surface is a paginated list, and
+ * the decision about whether a surface is a LIST at all is made by whether it renders a pager — not here.
+ *
+ * The deliberately-unpaged surfaces (approvals inbox, claims payment run, import previews, and every
+ * config grid you edit as a whole) are unaffected: they never construct a PageState and never render a
+ * pager, so there is nothing here to suppress. See the module header for why each is excluded.
+ *
+ * Kept as a function rather than inlined: it is the one place to reintroduce a suppression rule, and
+ * test/pagination.test.ts pins the always-visible contract against exactly the row counts that used to
+ * hide it.
+ *
+ * The parameter is retained as the seam a suppression rule would be reintroduced through, and every
+ * caller already passes its state.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function showPager(state: PageState): boolean {
-  return state.hasPrev || state.hasNext || state.truncated || state.total > DEFAULT_PAGE_SIZE;
+  return true;
 }

@@ -40,6 +40,7 @@ import { resolveBatchScopeFilter, type BatchScope } from './payroll';
 // are unit-testable without a database, and so the honesty constraint on the ruleset-version cause
 // lives beside the rules it constrains.
 import { diffPayslipVersions, type PayslipSnapshot, type RecomputeDiff } from './payslip-recompute';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   appUser,
   assignment,
@@ -81,7 +82,7 @@ const cleanDate = (v: unknown): string | undefined =>
   typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
 
 /** 'YYYY-MM-DD' today — the same string axis validFrom/validTo live on. */
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => todayInKualaLumpur();
 
 type RunType = (typeof payrollRunTypeEnum.enumValues)[number];
 /** Coerce an untrusted cycle filter to a valid enum value or undefined — an unknown value (URL
@@ -847,7 +848,7 @@ export function exportIndividualTxnsCsv(
       r.createdOn,
     ]);
     const content = toCsv([header, ...body]);
-    const filename = `individual-transactions_${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `individual-transactions_${todayInKualaLumpur()}.csv`;
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -1103,7 +1104,7 @@ const ZAKAT_CSV_HEADER = [
   'Zakat Amount',
   'Created Date & Time',
 ];
-const zakatCsvFilename = () => `zakat-transaction-history_${new Date().toISOString().slice(0, 10)}.csv`;
+const zakatCsvFilename = () => `zakat-transaction-history_${todayInKualaLumpur()}.csv`;
 const zakatFilterPayload = (p: ZakatTxnFilter) => ({
   companyIds: p.companyIds,
   year: p.year ?? null,

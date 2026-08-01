@@ -1,6 +1,9 @@
 'use client';
 
 import { Fragment, useState } from 'react';
+import { paginateRows } from '@/lib/pagination';
+import { ClientPager, useClientPageQuery } from '@/components/client-pager';
+
 import { useTranslations } from 'next-intl';
 import { Badge, EmployeeName } from '@/components/ui';
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
@@ -48,6 +51,8 @@ export function HistoryTable({
   const tBatch = useTranslations('payroll.batch');
   const tSlip = useTranslations('me.payslip'); // reuse the itemized-payslip section/line labels
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const q = useClientPageQuery();
+  const { rows: pageRows, state } = paginateRows(rows, q);
 
   const toggle = (id: string) =>
     setOpen((prev) => {
@@ -78,7 +83,7 @@ export function HistoryTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {rows.map((r) => {
+          {pageRows.map((r) => {
             const b = deriveHistoryBreakdown(r);
             const st = b.st;
             const isOpen = open.has(r.id);
@@ -257,6 +262,7 @@ export function HistoryTable({
           )}
         </tbody>
       </table>
+      <ClientPager state={state} />
     </div>
   );
 }
