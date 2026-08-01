@@ -2031,6 +2031,13 @@
       "when": 1781862443000,
       "tag": "0343_leave_type_max_consecutive",
       "breakpoints": true
+    },
+    {
+      "idx": 344,
+      "version": "7",
+      "when": 1781862444000,
+      "tag": "0344_leave_type_country",
+      "breakpoints": true
     }
   ]
 }

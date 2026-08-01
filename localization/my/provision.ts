@@ -27,6 +27,10 @@ export async function seedReferenceDataMY(tx: Tx, tenantId: string): Promise<Rec
       .insert(leaveType)
       .values({
         tenantId,
+        // ADR-0077 slice 5 — stated, never defaulted. A pack seeding through the column default would
+        // attribute its rows to whatever the default happens to be, which is the whole failure the
+        // country dimension exists to stop.
+        country: 'MY',
         code: lt.code,
         name: lt.name,
         paid: lt.paid,
