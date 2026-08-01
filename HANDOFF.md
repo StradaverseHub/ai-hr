@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-02, after r96 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r97 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,32 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@f8c6c3c6` — production on **290** migrations.
+> ### DEPLOYED HEAD IS `main@56ec3e2c` — production on **291** migrations. **Next free number is `0345`.**
+>
+> ### ⚠️ LOCAL POSTGRES IS NOW **16.14**, NOT 14 — every PG14 instruction below is superseded
+>
+> **Production has ALWAYS been 16.14; local dev/test was 14.** So the upgrade rehearsal — the gate step
+> that exists to prove a migration applies to PRODUCTION — was rehearsing on a different major version.
+> That is now closed. Data dir **`/opt/homebrew/var/aihr-pg16`**, binaries
+> **`/opt/homebrew/opt/postgresql@16/bin`** (keg-only: PG14 still shadows `psql` on PATH, so use the
+> explicit path or `pnpm db:start`). `pnpm db:start` / `db:stop` already point at 16.
+>
+> ### THE CHECKPOINT WEDGE — ROOT CAUSE FOUND, AND IT IS NOT POSTGRES
+>
+> **This Mac runs Trend Micro real-time file scanning** (`iCoreSecurity` / `iCoreService`, loading
+> `libTmFileScan.dylib` + `libTmFileEventHub.dylib`), and those processes sit in the **same
+> uninterruptible kernel wait (`ps` state `U`) as the stuck checkpointer**. A checkpoint fsyncs thousands
+> of files; an on-access scanner hooks every one.
+>
+> That explains what r83, r86 and r90 could not: why `pkill -9` cannot kill it, why r90's `fsync=off`,
+> `full_page_writes=off`, `synchronous_commit=off` and `wal_level=minimal` changed **nothing**, why it
+> survived the upgrade to 16, and why wiping only helps until the file count grows back.
+> **The fix is excluding the data directory from that scanner — a system/IT change, not a code one.**
+>
+> **PG16 helped, measurably but partially.** Measured on 16.14: five `CREATE DATABASE` move
+> `checkpoints_req` by **0** (WAL_LOG strategy, default since 15); five `DROP DATABASE` still move it by
+> **5**. Test setup does 1 template + 10 workers, so **11 forced checkpoints per suite run are gone** —
+> r83's exact culprit. **`DROP` still wedges**, and did so on 16 during r97's rehearsal cleanup.
 >
 > **THE BOARD IS EMPTY OF BUILDABLE WORK.** `956cec85` shipped in r96; nothing is `approved` or
 > `building`. `a1d82340` rev 3 is the only thing waiting on the reporter.
@@ -406,6 +431,10 @@ one a 30-second timeout — including a test whose body is only a file read** �
 for the same tree. All twelve were artefacts of that one orphaned statement. **Kill the client, then check
 `pg_stat_activity` and cancel what it left behind.**
 
+**SUPERSEDED BY r97 — the cluster is PostgreSQL 16.14 at `/opt/homebrew/var/aihr-pg16`, and the wedge's
+root cause is Trend Micro real-time file scanning, not a Postgres setting. See CURRENT STATE. The PG14
+paragraph below is kept only because its `-p 5433` and unclean-stop lessons still apply verbatim.**
+
 **Local Postgres after a reboot.** Data dir `/opt/homebrew/var/aihr-pg14`, but its config defaults to
 port **5432** while the project uses **5433** — it must be started with `-o "-p 5433"`. After an unclean
 stop it needs several minutes of crash recovery (397s this time). A launchd unit would end this.
@@ -529,11 +558,14 @@ Everything in the local cluster is disposable (test DBs + `ai_hr_dev`), so when 
 beats waiting**: r86 sat through 27 minutes of WAL replay before realising that. The full rebuild is
 under a minute.
 
-    pg_ctl -D /opt/homebrew/var/aihr-pg14 -m immediate stop     # -m fast CANNOT stop a checkpoint wedge
-    rm -rf /opt/homebrew/var/aihr-pg14
-    initdb -U postgres -D /opt/homebrew/var/aihr-pg14 --encoding=UTF8 --locale=en_US.UTF-8
+    # PG16 PATHS (r97). Binaries are keg-only, so PG14 still shadows `psql`/`initdb` on PATH — use the
+    # explicit prefix or you will rebuild the WRONG cluster with the WRONG major version.
+    PG16=/opt/homebrew/opt/postgresql@16/bin
+    $PG16/pg_ctl -D /opt/homebrew/var/aihr-pg16 -m immediate stop   # -m fast CANNOT stop a checkpoint wedge
+    mv /opt/homebrew/var/aihr-pg16 /opt/homebrew/var/aihr-pg16.wedged-$(date +%H%M)   # mv, not rm -rf: instant
+    $PG16/initdb -U postgres -D /opt/homebrew/var/aihr-pg16 --encoding=UTF8 --locale=en_US.UTF-8
     # append to postgresql.conf: max_wal_size = 4GB / checkpoint_timeout = 30min
-    pg_ctl -D /opt/homebrew/var/aihr-pg14 -o "-p 5433" -l …/server.log start
+    $PG16/pg_ctl -D /opt/homebrew/var/aihr-pg16 -o "-p 5433" -l …/server.log start
     psql -p 5433 -U postgres -d postgres \
       -c "CREATE ROLE ai_hr_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;" \
       -c "CREATE DATABASE ai_hr_dev OWNER ai_hr_app;" \
@@ -749,7 +781,7 @@ those employees drop to the statutory floor until their schemes are filled in.
    | 2 | `isModuleEnabled`, the enforcement primitive | **DONE** — `a38ed02f`, **50 call sites**. NO ROUND ENTRY |
    | 3 | gate classification + migration + backfill | **DONE** — round entry below |
    | 4 | nav + page gating from entitlements | **DONE** — round entry below |
-   | 5 | module install / deactivate as operations | **NOT BUILT** — `leaveType` has no `country` column; no `installModule`/`deactivateModule` |
+   | 5 | module install / deactivate as operations | **STEP 1 DONE (r97)** — `leave_type.country` + the (tenant, country, code) index shipped as `0344`. Still to do: `ModulePack.onActivate`, `module_change_request` + runner, TOIL onActivate seeding, two-phase deactivation, disabled-module semantics, per-company install hook |
    | 6 | multi-country entitlement wiring | **NOT BUILT** — no `country-<cc>` provisioning anywhere |
    | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
    | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
@@ -816,6 +848,51 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r97 — 2026-08-02 — ADR-0077 slice 5 begins, and the Postgres wedge finally has a cause
+
+**Shipped:** `main@56ec3e2c`. **Migration `0344`** (production 290 → **291**).
+**Gate:** `tsc` clean · **520 files / 6052 tests** · `next build` clean · **`UPGRADE_REHEARSAL=PASS`**.
+Verified live: service active, `GET /` 401, **291 migrations**, and all **25 `leave_type` rows backfilled
+to `MY`**.
+
+### Decisions
+
+**1. SLICE 5 STEP 1 — THE COUNTRY DIMENSION ON `leave_type`.** `leave_type` carries GENERIC codes
+(`ANNUAL`, `SICK`) seeded by the country pack. 0031's `(tenant_id, lower(code)) WHERE archived_at IS NULL`
+is unique enough with one pack and **wrong with two** — a legitimate SG `ANNUAL` refused because an MY row
+holds the code. It ships now, before a second pack exists, so the index changes once. **Inert on arrival.**
+
+**THE COLUMN DEFAULT IS SAFE BECAUSE OF THE INDEX, and that is asserted, not argued.** A second-country
+seeder that omits `country` lands on `MY`, collides with the row already there, and **fails on the first
+attempt** — see `test/leave-type-country-dimension.test.ts`. Keeping the default avoided making `country`
+required at ~30 existing insert sites for a value every one of them means.
+
+**Two seams left open ON PURPOSE**, both named in code: `core/toil.ts` `ensureReplacementLeaveType` and
+`core/admin.ts` create TENANT-scoped types, and a tenant has no single country once slice 6 lands. The
+right answer is the company's country, which neither function receives. **Choosing one now would invent a
+rule slice 6 has to live with.**
+
+**2. RE-VERIFYING THE 3-WEEK-OLD PLAN PAID OFF AGAIN.** Three of slice 5's premises were already stale:
+`attendance_policy`'s `unique(company_id)` is **already built**; `holiday` is **already country-scoped**
+(`holiday_uq`), so only `leave_type` needed the dimension; and `ensureReplacementLeaveType` is at
+`core/toil.ts:127`, not the `:90-97` cited. **Always diff the plan against the tree first.**
+
+**3. PRODUCTION WAS ON PostgreSQL 16.14 AND LOCAL WAS ON 14 — nobody had noticed.** The upgrade rehearsal
+exists to prove a migration applies to production, and it was running on a different major version.
+Local is now 16.14. All 344 migrations apply from zero, the seed runs, and the **full suite is green on
+16** (a major version jump can move RLS and index behaviour — it did not).
+
+**4. THE WEDGE'S ROOT CAUSE IS TREND MICRO, NOT POSTGRES.** See CURRENT STATE for the evidence and the
+fix. **r90's diagnosis was right about the symptom (`UNs`) and wrong about the layer.** PG16 removes the
+11 CREATE-DATABASE checkpoints per suite run but not the DROP one, which is what still hangs — so the
+version upgrade is a mitigation, not the cure.
+
+The pre-emptive `CHECKPOINT` r90 added to `scripts/upgrade-rehearsal.sh` is now **skipped on 15+**: there
+is no create-checkpoint left to pre-empt, and on 16 that statement **became the wedge**, hanging 10m16s on
+`IPC/CheckpointDone`. Kept for `<15`.
+
+---
 
 ## r96 — 2026-08-02 — the statutory forms were already built; what was missing was their home
 
