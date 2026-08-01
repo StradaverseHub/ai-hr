@@ -353,6 +353,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/process',
       '/payroll/process/result',
       '/payroll/reports',
+      // 956cec85: the statutory-form directory. Same guard as the rest of the Payroll hub — it exposes
+      // which submissions are due and links to their figures, so it is admin-scoped like Reports.
+      '/payroll/statutory-forms',
       '/payroll/setup',
       // R17 59178702: Transaction View promoted to a top-level Payroll tab (scopedAdmin, same guard
       // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.
