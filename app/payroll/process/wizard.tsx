@@ -8,30 +8,39 @@ import { preferredCycleId, wizardInitialStep } from './selection-logic';
 import { StepPeriod, type Company, type CycleRunType, type CycleOption, type ExistingRun } from './steps/step-period';
 import { StepSelection, type Master, type PayrollRunEmployeeRow } from './steps/step-selection';
 import { StepValidation } from './steps/step-validation';
+import { PAYROLL_PHASES, payrollPhaseIndex, type PayrollPhaseKey } from '@/packs/payroll/phases';
 
 /** Payroll Process wizard (3b) — STEPS registry, sequential gating, plain useState. No workflow engine:
  *  future steps slot in as additional entries in `STEPS` (plan §16, guardrail).
  *  R37 70764928: a Validation step now sits between Employee Selection and the terminal Process action,
  *  so the operator sees an explicit green/amber/red "is everything ready?" checkpoint before processing.
- *  Each STEP maps onto one of the five conceptual lifecycle STAGES (below) for the progress rail. */
+ *  Each STEP declares which PAYROLL PHASE (below) it belongs to for the progress rail. */
 const STEPS = [
-  { key: 'period', titleKey: 'stepPeriod', stage: 0 },
-  { key: 'selection', titleKey: 'stepSelection', stage: 0 },
-  { key: 'validation', titleKey: 'stepValidation', stage: 1 },
-] as const;
+  { key: 'period', titleKey: 'stepPeriod', phase: 'validation' },
+  { key: 'selection', titleKey: 'stepSelection', phase: 'validation' },
+  { key: 'validation', titleKey: 'stepValidation', phase: 'validation' },
+] as const satisfies readonly { key: string; titleKey: string; phase: PayrollPhaseKey }[];
 
-/** The five payroll lifecycle stages the reporter asked to see (expected_behavior §3): Preparation →
- *  Validation → Process → Review → Finalize. The wizard OWNS the first two (Preparation = period +
- *  selection, Validation = the checks step); Process is the terminal submit, and Review / Finalize happen
- *  on the batch page (deliberately NOT rebuilt here — see the cut in the approved plan). The rail shows all
- *  five so the operator always knows where they are and what comes next. */
-const STAGES = [
-  { key: 'preparation', titleKey: 'stagePreparation' },
-  { key: 'validation', titleKey: 'stageValidation' },
-  { key: 'process', titleKey: 'stageProcess' },
-  { key: 'review', titleKey: 'stageReview' },
-  { key: 'finalize', titleKey: 'stageFinalize' },
-] as const;
+/**
+ * a1d82340 STEP 3 — the rail is now the CANONICAL payroll sequence (packs/payroll/phases.ts), the same
+ * six phases the Workflow Guide teaches and the same order the sidebar is sorted into.
+ *
+ * It replaces a five-stage rail of this wizard's own (Preparation → Validation → Process → Review →
+ * Finalize, R37 70764928). That rail was not wrong about the work, but it was a THIRD ordering with its
+ * own names and its own count, so "Stage 2 of 5" here and "Phase 3 of 6" on the guide named the same
+ * moment differently — which is precisely the disagreement step 3 exists to end.
+ *
+ * The mapping is deliberate and is the honest one:
+ *   - phases 1–2 (master data, transactions) happen BEFORE you open this wizard, so they render as
+ *     already behind you;
+ *   - all three wizard steps sit in phase 3, VALIDATION: choosing the period, choosing who is in the
+ *     run and reading the readiness checks are all "confirm this run is right before it is computed".
+ *     The finer progression inside the phase is the step counter beside the rail, which is what the
+ *     old rail's first two positions were really tracking;
+ *   - phase 4, PROCESSING, is the terminal Process button — you are not in it until you press it;
+ *   - phases 5–6 (review, finalize) happen on the batch page and stay visible as what comes next.
+ */
+const PHASE_STEP_COUNT = STEPS.length;
 
 /** A DRAFT batch being resumed. Carries the fixed identity of the existing batch — company/period/cycle
  *  are NOT editable mid-resume (Step 1 shows them READ-ONLY for review, feedback 4f00d8f0; to change
@@ -91,6 +100,9 @@ export function Wizard({
   resumeBatch?: ResumeBatch;
 }) {
   const t = useTranslations('payroll.process');
+  // The rail's phase titles are the GUIDE's, deliberately: reusing `payroll.guide.phase{n}Title` is what
+  // makes the two screens say the same words, and it adds no key to any of the six catalogs.
+  const tGuide = useTranslations('payroll.guide');
   const isResume = !!resumeBatch;
   // Resume mode ALSO opens on Step 1 — a read-only review of the draft's period/company/cycle (feedback
   // 4f00d8f0: "return the user to Step 1 … to review") — with the batch identity fixed. The selection is
@@ -188,8 +200,8 @@ export function Wizard({
   // valid (seeded) company + period. A fresh run still requires step1Valid (which includes the cycle).
   const step2Valid = isResume ? !!companyId && /^\d{4}-\d{2}$/.test(payPeriod) : step1Valid;
 
-  // The lifecycle stage the current wizard step belongs to (drives the 5-stage rail highlight).
-  const currentStage = STEPS[step].stage;
+  // The canonical payroll phase the current wizard step belongs to (drives the rail highlight).
+  const currentPhase = payrollPhaseIndex(STEPS[step].phase);
   // Continue is a per-step gate now that there are three steps: Step 1 (period) requires a valid selection
   // (resume uses the seeded-identity check); Step 2 (employee selection) never blocks — an empty selection
   // means "whole company". The final Process button lives on Step 3 (Validation) and has its own gate.
@@ -234,28 +246,33 @@ export function Wizard({
 
   return (
     <Card className="overflow-hidden">
-      {/* Five-stage lifecycle rail (R37 70764928, expected_behavior §3): Preparation → Validation → Process
-          → Review → Finalize. The wizard is on Preparation (period/selection) or Validation; Process/Review/
-          Finalize are shown as upcoming so the operator always sees the whole flow and what comes next. */}
+      {/* The canonical six-phase payroll rail (a1d82340 step 3) — the SAME sequence, names and numbering the
+          Workflow Guide teaches and the sidebar is ordered by. Earlier phases render as behind you, the
+          wizard's phase is active, later phases are upcoming; the counter on the right tracks the step
+          WITHIN the active phase, which is the progression the retired five-stage rail was really showing. */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-border px-4 py-3">
-        {STAGES.map((s, i) => {
-          const done = i < currentStage;
-          const active = i === currentStage;
+        {PAYROLL_PHASES.map((p, i) => {
+          const done = i < currentPhase;
+          const active = i === currentPhase;
           return (
-            <div key={s.key} className="flex items-center gap-2">
+            <div key={p.key} className="flex items-center gap-2">
               <span
                 className={`flex size-6 items-center justify-center rounded-full text-xs font-medium ${
                   active ? 'bg-primary text-primary-foreground' : done ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground'
                 }`}
               >
-                {i + 1}
+                {p.n}
               </span>
-              <span className={`text-sm ${active ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>{t(s.titleKey)}</span>
-              {i < STAGES.length - 1 && <span className="mx-1 text-muted-foreground">→</span>}
+              <span className={`text-sm ${active ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
+                {tGuide(p.titleKey)}
+              </span>
+              {i < PAYROLL_PHASES.length - 1 && <span className="mx-1 text-muted-foreground">→</span>}
             </div>
           );
         })}
-        <span className="ml-auto text-xs text-muted-foreground">{t('stageOf', { n: currentStage + 1, total: STAGES.length })}</span>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {t('stepOf', { n: step + 1, total: PHASE_STEP_COUNT })} · {t(STEPS[step].titleKey)}
+        </span>
       </div>
 
       <div className="p-4">

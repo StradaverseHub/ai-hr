@@ -4,6 +4,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { payrollReadiness, type PayrollReadiness, type ReadinessCheck } from '@/core/payroll-readiness';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
+import { PAYROLL_PHASES, type PayrollPhaseKey } from '@/packs/payroll/phases';
 import { Card, PageHeader } from '@/components/ui';
 
 /**
@@ -52,11 +53,14 @@ export default async function PayrollGuidePage() {
 
   // The six phases, each linking OUT to the existing screens (never duplicating them). Phase 3's body is
   // the readiness panel below; Phase 4 carries the "Processing is transient" note (product decision 1).
-  const phases: { n: number; titleKey: string; descKey: string; noteKey?: string; links: { labelKey: string; href: string }[] }[] = [
-    {
-      n: 1,
-      titleKey: 'phase1Title',
-      descKey: 'phase1Desc',
+  //
+  // a1d82340 STEP 3 — the phase NUMBERS and TITLES now come from packs/payroll/phases.ts, the one
+  // declaration of the payroll sequence. The sidebar orders its rows by it and the Process wizard
+  // draws its rail from it, so the guide can no longer teach an order the menu contradicts. What
+  // stays local to this page is what is genuinely local: which screens each phase links to, and the
+  // two phase-specific bodies (readiness, the "Processing is transient" note).
+  const PHASE_EXTRAS: Record<PayrollPhaseKey, { noteKey?: string; links: { labelKey: string; href: string }[] }> = {
+    masterData: {
       links: [
         { labelKey: 'linkPeople', href: '/people' },
         { labelKey: 'linkPayItems', href: '/admin/pay-components' },
@@ -66,12 +70,13 @@ export default async function PayrollGuidePage() {
         { labelKey: 'linkPolicies', href: '/admin/payroll-policy' },
       ],
     },
-    { n: 2, titleKey: 'phase2Title', descKey: 'phase2Desc', links: [{ labelKey: 'linkTransactions', href: '/payroll/transactions' }] },
-    { n: 3, titleKey: 'phase3Title', descKey: 'phase3Desc', links: [] },
-    { n: 4, titleKey: 'phase4Title', descKey: 'phase4Desc', noteKey: 'phase4Processing', links: [{ labelKey: 'linkProcess', href: '/payroll/process' }] },
-    { n: 5, titleKey: 'phase5Title', descKey: 'phase5Desc', links: [{ labelKey: 'linkTransactionView', href: '/payroll/transaction-view' }] },
-    { n: 6, titleKey: 'phase6Title', descKey: 'phase6Desc', links: [{ labelKey: 'linkBatches', href: '/payroll' }] },
-  ];
+    transactions: { links: [{ labelKey: 'linkTransactions', href: '/payroll/transactions' }] },
+    validation: { links: [] },
+    process: { noteKey: 'phase4Processing', links: [{ labelKey: 'linkProcess', href: '/payroll/process' }] },
+    review: { links: [{ labelKey: 'linkTransactionView', href: '/payroll/transaction-view' }] },
+    finalize: { links: [{ labelKey: 'linkBatches', href: '/payroll' }] },
+  };
+  const phases = PAYROLL_PHASES.map((p) => ({ ...p, ...PHASE_EXTRAS[p.key] }));
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -98,7 +103,7 @@ export default async function PayrollGuidePage() {
                       {t(phase.noteKey)}
                     </p>
                   )}
-                  {phase.n === 6 && (
+                  {phase.key === 'finalize' && (
                     <p className="text-xs font-medium tabular-nums text-muted-foreground">{t('lifecycle')}</p>
                   )}
                   {phase.links.length > 0 && (
@@ -116,7 +121,7 @@ export default async function PayrollGuidePage() {
                   )}
 
                   {/* Phase 3 body — the config-level readiness panel, per scoped company. */}
-                  {phase.n === 3 && (
+                  {phase.key === 'validation' && (
                     <div className="space-y-4 pt-1">
                       {readiness.length === 0 && <p className="text-sm text-muted-foreground">{t('empty')}</p>}
                       {readiness.map(({ company, report }) => (

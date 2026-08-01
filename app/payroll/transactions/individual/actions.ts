@@ -3,7 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
+import { scopedAdmin } from '@/lib/scope';
 import { BatchNotDraftError } from '@/core/payroll';
+import { listIndividualTxnsAcross, listUnattachedTxnSummary } from '@/core/payroll-view';
+import { deriveExistingTxnContext, type ExistingTxnContextRow } from './existing-context';
 import {
   createIndividualTxnsBulk,
   updateIndividualTxn,
@@ -162,6 +165,47 @@ export async function updateIndividualTxnAction(formData: FormData) {
   }
   revalidatePath('/payroll/transactions/individual');
   back(batchId, 'toast=saved');
+}
+
+/**
+ * ec845c7d — "existing transactions for the selected employee visible while you enter a new one", and the
+ * blind spot the approved plan insisted this redesign must not repeat: money keyed here that never reaches
+ * a payslip.
+ *
+ * The unpaid figure is read through `listUnattachedTxnSummary` — the SAME read the Transaction View's
+ * Outstanding tab uses (d0d2c9d1). That is deliberate and is the whole point: an entry screen that carried
+ * its own idea of "unpaid" would eventually disagree with the screen the operator goes to when the number
+ * looks wrong. Only the month's REGULAR run attaches these rows (core/payroll.ts, the `!subset &&
+ * runType === 'regular'` guard), which is why an off-cycle or bonus run leaves them behind.
+ *
+ * Scale: one company, one month, then narrowed to the wizard's selected employees. Bounded by construction,
+ * so it does not need the pagination framework — and deliberately does NOT load the company's whole
+ * transaction set, which is the trap the plan called out for this screen.
+ *
+ * Read-only: no write, no domain event.
+ */
+export async function fetchExistingTxnContextAction(input: {
+  companyId: string;
+  payPeriod: string;
+  employmentIds: string[];
+}): Promise<ExistingTxnContextRow[]> {
+  const { s, scopeIds } = await scopedAdmin();
+  const companyId = input.companyId ?? '';
+  // Scope fence: an out-of-scope companyId reads as "no company", never as a cross-company read. RLS
+  // isolates tenants only; company scope is an application concern (same guard as the page).
+  if (!companyId || !scopeIds.includes(companyId) || !isPayPeriod(input.payPeriod)) return [];
+  const wanted = new Set((input.employmentIds ?? []).filter(Boolean));
+  if (wanted.size === 0) return [];
+
+  const [year, month] = input.payPeriod.split('-').map(Number);
+  const [all, unattached] = await Promise.all([
+    listIndividualTxnsAcross(s, { companyIds: [companyId], year, month }),
+    listUnattachedTxnSummary(s, { companyIds: [companyId], year, month }),
+  ]);
+
+  // The join + the cent arithmetic live in a pure module so they are unit-testable without a session
+  // (test/existing-txn-context.test.ts) — the same split as history-breakdown.ts.
+  return deriveExistingTxnContext([...wanted], all, unattached);
 }
 
 /** 1.2.2 — delete a dated one-off transaction (draft-only). */
