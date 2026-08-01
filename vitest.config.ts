@@ -8,6 +8,28 @@ import { defineConfig } from 'vitest/config';
 const WORKERS = Number(process.env.VITEST_MAX_WORKERS ?? 0) || Math.max(2, availableParallelism() - 2);
 process.env.VITEST_MAX_WORKERS = String(WORKERS);
 
+/**
+ * TWO PROJECTS, because they need opposite things from their environment.
+ *
+ * `node` is the integration suite that has always been here — 516 files against real Postgres, one
+ * database per worker. It is reproduced below EXACTLY as it was before the split: same setupFiles, same
+ * include, same worker count, same timeouts. If a future edit makes the node project and this comment
+ * disagree, the node project is wrong — that suite is the thing guarding everything else.
+ *
+ * `dom` renders client components in jsdom. It needs no database and no env bootstrap and must not pay
+ * for them. The include patterns cannot overlap: `test/**\/*.test.ts` never matches `*.dom.test.tsx`.
+ *
+ * `globalSetup` BELONGS TO THE NODE PROJECT, and putting it at the root instead is a trap worth naming.
+ * It lives in the same options bag as `setupFiles`, so with `extends: true` each project INHERITS it and
+ * runs it again — observed directly: a `--project dom` run printed the "10 worker DBs wiped" line TWICE,
+ * for a project that touches no database at all. Two concurrent global setups wiping the same worker
+ * databases is how this repo has corrupted test runs before. Scoped here, `--project dom` runs it zero
+ * times and a full run runs it exactly once.
+ *
+ * The real-browser project is NOT here — see vitest.browser.config.ts and `pnpm test:browser`. It is
+ * deliberately outside the default gate: a browser test that flakes must not be able to turn a
+ * 6013-test suite red on the day it is introduced.
+ */
 export default defineConfig({
   // Mirror the tsconfig "@/*" → "./*" path alias so tests can import app/ modules that use it
   // (e.g. app/analytics/labels.ts imports '@/core/analytics').
@@ -15,15 +37,32 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('.', import.meta.url)) },
   },
   test: {
-    setupFiles: ['./test/env.ts'],
-    // Each worker gets its OWN database, stamped from a migrated template (test/global-setup.ts), so files
-    // no longer share tables and can run in parallel. Previously this was pinned to a single serial worker
-    // because every file hit one shared Postgres.
-    globalSetup: ['./test/global-setup.ts'],
-    fileParallelism: true,
-    maxWorkers: WORKERS,
-    testTimeout: 30_000,
-    hookTimeout: 30_000,
-    include: ['test/**/*.test.ts'],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'node',
+          setupFiles: ['./test/env.ts'],
+          // Each worker gets its OWN database, stamped from a migrated template (test/global-setup.ts), so
+          // files no longer share tables and can run in parallel. Previously this was pinned to a single
+          // serial worker because every file hit one shared Postgres.
+          globalSetup: ['./test/global-setup.ts'],
+          fileParallelism: true,
+          maxWorkers: WORKERS,
+          testTimeout: 30_000,
+          hookTimeout: 30_000,
+          include: ['test/**/*.test.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'dom',
+          environment: 'jsdom',
+          setupFiles: ['./test/dom-setup.ts'],
+          include: ['test/**/*.dom.test.tsx'],
+        },
+      },
+    ],
   },
 });
