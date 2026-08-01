@@ -1031,6 +1031,15 @@ export const leaveType = pgTable('leave_type', {
   id: id(),
   tenantId: tenantId(),
   code: text('code').notNull(), // e.g. 'ANNUAL'
+  // ADR-0077 slice 5 (migration 0344) — which country pack owns this row. The codes above are GENERIC
+  // ('ANNUAL', 'SICK'), so with a second pack installed two countries legitimately want the same code for
+  // the same tenant. Uniqueness is therefore (tenant_id, country, lower(code)) WHERE archived_at IS NULL,
+  // declared in 0344 as raw SQL — like 0031's index before it, this table has no Drizzle index callback.
+  //
+  // The 'MY' default is a backfill convenience, and the index is what keeps it honest: a second-country
+  // seeder that omits `country` does not quietly write an MY row, it COLLIDES with the existing MY row and
+  // the insert fails. Loud on the first attempt. Set it explicitly in new code anyway.
+  country: text('country').notNull().default('MY'),
   name: text('name').notNull(),
   // Leave Type master page (feedback 097de541): optional free-text description shown to HR admins in the
   // master listing + the identity edit form. Nullable (existing rows ⇒ NULL ⇒ rendered "—"). No enforcement.

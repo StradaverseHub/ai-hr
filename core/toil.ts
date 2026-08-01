@@ -135,6 +135,11 @@ async function ensureReplacementLeaveType(tx: Tx, tenantId: string): Promise<str
   if (existing) return existing.id;
   const [created] = await tx
     .insert(leaveType)
+    // ADR-0077 slice 5 — `country` is left to the column default ON PURPOSE, and this is a known seam.
+    // TOIL creates this type for a TENANT, and a tenant has no single country once slice 6 wires more
+    // than one pack; the right answer is the country of the company the accrual belongs to, which this
+    // function does not receive. Picking one here would be inventing a rule slice 6 has to live with.
+    // Harmless today (one pack), and the unique index makes a wrong guess collide rather than hide.
     .values({ tenantId, code: 'REPLACEMENT', name: 'Replacement Leave (in lieu)', paid: true, counting: 'working_days' })
     .onConflictDoNothing()
     .returning({ id: leaveType.id });

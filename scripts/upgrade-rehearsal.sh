@@ -125,7 +125,22 @@ else
   # synchronous_commit=off all set, and the checkpointer sitting in UNINTERRUPTIBLE kernel wait (ps state
   # U), which no Postgres-level setting can shorten. The durable fix is PostgreSQL 15+, whose
   # CREATE DATABASE defaults to STRATEGY=WAL_LOG and forces no checkpoint at all.
-  psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d postgres -q -c "CHECKPOINT" 2>/dev/null || true
+  # SKIPPED ON PostgreSQL 15+, and this is the durable fix the comment above predicted. Measured on
+  # 16.14: five CREATE DATABASE statements move pg_stat_bgwriter.checkpoints_req by ZERO (WAL_LOG
+  # strategy), so there is no create-checkpoint left to pre-empt. Worse, the pre-emptive CHECKPOINT
+  # became the wedge itself — it hung on IPC/CheckpointDone for 10m16s on 2026-08-02 with the counters
+  # frozen, on 16.14, which is one more checkpoint that can stick for no remaining benefit.
+  #
+  # DROP DATABASE still forces a checkpoint on 16, so the risk is reduced, not removed. The ACTUAL root
+  # cause was identified on 2026-08-02 and is not a Postgres setting at all: this Mac runs Trend Micro
+  # real-time file scanning (iCoreSecurity / iCoreService, libTmFileScan + libTmFileEventHub), and those
+  # processes sit in the SAME uninterruptible kernel wait (ps state U) as the stuck checkpointer. A
+  # checkpoint fsyncs thousands of files and an on-access scanner hooks every one, which is why no
+  # Postgres-level tuning ever helped and why a wipe only helps until the file count grows back. The
+  # real fix is excluding the data directory from that scanner.
+  if [ "$(psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d postgres -tAc 'show server_version_num' 2>/dev/null || echo 0)" -lt 150000 ]; then
+    psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d postgres -q -c "CHECKPOINT" 2>/dev/null || true
+  fi
   psql -h "$PGHOST" -p "$PGPORT" -U "$SUPER" -d postgres -q \
     -c "DROP DATABASE IF EXISTS \"$SCRATCH\" WITH (FORCE)" -c "CREATE DATABASE \"$SCRATCH\"" || exit 1
 fi

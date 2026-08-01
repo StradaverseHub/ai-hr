@@ -615,6 +615,8 @@ export async function createLeaveType(
     const [row] = await tx
       .insert(leaveType)
       .values({
+        // ADR-0077 slice 5 — same seam as core/toil.ts: an HR-created type is tenant-scoped, and which
+        // country it belongs to is slice 6's question, not one to answer by guessing here.
         tenantId: ctx.tenantId,
         code,
         name,
