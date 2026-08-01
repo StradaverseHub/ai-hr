@@ -2017,6 +2017,13 @@
       "when": 1781862441000,
       "tag": "0341_import_history_and_disabled_individual",
       "breakpoints": true
+    },
+    {
+      "idx": 342,
+      "version": "7",
+      "when": 1781862442000,
+      "tag": "0342_leave_shared_group",
+      "breakpoints": true
     }
   ]
 }

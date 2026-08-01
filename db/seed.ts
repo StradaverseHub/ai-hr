@@ -247,12 +247,36 @@ async function main() {
   // Rung 5c — the demo company's country pack (MY); the statutory profile writes go through it.
   const countryPack = requirePackFor('MY');
   // ADR-0040 (2D): demo ANNUAL *accrues monthly* (earned), not as a lump on hire — so balances grow
-  // through the year. Entitlement is max(EA floor 8, policy 12) = 12 → 1 day/month; the hire grant skips
-  // earned types and accrueEarnedLeave (run after hiring, below) tops each employee up to today's share.
+  // through the year. Entitlement is the policy's 12 days → 1 day/month; the hire grant skips earned
+  // types and accrueEarnedLeave (run after hiring, below) tops each employee up to today's share.
+  //
+  // r88 (fa3f4ccb): this comment used to read "max(EA floor 8, policy 12) = 12". The statutory floor no
+  // longer OVERRIDES configuration — it is a warning now, not a minimum — so the 12 stands on its own.
+  // ANNUAL was never at risk (12 > 8), but see the SICK policy below, which WAS.
   await createLeavePolicy(admin, {
     leaveTypeId: annual.id,
     annualDays: 12,
     method: 'earned_monthly',
+    validFrom: '2026-01-01',
+  });
+  // r88 (fa3f4ccb) — SICK MUST BE CONFIGURED EXPLICITLY NOW, and this is the seed's half of a real
+  // behaviour change worth understanding.
+  //
+  // This policy did not exist before. It did not need to: entitlement was max(statutoryFloor, policy),
+  // and with no SICK policy at all the EA s.60F floor supplied the days on its own. Once the floor stopped
+  // overriding, an UNCONFIGURED statutory leave type resolves to ZERO — so the demo's sick-leave request
+  // began failing with InsufficientLeaveBalanceOnSubmitError, and the upgrade rehearsal failed with it.
+  //
+  // 14 days is the EA s.60F(1)(a) entitlement for under 2 years' service, i.e. the figure the floor used
+  // to supply here. Granted UP FRONT rather than earned, which is how sick leave works.
+  //
+  // THE GENERAL LESSON, which production escaped only by being well configured: after fa3f4ccb, a leave
+  // type with no policy and no scheme row grants NOTHING. Production's ANNUAL bands are 20-24 days and
+  // SICK 14-22, all at or above the statutory minimum, so no live employee lost a day. A tenant that had
+  // been relying on the floor to supply an unconfigured type would have.
+  await createLeavePolicy(admin, {
+    leaveTypeId: leaveTypeIds.SICK,
+    annualDays: 14,
     validFrom: '2026-01-01',
   });
   // ADR-0041 (2E): grade catalog + a grade-scoped ANNUAL policy. Executives earn 18 annual days (vs the

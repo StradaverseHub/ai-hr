@@ -126,8 +126,8 @@ import {
   payslip,
   person,
   reportingLine,
-  schemeLeaveCombinedLimit,
-  schemeLeaveCombinedLimitMember,
+  leaveSharedGroup,
+  leaveSharedGroupMember,
 } from '../db/schema';
 
 /** ADR-0069: the set of "employmentId|leaveTypeId" keys with an ACTIVE frozen encashment snapshot, for the
@@ -1142,56 +1142,15 @@ export async function leaveTypeApplySummary(
   });
 }
 
-// ── Combined Leave Type Limit enforcement (R44 4c48fd1f, Stage 2) ───────────────────────────────────
-/** Resolve ONE employment's effective benefit scheme id (override → auto-match → none), reusing the pure
- *  resolver. Read-only. Returns null when no active scheme matches (⇒ no combined-limit pools apply). */
-async function resolveSchemeIdForEmployment(tx: Tx, employmentId: string): Promise<string | null> {
-  const [emp] = await tx
-    .select({ companyId: employment.companyId, gradeId: employment.gradeId, overrideSchemeId: employment.benefitSchemeId })
-    .from(employment)
-    .where(eq(employment.id, employmentId))
-    .limit(1);
-  if (!emp) return null;
-  const schemes = await tx
-    .select({
-      id: benefitScheme.id,
-      companyId: benefitScheme.companyId,
-      employmentType: benefitScheme.employmentType,
-      gradeGroupId: benefitScheme.gradeGroupId,
-      status: benefitScheme.status,
-    })
-    .from(benefitScheme);
-  if (schemes.length === 0) return null;
-  const [assign] = await tx
-    .select({ employmentType: assignment.employmentType })
-    .from(assignment)
-    .where(and(eq(assignment.employmentId, employmentId), isNull(assignment.validTo), isNull(assignment.supersededAt)))
-    .limit(1);
-  let gradeGroupId: string | null = null;
-  if (emp.gradeId) {
-    const [gm] = await tx
-      .select({ gradeGroupId: gradeGroupMember.gradeGroupId })
-      .from(gradeGroupMember)
-      .where(eq(gradeGroupMember.gradeId, emp.gradeId))
-      .limit(1);
-    gradeGroupId = gm?.gradeGroupId ?? null;
-  }
-  return resolveEffectiveSchemeId(
-    schemes.map((s) => ({
-      id: s.id,
-      companyId: s.companyId,
-      employmentType: s.employmentType,
-      gradeGroupId: s.gradeGroupId,
-      status: s.status,
-    })),
-    {
-      companyId: emp.companyId,
-      employmentType: assign?.employmentType ?? null,
-      gradeGroupId,
-      overrideSchemeId: emp.overrideSchemeId ?? null,
-    },
-  );
-}
+// ── Shared Leave Group enforcement (r88, feedback 1ef1cf95; the rules themselves R44 4c48fd1f + r82a) ──
+// The two rules are unchanged and both enforcement points are unchanged — APPLY and APPROVAL. What moved is
+// WHERE the group is looked up: a group is now tenant-level with leave-type members (leave_shared_group /
+// _member, migration 0342), so resolving one no longer starts from the employee's benefit scheme.
+//
+// The scheme resolution that used to open this section (resolveSchemeIdForEmployment) is gone with it. It
+// existed solely to answer "which scheme's pools apply to this employee", and there is no such question any
+// more: the group applies to the leave TYPE, for everyone. The scheme-based ENTITLEMENT resolution is a
+// different thing and lives on untouched in buildSchemeEntitlementResolver.
 
 /** THE SINGLE PLACE "consecutive days" is given units (r82a 1ef1cf95).
  *
@@ -1213,21 +1172,26 @@ function applicationSpanDays(startDate: string, endDate: string): number {
   return Math.round((end - start) / 86_400_000) + 1;
 }
 
-/** Combined-limit guard: if the requested leave type belongs to a pool in the employee's effective scheme,
- *  enforce the pool's TWO independent rules.
+/** Shared-leave-group guard: if the requested leave type belongs to a group, enforce the group's TWO
+ *  independent rules.
  *
- *  1. PER-APPLICATION CAP (r82a 1ef1cf95, 0327 — nullable, so a pool without one behaves exactly as before):
+ *  1. PER-APPLICATION CAP (r82a 1ef1cf95 — nullable, so a group without one behaves exactly as before):
  *     this one application may not span more than `max_days_per_application`. Checked FIRST because it is a
- *     property of the application alone — an employee with the whole year's pool untouched is still refused
- *     a too-long application, and telling them "the pool is exhausted" would be a lie.
- *  2. SHARED ANNUAL TOTAL (R44 4c48fd1f): sum the employee's per-cycle usage ACROSS ALL pooled types
+ *     property of the application alone — an employee with the whole year's allowance untouched is still
+ *     refused a too-long application, and telling them "the allowance is exhausted" would be a lie.
+ *  2. SHARED ANNUAL TOTAL (R44 4c48fd1f): sum the employee's per-cycle usage ACROSS ALL member types
  *     (pending + approved, minus the request being re-evaluated) and reject when adding `requestedDays`
- *     would breach the pool's shared total. The cycle is the calendar leave year of `startDate` (mirrors
+ *     would breach the group's shared total. The cycle is the calendar leave year of `startDate` (mirrors
  *     the tenant's calendar-year leave_year_config keying).
  *
- *  The two refuse with DIFFERENT named errors. A no-op when the employee has no scheme, or the type is in
- *  no pool — so tenants without pools are unchanged. */
-async function enforceCombinedLeaveLimit(
+ *  The two refuse with DIFFERENT named errors. A no-op when the type is in no group, so tenants with no
+ *  groups are unchanged.
+ *
+ *  r88 1ef1cf95: the lookup is now `leaveTypeId -> group`, with no benefit-scheme dimension. That REMOVES a
+ *  per-employee dimension: two employees on different schemes can no longer be subject to different shared
+ *  limits over the same leave types. Intended, and the reason the tables were renamed rather than patched.
+ *  Both call sites (requestLeave, the approval path) are unchanged — this is a re-point, not a rewrite. */
+async function enforceSharedLeaveGroupLimit(
   tx: Tx,
   p: {
     employmentId: string;
@@ -1240,43 +1204,36 @@ async function enforceCombinedLeaveLimit(
   },
 ): Promise<void> {
   if (p.requestedDays <= 0) return;
-  const schemeId = await resolveSchemeIdForEmployment(tx, p.employmentId);
-  if (!schemeId) return;
-  // The pool (if any) this leave type belongs to within the effective scheme.
-  const [pool] = await tx
+  // The group (if any) this leave type belongs to. The unique index on (tenant, leave_type) means there is
+  // at most one, so no ordering or tie-break is needed to make this deterministic.
+  const [group] = await tx
     .select({
-      id: schemeLeaveCombinedLimit.id,
-      name: schemeLeaveCombinedLimit.name,
-      totalLimitDays: schemeLeaveCombinedLimit.totalLimitDays,
-      maxDaysPerApplication: schemeLeaveCombinedLimit.maxDaysPerApplication,
+      id: leaveSharedGroup.id,
+      name: leaveSharedGroup.name,
+      totalLimitDays: leaveSharedGroup.totalLimitDays,
+      maxDaysPerApplication: leaveSharedGroup.maxDaysPerApplication,
     })
-    .from(schemeLeaveCombinedLimitMember)
-    .innerJoin(schemeLeaveCombinedLimit, eq(schemeLeaveCombinedLimit.id, schemeLeaveCombinedLimitMember.combinedLimitId))
-    .where(
-      and(
-        eq(schemeLeaveCombinedLimitMember.benefitSchemeId, schemeId),
-        eq(schemeLeaveCombinedLimitMember.leaveTypeId, p.leaveTypeId),
-      ),
-    )
+    .from(leaveSharedGroupMember)
+    .innerJoin(leaveSharedGroup, eq(leaveSharedGroup.id, leaveSharedGroupMember.groupId))
+    .where(eq(leaveSharedGroupMember.leaveTypeId, p.leaveTypeId))
     .limit(1);
-  if (!pool) return;
-  // RULE 1 — the per-application cap. NULL ⇒ this pool sets none (every pool predating 0327), so the check
-  // is skipped entirely and the pool behaves byte-identically to before. Measured by applicationSpanDays,
-  // the one place the calendar-vs-working-days reading lives.
-  if (pool.maxDaysPerApplication != null) {
-    const cap = Number(pool.maxDaysPerApplication);
+  if (!group) return;
+  // RULE 1 — the per-application cap. NULL ⇒ this group sets none, so the check is skipped entirely.
+  // Measured by applicationSpanDays, the one place the calendar-vs-working-days reading lives.
+  if (group.maxDaysPerApplication != null) {
+    const cap = Number(group.maxDaysPerApplication);
     const span = applicationSpanDays(p.startDate, p.endDate);
     if (cap > 0 && span > cap) {
-      throw new CombinedLeaveApplicationTooLongError(pool.name, cap, span);
+      throw new CombinedLeaveApplicationTooLongError(group.name, cap, span);
     }
   }
   // RULE 2 — the shared annual total.
-  const total = Number(pool.totalLimitDays);
-  // All member leave types of the pool.
+  const total = Number(group.totalLimitDays);
+  // All member leave types of the group.
   const members = await tx
-    .select({ leaveTypeId: schemeLeaveCombinedLimitMember.leaveTypeId })
-    .from(schemeLeaveCombinedLimitMember)
-    .where(eq(schemeLeaveCombinedLimitMember.combinedLimitId, pool.id));
+    .select({ leaveTypeId: leaveSharedGroupMember.leaveTypeId })
+    .from(leaveSharedGroupMember)
+    .where(eq(leaveSharedGroupMember.groupId, group.id));
   const memberTypeIds = members.map((m) => m.leaveTypeId);
   if (memberTypeIds.length === 0) return;
   // Per-cycle usage across all member types = pending + approved requests whose start falls in the same
@@ -1299,7 +1256,7 @@ async function enforceCombinedLeaveLimit(
     );
   const usedDays = Number(used?.total ?? 0);
   if (round2(usedDays + p.requestedDays) > total) {
-    throw new CombinedLeaveLimitExceededError(pool.name, total);
+    throw new CombinedLeaveLimitExceededError(group.name, total);
   }
 }
 
@@ -2135,14 +2092,14 @@ export async function requestLeave(
       if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
     }
 
-    // Combined Leave Type Limit (R44 4c48fd1f, Stage 2): reject when this application would push the
-    // employee's per-cycle usage across a shared pool (scheme combined-limit) over its total. No-op when the
-    // employee has no effective scheme or the type is in no pool, so tenants without pools are unaffected.
+    // Shared Leave Group (R44 4c48fd1f, re-pointed to leave-type level by r88 1ef1cf95): reject when this
+    // application would push the employee's per-cycle usage across the group's members over its shared
+    // total. No-op when the type is in no group, so tenants with no groups are unaffected.
     //
     // r82a 1ef1cf95: the same guard also enforces the group's PER-APPLICATION cap, which is why endDate is
     // passed — the cap measures the application's span, not the days it charges. Two rules, two named
     // refusals (CombinedLeaveApplicationTooLongError / CombinedLeaveLimitExceededError); see the guard.
-    await enforceCombinedLeaveLimit(tx, {
+    await enforceSharedLeaveGroupLimit(tx, {
       employmentId: p.employmentId,
       leaveTypeId: p.leaveTypeId,
       startDate: p.startDate,
@@ -3230,7 +3187,7 @@ async function finalizeLeaveApproval(
   // (startDate..endDate) — a cap tightened, or a group created, between submission and approval must not be
   // approvable through. The span is the APPLICATION's, not the per-date subset's: partial approval narrows
   // which dates are granted, it does not turn a 5-day application into a 3-day one.
-  await enforceCombinedLeaveLimit(tx, {
+  await enforceSharedLeaveGroupLimit(tx, {
     employmentId: req.employmentId,
     leaveTypeId: req.leaveTypeId,
     startDate: req.startDate,

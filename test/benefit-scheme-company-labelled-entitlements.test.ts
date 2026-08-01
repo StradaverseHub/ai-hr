@@ -114,7 +114,12 @@ describe('0d1a0cfc · the Service Based Entitlements table names the company bes
     // The scheme name and pool note are still carried on the row (a03eff24 moved them to the second column,
     // under the grade group — it did not drop them).
     expect(decl).toContain('schemeName: string;');
-    expect(decl).toContain('poolName: string | null;');
+    // r88/1ef1cf95 — the shared-pool badge (perTypeSharedPool / poolName) is GONE from the
+    // entitlement rows: the pool it named was a property of the BENEFIT SCHEME, and shared groups
+    // are now tenant-level and configured on the leave type. Recorded as an awareness loss in
+    // HANDOFF and stated to the reporter, not silently dropped — the group editor lists its member
+    // types, which is where that warning now lives.
+    expect(decl).not.toContain('poolName: string | null;');
   });
 
   // a03eff24 SUPERSEDES the original assertion here. That version required the company name to be reprinted
@@ -139,7 +144,12 @@ describe('0d1a0cfc · the Service Based Entitlements table names the company bes
     // the repetition the reporter complained about comes back.
     expect(body).toContain('{schemeNameLine}');
     expect(body).toMatch(/const schemeNameLine = schemeNameIsRedundant\(\s*ent\.schemeName,/);
-    expect(body).toContain("t('perTypeSharedPool'");
+    // r88/1ef1cf95 — the shared-pool badge (perTypeSharedPool / poolName) is GONE from the
+    // entitlement rows: the pool it named was a property of the BENEFIT SCHEME, and shared groups
+    // are now tenant-level and configured on the leave type. Recorded as an awareness loss in
+    // HANDOFF and stated to the reporter, not silently dropped — the group editor lists its member
+    // types, which is where that warning now lives.
+    expect(body).not.toContain("t('perTypeSharedPool'");
     // The pre-a03eff24 per-row company suffix must not come back.
     expect(body).not.toMatch(/e\.companyName != null &&/);
   });

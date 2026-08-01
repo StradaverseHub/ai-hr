@@ -198,7 +198,12 @@ describe('a03eff24 · the matrix renders company once, grade group per row', () 
     // The scheme name is still beneath it — suppressed only when it would repeat the head line.
     expect(body).toContain('{schemeNameLine}');
     // The combined-limit note the flat table carried is not lost in the restructure.
-    expect(body).toContain("t('perTypeSharedPool'");
+    // r88/1ef1cf95 — the shared-pool badge (perTypeSharedPool / poolName) is GONE from the
+    // entitlement rows: the pool it named was a property of the BENEFIT SCHEME, and shared groups
+    // are now tenant-level and configured on the leave type. Recorded as an awareness loss in
+    // HANDOFF and stated to the reporter, not silently dropped — the group editor lists its member
+    // types, which is where that warning now lives.
+    expect(body).not.toContain("t('perTypeSharedPool'");
   });
 
   it('the headers are the real Company / Grade group labels and the DERIVED tenure columns', () => {

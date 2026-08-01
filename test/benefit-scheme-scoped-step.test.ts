@@ -54,7 +54,10 @@ describe('6c775d68 · the standalone Benefit Schemes section is gone from the pa
     // A single shared props object; the per-type composition only varies the scope id.
     expect(pageSrc.match(/const schemeConfigProps = \{/g)?.length).toBe(1);
     // The loaders still run once in the page-level Promise.all.
-    for (const loader of ['listGradeGroups(s)', 'listBenefitSchemes(s)', 'listSchemeEntitlements(s)', 'listSchemeCombinedLimits(s)']) {
+    // r88/1ef1cf95 — listSchemeCombinedLimits(s) is GONE from this list: shared groups are no longer a
+    // property of a benefit scheme, so the page has no scheme-level pool data to load. The remaining
+    // three still load exactly once, which is what this assertion is actually about.
+    for (const loader of ['listGradeGroups(s)', 'listBenefitSchemes(s)', 'listSchemeEntitlements(s)']) {
       expect(pageSrc.match(new RegExp(loader.replace(/[().]/g, '\\$&'), 'g'))?.length, `${loader} loaded exactly once`).toBe(1);
     }
   });
@@ -100,15 +103,24 @@ describe('6c775d68 · scoped display filter — rows of other leave types hidden
     expect(schemeSrc).toContain('existingLeaveTypeIds={selectedSchemeEnts.map((e) => e.leaveTypeId)}');
   });
 
-  it('pools whose member rows are all hidden still render (header-only), staying visible + droppable', () => {
-    expect(schemeSrc).toContain('if (!byPool.has(p.id)) out.push({ pool: p, ents: [] })');
+  it('the scheme screen no longer renders pools at all (they moved to leave type level)', () => {
+    // INVERTED IN r88 (1ef1cf95). Was: "pools whose member rows are all hidden still render (header-only),
+    // staying visible + droppable" — a rule about how the scheme-scoped view presented a pool. There is no
+    // pool on this screen now, so the honest assertion is that the whole concept has left it. The shared
+    // group and its members are configured in components/leave-shared-group-config.tsx and guarded by
+    // test/shared-leave-group-single-mechanism.test.ts.
+    expect(schemeSrc).not.toContain('byPool');
+    expect(schemeSrc).not.toMatch(/pool\.leaveTypeIds/);
   });
 
   it('CRUD still writes scheme-wide: the same Actions contract, no scoped fork of any write', () => {
     // The scoped host passes the SAME actions object — every write keeps posting the scheme-wide server
-    // actions (moveCombinedLimitMember still keys on benefitSchemeId, upserts still carry it, and grade
-    // group / scheme management render unconditionally, i.e. not gated behind the scope flag).
-    expect(schemeSrc).toContain("fd.set('benefitSchemeId', schemeId)");
+    // actions, and grade group / scheme management render unconditionally rather than behind the scope flag.
+    //
+    // r88/1ef1cf95 — the fd.set('benefitSchemeId', schemeId) assertion is dropped: it belonged to the DRAG
+    // handler, which built FormData by hand for moveCombinedLimitMember. That entrypoint went with the
+    // pool. The hidden input below is the one that matters and it is untouched, so scheme-wide writing —
+    // this assertion's actual subject — is still proven.
     expect(schemeSrc).toContain('<input type="hidden" name="benefitSchemeId" value={schemeId} />');
     expect(schemeSrc).not.toMatch(/scopeLeaveTypeId\s*&&\s*actions\./);
     for (const structural of ['actions.createGradeGroup', 'actions.updateGradeGroup', 'actions.createScheme', 'actions.updateScheme']) {
@@ -117,27 +129,33 @@ describe('6c775d68 · scoped display filter — rows of other leave types hidden
   });
 });
 
-describe('6c775d68 · shared combined-limit badge', () => {
-  it('a pool spanning other leave types renders the sharedWithTypes badge in the scoped view', () => {
-    // The badge derives from the pool members MINUS the scoped type, and only exists when scoped.
-    expect(schemeSrc).toMatch(/pool\.leaveTypeIds\.filter\(\(id\) => id !== scopeLeaveTypeId\)\.map\(\(id\) => typeNames\.get\(id\) \?\? '—'\)/);
-    expect(schemeSrc).toMatch(/sharedNames\.length > 0 &&[\s\S]{0,200}t\('sharedWithTypes', \{ names: sharedNames\.join\(', '\) \}\)/);
+// ── r88 / 1ef1cf95 ───────────────────────────────────────────────────────────────────────────────────
+// WAS: describe('6c775d68 · shared combined-limit badge'). The badge said "Shared with Sick Leave,
+// Hospitalization — edits here affect every leave type in this pool", rendered on a scheme's scoped
+// entitlement rows. It cannot survive here: the pool it described was a property of the BENEFIT SCHEME,
+// and shared groups are now tenant-level and configured on the leave type.
+//
+// THIS IS A REAL LOSS OF AWARENESS, NOT JUST A MOVED STRING, and it is recorded rather than quietly
+// dropped. The badge existed so that editing a shared total from one leave type could not silently move
+// another. That hazard did not go away — it got WIDER, because a group is no longer scoped to one
+// scheme. Re-earning it means surfacing group membership on the entitlement rows from the new
+// leave_shared_group tables, which is beyond what the approved plan asked for. Raised as follow-up debt
+// in HANDOFF and stated to the reporter in the build_ref.
+describe('1ef1cf95 · the scheme screen no longer claims anything about shared pools', () => {
+  it('the retired badge and its string are gone from this surface, not left dangling', () => {
+    expect(schemeSrc).not.toContain("t('sharedWithTypes'");
+    // Scoped to the BADGE's own derivation (pool members minus the scoped type). NOT to `scopeLeaveTypeId`
+    // generally — my first attempt forbade that token outright and caught the scoped-display FILTER
+    // (6c775d68), which is a different, surviving feature. Forbidding a token used by something that
+    // still works is the over-broad-guard mistake this round has now made three times.
+    expect(schemeSrc).not.toMatch(/pool\.leaveTypeIds\.filter\(\(id\) => id !== scopeLeaveTypeId\)/);
   });
 
-  it('has the sharedWithTypes string ({names} param) in every locale, and en names the pool-wide effect', () => {
-    for (const loc of LOCALES) {
-      const msgs = JSON.parse(readFileSync(resolve(here, `../messages/${loc}.json`), 'utf8'));
-      const val = msgs?.admin?.benefitScheme?.sharedWithTypes;
-      expect(typeof val, `${loc}.admin.benefitScheme.sharedWithTypes`).toBe('string');
-      expect(val as string, `${loc}: keeps the {names} interpolation`).toContain('{names}');
-    }
-    const en = JSON.parse(readFileSync(resolve(here, '../messages/en.json'), 'utf8'));
-    const t = createTranslator({ locale: 'en', messages: en, namespace: 'admin.benefitScheme' }) as unknown as (
-      k: string,
-      p?: Record<string, unknown>,
-    ) => string;
-    expect(t('sharedWithTypes', { names: 'Sick Leave, Hospitalization' })).toBe(
-      'Shared with Sick Leave, Hospitalization — edits here affect every leave type in this pool',
-    );
+  it('the shared-group surface that REPLACED it exists and names its members', () => {
+    // The awareness has to live somewhere. Today that somewhere is the group editor itself, which lists
+    // every member leave type — so a shared total is never edited without its members on screen.
+    const groupSrc = readFileSync(resolve(here, '../components/leave-shared-group-config.tsx'), 'utf8');
+    expect(groupSrc).toContain("t('membersLabel')");
+    expect(groupSrc).toContain("t('membersSummary'");
   });
 });
