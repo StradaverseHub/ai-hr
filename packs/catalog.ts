@@ -99,6 +99,21 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   { code: 'toil', name: 'Time Off In Lieu', category: 'hr', description: 'Bank overtime as replacement leave instead of cash.', dependsOn: ['leave', 'attendance'], billable: true, isCore: false, parentModule: 'leave', packBacked: false, sortOrder: 200 },
   { code: 'multi_cycle_payroll', name: 'Multi-Cycle Payroll', category: 'payroll', description: 'More than one payroll cycle per company.', dependsOn: ['payroll'], billable: true, isCore: false, parentModule: 'payroll', packBacked: false, sortOrder: 210 },
   { code: 'typed_pay_components', name: 'Typed Pay Components', category: 'payroll', description: 'Structured, per-type pay components on the payslip.', dependsOn: ['payroll'], billable: true, isCore: false, parentModule: 'payroll', packBacked: false, sortOrder: 220 },
+  /**
+   * ADR-0077 slice 6 — COUNTRY IS A MODULE. A tenant's right to operate a jurisdiction is an
+   * entitlement, not a column: the MNC path is "platform grants country-sg, then the admin may create
+   * an SG statutory company". Shipped INERT — nothing resolves against these rows yet.
+   *
+   * `packBacked: false` even though `country-my` IS a registered pack id, because the drift test's
+   * correspondence is with `listPacks('module')` and a country pack registers under `kind: 'country'`.
+   * Marking it true would assert a module pack that does not exist.
+   *
+   * `billable: false` for now, deliberately. A country pack is plausibly something a customer pays for,
+   * but the commercial model is slice 6's to settle — and marking it billable today would make the
+   * change runner refuse to grant it without a `subscription_line`, stranding a capability nobody has
+   * decided how to sell. Flipping it later is a catalog edit; unpicking a wrong refusal is not.
+   */
+  { code: 'country-my', name: 'Malaysia', category: 'platform', description: 'Malaysian statutory rules: EPF, SOCSO, EIS, PCB, HRD Corp and the EA form.', dependsOn: [], billable: false, isCore: false, parentModule: null, packBacked: false, sortOrder: 300 },
   { code: 'notifications', name: 'Notifications', category: 'platform', description: 'In-app notification centre and task alerts.', dependsOn: [], billable: true, isCore: false, parentModule: null, packBacked: false, sortOrder: 230 },
   /**
    * System Analysis & Dependency Explorer (deec1691) — the admin-facing record-relationship reference.
@@ -247,6 +262,17 @@ export const LEGACY_MODULE_ENV_GATES: Readonly<Record<string, string | null>> = 
    * it cannot later become a real deployment flag that outranks what a customer bought.
    */
   system_explorer: 'SYSTEM_EXPLORER_ENABLED',
+  /**
+   * ADR-0077 slice 6 — same idiom as `system_explorer` directly above, and for the same mechanical
+   * reason. `null` would force `country-my` into LEGACY_ENABLED_MODULE_CODES, which the drift test pins
+   * against the literal list inside 0313 — a migration that has already run on production. Naming an
+   * unset variable keeps it out of that parity set.
+   *
+   * The difference from system_explorer is what happens NEXT: existing tenants DO need a row, and they
+   * get one from `scripts/backfill-country-modules.ts`, which can read the pack registry and therefore
+   * knows which countries actually have a pack. SQL cannot, which is why this is not a migration.
+   */
+  'country-my': 'COUNTRY_MY_ENABLED',
 };
 
 /** The env var that gates each catalogued SETTING today. Same coverage rule, same drift assertion. */

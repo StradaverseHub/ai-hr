@@ -103,6 +103,13 @@ node --env-file=.env.production --import tsx scripts/seed-catalogs.ts
 echo "▸ Seeding feedback plan history…"
 node --env-file=.env.production --import tsx scripts/backfill-plan-history.ts
 
+# ADR-0077 slice 6 — grant each tenant the country modules its companies already operate in. Idempotent
+# and permanent, not one-shot: a company created between deploys is picked up on the next one. It runs
+# AFTER seed-catalogs because tenant_module.module_code has an FK to module(code), and it is a script
+# rather than a migration because "where a pack is registered" is a question only TypeScript can answer.
+echo "▸ Granting country modules…"
+node --env-file=.env.production --import tsx scripts/backfill-country-modules.ts
+
 # ADR-0077 slice 3 — ENTITLEMENT PARITY IS NOT CHECKED HERE, DELIBERATELY. A blocking
 # `reconcile-entitlement-parity.ts --preflight` sat at this line and had to come out (review r2): it
 # could never reach a clean state, and both of its escapes were worse than the thing it guarded.
