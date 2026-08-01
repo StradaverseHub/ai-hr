@@ -2807,6 +2807,16 @@ export async function generatePayslips(
      *  Returns the exact variables the loop already used so the rest of the kernel is unchanged.
      *  Feedback 09b554e9 adds `lpDeclared` (this month's optional-deduction claims, fed into LP₁ beside
      *  TP1) and `exemptionUsed` (per-code exempt/claimed amounts, stamped onto the slip for the YTD replay). */
+    /** Which summarised figure on the payslip a component's money landed in (feedback 862ed0ad). */
+    type PayComponentBucket = 'wage' | 'ot' | 'bonus' | 'reimburse' | 'deduct';
+    type PayComponentLine = {
+      code: string;
+      name: string;
+      /** The whole resolved+prorated amount, before it was split across buckets. */
+      amount: number;
+      buckets: { bucket: PayComponentBucket; amount: number }[];
+    };
+
     const earningsOf = (
       e: { employmentId: string; basic: unknown; allowance: unknown },
       factor: number,
@@ -2814,6 +2824,7 @@ export async function generatePayslips(
       basicRaw: number; basicGross: number; allowanceApplied: number; hrdfAllowApplied: number;
       overtime: number; bonus: number; reimburse: number; deduct: number;
       recordLines: { code: string; name: string; amount: number }[];
+      componentLines: PayComponentLine[];
       lpDeclared: number; exemptionUsed: Record<string, number>;
     } => {
       if (!typedComponents) {
@@ -2830,12 +2841,37 @@ export async function generatePayslips(
           reimburse: 0,
           deduct: 0,
           recordLines: [],
+          // Nothing to itemise: with typed components off there IS no per-component detail — the figures
+          // come from compensation + payroll_input, which is a different shape entirely.
+          componentLines: [],
           lpDeclared: 0,
           exemptionUsed: {},
         };
       }
       let basicRaw = 0, basicGross = 0, wageAllow = 0, hrdfAllow = 0, ot = 0, bonusAmt = 0, reimburse = 0, deduct = 0;
       const recordLines: { code: string; name: string; amount: number }[] = [];
+      // Feedback 862ed0ad — per-component provenance for the CASH buckets. recordLines already itemises
+      // record-only components, which is why one-off items could always be broken down; the PAID recurring
+      // ones were summed into wageAllow/ot/bonusAmt/reimburse/deduct with nothing kept, so a summarised
+      // figure on Transaction View had no stored detail behind it to disclose.
+      //
+      // One line per component carrying EVERY bucket it contributed to, so a component that splits — an
+      // exempt portion paid untaxed plus a taxable remainder — is represented as it actually behaved
+      // rather than flattened into one number against one bucket.
+      //
+      // INVARIANT, pinned by test: for each bucket, the sum of the lines' contributions equals that
+      // bucket's total. That is what makes a breakdown incapable of disagreeing with the figure beside it,
+      // which the plan made a precondition of showing one at all.
+      const componentLines: PayComponentLine[] = [];
+      let currentLine: PayComponentLine | null = null;
+      /** Record a component's contribution. Enrolled LAZILY: a component that never moves cash (a
+       *  record-only BIK) never appears here — it belongs to recordLines and would otherwise be listed
+       *  twice, under a heading about money it does not affect. */
+      const contributes = (bucket: PayComponentBucket, amount: number) => {
+        if (!currentLine || amount === 0) return;
+        if (currentLine.buckets.length === 0) componentLines.push(currentLine);
+        currentLine.buckets.push({ bucket, amount });
+      };
       // LHDN PCB 2026 (feedback 09b554e9) — this month's optional-deduction (LP) claims and per-code
       // exemption usage. `priorUsed` is the YTD usage replayed from the year's earlier slips; `exemptionUsed`
       // accumulates THIS month's usage (so two components sharing a code share the remaining cap headroom).
@@ -2900,6 +2936,7 @@ export async function generatePayslips(
         // factor (prorate ON = proportional for a mid-period joiner/resigner, OFF = full amount).
         const prorate = c.prorateOverride ?? c.prorates;
         const applied = roundAmount(prorate ? resolved * factor : resolved, c.rounding);
+        currentLine = { code: c.code, name: c.name, amount: applied, buckets: [] };
         // ── LHDN PCB 2026 declared classification (feedback 09b554e9) ──
         // Optional Deduction: the amount reduces this month's PCB exactly like an approved TP1 deduction
         // (fed into LP₁ below), capped by the LP code's remaining ANNUAL headroom (YTD replay). Cash-wise
@@ -2912,12 +2949,13 @@ export async function generatePayslips(
             lpDeclared = round2(lpDeclared + claim);
             useRoom(c.pcbExemptionCode!, claim);
           }
-          if (c.kind === 'deduction') { deduct = round2(deduct + applied); continue; }
+          if (c.kind === 'deduction') { deduct = round2(deduct + applied); contributes('deduct', applied); continue; }
           if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied }); continue; }
           reimburse = round2(reimburse + applied);
+          contributes('reimburse', applied);
           continue;
         }
-        if (c.kind === 'deduction') { deduct = round2(deduct + applied); continue; }
+        if (c.kind === 'deduction') { deduct = round2(deduct + applied); contributes('deduct', applied); continue; }
         // FAIL-CLOSED (ADR-0025 §5): a PCB-taxable non-payable/BIK, or a PCB-only earning (not EPF and not
         // SOCSO), would be SILENTLY under-taxed — v1 does not compute the tax, so reject rather than produce
         // a wrong payslip. (Write-time guards in core/pay-components.ts now reject the same at entry/import.)
@@ -2948,23 +2986,26 @@ export async function generatePayslips(
             if (exempt > 0) {
               taxable = round2(applied - exempt);
               reimburse = round2(reimburse + exempt);
+              contributes('reimburse', exempt);
               useRoom(code, exempt);
             }
           }
           if (stream === 'normal') {
             wageAllow = round2(wageAllow + taxable);
+            contributes('wage', taxable);
             if (c.hrdf) hrdfAllow = round2(hrdfAllow + taxable);
           } else {
             bonusAmt = round2(bonusAmt + taxable);
+            contributes('bonus', taxable);
           }
           continue;
         }
-        if (c.epf && c.socso) { wageAllow = round2(wageAllow + applied); if (c.hrdf) hrdfAllow = round2(hrdfAllow + applied); }
-        else if (!c.epf && c.socso) ot = round2(ot + applied);
-        else if (c.epf && !c.socso) bonusAmt = round2(bonusAmt + applied);
-        else reimburse = round2(reimburse + applied); // all-false earning: paid but untaxed (e.g. receipted reimbursement)
+        if (c.epf && c.socso) { wageAllow = round2(wageAllow + applied); contributes('wage', applied); if (c.hrdf) hrdfAllow = round2(hrdfAllow + applied); }
+        else if (!c.epf && c.socso) { ot = round2(ot + applied); contributes('ot', applied); }
+        else if (c.epf && !c.socso) { bonusAmt = round2(bonusAmt + applied); contributes('bonus', applied); }
+        else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, recordLines, lpDeclared, exemptionUsed };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, recordLines, componentLines, lpDeclared, exemptionUsed };
     };
 
     /** Age at the period end; null when DOB is not captured (treated as < 60). */
@@ -3302,6 +3343,15 @@ export async function generatePayslips(
         ...(!isAdditionalRun && (en.recordLines.length || (txnRecordLinesByEmp.get(e.employmentId)?.length ?? 0))
           ? { recordLines: [...en.recordLines, ...(txnRecordLinesByEmp.get(e.employmentId) ?? [])] }
           : {}),
+        // Feedback 862ed0ad — the per-component detail behind the summarised earnings/deduction figures.
+        // Written from THIS run onward only: the detail was never stored before, so the runs already
+        // completed cannot be itemised retrospectively and Transaction View says so on screen rather than
+        // rendering an empty breakdown. Key absent when there is nothing to say, which keeps payslips from
+        // the flag-off path (and every historical slip) byte-identical.
+        //
+        // Regular run only, for the same reason recordLines is: an additional/off-cycle run re-folds the
+        // same recurring components, so stamping there would list them twice for one month.
+        ...(!isAdditionalRun && en.componentLines.length ? { componentLines: en.componentLines } : {}),
         // Feedback 09b554e9 — per-code exemption/LP usage this month, replayed by future months' YTD
         // accumulator (like st.lp) and summed into the EA exempt-allowances figure. Regular run only
         // (an additional run re-folds the same recurring components; stamping again would double-count

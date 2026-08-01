@@ -84,18 +84,27 @@ describe('862ed0ad — the itemised section no longer claims "no cash impact"', 
     expect(TABLE, 'still borrowing the payslip note').not.toContain("tSlip('recordLinesNote')");
   });
 
-  it('says plainly that recurring pay items are not broken out', () => {
-    // The reporter's example was an Allowance line of MYR 200 with no indication of what made it up. For
-    // recurring items there is nothing stored to disclose, and the honest answer beats both a silent lump
-    // sum and a breakdown re-derived from today's assignments, which could disagree with the figure it sits
-    // beside.
-    expect(TABLE).toContain("t('view.history.allowanceNotItemised')");
+  /**
+   * SUPERSEDED BY 862ed0ad step 2 (r95). This test used to assert the screen says recurring pay items
+   * CANNOT be broken out. That was true and worth stating when r91 shipped — there was no stored detail.
+   * The kernel now stamps it at generate time, so the screen itemises instead, and the note survives only
+   * for runs calculated before the stamp. Asserting the old claim would now pin a statement the product
+   * has outgrown.
+   */
+  it('itemises the figures, and keeps the honest note only for runs that predate the stamp', () => {
+    expect(TABLE).toContain('<SubLines lines={b.componentsByBucket.wage}');
+    expect(TABLE).toContain('<SubLines lines={b.componentsByBucket.ot}');
+    expect(TABLE).toContain('<SubLines lines={b.componentsByBucket.bonus}');
+    // The note is CONDITIONAL on there being nothing stored — not shown beside a breakdown that exists.
+    expect(TABLE).toContain("b.detailNotRecorded && b.allowanceNet > 0");
+    expect(TABLE).toContain("t('view.history.detailNotRecorded')");
+    expect(TABLE, 'the superseded claim is gone').not.toContain('allowanceNotItemised');
   });
 
   it('the three new keys exist in all six catalogs', () => {
     for (const loc of LOCALES) {
       const history = JSON.parse(read(`messages/${loc}.json`)).payroll.transactions.view.history as Record<string, string>;
-      for (const key of ['itemsHeading', 'itemsNote', 'allowanceNotItemised']) {
+      for (const key of ['itemsHeading', 'itemsNote', 'detailNotRecorded']) {
         expect(history[key], `view.history.${key} missing from ${loc}.json`).toBeTruthy();
       }
     }

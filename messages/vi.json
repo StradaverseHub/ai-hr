@@ -3431,7 +3431,7 @@
           "capped": "Đang hiển thị {cap} kết quả gần nhất. Hãy thu hẹp bộ lọc phía trên để xem các tháng trước.",
           "itemsHeading": "Các khoản lương chi tiết",
           "itemsNote": "Được ghi riêng trên phiếu lương này. Các khoản một lần đã nằm trong tổng phía trên; các khoản chỉ để ghi nhận (như phúc lợi hiện vật) không ảnh hưởng đến tổng hay thực nhận.",
-          "allowanceNotItemised": "Tổng các khoản phụ cấp của nhân viên này. Các khoản định kỳ không được ghi riêng trên phiếu lương, nên chỉ có thể tách các khoản liệt kê bên dưới.",
+          "detailNotRecorded": "Được tính trước khi hệ thống bắt đầu lưu chi tiết từng khoản, nên các khoản riêng lẻ đằng sau những con số này chưa từng được lưu và không thể hiển thị cho kỳ này.",
           "hrdfNotRegistered": "Chưa đăng ký"
         },
         "exportCsv": "Xuất CSV",

@@ -99,6 +99,67 @@ describe('ADR-0035 1A — pay-component rounding + attributes + delete guard', (
     expect(Number(ps.allowance)).toBeCloseTo(expected, 2);
   });
 
+  /**
+   * Feedback 862ed0ad — the kernel STAMPS the per-item detail behind each summarised figure.
+   *
+   * Before this, earningsOf summed recurring pay items into wageAllow/ot/bonusAmt/reimburse/deduct and
+   * kept nothing per item, so an "Allowance MYR 200.00" line on Transaction View had no stored detail to
+   * disclose. The reporter accepted that it can only work forwards; this pins that it now works at all.
+   *
+   * The assertion that matters is the SUM: the lines under a figure must add up to the figure itself.
+   * They can only disagree if something recomputes rather than reads, which is what the plan forbade.
+   */
+  it('stamps per-item component lines whose per-figure sums equal the stored figures', async () => {
+    const a = adminCtx(base);
+    const e = await hireEmployee(a, {
+      person: { fullName: 'Itemised', primaryEmail: 'itemised@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011299' });
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await seedPayComponentCatalog(a);
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode(base, 'BASIC'), amount: 5000, effectiveFrom: '2026-01-01' });
+
+    // Two separate allowances that both land in the wage figure — the reporter's exact complaint: a single
+    // total with no way to see which allowances make it up.
+    for (const [code, name, amount] of [['ALW_TRAVEL', 'Travel Allowance', 120], ['ALW_PHONE', 'Phone Allowance', 80]] as const) {
+      await upsertPayComponent(a, {
+        code, name, kind: 'allowance',
+        includedInEpf: true, includedInSocsoEis: true, includedInPcb: true, includedInHrdfBase: false,
+        isNonPayable: false, prorates: true, roundingMethod: 'none',
+      });
+      await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode(base, code), amount, effectiveFrom: '2026-01-01' });
+    }
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await setModule(base.tenantId, 'typed_pay_components', 'active');
+    const gated = await entitledCtx(base);
+    await generatePayslips(gated, { batchId });
+    const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+
+    const st = ps.statutory as { componentLines?: { code: string; name: string; amount: number; buckets: { bucket: string; amount: number }[] }[] };
+    const lines = st.componentLines ?? [];
+    // Stated absolutely, not derived from `lines` itself: an expectation computed FROM the value under
+    // test passes when that value is empty, which is how a vacuous assertion reads as coverage.
+    expect(lines.length).toBeGreaterThanOrEqual(2);
+    const byCode = new Map(lines.map((l) => [l.code, l]));
+    // Named, so the screen can show "Travel Allowance" rather than a code the reporter does not use.
+    expect(byCode.get('ALW_TRAVEL')?.name).toBe('Travel Allowance');
+    expect(byCode.get('ALW_TRAVEL')?.amount).toBeCloseTo(120, 2);
+    expect(byCode.get('ALW_PHONE')?.name).toBe('Phone Allowance');
+    expect(byCode.get('ALW_PHONE')?.amount).toBeCloseTo(80, 2);
+
+    // THE INVARIANT: what is listed under the wage figure adds up to the wage figure.
+    const wage = lines.flatMap((l) => l.buckets.filter((b) => b.bucket === 'wage').map((b) => b.amount));
+    expect(wage.reduce((t, n) => t + n, 0)).toBeCloseTo(Number(ps.allowance), 2);
+    // And a record-only component would NOT be here — those belong to recordLines, under a heading that
+    // says they do not affect pay. Nothing in this run is record-only, so every line moved cash.
+    expect(lines.every((l) => l.buckets.length > 0)).toBe(true);
+  });
+
   // #14/#15 — the attributes persist; out-of-vocabulary values are cleaned (line→null, rounding→none).
   it('persists EA-form line + rounding, and rejects invalid values', async () => {
     const a = adminCtx(base);
