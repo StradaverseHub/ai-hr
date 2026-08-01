@@ -5,7 +5,7 @@ Updated after **every release/deploy**. Newest round first; older rounds compres
 The high-value part of each entry is **Decisions** — calls that the tickets themselves did not
 settle. Those cannot be reconstructed from the diff later; everything else can.
 
-## CURRENT STATE — read this first (updated 2026-08-01, after r94 SHIPPED)
+## CURRENT STATE — read this first (updated 2026-08-02, after r95 SHIPPED)
 
 > ### THE REPO NOW HAS TEST RUNNERS THAT RENDER. Carried debt item 1 is partly discharged.
 >
@@ -35,7 +35,7 @@ settle. Those cannot be reconstructed from the diff later; everything else can.
 > dependency; it resolves conflicts by intent) or dropping `w-full` from `inputCls`, and **both change
 > rendered input widths across 133 files**, so it needs measuring before it needs planning.
 >
-> ### DEPLOYED HEAD IS `main@c009578f` — production on **290** migrations.
+> ### DEPLOYED HEAD IS `main@2ef73c0d` — production on **290** migrations.
 >
 > **`241817ef` IS FINALLY CLOSED** (r94), so r90's deliberate half-ship is done. **The board now has NOTHING in `building`.**
 >
@@ -443,6 +443,25 @@ This is the same root-worktree trap that cost r79 a round, arriving by a differe
 next suite printed `RUN … /Users/zenlam/Projects/ai-hr`. Caught only by reading the `RUN` line. Read it
 every time; it is the cheapest check in this file.
 
+**SWEEPING APPLICATION CODE FOR A TIMEZONE BUG AND STOPPING THERE LEAVES THE TESTS WRONG — and they
+fail ONLY AT NIGHT.** r92 moved 45 sites onto `todayInKualaLumpur()` across `core/ app/ lib/ packs/
+localization/ components/` and deliberately skipped `test/`, on the reasoning that a fixture is not
+production code. **That reasoning is wrong the moment the kernel judges a date in a timezone.** Six test
+files still built "today" as `new Date().toISOString().slice(0, 10)` (UTC) while the code they exercise
+judged in MYT, so for the eight hours between 00:00 and 08:00 MYT the fixture and the rule disagreed by a
+day. `submitClaim(incurredOn: utcPlusDays(1))` is TODAY in MYT, so the future-date rejection correctly did
+not fire and the test read as a product bug.
+
+**Every daytime run since r92 passed.** It surfaced on 2026-08-02 only because a gate run started at 23:51
+and crossed midnight — the same way r85's original instance surfaced at 01:46. Affected:
+`claims-form-enhancement`, `claims-limits`, `claims-pack`, `claims-payout`, `payroll-claims-scope`,
+`dob-backfill-from-ic`. `test/today-in-myt-drift.test.ts` now scans `test/` too, excluding the two files
+that quote the pattern on purpose.
+
+**When one of these fails, suspect the FIXTURE before the product.** Here the product was right and the
+test was wrong, which is the harder direction to read. And **re-verify inside 00:00–08:00 MYT** — a
+daytime green proves nothing about a timezone fix, which is the whole lesson of the original bug.
+
 **A LONG SESSION BLOATS `pg_wal` UNTIL `resetDb()` STARTS LOSING DEADLOCK RACES — r94 lost THREE gate
 runs to this.** Symptom: one file fails with 22-27 × `Hook timed out in 30000ms` in `beforeEach`, the file
 is unrelated to the change, and it **passes in isolation**. The real error is buried under the timeout:
@@ -794,6 +813,48 @@ those employees drop to the statutory floor until their schemes are filled in.
 ---
 
 # Round history
+
+## r95 — 2026-08-02 — the itemisation the reporter asked for, and a bug I planted two rounds ago
+
+**Shipped:** `main@2ef73c0d`. **No migration.**
+**Gate:** `tsc` clean · **517 files / 6028 tests** · `next build` clean — on the third attempt.
+**`862ed0ad` marked deployed.**
+
+### Decisions
+
+**1. THE ITEMISATION IS A WRITE-PATH STAMP, AND IT ONLY EVER WORKS FORWARDS.** `earningsOf` now builds
+`componentLines`: one line per pay item carrying EVERY bucket it contributed to. Bucket-per-line rather
+than one bucket per item, because an item legitimately splits — a PCB-exempt portion paid untaxed plus a
+taxable remainder land in different figures, and flattening that misstates where the money went.
+Enrolment is LAZY, so a record-only BIK never appears: it belongs to `recordLines`, under a heading
+saying it does not affect pay, and listing it twice would contradict that heading.
+
+Stamped on regular runs only (an additional run re-folds the same recurring components), and the key is
+ABSENT when there is nothing to record — so every historical and flag-off payslip stays byte-identical.
+
+**THE INVARIANT IS THE POINT:** per bucket, the listed items sum to the figure they sit under. Pinned in
+the pure derivation AND end-to-end against a really generated payslip. It holds because the read side
+copies stored amounts and computes nothing — re-deriving from today's assignments is what rev 1 forbade,
+since an employee whose allowances changed would get a breakdown disagreeing with the total above it.
+
+**2. I NARROWED A BYTE-IDENTITY GUARD, AND PROVED THE NARROWING.** `test/typed-components-compat.test.ts`
+asserts the typed kernel is byte-identical to the legacy one, statutory blob included. `componentLines`
+breaks that. The narrowing is legitimate — it is PROVENANCE, not arithmetic, and the legacy path
+structurally cannot produce it (no typed components to name) — but the important part is HOW:
+`PROVENANCE_ONLY` names exactly ONE key, and `noUnexpectedNewKeys` fails if the typed path grows any
+other, so a future stamp cannot ride in behind the exemption. **Then it was verified to still fail** by
+stamping a dummy second key (`expected [ 'sneakyNewKey' ] to deeply equal []`) and reverting.
+**A guard that has been narrowed and not re-tested is a guard whose strength nobody knows.**
+
+**3. THE GATE CAUGHT A BUG I INTRODUCED IN r92** — six test fixtures building dates in UTC while the
+kernel judges in MYT. See the new trap. It is the same shape as r85's original instance and it surfaced
+the same way: a run that crossed midnight. Fixed, the drift guard extended to `test/`, and re-verified at
+**00:07 MYT — inside the window that breaks it.**
+
+**4. THE INTEGRATION GATE HAS NOW FOUND SOMETHING IN SIX CONSECUTIVE ROUNDS** that targeted runs did not.
+Both of this round's findings came from the FULL suite after per-file runs were green.
+
+---
 
 ## r94 — 2026-08-01 — the half-shipped item is finished, and three gates lost to 7.8 GB of WAL
 
