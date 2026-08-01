@@ -343,6 +343,45 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
     expect(await listProcessedPayslipsAcross(a, { companyIds: [] })).toEqual([]);
   });
 
+  it('history: the row cap bounds the read, keeps the newest, and is absent by default (862ed0ad)', async () => {
+    // This read had NO limit and no pagination — every payslip in scope for all time, each carrying its
+    // whole statutory blob. That became load-bearing when History was made the tab that OPENS, so the cap
+    // is what makes the default-tab change safe. Three properties matter and each is a way it could hurt:
+    //   1. the cap actually reaches the QUERY (a render-side slice would still fetch everything);
+    //   2. it keeps the NEWEST rows, or "the 200 most recent" would be a lie;
+    //   3. an absent cap is still unbounded, because the CSV export and the report registry pass none and
+    //      must never be clipped.
+    const a = adminCtx(base);
+    await hirePayrollReady(a, base.companyId, base.deptA, 'Cap One', '900101011234');
+    const bApr = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-04' });
+    await generatePayslips(a, { batchId: bApr.batchId });
+    const bMay = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId: bMay.batchId });
+    const bJun = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' });
+    await generatePayslips(a, { batchId: bJun.batchId });
+
+    const uncapped = await listProcessedPayslipsAcross(a, { companyIds: [base.companyId] });
+    expect(uncapped.map((r) => r.payPeriod)).toEqual(['2026-06', '2026-05', '2026-04']);
+
+    const capped = await listProcessedPayslipsAcross(a, { companyIds: [base.companyId], limit: 2 });
+    expect(capped).toHaveLength(2);
+    expect(capped.map((r) => r.payPeriod), 'the cap must keep the NEWEST periods').toEqual(['2026-06', '2026-05']);
+
+    // The page asks for CAP + 1 to detect truncation: with 3 rows and a cap of 2 it gets 3 back and knows.
+    expect(await listProcessedPayslipsAcross(a, { companyIds: [base.companyId], limit: 3 })).toHaveLength(3);
+    // …and a cap larger than the result set is not padded or truncated.
+    expect(await listProcessedPayslipsAcross(a, { companyIds: [base.companyId], limit: 99 })).toHaveLength(3);
+
+    // A nonsensical cap is IGNORED (unbounded), never silently turned into "no rows" — a zero/negative
+    // limit reaching the query would blank the landing tab.
+    for (const limit of [0, -5, 1.5, Number.NaN]) {
+      expect(
+        await listProcessedPayslipsAcross(a, { companyIds: [base.companyId], limit }),
+        `limit ${limit} must fall back to unbounded`,
+      ).toHaveLength(3);
+    }
+  });
+
   // ───────────────────── 4. Payroll Register (feedback 622e12eb) ─────────────────────
 
   it('register: breaks the statutory blob out into employee deductions + employer contributions', async () => {

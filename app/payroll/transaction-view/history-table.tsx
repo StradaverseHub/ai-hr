@@ -135,6 +135,17 @@ export function HistoryTable({
                           {/* f3148da1 — converted OT excess is folded into stored allowance; show base allowance
                               net of it, then a dedicated line for the pay item, so gross still reconciles. */}
                           <Row label={tSlip('allowances')} value={rm(b.allowanceNet)} />
+                          {/* 862ed0ad — the reporter's exact example was "an Allowance line reads MYR 200.00
+                              with no indication of which allowances make it up". For the one-off items that
+                              fed it, the answer IS below (see the itemised section). For the employee's
+                              RECURRING pay items it is not: the engine sums them into this one figure and
+                              the payslip stores no per-item detail for them, so there is nothing stored to
+                              disclose. Saying that plainly beats either a silent lump sum or a breakdown
+                              re-derived from today's pay-item assignments, which could disagree with the
+                              figure beside it — the failure the plan warned against. */}
+                          {b.allowanceNet > 0 && (
+                            <p className="pb-1 text-[11px] text-muted-foreground">{t('view.history.allowanceNotItemised')}</p>
+                          )}
                           <Row label={tSlip('overtime')} value={rm(b.overtime)} />
                           {b.otConvertAmount > 0 && (
                             <Row label={tSlip('otConverted', { item: st.otConvert!.name })} value={rm(b.otConvertAmount)} />
@@ -196,16 +207,32 @@ export function HistoryTable({
                           </div>
                         </section>
 
-                        {/* ── Recorded items (no cash impact) ── */}
+                        {/* ── Itemised payroll items ──
+                            862ed0ad. This section used to borrow the employee payslip's
+                            `me.payslip.recordLinesHeading` — "Recorded items (no cash impact)" — and its
+                            note, "these do not affect your gross or net pay". That was true when ADR-0025
+                            introduced record lines for non-payable BIKs, and it stopped being true at
+                            f1564110 Phase 3, which merges NAMED provenance for every consumed one-off
+                            transaction into the same array (deductions carrying a negative sign). So the
+                            list can hold both populations and the old heading asserted something false
+                            about half of it — on the screen whose entire purpose is verification.
+
+                            The heading and note are now this screen's own and are accurate for a mixed
+                            list. The employee-facing payslip still carries the old wording and is NOT
+                            touched here: same defect, different screen, and it is reported rather than
+                            fixed in passing.
+
+                            The lines are rendered exactly as stored — no re-derivation — so a line can
+                            never disagree with the figure above it. */}
                         {b.recordLines.length > 0 && (
                           <section className="sm:col-span-2">
                             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              {tSlip('recordLinesHeading')}
+                              {t('view.history.itemsHeading')}
                             </h3>
-                            {b.recordLines.map((l) => (
-                              <Row key={l.code} label={`${l.code} · ${l.name}`} value={rm(l.amount)} muted />
+                            {b.recordLines.map((l, i) => (
+                              <Row key={`${l.code}-${i}`} label={`${l.code} · ${l.name}`} value={rm(l.amount)} muted />
                             ))}
-                            <p className="mt-2 text-xs text-muted-foreground">{tSlip('recordLinesNote')}</p>
+                            <p className="mt-2 text-xs text-muted-foreground">{t('view.history.itemsNote')}</p>
                           </section>
                         )}
 

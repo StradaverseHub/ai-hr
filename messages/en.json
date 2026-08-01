@@ -3428,6 +3428,10 @@
           "showBreakdown": "Show breakdown",
           "hideBreakdown": "Hide breakdown",
           "totalEmployerContributions": "Total employer contributions",
+          "capped": "Showing the {cap} most recent results. Narrow the filters above to see earlier months.",
+          "itemsHeading": "Itemised payroll items",
+          "itemsNote": "Recorded individually on this payslip. One-off items are already included in the totals above; record-only items (such as benefits in kind) affect neither gross nor net.",
+          "allowanceNotItemised": "Total of this employee's allowance pay items. Recurring items are not recorded individually on the payslip, so only the items listed below can be broken out.",
           "hrdfNotRegistered": "Not registered"
         },
         "exportCsv": "Export CSV",

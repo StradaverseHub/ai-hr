@@ -3428,6 +3428,10 @@
           "showBreakdown": "Hiện chi tiết",
           "hideBreakdown": "Ẩn chi tiết",
           "totalEmployerContributions": "Tổng đóng góp của người sử dụng lao động",
+          "capped": "Đang hiển thị {cap} kết quả gần nhất. Hãy thu hẹp bộ lọc phía trên để xem các tháng trước.",
+          "itemsHeading": "Các khoản lương chi tiết",
+          "itemsNote": "Được ghi riêng trên phiếu lương này. Các khoản một lần đã nằm trong tổng phía trên; các khoản chỉ để ghi nhận (như phúc lợi hiện vật) không ảnh hưởng đến tổng hay thực nhận.",
+          "allowanceNotItemised": "Tổng các khoản phụ cấp của nhân viên này. Các khoản định kỳ không được ghi riêng trên phiếu lương, nên chỉ có thể tách các khoản liệt kê bên dưới.",
           "hrdfNotRegistered": "Chưa đăng ký"
         },
         "exportCsv": "Xuất CSV",

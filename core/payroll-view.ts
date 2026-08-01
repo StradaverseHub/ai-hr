@@ -578,12 +578,35 @@ export type ProcessedPayslipViewRow = {
  */
 export function listProcessedPayslipsAcross(
   ctx: SessionContext,
-  p: { companyIds: string[]; year?: number; month?: number; employmentId?: string; cycle?: string },
+  p: {
+    companyIds: string[];
+    year?: number;
+    month?: number;
+    employmentId?: string;
+    cycle?: string;
+    /**
+     * 862ed0ad — a hard row cap. This read was UNBOUNDED: no limit, no pagination, every payslip in
+     * scope for all time, each carrying its whole `statutory` jsonb blob. That was survivable while
+     * History was a tab you chose; it is not once History is the tab that OPENS, which is why the
+     * approved plan made "confirm it is paginated or bounded" a precondition of that change rather
+     * than an afterthought.
+     *
+     * A cap, not a page: the rows are already ordered newest-period-first, so the cap keeps exactly
+     * what someone opening the screen came to check. The caller asks for one more row than it means
+     * to show and says so on screen when the extra one comes back — a silent truncation would be
+     * worse than the unbounded read it replaces.
+     *
+     * Absent ⇒ genuinely unbounded, so existing callers (and the CSV export, which must not be
+     * clipped) are unchanged.
+     */
+    limit?: number;
+  },
 ): Promise<ProcessedPayslipViewRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
   const cycle = cleanRunType(p.cycle);
-  return withTenant(ctx, (tx) =>
-    tx
+  const limit = Number.isInteger(p.limit) && p.limit! > 0 ? p.limit! : undefined;
+  return withTenant(ctx, (tx) => {
+    const q = tx
       .select({
         id: payslip.id,
         employmentId: payslip.employmentId,
@@ -617,8 +640,12 @@ export function listProcessedPayslipsAcross(
           cycle ? eq(payrollBatch.runType, cycle) : undefined,
         ),
       )
-      .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName)),
-  );
+      .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName))
+      .$dynamic();
+    // An absent cap does not call .limit() at all, so every existing caller — including the CSV
+    // export, which must never be clipped — issues exactly the query it issued before.
+    return limit ? q.limit(limit) : q;
+  });
 }
 
 // ───────────────────── 4. Payroll Register (feedback 622e12eb) ─────────────────────

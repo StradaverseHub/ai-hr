@@ -3428,6 +3428,10 @@
           "showBreakdown": "Tunjuk pecahan",
           "hideBreakdown": "Sembunyikan pecahan",
           "totalEmployerContributions": "Jumlah caruman majikan",
+          "capped": "Memaparkan {cap} keputusan terkini. Perhalusi penapis di atas untuk melihat bulan terdahulu.",
+          "itemsHeading": "Butiran item gaji",
+          "itemsNote": "Direkodkan secara berasingan pada slip gaji ini. Item sekali sahaja sudah termasuk dalam jumlah di atas; item rekod sahaja (seperti manfaat berbentuk barangan) tidak menjejaskan kasar mahupun bersih.",
+          "allowanceNotItemised": "Jumlah item gaji elaun pekerja ini. Item berulang tidak direkodkan satu persatu pada slip gaji, jadi hanya item yang disenaraikan di bawah boleh dipecahkan.",
           "hrdfNotRegistered": "Tidak berdaftar"
         },
         "exportCsv": "Eksport CSV",
