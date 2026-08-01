@@ -696,9 +696,42 @@ those employees drop to the statutory floor until their schemes are filled in.
    promised faster loads and for those ten that is not yet true. Pushing limit/offset into ~10 read
    functions is the follow-up. Relevant now: `fc776376` is approved and cross-cutting.
 
-4. **ADR-0077 slices 5-10 are unbuilt.** Plan at `~/.claude/plans/resilient-greeting-ripple.md`. Slice 4
-   had to be re-aimed at r74's `navNodes` contract because the plan predates it — expect the same for
-   later slices.
+4. **ADR-0077: 5 of 11 slices done (0-4), 6 outstanding (5-10).** Plan at
+   `~/.claude/plans/resilient-greeting-ripple.md`. **Verified against the tree on 2026-08-01**, not read
+   off this file — see the correction below about why that mattered.
+
+   | slice | what it is | state, and the evidence |
+   |---|---|---|
+   | 0 | invitation privilege-escalation fix | **DONE** — round entry below |
+   | 1 | entitlement + platform schema | **DONE** — round entry below |
+   | 2 | `isModuleEnabled`, the enforcement primitive | **DONE** — `a38ed02f`, **50 call sites**. NO ROUND ENTRY |
+   | 3 | gate classification + migration + backfill | **DONE** — round entry below |
+   | 4 | nav + page gating from entitlements | **DONE** — round entry below |
+   | 5 | module install / deactivate as operations | **NOT BUILT** — `leaveType` has no `country` column; no `installModule`/`deactivateModule` |
+   | 6 | multi-country entitlement wiring | **NOT BUILT** — no `country-<cc>` provisioning anywhere |
+   | 7 | platform plane: role, process, audit | **NOT BUILT** — `ai_hr_platform` / `PLATFORM_DATABASE_URL` appear in ZERO files |
+   | 8 | audit-chain lifecycle | **NOT BUILT** — still `AUDIT_HASH_CHAIN_ENABLED` env + `scripts/check-audit-chain-gate.ts`; the plan says env stays "until this point" |
+   | 9 | tenant suspension / export / closure | **NOT BUILT** — `SET TRANSACTION READ ONLY` exists only in COMMENTS |
+   | 10 | metering + platform dashboard | **TABLE ONLY** — `usage_snapshot` is in `db/schema.ts` and **nothing writes it** |
+
+   > **CORRECTION — SLICE 2 SHIPPED AND THIS FILE MADE IT LOOK SKIPPED.** There are round entries for
+   > slices 0, 1, 3 and 4 and none for 2, so a reader scanning the headings concludes it was never built.
+   > It was: `git log -S isModuleEnabled` finds `a38ed02f`, and it is the primitive 50 call sites now
+   > depend on. **This file's lists are not evidence in EITHER direction** — absence of an entry is not
+   > absence of a slice, exactly as presence of a "shipped" line is not proof it landed (see Traps).
+
+   **Two of the six are more than backlog:**
+   - **Slice 9's gap is LIVE BEHAVIOUR.** A closed or suspended tenant still has write access, and
+     `core/entitlements.ts:653` says so against itself: "Until slice 9 lands, a closed tenant retains
+     write access to core." Harmless today (one tenant, no billing); a real hole the moment either changes.
+   - **Slice 10's table is accumulating NOTHING.** Usage snapshots cannot be backfilled, so any future
+     decision to bill on past usage has no data to re-derive from. Every day it stays unwired is a day
+     that can never be billed retrospectively.
+
+   **Re-verify the plan before building any of it.** It was written 26 July and is 43 KB; slice 4 already
+   had to be re-aimed at r74's `navNodes` contract because the plan predates it. Expect the same again.
+   None of slices 5-10 is on the feedback board — this is platform work from a plan, not reporter-raised,
+   so nothing will surface it except this entry.
 
 5. **TEST-DB TEARDOWN IS FIXED — this entry is kept only so nobody "fixes" it again.** r85 added
    teardown to `test/global-setup.ts` (`:298`, best-effort and never fatal, so a teardown failure cannot
@@ -2805,6 +2838,32 @@ re-verified — stated so the next reader knows the edge of what was checked.
   it also fixes `cleanroom-verify.sh`, which runs its own vitest and clobbered the shared template.
 - Test isolation: `resetDb()` truncates ~90 tables **per test** at ~175ms — measured at ≈22% of total
   suite compute, and the source of the TRUNCATE deadlocks that produce phantom failures.
+
+---
+
+## Slice 2 — 2026-07-26 — the enforcement primitive (`a38ed02f`) — ENTRY ADDED LATE, on 2026-08-01
+
+**This entry did not exist until r93.** Slices 0, 1, 3 and 4 had entries and slice 2 did not, so for five
+weeks this file's own headings implied the slice was skipped. It was not. Written from the commit and the
+tree rather than from memory of the round, so it is thinner than its siblings — that is the cost of
+recording a slice late, and the reason to record one at the time.
+
+**Shipped:** `a38ed02f`, 2026-07-26 — "session-scoped entitlement resolver (`isModuleEnabled`/`getSetting`),
+`ModuleNotEnabledError`, fail-closed semantics".
+
+**Why it matters more than its size suggests:** this is the primitive slices 3 and 4 gate against, and
+**50 call sites across `core/` now depend on it** (`core/toil.ts`, `core/attendance-allowance.ts`,
+`core/notifications.ts`, `core/entitlements.ts` and more). Resolution is per-TRANSACTION — `withTenant`
+issues one SELECT of the tenant's active module rows, settings and `tenant.status` alongside its
+`set_config`s and attaches the snapshot to the transaction handle, so `isModuleEnabled` reads it
+synchronously and there is no cross-request cache to poison.
+
+**The semantics to preserve:** fail-CLOSED. An unresolvable module is off, not on. `core/entitlements.ts`
+carries the reasoning inline and is worth reading before touching any gate.
+
+**What this slice deliberately did NOT do, and still has not been done:** `tenant.status` rides in the
+snapshot but nothing enforces suspension — that is slice 9, unbuilt, and `core/entitlements.ts:653`
+records it plainly: "Until slice 9 lands, a closed tenant retains write access to core."
 
 ---
 
